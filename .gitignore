@@ -1,0 +1,5 @@
+# If imported into Unity, don't put its generated metadata back into the project.
+*.meta
+
+
+sssssssssssssssssssssss

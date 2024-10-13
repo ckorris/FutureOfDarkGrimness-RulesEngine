@@ -8,7 +8,7 @@ public class RealisticDiceRoller : IDiceRoller
 {
     public IDiceResults Roll(int sideCount, float rollCount)
     {
-        int rollCountInt = UnityEngine.Mathf.RoundToInt(rollCount); //Kinda lazy but avoids BS.
+        int rollCountInt = (int)Math.Round(rollCount);
 
         float[] rolls = new float[sideCount];
 

@@ -3,7 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace FDG.StateMachine
+namespace FDG.Stages
 {
 
     public interface ISingleRangedAttackContext : ICommonContextItems

@@ -3,7 +3,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 
-namespace FDG.StateMachine
+namespace FDG.Stages
 {
 
     public class ChooseRangedWeaponStage : StateBase<IRangedContext>

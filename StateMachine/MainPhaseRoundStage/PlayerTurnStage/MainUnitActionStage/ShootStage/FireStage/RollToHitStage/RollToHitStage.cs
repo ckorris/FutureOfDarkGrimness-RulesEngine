@@ -2,7 +2,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace FDG.StateMachine
+namespace FDG.Stages
 {
 
     public class RollToHitStage : CombatStage<RollToHitResults, RollToHitStage>

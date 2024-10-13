@@ -1,5 +1,5 @@
 
-namespace FDG.StateMachine
+namespace FDG.Stages
 {
 
     public interface IUnitActionContext : ICommonContextItems

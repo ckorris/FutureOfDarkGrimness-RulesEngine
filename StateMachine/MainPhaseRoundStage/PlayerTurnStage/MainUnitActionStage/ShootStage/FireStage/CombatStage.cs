@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace FDG.StateMachine
+namespace FDG.Stages
 {
 
     public abstract class CombatStage<TResult, TSelf> : StateBase<ISingleRangedAttackContext>, ICombatEffectsSink<TResult>

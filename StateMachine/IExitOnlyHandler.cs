@@ -1,6 +1,6 @@
 using System;
 
-namespace FDG.StateMachine
+namespace FDG.Stages
 {
     public interface IExitOnlyHandler<TStateContext>
     {

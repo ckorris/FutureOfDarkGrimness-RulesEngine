@@ -1,7 +1,7 @@
 
 using System;
 
-namespace FDG.StateMachine
+namespace FDG.Stages
 {
 
     public class MovementStage : StateBase<IUnitActionContext>

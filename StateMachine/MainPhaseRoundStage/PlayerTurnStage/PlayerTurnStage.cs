@@ -1,6 +1,6 @@
 
 
-namespace FDG.StateMachine
+namespace FDG.Stages
 {
     public class PlayerTurnStage : StateBase<IMainPhaseContext>
     {

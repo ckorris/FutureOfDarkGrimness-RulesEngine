@@ -1,4 +1,4 @@
-﻿namespace FDG.StateMachine
+﻿namespace FDG.Stages
 {
     public class Stage<T>
     {

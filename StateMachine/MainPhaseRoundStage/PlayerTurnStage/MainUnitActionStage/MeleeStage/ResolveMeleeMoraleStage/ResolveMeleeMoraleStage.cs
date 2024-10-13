@@ -1,5 +1,5 @@
 
-namespace FDG.StateMachine
+namespace FDG.Stages
 {
 
     public class ResolveMeleeMoraleStage : StateBase<IMeleeContext>

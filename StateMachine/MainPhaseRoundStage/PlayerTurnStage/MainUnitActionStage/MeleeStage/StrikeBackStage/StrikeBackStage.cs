@@ -29,7 +29,7 @@ namespace FDG.Stages
             _determineCanKeepSwingingStage
                 = new DetermineCanKeepSwingingStage(stateMachine, _reversedContext, this);
 
-            StateMachine.AddTransition<ChooseMeleeWeaponStage>(ChooseMeleeWeaponStage.CHOOSE_MELEE_WEAPON_FINISHED_TRANSITION,
+            chooseMeleeWeaponStage.Bind(ChooseMeleeWeaponStage.CHOOSE_MELEE_WEAPON_FINISHED_TRANSITION,
                 swingMeleeWeaponStage);
 
             swingMeleeWeaponStage.AssignExitStage(_determineCanKeepSwingingStage);

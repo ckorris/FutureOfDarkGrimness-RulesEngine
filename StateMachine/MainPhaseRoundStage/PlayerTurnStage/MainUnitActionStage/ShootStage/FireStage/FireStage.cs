@@ -32,7 +32,7 @@ namespace FDG.Stages
                 .BindNextStage(_applyWoundsStage);
 
             //Set up transition to child stage.
-            _stateMachine.AddTransition<FireStage>(FIRE_TO_CHILD_ENTRANCE_TRANSITION, buildTargetListStage);
+            Bind(FIRE_TO_CHILD_ENTRANCE_TRANSITION, buildTargetListStage);
         }
 
         public void AssignExitStage(StateBase targetStageWhenFinished)

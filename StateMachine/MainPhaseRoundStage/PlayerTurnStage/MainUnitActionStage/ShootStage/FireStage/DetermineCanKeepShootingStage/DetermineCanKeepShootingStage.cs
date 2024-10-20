@@ -45,13 +45,13 @@ namespace FDG.Stages
         public void BindReturnToChooseWeapon(StateBase returnStage)
         {
             ReturnToChooseWeaponTransitionName = $"{nameof(DetermineCanKeepShootingStage)}_TO_{returnStage.GetType()}";
-            _stateMachine.AddTransition<DetermineCanKeepShootingStage>(ReturnToChooseWeaponTransitionName, returnStage);
+            Bind(ReturnToChooseWeaponTransitionName, returnStage);
         }
 
         public void BindFinishShooting(StateBase stageAfterShooting)
         {
             FinishShootingTransitionName = $"{nameof(DetermineCanKeepShootingStage)}_TO_{stageAfterShooting.GetType()}";
-            _stateMachine.AddTransition<DetermineCanKeepShootingStage>(FinishShootingTransitionName, stageAfterShooting);
+            Bind(FinishShootingTransitionName, stageAfterShooting);
         }
 
         private void SignalCanKeepShooting()

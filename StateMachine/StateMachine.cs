@@ -8,8 +8,8 @@ namespace FDG.Stages
         private Stack<StateBase> _stateStack = new Stack<StateBase>();
 
         //Transition map: (CurrentStateType, EventName) -> NextStateInstance.
-        private Dictionary<(Type StateType, string Event), StateBase> _transitions =
-            new Dictionary<(Type, string), StateBase>();
+        private Dictionary<(StateBase StateType, string Event), StateBase> _transitions =
+            new Dictionary<(StateBase, string), StateBase>();
 
         public void Start(StateBase initialState)
         {
@@ -46,22 +46,16 @@ namespace FDG.Stages
             PushState(newState);
         }
 
-        public void AddTransition<TState>(string eventName, StateBase nextState)
-            where TState : StateBase
+        public void AddTransition(StateBase sourceState, string eventName, StateBase nextState)
         {
-            _transitions[(typeof(TState), eventName)] = nextState;
+            _transitions[(sourceState, eventName)] = nextState;
         }
 
-        public void AddTransition<TState>(TState oldState, string eventName, StateBase nextState)
-            where TState : StateBase
-        {
-            _transitions[(typeof(TState), eventName)] = nextState;
-        }
 
         //Method called by states to signal events.
         public void ProcessEvent(StateBase state, string eventName, object eventData = null)
         {
-            var key = (state.GetType(), eventName);
+            var key = (state, eventName);
             if (_transitions.TryGetValue(key, out var nextState))
             {
                 //Set context on nextState if necessary.

@@ -12,6 +12,8 @@ namespace FDG.Stages
 
         private readonly StateMachine _stateMachine;
 
+        private ReconcileObjectivesStage _reconcileObjectivesStage;
+
         public MainPhaseRoundStage(StateMachine stateMachine, ITopLevelContext context,
             IMainPhaseContext mainPhaseContext, IPlayerTurnContext playerTurnContext,
             IUnitActionContext unitActionContext, IMeleeContext meleeContext, IRangedContext rangedContext)
@@ -24,21 +26,21 @@ namespace FDG.Stages
             DetermineFirstPlayerTurnStage determineFirstPlayerTurnStage = new DetermineFirstPlayerTurnStage(stateMachine, mainPhaseContext, this);
             PlayerTurnStage playerTurnStage = new PlayerTurnStage(stateMachine, mainPhaseContext, playerTurnContext,
                 unitActionContext, meleeContext, rangedContext, this);
-            ReconcileObjectivesStage reconcileObjectivesStage = new ReconcileObjectivesStage(stateMachine, mainPhaseContext, this);
+            _reconcileObjectivesStage = new ReconcileObjectivesStage(stateMachine, mainPhaseContext, this);
 
-            playerTurnStage.AssignExitStage(reconcileObjectivesStage);
+            playerTurnStage.AssignExitStage(_reconcileObjectivesStage);
 
             //Entrance.
-            stateMachine.AddTransition<MainPhaseRoundStage>(MAIN_TO_RECONCILE_NEW_TURN_STAGE, reconcileNewTurnStage);
+            Bind(MAIN_TO_RECONCILE_NEW_TURN_STAGE, reconcileNewTurnStage);
 
             //Main stage internal transitions.
-            stateMachine.AddTransition<ReconcileNewTurnStage>(ReconcileNewTurnStage.TO_START_EXTRA_ACTIONS_TRANSITION, 
+            reconcileNewTurnStage.Bind(ReconcileNewTurnStage.TO_START_EXTRA_ACTIONS_TRANSITION, 
                 startOfTurnExtraActionStage);
-            stateMachine.AddTransition<StartOfTurnExtraActionStage>(StartOfTurnExtraActionStage.TO_DETERMINE_FIRST_TURN_TRANSITION, 
+            startOfTurnExtraActionStage.Bind(StartOfTurnExtraActionStage.TO_DETERMINE_FIRST_TURN_TRANSITION, 
                 determineFirstPlayerTurnStage);
-            stateMachine.AddTransition<DetermineFirstPlayerTurnStage>(DetermineFirstPlayerTurnStage.DETERMINE_FIRST_PLAYER_TO_PLAYER_TURN_TRANSITION, 
+            determineFirstPlayerTurnStage.Bind(DetermineFirstPlayerTurnStage.DETERMINE_FIRST_PLAYER_TO_PLAYER_TURN_TRANSITION, 
                 playerTurnStage);
-            stateMachine.AddTransition<ReconcileObjectivesStage>(ReconcileObjectivesStage.RECONCILE_OBJECTIVES_TO_RECONCILE_NEW_TURN,
+            _reconcileObjectivesStage.Bind(ReconcileObjectivesStage.RECONCILE_OBJECTIVES_TO_RECONCILE_NEW_TURN,
                 reconcileNewTurnStage);
 
             //Setting up child binding. Want to move to child sometime. 
@@ -48,7 +50,7 @@ namespace FDG.Stages
 
         public void AssignExitStage(StateBase targetStageWhenFinished)
         {
-            _stateMachine.AddTransition<ReconcileObjectivesStage>(ReconcileObjectivesStage.RECONCILE_OBJECTIVES_TO_VICTORY_CALCULATION_TRANSITION,
+            _reconcileObjectivesStage.Bind(ReconcileObjectivesStage.RECONCILE_OBJECTIVES_TO_VICTORY_CALCULATION_TRANSITION,
                 targetStageWhenFinished);
         }
 

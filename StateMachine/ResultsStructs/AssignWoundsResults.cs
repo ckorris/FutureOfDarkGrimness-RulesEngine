@@ -2,7 +2,7 @@
 namespace FDG
 {
 
-    public struct AssignWoundsResults
+    public class AssignWoundsResults
     {
         public readonly int TotalWoundsToAssign;
         public int TotalAssignedWounds { get; private set; } = 0;

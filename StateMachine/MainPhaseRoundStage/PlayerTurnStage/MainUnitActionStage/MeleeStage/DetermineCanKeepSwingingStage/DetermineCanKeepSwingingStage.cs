@@ -44,19 +44,19 @@ namespace FDG.Stages
         public void BindReturnToChooseWeapon(StateBase returnStage)
         {
             ReturnToChooseWeaponTransitionName = $"{nameof(DetermineCanKeepShootingStage)}_TO_{returnStage.GetType()}";
-            _stateMachine.AddTransition<DetermineCanKeepShootingStage>(ReturnToChooseWeaponTransitionName, returnStage);
+            Bind(ReturnToChooseWeaponTransitionName, returnStage);
         }
 
         public void BindOutOfWeapons(StateBase stageAfterShooting)
         {
             OutOfWeaponsTransitionName = $"{nameof(DetermineCanKeepShootingStage)}_TO_{stageAfterShooting.GetType()}";
-            _stateMachine.AddTransition<DetermineCanKeepShootingStage>(OutOfWeaponsTransitionName, stageAfterShooting);
+            Bind(OutOfWeaponsTransitionName, stageAfterShooting);
         }
 
         public void BindDefenderKilled(StateBase stageWhenDefenderKilled)
         {
             DefenderKilledTransitionName = $"{nameof(DetermineCanKeepShootingStage)}_TO_{stageWhenDefenderKilled.GetType()}";
-            _stateMachine.AddTransition<DetermineCanKeepShootingStage>(DefenderKilledTransitionName, stageWhenDefenderKilled);
+            Bind(DefenderKilledTransitionName, stageWhenDefenderKilled);
         }
 
         private void SignalCanKeepSwinging()

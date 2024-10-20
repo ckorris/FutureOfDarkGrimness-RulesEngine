@@ -27,7 +27,7 @@ namespace FDG.Stages
                 .BindNextStage(_applyWoundsStage);
 
             //Set up transition to child stage.
-            _stateMachine.AddTransition<SwingMeleeWeaponStage>(SWING_TO_CHILD_ENTRANCE_TRANSITION, buildTargetListStage);
+            Bind(SWING_TO_CHILD_ENTRANCE_TRANSITION, buildTargetListStage);
         }
 
         public void AssignExitStage(StateBase targetStageWhenFinished)

@@ -7,26 +7,38 @@ namespace FDG.Stages
         public const string MAIN_UNIT_ACTION_TO_CHILD_CHOOSE_ACTION_TRANSITION =
             "MainUnitActionToChildChooseAction";
 
-        public MainUnitActionStage(StateMachine stateMachine, IPlayerTurnContext context, 
+        private readonly ChooseActionStage _chooseActionStage;
+        private readonly MovementStage _movementStage;
+
+        private readonly MeleeStage _meleeStage;
+
+        private readonly ShootStage _shootStage;
+        public MainUnitActionStage(StateMachine stateMachine, IPlayerTurnContext context,
             IUnitActionContext mainUnitActionContext, IMeleeContext meleeContext,
             IRangedContext rangedContext, StateBase parentState = null)
             : base(stateMachine, context, parentState)
         {
-            ChooseActionStage chooseActionStage = new ChooseActionStage(stateMachine, mainUnitActionContext, this);
-            MovementStage movementStage = new MovementStage(stateMachine, mainUnitActionContext, this);
-            MeleeStage meleeStage = new MeleeStage(stateMachine, mainUnitActionContext, meleeContext, this);
-            ShootStage shootStage = new ShootStage(stateMachine, mainUnitActionContext, rangedContext, this);
+            _chooseActionStage = new ChooseActionStage(stateMachine, mainUnitActionContext, this);
+            _movementStage = new MovementStage(stateMachine, mainUnitActionContext, this);
+            _meleeStage = new MeleeStage(stateMachine, mainUnitActionContext, meleeContext, this);
+            _shootStage = new ShootStage(stateMachine, mainUnitActionContext, rangedContext, this);
 
-            stateMachine.AddTransition<MainUnitActionStage>(MAIN_UNIT_ACTION_TO_CHILD_CHOOSE_ACTION_TRANSITION,
-                chooseActionStage);
-            stateMachine.AddTransition<ChooseActionStage>(ChooseActionStage.CHOOSE_ACTION_TO_MOVEMENT_TRANSITION,
-                movementStage);
-            stateMachine.AddTransition<MovementStage>(MovementStage.MOVEMENT_TO_MELEE_TRANSITION, meleeStage);
-            stateMachine.AddTransition<MovementStage>(MovementStage.MOVEMENT_TO_RANGED_TRANSITION, shootStage);
-
-            //TODO: Bind the above to leave this stage.
+            Bind(MAIN_UNIT_ACTION_TO_CHILD_CHOOSE_ACTION_TRANSITION, _chooseActionStage);
+            _chooseActionStage.Bind(ChooseActionStage.CHOOSE_ACTION_TO_MOVEMENT_TRANSITION,
+                _movementStage);
+            _movementStage.Bind(MovementStage.MOVEMENT_TO_MELEE_TRANSITION, _meleeStage);
+            _movementStage.Bind(MovementStage.MOVEMENT_TO_RANGED_TRANSITION, _shootStage);
         }
 
+        public void AssignExitStage(StateBase nextStage)
+        {
+            _chooseActionStage.Bind(ChooseActionStage.CHOOSE_ACTION_TO_RECONCILE_END_OF_ACTIVATION_TRANSITION,
+                nextStage);
+            _movementStage.Bind(MovementStage.MOVEMENT_TO_RECONCILE_END_OF_ACTIVATION_TRANSITION,
+                nextStage);
+            _meleeStage.AssignExitStage(nextStage);
+            _shootStage.AssignExitStage(nextStage);
+        }
 
         public override void Enter()
         {

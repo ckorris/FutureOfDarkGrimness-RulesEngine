@@ -7,6 +7,8 @@ namespace FDG.Stages
 
         private readonly StateMachine _stateMachine;
 
+        ApplyFatigueStage _applyFatigueStage;
+
         public MeleeStage(StateMachine stateMachine, IUnitActionContext context, IMeleeContext meleeContext,
             StateBase parentState = null)
             : base(stateMachine, context, parentState)
@@ -37,56 +39,56 @@ namespace FDG.Stages
                 = new RollForMoraleStage(stateMachine, meleeContext, this);
             AssignMeleeMoralePenaltyStage assignMoralePenaltyStage 
                 = new AssignMeleeMoralePenaltyStage(stateMachine, meleeContext, this);
-            ApplyFatigueStage applyFatigueStage
+            _applyFatigueStage
                 = new ApplyFatigueStage(StateMachine, meleeContext, this);
 
-            stateMachine.AddTransition<MeleeStage>(MELEE_TO_CHILD_ENTRANCE_TRANSITION, pileInStage);
+            Bind(MELEE_TO_CHILD_ENTRANCE_TRANSITION, pileInStage);
 
-            stateMachine.AddTransition<PileInStage>(PileInStage.PILE_IN_FINISHED_TRANSITION, determineInRangeAttackersStage);
+            pileInStage.Bind(PileInStage.PILE_IN_FINISHED_TRANSITION, determineInRangeAttackersStage);
 
-            stateMachine.AddTransition<DetermineInRangeAttackersStage>(DetermineInRangeAttackersStage.DETERMINE_IN_RANGE_ATTACKER_FINISHED_TRANSITION,
+            determineInRangeAttackersStage.Bind(DetermineInRangeAttackersStage.DETERMINE_IN_RANGE_ATTACKER_FINISHED_TRANSITION,
                 determineInRangeDefendersStage);
 
-            stateMachine.AddTransition<DetermineInRangeDefendersStage>(DetermineInRangeDefendersStage.DETERMINE_IN_RANGE_DEFENDER_FINISHED_TRANSITION,
+            determineInRangeDefendersStage.Bind(DetermineInRangeDefendersStage.DETERMINE_IN_RANGE_DEFENDER_FINISHED_TRANSITION,
                 chooseMeleeWeaponStage);
 
-            StateMachine.AddTransition<ChooseMeleeWeaponStage>(ChooseMeleeWeaponStage.CHOOSE_MELEE_WEAPON_FINISHED_TRANSITION,
+            chooseMeleeWeaponStage.Bind(ChooseMeleeWeaponStage.CHOOSE_MELEE_WEAPON_FINISHED_TRANSITION,
                 swingMeleeWeaponStage);
 
             swingMeleeWeaponStage.AssignExitStage(determineCanKeepSwingingStage);
 
             determineCanKeepSwingingStage.BindReturnToChooseWeapon(chooseMeleeWeaponStage);
             determineCanKeepSwingingStage.BindOutOfWeapons(offerStrikeBackStage);
-            determineCanKeepSwingingStage.BindDefenderKilled(applyFatigueStage);
+            determineCanKeepSwingingStage.BindDefenderKilled(_applyFatigueStage);
 
-            stateMachine.AddTransition<OfferStrikeBackStage>(OfferStrikeBackStage.OFFER_STRIKE_BACK_ACCEPTED_TRANSITION,
+            offerStrikeBackStage.Bind(OfferStrikeBackStage.OFFER_STRIKE_BACK_ACCEPTED_TRANSITION,
                 strikeBackStage);
-            stateMachine.AddTransition<OfferStrikeBackStage>(OfferStrikeBackStage.OFFER_STRIKE_BACK_REJECTED_TRANSITION,
+            offerStrikeBackStage.Bind(OfferStrikeBackStage.OFFER_STRIKE_BACK_REJECTED_TRANSITION,
                 determineMoraleSaveNeededStage);
 
             strikeBackStage.AssignNormalExitStage(determineMeleeWinnerStage);
-            strikeBackStage.AssignAttackerKilledExitStage(applyFatigueStage);
+            strikeBackStage.AssignAttackerKilledExitStage(_applyFatigueStage);
 
-            stateMachine.AddTransition<DetermineMeleeWinnerStage>(DetermineMeleeWinnerStage.DETERMINE_MELEE_WINNER_NEEDS_ROLL_TRANSITION,
+            determineMeleeWinnerStage.Bind(DetermineMeleeWinnerStage.DETERMINE_MELEE_WINNER_NEEDS_ROLL_TRANSITION,
                 determineMoraleSaveNeededStage);
-            stateMachine.AddTransition<DetermineMeleeWinnerStage>(DetermineMeleeWinnerStage.DETERMINE_MELEE_WINNER_DOESNT_NEED_ROLL_TRANSITION,
-                applyFatigueStage);
+            determineMeleeWinnerStage.Bind(DetermineMeleeWinnerStage.DETERMINE_MELEE_WINNER_DOESNT_NEED_ROLL_TRANSITION,
+                _applyFatigueStage);
 
-            stateMachine.AddTransition<DetermineMoraleSaveNeededStage>(DetermineMoraleSaveNeededStage.DETERMINE_MORALE_SAVE_NEEDED_FINISHED_TRANSITION,
+            determineMoraleSaveNeededStage.Bind(DetermineMoraleSaveNeededStage.DETERMINE_MORALE_SAVE_NEEDED_FINISHED_TRANSITION,
                 rollForMoraleStage);
             
-            stateMachine.AddTransition<RollForMoraleStage>(RollForMoraleStage.ROLL_FOR_MORALE_PASSED_TRANSITION, applyFatigueStage);
-            stateMachine.AddTransition<RollForMoraleStage>(RollForMoraleStage.ROLL_FOR_MORALE_FAILED_TRANSITION, assignMoralePenaltyStage);
+            rollForMoraleStage.Bind(RollForMoraleStage.ROLL_FOR_MORALE_PASSED_TRANSITION, _applyFatigueStage);
+            rollForMoraleStage.Bind(RollForMoraleStage.ROLL_FOR_MORALE_FAILED_TRANSITION, assignMoralePenaltyStage);
 
-            stateMachine.AddTransition<AssignMeleeMoralePenaltyStage>(AssignMeleeMoralePenaltyStage.ASSIGN_MELEE_MORALE_PENALTY_FINISHED_TRANSITION,
-                applyFatigueStage);
+            assignMoralePenaltyStage.Bind(AssignMeleeMoralePenaltyStage.ASSIGN_MELEE_MORALE_PENALTY_FINISHED_TRANSITION,
+                _applyFatigueStage);
 
             //Apply fatigue leaving has to be assigned from the outside, as it leaves this stage.
         }
 
         public void AssignExitStage(StateBase targetStageWhenFinished)
         {
-            _stateMachine.AddTransition<ApplyFatigueStage>(ApplyFatigueStage.APPLY_FATIGUE_FINISHED_TRANSITION,
+            _applyFatigueStage.Bind(ApplyFatigueStage.APPLY_FATIGUE_FINISHED_TRANSITION,
                 targetStageWhenFinished);
         }
 

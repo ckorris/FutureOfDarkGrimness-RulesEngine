@@ -26,20 +26,20 @@ namespace FDG.Stages
         public StateMachine Build()
         {
             //Top level stages.
-            ArmySetupStage armySetupState = new ArmySetupStage(_stateMachine, _topLevelContext);
-            MapSetupStage mapSetupState = new MapSetupStage(_stateMachine, _topLevelContext);
-            DeploymentStage deploymentState = new DeploymentStage(_stateMachine, _topLevelContext);
-            MainPhaseRoundStage mainPhaseRoundState = new MainPhaseRoundStage(_stateMachine, _topLevelContext,
+            ArmySetupStage armySetupStage = new ArmySetupStage(_stateMachine, _topLevelContext);
+            MapSetupStage mapSetupStage = new MapSetupStage(_stateMachine, _topLevelContext);
+            DeploymentStage deploymentStage = new DeploymentStage(_stateMachine, _topLevelContext);
+            MainPhaseRoundStage mainPhaseRoundStage = new MainPhaseRoundStage(_stateMachine, _topLevelContext,
                 _mainPhaseContext, _playerTurnContext, _unitActionContext, _meleeContext, _rangedContext);
-            VictoryCalculationStage victoryCalculationState = new VictoryCalculationStage(_stateMachine, _topLevelContext);
+            VictoryCalculationStage victoryCalculationStage = new VictoryCalculationStage(_stateMachine, _topLevelContext);
 
-            mainPhaseRoundState.AssignExitStage(victoryCalculationState);
+            mainPhaseRoundStage.AssignExitStage(victoryCalculationStage);
 
-            _stateMachine.AddTransition<ArmySetupStage>(ArmySetupStage.TO_MAP_SETUP_TRANSITION, mapSetupState);
-            _stateMachine.AddTransition<MapSetupStage>(MapSetupStage.TO_DEPLOYMENT_TRANSITION, deploymentState);
-            _stateMachine.AddTransition<DeploymentStage>(DeploymentStage.TO_MAIN_TRANSITION, mainPhaseRoundState);            
+            armySetupStage.Bind(ArmySetupStage.TO_MAP_SETUP_TRANSITION, mapSetupStage);
+            mapSetupStage.Bind(MapSetupStage.TO_DEPLOYMENT_TRANSITION, deploymentStage);
+            deploymentStage.Bind(DeploymentStage.TO_MAIN_TRANSITION, mainPhaseRoundStage);            
             
-            _stateMachine.Start(armySetupState);
+            _stateMachine.Start(armySetupStage);
 
             return _stateMachine;
         }

@@ -8,6 +8,8 @@ namespace FDG.Stages
 
         private readonly StateMachine _stateMachine;
 
+        private readonly ResolveRangedMoraleStage _resolveRangedMoraleStage;
+
         public ShootStage(StateMachine stateMachine, IUnitActionContext context, IRangedContext rangedContext,
             StateBase parentState = null)
             : base(stateMachine, context, parentState)
@@ -18,22 +20,22 @@ namespace FDG.Stages
             ChooseRangedTargetStage chooseRangedTargetStage = new ChooseRangedTargetStage(stateMachine, rangedContext, this);
             FireStage fireStage = new FireStage(stateMachine, rangedContext, this);
             DetermineCanKeepShootingStage determineCanKeepShootingStage = new DetermineCanKeepShootingStage(stateMachine, rangedContext, this);
-            ResolveRangedMoraleStage resolveRangedMoraleStage = new ResolveRangedMoraleStage(stateMachine, rangedContext, this);
+            _resolveRangedMoraleStage = new ResolveRangedMoraleStage(stateMachine, rangedContext, this);
 
-           
-            stateMachine.AddTransition<ShootStage>(SHOOT_TO_CHILD_CHOOSE_RANGED_WEAPON_TRANSITION, chooseRangedWeaponStage);
-            stateMachine.AddTransition<ChooseRangedWeaponStage>(ChooseRangedWeaponStage.CHOOSE_RANGED_WEAPON_TO_CHOOSE_RANGED_TARGET_TRANSITION,
+
+            Bind(SHOOT_TO_CHILD_CHOOSE_RANGED_WEAPON_TRANSITION, chooseRangedWeaponStage);
+            chooseRangedWeaponStage.Bind(ChooseRangedWeaponStage.CHOOSE_RANGED_WEAPON_TO_CHOOSE_RANGED_TARGET_TRANSITION,
                 chooseRangedTargetStage);
-            stateMachine.AddTransition<ChooseRangedTargetStage>(ChooseRangedTargetStage.CHOOSE_RANGED_TARGET_TO_FIRE_TRANSITION,
+            chooseRangedTargetStage.Bind(ChooseRangedTargetStage.CHOOSE_RANGED_TARGET_TO_FIRE_TRANSITION,
                 fireStage);
             fireStage.AssignExitStage(determineCanKeepShootingStage);
             determineCanKeepShootingStage.BindReturnToChooseWeapon(chooseRangedWeaponStage);
-            determineCanKeepShootingStage.BindFinishShooting(resolveRangedMoraleStage);
+            determineCanKeepShootingStage.BindFinishShooting(_resolveRangedMoraleStage);
         }
 
         public void AssignExitStage(StateBase targetStageWhenFinished)
         {
-            _stateMachine.AddTransition<ResolveRangedMoraleStage>(ResolveRangedMoraleStage.RESOLVE_RANGED_MORALE_FINISHED_TRANSITION,
+            _resolveRangedMoraleStage.Bind(ResolveRangedMoraleStage.RESOLVE_RANGED_MORALE_FINISHED_TRANSITION,
                 targetStageWhenFinished);
         }
 

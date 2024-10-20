@@ -68,6 +68,11 @@ namespace FDG.Stages
             ParentState = parentState;
         }
 
+        public void Bind(string eventName, StateBase targetState)
+        {
+            StateMachine.AddTransition(this, eventName, targetState);
+        }
+
         public virtual void Enter() { }
         public virtual void Exit() { }
 

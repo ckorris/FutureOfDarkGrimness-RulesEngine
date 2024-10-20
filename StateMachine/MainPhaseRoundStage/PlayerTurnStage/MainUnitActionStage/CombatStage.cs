@@ -42,7 +42,7 @@ namespace FDG.Stages
 
             FinishedTransitionName = GetTransitionName(nextStage);
 
-            _stateMachine.AddTransition<TSelf>(FinishedTransitionName, nextStage);
+            Bind(FinishedTransitionName, nextStage);
 
             _hasBoundNextStage = true;
 
@@ -58,7 +58,7 @@ namespace FDG.Stages
             }
 
             FinishedTransitionName = GetTransitionName(nextStage);
-            _stateMachine.AddTransition<TSelf>(FinishedTransitionName, nextStage);
+            Bind(FinishedTransitionName, nextStage);
             _hasBoundNextStage = true;
         }
 

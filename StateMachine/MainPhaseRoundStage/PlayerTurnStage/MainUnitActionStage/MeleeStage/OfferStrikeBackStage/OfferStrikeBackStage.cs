@@ -6,33 +6,35 @@ namespace FDG.Stages
 
     public class OfferStrikeBackStage : StateBase<IMeleeContext>
     {
-        public const string OFFER_STRIKE_BACK_TO_STRIKE_BACK_TRANSITION =
-            "OfferStrikeBackToStrikeBack";
+        public const string OFFER_STRIKE_BACK_ACCEPTED_TRANSITION =
+            "OfferStrikeBackAccepted";
 
-        public const string OFFER_STRIKE_BACK_TO_RESOLVE_MELEE_MORALE_TRANSITION =
-            "OfferStrikeBackToResolveMeleeMorale";
+        public const string OFFER_STRIKE_BACK_REJECTED_TRANSITION =
+            "OfferStrikeBackRejectd";
 
         public OfferStrikeBackStage(StateMachine stateMachine, IMeleeContext context, StateBase parentState = null)
             : base(stateMachine, context, parentState)
         {
+
         }
+
 
         public override void Enter()
         {
             base.Enter();
 
-            Context.OfferStrikeBackHandler.Handle(Context, MoveToStrikeBack, MoveToResolveMeleeMorale);
+            Context.OfferStrikeBackHandler.Handle(Context, MoveToStrikingBack, SkipStrikingBack);
         }
 
 
-        private void MoveToStrikeBack()
+        private void MoveToStrikingBack()
         {
-            SignalEvent(OFFER_STRIKE_BACK_TO_STRIKE_BACK_TRANSITION);
+            SignalEvent(OFFER_STRIKE_BACK_ACCEPTED_TRANSITION);
         }
 
-        private void MoveToResolveMeleeMorale()
+        private void SkipStrikingBack()
         {
-            SignalEvent(OFFER_STRIKE_BACK_TO_RESOLVE_MELEE_MORALE_TRANSITION);
+            SignalEvent(OFFER_STRIKE_BACK_REJECTED_TRANSITION);
         }
 
     }

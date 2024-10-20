@@ -46,8 +46,13 @@ namespace FDG.Stages
             PushState(newState);
         }
 
-        //Method to register transitions with pre-instantiated states.
         public void AddTransition<TState>(string eventName, StateBase nextState)
+            where TState : StateBase
+        {
+            _transitions[(typeof(TState), eventName)] = nextState;
+        }
+
+        public void AddTransition<TState>(TState oldState, string eventName, StateBase nextState)
             where TState : StateBase
         {
             _transitions[(typeof(TState), eventName)] = nextState;

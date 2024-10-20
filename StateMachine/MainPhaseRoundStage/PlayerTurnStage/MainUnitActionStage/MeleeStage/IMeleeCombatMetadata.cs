@@ -1,13 +1,13 @@
-
+﻿
 namespace FDG
 {
-
-    public interface IRangedCombatMetadata : ICombatMetaData
+    public interface IMeleeCombatMetadata : ICombatMetaData
     {
-        public void ChooseTarget(IUnit targetUnit);
+        //TODO: Register wounds dealt by each side?
+
     }
 
-    public class RangedCombatMetadata : IRangedCombatMetadata
+    public class MeleeCombatMetadata : IMeleeCombatMetadata
     {
         public ITextOutput TextOutput { get; }
 
@@ -23,18 +23,15 @@ namespace FDG
 
         public IDiceRoller DiceRoller { get; }
 
-        public bool IsSetUp => _hasSetWeapon && _hasSetTargetUnit;
+        public bool IsSetUp => _hasSetWeapon;
 
         private bool _hasSetWeapon = false;
-        private bool _hasSetTargetUnit = false;
 
         private QueryableResults _queryableResults = new QueryableResults();
 
-        public RangedCombatMetadata(IUnit attackingUnit, IDiceRoller diceRoller, ITextOutput textOutput)
+        public MeleeCombatMetadata(IUnit attackingUnit, IUnit defendingUnit, IDiceRoller diceRoller, ITextOutput textOutput)
         {
-            AttackingUnit = attackingUnit;
-            DiceRoller = diceRoller;
-            TextOutput = textOutput;
+            DefendingUnit = defendingUnit;
         }
 
         public void AddResult<TResult>(TResult result)
@@ -54,12 +51,6 @@ namespace FDG
 
             _hasSetWeapon = true;
         }
-
-        public void ChooseTarget(IUnit targetUnit)
-        {
-            DefendingUnit = targetUnit;
-
-            _hasSetTargetUnit = true;
-        }
     }
 }
+

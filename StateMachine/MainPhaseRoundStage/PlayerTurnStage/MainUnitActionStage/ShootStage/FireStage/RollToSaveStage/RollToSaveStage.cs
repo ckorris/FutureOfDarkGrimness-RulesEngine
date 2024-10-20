@@ -6,7 +6,7 @@ namespace FDG.Stages
 {
     public class RollToSaveStage : CombatStage<RollToSaveResults, RollToSaveStage>
     {
-        public RollToSaveStage(StateMachine stateMachine, ISingleRangedAttackContext context, StateBase parentState = null) 
+        public RollToSaveStage(StateMachine stateMachine, ISingleAttackContext context, StateBase parentState = null) 
             : base(stateMachine, context, parentState)
         {
         }

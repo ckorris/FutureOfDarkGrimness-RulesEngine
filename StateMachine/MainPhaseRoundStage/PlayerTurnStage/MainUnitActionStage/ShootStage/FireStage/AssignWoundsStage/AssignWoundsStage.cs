@@ -1,12 +1,10 @@
 
-using System;
-
 namespace FDG.Stages
 {
 
     public class AssignWoundsStage : CombatStage<AssignWoundsResults, AssignWoundsStage>
     {
-        public AssignWoundsStage(StateMachine stateMachine, ISingleRangedAttackContext context, StateBase parentState = null) 
+        public AssignWoundsStage(StateMachine stateMachine, ISingleAttackContext context, StateBase parentState = null) 
             : base(stateMachine, context, parentState)
         {
         }

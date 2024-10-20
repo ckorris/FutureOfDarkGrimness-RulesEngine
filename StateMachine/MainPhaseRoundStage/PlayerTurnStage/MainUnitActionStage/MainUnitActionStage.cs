@@ -5,7 +5,7 @@ namespace FDG.Stages
     public class MainUnitActionStage : StateBase<IPlayerTurnContext>
     {
         public const string MAIN_UNIT_ACTION_TO_CHILD_CHOOSE_ACTION_TRANSITION =
-            "MainUnitActionToChilChooseAction";
+            "MainUnitActionToChildChooseAction";
 
         public MainUnitActionStage(StateMachine stateMachine, IPlayerTurnContext context, 
             IUnitActionContext mainUnitActionContext, IMeleeContext meleeContext,
@@ -23,6 +23,8 @@ namespace FDG.Stages
                 movementStage);
             stateMachine.AddTransition<MovementStage>(MovementStage.MOVEMENT_TO_MELEE_TRANSITION, meleeStage);
             stateMachine.AddTransition<MovementStage>(MovementStage.MOVEMENT_TO_RANGED_TRANSITION, shootStage);
+
+            //TODO: Bind the above to leave this stage.
         }
 
 

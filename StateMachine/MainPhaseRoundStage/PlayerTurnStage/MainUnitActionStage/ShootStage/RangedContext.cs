@@ -1,7 +1,5 @@
 
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
 
 namespace FDG.Stages
 {
@@ -18,7 +16,7 @@ namespace FDG.Stages
 
         public IReadOnlyList<IUnit> AvailableTargetUnits { get; }
 
-        public IRangedCombatMetadata CombatMetaData { get; }
+        public IRangedCombatMetadata RangedCombatMetadata { get; }
 
         public void BeginNewAttack(IUnit attackingUnit, List<IUnit> availableTargetUnits);
 
@@ -27,6 +25,8 @@ namespace FDG.Stages
         public void ChooseTargetUnit(IUnit targetUnit);
 
         public void ClearCurrentAttack();
+
+        public void ResetRangedCombatMetaData();
     }
 
     public class RangedContext : IRangedContext
@@ -45,7 +45,7 @@ namespace FDG.Stages
 
         public IReadOnlyList<IUnit> AvailableTargetUnits { get; private set; }
 
-        public IRangedCombatMetadata CombatMetaData { get; private set; }
+        public IRangedCombatMetadata RangedCombatMetadata { get; private set; }
 
 
         private ConcurrentDictionary<IWeapon, int> _availableWeapons;
@@ -65,20 +65,20 @@ namespace FDG.Stages
             AttackingUnit = attackingUnit;
             AvailableTargetUnits = availableTargetUnits;
             _availableWeapons = GetTypeSortedWeapons(attackingUnit.GetRangedWeapons());
-            CombatMetaData = new RangedCombatMetadata(attackingUnit, DiceRoller, TextOutput);
+            RangedCombatMetadata = new RangedCombatMetadata(attackingUnit, DiceRoller, TextOutput);
         }
 
         public void ChooseWeapon(IWeapon weaponToConsume, out int weaponCount)
         {
             if(_availableWeapons.ContainsKey(weaponToConsume) == false)
             {
-                throw new System.ArgumentException($"{nameof(RangedContext)}.{nameof(ChooseWeapon)} called on weapon " + 
+                throw new ArgumentException($"{nameof(RangedContext)}.{nameof(ChooseWeapon)} called on weapon " + 
                     $"that was not found in available list: {weaponToConsume.Name}");
             }
 
             _availableWeapons.TryRemove(weaponToConsume, out weaponCount);
 
-            CombatMetaData.ChooseWeapon(weaponToConsume, weaponCount);
+            RangedCombatMetadata.ChooseWeapon(weaponToConsume, weaponCount);
         }
 
         public void ChooseTargetUnit(IUnit targetUnit)
@@ -89,7 +89,7 @@ namespace FDG.Stages
                     $"that was not found in available list: {targetUnit.Name}");
             }
 
-            CombatMetaData.ChooseTarget(targetUnit);
+            RangedCombatMetadata.ChooseTarget(targetUnit);
         }
 
         private ConcurrentDictionary<IWeapon, int> GetTypeSortedWeapons(List<IWeapon> weapons)
@@ -120,7 +120,12 @@ namespace FDG.Stages
             AttackingUnit = null;
             AvailableTargetUnits = null;
             _availableWeapons = null;
-            CombatMetaData = null;
+            RangedCombatMetadata = null;
+        }
+
+        public void ResetRangedCombatMetaData()
+        {
+            RangedCombatMetadata = new RangedCombatMetadata(AttackingUnit, DiceRoller, TextOutput);
         }
     }
 }

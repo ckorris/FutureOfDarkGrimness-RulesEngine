@@ -1,13 +1,10 @@
 
-using System;
-using System.Collections.Generic;
-
 namespace FDG.Stages
 {
 
     public class RollToHitStage : CombatStage<RollToHitResults, RollToHitStage>
     {
-        public RollToHitStage(StateMachine stateMachine, ISingleRangedAttackContext context, StateBase parentState = null) 
+        public RollToHitStage(StateMachine stateMachine, ISingleAttackContext context, StateBase parentState = null) 
             : base(stateMachine, context, parentState)
         {
         }

@@ -4,23 +4,21 @@ using System.Collections.Generic;
 namespace FDG.Stages
 {
 
-    public abstract class CombatStage<TResult, TSelf> : StateBase<ISingleRangedAttackContext>, ICombatEffectsSink<TResult>
+    public abstract class CombatStage<TResult, TSelf> : StateBase<ISingleAttackContext>, ICombatEffectsSink<TResult>
         where TSelf : CombatStage<TResult, TSelf>
     {
         public string FinishedTransitionName;
 
         private readonly StateMachine _stateMachine;
-        private readonly ISingleRangedAttackContext _context;
+        private readonly ISingleAttackContext _context;
 
         private bool _hasBoundNextStage = false;
 
-        public CombatStage(StateMachine stateMachine, ISingleRangedAttackContext context, StateBase parentState = null) 
+        public CombatStage(StateMachine stateMachine, ISingleAttackContext context, StateBase parentState = null) 
             : base(stateMachine, context, parentState)
         {
             _stateMachine = stateMachine;
             _context = context;
-
-            
         }
 
         //Not sure if interface needed.

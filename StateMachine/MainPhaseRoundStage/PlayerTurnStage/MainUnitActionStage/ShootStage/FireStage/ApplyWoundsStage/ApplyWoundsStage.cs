@@ -6,7 +6,7 @@ namespace FDG.Stages
 
     public class ApplyWoundsStage : CombatStage<ApplyWoundsResults, ApplyWoundsStage>
     {
-        public ApplyWoundsStage(StateMachine stateMachine, ISingleRangedAttackContext context, StateBase parentState = null) 
+        public ApplyWoundsStage(StateMachine stateMachine, ISingleAttackContext context, StateBase parentState = null) 
             : base(stateMachine, context, parentState)
         {
         }

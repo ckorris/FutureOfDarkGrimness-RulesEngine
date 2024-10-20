@@ -37,8 +37,8 @@ namespace FDG.Stages
                 reconcileEndOfActivationStage);
             stateMachine.AddTransition<MovementStage>(MovementStage.MOVEMENT_TO_RECONCILE_END_OF_ACTIVATION_TRANSITION, 
                 reconcileEndOfActivationStage);
-            stateMachine.AddTransition<ResolveMeleeMoraleStage>(ResolveMeleeMoraleStage.RESOLVE_MELEE_MORALE_TO_RECONCILE_END_OF_ACTIVATION_TRANSITION,
-                reconcileEndOfActivationStage);
+            //stateMachine.AddTransition<ResolveMeleeMoraleStage>(ResolveMeleeMoraleStage.RESOLVE_MELEE_MORALE_TO_RECONCILE_END_OF_ACTIVATION_TRANSITION,
+            //    reconcileEndOfActivationStage);
             stateMachine.AddTransition<ResolveRangedMoraleStage>(ResolveRangedMoraleStage.RESOLVE_RANGED_MORALE_FINISHED_TRANSITION,
                 reconcileEndOfActivationStage);
         }

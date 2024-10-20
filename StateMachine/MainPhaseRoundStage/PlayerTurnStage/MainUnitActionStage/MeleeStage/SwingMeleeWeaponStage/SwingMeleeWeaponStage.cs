@@ -1,37 +1,33 @@
-
+﻿
 namespace FDG.Stages
 {
-
-    public class FireStage : StateBase<IRangedContext>
+    public class SwingMeleeWeaponStage : StateBase<IMeleeContext>
     {
-        public const string FIRE_TO_CHILD_ENTRANCE_TRANSITION =
-            "FireToChildEntrance";
+        private const string SWING_TO_CHILD_ENTRANCE_TRANSITION = "SwingToChildEntrance";
 
         private readonly StateMachine _stateMachine;
-        private readonly SingleRangedAttackContext _attackContext;
+        private readonly SingleMeleeAttackContext _attackContext;
         private readonly ApplyWoundsStage _applyWoundsStage;
 
-        public FireStage(StateMachine stateMachine, IRangedContext context, StateBase parentState = null)
+        public SwingMeleeWeaponStage(StateMachine stateMachine, IMeleeContext context, StateBase parentState = null)
             : base(stateMachine, context, parentState)
         {
             _stateMachine = stateMachine;
-            _attackContext = new SingleRangedAttackContext(context.TextOutput, context.DiceRoller);
+            _attackContext = new SingleMeleeAttackContext(context.TextOutput, context.DiceRoller);
 
             BuildTargetListStage buildTargetListStage = new BuildTargetListStage(stateMachine, _attackContext, this);
             _applyWoundsStage = new ApplyWoundsStage(stateMachine, _attackContext, this);
 
-            buildTargetListStage.BindNextStage(new RangeCheckStage(stateMachine, _attackContext, this))
-                .BindNextStage(new OcclusionCheckStage(stateMachine, _attackContext, this))
-                .BindNextStage(new CoverCheckStage(stateMachine, _attackContext, this))
-                .BindNextStage(new DetermineHitRollNeededStage(stateMachine, _attackContext, this))
+            buildTargetListStage.BindNextStage(new DetermineHitRollNeededStage(stateMachine, _attackContext, this))
                 .BindNextStage(new RollToHitStage(stateMachine, _attackContext, this))
                 .BindNextStage(new DetermineSaveRollsNeededStage(stateMachine, _attackContext, this))
                 .BindNextStage(new RollToSaveStage(stateMachine, _attackContext, this))
                 .BindNextStage(new AssignWoundsStage(stateMachine, _attackContext, this))
+                .BindNextStage(new ApplyWoundsStage(stateMachine, _attackContext, this))
                 .BindNextStage(_applyWoundsStage);
 
             //Set up transition to child stage.
-            _stateMachine.AddTransition<FireStage>(FIRE_TO_CHILD_ENTRANCE_TRANSITION, buildTargetListStage);
+            _stateMachine.AddTransition<SwingMeleeWeaponStage>(SWING_TO_CHILD_ENTRANCE_TRANSITION, buildTargetListStage);
         }
 
         public void AssignExitStage(StateBase targetStageWhenFinished)
@@ -43,17 +39,16 @@ namespace FDG.Stages
         {
             base.Enter();
 
-            Context.Log("Firing.");
+            Context.Log("Swinging.");
 
-            //Reset context objects.
-            _attackContext.SetCombatMetadata(Context.RangedCombatMetadata);
+            throw new NotImplementedException();
 
             MoveToChildBuildTargetListStage();
         }
 
         private void MoveToChildBuildTargetListStage()
         {
-            SignalEvent(FIRE_TO_CHILD_ENTRANCE_TRANSITION);
+            SignalEvent(SWING_TO_CHILD_ENTRANCE_TRANSITION);
         }
     }
 }

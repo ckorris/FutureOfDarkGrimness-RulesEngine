@@ -6,7 +6,7 @@ namespace FDG.Stages
 
     public class OcclusionCheckStage : CombatStage<OcclusionCheckResults, OcclusionCheckStage>
     {
-        public OcclusionCheckStage(StateMachine stateMachine, ISingleRangedAttackContext context, StateBase parentState = null) 
+        public OcclusionCheckStage(StateMachine stateMachine, ISingleAttackContext context, StateBase parentState = null) 
             : base(stateMachine, context, parentState)
         {
         }

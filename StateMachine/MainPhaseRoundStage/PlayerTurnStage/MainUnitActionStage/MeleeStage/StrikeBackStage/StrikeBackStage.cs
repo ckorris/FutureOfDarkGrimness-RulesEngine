@@ -4,25 +4,36 @@ namespace FDG.Stages
 
     public class StrikeBackStage : StateBase<IMeleeContext>
     {
-        public const string STRIKE_BACK_TO_RESOLVE_MELEE_MORALE_TRANSITION =
-            "StrikeBackToResolveMeleeMoraleTransition";
+        private const string STRIKE_BACK_TO_CHILD_ENTRANCE_TRANSITION =
+            "StrikeBackToChildEntrance";
 
         public StrikeBackStage(StateMachine stateMachine, IMeleeContext context, StateBase parentState = null)
             : base(stateMachine, context, parentState)
         {
         }
 
+        public void AssignNormalExitStage(StateBase targetStageWhenFinished)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void AssignAttackerKilledExitStage(StateBase targetStageWhenAttackerKilled)
+        {
+            throw new NotImplementedException();
+        }
+
         public override void Enter()
         {
             base.Enter();
 
-            Context.Log("Entered Strike Back stage. Striking back. (Moving on for now.)");
-            MoveToResolveMeleeMorale();
+            throw new NotImplementedException();
+
+            MoveToChildBuildTargetListStage();
         }
 
-        private void MoveToResolveMeleeMorale()
+        private void MoveToChildBuildTargetListStage()
         {
-            SignalEvent(STRIKE_BACK_TO_RESOLVE_MELEE_MORALE_TRANSITION);
+            SignalEvent(STRIKE_BACK_TO_CHILD_ENTRANCE_TRANSITION);
         }
     }
 }

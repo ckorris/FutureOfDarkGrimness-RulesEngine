@@ -6,7 +6,7 @@ namespace FDG.Stages
 {
     public class BuildTargetListStage : CombatStage<BuildTargetListResults, BuildTargetListStage>
     {
-        public BuildTargetListStage(StateMachine stateMachine, ISingleRangedAttackContext context, StateBase parentState = null)
+        public BuildTargetListStage(StateMachine stateMachine, ISingleAttackContext context, StateBase parentState = null)
             : base(stateMachine, context, parentState)
         {
 

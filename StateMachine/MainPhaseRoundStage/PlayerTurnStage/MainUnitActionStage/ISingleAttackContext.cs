@@ -1,55 +1,54 @@
-
-namespace FDG.Stages
-{
-    public class SingleRangedAttackContext : SingleAttackContext<IRangedCombatMetadata>
+﻿
+namespace FDG
+{ 
+    public interface ISingleAttackContext<TMetadata> : ISingleAttackContext
     {
-        public SingleRangedAttackContext(ITextOutput textOutput, IDiceRoller diceRoller) 
-            : base(textOutput, diceRoller)
-        {
-        }
+        TMetadata CombatMetaData { get; }
     }
 
-
-    /*
-
-    public class SingleRangedAttackContext : ISingleAttackContext<IRangedCombatMetadata>
+    public interface ISingleAttackContext : ICommonContextItems
     {
+        IReadOnlyList<ISpecialRule_Combat> AllSpecialRules { get; }
+    }
+
+    public abstract class SingleAttackContext<TMetadata> : ISingleAttackContext<TMetadata>
+        where TMetadata : ICombatMetaData
+    {
+        public IReadOnlyList<ISpecialRule_Combat> AllSpecialRules { get; private set; }
+
+        public TMetadata CombatMetaData { get; private set; }
+
         public ITextOutput TextOutput { get; private set; }
 
         public IDiceRoller DiceRoller { get; private set; }
 
-        public IReadOnlyList<ISpecialRule_Combat> AllSpecialRules { get; private set; }
-
-        public IRangedCombatMetadata CombatMetaData { get; private set; }
-
-
-        public SingleRangedAttackContext(ITextOutput textOutput, IDiceRoller diceRoller)
+        public SingleAttackContext(ITextOutput textOutput, IDiceRoller diceRoller)
         {
             TextOutput = textOutput;
             DiceRoller = diceRoller;
         }
 
-        public void SetCombatMetadata(IRangedCombatMetadata combatMetaData)
+        public void SetCombatMetadata(TMetadata combatMetadata)
         {
-            if(combatMetaData.IsSetUp == false)
+            if (combatMetadata.IsSetUp == false)
             {
-                throw new System.ArgumentException($"Passed in {nameof(IRangedCombatMetadata)} to {nameof(SingleRangedAttackContext)} " + 
+                throw new ArgumentException($"Passed in {typeof(TMetadata)} to {GetType()} " +
                     "that was not fully set up. Make sure required data is assigned first.");
             }
 
-            CombatMetaData = combatMetaData;
-            AllSpecialRules = GetAllSpecialRules(combatMetaData);
+            CombatMetaData = combatMetadata;
+            AllSpecialRules = GetAllSpecialRules(combatMetadata);
         }
+
 
         public void ClearCurrentAttack()
         {
             //TODO: Flags?
-            CombatMetaData = null;
+            CombatMetaData = default;
             AllSpecialRules = null;
         }
 
-
-        private IReadOnlyList<ISpecialRule_Combat> GetAllSpecialRules(IRangedCombatMetadata combatMetaData)
+        private IReadOnlyList<ISpecialRule_Combat> GetAllSpecialRules(TMetadata combatMetaData)
         {
             List<ISpecialRule_Combat> allSpecialRules = new List<ISpecialRule_Combat>();
             allSpecialRules.AddRange(combatMetaData.WeaponType.SpecialRules);
@@ -80,5 +79,4 @@ namespace FDG.Stages
             return allSpecialRules;
         }
     }
-    */
 }

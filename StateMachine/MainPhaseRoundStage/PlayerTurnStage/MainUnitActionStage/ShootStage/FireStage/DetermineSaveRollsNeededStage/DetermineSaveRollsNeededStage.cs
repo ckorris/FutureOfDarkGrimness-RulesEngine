@@ -7,7 +7,7 @@ namespace FDG.Stages
 
     public class DetermineSaveRollsNeededStage : CombatStage<DetermineSaveRollNeededResults, DetermineSaveRollsNeededStage>
     {
-        public DetermineSaveRollsNeededStage(StateMachine stateMachine, ISingleRangedAttackContext context, StateBase parentState = null) 
+        public DetermineSaveRollsNeededStage(StateMachine stateMachine, ISingleAttackContext context, StateBase parentState = null) 
             : base(stateMachine, context, parentState)
         {
         }

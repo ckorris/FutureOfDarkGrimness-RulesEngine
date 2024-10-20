@@ -1,7 +1,7 @@
 ﻿
 namespace FDG
 {
-    public interface IMeleeCombatMetadata : ICombatMetaData
+    public interface IMeleeCombatMetadata : ICombatMetadata
     {
         //TODO: Register wounds dealt by each side?
 

@@ -4,14 +4,14 @@ using System.Collections.Generic;
 
 namespace FDG.Stages
 {
-    public class RollToSaveStage : CombatStage<RollToSaveResults, RollToSaveStage>
+    public class RollToSaveStage : CombatStage<RollToSaveResults, RollToSaveStage, ICombatMetadata>
     {
-        public RollToSaveStage(StateMachine stateMachine, ISingleAttackContext context, StateBase parentState = null) 
+        public RollToSaveStage(StateMachine stateMachine, ISingleAttackContext<ICombatMetadata> context, StateBase parentState = null) 
             : base(stateMachine, context, parentState)
         {
         }
 
-        protected override void RunStage(ICombatMetaData metaData, Action<RollToSaveResults> onFinished)
+        protected override void RunStage(ICombatMetadata metaData, Action<RollToSaveResults> onFinished)
         {
             List<SuccessfulSaveInfo> successfulSaves = new List<SuccessfulSaveInfo>();
             List<FailedSaveInfo> failedSaves = new List<FailedSaveInfo>();

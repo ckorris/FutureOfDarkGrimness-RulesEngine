@@ -4,14 +4,14 @@ using System;
 namespace FDG.Stages
 {
 
-    public class DetermineHitRollNeededStage : CombatStage<DetermineHitRollNeededResults, DetermineHitRollNeededStage>
+    public class DetermineHitRollNeededStage : CombatStage<DetermineHitRollNeededResults, DetermineHitRollNeededStage, ICombatMetadata>
     {
-        public DetermineHitRollNeededStage(StateMachine stateMachine, ISingleAttackContext context, StateBase parentState = null) 
+        public DetermineHitRollNeededStage(StateMachine stateMachine, ISingleAttackContext<ICombatMetadata> context, StateBase parentState = null) 
             : base(stateMachine, context, parentState)
         {
         }
 
-        protected override void RunStage(ICombatMetaData metaData, Action<DetermineHitRollNeededResults> onFinished)
+        protected override void RunStage(ICombatMetadata metaData, Action<DetermineHitRollNeededResults> onFinished)
         {
             DetermineHitRollNeededResults results = new DetermineHitRollNeededResults(metaData.AttackingUnit.Quality);
 

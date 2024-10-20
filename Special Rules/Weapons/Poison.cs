@@ -8,7 +8,7 @@ namespace FDG
     {
         private const int REROLL_SAVE_VALUE = 6;
 
-        public void OnPreExecute(ICombatMetaData metadata, ICombatEffectsSink<RollToSaveResults> sink)
+        public void OnPreExecute(ICombatMetadata metadata, ICombatEffectsSink<RollToSaveResults> sink)
         {
             //Remove regeneration.
 
@@ -27,7 +27,7 @@ namespace FDG
             }
         }
 
-        public void OnPostExecute(ICombatMetaData metadata, RollToSaveResults result)
+        public void OnPostExecute(ICombatMetadata metadata, RollToSaveResults result)
         {
             float totalNeededToReroll = 0;
             float totalRerolledAndFailed = 0;

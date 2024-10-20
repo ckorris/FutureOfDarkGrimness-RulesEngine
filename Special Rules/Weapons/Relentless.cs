@@ -8,12 +8,12 @@ namespace FDG
     {
         private const int ROLL_TO_ADD_EXTRA_SHOT = 6;
 
-        public void OnPreExecute(ICombatMetaData metadata, ICombatEffectsSink<RollToHitResults> sink)
+        public void OnPreExecute(ICombatMetadata metadata, ICombatEffectsSink<RollToHitResults> sink)
         {
 
         }
 
-        public void OnPostExecute(ICombatMetaData metadata, RollToHitResults result)
+        public void OnPostExecute(ICombatMetadata metadata, RollToHitResults result)
         {
             //TODO: Check if the unit has moved. For now, assume it has not.
             /*

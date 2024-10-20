@@ -4,14 +4,14 @@ using System;
 namespace FDG.Stages
 {
 
-    public class OcclusionCheckStage : CombatStage<OcclusionCheckResults, OcclusionCheckStage>
+    public class OcclusionCheckStage : CombatStage<OcclusionCheckResults, OcclusionCheckStage, IRangedCombatMetadata>
     {
-        public OcclusionCheckStage(StateMachine stateMachine, ISingleAttackContext context, StateBase parentState = null) 
+        public OcclusionCheckStage(StateMachine stateMachine, ISingleAttackContext<IRangedCombatMetadata> context, StateBase parentState = null) 
             : base(stateMachine, context, parentState)
         {
         }
 
-        protected override void RunStage(ICombatMetaData metaData, Action<OcclusionCheckResults> onFinished)
+        protected override void RunStage(ICombatMetadata metaData, Action<OcclusionCheckResults> onFinished)
         {
             //TODO: Test occlusion, and add mod to future things.
 

@@ -1,20 +1,19 @@
-
+﻿
 using FDG.Stages;
 
 
 namespace FDG.Samples
 {
-    public class RangedAttackSimulator
+    public class MeleeAttackSimulator
     {
         private ITextOutput _textOutput;
         private IDiceRoller _diceRoller;
 
-
-        private IRangedContext _rangedContext;
+        private IMeleeContext _meleeContext;
         private StateMachine _stateMachine;
-        private ShootStage _shootStage;
+        private MeleeStage _meleeStage;
 
-        public RangedAttackSimulator(ERandomnessType randomnessType)
+        public MeleeAttackSimulator(ERandomnessType randomnessType)
         {
             _textOutput = new BasicConsoleLogger();
             _diceRoller = SampleUtilities.GetDiceRoller(randomnessType);
@@ -22,7 +21,7 @@ namespace FDG.Samples
             CreateStateMachine();
         }
 
-        public RangedAttackSimulator(ITextOutput textOutput, ERandomnessType randomnessType)
+        public MeleeAttackSimulator(ITextOutput textOutput, ERandomnessType randomnessType)
         {
             _textOutput = textOutput;
             _diceRoller = SampleUtilities.GetDiceRoller(randomnessType);
@@ -30,7 +29,7 @@ namespace FDG.Samples
             CreateStateMachine();
         }
 
-        public RangedAttackSimulator(ITextOutput textOutput, IDiceRoller diceRoller)
+        public MeleeAttackSimulator(ITextOutput textOutput, IDiceRoller diceRoller)
         {
             _textOutput = textOutput;
             _diceRoller = diceRoller;
@@ -38,7 +37,7 @@ namespace FDG.Samples
             CreateStateMachine();
         }
 
-        public RangedAttackSimulator(IDiceRoller diceRoller)
+        public MeleeAttackSimulator(IDiceRoller diceRoller)
         {
             _textOutput = new BasicConsoleLogger();
             _diceRoller = diceRoller;
@@ -46,10 +45,10 @@ namespace FDG.Samples
             CreateStateMachine();
         }
 
-        public void SimulateRangedAttack(IUnit attackingUnit, IUnit defendingUnit)
+        public void SimulateMeleeAttack(IUnit attackingUnit, IUnit defendingUnit)
         {
-            _rangedContext.BeginNewAttack(attackingUnit, new List<IUnit>() { defendingUnit });
-            _stateMachine.Start(_shootStage);
+            _meleeContext.BeginNewAttack(attackingUnit, defendingUnit);
+            _stateMachine.Start(_meleeStage);
         }
 
         private void CreateStateMachine()
@@ -57,15 +56,15 @@ namespace FDG.Samples
             BasicTesterChooseActionHandler chooseActionHandler = new BasicTesterChooseActionHandler();
             BasicTesterMovementHandler movementHandler = new BasicTesterMovementHandler();
             BasicTesterChooseWeaponHandler chooseWeaponHandler = new BasicTesterChooseWeaponHandler();
-            BasicTesterChooseRangedTargetHandler chooseTargetHandler = new BasicTesterChooseRangedTargetHandler();
+            BasicTesterOfferStrikeBackHandler offerStrikeBackHandler = new BasicTesterOfferStrikeBackHandler(false); //TEMP false.
 
             _stateMachine = new StateMachine();
             IUnitActionContext unitActionContext = new UnitActionContext(chooseActionHandler, movementHandler,
                 _textOutput, _diceRoller);
-            _rangedContext = new RangedContext(chooseWeaponHandler, chooseTargetHandler, _textOutput, _diceRoller);
+            _meleeContext = new MeleeContext(chooseWeaponHandler, offerStrikeBackHandler, _textOutput, _diceRoller);
 
-            _shootStage = new ShootStage(_stateMachine, unitActionContext, _rangedContext);
-            _shootStage.AssignExitStage(new EmptyEndStage(_stateMachine));
+            _meleeStage = new MeleeStage(_stateMachine, unitActionContext, _meleeContext);
+            _meleeStage.AssignExitStage(new EmptyEndStage(_stateMachine));
         }
     }
 }

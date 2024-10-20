@@ -4,14 +4,14 @@ using System;
 namespace FDG.Stages
 {
 
-    public class CoverCheckStage : CombatStage<CoverCheckResults, CoverCheckStage>
+    public class CoverCheckStage : CombatStage<CoverCheckResults, CoverCheckStage, IRangedCombatMetadata>
     {
-        public CoverCheckStage(StateMachine stateMachine, ISingleAttackContext context, StateBase parentState = null) 
+        public CoverCheckStage(StateMachine stateMachine, ISingleAttackContext<IRangedCombatMetadata> context, StateBase parentState = null) 
             : base(stateMachine, context, parentState)
         {
         }
 
-        protected override void RunStage(ICombatMetaData metaData, Action<CoverCheckResults> onFinished)
+        protected override void RunStage(ICombatMetadata metaData, Action<CoverCheckResults> onFinished)
         {
             //TODO: Test cover, and add mod to things.
 

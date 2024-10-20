@@ -2,14 +2,14 @@
 namespace FDG.Stages
 {
 
-    public class RollToHitStage : CombatStage<RollToHitResults, RollToHitStage>
+    public class RollToHitStage : CombatStage<RollToHitResults, RollToHitStage, ICombatMetadata>
     {
-        public RollToHitStage(StateMachine stateMachine, ISingleAttackContext context, StateBase parentState = null) 
+        public RollToHitStage(StateMachine stateMachine, ISingleAttackContext<ICombatMetadata> context, StateBase parentState = null) 
             : base(stateMachine, context, parentState)
         {
         }
 
-        protected override void RunStage(ICombatMetaData metaData, Action<RollToHitResults> onFinished)
+        protected override void RunStage(ICombatMetadata metaData, Action<RollToHitResults> onFinished)
         {
             //TODO: Calculate attack count in separate stage, it may need its own mods.
             float attacks = metaData.WeaponType.Attacks * metaData.WeaponCount;

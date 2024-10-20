@@ -2,7 +2,7 @@
 
 namespace FDG
 {
-    public interface ICombatMetaData
+    public interface ICombatMetadata
     {
         public ITextOutput TextOutput { get; }
 

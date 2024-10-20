@@ -9,12 +9,12 @@ namespace FDG
     {
         private const int AP_VALUE_ON_REND_HITS = 4;
 
-        public void OnPreExecute(ICombatMetaData metadata, ICombatEffectsSink<DetermineSaveRollNeededResults> sink)
+        public void OnPreExecute(ICombatMetadata metadata, ICombatEffectsSink<DetermineSaveRollNeededResults> sink)
         {
 
         }
 
-        public void OnPostExecute(ICombatMetaData metadata, DetermineSaveRollNeededResults result)
+        public void OnPostExecute(ICombatMetadata metadata, DetermineSaveRollNeededResults result)
         {
             foreach (PendingSaveRolls pendingSave in new List<PendingSaveRolls>(result.PendingSaveRollsList))
             {
@@ -37,7 +37,7 @@ namespace FDG
 
 
         //In the Roll to Save results, we remove the Regeneration effect.
-        void ICombatEffect<RollToSaveResults>.OnPreExecute(ICombatMetaData metadata, ICombatEffectsSink<RollToSaveResults> sink)
+        void ICombatEffect<RollToSaveResults>.OnPreExecute(ICombatMetadata metadata, ICombatEffectsSink<RollToSaveResults> sink)
         {
             List<ICombatEffect<RollToSaveResults>> allSinkEffects = sink.OnExecuteEffectsList; //Shorthand.
 
@@ -54,7 +54,7 @@ namespace FDG
             }
         }
 
-        void ICombatEffect<RollToSaveResults>.OnPostExecute(ICombatMetaData metadata, RollToSaveResults result)
+        void ICombatEffect<RollToSaveResults>.OnPostExecute(ICombatMetadata metadata, RollToSaveResults result)
         {
 
         }

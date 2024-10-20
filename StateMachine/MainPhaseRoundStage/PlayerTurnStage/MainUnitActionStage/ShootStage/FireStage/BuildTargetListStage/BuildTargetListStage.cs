@@ -4,15 +4,15 @@ using System.Collections.Generic;
 
 namespace FDG.Stages
 {
-    public class BuildTargetListStage : CombatStage<BuildTargetListResults, BuildTargetListStage>
+    public class BuildTargetListStage : CombatStage<BuildTargetListResults, BuildTargetListStage, ICombatMetadata>
     {
-        public BuildTargetListStage(StateMachine stateMachine, ISingleAttackContext context, StateBase parentState = null)
+        public BuildTargetListStage(StateMachine stateMachine, ISingleAttackContext<ICombatMetadata> context, StateBase parentState = null)
             : base(stateMachine, context, parentState)
         {
 
         }
 
-        protected override void RunStage(ICombatMetaData metaData, Action<BuildTargetListResults> onFinished)
+        protected override void RunStage(ICombatMetadata metaData, Action<BuildTargetListResults> onFinished)
         {
             List<IModel> targets = new List<IModel>();
 

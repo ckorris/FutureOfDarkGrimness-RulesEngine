@@ -10,12 +10,12 @@ namespace FDG
             return this.GetEffectsListFromOwnType<TResult>();
         }
 
-        public void OnPreExecute(ICombatMetaData metadata, ICombatEffectsSink<DetermineHitRollNeededResults> sink)
+        public void OnPreExecute(ICombatMetadata metadata, ICombatEffectsSink<DetermineHitRollNeededResults> sink)
         {
             throw new System.NotImplementedException();
         }
 
-        public void OnPostExecute(ICombatMetaData metadata, DetermineHitRollNeededResults result)
+        public void OnPostExecute(ICombatMetadata metadata, DetermineHitRollNeededResults result)
         {
             throw new System.NotImplementedException();
         }

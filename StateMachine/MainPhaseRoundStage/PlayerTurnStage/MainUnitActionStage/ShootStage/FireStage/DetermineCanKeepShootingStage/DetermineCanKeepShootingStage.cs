@@ -37,7 +37,7 @@ namespace FDG.Stages
             }
 
             //We've still got weapons to shoot, and baddies to shoot at. 
-            _context.ResetRangedCombatMetaData();
+            _context.ResetRangedCombatMetadata();
             SignalCanKeepShooting();
         }
 

@@ -2,14 +2,14 @@
 namespace FDG.Stages
 {
 
-    public class AssignWoundsStage : CombatStage<AssignWoundsResults, AssignWoundsStage>
+    public class AssignWoundsStage : CombatStage<AssignWoundsResults, AssignWoundsStage, ICombatMetadata>
     {
-        public AssignWoundsStage(StateMachine stateMachine, ISingleAttackContext context, StateBase parentState = null) 
+        public AssignWoundsStage(StateMachine stateMachine, ISingleAttackContext<ICombatMetadata> context, StateBase parentState = null) 
             : base(stateMachine, context, parentState)
         {
         }
 
-        protected override void RunStage(ICombatMetaData metaData, Action<AssignWoundsResults> onFinished)
+        protected override void RunStage(ICombatMetadata metaData, Action<AssignWoundsResults> onFinished)
         {
             onFinished(new AssignWoundsResults());
         }

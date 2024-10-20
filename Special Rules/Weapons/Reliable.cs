@@ -7,9 +7,9 @@ namespace FDG
     {
         private const int BASE_ROLL_WITH_RELIABLE = 2;
 
-        public void OnPreExecute(ICombatMetaData metadata, ICombatEffectsSink<DetermineHitRollNeededResults> sink) { }
+        public void OnPreExecute(ICombatMetadata metadata, ICombatEffectsSink<DetermineHitRollNeededResults> sink) { }
 
-        public void OnPostExecute(ICombatMetaData metadata, DetermineHitRollNeededResults result)
+        public void OnPostExecute(ICombatMetadata metadata, DetermineHitRollNeededResults result)
         {
             int unitQuality = metadata.AttackingUnit.Quality;
             int adjustment = BASE_ROLL_WITH_RELIABLE - unitQuality;

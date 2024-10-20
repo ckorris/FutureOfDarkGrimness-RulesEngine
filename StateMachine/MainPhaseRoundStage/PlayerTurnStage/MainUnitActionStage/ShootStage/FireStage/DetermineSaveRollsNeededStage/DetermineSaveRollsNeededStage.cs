@@ -5,14 +5,14 @@ using System.Collections.Generic;
 namespace FDG.Stages
 {
 
-    public class DetermineSaveRollsNeededStage : CombatStage<DetermineSaveRollNeededResults, DetermineSaveRollsNeededStage>
+    public class DetermineSaveRollsNeededStage : CombatStage<DetermineSaveRollNeededResults, DetermineSaveRollsNeededStage, ICombatMetadata>
     {
-        public DetermineSaveRollsNeededStage(StateMachine stateMachine, ISingleAttackContext context, StateBase parentState = null) 
+        public DetermineSaveRollsNeededStage(StateMachine stateMachine, ISingleAttackContext<ICombatMetadata> context, StateBase parentState = null) 
             : base(stateMachine, context, parentState)
         {
         }
 
-        protected override void RunStage(ICombatMetaData metaData, Action<DetermineSaveRollNeededResults> onFinished)
+        protected override void RunStage(ICombatMetadata metaData, Action<DetermineSaveRollNeededResults> onFinished)
         {
             List<PendingSaveRolls> pendingSaveRollsList = new List<PendingSaveRolls>();
 

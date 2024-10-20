@@ -48,6 +48,9 @@ namespace FDG.Stages
                 determineInRangeDefendersStage);
 
             stateMachine.AddTransition<DetermineInRangeDefendersStage>(DetermineInRangeDefendersStage.DETERMINE_IN_RANGE_DEFENDER_FINISHED_TRANSITION,
+                chooseMeleeWeaponStage);
+
+            StateMachine.AddTransition<ChooseMeleeWeaponStage>(ChooseMeleeWeaponStage.CHOOSE_MELEE_WEAPON_FINISHED_TRANSITION,
                 swingMeleeWeaponStage);
 
             swingMeleeWeaponStage.AssignExitStage(determineCanKeepSwingingStage);

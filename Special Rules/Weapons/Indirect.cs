@@ -6,22 +6,22 @@ namespace FDG
     public class Indirect : SpecialRule_Weapon,
         ICombatEffect<OcclusionCheckResults>, ICombatEffect<DetermineHitRollNeededResults>
     {
-        public void OnPreExecute(ICombatMetaData metadata, ICombatEffectsSink<OcclusionCheckResults> sink)
+        public void OnPreExecute(ICombatMetadata metadata, ICombatEffectsSink<OcclusionCheckResults> sink)
         {
             throw new System.NotImplementedException();
         }
 
-        public void OnPostExecute(ICombatMetaData metadata, OcclusionCheckResults result)
+        public void OnPostExecute(ICombatMetadata metadata, OcclusionCheckResults result)
         {
             throw new System.NotImplementedException();
         }
 
-        public void OnPreExecute(ICombatMetaData metadata, ICombatEffectsSink<DetermineHitRollNeededResults> sink)
+        public void OnPreExecute(ICombatMetadata metadata, ICombatEffectsSink<DetermineHitRollNeededResults> sink)
         {
             throw new System.NotImplementedException();
         }
 
-        public void OnPostExecute(ICombatMetaData metadata, DetermineHitRollNeededResults result)
+        public void OnPostExecute(ICombatMetadata metadata, DetermineHitRollNeededResults result)
         {
             throw new System.NotImplementedException();
         }

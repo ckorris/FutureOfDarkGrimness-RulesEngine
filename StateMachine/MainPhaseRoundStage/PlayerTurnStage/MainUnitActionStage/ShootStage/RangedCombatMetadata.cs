@@ -2,7 +2,7 @@
 namespace FDG
 {
 
-    public interface IRangedCombatMetadata : ICombatMetaData
+    public interface IRangedCombatMetadata : ICombatMetadata
     {
         public void ChooseTarget(IUnit targetUnit);
     }

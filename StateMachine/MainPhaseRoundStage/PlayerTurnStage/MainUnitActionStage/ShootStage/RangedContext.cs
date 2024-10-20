@@ -26,7 +26,7 @@ namespace FDG.Stages
 
         public void ClearCurrentAttack();
 
-        public void ResetRangedCombatMetaData();
+        public void ResetRangedCombatMetadata();
     }
 
     public class RangedContext : IRangedContext
@@ -92,6 +92,20 @@ namespace FDG.Stages
             RangedCombatMetadata.ChooseTarget(targetUnit);
         }
 
+        public void ClearCurrentAttack()
+        {
+            AttackingUnit = null;
+            AvailableTargetUnits = null;
+            _availableWeapons = null;
+            RangedCombatMetadata = default;
+        }
+
+        public void ResetRangedCombatMetadata()
+        {
+            RangedCombatMetadata = new RangedCombatMetadata(AttackingUnit, DiceRoller, TextOutput);
+        }
+
+        //TODO: Repeated in Melee version. Move to static class.
         private ConcurrentDictionary<IWeapon, int> GetTypeSortedWeapons(List<IWeapon> weapons)
         {
             ConcurrentDictionary<IWeapon, int> weaponsAndCounts = new ConcurrentDictionary<IWeapon, int>();
@@ -113,19 +127,6 @@ namespace FDG.Stages
             }
 
             return weaponsAndCounts;
-        }
-
-        public void ClearCurrentAttack()
-        {
-            AttackingUnit = null;
-            AvailableTargetUnits = null;
-            _availableWeapons = null;
-            RangedCombatMetadata = null;
-        }
-
-        public void ResetRangedCombatMetaData()
-        {
-            RangedCombatMetadata = new RangedCombatMetadata(AttackingUnit, DiceRoller, TextOutput);
         }
     }
 }

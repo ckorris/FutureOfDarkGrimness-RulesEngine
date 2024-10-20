@@ -13,9 +13,9 @@ namespace FDG
             return this.GetEffectsListFromOwnType<TResult>();
         }
 
-        public void OnPreExecute(ICombatMetaData metadata, ICombatEffectsSink<RollToSaveResults> sink) { }
+        public void OnPreExecute(ICombatMetadata metadata, ICombatEffectsSink<RollToSaveResults> sink) { }
 
-        public void OnPostExecute(ICombatMetaData metadata, RollToSaveResults result)
+        public void OnPostExecute(ICombatMetadata metadata, RollToSaveResults result)
         {
             //For all failed saves, roll another die, and make it a successful save if high enough.
 

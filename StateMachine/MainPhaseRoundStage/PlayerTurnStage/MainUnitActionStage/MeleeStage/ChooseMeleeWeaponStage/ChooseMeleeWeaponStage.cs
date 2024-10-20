@@ -10,4 +10,10 @@ namespace FDG.Stages
         {
         }
     }
+
+    public interface IChooseMeleeWeaponHandler
+    {
+        public void Handle(IReadOnlyDictionary<IWeapon, int> availableWeapons,
+            IReadOnlyDictionary<IWeapon, int> unavailableWeapons, Action<IWeapon> onChoseWeapon);
+    }
 }

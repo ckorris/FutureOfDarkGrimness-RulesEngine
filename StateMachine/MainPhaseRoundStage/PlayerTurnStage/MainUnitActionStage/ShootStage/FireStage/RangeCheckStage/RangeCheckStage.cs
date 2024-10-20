@@ -4,14 +4,14 @@ using System;
 namespace FDG.Stages
 {
 
-    public class RangeCheckStage : CombatStage<RangeCheckResults, RangeCheckStage>
+    public class RangeCheckStage : CombatStage<RangeCheckResults, RangeCheckStage, IRangedCombatMetadata>
     {
-        public RangeCheckStage(StateMachine stateMachine, ISingleAttackContext context, StateBase parentState = null) 
+        public RangeCheckStage(StateMachine stateMachine, ISingleAttackContext<IRangedCombatMetadata> context, StateBase parentState = null) 
             : base(stateMachine, context, parentState)
         {
         }
 
-        protected override void RunStage(ICombatMetaData metaData, Action<RangeCheckResults> onFinished)
+        protected override void RunStage(ICombatMetadata metaData, Action<RangeCheckResults> onFinished)
         {
             onFinished(new RangeCheckResults());
         }

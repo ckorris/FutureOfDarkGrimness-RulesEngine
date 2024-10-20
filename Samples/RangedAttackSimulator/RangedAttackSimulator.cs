@@ -59,10 +59,13 @@ namespace FDG.Samples
             BasicTesterChooseWeaponHandler chooseWeaponHandler = new BasicTesterChooseWeaponHandler();
             BasicTesterChooseRangedTargetHandler chooseTargetHandler = new BasicTesterChooseRangedTargetHandler();
 
+            SingleCombatHandlers singleCombatHandlers = new SingleCombatHandlers(new BasicTesterAssignWoundsHandler());
+
             _stateMachine = new StateMachine();
             IUnitActionContext unitActionContext = new UnitActionContext(chooseActionHandler, movementHandler,
                 _textOutput, _diceRoller);
-            _rangedContext = new RangedContext(chooseWeaponHandler, chooseTargetHandler, _textOutput, _diceRoller);
+            _rangedContext = new RangedContext(singleCombatHandlers, chooseWeaponHandler, chooseTargetHandler, 
+                _textOutput, _diceRoller);
 
             _shootStage = new ShootStage(_stateMachine, unitActionContext, _rangedContext);
             _shootStage.AssignExitStage(new EmptyEndStage(_stateMachine));

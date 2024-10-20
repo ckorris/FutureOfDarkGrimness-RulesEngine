@@ -64,4 +64,13 @@ namespace FDG.Samples
             onChoseUnit(firstUnit);
         }
     }
+
+    public class BasicTesterAssignWoundsHandler : IAssignWoundsHandler
+    {
+        public void Handle(IUnit defendingUnit, AssignWoundsResults woundsResults, Action onWoundsAssigned)
+        {
+            woundsResults.AutoFill();
+            onWoundsAssigned();
+        }
+    }
 }

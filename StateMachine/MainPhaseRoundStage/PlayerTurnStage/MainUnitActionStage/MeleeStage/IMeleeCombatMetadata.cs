@@ -31,7 +31,10 @@ namespace FDG
 
         public MeleeCombatMetadata(IUnit attackingUnit, IUnit defendingUnit, IDiceRoller diceRoller, ITextOutput textOutput)
         {
+            AttackingUnit = attackingUnit;
             DefendingUnit = defendingUnit;
+            DiceRoller = diceRoller;
+            TextOutput = textOutput;
         }
 
         public void AddResult<TResult>(TResult result)

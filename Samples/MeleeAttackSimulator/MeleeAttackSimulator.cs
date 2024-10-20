@@ -58,10 +58,12 @@ namespace FDG.Samples
             BasicTesterChooseWeaponHandler chooseWeaponHandler = new BasicTesterChooseWeaponHandler();
             BasicTesterOfferStrikeBackHandler offerStrikeBackHandler = new BasicTesterOfferStrikeBackHandler(false); //TEMP false.
 
+            SingleCombatHandlers singleCombatHandlers = new SingleCombatHandlers(new BasicTesterAssignWoundsHandler());
+
             _stateMachine = new StateMachine();
             IUnitActionContext unitActionContext = new UnitActionContext(chooseActionHandler, movementHandler,
                 _textOutput, _diceRoller);
-            _meleeContext = new MeleeContext(chooseWeaponHandler, offerStrikeBackHandler, _textOutput, _diceRoller);
+            _meleeContext = new MeleeContext(singleCombatHandlers, chooseWeaponHandler, offerStrikeBackHandler, _textOutput, _diceRoller);
 
             _meleeStage = new MeleeStage(_stateMachine, unitActionContext, _meleeContext);
             _meleeStage.AssignExitStage(new EmptyEndStage(_stateMachine));

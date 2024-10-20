@@ -42,7 +42,7 @@ namespace FDG.Stages
 
             stateMachine.AddTransition<MeleeStage>(MELEE_TO_CHILD_ENTRANCE_TRANSITION, pileInStage);
 
-            stateMachine.AddTransition<PileInStage>(PileInStage.PINE_IN_FINISHED_TRANSITION, determineInRangeAttackersStage);
+            stateMachine.AddTransition<PileInStage>(PileInStage.PILE_IN_FINISHED_TRANSITION, determineInRangeAttackersStage);
 
             stateMachine.AddTransition<DetermineInRangeAttackersStage>(DetermineInRangeAttackersStage.DETERMINE_IN_RANGE_ATTACKER_FINISHED_TRANSITION,
                 determineInRangeDefendersStage);
@@ -94,7 +94,7 @@ namespace FDG.Stages
         {
             base.Enter();
 
-            Context.TextOutput.Log($"Melee stage entering child: Charging Unit Attack.");
+            Context.TextOutput.Log($"Melee stage entering child.");
             MoveToChargingUnitAttack();
         }
 

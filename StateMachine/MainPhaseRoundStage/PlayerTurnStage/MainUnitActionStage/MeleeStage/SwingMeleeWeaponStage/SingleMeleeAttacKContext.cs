@@ -1,15 +1,17 @@
 ﻿
 
+using FDG.Stages;
+
 namespace FDG
 {
     public class SingleMeleeAttackContext : SingleAttackContext<IMeleeCombatMetadata>, 
         ISingleAttackContext<ICombatMetadata>
     {
-        public SingleMeleeAttackContext(ITextOutput textOutput, IDiceRoller diceRoller)
-            : base(textOutput, diceRoller)
+        public SingleMeleeAttackContext(SingleCombatHandlers singleCombatHandlers, ITextOutput textOutput, IDiceRoller diceRoller)
+            : base(singleCombatHandlers, textOutput, diceRoller)
         {
         }
 
-        ICombatMetadata ISingleAttackContext<ICombatMetadata>.CombatMetadata => CombatMetadata;
+        ICombatMetadata ISingleAttackContext<ICombatMetadata>.CombatMetaData => CombatMetaData;
     }
 }

@@ -20,6 +20,7 @@ namespace FDG.Stages
         public override void Enter()
         {
             base.Enter();
+            //TODO: If we've killed off the defender, leave.
 
             //Return to choose weapon again if there are weapons remaining and the target is still alive.
             if(_context.AvailableWeapons.Count == 0)

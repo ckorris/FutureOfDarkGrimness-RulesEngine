@@ -91,7 +91,7 @@ namespace FDG.Stages
 
         private void Execute()
         {
-            TMetadata metaData = _context.CombatMetadata; //Shorthand.
+            TMetadata metaData = _context.CombatMetaData; //Shorthand.
 
             if (metaData.QueryForResult(out TResult _) == true)
             {
@@ -111,7 +111,7 @@ namespace FDG.Stages
 
         private void RunPostExecuteEffects(TResult result)
         {
-            ICombatMetadata metaData = _context.CombatMetadata; //Shorthand.
+            ICombatMetadata metaData = _context.CombatMetaData; //Shorthand.
 
             //For post-execute effects, use the original, as it may have been purposefully modified in pre-execute.
             foreach (ICombatEffect<TResult> effect in _effects)

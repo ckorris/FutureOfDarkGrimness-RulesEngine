@@ -11,21 +11,23 @@ namespace FDG.Stages
 
         private DetermineCanKeepSwingingStage _determineCanKeepSwingingStage;
 
+        private IMeleeContext _reversedContext;
+
         public StrikeBackStage(StateMachine stateMachine, IMeleeContext context, StateBase parentState = null)
             : base(stateMachine, context, parentState)
         {
             _stateMachine = stateMachine;
 
             //This is constructed much like a normal melee stage, but reduced. 
-            IMeleeContext reversedContext = new MeleeContext(context.ChooseMeleeWeaponHandler, context.OfferStrikeBackHandler,
-                context.TextOutput, context.DiceRoller);
+            _reversedContext = new MeleeContext(context.SingleCombatHandlers, context.ChooseMeleeWeaponHandler, 
+                context.OfferStrikeBackHandler, context.TextOutput, context.DiceRoller);
 
             ChooseMeleeWeaponStage chooseMeleeWeaponStage
-                = new ChooseMeleeWeaponStage(stateMachine, reversedContext, this);
+                = new ChooseMeleeWeaponStage(stateMachine, _reversedContext, this);
             SwingMeleeWeaponStage swingMeleeWeaponStage
-                = new SwingMeleeWeaponStage(stateMachine, reversedContext, this);
+                = new SwingMeleeWeaponStage(stateMachine, _reversedContext, this);
             _determineCanKeepSwingingStage
-                = new DetermineCanKeepSwingingStage(stateMachine, reversedContext, this);
+                = new DetermineCanKeepSwingingStage(stateMachine, _reversedContext, this);
 
             StateMachine.AddTransition<ChooseMeleeWeaponStage>(ChooseMeleeWeaponStage.CHOOSE_MELEE_WEAPON_FINISHED_TRANSITION,
                 swingMeleeWeaponStage);
@@ -49,8 +51,7 @@ namespace FDG.Stages
         {
             base.Enter();
 
-            throw new NotImplementedException();
-
+            //TODO: Reset metadata?
             MoveToChildBuildTargetListStage();
         }
 

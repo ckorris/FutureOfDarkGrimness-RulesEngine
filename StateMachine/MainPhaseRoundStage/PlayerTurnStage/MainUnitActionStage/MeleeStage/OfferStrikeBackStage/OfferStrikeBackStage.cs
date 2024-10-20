@@ -15,9 +15,7 @@ namespace FDG.Stages
         public OfferStrikeBackStage(StateMachine stateMachine, IMeleeContext context, StateBase parentState = null)
             : base(stateMachine, context, parentState)
         {
-
         }
-
 
         public override void Enter()
         {

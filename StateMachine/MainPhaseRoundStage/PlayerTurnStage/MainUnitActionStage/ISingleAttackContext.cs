@@ -1,14 +1,18 @@
 ﻿
+using FDG.Stages;
+
 namespace FDG
 { 
     public interface ISingleAttackContext<TMetadata> : ISingleAttackContext
     {
-        TMetadata CombatMetadata { get; }
+        TMetadata CombatMetaData { get; }
     }
 
     public interface ISingleAttackContext : ICommonContextItems
     {
         IReadOnlyList<ISpecialRule_Combat> AllSpecialRules { get; }
+
+        public SingleCombatHandlers SingleCombatHandlers { get; }
     }
 
     public abstract class SingleAttackContext<TMetadata> : ISingleAttackContext<TMetadata>
@@ -16,14 +20,18 @@ namespace FDG
     {
         public IReadOnlyList<ISpecialRule_Combat> AllSpecialRules { get; private set; }
 
-        public TMetadata CombatMetadata { get; private set; }
+        public TMetadata CombatMetaData { get; private set; }
+
+        public SingleCombatHandlers SingleCombatHandlers { get; }
 
         public ITextOutput TextOutput { get; private set; }
 
         public IDiceRoller DiceRoller { get; private set; }
 
-        public SingleAttackContext(ITextOutput textOutput, IDiceRoller diceRoller)
+        public SingleAttackContext(SingleCombatHandlers singleCombatHandlers,
+            ITextOutput textOutput, IDiceRoller diceRoller)
         {
+            SingleCombatHandlers = singleCombatHandlers;
             TextOutput = textOutput;
             DiceRoller = diceRoller;
         }
@@ -36,7 +44,7 @@ namespace FDG
                     "that was not fully set up. Make sure required data is assigned first.");
             }
 
-            CombatMetadata = combatMetadata;
+            CombatMetaData = combatMetadata;
             AllSpecialRules = GetAllSpecialRules(combatMetadata);
         }
 
@@ -44,7 +52,7 @@ namespace FDG
         public void ClearCurrentAttack()
         {
             //TODO: Flags?
-            CombatMetadata = default;
+            CombatMetaData = default;
             AllSpecialRules = null;
         }
 

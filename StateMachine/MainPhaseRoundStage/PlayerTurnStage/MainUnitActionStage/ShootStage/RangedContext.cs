@@ -18,6 +18,8 @@ namespace FDG.Stages
 
         public IRangedCombatMetadata RangedCombatMetadata { get; }
 
+        public SingleCombatHandlers SingleCombatHandlers { get; }
+
         public void BeginNewAttack(IUnit attackingUnit, List<IUnit> availableTargetUnits);
 
         public void ChooseWeapon(IWeapon weaponToConsume, out int weaponCount);
@@ -47,13 +49,16 @@ namespace FDG.Stages
 
         public IRangedCombatMetadata RangedCombatMetadata { get; private set; }
 
+        public SingleCombatHandlers SingleCombatHandlers { get; }
+
 
         private ConcurrentDictionary<IWeapon, int> _availableWeapons;
 
 
-        public RangedContext(IChooseRangedWeaponHandler chooseRangedWeaponHandler,
+        public RangedContext(SingleCombatHandlers singleCombatHandlers, IChooseRangedWeaponHandler chooseRangedWeaponHandler,
             IChooseRangedTargetHandler chooseRangedTargetHandler, ITextOutput textOutput, IDiceRoller diceRoller)
         {
+            SingleCombatHandlers = singleCombatHandlers;
             ChooseRangedWeaponHandler = chooseRangedWeaponHandler;
             ChooseRangedTargetHandler = chooseRangedTargetHandler;
             TextOutput = textOutput;
@@ -85,7 +90,7 @@ namespace FDG.Stages
         {
             if(AvailableTargetUnits.Contains(targetUnit) == false)
             {
-                throw new System.ArgumentException($"{nameof(RangedContext)}.{nameof(ChooseTargetUnit)} called on unit " +
+                throw new ArgumentException($"{nameof(RangedContext)}.{nameof(ChooseTargetUnit)} called on unit " +
                     $"that was not found in available list: {targetUnit.Name}");
             }
 

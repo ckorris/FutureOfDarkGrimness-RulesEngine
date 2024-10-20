@@ -10,5 +10,12 @@ namespace FDG.Stages
             : base(stateMachine, context, parentState)
         {
         }
+
+        public override void Enter()
+        {
+            base.Enter();
+
+            Context.Log("Entered Determine Melee Winner stage."); 
+        }
     }
 }

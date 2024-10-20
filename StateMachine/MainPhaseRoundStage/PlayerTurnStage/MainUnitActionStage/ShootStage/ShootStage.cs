@@ -43,6 +43,8 @@ namespace FDG.Stages
 
             Context.TextOutput.Log($"Shoot stage entering child: Choose Ranged Target.");
 
+            //TODO: Reset metadata?
+
             MoveToChildChooseRangedWeapon();
         }
 

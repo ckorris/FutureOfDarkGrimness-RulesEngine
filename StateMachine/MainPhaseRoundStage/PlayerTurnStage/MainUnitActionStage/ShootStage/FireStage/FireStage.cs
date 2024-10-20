@@ -15,7 +15,8 @@ namespace FDG.Stages
             : base(stateMachine, context, parentState)
         {
             _stateMachine = stateMachine;
-            _attackContext = new SingleRangedAttackContext(context.TextOutput, context.DiceRoller);
+            _attackContext = new SingleRangedAttackContext(context.SingleCombatHandlers,
+                context.TextOutput, context.DiceRoller);
 
             BuildTargetListStage buildTargetListStage = new BuildTargetListStage(stateMachine, _attackContext, this);
             _applyWoundsStage = new ApplyWoundsStage(stateMachine, _attackContext, this);

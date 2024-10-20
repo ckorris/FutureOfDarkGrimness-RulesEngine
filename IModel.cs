@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 
 namespace FDG
 {
@@ -35,6 +36,18 @@ namespace FDG
             TotalWounds = IModel.DEFAULT_WOUND_COUNT;
             WoundsDealt = 0;
         }
+    }
 
+    public static class IModelExtensions
+    {
+        public static bool GetIsAlive(this IModel model)
+        {
+            return model.WoundsDealt < model.TotalWounds;
+        }
+
+        public static bool GetIsDead(this IModel model)
+        {
+            return model.WoundsDealt >= model.TotalWounds;
+        }
     }
 }

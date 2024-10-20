@@ -1,6 +1,7 @@
 
 using System.Collections.Concurrent;
 
+
 namespace FDG.Stages
 {
 
@@ -14,7 +15,15 @@ namespace FDG.Stages
 
         public IUnit DefendingUnit { get; }
 
+        public IReadOnlyDictionary<IWeapon, int> AvailableWeapons { get; }
+
+        public IModel InRangeAttackingModels { get; }
+
+        public IModel InRangeDefendingModels { get; }
+
         public IMeleeCombatMetadata MeleeCombatMetadata { get; }
+
+        public SingleCombatHandlers SingleCombatHandlers { get; }
 
         public void BeginNewAttack(IUnit attackingUnit, IUnit defendingUnit);
 
@@ -41,11 +50,20 @@ namespace FDG.Stages
 
         public IMeleeCombatMetadata MeleeCombatMetadata { get; private set; }
 
+        public IModel InRangeAttackingModels { get; private set; }
+
+        public IModel InRangeDefendingModels { get; private set; }
+
+        public IReadOnlyDictionary<IWeapon, int> AvailableWeapons => _availableWeapons;
+
+        public SingleCombatHandlers SingleCombatHandlers { get; }
+
         private ConcurrentDictionary<IWeapon, int> _availableWeapons;
 
-        public MeleeContext(IChooseMeleeWeaponHandler chooseMeleeWeaponHandler, IOfferStrikeBackHandler offerStrikeBackHandler,
-            ITextOutput textOutput, IDiceRoller diceRoller)
+        public MeleeContext(SingleCombatHandlers singleCombatHandlers, IChooseMeleeWeaponHandler chooseMeleeWeaponHandler, 
+            IOfferStrikeBackHandler offerStrikeBackHandler, ITextOutput textOutput, IDiceRoller diceRoller)
         {
+            SingleCombatHandlers = singleCombatHandlers;
             ChooseMeleeWeaponHandler = chooseMeleeWeaponHandler;
             OfferStrikeBackHandler = offerStrikeBackHandler;
             TextOutput = textOutput;
@@ -78,11 +96,13 @@ namespace FDG.Stages
             AttackingUnit = null;
             _availableWeapons = null;
             MeleeCombatMetadata = default;
+            InRangeAttackingModels = null;
+            InRangeDefendingModels = null;
         }
 
         public void ResetMeleeCombatMetadata()
         {
-            throw new NotImplementedException();
+            MeleeCombatMetadata = new MeleeCombatMetadata(AttackingUnit, DefendingUnit, DiceRoller, TextOutput);
         }
 
         //TODO: Repeated in Ranged version. Move to static class.

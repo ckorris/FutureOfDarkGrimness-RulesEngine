@@ -13,7 +13,7 @@ namespace FDG.Stages
             : base(stateMachine, context, parentState)
         {
             _stateMachine = stateMachine;
-            _attackContext = new SingleMeleeAttackContext(context.TextOutput, context.DiceRoller);
+            _attackContext = new SingleMeleeAttackContext(context.SingleCombatHandlers, context.TextOutput, context.DiceRoller);
 
             BuildTargetListStage buildTargetListStage = new BuildTargetListStage(stateMachine, _attackContext, this);
             _applyWoundsStage = new ApplyWoundsStage(stateMachine, _attackContext, this);
@@ -41,7 +41,8 @@ namespace FDG.Stages
 
             Context.Log("Swinging.");
 
-            throw new NotImplementedException();
+            //Reset context objects.
+            _attackContext.SetCombatMetadata(Context.MeleeCombatMetadata);
 
             MoveToChildBuildTargetListStage();
         }

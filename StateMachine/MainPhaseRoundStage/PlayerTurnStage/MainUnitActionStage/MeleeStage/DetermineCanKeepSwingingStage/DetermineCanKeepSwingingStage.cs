@@ -17,6 +17,30 @@ namespace FDG.Stages
             _meleeContext = context;
         }
 
+        public override void Enter()
+        {
+            base.Enter();
+
+            //Return to choose weapon again if there are weapons remaining and the target is still alive.
+            if (_meleeContext.AvailableWeapons.Count == 0)
+            {
+                _meleeContext.Log("Has fired all weapons.");
+                SignalFinishedSwinging();
+                return;
+            }
+
+            if (_meleeContext.MeleeCombatMetadata.DefendingUnit.RemainingWounds <= 0)
+            {
+                _meleeContext.Log("Has killed all target units.");
+                SignalDefenderKilled();
+                return;
+            }
+
+            //We've still got weapons to shoot, and baddies to shoot at. 
+            _meleeContext.ResetMeleeCombatMetadata();
+            SignalCanKeepSwinging();
+        }
+
         public void BindReturnToChooseWeapon(StateBase returnStage)
         {
             ReturnToChooseWeaponTransitionName = $"{nameof(DetermineCanKeepShootingStage)}_TO_{returnStage.GetType()}";

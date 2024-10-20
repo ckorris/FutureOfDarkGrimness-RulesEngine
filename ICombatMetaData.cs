@@ -1,5 +1,7 @@
 
 
+using FDG.Stages;
+
 namespace FDG
 {
     public interface ICombatMetadata

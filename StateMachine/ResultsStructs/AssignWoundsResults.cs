@@ -4,19 +4,19 @@ namespace FDG
 
     public class AssignWoundsResults
     {
-        public readonly int TotalWoundsToAssign;
-        public int TotalAssignedWounds { get; private set; } = 0;
+        public readonly float TotalWoundsToAssign;
+        public float TotalAssignedWounds { get; private set; } = 0;
 
-        public IReadOnlyDictionary<IModel, int> PendingWounds => _pendingWounds;
+        public IReadOnlyDictionary<IModel, float> PendingWounds => _pendingWounds;
 
-        private Dictionary<IModel, int> _pendingWounds;
+        private Dictionary<IModel, float> _pendingWounds;
 
-        public AssignWoundsResults(IUnit defendingUnit, int totalWoundsToAssign)
+        public AssignWoundsResults(IUnit defendingUnit, float totalWoundsToAssign)
         {
             //TODO: Add nuance of applying wounds to existing models with tough before others.
             //I'm also putting this TODO in the stage.
 
-            _pendingWounds = new Dictionary<IModel, int>();
+            _pendingWounds = new Dictionary<IModel, float>();
             foreach(IModel model in defendingUnit.Models
                 .Where(model => model.GetIsAlive()))
             {
@@ -53,13 +53,13 @@ namespace FDG
         /// </summary>
         public void AutoFill() 
         {
-            int woundsToAssign = TotalWoundsToAssign - TotalAssignedWounds;
+            float woundsToAssign = TotalWoundsToAssign - TotalAssignedWounds;
 
-            foreach(KeyValuePair<IModel, int> kvp in _pendingWounds)
+            foreach(KeyValuePair<IModel, float> kvp in _pendingWounds)
             {
-                int modelWoundsRemaining = kvp.Key.TotalWounds - kvp.Key.WoundsDealt;
+                float modelWoundsRemaining = kvp.Key.TotalWounds - kvp.Key.WoundsDealt;
 
-                int woundsToAssignThisModel = Math.Min(woundsToAssign, modelWoundsRemaining);
+                float woundsToAssignThisModel = Math.Min(woundsToAssign, modelWoundsRemaining);
                 _pendingWounds[kvp.Key] += woundsToAssignThisModel; //Might break, let's see.
                 woundsToAssign -= woundsToAssignThisModel;
                 TotalAssignedWounds += woundsToAssignThisModel;

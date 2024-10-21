@@ -21,20 +21,25 @@ namespace FDG.Stages
         {
             base.Enter();
 
+            Context.Log("Offering strikeback.");
+
             Context.OfferStrikeBackHandler.Handle(Context, MoveToStrikingBack, SkipStrikingBack);
         }
 
 
         private void MoveToStrikingBack()
         {
+            Context.Log("Defenders striking back.");
+
             SignalEvent(OFFER_STRIKE_BACK_ACCEPTED_TRANSITION);
         }
 
         private void SkipStrikingBack()
         {
+            Context.Log("Defenders not striking back.");
+
             SignalEvent(OFFER_STRIKE_BACK_REJECTED_TRANSITION);
         }
-
     }
 
     public interface IOfferStrikeBackHandler 

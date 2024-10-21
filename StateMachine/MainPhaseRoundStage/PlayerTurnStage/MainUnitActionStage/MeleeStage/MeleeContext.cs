@@ -4,7 +4,8 @@ using System.Collections.Concurrent;
 
 namespace FDG.Stages
 {
-
+    //TODO: There's lots of info that's specific to parts of the melee process.
+    //Having a query handler like the combat metadata could be an improvement.
     public interface IMeleeContext : ICommonContextItems
     {
         public IOfferStrikeBackHandler OfferStrikeBackHandler { get; }
@@ -24,6 +25,14 @@ namespace FDG.Stages
         public IMeleeCombatMetadata MeleeCombatMetadata { get; }
 
         public SingleCombatHandlers SingleCombatHandlers { get; }
+
+        public float AttackerRemainingWoundsAtStart { get; }
+
+        public float DefenderRemainingWoundsAtStart { get; }
+
+        public void AddResult<TResult>(TResult result);
+
+        public bool QueryForResult<TResult>(out TResult result);
 
         public void BeginNewAttack(IUnit attackingUnit, IUnit defendingUnit);
 
@@ -58,7 +67,15 @@ namespace FDG.Stages
 
         public SingleCombatHandlers SingleCombatHandlers { get; }
 
+        public float AttackerRemainingWoundsAtStart { get; private set; }
+
+        public float DefenderRemainingWoundsAtStart { get; private set; }
+
+
         private ConcurrentDictionary<IWeapon, int> _availableWeapons;
+
+        private QueryableResults _queryableResults = new QueryableResults();
+
 
         public MeleeContext(SingleCombatHandlers singleCombatHandlers, IChooseMeleeWeaponHandler chooseMeleeWeaponHandler, 
             IOfferStrikeBackHandler offerStrikeBackHandler, ITextOutput textOutput, IDiceRoller diceRoller)
@@ -70,11 +87,24 @@ namespace FDG.Stages
             DiceRoller = diceRoller;
         }
 
+        public void AddResult<TResult>(TResult result)
+        {
+            _queryableResults.AddResult(result);
+        }
+
+        public bool QueryForResult<TResult>(out TResult result)
+        {
+            return _queryableResults.QueryForResult(out result);
+        }
+
         public void BeginNewAttack(IUnit attackingUnit, IUnit defendingUnit)
         {
             AttackingUnit = attackingUnit;
+            DefendingUnit = defendingUnit;
             _availableWeapons = GetTypeSortedWeapons(attackingUnit.GetMeleeWeapons());
             MeleeCombatMetadata = new MeleeCombatMetadata(attackingUnit, defendingUnit, DiceRoller, TextOutput);
+            AttackerRemainingWoundsAtStart = attackingUnit.RemainingWounds;
+            DefenderRemainingWoundsAtStart = defendingUnit.RemainingWounds;
         }
 
         public void ChooseWeapon(IWeapon weaponToConsume, out int weaponCount)
@@ -98,6 +128,7 @@ namespace FDG.Stages
             MeleeCombatMetadata = default;
             InRangeAttackingModels = null;
             InRangeDefendingModels = null;
+            _queryableResults.Reset();
         }
 
         public void ResetMeleeCombatMetadata()
@@ -129,4 +160,6 @@ namespace FDG.Stages
             return weaponsAndCounts;
         }
     }
+
+
 }

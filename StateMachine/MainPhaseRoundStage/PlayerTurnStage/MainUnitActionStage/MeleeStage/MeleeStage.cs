@@ -16,31 +16,31 @@ namespace FDG.Stages
             _stateMachine = stateMachine;
 
             PileInStage pileInStage 
-                = new PileInStage(stateMachine, meleeContext, this);
+                = new PileInStage(stateMachine, meleeContext);
             DetermineInRangeAttackersStage determineInRangeAttackersStage 
-                = new DetermineInRangeAttackersStage(stateMachine, meleeContext, this);
+                = new DetermineInRangeAttackersStage(stateMachine, meleeContext);
             DetermineInRangeDefendersStage determineInRangeDefendersStage 
-                = new DetermineInRangeDefendersStage(stateMachine, meleeContext, this);
+                = new DetermineInRangeDefendersStage(stateMachine, meleeContext);
             ChooseMeleeWeaponStage chooseMeleeWeaponStage 
-                = new ChooseMeleeWeaponStage(stateMachine, meleeContext, this);
+                = new ChooseMeleeWeaponStage(stateMachine, meleeContext);
             SwingMeleeWeaponStage swingMeleeWeaponStage 
-                = new SwingMeleeWeaponStage(stateMachine, meleeContext, this);
+                = new SwingMeleeWeaponStage(stateMachine, meleeContext);
             DetermineCanKeepSwingingStage determineCanKeepSwingingStage 
-                = new DetermineCanKeepSwingingStage(stateMachine, meleeContext, this);
+                = new DetermineCanKeepSwingingStage(stateMachine, meleeContext);
             OfferStrikeBackStage offerStrikeBackStage 
-                = new OfferStrikeBackStage(stateMachine, meleeContext, this);
+                = new OfferStrikeBackStage(stateMachine, meleeContext);
             StrikeBackStage strikeBackStage 
-                = new StrikeBackStage(stateMachine, meleeContext, this);
+                = new StrikeBackStage(stateMachine, meleeContext);
             DetermineMeleeWinnerStage determineMeleeWinnerStage
-                = new DetermineMeleeWinnerStage(stateMachine, meleeContext, this);
+                = new DetermineMeleeWinnerStage(stateMachine, meleeContext);
             DetermineMoraleSaveNeededStage determineMoraleSaveNeededStage 
-                = new DetermineMoraleSaveNeededStage(StateMachine, meleeContext, this);
+                = new DetermineMoraleSaveNeededStage(StateMachine, meleeContext);
             RollForMoraleStage rollForMoraleStage 
-                = new RollForMoraleStage(stateMachine, meleeContext, this);
+                = new RollForMoraleStage(stateMachine, meleeContext);
             AssignMeleeMoralePenaltyStage assignMoralePenaltyStage 
-                = new AssignMeleeMoralePenaltyStage(stateMachine, meleeContext, this);
+                = new AssignMeleeMoralePenaltyStage(stateMachine, meleeContext);
             _applyFatigueStage
-                = new ApplyFatigueStage(StateMachine, meleeContext, this);
+                = new ApplyFatigueStage(StateMachine, meleeContext);
 
             Bind(MELEE_TO_CHILD_ENTRANCE_TRANSITION, pileInStage);
 
@@ -64,7 +64,7 @@ namespace FDG.Stages
             offerStrikeBackStage.Bind(OfferStrikeBackStage.OFFER_STRIKE_BACK_ACCEPTED_TRANSITION,
                 strikeBackStage);
             offerStrikeBackStage.Bind(OfferStrikeBackStage.OFFER_STRIKE_BACK_REJECTED_TRANSITION,
-                determineMoraleSaveNeededStage);
+                determineMeleeWinnerStage);
 
             strikeBackStage.AssignNormalExitStage(determineMeleeWinnerStage);
             strikeBackStage.AssignAttackerKilledExitStage(_applyFatigueStage);

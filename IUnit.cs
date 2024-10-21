@@ -12,12 +12,12 @@ namespace FDG
         /// <summary>
         /// How many wounds the unit had remaining when created.
         /// </summary>
-        public int MaxWounds { get; }
+        public float MaxWounds { get; }
 
         /// <summary>
         /// How many wounds remain before the unit is killed.
         /// </summary>
-        public int RemainingWounds { get; }
+        public float RemainingWounds { get; }
 
         public List<IModel> Models { get; }
 
@@ -26,6 +26,16 @@ namespace FDG
 
     public static class IUnitExtensions
     {
+        public static bool GetIsAlive(this IUnit unit)
+        {
+            return unit.RemainingWounds > 0;
+        }
+
+        public static bool GetIsDead(this IUnit unit)
+        {
+            return unit.RemainingWounds <= 0;
+        }
+
         public static List<IWeapon> AllWeapons(this IUnit unit)
         {
             List<IWeapon> allWeapons = new List<IWeapon>();
@@ -59,6 +69,8 @@ namespace FDG
         {
             return unit.AllWeapons(u => u.IsRanged());
         }
+
+
     }
 
     public class Unit : IUnit
@@ -69,11 +81,11 @@ namespace FDG
 
         public int Defense { get; }
 
-        public int MaxWounds
+        public float MaxWounds
         {
             get
             {
-                int total = 0;
+                float total = 0;
                 foreach (IModel model in Models)
                 {
                     total += model.TotalWounds;
@@ -82,11 +94,11 @@ namespace FDG
             }
         }
 
-        public int RemainingWounds
+        public float RemainingWounds
         {
             get
             {
-                int total = 0;
+                float total = 0;
                 foreach (IModel model in Models)
                 {
                     total += model.TotalWounds - model.WoundsDealt;
@@ -109,4 +121,6 @@ namespace FDG
 
         }
     }
+
+    
 }

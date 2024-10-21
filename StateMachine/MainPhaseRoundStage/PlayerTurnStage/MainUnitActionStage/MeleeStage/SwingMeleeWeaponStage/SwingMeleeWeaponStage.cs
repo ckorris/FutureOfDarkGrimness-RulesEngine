@@ -23,7 +23,6 @@ namespace FDG.Stages
                 .BindNextStage(new DetermineSaveRollsNeededStage(stateMachine, _attackContext, this))
                 .BindNextStage(new RollToSaveStage(stateMachine, _attackContext, this))
                 .BindNextStage(new AssignWoundsStage(stateMachine, _attackContext, this))
-                .BindNextStage(new ApplyWoundsStage(stateMachine, _attackContext, this))
                 .BindNextStage(_applyWoundsStage);
 
             //Set up transition to child stage.

@@ -7,13 +7,11 @@ namespace FDG.Stages
         public string OutOfWeaponsTransitionName;
         public string DefenderKilledTransitionName;
 
-        private readonly StateMachine _stateMachine;
         private readonly IMeleeContext _meleeContext;
 
         public DetermineCanKeepSwingingStage(StateMachine stateMachine, IMeleeContext context, StateBase parentState = null)
             : base(stateMachine, context, parentState)
         {
-            _stateMachine = stateMachine;
             _meleeContext = context;
         }
 
@@ -21,10 +19,12 @@ namespace FDG.Stages
         {
             base.Enter();
 
+            int remainingWeaponCount = _meleeContext.AvailableWeapons.Count;
+
             //Return to choose weapon again if there are weapons remaining and the target is still alive.
-            if (_meleeContext.AvailableWeapons.Count == 0)
+            if (remainingWeaponCount == 0)
             {
-                _meleeContext.Log("Has fired all weapons.");
+                _meleeContext.Log("Has swung with all melee weapons.");
                 SignalFinishedSwinging();
                 return;
             }
@@ -37,6 +37,15 @@ namespace FDG.Stages
             }
 
             //We've still got weapons to shoot, and baddies to shoot at. 
+            if(remainingWeaponCount == 1)
+            {
+                _meleeContext.Log("Has 1 more weapon left to swing.");
+            }
+            else
+            {
+                _meleeContext.Log($"Has {remainingWeaponCount} more weapons left to swing.");
+            }
+            
             _meleeContext.ResetMeleeCombatMetadata();
             SignalCanKeepSwinging();
         }

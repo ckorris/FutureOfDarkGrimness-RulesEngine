@@ -4,7 +4,7 @@ namespace FDG.Stages
 
     public class AssignWoundsStage : CombatStage<AssignWoundsResults, AssignWoundsStage, ICombatMetadata>
     {
-        public AssignWoundsStage(StateMachine stateMachine, ISingleAttackContext<ICombatMetadata> context, StateBase parentState = null) 
+        public AssignWoundsStage(StateMachine stateMachine, ISingleAttackContext<ICombatMetadata> context, StateBase parentState = null)
             : base(stateMachine, context, parentState)
         {
         }
@@ -13,18 +13,22 @@ namespace FDG.Stages
         {
             metaData.QueryForResult(out RollToSaveResults rollToSaveResults);
 
-            int totalWoundsDealt = rollToSaveResults.FailedSaveList.Count;
+            float totalWoundsDealt = 0;
+            foreach (FailedSaveInfo failedSaves in rollToSaveResults.FailedSaveList)
+            {
+                totalWoundsDealt += failedSaves.SaveCount;
+            }
 
-            int defenderRemainingWounds = metaData.DefendingUnit.RemainingWounds;
+            float defenderRemainingWounds = metaData.DefendingUnit.RemainingWounds;
 
-            if(totalWoundsDealt >= defenderRemainingWounds)
+            if (totalWoundsDealt >= defenderRemainingWounds)
             {
                 //We've killed off the unit. No need to use the handler to ask what will die.
                 //Fill results with wounds it would take to kill.
                 //TODO: Would be cool to list overkill amount somewhere besides text log.
                 AssignWoundsResults assignWoundsResults = new AssignWoundsResults(metaData.DefendingUnit, defenderRemainingWounds);
 
-                int overkill = totalWoundsDealt - defenderRemainingWounds;
+                float overkill = totalWoundsDealt - defenderRemainingWounds;
                 string pluralizedWound = defenderRemainingWounds == 1 ? "wound" : "wounds";
                 Context.Log($"Assigning {totalWoundsDealt} {pluralizedWound} (Overkill: {overkill})");
                 onFinished(assignWoundsResults);
@@ -41,7 +45,7 @@ namespace FDG.Stages
 
         private void OnHandled(AssignWoundsResults woundsResults, Action<AssignWoundsResults> onFinished)
         {
-            if(woundsResults.IsFinishedAssigning == false)
+            if (woundsResults.IsFinishedAssigning == false)
             {
                 throw new InvalidOperationException($"Called assigning wounds finished when it was not finished. " +
                     $"Wounds to assign: {woundsResults.TotalWoundsToAssign} Wounds assigned: {woundsResults.TotalAssignedWounds}.");

@@ -7,20 +7,22 @@ namespace FDG
     {
         public const int DEFAULT_WOUND_COUNT = 1;
 
-        public int TotalWounds { get; }
+        public float TotalWounds { get; }
 
-        public int WoundsDealt { get; set; }
+        public float WoundsDealt { get; set; }
 
         public Position Position { get; set; }
 
         public List<IWeapon> Weapons { get; }
+
+        public void DealWounds(float wounds);
     }
 
     public class Model : IModel
     {
-        public int TotalWounds { get; }
+        public float TotalWounds { get; }
 
-        public int WoundsDealt { get; set; }
+        public float WoundsDealt { get; set; }
 
         public List<IWeapon> Weapons { get; }
 
@@ -35,6 +37,11 @@ namespace FDG
 
             TotalWounds = IModel.DEFAULT_WOUND_COUNT;
             WoundsDealt = 0;
+        }
+
+        public void DealWounds(float wounds)
+        {
+            WoundsDealt += wounds;
         }
     }
 

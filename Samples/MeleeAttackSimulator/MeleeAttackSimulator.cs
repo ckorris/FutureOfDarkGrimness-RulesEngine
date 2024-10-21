@@ -13,6 +13,8 @@ namespace FDG.Samples
         private StateMachine _stateMachine;
         private MeleeStage _meleeStage;
 
+        BasicTesterOfferStrikeBackHandler _offerStrikeBackHandler;
+
         public MeleeAttackSimulator(ERandomnessType randomnessType)
         {
             _textOutput = new BasicConsoleLogger();
@@ -45,25 +47,28 @@ namespace FDG.Samples
             CreateStateMachine();
         }
 
-        public void SimulateMeleeAttack(IUnit attackingUnit, IUnit defendingUnit)
+        public void SimulateMeleeAttack(IUnit attackingUnit, IUnit defendingUnit, bool defenderStrikesBack)
         {
+            _offerStrikeBackHandler.StrikeBack = defenderStrikesBack;
             _meleeContext.BeginNewAttack(attackingUnit, defendingUnit);
             _stateMachine.Start(_meleeStage);
         }
+
+
 
         private void CreateStateMachine()
         {
             BasicTesterChooseActionHandler chooseActionHandler = new BasicTesterChooseActionHandler();
             BasicTesterMovementHandler movementHandler = new BasicTesterMovementHandler();
             BasicTesterChooseWeaponHandler chooseWeaponHandler = new BasicTesterChooseWeaponHandler();
-            BasicTesterOfferStrikeBackHandler offerStrikeBackHandler = new BasicTesterOfferStrikeBackHandler(false); //TEMP false.
+            _offerStrikeBackHandler = new BasicTesterOfferStrikeBackHandler(false); //TEMP false.
 
             SingleCombatHandlers singleCombatHandlers = new SingleCombatHandlers(new BasicTesterAssignWoundsHandler());
 
             _stateMachine = new StateMachine();
             IUnitActionContext unitActionContext = new UnitActionContext(chooseActionHandler, movementHandler,
                 _textOutput, _diceRoller);
-            _meleeContext = new MeleeContext(singleCombatHandlers, chooseWeaponHandler, offerStrikeBackHandler, _textOutput, _diceRoller);
+            _meleeContext = new MeleeContext(singleCombatHandlers, chooseWeaponHandler, _offerStrikeBackHandler, _textOutput, _diceRoller);
 
             _meleeStage = new MeleeStage(_stateMachine, unitActionContext, _meleeContext);
             _meleeStage.AssignExitStage(new EmptyEndStage(_stateMachine));

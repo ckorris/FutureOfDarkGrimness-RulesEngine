@@ -25,15 +25,15 @@ namespace FDG.Samples
 
     public class BasicTesterOfferStrikeBackHandler : IOfferStrikeBackHandler
     {
-        private readonly bool _strikeBack;
+        public  bool StrikeBack;
         public BasicTesterOfferStrikeBackHandler(bool strikeBack)
         {
-            _strikeBack = strikeBack;
+            StrikeBack = strikeBack;
         }
 
         public void Handle(IMeleeContext context, Action acceptStrikeBack, Action rejectStrikeBack)
         {
-            if(_strikeBack)
+            if(StrikeBack)
             {
                 acceptStrikeBack();
             }

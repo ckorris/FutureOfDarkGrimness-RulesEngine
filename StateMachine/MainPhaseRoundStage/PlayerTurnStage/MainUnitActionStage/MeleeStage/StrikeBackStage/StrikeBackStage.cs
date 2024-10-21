@@ -29,6 +29,8 @@ namespace FDG.Stages
             _determineCanKeepSwingingStage
                 = new DetermineCanKeepSwingingStage(stateMachine, _reversedContext, this);
 
+            Bind(STRIKE_BACK_TO_CHILD_ENTRANCE_TRANSITION, chooseMeleeWeaponStage);
+
             chooseMeleeWeaponStage.Bind(ChooseMeleeWeaponStage.CHOOSE_MELEE_WEAPON_FINISHED_TRANSITION,
                 swingMeleeWeaponStage);
 
@@ -51,11 +53,12 @@ namespace FDG.Stages
         {
             base.Enter();
 
-            //TODO: Reset metadata?
-            MoveToChildBuildTargetListStage();
+            _reversedContext.BeginNewAttack(Context.DefendingUnit, Context.AttackingUnit); //Purposefully reversed.
+
+            MoveToChildStage();
         }
 
-        private void MoveToChildBuildTargetListStage()
+        private void MoveToChildStage()
         {
             SignalEvent(STRIKE_BACK_TO_CHILD_ENTRANCE_TRANSITION);
         }

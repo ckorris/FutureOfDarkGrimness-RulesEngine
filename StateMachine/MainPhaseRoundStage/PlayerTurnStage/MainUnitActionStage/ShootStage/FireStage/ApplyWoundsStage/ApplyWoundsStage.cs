@@ -14,11 +14,21 @@ namespace FDG.Stages
         {
             AssignWoundsResults assignWoundsResults = QueryForResultOrThrowException<AssignWoundsResults>(metaData);
 
+            float totalWoundsApplied = 0;
             int modelsKilled = 0;
 
             foreach(KeyValuePair<IModel, float> kvp in assignWoundsResults.PendingWounds)
             {
+                float woundsToDeal = kvp.Value;
+                float modelRemainingWounds = kvp.Key.TotalWounds - kvp.Key.WoundsDealt;
+
+                if (woundsToDeal > modelRemainingWounds)
+                {
+                    throw new Exception($"Tried to deal {woundsToDeal} to a model with only {modelRemainingWounds} left.");
+                }
+
                 kvp.Key.DealWounds(kvp.Value);
+                totalWoundsApplied += kvp.Value;
 
                 if(kvp.Key.GetIsDead())
                 {
@@ -28,11 +38,11 @@ namespace FDG.Stages
 
             if(metaData.DefendingUnit.GetIsAlive())
             {
-                Context.Log($"Applying wounds killed {modelsKilled} models.");
+                Context.Log($"Applying {totalWoundsApplied} wounds killed {modelsKilled} models.");
             }
             else
             {
-                Context.Log($"Applying wounds killed {modelsKilled} models, killing the unit.");
+                Context.Log($"Applying {totalWoundsApplied} wounds killed {modelsKilled} models, killing the unit.");
             }
 
             onFinished(new ApplyWoundsResults(modelsKilled));

@@ -27,10 +27,11 @@ namespace FDG.Stages
                 //Fill results with wounds it would take to kill.
                 //TODO: Would be cool to list overkill amount somewhere besides text log.
                 AssignWoundsResults assignWoundsResults = new AssignWoundsResults(metaData.DefendingUnit, defenderRemainingWounds);
+                assignWoundsResults.AutoFill();
 
                 float overkill = totalWoundsDealt - defenderRemainingWounds;
                 string pluralizedWound = defenderRemainingWounds == 1 ? "wound" : "wounds";
-                Context.Log($"Assigning {totalWoundsDealt} {pluralizedWound} (Overkill: {overkill})");
+                Context.Log($"Assigning {defenderRemainingWounds} {pluralizedWound} (Overkill: {overkill})");
                 onFinished(assignWoundsResults);
             }
             else

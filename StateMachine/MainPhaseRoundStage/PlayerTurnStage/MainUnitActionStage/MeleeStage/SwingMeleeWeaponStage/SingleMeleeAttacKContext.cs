@@ -7,8 +7,8 @@ namespace FDG
     public class SingleMeleeAttackContext : SingleAttackContext<IMeleeCombatMetadata>, 
         ISingleAttackContext<ICombatMetadata>
     {
-        public SingleMeleeAttackContext(SingleCombatHandlers singleCombatHandlers, ITextOutput textOutput, IDiceRoller diceRoller)
-            : base(singleCombatHandlers, textOutput, diceRoller)
+        public SingleMeleeAttackContext( ITextOutput textOutput, IDiceRoller diceRoller, StageHandlerRegistry handlers)
+            : base(textOutput, diceRoller, handlers)
         {
         }
 

@@ -4,8 +4,8 @@ namespace FDG.Stages
     public class SingleRangedAttackContext : SingleAttackContext<IRangedCombatMetadata>,
         ISingleAttackContext<ICombatMetadata>
     {
-        public SingleRangedAttackContext(SingleCombatHandlers singleCombatHandlers, ITextOutput textOutput, IDiceRoller diceRoller) 
-            : base(singleCombatHandlers, textOutput, diceRoller)
+        public SingleRangedAttackContext(ITextOutput textOutput, IDiceRoller diceRoller, StageHandlerRegistry handlers) 
+            : base(textOutput, diceRoller, handlers)
         {
         }
 

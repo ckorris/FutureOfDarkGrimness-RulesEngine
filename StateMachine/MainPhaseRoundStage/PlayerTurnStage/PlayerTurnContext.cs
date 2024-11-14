@@ -5,23 +5,22 @@ namespace FDG.Stages
 
     public interface IPlayerTurnContext : ICommonContextItems
     {
-        public IChooseUnitToActivateHandler ChooseUnitToActivateHandler { get; }
     }
 
     public class PlayerTurnContext : IPlayerTurnContext
     {
-        public IChooseUnitToActivateHandler ChooseUnitToActivateHandler { get; private set; }
-
         public ITextOutput TextOutput { get; private set; }
 
         public IDiceRoller DiceRoller { get; private set; }
 
-        public PlayerTurnContext(IChooseUnitToActivateHandler chooseUnitToActivateHandler, 
-            ITextOutput textOutput, IDiceRoller diceRoller)
+        public StageHandlerRegistry Handlers { get; }
+
+        public PlayerTurnContext(ITextOutput textOutput, IDiceRoller diceRoller, 
+            StageHandlerRegistry handlers)
         {
-            ChooseUnitToActivateHandler = chooseUnitToActivateHandler;
             TextOutput = textOutput;
             DiceRoller = diceRoller;
+            Handlers = handlers;
         }
     }
 }

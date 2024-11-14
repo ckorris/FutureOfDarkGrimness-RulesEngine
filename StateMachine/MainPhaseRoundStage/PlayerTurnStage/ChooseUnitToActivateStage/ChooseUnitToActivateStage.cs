@@ -17,7 +17,7 @@ namespace FDG.Stages
         {
             base.Enter();
 
-            Context.ChooseUnitToActivateHandler.Handle(Context, MoveToMainUnitAction);
+            Context.GetHandler<IChooseUnitToActivateHandler>().Handle(Context, MoveToMainUnitAction);
         }
 
 

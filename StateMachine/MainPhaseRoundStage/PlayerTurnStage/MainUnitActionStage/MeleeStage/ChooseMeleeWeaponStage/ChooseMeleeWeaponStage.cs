@@ -26,7 +26,7 @@ namespace FDG.Stages
             IReadOnlyDictionary<IWeapon, int> availableWeapons = new ConcurrentDictionary<IWeapon, int>(Context.AvailableWeapons);
             IReadOnlyDictionary<IWeapon, int> unavailableWeapons = new ConcurrentDictionary<IWeapon, int>();
 
-            Context.ChooseMeleeWeaponHandler.Handle(availableWeapons, unavailableWeapons, ChooseWeapon);
+            Context.GetHandler<IChooseMeleeWeaponHandler>().Handle(availableWeapons, unavailableWeapons, ChooseWeapon);
         }
 
         private void ChooseWeapon(IWeapon chosenWeapon)

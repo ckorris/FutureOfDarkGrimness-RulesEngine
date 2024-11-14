@@ -28,7 +28,7 @@ namespace FDG.Stages
             IReadOnlyDictionary<IWeapon, int> availableWeapons = new ConcurrentDictionary<IWeapon, int>(Context.AvailableWeapons);
             IReadOnlyDictionary<IWeapon, int> unavailableWeapons = new ConcurrentDictionary<IWeapon, int>();
 
-            Context.ChooseRangedWeaponHandler.Handle(availableWeapons, unavailableWeapons, ChooseWeapon);
+            Context.GetHandler<IChooseRangedWeaponHandler>().Handle(availableWeapons, unavailableWeapons, ChooseWeapon);
         }
 
         private void ChooseWeapon(IWeapon chosenWeapon)
@@ -40,7 +40,7 @@ namespace FDG.Stages
         }
     }
 
-    public interface IChooseRangedWeaponHandler 
+    public interface IChooseRangedWeaponHandler
     {
         public void Handle(IReadOnlyDictionary<IWeapon, int> availableWeapons,
             IReadOnlyDictionary<IWeapon, int> unavailableWeapons, Action<IWeapon> onChoseWeapon);

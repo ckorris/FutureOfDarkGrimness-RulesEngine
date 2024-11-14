@@ -15,7 +15,7 @@ namespace FDG.Stages
         {
             base.Enter();
 
-            Context.DeploymentHandler.Handle(Context, MoveToMain);
+            Context.GetHandler<IDeploymentHandler>().Handle(Context, MoveToMain);
         }
 
         private void MoveToMain()

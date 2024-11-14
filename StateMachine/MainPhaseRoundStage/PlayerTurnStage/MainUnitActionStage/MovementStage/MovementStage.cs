@@ -22,7 +22,7 @@ namespace FDG.Stages
             base.Enter();
 
             Context.Log($"Chose movement action.");
-            Context.MovementHandler.Handle(Context, MoveToMelee, MoveToRanged, MoveToReconcileEndOfActivation);
+            Context.GetHandler<IMovementHandler>().Handle(Context, MoveToMelee, MoveToRanged, MoveToReconcileEndOfActivation);
         }
 
         private void MoveToMelee()
@@ -41,9 +41,9 @@ namespace FDG.Stages
         }
     }
 
-    public interface IMovementHandler 
+    public interface IMovementHandler
     {
-        public void Handle(IUnitActionContext actionContext, Action onChooseMelee, Action onChooseRanged, 
+        public void Handle(IUnitActionContext actionContext, Action onChooseMelee, Action onChooseRanged,
             Action onChooseNonCombat);
     }
 }

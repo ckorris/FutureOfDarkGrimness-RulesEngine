@@ -15,7 +15,7 @@ namespace FDG.Stages
         {
             base.Enter();
 
-            Context.MapSetupHandler.Handle(Context, MoveToDeployment);
+            Context.GetHandler < IMapSetupHandler>().Handle(Context, MoveToDeployment);
         }
 
         private void MoveToDeployment()

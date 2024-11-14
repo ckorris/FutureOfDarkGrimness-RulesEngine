@@ -24,7 +24,7 @@ namespace FDG.Stages
 
             //Note that in the future, this should get optional actions somehow, like spellcasting.
 
-            Context.ChooseActionHandler.Handle(Context, MoveToMovement, MoveToReconcileEndOfActivation);
+            Context.GetHandler < IChooseActionHandler>().Handle(Context, MoveToMovement, MoveToReconcileEndOfActivation);
         }
 
         private void MoveToMovement()

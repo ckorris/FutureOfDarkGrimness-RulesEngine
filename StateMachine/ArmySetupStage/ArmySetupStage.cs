@@ -15,7 +15,7 @@ namespace FDG.Stages
         {
             base.Enter();
 
-            Context.ArmySetupHandler.Handle(Context, MoveToMapSetup);
+            Context.GetHandler<IArmySetupHandler>().Handle(Context, MoveToMapSetup);
         }
 
         private void MoveToMapSetup()

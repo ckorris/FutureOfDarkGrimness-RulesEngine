@@ -1,36 +1,26 @@
-using System;
 
 namespace FDG.Stages
 {
     public interface ITopLevelContext : ICommonContextItems
     {
-        public IArmySetupHandler ArmySetupHandler { get; }
 
-        public IMapSetupHandler MapSetupHandler { get; }
-
-        public IDeploymentHandler DeploymentHandler { get; }
     }
 
     public class TopLevelContext : ITopLevelContext
     {
-        public IArmySetupHandler ArmySetupHandler { get; private set; }
-
-        public IMapSetupHandler MapSetupHandler { get; private set; }
-
-        public IDeploymentHandler DeploymentHandler { get; private set; }
 
         public ITextOutput TextOutput { get; private set; }
 
         public IDiceRoller DiceRoller { get; private set; }
 
-        public TopLevelContext(IArmySetupHandler armySetupHandler, IMapSetupHandler mapSetupHandler, 
-            IDeploymentHandler deploymentHandler, ITextOutput textOutput, IDiceRoller diceRoller)
+        public StageHandlerRegistry Handlers { get; }
+
+        public TopLevelContext(ITextOutput textOutput, IDiceRoller diceRoller,
+            StageHandlerRegistry handlers)
         {
-            ArmySetupHandler = armySetupHandler;
-            MapSetupHandler = mapSetupHandler;
-            DeploymentHandler = deploymentHandler;
             TextOutput = textOutput;
             DiceRoller = diceRoller;
+            Handlers = handlers;
         }
     }
 }

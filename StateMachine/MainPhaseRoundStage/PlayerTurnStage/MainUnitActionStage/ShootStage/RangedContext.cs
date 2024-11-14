@@ -6,10 +6,6 @@ namespace FDG.Stages
 
     public interface IRangedContext : ICommonContextItems
     {
-        public IChooseRangedTargetHandler ChooseRangedTargetHandler { get; }
-
-        public IChooseRangedWeaponHandler ChooseRangedWeaponHandler { get; }
-
         public IUnit AttackingUnit { get; }
 
         public IReadOnlyDictionary<IWeapon, int> AvailableWeapons { get; }
@@ -17,8 +13,6 @@ namespace FDG.Stages
         public IReadOnlyList<IUnit> AvailableTargetUnits { get; }
 
         public IRangedCombatMetadata RangedCombatMetadata { get; }
-
-        public SingleCombatHandlers SingleCombatHandlers { get; }
 
         public void BeginNewAttack(IUnit attackingUnit, List<IUnit> availableTargetUnits);
 
@@ -35,10 +29,6 @@ namespace FDG.Stages
     {
         public ITextOutput TextOutput { get; private set; }
 
-        public IChooseRangedWeaponHandler ChooseRangedWeaponHandler { get; private set; }
-
-        public IChooseRangedTargetHandler ChooseRangedTargetHandler { get; private set; }
-
         public IDiceRoller DiceRoller { get; private set; }
 
         public IUnit AttackingUnit { get; private set; }
@@ -49,20 +39,16 @@ namespace FDG.Stages
 
         public IRangedCombatMetadata RangedCombatMetadata { get; private set; }
 
-        public SingleCombatHandlers SingleCombatHandlers { get; }
-
+        public StageHandlerRegistry Handlers { get; }
 
         private ConcurrentDictionary<IWeapon, int> _availableWeapons;
 
 
-        public RangedContext(SingleCombatHandlers singleCombatHandlers, IChooseRangedWeaponHandler chooseRangedWeaponHandler,
-            IChooseRangedTargetHandler chooseRangedTargetHandler, ITextOutput textOutput, IDiceRoller diceRoller)
+        public RangedContext(ITextOutput textOutput, IDiceRoller diceRoller, StageHandlerRegistry handlers)
         {
-            SingleCombatHandlers = singleCombatHandlers;
-            ChooseRangedWeaponHandler = chooseRangedWeaponHandler;
-            ChooseRangedTargetHandler = chooseRangedTargetHandler;
             TextOutput = textOutput;
             DiceRoller = diceRoller;
+            Handlers = handlers;
         }
 
         public void BeginNewAttack(IUnit attackingUnit, List<IUnit> availableTargetUnits)

@@ -1,6 +1,4 @@
 ﻿
-using FDG.Stages;
-
 namespace FDG
 { 
     public interface ISingleAttackContext<TMetadata> : ISingleAttackContext
@@ -11,8 +9,6 @@ namespace FDG
     public interface ISingleAttackContext : ICommonContextItems
     {
         IReadOnlyList<ISpecialRule_Combat> AllSpecialRules { get; }
-
-        public SingleCombatHandlers SingleCombatHandlers { get; }
     }
 
     public abstract class SingleAttackContext<TMetadata> : ISingleAttackContext<TMetadata>
@@ -22,18 +18,18 @@ namespace FDG
 
         public TMetadata CombatMetaData { get; private set; }
 
-        public SingleCombatHandlers SingleCombatHandlers { get; }
-
         public ITextOutput TextOutput { get; private set; }
 
         public IDiceRoller DiceRoller { get; private set; }
 
-        public SingleAttackContext(SingleCombatHandlers singleCombatHandlers,
-            ITextOutput textOutput, IDiceRoller diceRoller)
+        public StageHandlerRegistry Handlers { get; }
+
+        public SingleAttackContext(ITextOutput textOutput, IDiceRoller diceRoller,
+            StageHandlerRegistry handlers)
         {
-            SingleCombatHandlers = singleCombatHandlers;
             TextOutput = textOutput;
             DiceRoller = diceRoller;
+            Handlers = handlers;
         }
 
         public void SetCombatMetadata(TMetadata combatMetadata)

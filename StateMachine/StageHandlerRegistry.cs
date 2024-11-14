@@ -5,9 +5,9 @@ using System.Text;
 using System.Threading.Tasks;
 using static FDG.Entity;
 
-namespace FDGSimulator.FutureOfDarkGrimness.StateMachine
+namespace FDG
 {
-    public  class StageHandlerRegistry
+    public class StageHandlerRegistry
     {
         //I'm noting that this pattern is quite close to Entity's component registry.
         //That should be fine but it does irk me.
@@ -15,12 +15,14 @@ namespace FDGSimulator.FutureOfDarkGrimness.StateMachine
         //But this is a side project, so I want to test if the way it irks me actually matters.
         private Dictionary<Type, object> _handlersByType = new Dictionary<Type, object>();
 
-        public void RegisterHandle<T>(T handler) where T : class
+        public StageHandlerRegistry RegisterHandle<T>(T handler) where T : class
         {
             Type handlerType = typeof(T);
             AssertHandlerTypeNotYetAdded(handlerType);
 
             _handlersByType.Add(handlerType, handler);
+
+            return this;
         }
 
         public bool ValidateAllHandlersRegistered(IEnumerable<Type> handlers, out List<Type> missingHandlers)

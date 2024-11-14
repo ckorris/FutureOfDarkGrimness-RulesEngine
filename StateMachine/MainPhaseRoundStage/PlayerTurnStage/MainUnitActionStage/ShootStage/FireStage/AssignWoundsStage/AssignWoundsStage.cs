@@ -40,7 +40,7 @@ namespace FDG.Stages
                 //I'm also putting this TODO in the results class.
                 AssignWoundsResults assignWoundsResults = new AssignWoundsResults(metaData.DefendingUnit, totalWoundsDealt);
 
-                Context.SingleCombatHandlers.AssignWoundsHandler.Handle(metaData.DefendingUnit, assignWoundsResults, () => OnHandled(assignWoundsResults, onFinished));
+                Context.GetHandler<IAssignWoundsHandler>().Handle(metaData.DefendingUnit, assignWoundsResults, () => OnHandled(assignWoundsResults, onFinished));
             }
         }
 

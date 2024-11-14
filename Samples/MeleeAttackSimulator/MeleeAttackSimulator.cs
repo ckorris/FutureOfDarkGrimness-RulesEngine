@@ -1,7 +1,6 @@
 ﻿
 using FDG.Stages;
 
-
 namespace FDG.Samples
 {
     public class MeleeAttackSimulator
@@ -58,17 +57,21 @@ namespace FDG.Samples
 
         private void CreateStateMachine()
         {
-            BasicTesterChooseActionHandler chooseActionHandler = new BasicTesterChooseActionHandler();
-            BasicTesterMovementHandler movementHandler = new BasicTesterMovementHandler();
-            BasicTesterChooseWeaponHandler chooseWeaponHandler = new BasicTesterChooseWeaponHandler();
             _offerStrikeBackHandler = new BasicTesterOfferStrikeBackHandler(false); //TEMP false.
+
+            StageHandlerRegistry handlers = new StageHandlerRegistry()
+                .RegisterHandle<IChooseActionHandler>(new BasicTesterChooseActionHandler())
+                .RegisterHandle<IMovementHandler>(new BasicTesterMovementHandler())
+                .RegisterHandle<IChooseMeleeWeaponHandler>(new BasicTesterChooseWeaponHandler())
+                .RegisterHandle<IAssignWoundsHandler>(new BasicTesterAssignWoundsHandler())
+                .RegisterHandle<IOfferStrikeBackHandler>(_offerStrikeBackHandler);
+
 
             SingleCombatHandlers singleCombatHandlers = new SingleCombatHandlers(new BasicTesterAssignWoundsHandler());
 
             _stateMachine = new StateMachine();
-            IUnitActionContext unitActionContext = new UnitActionContext(chooseActionHandler, movementHandler,
-                _textOutput, _diceRoller);
-            _meleeContext = new MeleeContext(singleCombatHandlers, chooseWeaponHandler, _offerStrikeBackHandler, _textOutput, _diceRoller);
+            IUnitActionContext unitActionContext = new UnitActionContext(_textOutput, _diceRoller, handlers);
+            _meleeContext = new MeleeContext(_textOutput, _diceRoller, handlers);
 
             _meleeStage = new MeleeStage(_stateMachine, unitActionContext, _meleeContext);
             _meleeStage.AssignExitStage(new EmptyEndStage(_stateMachine));

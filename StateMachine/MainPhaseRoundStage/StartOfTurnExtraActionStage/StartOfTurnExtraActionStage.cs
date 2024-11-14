@@ -13,7 +13,7 @@ namespace FDG.Stages
 
         public override void Enter()
         {
-            Context.StartOfTurnExtraActionsHandler.Handle(Context, MoveToDetermineFirstTurn);
+            Context.GetHandler<IStartOfTurnExtraActionsHandler>().Handle(Context, MoveToDetermineFirstTurn);
         }
 
         private void MoveToDetermineFirstTurn()

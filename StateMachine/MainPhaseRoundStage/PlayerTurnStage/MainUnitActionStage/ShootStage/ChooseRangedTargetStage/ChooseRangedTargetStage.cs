@@ -21,7 +21,7 @@ namespace FDG.Stages
 
             IReadOnlyList<IUnit> potentialTargetUnits = Context.AvailableTargetUnits;
 
-            Context.ChooseRangedTargetHandler.Handle(potentialTargetUnits, OnChoseRangedTarget);
+            Context.GetHandler<IChooseRangedTargetHandler>().Handle(potentialTargetUnits, OnChoseRangedTarget);
         }
 
         private void OnChoseRangedTarget(IUnit targetUnit)

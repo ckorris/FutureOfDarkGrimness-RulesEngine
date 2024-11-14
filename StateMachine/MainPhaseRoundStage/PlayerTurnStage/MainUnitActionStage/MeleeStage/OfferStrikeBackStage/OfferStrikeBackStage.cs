@@ -23,7 +23,7 @@ namespace FDG.Stages
 
             Context.Log("Offering strikeback.");
 
-            Context.OfferStrikeBackHandler.Handle(Context, MoveToStrikingBack, SkipStrikingBack);
+            Context.GetHandler<IOfferStrikeBackHandler>().Handle(Context, MoveToStrikingBack, SkipStrikingBack);
         }
 
 
@@ -42,7 +42,7 @@ namespace FDG.Stages
         }
     }
 
-    public interface IOfferStrikeBackHandler 
+    public interface IOfferStrikeBackHandler
     {
         public void Handle(IMeleeContext context, Action acceptStrikeBack, Action rejectStrikeBack);
     }

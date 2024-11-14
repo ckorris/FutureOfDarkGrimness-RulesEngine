@@ -14,7 +14,7 @@ namespace FDG.Stages
         {
             base.Enter();
 
-            Context.ReconcileNewTurnHandler.Handle(Context, MoveToStartExtraActions);
+            Context.GetHandler<IReconcileNewTurnHandler>().Handle(Context, MoveToStartExtraActions);
         }
 
         private void MoveToStartExtraActions()

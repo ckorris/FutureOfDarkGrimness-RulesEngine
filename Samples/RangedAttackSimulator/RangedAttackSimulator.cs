@@ -1,7 +1,6 @@
 
 using FDG.Stages;
 
-
 namespace FDG.Samples
 {
     public class RangedAttackSimulator
@@ -54,18 +53,16 @@ namespace FDG.Samples
 
         private void CreateStateMachine()
         {
-            BasicTesterChooseActionHandler chooseActionHandler = new BasicTesterChooseActionHandler();
-            BasicTesterMovementHandler movementHandler = new BasicTesterMovementHandler();
-            BasicTesterChooseWeaponHandler chooseWeaponHandler = new BasicTesterChooseWeaponHandler();
-            BasicTesterChooseRangedTargetHandler chooseTargetHandler = new BasicTesterChooseRangedTargetHandler();
-
-            SingleCombatHandlers singleCombatHandlers = new SingleCombatHandlers(new BasicTesterAssignWoundsHandler());
+            StageHandlerRegistry handlers = new StageHandlerRegistry()
+                .RegisterHandle<IChooseActionHandler>(new BasicTesterChooseActionHandler())
+                .RegisterHandle<IMovementHandler>(new BasicTesterMovementHandler())
+                .RegisterHandle<IChooseRangedWeaponHandler>(new BasicTesterChooseWeaponHandler())
+                .RegisterHandle<IChooseRangedTargetHandler>(new BasicTesterChooseRangedTargetHandler())
+                .RegisterHandle<IAssignWoundsHandler>(new BasicTesterAssignWoundsHandler());
 
             _stateMachine = new StateMachine();
-            IUnitActionContext unitActionContext = new UnitActionContext(chooseActionHandler, movementHandler,
-                _textOutput, _diceRoller);
-            _rangedContext = new RangedContext(singleCombatHandlers, chooseWeaponHandler, chooseTargetHandler, 
-                _textOutput, _diceRoller);
+            IUnitActionContext unitActionContext = new UnitActionContext(_textOutput, _diceRoller, handlers);
+            _rangedContext = new RangedContext(_textOutput, _diceRoller, handlers);
 
             _shootStage = new ShootStage(_stateMachine, unitActionContext, _rangedContext);
             _shootStage.AssignExitStage(new EmptyEndStage(_stateMachine));

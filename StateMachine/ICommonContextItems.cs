@@ -7,6 +7,8 @@ namespace FDG
         public ITextOutput TextOutput { get; }
 
         public IDiceRoller DiceRoller { get; }
+
+        public StageHandlerRegistry Handlers { get; }
     }
 
     public static class ICommonContextItemsExtensions
@@ -14,6 +16,11 @@ namespace FDG
         public static void Log(this ICommonContextItems context, string message)
         {
             context.TextOutput.Log(message);
+        }
+
+        public static THandler GetHandler<THandler>(this ICommonContextItems context) where THandler : class
+        {
+            return context.Handlers.GetHandlerOfType<THandler>();
         }
     }
 }

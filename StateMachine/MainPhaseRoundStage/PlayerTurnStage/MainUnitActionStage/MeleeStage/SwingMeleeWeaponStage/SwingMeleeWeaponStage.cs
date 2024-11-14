@@ -13,7 +13,7 @@ namespace FDG.Stages
             : base(stateMachine, context, parentState)
         {
             _stateMachine = stateMachine;
-            _attackContext = new SingleMeleeAttackContext(context.SingleCombatHandlers, context.TextOutput, context.DiceRoller);
+            _attackContext = new SingleMeleeAttackContext(context.TextOutput, context.DiceRoller, context.Handlers);
 
             BuildTargetListStage buildTargetListStage = new BuildTargetListStage(stateMachine, _attackContext, this);
             _applyWoundsStage = new ApplyWoundsStage(stateMachine, _attackContext, this);

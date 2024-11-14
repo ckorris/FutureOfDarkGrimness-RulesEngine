@@ -8,10 +8,6 @@ namespace FDG.Stages
     //Having a query handler like the combat metadata could be an improvement.
     public interface IMeleeContext : ICommonContextItems
     {
-        public IOfferStrikeBackHandler OfferStrikeBackHandler { get; }
-
-        public IChooseMeleeWeaponHandler ChooseMeleeWeaponHandler { get; }
-
         public IUnit AttackingUnit { get; }
 
         public IUnit DefendingUnit { get; }
@@ -23,8 +19,6 @@ namespace FDG.Stages
         public IModel InRangeDefendingModels { get; }
 
         public IMeleeCombatMetadata MeleeCombatMetadata { get; }
-
-        public SingleCombatHandlers SingleCombatHandlers { get; }
 
         public float AttackerRemainingWoundsAtStart { get; }
 
@@ -49,10 +43,6 @@ namespace FDG.Stages
 
         public IDiceRoller DiceRoller { get; private set; }
 
-        public IOfferStrikeBackHandler OfferStrikeBackHandler { get; private set; }
-
-        public IChooseMeleeWeaponHandler ChooseMeleeWeaponHandler { get; private set; }
-
         public IUnit AttackingUnit { get; private set; }
 
         public IUnit DefendingUnit { get; private set; }
@@ -65,26 +55,23 @@ namespace FDG.Stages
 
         public IReadOnlyDictionary<IWeapon, int> AvailableWeapons => _availableWeapons;
 
-        public SingleCombatHandlers SingleCombatHandlers { get; }
-
         public float AttackerRemainingWoundsAtStart { get; private set; }
 
         public float DefenderRemainingWoundsAtStart { get; private set; }
 
+        public StageHandlerRegistry Handlers { get; }
 
         private ConcurrentDictionary<IWeapon, int> _availableWeapons;
 
         private QueryableResults _queryableResults = new QueryableResults();
 
 
-        public MeleeContext(SingleCombatHandlers singleCombatHandlers, IChooseMeleeWeaponHandler chooseMeleeWeaponHandler, 
-            IOfferStrikeBackHandler offerStrikeBackHandler, ITextOutput textOutput, IDiceRoller diceRoller)
+        public MeleeContext( ITextOutput textOutput, IDiceRoller diceRoller,
+            StageHandlerRegistry handlers)
         {
-            SingleCombatHandlers = singleCombatHandlers;
-            ChooseMeleeWeaponHandler = chooseMeleeWeaponHandler;
-            OfferStrikeBackHandler = offerStrikeBackHandler;
             TextOutput = textOutput;
             DiceRoller = diceRoller;
+            Handlers = handlers;
         }
 
         public void AddResult<TResult>(TResult result)

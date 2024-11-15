@@ -8,6 +8,14 @@ namespace FDG
 {
     public interface IPlayerOwnable
     {
-        Guid PlayerID { get; set; }
+        PlayerID PlayerID { get; }
+    }
+
+    public static class IPlayerOwnableExtensions
+    {
+        public static bool IsOwnedBy(this IPlayerOwnable playerOwnable, PlayerID playerID)
+        {
+            return playerID == playerOwnable.PlayerID;
+        }
     }
 }

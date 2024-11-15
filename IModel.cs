@@ -16,10 +16,15 @@ namespace FDG
         public List<IWeapon> Weapons { get; }
 
         public void DealWounds(float wounds);
+
+        public event WoundsDealtEventHandler OnWoundsDealt;
+
+        //public event Action<WoundsDealtEventArgs> OnWoundsDealt;
     }
 
     public class Model : IModel
     {
+
         public float TotalWounds { get; }
 
         public float WoundsDealt { get; set; }
@@ -27,6 +32,8 @@ namespace FDG
         public List<IWeapon> Weapons { get; }
 
         public Position Position { get; set; }
+
+        public event WoundsDealtEventHandler OnWoundsDealt;
 
         public Model(List<IWeapon> weapons, Position position)
         {
@@ -42,6 +49,8 @@ namespace FDG
         public void DealWounds(float wounds)
         {
             WoundsDealt += wounds;
+
+            OnWoundsDealt?.Invoke(new WoundsDealtEventArgs(wounds, TotalWounds - WoundsDealt, WoundsDealt >= TotalWounds));
         }
     }
 

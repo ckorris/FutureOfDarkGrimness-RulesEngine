@@ -1,7 +1,8 @@
 
+
 namespace FDG
 {
-    public interface IUnit
+    public interface IUnit : IPlayerOwnable
     {
         public string Name { get; }
 
@@ -22,6 +23,8 @@ namespace FDG
         public List<IModel> Models { get; }
 
         public List<ISpecialRule_Combat> SpecialRules { get; }
+
+        public event WoundsDealtEventHandler OnWoundsDealt;
     }
 
     public static class IUnitExtensions
@@ -75,6 +78,8 @@ namespace FDG
 
     public class Unit : IUnit
     {
+        public PlayerID PlayerID { get; private set; }
+
         public string Name { get; }
 
         public int Quality { get; }
@@ -111,14 +116,28 @@ namespace FDG
 
         public List<ISpecialRule_Combat> SpecialRules { get; }
 
-        public Unit(string name, int quality, int defense, List<IModel> models, List<ISpecialRule_Combat> specialRules)
+        public Unit(PlayerID playerID, string name, int quality, int defense, List<IModel> models, 
+            List<ISpecialRule_Combat> specialRules)
         {
+            PlayerID = playerID;
             Name = name;
             Quality = quality;
             Defense = defense;
             Models = models;
             SpecialRules = specialRules;
 
+            foreach(IModel model in models)
+            {
+                model.OnWoundsDealt += OnModelWoundsDealt;
+            }
+
+        }
+
+        public event WoundsDealtEventHandler OnWoundsDealt;
+
+        private void OnModelWoundsDealt(WoundsDealtEventArgs modelWoundsDealtArgs)
+        {
+            OnWoundsDealt?.Invoke(new WoundsDealtEventArgs(modelWoundsDealtArgs.WoundsDealt, RemainingWounds, this.GetIsDead()));
         }
     }
 

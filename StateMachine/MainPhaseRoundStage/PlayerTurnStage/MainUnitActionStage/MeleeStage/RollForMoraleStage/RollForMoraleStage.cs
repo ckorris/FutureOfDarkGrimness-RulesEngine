@@ -23,7 +23,7 @@ namespace FDG.Stages
                     $"{typeof(DetermineMoraleSaveNeededResult)} in the context metadata.");
             }
 
-            IDiceResults moraleRoll = Context.DiceRoller.Roll(1);
+            IDiceResults moraleRoll = Context.GameContext.DiceRoller.Roll(1);
 
             int rollNeeded = determineMoraleSaveNeededResult.RollNeeded; //Shorthand.
 

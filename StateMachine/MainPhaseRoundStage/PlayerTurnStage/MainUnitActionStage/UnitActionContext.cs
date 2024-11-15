@@ -1,27 +1,23 @@
 
 
+using System.Runtime.CompilerServices;
+
 namespace FDG.Stages
 {
 
-    public interface IUnitActionContext : ICommonContextItems
+    public interface IUnitActionContext : IGameContextAccessor
     {
+
     }
 
     public class UnitActionContext : IUnitActionContext
     {
-        public ITextOutput TextOutput { get; private set; }
-
-        public IDiceRoller DiceRoller { get; private set; }
-
-        public StageHandlerRegistry Handlers { get; }
+        public IGameContext GameContext { get; private set; }
 
 
-        public UnitActionContext(ITextOutput textOutput, IDiceRoller diceRoller, StageHandlerRegistry handlers)
+        public UnitActionContext(IGameContext gameContext)
         {
-            TextOutput = textOutput;
-            DiceRoller = diceRoller;
-            Handlers = handlers;
+            GameContext = gameContext;
         }
     }
-
 }

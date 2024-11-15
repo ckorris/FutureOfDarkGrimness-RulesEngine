@@ -2,11 +2,11 @@
 namespace FDG.Stages
 {
 
-    public class MapSetupStage : StateBase<ITopLevelContext>
+    public class MapSetupStage : StateBase<IGameContext>
     {
         public const string TO_DEPLOYMENT_TRANSITION = "MapSetupToDeployment";
 
-        public MapSetupStage(StateMachine stateMachine, ITopLevelContext context, StateBase parentState = null)
+        public MapSetupStage(StateMachine stateMachine, IGameContext context, StateBase parentState = null)
             : base(stateMachine, context, parentState)
         {
         }
@@ -24,7 +24,7 @@ namespace FDG.Stages
         }
     }
 
-    public interface IMapSetupHandler : IExitOnlyHandler<ITopLevelContext>
+    public interface IMapSetupHandler : IExitOnlyHandler<IGameContext>
     {
 
     }

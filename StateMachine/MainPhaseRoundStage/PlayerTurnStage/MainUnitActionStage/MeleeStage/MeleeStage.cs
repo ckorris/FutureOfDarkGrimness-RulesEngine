@@ -96,7 +96,7 @@ namespace FDG.Stages
         {
             base.Enter();
 
-            Context.TextOutput.Log($"Melee stage entering child.");
+            Context.Log($"Melee stage entering child.");
             MoveToChargingUnitAttack();
         }
 

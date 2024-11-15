@@ -19,7 +19,7 @@ namespace FDG.Stages
             _stateMachine = stateMachine;
 
             //This is constructed much like a normal melee stage, but reduced. 
-            _reversedContext = new MeleeContext(context.TextOutput, context.DiceRoller, context.Handlers);
+            _reversedContext = new MeleeContext(context.GameContext);
 
             ChooseMeleeWeaponStage chooseMeleeWeaponStage
                 = new ChooseMeleeWeaponStage(stateMachine, _reversedContext, this);

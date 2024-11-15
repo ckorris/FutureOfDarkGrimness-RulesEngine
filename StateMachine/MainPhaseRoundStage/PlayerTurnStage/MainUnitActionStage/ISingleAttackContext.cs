@@ -1,4 +1,6 @@
 ﻿
+using FDG.Stages;
+
 namespace FDG
 { 
     public interface ISingleAttackContext<TMetadata> : ISingleAttackContext
@@ -6,7 +8,7 @@ namespace FDG
         TMetadata CombatMetaData { get; }
     }
 
-    public interface ISingleAttackContext : ICommonContextItems
+    public interface ISingleAttackContext : IGameContextAccessor
     {
         IReadOnlyList<ISpecialRule_Combat> AllSpecialRules { get; }
     }
@@ -18,18 +20,13 @@ namespace FDG
 
         public TMetadata CombatMetaData { get; private set; }
 
-        public ITextOutput TextOutput { get; private set; }
-
-        public IDiceRoller DiceRoller { get; private set; }
+        public IGameContext GameContext { get; private set; }
 
         public StageHandlerRegistry Handlers { get; }
 
-        public SingleAttackContext(ITextOutput textOutput, IDiceRoller diceRoller,
-            StageHandlerRegistry handlers)
+        public SingleAttackContext(IGameContext gameContext)
         {
-            TextOutput = textOutput;
-            DiceRoller = diceRoller;
-            Handlers = handlers;
+            GameContext = gameContext;
         }
 
         public void SetCombatMetadata(TMetadata combatMetadata)

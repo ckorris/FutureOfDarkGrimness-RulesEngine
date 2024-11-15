@@ -3,24 +3,17 @@
 namespace FDG.Stages
 {
 
-    public interface IPlayerTurnContext : ICommonContextItems
+    public interface IPlayerTurnContext : IGameContextAccessor
     {
     }
 
     public class PlayerTurnContext : IPlayerTurnContext
     {
-        public ITextOutput TextOutput { get; private set; }
+        public IGameContext GameContext { get; private set; }
 
-        public IDiceRoller DiceRoller { get; private set; }
-
-        public StageHandlerRegistry Handlers { get; }
-
-        public PlayerTurnContext(ITextOutput textOutput, IDiceRoller diceRoller, 
-            StageHandlerRegistry handlers)
+        public PlayerTurnContext(IGameContext gameContext)
         {
-            TextOutput = textOutput;
-            DiceRoller = diceRoller;
-            Handlers = handlers;
+            GameContext = gameContext;
         }
     }
 }

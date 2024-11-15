@@ -16,7 +16,7 @@ namespace FDG.Stages
             base.Enter();
 
             //Temp as it has children.
-            Context.TextOutput.Log("Skipping Determine First Player Turn for now.");
+            Context.Log("Skipping Determine First Player Turn for now.");
             SignalEvent(DETERMINE_FIRST_PLAYER_TO_PLAYER_TURN_TRANSITION);
         }
     }

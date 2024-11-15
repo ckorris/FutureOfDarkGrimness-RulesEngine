@@ -2,9 +2,9 @@
 namespace FDG.Stages
 {
 
-    public class VictoryCalculationStage : StateBase<ITopLevelContext>
+    public class VictoryCalculationStage : StateBase<IGameContext>
     {
-        public VictoryCalculationStage(StateMachine stateMachine, ITopLevelContext context, StateBase parentState = null)
+        public VictoryCalculationStage(StateMachine stateMachine, IGameContext context, StateBase parentState = null)
             : base(stateMachine, context, parentState)
         {
         }

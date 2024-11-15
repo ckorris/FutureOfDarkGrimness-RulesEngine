@@ -69,9 +69,11 @@ namespace FDG.Samples
 
             SingleCombatHandlers singleCombatHandlers = new SingleCombatHandlers(new BasicTesterAssignWoundsHandler());
 
+            GameContext gameContext = new GameContext(_textOutput, _diceRoller, handlers);
+
             _stateMachine = new StateMachine();
-            IUnitActionContext unitActionContext = new UnitActionContext(_textOutput, _diceRoller, handlers);
-            _meleeContext = new MeleeContext(_textOutput, _diceRoller, handlers);
+            IUnitActionContext unitActionContext = new UnitActionContext(gameContext);
+            _meleeContext = new MeleeContext(gameContext);
 
             _meleeStage = new MeleeStage(_stateMachine, unitActionContext, _meleeContext);
             _meleeStage.AssignExitStage(new EmptyEndStage(_stateMachine));

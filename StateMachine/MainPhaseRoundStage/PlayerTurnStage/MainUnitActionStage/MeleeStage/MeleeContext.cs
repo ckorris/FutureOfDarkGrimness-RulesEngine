@@ -6,7 +6,7 @@ namespace FDG.Stages
 {
     //TODO: There's lots of info that's specific to parts of the melee process.
     //Having a query handler like the combat metadata could be an improvement.
-    public interface IMeleeContext : ICommonContextItems
+    public interface IMeleeContext : IGameContextAccessor
     {
         public IUnit AttackingUnit { get; }
 
@@ -39,9 +39,7 @@ namespace FDG.Stages
 
     public class MeleeContext : IMeleeContext
     {
-        public ITextOutput TextOutput { get; private set; }
-
-        public IDiceRoller DiceRoller { get; private set; }
+        public IGameContext GameContext { get; private set; }
 
         public IUnit AttackingUnit { get; private set; }
 
@@ -59,19 +57,14 @@ namespace FDG.Stages
 
         public float DefenderRemainingWoundsAtStart { get; private set; }
 
-        public StageHandlerRegistry Handlers { get; }
-
         private ConcurrentDictionary<IWeapon, int> _availableWeapons;
 
         private QueryableResults _queryableResults = new QueryableResults();
 
 
-        public MeleeContext( ITextOutput textOutput, IDiceRoller diceRoller,
-            StageHandlerRegistry handlers)
+        public MeleeContext(IGameContext gameContext)
         {
-            TextOutput = textOutput;
-            DiceRoller = diceRoller;
-            Handlers = handlers;
+            GameContext = gameContext;
         }
 
         public void AddResult<TResult>(TResult result)
@@ -89,7 +82,8 @@ namespace FDG.Stages
             AttackingUnit = attackingUnit;
             DefendingUnit = defendingUnit;
             _availableWeapons = GetTypeSortedWeapons(attackingUnit.GetMeleeWeapons());
-            MeleeCombatMetadata = new MeleeCombatMetadata(attackingUnit, defendingUnit, DiceRoller, TextOutput);
+            MeleeCombatMetadata = new MeleeCombatMetadata(attackingUnit, defendingUnit, 
+                GameContext.DiceRoller, GameContext.TextOutput);
             AttackerRemainingWoundsAtStart = attackingUnit.RemainingWounds;
             DefenderRemainingWoundsAtStart = defendingUnit.RemainingWounds;
         }
@@ -120,7 +114,8 @@ namespace FDG.Stages
 
         public void ResetMeleeCombatMetadata()
         {
-            MeleeCombatMetadata = new MeleeCombatMetadata(AttackingUnit, DefendingUnit, DiceRoller, TextOutput);
+            MeleeCombatMetadata = new MeleeCombatMetadata(AttackingUnit, DefendingUnit, 
+                GameContext.DiceRoller, GameContext.TextOutput);
         }
 
         //TODO: Repeated in Ranged version. Move to static class.

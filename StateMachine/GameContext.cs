@@ -1,13 +1,18 @@
 
 namespace FDG.Stages
 {
-    public interface ITopLevelContext : ICommonContextItems
+    public interface IGameContext : IGameContextAccessor
     {
+        public ITextOutput TextOutput { get; }
 
+        public IDiceRoller DiceRoller { get; }
+
+        public StageHandlerRegistry Handlers { get; }
     }
 
-    public class TopLevelContext : ITopLevelContext
+    public class GameContext : IGameContext
     {
+        IGameContext IGameContextAccessor.GameContext => this;
 
         public ITextOutput TextOutput { get; private set; }
 
@@ -15,7 +20,8 @@ namespace FDG.Stages
 
         public StageHandlerRegistry Handlers { get; }
 
-        public TopLevelContext(ITextOutput textOutput, IDiceRoller diceRoller,
+
+        public GameContext(ITextOutput textOutput, IDiceRoller diceRoller,
             StageHandlerRegistry handlers)
         {
             TextOutput = textOutput;

@@ -25,12 +25,12 @@ namespace FDG.Stages
 
             if (_enterCount < 3)
             {
-                Context.TextOutput.Log($"ReconcileEndOfActivationStage entrance {_enterCount}. Restarting turn.");
+                Context.Log($"ReconcileEndOfActivationStage entrance {_enterCount}. Restarting turn.");
                 SignalEvent(RECONCILE_ACTIVATION_BACK_TO_DETERMINE_PLAYER_TURN_TRANSITION);
             }
             else
             {
-                Context.TextOutput.Log("ReconcileEndOfActivationStage entrance 3. Ending round, moving to reconcile objectives.");
+                Context.Log("ReconcileEndOfActivationStage entrance 3. Ending round, moving to reconcile objectives.");
                 _enterCount = 0;
                 SignalEvent(RECONCILE_ACTIVATION_TO_RECONCILE_OBJECTIVES_TRANSITION);
             }

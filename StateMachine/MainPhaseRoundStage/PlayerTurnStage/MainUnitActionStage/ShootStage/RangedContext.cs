@@ -4,7 +4,7 @@ using System.Collections.Concurrent;
 namespace FDG.Stages
 {
 
-    public interface IRangedContext : ICommonContextItems
+    public interface IRangedContext : IGameContextAccessor
     {
         public IUnit AttackingUnit { get; }
 
@@ -27,9 +27,7 @@ namespace FDG.Stages
 
     public class RangedContext : IRangedContext
     {
-        public ITextOutput TextOutput { get; private set; }
-
-        public IDiceRoller DiceRoller { get; private set; }
+        public IGameContext GameContext { get; private set; }
 
         public IUnit AttackingUnit { get; private set; }
 
@@ -39,16 +37,12 @@ namespace FDG.Stages
 
         public IRangedCombatMetadata RangedCombatMetadata { get; private set; }
 
-        public StageHandlerRegistry Handlers { get; }
-
         private ConcurrentDictionary<IWeapon, int> _availableWeapons;
 
 
-        public RangedContext(ITextOutput textOutput, IDiceRoller diceRoller, StageHandlerRegistry handlers)
+        public RangedContext(IGameContext gameContext)
         {
-            TextOutput = textOutput;
-            DiceRoller = diceRoller;
-            Handlers = handlers;
+            GameContext = gameContext;
         }
 
         public void BeginNewAttack(IUnit attackingUnit, List<IUnit> availableTargetUnits)
@@ -56,7 +50,8 @@ namespace FDG.Stages
             AttackingUnit = attackingUnit;
             AvailableTargetUnits = availableTargetUnits;
             _availableWeapons = GetTypeSortedWeapons(attackingUnit.GetRangedWeapons());
-            RangedCombatMetadata = new RangedCombatMetadata(attackingUnit, DiceRoller, TextOutput);
+            RangedCombatMetadata = new RangedCombatMetadata(attackingUnit, GameContext.DiceRoller, 
+                GameContext.TextOutput);
         }
 
         public void ChooseWeapon(IWeapon weaponToConsume, out int weaponCount)
@@ -93,7 +88,7 @@ namespace FDG.Stages
 
         public void ResetRangedCombatMetadata()
         {
-            RangedCombatMetadata = new RangedCombatMetadata(AttackingUnit, DiceRoller, TextOutput);
+            RangedCombatMetadata = new RangedCombatMetadata(AttackingUnit, GameContext.DiceRoller, GameContext.TextOutput);
         }
 
         //TODO: Repeated in Melee version. Move to static class.

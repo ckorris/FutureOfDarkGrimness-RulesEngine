@@ -4,14 +4,14 @@ namespace FDG.Stages
     public class StateMachineBuilder
     {
         private StateMachine _stateMachine = new StateMachine();
-        private ITopLevelContext _topLevelContext;
+        private IGameContext _topLevelContext;
         private IMainPhaseContext _mainPhaseContext;
         private IPlayerTurnContext _playerTurnContext;
         private IUnitActionContext _unitActionContext;
         private IMeleeContext _meleeContext;
         private IRangedContext _rangedContext;
 
-        public StateMachineBuilder(ITopLevelContext topLevelContext, IMainPhaseContext mainPhaseContext,
+        public StateMachineBuilder(IGameContext topLevelContext, IMainPhaseContext mainPhaseContext,
             IPlayerTurnContext playerTurnContext, IUnitActionContext unitActionContext, 
             IMeleeContext meleeContext, IRangedContext rangedContext)
         {

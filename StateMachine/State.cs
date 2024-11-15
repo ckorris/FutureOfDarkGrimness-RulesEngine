@@ -24,7 +24,7 @@ namespace FDG.Stages
     }
 
     public abstract class StateBase<TContext> : StateBase, IContextAware
-        where TContext : ICommonContextItems
+        where TContext : IGameContextAccessor
     {
         /// <summary>
         /// The context associated with this state.

@@ -1,25 +1,18 @@
 
 namespace FDG.Stages
 {
-    public interface IMainPhaseContext : ICommonContextItems
+    public interface IMainPhaseContext : IGameContextAccessor
     {
 
     }
 
     public class MainPhaseContext : IMainPhaseContext
     {
-        public ITextOutput TextOutput { get; private set; }
+        public IGameContext GameContext { get; private set; }
 
-        public IDiceRoller DiceRoller { get; private set; }
-
-        public StageHandlerRegistry Handlers { get; }
-
-        public MainPhaseContext(ITextOutput textOutput, IDiceRoller diceRoller, 
-            StageHandlerRegistry handlers)
+        public MainPhaseContext(IGameContext gameContext)
         {
-            TextOutput = textOutput;
-            DiceRoller = diceRoller;
-            Handlers = handlers;
+            GameContext = gameContext;
         }
     }
 }

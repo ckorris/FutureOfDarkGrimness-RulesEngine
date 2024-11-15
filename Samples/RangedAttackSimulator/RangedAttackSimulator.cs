@@ -61,8 +61,11 @@ namespace FDG.Samples
                 .RegisterHandle<IAssignWoundsHandler>(new BasicTesterAssignWoundsHandler());
 
             _stateMachine = new StateMachine();
-            IUnitActionContext unitActionContext = new UnitActionContext(_textOutput, _diceRoller, handlers);
-            _rangedContext = new RangedContext(_textOutput, _diceRoller, handlers);
+
+            GameContext gameContext = new GameContext(_textOutput, _diceRoller, handlers);
+
+            IUnitActionContext unitActionContext = new UnitActionContext(gameContext);
+            _rangedContext = new RangedContext(gameContext);
 
             _shootStage = new ShootStage(_stateMachine, unitActionContext, _rangedContext);
             _shootStage.AssignExitStage(new EmptyEndStage(_stateMachine));

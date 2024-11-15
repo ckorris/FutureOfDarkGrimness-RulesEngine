@@ -2,7 +2,7 @@
 namespace FDG.Stages
 {
 
-    public class MainPhaseRoundStage : StateBase<ITopLevelContext>
+    public class MainPhaseRoundStage : StateBase<IGameContext>
     {
         public const string MAIN_TO_RECONCILE_VICTORY_CALCULATION = "MainToReconcileVictoryCalculation";
         
@@ -14,7 +14,7 @@ namespace FDG.Stages
 
         private ReconcileObjectivesStage _reconcileObjectivesStage;
 
-        public MainPhaseRoundStage(StateMachine stateMachine, ITopLevelContext context,
+        public MainPhaseRoundStage(StateMachine stateMachine, IGameContext context,
             IMainPhaseContext mainPhaseContext, IPlayerTurnContext playerTurnContext,
             IUnitActionContext unitActionContext, IMeleeContext meleeContext, IRangedContext rangedContext)
             : base(stateMachine, context, null)

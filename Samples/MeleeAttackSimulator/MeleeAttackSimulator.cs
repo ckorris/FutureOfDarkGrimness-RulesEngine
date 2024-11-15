@@ -66,10 +66,12 @@ namespace FDG.Samples
                 .RegisterHandle<IAssignWoundsHandler>(new BasicTesterAssignWoundsHandler())
                 .RegisterHandle<IOfferStrikeBackHandler>(_offerStrikeBackHandler);
 
-
             SingleCombatHandlers singleCombatHandlers = new SingleCombatHandlers(new BasicTesterAssignWoundsHandler());
 
-            GameContext gameContext = new GameContext(_textOutput, _diceRoller, handlers);
+            //For now, make an empty TableState. May need to be updated later.
+            TableState tableState = new TableState();
+
+            GameContext gameContext = new GameContext(_textOutput, _diceRoller, handlers, tableState);
 
             _stateMachine = new StateMachine();
             IUnitActionContext unitActionContext = new UnitActionContext(gameContext);

@@ -35,6 +35,11 @@ namespace FDG
         {
             return context.GameContext.Handlers;
         }
+
+        public static ITableState TableState(this IGameContextAccessor context)
+        {
+            return context.GameContext.TableState;
+        }
     }
 
 

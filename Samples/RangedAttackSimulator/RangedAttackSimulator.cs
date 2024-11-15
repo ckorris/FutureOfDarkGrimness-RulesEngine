@@ -62,7 +62,10 @@ namespace FDG.Samples
 
             _stateMachine = new StateMachine();
 
-            GameContext gameContext = new GameContext(_textOutput, _diceRoller, handlers);
+            //For now, make an empty TableState. May need to be updated later.
+            TableState tableState = new TableState();
+
+            GameContext gameContext = new GameContext(_textOutput, _diceRoller, handlers, tableState);
 
             IUnitActionContext unitActionContext = new UnitActionContext(gameContext);
             _rangedContext = new RangedContext(gameContext);

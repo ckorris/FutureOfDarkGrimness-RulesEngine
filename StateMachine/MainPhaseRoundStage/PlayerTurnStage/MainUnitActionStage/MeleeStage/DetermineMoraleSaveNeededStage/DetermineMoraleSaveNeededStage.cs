@@ -1,4 +1,5 @@
-﻿
+﻿using System;
+
 namespace FDG.Stages
 {
     public class DetermineMoraleSaveNeededStage : StateBase<IMeleeContext>

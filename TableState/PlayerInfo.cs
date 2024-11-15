@@ -1,4 +1,5 @@
-﻿
+﻿using System;
+
 namespace FDG
 {
     public record PlayerInfo

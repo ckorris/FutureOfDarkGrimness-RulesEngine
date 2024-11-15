@@ -1,5 +1,5 @@
 
-
+using System;
 
 public struct DiceResults : IDiceResults
 {

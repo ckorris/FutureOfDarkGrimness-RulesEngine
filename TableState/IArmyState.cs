@@ -1,4 +1,5 @@
-﻿
+﻿using System.Collections.Generic;
+
 namespace FDG
 {
     public interface IArmyState

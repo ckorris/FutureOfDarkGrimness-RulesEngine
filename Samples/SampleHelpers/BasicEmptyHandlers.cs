@@ -1,6 +1,7 @@
-﻿
-
-using FDG.Stages;
+﻿using FDG.Stages;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace FDG.Samples
 {

@@ -1,4 +1,5 @@
-﻿
+﻿using System;
+
 namespace FDG.Stages
 {
     public class RollForMoraleStage : StateBase<IMeleeContext>

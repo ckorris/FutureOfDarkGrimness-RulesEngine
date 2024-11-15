@@ -1,5 +1,6 @@
 
 using FDG.Stages;
+using System.Collections.Generic;
 
 namespace FDG.Samples
 {

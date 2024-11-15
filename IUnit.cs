@@ -140,6 +140,4 @@ namespace FDG
             OnWoundsDealt?.Invoke(new WoundsDealtEventArgs(modelWoundsDealtArgs.WoundsDealt, RemainingWounds, this.GetIsDead()));
         }
     }
-
-    
 }

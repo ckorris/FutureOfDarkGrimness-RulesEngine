@@ -18,8 +18,6 @@ namespace FDG
         public void DealWounds(float wounds);
 
         public event WoundsDealtEventHandler OnWoundsDealt;
-
-        //public event Action<WoundsDealtEventArgs> OnWoundsDealt;
     }
 
     public class Model : IModel

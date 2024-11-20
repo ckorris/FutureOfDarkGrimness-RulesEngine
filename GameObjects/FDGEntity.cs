@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace FDG
 {
-    public class Entity
+    public class FDGEntity
     {
         private Dictionary<Type, IComponent> _components = new();
 

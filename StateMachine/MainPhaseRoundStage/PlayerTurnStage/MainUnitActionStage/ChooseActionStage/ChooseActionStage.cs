@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Windows.Documents;
 
 namespace FDG.Stages
 {
@@ -8,8 +10,18 @@ namespace FDG.Stages
         public const string CHOOSE_ACTION_TO_MOVEMENT_TRANSITION =
             "ChooseActionToMovement";
 
+        public const string CHOOSE_ACTION_TO_CHARGE_TRANSITION =
+            "ChooseActionToCharge";
+
+        public const string CHOOSE_ACTION_TO_SHOOT_TRANSITION =
+            "ChooseActionToShoot";
+
         public const string CHOOSE_ACTION_TO_RECONCILE_END_OF_ACTIVATION_TRANSITION =
             "ChooseActionToReconcileEndOfActivation";
+
+        public const string MOVEMENT_CHOICE_NAME = "Move";
+        public const string CHARGE_CHOICE_NAME = "Charge";
+        public const string SHOOT_CHOICE_NAME = "Shoot";
 
         public ChooseActionStage(StateMachine stateMachine, IUnitActionContext context, StateBase parentState = null)
             : base(stateMachine, context, parentState)
@@ -23,13 +35,36 @@ namespace FDG.Stages
             Context.Log("Entered Choose Action.");
 
             //Note that in the future, this should get optional actions somehow, like spellcasting.
+            
+            bool canMove = GetCanMove(out string cantMoveReason);
+            bool canCharge = GetCanCharge(out string cantChargeReason);
+            bool canShoot = GetCanShoot(out string cantShootReason);
 
-            Context.GetHandler < IChooseActionHandler>().Handle(Context, MoveToMovement, MoveToReconcileEndOfActivation);
+            List<IChooseActionHandler.ActionChoice> actionChoices = new List<IChooseActionHandler.ActionChoice>()
+            {
+                new IChooseActionHandler.ActionChoice(MoveToMovement, MOVEMENT_CHOICE_NAME, canMove, canMove ? "" : cantMoveReason),
+                new IChooseActionHandler.ActionChoice(MoveToCharge, CHARGE_CHOICE_NAME, canCharge, canCharge ? "" : cantChargeReason),
+                new IChooseActionHandler.ActionChoice(MoveToShoot, SHOOT_CHOICE_NAME, canShoot, canShoot ? "" : cantShootReason)
+            };
+
+
+            Context.GetHandler < IChooseActionHandler>().Handle(Context, actionChoices, MoveToReconcileEndOfActivation);
         }
+
 
         private void MoveToMovement()
         {
             SignalEvent(CHOOSE_ACTION_TO_MOVEMENT_TRANSITION);
+        }
+
+        private void MoveToCharge()
+        {
+            SignalEvent(CHOOSE_ACTION_TO_CHARGE_TRANSITION);
+        }
+
+        private void MoveToShoot()
+        {
+            SignalEvent(CHOOSE_ACTION_TO_SHOOT_TRANSITION);
         }
 
         private void MoveToReconcileEndOfActivation()
@@ -37,10 +72,110 @@ namespace FDG.Stages
             SignalEvent(CHOOSE_ACTION_TO_RECONCILE_END_OF_ACTIVATION_TRANSITION);
         }
 
+        private bool GetCanMove(out string reasonIfCant)
+        {
+            if (Context.HasMoved == true)
+            {
+                reasonIfCant = $"{Context.ActivatingUnit.Name} has already moved.";
+                return false;
+            }
+
+            if (Context.HasAttacked == true)
+            {
+                reasonIfCant = $"{Context.ActivatingUnit.Name} has already attacked.";
+                return false;
+            }
+
+            bool canMoveFromUnit = Context.ActivatingUnit.GetMobility(out _, out _);
+
+            if (canMoveFromUnit == false)
+            {
+                reasonIfCant = $"{Context.ActivatingUnit.Name} is immobile.";
+
+                return false;
+            }
+
+            reasonIfCant = null;
+            return true;
+        }
+
+        private bool GetCanCharge(out string reasonIfCant)
+        {
+            if (Context.HasAttacked)
+            {
+                reasonIfCant = "Has already attacked.";
+                return false;
+            }
+
+            if (Context.ActivatingUnit.GetMeleeWeapons().Count == 0)
+            {
+                reasonIfCant = $"{Context.ActivatingUnit.Name} has no melee weapons.";
+                return false;
+            }
+
+            reasonIfCant = null;
+            return true;
+        }
+
+        private bool GetCanShoot(out string reasonIfCant)
+        {
+            //Context.HasAttacked == false && Context.MoveDistance <= moveShootDistanceInches;
+            if (Context.HasAttacked)
+            {
+                reasonIfCant = "Has already attacked.";
+                return false;
+            }
+
+            Context.ActivatingUnit.GetMobility(out float moveShootDistanceInches, out _);
+
+            if (Context.MoveDistance > moveShootDistanceInches)
+            {
+                reasonIfCant = $"Moved {Context.MoveDistance} inches, when max to move and shoot for {Context.ActivatingUnit.Name} is {moveShootDistanceInches}.";
+                return false;
+            }
+
+            if (Context.ActivatingUnit.GetRangedWeapons().Count == 0)
+            {
+                reasonIfCant = $"{Context.ActivatingUnit.Name} has no ranged weapons.";
+                return false;
+            }
+
+            reasonIfCant = null;
+            return true;
+        }
     }
 
     public interface IChooseActionHandler
     {
-        public void Handle(IUnitActionContext context, Action chooseMovement, Action pass);
+        public void Handle(IUnitActionContext context, List<ActionChoice> actionChoices, Action onPass);
+
+        public class ActionChoice
+        {
+            public readonly string ChoiceName;
+
+            public readonly bool CanActivate;
+
+            public readonly string ReasonCannotActivate;
+
+            private readonly Action _onActivated;
+
+            public ActionChoice(Action onActivated, string choiceName, bool canActivate, string reasonCannotActivate = null)
+            {
+                _onActivated = onActivated;
+                ChoiceName = choiceName;
+                CanActivate = canActivate;
+                ReasonCannotActivate = reasonCannotActivate;
+            }
+
+            public void Choose()
+            {
+                if(CanActivate == false)
+                {
+                    throw new InvalidOperationException($"Made a choice that's not available: {ChoiceName}");
+                }
+
+                _onActivated();
+            }
+        }
     }
 }

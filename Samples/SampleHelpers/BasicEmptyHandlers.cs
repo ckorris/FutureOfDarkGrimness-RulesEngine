@@ -5,14 +5,59 @@ using System.Linq;
 
 namespace FDG.Samples
 {
+    /// <summary>
+    /// Will perform only the action listed by <see cref="TestActionChoice"/>, then will pass after the first time.
+    /// </summary>
     public class BasicTesterChooseActionHandler : IChooseActionHandler
     {
-        public void Handle(IUnitActionContext context, Action chooseMovement, Action pass)
+        public ETestActionChoice TestActionChoice;
+
+        public BasicTesterChooseActionHandler(ETestActionChoice choice)
         {
-            //For tests, we choose movement, because at least for now, that's how you attack - 
-            //you choose your move and your attack at basically the same time, as how you move
-            //affects your attack options.
-            chooseMovement();
+            TestActionChoice = choice;
+        }
+
+
+
+        public void Handle(IUnitActionContext context, List<IChooseActionHandler.ActionChoice> actionChoices, Action onPass)
+        {
+            switch (TestActionChoice)
+            {
+                case ETestActionChoice.Movement:
+                    IChooseActionHandler.ActionChoice moveChoice = actionChoices.First(choice => choice.ChoiceName == ChooseActionStage.MOVEMENT_CHOICE_NAME);
+                    ActivateOrPassIfCant(context, moveChoice, onPass);
+                    break;
+                case ETestActionChoice.Melee:
+                    IChooseActionHandler.ActionChoice chargeChoice = actionChoices.First(choice => choice.ChoiceName == ChooseActionStage.CHARGE_CHOICE_NAME);
+                    ActivateOrPassIfCant(context, chargeChoice, onPass);
+                    break;
+                case ETestActionChoice.Ranged:
+                    IChooseActionHandler.ActionChoice shootChoice = actionChoices.First(choice => choice.ChoiceName == ChooseActionStage.SHOOT_CHOICE_NAME);
+                    ActivateOrPassIfCant(context, shootChoice, onPass);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+        }
+
+        private void ActivateOrPassIfCant(IUnitActionContext context, IChooseActionHandler.ActionChoice actionChoice, Action onPass)
+        {
+            if (actionChoice.CanActivate)
+            {
+                actionChoice.Choose();
+            }
+            else
+            {
+                context.Log($"Couldn't choose {actionChoice.ChoiceName}. Reason: {actionChoice.ReasonCannotActivate}. Finishing activation.");
+                onPass();
+            }
+        }
+
+        public enum ETestActionChoice
+        {
+            Movement,
+            Melee,
+            Ranged
         }
     }
 

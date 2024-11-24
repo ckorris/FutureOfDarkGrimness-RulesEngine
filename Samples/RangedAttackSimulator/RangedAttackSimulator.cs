@@ -55,7 +55,7 @@ namespace FDG.Samples
         private void CreateStateMachine()
         {
             StageHandlerRegistry handlers = new StageHandlerRegistry()
-                .RegisterHandle<IChooseActionHandler>(new BasicTesterChooseActionHandler())
+                .RegisterHandle<IChooseActionHandler>(new BasicTesterChooseActionHandler(BasicTesterChooseActionHandler.ETestActionChoice.Ranged))
                 .RegisterHandle<IMovementHandler>(new BasicTesterMovementHandler())
                 .RegisterHandle<IChooseRangedWeaponHandler>(new BasicTesterChooseWeaponHandler())
                 .RegisterHandle<IChooseRangedTargetHandler>(new BasicTesterChooseRangedTargetHandler())

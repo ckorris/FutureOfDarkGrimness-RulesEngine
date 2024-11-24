@@ -26,6 +26,10 @@ namespace FDG.Stages
             Bind(MAIN_UNIT_ACTION_TO_CHILD_CHOOSE_ACTION_TRANSITION, _chooseActionStage);
             _chooseActionStage.Bind(ChooseActionStage.CHOOSE_ACTION_TO_MOVEMENT_TRANSITION,
                 _movementStage);
+            _chooseActionStage.Bind(ChooseActionStage.CHOOSE_ACTION_TO_CHARGE_TRANSITION,
+                _meleeStage);
+            _chooseActionStage.Bind(ChooseActionStage.CHOOSE_ACTION_TO_SHOOT_TRANSITION,
+                _shootStage);
             _movementStage.Bind(MovementStage.MOVEMENT_TO_MELEE_TRANSITION, _meleeStage);
             _movementStage.Bind(MovementStage.MOVEMENT_TO_RANGED_TRANSITION, _shootStage);
         }
@@ -52,6 +56,5 @@ namespace FDG.Stages
         {
             SignalEvent(MAIN_UNIT_ACTION_TO_CHILD_CHOOSE_ACTION_TRANSITION);
         }
-
     }
 }

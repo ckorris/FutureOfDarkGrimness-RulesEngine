@@ -60,7 +60,7 @@ namespace FDG.Samples
             _offerStrikeBackHandler = new BasicTesterOfferStrikeBackHandler(false); //TEMP false.
 
             StageHandlerRegistry handlers = new StageHandlerRegistry()
-                .RegisterHandle<IChooseActionHandler>(new BasicTesterChooseActionHandler())
+                .RegisterHandle<IChooseActionHandler>(new BasicTesterChooseActionHandler(BasicTesterChooseActionHandler.ETestActionChoice.Melee))
                 .RegisterHandle<IMovementHandler>(new BasicTesterMovementHandler())
                 .RegisterHandle<IChooseMeleeWeaponHandler>(new BasicTesterChooseWeaponHandler())
                 .RegisterHandle<IAssignWoundsHandler>(new BasicTesterAssignWoundsHandler())

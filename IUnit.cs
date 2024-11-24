@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using FDG_Stride.FutureOfDarkGrimness;
 
 namespace FDG
 {
@@ -25,6 +26,8 @@ namespace FDG
         public List<IModel> Models { get; }
 
         public List<ISpecialRule_Combat> SpecialRules { get; }
+
+        public bool GetMobility(out float moveShootDistanceInches, out float chargeDistanceInches);
 
         public event WoundsDealtEventHandler OnWoundsDealt;
     }
@@ -141,5 +144,15 @@ namespace FDG
         {
             OnWoundsDealt?.Invoke(new WoundsDealtEventArgs(modelWoundsDealtArgs.WoundsDealt, RemainingWounds, this.GetIsDead()));
         }
+
+        public bool GetMobility(out float moveShootDistanceInches, out float chargeDistanceInches)
+        {
+            //TODO: Process special rules for this.
+            moveShootDistanceInches = GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES;
+            chargeDistanceInches = GameWideConstants.CHARGE_DISTANCE_INCHES;
+
+            return true;
+        }
+
     }
 }

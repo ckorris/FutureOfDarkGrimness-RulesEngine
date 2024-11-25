@@ -6,10 +6,8 @@ namespace FDG.Stages
 
     public class MovementStage : StateBase<IUnitActionContext>
     {
-        public const string MOVEMENT_TO_MELEE_TRANSITION = "MovementToMelee";
-        public const string MOVEMENT_TO_RANGED_TRANSITION = "MovementToRanged";
-        public const string MOVEMENT_TO_RECONCILE_END_OF_ACTIVATION_TRANSITION =
-                    "MovementToReconcileEndOfActivation";
+        public const string MOVEMENT_TO_CHOOSE_ACTION_TRANSITION =
+                    "MovementToChooseAction";
 
         public MovementStage(StateMachine stateMachine, IUnitActionContext context, StateBase parentState = null)
             : base(stateMachine, context, parentState)
@@ -22,28 +20,17 @@ namespace FDG.Stages
             base.Enter();
 
             Context.Log($"Chose movement action.");
-            Context.GetHandler<IMovementHandler>().Handle(Context, MoveToMelee, MoveToRanged, MoveToReconcileEndOfActivation);
-        }
-
-        private void MoveToMelee()
-        {
-            SignalEvent(MOVEMENT_TO_MELEE_TRANSITION);
-        }
-
-        private void MoveToRanged()
-        {
-            SignalEvent(MOVEMENT_TO_RANGED_TRANSITION);
+            Context.GetHandler<IMovementHandler>().Handle(Context, MoveToReconcileEndOfActivation);
         }
 
         private void MoveToReconcileEndOfActivation()
         {
-            SignalEvent(MOVEMENT_TO_RECONCILE_END_OF_ACTIVATION_TRANSITION);
+            SignalEvent(MOVEMENT_TO_CHOOSE_ACTION_TRANSITION);
         }
     }
 
     public interface IMovementHandler
     {
-        public void Handle(IUnitActionContext actionContext, Action onChooseMelee, Action onChooseRanged,
-            Action onChooseNonCombat);
+        public void Handle(IUnitActionContext actionContext, Action finishedTemp);
     }
 }

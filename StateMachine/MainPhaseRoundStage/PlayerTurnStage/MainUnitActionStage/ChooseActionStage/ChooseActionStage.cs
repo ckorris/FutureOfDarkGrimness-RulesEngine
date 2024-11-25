@@ -39,12 +39,21 @@ namespace FDG.Stages
             bool canMove = GetCanMove(out string cantMoveReason);
             bool canCharge = GetCanCharge(out string cantChargeReason);
             bool canShoot = GetCanShoot(out string cantShootReason);
+            bool hasCustomActionsAvailable = false; //TODO: Implement.
 
-            List<IChooseActionHandler.ActionChoice> actionChoices = new List<IChooseActionHandler.ActionChoice>()
+            //If we have no available actions 
+            if((canMove || canCharge || canShoot || hasCustomActionsAvailable) == false)
             {
-                new IChooseActionHandler.ActionChoice(MoveToMovement, MOVEMENT_CHOICE_NAME, canMove, canMove ? "" : cantMoveReason),
-                new IChooseActionHandler.ActionChoice(MoveToCharge, CHARGE_CHOICE_NAME, canCharge, canCharge ? "" : cantChargeReason),
-                new IChooseActionHandler.ActionChoice(MoveToShoot, SHOOT_CHOICE_NAME, canShoot, canShoot ? "" : cantShootReason)
+                Context.Log($"No more available actions left in {nameof(ChooseActionStage)}. Passing.");
+                MoveToReconcileEndOfActivation();
+                return;
+            }
+
+            List<ActionChoice> actionChoices = new List<ActionChoice>()
+            {
+                new ActionChoice(MoveToMovement, MOVEMENT_CHOICE_NAME, canMove, canMove ? "" : cantMoveReason),
+                new ActionChoice(MoveToCharge, CHARGE_CHOICE_NAME, canCharge, canCharge ? "" : cantChargeReason),
+                new ActionChoice(MoveToShoot, SHOOT_CHOICE_NAME, canShoot, canShoot ? "" : cantShootReason)
             };
 
 
@@ -119,7 +128,6 @@ namespace FDG.Stages
 
         private bool GetCanShoot(out string reasonIfCant)
         {
-            //Context.HasAttacked == false && Context.MoveDistance <= moveShootDistanceInches;
             if (Context.HasAttacked)
             {
                 reasonIfCant = "Has already attacked.";
@@ -148,34 +156,5 @@ namespace FDG.Stages
     public interface IChooseActionHandler
     {
         public void Handle(IUnitActionContext context, List<ActionChoice> actionChoices, Action onPass);
-
-        public class ActionChoice
-        {
-            public readonly string ChoiceName;
-
-            public readonly bool CanActivate;
-
-            public readonly string ReasonCannotActivate;
-
-            private readonly Action _onActivated;
-
-            public ActionChoice(Action onActivated, string choiceName, bool canActivate, string reasonCannotActivate = null)
-            {
-                _onActivated = onActivated;
-                ChoiceName = choiceName;
-                CanActivate = canActivate;
-                ReasonCannotActivate = reasonCannotActivate;
-            }
-
-            public void Choose()
-            {
-                if(CanActivate == false)
-                {
-                    throw new InvalidOperationException($"Made a choice that's not available: {ChoiceName}");
-                }
-
-                _onActivated();
-            }
-        }
     }
 }

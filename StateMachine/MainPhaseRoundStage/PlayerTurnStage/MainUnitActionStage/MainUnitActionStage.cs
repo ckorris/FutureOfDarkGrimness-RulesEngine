@@ -30,18 +30,17 @@ namespace FDG.Stages
                 _meleeStage);
             _chooseActionStage.Bind(ChooseActionStage.CHOOSE_ACTION_TO_SHOOT_TRANSITION,
                 _shootStage);
-            _movementStage.Bind(MovementStage.MOVEMENT_TO_MELEE_TRANSITION, _meleeStage);
-            _movementStage.Bind(MovementStage.MOVEMENT_TO_RANGED_TRANSITION, _shootStage);
+
+            _movementStage.Bind(MovementStage.MOVEMENT_TO_CHOOSE_ACTION_TRANSITION,
+                _chooseActionStage);
+            _meleeStage.AssignExitStage(_chooseActionStage);
+            _shootStage.AssignExitStage(_chooseActionStage);
         }
 
         public void AssignExitStage(StateBase nextStage)
         {
             _chooseActionStage.Bind(ChooseActionStage.CHOOSE_ACTION_TO_RECONCILE_END_OF_ACTIVATION_TRANSITION,
                 nextStage);
-            _movementStage.Bind(MovementStage.MOVEMENT_TO_RECONCILE_END_OF_ACTIVATION_TRANSITION,
-                nextStage);
-            _meleeStage.AssignExitStage(nextStage);
-            _shootStage.AssignExitStage(nextStage);
         }
 
         public override void Enter()

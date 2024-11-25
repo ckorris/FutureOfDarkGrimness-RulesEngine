@@ -17,22 +17,20 @@ namespace FDG.Samples
             TestActionChoice = choice;
         }
 
-
-
-        public void Handle(IUnitActionContext context, List<IChooseActionHandler.ActionChoice> actionChoices, Action onPass)
+        public void Handle(IUnitActionContext context, List<ActionChoice> actionChoices, Action onPass)
         {
             switch (TestActionChoice)
             {
                 case ETestActionChoice.Movement:
-                    IChooseActionHandler.ActionChoice moveChoice = actionChoices.First(choice => choice.ChoiceName == ChooseActionStage.MOVEMENT_CHOICE_NAME);
+                    ActionChoice moveChoice = actionChoices.First(choice => choice.ChoiceName == ChooseActionStage.MOVEMENT_CHOICE_NAME);
                     ActivateOrPassIfCant(context, moveChoice, onPass);
                     break;
                 case ETestActionChoice.Melee:
-                    IChooseActionHandler.ActionChoice chargeChoice = actionChoices.First(choice => choice.ChoiceName == ChooseActionStage.CHARGE_CHOICE_NAME);
+                    ActionChoice chargeChoice = actionChoices.First(choice => choice.ChoiceName == ChooseActionStage.CHARGE_CHOICE_NAME);
                     ActivateOrPassIfCant(context, chargeChoice, onPass);
                     break;
                 case ETestActionChoice.Ranged:
-                    IChooseActionHandler.ActionChoice shootChoice = actionChoices.First(choice => choice.ChoiceName == ChooseActionStage.SHOOT_CHOICE_NAME);
+                    ActionChoice shootChoice = actionChoices.First(choice => choice.ChoiceName == ChooseActionStage.SHOOT_CHOICE_NAME);
                     ActivateOrPassIfCant(context, shootChoice, onPass);
                     break;
                 default:
@@ -40,7 +38,7 @@ namespace FDG.Samples
             }
         }
 
-        private void ActivateOrPassIfCant(IUnitActionContext context, IChooseActionHandler.ActionChoice actionChoice, Action onPass)
+        private void ActivateOrPassIfCant(IUnitActionContext context, ActionChoice actionChoice, Action onPass)
         {
             if (actionChoice.CanActivate)
             {
@@ -60,12 +58,13 @@ namespace FDG.Samples
             Ranged
         }
     }
+    
 
     public class BasicTesterMovementHandler : IMovementHandler
     {
-        public void Handle(IUnitActionContext actionContext, Action onChooseMelee, Action onChooseRanged, Action onChooseNonCombat)
+        public void Handle(IUnitActionContext actionContext, Action finishedTemp)
         {
-            onChooseRanged();
+            finishedTemp();
         }
     }
 

@@ -118,7 +118,7 @@ namespace FDG.Stages
 
             if (Context.ActivatingUnit.GetMeleeWeapons().Count == 0)
             {
-                reasonIfCant = $"{Context.ActivatingUnit.Name} has no melee weapons.";
+                reasonIfCant = $"{Context.ActivatingUnit.Name} unit has no melee weapons.";
                 return false;
             }
 

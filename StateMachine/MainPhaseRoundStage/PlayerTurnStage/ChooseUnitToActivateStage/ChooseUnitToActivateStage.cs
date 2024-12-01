@@ -5,7 +5,8 @@ namespace FDG.Stages
     public class ChooseUnitToActivateStage : StageBase<IPlayerTurnContext>
     {
         public StageBinding ToMainUnitAction;
-        public ChooseUnitToActivateStage(IGameContext gameContext, IStateMachineLayer<IPlayerTurnContext> parent) : base(gameContext, parent)
+        public ChooseUnitToActivateStage(IGameContext gameContext, IStateMachineLayer<IPlayerTurnContext> parent) 
+            : base(gameContext, parent)
         {
             ToMainUnitAction = new StageBinding(this);
         }

@@ -41,7 +41,7 @@ namespace FDG.Stages
 
             public void Activate(TContext context)
             {
-                if(_eventName != null)
+                if(_eventName == null)
                 {
                     throw new ArgumentNullException($"{nameof(StageBinding)} was not bound before calling {nameof(Activate)}.");
                 }

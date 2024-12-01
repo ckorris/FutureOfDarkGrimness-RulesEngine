@@ -51,10 +51,9 @@ namespace FDG.Samples
         {
             _offerStrikeBackHandler.StrikeBack = defenderStrikesBack;
             _meleeContext.BeginNewAttack(attackingUnit, defendingUnit);
-            //_stateMachine.Start(_meleeStage);
+            _unitActionContext.Reset(attackingUnit);
             _meleeStage.Enter(_unitActionContext);
         }
-
 
 
         private void CreateStateMachine()

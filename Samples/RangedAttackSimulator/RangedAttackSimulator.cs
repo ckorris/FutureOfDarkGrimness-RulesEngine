@@ -49,7 +49,7 @@ namespace FDG.Samples
         public void SimulateRangedAttack(IUnit attackingUnit, IUnit defendingUnit)
         {
             _rangedContext.BeginNewAttack(attackingUnit, new List<IUnit>() { defendingUnit });
-            //_stateMachine.Start(_shootStage);
+            _unitActionContext.Reset(attackingUnit);
             _shootStage.Enter(_unitActionContext);
         }
 

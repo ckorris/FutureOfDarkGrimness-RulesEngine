@@ -58,7 +58,9 @@ namespace FDG.Stages
 
         protected override IUnitActionContext GetNewChildContext(IPlayerTurnContext contextSelf)
         {
-            return new UnitActionContext(GameContext);
+            UnitActionContext unitActionContext = new UnitActionContext(GameContext);
+            unitActionContext.Reset(contextSelf.ActivatedUnit);
+            return unitActionContext;
         }
 
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IUnitActionContext> startingChild)

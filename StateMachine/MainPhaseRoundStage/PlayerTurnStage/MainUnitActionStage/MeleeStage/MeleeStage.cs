@@ -5,12 +5,14 @@ namespace FDG.Stages
 {
     public class MeleeStage : ParentStage<IUnitActionContext, IMeleeContext>
     {
-        private const string MELEE_TO_CHILD_ENTRANCE_TRANSITION = "MeleeToChildEntranceAttack";
+        public StageBinding OnFinishedMelee;
 
-        private readonly StateMachine _stateMachine;
+        public MeleeStage(IGameContext gameContext, IStateMachineLayer<IUnitActionContext> parent) : base(gameContext, parent)
+        {
+            OnFinishedMelee = new StageBinding(this);
+        }
 
-        ApplyFatigueStage _applyFatigueStage;
-
+        /*
         public MeleeStage(StateMachine stateMachine, IUnitActionContext context, IMeleeContext meleeContext,
             StageBase parentState = null)
             : base(stateMachine, context, parentState)
@@ -87,39 +89,65 @@ namespace FDG.Stages
 
             //Apply fatigue leaving has to be assigned from the outside, as it leaves this stage.
         }
+        */
 
-        public void AssignExitStage(StageBase targetStageWhenFinished)
+        public override void Enter(IUnitActionContext context)
         {
-            _applyFatigueStage.Bind(ApplyFatigueStage.APPLY_FATIGUE_FINISHED_TRANSITION,
-                targetStageWhenFinished);
+            GameContext.Log($"Melee stage entered.");
+
+            base.Enter(context);
         }
 
-        public override void Enter()
+        protected override IMeleeContext GetNewChildContext(IUnitActionContext contextSelf)
         {
-            base.Enter();
+            MeleeContext meleeContext = new MeleeContext(GameContext);
+            //meleeContext.BeginNewAttack(contextSelf.ActivatingUnit, contextSelf.) //TODO: Ah?
 
-            GameContext.Log($"Melee stage entering child.");
-            MoveToChargingUnitAttack();
+            return meleeContext;
         }
 
-        protected override IMeleeContext GetNewChildContext()
+        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IMeleeContext> startingChild)
         {
-            throw new System.NotImplementedException();
-        }
+            Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
+                .AddChild(new PileInStage(GameContext, this), out var pileIn)
+                .AddChild(new DetermineInRangeAttackersStage(GameContext, this), out var determineInRangeAttackers)
+                .AddChild(new DetermineInRangeDefendersStage(GameContext, this), out var determineInRangeDefenders)
+                .AddChild(new ChooseMeleeWeaponStage(GameContext, this), out var chooseMeleeWeapon)
+                .AddChild(new SwingMeleeWeaponStage(GameContext, this), out var swingMeleeWeaponStage)
+                .AddChild(new DetermineCanKeepSwingingStage(GameContext, this), out var determineCanKeepSwinging)
+                .AddChild(new OfferStrikeBackStage(GameContext, this), out var offerStrikeBack)
+                .AddChild(new StrikeBackStage(GameContext, this), out var strikeBack)
+                .AddChild(new DetermineMeleeWinnerStage(GameContext, this), out var determineMeleeWinner)
+                .AddChild(new DetermineMoraleSaveNeededStage(GameContext, this), out var determineMoraleSaveNeeded)
+                .AddChild(new RollForMoraleStage(GameContext, this), out var rollForMorale)
+                .AddChild(new AssignMeleeMoralePenaltyStage(GameContext, this), out var assignMeleeMoralePenalty)
+                .AddChild(new ApplyFatigueStage(GameContext, this), out var applyFatigueStage)
+                .AddSibling(nameof(OnFinishedMelee), OnFinishedMelee, out string meleeFinishedEvent)
+                .Build();
 
-        protected override string GetStartingChildName()
-        {
-            throw new System.NotImplementedException();
-        }
+            startingChild = pileIn;
 
-        protected override Dictionary<string, StageBase<IMeleeContext>> PopulateChildren()
-        {
-            throw new System.NotImplementedException();
-        }
+            pileIn.OnPiledIn.Bind(determineInRangeAttackers);
+            determineInRangeAttackers.ToDetermineDefenders.Bind(determineInRangeDefenders);
+            determineInRangeDefenders.ToChooseMeleeWeapons.Bind(chooseMeleeWeapon);
+            chooseMeleeWeapon.OnChosen.Bind(swingMeleeWeaponStage);
+            swingMeleeWeaponStage.FinishedSwinging.Bind(determineCanKeepSwinging);
+            determineCanKeepSwinging.ReturnToChooseWeapon.Bind(chooseMeleeWeapon);
+            determineCanKeepSwinging.OnOutOfWeapons.Bind(offerStrikeBack);
+            determineCanKeepSwinging.OnDefenderKilled.Bind(applyFatigueStage);
+            offerStrikeBack.OnOfferAccepted.Bind(strikeBack);
+            offerStrikeBack.OnOfferRejected.Bind(determineMeleeWinner);
+            strikeBack.FinishedStrikingBack.Bind(determineMeleeWinner);
+            strikeBack.OnAttackerKilled.Bind(applyFatigueStage);
+            determineMeleeWinner.OnNeedsRollToDecide.Bind(determineMoraleSaveNeeded);
+            determineMeleeWinner.OnDoesntNeedRollToDecide.Bind(applyFatigueStage);
+            determineMoraleSaveNeeded.ToRollForMorale.Bind(rollForMorale);
+            rollForMorale.OnMoralePassed.Bind(applyFatigueStage);
+            rollForMorale.OnMoraleFailed.Bind(assignMeleeMoralePenalty);
+            assignMeleeMoralePenalty.OnAssignedPenalty.Bind(applyFatigueStage);
+            applyFatigueStage.OnFatigueApplied.Bind(meleeFinishedEvent);
 
-        private void MoveToChargingUnitAttack()
-        {
-            SignalEvent(MELEE_TO_CHILD_ENTRANCE_TRANSITION);
+            return dictionary;
         }
     }
 }

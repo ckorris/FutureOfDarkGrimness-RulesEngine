@@ -3,6 +3,7 @@ using System.Collections.Generic;
 
 namespace FDG.Stages
 {
+    /*
     public class StateMachine
     {
         private Stack<StageBase> _stateStack = new Stack<StageBase>();
@@ -73,5 +74,5 @@ namespace FDG.Stages
 
         public StageBase CurrentState => _stateStack.Count > 0 ? _stateStack.Peek() : null;
     }
-
+    */
 }

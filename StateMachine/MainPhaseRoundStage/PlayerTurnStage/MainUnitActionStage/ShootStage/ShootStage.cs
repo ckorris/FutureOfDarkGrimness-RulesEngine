@@ -1,15 +1,21 @@
 
+using System.Collections.Generic;
+
 namespace FDG.Stages
 {
 
-    public class ShootStage : StageBase<IUnitActionContext>
+    public class ShootStage : ParentStage<IUnitActionContext, IRangedContext>
     {
         public const string SHOOT_TO_CHILD_CHOOSE_RANGED_WEAPON_TRANSITION = "ShootToChildChooseRangedWeapon";
 
-        private readonly StateMachine _stateMachine;
+        public StageBinding OnFinishedShooting;
 
-        private readonly ResolveRangedMoraleStage _resolveRangedMoraleStage;
+        public ShootStage(IGameContext gameContext, IStateMachineLayer<IUnitActionContext> parent) : base(gameContext, parent)
+        {
+            OnFinishedShooting = new StageBinding(this);
+        }
 
+        /*
         public ShootStage(StateMachine stateMachine, IUnitActionContext context, IRangedContext rangedContext,
             StageBase parentState = null)
             : base(stateMachine, context, parentState)
@@ -32,27 +38,41 @@ namespace FDG.Stages
             determineCanKeepShootingStage.BindReturnToChooseWeapon(chooseRangedWeaponStage);
             determineCanKeepShootingStage.BindFinishShooting(_resolveRangedMoraleStage);
         }
+        */
 
-        public void AssignExitStage(StageBase targetStageWhenFinished)
+        public override void Enter(IUnitActionContext context)
         {
-            _resolveRangedMoraleStage.Bind(ResolveRangedMoraleStage.RESOLVE_RANGED_MORALE_FINISHED_TRANSITION,
-                targetStageWhenFinished);
+            GameContext.Log($"Shoot stage entered.");
+
+            base.Enter(context);
         }
 
-        public override void Enter()
+        protected override IRangedContext GetNewChildContext(IUnitActionContext contextSelf)
         {
-            base.Enter();
-
-            GameContext.Log($"Shoot stage entering child: Choose Ranged Target.");
-
-            //TODO: Reset metadata?
-
-            MoveToChildChooseRangedWeapon();
+            return new RangedContext(GameContext);
         }
 
-        private void MoveToChildChooseRangedWeapon()
+        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IRangedContext> startingChild)
         {
-            SignalEvent(SHOOT_TO_CHILD_CHOOSE_RANGED_WEAPON_TRANSITION);
+            Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
+                .AddChild(new ChooseRangedWeaponStage(GameContext, this), out var chooseRangedWeapon)
+                .AddChild(new ChooseRangedTargetStage(GameContext, this), out var chooseRangedTarget)
+                .AddChild(new FireStage(GameContext, this), out var fire)
+                .AddChild(new ResolveRangedMoraleStage(GameContext, this), out var resolveRangedMorale)
+                .AddChild(new DetermineCanKeepShootingStage(GameContext, this), out var determineCanKeepShooting)
+                .AddSibling(nameof(OnFinishedShooting), OnFinishedShooting, out string onFinishedShootingEvent)
+                .Build();
+
+            startingChild = chooseRangedWeapon;
+
+            chooseRangedWeapon.ToChooseRangedTarget.Bind(chooseRangedTarget);
+            chooseRangedTarget.ToFire.Bind(fire);
+            fire.OnFinishedFiring.Bind(resolveRangedMorale);
+            resolveRangedMorale.ToFinished.Bind(determineCanKeepShooting);
+            determineCanKeepShooting.ReturnToChooseWeapon.Bind(chooseRangedWeapon);
+            determineCanKeepShooting.ToFinishShooting.Bind(onFinishedShootingEvent);
+
+            return dictionary;
         }
     }
 }

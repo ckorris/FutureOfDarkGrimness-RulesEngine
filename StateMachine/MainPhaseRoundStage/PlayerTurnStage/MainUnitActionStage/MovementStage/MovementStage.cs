@@ -6,10 +6,10 @@ namespace FDG.Stages
 
     public class MovementStage : StageBase<IUnitActionContext>
     {
-        public StageBinding ToChooseAction;
+        public StageBinding OnFinishedMovement;
         public MovementStage(IGameContext gameContext, IStateMachineLayer<IUnitActionContext> parent) : base(gameContext, parent)
         {
-            ToChooseAction = new StageBinding(this);
+            OnFinishedMovement = new StageBinding(this);
         }
 
         public override void Enter(IUnitActionContext context)
@@ -22,7 +22,7 @@ namespace FDG.Stages
         {
             //TEMP distance is just for testing.
             context.RegisterMoveFinished(distance);
-            ToChooseAction.Activate(context);
+            OnFinishedMovement.Activate(context);
         }
     }
 

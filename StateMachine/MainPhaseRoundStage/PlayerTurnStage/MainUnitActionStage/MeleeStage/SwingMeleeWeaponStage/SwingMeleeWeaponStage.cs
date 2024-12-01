@@ -1,14 +1,21 @@
 ﻿
+using System.Collections.Generic;
+
 namespace FDG.Stages
 {
-    public class SwingMeleeWeaponStage : StageBase<IMeleeContext>
+    public class SwingMeleeWeaponStage : ParentStage<IMeleeContext, ISingleAttackContext<IMeleeCombatMetadata>>
     {
         private const string SWING_TO_CHILD_ENTRANCE_TRANSITION = "SwingToChildEntrance";
 
-        private readonly StateMachine _stateMachine;
         private readonly SingleMeleeAttackContext _attackContext;
-        private readonly ApplyWoundsStage _applyWoundsStage;
 
+        public StageBinding FinishedSwinging;
+        public SwingMeleeWeaponStage(IGameContext gameContext, IStateMachineLayer<IMeleeContext> parent) : base(gameContext, parent)
+        {
+            FinishedSwinging = new StageBinding(this);
+        }
+
+        /*
         public SwingMeleeWeaponStage(StateMachine stateMachine, IMeleeContext context, StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
@@ -28,27 +35,45 @@ namespace FDG.Stages
             //Set up transition to child stage.
             Bind(SWING_TO_CHILD_ENTRANCE_TRANSITION, buildTargetListStage);
         }
+        */
 
-        public void AssignExitStage(StageBase targetStageWhenFinished)
+        public override void Enter(IMeleeContext context)
         {
-            _applyWoundsStage.BindNextStage(targetStageWhenFinished);
-        }
-
-        public override void Enter()
-        {
-            base.Enter();
-
             GameContext.Log("Swinging.");
 
-            //Reset context objects.
-            _attackContext.SetCombatMetadata(GameContext.MeleeCombatMetadata);
-
-            MoveToChildBuildTargetListStage();
+            base.Enter(context);
         }
 
-        private void MoveToChildBuildTargetListStage()
+        protected override ISingleAttackContext<IMeleeCombatMetadata> GetNewChildContext(IMeleeContext contextSelf)
         {
-            SignalEvent(SWING_TO_CHILD_ENTRANCE_TRANSITION);
+            return new SingleMeleeAttackContext(GameContext);
         }
+
+        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<ISingleAttackContext<IMeleeCombatMetadata>> startingChild)
+        {
+            Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
+                .AddChild(new BuildTargetListStage<IMeleeCombatMetadata>(GameContext, this), out var buildTargetList)
+                .AddChild(new DetermineHitRollNeededStage<IMeleeCombatMetadata>(GameContext, this), out var determineHitRollNeeded)
+                .AddChild(new RollToHitStage<IMeleeCombatMetadata>(GameContext, this), out var rollToHit)
+                .AddChild(new DetermineSaveRollsNeededStage<IMeleeCombatMetadata>(GameContext, this), out var determineSaveRollsNeeded)
+                .AddChild(new RollToSaveStage<IMeleeCombatMetadata>(GameContext, this), out var rollToSave)
+                .AddChild(new AssignWoundsStage<IMeleeCombatMetadata>(GameContext, this), out var assignWounds)
+                .AddChild(new ApplyWoundsStage<IMeleeCombatMetadata>(GameContext, this), out var applyWounds)
+                .AddSibling(nameof(FinishedSwinging), FinishedSwinging, out string finishedSwingingEvent)
+                .Build();
+
+            startingChild = buildTargetList;
+
+            buildTargetList.BindNextStage(determineHitRollNeeded)
+                .BindNextStage(rollToHit)
+                .BindNextStage(determineSaveRollsNeeded)
+                .BindNextStage(rollToSave)
+                .BindNextStage(assignWounds)
+                .BindNextStage(applyWounds)
+                .BindToEvent(finishedSwingingEvent);
+
+            return dictionary;
+        }
+
     }
 }

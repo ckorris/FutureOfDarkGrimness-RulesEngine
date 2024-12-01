@@ -1,18 +1,15 @@
 
+using System.Collections.Generic;
+
 namespace FDG.Stages
 {
 
-    public class StrikeBackStage : StageBase<IMeleeContext>
+    public class StrikeBackStage : ParentStage<IMeleeContext, IMeleeContext>
     {
-        private const string STRIKE_BACK_TO_CHILD_ENTRANCE_TRANSITION =
-            "StrikeBackToChildEntrance";
+        public StageBinding FinishedStrikingBack;
+        public StageBinding OnAttackerKilled;
 
-        private readonly StateMachine _stateMachine;
-
-        private DetermineCanKeepSwingingStage _determineCanKeepSwingingStage;
-
-        private IMeleeContext _reversedContext;
-
+        /*
         public StrikeBackStage(StateMachine stateMachine, IMeleeContext context, StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
@@ -37,29 +34,40 @@ namespace FDG.Stages
 
             _determineCanKeepSwingingStage.BindReturnToChooseWeapon(chooseMeleeWeaponStage);
         }
+        */
 
-        public void AssignNormalExitStage(StageBase targetStageWhenFinished)
+        public StrikeBackStage(IGameContext gameContext, IStateMachineLayer<IMeleeContext> parent) : base(gameContext, parent)
         {
-            _determineCanKeepSwingingStage.BindOutOfWeapons(targetStageWhenFinished);
+            FinishedStrikingBack = new StageBinding(this);
+            OnAttackerKilled = new StageBinding(this);
         }
 
-        public void AssignAttackerKilledExitStage(StageBase targetStageWhenAttackerKilled)
+        protected override IMeleeContext GetNewChildContext(IMeleeContext contextSelf)
         {
-            _determineCanKeepSwingingStage.BindDefenderKilled(targetStageWhenAttackerKilled);
+            MeleeContext meleeContext = new MeleeContext(GameContext);
+            meleeContext.BeginNewAttack(contextSelf.DefendingUnit, contextSelf.AttackingUnit); //Purposefully reversed.
+            return meleeContext;
         }
 
-        public override void Enter()
+        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IMeleeContext> startingChild)
         {
-            base.Enter();
+            Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
+                .AddChild(new ChooseMeleeWeaponStage(GameContext, this), out var chooseMeleeWeapon)
+                .AddChild(new SwingMeleeWeaponStage(GameContext, this), out var swingMeleeWeapon)
+                .AddChild(new DetermineCanKeepSwingingStage(GameContext, this), out var determineCanKeepSwinging)
+                .AddSibling(nameof(FinishedStrikingBack), FinishedStrikingBack, out string finishedStrikingBackEvent)
+                .AddSibling(nameof(OnAttackerKilled), OnAttackerKilled, out string onAttackerKilledEvent)
+                .Build();
 
-            _reversedContext.BeginNewAttack(GameContext.DefendingUnit, GameContext.AttackingUnit); //Purposefully reversed.
+            startingChild = chooseMeleeWeapon;
 
-            MoveToChildStage();
-        }
+            chooseMeleeWeapon.OnChosen.Bind(swingMeleeWeapon);
+            swingMeleeWeapon.FinishedSwinging.Bind(determineCanKeepSwinging);
+            determineCanKeepSwinging.ReturnToChooseWeapon.Bind(chooseMeleeWeapon);
+            determineCanKeepSwinging.OnOutOfWeapons.Bind(finishedStrikingBackEvent);
+            determineCanKeepSwinging.OnDefenderKilled.Bind(onAttackerKilledEvent);
 
-        private void MoveToChildStage()
-        {
-            SignalEvent(STRIKE_BACK_TO_CHILD_ENTRANCE_TRANSITION);
+            return dictionary;
         }
     }
 }

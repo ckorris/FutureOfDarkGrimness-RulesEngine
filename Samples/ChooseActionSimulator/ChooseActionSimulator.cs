@@ -1,4 +1,5 @@
 ﻿using FDG.Stages;
+using Stride.Engine;
 
 namespace FDG.Samples
 {
@@ -7,10 +8,11 @@ namespace FDG.Samples
         private ITextOutput _textOutput;
         private IDiceRoller _diceRoller;
 
-        private StateMachine _stateMachine;
+        //private StateMachine _stateMachine;
 
         private MainUnitActionStage _mainUnitActionStage;
 
+        private IPlayerTurnContext _playerTurnContext;
         private IUnitActionContext _unitActionContext;
 
         public ChooseActionSimulator(IChooseActionHandler actionHandler, IMovementHandler moveHandler,
@@ -52,7 +54,8 @@ namespace FDG.Samples
         public void SimulateAction(IUnit activatedUnit)
         {
             _unitActionContext.Reset(activatedUnit);
-            _stateMachine.Start(_mainUnitActionStage);
+            //_stateMachine.Start(_mainUnitActionStage);
+            _mainUnitActionStage.Enter(_playerTurnContext);
         }
 
         private void CreateStateMachine(IChooseActionHandler chooseActionHandler, IMovementHandler movementHandler)
@@ -70,20 +73,25 @@ namespace FDG.Samples
                 //Both.
                 .RegisterHandle<IAssignWoundsHandler>(new BasicTesterAssignWoundsHandler());
 
-            _stateMachine = new StateMachine();
+            //_stateMachine = new StateMachine();
+
+            
 
             //For now, make an empty TableState. May need to be updated later.
             TableState tableState = new TableState();
             GameContext gameContext = new GameContext(_textOutput, _diceRoller, handlers, tableState);
-            IPlayerTurnContext playerTurnContext = new PlayerTurnContext(gameContext);
+            _playerTurnContext = new PlayerTurnContext(gameContext);
             _unitActionContext = new UnitActionContext(gameContext);
             IMeleeContext meleeContext = new MeleeContext(gameContext);
             IRangedContext rangedContext = new RangedContext(gameContext);
 
-            _mainUnitActionStage = new MainUnitActionStage(_stateMachine, playerTurnContext, _unitActionContext,
-                meleeContext, rangedContext);
 
-            _mainUnitActionStage.AssignExitStage(new EmptyEndStage(_stateMachine));
+            //_mainUnitActionStage = new MainUnitActionStage(_stateMachine, playerTurnContext, _unitActionContext,
+            //    meleeContext, rangedContext);
+            _mainUnitActionStage = new MainUnitActionStage(gameContext, null);
+
+            //TestParentStage <IPlayerTurnContext> testParentStage = new TestParentStage<IPlayerTurnContext>(gameContext, _mainUnitActionStage,
+            //    playerTurnContext, _mainUnitActionStage.ToReconcileEndOfActivation);
         }
 
     }

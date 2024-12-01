@@ -1,19 +1,25 @@
 
+using System.Collections.Generic;
+
 namespace FDG.Stages
 {
 
-    public class MainPhaseRoundStage : StageBase<IGameContext>
+    public class MainPhaseRoundStage : ParentStage<IGameContext, IMainPhaseContext>
     {
         public const string MAIN_TO_RECONCILE_VICTORY_CALCULATION = "MainToReconcileVictoryCalculation";
         
-        private  const string MAIN_TO_RECONCILE_NEW_TURN_STAGE = "MainToReconcileNewTurn";
+        private const string MAIN_TO_RECONCILE_NEW_TURN_STAGE = "MainToReconcileNewTurn";
 
-        private IMainPhaseContext _mainPhaseContext;
+        public StageBinding ToReconcileNewTurn;
+        public StageBinding ToVictoryCalculation;
 
-        private readonly StateMachine _stateMachine;
+        public MainPhaseRoundStage(IGameContext gameContext, IStateMachineLayer<IGameContext> parent) : base(gameContext, parent)
+        {
+            ToReconcileNewTurn = new StageBinding(this);
+            ToVictoryCalculation = new StageBinding(this);
+        }
 
-        private ReconcileObjectivesStage _reconcileObjectivesStage;
-
+        /*
         public MainPhaseRoundStage(StateMachine stateMachine, IGameContext context,
             IMainPhaseContext mainPhaseContext, IPlayerTurnContext playerTurnContext,
             IUnitActionContext unitActionContext, IMeleeContext meleeContext, IRangedContext rangedContext)
@@ -47,28 +53,42 @@ namespace FDG.Stages
             //stateMachine.AddTransition<ReconcileEndOfActivationStage>(ReconcileEndOfActivationStage.RECONCILE_ACTIVATION_TO_RECONCILE_OBJECTIVES_TRANSITION,
             //    reconcileObjectivesStage);
         }
+        */
 
-        public void AssignExitStage(StageBase targetStageWhenFinished)
+        public override void Enter(IGameContext context)
         {
-            _reconcileObjectivesStage.Bind(ReconcileObjectivesStage.RECONCILE_OBJECTIVES_TO_VICTORY_CALCULATION_TRANSITION,
-                targetStageWhenFinished);
-        }
-
-        public override void Enter()
-        {
-            base.Enter();
-
             GameContext.TextOutput.Log($"Main Phase stage entering child: Reconcile New Turn.");
-            MoveToReconcileNewTurn();
+
+            base.Enter(context);
         }
 
-        private void MoveToReconcileVictoryCalculation()
+        protected override IMainPhaseContext GetNewChildContext(IGameContext contextSelf)
         {
-            SignalEvent(MAIN_TO_RECONCILE_VICTORY_CALCULATION);
+            return new MainPhaseContext(GameContext);
         }
-        private void MoveToReconcileNewTurn()
+
+        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IMainPhaseContext> startingChild)
         {
-            SignalEvent(MAIN_TO_RECONCILE_NEW_TURN_STAGE);
+            Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
+                .AddChild(new ReconcileNewTurnStage(GameContext, this), out var reconcileNewTurn)
+                .AddChild(new StartOfTurnExtraActionStage(GameContext, this), out var startOfTurnExtraActions)
+                .AddChild(new DetermineFirstPlayerTurnStage(GameContext, this), out var determineFirstPlayerTurn)
+                .AddChild(new PlayerTurnStage(GameContext, this), out var playerTurn)
+                .AddChild(new ReconcileObjectivesStage(GameContext, this), out var reconcileObjectives)
+                .AddSibling(nameof(ToReconcileNewTurn), ToReconcileNewTurn, out string reconcileNewTurnEvent)
+                .AddSibling(nameof(ToVictoryCalculation), ToVictoryCalculation, out string toVictoryCalculationEvent)
+                .Build();
+
+            startingChild = reconcileNewTurn;
+
+            reconcileNewTurn.ToStartExtraActions.Bind(startOfTurnExtraActions);
+            startOfTurnExtraActions.ToDetermineFirstTurn.Bind(determineFirstPlayerTurn);
+            determineFirstPlayerTurn.ToPlayerTurn.Bind(playerTurn);
+            playerTurn.OnTurnFinished.Bind(reconcileObjectives);
+            reconcileObjectives.ToReconcileEndOfTurn.Bind(reconcileNewTurn);
+            reconcileObjectives.ToVictoryCalculation.Bind(toVictoryCalculationEvent);
+
+            return dictionary;
         }
     }
 }

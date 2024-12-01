@@ -1,17 +1,22 @@
 
 
+using System.Collections.Generic;
+
 namespace FDG.Stages
 {
-    public class PlayerTurnStage : StageBase<IMainPhaseContext>
+    public class PlayerTurnStage : ParentStage<IMainPhaseContext, IPlayerTurnContext>
     {
         private const string PLAYER_TURN_TO_CHILD_DETERMINE_PLAYER_TURN = "PlayerTurnToChildDeterminePlayerTurn";
+
+        public StageBinding OnTurnFinished;
 
         private int _enterCount = 0;
 
         private readonly ReconcileEndOfActivationStage _reconcileEndOfActivationStage;
 
-        public PlayerTurnStage(StateMachine stateMachine, IMainPhaseContext mainPhaseContext, 
-            IPlayerTurnContext playerTurnContext, IUnitActionContext mainUnitActionContext, 
+        /*
+        public PlayerTurnStage(StateMachine stateMachine, IMainPhaseContext mainPhaseContext,
+            IPlayerTurnContext playerTurnContext, IUnitActionContext mainUnitActionContext,
             IMeleeContext meleeContext, IRangedContext rangedContext, StageBase parentState = null)
             : base(stateMachine, mainPhaseContext, parentState)
         {
@@ -32,19 +37,55 @@ namespace FDG.Stages
 
             mainUnitActionStage.AssignExitStage(_reconcileEndOfActivationStage);
         }
+        */
 
-        public void AssignExitStage(StageBase targetStageWhenFinished)
+        public PlayerTurnStage(IGameContext gameContext, IStateMachineLayer<IMainPhaseContext> parent)
+            : base(gameContext, parent)
         {
-            _reconcileEndOfActivationStage.Bind(ReconcileEndOfActivationStage.RECONCILE_ACTIVATION_TO_RECONCILE_OBJECTIVES_TRANSITION,
-                targetStageWhenFinished);
+            OnTurnFinished = new StageBinding(this);
         }
 
-        public override void Enter()
+        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IPlayerTurnContext> startingChild)
         {
-            base.Enter();
+            Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
+                .AddChild(new DeterminePlayerTurnStage(GameContext, this), out var determinePlayerTurnStage)
+                .AddChild(new ChooseUnitToActivateStage(GameContext, this), out var chooseUnitToActivateStage)
+                .AddChild(new MainUnitActionStage(GameContext, this), out var mainUnitActionStage)
+                .AddChild(new ReconcileEndOfActivationStage(GameContext, this), out var reconcileEndOfActivationStage)
+                .AddSibling("OnTurnFinished", OnTurnFinished, out string turnFinishedEventName)
+                .Build();
 
-            //Go straight to the child.
-            SignalEvent(PLAYER_TURN_TO_CHILD_DETERMINE_PLAYER_TURN);
+            startingChild = determinePlayerTurnStage;
+
+            determinePlayerTurnStage.ToChooseUnitToActivate.Bind(chooseUnitToActivateStage.Name);
+            chooseUnitToActivateStage.ToMainUnitAction.Bind(mainUnitActionStage.Name);
+            mainUnitActionStage.ToReconcileEndOfActivation.Bind(reconcileEndOfActivationStage.Name);
+            reconcileEndOfActivationStage.ToDeterminePlayerTurn.Bind(turnFinishedEventName);
+
+            return dictionary;
+
+            /*
+            //This is possible all in one go, but you have to reverse the flow to do so.
+            Dictionary<string, Transition> dictionary = new ChildDictionaryBuilder(this)
+                .AddSibling("OnTurnFinished", OnTurnFinished, out string turnFinishedEventName)
+                .AddChild(new ReconcileEndOfActivationStage(GameContext, this)
+                    .ToDeterminePlayerTurn.Bind(turnFinishedEventName),
+                        out var reconcileEndOfActivationStage)
+                .AddChild(new MainUnitActionStage(GameContext, this) 
+                    .ToReconcileEndOfActivation.Bind(reconcileEndOfActivationStage),
+                        out var mainUnitActionStage)
+                .AddChild(new ChooseUnitToActivateStage(GameContext, this)
+                    .ToMainUnitAction.Bind(mainUnitActionStage), 
+                        out var chooseUnitToActivateStage)
+                .AddChild(new DeterminePlayerTurnStage(GameContext, this)
+                    .ToChooseUnitToActivate.Bind(chooseUnitToActivateStage))
+                .Build();
+            */
+        }
+
+        protected override IPlayerTurnContext GetNewChildContext(IMainPhaseContext contextSelf)
+        {
+            return new PlayerTurnContext(GameContext);
         }
     }
 }

@@ -4,9 +4,10 @@ using System.Collections.Generic;
 namespace FDG.Stages
 {
 
-    public class RollToHitStage : CombatStage<RollToHitResults, RollToHitStage, ICombatMetadata>
+    public class RollToHitStage<TMetadata> : CombatStage<RollToHitResults, RollToHitStage<TMetadata>, TMetadata>
+        where TMetadata : ICombatMetadata
     {
-        public RollToHitStage(IGameContext gameContext, IStateMachineLayer<ISingleAttackContext<ICombatMetadata>> parent) : base(gameContext, parent)
+        public RollToHitStage(IGameContext gameContext, IStateMachineLayer<ISingleAttackContext<TMetadata>> parent) : base(gameContext, parent)
         {
         }
 

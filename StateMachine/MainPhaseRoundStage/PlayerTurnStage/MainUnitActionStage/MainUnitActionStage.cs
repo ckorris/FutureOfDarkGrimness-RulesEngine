@@ -1,11 +1,15 @@
 
+using System.Collections.Generic;
+
 namespace FDG.Stages
 {
 
-    public class MainUnitActionStage : StageBase<IPlayerTurnContext>
+    public class MainUnitActionStage : ParentStage<IPlayerTurnContext, IUnitActionContext>
     {
         public const string MAIN_UNIT_ACTION_TO_CHILD_CHOOSE_ACTION_TRANSITION =
             "MainUnitActionToChildChooseAction";
+
+        public StageBinding ToReconcileEndOfActivation;
 
         private readonly ChooseActionStage _chooseActionStage;
         private readonly MovementStage _movementStage;
@@ -14,6 +18,12 @@ namespace FDG.Stages
 
         private readonly ShootStage _shootStage;
 
+        public MainUnitActionStage(IGameContext gameContext, IStateMachineLayer<IPlayerTurnContext> parent) : base(gameContext, parent)
+        {
+            ToReconcileEndOfActivation = new StageBinding(this);
+        }
+
+        /*
         public MainUnitActionStage(StateMachine stateMachine, IPlayerTurnContext context,
             IUnitActionContext mainUnitActionContext, IMeleeContext meleeContext,
             IRangedContext rangedContext, StageBase parentState = null)
@@ -37,24 +47,41 @@ namespace FDG.Stages
             _meleeStage.AssignExitStage(_chooseActionStage);
             _shootStage.AssignExitStage(_chooseActionStage);
         }
+        */
 
-        public void AssignExitStage(StageBase nextStage)
+        public override void Enter(IPlayerTurnContext context)
         {
-            _chooseActionStage.Bind(ChooseActionStage.CHOOSE_ACTION_TO_RECONCILE_END_OF_ACTIVATION_TRANSITION,
-                nextStage);
+            GameContext.Log("Main Unit Action stage entered.");
+
+            base.Enter(context);
         }
 
-        public override void Enter()
+        protected override IUnitActionContext GetNewChildContext(IPlayerTurnContext contextSelf)
         {
-            base.Enter();
-
-            GameContext.Log("Main Unit Action stage entering child: Choose Action stage.");
-            MoveToChildChooseActivation();
+            return new UnitActionContext(GameContext);
         }
 
-        private void MoveToChildChooseActivation()
+        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IUnitActionContext> startingChild)
         {
-            SignalEvent(MAIN_UNIT_ACTION_TO_CHILD_CHOOSE_ACTION_TRANSITION);
+            Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
+                .AddChild(new ChooseActionStage(GameContext, this), out var chooseActionStage)
+                .AddChild(new MovementStage(GameContext, this), out var movementStage)
+                .AddChild(new MeleeStage(GameContext, this), out var meleeStage)
+                .AddChild(new ShootStage(GameContext, this), out var shootStage)
+                .AddSibling(nameof(ToReconcileEndOfActivation), ToReconcileEndOfActivation, out string toReconcileActivationEvent)
+                .Build();
+
+            startingChild = chooseActionStage;
+
+            chooseActionStage.ToMovement.Bind(movementStage);
+            chooseActionStage.ToCharge.Bind(meleeStage);
+            chooseActionStage.ToShoot.Bind(shootStage);
+            chooseActionStage.ToReconcileEndOfActivation.Bind(toReconcileActivationEvent);
+            movementStage.OnFinishedMovement.Bind(chooseActionStage);
+            meleeStage.OnFinishedMelee.Bind(chooseActionStage);
+            shootStage.OnFinishedShooting.Bind(chooseActionStage);
+
+            return dictionary;
         }
     }
 }

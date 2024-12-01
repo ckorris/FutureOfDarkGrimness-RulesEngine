@@ -4,9 +4,11 @@ using System.Collections.Generic;
 namespace FDG.Stages
 {
 
-    public class ApplyWoundsStage : CombatStage<ApplyWoundsResults, ApplyWoundsStage, ICombatMetadata>
+    public class ApplyWoundsStage<TMetadata> : CombatStage<ApplyWoundsResults, ApplyWoundsStage<TMetadata>, TMetadata>
+        where TMetadata : ICombatMetadata
     {
-        public ApplyWoundsStage(IGameContext gameContext, IStateMachineLayer<ISingleAttackContext<ICombatMetadata>> parent) : base(gameContext, parent)
+        public ApplyWoundsStage(IGameContext gameContext, IStateMachineLayer<ISingleAttackContext<TMetadata>> parent) 
+            : base(gameContext, parent)
         {
         }
 

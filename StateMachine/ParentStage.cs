@@ -1,72 +1,121 @@
 ﻿
+using SharpFont.MultipleMasters;
 using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace FDG.Stages
 {
     public abstract class ParentStage<TContextSelf, TContextChild> 
         : StageBase<TContextSelf>, IStateMachineLayer<TContextChild>
     {
-        private Dictionary<string, StageBase<TContextChild>> _children;
+        protected delegate void Transition(TContextChild childContext);
 
-        public string CurrentChild { get; private set; }
+        private Dictionary<string, Transition> _transitions;
+
+        public StageBase<TContextChild> CurrentChild { get; private set; }
+
+        private StageBase<TContextChild> _startingChild;
 
         protected ParentStage(IGameContext gameContext, IStateMachineLayer<TContextSelf> parent) 
             : base(gameContext, parent)
         {
-            PopulateChildren();
+            _transitions = PopulateTransitions(out _startingChild);
         }
 
-        protected abstract Dictionary<string, StageBase<TContextChild>> PopulateChildren();
+        protected abstract Dictionary<string, Transition> PopulateTransitions(out StageBase<TContextChild> startingChild);
 
-        protected abstract string GetStartingChildName();
+        protected abstract TContextChild GetNewChildContext(TContextSelf contextSelf);
 
-        protected abstract TContextChild GetNewChildContext();
+        private TContextSelf _currentContext = default;
+        private bool _hasContext = false;
 
         public override void Enter(TContextSelf context)
         {
-            string firstEvent = GetStartingChildName();
+            _currentContext = context;
+            _hasContext = true;
 
-            TContextChild childContext = GetNewChildContext();
+            TContextChild childContext = GetNewChildContext(context);
 
-            ProcessEvent(firstEvent, childContext);
+            TransitionToChild(_startingChild, childContext);
         }
 
         public override void Exit()
         {
             if(CurrentChild != null)
             {
-                _children[CurrentChild].Exit();
                 CurrentChild = null;
             }
+
+            _currentContext = default;
+            _hasContext = false;
         }
 
-        public void ProcessEvent(string nextStageName, TContextChild childContext)
+        public void ExecuteTransition(string eventName, StageBase<TContextChild> leavingChild, TContextChild childContext)
         {
-            if (CurrentChild != null)
+            if(_transitions.TryGetValue(eventName, out Transition transition) == false)
             {
-                _children[CurrentChild].Exit();
+                throw new KeyNotFoundException();
             }
 
-            if (_children.ContainsKey(nextStageName) == false)
-            {
-                throw new KeyNotFoundException($"No child with the key {nextStageName} exists in stage {GetType().Name}.");
-            }
+            leavingChild.Exit();
 
-            CurrentChild = nextStageName;
-            _children[nextStageName].Enter(childContext);
+            transition.Invoke(childContext);
         }
 
-        protected class ChildDictionaryBuilder()
+        private void TransitionToChild(StageBase<TContextChild> newChild, TContextChild childContext)
         {
-            private Dictionary<string, StageBase<TContextChild>> _dictionary = new Dictionary<string, StageBase<TContextChild>>();
+            CurrentChild = newChild;
+            newChild.Enter(childContext);
+        }
 
-            public ChildDictionaryBuilder Add(StageBase<TContextChild> stage)
+        private void TransitionToSibling(StageBinding siblingBinding)
+        {
+            if (_hasContext == false)
             {
-                _dictionary.Add(stage.Name, stage);
+                throw new System.InvalidOperationException($"Tried to call {nameof(TransitionToSibling)} when no context was assigned.");
+            }
+
+            siblingBinding.Activate(_currentContext);
+        }
+
+        protected class TransitionSetBuilder
+        {
+            private Dictionary<string, Transition> _dictionary = new Dictionary<string, Transition>();
+
+            private ParentStage<TContextSelf, TContextChild> _parentStage;
+
+            public TransitionSetBuilder(ParentStage<TContextSelf, TContextChild> parentStage)
+            {
+                _parentStage = parentStage;
+            }
+
+            public TransitionSetBuilder AddChild(StageBase<TContextChild> stage)
+            {
+                _dictionary.Add(stage.Name, (context) => _parentStage.TransitionToChild(stage, context));
                 return this;
             }
 
-            public Dictionary<string, StageBase<TContextChild>> Build()
+            public TransitionSetBuilder AddChild<TChild>(TChild stageIn, out TChild stageOut) //For declaration options.
+                where TChild : StageBase<TContextChild>
+            {
+                stageOut = stageIn;
+                return AddChild(stageIn);
+            }
+
+            public TransitionSetBuilder AddSibling(string eventName, StageBinding siblingBinding)
+            {
+                _dictionary.Add(eventName, (context) => _parentStage.TransitionToSibling(siblingBinding));
+                return this;
+            }
+
+            public TransitionSetBuilder AddSibling(string eventNameIn, StageBinding siblingBinding, out string eventNameOut)
+            {
+                eventNameOut = eventNameIn;
+                return AddSibling(eventNameIn, siblingBinding);
+            }
+
+
+            public Dictionary<string, Transition> Build()
             {
                 return _dictionary;
             }

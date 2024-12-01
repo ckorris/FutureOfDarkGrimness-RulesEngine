@@ -4,9 +4,11 @@ using System.Collections.Generic;
 
 namespace FDG.Stages
 {
-    public class BuildTargetListStage : CombatStage<BuildTargetListResults, BuildTargetListStage, ICombatMetadata>
+    public class BuildTargetListStage<TMetadata> : CombatStage<BuildTargetListResults, BuildTargetListStage<TMetadata>, TMetadata>
+        where TMetadata : ICombatMetadata
     {
-        public BuildTargetListStage(IGameContext gameContext, IStateMachineLayer<ISingleAttackContext<ICombatMetadata>> parent) : base(gameContext, parent)
+        public BuildTargetListStage(IGameContext gameContext, IStateMachineLayer<ISingleAttackContext<TMetadata>> parent)
+            : base(gameContext, parent)
         {
         }
 

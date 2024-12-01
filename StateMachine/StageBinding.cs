@@ -34,6 +34,11 @@ namespace FDG.Stages
                 return _sourceStage;
             }
 
+            public StageBase<TContext> Bind(StageBase<TContext> transitionStage)
+            {
+                return Bind(transitionStage.Name);
+            }
+
             public void Activate(TContext context)
             {
                 if(_eventName != null)

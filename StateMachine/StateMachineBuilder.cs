@@ -1,6 +1,7 @@
 
 namespace FDG.Stages
 {
+    /*
     public class StateMachineBuilder
     {
         private StateMachine _stateMachine = new StateMachine();
@@ -44,4 +45,5 @@ namespace FDG.Stages
             return _stateMachine;
         }
     }
+    */
 }

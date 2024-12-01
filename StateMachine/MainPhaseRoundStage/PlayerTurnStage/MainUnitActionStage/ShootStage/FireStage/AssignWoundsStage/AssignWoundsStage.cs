@@ -3,9 +3,11 @@ using System;
 namespace FDG.Stages
 {
 
-    public class AssignWoundsStage : CombatStage<AssignWoundsResults, AssignWoundsStage, ICombatMetadata>
+    public class AssignWoundsStage<TMetadata> : CombatStage<AssignWoundsResults, AssignWoundsStage<TMetadata>, TMetadata>
+        where TMetadata : ICombatMetadata
     {
-        public AssignWoundsStage(IGameContext gameContext, IStateMachineLayer<ISingleAttackContext<ICombatMetadata>> parent) : base(gameContext, parent)
+        public AssignWoundsStage(IGameContext gameContext, IStateMachineLayer<ISingleAttackContext<TMetadata>> parent)
+            : base(gameContext, parent)
         {
         }
 

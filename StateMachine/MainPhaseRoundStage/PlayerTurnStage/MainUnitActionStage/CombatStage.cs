@@ -37,6 +37,13 @@ namespace FDG.Stages
             return nextStage; //For fluid syntax.
         }
 
+        public void BindToEvent(string eventName) //For transitions.
+        {
+            NextStage.Bind(eventName);
+
+            _hasBoundNextStage = true;
+        }
+
         public override void Enter(ISingleAttackContext<TMetadata> context)
         {
             foreach (ISpecialRule_Combat rule in context.AllSpecialRules)

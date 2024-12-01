@@ -4,9 +4,12 @@ using System;
 namespace FDG.Stages
 {
 
-    public class DetermineHitRollNeededStage : CombatStage<DetermineHitRollNeededResults, DetermineHitRollNeededStage, ICombatMetadata>
+    public class DetermineHitRollNeededStage<TMetadata>
+        : CombatStage<DetermineHitRollNeededResults, DetermineHitRollNeededStage<TMetadata>, TMetadata>
+        where TMetadata : ICombatMetadata
     {
-        public DetermineHitRollNeededStage(IGameContext gameContext, IStateMachineLayer<ISingleAttackContext<ICombatMetadata>> parent) : base(gameContext, parent)
+        public DetermineHitRollNeededStage(IGameContext gameContext, IStateMachineLayer<ISingleAttackContext<TMetadata>> parent)
+            : base(gameContext, parent)
         {
         }
 

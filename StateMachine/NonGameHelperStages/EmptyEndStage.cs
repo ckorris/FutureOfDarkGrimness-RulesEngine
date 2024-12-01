@@ -1,10 +1,16 @@
 
 namespace FDG.Stages
 {
-    public class EmptyEndStage : StageBase
+    public class EmptyEndStage<TContext> : StageBase<TContext>
     {
-        public EmptyEndStage(StateMachine stateMachine, StageBase parentState = null) : base(stateMachine, parentState)
+        public EmptyEndStage(IGameContext gameContext, IStateMachineLayer<TContext> parent) 
+            : base(gameContext, parent)
         {
+        }
+
+        public override void Enter(TContext context)
+        {
+            GameContext.Log("End reached.");
         }
     }
 }

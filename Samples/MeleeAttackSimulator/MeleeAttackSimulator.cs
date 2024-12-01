@@ -8,8 +8,9 @@ namespace FDG.Samples
         private ITextOutput _textOutput;
         private IDiceRoller _diceRoller;
 
+        private IUnitActionContext _unitActionContext;
         private IMeleeContext _meleeContext;
-        private StateMachine _stateMachine;
+        //private StateMachine _stateMachine;
         private MeleeStage _meleeStage;
 
         BasicTesterOfferStrikeBackHandler _offerStrikeBackHandler;
@@ -50,7 +51,8 @@ namespace FDG.Samples
         {
             _offerStrikeBackHandler.StrikeBack = defenderStrikesBack;
             _meleeContext.BeginNewAttack(attackingUnit, defendingUnit);
-            _stateMachine.Start(_meleeStage);
+            //_stateMachine.Start(_meleeStage);
+            _meleeStage.Enter(_unitActionContext);
         }
 
 
@@ -73,12 +75,12 @@ namespace FDG.Samples
 
             GameContext gameContext = new GameContext(_textOutput, _diceRoller, handlers, tableState);
 
-            _stateMachine = new StateMachine();
-            IUnitActionContext unitActionContext = new UnitActionContext(gameContext);
+            //_stateMachine = new StateMachine();
+            _unitActionContext = new UnitActionContext(gameContext);
             _meleeContext = new MeleeContext(gameContext);
 
-            _meleeStage = new MeleeStage(_stateMachine, unitActionContext, _meleeContext);
-            _meleeStage.AssignExitStage(new EmptyEndStage(_stateMachine));
+            _meleeStage = new MeleeStage(gameContext, null);
+            //_meleeStage.AssignExitStage(new EmptyEndStage(_stateMachine));
         }
     }
 }

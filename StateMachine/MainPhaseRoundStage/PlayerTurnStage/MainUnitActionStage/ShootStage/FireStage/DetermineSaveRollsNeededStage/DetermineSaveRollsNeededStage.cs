@@ -5,9 +5,12 @@ using System.Collections.Generic;
 namespace FDG.Stages
 {
 
-    public class DetermineSaveRollsNeededStage : CombatStage<DetermineSaveRollNeededResults, DetermineSaveRollsNeededStage, ICombatMetadata>
+    public class DetermineSaveRollsNeededStage<TMetadata> 
+        : CombatStage<DetermineSaveRollNeededResults, DetermineSaveRollsNeededStage<TMetadata>, TMetadata>
+        where TMetadata : ICombatMetadata
     {
-        public DetermineSaveRollsNeededStage(IGameContext gameContext, IStateMachineLayer<ISingleAttackContext<ICombatMetadata>> parent) : base(gameContext, parent)
+        public DetermineSaveRollsNeededStage(IGameContext gameContext, IStateMachineLayer<ISingleAttackContext<TMetadata>> parent) 
+            : base(gameContext, parent)
         {
         }
 

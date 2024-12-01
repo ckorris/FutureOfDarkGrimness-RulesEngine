@@ -6,8 +6,7 @@ namespace FDG.Stages
 
     public class CoverCheckStage : CombatStage<CoverCheckResults, CoverCheckStage, IRangedCombatMetadata>
     {
-        public CoverCheckStage(StateMachine stateMachine, ISingleAttackContext<IRangedCombatMetadata> context, StageBase parentState = null) 
-            : base(stateMachine, context, parentState)
+        public CoverCheckStage(IGameContext gameContext, IStateMachineLayer<ISingleAttackContext<IRangedCombatMetadata>> parent) : base(gameContext, parent)
         {
         }
 

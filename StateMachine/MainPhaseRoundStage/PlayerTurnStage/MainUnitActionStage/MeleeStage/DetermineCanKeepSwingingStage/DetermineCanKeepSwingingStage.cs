@@ -3,84 +3,51 @@ namespace FDG.Stages
 {
     internal class DetermineCanKeepSwingingStage : StageBase<IMeleeContext>
     {
-        public string ReturnToChooseWeaponTransitionName;
-        public string OutOfWeaponsTransitionName;
-        public string DefenderKilledTransitionName;
 
-        private readonly IMeleeContext _meleeContext;
+        public StageBinding ReturnToChooseWeapon;
+        public StageBinding OnOutOfWeapons;
+        public StageBinding OnDefenderKilled;
 
-        public DetermineCanKeepSwingingStage(StateMachine stateMachine, IMeleeContext context, StageBase parentState = null)
-            : base(stateMachine, context, parentState)
+        //private readonly IMeleeContext _meleeContext;
+
+        public DetermineCanKeepSwingingStage(IGameContext gameContext, IStateMachineLayer<IMeleeContext> parent) : base(gameContext, parent)
         {
-            _meleeContext = context;
+            ReturnToChooseWeapon = new StageBinding(this);
+            OnOutOfWeapons = new StageBinding(this);
+            OnDefenderKilled = new StageBinding(this);
         }
 
-        public override void Enter()
+        public override void Enter(IMeleeContext context)
         {
-            base.Enter();
-
-            int remainingWeaponCount = _meleeContext.AvailableWeapons.Count;
+            int remainingWeaponCount = context.AvailableWeapons.Count;
 
             //Return to choose weapon again if there are weapons remaining and the target is still alive.
             if (remainingWeaponCount == 0)
             {
-                _meleeContext.Log("Has swung with all melee weapons.");
-                SignalFinishedSwinging();
+                context.Log("Has swung with all melee weapons.");
+                OnOutOfWeapons.Activate(context);
                 return;
             }
 
-            if (_meleeContext.MeleeCombatMetadata.DefendingUnit.RemainingWounds <= 0)
+            if (context.MeleeCombatMetadata.DefendingUnit.RemainingWounds <= 0)
             {
-                _meleeContext.Log("Has killed all target units.");
-                SignalDefenderKilled();
+                GameContext.Log("Has killed all target units.");
+                OnDefenderKilled.Activate(context);
                 return;
             }
 
             //We've still got weapons to shoot, and baddies to shoot at. 
-            if(remainingWeaponCount == 1)
+            if (remainingWeaponCount == 1)
             {
-                _meleeContext.Log("Has 1 more weapon left to swing.");
+                GameContext.Log("Has 1 more weapon left to swing.");
             }
             else
             {
-                _meleeContext.Log($"Has {remainingWeaponCount} more weapons left to swing.");
+                GameContext.Log($"Has {remainingWeaponCount} more weapons left to swing.");
             }
-            
-            _meleeContext.ResetMeleeCombatMetadata();
-            SignalCanKeepSwinging();
-        }
 
-        public void BindReturnToChooseWeapon(StageBase returnStage)
-        {
-            ReturnToChooseWeaponTransitionName = $"{nameof(DetermineCanKeepShootingStage)}_TO_{returnStage.GetType()}";
-            Bind(ReturnToChooseWeaponTransitionName, returnStage);
-        }
-
-        public void BindOutOfWeapons(StageBase stageAfterShooting)
-        {
-            OutOfWeaponsTransitionName = $"{nameof(DetermineCanKeepShootingStage)}_TO_{stageAfterShooting.GetType()}";
-            Bind(OutOfWeaponsTransitionName, stageAfterShooting);
-        }
-
-        public void BindDefenderKilled(StageBase stageWhenDefenderKilled)
-        {
-            DefenderKilledTransitionName = $"{nameof(DetermineCanKeepShootingStage)}_TO_{stageWhenDefenderKilled.GetType()}";
-            Bind(DefenderKilledTransitionName, stageWhenDefenderKilled);
-        }
-
-        private void SignalCanKeepSwinging()
-        {
-            SignalEvent(ReturnToChooseWeaponTransitionName);
-        }
-
-        private void SignalDefenderKilled()
-        {
-            SignalEvent(DefenderKilledTransitionName);
-        }
-
-        private void SignalFinishedSwinging()
-        {
-            SignalEvent(OutOfWeaponsTransitionName);
+            context.ResetMeleeCombatMetadata();
+            ReturnToChooseWeapon.Activate(context);
         }
     }
 }

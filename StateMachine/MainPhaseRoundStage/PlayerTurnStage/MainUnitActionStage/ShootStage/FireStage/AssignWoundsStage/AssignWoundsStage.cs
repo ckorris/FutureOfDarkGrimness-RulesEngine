@@ -5,8 +5,7 @@ namespace FDG.Stages
 
     public class AssignWoundsStage : CombatStage<AssignWoundsResults, AssignWoundsStage, ICombatMetadata>
     {
-        public AssignWoundsStage(StateMachine stateMachine, ISingleAttackContext<ICombatMetadata> context, StageBase parentState = null)
-            : base(stateMachine, context, parentState)
+        public AssignWoundsStage(IGameContext gameContext, IStateMachineLayer<ISingleAttackContext<ICombatMetadata>> parent) : base(gameContext, parent)
         {
         }
 
@@ -32,7 +31,7 @@ namespace FDG.Stages
 
                 float overkill = totalWoundsDealt - defenderRemainingWounds;
                 string pluralizedWound = defenderRemainingWounds == 1 ? "wound" : "wounds";
-                Context.Log($"Assigning {defenderRemainingWounds} {pluralizedWound} (Overkill: {overkill})");
+                GameContext.Log($"Assigning {defenderRemainingWounds} {pluralizedWound} (Overkill: {overkill})");
                 onFinished(assignWoundsResults);
             }
             else
@@ -41,7 +40,7 @@ namespace FDG.Stages
                 //I'm also putting this TODO in the results class.
                 AssignWoundsResults assignWoundsResults = new AssignWoundsResults(metaData.DefendingUnit, totalWoundsDealt);
 
-                Context.GetHandler<IAssignWoundsHandler>().Handle(metaData.DefendingUnit, assignWoundsResults, () => OnHandled(assignWoundsResults, onFinished));
+                GameContext.GetHandler<IAssignWoundsHandler>().Handle(metaData.DefendingUnit, assignWoundsResults, () => OnHandled(assignWoundsResults, onFinished));
             }
         }
 

@@ -6,10 +6,8 @@ namespace FDG.Stages
 {
     public class BuildTargetListStage : CombatStage<BuildTargetListResults, BuildTargetListStage, ICombatMetadata>
     {
-        public BuildTargetListStage(StateMachine stateMachine, ISingleAttackContext<ICombatMetadata> context, StageBase parentState = null)
-            : base(stateMachine, context, parentState)
+        public BuildTargetListStage(IGameContext gameContext, IStateMachineLayer<ISingleAttackContext<ICombatMetadata>> parent) : base(gameContext, parent)
         {
-
         }
 
         protected override void RunStage(ICombatMetadata metaData, Action<BuildTargetListResults> onFinished)

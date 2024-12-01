@@ -6,8 +6,7 @@ namespace FDG.Stages
 
     public class RollToHitStage : CombatStage<RollToHitResults, RollToHitStage, ICombatMetadata>
     {
-        public RollToHitStage(StateMachine stateMachine, ISingleAttackContext<ICombatMetadata> context, StageBase parentState = null) 
-            : base(stateMachine, context, parentState)
+        public RollToHitStage(IGameContext gameContext, IStateMachineLayer<ISingleAttackContext<ICombatMetadata>> parent) : base(gameContext, parent)
         {
         }
 

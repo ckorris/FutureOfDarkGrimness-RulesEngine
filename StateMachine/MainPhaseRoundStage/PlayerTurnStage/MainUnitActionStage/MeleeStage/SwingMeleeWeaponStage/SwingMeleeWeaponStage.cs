@@ -38,10 +38,10 @@ namespace FDG.Stages
         {
             base.Enter();
 
-            Context.Log("Swinging.");
+            GameContext.Log("Swinging.");
 
             //Reset context objects.
-            _attackContext.SetCombatMetadata(Context.MeleeCombatMetadata);
+            _attackContext.SetCombatMetadata(GameContext.MeleeCombatMetadata);
 
             MoveToChildBuildTargetListStage();
         }

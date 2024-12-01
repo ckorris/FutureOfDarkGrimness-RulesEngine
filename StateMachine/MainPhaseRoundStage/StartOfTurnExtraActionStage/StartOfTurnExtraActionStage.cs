@@ -6,19 +6,15 @@ namespace FDG.Stages
     {
         public const string TO_DETERMINE_FIRST_TURN_TRANSITION = "StartExtraActionsToDetermineFirstTurn";
 
-        public StartOfTurnExtraActionStage(StateMachine stateMachine, IMainPhaseContext context, StageBase parentState = null)
-            : base(stateMachine, context, parentState)
+        public StageBinding ToDetermineFirstTurn;
+        public StartOfTurnExtraActionStage(IGameContext gameContext, IStateMachineLayer<IMainPhaseContext> parent) : base(gameContext, parent)
         {
+            ToDetermineFirstTurn = new StageBinding(this);
         }
 
-        public override void Enter()
+        public override void Enter(IMainPhaseContext context)
         {
-            Context.GetHandler<IStartOfTurnExtraActionsHandler>().Handle(Context, MoveToDetermineFirstTurn);
-        }
-
-        private void MoveToDetermineFirstTurn()
-        {
-            SignalEvent(TO_DETERMINE_FIRST_TURN_TRANSITION);
+            GameContext.GetHandler<IStartOfTurnExtraActionsHandler>().Handle(context, ToDetermineFirstTurn.Activate);
         }
     }
 

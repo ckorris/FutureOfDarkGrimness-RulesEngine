@@ -4,20 +4,17 @@ namespace FDG.Stages
 
     public class DetermineFirstPlayerTurnStage : StageBase<IMainPhaseContext>
     {
-        public const string DETERMINE_FIRST_PLAYER_TO_PLAYER_TURN_TRANSITION = "DetermineFirstPlayerToPlayerTurn";
+        public StageBinding ToPlayerTurn;
 
-        public DetermineFirstPlayerTurnStage(StateMachine stateMachine, IMainPhaseContext context, StageBase parentState = null)
-            : base(stateMachine, context, parentState)
+        public DetermineFirstPlayerTurnStage(IGameContext gameContext, IStateMachineLayer<IMainPhaseContext> parent) : base(gameContext, parent)
         {
+            ToPlayerTurn = new StageBinding(this);
         }
 
-        public override void Enter()
+        public override void Enter(IMainPhaseContext context)
         {
-            base.Enter();
-
-            //Temp as it has children.
-            Context.Log("Skipping Determine First Player Turn for now.");
-            SignalEvent(DETERMINE_FIRST_PLAYER_TO_PLAYER_TURN_TRANSITION);
+            GameContext.Log("Skipping Determine First Player Turn for now.");
+            ToPlayerTurn.Activate(context);
         }
     }
 }

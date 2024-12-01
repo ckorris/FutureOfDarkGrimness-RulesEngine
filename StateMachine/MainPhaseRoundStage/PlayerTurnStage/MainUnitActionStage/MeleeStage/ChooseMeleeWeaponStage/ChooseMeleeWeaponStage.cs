@@ -8,34 +8,34 @@ namespace FDG.Stages
     {
         public const string CHOOSE_MELEE_WEAPON_FINISHED_TRANSITION = "ChooseMeleeWeaponFinished";
 
-        public ChooseMeleeWeaponStage(StateMachine stateMachine, IMeleeContext context, StageBase parentState = null)
-            : base(stateMachine, context, parentState)
+        public StageBinding OnChosen;
+
+        public ChooseMeleeWeaponStage(IGameContext gameContext, IStateMachineLayer<IMeleeContext> parent) : base(gameContext, parent)
         {
+            OnChosen = new StageBinding(this);
         }
 
-        public override void Enter()
+        public override void Enter(IMeleeContext context)
         {
-            base.Enter();
-
-            if (Context.AvailableWeapons.Count == 0)
+            if (context.AvailableWeapons.Count == 0)
             {
                 throw new Exception($"Available weapon dictionary was empty when entering {nameof(ChooseRangedWeaponStage)}.");
             }
 
             //TODO: Instead of giving the entire list, need to make it changeable because of effects like Deadly.
             //That's why I'm making a second list, to display ones you can't choose yet.
-            IReadOnlyDictionary<IWeapon, int> availableWeapons = new ConcurrentDictionary<IWeapon, int>(Context.AvailableWeapons);
+            IReadOnlyDictionary<IWeapon, int> availableWeapons = new ConcurrentDictionary<IWeapon, int>(context.AvailableWeapons);
             IReadOnlyDictionary<IWeapon, int> unavailableWeapons = new ConcurrentDictionary<IWeapon, int>();
 
-            Context.GetHandler<IChooseMeleeWeaponHandler>().Handle(availableWeapons, unavailableWeapons, ChooseWeapon);
+            GameContext.GetHandler<IChooseMeleeWeaponHandler>().Handle(availableWeapons, unavailableWeapons, (weapon) => ChooseWeapon(context, weapon));
         }
 
-        private void ChooseWeapon(IWeapon chosenWeapon)
+        private void ChooseWeapon(IMeleeContext context, IWeapon chosenWeapon)
         {
-            Context.ChooseWeapon(chosenWeapon, out int weaponCount);
-            Context.Log($"Chose weapon: {chosenWeapon.Name}. Count: {weaponCount}.");
+            context.ChooseWeapon(chosenWeapon, out int weaponCount);
+            GameContext.Log($"Chose weapon: {chosenWeapon.Name}. Count: {weaponCount}.");
 
-            SignalEvent(CHOOSE_MELEE_WEAPON_FINISHED_TRANSITION);
+            OnChosen.Activate(context);
         }
     }
 

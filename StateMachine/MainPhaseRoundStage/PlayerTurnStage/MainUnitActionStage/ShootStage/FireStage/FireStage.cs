@@ -43,10 +43,10 @@ namespace FDG.Stages
         {
             base.Enter();
 
-            Context.Log("Firing.");
+            GameContext.Log("Firing.");
 
             //Reset context objects.
-            _attackContext.SetCombatMetadata(Context.RangedCombatMetadata);
+            _attackContext.SetCombatMetadata(GameContext.RangedCombatMetadata);
 
             MoveToChildBuildTargetListStage();
         }

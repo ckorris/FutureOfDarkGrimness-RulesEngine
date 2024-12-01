@@ -7,22 +7,17 @@ namespace FDG.Stages
         public const string RESOLVE_RANGED_MORALE_FINISHED_TRANSITION =
             "ResolveRangedMoraleFinished";
 
-        public ResolveRangedMoraleStage(StateMachine stateMachine, IRangedContext context, StageBase parentState = null)
-            : base(stateMachine, context, parentState)
+        public StageBinding ToFinished;
+
+        public ResolveRangedMoraleStage(IGameContext gameContext, IStateMachineLayer<IRangedContext> parent) : base(gameContext, parent)
         {
+            ToFinished = new StageBinding(this);
         }
 
-        public override void Enter()
+        public override void Enter(IRangedContext context)
         {
-            base.Enter();
-
-            Context.Log("Resolving ranged morale.");
-            MoveToReconcileEndOfActivation();
-        }
-
-        private void MoveToReconcileEndOfActivation()
-        {
-            SignalEvent(RESOLVE_RANGED_MORALE_FINISHED_TRANSITION);
+            GameContext.Log("Resolving ranged morale.");
+            ToFinished.Activate(context);
         }
     }
 }

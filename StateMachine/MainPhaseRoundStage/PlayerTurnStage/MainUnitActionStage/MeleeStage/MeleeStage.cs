@@ -1,7 +1,9 @@
 
+using System.Collections.Generic;
+
 namespace FDG.Stages
 {
-    public class MeleeStage : StageBase<IUnitActionContext>
+    public class MeleeStage : ParentStage<IUnitActionContext, IMeleeContext>
     {
         private const string MELEE_TO_CHILD_ENTRANCE_TRANSITION = "MeleeToChildEntranceAttack";
 
@@ -96,8 +98,23 @@ namespace FDG.Stages
         {
             base.Enter();
 
-            Context.Log($"Melee stage entering child.");
+            GameContext.Log($"Melee stage entering child.");
             MoveToChargingUnitAttack();
+        }
+
+        protected override IMeleeContext GetNewChildContext()
+        {
+            throw new System.NotImplementedException();
+        }
+
+        protected override string GetStartingChildName()
+        {
+            throw new System.NotImplementedException();
+        }
+
+        protected override Dictionary<string, StageBase<IMeleeContext>> PopulateChildren()
+        {
+            throw new System.NotImplementedException();
         }
 
         private void MoveToChargingUnitAttack()

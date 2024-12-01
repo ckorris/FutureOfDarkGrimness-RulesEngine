@@ -4,32 +4,30 @@ using System.Collections.Generic;
 
 namespace FDG.Stages
 {
-
     public class ChooseRangedTargetStage : StageBase<IRangedContext>
     {
         public const string CHOOSE_RANGED_TARGET_TO_FIRE_TRANSITION =
             "ChooseRangedTargetToFire";
 
-        public ChooseRangedTargetStage(StateMachine stateMachine, IRangedContext context, StageBase parentState = null)
-            : base(stateMachine, context, parentState)
+        public StageBinding ToFire;
+        public ChooseRangedTargetStage(IGameContext gameContext, IStateMachineLayer<IRangedContext> parent) : base(gameContext, parent)
         {
+            ToFire = new StageBinding(this);
         }
 
-        public override void Enter()
+        public override void Enter(IRangedContext context)
         {
-            base.Enter();
+            IReadOnlyList<IUnit> potentialTargetUnits = context.AvailableTargetUnits;
 
-            IReadOnlyList<IUnit> potentialTargetUnits = Context.AvailableTargetUnits;
-
-            Context.GetHandler<IChooseRangedTargetHandler>().Handle(potentialTargetUnits, OnChoseRangedTarget);
+            GameContext.GetHandler<IChooseRangedTargetHandler>().Handle(potentialTargetUnits, (unit) => OnChoseRangedTarget(context, unit));
         }
 
-        private void OnChoseRangedTarget(IUnit targetUnit)
+        private void OnChoseRangedTarget(IRangedContext context, IUnit targetUnit)
         {
-            Context.ChooseTargetUnit(targetUnit);
-            Context.Log($"Chose target unit: {targetUnit.Name}.");
+            context.ChooseTargetUnit(targetUnit);
+            GameContext.Log($"Chose target unit: {targetUnit.Name}.");
 
-            SignalEvent(CHOOSE_RANGED_TARGET_TO_FIRE_TRANSITION);
+            ToFire.Activate(context);
         }
     }
 

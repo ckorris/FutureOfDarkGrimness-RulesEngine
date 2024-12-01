@@ -4,23 +4,16 @@ namespace FDG.Stages
 
     public class ArmySetupStage : StageBase<IGameContext>
     {
-        public const string TO_MAP_SETUP_TRANSITION = "ArmySetupToMapSetup";
+        public StageBinding ToMapSetup;
 
-        public ArmySetupStage(StateMachine stateMachine, IGameContext context, StageBase parentState = null)
-            : base(stateMachine, context, parentState)
+        public ArmySetupStage(IGameContext gameContext, IStateMachineLayer<IGameContext> parent) : base(gameContext, parent)
         {
+            ToMapSetup = new StageBinding(this);
         }
 
-        public override void Enter()
+        public override void Enter(IGameContext context)
         {
-            base.Enter();
-
-            Context.GetHandler<IArmySetupHandler>().Handle(Context, MoveToMapSetup);
-        }
-
-        private void MoveToMapSetup()
-        {
-            SignalEvent(TO_MAP_SETUP_TRANSITION);
+            GameContext.GetHandler<IArmySetupHandler>().Handle(GameContext, ToMapSetup.Activate);
         }
     }
 

@@ -5,22 +5,18 @@ namespace FDG.Stages
     {
         public const string DETERMINE_IN_RANGE_DEFENDER_FINISHED_TRANSITION = "DetermineInRangeDefenderFinished";
 
-        public DetermineInRangeDefendersStage(StateMachine stateMachine, IMeleeContext context, StageBase parentState = null)
-            : base(stateMachine, context, parentState)
+        public StageBinding ToChooseMelee;
+
+        public DetermineInRangeDefendersStage(IGameContext gameContext, IStateMachineLayer<IMeleeContext> parent) : base(gameContext, parent)
         {
+            ToChooseMelee = new StageBinding(this);
         }
 
-        public override void Enter()
+        public override void Enter(IMeleeContext context)
         {
-            base.Enter();
-
-            Context.Log("Entering Determine In Range Defenders. Skipping, for now we let everyone fight.");
-            MoveToNextStage();
+            GameContext.Log("Entering Determine In Range Defenders. Skipping, for now we let everyone fight.");
+            ToChooseMelee.Activate(context);
         }
 
-        private void MoveToNextStage()
-        {
-            SignalEvent(DETERMINE_IN_RANGE_DEFENDER_FINISHED_TRANSITION);
-        }
     }
 }

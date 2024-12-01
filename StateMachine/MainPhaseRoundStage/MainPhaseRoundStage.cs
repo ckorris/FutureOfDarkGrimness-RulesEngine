@@ -58,7 +58,7 @@ namespace FDG.Stages
         {
             base.Enter();
 
-            Context.TextOutput.Log($"Main Phase stage entering child: Reconcile New Turn.");
+            GameContext.TextOutput.Log($"Main Phase stage entering child: Reconcile New Turn.");
             MoveToReconcileNewTurn();
         }
 

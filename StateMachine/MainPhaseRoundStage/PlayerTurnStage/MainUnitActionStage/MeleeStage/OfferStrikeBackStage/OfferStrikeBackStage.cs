@@ -6,39 +6,33 @@ namespace FDG.Stages
 
     public class OfferStrikeBackStage : StageBase<IMeleeContext>
     {
-        public const string OFFER_STRIKE_BACK_ACCEPTED_TRANSITION =
-            "OfferStrikeBackAccepted";
+        public StageBinding OnOfferAccepted;
+        public StageBinding OnOfferRejected;
 
-        public const string OFFER_STRIKE_BACK_REJECTED_TRANSITION =
-            "OfferStrikeBackRejectd";
-
-        public OfferStrikeBackStage(StateMachine stateMachine, IMeleeContext context, StageBase parentState = null)
-            : base(stateMachine, context, parentState)
+        public OfferStrikeBackStage(IGameContext gameContext, IStateMachineLayer<IMeleeContext> parent) : base(gameContext, parent)
         {
+            OnOfferAccepted = new StageBinding(this);
+            OnOfferRejected = new StageBinding(this);
         }
 
-        public override void Enter()
+        public override void Enter(IMeleeContext context)
         {
-            base.Enter();
+            GameContext.Log("Offering strikeback.");
 
-            Context.Log("Offering strikeback.");
-
-            Context.GetHandler<IOfferStrikeBackHandler>().Handle(Context, MoveToStrikingBack, SkipStrikingBack);
+            GameContext.GetHandler<IOfferStrikeBackHandler>().Handle(context, 
+                () => MoveToStrikingBack(context), () =>  SkipStrikingBack(context));
         }
 
-
-        private void MoveToStrikingBack()
+        private void MoveToStrikingBack(IMeleeContext context)
         {
-            Context.Log("Defenders striking back.");
-
-            SignalEvent(OFFER_STRIKE_BACK_ACCEPTED_TRANSITION);
+            GameContext.Log("Defenders striking back.");
+            OnOfferAccepted.Activate(context);
         }
 
-        private void SkipStrikingBack()
+        private void SkipStrikingBack(IMeleeContext context)
         {
-            Context.Log("Defenders not striking back.");
-
-            SignalEvent(OFFER_STRIKE_BACK_REJECTED_TRANSITION);
+            GameContext.Log("Defenders not striking back.");
+            OnOfferRejected.Activate(context);
         }
     }
 

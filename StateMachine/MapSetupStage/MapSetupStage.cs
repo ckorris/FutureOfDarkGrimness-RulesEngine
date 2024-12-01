@@ -6,21 +6,21 @@ namespace FDG.Stages
     {
         public const string TO_DEPLOYMENT_TRANSITION = "MapSetupToDeployment";
 
-        public MapSetupStage(StateMachine stateMachine, IGameContext context, StageBase parentState = null)
-            : base(stateMachine, context, parentState)
+        public StageBinding ToDeployment;
+
+        public MapSetupStage(IGameContext gameContext, IStateMachineLayer<IGameContext> parent) 
+            : base(gameContext, parent)
         {
+            ToDeployment = new StageBinding(this);
         }
 
-        public override void Enter()
+        public override void Enter(IGameContext context)
         {
-            base.Enter();
-
-            Context.GetHandler < IMapSetupHandler>().Handle(Context, MoveToDeployment);
+            GameContext.GetHandler<IMapSetupHandler>().Handle(GameContext, ToDeployment.Activate);
         }
 
-        private void MoveToDeployment()
+        public override void Exit()
         {
-            SignalEvent(TO_DEPLOYMENT_TRANSITION);
         }
     }
 

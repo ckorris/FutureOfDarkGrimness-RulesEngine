@@ -6,51 +6,42 @@ namespace FDG.Stages
         public const string DETERMINE_MELEE_WINNER_NEEDS_ROLL_TRANSITION = "DetermineMeleeWinnerNeedsRoll";
         public const string DETERMINE_MELEE_WINNER_DOESNT_NEED_ROLL_TRANSITION = "DetermineMeleeWinnerDoesntNeedRoll";
 
-        public DetermineMeleeWinnerStage(StateMachine stateMachine, IMeleeContext context, StageBase parentState = null)
-            : base(stateMachine, context, parentState)
+        public StageBinding OnNeedsRollToDecide;
+        public StageBinding OnDoesntNeedRollToDecide;
+
+        public DetermineMeleeWinnerStage(IGameContext gameContext, IStateMachineLayer<IMeleeContext> parent) : base(gameContext, parent)
         {
+            OnNeedsRollToDecide = new StageBinding(this);
+            OnDoesntNeedRollToDecide = new StageBinding(this);
         }
 
-        public override void Enter()
+        public override void Enter(IMeleeContext context)
         {
-            base.Enter();
-
             //Get wounds dealt by each side.
-            float attackerWoundsDealt = Context.DefenderRemainingWoundsAtStart - Context.DefendingUnit.RemainingWounds;
-            float defenderWoundsDealt = Context.AttackerRemainingWoundsAtStart - Context.AttackingUnit.RemainingWounds;
+            float attackerWoundsDealt = context.DefenderRemainingWoundsAtStart - context.DefendingUnit.RemainingWounds;
+            float defenderWoundsDealt = context.AttackerRemainingWoundsAtStart - context.AttackingUnit.RemainingWounds;
 
             //TODO: This needs to have effects somehow so things like fear or fearless can apply.
             //Right now, it's a problem that this isn't a combat stage.
 
-            if(attackerWoundsDealt == defenderWoundsDealt)
+            if (attackerWoundsDealt == defenderWoundsDealt)
             {
-                Context.Log($"Attackers and defenders tied: {attackerWoundsDealt} vs. {defenderWoundsDealt}.");
-                Context.AddResult(new DetermineMeleeWinnerResults(DetermineMeleeWinnerResults.EMeleeWinnerResult.Tie));
-                MoveToNextWithoutMoraleRoll();
+                GameContext.Log($"Attackers and defenders tied: {attackerWoundsDealt} vs. {defenderWoundsDealt}.");
+                context.AddResult(new DetermineMeleeWinnerResults(DetermineMeleeWinnerResults.EMeleeWinnerResult.Tie));
+                OnDoesntNeedRollToDecide.Activate(context);
             }
             else if (attackerWoundsDealt > defenderWoundsDealt)
             {
-                Context.Log($"Attackers won melee {attackerWoundsDealt} vs. {defenderWoundsDealt}.");
-                Context.AddResult(new DetermineMeleeWinnerResults(DetermineMeleeWinnerResults.EMeleeWinnerResult.AttackerWon));
-                MoveToRollMorale();
+                GameContext.Log($"Attackers won melee {attackerWoundsDealt} vs. {defenderWoundsDealt}.");
+                context.AddResult(new DetermineMeleeWinnerResults(DetermineMeleeWinnerResults.EMeleeWinnerResult.AttackerWon));
+                OnNeedsRollToDecide.Activate(context);
             }
             else
             {
-                Context.Log($"Defenders won melee {defenderWoundsDealt} vs. {attackerWoundsDealt}.");
-                Context.AddResult(new DetermineMeleeWinnerResults(DetermineMeleeWinnerResults.EMeleeWinnerResult.DefenderWon));
-                MoveToRollMorale();
+                GameContext.Log($"Defenders won melee {defenderWoundsDealt} vs. {attackerWoundsDealt}.");
+                context.AddResult(new DetermineMeleeWinnerResults(DetermineMeleeWinnerResults.EMeleeWinnerResult.DefenderWon));
+                OnNeedsRollToDecide.Activate(context);
             }
-
-        }
-
-        private void MoveToRollMorale()
-        {
-            SignalEvent(DETERMINE_MELEE_WINNER_NEEDS_ROLL_TRANSITION);
-        }
-
-        private void MoveToNextWithoutMoraleRoll()
-        {
-            SignalEvent(DETERMINE_MELEE_WINNER_DOESNT_NEED_ROLL_TRANSITION);
         }
     }
 

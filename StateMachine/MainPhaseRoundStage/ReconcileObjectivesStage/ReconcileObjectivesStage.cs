@@ -7,36 +7,34 @@ namespace FDG.Stages
         public const string RECONCILE_OBJECTIVES_TO_RECONCILE_NEW_TURN = "ReconcileObjectivesBackToReconcileNewTurn";
         public const string RECONCILE_OBJECTIVES_TO_VICTORY_CALCULATION_TRANSITION = "ReconcileObjectivesBackToDeterminePlayerTurn";
 
+        public StageBinding ToReconcileEndOfTurn;
+        public StageBinding ToVictoryCalculation;
 
         private int _timesEntered = 0;
 
-        public ReconcileObjectivesStage(StateMachine stateMachine, IMainPhaseContext context, StageBase parentState = null)
-            : base(stateMachine, context, parentState)
+        public ReconcileObjectivesStage(IGameContext gameContext, IStateMachineLayer<IMainPhaseContext> parent) : base(gameContext, parent)
         {
+            ToReconcileEndOfTurn = new StageBinding(this);
+            ToVictoryCalculation = new StageBinding(this);
         }
 
-        public override void Enter()
+        public override void Enter(IMainPhaseContext context)
         {
-            base.Enter();
-
             //Temp, we'll just count to three and leave the phase when we're done.
             _timesEntered++;
 
-            Context.Log($"Reconcile Objectives entered for time {_timesEntered}.");
+            GameContext.Log($"Reconcile Objectives entered for time {_timesEntered}.");
 
             if (_timesEntered < 4)
             {
-                Context.Log($"Returning to reconcile new turn.");
-                SignalEvent(RECONCILE_OBJECTIVES_TO_RECONCILE_NEW_TURN);
+                GameContext.Log($"Returning to reconcile new turn.");
+                ToReconcileEndOfTurn.Activate(context);
             }
             else
             {
-                Context.Log($"Fourth time entered, leaving stage.");
-                SignalEvent(RECONCILE_OBJECTIVES_TO_VICTORY_CALCULATION_TRANSITION);
+                GameContext.Log($"Fourth time entered, leaving stage.");
+                ToVictoryCalculation.Activate(context);
             }
-            
         }
-
-        
     }
 }

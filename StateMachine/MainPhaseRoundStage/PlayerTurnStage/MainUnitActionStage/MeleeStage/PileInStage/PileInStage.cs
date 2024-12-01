@@ -3,26 +3,17 @@ namespace FDG.Stages
 {
     public class PileInStage : StageBase<IMeleeContext>
     {
-        public const string PILE_IN_FINISHED_TRANSITION = "PileInFinished";
+        public StageBinding OnPiledIn;
 
-        public PileInStage(StateMachine stateMachine, IMeleeContext context, StageBase parentState = null)
-            : base(stateMachine, context, parentState)
+        public PileInStage(IGameContext gameContext, IStateMachineLayer<IMeleeContext> parent) : base(gameContext, parent)
         {
-
+            OnPiledIn = new StageBinding(this);
         }
 
-        public override void Enter()
+        public override void Enter(IMeleeContext context)
         {
-            base.Enter();
-
-            Context.Log("Entered pile in stage. Skipping for now.");
-            MoveToNextStage();
-
-        }
-
-        private void MoveToNextStage()
-        {
-            SignalEvent(PILE_IN_FINISHED_TRANSITION);
+            GameContext.Log("Entered pile in stage. Skipping for now.");
+            OnPiledIn.Activate(context);
         }
     }
 }

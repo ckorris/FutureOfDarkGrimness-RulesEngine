@@ -4,65 +4,35 @@ namespace FDG.Stages
 
     public class DetermineCanKeepShootingStage : StageBase<IRangedContext>
     {
-        public string ReturnToChooseWeaponTransitionName;
-        public string FinishShootingTransitionName;
+        public StageBinding ReturnToChooseWeapon;
+        public StageBinding ToFinishShooting;
 
-        private readonly StateMachine _stateMachine;
-        private readonly IRangedContext _context;
-
-        public DetermineCanKeepShootingStage(StateMachine stateMachine, IRangedContext context, StageBase parentState = null) 
-            : base(stateMachine, context, parentState)
+        public DetermineCanKeepShootingStage(IGameContext gameContext, IStateMachineLayer<IRangedContext> parent) : base(gameContext, parent)
         {
-            _stateMachine = stateMachine;
-            _context = context;
+            ReturnToChooseWeapon = new StageBinding(this);
+            ToFinishShooting = new StageBinding(this);
         }
 
-        public override void Enter()
+        public override void Enter(IRangedContext context)
         {
-            base.Enter();
-            //TODO: If we've killed off the defender, leave.
-
             //Return to choose weapon again if there are weapons remaining and the target is still alive.
-            if(_context.AvailableWeapons.Count == 0)
+            if (context.AvailableWeapons.Count == 0)
             {
-                _context.Log("Has fired all weapons.");
-                SignalFinishedShooting();
+                GameContext.Log("Has fired all weapons.");
+                ToFinishShooting.Activate(context);
                 return;
             }
 
-            if(_context.RangedCombatMetadata.DefendingUnit.RemainingWounds <= 0)
+            if (context.RangedCombatMetadata.DefendingUnit.RemainingWounds <= 0)
             {
-                _context.Log("Has killed all target units.");
-                SignalFinishedShooting();
+                GameContext.Log("Has killed all target units.");
+                ToFinishShooting.Activate(context);
                 return;
             }
 
             //We've still got weapons to shoot, and baddies to shoot at. 
-            _context.ResetRangedCombatMetadata();
-            SignalCanKeepShooting();
-        }
-
-        public void BindReturnToChooseWeapon(StageBase returnStage)
-        {
-            ReturnToChooseWeaponTransitionName = $"{nameof(DetermineCanKeepShootingStage)}_TO_{returnStage.GetType()}";
-            Bind(ReturnToChooseWeaponTransitionName, returnStage);
-        }
-
-        public void BindFinishShooting(StageBase stageAfterShooting)
-        {
-            FinishShootingTransitionName = $"{nameof(DetermineCanKeepShootingStage)}_TO_{stageAfterShooting.GetType()}";
-            Bind(FinishShootingTransitionName, stageAfterShooting);
-        }
-
-        private void SignalCanKeepShooting()
-        {
-            SignalEvent(ReturnToChooseWeaponTransitionName);
-        }
-
-        private void SignalFinishedShooting()
-        {
-            SignalEvent(FinishShootingTransitionName);
+            context.ResetRangedCombatMetadata();
+            ReturnToChooseWeapon.Activate(context);
         }
     }
-
 }

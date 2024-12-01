@@ -4,23 +4,15 @@ using System.Collections.Generic;
 namespace FDG.Stages
 {
 
-    public abstract class CombatStage<TResult, TSelf, TMetadata> : StageBase<ISingleAttackContext>, ICombatEffectsSink<TResult>
+    public abstract class CombatStage<TResult, TSelf, TMetadata> : StageBase<ISingleAttackContext<TMetadata>>, ICombatEffectsSink<TResult>
         where TSelf : CombatStage<TResult, TSelf, TMetadata>
         where TMetadata : ICombatMetadata
     {
-        public string FinishedTransitionName;
+        //public string FinishedTransitionName;
 
-        private readonly StateMachine _stateMachine;
-        private readonly ISingleAttackContext<TMetadata> _context;
+        public StageBinding NextStage;
 
         private bool _hasBoundNextStage = false;
-
-        public CombatStage(StateMachine stateMachine, ISingleAttackContext<TMetadata> context, StageBase parentState = null) 
-            : base(stateMachine, context, parentState)
-        {
-            _stateMachine = stateMachine;
-            _context = context;
-        }
 
         //Not sure if interface needed.
         #region ICombatEffectsSink 
@@ -29,49 +21,25 @@ namespace FDG.Stages
         #endregion
 
         private List<ICombatEffect<TResult>> _effects = new List<ICombatEffect<TResult>>();
+        protected CombatStage(IGameContext gameContext, IStateMachineLayer<ISingleAttackContext<TMetadata>> parent) : base(gameContext, parent)
+        {
+            NextStage = new StageBinding(this);
+        }
 
         public CombatStage<TNextStageResult, TOtherSelf, TMetadata> BindNextStage<TNextStageResult, TOtherSelf, TMetadata>(CombatStage<TNextStageResult, TOtherSelf, TMetadata> nextStage)
             where TOtherSelf : CombatStage<TNextStageResult, TOtherSelf, TMetadata>
             where TMetadata : ICombatMetadata
         {
-            if(_hasBoundNextStage)
-            {
-                throw new InvalidOperationException($"Tried to bind next stage of {GetType()} to {typeof(TNextStageResult)}, "
-                    + $"but it had already been bound. Existing transition name: {FinishedTransitionName}");
-            }
-
-            FinishedTransitionName = GetTransitionName(nextStage);
-
-            Bind(FinishedTransitionName, nextStage);
+            NextStage.Bind(nextStage.Name);
 
             _hasBoundNextStage = true;
 
             return nextStage; //For fluid syntax.
         }
 
-        public void BindNextStage(StageBase nextStage)
+        public override void Enter(ISingleAttackContext<TMetadata> context)
         {
-            if (_hasBoundNextStage)
-            {
-                throw new InvalidOperationException($"Tried to bind next stage of {GetType()} to {nextStage.GetType()}, "
-                    + $"but it had already been bound. Existing transition name: {FinishedTransitionName}");
-            }
-
-            FinishedTransitionName = GetTransitionName(nextStage);
-            Bind(FinishedTransitionName, nextStage);
-            _hasBoundNextStage = true;
-        }
-
-        private string GetTransitionName(StageBase nextStage)
-        {
-            return $"{GetType()}_TO_{nextStage.GetType()}";
-        }
-
-        public sealed override void Enter()
-        {
-            base.Enter();
-
-            foreach (ISpecialRule_Combat rule in _context.AllSpecialRules)
+            foreach (ISpecialRule_Combat rule in context.AllSpecialRules)
             {
                 foreach (ICombatEffect<TResult> effect in rule.GetEffects<TResult>())
                 {
@@ -79,7 +47,7 @@ namespace FDG.Stages
                 }
             }
 
-            Execute();
+            Execute(context);
         }
 
         public sealed override void Exit()
@@ -89,9 +57,9 @@ namespace FDG.Stages
             _effects.Clear();
         }
 
-        private void Execute()
+        private void Execute(ISingleAttackContext<TMetadata> context)
         {
-            TMetadata metaData = _context.CombatMetaData; //Shorthand.
+            TMetadata metaData = context.CombatMetaData; //Shorthand.
 
             if (metaData.QueryForResult(out TResult _) == true)
             {
@@ -106,12 +74,12 @@ namespace FDG.Stages
                 effect.OnPreExecute(metaData, this);
             }
 
-            RunStage(metaData, RunPostExecuteEffects);
+            RunStage(metaData, (result) => RunPostExecuteEffects(context, result));
         }
 
-        private void RunPostExecuteEffects(TResult result)
+        private void RunPostExecuteEffects(ISingleAttackContext<TMetadata> context, TResult result)
         {
-            ICombatMetadata metaData = _context.CombatMetaData; //Shorthand.
+            ICombatMetadata metaData = context.CombatMetaData; //Shorthand.
 
             //For post-execute effects, use the original, as it may have been purposefully modified in pre-execute.
             foreach (ICombatEffect<TResult> effect in _effects)
@@ -121,12 +89,12 @@ namespace FDG.Stages
 
             metaData.AddResult(result);
 
-            Finish();
+            Finish(context);
         }
 
-        private void Finish()
+        private void Finish(ISingleAttackContext<TMetadata> context)
         {
-            SignalEvent(FinishedTransitionName);
+            NextStage.Activate(context);
         }
 
         protected TQueryResult QueryForResultOrThrowException<TQueryResult>(ICombatMetadata metaData)

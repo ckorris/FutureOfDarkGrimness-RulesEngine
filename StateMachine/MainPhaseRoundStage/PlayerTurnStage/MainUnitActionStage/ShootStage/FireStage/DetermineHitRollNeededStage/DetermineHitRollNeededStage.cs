@@ -6,8 +6,7 @@ namespace FDG.Stages
 
     public class DetermineHitRollNeededStage : CombatStage<DetermineHitRollNeededResults, DetermineHitRollNeededStage, ICombatMetadata>
     {
-        public DetermineHitRollNeededStage(StateMachine stateMachine, ISingleAttackContext<ICombatMetadata> context, StageBase parentState = null) 
-            : base(stateMachine, context, parentState)
+        public DetermineHitRollNeededStage(IGameContext gameContext, IStateMachineLayer<ISingleAttackContext<ICombatMetadata>> parent) : base(gameContext, parent)
         {
         }
 

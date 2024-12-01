@@ -6,8 +6,7 @@ namespace FDG.Stages
 
     public class ApplyWoundsStage : CombatStage<ApplyWoundsResults, ApplyWoundsStage, ICombatMetadata>
     {
-        public ApplyWoundsStage(StateMachine stateMachine, ISingleAttackContext<ICombatMetadata> context, StageBase parentState = null) 
-            : base(stateMachine, context, parentState)
+        public ApplyWoundsStage(IGameContext gameContext, IStateMachineLayer<ISingleAttackContext<ICombatMetadata>> parent) : base(gameContext, parent)
         {
         }
 
@@ -39,11 +38,11 @@ namespace FDG.Stages
 
             if(metaData.DefendingUnit.GetIsAlive())
             {
-                Context.Log($"Applying {totalWoundsApplied} wounds killed {modelsKilled} models.");
+                GameContext.Log($"Applying {totalWoundsApplied} wounds killed {modelsKilled} models.");
             }
             else
             {
-                Context.Log($"Applying {totalWoundsApplied} wounds killed {modelsKilled} models, killing the unit.");
+                GameContext.Log($"Applying {totalWoundsApplied} wounds killed {modelsKilled} models, killing the unit.");
             }
 
             onFinished(new ApplyWoundsResults(modelsKilled));

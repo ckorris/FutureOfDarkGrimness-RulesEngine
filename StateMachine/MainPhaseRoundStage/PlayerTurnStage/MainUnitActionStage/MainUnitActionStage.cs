@@ -48,7 +48,7 @@ namespace FDG.Stages
         {
             base.Enter();
 
-            Context.Log("Main Unit Action stage entering child: Choose Action stage.");
+            GameContext.Log("Main Unit Action stage entering child: Choose Action stage.");
             MoveToChildChooseActivation();
         }
 

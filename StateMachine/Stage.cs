@@ -1,63 +1,62 @@
-
 using System;
 
 
 
 namespace FDG.Stages
 {
-    public interface IStage
+    public abstract partial class StageBase<TContext>
     {
-        /// <summary>
-        /// Called when the state is entered.
-        /// </summary>
-        void Enter();
+        public string Name => this.Name();
 
-        /// <summary>
-        /// Called when the state is exited.
-        /// </summary>
-        void Exit();
-    }
+        public static string NameOf<T>() where T : StageBase<TContext>
+        {
+            return typeof(T).Name;
+        }
 
-    public interface IContextAware
-    {
-        void SetContext(object context);
-    }
-
-    public abstract class StageBase<TContext> : StageBase, IContextAware
-        where TContext : IGameContextAccessor
-    {
         /// <summary>
         /// The context associated with this state.
         /// </summary>
-        public TContext Context { get; private set; }
+        public IGameContext GameContext { get; private set; }
+
+        public IStateMachineLayer<TContext> Parent { get; private set; }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="StageBase{TContext}"/> class.
         /// </summary>
         /// <param name="stateMachine">The state machine managing this state.</param>
-        /// <param name="context">The context associated with this state.</param>
-        /// <param name="parentState">The parent state, if any.</param>
-        protected StageBase(StateMachine stateMachine, TContext context, StageBase parentState = null)
-            : base(stateMachine, parentState)
+        /// <param name="gameContext">The context associated with this state.</param>
+        /// <param name="parent">The parent state, if any.</param>
+        protected StageBase(IGameContext gameContext, IStateMachineLayer<TContext> parent)
         {
-            Context = context ?? throw new ArgumentNullException(nameof(context));
+            GameContext = gameContext ?? throw new ArgumentNullException(nameof(gameContext));
+            Parent = parent;
         }
 
-        public void SetContext(object context)
+        public void Bind(string eventName, StageBase<TContext> targetStage)
         {
-            if(context is TContext typedContext)
-            {
-                Context = typedContext;
-            }
-            else
-            {
-                throw new ArgumentException($"Called {nameof(SetContext)} on state {GetType()} with context that wasn't " +
-                    $"expected type of {typeof(TContext)}. It was {context.GetType()} instead.");
-            }
+
+        }
+
+        public void SignalEvent(string eventName, TContext context)
+        {
+
+        }
+
+        public abstract void Enter(TContext context);
+
+        public virtual void Exit() { } //Optional.
+    }
+
+    public static class StageBaseExtensions
+    {
+        public static string Name<TContext>(this StageBase<TContext> stage)
+        {
+            return stage.GetType().Name;
         }
     }
 
-    public abstract class StageBase : IStage
+    /*
+    public abstract class StageBase
     {
         protected StateMachine StateMachine { get; }
         protected StageBase ParentState { get; }
@@ -81,5 +80,5 @@ namespace FDG.Stages
             StateMachine.ProcessEvent(this, eventName, eventData);
         }
     }
-
+    */
 }

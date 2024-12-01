@@ -43,7 +43,7 @@ namespace FDG.Stages
         {
             base.Enter();
 
-            Context.Log($"Shoot stage entering child: Choose Ranged Target.");
+            GameContext.Log($"Shoot stage entering child: Choose Ranged Target.");
 
             //TODO: Reset metadata?
 

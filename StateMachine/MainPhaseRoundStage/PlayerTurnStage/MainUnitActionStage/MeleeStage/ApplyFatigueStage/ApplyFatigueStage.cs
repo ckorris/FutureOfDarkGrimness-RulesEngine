@@ -5,9 +5,17 @@ namespace FDG.Stages
     {
         public const string APPLY_FATIGUE_FINISHED_TRANSITION = "ApplyFatiqueFinished";
 
-        public ApplyFatigueStage(StateMachine stateMachine, IMeleeContext context, StageBase parentState = null)
-            : base(stateMachine, context, parentState)
+        public StageBinding OnFatigueApplied;
+
+        public ApplyFatigueStage(IGameContext gameContext, IStateMachineLayer<IMeleeContext> parent) : base(gameContext, parent)
         {
+            OnFatigueApplied = new StageBinding(this);
+        }
+
+        public override void Enter(IMeleeContext context)
+        {
+            GameContext.Log("Applying fatigue (not really for now)");
+            OnFatigueApplied.Activate(context);
         }
     }
 }

@@ -6,33 +6,23 @@ namespace FDG.Stages
 
     public class MovementStage : StageBase<IUnitActionContext>
     {
-        public const string MOVEMENT_TO_CHOOSE_ACTION_TRANSITION =
-                    "MovementToChooseAction";
-
-        public MovementStage(StateMachine stateMachine, IUnitActionContext context, StageBase parentState = null)
-            : base(stateMachine, context, parentState)
+        public StageBinding ToChooseAction;
+        public MovementStage(IGameContext gameContext, IStateMachineLayer<IUnitActionContext> parent) : base(gameContext, parent)
         {
-
+            ToChooseAction = new StageBinding(this);
         }
 
-        public override void Enter()
+        public override void Enter(IUnitActionContext context)
         {
-            base.Enter();
-
-            Context.Log($"Chose movement action.");
-            Context.GetHandler<IMovementHandler>().Handle(Context, OnMove);
+            GameContext.Log($"Chose movement action.");
+            GameContext.GetHandler<IMovementHandler>().Handle(context, (distance) => OnMove(context, distance));
         }
 
-        private void OnMove(float distance)
+        private void OnMove(IUnitActionContext context, float distance)
         {
             //TEMP distance is just for testing.
-            Context.RegisterMoveFinished(distance);
-            MoveToReconcileEndOfActivation();
-        }
-
-        private void MoveToReconcileEndOfActivation()
-        {
-            SignalEvent(MOVEMENT_TO_CHOOSE_ACTION_TRANSITION);
+            context.RegisterMoveFinished(distance);
+            ToChooseAction.Activate(context);
         }
     }
 

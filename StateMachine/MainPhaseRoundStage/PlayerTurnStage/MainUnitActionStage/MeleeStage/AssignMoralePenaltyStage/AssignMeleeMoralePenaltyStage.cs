@@ -3,25 +3,18 @@ namespace FDG.Stages
 {
     public class AssignMeleeMoralePenaltyStage : StageBase<IMeleeContext>
     {
-        public const string ASSIGN_MELEE_MORALE_PENALTY_FINISHED_TRANSITION = "AssignMeleeMoralePenaltyFinished";
+        public StageBinding OnAssignedPenalty;
 
-        public AssignMeleeMoralePenaltyStage(StateMachine stateMachine, IMeleeContext context, StageBase parentState = null)
-            : base(stateMachine, context, parentState)
+        public AssignMeleeMoralePenaltyStage(IGameContext gameContext, IStateMachineLayer<IMeleeContext> parent) : base(gameContext, parent)
         {
+            OnAssignedPenalty = new StageBinding(this);
         }
 
-        public override void Enter()
+        public override void Enter(IMeleeContext context)
         {
-            base.Enter();
-
             //TODO: Finish once we have a way to fatigue a unit.
-            Context.Log("Assigning melee morale penalty. (Not actually for now)");
-            MoveToNextStage();
-        }
-
-        private void MoveToNextStage()
-        {
-            SignalEvent(ASSIGN_MELEE_MORALE_PENALTY_FINISHED_TRANSITION);
+            GameContext.Log("Assigning melee morale penalty. (Not actually for now)");
+            OnAssignedPenalty.Activate(context);
         }
     }
 }

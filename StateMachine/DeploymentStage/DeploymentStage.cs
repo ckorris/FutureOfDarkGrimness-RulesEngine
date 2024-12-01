@@ -6,21 +6,16 @@ namespace FDG.Stages
     {
         public const string TO_MAIN_TRANSITION = "DeploymentToMain";
 
-        public DeploymentStage(StateMachine stateMachine, IGameContext context, StageBase parentState = null)
-            : base(stateMachine, context, parentState)
+        public StageBinding ToMain;
+
+        public DeploymentStage(IGameContext gameContext, IStateMachineLayer<IGameContext> parent) : base(gameContext, parent)
         {
+            ToMain = new StageBinding(this);
         }
 
-        public override void Enter()
+        public override void Enter(IGameContext context)
         {
-            base.Enter();
-
-            Context.GetHandler<IDeploymentHandler>().Handle(Context, MoveToMain);
-        }
-
-        private void MoveToMain()
-        {
-            SignalEvent(TO_MAIN_TRANSITION);
+            GameContext.GetHandler<IDeploymentHandler>().Handle(GameContext, ToMain.Activate);
         }
     }
 

@@ -4,17 +4,19 @@ namespace FDG.Stages
 
     public class VictoryCalculationStage : StageBase<IGameContext>
     {
-        public VictoryCalculationStage(StateMachine stateMachine, IGameContext context, StageBase parentState = null)
-            : base(stateMachine, context, parentState)
+        public VictoryCalculationStage(IGameContext gameContext, IStateMachineLayer<IGameContext> parent)
+            : base(gameContext, parent)
         {
         }
 
-        public override void Enter()
+        public override void Enter(IGameContext context)
         {
-            base.Enter();
-
             //Overly simple for now.
-            Context.TextOutput.Log("Reached victory calculation.");
+            GameContext.TextOutput.Log("Reached victory calculation.");
+        }
+
+        public override void Exit()
+        {
         }
     }
 }

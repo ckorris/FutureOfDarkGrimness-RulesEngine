@@ -52,7 +52,7 @@ namespace FDG.Stages
         {
             base.Enter();
 
-            _reversedContext.BeginNewAttack(Context.DefendingUnit, Context.AttackingUnit); //Purposefully reversed.
+            _reversedContext.BeginNewAttack(GameContext.DefendingUnit, GameContext.AttackingUnit); //Purposefully reversed.
 
             MoveToChildStage();
         }

@@ -13,6 +13,7 @@ namespace FDG.Stages
         private readonly MeleeStage _meleeStage;
 
         private readonly ShootStage _shootStage;
+
         public MainUnitActionStage(StateMachine stateMachine, IPlayerTurnContext context,
             IUnitActionContext mainUnitActionContext, IMeleeContext meleeContext,
             IRangedContext rangedContext, StateBase parentState = null)

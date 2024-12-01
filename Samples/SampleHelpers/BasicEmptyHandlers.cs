@@ -62,9 +62,9 @@ namespace FDG.Samples
 
     public class BasicTesterMovementHandler : IMovementHandler
     {
-        public void Handle(IUnitActionContext actionContext, Action finishedTemp)
+        public void Handle(IUnitActionContext actionContext, Action<float> finishedTemp)
         {
-            finishedTemp();
+            finishedTemp(5); //TEST.
         }
     }
 

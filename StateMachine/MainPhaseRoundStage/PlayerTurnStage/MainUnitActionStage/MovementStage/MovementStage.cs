@@ -20,7 +20,14 @@ namespace FDG.Stages
             base.Enter();
 
             Context.Log($"Chose movement action.");
-            Context.GetHandler<IMovementHandler>().Handle(Context, MoveToReconcileEndOfActivation);
+            Context.GetHandler<IMovementHandler>().Handle(Context, OnMove);
+        }
+
+        private void OnMove(float distance)
+        {
+            //TEMP distance is just for testing.
+            Context.RegisterMoveFinished(distance);
+            MoveToReconcileEndOfActivation();
         }
 
         private void MoveToReconcileEndOfActivation()
@@ -31,6 +38,6 @@ namespace FDG.Stages
 
     public interface IMovementHandler
     {
-        public void Handle(IUnitActionContext actionContext, Action finishedTemp);
+        public void Handle(IUnitActionContext actionContext, Action<float> finishedTempDist);
     }
 }

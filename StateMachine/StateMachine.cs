@@ -5,13 +5,13 @@ namespace FDG.Stages
 {
     public class StateMachine
     {
-        private Stack<StateBase> _stateStack = new Stack<StateBase>();
+        private Stack<StageBase> _stateStack = new Stack<StageBase>();
 
         //Transition map: (CurrentStateType, EventName) -> NextStateInstance.
-        private Dictionary<(StateBase StateType, string Event), StateBase> _transitions =
-            new Dictionary<(StateBase, string), StateBase>();
+        private Dictionary<(StageBase StateType, string Event), StageBase> _transitions =
+            new Dictionary<(StageBase, string), StageBase>();
 
-        public void Start(StateBase initialState)
+        public void Start(StageBase initialState)
         {
             if (initialState == null)
                 throw new ArgumentNullException(nameof(initialState));
@@ -19,7 +19,7 @@ namespace FDG.Stages
             PushState(initialState);
         }
 
-        public void PushState(StateBase state)
+        public void PushState(StageBase state)
         {
             if (state == null)
                 throw new ArgumentNullException(nameof(state));
@@ -37,7 +37,7 @@ namespace FDG.Stages
             }
         }
 
-        public void ChangeState(StateBase newState)
+        public void ChangeState(StageBase newState)
         {
             if (newState == null)
                 throw new ArgumentNullException(nameof(newState));
@@ -46,14 +46,14 @@ namespace FDG.Stages
             PushState(newState);
         }
 
-        public void AddTransition(StateBase sourceState, string eventName, StateBase nextState)
+        public void AddTransition(StageBase sourceState, string eventName, StageBase nextState)
         {
             _transitions[(sourceState, eventName)] = nextState;
         }
 
 
         //Method called by states to signal events.
-        public void ProcessEvent(StateBase state, string eventName, object eventData = null)
+        public void ProcessEvent(StageBase state, string eventName, object eventData = null)
         {
             var key = (state, eventName);
             if (_transitions.TryGetValue(key, out var nextState))
@@ -71,7 +71,7 @@ namespace FDG.Stages
             }
         }
 
-        public StateBase CurrentState => _stateStack.Count > 0 ? _stateStack.Peek() : null;
+        public StageBase CurrentState => _stateStack.Count > 0 ? _stateStack.Peek() : null;
     }
 
 }

@@ -2,14 +2,14 @@
 namespace FDG.Stages
 {
 
-    public class ReconcileEndOfActivationStage : StateBase<IPlayerTurnContext>
+    public class ReconcileEndOfActivationStage : StageBase<IPlayerTurnContext>
     {
         public const string RECONCILE_ACTIVATION_BACK_TO_DETERMINE_PLAYER_TURN_TRANSITION
             = "ReconcileEndOfActivationBackToDeterminePlayerTurn";
         public const string RECONCILE_ACTIVATION_TO_RECONCILE_OBJECTIVES_TRANSITION
             = "PlayerTurnToReconcileObjectives";
 
-        public ReconcileEndOfActivationStage(StateMachine stateMachine, IPlayerTurnContext context, StateBase parentState = null)
+        public ReconcileEndOfActivationStage(StateMachine stateMachine, IPlayerTurnContext context, StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
         }

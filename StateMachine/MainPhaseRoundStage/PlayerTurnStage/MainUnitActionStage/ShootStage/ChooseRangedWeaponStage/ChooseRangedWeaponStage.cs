@@ -5,12 +5,12 @@ using System.Collections.Concurrent;
 namespace FDG.Stages
 {
 
-    public class ChooseRangedWeaponStage : StateBase<IRangedContext>
+    public class ChooseRangedWeaponStage : StageBase<IRangedContext>
     {
         public const string CHOOSE_RANGED_WEAPON_TO_CHOOSE_RANGED_TARGET_TRANSITION =
             "ChooseRangedWeaponToChooseRangedTarget";
 
-        public ChooseRangedWeaponStage(StateMachine stateMachine, IRangedContext context, StateBase parentState = null)
+        public ChooseRangedWeaponStage(StateMachine stateMachine, IRangedContext context, StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
         }

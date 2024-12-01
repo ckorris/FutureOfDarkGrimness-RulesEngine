@@ -2,7 +2,7 @@
 
 namespace FDG.Stages
 {
-    public class PlayerTurnStage : StateBase<IMainPhaseContext>
+    public class PlayerTurnStage : StageBase<IMainPhaseContext>
     {
         private const string PLAYER_TURN_TO_CHILD_DETERMINE_PLAYER_TURN = "PlayerTurnToChildDeterminePlayerTurn";
 
@@ -12,7 +12,7 @@ namespace FDG.Stages
 
         public PlayerTurnStage(StateMachine stateMachine, IMainPhaseContext mainPhaseContext, 
             IPlayerTurnContext playerTurnContext, IUnitActionContext mainUnitActionContext, 
-            IMeleeContext meleeContext, IRangedContext rangedContext, StateBase parentState = null)
+            IMeleeContext meleeContext, IRangedContext rangedContext, StageBase parentState = null)
             : base(stateMachine, mainPhaseContext, parentState)
         {
             DeterminePlayerTurnStage determinePlayerTurnStage = new DeterminePlayerTurnStage(stateMachine, playerTurnContext, this);
@@ -33,7 +33,7 @@ namespace FDG.Stages
             mainUnitActionStage.AssignExitStage(_reconcileEndOfActivationStage);
         }
 
-        public void AssignExitStage(StateBase targetStageWhenFinished)
+        public void AssignExitStage(StageBase targetStageWhenFinished)
         {
             _reconcileEndOfActivationStage.Bind(ReconcileEndOfActivationStage.RECONCILE_ACTIVATION_TO_RECONCILE_OBJECTIVES_TRANSITION,
                 targetStageWhenFinished);

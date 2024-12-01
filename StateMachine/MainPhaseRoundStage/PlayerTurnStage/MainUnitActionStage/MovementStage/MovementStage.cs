@@ -4,12 +4,12 @@ using System;
 namespace FDG.Stages
 {
 
-    public class MovementStage : StateBase<IUnitActionContext>
+    public class MovementStage : StageBase<IUnitActionContext>
     {
         public const string MOVEMENT_TO_CHOOSE_ACTION_TRANSITION =
                     "MovementToChooseAction";
 
-        public MovementStage(StateMachine stateMachine, IUnitActionContext context, StateBase parentState = null)
+        public MovementStage(StateMachine stateMachine, IUnitActionContext context, StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
 

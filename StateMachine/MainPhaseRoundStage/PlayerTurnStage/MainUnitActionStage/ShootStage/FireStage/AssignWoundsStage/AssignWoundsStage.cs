@@ -5,7 +5,7 @@ namespace FDG.Stages
 
     public class AssignWoundsStage : CombatStage<AssignWoundsResults, AssignWoundsStage, ICombatMetadata>
     {
-        public AssignWoundsStage(StateMachine stateMachine, ISingleAttackContext<ICombatMetadata> context, StateBase parentState = null)
+        public AssignWoundsStage(StateMachine stateMachine, ISingleAttackContext<ICombatMetadata> context, StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
         }

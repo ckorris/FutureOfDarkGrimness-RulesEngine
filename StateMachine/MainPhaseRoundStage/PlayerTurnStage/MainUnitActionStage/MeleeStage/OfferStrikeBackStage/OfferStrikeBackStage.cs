@@ -4,7 +4,7 @@ using System;
 namespace FDG.Stages
 {
 
-    public class OfferStrikeBackStage : StateBase<IMeleeContext>
+    public class OfferStrikeBackStage : StageBase<IMeleeContext>
     {
         public const string OFFER_STRIKE_BACK_ACCEPTED_TRANSITION =
             "OfferStrikeBackAccepted";
@@ -12,7 +12,7 @@ namespace FDG.Stages
         public const string OFFER_STRIKE_BACK_REJECTED_TRANSITION =
             "OfferStrikeBackRejectd";
 
-        public OfferStrikeBackStage(StateMachine stateMachine, IMeleeContext context, StateBase parentState = null)
+        public OfferStrikeBackStage(StateMachine stateMachine, IMeleeContext context, StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
         }

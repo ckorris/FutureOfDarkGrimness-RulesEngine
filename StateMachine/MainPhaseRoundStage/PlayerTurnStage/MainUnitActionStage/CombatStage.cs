@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace FDG.Stages
 {
 
-    public abstract class CombatStage<TResult, TSelf, TMetadata> : StateBase<ISingleAttackContext>, ICombatEffectsSink<TResult>
+    public abstract class CombatStage<TResult, TSelf, TMetadata> : StageBase<ISingleAttackContext>, ICombatEffectsSink<TResult>
         where TSelf : CombatStage<TResult, TSelf, TMetadata>
         where TMetadata : ICombatMetadata
     {
@@ -15,7 +15,7 @@ namespace FDG.Stages
 
         private bool _hasBoundNextStage = false;
 
-        public CombatStage(StateMachine stateMachine, ISingleAttackContext<TMetadata> context, StateBase parentState = null) 
+        public CombatStage(StateMachine stateMachine, ISingleAttackContext<TMetadata> context, StageBase parentState = null) 
             : base(stateMachine, context, parentState)
         {
             _stateMachine = stateMachine;
@@ -49,7 +49,7 @@ namespace FDG.Stages
             return nextStage; //For fluid syntax.
         }
 
-        public void BindNextStage(StateBase nextStage)
+        public void BindNextStage(StageBase nextStage)
         {
             if (_hasBoundNextStage)
             {
@@ -62,7 +62,7 @@ namespace FDG.Stages
             _hasBoundNextStage = true;
         }
 
-        private string GetTransitionName(StateBase nextStage)
+        private string GetTransitionName(StageBase nextStage)
         {
             return $"{GetType()}_TO_{nextStage.GetType()}";
         }

@@ -2,7 +2,7 @@
 namespace FDG.Stages
 {
 
-    public class StrikeBackStage : StateBase<IMeleeContext>
+    public class StrikeBackStage : StageBase<IMeleeContext>
     {
         private const string STRIKE_BACK_TO_CHILD_ENTRANCE_TRANSITION =
             "StrikeBackToChildEntrance";
@@ -13,7 +13,7 @@ namespace FDG.Stages
 
         private IMeleeContext _reversedContext;
 
-        public StrikeBackStage(StateMachine stateMachine, IMeleeContext context, StateBase parentState = null)
+        public StrikeBackStage(StateMachine stateMachine, IMeleeContext context, StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
             _stateMachine = stateMachine;
@@ -38,12 +38,12 @@ namespace FDG.Stages
             _determineCanKeepSwingingStage.BindReturnToChooseWeapon(chooseMeleeWeaponStage);
         }
 
-        public void AssignNormalExitStage(StateBase targetStageWhenFinished)
+        public void AssignNormalExitStage(StageBase targetStageWhenFinished)
         {
             _determineCanKeepSwingingStage.BindOutOfWeapons(targetStageWhenFinished);
         }
 
-        public void AssignAttackerKilledExitStage(StateBase targetStageWhenAttackerKilled)
+        public void AssignAttackerKilledExitStage(StageBase targetStageWhenAttackerKilled)
         {
             _determineCanKeepSwingingStage.BindDefenderKilled(targetStageWhenAttackerKilled);
         }

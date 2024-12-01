@@ -1,11 +1,11 @@
 ﻿
 namespace FDG.Stages
 {
-    public class PileInStage : StateBase<IMeleeContext>
+    public class PileInStage : StageBase<IMeleeContext>
     {
         public const string PILE_IN_FINISHED_TRANSITION = "PileInFinished";
 
-        public PileInStage(StateMachine stateMachine, IMeleeContext context, StateBase parentState = null)
+        public PileInStage(StateMachine stateMachine, IMeleeContext context, StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
 

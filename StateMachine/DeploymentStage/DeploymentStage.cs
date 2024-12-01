@@ -2,11 +2,11 @@
 namespace FDG.Stages
 {
 
-    public class DeploymentStage : StateBase<IGameContext>
+    public class DeploymentStage : StageBase<IGameContext>
     {
         public const string TO_MAIN_TRANSITION = "DeploymentToMain";
 
-        public DeploymentStage(StateMachine stateMachine, IGameContext context, StateBase parentState = null)
+        public DeploymentStage(StateMachine stateMachine, IGameContext context, StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
         }

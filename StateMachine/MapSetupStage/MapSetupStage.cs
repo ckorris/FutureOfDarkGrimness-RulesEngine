@@ -2,11 +2,11 @@
 namespace FDG.Stages
 {
 
-    public class MapSetupStage : StateBase<IGameContext>
+    public class MapSetupStage : StageBase<IGameContext>
     {
         public const string TO_DEPLOYMENT_TRANSITION = "MapSetupToDeployment";
 
-        public MapSetupStage(StateMachine stateMachine, IGameContext context, StateBase parentState = null)
+        public MapSetupStage(StateMachine stateMachine, IGameContext context, StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
         }

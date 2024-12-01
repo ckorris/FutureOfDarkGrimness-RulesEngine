@@ -2,7 +2,7 @@
 namespace FDG.Stages
 {
 
-    public class ShootStage : StateBase<IUnitActionContext>
+    public class ShootStage : StageBase<IUnitActionContext>
     {
         public const string SHOOT_TO_CHILD_CHOOSE_RANGED_WEAPON_TRANSITION = "ShootToChildChooseRangedWeapon";
 
@@ -11,7 +11,7 @@ namespace FDG.Stages
         private readonly ResolveRangedMoraleStage _resolveRangedMoraleStage;
 
         public ShootStage(StateMachine stateMachine, IUnitActionContext context, IRangedContext rangedContext,
-            StateBase parentState = null)
+            StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
             _stateMachine = stateMachine;
@@ -33,7 +33,7 @@ namespace FDG.Stages
             determineCanKeepShootingStage.BindFinishShooting(_resolveRangedMoraleStage);
         }
 
-        public void AssignExitStage(StateBase targetStageWhenFinished)
+        public void AssignExitStage(StageBase targetStageWhenFinished)
         {
             _resolveRangedMoraleStage.Bind(ResolveRangedMoraleStage.RESOLVE_RANGED_MORALE_FINISHED_TRANSITION,
                 targetStageWhenFinished);

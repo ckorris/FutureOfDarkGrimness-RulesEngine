@@ -2,7 +2,7 @@
 namespace FDG.Stages
 {
 
-    public class FireStage : StateBase<IRangedContext>
+    public class FireStage : StageBase<IRangedContext>
     {
         public const string FIRE_TO_CHILD_ENTRANCE_TRANSITION =
             "FireToChildEntrance";
@@ -11,7 +11,7 @@ namespace FDG.Stages
         private readonly SingleRangedAttackContext _attackContext;
         private readonly ApplyWoundsStage _applyWoundsStage;
 
-        public FireStage(StateMachine stateMachine, IRangedContext context, StateBase parentState = null)
+        public FireStage(StateMachine stateMachine, IRangedContext context, StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
             _stateMachine = stateMachine;
@@ -34,7 +34,7 @@ namespace FDG.Stages
             Bind(FIRE_TO_CHILD_ENTRANCE_TRANSITION, buildTargetListStage);
         }
 
-        public void AssignExitStage(StateBase targetStageWhenFinished)
+        public void AssignExitStage(StageBase targetStageWhenFinished)
         {
             _applyWoundsStage.BindNextStage(targetStageWhenFinished);
         }

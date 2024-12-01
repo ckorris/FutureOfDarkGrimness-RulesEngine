@@ -5,12 +5,12 @@ using System.Collections.Generic;
 namespace FDG.Stages
 {
 
-    public class ChooseRangedTargetStage : StateBase<IRangedContext>
+    public class ChooseRangedTargetStage : StageBase<IRangedContext>
     {
         public const string CHOOSE_RANGED_TARGET_TO_FIRE_TRANSITION =
             "ChooseRangedTargetToFire";
 
-        public ChooseRangedTargetStage(StateMachine stateMachine, IRangedContext context, StateBase parentState = null)
+        public ChooseRangedTargetStage(StateMachine stateMachine, IRangedContext context, StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
         }

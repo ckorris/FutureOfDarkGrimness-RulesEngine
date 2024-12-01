@@ -1,7 +1,7 @@
 ﻿
 namespace FDG.Stages
 {
-    public class SwingMeleeWeaponStage : StateBase<IMeleeContext>
+    public class SwingMeleeWeaponStage : StageBase<IMeleeContext>
     {
         private const string SWING_TO_CHILD_ENTRANCE_TRANSITION = "SwingToChildEntrance";
 
@@ -9,7 +9,7 @@ namespace FDG.Stages
         private readonly SingleMeleeAttackContext _attackContext;
         private readonly ApplyWoundsStage _applyWoundsStage;
 
-        public SwingMeleeWeaponStage(StateMachine stateMachine, IMeleeContext context, StateBase parentState = null)
+        public SwingMeleeWeaponStage(StateMachine stateMachine, IMeleeContext context, StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
             _stateMachine = stateMachine;
@@ -29,7 +29,7 @@ namespace FDG.Stages
             Bind(SWING_TO_CHILD_ENTRANCE_TRANSITION, buildTargetListStage);
         }
 
-        public void AssignExitStage(StateBase targetStageWhenFinished)
+        public void AssignExitStage(StageBase targetStageWhenFinished)
         {
             _applyWoundsStage.BindNextStage(targetStageWhenFinished);
         }

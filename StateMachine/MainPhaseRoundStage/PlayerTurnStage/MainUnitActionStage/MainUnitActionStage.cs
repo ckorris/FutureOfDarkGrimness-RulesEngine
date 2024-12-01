@@ -2,7 +2,7 @@
 namespace FDG.Stages
 {
 
-    public class MainUnitActionStage : StateBase<IPlayerTurnContext>
+    public class MainUnitActionStage : StageBase<IPlayerTurnContext>
     {
         public const string MAIN_UNIT_ACTION_TO_CHILD_CHOOSE_ACTION_TRANSITION =
             "MainUnitActionToChildChooseAction";
@@ -16,7 +16,7 @@ namespace FDG.Stages
 
         public MainUnitActionStage(StateMachine stateMachine, IPlayerTurnContext context,
             IUnitActionContext mainUnitActionContext, IMeleeContext meleeContext,
-            IRangedContext rangedContext, StateBase parentState = null)
+            IRangedContext rangedContext, StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
             _chooseActionStage = new ChooseActionStage(stateMachine, mainUnitActionContext, this);
@@ -38,7 +38,7 @@ namespace FDG.Stages
             _shootStage.AssignExitStage(_chooseActionStage);
         }
 
-        public void AssignExitStage(StateBase nextStage)
+        public void AssignExitStage(StageBase nextStage)
         {
             _chooseActionStage.Bind(ChooseActionStage.CHOOSE_ACTION_TO_RECONCILE_END_OF_ACTIVATION_TRANSITION,
                 nextStage);

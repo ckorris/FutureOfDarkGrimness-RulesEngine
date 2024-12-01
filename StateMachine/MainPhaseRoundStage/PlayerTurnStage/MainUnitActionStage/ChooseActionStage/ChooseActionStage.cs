@@ -5,7 +5,7 @@ using System.Windows.Documents;
 namespace FDG.Stages
 {
 
-    public class ChooseActionStage : StateBase<IUnitActionContext>
+    public class ChooseActionStage : StageBase<IUnitActionContext>
     {
         public const string CHOOSE_ACTION_TO_MOVEMENT_TRANSITION =
             "ChooseActionToMovement";
@@ -23,7 +23,7 @@ namespace FDG.Stages
         public const string CHARGE_CHOICE_NAME = "Charge";
         public const string SHOOT_CHOICE_NAME = "Shoot";
 
-        public ChooseActionStage(StateMachine stateMachine, IUnitActionContext context, StateBase parentState = null)
+        public ChooseActionStage(StateMachine stateMachine, IUnitActionContext context, StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
         }

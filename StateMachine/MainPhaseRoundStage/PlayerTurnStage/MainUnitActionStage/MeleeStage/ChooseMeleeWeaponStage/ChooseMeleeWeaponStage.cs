@@ -4,11 +4,11 @@ using System.Collections.Generic;
 
 namespace FDG.Stages
 {
-    public class ChooseMeleeWeaponStage : StateBase<IMeleeContext>
+    public class ChooseMeleeWeaponStage : StageBase<IMeleeContext>
     {
         public const string CHOOSE_MELEE_WEAPON_FINISHED_TRANSITION = "ChooseMeleeWeaponFinished";
 
-        public ChooseMeleeWeaponStage(StateMachine stateMachine, IMeleeContext context, StateBase parentState = null)
+        public ChooseMeleeWeaponStage(StateMachine stateMachine, IMeleeContext context, StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
         }

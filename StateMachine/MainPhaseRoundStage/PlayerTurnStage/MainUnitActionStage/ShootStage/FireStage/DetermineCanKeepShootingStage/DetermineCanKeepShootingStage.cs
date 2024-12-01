@@ -2,7 +2,7 @@
 namespace FDG.Stages
 {
 
-    public class DetermineCanKeepShootingStage : StateBase<IRangedContext>
+    public class DetermineCanKeepShootingStage : StageBase<IRangedContext>
     {
         public string ReturnToChooseWeaponTransitionName;
         public string FinishShootingTransitionName;
@@ -10,7 +10,7 @@ namespace FDG.Stages
         private readonly StateMachine _stateMachine;
         private readonly IRangedContext _context;
 
-        public DetermineCanKeepShootingStage(StateMachine stateMachine, IRangedContext context, StateBase parentState = null) 
+        public DetermineCanKeepShootingStage(StateMachine stateMachine, IRangedContext context, StageBase parentState = null) 
             : base(stateMachine, context, parentState)
         {
             _stateMachine = stateMachine;
@@ -42,13 +42,13 @@ namespace FDG.Stages
             SignalCanKeepShooting();
         }
 
-        public void BindReturnToChooseWeapon(StateBase returnStage)
+        public void BindReturnToChooseWeapon(StageBase returnStage)
         {
             ReturnToChooseWeaponTransitionName = $"{nameof(DetermineCanKeepShootingStage)}_TO_{returnStage.GetType()}";
             Bind(ReturnToChooseWeaponTransitionName, returnStage);
         }
 
-        public void BindFinishShooting(StateBase stageAfterShooting)
+        public void BindFinishShooting(StageBase stageAfterShooting)
         {
             FinishShootingTransitionName = $"{nameof(DetermineCanKeepShootingStage)}_TO_{stageAfterShooting.GetType()}";
             Bind(FinishShootingTransitionName, stageAfterShooting);

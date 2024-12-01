@@ -5,7 +5,7 @@ using System;
 
 namespace FDG.Stages
 {
-    public interface IState
+    public interface IStage
     {
         /// <summary>
         /// Called when the state is entered.
@@ -23,7 +23,7 @@ namespace FDG.Stages
         void SetContext(object context);
     }
 
-    public abstract class StateBase<TContext> : StateBase, IContextAware
+    public abstract class StageBase<TContext> : StageBase, IContextAware
         where TContext : IGameContextAccessor
     {
         /// <summary>
@@ -32,12 +32,12 @@ namespace FDG.Stages
         public TContext Context { get; private set; }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="StateBase{TContext}"/> class.
+        /// Initializes a new instance of the <see cref="StageBase{TContext}"/> class.
         /// </summary>
         /// <param name="stateMachine">The state machine managing this state.</param>
         /// <param name="context">The context associated with this state.</param>
         /// <param name="parentState">The parent state, if any.</param>
-        protected StateBase(StateMachine stateMachine, TContext context, StateBase parentState = null)
+        protected StageBase(StateMachine stateMachine, TContext context, StageBase parentState = null)
             : base(stateMachine, parentState)
         {
             Context = context ?? throw new ArgumentNullException(nameof(context));
@@ -57,18 +57,18 @@ namespace FDG.Stages
         }
     }
 
-    public abstract class StateBase : IState
+    public abstract class StageBase : IStage
     {
         protected StateMachine StateMachine { get; }
-        protected StateBase ParentState { get; }
+        protected StageBase ParentState { get; }
 
-        protected StateBase(StateMachine stateMachine, StateBase parentState = null)
+        protected StageBase(StateMachine stateMachine, StageBase parentState = null)
         {
             StateMachine = stateMachine ?? throw new ArgumentNullException(nameof(stateMachine));
             ParentState = parentState;
         }
 
-        public void Bind(string eventName, StateBase targetState)
+        public void Bind(string eventName, StageBase targetState)
         {
             StateMachine.AddTransition(this, eventName, targetState);
         }

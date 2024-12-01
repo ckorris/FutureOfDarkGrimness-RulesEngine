@@ -1,14 +1,14 @@
 ﻿
 namespace FDG.Stages
 {
-    public class DetermineInRangeAttackersStage : StateBase<IMeleeContext>
+    public class DetermineInRangeAttackersStage : StageBase<IMeleeContext>
     {
         public const string DETERMINE_IN_RANGE_ATTACKER_FINISHED_TRANSITION = "DetermineInRangeAttackerFinished";
 
         private const float HORIZONTAL_ATTACK_RANGE_INCHES = 2;
         private const float VERTICAL_ATTACK_RANGE_INCHES = 4;
 
-        public DetermineInRangeAttackersStage(StateMachine stateMachine, IMeleeContext context, StateBase parentState = null)
+        public DetermineInRangeAttackersStage(StateMachine stateMachine, IMeleeContext context, StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
         }

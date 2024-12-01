@@ -1,7 +1,7 @@
 ﻿
 namespace FDG.Stages
 {
-    internal class DetermineCanKeepSwingingStage : StateBase<IMeleeContext>
+    internal class DetermineCanKeepSwingingStage : StageBase<IMeleeContext>
     {
         public string ReturnToChooseWeaponTransitionName;
         public string OutOfWeaponsTransitionName;
@@ -9,7 +9,7 @@ namespace FDG.Stages
 
         private readonly IMeleeContext _meleeContext;
 
-        public DetermineCanKeepSwingingStage(StateMachine stateMachine, IMeleeContext context, StateBase parentState = null)
+        public DetermineCanKeepSwingingStage(StateMachine stateMachine, IMeleeContext context, StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
             _meleeContext = context;
@@ -50,19 +50,19 @@ namespace FDG.Stages
             SignalCanKeepSwinging();
         }
 
-        public void BindReturnToChooseWeapon(StateBase returnStage)
+        public void BindReturnToChooseWeapon(StageBase returnStage)
         {
             ReturnToChooseWeaponTransitionName = $"{nameof(DetermineCanKeepShootingStage)}_TO_{returnStage.GetType()}";
             Bind(ReturnToChooseWeaponTransitionName, returnStage);
         }
 
-        public void BindOutOfWeapons(StateBase stageAfterShooting)
+        public void BindOutOfWeapons(StageBase stageAfterShooting)
         {
             OutOfWeaponsTransitionName = $"{nameof(DetermineCanKeepShootingStage)}_TO_{stageAfterShooting.GetType()}";
             Bind(OutOfWeaponsTransitionName, stageAfterShooting);
         }
 
-        public void BindDefenderKilled(StateBase stageWhenDefenderKilled)
+        public void BindDefenderKilled(StageBase stageWhenDefenderKilled)
         {
             DefenderKilledTransitionName = $"{nameof(DetermineCanKeepShootingStage)}_TO_{stageWhenDefenderKilled.GetType()}";
             Bind(DefenderKilledTransitionName, stageWhenDefenderKilled);

@@ -1,7 +1,7 @@
 
 namespace FDG.Stages
 {
-    public class MeleeStage : StateBase<IUnitActionContext>
+    public class MeleeStage : StageBase<IUnitActionContext>
     {
         private const string MELEE_TO_CHILD_ENTRANCE_TRANSITION = "MeleeToChildEntranceAttack";
 
@@ -10,7 +10,7 @@ namespace FDG.Stages
         ApplyFatigueStage _applyFatigueStage;
 
         public MeleeStage(StateMachine stateMachine, IUnitActionContext context, IMeleeContext meleeContext,
-            StateBase parentState = null)
+            StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
             _stateMachine = stateMachine;
@@ -86,7 +86,7 @@ namespace FDG.Stages
             //Apply fatigue leaving has to be assigned from the outside, as it leaves this stage.
         }
 
-        public void AssignExitStage(StateBase targetStageWhenFinished)
+        public void AssignExitStage(StageBase targetStageWhenFinished)
         {
             _applyFatigueStage.Bind(ApplyFatigueStage.APPLY_FATIGUE_FINISHED_TRANSITION,
                 targetStageWhenFinished);

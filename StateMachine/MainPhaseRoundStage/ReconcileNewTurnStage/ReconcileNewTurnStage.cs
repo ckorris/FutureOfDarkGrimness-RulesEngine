@@ -2,11 +2,11 @@
 
 namespace FDG.Stages
 {
-    public class ReconcileNewTurnStage : StateBase<IMainPhaseContext>
+    public class ReconcileNewTurnStage : StageBase<IMainPhaseContext>
     {
         public const string TO_START_EXTRA_ACTIONS_TRANSITION = "ReconcileToStartExtraActions";
 
-        public ReconcileNewTurnStage(StateMachine stateMachine, IMainPhaseContext context, StateBase parentState = null) : base(stateMachine, context, parentState)
+        public ReconcileNewTurnStage(StateMachine stateMachine, IMainPhaseContext context, StageBase parentState = null) : base(stateMachine, context, parentState)
         {
         }
 

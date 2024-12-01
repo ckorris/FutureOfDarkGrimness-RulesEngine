@@ -2,7 +2,7 @@
 namespace FDG.Stages
 {
 
-    public class MainPhaseRoundStage : StateBase<IGameContext>
+    public class MainPhaseRoundStage : StageBase<IGameContext>
     {
         public const string MAIN_TO_RECONCILE_VICTORY_CALCULATION = "MainToReconcileVictoryCalculation";
         
@@ -48,7 +48,7 @@ namespace FDG.Stages
             //    reconcileObjectivesStage);
         }
 
-        public void AssignExitStage(StateBase targetStageWhenFinished)
+        public void AssignExitStage(StageBase targetStageWhenFinished)
         {
             _reconcileObjectivesStage.Bind(ReconcileObjectivesStage.RECONCILE_OBJECTIVES_TO_VICTORY_CALCULATION_TRANSITION,
                 targetStageWhenFinished);

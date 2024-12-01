@@ -2,11 +2,11 @@
 namespace FDG.Stages
 {
 
-    public class DetermineFirstPlayerTurnStage : StateBase<IMainPhaseContext>
+    public class DetermineFirstPlayerTurnStage : StageBase<IMainPhaseContext>
     {
         public const string DETERMINE_FIRST_PLAYER_TO_PLAYER_TURN_TRANSITION = "DetermineFirstPlayerToPlayerTurn";
 
-        public DetermineFirstPlayerTurnStage(StateMachine stateMachine, IMainPhaseContext context, StateBase parentState = null)
+        public DetermineFirstPlayerTurnStage(StateMachine stateMachine, IMainPhaseContext context, StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
         }

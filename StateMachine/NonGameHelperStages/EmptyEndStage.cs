@@ -1,9 +1,9 @@
 
 namespace FDG.Stages
 {
-    public class EmptyEndStage : StateBase
+    public class EmptyEndStage : StageBase
     {
-        public EmptyEndStage(StateMachine stateMachine, StateBase parentState = null) : base(stateMachine, parentState)
+        public EmptyEndStage(StateMachine stateMachine, StageBase parentState = null) : base(stateMachine, parentState)
         {
         }
     }

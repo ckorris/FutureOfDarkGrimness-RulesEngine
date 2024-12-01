@@ -2,7 +2,7 @@
 namespace FDG.Stages
 {
 
-    public class ReconcileObjectivesStage : StateBase<IMainPhaseContext>
+    public class ReconcileObjectivesStage : StageBase<IMainPhaseContext>
     {
         public const string RECONCILE_OBJECTIVES_TO_RECONCILE_NEW_TURN = "ReconcileObjectivesBackToReconcileNewTurn";
         public const string RECONCILE_OBJECTIVES_TO_VICTORY_CALCULATION_TRANSITION = "ReconcileObjectivesBackToDeterminePlayerTurn";
@@ -10,7 +10,7 @@ namespace FDG.Stages
 
         private int _timesEntered = 0;
 
-        public ReconcileObjectivesStage(StateMachine stateMachine, IMainPhaseContext context, StateBase parentState = null)
+        public ReconcileObjectivesStage(StateMachine stateMachine, IMainPhaseContext context, StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
         }

@@ -2,11 +2,11 @@
 namespace FDG.Stages
 {
 
-    public class ArmySetupStage : StateBase<IGameContext>
+    public class ArmySetupStage : StageBase<IGameContext>
     {
         public const string TO_MAP_SETUP_TRANSITION = "ArmySetupToMapSetup";
 
-        public ArmySetupStage(StateMachine stateMachine, IGameContext context, StateBase parentState = null)
+        public ArmySetupStage(StateMachine stateMachine, IGameContext context, StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
         }

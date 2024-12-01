@@ -2,12 +2,12 @@
 namespace FDG.Stages
 {
 
-    public class ChooseUnitToActivateStage : StateBase<IPlayerTurnContext>
+    public class ChooseUnitToActivateStage : StageBase<IPlayerTurnContext>
     {
         public const string CHOOSE_UNIT_TO_ACTIVATE_TO_MAIN_UNIT_ACTION_TRANSITION =
             "ChooseUnitToActivateToMainUnitAction";
 
-        public ChooseUnitToActivateStage(StateMachine stateMachine, IPlayerTurnContext context, StateBase parentState = null)
+        public ChooseUnitToActivateStage(StateMachine stateMachine, IPlayerTurnContext context, StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
 

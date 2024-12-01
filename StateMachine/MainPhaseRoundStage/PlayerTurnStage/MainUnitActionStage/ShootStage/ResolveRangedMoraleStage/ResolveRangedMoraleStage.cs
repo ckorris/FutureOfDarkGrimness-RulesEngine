@@ -2,12 +2,12 @@
 namespace FDG.Stages
 {
 
-    public class ResolveRangedMoraleStage : StateBase<IRangedContext>
+    public class ResolveRangedMoraleStage : StageBase<IRangedContext>
     {
         public const string RESOLVE_RANGED_MORALE_FINISHED_TRANSITION =
             "ResolveRangedMoraleFinished";
 
-        public ResolveRangedMoraleStage(StateMachine stateMachine, IRangedContext context, StateBase parentState = null)
+        public ResolveRangedMoraleStage(StateMachine stateMachine, IRangedContext context, StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
         }

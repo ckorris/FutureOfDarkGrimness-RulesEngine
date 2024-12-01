@@ -2,11 +2,11 @@
 namespace FDG.Stages
 {
 
-    public class StartOfTurnExtraActionStage : StateBase<IMainPhaseContext>
+    public class StartOfTurnExtraActionStage : StageBase<IMainPhaseContext>
     {
         public const string TO_DETERMINE_FIRST_TURN_TRANSITION = "StartExtraActionsToDetermineFirstTurn";
 
-        public StartOfTurnExtraActionStage(StateMachine stateMachine, IMainPhaseContext context, StateBase parentState = null)
+        public StartOfTurnExtraActionStage(StateMachine stateMachine, IMainPhaseContext context, StageBase parentState = null)
             : base(stateMachine, context, parentState)
         {
         }

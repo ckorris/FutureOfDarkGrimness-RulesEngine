@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace FDG_Stride.FutureOfDarkGrimness
+namespace FDG
 {
     public static class GameWideConstants
     {

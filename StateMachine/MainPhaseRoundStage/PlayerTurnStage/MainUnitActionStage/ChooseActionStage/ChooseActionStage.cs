@@ -63,7 +63,8 @@ namespace FDG.Stages
             };
 
 
-            GameContext.GetHandler<IChooseActionHandler>().Handle(context, actionChoices, () => ToReconcileEndOfActivation.Activate(context));
+            GameContext.GetHandler<IChooseActionHandler>()
+                .Handle(context, actionChoices, () => ToReconcileEndOfActivation.Activate(context));
         }
 
 

@@ -12,84 +12,6 @@ namespace FDG.Stages
             OnFinishedMelee = new StageBinding(this);
         }
 
-        /*
-        public MeleeStage(StateMachine stateMachine, IUnitActionContext context, IMeleeContext meleeContext,
-            StageBase parentState = null)
-            : base(stateMachine, context, parentState)
-        {
-            _stateMachine = stateMachine;
-
-            PileInStage pileInStage 
-                = new PileInStage(stateMachine, meleeContext);
-            DetermineInRangeAttackersStage determineInRangeAttackersStage 
-                = new DetermineInRangeAttackersStage(stateMachine, meleeContext);
-            DetermineInRangeDefendersStage determineInRangeDefendersStage 
-                = new DetermineInRangeDefendersStage(stateMachine, meleeContext);
-            ChooseMeleeWeaponStage chooseMeleeWeaponStage 
-                = new ChooseMeleeWeaponStage(stateMachine, meleeContext);
-            SwingMeleeWeaponStage swingMeleeWeaponStage 
-                = new SwingMeleeWeaponStage(stateMachine, meleeContext);
-            DetermineCanKeepSwingingStage determineCanKeepSwingingStage 
-                = new DetermineCanKeepSwingingStage(stateMachine, meleeContext);
-            OfferStrikeBackStage offerStrikeBackStage 
-                = new OfferStrikeBackStage(stateMachine, meleeContext);
-            StrikeBackStage strikeBackStage 
-                = new StrikeBackStage(stateMachine, meleeContext);
-            DetermineMeleeWinnerStage determineMeleeWinnerStage
-                = new DetermineMeleeWinnerStage(stateMachine, meleeContext);
-            DetermineMoraleSaveNeededStage determineMoraleSaveNeededStage 
-                = new DetermineMoraleSaveNeededStage(StateMachine, meleeContext);
-            RollForMoraleStage rollForMoraleStage 
-                = new RollForMoraleStage(stateMachine, meleeContext);
-            AssignMeleeMoralePenaltyStage assignMoralePenaltyStage 
-                = new AssignMeleeMoralePenaltyStage(stateMachine, meleeContext);
-            _applyFatigueStage
-                = new ApplyFatigueStage(StateMachine, meleeContext);
-
-            Bind(MELEE_TO_CHILD_ENTRANCE_TRANSITION, pileInStage);
-
-            pileInStage.Bind(PileInStage.PILE_IN_FINISHED_TRANSITION, determineInRangeAttackersStage);
-
-            determineInRangeAttackersStage.Bind(DetermineInRangeAttackersStage.DETERMINE_IN_RANGE_ATTACKER_FINISHED_TRANSITION,
-                determineInRangeDefendersStage);
-
-            determineInRangeDefendersStage.Bind(DetermineInRangeDefendersStage.DETERMINE_IN_RANGE_DEFENDER_FINISHED_TRANSITION,
-                chooseMeleeWeaponStage);
-
-            chooseMeleeWeaponStage.Bind(ChooseMeleeWeaponStage.CHOOSE_MELEE_WEAPON_FINISHED_TRANSITION,
-                swingMeleeWeaponStage);
-
-            swingMeleeWeaponStage.AssignExitStage(determineCanKeepSwingingStage);
-
-            determineCanKeepSwingingStage.BindReturnToChooseWeapon(chooseMeleeWeaponStage);
-            determineCanKeepSwingingStage.BindOutOfWeapons(offerStrikeBackStage);
-            determineCanKeepSwingingStage.BindDefenderKilled(_applyFatigueStage);
-
-            offerStrikeBackStage.Bind(OfferStrikeBackStage.OFFER_STRIKE_BACK_ACCEPTED_TRANSITION,
-                strikeBackStage);
-            offerStrikeBackStage.Bind(OfferStrikeBackStage.OFFER_STRIKE_BACK_REJECTED_TRANSITION,
-                determineMeleeWinnerStage);
-
-            strikeBackStage.AssignNormalExitStage(determineMeleeWinnerStage);
-            strikeBackStage.AssignAttackerKilledExitStage(_applyFatigueStage);
-
-            determineMeleeWinnerStage.Bind(DetermineMeleeWinnerStage.DETERMINE_MELEE_WINNER_NEEDS_ROLL_TRANSITION,
-                determineMoraleSaveNeededStage);
-            determineMeleeWinnerStage.Bind(DetermineMeleeWinnerStage.DETERMINE_MELEE_WINNER_DOESNT_NEED_ROLL_TRANSITION,
-                _applyFatigueStage);
-
-            determineMoraleSaveNeededStage.Bind(DetermineMoraleSaveNeededStage.DETERMINE_MORALE_SAVE_NEEDED_FINISHED_TRANSITION,
-                rollForMoraleStage);
-            
-            rollForMoraleStage.Bind(RollForMoraleStage.ROLL_FOR_MORALE_PASSED_TRANSITION, _applyFatigueStage);
-            rollForMoraleStage.Bind(RollForMoraleStage.ROLL_FOR_MORALE_FAILED_TRANSITION, assignMoralePenaltyStage);
-
-            assignMoralePenaltyStage.Bind(AssignMeleeMoralePenaltyStage.ASSIGN_MELEE_MORALE_PENALTY_FINISHED_TRANSITION,
-                _applyFatigueStage);
-
-            //Apply fatigue leaving has to be assigned from the outside, as it leaves this stage.
-        }
-        */
 
         public override void Enter(IUnitActionContext context)
         {
@@ -109,6 +31,7 @@ namespace FDG.Stages
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IMeleeContext> startingChild)
         {
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
+                .AddChild(new ChooseMeleeDefenderStage(GameContext, this), out var chooseMeleeDefender)
                 .AddChild(new PileInStage(GameContext, this), out var pileIn)
                 .AddChild(new DetermineInRangeAttackersStage(GameContext, this), out var determineInRangeAttackers)
                 .AddChild(new DetermineInRangeDefendersStage(GameContext, this), out var determineInRangeDefenders)
@@ -125,8 +48,10 @@ namespace FDG.Stages
                 .AddSibling(nameof(OnFinishedMelee), OnFinishedMelee, out string meleeFinishedEvent)
                 .Build();
 
-            startingChild = pileIn;
+            startingChild = chooseMeleeDefender;
 
+            chooseMeleeDefender.OnWeaponChosen.Bind(pileIn);
+            chooseMeleeDefender.BackToChooseAction.Bind(meleeFinishedEvent); //Should go back to choosing.
             pileIn.OnPiledIn.Bind(determineInRangeAttackers);
             determineInRangeAttackers.ToDetermineDefenders.Bind(determineInRangeDefenders);
             determineInRangeDefenders.ToChooseMeleeWeapons.Bind(chooseMeleeWeapon);

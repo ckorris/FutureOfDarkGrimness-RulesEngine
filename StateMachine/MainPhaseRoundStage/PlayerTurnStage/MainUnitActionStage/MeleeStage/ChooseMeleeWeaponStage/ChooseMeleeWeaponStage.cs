@@ -6,8 +6,6 @@ namespace FDG.Stages
 {
     public class ChooseMeleeWeaponStage : StageBase<IMeleeContext>
     {
-        public const string CHOOSE_MELEE_WEAPON_FINISHED_TRANSITION = "ChooseMeleeWeaponFinished";
-
         public StageBinding OnChosen;
 
         public ChooseMeleeWeaponStage(IGameContext gameContext, IStateMachineLayer<IMeleeContext> parent) : base(gameContext, parent)

@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using System.Collections.Generic;
-using FDG_Stride.FutureOfDarkGrimness;
 
 namespace FDG
 {

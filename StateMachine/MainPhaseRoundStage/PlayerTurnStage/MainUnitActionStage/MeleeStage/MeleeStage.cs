@@ -22,7 +22,7 @@ namespace FDG.Stages
 
         protected override IMeleeContext GetNewChildContext(IUnitActionContext contextSelf)
         {
-            MeleeContext meleeContext = new MeleeContext(GameContext);
+            MeleeContext meleeContext = new MeleeContext(GameContext, contextSelf.ActivatingUnit);
             //meleeContext.BeginNewAttack(contextSelf.ActivatingUnit, contextSelf.) //TODO: Ah?
 
             return meleeContext;
@@ -50,7 +50,7 @@ namespace FDG.Stages
 
             startingChild = chooseMeleeDefender;
 
-            chooseMeleeDefender.OnWeaponChosen.Bind(pileIn);
+            chooseMeleeDefender.OnDefenderChosen.Bind(pileIn);
             chooseMeleeDefender.BackToChooseAction.Bind(meleeFinishedEvent); //Should go back to choosing.
             pileIn.OnPiledIn.Bind(determineInRangeAttackers);
             determineInRangeAttackers.ToDetermineDefenders.Bind(determineInRangeDefenders);

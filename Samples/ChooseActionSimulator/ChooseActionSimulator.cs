@@ -1,4 +1,5 @@
 ﻿using FDG.Stages;
+using FDG_Stride.StageHandlers;
 
 namespace FDG.Samples
 {
@@ -12,7 +13,7 @@ namespace FDG.Samples
         private IPlayerTurnContext _playerTurnContext;
         private IUnitActionContext _unitActionContext;
 
-        public ChooseActionSimulator(IChooseActionHandler actionHandler, IMovementHandler moveHandler,
+        public ChooseActionSimulator(OptionChooserMultiHandler actionHandler, IMovementHandler moveHandler,
             ERandomnessType randomnessType)
         {
             _textOutput = new BasicConsoleLogger();
@@ -21,7 +22,7 @@ namespace FDG.Samples
             CreateStateMachine(actionHandler, moveHandler);
         }
 
-        public ChooseActionSimulator(IChooseActionHandler actionHandler, IMovementHandler moveHandler,
+        public ChooseActionSimulator(OptionChooserMultiHandler actionHandler, IMovementHandler moveHandler,
             ITextOutput textOutput, IDiceRoller diceRoller)
         {
             _textOutput = textOutput;
@@ -30,7 +31,7 @@ namespace FDG.Samples
             CreateStateMachine(actionHandler, moveHandler);
         }
 
-        public ChooseActionSimulator(IChooseActionHandler actionHandler, IMovementHandler moveHandler,
+        public ChooseActionSimulator(OptionChooserMultiHandler actionHandler, IMovementHandler moveHandler,
             IDiceRoller diceRoller)
         {
             _textOutput = new BasicConsoleLogger();
@@ -39,7 +40,7 @@ namespace FDG.Samples
             CreateStateMachine(actionHandler, moveHandler);
         }
 
-        public ChooseActionSimulator(IChooseActionHandler actionHandler, IMovementHandler moveHandler,
+        public ChooseActionSimulator(OptionChooserMultiHandler actionHandler, IMovementHandler moveHandler,
             ITextOutput textOutput, ERandomnessType randomnessType)
         {
             _textOutput = textOutput;
@@ -54,11 +55,12 @@ namespace FDG.Samples
             _mainUnitActionStage.Enter(_playerTurnContext);
         }
 
-        private void CreateStateMachine(IChooseActionHandler chooseActionHandler, IMovementHandler movementHandler)
+        private void CreateStateMachine(OptionChooserMultiHandler chooseActionHandler, IMovementHandler movementHandler)
         {
             StageHandlerRegistry handlers = new StageHandlerRegistry()
                 //To test.
                 .RegisterHandle<IChooseActionHandler>(chooseActionHandler)
+                .RegisterHandle<IChooseMeleeDefenderHandler>(chooseActionHandler)
                 .RegisterHandle<IMovementHandler>(movementHandler)
                 //Melee.
                 .RegisterHandle<IChooseMeleeWeaponHandler>(new BasicTesterChooseWeaponHandler())
@@ -73,8 +75,6 @@ namespace FDG.Samples
             TableState tableState = new TableState();
             GameContext gameContext = new GameContext(_textOutput, _diceRoller, handlers, tableState);
             _playerTurnContext = new PlayerTurnContext(gameContext);
-            IMeleeContext meleeContext = new MeleeContext(gameContext);
-            IRangedContext rangedContext = new RangedContext(gameContext);
             _mainUnitActionStage = new MainUnitActionStage(gameContext, null);
         }
 

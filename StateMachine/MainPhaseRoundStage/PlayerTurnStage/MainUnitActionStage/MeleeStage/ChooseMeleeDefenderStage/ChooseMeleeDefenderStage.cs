@@ -7,13 +7,13 @@ namespace FDG.Stages
 {
     public class ChooseMeleeDefenderStage : StageBase<IMeleeContext>
     {
-        public StageBinding OnWeaponChosen;
+        public StageBinding OnDefenderChosen;
         public StageBinding BackToChooseAction;
 
         public ChooseMeleeDefenderStage(IGameContext gameContext, IStateMachineLayer<IMeleeContext> parent)
             : base(gameContext, parent)
         {
-            OnWeaponChosen = new StageBinding(this);
+            OnDefenderChosen = new StageBinding(this);
             BackToChooseAction = new StageBinding(this);
         }
 
@@ -30,6 +30,9 @@ namespace FDG.Stages
             void ChooseDefender(IUnit defender)
             {
                 //Set the defender on the context.
+                GameContext.Log($"Chose {defender.Name} as defender.");
+                context.BeginNewAttack(defender);
+                OnDefenderChosen.Activate(context);
             }
 
             foreach(IArmy army in GameContext.TableState.ArmyState.PlayerArmies
@@ -47,7 +50,6 @@ namespace FDG.Stages
             GameContext.GetHandler<IChooseMeleeDefenderHandler>()
                 .Handle(context, choices, () => BackToChooseAction.Activate(context));
         }
-
     }
 
     public interface IChooseMeleeDefenderHandler

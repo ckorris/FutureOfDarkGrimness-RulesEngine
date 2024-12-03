@@ -1,5 +1,6 @@
 ﻿
 using FDG.Stages;
+using Stride.Games;
 
 namespace FDG.Samples
 {
@@ -10,8 +11,10 @@ namespace FDG.Samples
 
         private IUnitActionContext _unitActionContext;
         private IMeleeContext _meleeContext;
-        //private StateMachine _stateMachine;
+
+        private Stages.GameContext _gameContext;
         private MeleeStage _meleeStage;
+        
 
         BasicTesterOfferStrikeBackHandler _offerStrikeBackHandler;
 
@@ -50,7 +53,8 @@ namespace FDG.Samples
         public void SimulateMeleeAttack(IUnit attackingUnit, IUnit defendingUnit, bool defenderStrikesBack)
         {
             _offerStrikeBackHandler.StrikeBack = defenderStrikesBack;
-            _meleeContext.BeginNewAttack(attackingUnit, defendingUnit);
+            _meleeContext = new MeleeContext(_gameContext, attackingUnit);
+            _meleeContext.BeginNewAttack(defendingUnit);
             _unitActionContext.Reset(attackingUnit);
             _meleeStage.Enter(_unitActionContext);
         }
@@ -72,13 +76,13 @@ namespace FDG.Samples
             //For now, make an empty TableState. May need to be updated later.
             TableState tableState = new TableState();
 
-            GameContext gameContext = new GameContext(_textOutput, _diceRoller, handlers, tableState);
+            _gameContext = new Stages.GameContext(_textOutput, _diceRoller, handlers, tableState);
 
             //_stateMachine = new StateMachine();
-            _unitActionContext = new UnitActionContext(gameContext);
-            _meleeContext = new MeleeContext(gameContext);
+            _unitActionContext = new UnitActionContext(_gameContext);
+            
 
-            _meleeStage = new MeleeStage(gameContext, null);
+            _meleeStage = new MeleeStage(_gameContext, null);
             //_meleeStage.AssignExitStage(new EmptyEndStage(_stateMachine));
         }
     }

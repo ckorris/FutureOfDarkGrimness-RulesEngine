@@ -29,7 +29,7 @@ namespace FDG.Stages
 
         public bool QueryForResult<TResult>(out TResult result);
 
-        public void BeginNewAttack(IUnit attackingUnit, IUnit defendingUnit);
+        public void BeginNewAttack(IUnit defendingUnit);
 
         public void ChooseWeapon(IWeapon weaponToConsume, out int weaponCount);
 
@@ -63,9 +63,12 @@ namespace FDG.Stages
         private QueryableResults _queryableResults = new QueryableResults();
 
 
-        public MeleeContext(IGameContext gameContext)
+        public MeleeContext(IGameContext gameContext, IUnit attackingUnit)
         {
             GameContext = gameContext;
+            AttackingUnit = attackingUnit;
+            _availableWeapons = GetTypeSortedWeapons(attackingUnit.GetMeleeWeapons());
+            AttackerRemainingWoundsAtStart = attackingUnit.RemainingWounds;
         }
 
         public void AddResult<TResult>(TResult result)
@@ -78,15 +81,16 @@ namespace FDG.Stages
             return _queryableResults.QueryForResult(out result);
         }
 
-        public void BeginNewAttack(IUnit attackingUnit, IUnit defendingUnit)
+        public void BeginNewAttack(IUnit defendingUnit)
         {
+            /*
             AttackingUnit = attackingUnit;
-            DefendingUnit = defendingUnit;
             _availableWeapons = GetTypeSortedWeapons(attackingUnit.GetMeleeWeapons());
-            MeleeCombatMetadata = new MeleeCombatMetadata(attackingUnit, defendingUnit, 
-                GameContext.DiceRoller, GameContext.TextOutput);
-            AttackerRemainingWoundsAtStart = attackingUnit.RemainingWounds;
+            */
+            DefendingUnit = defendingUnit;
             DefenderRemainingWoundsAtStart = defendingUnit.RemainingWounds;
+            MeleeCombatMetadata = new MeleeCombatMetadata(AttackingUnit, defendingUnit,
+                GameContext.DiceRoller, GameContext.TextOutput);
         }
 
         public void ChooseWeapon(IWeapon weaponToConsume, out int weaponCount)

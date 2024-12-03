@@ -44,8 +44,8 @@ namespace FDG.Stages
 
         protected override IMeleeContext GetNewChildContext(IMeleeContext contextSelf)
         {
-            MeleeContext meleeContext = new MeleeContext(GameContext);
-            meleeContext.BeginNewAttack(contextSelf.DefendingUnit, contextSelf.AttackingUnit); //Purposefully reversed.
+            MeleeContext meleeContext = new MeleeContext(GameContext, contextSelf.DefendingUnit);
+            meleeContext.BeginNewAttack(contextSelf.AttackingUnit); //Purposefully reversed.
             return meleeContext;
         }
 

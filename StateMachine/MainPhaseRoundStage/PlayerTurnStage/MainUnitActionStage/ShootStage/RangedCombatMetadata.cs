@@ -23,8 +23,6 @@ namespace FDG
 
         public IDiceRoller DiceRoller { get; }
 
-        public bool IsSetUp => _hasSetWeapon && _hasSetTargetUnit;
-
         private bool _hasSetWeapon = false;
         private bool _hasSetTargetUnit = false;
 

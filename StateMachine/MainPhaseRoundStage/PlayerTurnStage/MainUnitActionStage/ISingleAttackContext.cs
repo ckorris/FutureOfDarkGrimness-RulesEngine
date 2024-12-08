@@ -33,12 +33,6 @@ namespace FDG
 
         public void SetCombatMetadata(TMetadata combatMetadata)
         {
-            if (combatMetadata.IsSetUp == false)
-            {
-                throw new ArgumentException($"Passed in {typeof(TMetadata)} to {GetType()} " +
-                    "that was not fully set up. Make sure required data is assigned first.");
-            }
-
             CombatMetaData = combatMetadata;
             AllSpecialRules = GetAllSpecialRules(combatMetadata);
         }

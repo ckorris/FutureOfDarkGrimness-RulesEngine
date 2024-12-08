@@ -15,28 +15,6 @@ namespace FDG.Stages
             FinishedSwinging = new StageBinding(this);
         }
 
-        /*
-        public SwingMeleeWeaponStage(StateMachine stateMachine, IMeleeContext context, StageBase parentState = null)
-            : base(stateMachine, context, parentState)
-        {
-            _stateMachine = stateMachine;
-            _attackContext = new SingleMeleeAttackContext(context.GameContext);
-
-            BuildTargetListStage buildTargetListStage = new BuildTargetListStage(stateMachine, _attackContext, this);
-            _applyWoundsStage = new ApplyWoundsStage(stateMachine, _attackContext, this);
-
-            buildTargetListStage.BindNextStage(new DetermineHitRollNeededStage(stateMachine, _attackContext, this))
-                .BindNextStage(new RollToHitStage(stateMachine, _attackContext, this))
-                .BindNextStage(new DetermineSaveRollsNeededStage(stateMachine, _attackContext, this))
-                .BindNextStage(new RollToSaveStage(stateMachine, _attackContext, this))
-                .BindNextStage(new AssignWoundsStage(stateMachine, _attackContext, this))
-                .BindNextStage(_applyWoundsStage);
-
-            //Set up transition to child stage.
-            Bind(SWING_TO_CHILD_ENTRANCE_TRANSITION, buildTargetListStage);
-        }
-        */
-
         public override void Enter(IMeleeContext context)
         {
             GameContext.Log("Swinging.");
@@ -46,7 +24,11 @@ namespace FDG.Stages
 
         protected override ISingleAttackContext<IMeleeCombatMetadata> GetNewChildContext(IMeleeContext contextSelf)
         {
-            return new SingleMeleeAttackContext(GameContext);
+            MeleeCombatMetadata meleeCombatMetadata = new MeleeCombatMetadata(contextSelf.AttackingUnit, contextSelf.DefendingUnit,
+                GameContext.DiceRoller, GameContext.TextOutput);
+            SingleMeleeAttackContext singleMeleeAttackContext = new SingleMeleeAttackContext(GameContext);
+            singleMeleeAttackContext.SetCombatMetadata(meleeCombatMetadata);
+            return singleMeleeAttackContext;
         }
 
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<ISingleAttackContext<IMeleeCombatMetadata>> startingChild)

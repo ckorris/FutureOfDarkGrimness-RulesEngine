@@ -1,5 +1,7 @@
 ﻿using FDG.Stages;
 using FDG_Stride.StageHandlers;
+using System.Collections.Generic;
+using System.Windows.Documents;
 
 namespace FDG.Samples
 {
@@ -12,6 +14,8 @@ namespace FDG.Samples
 
         private IPlayerTurnContext _playerTurnContext;
         private IUnitActionContext _unitActionContext;
+        private OptionChooserMultiHandler _optionChooserMultiHandler;
+        private IMovementHandler _movementHandler;
 
         public ChooseActionSimulator(OptionChooserMultiHandler actionHandler, IMovementHandler moveHandler,
             ERandomnessType randomnessType)
@@ -19,7 +23,8 @@ namespace FDG.Samples
             _textOutput = new BasicConsoleLogger();
             _diceRoller = SampleUtilities.GetDiceRoller(randomnessType);
 
-            CreateStateMachine(actionHandler, moveHandler);
+            _optionChooserMultiHandler = actionHandler;
+            _movementHandler = moveHandler;
         }
 
         public ChooseActionSimulator(OptionChooserMultiHandler actionHandler, IMovementHandler moveHandler,
@@ -28,7 +33,8 @@ namespace FDG.Samples
             _textOutput = textOutput;
             _diceRoller = diceRoller;
 
-            CreateStateMachine(actionHandler, moveHandler);
+            _optionChooserMultiHandler = actionHandler;
+            _movementHandler = moveHandler;
         }
 
         public ChooseActionSimulator(OptionChooserMultiHandler actionHandler, IMovementHandler moveHandler,
@@ -37,7 +43,8 @@ namespace FDG.Samples
             _textOutput = new BasicConsoleLogger();
             _diceRoller = diceRoller;
 
-            CreateStateMachine(actionHandler, moveHandler);
+            _optionChooserMultiHandler = actionHandler;
+            _movementHandler = moveHandler;
         }
 
         public ChooseActionSimulator(OptionChooserMultiHandler actionHandler, IMovementHandler moveHandler,
@@ -46,22 +53,19 @@ namespace FDG.Samples
             _textOutput = textOutput;
             _diceRoller = SampleUtilities.GetDiceRoller(randomnessType);
 
-            CreateStateMachine(actionHandler, moveHandler);
+            _optionChooserMultiHandler = actionHandler;
+            _movementHandler = moveHandler;
         }
 
-        public void SimulateAction(IUnit activatedUnit)
+        public void SimulateAction(IUnit activatedUnit, TableState tableState)
         {
-            _playerTurnContext.ChooseUnitToActivate(activatedUnit);
-            _mainUnitActionStage.Enter(_playerTurnContext);
-        }
 
-        private void CreateStateMachine(OptionChooserMultiHandler chooseActionHandler, IMovementHandler movementHandler)
-        {
+
             StageHandlerRegistry handlers = new StageHandlerRegistry()
                 //To test.
-                .RegisterHandle<IChooseActionHandler>(chooseActionHandler)
-                .RegisterHandle<IChooseMeleeDefenderHandler>(chooseActionHandler)
-                .RegisterHandle<IMovementHandler>(movementHandler)
+                .RegisterHandle<IChooseActionHandler>(_optionChooserMultiHandler)
+                .RegisterHandle<IChooseMeleeDefenderHandler>(_optionChooserMultiHandler)
+                .RegisterHandle<IMovementHandler>(_movementHandler)
                 //Melee.
                 .RegisterHandle<IChooseMeleeWeaponHandler>(new BasicTesterChooseWeaponHandler())
                 .RegisterHandle<IOfferStrikeBackHandler>(new BasicTesterOfferStrikeBackHandler(false))
@@ -72,11 +76,12 @@ namespace FDG.Samples
                 .RegisterHandle<IAssignWoundsHandler>(new BasicTesterAssignWoundsHandler());
 
             //For now, make an empty TableState. May need to be updated later.
-            TableState tableState = new TableState();
             GameContext gameContext = new GameContext(_textOutput, _diceRoller, handlers, tableState);
             _playerTurnContext = new PlayerTurnContext(gameContext);
             _mainUnitActionStage = new MainUnitActionStage(gameContext, null);
-        }
 
+            _playerTurnContext.ChooseUnitToActivate(activatedUnit);
+            _mainUnitActionStage.Enter(_playerTurnContext);
+        }
     }
 }

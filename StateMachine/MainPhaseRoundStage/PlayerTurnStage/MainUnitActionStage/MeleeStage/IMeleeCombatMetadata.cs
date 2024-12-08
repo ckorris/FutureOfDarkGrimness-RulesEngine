@@ -23,8 +23,6 @@ namespace FDG
 
         public IDiceRoller DiceRoller { get; }
 
-        public bool IsSetUp => _hasSetWeapon;
-
         private bool _hasSetWeapon = false;
 
         private QueryableResults _queryableResults = new QueryableResults();

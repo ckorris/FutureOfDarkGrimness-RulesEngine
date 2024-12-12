@@ -30,7 +30,7 @@ namespace FDG.Stages
 
         private void ChooseWeapon(IMeleeContext context, IWeapon chosenWeapon)
         {
-            context.ChooseWeapon(chosenWeapon, out int weaponCount);
+            context.SetAttackWeapon(chosenWeapon, out int weaponCount);
             GameContext.Log($"Chose weapon: {chosenWeapon.Name}. Count: {weaponCount}.");
 
             OnChosen.Activate(context);

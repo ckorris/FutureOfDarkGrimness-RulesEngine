@@ -11,19 +11,21 @@ namespace FDG.Stages
 
         public StrikeBackStage(IGameContext gameContext, IStateMachineLayer<IMeleeContext> parent) : base(gameContext, parent)
         {
-            FinishedStrikingBack = new StageBinding(this);
-            OnAttackerKilled = new StageBinding(this);
+
         }
 
         protected override IMeleeContext GetNewChildContext(IMeleeContext contextSelf)
         {
-            MeleeContext meleeContext = new MeleeContext(GameContext, contextSelf.DefendingUnit);
+            MeleeContext meleeContext = new MeleeContext(contextSelf.DefendingUnit);
             meleeContext.BeginNewAttack(contextSelf.AttackingUnit); //Purposefully reversed.
             return meleeContext;
         }
 
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IMeleeContext> startingChild)
         {
+            FinishedStrikingBack = new StageBinding(this);
+            OnAttackerKilled = new StageBinding(this);
+
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
                 .AddChild(new ChooseMeleeWeaponStage(GameContext, this), out var chooseMeleeWeapon)
                 .AddChild(new SwingMeleeWeaponStage(GameContext, this), out var swingMeleeWeapon)

@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace FDG.Stages
 {
 
-    public abstract class CombatStage<TResult, TSelf, TMetadata> : StageBase<ISingleAttackContext<TMetadata>>, ICombatEffectsSink<TResult>
+    public abstract class CombatStage<TResult, TSelf, TMetadata> : StageBase<TMetadata>, ICombatEffectsSink<TResult>
         where TSelf : CombatStage<TResult, TSelf, TMetadata>
         where TMetadata : ICombatMetadata
     {
@@ -21,7 +21,7 @@ namespace FDG.Stages
         #endregion
 
         private List<ICombatEffect<TResult>> _effects = new List<ICombatEffect<TResult>>();
-        protected CombatStage(IGameContext gameContext, IStateMachineLayer<ISingleAttackContext<TMetadata>> parent) : base(gameContext, parent)
+        protected CombatStage(IGameContext gameContext, IStateMachineLayer<TMetadata> parent) : base(gameContext, parent)
         {
             NextStage = new StageBinding(this);
         }
@@ -44,7 +44,7 @@ namespace FDG.Stages
             _hasBoundNextStage = true;
         }
 
-        public override void Enter(ISingleAttackContext<TMetadata> context)
+        public override void Enter(TMetadata context)
         {
             foreach (ISpecialRule_Combat rule in context.AllSpecialRules)
             {
@@ -64,11 +64,9 @@ namespace FDG.Stages
             _effects.Clear();
         }
 
-        private void Execute(ISingleAttackContext<TMetadata> context)
+        private void Execute(TMetadata context)
         {
-            TMetadata metaData = context.CombatMetaData; //Shorthand.
-
-            if (metaData.QueryForResult(out TResult _) == true)
+            if (context.QueryForResult(out TResult _) == true)
             {
                 throw new Exception($"Ran combat stage of type {typeof(TResult)} when a result was already present.");
             }
@@ -78,28 +76,26 @@ namespace FDG.Stages
 
             foreach (ICombatEffect<TResult> effect in effectsCopy)
             {
-                effect.OnPreExecute(metaData, this);
+                effect.OnPreExecute(context, this);
             }
 
-            RunStage(metaData, (result) => RunPostExecuteEffects(context, result));
+            RunStage(context, (result) => RunPostExecuteEffects(context, result));
         }
 
-        private void RunPostExecuteEffects(ISingleAttackContext<TMetadata> context, TResult result)
+        private void RunPostExecuteEffects(TMetadata context, TResult result)
         {
-            ICombatMetadata metaData = context.CombatMetaData; //Shorthand.
-
             //For post-execute effects, use the original, as it may have been purposefully modified in pre-execute.
             foreach (ICombatEffect<TResult> effect in _effects)
             {
-                effect.OnPostExecute(metaData, result);
+                effect.OnPostExecute(context, result);
             }
 
-            metaData.AddResult(result);
+            context.AddResult(result);
 
             Finish(context);
         }
 
-        private void Finish(ISingleAttackContext<TMetadata> context)
+        private void Finish(TMetadata context)
         {
             NextStage.Activate(context);
         }

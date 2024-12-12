@@ -14,7 +14,7 @@ namespace FDG
             int unitQuality = metadata.AttackingUnit.Quality;
             int adjustment = BASE_ROLL_WITH_RELIABLE - unitQuality;
 
-            metadata.TextOutput.Log($"{nameof(Reliable)} adjusted attacker's effective quality from {unitQuality} to {BASE_ROLL_WITH_RELIABLE}.");
+            metadata.TextOutput().Log($"{nameof(Reliable)} adjusted attacker's effective quality from {unitQuality} to {BASE_ROLL_WITH_RELIABLE}.");
 
             result.HitRollNeeded += adjustment;
         }

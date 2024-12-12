@@ -28,7 +28,7 @@ namespace FDG
                 int apChange = AP_VALUE_ON_REND_HITS - oldAP;
                 int newAP = pendingSave.SaveNeeded + apChange;
 
-                metadata.TextOutput.Log($"{nameof(Rending)} converted {rendRolls.TotalRolls} hits from AP({oldAP}) to AP({AP_VALUE_ON_REND_HITS}).");
+                metadata.TextOutput().Log($"{nameof(Rending)} converted {rendRolls.TotalRolls} hits from AP({oldAP}) to AP({AP_VALUE_ON_REND_HITS}).");
 
                 result.PendingSaveRollsList.Add(new PendingSaveRolls(rendRolls, newAP));
                 result.PendingSaveRollsList.Add(new PendingSaveRolls(nonRendRolls, pendingSave.SaveNeeded));
@@ -50,7 +50,7 @@ namespace FDG
                 {
                     allSinkEffects.Remove(regenEffect);
                 }
-                metadata.TextOutput.Log($"Rending removed {nameof(Regeneration)} effect.");
+                metadata.TextOutput().Log($"Rending removed {nameof(Regeneration)} effect.");
             }
         }
 

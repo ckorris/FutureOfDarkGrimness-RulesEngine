@@ -9,7 +9,7 @@ namespace FDG.Stages
         : CombatStage<DetermineSaveRollNeededResults, DetermineSaveRollsNeededStage<TMetadata>, TMetadata>
         where TMetadata : ICombatMetadata
     {
-        public DetermineSaveRollsNeededStage(IGameContext gameContext, IStateMachineLayer<ISingleAttackContext<TMetadata>> parent) 
+        public DetermineSaveRollsNeededStage(IGameContext gameContext, IStateMachineLayer<TMetadata> parent) 
             : base(gameContext, parent)
         {
         }
@@ -22,7 +22,7 @@ namespace FDG.Stages
             int ap = metaData.WeaponType.ArmorPenetration; //Shorthand.
             int baseDefenseWithAP = baseDefense + ap;
 
-            metaData.TextOutput.Log($"Base roll to save is {baseDefense}, minus {ap}, is {baseDefenseWithAP} (not yet clamped). ");
+            GameContext.Log($"Base roll to save is {baseDefense}, minus {ap}, is {baseDefenseWithAP} (not yet clamped). ");
 
             RollToHitResults rollToHitResults = QueryForResultOrThrowException<RollToHitResults>(metaData);
 

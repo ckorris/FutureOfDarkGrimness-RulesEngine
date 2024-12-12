@@ -7,19 +7,18 @@ namespace FDG.Stages
 {
     //TODO: There's lots of info that's specific to parts of the melee process.
     //Having a query handler like the combat metadata could be an improvement.
-    public interface IMeleeContext : IGameContextAccessor
+    public interface IMeleeContext
     {
         public IUnit AttackingUnit { get; }
 
         public IUnit DefendingUnit { get; }
 
         public IReadOnlyDictionary<IWeapon, int> AvailableWeapons { get; }
+        public IReadOnlyDictionary<IWeapon, int> AlreadyUsedWeapons { get; }
 
         public IModel InRangeAttackingModels { get; }
 
         public IModel InRangeDefendingModels { get; }
-
-        public IMeleeCombatMetadata MeleeCombatMetadata { get; }
 
         public float AttackerRemainingWoundsAtStart { get; }
 
@@ -31,22 +30,16 @@ namespace FDG.Stages
 
         public void BeginNewAttack(IUnit defendingUnit);
 
-        public void ChooseWeapon(IWeapon weaponToConsume, out int weaponCount);
+        public void SetAttackWeapon(IWeapon weaponToConsume, out int weaponCount);
 
-        public void ClearCurrentAttack();
-
-        public void ResetMeleeCombatMetadata();
+        public IMeleeCombatMetadata ConsumeAttackIntoContext(IGameContext gameContext);
     }
 
     public class MeleeContext : IMeleeContext
     {
-        public IGameContext GameContext { get; private set; }
-
         public IUnit AttackingUnit { get; private set; }
 
         public IUnit DefendingUnit { get; private set; }
-
-        public IMeleeCombatMetadata MeleeCombatMetadata { get; private set; }
 
         public IModel InRangeAttackingModels { get; private set; }
 
@@ -54,18 +47,22 @@ namespace FDG.Stages
 
         public IReadOnlyDictionary<IWeapon, int> AvailableWeapons => _availableWeapons;
 
+        public IReadOnlyDictionary<IWeapon, int> AlreadyUsedWeapons => _alreadyUsedWeapons;
+
         public float AttackerRemainingWoundsAtStart { get; private set; }
 
         public float DefenderRemainingWoundsAtStart { get; private set; }
 
         private ConcurrentDictionary<IWeapon, int> _availableWeapons;
 
+        private ConcurrentDictionary<IWeapon, int> _alreadyUsedWeapons = new ConcurrentDictionary<IWeapon, int>();
+
         private QueryableResults _queryableResults = new QueryableResults();
 
+        private PendingAttack _currentPendingAttack = null;
 
-        public MeleeContext(IGameContext gameContext, IUnit attackingUnit)
+        public MeleeContext(IUnit attackingUnit)
         {
-            GameContext = gameContext;
             AttackingUnit = attackingUnit;
             _availableWeapons = GetTypeSortedWeapons(attackingUnit.GetMeleeWeapons());
             AttackerRemainingWoundsAtStart = attackingUnit.RemainingWounds;
@@ -83,44 +80,59 @@ namespace FDG.Stages
 
         public void BeginNewAttack(IUnit defendingUnit)
         {
-            /*
-            AttackingUnit = attackingUnit;
-            _availableWeapons = GetTypeSortedWeapons(attackingUnit.GetMeleeWeapons());
-            */
+            if(_currentPendingAttack != null)
+            {
+                //TODO: Allow for cancelling. 
+                throw new InvalidOperationException($"Started attack before the last was consumed.");
+            }
+
+            _currentPendingAttack = new PendingAttack();
+            _currentPendingAttack.DefendingUnit = defendingUnit;
+
             DefendingUnit = defendingUnit;
             DefenderRemainingWoundsAtStart = defendingUnit.RemainingWounds;
-            MeleeCombatMetadata = new MeleeCombatMetadata(AttackingUnit, defendingUnit,
-                GameContext.DiceRoller, GameContext.TextOutput);
         }
 
-        public void ChooseWeapon(IWeapon weaponToConsume, out int weaponCount)
+        public void SetAttackWeapon(IWeapon weaponToConsume, out int weaponCount)
         {
+            if(_currentPendingAttack == null)
+            {
+                throw new InvalidOperationException($"Called {nameof(SetAttackWeapon)} before calling {nameof(BeginNewAttack)}.");
+            }
+
             if (_availableWeapons.ContainsKey(weaponToConsume) == false)
             {
-                throw new ArgumentException($"{nameof(RangedContext)}.{nameof(ChooseWeapon)} called on weapon " +
+                throw new ArgumentException($"{nameof(RangedContext)}.{nameof(SetAttackWeapon)} called on weapon " +
                     $"that was not found in available list: {weaponToConsume.Name}");
             }
 
             _availableWeapons.TryRemove(weaponToConsume, out weaponCount);
 
-            MeleeCombatMetadata.ChooseWeapon(weaponToConsume, weaponCount);
+            _alreadyUsedWeapons.TryAdd(weaponToConsume, weaponCount);
 
+            _currentPendingAttack.WeaponType = weaponToConsume;
+            _currentPendingAttack.WeaponCount = weaponCount;
         }
 
-        public void ClearCurrentAttack()
+        public IMeleeCombatMetadata ConsumeAttackIntoContext(IGameContext gameContext)
         {
-            AttackingUnit = null;
-            _availableWeapons = null;
-            MeleeCombatMetadata = default;
-            InRangeAttackingModels = null;
-            InRangeDefendingModels = null;
-            _queryableResults.Reset();
-        }
+            if(_currentPendingAttack == null)
+            {
+                throw new InvalidOperationException($"Called {nameof(ConsumeAttackIntoContext)} when no attack was set.");
+            }
 
-        public void ResetMeleeCombatMetadata()
-        {
-            MeleeCombatMetadata = new MeleeCombatMetadata(AttackingUnit, DefendingUnit, 
-                GameContext.DiceRoller, GameContext.TextOutput);
+            if(_currentPendingAttack.IsReady == false)
+            {
+                throw new InvalidOperationException($"Called {nameof(ConsumeAttackIntoContext)} when attack was not set up. " + 
+                    "Must have all values set before consuming.");
+            }
+
+            MeleeCombatMetadata meleeCombatMetadata = new MeleeCombatMetadata(gameContext, AttackingUnit, 
+                _currentPendingAttack.DefendingUnit, _currentPendingAttack.WeaponType, _currentPendingAttack.WeaponCount);
+
+            _currentPendingAttack = null;
+
+            return meleeCombatMetadata;
         }
 
         //TODO: Repeated in Ranged version. Move to static class.
@@ -145,6 +157,17 @@ namespace FDG.Stages
             }
 
             return weaponsAndCounts;
+        }
+
+        private class PendingAttack
+        {
+            public bool IsReady => DefendingUnit != default && WeaponType != default && WeaponCount != default;
+
+            public IUnit DefendingUnit = default;
+
+            public IWeapon WeaponType = default;
+
+            public int WeaponCount = default;
         }
     }
 

@@ -12,7 +12,7 @@ namespace FDG.Samples
         private IUnitActionContext _unitActionContext;
         private IMeleeContext _meleeContext;
 
-        private Stages.GameContext _gameContext;
+        private GameContext _gameContext;
         private MeleeStage _meleeStage;
         
 
@@ -53,7 +53,7 @@ namespace FDG.Samples
         public void SimulateMeleeAttack(IUnit attackingUnit, IUnit defendingUnit, bool defenderStrikesBack)
         {
             _offerStrikeBackHandler.StrikeBack = defenderStrikesBack;
-            _meleeContext = new MeleeContext(_gameContext, attackingUnit);
+            _meleeContext = new MeleeContext(attackingUnit);
             _meleeContext.BeginNewAttack(defendingUnit);
             _unitActionContext.Reset(attackingUnit);
             _meleeStage.Enter(_unitActionContext);
@@ -76,7 +76,7 @@ namespace FDG.Samples
             //For now, make an empty TableState. May need to be updated later.
             TableState tableState = new TableState();
 
-            _gameContext = new Stages.GameContext(_textOutput, _diceRoller, handlers, tableState);
+            _gameContext = new GameContext(_textOutput, _diceRoller, handlers, tableState);
 
             //_stateMachine = new StateMachine();
             _unitActionContext = new UnitActionContext(_gameContext);

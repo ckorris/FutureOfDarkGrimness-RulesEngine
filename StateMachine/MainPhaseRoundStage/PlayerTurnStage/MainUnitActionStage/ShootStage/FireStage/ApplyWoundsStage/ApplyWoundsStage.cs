@@ -7,7 +7,7 @@ namespace FDG.Stages
     public class ApplyWoundsStage<TMetadata> : CombatStage<ApplyWoundsResults, ApplyWoundsStage<TMetadata>, TMetadata>
         where TMetadata : ICombatMetadata
     {
-        public ApplyWoundsStage(IGameContext gameContext, IStateMachineLayer<ISingleAttackContext<TMetadata>> parent) 
+        public ApplyWoundsStage(IGameContext gameContext, IStateMachineLayer<TMetadata> parent) 
             : base(gameContext, parent)
         {
         }

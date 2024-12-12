@@ -7,7 +7,7 @@ namespace FDG.Stages
     public class RollToHitStage<TMetadata> : CombatStage<RollToHitResults, RollToHitStage<TMetadata>, TMetadata>
         where TMetadata : ICombatMetadata
     {
-        public RollToHitStage(IGameContext gameContext, IStateMachineLayer<ISingleAttackContext<TMetadata>> parent) : base(gameContext, parent)
+        public RollToHitStage(IGameContext gameContext, IStateMachineLayer<TMetadata> parent) : base(gameContext, parent)
         {
         }
 
@@ -16,7 +16,7 @@ namespace FDG.Stages
             //TODO: Calculate attack count in separate stage, it may need its own mods.
             float attacks = metaData.WeaponType.Attacks * metaData.WeaponCount;
 
-            IDiceResults rollToHitResults = metaData.DiceRoller.Roll(attacks);
+            IDiceResults rollToHitResults = GameContext.DiceRoller.Roll(attacks);
 
             //We do this here because modifiers shouldn't do it, or else they can't add up in opposite
             //directions. For example, if your Quality is 6, and something gives you +1 to hit, and something
@@ -35,7 +35,7 @@ namespace FDG.Stages
                 new List<SuccessfulHitInfo>() { new SuccessfulHitInfo(successfulResults) },
                 new List<FailedHitInfo>() { new FailedHitInfo(failedResults) });
 
-            metaData.TextOutput.Log($"Rolled {successfulResults.TotalRolls} successful hits out of {attacks} total attacks.");
+            GameContext.Log($"Rolled {successfulResults.TotalRolls} successful hits out of {attacks} total attacks.");
 
             onFinished(results);
         }

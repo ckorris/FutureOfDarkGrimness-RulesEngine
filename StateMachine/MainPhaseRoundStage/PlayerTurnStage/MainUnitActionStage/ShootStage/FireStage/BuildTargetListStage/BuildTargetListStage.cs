@@ -7,7 +7,7 @@ namespace FDG.Stages
     public class BuildTargetListStage<TMetadata> : CombatStage<BuildTargetListResults, BuildTargetListStage<TMetadata>, TMetadata>
         where TMetadata : ICombatMetadata
     {
-        public BuildTargetListStage(IGameContext gameContext, IStateMachineLayer<ISingleAttackContext<TMetadata>> parent)
+        public BuildTargetListStage(IGameContext gameContext, IStateMachineLayer<TMetadata> parent)
             : base(gameContext, parent)
         {
         }
@@ -19,7 +19,7 @@ namespace FDG.Stages
             targets.AddRange(metaData.DefendingUnit.Models);
 
             string pluralizedModelWord = (targets.Count == 1) ? "model" : "models";
-            metaData.TextOutput.Log($"Created ordered target list of {targets.Count} {pluralizedModelWord}.");
+            GameContext.Log($"Created ordered target list of {targets.Count} {pluralizedModelWord}.");
 
             BuildTargetListResults results = new BuildTargetListResults(targets);
 

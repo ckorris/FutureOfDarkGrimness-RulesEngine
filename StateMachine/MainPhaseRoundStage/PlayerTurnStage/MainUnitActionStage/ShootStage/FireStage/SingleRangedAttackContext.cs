@@ -1,4 +1,4 @@
-
+/*
 namespace FDG.Stages
 {
     public class SingleRangedAttackContext : SingleAttackContext<IRangedCombatMetadata>,
@@ -13,7 +13,7 @@ namespace FDG.Stages
     }
 
 
-    /*
+    
 
     public class SingleRangedAttackContext : ISingleAttackContext<IRangedCombatMetadata>
     {
@@ -83,5 +83,6 @@ namespace FDG.Stages
             return allSpecialRules;
         }
     }
-    */
+    
 }
+    */

@@ -1,5 +1,5 @@
 
-namespace FDG.Stages
+namespace FDG
 {
     /// <summary>
     /// References to required objects for running the state machine.

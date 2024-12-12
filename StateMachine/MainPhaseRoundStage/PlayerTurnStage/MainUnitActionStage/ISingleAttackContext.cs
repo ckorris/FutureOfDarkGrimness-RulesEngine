@@ -5,6 +5,7 @@ using FDG.Stages;
 
 namespace FDG
 { 
+    /*
     public interface ISingleAttackContext<TMetadata> : ISingleAttackContext
     {
         TMetadata CombatMetaData { get; }
@@ -76,4 +77,5 @@ namespace FDG
             return allSpecialRules;
         }
     }
+    */
 }

@@ -20,7 +20,7 @@ namespace FDG.Stages
 
         public MainUnitActionStage(IGameContext gameContext, IStateMachineLayer<IPlayerTurnContext> parent) : base(gameContext, parent)
         {
-            ToReconcileEndOfActivation = new StageBinding(this);
+            
         }
 
         public override void Enter(IPlayerTurnContext context)
@@ -39,6 +39,8 @@ namespace FDG.Stages
 
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IUnitActionContext> startingChild)
         {
+            ToReconcileEndOfActivation = new StageBinding(this);
+
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
                 .AddChild(new ChooseActionStage(GameContext, this), out var chooseActionStage)
                 .AddChild(new MovementStage(GameContext, this), out var movementStage)

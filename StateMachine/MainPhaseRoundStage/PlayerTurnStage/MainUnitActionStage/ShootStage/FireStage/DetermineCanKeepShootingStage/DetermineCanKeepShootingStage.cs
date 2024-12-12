@@ -31,7 +31,6 @@ namespace FDG.Stages
             }
 
             //We've still got weapons to shoot, and baddies to shoot at. 
-            context.ResetRangedCombatMetadata();
             ReturnToChooseWeapon.Activate(context);
         }
     }

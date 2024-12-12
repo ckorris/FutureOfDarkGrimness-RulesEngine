@@ -1,5 +1,6 @@
 ﻿
 
+/*
 using FDG.Stages;
 
 namespace FDG
@@ -15,3 +16,4 @@ namespace FDG
         ICombatMetadata ISingleAttackContext<ICombatMetadata>.CombatMetaData => CombatMetaData;
     }
 }
+*/

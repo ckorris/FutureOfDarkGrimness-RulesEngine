@@ -1,15 +1,17 @@
 ﻿
+using FFmpeg.AutoGen;
+using System.Collections.Generic;
+
 namespace FDG
 {
     public interface IMeleeCombatMetadata : ICombatMetadata
     {
         //TODO: Register wounds dealt by each side?
-
     }
 
     public class MeleeCombatMetadata : IMeleeCombatMetadata
     {
-        public ITextOutput TextOutput { get; }
+        public IGameContext GameContext { get; private set; }
 
         public IWeapon WeaponType { get; private set; }
 
@@ -19,20 +21,22 @@ namespace FDG
 
         public IUnit DefendingUnit { get; private set; }
 
-        public EAttackType AttackType => EAttackType.Ranged;
+        public EAttackType AttackType => EAttackType.Melee;
 
-        public IDiceRoller DiceRoller { get; }
+        public IReadOnlyList<ISpecialRule_Combat> AllSpecialRules { get; private set; }
 
-        private bool _hasSetWeapon = false;
 
         private QueryableResults _queryableResults = new QueryableResults();
 
-        public MeleeCombatMetadata(IUnit attackingUnit, IUnit defendingUnit, IDiceRoller diceRoller, ITextOutput textOutput)
+        public MeleeCombatMetadata(IGameContext gameContext, IUnit attackingUnit, IUnit defendingUnit, IWeapon weaponType, int weaponCount)
         {
+            GameContext = gameContext;
             AttackingUnit = attackingUnit;
             DefendingUnit = defendingUnit;
-            DiceRoller = diceRoller;
-            TextOutput = textOutput;
+            WeaponType = weaponType;
+            WeaponCount = weaponCount;
+
+            AllSpecialRules = GetAllSpecialRules(attackingUnit, defendingUnit, weaponType);
         }
 
         public void AddResult<TResult>(TResult result)
@@ -45,12 +49,15 @@ namespace FDG
             return _queryableResults.QueryForResult(out result);
         }
 
-        public void ChooseWeapon(IWeapon weaponType, int weaponCount)
+        private List<ISpecialRule_Combat> GetAllSpecialRules(IUnit attackingUnit, IUnit defendingUnit, IWeapon weaponType)
         {
-            WeaponType = weaponType;
-            WeaponCount = weaponCount;
+            List<ISpecialRule_Combat> specialRules = new List<ISpecialRule_Combat>();
 
-            _hasSetWeapon = true;
+            specialRules.AddRange(attackingUnit.SpecialRules);
+            //specialRules.AddRange(defendingUnit.SpecialRules); //TODO: Need to differentiate attacker and defender.
+            specialRules.AddRange(weaponType.SpecialRules); //TODO: Sometimes the number of weapons matters.
+
+            return specialRules;
         }
     }
 }

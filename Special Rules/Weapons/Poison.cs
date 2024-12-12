@@ -23,7 +23,7 @@ namespace FDG
                 {
                     allSinkEffects.Remove(regenEffect);
                 }
-                metadata.TextOutput.Log($"Poison removed {nameof(Regeneration)} effect.");
+                metadata.TextOutput().Log($"Poison removed {nameof(Regeneration)} effect.");
             }
         }
 
@@ -46,7 +46,7 @@ namespace FDG
                 result.SuccessfulSaveList.Add(new SuccessfulSaveInfo(dontNeedToReroll, originalSuccesses.RollNeededInfo));
 
                 //Reroll them.
-                IDiceResults rerolls = metadata.DiceRoller.Roll(needToReroll.TotalRolls);
+                IDiceResults rerolls = metadata.DiceRoller().Roll(needToReroll.TotalRolls);
 
                 int saveNeeded = originalSuccesses.RollNeededInfo.SaveNeeded;
                 IDiceResults successfulRerolls = rerolls.SubsetAtOrAbove(saveNeeded);
@@ -58,7 +58,7 @@ namespace FDG
                 result.FailedSaveList.Add(new FailedSaveInfo(failedRerolls, originalSuccesses.RollNeededInfo));
             }
 
-            metadata.TextOutput.Log($"Poison forced rerolls of {totalNeededToReroll} dice, and {totalRerolledAndFailed} failed.");
+            metadata.TextOutput().Log($"Poison forced rerolls of {totalNeededToReroll} dice, and {totalRerolledAndFailed} failed.");
         }
     }
 }

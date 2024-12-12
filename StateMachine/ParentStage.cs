@@ -104,6 +104,11 @@ namespace FDG.Stages
 
             public TransitionSetBuilder AddSibling(string eventName, StageBinding siblingBinding)
             {
+                if(siblingBinding == null)
+                {
+                    throw new System.NullReferenceException();
+                }
+
                 _dictionary.Add(eventName, (context) => _parentStage.TransitionToSibling(siblingBinding));
                 return this;
             }

@@ -21,10 +21,6 @@ namespace FDG.Stages
         public void ChooseWeapon(IWeapon weaponToConsume, out int weaponCount);
 
         public void ChooseTargetUnit(IUnit targetUnit);
-
-        public void ClearCurrentAttack();
-
-        public void ResetRangedCombatMetadata();
     }
 
     public class RangedContext : IRangedContext
@@ -52,8 +48,9 @@ namespace FDG.Stages
             AttackingUnit = attackingUnit;
             AvailableTargetUnits = availableTargetUnits;
             _availableWeapons = GetTypeSortedWeapons(attackingUnit.GetRangedWeapons());
-            RangedCombatMetadata = new RangedCombatMetadata(attackingUnit, GameContext.DiceRoller, 
-                GameContext.TextOutput);
+
+            throw new NotImplementedException();
+            //RangedCombatMetadata = new RangedCombatMetadata(GameContext, attackingUnit, );
         }
 
         public void ChooseWeapon(IWeapon weaponToConsume, out int weaponCount)
@@ -66,7 +63,8 @@ namespace FDG.Stages
 
             _availableWeapons.TryRemove(weaponToConsume, out weaponCount);
 
-            RangedCombatMetadata.ChooseWeapon(weaponToConsume, weaponCount);
+            throw new NotImplementedException();
+            //RangedCombatMetadata.ChooseWeapon(weaponToConsume, weaponCount);
         }
 
         public void ChooseTargetUnit(IUnit targetUnit)
@@ -80,18 +78,6 @@ namespace FDG.Stages
             RangedCombatMetadata.ChooseTarget(targetUnit);
         }
 
-        public void ClearCurrentAttack()
-        {
-            AttackingUnit = null;
-            AvailableTargetUnits = null;
-            _availableWeapons = null;
-            RangedCombatMetadata = default;
-        }
-
-        public void ResetRangedCombatMetadata()
-        {
-            RangedCombatMetadata = new RangedCombatMetadata(AttackingUnit, GameContext.DiceRoller, GameContext.TextOutput);
-        }
 
         //TODO: Repeated in Melee version. Move to static class.
         private ConcurrentDictionary<IWeapon, int> GetTypeSortedWeapons(List<IWeapon> weapons)

@@ -24,12 +24,12 @@ namespace FDG.Stages
             //Return to choose weapon again if there are weapons remaining and the target is still alive.
             if (remainingWeaponCount == 0)
             {
-                context.Log("Has swung with all melee weapons.");
+                GameContext.Log("Has swung with all melee weapons.");
                 OnOutOfWeapons.Activate(context);
                 return;
             }
 
-            if (context.MeleeCombatMetadata.DefendingUnit.RemainingWounds <= 0)
+            if (context.DefendingUnit.RemainingWounds <= 0)
             {
                 GameContext.Log("Has killed all target units.");
                 OnDefenderKilled.Activate(context);
@@ -46,7 +46,6 @@ namespace FDG.Stages
                 GameContext.Log($"Has {remainingWeaponCount} more weapons left to swing.");
             }
 
-            context.ResetMeleeCombatMetadata();
             ReturnToChooseWeapon.Activate(context);
         }
     }

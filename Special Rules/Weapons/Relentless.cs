@@ -34,7 +34,7 @@ namespace FDG
                 result.SuccessfulHitList.Add(new SuccessfulHitInfo(qualifyForDoubleRolls));
             }
 
-            metadata.TextOutput.Log($"{nameof(Relentless)} added {totalUpgraded} hits from rolls of {ROLL_TO_ADD_EXTRA_SHOT}.");
+            metadata.TextOutput().Log($"{nameof(Relentless)} added {totalUpgraded} hits from rolls of {ROLL_TO_ADD_EXTRA_SHOT}.");
         }
     }
 }

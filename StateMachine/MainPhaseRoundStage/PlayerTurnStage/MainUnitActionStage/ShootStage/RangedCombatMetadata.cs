@@ -1,4 +1,6 @@
 
+using System.Collections.Generic;
+
 namespace FDG
 {
 
@@ -9,7 +11,7 @@ namespace FDG
 
     public class RangedCombatMetadata : IRangedCombatMetadata
     {
-        public ITextOutput TextOutput { get; }
+        public IGameContext GameContext { get; private set; }
 
         public IWeapon WeaponType { get; private set; }
 
@@ -21,18 +23,20 @@ namespace FDG
 
         public EAttackType AttackType => EAttackType.Ranged;
 
-        public IDiceRoller DiceRoller { get; }
+        public IReadOnlyList<ISpecialRule_Combat> AllSpecialRules => throw new System.NotImplementedException();
 
         private bool _hasSetWeapon = false;
         private bool _hasSetTargetUnit = false;
 
         private QueryableResults _queryableResults = new QueryableResults();
 
-        public RangedCombatMetadata(IUnit attackingUnit, IDiceRoller diceRoller, ITextOutput textOutput)
+        public RangedCombatMetadata(IGameContext gameContext, IUnit attackingUnit, IUnit defendingUnit, IWeapon weaponType, int weaponCount)
         {
+            GameContext = gameContext;
             AttackingUnit = attackingUnit;
-            DiceRoller = diceRoller;
-            TextOutput = textOutput;
+            DefendingUnit = defendingUnit;
+            WeaponType = weaponType;
+            WeaponCount = weaponCount;
         }
 
         public void AddResult<TResult>(TResult result)

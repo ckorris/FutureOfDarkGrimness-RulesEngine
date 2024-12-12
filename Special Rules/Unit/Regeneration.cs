@@ -21,13 +21,13 @@ namespace FDG
 
             foreach (FailedSaveInfo failedSave in new List<FailedSaveInfo>(result.FailedSaveList))
             {
-                IDiceResults regenAttempts = metadata.DiceRoller.Roll(failedSave.SaveCount);
+                IDiceResults regenAttempts = metadata.DiceRoller().Roll(failedSave.SaveCount);
 
                 IDiceResults successfulRegens = regenAttempts.SubsetAtOrAbove(ROLL_NEEDED_TO_REGENERATE);
 
                 SuccessfulSaveInfo successfulSaveInfo = new SuccessfulSaveInfo(successfulRegens, failedSave.RollNeededInfo);
 
-                metadata.TextOutput.Log($"{nameof(Regeneration)} converted {successfulRegens.TotalRolls} failed saves into saves");
+                metadata.TextOutput().Log($"{nameof(Regeneration)} converted {successfulRegens.TotalRolls} failed saves into saves");
 
                 result.FailedSaveList.Remove(failedSave);
                 result.SuccessfulSaveList.Add(successfulSaveInfo);

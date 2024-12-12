@@ -7,7 +7,7 @@ namespace FDG.Stages
     public class RollToSaveStage<TMetadata> : CombatStage<RollToSaveResults, RollToSaveStage<TMetadata>, TMetadata>
         where TMetadata : ICombatMetadata
     {
-        public RollToSaveStage(IGameContext gameContext, IStateMachineLayer<ISingleAttackContext<TMetadata>> parent)
+        public RollToSaveStage(IGameContext gameContext, IStateMachineLayer<TMetadata> parent)
             : base(gameContext, parent)
         {
         }
@@ -24,7 +24,7 @@ namespace FDG.Stages
 
             foreach (PendingSaveRolls saveRolls in saveRollsNeeded.PendingSaveRollsList)
             {
-                IDiceResults rollToSaveResults = metaData.DiceRoller.Roll(saveRolls.HitCount);
+                IDiceResults rollToSaveResults = GameContext.DiceRoller.Roll(saveRolls.HitCount);
 
                 int saveNeeded = DiceUtilities.ClampSuccessRollNeeded(saveRolls.SaveNeeded);
 
@@ -40,7 +40,7 @@ namespace FDG.Stages
 
             RollToSaveResults results = new RollToSaveResults(successfulSaves, failedSaves);
 
-            metaData.TextOutput.Log($"Saved {totalSuccesses} wounds, taking {totalFailures}.");
+            GameContext.Log($"Saved {totalSuccesses} wounds, taking {totalFailures}.");
 
             onFinished(results);
         }

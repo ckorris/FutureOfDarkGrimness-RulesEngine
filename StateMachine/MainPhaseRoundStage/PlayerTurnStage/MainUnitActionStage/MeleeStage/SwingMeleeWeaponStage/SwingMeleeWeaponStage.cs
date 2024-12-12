@@ -3,16 +3,17 @@ using System.Collections.Generic;
 
 namespace FDG.Stages
 {
-    public class SwingMeleeWeaponStage : ParentStage<IMeleeContext, ISingleAttackContext<IMeleeCombatMetadata>>
+    public class SwingMeleeWeaponStage : ParentStage<IMeleeContext, IMeleeCombatMetadata>
     {
         private const string SWING_TO_CHILD_ENTRANCE_TRANSITION = "SwingToChildEntrance";
 
-        private readonly SingleMeleeAttackContext _attackContext;
+        private readonly IMeleeCombatMetadata _attackContext;
 
         public StageBinding FinishedSwinging;
+
         public SwingMeleeWeaponStage(IGameContext gameContext, IStateMachineLayer<IMeleeContext> parent) : base(gameContext, parent)
         {
-            FinishedSwinging = new StageBinding(this);
+            
         }
 
         public override void Enter(IMeleeContext context)
@@ -22,17 +23,15 @@ namespace FDG.Stages
             base.Enter(context);
         }
 
-        protected override ISingleAttackContext<IMeleeCombatMetadata> GetNewChildContext(IMeleeContext contextSelf)
+        protected override IMeleeCombatMetadata GetNewChildContext(IMeleeContext contextSelf)
         {
-            MeleeCombatMetadata meleeCombatMetadata = new MeleeCombatMetadata(contextSelf.AttackingUnit, contextSelf.DefendingUnit,
-                GameContext.DiceRoller, GameContext.TextOutput);
-            SingleMeleeAttackContext singleMeleeAttackContext = new SingleMeleeAttackContext(GameContext);
-            singleMeleeAttackContext.SetCombatMetadata(meleeCombatMetadata);
-            return singleMeleeAttackContext;
+            return contextSelf.ConsumeAttackIntoContext(GameContext);
         }
 
-        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<ISingleAttackContext<IMeleeCombatMetadata>> startingChild)
+        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IMeleeCombatMetadata> startingChild)
         {
+            FinishedSwinging = new StageBinding(this);
+
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
                 .AddChild(new BuildTargetListStage<IMeleeCombatMetadata>(GameContext, this), out var buildTargetList)
                 .AddChild(new DetermineHitRollNeededStage<IMeleeCombatMetadata>(GameContext, this), out var determineHitRollNeeded)

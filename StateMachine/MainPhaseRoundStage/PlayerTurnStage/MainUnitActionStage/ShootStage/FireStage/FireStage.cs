@@ -4,53 +4,14 @@ using System.Collections.Generic;
 namespace FDG.Stages
 {
 
-    public class FireStage : ParentStage<IRangedContext, ISingleAttackContext<IRangedCombatMetadata>>
+    public class FireStage : ParentStage<IRangedContext, IRangedCombatMetadata>
     {
         public StageBinding OnFinishedFiring;
 
         public FireStage(IGameContext gameContext, IStateMachineLayer<IRangedContext> parent) : base(gameContext, parent)
         {
-            OnFinishedFiring = new StageBinding(this);
+            
         }
-
-        /*
-        public FireStage(StateMachine stateMachine, IRangedContext context, StageBase parentState = null)
-            : base(stateMachine, context, parentState)
-        {
-            _stateMachine = stateMachine;
-            _attackContext = new SingleRangedAttackContext(context.GameContext);
-
-            BuildTargetListStage buildTargetListStage = new BuildTargetListStage(stateMachine, _attackContext, this);
-            _applyWoundsStage = new ApplyWoundsStage(stateMachine, _attackContext, this);
-
-            buildTargetListStage.BindNextStage(new RangeCheckStage(stateMachine, _attackContext, this))
-                .BindNextStage(new OcclusionCheckStage(stateMachine, _attackContext, this))
-                .BindNextStage(new CoverCheckStage(stateMachine, _attackContext, this))
-                .BindNextStage(new DetermineHitRollNeededStage(stateMachine, _attackContext, this))
-                .BindNextStage(new RollToHitStage(stateMachine, _attackContext, this))
-                .BindNextStage(new DetermineSaveRollsNeededStage(stateMachine, _attackContext, this))
-                .BindNextStage(new RollToSaveStage(stateMachine, _attackContext, this))
-                .BindNextStage(new AssignWoundsStage(stateMachine, _attackContext, this))
-                .BindNextStage(_applyWoundsStage);
-
-            //Set up transition to child stage.
-            Bind(FIRE_TO_CHILD_ENTRANCE_TRANSITION, buildTargetListStage);
-        }
-        */
-
-        /*
-        public override void Enter()
-        {
-            base.Enter();
-
-            GameContext.Log("Firing.");
-
-            //Reset context objects.
-            _attackContext.SetCombatMetadata(GameContext.RangedCombatMetadata);
-
-            MoveToChildBuildTargetListStage();
-        }
-        */
 
         public override void Enter(IRangedContext context)
         {
@@ -59,13 +20,17 @@ namespace FDG.Stages
             base.Enter(context);
         }
 
-        protected override ISingleAttackContext<IRangedCombatMetadata> GetNewChildContext(IRangedContext contextSelf)
+        protected override IRangedCombatMetadata GetNewChildContext(IRangedContext contextSelf)
         {
-            return new SingleRangedAttackContext(GameContext);
+            throw new System.NotImplementedException();
+
+            //return new RangedCombatMetadata(GameContext);
         }
 
-        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<ISingleAttackContext<IRangedCombatMetadata>> startingChild)
+        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IRangedCombatMetadata> startingChild)
         {
+            OnFinishedFiring = new StageBinding(this);
+
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
                 .AddChild(new BuildTargetListStage<IRangedCombatMetadata>(GameContext, this), out var buildTargetList)
                 .AddChild(new RangeCheckStage(GameContext, this), out var rangeCheck)

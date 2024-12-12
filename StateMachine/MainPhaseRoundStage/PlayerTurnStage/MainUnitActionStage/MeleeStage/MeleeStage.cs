@@ -9,7 +9,7 @@ namespace FDG.Stages
 
         public MeleeStage(IGameContext gameContext, IStateMachineLayer<IUnitActionContext> parent) : base(gameContext, parent)
         {
-            OnFinishedMelee = new StageBinding(this);
+            
         }
 
 
@@ -22,7 +22,7 @@ namespace FDG.Stages
 
         protected override IMeleeContext GetNewChildContext(IUnitActionContext contextSelf)
         {
-            MeleeContext meleeContext = new MeleeContext(GameContext, contextSelf.ActivatingUnit);
+            MeleeContext meleeContext = new MeleeContext(contextSelf.ActivatingUnit);
             //meleeContext.BeginNewAttack(contextSelf.ActivatingUnit, contextSelf.) //TODO: Ah?
 
             return meleeContext;
@@ -30,6 +30,8 @@ namespace FDG.Stages
 
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IMeleeContext> startingChild)
         {
+            OnFinishedMelee = new StageBinding(this);
+
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
                 .AddChild(new ChooseMeleeDefenderStage(GameContext, this), out var chooseMeleeDefender)
                 .AddChild(new PileInStage(GameContext, this), out var pileIn)

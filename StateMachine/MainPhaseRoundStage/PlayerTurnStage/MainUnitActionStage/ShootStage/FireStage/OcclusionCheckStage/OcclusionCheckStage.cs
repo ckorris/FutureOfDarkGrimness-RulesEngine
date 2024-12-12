@@ -6,7 +6,7 @@ namespace FDG.Stages
 
     public class OcclusionCheckStage : CombatStage<OcclusionCheckResults, OcclusionCheckStage, IRangedCombatMetadata>
     {
-        public OcclusionCheckStage(IGameContext gameContext, IStateMachineLayer<ISingleAttackContext<IRangedCombatMetadata>> parent) : base(gameContext, parent)
+        public OcclusionCheckStage(IGameContext gameContext, IStateMachineLayer<IRangedCombatMetadata> parent) : base(gameContext, parent)
         {
         }
 

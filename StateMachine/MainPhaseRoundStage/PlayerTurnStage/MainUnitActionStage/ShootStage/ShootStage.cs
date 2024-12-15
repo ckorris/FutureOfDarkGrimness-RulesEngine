@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace FDG.Stages
 {
 
-    public class ShootStage : ParentStage<IUnitActionContext, IRangedContext>
+    public class ShootStage : ParentStage<IUnitActionContext, ICombatActionContext>
     {
         public const string SHOOT_TO_CHILD_CHOOSE_RANGED_WEAPON_TRANSITION = "ShootToChildChooseRangedWeapon";
 
@@ -22,28 +22,29 @@ namespace FDG.Stages
             base.Enter(context);
         }
 
-        protected override IRangedContext GetNewChildContext(IUnitActionContext contextSelf)
+        protected override ICombatActionContext GetNewChildContext(IUnitActionContext contextSelf)
         {
-            return new RangedContext(GameContext);
+            return new CombatActionContext(contextSelf.ActivatingUnit);
         }
 
-        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IRangedContext> startingChild)
+        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<ICombatActionContext> startingChild)
         {
             OnFinishedShooting = new StageBinding(this);
 
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
-                .AddChild(new ChooseRangedWeaponStage(GameContext, this), out var chooseRangedWeapon)
                 .AddChild(new ChooseRangedTargetStage(GameContext, this), out var chooseRangedTarget)
+                .AddChild(new ChooseRangedWeaponStage(GameContext, this), out var chooseRangedWeapon)
                 .AddChild(new FireStage(GameContext, this), out var fire)
                 .AddChild(new ResolveRangedMoraleStage(GameContext, this), out var resolveRangedMorale)
                 .AddChild(new DetermineCanKeepShootingStage(GameContext, this), out var determineCanKeepShooting)
                 .AddSibling(nameof(OnFinishedShooting), OnFinishedShooting, out string onFinishedShootingEvent)
                 .Build();
 
-            startingChild = chooseRangedWeapon;
+            startingChild = chooseRangedTarget;
 
-            chooseRangedWeapon.ToChooseRangedTarget.Bind(chooseRangedTarget);
-            chooseRangedTarget.ToFire.Bind(fire);
+            chooseRangedTarget.OnChoseTarget.Bind(chooseRangedWeapon);
+            chooseRangedTarget.BackToChooseAction.Bind(onFinishedShootingEvent);
+            chooseRangedWeapon.OnChoseWeapon.Bind(fire);
             fire.OnFinishedFiring.Bind(resolveRangedMorale);
             resolveRangedMorale.ToFinished.Bind(determineCanKeepShooting);
             determineCanKeepShooting.ReturnToChooseWeapon.Bind(chooseRangedWeapon);

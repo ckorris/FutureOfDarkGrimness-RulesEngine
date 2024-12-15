@@ -1,7 +1,7 @@
 ﻿
 namespace FDG.Stages
 {
-    public class DetermineMeleeWinnerStage : StageBase<IMeleeContext>
+    public class DetermineMeleeWinnerStage : StageBase<ICombatActionContext>
     {
         public const string DETERMINE_MELEE_WINNER_NEEDS_ROLL_TRANSITION = "DetermineMeleeWinnerNeedsRoll";
         public const string DETERMINE_MELEE_WINNER_DOESNT_NEED_ROLL_TRANSITION = "DetermineMeleeWinnerDoesntNeedRoll";
@@ -9,13 +9,13 @@ namespace FDG.Stages
         public StageBinding OnNeedsRollToDecide;
         public StageBinding OnDoesntNeedRollToDecide;
 
-        public DetermineMeleeWinnerStage(IGameContext gameContext, IStateMachineLayer<IMeleeContext> parent) : base(gameContext, parent)
+        public DetermineMeleeWinnerStage(IGameContext gameContext, IStateMachineLayer<ICombatActionContext> parent) : base(gameContext, parent)
         {
             OnNeedsRollToDecide = new StageBinding(this);
             OnDoesntNeedRollToDecide = new StageBinding(this);
         }
 
-        public override void Enter(IMeleeContext context)
+        public override void Enter(ICombatActionContext context)
         {
             //Get wounds dealt by each side.
             float attackerWoundsDealt = context.DefenderRemainingWoundsAtStart - context.DefendingUnit.RemainingWounds;

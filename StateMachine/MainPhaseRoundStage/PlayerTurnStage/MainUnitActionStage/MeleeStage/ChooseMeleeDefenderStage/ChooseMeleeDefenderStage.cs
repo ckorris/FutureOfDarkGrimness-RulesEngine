@@ -5,19 +5,19 @@ using System.Linq;
 
 namespace FDG.Stages
 {
-    public class ChooseMeleeDefenderStage : StageBase<IMeleeContext>
+    public class ChooseMeleeDefenderStage : StageBase<ICombatActionContext>
     {
         public StageBinding OnDefenderChosen;
         public StageBinding BackToChooseAction;
 
-        public ChooseMeleeDefenderStage(IGameContext gameContext, IStateMachineLayer<IMeleeContext> parent)
+        public ChooseMeleeDefenderStage(IGameContext gameContext, IStateMachineLayer<ICombatActionContext> parent)
             : base(gameContext, parent)
         {
             OnDefenderChosen = new StageBinding(this);
             BackToChooseAction = new StageBinding(this);
         }
 
-        public override void Enter(IMeleeContext context)
+        public override void Enter(ICombatActionContext context)
         {
             GameContext.Log("Entered Choose Melee Defender.");
 
@@ -41,7 +41,7 @@ namespace FDG.Stages
             {
                 foreach(IUnit unit in army.Units)
                 {
-                    //TODO: Judge distance from attackign unit. For now, list them all.
+                    //TODO: Judge distance from attacking unit. For now, list them all.
                     ActionChoice choice = new ActionChoice(() => ChooseDefender(unit), unit.Name, true, null);
                     choices.Add(choice);
                 }
@@ -54,6 +54,6 @@ namespace FDG.Stages
 
     public interface IChooseMeleeDefenderHandler
     {
-        public void Handle(IMeleeContext context, List<ActionChoice> actionChoices, Action onCancel);
+        public void Handle(ICombatActionContext context, List<ActionChoice> actionChoices, Action onCancel);
     }
 }

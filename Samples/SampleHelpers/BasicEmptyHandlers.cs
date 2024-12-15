@@ -76,7 +76,7 @@ namespace FDG.Samples
             StrikeBack = strikeBack;
         }
 
-        public void Handle(IMeleeContext context, Action acceptStrikeBack, Action rejectStrikeBack)
+        public void Handle(ICombatActionContext context, Action acceptStrikeBack, Action rejectStrikeBack)
         {
             if(StrikeBack)
             {
@@ -107,6 +107,12 @@ namespace FDG.Samples
             //Just choose the first.
             IUnit firstUnit = potentialTargetUnits.First();
             onChoseUnit(firstUnit);
+        }
+
+        public void Handle(ICombatActionContext context, List<ActionChoice> actionChoices, Action onCancel)
+        {
+            //Just choose the first.
+            actionChoices.First(choice => choice.CanActivate).Choose();
         }
     }
 

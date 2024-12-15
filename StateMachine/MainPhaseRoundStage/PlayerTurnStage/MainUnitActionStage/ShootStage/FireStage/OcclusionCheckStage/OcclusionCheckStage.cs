@@ -4,9 +4,9 @@ using System;
 namespace FDG.Stages
 {
 
-    public class OcclusionCheckStage : CombatStage<OcclusionCheckResults, OcclusionCheckStage, IRangedCombatMetadata>
+    public class OcclusionCheckStage : CombatStage<OcclusionCheckResults, OcclusionCheckStage, ICombatMetadata>
     {
-        public OcclusionCheckStage(IGameContext gameContext, IStateMachineLayer<IRangedCombatMetadata> parent) : base(gameContext, parent)
+        public OcclusionCheckStage(IGameContext gameContext, IStateMachineLayer<ICombatMetadata> parent) : base(gameContext, parent)
         {
         }
 

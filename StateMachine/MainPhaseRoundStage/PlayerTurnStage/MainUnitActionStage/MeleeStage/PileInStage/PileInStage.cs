@@ -1,16 +1,16 @@
 ﻿
 namespace FDG.Stages
 {
-    public class PileInStage : StageBase<IMeleeContext>
+    public class PileInStage : StageBase<ICombatActionContext>
     {
         public StageBinding OnPiledIn;
 
-        public PileInStage(IGameContext gameContext, IStateMachineLayer<IMeleeContext> parent) : base(gameContext, parent)
+        public PileInStage(IGameContext gameContext, IStateMachineLayer<ICombatActionContext> parent) : base(gameContext, parent)
         {
             OnPiledIn = new StageBinding(this);
         }
 
-        public override void Enter(IMeleeContext context)
+        public override void Enter(ICombatActionContext context)
         {
             GameContext.Log("Entered pile in stage. Skipping for now.");
             OnPiledIn.Activate(context);

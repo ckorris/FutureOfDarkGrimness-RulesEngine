@@ -5,16 +5,16 @@ using System.Collections.Concurrent;
 namespace FDG.Stages
 {
 
-    public class ChooseRangedWeaponStage : StageBase<IRangedContext>
+    public class ChooseRangedWeaponStage : StageBase<ICombatActionContext>
     {
-        public StageBinding ToChooseRangedTarget;
+        public StageBinding OnChoseWeapon;
 
-        public ChooseRangedWeaponStage(IGameContext gameContext, IStateMachineLayer<IRangedContext> parent) : base(gameContext, parent)
+        public ChooseRangedWeaponStage(IGameContext gameContext, IStateMachineLayer<ICombatActionContext> parent) : base(gameContext, parent)
         {
-            ToChooseRangedTarget = new StageBinding(this);
+            OnChoseWeapon = new StageBinding(this);
         }
 
-        public override void Enter(IRangedContext context)
+        public override void Enter(ICombatActionContext context)
         {
             if (context.AvailableWeapons.Count == 0)
             {
@@ -29,12 +29,12 @@ namespace FDG.Stages
             GameContext.GetHandler<IChooseRangedWeaponHandler>().Handle(availableWeapons, unavailableWeapons, (weapon) => ChooseWeapon(context, weapon));
         }
 
-        private void ChooseWeapon(IRangedContext context, IWeapon chosenWeapon)
+        private void ChooseWeapon(ICombatActionContext context, IWeapon chosenWeapon)
         {
-            context.ChooseWeapon(chosenWeapon, out int weaponCount);
+            context.SetAttackWeapon(chosenWeapon, out int weaponCount);
             GameContext.Log($"Chose weapon: {chosenWeapon.Name}. Count: {weaponCount}.");
 
-            ToChooseRangedTarget.Activate(context);
+            OnChoseWeapon.Activate(context);
         }
     }
 

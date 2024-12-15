@@ -10,7 +10,7 @@ namespace FDG.Samples
         private IDiceRoller _diceRoller;
 
         private IUnitActionContext _unitActionContext;
-        private IMeleeContext _meleeContext;
+        private ICombatActionContext _meleeContext;
 
         private GameContext _gameContext;
         private MeleeStage _meleeStage;
@@ -53,7 +53,7 @@ namespace FDG.Samples
         public void SimulateMeleeAttack(IUnit attackingUnit, IUnit defendingUnit, bool defenderStrikesBack)
         {
             _offerStrikeBackHandler.StrikeBack = defenderStrikesBack;
-            _meleeContext = new MeleeContext(attackingUnit);
+            _meleeContext = new CombatActionContext(attackingUnit);
             _meleeContext.BeginNewAttack(defendingUnit);
             _unitActionContext.Reset(attackingUnit);
             _meleeStage.Enter(_unitActionContext);

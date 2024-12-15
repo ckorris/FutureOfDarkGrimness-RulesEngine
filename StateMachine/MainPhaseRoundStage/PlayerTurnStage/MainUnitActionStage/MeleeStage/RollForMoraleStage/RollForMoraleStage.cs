@@ -2,7 +2,7 @@
 
 namespace FDG.Stages
 {
-    public class RollForMoraleStage : StageBase<IMeleeContext>
+    public class RollForMoraleStage : StageBase<ICombatActionContext>
     {
         public const string ROLL_FOR_MORALE_PASSED_TRANSITION = "RollForMoralePassed";
         public const string ROLL_FOR_MORALE_FAILED_TRANSITION = "RollForMoraleFailed";
@@ -10,13 +10,13 @@ namespace FDG.Stages
         public StageBinding OnMoralePassed;
         public StageBinding OnMoraleFailed;
 
-        public RollForMoraleStage(IGameContext gameContext, IStateMachineLayer<IMeleeContext> parent) : base(gameContext, parent)
+        public RollForMoraleStage(IGameContext gameContext, IStateMachineLayer<ICombatActionContext> parent) : base(gameContext, parent)
         {
             OnMoralePassed = new StageBinding(this);
             OnMoraleFailed = new StageBinding(this);
         }
 
-        public override void Enter(IMeleeContext context)
+        public override void Enter(ICombatActionContext context)
         {
             //TODO: Modifiers need to be able to affect this roll. Can we make these combat stages?
 

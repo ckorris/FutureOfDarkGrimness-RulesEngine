@@ -4,16 +4,16 @@ using System.Collections.Generic;
 
 namespace FDG.Stages
 {
-    public class ChooseMeleeWeaponStage : StageBase<IMeleeContext>
+    public class ChooseMeleeWeaponStage : StageBase<ICombatActionContext>
     {
         public StageBinding OnChosen;
 
-        public ChooseMeleeWeaponStage(IGameContext gameContext, IStateMachineLayer<IMeleeContext> parent) : base(gameContext, parent)
+        public ChooseMeleeWeaponStage(IGameContext gameContext, IStateMachineLayer<ICombatActionContext> parent) : base(gameContext, parent)
         {
             OnChosen = new StageBinding(this);
         }
 
-        public override void Enter(IMeleeContext context)
+        public override void Enter(ICombatActionContext context)
         {
             if (context.AvailableWeapons.Count == 0)
             {
@@ -28,7 +28,7 @@ namespace FDG.Stages
             GameContext.GetHandler<IChooseMeleeWeaponHandler>().Handle(availableWeapons, unavailableWeapons, (weapon) => ChooseWeapon(context, weapon));
         }
 
-        private void ChooseWeapon(IMeleeContext context, IWeapon chosenWeapon)
+        private void ChooseWeapon(ICombatActionContext context, IWeapon chosenWeapon)
         {
             context.SetAttackWeapon(chosenWeapon, out int weaponCount);
             GameContext.Log($"Chose weapon: {chosenWeapon.Name}. Count: {weaponCount}.");

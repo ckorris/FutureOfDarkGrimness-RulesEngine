@@ -7,7 +7,7 @@ namespace FDG.Stages
 {
     //TODO: There's lots of info that's specific to parts of the melee process.
     //Having a query handler like the combat metadata could be an improvement.
-    public interface IMeleeContext
+    public interface ICombatActionContext
     {
         public IUnit AttackingUnit { get; }
 
@@ -32,10 +32,10 @@ namespace FDG.Stages
 
         public void SetAttackWeapon(IWeapon weaponToConsume, out int weaponCount);
 
-        public IMeleeCombatMetadata ConsumeAttackIntoContext(IGameContext gameContext);
+        public ICombatMetadata ConsumeAttackIntoContext(IGameContext gameContext);
     }
 
-    public class MeleeContext : IMeleeContext
+    public class CombatActionContext : ICombatActionContext
     {
         public IUnit AttackingUnit { get; private set; }
 
@@ -61,7 +61,7 @@ namespace FDG.Stages
 
         private PendingAttack _currentPendingAttack = null;
 
-        public MeleeContext(IUnit attackingUnit)
+        public CombatActionContext(IUnit attackingUnit)
         {
             AttackingUnit = attackingUnit;
             _availableWeapons = GetTypeSortedWeapons(attackingUnit.GetMeleeWeapons());
@@ -102,7 +102,7 @@ namespace FDG.Stages
 
             if (_availableWeapons.ContainsKey(weaponToConsume) == false)
             {
-                throw new ArgumentException($"{nameof(RangedContext)}.{nameof(SetAttackWeapon)} called on weapon " +
+                throw new ArgumentException($"{nameof(CombatActionContext)}.{nameof(SetAttackWeapon)} called on weapon " +
                     $"that was not found in available list: {weaponToConsume.Name}");
             }
 
@@ -114,7 +114,7 @@ namespace FDG.Stages
             _currentPendingAttack.WeaponCount = weaponCount;
         }
 
-        public IMeleeCombatMetadata ConsumeAttackIntoContext(IGameContext gameContext)
+        public ICombatMetadata ConsumeAttackIntoContext(IGameContext gameContext)
         {
             if(_currentPendingAttack == null)
             {
@@ -127,7 +127,7 @@ namespace FDG.Stages
                     "Must have all values set before consuming.");
             }
 
-            MeleeCombatMetadata meleeCombatMetadata = new MeleeCombatMetadata(gameContext, AttackingUnit, 
+            CombatMetadata meleeCombatMetadata = new CombatMetadata(gameContext, AttackingUnit, 
                 _currentPendingAttack.DefendingUnit, _currentPendingAttack.WeaponType, _currentPendingAttack.WeaponCount);
 
             _currentPendingAttack = null;
@@ -159,7 +159,7 @@ namespace FDG.Stages
             return weaponsAndCounts;
         }
 
-        private class PendingAttack
+        private class PendingAttack //TODO: Duplicated from shooting.
         {
             public bool IsReady => DefendingUnit != default && WeaponType != default && WeaponCount != default;
 

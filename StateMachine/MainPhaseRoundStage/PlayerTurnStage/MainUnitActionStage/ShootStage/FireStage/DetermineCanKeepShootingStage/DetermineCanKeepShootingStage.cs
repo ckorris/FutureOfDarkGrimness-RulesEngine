@@ -2,18 +2,18 @@
 namespace FDG.Stages
 {
 
-    public class DetermineCanKeepShootingStage : StageBase<IRangedContext>
+    public class DetermineCanKeepShootingStage : StageBase<ICombatActionContext>
     {
         public StageBinding ReturnToChooseWeapon;
         public StageBinding ToFinishShooting;
 
-        public DetermineCanKeepShootingStage(IGameContext gameContext, IStateMachineLayer<IRangedContext> parent) : base(gameContext, parent)
+        public DetermineCanKeepShootingStage(IGameContext gameContext, IStateMachineLayer<ICombatActionContext> parent) : base(gameContext, parent)
         {
             ReturnToChooseWeapon = new StageBinding(this);
             ToFinishShooting = new StageBinding(this);
         }
 
-        public override void Enter(IRangedContext context)
+        public override void Enter(ICombatActionContext context)
         {
             //Return to choose weapon again if there are weapons remaining and the target is still alive.
             if (context.AvailableWeapons.Count == 0)
@@ -23,7 +23,7 @@ namespace FDG.Stages
                 return;
             }
 
-            if (context.RangedCombatMetadata.DefendingUnit.RemainingWounds <= 0)
+            if (context.DefendingUnit.RemainingWounds <= 0)
             {
                 GameContext.Log("Has killed all target units.");
                 ToFinishShooting.Activate(context);

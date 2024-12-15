@@ -4,18 +4,18 @@ using System;
 namespace FDG.Stages
 {
 
-    public class OfferStrikeBackStage : StageBase<IMeleeContext>
+    public class OfferStrikeBackStage : StageBase<ICombatActionContext>
     {
         public StageBinding OnOfferAccepted;
         public StageBinding OnOfferRejected;
 
-        public OfferStrikeBackStage(IGameContext gameContext, IStateMachineLayer<IMeleeContext> parent) : base(gameContext, parent)
+        public OfferStrikeBackStage(IGameContext gameContext, IStateMachineLayer<ICombatActionContext> parent) : base(gameContext, parent)
         {
             OnOfferAccepted = new StageBinding(this);
             OnOfferRejected = new StageBinding(this);
         }
 
-        public override void Enter(IMeleeContext context)
+        public override void Enter(ICombatActionContext context)
         {
             GameContext.Log("Offering strikeback.");
 
@@ -23,13 +23,13 @@ namespace FDG.Stages
                 () => MoveToStrikingBack(context), () =>  SkipStrikingBack(context));
         }
 
-        private void MoveToStrikingBack(IMeleeContext context)
+        private void MoveToStrikingBack(ICombatActionContext context)
         {
             GameContext.Log("Defenders striking back.");
             OnOfferAccepted.Activate(context);
         }
 
-        private void SkipStrikingBack(IMeleeContext context)
+        private void SkipStrikingBack(ICombatActionContext context)
         {
             GameContext.Log("Defenders not striking back.");
             OnOfferRejected.Activate(context);
@@ -38,6 +38,6 @@ namespace FDG.Stages
 
     public interface IOfferStrikeBackHandler
     {
-        public void Handle(IMeleeContext context, Action acceptStrikeBack, Action rejectStrikeBack);
+        public void Handle(ICombatActionContext context, Action acceptStrikeBack, Action rejectStrikeBack);
     }
 }

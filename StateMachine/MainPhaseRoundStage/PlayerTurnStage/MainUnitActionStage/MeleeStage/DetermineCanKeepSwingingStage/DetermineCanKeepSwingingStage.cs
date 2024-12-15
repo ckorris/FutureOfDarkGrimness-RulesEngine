@@ -1,7 +1,7 @@
 ﻿
 namespace FDG.Stages
 {
-    internal class DetermineCanKeepSwingingStage : StageBase<IMeleeContext>
+    internal class DetermineCanKeepSwingingStage : StageBase<ICombatActionContext>
     {
 
         public StageBinding ReturnToChooseWeapon;
@@ -10,14 +10,14 @@ namespace FDG.Stages
 
         //private readonly IMeleeContext _meleeContext;
 
-        public DetermineCanKeepSwingingStage(IGameContext gameContext, IStateMachineLayer<IMeleeContext> parent) : base(gameContext, parent)
+        public DetermineCanKeepSwingingStage(IGameContext gameContext, IStateMachineLayer<ICombatActionContext> parent) : base(gameContext, parent)
         {
             ReturnToChooseWeapon = new StageBinding(this);
             OnOutOfWeapons = new StageBinding(this);
             OnDefenderKilled = new StageBinding(this);
         }
 
-        public override void Enter(IMeleeContext context)
+        public override void Enter(ICombatActionContext context)
         {
             int remainingWeaponCount = context.AvailableWeapons.Count;
 

@@ -4,24 +4,24 @@ using System.Collections.Generic;
 namespace FDG.Stages
 {
 
-    public class StrikeBackStage : ParentStage<IMeleeContext, IMeleeContext>
+    public class StrikeBackStage : ParentStage<ICombatActionContext, ICombatActionContext>
     {
         public StageBinding FinishedStrikingBack;
         public StageBinding OnAttackerKilled;
 
-        public StrikeBackStage(IGameContext gameContext, IStateMachineLayer<IMeleeContext> parent) : base(gameContext, parent)
+        public StrikeBackStage(IGameContext gameContext, IStateMachineLayer<ICombatActionContext> parent) : base(gameContext, parent)
         {
 
         }
 
-        protected override IMeleeContext GetNewChildContext(IMeleeContext contextSelf)
+        protected override ICombatActionContext GetNewChildContext(ICombatActionContext contextSelf)
         {
-            MeleeContext meleeContext = new MeleeContext(contextSelf.DefendingUnit);
+            CombatActionContext meleeContext = new CombatActionContext(contextSelf.DefendingUnit);
             meleeContext.BeginNewAttack(contextSelf.AttackingUnit); //Purposefully reversed.
             return meleeContext;
         }
 
-        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IMeleeContext> startingChild)
+        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<ICombatActionContext> startingChild)
         {
             FinishedStrikingBack = new StageBinding(this);
             OnAttackerKilled = new StageBinding(this);

@@ -3,10 +3,11 @@ using System.Linq;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 
+/*
 namespace FDG.Stages
 {
 
-    public interface IRangedContext : IGameContextAccessor
+    public interface ICombatActionContext : IGameContextAccessor
     {
         public IUnit AttackingUnit { get; }
 
@@ -14,16 +15,16 @@ namespace FDG.Stages
 
         public IReadOnlyList<IUnit> AvailableTargetUnits { get; }
 
-        public IRangedCombatMetadata RangedCombatMetadata { get; }
+        public ICombatMetadata RangedCombatMetadata { get; }
 
-        public void BeginNewAttack(IUnit attackingUnit, List<IUnit> availableTargetUnits);
+        public void BeginNewAttack(IUnit defendingUnit);
 
-        public void ChooseWeapon(IWeapon weaponToConsume, out int weaponCount);
+        public void SetAttackWeapon(IWeapon weaponToConsume, out int weaponCount);
 
-        public void ChooseTargetUnit(IUnit targetUnit);
+        public ICombatMetadata ConsumeAttackIntoContext(IGameContext gameContext);
     }
 
-    public class RangedContext : IRangedContext
+    public class RangedContext : ICombatActionContext
     {
         public IGameContext GameContext { get; private set; }
 
@@ -33,7 +34,7 @@ namespace FDG.Stages
 
         public IReadOnlyList<IUnit> AvailableTargetUnits { get; private set; }
 
-        public IRangedCombatMetadata RangedCombatMetadata { get; private set; }
+        public ICombatMetadata RangedCombatMetadata { get; private set; }
 
         private ConcurrentDictionary<IWeapon, int> _availableWeapons;
 
@@ -53,11 +54,11 @@ namespace FDG.Stages
             //RangedCombatMetadata = new RangedCombatMetadata(GameContext, attackingUnit, );
         }
 
-        public void ChooseWeapon(IWeapon weaponToConsume, out int weaponCount)
+        public void SetAttackWeapon(IWeapon weaponToConsume, out int weaponCount)
         {
             if(_availableWeapons.ContainsKey(weaponToConsume) == false)
             {
-                throw new ArgumentException($"{nameof(RangedContext)}.{nameof(ChooseWeapon)} called on weapon " + 
+                throw new ArgumentException($"{nameof(RangedContext)}.{nameof(SetAttackWeapon)} called on weapon " + 
                     $"that was not found in available list: {weaponToConsume.Name}");
             }
 
@@ -67,15 +68,9 @@ namespace FDG.Stages
             //RangedCombatMetadata.ChooseWeapon(weaponToConsume, weaponCount);
         }
 
-        public void ChooseTargetUnit(IUnit targetUnit)
+        public ICombatMetadata ConsumeAttackIntoContext(IGameContext gameContext)
         {
-            if(AvailableTargetUnits.Contains(targetUnit) == false)
-            {
-                throw new ArgumentException($"{nameof(RangedContext)}.{nameof(ChooseTargetUnit)} called on unit " +
-                    $"that was not found in available list: {targetUnit.Name}");
-            }
-
-            RangedCombatMetadata.ChooseTarget(targetUnit);
+            throw new NotImplementedException();
         }
 
 
@@ -102,5 +97,23 @@ namespace FDG.Stages
 
             return weaponsAndCounts;
         }
+
+        ICombatMetadata ICombatActionContext.ConsumeAttackIntoContext(IGameContext gameContext)
+        {
+            throw new NotImplementedException();
+        }
+
+        private class PendingAttack //TODO: Duplicated from melee.
+        {
+            public bool IsReady => DefendingUnit != default && WeaponType != default && WeaponCount != default;
+
+            public IUnit DefendingUnit = default;
+
+            public IWeapon WeaponType = default;
+
+            public int WeaponCount = default;
+        }
+
     }
 }
+*/

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace FDG.Stages
 {
-    public class MeleeStage : ParentStage<IUnitActionContext, IMeleeContext>
+    public class MeleeStage : ParentStage<IUnitActionContext, ICombatActionContext>
     {
         public StageBinding OnFinishedMelee;
 
@@ -20,15 +20,12 @@ namespace FDG.Stages
             base.Enter(context);
         }
 
-        protected override IMeleeContext GetNewChildContext(IUnitActionContext contextSelf)
+        protected override ICombatActionContext GetNewChildContext(IUnitActionContext contextSelf)
         {
-            MeleeContext meleeContext = new MeleeContext(contextSelf.ActivatingUnit);
-            //meleeContext.BeginNewAttack(contextSelf.ActivatingUnit, contextSelf.) //TODO: Ah?
-
-            return meleeContext;
+            return new CombatActionContext(contextSelf.ActivatingUnit);
         }
 
-        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IMeleeContext> startingChild)
+        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<ICombatActionContext> startingChild)
         {
             OnFinishedMelee = new StageBinding(this);
 

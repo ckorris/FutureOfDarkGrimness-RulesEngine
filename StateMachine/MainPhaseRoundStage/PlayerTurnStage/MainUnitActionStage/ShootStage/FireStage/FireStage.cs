@@ -4,44 +4,42 @@ using System.Collections.Generic;
 namespace FDG.Stages
 {
 
-    public class FireStage : ParentStage<IRangedContext, IRangedCombatMetadata>
+    public class FireStage : ParentStage<ICombatActionContext, ICombatMetadata>
     {
         public StageBinding OnFinishedFiring;
 
-        public FireStage(IGameContext gameContext, IStateMachineLayer<IRangedContext> parent) : base(gameContext, parent)
+        public FireStage(IGameContext gameContext, IStateMachineLayer<ICombatActionContext> parent) : base(gameContext, parent)
         {
             
         }
 
-        public override void Enter(IRangedContext context)
+        public override void Enter(ICombatActionContext context)
         {
             GameContext.Log("Firing.");
 
             base.Enter(context);
         }
 
-        protected override IRangedCombatMetadata GetNewChildContext(IRangedContext contextSelf)
+        protected override ICombatMetadata GetNewChildContext(ICombatActionContext contextSelf)
         {
-            throw new System.NotImplementedException();
-
-            //return new RangedCombatMetadata(GameContext);
+            return contextSelf.ConsumeAttackIntoContext(GameContext);
         }
 
-        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IRangedCombatMetadata> startingChild)
+        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<ICombatMetadata> startingChild)
         {
             OnFinishedFiring = new StageBinding(this);
 
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
-                .AddChild(new BuildTargetListStage<IRangedCombatMetadata>(GameContext, this), out var buildTargetList)
+                .AddChild(new BuildTargetListStage<ICombatMetadata>(GameContext, this), out var buildTargetList)
                 .AddChild(new RangeCheckStage(GameContext, this), out var rangeCheck)
                 .AddChild(new OcclusionCheckStage(GameContext, this), out var occlusionCheck)
                 .AddChild(new CoverCheckStage(GameContext, this), out var coverCheck)
-                .AddChild(new DetermineHitRollNeededStage<IRangedCombatMetadata>(GameContext, this), out var determineHitRollNeeded)
-                .AddChild(new RollToHitStage<IRangedCombatMetadata>(GameContext, this), out var rollToHit)
-                .AddChild(new DetermineSaveRollsNeededStage<IRangedCombatMetadata>(GameContext, this), out var determineSaveRollNeeded)
-                .AddChild(new RollToSaveStage<IRangedCombatMetadata>(GameContext, this), out var rollToSave)
-                .AddChild(new AssignWoundsStage<IRangedCombatMetadata>(GameContext, this), out var assignWounds)
-                .AddChild(new ApplyWoundsStage<IRangedCombatMetadata>(GameContext, this), out var applyWounds)
+                .AddChild(new DetermineHitRollNeededStage<ICombatMetadata>(GameContext, this), out var determineHitRollNeeded)
+                .AddChild(new RollToHitStage<ICombatMetadata>(GameContext, this), out var rollToHit)
+                .AddChild(new DetermineSaveRollsNeededStage<ICombatMetadata>(GameContext, this), out var determineSaveRollNeeded)
+                .AddChild(new RollToSaveStage<ICombatMetadata>(GameContext, this), out var rollToSave)
+                .AddChild(new AssignWoundsStage<ICombatMetadata>(GameContext, this), out var assignWounds)
+                .AddChild(new ApplyWoundsStage<ICombatMetadata>(GameContext, this), out var applyWounds)
                 .AddSibling(nameof(OnFinishedFiring), OnFinishedFiring, out string finishedFiringName)
                 .Build();
 

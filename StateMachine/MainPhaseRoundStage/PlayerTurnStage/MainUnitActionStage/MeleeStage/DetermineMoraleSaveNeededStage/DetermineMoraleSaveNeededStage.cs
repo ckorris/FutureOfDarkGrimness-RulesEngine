@@ -2,17 +2,17 @@
 
 namespace FDG.Stages
 {
-    public class DetermineMoraleSaveNeededStage : StageBase<IMeleeContext>
+    public class DetermineMoraleSaveNeededStage : StageBase<ICombatActionContext>
     {
         public const string DETERMINE_MORALE_SAVE_NEEDED_FINISHED_TRANSITION = "DetermineMoraleSaveNeededFinished";
 
         public StageBinding ToRollForMorale;
-        public DetermineMoraleSaveNeededStage(IGameContext gameContext, IStateMachineLayer<IMeleeContext> parent) : base(gameContext, parent)
+        public DetermineMoraleSaveNeededStage(IGameContext gameContext, IStateMachineLayer<ICombatActionContext> parent) : base(gameContext, parent)
         {
             ToRollForMorale = new StageBinding(this);
         }
 
-        public override void Enter(IMeleeContext context)
+        public override void Enter(ICombatActionContext context)
         {
             if (context.QueryForResult(out DetermineMeleeWinnerResults meleeWinnerResult) == false)
             {

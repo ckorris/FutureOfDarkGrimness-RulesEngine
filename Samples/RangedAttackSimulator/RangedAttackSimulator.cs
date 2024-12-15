@@ -1,5 +1,6 @@
 
 using FDG.Stages;
+using Stride.Games;
 using System.Collections.Generic;
 
 namespace FDG.Samples
@@ -10,7 +11,7 @@ namespace FDG.Samples
         private IDiceRoller _diceRoller;
 
         private IUnitActionContext _unitActionContext;
-        private IRangedContext _rangedContext;
+        private ICombatActionContext _rangedContext;
         //private StateMachine _stateMachine;
         private ShootStage _shootStage;
 
@@ -48,7 +49,8 @@ namespace FDG.Samples
 
         public void SimulateRangedAttack(IUnit attackingUnit, IUnit defendingUnit)
         {
-            _rangedContext.BeginNewAttack(attackingUnit, new List<IUnit>() { defendingUnit });
+            _rangedContext = new CombatActionContext(attackingUnit);
+            _rangedContext.BeginNewAttack(defendingUnit);
             _unitActionContext.Reset(attackingUnit);
             _shootStage.Enter(_unitActionContext);
         }
@@ -70,7 +72,7 @@ namespace FDG.Samples
             GameContext gameContext = new GameContext(_textOutput, _diceRoller, handlers, tableState);
 
             _unitActionContext = new UnitActionContext(gameContext);
-            _rangedContext = new RangedContext(gameContext);
+
 
             _shootStage = new ShootStage(gameContext, null);
             //_shootStage.AssignExitStage(new EmptyEndStage(_stateMachine));

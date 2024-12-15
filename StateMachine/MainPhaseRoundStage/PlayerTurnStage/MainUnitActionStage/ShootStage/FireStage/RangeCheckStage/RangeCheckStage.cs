@@ -4,9 +4,9 @@ using System;
 namespace FDG.Stages
 {
 
-    public class RangeCheckStage : CombatStage<RangeCheckResults, RangeCheckStage, IRangedCombatMetadata>
+    public class RangeCheckStage : CombatStage<RangeCheckResults, RangeCheckStage, ICombatMetadata>
     {
-        public RangeCheckStage(IGameContext gameContext, IStateMachineLayer<IRangedCombatMetadata> parent) : base(gameContext, parent)
+        public RangeCheckStage(IGameContext gameContext, IStateMachineLayer<ICombatMetadata> parent) : base(gameContext, parent)
         {
         }
 

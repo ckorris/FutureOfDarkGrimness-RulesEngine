@@ -2,19 +2,19 @@
 namespace FDG.Stages
 {
 
-    public class ResolveRangedMoraleStage : StageBase<IRangedContext>
+    public class ResolveRangedMoraleStage : StageBase<ICombatActionContext>
     {
         public const string RESOLVE_RANGED_MORALE_FINISHED_TRANSITION =
             "ResolveRangedMoraleFinished";
 
         public StageBinding ToFinished;
 
-        public ResolveRangedMoraleStage(IGameContext gameContext, IStateMachineLayer<IRangedContext> parent) : base(gameContext, parent)
+        public ResolveRangedMoraleStage(IGameContext gameContext, IStateMachineLayer<ICombatActionContext> parent) : base(gameContext, parent)
         {
             ToFinished = new StageBinding(this);
         }
 
-        public override void Enter(IRangedContext context)
+        public override void Enter(ICombatActionContext context)
         {
             GameContext.Log("Resolving ranged morale.");
             ToFinished.Activate(context);

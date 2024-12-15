@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace FDG
@@ -11,6 +12,8 @@ namespace FDG
         public float WoundsDealt { get; set; }
 
         public Position Position { get; }
+
+        public float BaseRadiusInches { get; }
 
         public List<IWeapon> Weapons { get; }
 
@@ -34,12 +37,14 @@ namespace FDG
 
         public Position Position { get; private set; }
 
+        public float BaseRadiusInches { get; private set; }
+
         public event PositionChangedEventHandler OnPositionChanged;
 
         public event WoundsDealtEventHandler OnWoundsDealt;
 
 
-        public Model(List<IWeapon> weapons, Position position)
+        public Model(List<IWeapon> weapons, Position position, float baseRadiusInches)
         {
             Weapons = weapons;
             Position = position;
@@ -48,6 +53,7 @@ namespace FDG
 
             TotalWounds = IModel.DEFAULT_WOUND_COUNT;
             WoundsDealt = 0;
+            BaseRadiusInches = baseRadiusInches;
         }
 
         public void SetPosition(Position newPosition)
@@ -77,6 +83,18 @@ namespace FDG
         public static bool GetIsDead(this IModel model)
         {
             return model.WoundsDealt >= model.TotalWounds;
+        }
+
+        public static float BaseDistanceToOtherModel_2D(this IModel thisModel, IModel otherModel)
+        {
+            return DistanceUtilities.GetBaseToBaseDistanceInches_2D(thisModel.Position, otherModel.Position,
+                thisModel.BaseRadiusInches, otherModel.BaseRadiusInches);
+        }
+
+        public static float BaseDistanceToOtherModel_3D(this IModel thisModel, IModel otherModel)
+        {
+            return DistanceUtilities.GetBaseToBaseDistanceInches_3D(thisModel.Position, otherModel.Position,
+                thisModel.BaseRadiusInches, otherModel.BaseRadiusInches);
         }
     }
 }

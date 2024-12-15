@@ -1,4 +1,6 @@
 
+using System.Collections.Generic;
+
 namespace FDG
 {
     public interface ISpecialRule_Weapon : ISpecialRule_Combat
@@ -6,8 +8,11 @@ namespace FDG
 
     }
 
-    public class SpecialRule_Weapon : SpecialRule_Combat, ISpecialRule_Weapon
+    public class SpecialRule_Weapon : ISpecialRule_Weapon
     {
-
+        public List<ICombatEffect<TResult>> GetEffects<TResult>()
+        {
+            return this.GetEffectsListFromOwnType<TResult>();
+        }
     }
 }

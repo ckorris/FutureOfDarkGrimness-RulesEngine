@@ -1,7 +1,7 @@
 
 namespace FDG
 {
-    public class Fear : SpecialRule_Combat
+    public class Fear : SpecialRule_Attacker
     {
 
     }

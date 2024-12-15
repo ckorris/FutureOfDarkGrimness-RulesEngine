@@ -7,14 +7,6 @@ namespace FDG
         public List<ICombatEffect<TResult>> GetEffects<TResult>();
     }
 
-    public class SpecialRule_Combat : ISpecialRule_Combat
-    {
-        public List<ICombatEffect<TResult>> GetEffects<TResult>()
-        {
-            return this.GetEffectsListFromOwnType<TResult>();
-        }
-    }
-
     public static class ISpecialRuleExtensions
     {
         /// <summary>

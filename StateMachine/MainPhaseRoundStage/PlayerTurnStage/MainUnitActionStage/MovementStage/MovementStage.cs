@@ -1,10 +1,11 @@
 
 using System;
+using System.Collections.Generic;
 
 namespace FDG.Stages
 {
 
-    public class MovementStage : StageBase<IUnitActionContext>
+    public class MovementStage : ParentStage<IUnitActionContext, IMovementActionContext>
     {
         public StageBinding OnFinishedMovement;
 
@@ -17,6 +18,16 @@ namespace FDG.Stages
         {
             GameContext.Log($"Chose movement action.");
             GameContext.GetHandler<IMovementHandler>().Handle(context, (distance) => OnMove(context, distance));
+        }
+
+        protected override IMovementActionContext GetNewChildContext(IUnitActionContext contextSelf)
+        {
+            throw new NotImplementedException();
+        }
+
+        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IMovementActionContext> startingChild)
+        {
+            throw new NotImplementedException();
         }
 
         private void OnMove(IUnitActionContext context, float distance)

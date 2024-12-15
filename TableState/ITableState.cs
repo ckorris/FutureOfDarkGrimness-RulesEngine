@@ -7,6 +7,8 @@ namespace FDG
         public IPlayerState PlayerState { get; }
 
         public IArmyState ArmyState { get; }
+        
+        public ITerrainState TerrainState { get; }
     }
 
     public class TableState : ITableState
@@ -15,11 +17,15 @@ namespace FDG
 
         public IArmyState ArmyState { get; private set; }
 
+        public ITerrainState TerrainState { get; private set; }
+
         public TableState()
         {
             PlayerState = new PlayerState();
 
             ArmyState = new ArmyState();
+
+            TerrainState = new TerrainState();
         }
 
         public TableState(IPlayerState playerState, IArmyState armyState)

@@ -67,8 +67,8 @@ namespace FDG
         {
             List<ISpecialRule_Combat> specialRules = new List<ISpecialRule_Combat>();
 
-            specialRules.AddRange(attackingUnit.SpecialRules);
-            //specialRules.AddRange(defendingUnit.SpecialRules); //TODO: Need to differentiate attacker and defender.
+            specialRules.AddRange(attackingUnit.GetAttackerSpecialRules());
+            specialRules.AddRange(defendingUnit.GetDefenderSpecialRules()); //TODO: Need to differentiate attacker and defender.
             specialRules.AddRange(weaponType.SpecialRules); //TODO: Sometimes the number of weapons matters.
 
             return specialRules;

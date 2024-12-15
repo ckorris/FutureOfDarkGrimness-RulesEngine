@@ -24,11 +24,86 @@ namespace FDG
 
         public List<IModel> Models { get; }
 
-        public List<ISpecialRule_Combat> SpecialRules { get; }
+        public List<ISpecialRule> SpecialRules { get; }
 
         public bool GetMobility(out float moveShootDistanceInches, out float chargeDistanceInches);
 
         public event WoundsDealtEventHandler OnWoundsDealt;
+    }
+
+    public class Unit : IUnit
+    {
+        public PlayerID PlayerID { get; private set; }
+
+        public string Name { get; }
+
+        public int Quality { get; }
+
+        public int Defense { get; }
+
+        public float MaxWounds
+        {
+            get
+            {
+                float total = 0;
+                foreach (IModel model in Models)
+                {
+                    total += model.TotalWounds;
+                }
+                return total;
+            }
+        }
+
+        public float RemainingWounds
+        {
+            get
+            {
+                float total = 0;
+                foreach (IModel model in Models)
+                {
+                    total += model.TotalWounds - model.WoundsDealt;
+                }
+                return total;
+            }
+        }
+
+        public List<IModel> Models { get; }
+
+        public List<ISpecialRule> SpecialRules { get; }
+
+        public Unit(PlayerID playerID, string name, int quality, int defense, List<IModel> models,
+            List<ISpecialRule> specialRules)
+        {
+            PlayerID = playerID;
+            Name = name;
+            Quality = quality;
+            Defense = defense;
+            Models = models;
+            SpecialRules = specialRules;
+
+            foreach (IModel model in models)
+            {
+                model.OnWoundsDealt += OnModelWoundsDealt;
+            }
+
+        }
+
+        public event WoundsDealtEventHandler OnWoundsDealt;
+
+        private void OnModelWoundsDealt(WoundsDealtEventArgs modelWoundsDealtArgs)
+        {
+            OnWoundsDealt?.Invoke(new WoundsDealtEventArgs(modelWoundsDealtArgs.WoundsDealt, RemainingWounds, this.GetIsDead()));
+        }
+
+        public bool GetMobility(out float moveShootDistanceInches, out float chargeDistanceInches)
+        {
+            //TODO: Process special rules for this.
+            moveShootDistanceInches = GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES;
+            chargeDistanceInches = GameWideConstants.CHARGE_DISTANCE_INCHES;
+
+            return true;
+        }
+
     }
 
     public static class IUnitExtensions
@@ -77,81 +152,26 @@ namespace FDG
             return unit.AllWeapons(u => u.IsRanged());
         }
 
+        public static List<ISpecialRule_Combat> GetCombatSpecialRules(this IUnit unit)
+        {
+            return unit.SpecialRules.OfType<ISpecialRule_Combat>().ToList();
+        }
 
+        public static List<ISpecialRule_Attacker> GetAttackerSpecialRules(this IUnit unit)
+        {
+            return unit.SpecialRules.OfType<ISpecialRule_Attacker>().ToList();
+        }
+
+        public static List<ISpecialRule_Defender> GetDefenderSpecialRules(this IUnit unit)
+        {
+            return unit.SpecialRules.OfType<ISpecialRule_Defender>().ToList();
+        }
+
+        public static List<ISpecialRule_Movement> GetMovementSpecialRules(this IUnit unit)
+        {
+            return unit.SpecialRules.OfType<ISpecialRule_Movement>().ToList();
+        }
     }
 
-    public class Unit : IUnit
-    {
-        public PlayerID PlayerID { get; private set; }
-
-        public string Name { get; }
-
-        public int Quality { get; }
-
-        public int Defense { get; }
-
-        public float MaxWounds
-        {
-            get
-            {
-                float total = 0;
-                foreach (IModel model in Models)
-                {
-                    total += model.TotalWounds;
-                }
-                return total;
-            }
-        }
-
-        public float RemainingWounds
-        {
-            get
-            {
-                float total = 0;
-                foreach (IModel model in Models)
-                {
-                    total += model.TotalWounds - model.WoundsDealt;
-                }
-                return total;
-            }
-        }
-
-        public List<IModel> Models { get; }
-
-        public List<ISpecialRule_Combat> SpecialRules { get; }
-
-        public Unit(PlayerID playerID, string name, int quality, int defense, List<IModel> models, 
-            List<ISpecialRule_Combat> specialRules)
-        {
-            PlayerID = playerID;
-            Name = name;
-            Quality = quality;
-            Defense = defense;
-            Models = models;
-            SpecialRules = specialRules;
-
-            foreach(IModel model in models)
-            {
-                model.OnWoundsDealt += OnModelWoundsDealt;
-            }
-
-        }
-
-        public event WoundsDealtEventHandler OnWoundsDealt;
-
-        private void OnModelWoundsDealt(WoundsDealtEventArgs modelWoundsDealtArgs)
-        {
-            OnWoundsDealt?.Invoke(new WoundsDealtEventArgs(modelWoundsDealtArgs.WoundsDealt, RemainingWounds, this.GetIsDead()));
-        }
-
-        public bool GetMobility(out float moveShootDistanceInches, out float chargeDistanceInches)
-        {
-            //TODO: Process special rules for this.
-            moveShootDistanceInches = GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES;
-            chargeDistanceInches = GameWideConstants.CHARGE_DISTANCE_INCHES;
-
-            return true;
-        }
-
-    }
+    
 }

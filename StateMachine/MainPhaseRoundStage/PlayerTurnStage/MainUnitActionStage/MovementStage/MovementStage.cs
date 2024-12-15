@@ -11,14 +11,9 @@ namespace FDG.Stages
 
         public MovementStage(IGameContext gameContext, IStateMachineLayer<IUnitActionContext> parent) : base(gameContext, parent)
         {
-            OnFinishedMovement = new StageBinding(this);
+            
         }
 
-        public override void Enter(IUnitActionContext context)
-        {
-            GameContext.Log($"Chose movement action.");
-            GameContext.GetHandler<IMovementHandler>().Handle(context, (distance) => OnMove(context, distance));
-        }
 
         protected override IMovementActionContext GetNewChildContext(IUnitActionContext contextSelf)
         {
@@ -27,7 +22,22 @@ namespace FDG.Stages
 
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IMovementActionContext> startingChild)
         {
-            throw new NotImplementedException();
+            OnFinishedMovement = new StageBinding(this);
+
+            Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
+                .AddChild(new DefinePathStage(GameContext, this), out var definePath)
+                .AddChild(new ApplyNonMovementTerrainEffectsStage(GameContext, this), out var applyEffects)
+                .AddChild(new ExecuteMoveStage(GameContext, this), out var executeMove)
+                .AddSibling(nameof(OnFinishedMovement), OnFinishedMovement, out string onFinishedMovement)
+                .Build();
+
+            startingChild = definePath;
+
+            definePath.OnPathDefined.Bind(applyEffects);
+            applyEffects.OnAppliedNonMovementTerrainEffects.Bind(executeMove);
+            executeMove.OnMoveExecuted.Bind(onFinishedMovement);
+
+            return dictionary;
         }
 
         private void OnMove(IUnitActionContext context, float distance)
@@ -36,10 +46,5 @@ namespace FDG.Stages
             context.RegisterMoveFinished(distance);
             OnFinishedMovement.Activate(context);
         }
-    }
-
-    public interface IMovementHandler
-    {
-        public void Handle(IUnitActionContext actionContext, Action<float> finishedTempDist);
     }
 }

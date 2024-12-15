@@ -60,11 +60,11 @@ namespace FDG.Samples
     }
     
 
-    public class BasicTesterMovementHandler : IMovementHandler
+    public class BasicTesterDefinePathHandler : IDefinePathHandler
     {
-        public void Handle(IUnitActionContext actionContext, Action<float> finishedTemp)
+        public void Handle()
         {
-            finishedTemp(5); //TEST.
+            
         }
     }
 

@@ -15,46 +15,51 @@ namespace FDG.Samples
         private IPlayerTurnContext _playerTurnContext;
         private IUnitActionContext _unitActionContext;
         private OptionChooserMultiHandler _optionChooserMultiHandler;
-        private IMovementHandler _movementHandler;
+        private IDefinePathHandler _definePathHandler;
+        private IExecuteMoveHandler _executeMoveHandler;
 
-        public ChooseActionSimulator(OptionChooserMultiHandler actionHandler, IMovementHandler moveHandler,
-            ERandomnessType randomnessType)
+        public ChooseActionSimulator(OptionChooserMultiHandler actionHandler, IDefinePathHandler definePathHandler,
+            IExecuteMoveHandler executeModeHandler, ERandomnessType randomnessType)
         {
             _textOutput = new BasicConsoleLogger();
             _diceRoller = SampleUtilities.GetDiceRoller(randomnessType);
 
             _optionChooserMultiHandler = actionHandler;
-            _movementHandler = moveHandler;
+            _definePathHandler = definePathHandler;
+            _executeMoveHandler = executeModeHandler;
         }
 
-        public ChooseActionSimulator(OptionChooserMultiHandler actionHandler, IMovementHandler moveHandler,
-            ITextOutput textOutput, IDiceRoller diceRoller)
+        public ChooseActionSimulator(OptionChooserMultiHandler actionHandler, IDefinePathHandler definePathHandler,
+            IExecuteMoveHandler executeModeHandler, ITextOutput textOutput, IDiceRoller diceRoller)
         {
             _textOutput = textOutput;
             _diceRoller = diceRoller;
 
             _optionChooserMultiHandler = actionHandler;
-            _movementHandler = moveHandler;
+            _definePathHandler = definePathHandler;
+            _executeMoveHandler = executeModeHandler;
         }
 
-        public ChooseActionSimulator(OptionChooserMultiHandler actionHandler, IMovementHandler moveHandler,
-            IDiceRoller diceRoller)
+        public ChooseActionSimulator(OptionChooserMultiHandler actionHandler, IDefinePathHandler definePathHandler,
+            IExecuteMoveHandler executeModeHandler, IDiceRoller diceRoller)
         {
             _textOutput = new BasicConsoleLogger();
             _diceRoller = diceRoller;
 
             _optionChooserMultiHandler = actionHandler;
-            _movementHandler = moveHandler;
+            _definePathHandler = definePathHandler;
+            _executeMoveHandler = executeModeHandler;
         }
 
-        public ChooseActionSimulator(OptionChooserMultiHandler actionHandler, IMovementHandler moveHandler,
-            ITextOutput textOutput, ERandomnessType randomnessType)
+        public ChooseActionSimulator(OptionChooserMultiHandler actionHandler, IDefinePathHandler moveHandler,
+            IExecuteMoveHandler executeModeHandler, ITextOutput textOutput, ERandomnessType randomnessType)
         {
             _textOutput = textOutput;
             _diceRoller = SampleUtilities.GetDiceRoller(randomnessType);
 
             _optionChooserMultiHandler = actionHandler;
-            _movementHandler = moveHandler;
+            _definePathHandler = moveHandler;
+            _executeMoveHandler = executeModeHandler;
         }
 
         public void SimulateAction(IUnit activatedUnit, TableState tableState)
@@ -65,7 +70,6 @@ namespace FDG.Samples
                 //To test.
                 .RegisterHandle<IChooseActionHandler>(_optionChooserMultiHandler)
                 .RegisterHandle<IChooseMeleeDefenderHandler>(_optionChooserMultiHandler)
-                .RegisterHandle<IMovementHandler>(_movementHandler)
                 //Melee.
                 .RegisterHandle<IChooseMeleeWeaponHandler>(new BasicTesterChooseWeaponHandler())
                 .RegisterHandle<IOfferStrikeBackHandler>(new BasicTesterOfferStrikeBackHandler(false))
@@ -73,7 +77,10 @@ namespace FDG.Samples
                 .RegisterHandle<IChooseRangedWeaponHandler>(new BasicTesterChooseWeaponHandler())
                 .RegisterHandle<IChooseRangedTargetHandler>(new BasicTesterChooseRangedTargetHandler())
                 //Both.
-                .RegisterHandle<IAssignWoundsHandler>(new BasicTesterAssignWoundsHandler());
+                .RegisterHandle<IAssignWoundsHandler>(new BasicTesterAssignWoundsHandler())
+                //Movement.
+                .RegisterHandle<IDefinePathHandler>(_definePathHandler)
+                .RegisterHandle<IExecuteMoveHandler>(_executeMoveHandler);
 
             //For now, make an empty TableState. May need to be updated later.
             GameContext gameContext = new GameContext(_textOutput, _diceRoller, handlers, tableState);

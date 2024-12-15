@@ -13,7 +13,7 @@ namespace FDG.Stages
 
         public List<ITerrain> RelevantTerrain { get; }
 
-        public float GetMaxDistanceMoved();
+        public bool TryGetMovementDistance(out float distance);
     }
 
     public class MovementActionContext : IMovementActionContext
@@ -42,6 +42,9 @@ namespace FDG.Stages
         private float _maxAdvanceDistance;
         private float _maxChargeDistance;
 
+        private bool _hasMoved = false;
+        private float? _movementDistance;
+
         public MovementActionContext(GameContext gameContext, IUnit movingUnit)
         {
             MovingUnit = movingUnit;
@@ -61,10 +64,18 @@ namespace FDG.Stages
             RelevantTerrain = precursor.RelevantTerrain;
         }
 
-        public float GetMaxDistanceMoved()
+        public bool TryGetMovementDistance(out float distance)
         {
-            throw new System.NotImplementedException();
+            if(_hasMoved)
+            {
+                distance = _movementDistance.Value;
+                return true;
+            }
+
+            distance = float.NegativeInfinity;
+            return false;
         }
+
     }
 
     public struct MovementContextPrecursor

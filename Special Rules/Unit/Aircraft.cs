@@ -1,9 +1,10 @@
+using FDG.Stages;
 using System.Collections.Generic;
 
 namespace FDG
 {
     [System.Serializable]
-    public class Aircraft : ISpecialRule_Defender,
+    public class Aircraft : ISpecialRule_Defender, ISpecialRule_Movement,
         ICombatEffect<RangeCheckResults>, ICombatEffect<DetermineHitRollNeededResults>
     {
         public List<ICombatEffect<TResult>> GetEffects<TResult>()
@@ -28,6 +29,12 @@ namespace FDG
 
         public void OnPostExecute(ICombatMetadata metadata, DetermineHitRollNeededResults result)
         {
+            throw new System.NotImplementedException();
+        }
+
+        public void ProcessMovementContextPrecursor(ref MovementContextPrecursor precursor)
+        {
+            //This is going to have to be a very special case.
             throw new System.NotImplementedException();
         }
     }

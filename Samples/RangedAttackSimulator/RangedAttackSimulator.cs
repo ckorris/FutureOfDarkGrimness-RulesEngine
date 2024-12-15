@@ -59,7 +59,6 @@ namespace FDG.Samples
         {
             StageHandlerRegistry handlers = new StageHandlerRegistry()
                 .RegisterHandle<IChooseActionHandler>(new BasicTesterChooseActionHandler(BasicTesterChooseActionHandler.ETestActionChoice.Ranged))
-                .RegisterHandle<IMovementHandler>(new BasicTesterMovementHandler())
                 .RegisterHandle<IChooseRangedWeaponHandler>(new BasicTesterChooseWeaponHandler())
                 .RegisterHandle<IChooseRangedTargetHandler>(new BasicTesterChooseRangedTargetHandler())
                 .RegisterHandle<IAssignWoundsHandler>(new BasicTesterAssignWoundsHandler());

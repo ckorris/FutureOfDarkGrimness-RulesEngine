@@ -42,22 +42,22 @@ namespace FDG.Stages
             ToReconcileEndOfActivation = new StageBinding(this);
 
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
-                .AddChild(new ChooseActionStage(GameContext, this), out var chooseActionStage)
-                .AddChild(new MovementStage(GameContext, this), out var movementStage)
-                .AddChild(new MeleeStage(GameContext, this), out var meleeStage)
-                .AddChild(new ShootStage(GameContext, this), out var shootStage)
+                .AddChild(new ChooseActionStage(GameContext, this), out var chooseAction)
+                .AddChild(new MovementStage(GameContext, this), out var movement)
+                .AddChild(new MeleeStage(GameContext, this), out var melee)
+                .AddChild(new ShootStage(GameContext, this), out var shoot)
                 .AddSibling(nameof(ToReconcileEndOfActivation), ToReconcileEndOfActivation, out string toReconcileActivationEvent)
                 .Build();
 
-            startingChild = chooseActionStage;
+            startingChild = chooseAction;
 
-            chooseActionStage.ToMovement.Bind(movementStage);
-            chooseActionStage.ToCharge.Bind(meleeStage);
-            chooseActionStage.ToShoot.Bind(shootStage);
-            chooseActionStage.ToReconcileEndOfActivation.Bind(toReconcileActivationEvent);
-            movementStage.OnFinishedMovement.Bind(chooseActionStage);
-            meleeStage.OnFinishedMelee.Bind(chooseActionStage);
-            shootStage.OnFinishedShooting.Bind(chooseActionStage);
+            chooseAction.ToMovement.Bind(movement);
+            chooseAction.ToCharge.Bind(melee);
+            chooseAction.ToShoot.Bind(shoot);
+            chooseAction.ToReconcileEndOfActivation.Bind(toReconcileActivationEvent);
+            movement.OnFinishedMovement.Bind(chooseAction);
+            melee.OnFinishedMelee.Bind(chooseAction);
+            shoot.OnFinishedShooting.Bind(chooseAction);
 
             return dictionary;
         }

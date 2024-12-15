@@ -22,9 +22,7 @@ namespace FDG
         public TableState()
         {
             PlayerState = new PlayerState();
-
             ArmyState = new ArmyState();
-
             TerrainState = new TerrainState();
         }
 
@@ -32,6 +30,7 @@ namespace FDG
         {
             PlayerState = playerState;
             ArmyState = armyState;
+            TerrainState = new TerrainState();
         }
     }
 }

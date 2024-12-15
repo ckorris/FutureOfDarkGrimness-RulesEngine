@@ -1,4 +1,6 @@
 ﻿
+using System;
+
 namespace FDG.Stages
 {
     public class DefinePathStage : StageBase<IMovementActionContext>
@@ -13,14 +15,23 @@ namespace FDG.Stages
 
         public override void Enter(IMovementActionContext context)
         {
-            //TODO: Expand a lot.
+            PathTemplate pathTemplate = new PathTemplate(context.MovingUnit, context);
 
-            GameContext.GetHandler<IDefinePathHandler>().Handle();
+            IDefinePathHandler pathHandler = GameContext.GetHandler<IDefinePathHandler>();
+
+            pathHandler.Handle(pathTemplate, () => OnSubmittedTemplateAsValid(pathTemplate, context));
+        }
+
+        private void OnSubmittedTemplateAsValid(PathTemplate pathTemplate, IMovementActionContext context)
+        {
+            context.SubmitValidPathTemplate(pathTemplate);
+
+            OnPathDefined.Activate(context);
         }
     }
 
     public interface IDefinePathHandler
     {
-        public void Handle(); //TODO: Will need a lot more info.
+        public void Handle(PathTemplate pathTemplate, Action onTemplateValid); //TODO: Will need a lot more info.
     }
 }

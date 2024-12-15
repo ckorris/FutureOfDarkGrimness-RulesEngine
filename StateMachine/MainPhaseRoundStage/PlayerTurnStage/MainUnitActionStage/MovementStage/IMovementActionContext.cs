@@ -1,4 +1,5 @@
 ﻿
+using System;
 using System.Collections.Generic;
 
 namespace FDG.Stages
@@ -14,6 +15,10 @@ namespace FDG.Stages
         public List<ITerrain> RelevantTerrain { get; }
 
         public bool TryGetMovementDistance(out float distance);
+
+        public bool TryGetPaths(out IReadOnlyDictionary<IModel, IReadOnlyList<Position>> paths);
+
+        public void SubmitValidPathTemplate(PathTemplate pathTemplate);
     }
 
     public class MovementActionContext : IMovementActionContext
@@ -44,8 +49,9 @@ namespace FDG.Stages
 
         private bool _hasMoved = false;
         private float? _movementDistance;
+        private IReadOnlyDictionary<IModel, IReadOnlyList<Position>> _paths;
 
-        public MovementActionContext(GameContext gameContext, IUnit movingUnit)
+        public MovementActionContext(IGameContext gameContext, IUnit movingUnit)
         {
             MovingUnit = movingUnit;
 
@@ -64,6 +70,19 @@ namespace FDG.Stages
             RelevantTerrain = precursor.RelevantTerrain;
         }
 
+        public void SubmitValidPathTemplate(PathTemplate pathTemplate)
+        {
+            if (pathTemplate.ValidatePaths(out List<ReasonForInvalidMove> errorReasons) == false)
+            {
+                throw new InvalidOperationException($"Defined invalid path to {nameof(DefinePathStage)}. Contained {errorReasons.Count} errors. " +
+                    $"You can call {nameof(PathTemplate)}.{nameof(PathTemplate.ValidatePaths)} before listing the path as valid.");
+            }
+
+            _hasMoved = true;
+            _movementDistance = pathTemplate.GetMaxMoveDistance();
+            _paths = pathTemplate.CurrentPaths;
+        }
+
         public bool TryGetMovementDistance(out float distance)
         {
             if(_hasMoved)
@@ -76,6 +95,18 @@ namespace FDG.Stages
             return false;
         }
 
+
+        public bool TryGetPaths(out IReadOnlyDictionary<IModel, IReadOnlyList<Position>> paths)
+        {
+            if(_hasMoved)
+            {
+                paths = _paths;
+                return true;
+            }
+
+            paths = null;
+            return false;
+        }
     }
 
     public struct MovementContextPrecursor
@@ -88,7 +119,7 @@ namespace FDG.Stages
 
         public List<ITerrain> RelevantTerrain;
 
-        public static MovementContextPrecursor GetDefault(GameContext gameContext)
+        public static MovementContextPrecursor GetDefault(IGameContext gameContext)
         {
             MovementContextPrecursor precursor = new MovementContextPrecursor()
             {

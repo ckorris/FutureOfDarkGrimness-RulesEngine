@@ -17,7 +17,7 @@ namespace FDG.Stages
 
         protected override IMovementActionContext GetNewChildContext(IUnitActionContext contextSelf)
         {
-            throw new NotImplementedException();
+            return new MovementActionContext(GameContext, contextSelf.ActivatingUnit);
         }
 
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IMovementActionContext> startingChild)

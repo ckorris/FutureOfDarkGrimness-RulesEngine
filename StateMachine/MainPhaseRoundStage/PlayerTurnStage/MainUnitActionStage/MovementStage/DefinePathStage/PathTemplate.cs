@@ -4,17 +4,20 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Windows.Forms;
 
 namespace FDG
 {
+    /// <summary>
+    /// Lets you define a path for a bunch of models in order to submit for a move, with built-in validation
+    /// for whether or not you can move that way.
+    /// </summary>
     public class PathTemplate
     {
         public IReadOnlyDictionary<IModel, IReadOnlyList<Position>> CurrentPaths => _paths.ToDictionary(
                     kvp => kvp.Key,
                     kvp => (IReadOnlyList<Position>)kvp.Value);
 
-        private Dictionary<IModel, List<Position>> _paths;
+        private Dictionary<IModel, List<Position>> _paths = new Dictionary<IModel, List<Position>>();
 
         private IMovementActionContext _movementContext;
 
@@ -76,7 +79,11 @@ namespace FDG
             return errors.Count > 0;
         }
 
-
+        public float GetMaxMoveDistance()
+        {
+            Dictionary<IModel, float> distances = GetTotalMoveDistances();
+            return distances.Values.Max();
+        }
 
         private Dictionary<IModel, float> GetTotalMoveDistances()
         {
@@ -121,12 +128,12 @@ namespace FDG
 
         private void ValidateMovingThroughImpassibleTerrain(ref List<ReasonForInvalidMove> reasonsForInvalidMove)
         {
-
+            //TODO: Implement.
         }
 
         private void ValidateMovingThroughEnemyUnits(ref List<ReasonForInvalidMove> reasonsForInvalidMove)
         {
-
+            //TODO: Implement.
         }
 
         private void ValidateCoherency(ref List<ReasonForInvalidMove> reasonsForInvalidMove)
@@ -137,51 +144,55 @@ namespace FDG
                 return;
             }
 
-            Dictionary<IModel, Position> finalPositions = new Dictionary<IModel, Position>();
+            List<IModel> models = new List<IModel>();
+            List<Position> positions = new List<Position>();
 
             //Figure out where all the models will be after moving.
             foreach(KeyValuePair<IModel, List<Position>> kvp in _paths)
             {
-                finalPositions.Add(kvp.Key, kvp.Value.Count > 0 ? kvp.Value.Last() : kvp.Key.Position);
+                models.Add(kvp.Key);
+                positions.Add(kvp.Value.Count > 0 ? kvp.Value.Last() : kvp.Key.Position);
             }
 
             //Check each model's distance against all the others, for both kinds of coherency.
             //As of 3.4.0, each model must be within 1" of another model and within 9" of every other model.
 
-            //TODO: Optimize, because we'll be doing duplicate measurement.
+            float[] nearestDistances = new float[models.Count];
+            float[] farthestDistances = new float[models.Count];
 
-            foreach(KeyValuePair<IModel, Position> thisKvp in finalPositions)
+            for (int i = 0; i < models.Count; i++)
             {
-                float nearestDistance = float.PositiveInfinity;
-                float farthestDistance = float.NegativeInfinity;
+                nearestDistances[i] = float.PositiveInfinity;
+                farthestDistances[i] = float.NegativeInfinity;
+            }
 
-                foreach (KeyValuePair<IModel, Position> otherKvp in finalPositions)
+            for (int i = 0; i < models.Count; i++)
+            {
+                for (int j = i + 1; j < models.Count; j++)
                 {
-                    if(otherKvp.Key == thisKvp.Key)
-                    {
-                        continue;
-                    }
+                    float distance = DistanceUtilities.GetBaseToBaseDistanceInches_3D(positions[i], positions[j],
+                        models[i].BaseRadiusInches, models[j].BaseRadiusInches);
 
-                    float distance = DistanceUtilities.GetBaseToBaseDistanceInches_3D(thisKvp.Value, otherKvp.Value,
-                        thisKvp.Key.BaseRadiusInches, thisKvp.Key.BaseRadiusInches);
+                    nearestDistances[i] = Math.Min(distance, nearestDistances[i]);
+                    farthestDistances[i] = Math.Min(distance, nearestDistances[i]);
 
-                    nearestDistance = Math.Min(distance, nearestDistance);
-                    farthestDistance = Math.Max(distance, farthestDistance);
-                }
-
-                //If too far from any model, add an error reason.
-                if(nearestDistance > GameWideConstants.MAX_MODEL_DISTANCE_FROM_ANY_OTHER_MODEL_INCHES)
-                {
-                    reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.TooFarFromAnyUnitModel, thisKvp.Key));
-                }
-
-                //If too far from all models, add an error reason.
-                if(farthestDistance > GameWideConstants.MAX_MODEL_DISTANCE_FROM_ALL_OTHER_MODELS_INCHES)
-                {
-                    reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.TooFarFromAllUnitModels, thisKvp.Key));
+                    nearestDistances[j] = Math.Min(distance, nearestDistances[j]);
+                    farthestDistances[j] = Math.Min(distance, nearestDistances[j]);
                 }
             }
 
+            for(int i = 0; i < models.Count; i++)
+            {
+                if (nearestDistances[i] > GameWideConstants.MAX_MODEL_DISTANCE_FROM_ANY_OTHER_MODEL_INCHES)
+                {
+                    reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.TooFarFromAnyUnitModel, models[i]));
+                }
+
+                if (farthestDistances[i] > GameWideConstants.MAX_MODEL_DISTANCE_FROM_ALL_OTHER_MODELS_INCHES)
+                {
+                    reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.TooFarFromAllUnitModels, models[i]));
+                }
+            }
         }
 
 

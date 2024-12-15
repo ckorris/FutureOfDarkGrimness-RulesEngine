@@ -30,6 +30,7 @@ namespace FDG.Stages
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<ICombatActionContext> startingChild)
         {
             OnFinishedShooting = new StageBinding(this);
+            OnFinishedShooting.OnWillActivate += OnShootingFinished;
 
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
                 .AddChild(new ChooseRangedTargetStage(GameContext, this), out var chooseRangedTarget)
@@ -51,6 +52,11 @@ namespace FDG.Stages
             determineCanKeepShooting.ToFinishShooting.Bind(onFinishedShootingEvent);
 
             return dictionary;
+        }
+
+        private void OnShootingFinished(IUnitActionContext context)
+        {
+            context.RegisterAttackedFinished();
         }
     }
 }

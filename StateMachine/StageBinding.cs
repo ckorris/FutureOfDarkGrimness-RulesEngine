@@ -14,6 +14,8 @@ namespace FDG.Stages
 
             private string _eventName = null;
 
+            public event Action<TContext> OnWillActivate;
+
             public bool IsBound => _eventName != null;
 
             public StageBinding(StageBase<TContext> sourceStage)
@@ -45,6 +47,8 @@ namespace FDG.Stages
                 {
                     throw new ArgumentNullException($"{nameof(StageBinding)} was not bound before calling {nameof(Activate)}.");
                 }
+
+                OnWillActivate?.Invoke(context);
 
                 _sourceStage.SignalEvent(_eventName, context);
             }

@@ -7,6 +7,7 @@ namespace FDG.Stages
     public class MovementStage : StageBase<IUnitActionContext>
     {
         public StageBinding OnFinishedMovement;
+
         public MovementStage(IGameContext gameContext, IStateMachineLayer<IUnitActionContext> parent) : base(gameContext, parent)
         {
             OnFinishedMovement = new StageBinding(this);

@@ -28,6 +28,7 @@ namespace FDG.Stages
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<ICombatActionContext> startingChild)
         {
             OnFinishedMelee = new StageBinding(this);
+            OnFinishedMelee.OnWillActivate += OnMeleeFinished;
 
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
                 .AddChild(new ChooseMeleeDefenderStage(GameContext, this), out var chooseMeleeDefender)
@@ -72,6 +73,11 @@ namespace FDG.Stages
             applyFatigueStage.OnFatigueApplied.Bind(meleeFinishedEvent);
 
             return dictionary;
+        }
+
+        private void OnMeleeFinished(IUnitActionContext context)
+        {
+            context.RegisterAttackedFinished();
         }
     }
 }

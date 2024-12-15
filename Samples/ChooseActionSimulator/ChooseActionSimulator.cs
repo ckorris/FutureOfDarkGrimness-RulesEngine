@@ -78,7 +78,11 @@ namespace FDG.Samples
             //For now, make an empty TableState. May need to be updated later.
             GameContext gameContext = new GameContext(_textOutput, _diceRoller, handlers, tableState);
             _playerTurnContext = new PlayerTurnContext(gameContext);
-            _mainUnitActionStage = new MainUnitActionStage(gameContext, null);
+
+            EmptyParent<IPlayerTurnContext> emptyParent = new EmptyParent<IPlayerTurnContext>();
+
+            _mainUnitActionStage = new MainUnitActionStage(gameContext, emptyParent);
+            _mainUnitActionStage.ToReconcileEndOfActivation.Bind(new EmptyEndStage<IPlayerTurnContext>(gameContext, emptyParent));
 
             _playerTurnContext.ChooseUnitToActivate(activatedUnit);
             _mainUnitActionStage.Enter(_playerTurnContext);

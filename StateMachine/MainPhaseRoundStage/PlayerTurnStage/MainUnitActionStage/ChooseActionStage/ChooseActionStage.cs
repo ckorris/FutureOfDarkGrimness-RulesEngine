@@ -6,18 +6,6 @@ namespace FDG.Stages
 
     public class ChooseActionStage : StageBase<IUnitActionContext>
     {
-        public const string CHOOSE_ACTION_TO_MOVEMENT_TRANSITION =
-            "ChooseActionToMovement";
-
-        public const string CHOOSE_ACTION_TO_CHARGE_TRANSITION =
-            "ChooseActionToCharge";
-
-        public const string CHOOSE_ACTION_TO_SHOOT_TRANSITION =
-            "ChooseActionToShoot";
-
-        public const string CHOOSE_ACTION_TO_RECONCILE_END_OF_ACTIVATION_TRANSITION =
-            "ChooseActionToReconcileEndOfActivation";
-
         public StageBinding ToMovement;
         public StageBinding ToCharge;
         public StageBinding ToShoot;

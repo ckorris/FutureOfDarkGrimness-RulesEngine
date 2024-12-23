@@ -89,7 +89,7 @@ namespace FDG
         {
             Dictionary<IModel, float> distances = new Dictionary<IModel, float>();
 
-            foreach (IModel model in _paths.Values)
+            foreach (IModel model in _paths.Keys)
             {
                 List<Position> path = _paths[model];
 

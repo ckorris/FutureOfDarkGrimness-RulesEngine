@@ -1,12 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace FDG.Data
 {
-    public partial class GameDataStore
+    public partial class GameDataStore : IReadableGameDataStore, IReadWriteableGameDataStore
     {
         private List<Type> _registeredTypes = new List<Type>() { typeof(UnreferenceableTypeStruct) };
 
@@ -34,31 +32,7 @@ namespace FDG.Data
             //TODO: Create the actual stores.
         }
 
-        private static void ThrowIfTypeMapIsInvalid(List<Type> typeMap)
-        {
-            //Make sure the placeholder exists. It's a big smell if it doesn't.
-            if (typeMap.Count == 0 || typeMap[0] != typeof(UnreferenceableTypeStruct))
-            {
-                throw new ArgumentException($"Tried to create a {nameof(GameDataStore)} that did not have its first index " +
-                    $"set to type {nameof(UnreferenceableTypeStruct)}. This is enforced as the first item to avoid default values " +
-                    "being set to a valid type, but likely means the list was generated incorrectly.");
-            }
 
-            //Check for duplicate types. 
-            HashSet<Type> duplicateChecker = new HashSet<Type>();
-            for (int i = 1; i < typeMap.Count; i++)
-            {
-                if (typeMap[i] == null)
-                {
-                    throw new ArgumentException($"Tried to create a {nameof(GameDataStore)} with a null entry at index {i}.");
-                }
-
-                if (duplicateChecker.Add(typeMap[i]) == false)
-                {
-                    throw new ArgumentException($"Tried to create a {nameof(GameDataStore)} with a duplicate type entry: {typeMap[i]}.");
-                }
-            }
-        }
 
         /// <summary>
         /// Gets a list of all registered types that can be used to create a different instance of this
@@ -180,6 +154,32 @@ namespace FDG.Data
             }
 
             typeID = new TypeID(typeIndex);
+        }
+
+        private static void ThrowIfTypeMapIsInvalid(List<Type> typeMap)
+        {
+            //Make sure the placeholder exists. It's a big smell if it doesn't.
+            if (typeMap.Count == 0 || typeMap[0] != typeof(UnreferenceableTypeStruct))
+            {
+                throw new ArgumentException($"Tried to create a {nameof(GameDataStore)} that did not have its first index " +
+                    $"set to type {nameof(UnreferenceableTypeStruct)}. This is enforced as the first item to avoid default values " +
+                    "being set to a valid type, but likely means the list was generated incorrectly.");
+            }
+
+            //Check for duplicate types. 
+            HashSet<Type> duplicateChecker = new HashSet<Type>();
+            for (int i = 1; i < typeMap.Count; i++)
+            {
+                if (typeMap[i] == null)
+                {
+                    throw new ArgumentException($"Tried to create a {nameof(GameDataStore)} with a null entry at index {i}.");
+                }
+
+                if (duplicateChecker.Add(typeMap[i]) == false)
+                {
+                    throw new ArgumentException($"Tried to create a {nameof(GameDataStore)} with a duplicate type entry: {typeMap[i]}.");
+                }
+            }
         }
 
         /// <summary>

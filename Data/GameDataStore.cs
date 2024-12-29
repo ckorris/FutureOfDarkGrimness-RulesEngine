@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace FDG.Data
 {
-    public class GameDataStore
+    public partial class GameDataStore
     {
         private List<Type> _registeredTypes = new List<Type>() { typeof(UnreferenceableTypeStruct) };
 
@@ -15,46 +15,45 @@ namespace FDG.Data
         private const int DEFAULT_COMPONENT_STORE_CAPACITY = 256;
 
         /// <summary>
-        /// Creates a new instance  with no types assigned. Do not use on a client or if loading
-        /// a save. Wait to be sent a type map and use <see cref="CreateFromTypeMap(List{Type})"/> instead.
-        /// </summary>
-        public static GameDataStore CreateEmpty()
-        {
-            return new GameDataStore();
-        }
-
-        /// <summary>
         /// Creates a new instance with types mapped to IDs according to <paramref name="typeMap"/>. Use if 
         /// connecting to a host (where the type map should be sent over the network) or loading a save.
         /// </summary>
         /// <param name="typeMap">List of all types that should be registered, in the order of their corresponding IDs.</param>
         public static GameDataStore CreateFromTypeMap(List<Type> typeMap)
         {
-            return new GameDataStore(typeMap);
+            //ACTUALLY don't use, I want to make a builder class.
+            throw new NotImplementedException();
         }
 
         private GameDataStore() { }
 
         private GameDataStore(List<Type> typeMap)
         {
+            ThrowIfTypeMapIsInvalid(typeMap);
+
+            //TODO: Create the actual stores.
+        }
+
+        private static void ThrowIfTypeMapIsInvalid(List<Type> typeMap)
+        {
             //Make sure the placeholder exists. It's a big smell if it doesn't.
-            if(typeMap.Count == 0 || typeMap[0] != typeof(UnreferenceableTypeStruct))
+            if (typeMap.Count == 0 || typeMap[0] != typeof(UnreferenceableTypeStruct))
             {
-                throw new ArgumentException($"Tried to create a {nameof(GameDataStore)} that did not have its first index " + 
-                    $"set to type {nameof(UnreferenceableTypeStruct)}. This is enforced as the first item to avoid default values " + 
+                throw new ArgumentException($"Tried to create a {nameof(GameDataStore)} that did not have its first index " +
+                    $"set to type {nameof(UnreferenceableTypeStruct)}. This is enforced as the first item to avoid default values " +
                     "being set to a valid type, but likely means the list was generated incorrectly.");
             }
 
             //Check for duplicate types. 
             HashSet<Type> duplicateChecker = new HashSet<Type>();
-            for(int i = 1; i < typeMap.Count; i++)
+            for (int i = 1; i < typeMap.Count; i++)
             {
                 if (typeMap[i] == null)
                 {
                     throw new ArgumentException($"Tried to create a {nameof(GameDataStore)} with a null entry at index {i}.");
                 }
 
-                if(duplicateChecker.Add(typeMap[i]) == false)
+                if (duplicateChecker.Add(typeMap[i]) == false)
                 {
                     throw new ArgumentException($"Tried to create a {nameof(GameDataStore)} with a duplicate type entry: {typeMap[i]}.");
                 }
@@ -78,7 +77,7 @@ namespace FDG.Data
         /// <param name="capacity"></param>
         /// <returns></returns>
         /// <exception cref="ArgumentException"></exception>
-        public TypeID RegisterType<T>(int capacity) where T : struct
+        public TypeID RegisterType<T>(int capacity)
         {
             Type type = typeof(T); //Shorthand.
             if (_registeredTypes.FirstOrDefault(type) != default)
@@ -99,12 +98,12 @@ namespace FDG.Data
             return typeID;
         }
 
-        public bool IsTypeAssigned<T>() where T : struct
+        public bool IsTypeAssigned<T>()
         {
             return _registeredTypes.IndexOf(typeof(T)) >= 0;
         }
 
-        public DataReference Create<T>() where T : struct
+        public DataReference Create<T>()
         {
             GetTypeAndIDOrThrow<T>(out Type type, out TypeID typeID);
 
@@ -134,7 +133,7 @@ namespace FDG.Data
             return _componentStores[reference.TypeID].IsValid(reference, out failReason);
         }
 
-        public T GetValue<T>(DataReference reference) where T : struct
+        public T GetValue<T>(DataReference reference)
         {
             GetTypeAndIDOrThrow<T>(out Type type, out TypeID typeID);
 
@@ -143,7 +142,7 @@ namespace FDG.Data
             return store.GetValue(reference);
         }
 
-        public void SetValue<T>(DataReference reference, T value) where T : struct
+        public void SetValue<T>(DataReference reference, T value)
         {
             GetTypeAndIDOrThrow<T>(out Type type, out TypeID typeID);
 
@@ -171,7 +170,6 @@ namespace FDG.Data
         }
 
         private void GetTypeAndIDOrThrow<T>(out Type type, out TypeID typeID)
-            where T : struct
         {
             type = typeof(T); //Shorthand.
 

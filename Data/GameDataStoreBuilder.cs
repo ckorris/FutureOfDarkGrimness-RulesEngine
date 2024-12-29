@@ -1,0 +1,48 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace FDG.Data
+{
+    public partial class GameDataStore
+    {
+        public class GameDataStoreBuilder
+        {
+            private List<Type> _registeredTypes = new List<Type>() { typeof(UnreferenceableTypeStruct) };
+
+            private bool _hasBuilt = false;
+
+            public GameDataStoreBuilder RegisterType<T>(int capacity)
+            {
+                Type type = typeof(T); //Shorthand.
+                if (_registeredTypes.FirstOrDefault(type) != default)
+                {
+                    throw new ArgumentException($"Tried to register type {type} but it was already registered.");
+                }
+
+                _registeredTypes.Add(type);
+
+                TypeID typeID = new TypeID(_registeredTypes.Count - 1);
+
+                if (capacity <= 0)
+                {
+                    capacity = DEFAULT_COMPONENT_STORE_CAPACITY;
+                }
+
+                return this;
+            }
+
+            public GameDataStore Build()
+            {
+                if(_hasBuilt)
+                {
+                    throw new InvalidOperationException($"Tried to build {nameof(GameDataStoreBuilder)} that was already built.");
+                }
+
+                _hasBuilt = true;
+
+                return new GameDataStore(_registeredTypes);
+            }
+        }
+    }
+}

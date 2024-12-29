@@ -10,13 +10,13 @@ namespace FDG.Data
     public interface IComponentStore
     {
         DataReference Create();
+
         bool Destroy(DataReference reference);
 
         bool IsValid(DataReference reference, out EInvalidReason reason);
     }
 
     public class ComponentStore<T> : IComponentStore
-        where T : struct
     {
         private T[] _data;
         private bool[] _used;

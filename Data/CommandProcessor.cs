@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using FDG.Data.Commands;
+using FDG.Network;
 
 namespace FDG.Data
 {
@@ -9,10 +10,13 @@ namespace FDG.Data
 
         private Dictionary<DataReference, List<IDataBindingBase>> _bindings;
 
+        private List<INetworkCommandClient> _networkClients;
+
         public CommandProcessor(IReadWriteableGameDataStore store)
         {
             _store = store;
             _bindings = new Dictionary<DataReference, List<IDataBindingBase>>();
+            _networkClients = new List<INetworkCommandClient>();
         }
 
         public void RegisterBinding(DataReference reference, IDataBindingBase binding)
@@ -43,8 +47,22 @@ namespace FDG.Data
 
         public void ExecuteCommand(ICommand command)
         {
-            //TODO: Networking.
+            foreach(INetworkCommandClient commandClient in _networkClients)
+            {
+                commandClient.SendCommand(command);
+            }
+
             command.Execute(this);
+        }
+
+        public void RegisterNetworkClient(INetworkCommandClient networkClient)
+        {
+            _networkClients.Add(networkClient);
+        }
+
+        public void DeregisterNetworkClient(INetworkCommandClient networkClient)
+        {
+            _networkClients.Remove(networkClient);
         }
 
         //TODO: It feels weird to put this here, but I suppose we'll have a limited number of calls like this.

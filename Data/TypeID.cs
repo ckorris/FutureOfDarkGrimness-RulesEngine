@@ -35,5 +35,15 @@ namespace FDG.Data
         {
             return a.ID != b.ID;
         }
+
+        public override bool Equals(object obj)
+        {
+            return obj is TypeID && Equals((TypeID)obj);
+        }
+
+        public override int GetHashCode()
+        {
+            return ID.GetHashCode();
+        }
     }
 }

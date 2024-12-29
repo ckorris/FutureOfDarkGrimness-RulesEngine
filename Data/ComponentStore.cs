@@ -103,7 +103,7 @@ namespace FDG.Data
                 reason = EInvalidReason.IsNotAssigned;
                 return false;
             }
-            if (_generations[reference.Index] != reference.Index)
+            if (_generations[reference.Index] != reference.Generation)
             {
                 reason = _generations[reference.Index] < reference.Index
                     ? EInvalidReason.OutdatedGeneration

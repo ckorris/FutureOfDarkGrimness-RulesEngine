@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using FDG.Data;
 
 namespace FDG
 {
@@ -28,7 +29,7 @@ namespace FDG
 
         public bool GetMobility(out float moveShootDistanceInches, out float chargeDistanceInches);
 
-        public event WoundsDealtEventHandler OnWoundsDealt;
+        public event DataValueChangedHandler<float> OnWoundsDealt;
     }
 
     public class Unit : IUnit
@@ -67,6 +68,8 @@ namespace FDG
             }
         }
 
+        public event DataValueChangedHandler<float> OnWoundsDealt;
+
         public List<IModel> Models { get; }
 
         public List<ISpecialRule> SpecialRules { get; }
@@ -88,11 +91,9 @@ namespace FDG
 
         }
 
-        public event WoundsDealtEventHandler OnWoundsDealt;
-
-        private void OnModelWoundsDealt(WoundsDealtEventArgs modelWoundsDealtArgs)
+        private void OnModelWoundsDealt(float oldWoundsCount, float newWoundsCount)
         {
-            OnWoundsDealt?.Invoke(new WoundsDealtEventArgs(modelWoundsDealtArgs.WoundsDealt, RemainingWounds, this.GetIsDead()));
+            OnWoundsDealt?.Invoke(oldWoundsCount, newWoundsCount);
         }
 
         public bool GetMobility(out float moveShootDistanceInches, out float chargeDistanceInches)

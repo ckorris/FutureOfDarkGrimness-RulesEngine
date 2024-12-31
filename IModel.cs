@@ -1,3 +1,4 @@
+using FDG.Data;
 using System;
 using System.Collections.Generic;
 
@@ -9,7 +10,7 @@ namespace FDG
 
         public float TotalWounds { get; }
 
-        public float WoundsDealt { get; set; }
+        public float WoundsDealt { get;}
 
         public Position Position { get; }
 
@@ -21,11 +22,12 @@ namespace FDG
 
         public void DealWounds(float wounds);
 
-        public event PositionChangedEventHandler OnPositionChanged;
+        public event DataValueChangedHandler<Position> OnPositionChanged;
 
-        public event WoundsDealtEventHandler OnWoundsDealt;
+        public event DataValueChangedHandler<float> OnWoundsDealt;
     }
 
+    /*
     public class Model : IModel
     {
 
@@ -70,8 +72,8 @@ namespace FDG
 
             OnWoundsDealt?.Invoke(new WoundsDealtEventArgs(wounds, TotalWounds - WoundsDealt, WoundsDealt >= TotalWounds));
         }
-
-    }
+    }    
+    */
 
     public static class IModelExtensions
     {
@@ -97,4 +99,5 @@ namespace FDG
                 thisModel.BaseRadiusInches, otherModel.BaseRadiusInches);
         }
     }
+
 }

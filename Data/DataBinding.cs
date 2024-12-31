@@ -1,7 +1,6 @@
 ﻿
 using FDG.Data.Commands;
 using System;
-using Vortice.Vulkan;
 
 namespace FDG.Data
 {
@@ -11,14 +10,14 @@ namespace FDG.Data
     }
     public class DataBinding<T> : IDataBindingBase, IDisposable
     {
-        public event Action<T, T>? OnValueChanged;
+        public event DataValueChangedHandler<T> OnValueChanged;
 
         public DataReference Reference { get; private set; }
 
-        private CommandProcessor _commmandProcessor;
+        private ICommandProcessor _commmandProcessor;
         private IReadableGameDataStore _readableGameDataStore;
 
-        public DataBinding(CommandProcessor commandProcessor, IReadableGameDataStore readableGameDataStore, DataReference reference)
+        public DataBinding(ICommandProcessor commandProcessor, IReadableGameDataStore readableGameDataStore, DataReference reference)
         {
             Reference = reference;
             _commmandProcessor = commandProcessor;

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 
 namespace FDG.Data
 {
@@ -25,11 +26,23 @@ namespace FDG.Data
 
         private GameDataStore() { }
 
-        private GameDataStore(List<Type> typeMap)
+        private GameDataStore(List<TypeAndCapacity> typeMap)
         {
             ThrowIfTypeMapIsInvalid(typeMap);
 
-            //TODO: Create the actual stores.
+            MethodInfo addComponentStoreInfo = typeof(GameDataStore).GetMethod(nameof(RegisterType), BindingFlags.NonPublic | BindingFlags.Instance);
+
+            for (int i = 1; i < typeMap.Count; i++)
+            {
+                MethodInfo genericAddComponentStoreInfo = addComponentStoreInfo.MakeGenericMethod(typeMap[i].Type);
+                genericAddComponentStoreInfo.Invoke(this, [typeMap[i].Capacity]);
+
+                /*
+                Type genericStoreClass = typeof(ComponentStore<>);
+                Type constructedType = genericStoreClass.MakeGenericType(dataType);
+                object instance = Activator.CreateInstance(constructedType);
+                */
+            }
         }
 
 
@@ -51,10 +64,10 @@ namespace FDG.Data
         /// <param name="capacity"></param>
         /// <returns></returns>
         /// <exception cref="ArgumentException"></exception>
-        public TypeID RegisterType<T>(int capacity)
+        private TypeID RegisterType<T>(int capacity)
         {
             Type type = typeof(T); //Shorthand.
-            if (_registeredTypes.FirstOrDefault(type) != default)
+            if (_registeredTypes.FirstOrDefault(t => t == type) != default)
             {
                 throw new ArgumentException($"Tried to register type {type} but it was already registered.");
             }
@@ -77,13 +90,13 @@ namespace FDG.Data
             return _registeredTypes.IndexOf(typeof(T)) >= 0;
         }
 
-        public DataReference Create<T>()
+        public DataReference Create<T>(T initialValue)
         {
             GetTypeAndIDOrThrow<T>(out Type type, out TypeID typeID);
 
             IComponentStore store = _componentStores[typeID];
 
-            return store.Create();
+            return ((ComponentStore<T>)store).Create(initialValue);
         }
 
         public bool Destroy(DataReference reference)
@@ -156,10 +169,10 @@ namespace FDG.Data
             typeID = new TypeID(typeIndex);
         }
 
-        private static void ThrowIfTypeMapIsInvalid(List<Type> typeMap)
+        private static void ThrowIfTypeMapIsInvalid(List<TypeAndCapacity> typeMap)
         {
             //Make sure the placeholder exists. It's a big smell if it doesn't.
-            if (typeMap.Count == 0 || typeMap[0] != typeof(UnreferenceableTypeStruct))
+            if (typeMap.Count == 0 || typeMap[0].Type != typeof(UnreferenceableTypeStruct))
             {
                 throw new ArgumentException($"Tried to create a {nameof(GameDataStore)} that did not have its first index " +
                     $"set to type {nameof(UnreferenceableTypeStruct)}. This is enforced as the first item to avoid default values " +
@@ -175,7 +188,7 @@ namespace FDG.Data
                     throw new ArgumentException($"Tried to create a {nameof(GameDataStore)} with a null entry at index {i}.");
                 }
 
-                if (duplicateChecker.Add(typeMap[i]) == false)
+                if (duplicateChecker.Add(typeMap[i].Type) == false)
                 {
                     throw new ArgumentException($"Tried to create a {nameof(GameDataStore)} with a duplicate type entry: {typeMap[i]}.");
                 }

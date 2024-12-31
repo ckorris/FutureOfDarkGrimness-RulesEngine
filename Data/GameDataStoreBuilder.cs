@@ -8,19 +8,22 @@ namespace FDG.Data
     {
         public class GameDataStoreBuilder
         {
-            private List<Type> _registeredTypes = new List<Type>() { typeof(UnreferenceableTypeStruct) };
+            private List<TypeAndCapacity> _registeredTypes = new List<TypeAndCapacity>() 
+            {
+                new TypeAndCapacity(typeof(UnreferenceableTypeStruct), 0)
+            };
 
             private bool _hasBuilt = false;
 
             public GameDataStoreBuilder RegisterType<T>(int capacity)
             {
                 Type type = typeof(T); //Shorthand.
-                if (_registeredTypes.FirstOrDefault(type) != default)
+                if (_registeredTypes.FirstOrDefault( t => t.Type == type) != default)
                 {
                     throw new ArgumentException($"Tried to register type {type} but it was already registered.");
                 }
 
-                _registeredTypes.Add(type);
+                _registeredTypes.Add(new TypeAndCapacity(type, capacity));
 
                 TypeID typeID = new TypeID(_registeredTypes.Count - 1);
 
@@ -44,5 +47,7 @@ namespace FDG.Data
                 return new GameDataStore(_registeredTypes);
             }
         }
+
+        public record TypeAndCapacity(Type Type, int Capacity);
     }
 }

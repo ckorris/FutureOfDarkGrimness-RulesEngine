@@ -4,7 +4,20 @@ using FDG.Network;
 
 namespace FDG.Data
 {
-    public class CommandProcessor
+    public interface ICommandProcessor
+    {
+        void RegisterBinding(DataReference reference, IDataBindingBase binding);
+
+        void DeregisterBinding(IDataBindingBase binding);
+
+        void ExecuteCommand(ICommand command);
+
+        void RegisterNetworkClient(INetworkCommandClient networkClient);
+
+        void DeregisterNetworkClient(INetworkCommandClient networkClient);
+    }
+
+    public class CommandProcessor : ICommandProcessor
     {
         private IReadWriteableGameDataStore _store;
 

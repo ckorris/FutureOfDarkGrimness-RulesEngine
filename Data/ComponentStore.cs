@@ -9,11 +9,9 @@ namespace FDG.Data
 {
     public interface IComponentStore
     {
-        DataReference Create();
+        bool IsValid(DataReference reference, out EInvalidReason reason);
 
         bool Destroy(DataReference reference);
-
-        bool IsValid(DataReference reference, out EInvalidReason reason);
     }
 
     public class ComponentStore<T> : IComponentStore
@@ -34,7 +32,7 @@ namespace FDG.Data
             _typeID = typeID;
         }
 
-        public DataReference Create()
+        public DataReference Create(T initialValue)
         {
             for (int i = 0; i < _capacity; i++)
             {
@@ -42,6 +40,7 @@ namespace FDG.Data
                 {
                     _used[i] = true;
                     _generations[i]++;
+                    _data[i] = initialValue;
 
                     return new DataReference()
                     { 

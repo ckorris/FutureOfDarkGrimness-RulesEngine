@@ -5,7 +5,7 @@ namespace FDG.Data
     {
         void SetValue<T>(DataReference reference, T value);
 
-        DataReference Create<T>();
+        DataReference Create<T>(T initialValue);
 
         bool Destroy(DataReference reference);
     }

@@ -1,8 +1,4 @@
 ﻿
-using SharpFont.MultipleMasters;
-using System.Collections.Generic;
-using System.Diagnostics;
-
 namespace FDG.Stages
 {
     public abstract class ParentStage<TContextSelf, TContextChild> 

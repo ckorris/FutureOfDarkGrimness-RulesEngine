@@ -1,7 +1,5 @@
 
 using FDG.Stages;
-using Stride.Games;
-using System.Collections.Generic;
 
 namespace FDG.Samples
 {

@@ -1,8 +1,4 @@
-﻿using SharpFont.PostScript;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-
+﻿
 namespace FDG.Stages
 {
     public class ChooseMeleeDefenderStage : StageBase<ICombatActionContext>

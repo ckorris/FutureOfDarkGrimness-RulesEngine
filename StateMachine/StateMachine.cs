@@ -1,78 +1,50 @@
-using System;
-using System.Collections.Generic;
+using FDG.Stages.Builders;
+using FDG.StateMachine;
 
 namespace FDG.Stages
 {
-    /*
-    public class StateMachine
+    public class StateMachine<TTopLevel> : IStateMachine, IStateMachineLayer<TTopLevel>
     {
-        private Stack<StageBase> _stateStack = new Stack<StageBase>();
+        public IReadOnlyList<IStage> ActiveStages => _activeStages;
 
-        //Transition map: (CurrentStateType, EventName) -> NextStateInstance.
-        private Dictionary<(StageBase StateType, string Event), StageBase> _transitions =
-            new Dictionary<(StageBase, string), StageBase>();
+        private List<IStage> _activeStages = new List<IStage>();
 
-        public void Start(StageBase initialState)
+        private Dictionary<string, StageBase<TTopLevel>> _transitions;
+
+        private StageBase<TTopLevel> _startingStage;
+
+        public StateMachine(IStateMachineBuilder<TTopLevel> builder, IGameContext gameContext)
         {
-            if (initialState == null)
-                throw new ArgumentNullException(nameof(initialState));
-
-            PushState(initialState);
+            _transitions = builder.BuildStateMachine(this, gameContext, out _startingStage);
         }
 
-        public void PushState(StageBase state)
+        public void Enter(TTopLevel topLevelContext)
         {
-            if (state == null)
-                throw new ArgumentNullException(nameof(state));
-
-            _stateStack.Push(state);
-            state.Enter();
+            _startingStage.Enter(topLevelContext);
         }
 
-        public void PopState()
+        public void ExecuteTransition(string eventName, StageBase<TTopLevel> leavingChild, TTopLevel childContext)
         {
-            if (_stateStack.Count > 0)
+            if (_transitions.TryGetValue(eventName, out StageBase<TTopLevel> enteringChild) == false)
             {
-                var state = _stateStack.Pop();
-                state.Exit();
+                throw new KeyNotFoundException();
             }
+
+            leavingChild.Exit();
+            NotifyChildExited(leavingChild);
+
+            enteringChild.Enter(childContext);
+            NotifyChildEntered(enteringChild);
         }
 
-        public void ChangeState(StageBase newState)
+        public void NotifyChildEntered(IStage enteredStage)
         {
-            if (newState == null)
-                throw new ArgumentNullException(nameof(newState));
-
-            PopState();
-            PushState(newState);
+            _activeStages.Add(enteredStage);
         }
 
-        public void AddTransition(StageBase sourceState, string eventName, StageBase nextState)
+        public void NotifyChildExited(IStage enteredStage)
         {
-            _transitions[(sourceState, eventName)] = nextState;
+            _activeStages.Remove(enteredStage);
         }
-
-
-        //Method called by states to signal events.
-        public void ProcessEvent(StageBase state, string eventName, object eventData = null)
-        {
-            var key = (state, eventName);
-            if (_transitions.TryGetValue(key, out var nextState))
-            {
-                //Set context on nextState if necessary.
-                if (eventData != null && nextState is IContextAware contextAwareState)
-                {
-                    contextAwareState.SetContext(eventData);
-                }
-                ChangeState(nextState);
-            }
-            else
-            {
-                throw new InvalidOperationException($"No transition defined for state {state.GetType().Name} on event '{eventName}'.");
-            }
-        }
-
-        public StageBase CurrentState => _stateStack.Count > 0 ? _stateStack.Peek() : null;
     }
-    */
 }

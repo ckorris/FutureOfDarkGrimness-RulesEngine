@@ -1,10 +1,11 @@
+using FDG.StateMachine;
 using System;
 
 
 
 namespace FDG.Stages
 {
-    public abstract partial class StageBase<TContext>
+    public abstract partial class StageBase<TContext> : IStage
     {
         public string Name => GetType().Name;
 

@@ -68,8 +68,6 @@ namespace FDG.Samples
 
         public void SimulateAction(IUnit activatedUnit, TableState tableState)
         {
-
-
             StageHandlerRegistry handlers = new StageHandlerRegistry()
                 //To test.
                 .RegisterHandle<IChooseActionHandler>(_chooseActionHandler)

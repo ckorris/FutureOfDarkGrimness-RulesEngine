@@ -1,13 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-
+﻿
 namespace FDG.Stages
 {
     public abstract partial class StageBase<TContext>
     {
-
-
         public class StageBinding
         {
             private StageBase<TContext> _sourceStage;

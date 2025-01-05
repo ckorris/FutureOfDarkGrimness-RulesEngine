@@ -1,7 +1,7 @@
 ﻿
 namespace FDG.Stages
 {
-    public abstract class ParentStage<TContextSelf, TContextChild> 
+    public abstract class ParentStage<TContextSelf, TContextChild>
         : StageBase<TContextSelf>, IStateMachineLayer<TContextChild>
     {
         protected delegate void Transition(TContextChild childContext);
@@ -12,7 +12,7 @@ namespace FDG.Stages
 
         private StageBase<TContextChild> _startingChild;
 
-        protected ParentStage(IGameContext gameContext, IStateMachineLayer<TContextSelf> parent) 
+        protected ParentStage(IGameContext gameContext, IStateMachineLayer<TContextSelf> parent)
             : base(gameContext, parent)
         {
             _transitions = PopulateTransitions(out _startingChild);
@@ -37,8 +37,9 @@ namespace FDG.Stages
 
         public override void Exit()
         {
-            if(CurrentChild != null)
+            if (CurrentChild != null)
             {
+                Parent?.NotifyChildExited(CurrentChild);
                 CurrentChild = null;
             }
 
@@ -48,12 +49,13 @@ namespace FDG.Stages
 
         public void ExecuteTransition(string eventName, StageBase<TContextChild> leavingChild, TContextChild childContext)
         {
-            if(_transitions.TryGetValue(eventName, out Transition transition) == false)
+            if (_transitions.TryGetValue(eventName, out Transition transition) == false)
             {
                 throw new KeyNotFoundException();
             }
 
             leavingChild.Exit();
+            Parent?.NotifyChildExited(leavingChild);
 
             transition.Invoke(childContext);
         }
@@ -61,17 +63,36 @@ namespace FDG.Stages
         private void TransitionToChild(StageBase<TContextChild> newChild, TContextChild childContext)
         {
             CurrentChild = newChild;
+
             newChild.Enter(childContext);
+            Parent?.NotifyChildExited(newChild);
         }
 
         private void TransitionToSibling(StageBinding siblingBinding)
         {
             if (_hasContext == false)
             {
-                throw new System.InvalidOperationException($"Tried to call {nameof(TransitionToSibling)} when no context was assigned.");
+                throw new InvalidOperationException($"Tried to call {nameof(TransitionToSibling)} when no context was assigned.");
             }
 
             siblingBinding.Activate(_currentContext);
+        }
+
+        public void NotifyChildEntered(IStage enteredStage)
+        {
+            //Send it up the way until something cares.
+            if (Parent != null)
+            {
+                Parent.NotifyChildEntered(enteredStage);
+            }
+        }
+
+        public void NotifyChildExited(IStage enteredStage)
+        {
+            if (Parent != null)
+            {
+                Parent.NotifyChildExited(enteredStage);
+            }
         }
 
         protected class TransitionSetBuilder
@@ -100,7 +121,7 @@ namespace FDG.Stages
 
             public TransitionSetBuilder AddSibling(string eventName, StageBinding siblingBinding)
             {
-                if(siblingBinding == null)
+                if (siblingBinding == null)
                 {
                     throw new System.NullReferenceException();
                 }

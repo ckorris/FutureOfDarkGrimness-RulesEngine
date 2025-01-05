@@ -10,6 +10,9 @@ namespace FDG.Data
 
     public class ComponentStore<T> : IComponentStore
     {
+        public event Action<T> OnComponentAdded;
+        public event Action<T> OnComponentRemoved;
+
         private T[] _data;
         private bool[] _used;
         private int[] _generations;
@@ -36,6 +39,8 @@ namespace FDG.Data
                     _generations[i]++;
                     _data[i] = initialValue;
 
+                    OnComponentAdded.Invoke(initialValue);
+
                     return new DataReference()
                     { 
                         TypeID = _typeID,
@@ -54,6 +59,8 @@ namespace FDG.Data
             {
                 return false;
             }
+
+            OnComponentRemoved.Invoke(_data[reference.Index]);
 
             _data[reference.Index] = default; //Technically unnecessary, but keeps things clean.
             _used[reference.Index] = false;

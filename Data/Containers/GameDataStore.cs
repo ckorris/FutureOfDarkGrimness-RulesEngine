@@ -36,12 +36,6 @@ namespace FDG.Data
             {
                 MethodInfo genericAddComponentStoreInfo = addComponentStoreInfo.MakeGenericMethod(typeMap[i].Type);
                 genericAddComponentStoreInfo.Invoke(this, [typeMap[i].Capacity]);
-
-                /*
-                Type genericStoreClass = typeof(ComponentStore<>);
-                Type constructedType = genericStoreClass.MakeGenericType(dataType);
-                object instance = Activator.CreateInstance(constructedType);
-                */
             }
         }
 
@@ -143,6 +137,26 @@ namespace FDG.Data
             store.SetValue(reference, value);
         }
 
+        public void SubscribeToOnCreated<T>(Action<T> onCreated)
+        {
+            GetComponentStoreOrThrow<T>().OnComponentAdded += onCreated;
+        }
+
+        public void UnsubscribeFromOnCreated<T>(Action<T> onCreated)
+        {
+            GetComponentStoreOrThrow<T>().OnComponentAdded -= onCreated;
+        }
+
+        public void SubscribeToOnRemoved<T>(Action<T> onRemoved)
+        {
+            GetComponentStoreOrThrow<T>().OnComponentRemoved += onRemoved;
+        }
+
+        public void UnsubscribeFromOnRemoved<T>(Action<T> onRemoved)
+        {
+            GetComponentStoreOrThrow<T>().OnComponentRemoved -= onRemoved;
+        }
+
         private class TypeNotRegisteredException : Exception
         {
             public TypeNotRegisteredException(Type type)
@@ -154,6 +168,18 @@ namespace FDG.Data
             public TypeMismatchException(Type providedType, int providedIndex, int realIndex)
                 : base($"Tried to access value in {nameof(GameDataStore)} of type {providedType}, but passed in a " + 
                       $"{nameof(DataReference)} object with type index {providedIndex} when the correct index is {realIndex}.") { }
+        }
+
+        private ComponentStore<T> GetComponentStoreOrThrow<T>()
+        {
+            GetTypeAndIDOrThrow<T>(out _, out TypeID typeID);
+
+            if (_componentStores[typeID] != null)
+            {
+                return (ComponentStore<T>)_componentStores[typeID];
+            }
+
+            throw new NullReferenceException();
         }
 
         private void GetTypeAndIDOrThrow<T>(out Type type, out TypeID typeID)
@@ -194,6 +220,7 @@ namespace FDG.Data
                 }
             }
         }
+
 
         /// <summary>
         /// Exists so that the index of any used type is not 0, so that a default TypeID doesn't erroneously

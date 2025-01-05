@@ -3,6 +3,7 @@ using FDG.Stages;
 
 namespace FDG.Samples
 {
+    /*
     public class MeleeAttackSimulator
     {
         private ITextOutput _textOutput;
@@ -84,4 +85,5 @@ namespace FDG.Samples
             //_meleeStage.AssignExitStage(new EmptyEndStage(_stateMachine));
         }
     }
+    */
 }

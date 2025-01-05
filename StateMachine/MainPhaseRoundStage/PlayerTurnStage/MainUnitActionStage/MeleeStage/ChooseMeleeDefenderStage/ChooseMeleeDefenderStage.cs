@@ -32,8 +32,7 @@ namespace FDG.Stages
             }
 
             foreach(IArmy army in GameContext.TableState.ArmyState.PlayerArmies
-                .Where(kvp => kvp.Key != attackingPlayer)
-                .Select(kvp => kvp.Value))
+                .Where(a => a.IsNotOwnedBy(attackingPlayer)))
             {
                 foreach(IUnit unit in army.Units)
                 {

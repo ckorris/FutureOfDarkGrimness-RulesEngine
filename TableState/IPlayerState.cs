@@ -1,26 +1,23 @@
-﻿using System.Collections.Generic;
+﻿using FDG.Data;
+using System.Collections.Generic;
 
 namespace FDG
 {
     public interface IPlayerState
     {
-        IReadOnlyCollection<PlayerInfo> Players { get; }
+        IEnumerable<PlayerInfo> Players { get; }
     }
 
     public class PlayerState : IPlayerState
     {
-        public IReadOnlyCollection<PlayerInfo> Players => _players;
+        public IEnumerable<PlayerInfo> Players => _gameDataStore.GetAllValues<PlayerInfo>();
 
-        private HashSet<PlayerInfo> _players;
+        private IReadableGameDataStore _gameDataStore;
 
-        public PlayerState()
+
+        public PlayerState(IReadableGameDataStore gameDataStore)
         {
-            _players = new HashSet<PlayerInfo>();
-        }
-
-        public PlayerState(HashSet<PlayerInfo> players)
-        {
-            _players = players;
+            _gameDataStore = gameDataStore;
         }
     }
 }

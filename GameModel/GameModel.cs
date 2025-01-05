@@ -34,10 +34,7 @@ namespace FDG
                 _ => throw new ArgumentOutOfRangeException()
             };
 
-            //TODO: I think I wanna refactor these to be more data-oriented, but not sure how to change this yet.
-            PlayerState playerState = new PlayerState();
-            ArmyState armyState = new ArmyState();
-            _tableState = new TableState(playerState, armyState);
+
 
             _gameContext = new GameContext(_textOutputRelayer, diceRoller, stageHandlerRegistry, _tableState);
 
@@ -46,11 +43,14 @@ namespace FDG
                 .RegisterType<float>(64)
                 .RegisterType<Position>(64)
                 .RegisterType<Model>(64)
+                .RegisterType<PlayerInfo>(2)
                 .RegisterType<Unit>(32)
                 .RegisterType<Army>(8)
                 .Build();
 
             _commandProcessor = new CommandProcessor(_gameDataStore);
+
+            _tableState = new TableState(_gameDataStore);
 
             //TODO: Get this procedurally depending on settings.
             GDFStateMachineBuilder gDFStateMachineBuilder = new GDFStateMachineBuilder();

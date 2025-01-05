@@ -7,6 +7,16 @@ namespace FDG.Stages
         {
             //Purposefully do nothing.
         }
+
+        public void NotifyChildEntered(IStage enteredStage)
+        {
+            
+        }
+
+        public void NotifyChildExited(IStage enteredStage)
+        {
+            
+        }
     }
 
     public interface IEmptyParentContext

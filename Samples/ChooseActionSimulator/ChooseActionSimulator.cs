@@ -2,6 +2,7 @@
 
 namespace FDG.Samples
 {
+    /*
     public class ChooseActionSimulator
     {
         private ITextOutput _textOutput;
@@ -66,7 +67,7 @@ namespace FDG.Samples
             _executeMoveHandler = executeModeHandler;
         }
 
-        public void SimulateAction(IUnit activatedUnit, TableState tableState)
+        public void SimulateAction(IUnit activatedUnit, List<Army> armies)
         {
             StageHandlerRegistry handlers = new StageHandlerRegistry()
                 //To test.
@@ -97,4 +98,5 @@ namespace FDG.Samples
             _mainUnitActionStage.Enter(_playerTurnContext);
         }
     }
+    */
 }

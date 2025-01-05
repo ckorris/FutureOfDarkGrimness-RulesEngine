@@ -1,5 +1,7 @@
 ﻿
 
+using FDG.Data;
+
 namespace FDG
 {
     public interface ITableState
@@ -19,18 +21,11 @@ namespace FDG
 
         public ITerrainState TerrainState { get; private set; }
 
-        public TableState()
+        public TableState(IReadableGameDataStore gameDataStore)
         {
-            PlayerState = new PlayerState();
-            ArmyState = new ArmyState();
-            TerrainState = new TerrainState();
-        }
-
-        public TableState(IPlayerState playerState, IArmyState armyState)
-        {
-            PlayerState = playerState;
-            ArmyState = armyState;
-            TerrainState = new TerrainState();
+            PlayerState = new PlayerState(gameDataStore);
+            ArmyState = new ArmyState(gameDataStore);
+            TerrainState = new TerrainState(gameDataStore);
         }
     }
 }

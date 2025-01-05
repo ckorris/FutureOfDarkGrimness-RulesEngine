@@ -1,24 +1,25 @@
 ﻿
+using FDG.Data;
+using System.Linq;
 
 namespace FDG
 {
 
     public interface ITerrainState
     {
-        public IReadOnlyList<ITerrain> Terrain { get; }
-
-        public void AddTerrain(ITerrain newTerrain);
+        public IEnumerable<ITerrain> Terrain { get; }
     }
 
     public class TerrainState : ITerrainState
     {
-        public IReadOnlyList<ITerrain> Terrain => _terrain;
+        public IEnumerable<ITerrain> Terrain => _gameDataStore.GetAllValues<Terrain>().Cast<ITerrain>();
 
-        private List<ITerrain> _terrain = new List<ITerrain>();
+        private IReadableGameDataStore _gameDataStore;
 
-        public void AddTerrain(ITerrain newTerrain)
+        public TerrainState(IReadableGameDataStore gameDataStore)
         {
-            _terrain.Add(newTerrain);
+            _gameDataStore = gameDataStore;
         }
+
     }
 }

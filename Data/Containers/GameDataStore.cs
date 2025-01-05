@@ -116,8 +116,7 @@ namespace FDG.Data
 
         public T GetValue<T>(DataReference reference)
         {
-            GetTypeAndIDOrThrow<T>(out Type type, out TypeID typeID);
-
+            GetTypeAndIDOrThrow<T>(out _, out TypeID typeID);
             ComponentStore<T> store = (ComponentStore<T>)_componentStores[typeID];
 
             return store.GetValue(reference);
@@ -135,6 +134,14 @@ namespace FDG.Data
             ComponentStore<T> store = (ComponentStore<T>)_componentStores[typeID];
 
             store.SetValue(reference, value);
+        }
+
+        public IEnumerable<T> GetAllValues<T>()
+        {
+            GetTypeAndIDOrThrow<T>(out _, out TypeID typeID);
+            ComponentStore<T> store = (ComponentStore<T>)_componentStores[typeID];
+
+            return store.GetAllValues();
         }
 
         public void SubscribeToOnCreated<T>(Action<T> onCreated)

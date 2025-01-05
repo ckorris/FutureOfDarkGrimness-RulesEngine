@@ -87,6 +87,18 @@ namespace FDG.Data
 
             _data[reference.Index] = value;
         }
+
+        public IEnumerable<T> GetAllValues()
+        {
+            for (int i = 0; i < _capacity; i++)
+            {
+                if (_used[i])
+                {
+                    yield return _data[i];
+                }
+            }
+        }
+
         public bool IsValid(DataReference reference, out EInvalidReason reason)
         {
             if (reference.TypeID.ID != _typeID.ID)

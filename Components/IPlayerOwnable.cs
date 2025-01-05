@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
+﻿
 namespace FDG
 {
     public interface IPlayerOwnable
@@ -16,6 +11,11 @@ namespace FDG
         public static bool IsOwnedBy(this IPlayerOwnable playerOwnable, PlayerID playerID)
         {
             return playerID == playerOwnable.PlayerID;
+        }
+
+        public static bool IsNotOwnedBy(this IPlayerOwnable playerOwnable, PlayerID playerID)
+        {
+            return playerID != playerOwnable.PlayerID;
         }
     }
 }

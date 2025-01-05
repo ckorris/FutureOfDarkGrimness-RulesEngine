@@ -5,6 +5,8 @@ namespace FDG.Data
     {
         T GetValue<T>(DataReference reference);
 
+        IEnumerable<T> GetAllValues<T>();
+
         bool IsValid(DataReference reference, out EInvalidReason failReason);
 
         void SubscribeToOnCreated<T>(Action<T> onCreated);

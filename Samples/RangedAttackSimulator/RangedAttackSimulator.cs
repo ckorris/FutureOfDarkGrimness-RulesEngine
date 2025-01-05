@@ -3,6 +3,7 @@ using FDG.Stages;
 
 namespace FDG.Samples
 {
+    /*
     public class RangedAttackSimulator
     {
         private ITextOutput _textOutput;
@@ -75,4 +76,5 @@ namespace FDG.Samples
             //_shootStage.AssignExitStage(new EmptyEndStage(_stateMachine));
         }
     }
+    */
 }

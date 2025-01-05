@@ -42,17 +42,18 @@ namespace FDG.Stages
         public PlayerTurnStage(IGameContext gameContext, IStateMachineLayer<IMainPhaseContext> parent)
             : base(gameContext, parent)
         {
-            OnTurnFinished = new StageBinding(this);
         }
 
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IPlayerTurnContext> startingChild)
         {
+            OnTurnFinished = new StageBinding(this);
+
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
                 .AddChild(new DeterminePlayerTurnStage(GameContext, this), out var determinePlayerTurnStage)
                 .AddChild(new ChooseUnitToActivateStage(GameContext, this), out var chooseUnitToActivateStage)
                 .AddChild(new MainUnitActionStage(GameContext, this), out var mainUnitActionStage)
                 .AddChild(new ReconcileEndOfActivationStage(GameContext, this), out var reconcileEndOfActivationStage)
-                .AddSibling("OnTurnFinished", OnTurnFinished, out string turnFinishedEventName)
+                .AddSibling(nameof(OnTurnFinished), OnTurnFinished, out string turnFinishedEventName)
                 .Build();
 
             startingChild = determinePlayerTurnStage;

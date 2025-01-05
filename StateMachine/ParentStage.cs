@@ -123,7 +123,7 @@ namespace FDG.Stages
             {
                 if (siblingBinding == null)
                 {
-                    throw new System.NullReferenceException();
+                    throw new NullReferenceException();
                 }
 
                 _dictionary.Add(eventName, (context) => _parentStage.TransitionToSibling(siblingBinding));

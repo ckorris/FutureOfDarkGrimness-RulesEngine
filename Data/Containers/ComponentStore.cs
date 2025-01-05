@@ -39,7 +39,7 @@ namespace FDG.Data
                     _generations[i]++;
                     _data[i] = initialValue;
 
-                    OnComponentAdded.Invoke(initialValue);
+                    OnComponentAdded?.Invoke(initialValue);
 
                     return new DataReference()
                     { 
@@ -60,10 +60,11 @@ namespace FDG.Data
                 return false;
             }
 
-            OnComponentRemoved.Invoke(_data[reference.Index]);
-
             _data[reference.Index] = default; //Technically unnecessary, but keeps things clean.
             _used[reference.Index] = false;
+
+            OnComponentRemoved?.Invoke(_data[reference.Index]);
+
             return true;
         }
 

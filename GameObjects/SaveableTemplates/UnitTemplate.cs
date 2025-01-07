@@ -31,7 +31,7 @@ namespace FDG
         public List<SpecialRule> SpecialRules { get; }
 
         public UnitTemplate(PlayerID playerID, string name, int quality, int defense,
-                List<ModelTemplate> models, List<SpecialRule>? specialRules)
+                List<ModelTemplate> models = null, List<SpecialRule>? specialRules = null)
         {
             PlayerID = playerID;
             Name = name;

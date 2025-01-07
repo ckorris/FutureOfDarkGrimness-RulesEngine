@@ -14,7 +14,7 @@ namespace FDG
 
         public List<IUnitTemplate> Units { get; }
 
-        public ArmyTemplate(PlayerID playerID, List<IUnitTemplate>? units)
+        public ArmyTemplate(PlayerID playerID, List<IUnitTemplate>? units = null)
         {
             PlayerID = playerID;
             Units = units == null ? new List<IUnitTemplate>() : units;

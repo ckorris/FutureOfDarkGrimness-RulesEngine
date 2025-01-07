@@ -19,7 +19,7 @@ namespace FDG.Stages
                 .Handle((armies) => OnArmiesChosen(context, armies));
         }
 
-        private void OnArmiesChosen(IGameContext gameContext, List<IArmy> armies)
+        private void OnArmiesChosen(IGameContext gameContext, List<IArmyTemplate> armies)
         {
             foreach(IArmyTemplate armyToCopy in armies)
             {
@@ -52,6 +52,6 @@ namespace FDG.Stages
 
     public interface IArmySetupHandler
     {
-        void Handle(Action<List<IArmy>> onArmiesChosen);
+        void Handle(Action<List<IArmyTemplate>> onArmiesChosen);
     }
 }

@@ -15,7 +15,7 @@ namespace FDG
 
         private List<DataBinding<UnitData>> _unitBindings;
 
-        public ArmyData(IArmy armyToCopy, List<DataReference> unitReferences,
+        public ArmyData(IArmyTemplate armyToCopy, List<DataReference> unitReferences,
             IReadWriteableGameDataStore gameDataStore, ICommandProcessor commandProcessor)
         {
             PlayerID = armyToCopy.PlayerID;

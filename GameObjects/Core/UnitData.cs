@@ -1,9 +1,4 @@
 ﻿using FDG.Data;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace FDG
 {
@@ -55,27 +50,7 @@ namespace FDG
 
         private List<DataBinding<ModelData>> _modelBindings;
 
-        /*
-        public Unit(PlayerID playerID, string name, int quality, int defense, List<IModel> models,
-            List<ISpecialRule> specialRules)
-        {
-            TODO: Redo this constructor to refer to models as data in the data store.
-
-            PlayerID = playerID;
-            Name = name;
-            Quality = quality;
-            Defense = defense;
-            Models = models;
-            SpecialRules = specialRules;
-
-            foreach (IModel model in models)
-            {
-                model.OnWoundsDealt += OnModelWoundsDealt;
-            }
-        }
-        */
-
-        public UnitData(IUnit unitToCopy, List<DataReference> modelReferences,
+        public UnitData(IUnitTemplate unitToCopy, List<DataReference> modelReferences,
             IReadWriteableGameDataStore gameDataStore, ICommandProcessor commandProcessor)
         {
             PlayerID = unitToCopy.PlayerID;

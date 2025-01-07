@@ -74,7 +74,7 @@ namespace FDG
             _specialRules = specialRules;
         }
 
-        public ModelData(IModel modelToCopy, IReadWriteableGameDataStore gameDataStore, 
+        public ModelData(IModelTemplate modelToCopy, IReadWriteableGameDataStore gameDataStore, 
             ICommandProcessor commandProcessor)
         {
             BaseRadiusInches = modelToCopy.BaseRadiusInches;
@@ -83,7 +83,7 @@ namespace FDG
             _remainingWoundsRef = gameDataStore.Create(TotalWounds);
             _remainingWoundsBinding = new DataBinding<float>(commandProcessor, gameDataStore, _remainingWoundsRef);
 
-            _positionRef = gameDataStore.Create(modelToCopy.Position);
+            _positionRef = gameDataStore.Create(new Position());
             _positionBinding = new DataBinding<Position>(commandProcessor, gameDataStore, _positionRef);
 
             _weapons = new List<Weapon>(modelToCopy.Weapons);

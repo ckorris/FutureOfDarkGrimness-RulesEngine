@@ -21,15 +21,15 @@ namespace FDG.Stages
 
         private void OnArmiesChosen(IGameContext gameContext, List<IArmy> armies)
         {
-            foreach(IArmy armyToCopy in armies)
+            foreach(IArmyTemplate armyToCopy in armies)
             {
                 List<DataReference> newUnitCopies = new List<DataReference>();
 
-                foreach(IUnit unitToCopy in armyToCopy.Units)
+                foreach(IUnitTemplate unitToCopy in armyToCopy.Units)
                 {
                     List<DataReference> newModelCopies = new List<DataReference>(); 
 
-                    foreach(IModel modelToCopy in unitToCopy.Models)
+                    foreach(IModelTemplate modelToCopy in unitToCopy.Models)
                     {
                         ModelData modelData = new ModelData(modelToCopy, gameContext.GameDataStore,
                             gameContext.CommandProcessor);

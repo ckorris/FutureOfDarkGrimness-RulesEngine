@@ -1,6 +1,4 @@
 using FDG.Data;
-using System;
-using System.Collections.Generic;
 
 namespace FDG
 {
@@ -16,7 +14,9 @@ namespace FDG
 
         public float BaseRadiusInches { get; }
 
-        public List<IWeapon> Weapons { get; }
+        public IReadOnlyList<Weapon> Weapons { get; }
+
+        public IReadOnlyList<SpecialRule> SpecialRules { get; }
 
         public void SetPosition(Position newPosition);
 

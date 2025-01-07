@@ -1,4 +1,6 @@
 
+using FDG.Data;
+
 namespace FDG
 {
     /// <summary>
@@ -14,6 +16,13 @@ namespace FDG
         public StageHandlerRegistry Handlers { get; }
 
         public TableState TableState { get; }
+
+        //TODO: Maybe emove these from being accessible, if the engine layer
+        //is to have access to it (I'm undecided). But that would
+        //mean redoing lots of stages, and I'm on an airplane as I type this.
+        public IReadWriteableGameDataStore GameDataStore { get; }
+
+        public ICommandProcessor CommandProcessor { get; }
     }
 
     public class GameContext : IGameContext
@@ -28,13 +37,21 @@ namespace FDG
 
         public TableState TableState { get; private set; }
 
+        public IReadWriteableGameDataStore GameDataStore { get; private set; }
+
+        public ICommandProcessor CommandProcessor { get; private set; }
+
         public GameContext(ITextOutput textOutput, IDiceRoller diceRoller,
-            StageHandlerRegistry handlers, TableState tableState)
+                StageHandlerRegistry handlers, TableState tableState,
+                IReadWriteableGameDataStore gameDataStore,
+                ICommandProcessor commandProcessor)
         {
             TextOutput = textOutput;
             DiceRoller = diceRoller;
             Handlers = handlers;
             TableState = tableState;
+            GameDataStore = gameDataStore;
+            CommandProcessor = commandProcessor;
         }
     }
 }

@@ -15,6 +15,7 @@ namespace FDG.Stages
 
         public override void Enter(IGameContext context)
         {
+            context.Log($"Entered {nameof(DeploymentStage)}.");
             GameContext.GetHandler<IDeploymentHandler>().Handle(GameContext, ToMain.Activate);
         }
     }

@@ -15,6 +15,7 @@ namespace FDG.Stages
 
         public override void Enter(IGameContext context)
         {
+            context.Log($"Entered {nameof(ArmySetupStage)}.");
             GameContext.GetHandler<IArmySetupHandler>()
                 .Handle((armies) => OnArmiesChosen(context, armies));
         }
@@ -47,6 +48,8 @@ namespace FDG.Stages
                             gameContext.CommandProcessor);
                 gameContext.GameDataStore.Create(armyData);   
             }
+
+            ToMapSetup.Activate(gameContext);
         }
     }
 

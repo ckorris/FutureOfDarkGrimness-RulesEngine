@@ -13,6 +13,7 @@ namespace FDG.Stages
 
         public override void Enter(IPlayerTurnContext context)
         {
+            context.Log($"Entered {nameof(ChooseUnitToActivateStage)}.");
             GameContext.GetHandler<IChooseUnitToActivateHandler>().Handle(context, ToMainUnitAction.Activate);
         }
     }

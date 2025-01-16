@@ -8,19 +8,29 @@ namespace FDG
 {
     public class GameModel
     {
+        private IGameContext GameContext => _gameContext;
+
+        public IReadableGameDataStore GameDataStore => _gameDataStore;
+
+        public ICommandProcessor CommandProcessor => _commandProcessor;
+
+        public ITableState TableState => _tableState;
+
+        public IStateMachine StateMachine { get; private set; }
+
+
+        private GameContext _gameContext;
+
+        private GameDataStore _gameDataStore;
+
+        private TableState _tableState;
+
+        private CommandProcessor _commandProcessor;
+
         private StageHandlerRegistry _stageHandlerRegistry;
 
         private TextOutputRelayer _textOutputRelayer;
 
-        private GameContext _gameContext;
-
-        private TableState _tableState;
-
-        private GameDataStore _gameDataStore;
-
-        private CommandProcessor _commandProcessor;
-
-        private IStateMachine _stateMachine;
 
         public GameModel(GameSettings gameSettings, StageHandlerRegistry stageHandlerRegistry)
         {
@@ -33,8 +43,6 @@ namespace FDG
                 ERandomnessType.Realistic => new RealisticDiceRoller(),
                 _ => throw new ArgumentOutOfRangeException()
             };
-
-
 
             _gameContext = new GameContext(_textOutputRelayer, diceRoller, stageHandlerRegistry, _tableState);
 
@@ -54,7 +62,7 @@ namespace FDG
 
             //TODO: Get this procedurally depending on settings.
             GDFStateMachineBuilder gDFStateMachineBuilder = new GDFStateMachineBuilder();
-            _stateMachine = new StateMachine<IGameContext>(gDFStateMachineBuilder, _gameContext);
+            StateMachine = new StateMachine<IGameContext>(gDFStateMachineBuilder, _gameContext);
         }
 
 

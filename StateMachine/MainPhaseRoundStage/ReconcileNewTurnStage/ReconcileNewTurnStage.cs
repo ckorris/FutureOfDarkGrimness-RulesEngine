@@ -15,6 +15,7 @@ namespace FDG.Stages
 
         public override void Enter(IMainPhaseContext context)
         {
+            context.Log($"Entered {nameof(ReconcileNewTurnStage)}.");
             GameContext.GetHandler<IReconcileNewTurnHandler>().Handle(context, ToStartExtraActions.Activate);
         }
 

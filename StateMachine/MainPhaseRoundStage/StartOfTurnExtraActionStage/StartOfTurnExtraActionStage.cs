@@ -14,6 +14,7 @@ namespace FDG.Stages
 
         public override void Enter(IMainPhaseContext context)
         {
+            context.Log($"Entered {nameof(StartOfTurnExtraActionStage)}.");
             GameContext.GetHandler<IStartOfTurnExtraActionsHandler>().Handle(context, ToDetermineFirstTurn.Activate);
         }
     }

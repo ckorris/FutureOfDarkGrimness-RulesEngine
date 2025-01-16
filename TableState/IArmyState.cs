@@ -9,7 +9,7 @@ namespace FDG
 
     public class ArmyState : IArmyState
     {
-        public IEnumerable<IArmy> PlayerArmies => _gameDataStore.GetAllValues<Army>();
+        public IEnumerable<IArmy> PlayerArmies => _gameDataStore.GetAllValues<ArmyData>();
 
         private IReadableGameDataStore _gameDataStore;
 

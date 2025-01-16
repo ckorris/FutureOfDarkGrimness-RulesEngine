@@ -1,6 +1,4 @@
-using System;
-using System.Linq;
-using System.Collections.Generic;
+
 using FDG.Data;
 
 namespace FDG
@@ -32,81 +30,7 @@ namespace FDG
         public event DataValueChangedHandler<float> OnWoundsDealt;
     }
 
-    public class Unit : IUnit
-    {
-        public PlayerID PlayerID { get; private set; }
-
-        public string Name { get; }
-
-        public int Quality { get; }
-
-        public int Defense { get; }
-
-        public float MaxWounds
-        {
-            get
-            {
-                float total = 0;
-                foreach (IModel model in Models)
-                {
-                    total += model.TotalWounds;
-                }
-                return total;
-            }
-        }
-
-        public float RemainingWounds
-        {
-            get
-            {
-                float total = 0;
-                foreach (IModel model in Models)
-                {
-                    total += model.TotalWounds - model.WoundsDealt;
-                }
-                return total;
-            }
-        }
-
-        public event DataValueChangedHandler<float> OnWoundsDealt;
-
-        public List<IModel> Models { get; }
-
-        public List<ISpecialRule> SpecialRules { get; }
-
-        public Unit(PlayerID playerID, string name, int quality, int defense, List<IModel> models,
-            List<ISpecialRule> specialRules)
-        {
-            PlayerID = playerID;
-            Name = name;
-            Quality = quality;
-            Defense = defense;
-            Models = models;
-            SpecialRules = specialRules;
-
-            foreach (IModel model in models)
-            {
-                model.OnWoundsDealt += OnModelWoundsDealt;
-            }
-
-        }
-
-        private void OnModelWoundsDealt(float oldWoundsCount, float newWoundsCount)
-        {
-            OnWoundsDealt?.Invoke(oldWoundsCount, newWoundsCount);
-        }
-
-        public bool GetMobility(out float moveShootDistanceInches, out float chargeDistanceInches)
-        {
-            //TODO: Process special rules for this.
-            moveShootDistanceInches = GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES;
-            chargeDistanceInches = GameWideConstants.CHARGE_DISTANCE_INCHES;
-
-            return true;
-        }
-
-    }
-
+    
     public static class IUnitExtensions
     {
         public static bool GetIsAlive(this IUnit unit)
@@ -174,5 +98,5 @@ namespace FDG
         }
     }
 
-    
+
 }

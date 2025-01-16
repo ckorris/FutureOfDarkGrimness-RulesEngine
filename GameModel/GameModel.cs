@@ -31,6 +31,20 @@ namespace FDG
 
         private TextOutputRelayer _textOutputRelayer;
 
+<<<<<<< HEAD
+=======
+        private GameContext _gameContext;
+
+        private TableState _tableState;
+
+        private GameDataStore _gameDataStore;
+
+        private CommandProcessor _commandProcessor;
+
+        public IStateMachine StateMachine => _stateMachine;
+
+        private StateMachine<IGameContext> _stateMachine;
+>>>>>>> c8493aabe47e70fb1389b175fe258235bf29aeef
 
         public GameModel(GameSettings gameSettings, StageHandlerRegistry stageHandlerRegistry)
         {
@@ -44,27 +58,37 @@ namespace FDG
                 _ => throw new ArgumentOutOfRangeException()
             };
 
+<<<<<<< HEAD
             _gameContext = new GameContext(_textOutputRelayer, diceRoller, stageHandlerRegistry, _tableState);
 
+=======
+>>>>>>> c8493aabe47e70fb1389b175fe258235bf29aeef
             _gameDataStore = new GameDataStore.GameDataStoreBuilder()
                 .RegisterType<int>(64)
                 .RegisterType<float>(64)
                 .RegisterType<Position>(64)
-                .RegisterType<Model>(64)
+                .RegisterType<ModelData>(64)
                 .RegisterType<PlayerInfo>(2)
-                .RegisterType<Unit>(32)
-                .RegisterType<Army>(8)
+                .RegisterType<UnitData>(32)
+                .RegisterType<ArmyData>(8)
                 .Build();
 
             _commandProcessor = new CommandProcessor(_gameDataStore);
 
             _tableState = new TableState(_gameDataStore);
 
+            _gameContext = new GameContext(_textOutputRelayer, diceRoller, stageHandlerRegistry, _tableState,
+                _gameDataStore, _commandProcessor);
+
             //TODO: Get this procedurally depending on settings.
             GDFStateMachineBuilder gDFStateMachineBuilder = new GDFStateMachineBuilder();
             StateMachine = new StateMachine<IGameContext>(gDFStateMachineBuilder, _gameContext);
         }
 
+        public void Begin()
+        {
+            _stateMachine.Enter(_gameContext);
+        }
 
         public void RegisterTextOutput(ITextOutput textOutput)
         {

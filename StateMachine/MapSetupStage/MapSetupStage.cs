@@ -16,6 +16,8 @@ namespace FDG.Stages
 
         public override void Enter(IGameContext context)
         {
+            //TODO: Implement.
+            context.Log($"Entered {nameof(MapSetupStage)}.");
             GameContext.GetHandler<IMapSetupHandler>().Handle(GameContext, ToDeployment.Activate);
         }
 

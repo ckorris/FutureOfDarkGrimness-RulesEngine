@@ -1,15 +1,13 @@
-﻿using System;
-using System.Collections.Generic;
+﻿
 using FDG.Data;
-using System.Linq;
 
 namespace FDG
 {
-    public struct Model : IModel
+    public class ModelData : IModel
     {
         public readonly float BaseRadiusInches;
 
-        public readonly float TotalWounds { get; }
+        public float TotalWounds { get; }
 
         private DataReference _remainingWoundsRef;
 
@@ -19,9 +17,9 @@ namespace FDG
 
         private readonly DataBinding<Position> _positionBinding;
 
-        public readonly List<Weapon> Weapons;
+        private List<Weapon> _weapons;
 
-        public readonly List<SpecialRule> SpecialRules; //TODO: Not yet used on the interface, unit only.
+        private List<SpecialRule> _specialRules;
 
 
         #region IModel Non-Serialized
@@ -32,7 +30,9 @@ namespace FDG
 
         float IModel.BaseRadiusInches => BaseRadiusInches;
 
-        List<IWeapon> IModel.Weapons => Weapons.Cast<IWeapon>().ToList();
+        IReadOnlyList<Weapon> IModel.Weapons => _weapons;
+
+        IReadOnlyList<SpecialRule> IModel.SpecialRules => _specialRules;
 
         event DataValueChangedHandler<Position> IModel.OnPositionChanged
         {
@@ -58,7 +58,7 @@ namespace FDG
 
         #endregion
 
-        public Model(float baseRadiusInches, List<Weapon> weapons, List<SpecialRule> specialRules, Position initialPosition,
+        public ModelData(float baseRadiusInches, List<Weapon> weapons, List<SpecialRule> specialRules, Position initialPosition,
             IReadWriteableGameDataStore gameDataStore, ICommandProcessor commandProcessor)
         {
             BaseRadiusInches = baseRadiusInches;
@@ -70,13 +70,29 @@ namespace FDG
             _positionRef = gameDataStore.Create(initialPosition);
             _positionBinding = new DataBinding<Position>(commandProcessor, gameDataStore, _positionRef);
 
-            Weapons = weapons;
-            SpecialRules = specialRules;
+            _weapons = weapons;
+            _specialRules = specialRules;
+        }
+
+        public ModelData(IModelTemplate modelToCopy, IReadWriteableGameDataStore gameDataStore, 
+            ICommandProcessor commandProcessor)
+        {
+            BaseRadiusInches = modelToCopy.BaseRadiusInches;
+            TotalWounds = CalculateTotalWounds(modelToCopy.SpecialRules);
+
+            _remainingWoundsRef = gameDataStore.Create(TotalWounds);
+            _remainingWoundsBinding = new DataBinding<float>(commandProcessor, gameDataStore, _remainingWoundsRef);
+
+            _positionRef = gameDataStore.Create(new Position());
+            _positionBinding = new DataBinding<Position>(commandProcessor, gameDataStore, _positionRef);
+
+            _weapons = new List<Weapon>(modelToCopy.Weapons);
+            _specialRules = new List<SpecialRule>(modelToCopy.SpecialRules);
         }
 
         //TODO: JSON constructor that turns DataReferences into DataBindings, which has to inject the GameDataStore and CommandProcessor.
 
-        private int CalculateTotalWounds(List<SpecialRule> specialRules)
+        private int CalculateTotalWounds(IReadOnlyList<SpecialRule> specialRules)
         {
             //TODO: Get ones that modify total wounds somehow, and process.
             return 1;

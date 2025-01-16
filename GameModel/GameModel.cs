@@ -16,7 +16,7 @@ namespace FDG
 
         public ITableState TableState => _tableState;
 
-        public IStateMachine StateMachine { get; private set; }
+        public IStateMachine StateMachine => _stateMachine;
 
 
         private GameContext _gameContext;
@@ -31,20 +31,8 @@ namespace FDG
 
         private TextOutputRelayer _textOutputRelayer;
 
-<<<<<<< HEAD
-=======
-        private GameContext _gameContext;
-
-        private TableState _tableState;
-
-        private GameDataStore _gameDataStore;
-
-        private CommandProcessor _commandProcessor;
-
-        public IStateMachine StateMachine => _stateMachine;
-
         private StateMachine<IGameContext> _stateMachine;
->>>>>>> c8493aabe47e70fb1389b175fe258235bf29aeef
+
 
         public GameModel(GameSettings gameSettings, StageHandlerRegistry stageHandlerRegistry)
         {
@@ -58,11 +46,6 @@ namespace FDG
                 _ => throw new ArgumentOutOfRangeException()
             };
 
-<<<<<<< HEAD
-            _gameContext = new GameContext(_textOutputRelayer, diceRoller, stageHandlerRegistry, _tableState);
-
-=======
->>>>>>> c8493aabe47e70fb1389b175fe258235bf29aeef
             _gameDataStore = new GameDataStore.GameDataStoreBuilder()
                 .RegisterType<int>(64)
                 .RegisterType<float>(64)
@@ -82,7 +65,7 @@ namespace FDG
 
             //TODO: Get this procedurally depending on settings.
             GDFStateMachineBuilder gDFStateMachineBuilder = new GDFStateMachineBuilder();
-            StateMachine = new StateMachine<IGameContext>(gDFStateMachineBuilder, _gameContext);
+            _stateMachine = new StateMachine<IGameContext>(gDFStateMachineBuilder, _gameContext);
         }
 
         public void Begin()

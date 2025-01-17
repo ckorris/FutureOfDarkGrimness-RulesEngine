@@ -54,6 +54,7 @@ namespace FDG
                 .RegisterType<PlayerInfo>(2)
                 .RegisterType<UnitData>(32)
                 .RegisterType<ArmyData>(8)
+                .RegisterType<Terrain>(8)
                 .Build();
 
             _commandProcessor = new CommandProcessor(_gameDataStore);

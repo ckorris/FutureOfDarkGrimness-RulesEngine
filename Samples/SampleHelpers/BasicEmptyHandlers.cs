@@ -165,10 +165,10 @@ namespace FDG.Samples
 
     public class BasicChooseUnitToActivateHandler : IChooseUnitToActivateHandler
     {
-        public void Handle(IPlayerTurnContext context, Action<IPlayerTurnContext> exitStage)
+        public void Handle(IPlayerTurnContext context, List<ActionChoice> unitChoices)
         {
-            //Just accepts it. Will need to actually implement later.
-            exitStage.Invoke(context);
+            //Just choose the first.
+            unitChoices.First(choice => choice.CanActivate).Choose();
         }
     }
 }

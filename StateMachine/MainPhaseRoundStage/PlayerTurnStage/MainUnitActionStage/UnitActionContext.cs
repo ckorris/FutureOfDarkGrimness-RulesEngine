@@ -32,9 +32,10 @@ namespace FDG.Stages
         public bool HasAttacked { get; private set; }
 
 
-        public UnitActionContext(IGameContext gameContext)
+        public UnitActionContext(IGameContext gameContext, IUnit activatingUnit)
         {
             GameContext = gameContext;
+            ActivatingUnit = activatingUnit;
         }
 
         public void RegisterMoveFinished(float distance)

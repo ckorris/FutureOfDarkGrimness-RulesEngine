@@ -68,6 +68,9 @@ namespace FDG
                 _modelBindings.Add(modelBinding);
                 ((IModel)modelBinding.GetValue()).OnWoundsDealt += OnModelWoundsDealt;
             }
+
+            //TEMP
+            SpecialRules = new List<ISpecialRule>();
         }
 
         private void OnModelWoundsDealt(float oldWoundsCount, float newWoundsCount)

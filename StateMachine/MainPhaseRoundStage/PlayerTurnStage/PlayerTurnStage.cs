@@ -64,24 +64,6 @@ namespace FDG.Stages
             reconcileEndOfActivationStage.ToDeterminePlayerTurn.Bind(turnFinishedEventName);
 
             return dictionary;
-
-            /*
-            //This is possible all in one go, but you have to reverse the flow to do so.
-            Dictionary<string, Transition> dictionary = new ChildDictionaryBuilder(this)
-                .AddSibling("OnTurnFinished", OnTurnFinished, out string turnFinishedEventName)
-                .AddChild(new ReconcileEndOfActivationStage(GameContext, this)
-                    .ToDeterminePlayerTurn.Bind(turnFinishedEventName),
-                        out var reconcileEndOfActivationStage)
-                .AddChild(new MainUnitActionStage(GameContext, this) 
-                    .ToReconcileEndOfActivation.Bind(reconcileEndOfActivationStage),
-                        out var mainUnitActionStage)
-                .AddChild(new ChooseUnitToActivateStage(GameContext, this)
-                    .ToMainUnitAction.Bind(mainUnitActionStage), 
-                        out var chooseUnitToActivateStage)
-                .AddChild(new DeterminePlayerTurnStage(GameContext, this)
-                    .ToChooseUnitToActivate.Bind(chooseUnitToActivateStage))
-                .Build();
-            */
         }
 
         protected override IPlayerTurnContext GetNewChildContext(IMainPhaseContext contextSelf)

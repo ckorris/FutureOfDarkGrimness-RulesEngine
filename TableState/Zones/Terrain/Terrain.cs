@@ -15,12 +15,12 @@ namespace FDG
 
         }
 
-        public bool IsPointWithinZone(Position position)
+        public bool IsPointWithinZone(Float2 position)
         {
-            throw new System.NotImplementedException();
+            throw new NotImplementedException();
         }
 
-        public bool DoesPathIntersectZone(Position startPosition, Position endPosition)
+        public bool DoesPathIntersectZone(Float2 startPosition, Float2 endPosition)
         {
             throw new System.NotImplementedException();
         }

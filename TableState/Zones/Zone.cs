@@ -1,6 +1,5 @@
 ﻿
 
-using System.Diagnostics;
 
 namespace FDG
 {
@@ -9,8 +8,8 @@ namespace FDG
         //TODO: Need to draw area somehow, and also know which surface it's on,
         //which is usually the table directly but can also be a raised platform, for instance.
 
-        public bool IsPointWithinZone(Position position);
+        public bool IsPointWithinZone(Float2 position);
 
-        public bool DoesPathIntersectZone(Position startPosition, Position endPosition);
+        public bool DoesPathIntersectZone(Float2 startPosition, Float2 endPosition);
     }
 }

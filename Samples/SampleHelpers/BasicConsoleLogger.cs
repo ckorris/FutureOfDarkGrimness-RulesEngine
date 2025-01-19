@@ -1,4 +1,4 @@
-using System;
+using System.Diagnostics;
 
 namespace FDG.Samples
 {
@@ -6,7 +6,7 @@ namespace FDG.Samples
     {
         public void Log(string message)
         {
-            Console.WriteLine(message);
+            Debug.WriteLine(message);
         }
     }
 }

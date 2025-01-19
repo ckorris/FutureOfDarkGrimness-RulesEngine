@@ -5,12 +5,12 @@ namespace FDG
 {
     public interface IPlayerState
     {
-        IEnumerable<PlayerInfo> Players { get; }
+        IEnumerable<PlayerData> Players { get; }
     }
 
     public class PlayerState : IPlayerState
     {
-        public IEnumerable<PlayerInfo> Players => _gameDataStore.GetAllValues<PlayerInfo>();
+        public IEnumerable<PlayerData> Players => _gameDataStore.GetAllValues<PlayerData>();
 
         private IReadableGameDataStore _gameDataStore;
 

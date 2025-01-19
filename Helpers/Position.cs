@@ -14,6 +14,10 @@ namespace FDG
         public float z => Position3D.Z;
 
 
+        public Position(Float2 position3D)
+        {
+            Position3D = new Float3(position3D.X, position3D.Y, 0);
+        }
 
         public Position(Float3 position3D)
         {
@@ -37,6 +41,16 @@ namespace FDG
         public static float GetVerticalDistance(Position a, Position b)
         {
             return Math.Abs(a.Position3D.Z - b.Position3D.Z);
+        }
+
+        public static implicit operator Float2(Position a)
+        {
+            return a.Position2D;
+        }
+
+        public static implicit operator Float3(Position a)
+        {
+            return a.Position3D;
         }
     }
 }

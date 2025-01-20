@@ -144,6 +144,14 @@ namespace FDG.Data
             return store.GetAllValues();
         }
 
+        public IEnumerable<DataReference> GetAllDataReferences<T>()
+        {
+            GetTypeAndIDOrThrow<T>(out _, out TypeID typeID);
+            ComponentStore<T> store = (ComponentStore<T>)_componentStores[typeID];
+
+            return store.GetAllDataReferences();
+        }
+
         public void SubscribeToOnCreated<T>(Action<T> onCreated)
         {
             GetComponentStoreOrThrow<T>().OnComponentAdded += onCreated;

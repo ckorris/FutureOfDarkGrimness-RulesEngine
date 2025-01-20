@@ -7,7 +7,7 @@ namespace FDG
     {
         public Float3 Position3D;
 
-        public Float2 Position2D => Position3D.XY;
+        public Float2 Position2D => Position3D.XZ;
 
         public float x => Position3D.X;
         public float y => Position3D.Y;
@@ -16,7 +16,7 @@ namespace FDG
 
         public Position(Float2 position2D)
         {
-            Position3D = new Float3(position2D.X, position2D.Y, 0);
+            Position3D = new Float3(position2D.X, 0, position2D.Y);
         }
 
         public Position(Float3 position3D)

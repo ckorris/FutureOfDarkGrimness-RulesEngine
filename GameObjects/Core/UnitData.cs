@@ -42,13 +42,13 @@ namespace FDG
 
         public List<ISpecialRule> SpecialRules { get; } //TODO: Implement, looking at models.
 
-        public List<IModel> Models => _modelBindings.Select(binding => binding.GetValue())
+        public List<IModel> Models => ModelBindings.Select(binding => binding.GetValue())
             .Cast<IModel>()
             .ToList();
 
         private List<DataReference> _modelReferences;
 
-        private List<DataBinding<ModelData>> _modelBindings;
+        public List<DataBinding<ModelData>> ModelBindings;
 
         public UnitData(IUnitTemplate unitToCopy, List<DataReference> modelReferences,
             IReadWriteableGameDataStore gameDataStore, ICommandProcessor commandProcessor)
@@ -60,12 +60,12 @@ namespace FDG
 
             _modelReferences = modelReferences;
 
-            _modelBindings = new List<DataBinding<ModelData>>();
+            ModelBindings = new List<DataBinding<ModelData>>();
             foreach (DataReference model in modelReferences)
             {
                 DataBinding<ModelData> modelBinding = new DataBinding<ModelData>(commandProcessor,
                     gameDataStore, model);
-                _modelBindings.Add(modelBinding);
+                ModelBindings.Add(modelBinding);
                 ((IModel)modelBinding.GetValue()).OnWoundsDealt += OnModelWoundsDealt;
             }
 

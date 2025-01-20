@@ -1,13 +1,23 @@
 ﻿
+using FDG.Data;
+
 namespace FDG.Stages
 {
     public class DeploymentTurnContext
     {
-        public readonly List<IUnit> RemainingUnits;
+        public List<IUnit> RemainingUnits
+        {
+            get
+            {
+                return _unitBindings.Select(binding => binding.GetValue() as IUnit).ToList();
+            }
+        }
 
         public readonly RectangularZone DeploymentZone;
 
-        public DeploymentTurnContext(List<IUnit> remainingUnits, RectangularZone deploymentZone)
+        private List<DataBinding<UnitData>> _unitBindings;
+
+        public DeploymentTurnContext(List<DataBinding<UnitData>> remainingUnits, RectangularZone deploymentZone)
         {
             if(remainingUnits.Count == 0)
             {
@@ -15,7 +25,7 @@ namespace FDG.Stages
                     "with an empty unit list.");
             }
 
-            RemainingUnits = remainingUnits;
+            _unitBindings = remainingUnits;
             DeploymentZone = deploymentZone;
         }
 
@@ -26,9 +36,13 @@ namespace FDG.Stages
                 throw new ArgumentException($"Selected unit {selectedUnit.Name} not in {nameof(DeploymentTurnContext)}.");
             }
 
-            RemainingUnits.Remove(selectedUnit);
+            //RemainingUnits.Remove(selectedUnit); //TODO: How does this compile? Does it work?
 
-            return new DeploymentSelection(selectedUnit, DeploymentZone);
+            DataBinding<UnitData> chosenUnitBinding = _unitBindings.First(unit => unit.GetValue() == selectedUnit);
+
+            _unitBindings.Remove(chosenUnitBinding);
+
+            return new DeploymentSelection(chosenUnitBinding.GetValue(), DeploymentZone);
         }
     }
 

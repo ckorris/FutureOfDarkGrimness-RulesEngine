@@ -1,4 +1,6 @@
 
+using FDG.Data;
+
 namespace FDG.Stages
 {
 
@@ -51,19 +53,32 @@ namespace FDG.Stages
                 RectangularZone teamDeployZone = (i == 1) ? team1DeployZone : team2DeployZone;
 
                 //TODO: Make not the interface? Refer to PlayerData directly, which would have to be exposed in TeamData.
-                foreach(IPlayer player in teamData.Players)
+
+                List<ArmyData> armies = context.GameDataStore.GetAllValues<ArmyData>().ToList();
+
+                foreach (IPlayer player in teamData.Players)
                 {
-                    List<IUnit> playerUnits = context.GameDataStore.GetAllValues<UnitData>()
-                        .Select(unit => unit as IUnit)
-                        .ToList();
-                    DeploymentTurnContext deployTurnContext = new DeploymentTurnContext(playerUnits, teamDeployZone);
+                    List<DataBinding<UnitData>> unitBindings = new List<DataBinding<UnitData>>();
+
+                    foreach (ArmyData army in armies.Where(a => a.IsOwnedBy(player.ID)))
+                    {
+
+                        //foreach (DataReference reference in context.GameDataStore.GetAllDataReferences<UnitData>())
+                        foreach(DataBinding<UnitData> dataBinding in army.UnitBindings)
+                        {
+                            unitBindings.Add(dataBinding);
+                        }
+                    }
+
+                    DeploymentTurnContext deployTurnContext = new DeploymentTurnContext(unitBindings, teamDeployZone);
 
                     turnContexts.Add(player, deployTurnContext);
                 }
             }
 
             IDeploymentHandler handler = GameContext.GetHandler<IDeploymentHandler>();
-            DeployHandlerRepeater repeater = new DeployHandlerRepeater(turnContexts, handler, () => ToMain.Activate(context));
+            DeployHandlerRepeater repeater = new DeployHandlerRepeater(turnContexts, handler, 
+                () => ToMain.Activate(context), context);
         }
 
         private class DeployHandlerRepeater
@@ -83,14 +98,17 @@ namespace FDG.Stages
 
             private Action _onFinished;
 
-            public DeployHandlerRepeater(Dictionary<IPlayer, DeploymentTurnContext> contexts,
-                IDeploymentHandler handler, Action onFinished)
+            private IGameContext _gameContext;
+
+            public DeployHandlerRepeater(Dictionary<IPlayer, DeploymentTurnContext> contexts, IDeploymentHandler handler,
+                Action onFinished, IGameContext gameContext)
             {
                 _players = contexts.Keys.ToList();
                 _contexts = contexts;
                 _playerIndex = 0;
                 _handler = handler;
                 _onFinished = onFinished;
+                _gameContext = gameContext;
 
                 IPlayer firstPlayer = _players[_playerIndex];
                 DeploymentTurnContext nextTurnContext = _contexts[firstPlayer];
@@ -107,7 +125,10 @@ namespace FDG.Stages
                 }
 
                 //TODO: Actually move the models.
-
+                foreach(KeyValuePair<DataBinding<ModelData>, Position> kvp in selection.ModelPositions)
+                {
+                    kvp.Key.GetValue().PositionBinding.SetValue(kvp.Value);
+                }
 
                 //If all the units have been placed from that turn context, remove it from the list.
                 IPlayer lastPlayer = _players[_playerIndex];

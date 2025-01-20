@@ -1,40 +1,51 @@
 ﻿
+using FDG.Data;
+using System.Diagnostics;
+
 namespace FDG.Stages
 {
     public class DeploymentSelection
     {
-        public readonly IUnit SelectedUnit;
+        public IUnit SelectedUnit => _selectedUnit;
 
         public readonly RectangularZone DeploymentZone;
 
-        public Dictionary<IModel, Position> ModelPositions = new Dictionary<IModel, Position>();
+        internal Dictionary<DataBinding<ModelData>, Position> ModelPositions 
+            = new Dictionary<DataBinding<ModelData>, Position>();
 
-        internal DeploymentSelection(IUnit selectedUnit, RectangularZone deploymentZone)
+        private UnitData _selectedUnit;
+
+        internal DeploymentSelection(UnitData selectedUnit, RectangularZone deploymentZone)
         {
-            SelectedUnit = selectedUnit;
+            _selectedUnit = selectedUnit;
             DeploymentZone = deploymentZone;
         }
 
         public void SetModelPosition(IModel model, Position position)
         {
+            Debug.WriteLine($"Set model position to {position.x}, {position.z}");
+
             if (SelectedUnit.Models.Contains(model) == false)
             {
                 throw new ArgumentException($"Assigned position for model that wasn't in the chosen unit.");
             }
 
-            if (ValidatePosition(model, model.Position) == false)
+            if (ValidatePosition(model, position) == false)
             {
-                throw new ArgumentException($"Tried to place model in invalid position. Use ValidatePosition method to check.");
+                throw new ArgumentException($"Tried to place model in invalid position: {position.x}, {position.z}. " + 
+                    "Use ValidatePosition method to check.");
             }
 
-            ModelPositions[model] = position;
+            DataBinding<ModelData> modelData = _selectedUnit.ModelBindings.First(binding => binding.GetValue() == model);
+
+            ModelPositions[modelData] = position;
         }
 
         public bool Validate()
         {
-            foreach (IModel model in SelectedUnit.Models)
+            foreach (DataBinding<ModelData> modelData in _selectedUnit.ModelBindings)
             {
-                if (ModelPositions.ContainsKey(model) == false)
+                if (ModelPositions.ContainsKey(modelData) == false)
                 {
                     return false;
                 }
@@ -47,7 +58,7 @@ namespace FDG.Stages
         {
             //TODO: Using some kind of input parameters, make sure a position is valid.
             //Also make sure the models aren't overlapping.
-            return true;
+            return DeploymentZone.IsPointWithinZone(position);
         }
     }
 }

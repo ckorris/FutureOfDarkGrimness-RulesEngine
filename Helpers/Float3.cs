@@ -10,6 +10,8 @@ namespace FDG
 
         public Float2 XY => new Float2(X, Y);
 
+        public Float2 XZ => new Float2(X, Z);
+
         public Float3(float x, float y, float z)
         {
             X = x;

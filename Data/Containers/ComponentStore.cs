@@ -99,6 +99,22 @@ namespace FDG.Data
             }
         }
 
+        public IEnumerable<DataReference> GetAllDataReferences()
+        {
+            for (int i = 0; i < _capacity; i++)
+            {
+                if (_used[i])
+                {
+                    yield return new DataReference()
+                    {
+                        TypeID = _typeID,
+                        Index = i,
+                        Generation = _generations[i]
+                    };
+                }
+            }
+        }
+
         public bool IsValid(DataReference reference, out EInvalidReason reason)
         {
             if (reference.TypeID.ID != _typeID.ID)

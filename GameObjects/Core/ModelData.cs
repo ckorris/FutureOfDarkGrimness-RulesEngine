@@ -15,7 +15,7 @@ namespace FDG
 
         private DataReference _positionRef;
 
-        private readonly DataBinding<Position> _positionBinding;
+        public readonly DataBinding<Position> PositionBinding;
 
         private List<Weapon> _weapons;
 
@@ -26,7 +26,7 @@ namespace FDG
 
         float IModel.WoundsDealt => TotalWounds - _remainingWoundsBinding.GetValue();
 
-        Position IModel.Position => _positionBinding.GetValue();
+        Position IModel.Position => PositionBinding.GetValue();
 
         float IModel.BaseRadiusInches => BaseRadiusInches;
 
@@ -36,8 +36,8 @@ namespace FDG
 
         event DataValueChangedHandler<Position> IModel.OnPositionChanged
         {
-            add { _positionBinding.OnValueChanged += value; }
-            remove { _positionBinding.OnValueChanged -= value; }
+            add { PositionBinding.OnValueChanged += value; }
+            remove { PositionBinding.OnValueChanged -= value; }
         }
 
         event DataValueChangedHandler<float> IModel.OnWoundsDealt
@@ -53,7 +53,7 @@ namespace FDG
 
         public void SetPosition(Position newPosition)
         {
-            _positionBinding.SetValue(newPosition);
+            PositionBinding.SetValue(newPosition);
         }
 
         #endregion
@@ -68,7 +68,7 @@ namespace FDG
             _remainingWoundsBinding = new DataBinding<float>(commandProcessor, gameDataStore, _remainingWoundsRef);
 
             _positionRef = gameDataStore.Create(initialPosition);
-            _positionBinding = new DataBinding<Position>(commandProcessor, gameDataStore, _positionRef);
+            PositionBinding = new DataBinding<Position>(commandProcessor, gameDataStore, _positionRef);
 
             _weapons = weapons;
             _specialRules = specialRules;
@@ -84,7 +84,7 @@ namespace FDG
             _remainingWoundsBinding = new DataBinding<float>(commandProcessor, gameDataStore, _remainingWoundsRef);
 
             _positionRef = gameDataStore.Create(new Position());
-            _positionBinding = new DataBinding<Position>(commandProcessor, gameDataStore, _positionRef);
+            PositionBinding = new DataBinding<Position>(commandProcessor, gameDataStore, _positionRef);
 
             _weapons = new List<Weapon>(modelToCopy.Weapons);
             _specialRules = new List<SpecialRule>(modelToCopy.SpecialRules);

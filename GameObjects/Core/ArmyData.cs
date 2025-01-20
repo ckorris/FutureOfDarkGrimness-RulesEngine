@@ -7,13 +7,13 @@ namespace FDG
     {
         public PlayerID PlayerID { get; private set; }
 
-        public IReadOnlyList<IUnit> Units => _unitBindings.Select(bind => bind.GetValue())
+        public IReadOnlyList<IUnit> Units => UnitBindings.Select(bind => bind.GetValue())
             .Cast<IUnit>()
             .ToList();
 
         private List<DataReference> _unitReferences;
 
-        private List<DataBinding<UnitData>> _unitBindings;
+        public List<DataBinding<UnitData>> UnitBindings;
 
         public ArmyData(IArmyTemplate armyToCopy, List<DataReference> unitReferences,
             IReadWriteableGameDataStore gameDataStore, ICommandProcessor commandProcessor)
@@ -22,12 +22,12 @@ namespace FDG
 
             _unitReferences = unitReferences;
 
-            _unitBindings = new List<DataBinding<UnitData>>();
+            UnitBindings = new List<DataBinding<UnitData>>();
             foreach (DataReference unit in unitReferences)
             {
                 DataBinding<UnitData> unitBinding = new DataBinding<UnitData>(commandProcessor,
                     gameDataStore, unit);
-                _unitBindings.Add(unitBinding);
+                UnitBindings.Add(unitBinding);
             }
         }
     }

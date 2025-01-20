@@ -17,6 +17,10 @@ namespace FDG
         /// </summary>
         public const float MAX_MODEL_DISTANCE_FROM_ALL_OTHER_MODELS_INCHES = 9;
 
-        public const float DEPLOYMENT_DISTANCE_FROM_TABLE_EDGE_INCHES = 9;
+        public const float DEPLOYMENT_DISTANCE_INCHES = 9;
+
+        public const float DEFAULT_TABLE_WIDTH_INCHES = 72;
+
+        public const float DEFAULT_TABLE_HEIGHT_INCHES = 48;
     }
 }

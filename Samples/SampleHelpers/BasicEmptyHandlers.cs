@@ -136,15 +136,6 @@ namespace FDG.Samples
         }
     }
 
-    public class BasicDeploymentHandler : IDeploymentHandler
-    {
-        public void Handle(IGameContext context, Action<IGameContext> exitStage)
-        {
-            //Just accepts it. Will need to actually implement later.
-            exitStage.Invoke(context);
-        }
-    }
-
     public class BasicReconcileNewTurnHandler : IReconcileNewTurnHandler
     {
         public void Handle(IMainPhaseContext context, Action<IMainPhaseContext> exitStage)

@@ -14,9 +14,9 @@ namespace FDG
         public float z => Position3D.Z;
 
 
-        public Position(Float2 position3D)
+        public Position(Float2 position2D)
         {
-            Position3D = new Float3(position3D.X, position3D.Y, 0);
+            Position3D = new Float3(position2D.X, position2D.Y, 0);
         }
 
         public Position(Float3 position3D)

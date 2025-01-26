@@ -17,15 +17,15 @@ namespace FDG.Network.Connection
 
 
 
-        public async Task StartAsync(int port)
+        public async Task StartAsync()
         {
             _cancelTokenSource = new CancellationTokenSource();
 
-            _listener = new TcpListener(IPAddress.Any, port);
+            _listener = new TcpListener(IPAddress.Any, CommandProtocol.TEMP_PORT);
             _listener.Start();
             _isRunning = true;
 
-            Debug.WriteLine($"Host started. Listening on port: {port}.");
+            Debug.WriteLine($"Host started. Listening on port: {CommandProtocol.TEMP_PORT}.");
 
             try
             {
@@ -95,6 +95,55 @@ namespace FDG.Network.Connection
                         _connectedClients.Remove(client);
                     }
                     client.Close();
+                }
+            }
+        }
+
+        //TODO: Private? Not sure what will need this.
+        public async Task SendCommandToSingleClientAsync(TcpClient client, ArraySegment<byte> data)
+        {
+            if(_isRunning == false || client == null)
+            {
+                return;
+            }
+
+            try
+            {
+                NetworkStream stream = client.GetStream();
+                await CommandProtocol.WriteCommandAsync(stream, data)
+                    .ConfigureAwait(false);
+            }
+            catch(Exception exception)
+            {
+                Debug.WriteLine($"Exception while sending command to single client: {exception.Message}");
+            }
+        }
+
+        public async Task SendCommandAsync(ArraySegment<byte> data)
+        {
+            if(_isRunning == false)
+            {
+                return;
+            }
+
+            List<TcpClient> clientsCopy;
+
+            lock(_connectedClients)
+            {
+                clientsCopy = new List<TcpClient>();
+            }
+
+            foreach(TcpClient client in clientsCopy)
+            {
+                try
+                {
+                    NetworkStream stream = client.GetStream();
+                    await CommandProtocol.WriteCommandAsync(stream, data)
+                        .ConfigureAwait(false);
+                }
+                catch(Exception exception)
+                {
+                    Debug.WriteLine($"Exception while broadcasting to all clients: {exception.Message}");
                 }
             }
         }

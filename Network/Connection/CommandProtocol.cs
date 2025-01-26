@@ -1,10 +1,6 @@
 ﻿using System;
 using System.Buffers;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net.Sockets;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace FDG.Network
 {
@@ -13,6 +9,8 @@ namespace FDG.Network
         public const int MAGIC_NUMBERS = 06031989;
         public const int MAGIC_NUMBERS_BYTE_SIZE = 4;
         public const int HEADER_LENGTH_BYTE_SIZE = 4;
+
+        public const int TEMP_PORT = 6389; //TODO Make this specifyable.
 
         public static async Task WriteCommandAsync(NetworkStream stream, ArraySegment<byte> dataBuffer,
             CancellationToken cancellationToken = default)

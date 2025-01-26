@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
@@ -16,14 +17,15 @@ namespace FDG.Network.Connection
 
         public event Action<ArraySegment<byte>> OnCommandReceived;
 
-        public async Task<bool> ConnectAsync(string serverIP, int port)
+        public async Task<bool> ConnectAsync(IPAddress serverIP)
         {
             try
             {
                 _cancelTokenSource = new CancellationTokenSource();
                 _tcpClient = new TcpClient();
 
-                await _tcpClient.ConnectAsync(serverIP, port).ConfigureAwait(false);
+                await _tcpClient.ConnectAsync(serverIP, CommandProtocol.TEMP_PORT)
+                    .ConfigureAwait(false);
 
                 _isConnected = true;
                 Debug.WriteLine("Connected to host.");

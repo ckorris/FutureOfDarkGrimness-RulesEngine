@@ -4,7 +4,7 @@ using System.Net.Sockets;
 
 namespace FDG.Network.Connection
 {
-    public class FDGHost
+    public class FDGHost : ICommandDispatcher
     {
         private readonly List<TcpClient> _connectedClients = new List<TcpClient>();
         //private readonly ConcurrentBag<TcpClient> _connectedClients = new ConcurrentBag<TcpClient>();

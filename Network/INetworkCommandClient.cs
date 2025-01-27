@@ -6,8 +6,8 @@ namespace FDG.Network
 {
     public interface INetworkCommandClient
     {
-        event Action<ICommand> OnCommandReceived;
+        event Action<IGameCommand> OnCommandReceived;
 
-        void SendCommand(ICommand command);
+        void SendCommand(IGameCommand command);
     }
 }

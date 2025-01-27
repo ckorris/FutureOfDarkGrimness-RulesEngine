@@ -1,7 +1,7 @@
 ﻿
 namespace FDG.Data.Commands
 {
-    public interface ICommand
+    public interface IGameCommand
     {
         void Execute(CommandProcessor processor);
     }

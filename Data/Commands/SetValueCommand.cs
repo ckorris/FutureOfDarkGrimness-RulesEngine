@@ -1,7 +1,7 @@
 ﻿
 namespace FDG.Data.Commands
 {
-    internal class SetValueCommand<T> : ICommand
+    internal class SetValueCommand<T> : IGameCommand
     {
 
         private DataReference _reference;

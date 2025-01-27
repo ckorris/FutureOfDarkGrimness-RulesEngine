@@ -10,7 +10,7 @@ namespace FDG.Data
 
         void DeregisterBinding(IDataBindingBase binding);
 
-        void ExecuteCommand(ICommand command);
+        void ExecuteCommand(IGameCommand command);
 
         void RegisterNetworkClient(INetworkCommandClient networkClient);
 
@@ -58,7 +58,7 @@ namespace FDG.Data
             }
         }
 
-        public void ExecuteCommand(ICommand command)
+        public void ExecuteCommand(IGameCommand command)
         {
             foreach(INetworkCommandClient commandClient in _networkClients)
             {

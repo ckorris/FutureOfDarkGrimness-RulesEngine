@@ -1,7 +1,10 @@
 ﻿
 namespace FDG.Network.Connection
 {
-    internal interface ICommandDispatcher
+    /// <summary>
+    /// TODO: Make internal once done prototyping.
+    /// </summary>
+    public interface ICommandDispatcher
     {
         public event Action<ArraySegment<byte>> OnCommandReceived;
 

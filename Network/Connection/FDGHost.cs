@@ -50,8 +50,9 @@ namespace FDG.Network.Connection
                     lock (_connectedClients) //TODO: Change to concurrent collection.
                     {
                         _connectedClients.Add(client);
+                        Debug.WriteLine($"Accepted client. Count: {_connectedClients.Count}");
                     }
-                    Debug.WriteLine("Accepted client.");
+                    
 
                     _ = HandleClientAsync(client, _cancelTokenSource.Token); // '_ =' suppresses warning, but we want to forget it. 
                 }
@@ -77,6 +78,8 @@ namespace FDG.Network.Connection
                         ArraySegment<byte> payloadSegment = await CommandProtocol.ReadCommandAsync(stream, cancellationToken)
                             .ConfigureAwait(false);
 
+                        Debug.WriteLine("Received data as host.");
+
                         OnCommandReceived?.Invoke(payloadSegment);
                     }
                 }
@@ -90,6 +93,7 @@ namespace FDG.Network.Connection
                 }
                 finally
                 {
+                    Debug.WriteLine("Removing client.");
                     lock (_connectedClients) //TODO: Change to concurrent collection.
                     {
                         _connectedClients.Remove(client);
@@ -123,6 +127,7 @@ namespace FDG.Network.Connection
         {
             if(_isRunning == false)
             {
+                Debug.WriteLine("Didn't sent command because wasn't running.");
                 return;
             }
 
@@ -130,8 +135,10 @@ namespace FDG.Network.Connection
 
             lock(_connectedClients)
             {
-                clientsCopy = new List<TcpClient>();
+                clientsCopy = new List<TcpClient>(_connectedClients);
             }
+
+            Debug.WriteLine($"Sending command to {clientsCopy.Count} clients.");
 
             foreach(TcpClient client in clientsCopy)
             {

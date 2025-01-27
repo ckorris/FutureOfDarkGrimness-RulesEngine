@@ -49,6 +49,8 @@ namespace FDG.Network.Connection
                         ArraySegment<byte> payloadSegment = await CommandProtocol.ReadCommandAsync(stream, cancellationToken)
                             .ConfigureAwait(false);
 
+                        Debug.WriteLine("Received data as client.");
+
                         OnCommandReceived?.Invoke(payloadSegment);
                     }
                 }
@@ -71,7 +73,7 @@ namespace FDG.Network.Connection
         {
             if(_isConnected == false || _tcpClient == null)
             {
-                Debug.WriteLine("Cannot send command. Not connect.");
+                Debug.WriteLine("Cannot send command. Not connected.");
                 return;
             }
 

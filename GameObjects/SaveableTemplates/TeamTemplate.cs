@@ -5,10 +5,10 @@ namespace FDG
     {
         public int TeamNumber { get; }
 
-        public IReadOnlyList<IPlayer> Players { get; }
+        public IReadOnlyList<IPlayerIdentifyable> Players { get; }
 
 
-        public TeamTemplate(int teamNumber, List<IPlayer> players)
+        public TeamTemplate(int teamNumber, List<IPlayerIdentifyable> players)
         {
             TeamNumber = teamNumber;
             Players = players;

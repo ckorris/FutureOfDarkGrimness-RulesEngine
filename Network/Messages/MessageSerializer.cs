@@ -45,6 +45,15 @@ namespace FDG.Network.Messages
             handlers.Add(onMessageReceived);
         }
 
+        public void DeregisterForMessageEvent<T>(Action<T> messageToUnsubscribe)
+        {
+            Type typeKey = typeof(T);
+            if(_messageHandlers.TryGetValue(typeKey, out List<Delegate>? handlers))
+            {
+                handlers.Remove(messageToUnsubscribe);
+            }
+        }
+
         /// <summary>
         /// Serializes a message into a custom byte format:
         /// [4-byte length of type string][UTF-8 type string][UTF-8 JSON]

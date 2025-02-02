@@ -13,6 +13,8 @@ namespace FDG.Network.Connection.Lobby
 
         IObservable<LobbyChatMessage> ChatMessages { get; }
 
+        IObservable<IReadOnlyList<LobbyPlayerInfo>> PlayerInfos { get; }
+
         void SendMessage(string message);
     }
 }

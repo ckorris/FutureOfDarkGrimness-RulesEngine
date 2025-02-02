@@ -19,7 +19,7 @@ namespace FDG.Network.Messages
 
         private readonly Dictionary<Type, List<Delegate>> _messageHandlers = new Dictionary<Type, List<Delegate>>();
 
-        public void RegisterMessageType<T>()
+        public void RegisterForMessageEvent<T>(Action<T> onMessageReceived)
         {
             string messageType = typeof(T).ToString();
 
@@ -27,14 +27,7 @@ namespace FDG.Network.Messages
             {
                 _messageTypeRegistry.Add(messageType, typeof(T));
             }
-            else
-            {
-                throw new InvalidOperationException($"Message type {typeof(T)} was already registered.");
-            }
-        }
 
-        public void RegisterForMessageEvent<T>(Action<T> onMessageReceived)
-        {
             Type typeKey = typeof(T);
             if (_messageHandlers.TryGetValue(typeKey, out List<Delegate>? handlers) == false)
             {

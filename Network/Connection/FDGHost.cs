@@ -6,14 +6,19 @@ namespace FDG.Network.Connection
 {
     public class FDGHost : ICommandDispatcher
     {
-        private readonly List<TcpClient> _connectedClients = new List<TcpClient>();
-        //private readonly ConcurrentBag<TcpClient> _connectedClients = new ConcurrentBag<TcpClient>();
+        //private readonly List<TcpClient> _connectedClients = new List<TcpClient>();
+        private readonly Dictionary<ConnectionID, TcpClient> _connectedClients 
+            = new Dictionary<ConnectionID, TcpClient>();
 
         private TcpListener _listener;
-        private CancellationTokenSource _cancelTokenSource;
+        private CancellationTokenSource? _cancelTokenSource;
         private bool _isRunning;
 
-        public event Action<ArraySegment<byte>> OnCommandReceived;
+        public event Action<ConnectionID>? OnNewClientConnected;
+
+        public event Action<ConnectionID>? OnClientDisconnected;
+
+        public event Action<ArraySegment<byte>>? OnCommandReceived;
 
 
 
@@ -47,14 +52,20 @@ namespace FDG.Network.Connection
                         break;
                     }
 
+                    Guid guid = Guid.NewGuid();
+                    ConnectionID connectionID = new ConnectionID(guid);
+
                     lock (_connectedClients) //TODO: Change to concurrent collection.
                     {
-                        _connectedClients.Add(client);
+                        //TODO: Is this the best place to create a new player ID? 
+
+                        _connectedClients.Add(connectionID, client);
                         Debug.WriteLine($"Accepted client. Count: {_connectedClients.Count}");
                     }
                     
+                    _ = HandleClientAsync(connectionID, client, _cancelTokenSource.Token);
 
-                    _ = HandleClientAsync(client, _cancelTokenSource.Token); // '_ =' suppresses warning, but we want to forget it. 
+                    OnNewClientConnected?.Invoke(connectionID);
                 }
             }
             finally
@@ -65,7 +76,7 @@ namespace FDG.Network.Connection
         }
 
 
-        private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
+        private async Task HandleClientAsync(ConnectionID connectionID, TcpClient client, CancellationToken cancellationToken)
         {
             using(client)
             {
@@ -96,9 +107,11 @@ namespace FDG.Network.Connection
                     Debug.WriteLine("Removing client.");
                     lock (_connectedClients) //TODO: Change to concurrent collection.
                     {
-                        _connectedClients.Remove(client);
+                        _connectedClients.Remove(connectionID);
                     }
                     client.Close();
+
+                    OnClientDisconnected?.Invoke(connectionID);
                 }
             }
         }
@@ -135,7 +148,7 @@ namespace FDG.Network.Connection
 
             lock(_connectedClients)
             {
-                clientsCopy = new List<TcpClient>(_connectedClients);
+                clientsCopy = new List<TcpClient>(_connectedClients.Values);
             }
 
             Debug.WriteLine($"Sending command to {clientsCopy.Count} clients.");
@@ -171,7 +184,7 @@ namespace FDG.Network.Connection
 
             lock(_connectedClients)
             {
-                foreach(TcpClient client in  _connectedClients)
+                foreach(TcpClient client in  _connectedClients.Values)
                 {
                     client.Close();
                 }

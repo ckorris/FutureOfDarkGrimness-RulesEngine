@@ -1,6 +1,7 @@
 ﻿using FDG.Network.Connection;
 using FDG.Network.Connection.Lobby;
 using FDG.Network.Messages;
+using FutureOfDarkGrimness.Network.Messages;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -18,9 +19,13 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
 
         public IObservable<LobbyChatMessage> ChatMessages => _chatMessages;
 
+        public IObservable<IReadOnlyList<LobbyPlayerInfo>> PlayerInfos => _playerInfos;
+
         private BehaviorSubject<string> _serverName;
 
         private ReplaySubject<LobbyChatMessage> _chatMessages;
+
+        private BehaviorSubject<IReadOnlyList<LobbyPlayerInfo>> _playerInfos;
 
         private string _thisPlayerName;
 
@@ -38,13 +43,21 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
             _serverName = new BehaviorSubject<string>("");
             _chatMessages = new ReplaySubject<LobbyChatMessage>();
 
+            //Init empty player list. The host should update us.
+            _playerInfos = new BehaviorSubject<IReadOnlyList<LobbyPlayerInfo>>(new List<LobbyPlayerInfo>());
+
             _commandDispatcher = client;
 
             _messageSerializer = new MessageSerializer();
-            _messageSerializer.RegisterMessageType<LobbyChatMessage>();
             _commandDispatcher.OnCommandReceived += _messageSerializer.DeserializeMessageAndInvoke;
 
             _messageSerializer.RegisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);
+            _messageSerializer.RegisterForMessageEvent<LobbyPlayerListUpdate>(OnPlayerListUpdateReceived);
+
+            //Send greeting. 
+            NewLobbyClientGreeting greeting = new NewLobbyClientGreeting(thisPlayerName);
+            ArraySegment<byte> greetingBytes = _messageSerializer.SerializeMessage(greeting);
+            _commandDispatcher.SendCommandAsync(greetingBytes);
         }
 
         private void OnChatMessageReceived(LobbyChatMessage message)
@@ -52,6 +65,11 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
             Debug.WriteLine($"Received chat message as client: {message.Message}");
 
             _chatMessages.OnNext(message);
+        }
+
+        private void OnPlayerListUpdateReceived(LobbyPlayerListUpdate playerListUpdate)
+        {
+            _playerInfos.OnNext(playerListUpdate.PlayerInfoList);
         }
 
         public void SendMessage(string message)

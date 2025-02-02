@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Net.Sockets;
+using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Text;
 using System.Threading.Tasks;
@@ -34,6 +35,8 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
 
         private FDGClient _client;
 
+        private const string SERVER_JOIN_MESSAGE = "Welcome to the server.";
+
         public LobbyViewModel_Client(string thisPlayerName, FDGClient client)
         {
             _client = client;
@@ -52,12 +55,16 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
             _commandDispatcher.OnCommandReceived += _messageSerializer.DeserializeMessageAndInvoke;
 
             _messageSerializer.RegisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);
+            _messageSerializer.RegisterForMessageEvent<LobbyServerNameMessage>(OnServerNameUpdateReceived);
             _messageSerializer.RegisterForMessageEvent<LobbyPlayerListUpdate>(OnPlayerListUpdateReceived);
 
             //Send greeting. 
             NewLobbyClientGreeting greeting = new NewLobbyClientGreeting(thisPlayerName);
             ArraySegment<byte> greetingBytes = _messageSerializer.SerializeMessage(greeting);
             _commandDispatcher.SendCommandAsync(greetingBytes);
+
+            //Show init message in chatbox.
+            _chatMessages.OnNext(new LobbyChatMessage("System", SERVER_JOIN_MESSAGE));
         }
 
         private void OnChatMessageReceived(LobbyChatMessage message)
@@ -65,6 +72,11 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
             Debug.WriteLine($"Received chat message as client: {message.Message}");
 
             _chatMessages.OnNext(message);
+        }
+
+        private void OnServerNameUpdateReceived(LobbyServerNameMessage lobbyServerNameMessage)
+        {
+            _serverName.OnNext(lobbyServerNameMessage.ServerName);
         }
 
         private void OnPlayerListUpdateReceived(LobbyPlayerListUpdate playerListUpdate)

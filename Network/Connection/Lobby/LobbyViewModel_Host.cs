@@ -29,6 +29,8 @@ namespace FDG.Network.Connection
         private ICommandDispatcher _commandDispatcher;
         private MessageSerializer _messageSerializer;
 
+        private const string SERVER_START_MESSAGE = "Server started successfully.";
+
         public LobbyViewModel_Host(string hostPlayerName, string serverName, string? password, FDGHost host)
         {
             _hostPlayerName = hostPlayerName;
@@ -53,6 +55,9 @@ namespace FDG.Network.Connection
 
             _messageSerializer.RegisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);
             _messageSerializer.RegisterForMessageEvent<NewLobbyClientGreeting>(OnReceiveNewClientGreeting);
+
+            //Show init message in chatbox.
+            _chatMessages.OnNext(new LobbyChatMessage("System", SERVER_START_MESSAGE));
         }
 
 
@@ -77,6 +82,11 @@ namespace FDG.Network.Connection
         private void OnReceiveNewClientGreeting(NewLobbyClientGreeting greeting)
         {
             Debug.WriteLine($"Received greeting from new client: {greeting.PlayerName}");
+
+            //Send the server name.
+            LobbyServerNameMessage lobbyServerNameMessage = new LobbyServerNameMessage(_serverName.Value);
+            ArraySegment<byte> lobbyServerNameBytes = _messageSerializer.SerializeMessage(lobbyServerNameMessage);
+            _commandDispatcher.SendCommandAsync(lobbyServerNameBytes);
 
             //TODO: Have something behind the player info list instead of doing this.
             int tempTeamNumber = _playerInfos.Value.Count + 1;

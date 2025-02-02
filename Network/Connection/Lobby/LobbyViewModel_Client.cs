@@ -50,6 +50,7 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
             _commandDispatcher.RegisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);
             _commandDispatcher.RegisterForMessageEvent<LobbyServerNameMessage>(OnServerNameUpdateReceived);
             _commandDispatcher.RegisterForMessageEvent<LobbyPlayerListUpdate>(OnPlayerListUpdateReceived);
+            _commandDispatcher.RegisterForMessageEvent<LaunchGameMessage>(OnLaunchGameMessageReceived);
 
             //Send greeting. 
             NewLobbyClientGreeting greeting = new NewLobbyClientGreeting(thisPlayerName);
@@ -57,6 +58,27 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
 
             //Show init message in chatbox.
             _chatMessages.OnNext(new LobbyChatMessage("System", SERVER_JOIN_MESSAGE));
+        }
+
+        public void SendMessage(string message)
+        {
+            Debug.WriteLine($"Sending message: {message}");
+
+            LobbyChatMessage chatMessage = new LobbyChatMessage(_thisPlayerName, message);
+
+            _commandDispatcher.SendCommandAsync(chatMessage);
+        }
+
+
+        public bool TryLaunchGame(out string? failReason)
+        {
+            failReason = "Can't launch the game as the client.";
+            return false;
+        }
+
+        public void Dispose()
+        {
+            _commandDispatcher.DeregisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);
         }
 
         private void OnChatMessageReceived(LobbyChatMessage message)
@@ -76,24 +98,11 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
             _playerInfos.OnNext(playerListUpdate.PlayerInfoList);
         }
 
-        public void SendMessage(string message)
+        private void OnLaunchGameMessageReceived(LaunchGameMessage launchGameMessage)
         {
-            Debug.WriteLine($"Sending message: {message}");
+            Debug.WriteLine($"Received launch game message. ");
 
-            LobbyChatMessage chatMessage = new LobbyChatMessage(_thisPlayerName, message);
-
-            _commandDispatcher.SendCommandAsync(chatMessage);
-        }
-
-        public void Dispose()
-        {
-            _commandDispatcher.DeregisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);
-        }
-
-        public bool TryLaunchGame(out string? failReason)
-        {
-            failReason = "Can't launch the game as the client.";
-            return false;
+            OnLaunched?.Invoke();
         }
     }
 }

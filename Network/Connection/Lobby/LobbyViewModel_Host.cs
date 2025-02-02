@@ -31,6 +31,7 @@ namespace FDG.Network.Connection
         private ICommandDispatcher _commandDispatcher;
 
         private const string SERVER_START_MESSAGE = "Server started successfully.";
+        private const string LAUNCHING_GAME_MESSAGE = "About to launch game.";
 
         public event Action? OnLaunched;
 
@@ -126,15 +127,31 @@ namespace FDG.Network.Connection
 
         public bool TryLaunchGame(out string? failReason)
         {
+            Debug.WriteLine("TryLaunchGame.");
+
             //If we ever require readying up, this is where that can go.
-            Launch();
+            _ = Launch();
             failReason = null;
             return true;
         }
 
-        private void Launch()
+        private async Task Launch()
         {
+            LobbyChatMessage gameStartingMessage = new LobbyChatMessage("System", LAUNCHING_GAME_MESSAGE);
+            _chatMessages.OnNext(gameStartingMessage);
+            await _commandDispatcher.SendCommandAsync(gameStartingMessage);
+            await Task.Delay(300);
 
+            //Give a quick tribute.
+            LobbyChatMessage tributeMessage = new LobbyChatMessage("Mukumioke", "buck futter");
+            _chatMessages.OnNext(tributeMessage);
+            await _commandDispatcher.SendCommandAsync(tributeMessage);
+            await Task.Delay(50);
+
+            LaunchGameMessage launchGameMessage = new LaunchGameMessage();
+            await _commandDispatcher.SendCommandAsync(launchGameMessage);
+
+            OnLaunched?.Invoke();
         }
     }
 }

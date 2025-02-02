@@ -17,7 +17,5 @@ namespace FDG.Network.Connection.Lobby
         void SendMessage(string message);
 
         bool TryLaunchGame(out string? failReason);
-
-        
     }
 }

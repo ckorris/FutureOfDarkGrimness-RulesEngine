@@ -1,19 +1,26 @@
 ﻿using Newtonsoft.Json;
-using System;
 using System.Buffers;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Text;
-using System.Text.Json;
-using System.Threading.Tasks;
+
 
 namespace FDG.Network.Messages
 {
+    internal interface IMessageSerializer
+    {
+        public void RegisterForMessageEvent<T>(Action<T> onMessageReceived);
+
+        public void DeregisterForMessageEvent<T>(Action<T> messageToUnsubscribe);
+
+        public ArraySegment<byte> SerializeMessage<T>(T message);
+
+        public void DeserializeMessageAndInvoke(ArraySegment<byte> data);
+    }
+
     /// <summary>
     /// TODO: This should be internal but I'm prototyping how to use this with a network connection.
     /// </summary>
-    public class MessageSerializer
+    internal class MessageSerializer : IMessageSerializer
     {
         private readonly Dictionary<string, Type> _messageTypeRegistry = new Dictionary<string, Type>();
 

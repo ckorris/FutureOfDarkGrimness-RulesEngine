@@ -1,4 +1,6 @@
-﻿using System.Diagnostics;
+﻿using FDG.Network.Messages;
+using System.Buffers;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 
@@ -6,11 +8,21 @@ namespace FDG.Network.Connection
 {
     public class FDGClient : ICommandDispatcher
     {
-        private TcpClient _tcpClient;
-        private CancellationTokenSource _cancelTokenSource;
+        private TcpClient? _tcpClient;
+        private CancellationTokenSource? _cancelTokenSource;
         private bool _isConnected;
 
-        public event Action<ArraySegment<byte>> OnCommandReceived;
+        private IMessageSerializer _messageSerializer;
+
+        public FDGClient()
+        {
+            _messageSerializer = new MessageSerializer();
+        }
+
+        internal FDGClient(IMessageSerializer messageSerializer)
+        {
+            _messageSerializer = messageSerializer;
+        }
 
         public async Task<bool> ConnectAsync(IPAddress serverIP)
         {
@@ -36,6 +48,68 @@ namespace FDG.Network.Connection
             }
         }
 
+
+        public void RegisterForMessageEvent<T>(Action<T> onMessageReceived)
+        {
+            _messageSerializer.RegisterForMessageEvent(onMessageReceived);
+        }
+
+        public void DeregisterForMessageEvent<T>(Action<T> messageToUnsubscribe)
+        {
+            _messageSerializer.DeregisterForMessageEvent(messageToUnsubscribe);
+        }
+
+        public async Task SendCommandAsync<TMessage>(TMessage message)
+        {
+            ArraySegment<byte> commandBytes = _messageSerializer.SerializeMessage(message);
+
+            if (_isConnected == false || _tcpClient == null)
+            {
+                Debug.WriteLine("Cannot send command. Not connected.");
+                return;
+            }
+
+            try
+            {
+                NetworkStream stream = _tcpClient.GetStream();
+                await CommandProtocol.WriteCommandAsync(stream, commandBytes)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                Debug.WriteLine($"Exception while sending data: {exception.Message}");
+                Disconnect();
+            }
+            finally
+            {
+                if (commandBytes.Array != null)
+                {
+                    ArrayPool<byte>.Shared.Return(commandBytes.Array);
+                }
+            }
+        }
+
+        public void Disconnect()
+        {
+            if (_isConnected == false)
+            {
+                return;
+            }
+
+            _isConnected = false;
+            if (_tcpClient != null)
+            {
+                _tcpClient.Close();
+            }
+
+            if (_cancelTokenSource != null)
+            {
+                _cancelTokenSource.Cancel();
+            }
+
+            Debug.WriteLine("Client disconnected.");
+        }
+
         private async Task ReceiveLoopAsync(CancellationToken cancellationToken)
         {
             try
@@ -44,14 +118,14 @@ namespace FDG.Network.Connection
                 {
                     NetworkStream stream = _tcpClient.GetStream();
 
-                    while(cancellationToken.IsCancellationRequested == false)
+                    while (cancellationToken.IsCancellationRequested == false)
                     {
                         ArraySegment<byte> payloadSegment = await CommandProtocol.ReadCommandAsync(stream, cancellationToken)
                             .ConfigureAwait(false);
 
                         Debug.WriteLine("Received data as client.");
 
-                        OnCommandReceived?.Invoke(payloadSegment);
+                        _messageSerializer.DeserializeMessageAndInvoke(payloadSegment);
                     }
                 }
             }
@@ -69,47 +143,5 @@ namespace FDG.Network.Connection
             }
         }
 
-        public async Task SendCommandAsync(ArraySegment<byte> commandBytes)
-        {
-            if(_isConnected == false || _tcpClient == null)
-            {
-                Debug.WriteLine("Cannot send command. Not connected.");
-                return;
-            }
-
-            try
-            {
-                NetworkStream stream = _tcpClient.GetStream();
-                await CommandProtocol.WriteCommandAsync(stream, commandBytes)
-                    .ConfigureAwait(false);
-            }
-            catch(Exception exception)
-            {
-                Debug.WriteLine($"Exception while sending data: {exception.Message}");
-                Disconnect();
-            }
-        }
-
-
-        public void Disconnect()
-        {
-            if (_isConnected == false)
-            {
-                return;
-            }
-
-            _isConnected = false;
-            if (_tcpClient != null)
-            {
-                _tcpClient.Close();
-            }
-
-            if(_cancelTokenSource != null)
-            {
-                _cancelTokenSource.Cancel();
-            }
-
-            Debug.WriteLine("Client disconnected.");
-        }
     }
 }

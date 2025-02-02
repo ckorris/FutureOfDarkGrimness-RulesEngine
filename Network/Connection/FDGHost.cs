@@ -1,4 +1,6 @@
-﻿using System.Diagnostics;
+﻿using FDG.Network.Messages;
+using System.Buffers;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 
@@ -6,11 +8,10 @@ namespace FDG.Network.Connection
 {
     public class FDGHost : ICommandDispatcher
     {
-        //private readonly List<TcpClient> _connectedClients = new List<TcpClient>();
         private readonly Dictionary<ConnectionID, TcpClient> _connectedClients 
             = new Dictionary<ConnectionID, TcpClient>();
 
-        private TcpListener _listener;
+        private TcpListener? _listener;
         private CancellationTokenSource? _cancelTokenSource;
         private bool _isRunning;
 
@@ -18,9 +19,17 @@ namespace FDG.Network.Connection
 
         public event Action<ConnectionID>? OnClientDisconnected;
 
-        public event Action<ArraySegment<byte>>? OnCommandReceived;
+        private IMessageSerializer _messageSerializer;
 
+        public FDGHost()
+        {
+            _messageSerializer = new MessageSerializer();
+        }
 
+        internal FDGHost(IMessageSerializer messageSerializer)
+        {
+            _messageSerializer = messageSerializer;
+        }
 
         public async Task StartAsync()
         {
@@ -84,14 +93,18 @@ namespace FDG.Network.Connection
 
                 try
                 {
-                    while(cancellationToken.IsCancellationRequested == false)
+                    while (cancellationToken.IsCancellationRequested == false)
                     {
                         ArraySegment<byte> payloadSegment = await CommandProtocol.ReadCommandAsync(stream, cancellationToken)
                             .ConfigureAwait(false);
 
                         Debug.WriteLine("Received data as host.");
 
-                        OnCommandReceived?.Invoke(payloadSegment);
+                        _messageSerializer.DeserializeMessageAndInvoke(payloadSegment);
+                        if (payloadSegment.Array != null)
+                        {
+                            ArrayPool<byte>.Shared.Return(payloadSegment.Array);
+                    }
                     }
                 }
                 catch(IOException ioException)
@@ -136,13 +149,15 @@ namespace FDG.Network.Connection
             }
         }
 
-        public async Task SendCommandAsync(ArraySegment<byte> data)
+        public async Task SendCommandAsync<TMessage>(TMessage message)
         {
             if(_isRunning == false)
             {
                 Debug.WriteLine("Didn't sent command because wasn't running.");
                 return;
             }
+
+            ArraySegment<byte> commandBytes = _messageSerializer.SerializeMessage(message);
 
             List<TcpClient> clientsCopy;
 
@@ -158,7 +173,7 @@ namespace FDG.Network.Connection
                 try
                 {
                     NetworkStream stream = client.GetStream();
-                    await CommandProtocol.WriteCommandAsync(stream, data)
+                    await CommandProtocol.WriteCommandAsync(stream, commandBytes)
                         .ConfigureAwait(false);
                 }
                 catch(Exception exception)
@@ -166,7 +181,23 @@ namespace FDG.Network.Connection
                     Debug.WriteLine($"Exception while broadcasting to all clients: {exception.Message}");
                 }
             }
+
+            if (commandBytes.Array != null)
+            {
+                ArrayPool<byte>.Shared.Return(commandBytes.Array);
+            }
         }
+
+        public void RegisterForMessageEvent<T>(Action<T> onMessageReceived)
+        {
+            _messageSerializer.RegisterForMessageEvent(onMessageReceived);
+        }
+
+        public void DeregisterForMessageEvent<T>(Action<T> messageToUnsubscribe)
+        {
+            _messageSerializer.DeregisterForMessageEvent(messageToUnsubscribe);
+        }
+
 
         public void Stop()
         {
@@ -193,5 +224,6 @@ namespace FDG.Network.Connection
 
             Debug.WriteLine("Host stopped.");
         }
+
     }
 }

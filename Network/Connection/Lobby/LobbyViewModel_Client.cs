@@ -2,20 +2,15 @@
 using FDG.Network.Connection.Lobby;
 using FDG.Network.Messages;
 using FutureOfDarkGrimness.Network.Messages;
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
-using System.Net.Sockets;
-using System.Reactive.Linq;
 using System.Reactive.Subjects;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace FutureOfDarkGrimness.Network.Connection.Lobby
 {
     public class LobbyViewModel_Client : ILobbyViewModel
     {
+        public bool HasHostPrivileges => false;
+
         public IObservable<string> ServerName => _serverName;
 
         public IObservable<LobbyChatMessage> ChatMessages => _chatMessages;
@@ -31,11 +26,12 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
         private string _thisPlayerName;
 
         private ICommandDispatcher _commandDispatcher;
-        private MessageSerializer _messageSerializer;
 
         private FDGClient _client;
 
         private const string SERVER_JOIN_MESSAGE = "Welcome to the server.";
+
+        public event Action? OnLaunched;
 
         public LobbyViewModel_Client(string thisPlayerName, FDGClient client)
         {
@@ -51,17 +47,13 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
 
             _commandDispatcher = client;
 
-            _messageSerializer = new MessageSerializer();
-            _commandDispatcher.OnCommandReceived += _messageSerializer.DeserializeMessageAndInvoke;
-
-            _messageSerializer.RegisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);
-            _messageSerializer.RegisterForMessageEvent<LobbyServerNameMessage>(OnServerNameUpdateReceived);
-            _messageSerializer.RegisterForMessageEvent<LobbyPlayerListUpdate>(OnPlayerListUpdateReceived);
+            _commandDispatcher.RegisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);
+            _commandDispatcher.RegisterForMessageEvent<LobbyServerNameMessage>(OnServerNameUpdateReceived);
+            _commandDispatcher.RegisterForMessageEvent<LobbyPlayerListUpdate>(OnPlayerListUpdateReceived);
 
             //Send greeting. 
             NewLobbyClientGreeting greeting = new NewLobbyClientGreeting(thisPlayerName);
-            ArraySegment<byte> greetingBytes = _messageSerializer.SerializeMessage(greeting);
-            _commandDispatcher.SendCommandAsync(greetingBytes);
+            _commandDispatcher.SendCommandAsync(greeting);
 
             //Show init message in chatbox.
             _chatMessages.OnNext(new LobbyChatMessage("System", SERVER_JOIN_MESSAGE));
@@ -90,13 +82,18 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
 
             LobbyChatMessage chatMessage = new LobbyChatMessage(_thisPlayerName, message);
 
-            ArraySegment<byte> messageBytes = _messageSerializer.SerializeMessage(chatMessage);
-            _commandDispatcher.SendCommandAsync(messageBytes);
+            _commandDispatcher.SendCommandAsync(chatMessage);
         }
 
         public void Dispose()
         {
-            _messageSerializer.DeregisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);
+            _commandDispatcher.DeregisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);
+        }
+
+        public bool TryLaunchGame(out string? failReason)
+        {
+            failReason = "Can't launch the game as the client.";
+            return false;
         }
     }
 }

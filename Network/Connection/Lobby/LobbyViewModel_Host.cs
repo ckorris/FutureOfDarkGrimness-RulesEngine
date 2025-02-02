@@ -10,6 +10,8 @@ namespace FDG.Network.Connection
 {
     public class LobbyViewModel_Host : ILobbyViewModel
     {
+        public bool HasHostPrivileges => true;
+
         public IObservable<string> ServerName => _serverName;
 
         public IObservable<LobbyChatMessage> ChatMessages => _chatMessages;
@@ -27,12 +29,14 @@ namespace FDG.Network.Connection
         private string _hostPlayerName;
 
         private ICommandDispatcher _commandDispatcher;
-        private MessageSerializer _messageSerializer;
 
         private const string SERVER_START_MESSAGE = "Server started successfully.";
 
+        public event Action? OnLaunched;
+
         public LobbyViewModel_Host(string hostPlayerName, string serverName, string? password, FDGHost host)
         {
+            _host = host;
             _hostPlayerName = hostPlayerName;
 
             _serverName = new BehaviorSubject<string>(serverName);
@@ -48,13 +52,11 @@ namespace FDG.Network.Connection
 
             _commandDispatcher = host;
 
-            _messageSerializer = new MessageSerializer();
             host.OnNewClientConnected += OnNewClientConnected;
             host.OnClientDisconnected += OnClientDisconnected;
-            _commandDispatcher.OnCommandReceived += _messageSerializer.DeserializeMessageAndInvoke;
 
-            _messageSerializer.RegisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);
-            _messageSerializer.RegisterForMessageEvent<NewLobbyClientGreeting>(OnReceiveNewClientGreeting);
+            _commandDispatcher.RegisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);
+            _commandDispatcher.RegisterForMessageEvent<NewLobbyClientGreeting>(OnReceiveNewClientGreeting);
 
             //Show init message in chatbox.
             _chatMessages.OnNext(new LobbyChatMessage("System", SERVER_START_MESSAGE));
@@ -64,9 +66,7 @@ namespace FDG.Network.Connection
         public void SendMessage(string message)
         {
             LobbyChatMessage chatMessage = new LobbyChatMessage(_hostPlayerName, message);
-
-            ArraySegment<byte> messageBytes = _messageSerializer.SerializeMessage(chatMessage);
-            _commandDispatcher.SendCommandAsync(messageBytes);
+            _commandDispatcher.SendCommandAsync(chatMessage);
 
             _chatMessages.OnNext(chatMessage);
         }
@@ -85,18 +85,18 @@ namespace FDG.Network.Connection
 
             //Send the server name.
             LobbyServerNameMessage lobbyServerNameMessage = new LobbyServerNameMessage(_serverName.Value);
-            ArraySegment<byte> lobbyServerNameBytes = _messageSerializer.SerializeMessage(lobbyServerNameMessage);
-            _commandDispatcher.SendCommandAsync(lobbyServerNameBytes);
+            _commandDispatcher.SendCommandAsync(lobbyServerNameMessage);
 
             //TODO: Have something behind the player info list instead of doing this.
             int tempTeamNumber = _playerInfos.Value.Count + 1;
 
-            List<LobbyPlayerInfo> playerInfos = new List<LobbyPlayerInfo>(_playerInfos.Value);
-            playerInfos.Add(new LobbyPlayerInfo(greeting.PlayerName, $"Team {tempTeamNumber}", EPlayerType.Network));
+            List<LobbyPlayerInfo> playerInfos = new List<LobbyPlayerInfo>(_playerInfos.Value)
+            {
+                new LobbyPlayerInfo(greeting.PlayerName, $"Team {tempTeamNumber}", EPlayerType.Network)
+            };
 
             LobbyPlayerListUpdate playerListUpdateMessage = new LobbyPlayerListUpdate(playerInfos);
-            ArraySegment<byte> updateBytes = _messageSerializer.SerializeMessage(playerListUpdateMessage);
-            _commandDispatcher.SendCommandAsync(updateBytes);
+            _commandDispatcher.SendCommandAsync(playerListUpdateMessage);
 
             _playerInfos.OnNext(playerInfos);
         }
@@ -111,8 +111,7 @@ namespace FDG.Network.Connection
             Debug.WriteLine($"Received chat message as host: {chatMessage.Message}");
 
             //Relay it to everyone else.
-            ArraySegment<byte> messageBytes = _messageSerializer.SerializeMessage(chatMessage);
-            _commandDispatcher.SendCommandAsync(messageBytes); //TODO: Release the byte array but gotta be careful on timing.
+            _commandDispatcher.SendCommandAsync(chatMessage); //TODO: Release the byte array but gotta be careful on timing.
 
             //Put the chat message in our own box.
             _chatMessages.OnNext(chatMessage);
@@ -120,9 +119,22 @@ namespace FDG.Network.Connection
 
         public void Dispose()
         {
-            _messageSerializer.DeregisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);
+            _commandDispatcher.DeregisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);
             _host.OnNewClientConnected -= OnNewClientConnected;
             _host.OnClientDisconnected -= OnClientDisconnected;
+        }
+
+        public bool TryLaunchGame(out string? failReason)
+        {
+            //If we ever require readying up, this is where that can go.
+            Launch();
+            failReason = null;
+            return true;
+        }
+
+        private void Launch()
+        {
+
         }
     }
 }

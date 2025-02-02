@@ -1,14 +1,13 @@
 ﻿using FDG.Network.Messages;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace FDG.Network.Connection.Lobby
 {
     public interface ILobbyViewModel : IDisposable
     {
+        bool HasHostPrivileges { get; }
+
+        event Action? OnLaunched; //Need arguments?
+
         IObservable<string> ServerName { get; }
 
         IObservable<LobbyChatMessage> ChatMessages { get; }
@@ -16,5 +15,9 @@ namespace FDG.Network.Connection.Lobby
         IObservable<IReadOnlyList<LobbyPlayerInfo>> PlayerInfos { get; }
 
         void SendMessage(string message);
+
+        bool TryLaunchGame(out string? failReason);
+
+        
     }
 }

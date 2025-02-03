@@ -6,7 +6,10 @@ using FutureOfDarkGrimness.StateMachine.StateMachineBuilders;
 
 namespace FDG
 {
-    public class GameModel
+    /// <summary>
+    /// TODO: Made this before networking, now I want to do things differently, but not ready to delete all this yet.
+    /// </summary>
+    public class GameModel_Old
     {
         private IGameContext GameContext => _gameContext;
 
@@ -34,7 +37,7 @@ namespace FDG
         private StateMachine<IGameContext> _stateMachine;
 
 
-        public GameModel(GameSettings gameSettings, StageHandlerRegistry stageHandlerRegistry)
+        public GameModel_Old(GameSettings gameSettings, StageHandlerRegistry stageHandlerRegistry)
         {
             _stageHandlerRegistry = stageHandlerRegistry;
             _textOutputRelayer = new TextOutputRelayer();

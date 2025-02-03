@@ -126,7 +126,7 @@ namespace FDG.Stages
                 CanMove = true,
                 MaxAdvanceDistance = GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES,
                 MaxChargeDistance = GameWideConstants.CHARGE_DISTANCE_INCHES,
-                RelevantTerrain = new List<ITerrain>(gameContext.TableState.TerrainState.Terrain)
+                RelevantTerrain = new List<ITerrain>(gameContext.TableState.Terrain.Objects)
             };
 
             return precursor;

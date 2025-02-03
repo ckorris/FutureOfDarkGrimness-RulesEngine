@@ -31,7 +31,7 @@ namespace FDG.Stages
                 OnDefenderChosen.Activate(context);
             }
 
-            foreach(IArmy army in GameContext.TableState.ArmyState.PlayerArmies
+            foreach(IArmy army in GameContext.TableState.Armies.Objects
                 .Where(a => a.IsNotOwnedBy(attackingPlayer)))
             {
                 foreach(IUnit unit in army.Units)

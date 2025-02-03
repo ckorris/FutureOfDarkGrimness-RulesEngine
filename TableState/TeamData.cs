@@ -7,7 +7,7 @@ namespace FDG
     {
         public int TeamNumber { get; private set; }
 
-        public IReadOnlyList<IPlayerIdentifyable> Players
+        public IReadOnlyList<IPlayerInfo> Players
         {
             get
             {

@@ -31,7 +31,7 @@ namespace FDG.Stages
             {
                 List<DataReference> playerDatas = new List<DataReference>();
 
-                foreach (IPlayerIdentifyable player in team.Players)
+                foreach (IPlayerInfo player in team.Players)
                 {
                     PlayerData playerData = new PlayerData(player.Name, player.ID);
                     DataReference playerReference = context.GameDataStore.Create(playerData);

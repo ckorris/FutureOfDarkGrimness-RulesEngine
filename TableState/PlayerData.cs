@@ -1,7 +1,7 @@
 ﻿
 namespace FDG
 {
-    public record PlayerData : IPlayerIdentifyable
+    public record PlayerData : IPlayerInfo
     {
         public string Name { get; private set; }
 

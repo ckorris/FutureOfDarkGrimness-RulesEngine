@@ -2,7 +2,7 @@
 
 namespace FDG
 {
-    public interface IPlayerIdentifyable
+    public interface IPlayerInfo
     {
         string Name { get; }
 

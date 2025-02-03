@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace FDG.Players
 {
-    public interface IPlayer : IPlayerIdentifyable
+    public interface IPlayer : IPlayerInfo
     {
         public EPlayerType PlayerType { get; }
 

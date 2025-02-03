@@ -20,7 +20,7 @@ namespace FDG.Stages
             //Find all units.
             //In the future, just do ones that the player owns, and that haven't yet activated.
             bool canActivate = true; //Temp.
-            foreach(IArmy army in GameContext.TableState.ArmyState.PlayerArmies)
+            foreach(IArmy army in GameContext.TableState.Armies.Objects)
             {
                 foreach (IUnit unit in army.Units)
                 { 

@@ -1,31 +1,44 @@
 ﻿
 
 using FDG.Data;
+using FutureOfDarkGrimness.TableState;
 
 namespace FDG
 {
     public interface ITableState
     {
-        public IPlayerState PlayerState { get; }
+        public IDataState<IPlayerInfo> Players { get; }
 
-        public IArmyState ArmyState { get; }
-        
-        public ITerrainState TerrainState { get; }
+        public IDataState<IUnit> Units { get; }
+
+        public IDataState<IModel> Models { get; }
+
+        public IDataState<IArmy> Armies { get; }
+
+        public IDataState<ITerrain> Terrain { get; }
     }
 
     public class TableState : ITableState
     {
-        public IPlayerState PlayerState { get; private set; }
+        public IDataState<IPlayerInfo> Players { get; }
 
-        public IArmyState ArmyState { get; private set; }
+        public IDataState<IUnit> Units { get; }
 
-        public ITerrainState TerrainState { get; private set; }
+        public IDataState<IModel> Models { get; }
+
+        public IDataState<IArmy> Armies { get; }
+
+        public IDataState<ITerrain> Terrain { get; }
+
+
 
         public TableState(IReadableGameDataStore gameDataStore)
         {
-            PlayerState = new PlayerState(gameDataStore);
-            ArmyState = new ArmyState(gameDataStore);
-            TerrainState = new TerrainState(gameDataStore);
+            Players = new DataState<IPlayerInfo, PlayerData>(gameDataStore);
+            Units = new DataState<IUnit, UnitData>(gameDataStore);
+            Models = new DataState<IModel, ModelData>(gameDataStore);
+            Armies = new DataState<IArmy, ArmyData>(gameDataStore);
+            Terrain = new DataState<ITerrain, Terrain>(gameDataStore);
         }
     }
 }

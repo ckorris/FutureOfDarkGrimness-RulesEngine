@@ -14,7 +14,20 @@ namespace FDG.Network.Connection.Lobby
 
         IObservable<IReadOnlyList<LobbyPlayerInfo>> PlayerInfos { get; }
 
+        IObservable<int> Settings_ArmyPoints { get; }
+        IObservable<int> Settings_TerrainPieceCount { get; }
+        IObservable<ERandomnessType> Settings_RandomnessType { get; }
+        IObservable<ETurnStyle> Settings_TurnStyle { get; }
+
         void SendMessage(string message);
+
+        void SetArmyPoints(int armyPoints);
+
+        void SetTerrainCount(int terrainCount);
+
+        void SetRandomnessType(ERandomnessType randomnessType);
+
+        void SetTurnStyle(ETurnStyle turnStyle);
 
         bool TryLaunchGame(out string? failReason);
     }

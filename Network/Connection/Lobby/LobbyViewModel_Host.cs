@@ -3,7 +3,6 @@ using FDG.Network.Messages;
 using FDG.Players;
 using FutureOfDarkGrimness.Network.Messages;
 using System.Diagnostics;
-using System.Reactive.Linq;
 using System.Reactive.Subjects;
 
 namespace FDG.Network.Connection
@@ -18,11 +17,22 @@ namespace FDG.Network.Connection
 
         public IObservable<IReadOnlyList<LobbyPlayerInfo>> PlayerInfos => _playerInfos;
 
+        public IObservable<int> Settings_ArmyPoints => _settings_ArmyPoints;
+        public IObservable<int> Settings_TerrainPieceCount => _settings_TerrainPieceCount;
+        public IObservable<ERandomnessType> Settings_RandomnessType => _settings_RandomnessType;
+        public IObservable<ETurnStyle> Settings_TurnStyle => _settings_TurnMethod;
+
         private BehaviorSubject<string> _serverName;
 
         private ReplaySubject<LobbyChatMessage> _chatMessages;
 
         private BehaviorSubject<IReadOnlyList<LobbyPlayerInfo>> _playerInfos;
+
+        private BehaviorSubject<int> _settings_ArmyPoints;
+        private BehaviorSubject<int> _settings_TerrainPieceCount;
+        private BehaviorSubject<ERandomnessType> _settings_RandomnessType;
+        private BehaviorSubject<ETurnStyle> _settings_TurnMethod;
+
 
         private FDGHost _host;
 
@@ -35,6 +45,8 @@ namespace FDG.Network.Connection
 
         public event Action? OnLaunched;
 
+        private GameSettings _gameSettings = GameSettings.GetDefault();
+
         public LobbyViewModel_Host(string hostPlayerName, string serverName, string? password, FDGHost host)
         {
             _host = host;
@@ -42,6 +54,11 @@ namespace FDG.Network.Connection
 
             _serverName = new BehaviorSubject<string>(serverName);
             _chatMessages = new ReplaySubject<LobbyChatMessage>();
+
+            _settings_ArmyPoints = new BehaviorSubject<int>(_gameSettings.ArmyPoints);
+            _settings_TerrainPieceCount = new BehaviorSubject<int>(_gameSettings.TerrainPieceCount);
+            _settings_RandomnessType = new BehaviorSubject<ERandomnessType>(_gameSettings.RandomnessType);
+            _settings_TurnMethod = new BehaviorSubject<ETurnStyle>(_gameSettings.TurnStyle);
 
             //First init just ourselves.
             List<LobbyPlayerInfo> initialLobbyPlayerInfos = new List<LobbyPlayerInfo>()
@@ -99,6 +116,9 @@ namespace FDG.Network.Connection
             LobbyPlayerListUpdate playerListUpdateMessage = new LobbyPlayerListUpdate(playerInfos);
             _commandDispatcher.SendCommandAsync(playerListUpdateMessage);
 
+            LobbyGameSettingsUpdate gameSettingsUpdate = new LobbyGameSettingsUpdate(_gameSettings);
+            _commandDispatcher.SendCommandAsync(gameSettingsUpdate);
+
             _playerInfos.OnNext(playerInfos);
         }
 
@@ -152,6 +172,65 @@ namespace FDG.Network.Connection
             await _commandDispatcher.SendCommandAsync(launchGameMessage);
 
             OnLaunched?.Invoke();
+        }
+
+        public void SetArmyPoints(int armyPoints)
+        {
+            if (armyPoints > 0)
+            {
+                _settings_ArmyPoints.OnNext(armyPoints);
+                _gameSettings.ArmyPoints = armyPoints;
+                _commandDispatcher.SendCommandAsync(new LobbyGameSettingsUpdate(_gameSettings));
+
+            }
+            else
+            {
+                _settings_ArmyPoints.OnNext(_settings_ArmyPoints.Value);
+            }
+        }
+
+        public void SetTerrainCount(int terrainCount)
+        {
+            if (terrainCount > 0)
+            {
+                _settings_TerrainPieceCount.OnNext(terrainCount);
+                _gameSettings.TerrainPieceCount = terrainCount;
+                _commandDispatcher.SendCommandAsync(new LobbyGameSettingsUpdate(_gameSettings));
+            }
+            else
+            {
+                _settings_TerrainPieceCount.OnNext(_settings_TerrainPieceCount.Value);
+            }
+        }
+
+        public void SetRandomnessType(ERandomnessType randomnessType)
+        {
+            if (Enum.IsDefined(randomnessType))
+            {
+                _settings_RandomnessType.OnNext(randomnessType);
+                _gameSettings.RandomnessType = randomnessType;
+                _commandDispatcher.SendCommandAsync(new LobbyGameSettingsUpdate(_gameSettings));
+
+            }
+            else
+            {
+                _settings_RandomnessType.OnNext(_settings_RandomnessType.Value);
+            }
+        }
+
+        public void SetTurnStyle(ETurnStyle turnStyle)
+        {
+            if (Enum.IsDefined(turnStyle))
+            {
+                _settings_TurnMethod.OnNext(turnStyle);
+                _gameSettings.TurnStyle = turnStyle;
+                _commandDispatcher.SendCommandAsync(new LobbyGameSettingsUpdate(_gameSettings));
+
+            }
+            else
+            {
+                _settings_TurnMethod.OnNext(_settings_TurnMethod.Value);
+            }
         }
     }
 }

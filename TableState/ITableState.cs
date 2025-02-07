@@ -15,6 +15,8 @@ namespace FDG
 
         public IDataState<IArmy> Armies { get; }
 
+        public IDataState<ITeam> Teams { get; }
+
         public IDataState<ITerrain> Terrain { get; }
     }
 
@@ -28,9 +30,11 @@ namespace FDG
 
         public IDataState<IArmy> Armies { get; }
 
+        public IDataState<ITeam> Teams { get; }
+
         public IDataState<ITerrain> Terrain { get; }
 
-
+        
 
         public TableState(IReadableGameDataStore gameDataStore)
         {
@@ -38,6 +42,7 @@ namespace FDG
             Units = new DataState<IUnit, UnitData>(gameDataStore);
             Models = new DataState<IModel, ModelData>(gameDataStore);
             Armies = new DataState<IArmy, ArmyData>(gameDataStore);
+            Teams = new DataState<ITeam, TeamData>(gameDataStore);
             Terrain = new DataState<ITerrain, Terrain>(gameDataStore);
         }
     }

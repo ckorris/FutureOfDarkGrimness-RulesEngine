@@ -1,6 +1,8 @@
-﻿using System;
+﻿using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Reflection;
 
 namespace FDG.Data
@@ -10,6 +12,10 @@ namespace FDG.Data
         private List<Type> _registeredTypes = new List<Type>() { typeof(UnreferenceableTypeStruct) };
 
         private Dictionary<TypeID, IComponentStore> _componentStores = new Dictionary<TypeID, IComponentStore>();
+
+        //private Dictionary<Type, Func<object, object?>> _castCache = new(); //Used to make Reflection faster.
+        private Dictionary<Type, Action<object, DataReference, object>> _setValueCache = new();
+
 
         private const int DEFAULT_COMPONENT_STORE_CAPACITY = 256;
 
@@ -134,6 +140,15 @@ namespace FDG.Data
             ComponentStore<T> store = (ComponentStore<T>)_componentStores[typeID];
 
             store.SetValue(reference, value);
+        }
+
+        public void SetValueWithJson(DataReference reference, string json)
+        {
+            Type objectType = _registeredTypes[reference.TypeID.ID];
+
+            IComponentStore untypedComponentStore = _componentStores[reference.TypeID];
+
+            untypedComponentStore.SetValue(reference, json);
         }
 
         public IEnumerable<T> GetAllValues<T>()

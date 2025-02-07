@@ -1,9 +1,15 @@
 ﻿
+using Newtonsoft.Json;
+
 namespace FDG.Data
 {
     public interface IComponentStore
     {
         bool IsValid(DataReference reference, out EInvalidReason reason);
+
+        void SetValue(DataReference reference, object newValue);
+
+        void SetValueFromJson(DataReference reference, string newValueJson);
 
         bool Destroy(DataReference reference);
     }
@@ -88,6 +94,30 @@ namespace FDG.Data
             _data[reference.Index] = value;
         }
 
+        public void SetValue(DataReference reference, object newValue)
+        {
+            if (newValue is T typedNewValue)
+            {
+                SetValue(reference, typedNewValue);
+            }
+            else
+            {
+                throw new InvalidCastException($"Passed in object that was not type {typeof(T)}.");
+            }
+        }
+
+        public void SetValueFromJson(DataReference reference, string newValueJson)
+        {
+            object? deserializedValue = JsonConvert.DeserializeObject(newValueJson, typeof(T));
+
+            if(deserializedValue == null)
+            {
+                throw new InvalidCastException($"Passed in Json could not be deserialized as to type {typeof(T)}.");
+            }
+
+            SetValue(reference, deserializedValue);
+        }
+
         public IEnumerable<T> GetAllValues()
         {
             for (int i = 0; i < _capacity; i++)
@@ -144,6 +174,8 @@ namespace FDG.Data
             return true;
         }
 
+
+
         private class ExceededDataTypeCapacityException : Exception
         {
             public ExceededDataTypeCapacityException(int maxCapacity )
@@ -155,8 +187,6 @@ namespace FDG.Data
             public InvalidDataReferenceException(DataReference reference, EInvalidReason reason)
                 : base($"Passed reference for type {typeof(T)} was invalid. Reason: {reason}. Reference: {reason}") { }
         }
-
-        
     }
 
     public enum EInvalidReason

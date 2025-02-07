@@ -32,20 +32,17 @@ namespace FDG.Stages
 
                     foreach(IModelTemplate modelToCopy in unitToCopy.Models)
                     {
-                        ModelData modelData = new ModelData(modelToCopy, gameContext.GameDataStore,
-                            gameContext.CommandProcessor);
+                        ModelData modelData = new ModelData(modelToCopy, gameContext.GameDataStore);
                         DataReference modelDataRef = gameContext.GameDataStore.Create(modelData);
                         newModelCopies.Add(modelDataRef);
                     }
 
-                    UnitData unitData = new UnitData(unitToCopy, newModelCopies, gameContext.GameDataStore,
-                            gameContext.CommandProcessor);
+                    UnitData unitData = new UnitData(unitToCopy, newModelCopies, gameContext.GameDataStore);
                     DataReference unitDataRef = gameContext.GameDataStore.Create(unitData);
                     newUnitCopies.Add(unitDataRef);
                 }
 
-                ArmyData armyData = new ArmyData(armyToCopy, newUnitCopies, gameContext.GameDataStore,
-                            gameContext.CommandProcessor);
+                ArmyData armyData = new ArmyData(armyToCopy, newUnitCopies, gameContext.GameDataStore);
                 gameContext.GameDataStore.Create(armyData);   
             }
 

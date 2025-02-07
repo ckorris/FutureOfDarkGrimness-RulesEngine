@@ -1,8 +1,6 @@
-﻿using Newtonsoft.Json;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Linq.Expressions;
+﻿
+using FDG.Data.Serialization;
+using Newtonsoft.Json;
 using System.Reflection;
 
 namespace FDG.Data
@@ -19,6 +17,8 @@ namespace FDG.Data
 
         private const int DEFAULT_COMPONENT_STORE_CAPACITY = 256;
 
+        private JsonSerializerSettings _jsonSerializerSettings;
+
         /// <summary>
         /// Creates a new instance with types mapped to IDs according to <paramref name="typeMap"/>. Use if 
         /// connecting to a host (where the type map should be sent over the network) or loading a save.
@@ -30,11 +30,22 @@ namespace FDG.Data
             throw new NotImplementedException();
         }
 
-        private GameDataStore() { }
+        private GameDataStore() 
+        {
+            _jsonSerializerSettings = new JsonSerializerSettings
+            {
+                ContractResolver = new DataBindingContractResolver(this)
+            };
+        }
 
         private GameDataStore(List<TypeAndCapacity> typeMap)
         {
             ThrowIfTypeMapIsInvalid(typeMap);
+
+            _jsonSerializerSettings = new JsonSerializerSettings
+            {
+                ContractResolver = new DataBindingContractResolver(this)
+            };
 
             MethodInfo addComponentStoreInfo = typeof(GameDataStore).GetMethod(nameof(RegisterType), BindingFlags.NonPublic | BindingFlags.Instance);
 
@@ -109,6 +120,11 @@ namespace FDG.Data
             return _componentStores[reference.TypeID].Destroy(reference);
         }
 
+        public DataBinding<T> GetDataBinding<T>(DataReference dataReference)
+        {
+            return GetComponentStoreOrThrow<T>().GetDataBinding(dataReference);
+        }
+
         public bool IsValid(DataReference reference, out EInvalidReason failReason)
         {
             if (_componentStores.ContainsKey(reference.TypeID) == false)
@@ -146,9 +162,16 @@ namespace FDG.Data
         {
             Type objectType = _registeredTypes[reference.TypeID.ID];
 
+            object? deserializedValue = JsonConvert.DeserializeObject(json, objectType, _jsonSerializerSettings);
+
+            if (deserializedValue == null)
+            {
+                throw new ArgumentException($"Passed in Json could not be deserialized.");
+            }
+
             IComponentStore untypedComponentStore = _componentStores[reference.TypeID];
 
-            untypedComponentStore.SetValue(reference, json);
+            untypedComponentStore.SetValue(reference, deserializedValue);
         }
 
         public IEnumerable<T> GetAllValues<T>()
@@ -250,6 +273,7 @@ namespace FDG.Data
                 }
             }
         }
+
 
 
         /// <summary>

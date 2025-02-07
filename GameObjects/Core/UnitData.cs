@@ -1,8 +1,10 @@
 ﻿using FDG.Data;
+using FDG.Data.Serialization;
+using System.Text.Json.Serialization;
 
 namespace FDG
 {
-    public class UnitData : IUnit
+    public class UnitData : IUnit, IGameDataAware
     {
         public PlayerID PlayerID { get; private set; }
 
@@ -38,7 +40,7 @@ namespace FDG
             }
         }
 
-        public event DataValueChangedHandler<float> OnWoundsDealt;
+        public event DataValueChangedHandler<float>? OnWoundsDealt;
 
         public List<ISpecialRule> SpecialRules { get; } //TODO: Implement, looking at models.
 
@@ -50,8 +52,23 @@ namespace FDG
 
         public List<DataBinding<ModelData>> ModelBindings;
 
-        public UnitData(IUnitTemplate unitToCopy, List<DataReference> modelReferences,
-            IReadWriteableGameDataStore gameDataStore, ICommandProcessor commandProcessor)
+        [JsonConstructor]
+        public UnitData(PlayerID playerID, string name, int quality, int defense, 
+            List<ISpecialRule> specialRules, List<DataReference> modelReferences)
+        {
+            PlayerID = playerID;
+            Name = name;
+            Quality = quality;
+            Defense = defense;
+
+            SpecialRules = specialRules;
+
+            _modelReferences = modelReferences;
+        }
+
+        
+
+        public UnitData(IUnitTemplate unitToCopy, List<DataReference> modelReferences, IReadWriteableGameDataStore gameDataStore)
         {
             PlayerID = unitToCopy.PlayerID;
             Name = unitToCopy.Name;
@@ -63,14 +80,24 @@ namespace FDG
             ModelBindings = new List<DataBinding<ModelData>>();
             foreach (DataReference model in modelReferences)
             {
-                DataBinding<ModelData> modelBinding = new DataBinding<ModelData>(commandProcessor,
-                    gameDataStore, model);
+                DataBinding<ModelData> modelBinding = gameDataStore.GetDataBinding<ModelData>(model);
                 ModelBindings.Add(modelBinding);
                 ((IModel)modelBinding.GetValue()).OnWoundsDealt += OnModelWoundsDealt;
             }
 
             //TEMP
             SpecialRules = new List<ISpecialRule>();
+        }
+
+        public void SetGameDataStore(IReadWriteableGameDataStore gameDataStore)
+        {
+            ModelBindings = new List<DataBinding<ModelData>>();
+            foreach (DataReference model in _modelReferences)
+            {
+                DataBinding<ModelData> modelBinding = gameDataStore.GetDataBinding<ModelData>(model);
+                ModelBindings.Add(modelBinding);
+                ((IModel)modelBinding.GetValue()).OnWoundsDealt += OnModelWoundsDealt;
+            }
         }
 
         private void OnModelWoundsDealt(float oldWoundsCount, float newWoundsCount)
@@ -94,6 +121,7 @@ namespace FDG
 
             return true;
         }
+
 
     }
 }

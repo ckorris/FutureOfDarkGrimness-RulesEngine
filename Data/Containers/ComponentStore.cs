@@ -9,15 +9,13 @@ namespace FDG.Data
 
         void SetValue(DataReference reference, object newValue);
 
-        void SetValueFromJson(DataReference reference, string newValueJson);
-
         bool Destroy(DataReference reference);
     }
 
     public class ComponentStore<T> : IComponentStore
     {
-        public event Action<T> OnComponentAdded;
-        public event Action<T> OnComponentRemoved;
+        public event Action<T>? OnComponentAdded;
+        public event Action<T>? OnComponentRemoved;
 
         private T[] _data;
         private bool[] _used;
@@ -26,6 +24,8 @@ namespace FDG.Data
 
         private TypeID _typeID;
 
+        private Dictionary<int, DataBinding<T>> _bindings;
+
         public ComponentStore(int capacity, TypeID typeID)
         {
             _capacity = capacity;
@@ -33,6 +33,7 @@ namespace FDG.Data
             _used = new bool[capacity];
             _generations = new int[capacity];
             _typeID = typeID;
+            _bindings = new Dictionary<int, DataBinding<T>>();
         }
 
         public DataReference Create(T initialValue)
@@ -71,6 +72,12 @@ namespace FDG.Data
 
             OnComponentRemoved?.Invoke(_data[reference.Index]);
 
+            if (_bindings.ContainsKey(reference.Index))
+            {
+                _bindings[reference.Index].Invalidate();
+                _bindings.Remove(reference.Index);
+            }
+
             return true;
         }
 
@@ -104,18 +111,6 @@ namespace FDG.Data
             {
                 throw new InvalidCastException($"Passed in object that was not type {typeof(T)}.");
             }
-        }
-
-        public void SetValueFromJson(DataReference reference, string newValueJson)
-        {
-            object? deserializedValue = JsonConvert.DeserializeObject(newValueJson, typeof(T));
-
-            if(deserializedValue == null)
-            {
-                throw new InvalidCastException($"Passed in Json could not be deserialized as to type {typeof(T)}.");
-            }
-
-            SetValue(reference, deserializedValue);
         }
 
         public IEnumerable<T> GetAllValues()
@@ -174,7 +169,23 @@ namespace FDG.Data
             return true;
         }
 
+        public DataBinding<T> GetDataBinding(DataReference dataReference)
+        {
+            if(IsValid(dataReference, out EInvalidReason reason) == false)
+            {
+                throw new InvalidDataReferenceException(dataReference, reason);
+            }
 
+            if(_bindings.ContainsKey(dataReference.Index) == false)
+            {
+                DataBinding<T> dataBinding = new DataBinding<T>(dataReference, this);
+                _bindings.Add(dataReference.Index, dataBinding);
+                return dataBinding;
+            }
+
+            return _bindings[dataReference.Index];
+
+        }
 
         private class ExceededDataTypeCapacityException : Exception
         {

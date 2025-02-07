@@ -1,35 +1,31 @@
 ﻿
-using FDG.Data.Commands;
-using System;
-
 namespace FDG.Data
 {
     public interface IDataBindingBase
     {
         DataReference Reference { get; }
     }
-    public class DataBinding<T> : IDataBindingBase, IDisposable
+
+    public class DataBinding<T> : IDataBindingBase
     {
-        public event DataValueChangedHandler<T> OnValueChanged;
+        public event DataValueChangedHandler<T>? OnValueChanged;
 
         public DataReference Reference { get; private set; }
 
-        private ICommandProcessor _commmandProcessor;
-        private IReadableGameDataStore _readableGameDataStore;
+        public bool IsValid { get; private set; }
 
-        public DataBinding(ICommandProcessor commandProcessor, IReadableGameDataStore readableGameDataStore, DataReference reference)
+        private readonly ComponentStore<T> _componentStore;
+
+        public DataBinding(DataReference reference, ComponentStore<T> componentStore)
         {
             Reference = reference;
-            _commmandProcessor = commandProcessor;
-            _readableGameDataStore = readableGameDataStore;
-
-            _commmandProcessor.RegisterBinding(reference, this);
+            _componentStore = componentStore;
+            IsValid = true;
         }
 
         public void SetValue(T value)
         {
-            var setValueCommand = new SetValueCommand<T>(Reference, value);
-            _commmandProcessor.ExecuteCommand(setValueCommand);
+            _componentStore.SetValue(Reference, value);
 
             //Don't notify directly here, because leaving it to the command processor allows it to happen
             //when the value is changed via the network.
@@ -37,17 +33,19 @@ namespace FDG.Data
 
         public T GetValue( )
         {
-            return _readableGameDataStore.GetValue<T>(Reference);
-        }
-
-        public void Dispose()
-        {
-            _commmandProcessor.DeregisterBinding(this);
+            return _componentStore.GetValue(Reference);
         }
 
         internal void NotifyValueChanged(T oldValue, T newValue)
         {
             OnValueChanged?.Invoke(oldValue, newValue);
         }
+
+        internal void Invalidate()
+        {
+            IsValid = false;
+        }
+
+
     }
 }

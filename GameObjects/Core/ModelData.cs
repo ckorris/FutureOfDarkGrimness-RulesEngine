@@ -1,21 +1,21 @@
-﻿
-using FDG.Data;
+﻿using FDG.Data;
+using FDG.Data.Serialization;
+using System.Text.Json.Serialization;
 
 namespace FDG
 {
-    public class ModelData : IModel
+    public class ModelData : IModel, IGameDataAware
     {
-        public readonly float BaseRadiusInches;
-
+        public float BaseRadiusInches;
         public float TotalWounds { get; }
 
         private DataReference _remainingWoundsRef;
 
-        private readonly DataBinding<float> _remainingWoundsBinding;
+        private DataBinding<float> _remainingWoundsBinding;
 
         private DataReference _positionRef;
 
-        public readonly DataBinding<Position> PositionBinding;
+        public DataBinding<Position> PositionBinding;
 
         private List<Weapon> _weapons;
 
@@ -58,36 +58,46 @@ namespace FDG
 
         #endregion
 
+        [JsonConstructor]
+        public ModelData(float baseRadiusInches, List<Weapon> weapons, List<SpecialRule> specialRules)
+        {
+            BaseRadiusInches = baseRadiusInches;
+            TotalWounds = CalculateTotalWounds(specialRules);
+        }
+
         public ModelData(float baseRadiusInches, List<Weapon> weapons, List<SpecialRule> specialRules, Position initialPosition,
-            IReadWriteableGameDataStore gameDataStore, ICommandProcessor commandProcessor)
+            IReadWriteableGameDataStore gameDataStore)
         {
             BaseRadiusInches = baseRadiusInches;
             TotalWounds = CalculateTotalWounds(specialRules);
 
-            _remainingWoundsRef = gameDataStore.Create(TotalWounds);
-            _remainingWoundsBinding = new DataBinding<float>(commandProcessor, gameDataStore, _remainingWoundsRef);
-
-            _positionRef = gameDataStore.Create(initialPosition);
-            PositionBinding = new DataBinding<Position>(commandProcessor, gameDataStore, _positionRef);
-
             _weapons = weapons;
             _specialRules = specialRules;
+
+            _remainingWoundsRef = gameDataStore.Create(TotalWounds);
+            _positionRef = gameDataStore.Create(initialPosition);
+
+            SetGameDataStore(gameDataStore);
         }
 
-        public ModelData(IModelTemplate modelToCopy, IReadWriteableGameDataStore gameDataStore, 
-            ICommandProcessor commandProcessor)
+        public ModelData(IModelTemplate modelToCopy, IReadWriteableGameDataStore gameDataStore)
         {
             BaseRadiusInches = modelToCopy.BaseRadiusInches;
             TotalWounds = CalculateTotalWounds(modelToCopy.SpecialRules);
 
-            _remainingWoundsRef = gameDataStore.Create(TotalWounds);
-            _remainingWoundsBinding = new DataBinding<float>(commandProcessor, gameDataStore, _remainingWoundsRef);
-
-            _positionRef = gameDataStore.Create(new Position());
-            PositionBinding = new DataBinding<Position>(commandProcessor, gameDataStore, _positionRef);
-
             _weapons = new List<Weapon>(modelToCopy.Weapons);
             _specialRules = new List<SpecialRule>(modelToCopy.SpecialRules);
+
+            _remainingWoundsRef = gameDataStore.Create(TotalWounds);
+            _positionRef = gameDataStore.Create(new Position());
+
+            SetGameDataStore(gameDataStore);
+        }
+
+        public void SetGameDataStore(IReadWriteableGameDataStore gameDataStore)
+        {
+            _remainingWoundsBinding = gameDataStore.GetDataBinding<float>(_remainingWoundsRef);
+            PositionBinding = gameDataStore.GetDataBinding<Position>(_positionRef);
         }
 
         //TODO: JSON constructor that turns DataReferences into DataBindings, which has to inject the GameDataStore and CommandProcessor.
@@ -97,6 +107,7 @@ namespace FDG
             //TODO: Get ones that modify total wounds somehow, and process.
             return 1;
         }
+
 
     }
 }

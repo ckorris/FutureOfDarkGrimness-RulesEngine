@@ -1,9 +1,10 @@
 ﻿
 using FDG.Data;
+using FDG.Data.Serialization;
 
 namespace FDG
 {
-    public class ArmyData : IArmy
+    public class ArmyData : IArmy, IGameDataAware
     {
         public PlayerID PlayerID { get; private set; }
 
@@ -16,17 +17,21 @@ namespace FDG
         public List<DataBinding<UnitData>> UnitBindings;
 
         public ArmyData(IArmyTemplate armyToCopy, List<DataReference> unitReferences,
-            IReadWriteableGameDataStore gameDataStore, ICommandProcessor commandProcessor)
+            IReadWriteableGameDataStore gameDataStore)
         {
             PlayerID = armyToCopy.PlayerID;
 
             _unitReferences = unitReferences;
 
+            SetGameDataStore(gameDataStore);
+        }
+
+        public void SetGameDataStore(IReadWriteableGameDataStore gameDataStore)
+        {
             UnitBindings = new List<DataBinding<UnitData>>();
-            foreach (DataReference unit in unitReferences)
+            foreach (DataReference unit in _unitReferences)
             {
-                DataBinding<UnitData> unitBinding = new DataBinding<UnitData>(commandProcessor,
-                    gameDataStore, unit);
+                DataBinding<UnitData> unitBinding = gameDataStore.GetDataBinding<UnitData>(unit);
                 UnitBindings.Add(unitBinding);
             }
         }

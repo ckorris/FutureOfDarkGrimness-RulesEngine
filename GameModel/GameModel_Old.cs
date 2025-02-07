@@ -15,8 +15,6 @@ namespace FDG
 
         public IReadableGameDataStore GameDataStore => _gameDataStore;
 
-        public ICommandProcessor CommandProcessor => _commandProcessor;
-
         public ITableState TableState => _tableState;
 
         public IStateMachine StateMachine => _stateMachine;
@@ -27,8 +25,6 @@ namespace FDG
         private GameDataStore _gameDataStore;
 
         private TableState _tableState;
-
-        private CommandProcessor _commandProcessor;
 
         private StageHandlerRegistry _stageHandlerRegistry;
 
@@ -61,12 +57,10 @@ namespace FDG
                 .RegisterType<Terrain>(8)
                 .Build();
 
-            _commandProcessor = new CommandProcessor(_gameDataStore);
-
             _tableState = new TableState(_gameDataStore);
 
             _gameContext = new GameContext(_textOutputRelayer, diceRoller, stageHandlerRegistry, _tableState,
-                _gameDataStore, _commandProcessor);
+                _gameDataStore);
 
             //TODO: Get this procedurally depending on settings.
             GDFStateMachineBuilder gDFStateMachineBuilder = new GDFStateMachineBuilder();

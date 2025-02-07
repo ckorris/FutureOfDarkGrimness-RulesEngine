@@ -38,8 +38,7 @@ namespace FDG.Stages
                     playerDatas.Add(playerReference);
                 }
 
-                TeamData teamData = new TeamData(team.TeamNumber, playerDatas,
-                    context.GameDataStore, context.CommandProcessor);
+                TeamData teamData = new TeamData(team.TeamNumber, playerDatas, context.GameDataStore);
 
                 DataReference teamReference = context.GameDataStore.Create(teamData);
             }

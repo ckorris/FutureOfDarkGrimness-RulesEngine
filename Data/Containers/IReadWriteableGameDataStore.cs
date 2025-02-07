@@ -10,5 +10,7 @@ namespace FDG.Data
         DataReference Create<T>(T initialValue);
 
         bool Destroy(DataReference reference);
+
+        DataBinding<T> GetDataBinding<T>(DataReference dataReference);
     }
 }

@@ -14,8 +14,11 @@ namespace FDG.Data
 
     public class ComponentStore<T> : IComponentStore
     {
-        public event Action<T>? OnComponentAdded;
-        public event Action<T>? OnComponentRemoved;
+        public event Action<DataReference, T>? OnComponentAdded;
+        public event Action<DataReference, T> OnAnyUpdatedTyped;
+        public event Action<DataReference, T>? OnComponentRemoved;
+
+        //Action when any value changed.
 
         private T[] _data;
         private bool[] _used;
@@ -46,14 +49,16 @@ namespace FDG.Data
                     _generations[i]++;
                     _data[i] = initialValue;
 
-                    OnComponentAdded?.Invoke(initialValue);
-
-                    return new DataReference()
-                    { 
+                    DataReference dataReference = new DataReference()
+                    {
                         TypeID = _typeID,
                         Index = i,
                         Generation = _generations[i]
                     };
+
+                    OnComponentAdded?.Invoke(dataReference, initialValue);
+
+                    return dataReference;
                 }
             }
 
@@ -70,7 +75,7 @@ namespace FDG.Data
             _data[reference.Index] = default; //Technically unnecessary, but keeps things clean.
             _used[reference.Index] = false;
 
-            OnComponentRemoved?.Invoke(_data[reference.Index]);
+            OnComponentRemoved?.Invoke(reference, _data[reference.Index]);
 
             if (_bindings.ContainsKey(reference.Index))
             {
@@ -93,12 +98,25 @@ namespace FDG.Data
 
         public void SetValue(DataReference reference, T value)
         {
+            if (value == null)
+            {
+                throw new NullReferenceException();
+            }
+
             if (IsValid(reference, out EInvalidReason failReason) == false)
             {
                 throw new InvalidDataReferenceException(reference, failReason);
             }
 
+            T oldValue = _data[reference.Index];
             _data[reference.Index] = value;
+
+            if(_bindings.ContainsKey(reference.Index))
+            {
+                _bindings[reference.Index].NotifyValueChanged(oldValue, value);
+            }
+
+            OnAnyUpdatedTyped?.Invoke(reference, value);
         }
 
         public void SetValue(DataReference reference, object newValue)

@@ -1,5 +1,4 @@
-﻿
-using FDG.Data.Serialization;
+﻿using FDG.Data.Serialization;
 using Newtonsoft.Json;
 using System.Reflection;
 
@@ -11,9 +10,11 @@ namespace FDG.Data
 
         private Dictionary<TypeID, IComponentStore> _componentStores = new Dictionary<TypeID, IComponentStore>();
 
-        //private Dictionary<Type, Func<object, object?>> _castCache = new(); //Used to make Reflection faster.
         private Dictionary<Type, Action<object, DataReference, object>> _setValueCache = new();
 
+        public event Action<DataReference, Type, object>? OnDataAddedUntyped;
+        public event Action<DataReference, Type, object>? OnDataUpdatedUntyped;
+        public event Action<DataReference, Type, object>? OnDataRemovedUntyped;
 
         private const int DEFAULT_COMPONENT_STORE_CAPACITY = 256;
 
@@ -56,8 +57,6 @@ namespace FDG.Data
             }
         }
 
-
-
         /// <summary>
         /// Gets a list of all registered types that can be used to create a different instance of this
         /// with an identical type map.
@@ -92,7 +91,12 @@ namespace FDG.Data
                 capacity = DEFAULT_COMPONENT_STORE_CAPACITY;
             }
 
-            _componentStores.Add(typeID, new ComponentStore<T>(capacity, typeID));
+            var newComponentStore = new ComponentStore<T>(capacity, typeID);
+            newComponentStore.OnComponentAdded += InvokeDataAddedUntyped;
+            newComponentStore.OnAnyUpdatedTyped += InvokeDataUpdatedUntyped;
+            newComponentStore.OnComponentRemoved += InvokeDataRemovedUntyped;
+
+            _componentStores.Add(typeID, newComponentStore);
             return typeID;
         }
 
@@ -190,24 +194,63 @@ namespace FDG.Data
             return store.GetAllDataReferences();
         }
 
-        public void SubscribeToOnCreated<T>(Action<T> onCreated)
+        public void SubscribeToOnCreated<T>(Action<DataReference, T> onCreated)
         {
             GetComponentStoreOrThrow<T>().OnComponentAdded += onCreated;
         }
 
-        public void UnsubscribeFromOnCreated<T>(Action<T> onCreated)
+        public void UnsubscribeFromOnCreated<T>(Action<DataReference, T> onCreated)
         {
             GetComponentStoreOrThrow<T>().OnComponentAdded -= onCreated;
         }
+        public void SubscribeToOnAnyUpdatedOfType<T>(Action<DataReference, T> onUpdated)
+        {
+            GetComponentStoreOrThrow<T>().OnAnyUpdatedTyped += onUpdated;
+        }
 
-        public void SubscribeToOnRemoved<T>(Action<T> onRemoved)
+        public void UnsubscribeFromOnAnyUpdatedOfType<T>(Action<DataReference, T> onUpdated)
+        {
+            GetComponentStoreOrThrow<T>().OnAnyUpdatedTyped -= onUpdated;
+        }
+
+        public void SubscribeToOnRemoved<T>(Action<DataReference, T> onRemoved)
         {
             GetComponentStoreOrThrow<T>().OnComponentRemoved += onRemoved;
         }
 
-        public void UnsubscribeFromOnRemoved<T>(Action<T> onRemoved)
+        public void UnsubscribeFromOnRemoved<T>(Action<DataReference, T> onRemoved)
         {
             GetComponentStoreOrThrow<T>().OnComponentRemoved -= onRemoved;
+        }
+
+        private void InvokeDataAddedUntyped<T>(DataReference dataReference, T typedValue)
+        {
+            if (typedValue == null)
+            {
+                throw new NullReferenceException();
+            }
+
+            OnDataAddedUntyped?.Invoke(dataReference, typeof(T), typedValue);
+        }
+
+        private void InvokeDataUpdatedUntyped<T>(DataReference dataReference, T typedValue)
+        {
+            if (typedValue == null)
+            {
+                throw new NullReferenceException();
+            }
+
+            OnDataUpdatedUntyped?.Invoke(dataReference, typeof(T), typedValue);
+        }
+
+        private void InvokeDataRemovedUntyped<T>(DataReference dataReference, T typedValue)
+        {
+            if (typedValue == null)
+            {
+                throw new NullReferenceException();
+            }
+
+            OnDataRemovedUntyped?.Invoke(dataReference, typeof(T), typedValue);
         }
 
         private class TypeNotRegisteredException : Exception
@@ -273,8 +316,6 @@ namespace FDG.Data
                 }
             }
         }
-
-
 
         /// <summary>
         /// Exists so that the index of any used type is not 0, so that a default TypeID doesn't erroneously

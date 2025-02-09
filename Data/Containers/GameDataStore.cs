@@ -1,5 +1,6 @@
 ﻿using FDG.Data.Serialization;
 using Newtonsoft.Json;
+using System;
 using System.Reflection;
 
 namespace FDG.Data
@@ -18,7 +19,9 @@ namespace FDG.Data
 
         private const int DEFAULT_COMPONENT_STORE_CAPACITY = 256;
 
-        private JsonSerializerSettings _jsonSerializerSettings;
+        //private JsonSerializerSettings _jsonSerializerSettings;
+
+        JsonConverter[] _jsonConverters;
 
         /// <summary>
         /// Creates a new instance with types mapped to IDs according to <paramref name="typeMap"/>. Use if 
@@ -33,28 +36,29 @@ namespace FDG.Data
 
         private GameDataStore() 
         {
-            _jsonSerializerSettings = new JsonSerializerSettings
-            {
-                ContractResolver = new DataBindingContractResolver(this)
-            };
+            //TODO: Initialize converters?
         }
 
         private GameDataStore(List<TypeAndCapacity> typeMap)
         {
             ThrowIfTypeMapIsInvalid(typeMap);
 
-            _jsonSerializerSettings = new JsonSerializerSettings
-            {
-                ContractResolver = new DataBindingContractResolver(this)
-            };
 
             MethodInfo addComponentStoreInfo = typeof(GameDataStore).GetMethod(nameof(RegisterType), BindingFlags.NonPublic | BindingFlags.Instance);
+
+            _jsonConverters = new JsonConverter[typeMap.Count - 1];
 
             for (int i = 1; i < typeMap.Count; i++)
             {
                 MethodInfo genericAddComponentStoreInfo = addComponentStoreInfo.MakeGenericMethod(typeMap[i].Type);
                 genericAddComponentStoreInfo.Invoke(this, [typeMap[i].Capacity]);
+
+                //Create a DataBindingConverter for each.
+                Type converterGenericType = typeof(DataBindingJsonConverter<>).MakeGenericType(typeMap[i].Type);
+                object converterInstance = Activator.CreateInstance(converterGenericType, [this as IReadWriteableGameDataStore]);
+                _jsonConverters[i - 1] = (JsonConverter)converterInstance;
             }
+           
         }
 
         /// <summary>
@@ -114,6 +118,20 @@ namespace FDG.Data
             return ((ComponentStore<T>)store).Create(initialValue);
         }
 
+        public void CreateFromReferenceAndJson(DataReference reference, string initValueAsJson)
+        {
+            Type objectType = _registeredTypes[reference.TypeID.ID];
+            object? deserializedValue = JsonConvert.DeserializeObject(initValueAsJson, objectType, _jsonConverters);
+
+            if (deserializedValue == null)
+            {
+                throw new ArgumentException($"Passed in Json could not be deserialized.");
+            }
+
+            IComponentStore store = _componentStores[reference.TypeID];
+            store.CreateFromReference(reference, deserializedValue);
+        }
+
         public bool Destroy(DataReference reference)
         {
             if (_componentStores.ContainsKey(reference.TypeID) == false)
@@ -148,6 +166,13 @@ namespace FDG.Data
             return store.GetValue(reference);
         }
 
+        public string GetValueAsJson<T>(DataReference reference)
+        {
+            T value = GetValue<T>(reference);
+            string valueAsJson = JsonConvert.SerializeObject(value, _jsonConverters);
+            return valueAsJson;
+        }
+
         public void SetValue<T>(DataReference reference, T value)
         {
             GetTypeAndIDOrThrow<T>(out Type type, out TypeID typeID);
@@ -166,7 +191,7 @@ namespace FDG.Data
         {
             Type objectType = _registeredTypes[reference.TypeID.ID];
 
-            object? deserializedValue = JsonConvert.DeserializeObject(json, objectType, _jsonSerializerSettings);
+            object? deserializedValue = JsonConvert.DeserializeObject(json, objectType, _jsonConverters);
 
             if (deserializedValue == null)
             {

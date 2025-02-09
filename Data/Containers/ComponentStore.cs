@@ -7,6 +7,8 @@ namespace FDG.Data
     {
         bool IsValid(DataReference reference, out EInvalidReason reason);
 
+        void CreateFromReference(DataReference existingReference, object initialValue);
+
         void SetValue(DataReference reference, object newValue);
 
         bool Destroy(DataReference reference);
@@ -63,6 +65,49 @@ namespace FDG.Data
             }
 
             throw new ExceededDataTypeCapacityException(_capacity);
+        }
+
+        public void CreateFromReference(DataReference existingReference, object initialValue)
+        {
+            //Make sure that the given reference fits within the current state.
+            if(existingReference.Index > _capacity)
+            {
+                throw new InvalidDataReferenceAssignmentException(existingReference, EInvalidReason.IndexExceedsCapacity);
+            }
+
+            if(existingReference.TypeID != _typeID)
+            {
+                throw new InvalidDataReferenceAssignmentException(existingReference, EInvalidReason.IncorrectType);
+            }
+
+            if (_used[existingReference.Index] == true)
+            {
+                throw new InvalidDataReferenceAssignmentException(existingReference, EInvalidReason.IndexAlreadyAssigned);
+            }
+
+            if (_generations[existingReference.Index] < existingReference.Generation - 1)
+            {
+                throw new InvalidDataReferenceAssignmentException(existingReference, EInvalidReason.FutureGeneration);
+            }
+
+            if(_generations[existingReference.Index] >= existingReference.Generation)
+            {
+                throw new InvalidDataReferenceAssignmentException(existingReference, EInvalidReason.OutdatedGeneration);
+            }
+
+            T typedInitValue = (T)initialValue;
+
+            if(typedInitValue == null)
+            {
+                throw new ArgumentException($"Passed in an object to {typeof(ComponentStore<T>)} that could not be " + 
+                    $"converted to a {typeof(T)}.");
+            }
+
+            _used[existingReference.Index] = true;
+            _generations[existingReference.Index] = existingReference.Generation;
+            _data[existingReference.Index] = (T)initialValue;
+
+            OnComponentAdded?.Invoke(existingReference, typedInitValue);
         }
 
         public bool Destroy(DataReference reference)
@@ -215,6 +260,14 @@ namespace FDG.Data
             public InvalidDataReferenceException(DataReference reference, EInvalidReason reason)
                 : base($"Passed reference for type {typeof(T)} was invalid. Reason: {reason}. Reference: {reason}") { }
         }
+
+        private class InvalidDataReferenceAssignmentException : Exception
+        {
+            public InvalidDataReferenceAssignmentException(DataReference reference, EInvalidReason reason)
+                : base($"Tried to create a {typeof(T)} value from a {nameof(DataReference)} that does not fit with existing " + 
+                $"data structures. Reason: {reason}. Reference: {reference}.") { }
+            
+        }
     }
 
     public enum EInvalidReason
@@ -225,7 +278,8 @@ namespace FDG.Data
         OutdatedGeneration,
         FutureGeneration,
         IndexExceedsCapacity,
-        TypeNotRegistered
+        TypeNotRegistered,
+        IndexAlreadyAssigned
     }
 }
 

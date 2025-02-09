@@ -3,12 +3,15 @@
 namespace FDG.Data.Serialization
 {
     //TODO: Implement this where it's serialized/deserialized, GameDataStore? And remove the old interface method.
-    internal class DataBindingJsonConverter<T> : JsonConverter<DataBinding<T>>
+    //I did this but didn't test.
+    //See message about changing this so it's not typed.
+
+    public class DataBindingJsonConverter<T> : JsonConverter<DataBinding<T>>
     {
         private readonly IReadWriteableGameDataStore _gameDataStore;
 
 
-        internal DataBindingJsonConverter(IReadWriteableGameDataStore gameDataStore)
+        public DataBindingJsonConverter(IReadWriteableGameDataStore gameDataStore)
         {
             _gameDataStore = gameDataStore;
         }

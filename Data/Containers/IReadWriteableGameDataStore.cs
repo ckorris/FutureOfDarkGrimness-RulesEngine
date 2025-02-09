@@ -9,6 +9,8 @@ namespace FDG.Data
 
         DataReference Create<T>(T initialValue);
 
+        void CreateFromReferenceAndJson(DataReference reference, string initValueAsJson);
+
         bool Destroy(DataReference reference);
 
         DataBinding<T> GetDataBinding<T>(DataReference dataReference);

@@ -38,8 +38,73 @@ namespace FDG.Tests
             DataBinding<int>? toDeserialized = JsonConvert.DeserializeObject<DataBinding<int>>(fromSerialized, [converterTo]);
 
             Assert.That(toDeserialized, Is.EqualTo(toBinding));
-
         }
+
+        [Test]
+        public void DataBindingFieldDeserializeTest()
+        {
+            GameDataStore gameDataStoreFrom = new GameDataStore.GameDataStoreBuilder()
+                .RegisterType<int>(2)
+                .Build();
+
+            GameDataStore gameDataStoreTo = new GameDataStore.GameDataStoreBuilder()
+                .RegisterType<int>(2)
+                .Build();
+
+            DataReference referenceFrom = gameDataStoreFrom.Create(5);
+            DataReference referenceTo = gameDataStoreTo.Create(5);
+
+
+            TestMessageWithIntBinding fromMessage = new TestMessageWithIntBinding(referenceFrom, gameDataStoreFrom);
+
+            var converterFrom = new DataBindingJsonConverter<int>(gameDataStoreFrom);
+            var converterTo = new DataBindingJsonConverter<int>(gameDataStoreTo);
+
+            string fromSerialized = JsonConvert.SerializeObject(fromMessage, [converterFrom]);
+
+            DataBinding<int> toBinding = gameDataStoreTo.GetDataBinding<int>(referenceTo);
+
+            TestMessageWithIntBinding? toDeserialized = 
+                JsonConvert.DeserializeObject<TestMessageWithIntBinding>(fromSerialized, [converterTo]);
+
+            Assert.That(toDeserialized?.IntValueBinding, Is.EqualTo(toBinding));
+        }
+
+        [Test]
+        public void DataBindingFieldDeserializeInGameDataStoreTest()
+        {
+            GameDataStore gameDataStoreFrom = new GameDataStore.GameDataStoreBuilder()
+                .RegisterType<int>(1)
+                .RegisterType<TestMessageWithIntBinding>(1)
+                .Build();
+
+            GameDataStore gameDataStoreTo = new GameDataStore.GameDataStoreBuilder()
+                .RegisterType<int>(1)
+                .RegisterType<TestMessageWithIntBinding>(1)
+                .Build();
+
+            DataReference intReferenceFrom = gameDataStoreFrom.Create(5);
+            DataReference intReferenceTo = gameDataStoreTo.Create(5);
+
+            DataBinding<int> toBinding = gameDataStoreTo.GetDataBinding<int>(intReferenceTo);
+
+            TestMessageWithIntBinding fromMessage = new TestMessageWithIntBinding(intReferenceFrom, gameDataStoreFrom);
+            DataReference messageReferenceFrom = gameDataStoreFrom.Create(fromMessage);
+
+            string messageAsJson = gameDataStoreFrom.GetValueAsJson<TestMessageWithIntBinding>(messageReferenceFrom);
+
+            Assert.That(gameDataStoreTo.IsValid(messageReferenceFrom, out _), Is.False);
+
+            gameDataStoreTo.CreateFromReferenceAndJson(messageReferenceFrom, messageAsJson);
+
+            Assert.That(gameDataStoreTo.IsValid(messageReferenceFrom, out _), Is.True);
+
+            TestMessageWithIntBinding toMessage = gameDataStoreTo.GetValue<TestMessageWithIntBinding>(messageReferenceFrom);
+
+            Assert.That(toMessage.IntValueBinding?.IsValid, Is.True);
+            Assert.That(toMessage.IntValueBinding?.GetValue(), Is.EqualTo(5));
+        }
+
 
         [Test]
         public void GameDataAwareAssignedBindingsTest()

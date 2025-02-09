@@ -5,6 +5,8 @@ namespace FDG.Data
     {
         T GetValue<T>(DataReference reference);
 
+        string GetValueAsJson<T>(DataReference reference);
+
         IEnumerable<T> GetAllValues<T>();
 
         IEnumerable<DataReference> GetAllDataReferences<T>();

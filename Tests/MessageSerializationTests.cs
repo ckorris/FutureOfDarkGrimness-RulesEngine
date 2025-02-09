@@ -105,70 +105,229 @@ namespace FDG.Tests
             Assert.That(toMessage.IntValueBinding?.GetValue(), Is.EqualTo(5));
         }
 
-
         [Test]
-        public void GameDataAwareAssignedBindingsTest()
+        public void ModelDataSerializationRoundTripTest()
         {
-            int testValue = 7355608;
-
-            List<Type> typeMap = new List<Type>() { typeof(int) };
-
-            GameDataStore gameDataStore = new GameDataStore.GameDataStoreBuilder()
-                .RegisterType<int>(2)
+            GameDataStore gameDataStoreFrom = new GameDataStore.GameDataStoreBuilder()
+                .RegisterType<float>(1)
+                .RegisterType<Position>(1)
+                .RegisterType<ModelData>(1)
                 .Build();
 
-            DataReference testReference = gameDataStore.Create(testValue);
+            float baseRadiusInches = 0.75f;
+            List<Weapon> weapons = new List<Weapon>() { new Weapon("Weapon 1", 6, 2, 1, new HashSet<ISpecialRule_Weapon>()) };
+            List<SpecialRule> specialRules = new List<SpecialRule>() { new Rending() };
+            Position position = new Position(new Float3(1, 2, 3));
 
-            //Make a message the usual way. 
-            TestMessageWithIntBinding testMessage = new TestMessageWithIntBinding(testReference, gameDataStore);
+            ModelData modelData = new ModelData(baseRadiusInches, weapons, specialRules, position, gameDataStoreFrom);
 
+            DataReference modelDataReference = gameDataStoreFrom.Create(modelData);
 
-            Assert.That(testMessage.IntValueReference, Is.EqualTo(testReference));
-            Assert.That(testMessage.IntValueBinding.IsValid, Is.True);
-            Assert.That(testMessage.IntValueBinding.GetValue(), Is.EqualTo(testValue));
+            ModelData retrievedLocalModelData = gameDataStoreFrom.GetValue<ModelData>(modelDataReference);
+            Assert.That(retrievedLocalModelData, Is.EqualTo(modelData));
 
-            string messageAsJson = JsonConvert.SerializeObject(testMessage);
+            DataReference floatDataReference = retrievedLocalModelData.RemainingWoundsBinding.Reference;
+            DataReference positionDataReference = retrievedLocalModelData.PositionBinding.Reference;
 
-            JsonSerializerSettings jsonsettings = new JsonSerializerSettings
-            {
-                ContractResolver = new DataBindingContractResolver(gameDataStore)
-            };
+            string serializedFloatData = gameDataStoreFrom.GetValueAsJson<float>(floatDataReference);
+            string serializedPositionData = gameDataStoreFrom.GetValueAsJson<Position>(positionDataReference);
+            string serializedModelData = gameDataStoreFrom.GetValueAsJson<ModelData>(modelDataReference);
 
-            TestMessageWithIntBinding? deserializedTestMessage 
-                = JsonConvert.DeserializeObject< TestMessageWithIntBinding>(messageAsJson, jsonsettings);
+            GameDataStore gameDataStoreTo = new GameDataStore.GameDataStoreBuilder()
+                .RegisterType<float>(1)
+                .RegisterType<Position>(1)
+                .RegisterType<ModelData>(1)
+                .Build();
 
-            Assert.That(deserializedTestMessage, Is.Not.Null);
-            Assert.That(deserializedTestMessage.IntValueReference, Is.EqualTo(testReference));
-            Assert.That(deserializedTestMessage.IntValueBinding.GetValue(), Is.EqualTo(testValue));
+            gameDataStoreTo.CreateFromReferenceAndJson(floatDataReference, serializedFloatData);
+            gameDataStoreTo.CreateFromReferenceAndJson(positionDataReference, serializedPositionData);
+            gameDataStoreTo.CreateFromReferenceAndJson(modelDataReference, serializedModelData);
+
+            ModelData deserializedModelData = gameDataStoreTo.GetValue<ModelData>(modelDataReference);
+            Assert.That(deserializedModelData.RemainingWoundsBinding.Reference, Is.EqualTo(floatDataReference));
+            Assert.That(deserializedModelData.RemainingWoundsBinding.GetValue(), Is.EqualTo(modelData.RemainingWoundsBinding.GetValue()));
+            Assert.That(deserializedModelData.PositionBinding.Reference, Is.EqualTo(positionDataReference));
+            Assert.That(deserializedModelData.PositionBinding.GetValue(), Is.EqualTo(modelData.PositionBinding.GetValue()));
         }
 
-
-        public class TestMessageWithIntBinding : IGameDataAware
+        [Test]
+        public void UnitDataSerializationRoundTripTest()
         {
-            public DataReference IntValueReference;
+            // Build the source GameDataStore registering the needed types.
+            GameDataStore gameDataStoreFrom = new GameDataStore.GameDataStoreBuilder()
+                 .RegisterType<float>(1)
+                 .RegisterType<Position>(1)
+                 .RegisterType<ModelData>(1)
+                 .RegisterType<UnitData>(1)
+                 .Build();
 
+            // Create a dummy ModelData needed by UnitData.
+            float baseRadius = 0.75f;
+            List<Weapon> weapons = new List<Weapon>()
+        {
+            new Weapon("DummyWeapon", 6, 2, 1, new HashSet<ISpecialRule_Weapon>())
+        };
+            List<SpecialRule> specialRules = new List<SpecialRule>() { new Rending() };
+            Position position = new Position(new Float3(1, 2, 3));
+
+            // Create ModelData via the live constructor.
+            ModelData modelData = new ModelData(baseRadius, weapons, specialRules, position, gameDataStoreFrom);
+            DataReference modelDataReference = gameDataStoreFrom.Create(modelData);
+            DataBinding<ModelData> modelBinding = gameDataStoreFrom.GetDataBinding<ModelData>(modelDataReference);
+
+            // UnitData expects a list of model references.
+            List<DataReference> modelReferences = new List<DataReference> { modelDataReference };
+
+            // Create UnitData using the template constructor.
+            UnitData unitData = new UnitData(new PlayerID(Guid.NewGuid()), "Test Unit", 5, 4, specialRules, 
+                new List<DataBinding<ModelData>>() { modelBinding });
+            DataReference unitDataReference = gameDataStoreFrom.Create(unitData);
+
+            // Retrieve locally and serialize.
+            UnitData retrievedLocalUnitData = gameDataStoreFrom.GetValue<UnitData>(unitDataReference);
+
+            string serializedWoundsData = gameDataStoreFrom.GetValueAsJson<float>(modelData.RemainingWoundsBinding.Reference);
+            string serializedPositionData = gameDataStoreFrom.GetValueAsJson<Position>(modelData.PositionBinding.Reference);
+            string serializedModelData = gameDataStoreFrom.GetValueAsJson<ModelData>(modelDataReference);
+            string serializedUnitData = gameDataStoreFrom.GetValueAsJson<UnitData>(unitDataReference);
+
+            // Build a new GameDataStore and rehydrate.
+            GameDataStore gameDataStoreTo = new GameDataStore.GameDataStoreBuilder()
+                 .RegisterType<float>(1)
+                 .RegisterType<Position>(1)
+                 .RegisterType<ModelData>(1)
+                 .RegisterType<UnitData>(1)
+                 .Build();
+
+            gameDataStoreTo.CreateFromReferenceAndJson(modelData.RemainingWoundsBinding.Reference, serializedWoundsData);
+            gameDataStoreTo.CreateFromReferenceAndJson(modelData.PositionBinding.Reference, serializedPositionData);
+            gameDataStoreTo.CreateFromReferenceAndJson(modelDataReference, serializedModelData);
+            gameDataStoreTo.CreateFromReferenceAndJson(unitDataReference, serializedUnitData);
+
+            UnitData deserializedUnitData = gameDataStoreTo.GetValue<UnitData>(unitDataReference);
+
+            // Assert that the model binding reference and value are preserved.
+            DataReference retrievedModelBindingReference = deserializedUnitData.ModelBindings.First().Reference;
+            Assert.That(retrievedModelBindingReference, Is.EqualTo(modelDataReference));
+
+            ModelData retrievedModelFromUnit = deserializedUnitData.ModelBindings.First().GetValue();
+            ModelData originalModel = gameDataStoreFrom.GetValue<ModelData>(modelDataReference);
+            Assert.That(retrievedModelFromUnit.BaseRadiusInches, Is.EqualTo(originalModel.BaseRadiusInches));
+            Assert.That(retrievedModelFromUnit.RemainingWoundsBinding.Reference, Is.EqualTo(originalModel.RemainingWoundsBinding.Reference));
+            Assert.That(retrievedModelFromUnit.RemainingWoundsBinding.GetValue(), Is.EqualTo(originalModel.RemainingWoundsBinding.GetValue()));
+            Assert.That(retrievedModelFromUnit.PositionBinding.Reference, Is.EqualTo(originalModel.PositionBinding.Reference));
+            Assert.That(retrievedModelFromUnit.PositionBinding.GetValue(), Is.EqualTo(originalModel.PositionBinding.GetValue()));
+
+            // Assert basic properties.
+            Assert.That(deserializedUnitData.Name, Is.EqualTo(unitData.Name));
+            Assert.That(deserializedUnitData.Quality, Is.EqualTo(unitData.Quality));
+            Assert.That(deserializedUnitData.Defense, Is.EqualTo(unitData.Defense));
+        }
+
+        [Test]
+        public void ArmyDataSerializationRoundTripTest()
+        {
+            // Build the source GameDataStore with required types.
+            GameDataStore gameDataStoreFrom = new GameDataStore.GameDataStoreBuilder()
+                 .RegisterType<float>(1)
+                 .RegisterType<Position>(1)
+                 .RegisterType<ModelData>(1)
+                 .RegisterType<UnitData>(1)
+                 .RegisterType<ArmyData>(1)
+                 .Build();
+
+            // Create a dummy ModelData (as above) for the UnitData.
+            float baseRadius = 0.75f;
+            List<Weapon> weapons = new List<Weapon>()
+        {
+            new Weapon("DummyWeapon", 6, 2, 1, new HashSet<ISpecialRule_Weapon>())
+        };
+            List<SpecialRule> specialRules = new List<SpecialRule>() { new Rending() };
+            Position position = new Position(new Float3(1, 2, 3));
+            ModelData modelData = new ModelData(baseRadius, weapons, specialRules, position, gameDataStoreFrom);
+            DataReference modelDataReference = gameDataStoreFrom.Create(modelData);
+            DataBinding<ModelData> modelBinding = gameDataStoreFrom.GetDataBinding<ModelData>(modelDataReference);
+
+            List<DataReference> modelReferences = new List<DataReference> { modelDataReference };
+            UnitData unitData = new UnitData(new PlayerID(Guid.NewGuid()), "Test Model", 4, 4, specialRules,
+                new List<DataBinding<ModelData>>() { modelBinding });
+            DataReference unitDataReference = gameDataStoreFrom.Create(unitData);
+            DataBinding<UnitData> unitBinding = gameDataStoreFrom.GetDataBinding<UnitData>(unitDataReference);
+
+            // Create ArmyData using the live constructor.
+            ArmyData armyData = new ArmyData(unitData.PlayerID, new List<DataBinding<UnitData>>() { unitBinding });
+            DataReference armyDataReference = gameDataStoreFrom.Create(armyData);
+
+            // Retrieve and serialize.
+            ArmyData retrievedLocalArmyData = gameDataStoreFrom.GetValue<ArmyData>(armyDataReference);
+
+            string serializedWoundsData = gameDataStoreFrom.GetValueAsJson<float>(modelData.RemainingWoundsBinding.Reference);
+            string serializedPositionData = gameDataStoreFrom.GetValueAsJson<Position>(modelData.PositionBinding.Reference);
+            string serializedModelData = gameDataStoreFrom.GetValueAsJson<ModelData>(modelDataReference);
+            string serializedUnitData = gameDataStoreFrom.GetValueAsJson<UnitData>(unitDataReference);
+            string serializedArmyData = gameDataStoreFrom.GetValueAsJson<ArmyData>(armyDataReference);
+
+            // Build a new store and rehydrate.
+            GameDataStore gameDataStoreTo = new GameDataStore.GameDataStoreBuilder()
+                 .RegisterType<float>(1)
+                 .RegisterType<Position>(1)
+                 .RegisterType<ModelData>(1)
+                 .RegisterType<UnitData>(1)
+                 .RegisterType<ArmyData>(1)
+                 .Build();
+
+            gameDataStoreTo.CreateFromReferenceAndJson(modelData.RemainingWoundsBinding.Reference, serializedWoundsData);
+            gameDataStoreTo.CreateFromReferenceAndJson(modelData.PositionBinding.Reference, serializedPositionData);
+            gameDataStoreTo.CreateFromReferenceAndJson(modelDataReference, serializedModelData);
+            gameDataStoreTo.CreateFromReferenceAndJson(unitDataReference, serializedUnitData);
+            gameDataStoreTo.CreateFromReferenceAndJson(armyDataReference, serializedArmyData);
+
+            ArmyData deserializedArmyData = gameDataStoreTo.GetValue<ArmyData>(armyDataReference);
+
+            // Assert that the unit binding references and the contained UnitData values are preserved.
+            Assert.That(deserializedArmyData.UnitBindings.Count, Is.EqualTo(retrievedLocalArmyData.UnitBindings.Count));
+            for (int i = 0; i < deserializedArmyData.UnitBindings.Count; i++)
+            {
+                DataReference originalRef = retrievedLocalArmyData.UnitBindings[i].Reference;
+                DataReference deserializedRef = deserializedArmyData.UnitBindings[i].Reference;
+                Assert.That(deserializedRef, Is.EqualTo(originalRef));
+
+                UnitData originalUnit = retrievedLocalArmyData.UnitBindings[i].GetValue();
+                UnitData deserializedUnit = deserializedArmyData.UnitBindings[i].GetValue();
+                Assert.That(deserializedUnit.Name, Is.EqualTo(originalUnit.Name));
+                Assert.That(deserializedUnit.Quality, Is.EqualTo(originalUnit.Quality));
+                Assert.That(deserializedUnit.Defense, Is.EqualTo(originalUnit.Defense));
+                
+                List<DataReference> originalModelBindings = originalUnit.ModelBindings.Select(model => model.Reference).ToList();
+                List<DataReference> deserializedModelBindings = deserializedUnit.ModelBindings.Select(model => model.Reference).ToList();
+
+                Assert.That(originalModelBindings.Count, Is.EqualTo(deserializedModelBindings.Count));
+                for(int j = 0; j < originalModelBindings.Count; j++)
+                {
+                    Assert.That(originalModelBindings[i], Is.EqualTo(deserializedModelBindings[i]));
+                }
+
+            }
+        }
+
+        public class TestMessageWithIntBinding
+        {
             public DataBinding<int>? IntValueBinding;
 
+            
             [JsonConstructor]
-            public TestMessageWithIntBinding(DataReference intValueReference)
+            public TestMessageWithIntBinding(DataBinding<int> intValueBinding)
             {
-                IntValueReference = intValueReference;
+                IntValueBinding = intValueBinding;
             }
+            
 
             public TestMessageWithIntBinding(DataReference intValueReference, 
                 IReadWriteableGameDataStore gameDataStore)
             {
-                IntValueReference = intValueReference;
-                IntValueBinding = gameDataStore.GetDataBinding<int>(IntValueReference);
-            }
-
-            public void SetGameDataStore(IReadWriteableGameDataStore gameDataStore)
-            {
-                IntValueBinding = gameDataStore.GetDataBinding<int>(IntValueReference);
+                IntValueBinding = gameDataStore.GetDataBinding<int>(intValueReference);
             }
         }
 
     }
-
-
 }

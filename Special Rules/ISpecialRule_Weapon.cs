@@ -8,7 +8,7 @@ namespace FDG
 
     }
 
-    public class SpecialRule_Weapon : ISpecialRule_Weapon
+    public class SpecialRule_Weapon : SpecialRule, ISpecialRule_Weapon
     {
         public List<ICombatEffect<TResult>> GetEffects<TResult>()
         {

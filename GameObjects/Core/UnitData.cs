@@ -1,19 +1,22 @@
 ﻿using FDG.Data;
-using FDG.Data.Serialization;
-using System.Text.Json.Serialization;
-
+using Newtonsoft.Json;
 namespace FDG
 {
-    public class UnitData : IUnit, IGameDataAware
+    public class UnitData : IUnit
     {
         public PlayerID PlayerID { get; private set; }
 
-        public string Name { get; }
+        public string Name { get; set; }
 
-        public int Quality { get; }
+        public int Quality { get; set; }
 
-        public int Defense { get; }
+        public int Defense { get; set; }
 
+        public List<SpecialRule> SpecialRules { get; set; } //TODO: Implement, looking at models.
+
+        public List<DataBinding<ModelData>> ModelBindings;
+
+        [JsonIgnore]
         public float MaxWounds
         {
             get
@@ -27,6 +30,7 @@ namespace FDG
             }
         }
 
+        [JsonIgnore]
         public float RemainingWounds
         {
             get
@@ -42,19 +46,19 @@ namespace FDG
 
         public event DataValueChangedHandler<float>? OnWoundsDealt;
 
-        public List<ISpecialRule> SpecialRules { get; } //TODO: Implement, looking at models.
-
+        [JsonIgnore]
         public List<IModel> Models => ModelBindings.Select(binding => binding.GetValue())
             .Cast<IModel>()
             .ToList();
+        
+        [JsonIgnore]
+        List<ISpecialRule> IUnit.SpecialRules => SpecialRules.Cast<ISpecialRule>().ToList();
 
-        private List<DataReference> _modelReferences;
 
-        public List<DataBinding<ModelData>> ModelBindings;
 
         [JsonConstructor]
         public UnitData(PlayerID playerID, string name, int quality, int defense, 
-            List<ISpecialRule> specialRules, List<DataReference> modelReferences)
+            List<SpecialRule> specialRules, List<DataBinding<ModelData>> modelBindings)
         {
             PlayerID = playerID;
             Name = name;
@@ -63,10 +67,8 @@ namespace FDG
 
             SpecialRules = specialRules;
 
-            _modelReferences = modelReferences;
+            ModelBindings = modelBindings;
         }
-
-        
 
         public UnitData(IUnitTemplate unitToCopy, List<DataReference> modelReferences, IReadWriteableGameDataStore gameDataStore)
         {
@@ -74,8 +76,6 @@ namespace FDG
             Name = unitToCopy.Name;
             Quality = unitToCopy.Quality;
             Defense = unitToCopy.Defense;
-
-            _modelReferences = modelReferences;
 
             ModelBindings = new List<DataBinding<ModelData>>();
             foreach (DataReference model in modelReferences)
@@ -86,18 +86,7 @@ namespace FDG
             }
 
             //TEMP
-            SpecialRules = new List<ISpecialRule>();
-        }
-
-        public void SetGameDataStore(IReadWriteableGameDataStore gameDataStore)
-        {
-            ModelBindings = new List<DataBinding<ModelData>>();
-            foreach (DataReference model in _modelReferences)
-            {
-                DataBinding<ModelData> modelBinding = gameDataStore.GetDataBinding<ModelData>(model);
-                ModelBindings.Add(modelBinding);
-                ((IModel)modelBinding.GetValue()).OnWoundsDealt += OnModelWoundsDealt;
-            }
+            SpecialRules = new List<SpecialRule>();
         }
 
         private void OnModelWoundsDealt(float oldWoundsCount, float newWoundsCount)

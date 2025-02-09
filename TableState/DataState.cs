@@ -1,9 +1,5 @@
 ﻿using FDG.Data;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+
 
 namespace FutureOfDarkGrimness.TableState
 {
@@ -38,12 +34,12 @@ namespace FutureOfDarkGrimness.TableState
             _gameDataStore.SubscribeToOnRemoved<TDataObject>(ObjectRemoved);
         }
 
-        private void ObjectCreated(TDataObject dataObject)
+        private void ObjectCreated(DataReference _, TDataObject dataObject)
         {
             OnObjectCreated?.Invoke(dataObject);
         }
 
-        private void ObjectRemoved(TDataObject dataObject)
+        private void ObjectRemoved(DataReference _, TDataObject dataObject)
         {
             OnObjectRemoved?.Invoke(dataObject);
         }

@@ -45,7 +45,5 @@ namespace FDG.Data
         {
             IsValid = false;
         }
-
-
     }
 }

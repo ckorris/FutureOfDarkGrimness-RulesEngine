@@ -202,7 +202,6 @@ namespace FDG.Data
             }
 
             return _bindings[dataReference.Index];
-
         }
 
         private class ExceededDataTypeCapacityException : Exception

@@ -1,5 +1,5 @@
 ﻿
-using Newtonsoft.Json;
+using FDG.Data.Containers;
 
 namespace FDG.Data
 {
@@ -11,7 +11,12 @@ namespace FDG.Data
 
         void SetValue(DataReference reference, object newValue);
 
+        object? GetValueUntyped(DataReference reference);
+
+        IEnumerable<DataReference> GetAllDataReferences();
+
         bool Destroy(DataReference reference);
+
     }
 
     public class ComponentStore<T> : IComponentStore
@@ -117,10 +122,11 @@ namespace FDG.Data
                 return false;
             }
 
+            T valueBeforeRemoval = _data[reference.Index];
             _data[reference.Index] = default; //Technically unnecessary, but keeps things clean.
             _used[reference.Index] = false;
 
-            OnComponentRemoved?.Invoke(reference, _data[reference.Index]);
+            OnComponentRemoved?.Invoke(reference, valueBeforeRemoval);
 
             if (_bindings.ContainsKey(reference.Index))
             {
@@ -247,6 +253,11 @@ namespace FDG.Data
             }
 
             return _bindings[dataReference.Index];
+        }
+
+        public object? GetValueUntyped(DataReference reference)
+        {
+            return GetValue(reference);
         }
 
         private class ExceededDataTypeCapacityException : Exception

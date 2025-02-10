@@ -100,7 +100,7 @@ namespace FDG.Network.Connection
 
                         Debug.WriteLine("Received data as host.");
 
-                        _messageSerializer.DeserializeMessageAndInvoke(payloadSegment);
+                        _messageSerializer.DeserializeMessageAndInvoke(payloadSegment, connectionID);
                         if (payloadSegment.Array != null)
                         {
                             ArrayPool<byte>.Shared.Return(payloadSegment.Array);
@@ -187,13 +187,46 @@ namespace FDG.Network.Connection
                 ArrayPool<byte>.Shared.Return(commandBytes.Array);
             }
         }
+        public async Task SendCommandAsync<TMessage>(TMessage message, ConnectionID connectionID)
+        {
+            if (_isRunning == false)
+            {
+                Debug.WriteLine("Didn't sent command because wasn't running.");
+                return;
+            }
 
-        public void RegisterForMessageEvent<T>(Action<T> onMessageReceived)
+            if (_connectedClients.ContainsKey(connectionID) == false)
+            {
+                throw new ArgumentException($"No connected client with ID {connectionID}.");
+            }
+
+            ArraySegment<byte> commandBytes = _messageSerializer.SerializeMessage(message);
+
+            TcpClient client = _connectedClients[connectionID];
+
+            try
+            {
+                NetworkStream stream = client.GetStream();
+                await CommandProtocol.WriteCommandAsync(stream, commandBytes)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                Debug.WriteLine($"Exception while broadcasting to client ID {connectionID}: {exception.Message}");
+            }
+
+            if (commandBytes.Array != null)
+            {
+                ArrayPool<byte>.Shared.Return(commandBytes.Array);
+            }
+        }
+
+        public void RegisterForMessageEvent<T>(Action<T, ConnectionID> onMessageReceived)
         {
             _messageSerializer.RegisterForMessageEvent(onMessageReceived);
         }
 
-        public void DeregisterForMessageEvent<T>(Action<T> messageToUnsubscribe)
+        public void DeregisterForMessageEvent<T>(Action<T, ConnectionID> messageToUnsubscribe)
         {
             _messageSerializer.DeregisterForMessageEvent(messageToUnsubscribe);
         }
@@ -224,6 +257,7 @@ namespace FDG.Network.Connection
 
             Debug.WriteLine("Host stopped.");
         }
+
 
     }
 }

@@ -1,6 +1,8 @@
-﻿using FDG.Data.Serialization;
+﻿using FDG.Data.Containers;
+using FDG.Data.Serialization;
 using Newtonsoft.Json;
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 
 namespace FDG.Data
@@ -13,13 +15,11 @@ namespace FDG.Data
 
         private Dictionary<Type, Action<object, DataReference, object>> _setValueCache = new();
 
-        public event Action<DataReference, Type, object>? OnDataAddedUntyped;
-        public event Action<DataReference, Type, object>? OnDataUpdatedUntyped;
-        public event Action<DataReference, Type, object>? OnDataRemovedUntyped;
+        public event Action<DataReference, string>? OnDataAddedAsJson;
+        public event Action<DataReference, string>? OnDataUpdatedAsJson;
+        public event Action<DataReference>? OnDataRemoved;
 
         private const int DEFAULT_COMPONENT_STORE_CAPACITY = 256;
-
-        //private JsonSerializerSettings _jsonSerializerSettings;
 
         JsonConverter[] _jsonConverters;
 
@@ -219,6 +219,23 @@ namespace FDG.Data
             return store.GetAllDataReferences();
         }
 
+        public List<ReferenceJsonValuePair> GetAllDataReferencesAsJson()
+        {
+            List<ReferenceJsonValuePair> allReferences = new List<ReferenceJsonValuePair>();
+
+            foreach (IComponentStore componentStore in _componentStores.Values)
+            {
+                foreach(DataReference reference in componentStore.GetAllDataReferences())
+                {
+                    object? value = componentStore.GetValueUntyped(reference);
+                    string valueAsJson = JsonConvert.SerializeObject(value, _jsonConverters);
+                    allReferences.Add(new ReferenceJsonValuePair(reference, valueAsJson));
+                }
+            }
+
+            return allReferences;
+        }
+
         public void SubscribeToOnCreated<T>(Action<DataReference, T> onCreated)
         {
             GetComponentStoreOrThrow<T>().OnComponentAdded += onCreated;
@@ -254,8 +271,11 @@ namespace FDG.Data
             {
                 throw new NullReferenceException();
             }
-
-            OnDataAddedUntyped?.Invoke(dataReference, typeof(T), typedValue);
+            if(OnDataAddedAsJson != null)
+            {
+                string asJson = JsonConvert.SerializeObject(typedValue, _jsonConverters);
+                OnDataAddedAsJson.Invoke(dataReference, asJson);
+            }
         }
 
         private void InvokeDataUpdatedUntyped<T>(DataReference dataReference, T typedValue)
@@ -265,17 +285,16 @@ namespace FDG.Data
                 throw new NullReferenceException();
             }
 
-            OnDataUpdatedUntyped?.Invoke(dataReference, typeof(T), typedValue);
+            if(OnDataUpdatedAsJson != null)
+            {
+                string asJson = JsonConvert.SerializeObject(typedValue, _jsonConverters);
+                OnDataUpdatedAsJson.Invoke(dataReference, asJson);
+            }
         }
 
-        private void InvokeDataRemovedUntyped<T>(DataReference dataReference, T typedValue)
+        private void InvokeDataRemovedUntyped<T>(DataReference dataReference, T _)
         {
-            if (typedValue == null)
-            {
-                throw new NullReferenceException();
-            }
-
-            OnDataRemovedUntyped?.Invoke(dataReference, typeof(T), typedValue);
+            OnDataRemoved?.Invoke(dataReference);
         }
 
         private class TypeNotRegisteredException : Exception
@@ -341,6 +360,9 @@ namespace FDG.Data
                 }
             }
         }
+
+
+
 
         /// <summary>
         /// Exists so that the index of any used type is not 0, so that a default TypeID doesn't erroneously

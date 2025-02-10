@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json;
+﻿using FDG.Network.Connection;
+using Newtonsoft.Json;
 using System.Buffers;
 using System.Diagnostics;
 using System.Text;
@@ -8,13 +9,13 @@ namespace FDG.Network.Messages
 {
     internal interface IMessageSerializer
     {
-        public void RegisterForMessageEvent<T>(Action<T> onMessageReceived);
+        public void RegisterForMessageEvent<T>(Action<T, ConnectionID> onMessageReceived);
 
-        public void DeregisterForMessageEvent<T>(Action<T> messageToUnsubscribe);
+        public void DeregisterForMessageEvent<T>(Action<T, ConnectionID> messageToUnsubscribe);
 
         public ArraySegment<byte> SerializeMessage<T>(T message);
 
-        public void DeserializeMessageAndInvoke(ArraySegment<byte> data);
+        public void DeserializeMessageAndInvoke(ArraySegment<byte> data, ConnectionID connectionID);
     }
 
     /// <summary>
@@ -26,7 +27,7 @@ namespace FDG.Network.Messages
 
         private readonly Dictionary<Type, List<Delegate>> _messageHandlers = new Dictionary<Type, List<Delegate>>();
 
-        public void RegisterForMessageEvent<T>(Action<T> onMessageReceived)
+        public void RegisterForMessageEvent<T>(Action<T, ConnectionID> onMessageReceived)
         {
             string messageType = typeof(T).ToString();
 
@@ -45,7 +46,7 @@ namespace FDG.Network.Messages
             handlers.Add(onMessageReceived);
         }
 
-        public void DeregisterForMessageEvent<T>(Action<T> messageToUnsubscribe)
+        public void DeregisterForMessageEvent<T>(Action<T, ConnectionID> messageToUnsubscribe)
         {
             Type typeKey = typeof(T);
             if(_messageHandlers.TryGetValue(typeKey, out List<Delegate>? handlers))
@@ -84,7 +85,7 @@ namespace FDG.Network.Messages
             return new ArraySegment<byte>(messageArray, 0, combinedLength);
         }
 
-        public void DeserializeMessageAndInvoke(ArraySegment<byte> data)
+        public void DeserializeMessageAndInvoke(ArraySegment<byte> data, ConnectionID connectionID)
         {
             int typeLength = BitConverter.ToInt32(data.Array.AsSpan(0, sizeof(int)));
 
@@ -103,10 +104,10 @@ namespace FDG.Network.Messages
             string jsonString = Encoding.UTF8.GetString(data.Array, data.Offset + jsonOffset, jsonLength);
             object message = JsonConvert.DeserializeObject(jsonString, messageType);
 
-            DispatchToHandlers(message);
+            DispatchToHandlers(message, connectionID);
         }
 
-        private void DispatchToHandlers(object messageObject)
+        private void DispatchToHandlers(object messageObject, ConnectionID connectionID)
         {
             Type actualType = messageObject.GetType();
             if(_messageHandlers.TryGetValue(actualType, out List<Delegate>? handlers))
@@ -115,7 +116,7 @@ namespace FDG.Network.Messages
 
                 foreach(Delegate del in handlers)
                 {
-                    del.DynamicInvoke(messageObject);
+                    del.DynamicInvoke(messageObject, connectionID);
                 }
             }
         }

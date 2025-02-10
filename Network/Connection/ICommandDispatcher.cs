@@ -1,7 +1,4 @@
 ﻿
-using FDG.Network.Messages;
-using System.Buffers;
-
 namespace FDG.Network.Connection
 {
     /// <summary>
@@ -9,10 +6,12 @@ namespace FDG.Network.Connection
     /// </summary>
     public interface ICommandDispatcher
     {
-        public void RegisterForMessageEvent<T>(Action<T> onMessageReceived);
+        public void RegisterForMessageEvent<T>(Action<T, ConnectionID> onMessageReceived);
 
-        public void DeregisterForMessageEvent<T>(Action<T> messageToUnsubscribe);
+        public void DeregisterForMessageEvent<T>(Action<T, ConnectionID> messageToUnsubscribe);
 
         public Task SendCommandAsync<TMessage>(TMessage message);
+
+        public Task SendCommandAsync<TMessage>(TMessage message, ConnectionID connectionID);
     }
 }

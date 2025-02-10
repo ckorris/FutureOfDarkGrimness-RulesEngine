@@ -100,24 +100,24 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
             _commandDispatcher.DeregisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);
         }
 
-        private void OnChatMessageReceived(LobbyChatMessage message)
+        private void OnChatMessageReceived(LobbyChatMessage message, ConnectionID _)
         {
             Debug.WriteLine($"Received chat message as client: {message.Message}");
 
             _chatMessages.OnNext(message);
         }
 
-        private void OnServerNameUpdateReceived(LobbyServerNameMessage lobbyServerNameMessage)
+        private void OnServerNameUpdateReceived(LobbyServerNameMessage lobbyServerNameMessage, ConnectionID _)
         {
             _serverName.OnNext(lobbyServerNameMessage.ServerName);
         }
 
-        private void OnPlayerListUpdateReceived(LobbyPlayerListUpdate playerListUpdate)
+        private void OnPlayerListUpdateReceived(LobbyPlayerListUpdate playerListUpdate, ConnectionID _)
         {
             _playerInfos.OnNext(playerListUpdate.PlayerInfoList);
         }
 
-        private void OnGameSettingsUpdateReceived(LobbyGameSettingsUpdate gameSettingsUpdate)
+        private void OnGameSettingsUpdateReceived(LobbyGameSettingsUpdate gameSettingsUpdate, ConnectionID _)
         {
             if (_settings_ArmyPoints.Value != gameSettingsUpdate.GameSettings.ArmyPoints)
             {
@@ -137,7 +137,7 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
             }
         }
 
-        private void OnLaunchGameMessageReceived(LaunchGameMessage launchGameMessage)
+        private void OnLaunchGameMessageReceived(LaunchGameMessage launchGameMessage, ConnectionID _)
         {
             Debug.WriteLine($"Received launch game message. ");
 

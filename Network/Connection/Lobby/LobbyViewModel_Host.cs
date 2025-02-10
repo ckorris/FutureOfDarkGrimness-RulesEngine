@@ -97,7 +97,7 @@ namespace FDG.Network.Connection
             //Maybe do nothing?
         }
 
-        private void OnReceiveNewClientGreeting(NewLobbyClientGreeting greeting)
+        private void OnReceiveNewClientGreeting(NewLobbyClientGreeting greeting, ConnectionID _)
         {
             Debug.WriteLine($"Received greeting from new client: {greeting.PlayerName}");
 
@@ -127,7 +127,7 @@ namespace FDG.Network.Connection
             //TODO.
         }
 
-        private void OnChatMessageReceived(LobbyChatMessage chatMessage)
+        private void OnChatMessageReceived(LobbyChatMessage chatMessage, ConnectionID _)
         {
             Debug.WriteLine($"Received chat message as host: {chatMessage.Message}");
 

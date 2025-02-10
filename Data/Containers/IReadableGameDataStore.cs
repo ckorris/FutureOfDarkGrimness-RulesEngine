@@ -1,4 +1,6 @@
 ﻿
+using FDG.Data.Containers;
+
 namespace FDG.Data
 {
     public interface IReadableGameDataStore
@@ -11,9 +13,11 @@ namespace FDG.Data
 
         IEnumerable<DataReference> GetAllDataReferences<T>();
 
-        event Action<DataReference, Type, object> OnDataAddedUntyped;
-        event Action<DataReference, Type, object> OnDataUpdatedUntyped;
-        event Action<DataReference, Type, object> OnDataRemovedUntyped;
+        event Action<DataReference, string> OnDataAddedAsJson;
+        event Action<DataReference, string> OnDataUpdatedAsJson;
+        event Action<DataReference> OnDataRemoved;
+
+        List<ReferenceJsonValuePair> GetAllDataReferencesAsJson();
 
         bool IsValid(DataReference reference, out EInvalidReason failReason);
 

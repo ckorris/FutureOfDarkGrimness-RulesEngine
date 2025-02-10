@@ -1,5 +1,7 @@
-﻿using System;
-using FDG.Data;
+﻿using FDG.Data;
+using FDG.Data.Containers;
+using FDG.Network.Connection;
+using FDG.Network.Messages.DataMessages;
 
 namespace FDG.Network.Synchronization
 {
@@ -8,13 +10,21 @@ namespace FDG.Network.Synchronization
 
         private IReadWriteableGameDataStore _gameDataStore;
 
-        public GameDataSynchronizer(IReadWriteableGameDataStore gameDataStore)
+        private ICommandDispatcher _commandDispatcher;
+
+        public GameDataSynchronizer(IReadWriteableGameDataStore gameDataStore, ICommandDispatcher commandDispatcher)
         {
             _gameDataStore = gameDataStore;
+            _commandDispatcher = commandDispatcher;
 
-            _gameDataStore.OnDataAddedUntyped += SendDataAddedMessageToAll;
-            _gameDataStore.OnDataUpdatedUntyped += SendDataUpdatedMessageToAll;
-            _gameDataStore.OnDataRemovedUntyped += SendDataRemovedMessageToAll;
+            _gameDataStore.OnDataAddedAsJson += SendDataAddedMessageToAll;
+            _gameDataStore.OnDataUpdatedAsJson += SendDataUpdatedMessageToAll;
+            _gameDataStore.OnDataRemoved += SendDataRemovedMessageToAll;
+
+            _commandDispatcher.RegisterForMessageEvent<AddSingleDataMessage>(OnReceivedDataAddedMessage);
+            _commandDispatcher.RegisterForMessageEvent<UpdateSingleDataMessage>(OnReceivedDataUpdatedMessage);
+            _commandDispatcher.RegisterForMessageEvent<RemoveSingleDataMessage>(OnReceivedDataRemovedMessage);
+            _commandDispatcher.RegisterForMessageEvent<AddAllDataMessage>(OnReceivedAllDataMessage);
 
             //Need to pass in network message thing to subscribe to messages received,
             //and player slots to subscribe to new players.
@@ -23,44 +33,53 @@ namespace FDG.Network.Synchronization
             //Consider splitting or having a config, but that may be too much complexity for little savings.
         }
 
-        private void SendDataAddedMessageToAll(DataReference data, Type type, object newObject)
+        private void SendDataAddedMessageToAll(DataReference data, string newObjectJson)
         {
-            throw new NotImplementedException();
+            AddSingleDataMessage addMessage = new AddSingleDataMessage(data, newObjectJson);
+            _commandDispatcher.SendCommandAsync(addMessage);
         }
 
-        private void SendDataUpdatedMessageToAll(DataReference data, Type type, object newValue)
+        private void SendDataUpdatedMessageToAll(DataReference data, string newValueJson)
         {
-            throw new NotImplementedException();
+            UpdateSingleDataMessage updateMessage = new UpdateSingleDataMessage(data, newValueJson);
+            _commandDispatcher.SendCommandAsync(updateMessage);
         }
 
-        private void SendDataRemovedMessageToAll(DataReference data, Type type, object removedObject)
+        private void SendDataRemovedMessageToAll(DataReference data)
         {
-            throw new NotImplementedException();
+            RemoveSingleDataMessage removeMessage = new RemoveSingleDataMessage(data);
+            _commandDispatcher.SendCommandAsync(removeMessage);
         }
 
-        private void SendAllDataToNewPlayer(PlayerID playerID)
+        private void SendAllDataToNewPlayer(ConnectionID connectionID)
         {
-            throw new NotImplementedException();
+            List<ReferenceJsonValuePair> allData = _gameDataStore.GetAllDataReferencesAsJson();
+            AddAllDataMessage allDataMessage = new AddAllDataMessage(allData);
+            _commandDispatcher.SendCommandAsync(allDataMessage, connectionID);
         }
 
-        private void OnReceivedDataAddedMessage() //TODO: Add params.
+        private void OnReceivedDataAddedMessage(AddSingleDataMessage addMessage, ConnectionID _)
         {
-            throw new NotImplementedException();
+            _gameDataStore.CreateFromReferenceAndJson(addMessage.DataReference, addMessage.InitialValueAsJson);
         }
 
-        private void OnReceivedDataUpdatedMessage()
+        private void OnReceivedDataUpdatedMessage(UpdateSingleDataMessage updateMessage, ConnectionID _)
         {
-            throw new NotImplementedException();
+            _gameDataStore.SetValueWithJson(updateMessage.DataReference, updateMessage.ValueAsJson);
         }
 
-        private void OnReceivedDataRemovedMessage()
+        private void OnReceivedDataRemovedMessage(RemoveSingleDataMessage removeMessage, ConnectionID _)
         {
-            throw new NotImplementedException();
+            _gameDataStore.Destroy(removeMessage.DataReference);
         }
 
-        private void OnReceivedAllDataMessage()
+        private void OnReceivedAllDataMessage(AddAllDataMessage allDataMessage, ConnectionID _)
         {
-            throw new NotImplementedException();
+            foreach(ReferenceJsonValuePair refValuePair in allDataMessage.AllData)
+            {
+                _gameDataStore.CreateFromReferenceAndJson(refValuePair.DataReference, refValuePair.JsonValue);
+            }
         }
+
     }
 }

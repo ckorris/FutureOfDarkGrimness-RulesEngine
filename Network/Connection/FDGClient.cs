@@ -49,12 +49,12 @@ namespace FDG.Network.Connection
         }
 
 
-        public void RegisterForMessageEvent<T>(Action<T> onMessageReceived)
+        public void RegisterForMessageEvent<T>(Action<T, ConnectionID> onMessageReceived)
         {
             _messageSerializer.RegisterForMessageEvent(onMessageReceived);
         }
 
-        public void DeregisterForMessageEvent<T>(Action<T> messageToUnsubscribe)
+        public void DeregisterForMessageEvent<T>(Action<T, ConnectionID> messageToUnsubscribe)
         {
             _messageSerializer.DeregisterForMessageEvent(messageToUnsubscribe);
         }
@@ -89,6 +89,12 @@ namespace FDG.Network.Connection
             }
         }
 
+        public Task SendCommandAsync<TMessage>(TMessage message, ConnectionID connectionID)
+        {
+            //Not expecting this to be called on the client, but can't expect it to know the difference and catch that.
+            return SendCommandAsync(message); 
+        }
+
         public void Disconnect()
         {
             if (_isConnected == false)
@@ -117,6 +123,7 @@ namespace FDG.Network.Connection
                 using (_tcpClient)
                 {
                     NetworkStream stream = _tcpClient.GetStream();
+                    ConnectionID hostConnectionID = new ConnectionID(Guid.NewGuid());
 
                     while (cancellationToken.IsCancellationRequested == false)
                     {
@@ -125,7 +132,7 @@ namespace FDG.Network.Connection
 
                         Debug.WriteLine("Received data as client.");
 
-                        _messageSerializer.DeserializeMessageAndInvoke(payloadSegment);
+                        _messageSerializer.DeserializeMessageAndInvoke(payloadSegment, hostConnectionID);
                     }
                 }
             }
@@ -142,6 +149,5 @@ namespace FDG.Network.Connection
                 Disconnect();
             }
         }
-
     }
 }

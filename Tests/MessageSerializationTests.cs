@@ -306,7 +306,6 @@ namespace FDG.Tests
                 {
                     Assert.That(originalModelBindings[i], Is.EqualTo(deserializedModelBindings[i]));
                 }
-
             }
         }
 

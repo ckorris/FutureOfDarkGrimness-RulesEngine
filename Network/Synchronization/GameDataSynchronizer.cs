@@ -25,6 +25,7 @@ namespace FDG.Network.Synchronization
             _commandDispatcher.RegisterForMessageEvent<UpdateSingleDataMessage>(OnReceivedDataUpdatedMessage);
             _commandDispatcher.RegisterForMessageEvent<RemoveSingleDataMessage>(OnReceivedDataRemovedMessage);
             _commandDispatcher.RegisterForMessageEvent<AddAllDataMessage>(OnReceivedAllDataMessage);
+            _commandDispatcher.RegisterForMessageEvent<RequestAllDataMessage>(OnReceivedRequestAllDataMessage);
 
             //Need to pass in network message thing to subscribe to messages received,
             //and player slots to subscribe to new players.
@@ -32,6 +33,15 @@ namespace FDG.Network.Synchronization
             //need to receive catch-up messages and clients don't need to send things to new players.
             //Consider splitting or having a config, but that may be too much complexity for little savings.
         }
+
+        /// <summary>
+        /// Used to catch up when first joining a session.
+        /// </summary>
+        public void RequestAllCurrentData()
+        {
+            _commandDispatcher.SendCommandAsync(new RequestAllDataMessage());
+        }
+
 
         private void SendDataAddedMessageToAll(DataReference data, string newObjectJson)
         {
@@ -51,7 +61,7 @@ namespace FDG.Network.Synchronization
             _commandDispatcher.SendCommandAsync(removeMessage);
         }
 
-        private void SendAllDataToNewPlayer(ConnectionID connectionID)
+        private void OnReceivedRequestAllDataMessage(RequestAllDataMessage _, ConnectionID connectionID)
         {
             List<ReferenceJsonValuePair> allData = _gameDataStore.GetAllDataReferencesAsJson();
             AddAllDataMessage allDataMessage = new AddAllDataMessage(allData);

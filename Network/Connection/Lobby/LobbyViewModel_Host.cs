@@ -1,4 +1,7 @@
-﻿using FDG.Network.Connection.Lobby;
+﻿using FDG.Data;
+using FDG.EngineInterface;
+using FDG.GameModel;
+using FDG.Network.Connection.Lobby;
 using FDG.Network.Messages;
 using FDG.Players;
 using FutureOfDarkGrimness.Network.Messages;
@@ -43,7 +46,7 @@ namespace FDG.Network.Connection
         private const string SERVER_START_MESSAGE = "Server started successfully.";
         private const string LAUNCHING_GAME_MESSAGE = "About to launch game.";
 
-        public event Action? OnLaunched;
+        public event Action<IFDGGame>? OnLaunched;
 
         private GameSettings _gameSettings = GameSettings.GetDefault();
 
@@ -168,10 +171,16 @@ namespace FDG.Network.Connection
             await _commandDispatcher.SendCommandAsync(tributeMessage);
             await Task.Delay(50);
 
+            //Maybe something else should make these but eh.
+            GameDataStore gameDataStore = GameDataStore.GameDataStoreBuilder.GetDefault();
+
+            FDGServer server = new FDGServer(gameDataStore, _host);
+            FDGGame_AsLocal gameModel = new FDGGame_AsLocal(gameDataStore);
+
+            OnLaunched?.Invoke(gameModel);
+
             LaunchGameMessage launchGameMessage = new LaunchGameMessage();
             await _commandDispatcher.SendCommandAsync(launchGameMessage);
-
-            OnLaunched?.Invoke();
         }
 
         public void SetArmyPoints(int armyPoints)

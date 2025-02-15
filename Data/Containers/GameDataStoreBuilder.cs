@@ -46,6 +46,21 @@ namespace FDG.Data
 
                 return new GameDataStore(_registeredTypes);
             }
+
+            public static GameDataStore GetDefault()
+            {
+                return new GameDataStoreBuilder()
+                .RegisterType<int>(64)
+                .RegisterType<float>(64)
+                .RegisterType<Position>(64)
+                .RegisterType<ModelData>(64)
+                .RegisterType<TeamData>(2)
+                .RegisterType<PlayerData>(2)
+                .RegisterType<UnitData>(32)
+                .RegisterType<ArmyData>(8)
+                .RegisterType<Terrain>(8)
+                .Build();
+            }
         }
 
         public record TypeAndCapacity(Type Type, int Capacity);

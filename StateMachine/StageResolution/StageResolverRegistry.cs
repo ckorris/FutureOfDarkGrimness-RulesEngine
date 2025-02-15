@@ -1,14 +1,12 @@
-﻿using FDG;
-
-using static FDG.StageHandlerRegistry;
+﻿using static FDG.StageHandlerRegistry;
 
 namespace FDG.StateMachine.StageResolution
 {
-    public class StageResolverRegistry
+    public class StageResolverRegistry : IStageResolverRegistry
     {
         private Dictionary<Type, object> _resolversByRequestType = new Dictionary<Type, object>();
 
-        public StageResolverRegistry RegisterResolver<TRequest, TReply>(IStageResolver<TRequest, TReply> resolver) 
+        public IStageResolverRegistry RegisterResolver<TRequest, TReply>(IStageResolver<TRequest, TReply> resolver) 
             where TRequest : IStageRequest<TReply>
         {
             Type requestType = typeof(TRequest);

@@ -1,4 +1,6 @@
-﻿using FDG;
+﻿using F.GameModel;
+using FDG;
+using FDG.EngineInterface;
 using FDG.Network.Connection;
 using FDG.Network.Connection.Lobby;
 using FDG.Network.Messages;
@@ -44,7 +46,7 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
 
         private const string SERVER_JOIN_MESSAGE = "Welcome to the server.";
 
-        public event Action? OnLaunched;
+        public event Action<IFDGGame>? OnLaunched;
 
         public LobbyViewModel_Client(string thisPlayerName, FDGClient client)
         {
@@ -141,7 +143,9 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
         {
             Debug.WriteLine($"Received launch game message. ");
 
-            OnLaunched?.Invoke();
+            FDGGame_AsClient fdgGame = new FDGGame_AsClient(_client);
+
+            OnLaunched?.Invoke(fdgGame);
         }
 
         public void SetArmyPoints(int armyPoints)

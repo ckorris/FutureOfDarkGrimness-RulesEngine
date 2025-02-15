@@ -1,4 +1,5 @@
-﻿using FDG.Network.Messages;
+﻿using FDG.EngineInterface;
+using FDG.Network.Messages;
 
 namespace FDG.Network.Connection.Lobby
 {
@@ -6,7 +7,7 @@ namespace FDG.Network.Connection.Lobby
     {
         bool HasHostPrivileges { get; }
 
-        event Action? OnLaunched; //Need arguments?
+        event Action<IFDGGame>? OnLaunched; //Need arguments?
 
         IObservable<string> ServerName { get; }
 

@@ -8,13 +8,13 @@ namespace FDG.GameModel
     {
         private IReadWriteableGameDataStore _gameDataStore;
         private FDGHost _host;
-        private GameDataSynchronizer _synchronizer;
+        private GameDataUpdateSender _synchronizer;
 
         public FDGServer(IReadWriteableGameDataStore gameDataStore, FDGHost fdgHost)
         {
             _gameDataStore = gameDataStore;
             _host = fdgHost;
-            _synchronizer = new GameDataSynchronizer(gameDataStore, fdgHost);
+            _synchronizer = new GameDataUpdateSender(gameDataStore, fdgHost);
 
             //TODO: Not implementing the state machine just yet.
 

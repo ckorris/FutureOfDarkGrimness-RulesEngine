@@ -17,7 +17,7 @@ namespace F.GameModel
 
         private GameDataStore _gameDataStore;
 
-        private GameDataSynchronizer _synchronizer;
+        private GameDataUpdateReceiver _dataUpdateReceiver;
 
         public FDGGame_AsClient(ICommandDispatcher commandDispatcher)
         {
@@ -27,8 +27,8 @@ namespace F.GameModel
             TableState = new TableState(_gameDataStore);
             StageResolverRegistry = new StageResolverRegistry();
 
-            _synchronizer = new GameDataSynchronizer(_gameDataStore, commandDispatcher);
-            _synchronizer.RequestAllCurrentData();
+            _dataUpdateReceiver = new GameDataUpdateReceiver(_gameDataStore, commandDispatcher);
+            _dataUpdateReceiver.RequestAllCurrentData();
         }
     }
 }

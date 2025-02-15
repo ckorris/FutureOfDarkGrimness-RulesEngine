@@ -93,7 +93,10 @@ namespace FDG.Network.Messages
 
             if(_messageTypeRegistry.ContainsKey(typeString) == false)
             {
-                throw new InvalidOperationException($"Tried to deserialize unregistered type: {typeString}");
+                //This should be okay, not everyone cares about every message.
+                Debug.WriteLine($"Received unregistered message type {typeString}. Discarding.");
+                return;
+                //throw new InvalidOperationException($"Tried to deserialize unregistered type: {typeString}");
             }
 
             Type messageType = _messageTypeRegistry[typeString];

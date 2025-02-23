@@ -1,8 +1,6 @@
 ﻿using FDG.Data.Containers;
 using FDG.Data.Serialization;
 using Newtonsoft.Json;
-using System;
-using System.Collections.Generic;
 using System.Reflection;
 
 namespace FDG.Data
@@ -69,6 +67,11 @@ namespace FDG.Data
         public List<Type> GetTypeMap()
         {
             return new List<Type>(_registeredTypes);
+        }
+
+        public JsonConverter[] GetJsonConverters()
+        {
+            return _jsonConverters;
         }
 
         /// <summary>
@@ -360,6 +363,8 @@ namespace FDG.Data
                 }
             }
         }
+
+
 
 
 

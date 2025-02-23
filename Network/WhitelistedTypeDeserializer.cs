@@ -12,7 +12,8 @@ namespace FDG.Network
     {
         private readonly Dictionary<string, TypeAndCallbacks> _registry = new Dictionary<string, TypeAndCallbacks>();
 
-        public void RegisterType<T>(Action<T> onObjectDeserialized)
+        //public void RegisterType<T>(Action<T> onObjectDeserialized)
+        public void RegisterType<T>(Func<T> onObjectDeserialized)
         {
             //Registers the type of T in some kind of collection that allows it to be serialized.
             //Also adds onObjectDeserialized to the same collection, so that whenever TryDeserializeObject

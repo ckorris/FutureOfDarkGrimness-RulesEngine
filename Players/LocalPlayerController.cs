@@ -23,9 +23,7 @@ namespace FDG.Players
         public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
             where TRequest : IStageTaskRequest<TReply> 
         {
-            IStageResolver<TRequest, TReply> resolver = _stageResolverRegistry.GetResolver<TRequest, TReply>();
-
-            return resolver.Resolve(request);
+            return _stageResolverRegistry.ResolveRequest<TRequest, TReply>(request);
         }
     }
 }

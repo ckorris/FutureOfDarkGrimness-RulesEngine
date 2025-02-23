@@ -1,11 +1,6 @@
 ﻿using FDG.StageResolution;
-using Moq;
 using NUnit.Framework;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+
 
 namespace FDG.Tests
 {
@@ -21,15 +16,10 @@ namespace FDG.Tests
             var playerID = new PlayerID(Guid.NewGuid());
             var taskName = "Test Task";
 
-            var mockTaskRequest = new Mock<IStageTaskRequest>();
-            mockTaskRequest.Setup(t => t.TaskID).Returns(taskID);
-            mockTaskRequest.Setup(t => t.TargetPlayerID).Returns(playerID);
-            mockTaskRequest.Setup(t => t.TaskName).Returns(taskName);
-
             var taskList = new List<IReadOnlyCollection<OutstandingTaskInfo>>();
             taskLister.OutstandingTasks.Subscribe(taskList.Add);
 
-            taskLister.NotifyTaskRequested(mockTaskRequest.Object);
+            taskLister.NotifyTaskRequested(playerID, taskID, taskName);
 
             Assert.That(taskList.Last().Count, Is.EqualTo(1));
             Assert.That(taskList.Last().First().PlayerID, Is.EqualTo(playerID));
@@ -45,15 +35,10 @@ namespace FDG.Tests
             var playerID = new PlayerID(Guid.NewGuid());
             var taskName = "Test Task";
 
-            var mockTaskRequest = new Mock<IStageTaskRequest>();
-            mockTaskRequest.Setup(t => t.TaskID).Returns(taskID);
-            mockTaskRequest.Setup(t => t.TargetPlayerID).Returns(playerID);
-            mockTaskRequest.Setup(t => t.TaskName).Returns(taskName);
-
             var taskList = new List<IReadOnlyCollection<OutstandingTaskInfo>>();
             taskLister.OutstandingTasks.Subscribe(taskList.Add);
 
-            taskLister.NotifyTaskRequested(mockTaskRequest.Object);
+            taskLister.NotifyTaskRequested(playerID, taskID, taskName);
             taskLister.NotifyTaskResolved(taskID);
 
             Assert.That(taskList.Last().Count, Is.EqualTo(0));

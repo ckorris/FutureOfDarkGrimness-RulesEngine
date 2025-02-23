@@ -1,6 +1,4 @@
-﻿using FDG.Network.Messages;
-using System.Collections.Generic;
-using System.Reactive.Subjects;
+﻿using System.Reactive.Subjects;
 
 namespace FDG.StageResolution
 {
@@ -19,9 +17,9 @@ namespace FDG.StageResolution
             _outstandingTasks = new BehaviorSubject<IReadOnlyCollection<OutstandingTaskInfo>>(_outstandingTaskInfos.Values);
         }
 
-        public void NotifyTaskRequested(IStageTaskRequest taskRequest)
+        public void NotifyTaskRequested(PlayerID targetPlayerID, TaskID taskID, string taskName)
         {
-            _outstandingTaskInfos.Add(taskRequest.TaskID, new OutstandingTaskInfo(taskRequest.TargetPlayerID, taskRequest.TaskName));
+            _outstandingTaskInfos.Add(taskID, new OutstandingTaskInfo(targetPlayerID, taskName));
             _outstandingTasks.OnNext(_outstandingTaskInfos.Values);
         }
 

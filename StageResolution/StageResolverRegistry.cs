@@ -1,4 +1,5 @@
-﻿using FDG.Network;
+﻿using FDG.Data;
+using Newtonsoft.Json;
 using static FDG.StageHandlerRegistry;
 
 namespace FDG.StageResolution
@@ -7,9 +8,12 @@ namespace FDG.StageResolution
     {
         private Dictionary<Type, object> _resolversByRequestType = new Dictionary<Type, object>();
 
-        private WhitelistedTypeDeserializer _typeDeserializer = new WhitelistedTypeDeserializer();
+        private Dictionary<string, Func<string, IReadableGameDataStore, Task<string>>> _jsonResolverDelegates
+            = new Dictionary<string, Func<string, IReadableGameDataStore, Task<string>>>();
 
-        public IStageResolverRegistry RegisterResolver<TRequest, TReply>(IStageResolver<TRequest, TReply> resolver) 
+        IReadableGameDataStore _gameDataStore; //Cached for JsonConverters.
+
+        public IStageResolverRegistry RegisterResolver<TRequest, TReply>(IStageResolver<TRequest, TReply> resolver)
             where TRequest : IStageTaskRequest<TReply>
         {
             Type requestType = typeof(TRequest);
@@ -18,7 +22,15 @@ namespace FDG.StageResolution
             _resolversByRequestType[requestType] = resolver;
 
             //Whitelist and add callback for receiving serialized requests.
-            _typeDeserializer.RegisterType<TRequest>(ResolveRequest<TRequest, TReply>);
+
+            string? fullName = requestType.FullName;
+
+            if (fullName == null)
+            {
+                throw new ArgumentException($"No full name for type {requestType}.");
+            }
+
+            _jsonResolverDelegates.Add(key: fullName, value: ResolveRequestAsJson_Typed<TRequest, TReply>);
 
             return this;
         }
@@ -30,7 +42,40 @@ namespace FDG.StageResolution
             return resolver.Resolve(request);
         }
 
-        public IStageResolver<TRequest, TReply> GetResolver<TRequest, TReply>()
+        public Task<string> ResolveRequestAsJson(string typeFullName, string requestJson, IReadableGameDataStore gameDataStore)
+        {
+            if (_jsonResolverDelegates.TryGetValue(typeFullName, out Func<string, IReadableGameDataStore, Task<string>>? typedResolveDelegate) == false)
+            {
+                throw new MissingResolverException($"Requested resolver for request of type {typeFullName}, but it wasn't registered.");
+            }
+
+            if (typedResolveDelegate == null)
+            {
+                throw new NullReferenceException($"Delegate for resolving request type {typeFullName} from Json was null.");
+            }
+
+            return typedResolveDelegate(requestJson, gameDataStore);
+        }
+
+        private async Task<string> ResolveRequestAsJson_Typed<TRequest, TReply>(string requestJson, IReadableGameDataStore gameDataStore)
+            where TRequest : IStageTaskRequest<TReply>
+        {
+            TRequest? request = JsonConvert.DeserializeObject<TRequest>(requestJson, gameDataStore.GetJsonConverters()); //TODO: Get data binding settings.
+
+            if (request == null)
+            {
+                throw new JsonSerializationException($"Could not deserialize request into Json.");
+            }
+
+            Task<TReply> reply = ResolveRequest<TRequest, TReply>(request);
+            await reply;
+
+            string replyAsJson = JsonConvert.SerializeObject(reply.Result, gameDataStore.GetJsonConverters());
+
+            return replyAsJson;
+        }
+
+        private IStageResolver<TRequest, TReply> GetResolver<TRequest, TReply>()
             where TRequest : IStageTaskRequest<TReply>
         {
             Type requestType = typeof(TRequest);

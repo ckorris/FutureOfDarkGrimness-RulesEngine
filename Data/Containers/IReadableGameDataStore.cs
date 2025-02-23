@@ -1,5 +1,6 @@
 ﻿
 using FDG.Data.Containers;
+using Newtonsoft.Json;
 
 namespace FDG.Data
 {
@@ -16,6 +17,8 @@ namespace FDG.Data
         event Action<DataReference, string> OnDataAddedAsJson;
         event Action<DataReference, string> OnDataUpdatedAsJson;
         event Action<DataReference> OnDataRemoved;
+
+        JsonConverter[] GetJsonConverters();
 
         List<ReferenceJsonValuePair> GetAllDataReferencesAsJson();
 

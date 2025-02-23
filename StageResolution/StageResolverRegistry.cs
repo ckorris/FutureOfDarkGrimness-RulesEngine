@@ -1,10 +1,13 @@
-﻿using static FDG.StageHandlerRegistry;
+﻿using FDG.Network;
+using static FDG.StageHandlerRegistry;
 
 namespace FDG.StageResolution
 {
     public class StageResolverRegistry : IStageResolverRegistry
     {
         private Dictionary<Type, object> _resolversByRequestType = new Dictionary<Type, object>();
+
+        private WhitelistedTypeDeserializer _typeDeserializer = new WhitelistedTypeDeserializer();
 
         public IStageResolverRegistry RegisterResolver<TRequest, TReply>(IStageResolver<TRequest, TReply> resolver) 
             where TRequest : IStageTaskRequest<TReply>
@@ -14,7 +17,17 @@ namespace FDG.StageResolution
 
             _resolversByRequestType[requestType] = resolver;
 
+            //Whitelist and add callback for receiving serialized requests.
+            _typeDeserializer.RegisterType<TRequest>(ResolveRequest<TRequest, TReply>);
+
             return this;
+        }
+
+        public Task<TReply> ResolveRequest<TRequest, TReply>(TRequest request)
+            where TRequest : IStageTaskRequest<TReply>
+        {
+            IStageResolver<TRequest, TReply> resolver = GetResolver<TRequest, TReply>();
+            return resolver.Resolve(request);
         }
 
         public IStageResolver<TRequest, TReply> GetResolver<TRequest, TReply>()

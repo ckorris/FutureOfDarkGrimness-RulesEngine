@@ -3,7 +3,7 @@ using FDG.Players;
 using FDG.StageResolution;
 
 
-namespace FutureOfDarkGrimness.Players
+namespace FDG.Players
 {
     public class LocalPlayerController : IPlayerController
     {

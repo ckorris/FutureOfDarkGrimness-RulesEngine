@@ -1,12 +1,6 @@
 ﻿using FDG.StageResolution;
-using FDG;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
-namespace FutureOfDarkGrimness.Network.Messages.StageRequestMessages
+namespace FDG.Network.Messages.StageRequestMessages
 {
     public class StageTaskRequestErrorMessage
     {

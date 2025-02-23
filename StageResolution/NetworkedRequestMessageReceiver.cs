@@ -1,7 +1,6 @@
 ﻿using FDG.Data;
 using FDG.Network.Connection;
 using FDG.Network.Messages.StageRequestMessages;
-using FutureOfDarkGrimness.Network.Messages.StageRequestMessages;
 
 namespace FDG.StageResolution
 {
@@ -31,6 +30,17 @@ namespace FDG.StageResolution
 
         private void OnReceivedStageTaskRequestMessage(StageTaskRequestMessage requestMessage, ConnectionID sourceConnectionID)
         {
+            if(requestMessage.PlayerID != _playerID)
+            {
+                string errorString = $"Received a message targeting the wrong player. This ID: {_playerID}. " + 
+                    $"Target: {requestMessage.PlayerID}. Request type: {requestMessage.RequestFullTypeName} Request ID: {requestMessage.TaskID}.";
+
+                StageTaskRequestErrorMessage errorMessage =
+                    new StageTaskRequestErrorMessage(requestMessage.PlayerID, requestMessage.TaskID, errorString);
+                _commandDispatcher.SendCommandAsync(errorMessage);
+
+                return;
+            }
 
             _ = HandleRequestMessageAsync(requestMessage, sourceConnectionID);
         }

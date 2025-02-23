@@ -1,0 +1,35 @@
+﻿using FDG.Network.Messages;
+using System.Collections.Generic;
+using System.Reactive.Subjects;
+
+namespace FDG.StageResolution
+{
+    internal class OutstandingTaskLister : IOutstandingTaskLister
+    {
+        public IObservable<IReadOnlyCollection<OutstandingTaskInfo>> OutstandingTasks
+            => _outstandingTasks;
+
+        private BehaviorSubject<IReadOnlyCollection<OutstandingTaskInfo>> _outstandingTasks;
+
+        private Dictionary<TaskID, OutstandingTaskInfo> _outstandingTaskInfos;
+
+        public OutstandingTaskLister()
+        {
+            _outstandingTaskInfos = new Dictionary<TaskID, OutstandingTaskInfo>();
+            _outstandingTasks = new BehaviorSubject<IReadOnlyCollection<OutstandingTaskInfo>>(_outstandingTaskInfos.Values);
+        }
+
+        public void NotifyTaskRequested(IStageTaskRequest taskRequest)
+        {
+            _outstandingTaskInfos.Add(taskRequest.TaskID, new OutstandingTaskInfo(taskRequest.TargetPlayerID, taskRequest.TaskName));
+            _outstandingTasks.OnNext(_outstandingTaskInfos.Values);
+        }
+
+        public void NotifyTaskResolved(TaskID taskID)
+        {
+            _outstandingTaskInfos.Remove(taskID);
+            _outstandingTasks.OnNext(_outstandingTaskInfos.Values);
+        }
+
+    }
+}

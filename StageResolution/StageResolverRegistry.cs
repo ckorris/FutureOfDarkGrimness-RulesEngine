@@ -1,13 +1,13 @@
 ﻿using static FDG.StageHandlerRegistry;
 
-namespace FDG.StateMachine.StageResolution
+namespace FDG.StageResolution
 {
     public class StageResolverRegistry : IStageResolverRegistry
     {
         private Dictionary<Type, object> _resolversByRequestType = new Dictionary<Type, object>();
 
         public IStageResolverRegistry RegisterResolver<TRequest, TReply>(IStageResolver<TRequest, TReply> resolver) 
-            where TRequest : IStageRequest<TReply>
+            where TRequest : IStageTaskRequest<TReply>
         {
             Type requestType = typeof(TRequest);
             AssertHandlerTypeNotYetAdded(requestType);
@@ -18,7 +18,7 @@ namespace FDG.StateMachine.StageResolution
         }
 
         public IStageResolver<TRequest, TReply> GetResolver<TRequest, TReply>()
-            where TRequest : IStageRequest<TReply>
+            where TRequest : IStageTaskRequest<TReply>
         {
             Type requestType = typeof(TRequest);
             if (_resolversByRequestType.ContainsKey(requestType) == false)

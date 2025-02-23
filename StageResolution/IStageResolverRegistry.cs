@@ -1,9 +1,9 @@
 ﻿
-namespace FDG.StateMachine.StageResolution
+namespace FDG.StageResolution
 {
     public interface IStageResolverRegistry
     {
         IStageResolverRegistry RegisterResolver<TRequest, TReply>(IStageResolver<TRequest, TReply> resolver)
-            where TRequest : IStageRequest<TReply>;
+            where TRequest : IStageTaskRequest<TReply>;
     }
 }

@@ -1,6 +1,6 @@
 ﻿using FDG.Data;
 using FDG.EngineInterface;
-using FDG.StateMachine.StageResolution;
+using FDG.StageResolution;
 
 namespace FDG.GameModel
 {

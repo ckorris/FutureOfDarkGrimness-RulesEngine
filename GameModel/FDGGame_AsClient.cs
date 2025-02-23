@@ -3,7 +3,7 @@ using FDG.Data;
 using FDG.EngineInterface;
 using FDG.Network.Connection;
 using FDG.Network.Synchronization;
-using FDG.StateMachine.StageResolution;
+using FDG.StageResolution;
 
 namespace F.GameModel
 {

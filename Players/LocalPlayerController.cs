@@ -1,6 +1,6 @@
 ﻿using FDG;
 using FDG.Players;
-using FDG.StateMachine.StageResolution;
+using FDG.StageResolution;
 
 
 namespace FutureOfDarkGrimness.Players
@@ -21,7 +21,7 @@ namespace FutureOfDarkGrimness.Players
         }
 
         public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
-            where TRequest : IStageRequest<TReply> 
+            where TRequest : IStageTaskRequest<TReply> 
         {
             IStageResolver<TRequest, TReply> resolver = _stageResolverRegistry.GetResolver<TRequest, TReply>();
 

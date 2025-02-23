@@ -1,4 +1,4 @@
-﻿using FDG.StateMachine.StageResolution;
+﻿using FDG.StageResolution;
 
 namespace FDG.EngineInterface
 {

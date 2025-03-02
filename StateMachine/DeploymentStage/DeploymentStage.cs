@@ -45,7 +45,7 @@ namespace FDG.Stages
                     $"Number of teams provided: {allTeams.Count()}");
             }
 
-            Dictionary<IPlayerInfo, DeploymentTurnContext> turnContexts = new Dictionary<IPlayerInfo, DeploymentTurnContext>();
+            Dictionary<PlayerID, DeploymentTurnContext> turnContexts = new Dictionary<PlayerID, DeploymentTurnContext>();
 
             for(int i = 0; i < 2; i++)
             {
@@ -56,11 +56,11 @@ namespace FDG.Stages
 
                 List<ArmyData> armies = context.GameDataStore.GetAllValues<ArmyData>().ToList();
 
-                foreach (IPlayerInfo player in teamData.Players)
+                foreach (PlayerID player in teamData.Players)
                 {
                     List<DataBinding<UnitData>> unitBindings = new List<DataBinding<UnitData>>();
 
-                    foreach (ArmyData army in armies.Where(a => a.IsOwnedBy(player.ID)))
+                    foreach (ArmyData army in armies.Where(a => a.IsOwnedBy(player)))
                     {
 
                         //foreach (DataReference reference in context.GameDataStore.GetAllDataReferences<UnitData>())
@@ -87,10 +87,10 @@ namespace FDG.Stages
             //so that I can test the net code better. Make some sort of generic tool for handling taking turns
             //within the scope of one stage.
 
-            private Dictionary<IPlayerInfo, DeploymentTurnContext> _contexts;
+            private Dictionary<PlayerID, DeploymentTurnContext> _contexts;
 
             //Temp, someday we'll have a player order, but for now, it's arbitrary.
-            private List<IPlayerInfo> _players;
+            private List<PlayerID> _players;
 
             private int _playerIndex;
 
@@ -100,7 +100,7 @@ namespace FDG.Stages
 
             private IGameContext _gameContext;
 
-            public DeployHandlerRepeater(Dictionary<IPlayerInfo, DeploymentTurnContext> contexts, IDeploymentHandler handler,
+            public DeployHandlerRepeater(Dictionary<PlayerID, DeploymentTurnContext> contexts, IDeploymentHandler handler,
                 Action onFinished, IGameContext gameContext)
             {
                 _players = contexts.Keys.ToList();
@@ -110,7 +110,7 @@ namespace FDG.Stages
                 _onFinished = onFinished;
                 _gameContext = gameContext;
 
-                IPlayerInfo firstPlayer = _players[_playerIndex];
+                PlayerID firstPlayer = _players[_playerIndex];
                 DeploymentTurnContext nextTurnContext = _contexts[firstPlayer];
 
                 _handler.Handle(nextTurnContext, OnChoiceMade);
@@ -131,7 +131,7 @@ namespace FDG.Stages
                 }
 
                 //If all the units have been placed from that turn context, remove it from the list.
-                IPlayerInfo lastPlayer = _players[_playerIndex];
+                PlayerID lastPlayer = _players[_playerIndex];
                 DeploymentTurnContext lastTurnContext = _contexts[lastPlayer];
                 if (lastTurnContext.RemainingUnits.Count == 0)
                 {
@@ -154,7 +154,7 @@ namespace FDG.Stages
                     _playerIndex = 0;
                 }
 
-                IPlayerInfo nextPlayer = _players[_playerIndex];
+                PlayerID nextPlayer = _players[_playerIndex];
                 DeploymentTurnContext nextTurnContext = _contexts[nextPlayer];
 
                 _handler.Handle(nextTurnContext, OnChoiceMade);

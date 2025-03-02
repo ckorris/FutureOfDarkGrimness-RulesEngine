@@ -7,7 +7,7 @@ namespace FDG
 {
     public interface ITableState
     {
-        public IDataState<IPlayerInfo> Players { get; }
+        //public IDataState<IPlayerInfo> Players { get; }
 
         public IDataState<IUnit> Units { get; }
 
@@ -22,7 +22,7 @@ namespace FDG
 
     public class TableState : ITableState
     {
-        public IDataState<IPlayerInfo> Players { get; }
+        //public IDataState<IPlayerInfo> Players { get; }
 
         public IDataState<IUnit> Units { get; }
 
@@ -38,7 +38,7 @@ namespace FDG
 
         public TableState(IReadableGameDataStore gameDataStore)
         {
-            Players = new DataState<IPlayerInfo, PlayerData>(gameDataStore);
+            //Players = new DataState<IPlayerInfo, PlayerData>(gameDataStore);
             Units = new DataState<IUnit, UnitData>(gameDataStore);
             Models = new DataState<IModel, ModelData>(gameDataStore);
             Armies = new DataState<IArmy, ArmyData>(gameDataStore);

@@ -5,6 +5,6 @@ namespace FDG
     {
         int TeamNumber { get; }
 
-        IReadOnlyList<IPlayerInfo> Players { get; }
+        IReadOnlyList<PlayerID> Players { get; }
     }
 }

@@ -8,40 +8,21 @@ namespace FDG
     { 
         public int TeamNumber { get; private set; }
 
-        public IReadOnlyList<IPlayerInfo> Players
-        {
-            get
-            {
-                return PlayerBindings.Select(binding => binding.GetValue()).ToList();
-            }
-        }
+        public IReadOnlyList<PlayerID> Players => _players;
 
-        public List<DataBinding<PlayerData>> PlayerBindings;
+        private List<PlayerID> _players;
 
         [JsonConstructor]
-        public TeamData(int teamNumber, List<DataBinding<PlayerData>> playerBindings)
+        public TeamData(int teamNumber, List<PlayerID> playerBindings)
         {
             TeamNumber = teamNumber;
-            PlayerBindings = playerBindings;
+            _players = playerBindings;
         }
 
         public TeamData(int teamNumber)
         {
             TeamNumber = teamNumber;
-            PlayerBindings = new List<DataBinding<PlayerData>>();
-        }
-
-        public TeamData(int teamNumber, List<DataReference> playerReferences,
-            IReadWriteableGameDataStore gameDataStore)
-        {
-            TeamNumber = teamNumber;
-
-            PlayerBindings = new List<DataBinding<PlayerData>>();
-            foreach (DataReference playerInfo in playerReferences)
-            {
-                DataBinding<PlayerData> playerBinding = gameDataStore.GetDataBinding<PlayerData>(playerInfo);
-                PlayerBindings.Add(playerBinding);
-            }
+            _players = new List<PlayerID>();
         }
     }
 }

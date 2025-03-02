@@ -9,14 +9,12 @@ namespace FutureOfDarkGrimness.StateMachine.StateMachineBuilders
         public Dictionary<string, StageBase<IGameContext>> BuildStateMachine(StateMachine<IGameContext> stateMachine, IGameContext gameContext,
             out StageBase<IGameContext> startingStage)
         {
-            PlayerSetupStage playerSetupStage = new PlayerSetupStage(gameContext, stateMachine);
             ArmySetupStage armySetupStage = new ArmySetupStage(gameContext, stateMachine);
             MapSetupStage mapSetupStage = new MapSetupStage(gameContext, stateMachine);
             DeploymentStage deploymentStage = new DeploymentStage(gameContext, stateMachine);
             MainPhaseRoundStage mainPhaseRoundStage = new MainPhaseRoundStage(gameContext, stateMachine);
             VictoryCalculationStage victoryCalculationStage = new VictoryCalculationStage(gameContext, stateMachine);
 
-            playerSetupStage.ToArmySetup.Bind(armySetupStage);
             armySetupStage.ToMapSetup.Bind(mapSetupStage);
             mapSetupStage.ToDeployment.Bind(deploymentStage);
             deploymentStage.ToMain.Bind(mainPhaseRoundStage);
@@ -32,7 +30,7 @@ namespace FutureOfDarkGrimness.StateMachine.StateMachineBuilders
                 {victoryCalculationStage.Name, victoryCalculationStage}
             };
 
-            startingStage = playerSetupStage;
+            startingStage = armySetupStage;
 
             return bindings;
         }

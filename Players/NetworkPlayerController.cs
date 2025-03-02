@@ -12,7 +12,7 @@ namespace FDG.Players
 
         private ConnectionID _connectionID;
 
-        //private ICommandDispatcher _commandDispatcher;
+        private ICommandDispatcher _commandDispatcher; 
 
         private NetworkRequestMessageSender _requestMessageSender;
 
@@ -22,7 +22,7 @@ namespace FDG.Players
             Name = name;
             ID = playerID;
             _connectionID = connectionID;
-            //_commandDispatcher = commandDispatcher;
+            _commandDispatcher = commandDispatcher;
             _requestMessageSender = new NetworkRequestMessageSender(playerID, connectionID, commandDispatcher, gameDataStore);
         }
 

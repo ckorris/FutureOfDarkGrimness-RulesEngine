@@ -7,5 +7,5 @@ using System.Threading.Tasks;
 
 namespace FDG.Network.Connection.Lobby
 {
-    public record LobbyPlayerInfo(string PlayerName, int TeamNumber, EPlayerType PlayerType);
+    public record LobbyPlayerInfo(string PlayerName, int TeamNumber, EPlayerType PlayerType, ConnectionID connectionID);
 }

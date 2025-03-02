@@ -46,7 +46,7 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
 
         private const string SERVER_JOIN_MESSAGE = "Welcome to the server.";
 
-        public event Action<IFDGGame>? OnLaunched;
+        public event Action<IFDGGame, AssignStageResolverRegistryDelegate>? OnLaunched;
 
         public LobbyViewModel_Client(string thisPlayerName, FDGClient client)
         {

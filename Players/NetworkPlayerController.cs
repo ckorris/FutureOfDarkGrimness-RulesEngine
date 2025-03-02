@@ -10,11 +10,15 @@ namespace FDG.Players
 
         public PlayerID ID { get; }
 
+        public bool IsReady { get; private set; } = true; //May need to change.
+
         private ConnectionID _connectionID;
 
         private ICommandDispatcher _commandDispatcher; 
 
         private NetworkRequestMessageSender _requestMessageSender;
+
+        public event Action<bool>? OnReadyStateChanged;
 
         public NetworkPlayerController(string name, PlayerID playerID, ConnectionID connectionID, ICommandDispatcher commandDispatcher,
             IReadableGameDataStore gameDataStore)

@@ -7,7 +7,12 @@ namespace FDG.Network.Connection.Lobby
     {
         bool HasHostPrivileges { get; }
 
-        event Action<IFDGGame>? OnLaunched; //Need arguments?
+        /// <summary>
+        /// The first parameter is the instance that you can use to bind your entire game view to.
+        /// The second is a request to provide a reference to a <see cref="StageResolution.StageResolverRegistry"/>, 
+        /// and you must fulfill this action before you can play the game.
+        /// </summary>
+        event Action<IFDGGame, AssignStageResolverRegistryDelegate>? OnLaunched; //Need arguments?
 
         IObservable<string> ServerName { get; }
 

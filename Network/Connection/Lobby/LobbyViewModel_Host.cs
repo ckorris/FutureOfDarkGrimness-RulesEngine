@@ -4,6 +4,7 @@ using FDG.GameModel;
 using FDG.Network.Connection.Lobby;
 using FDG.Network.Messages;
 using FDG.Players;
+using FDG.StageResolution;
 using FutureOfDarkGrimness.Network.Messages;
 using System.Diagnostics;
 using System.Reactive.Subjects;
@@ -46,7 +47,7 @@ namespace FDG.Network.Connection
         private const string SERVER_START_MESSAGE = "Server started successfully.";
         private const string LAUNCHING_GAME_MESSAGE = "About to launch game.";
 
-        public event Action<IFDGGame>? OnLaunched;
+        public event Action<IFDGGame, AssignStageResolverRegistryDelegate>? OnLaunched;
 
         private GameSettings _gameSettings = GameSettings.GetDefault();
 
@@ -66,7 +67,7 @@ namespace FDG.Network.Connection
             //First init just ourselves.
             List<LobbyPlayerInfo> initialLobbyPlayerInfos = new List<LobbyPlayerInfo>()
             {
-                new LobbyPlayerInfo(hostPlayerName, 0, EPlayerType.Local)
+                new LobbyPlayerInfo(hostPlayerName, 0, EPlayerType.Local, new ConnectionID(Guid.Empty))
             };
 
             _playerInfos = new BehaviorSubject<IReadOnlyList<LobbyPlayerInfo>>(initialLobbyPlayerInfos);
@@ -100,7 +101,7 @@ namespace FDG.Network.Connection
             //Maybe do nothing?
         }
 
-        private void OnReceiveNewClientGreeting(NewLobbyClientGreeting greeting, ConnectionID _)
+        private void OnReceiveNewClientGreeting(NewLobbyClientGreeting greeting, ConnectionID connectionID)
         {
             Debug.WriteLine($"Received greeting from new client: {greeting.PlayerName}");
 
@@ -113,7 +114,7 @@ namespace FDG.Network.Connection
 
             List<LobbyPlayerInfo> playerInfos = new List<LobbyPlayerInfo>(_playerInfos.Value)
             {
-                new LobbyPlayerInfo(greeting.PlayerName, tempTeamNumber, EPlayerType.Network)
+                new LobbyPlayerInfo(greeting.PlayerName, tempTeamNumber, EPlayerType.Network, connectionID)
             };
 
             LobbyPlayerListUpdate playerListUpdateMessage = new LobbyPlayerListUpdate(playerInfos);
@@ -175,29 +176,64 @@ namespace FDG.Network.Connection
             GameDataStore gameDataStore = GameDataStore.GameDataStoreBuilder.GetDefault();
 
             //Make a player controller for each player. TODO: This is overly simplistic for now.
-            PlayerSlot[] playerSlots = GetPlayerSlots();
+            PlayerSlot[] playerSlots = GetPlayerSlots(gameDataStore, 
+                out AssignStageResolverRegistryDelegate assignStageResolverRegistryDelegate);
 
 
             FDGServer server = new FDGServer(gameDataStore, _host, _gameSettings, playerSlots);
             FDGGame_AsLocal gameModel = new FDGGame_AsLocal(gameDataStore);
 
-            OnLaunched?.Invoke(gameModel);
+            OnLaunched?.Invoke(gameModel, assignStageResolverRegistryDelegate);
 
             LaunchGameMessage launchGameMessage = new LaunchGameMessage();
             await _commandDispatcher.SendCommandAsync(launchGameMessage);
         }
         
-        private PlayerSlot[] GetPlayerSlots()
+        private PlayerSlot[] GetPlayerSlots(IReadableGameDataStore gameDataStore, 
+            out AssignStageResolverRegistryDelegate assignStageHandlerRegistryDelegate)
         {
             PlayerSlot[] playerSlots = new PlayerSlot[_playerInfos.Value.Count];
+
+            //Local players will need to have registries assigned locally, so cache them specifically for this.
+            List<LocalPlayerController> localPlayerControllers = new List<LocalPlayerController>();
+
             for (int i = 0; i < playerSlots.Length; i++)
             {
                 LobbyPlayerInfo lobbyPlayerInfo = _playerInfos.Value[i];
 
                 PlayerSlot playerSlot = new PlayerSlot(i, lobbyPlayerInfo.TeamNumber);
 
+                switch(lobbyPlayerInfo.PlayerType)
+                {
+                    case EPlayerType.Local:
+                        LocalPlayerController localPlayerController = new LocalPlayerController(lobbyPlayerInfo.PlayerName, playerSlot.PlayerID);
+                        localPlayerControllers.Add(localPlayerController);
+                        playerSlots[i].AssignPlayerController(localPlayerController);
+                        break;
+                    case EPlayerType.Network:
+                        NetworkPlayerController networkPlayerController = new NetworkPlayerController(lobbyPlayerInfo.PlayerName, playerSlot.PlayerID,
+                            lobbyPlayerInfo.connectionID, _commandDispatcher, gameDataStore);
+                            break;
+                    case EPlayerType.AI:
+                        throw new NotImplementedException();
+                    default:
+                        throw new ArgumentOutOfRangeException();
+
+                }
+
+
                 playerSlots[i] = playerSlot;
             }
+
+            void AssignStageHandlerRegistry(StageResolverRegistry stageResolverRegistry)
+            {
+                foreach(LocalPlayerController localPlayerController in localPlayerControllers)
+                {
+                    localPlayerController.AssignStageResolverRegistry(stageResolverRegistry);
+                }
+            }
+
+            assignStageHandlerRegistryDelegate = AssignStageHandlerRegistry;
 
             return playerSlots;
         }

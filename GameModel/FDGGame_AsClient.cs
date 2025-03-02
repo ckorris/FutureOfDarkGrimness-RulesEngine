@@ -30,5 +30,10 @@ namespace F.GameModel
             _dataUpdateReceiver = new GameDataUpdateReceiver(_gameDataStore, commandDispatcher);
             _dataUpdateReceiver.RequestAllCurrentData();
         }
+
+        public void AssignStageResolverRegistry(IStageResolverRegistry stageResolverRegistry)
+        {
+
+        }
     }
 }

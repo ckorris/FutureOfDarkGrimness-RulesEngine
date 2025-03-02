@@ -1,10 +1,6 @@
-﻿using FDG.Network.Connection;
+﻿using FDG.Data;
+using FDG.Network.Connection;
 using FDG.StageResolution;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace FDG.Players
 {
@@ -16,19 +12,23 @@ namespace FDG.Players
 
         private ConnectionID _connectionID;
 
-        private ICommandDispatcher _commandDispatcher;
+        //private ICommandDispatcher _commandDispatcher;
 
-        public NetworkPlayerController(string name, PlayerID playerID, ConnectionID connectionID, ICommandDispatcher commandDispatcher)
+        private NetworkRequestMessageSender _requestMessageSender;
+
+        public NetworkPlayerController(string name, PlayerID playerID, ConnectionID connectionID, ICommandDispatcher commandDispatcher,
+            IReadableGameDataStore gameDataStore)
         {
             Name = name;
             ID = playerID;
             _connectionID = connectionID;
-            _commandDispatcher = commandDispatcher;
+            //_commandDispatcher = commandDispatcher;
+            _requestMessageSender = new NetworkRequestMessageSender(playerID, connectionID, commandDispatcher, gameDataStore);
         }
 
         public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request) where TRequest : IStageTaskRequest<TReply>
         {
-            throw new NotImplementedException();
+            return _requestMessageSender.ResolveRequestOverNetwork<TRequest, TReply>(request);
         }
     }
 }

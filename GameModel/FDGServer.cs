@@ -16,6 +16,9 @@ namespace FDG.GameModel
             _host = fdgHost;
             _synchronizer = new GameDataUpdateSender(gameDataStore, fdgHost);
 
+            //For players/player slots, work backwards from here to create what you need to send updates to players,
+            //then what you need to make that thing, then what you need for that, etc. until you lead back to these args.
+
             //TODO: Not implementing the state machine just yet.
 
 

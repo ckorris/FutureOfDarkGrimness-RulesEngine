@@ -66,7 +66,7 @@ namespace FDG.Network.Connection
             //First init just ourselves.
             List<LobbyPlayerInfo> initialLobbyPlayerInfos = new List<LobbyPlayerInfo>()
             {
-                new LobbyPlayerInfo(hostPlayerName, "Team 1", EPlayerType.Local)
+                new LobbyPlayerInfo(hostPlayerName, 0, EPlayerType.Local)
             };
 
             _playerInfos = new BehaviorSubject<IReadOnlyList<LobbyPlayerInfo>>(initialLobbyPlayerInfos);
@@ -113,7 +113,7 @@ namespace FDG.Network.Connection
 
             List<LobbyPlayerInfo> playerInfos = new List<LobbyPlayerInfo>(_playerInfos.Value)
             {
-                new LobbyPlayerInfo(greeting.PlayerName, $"Team {tempTeamNumber}", EPlayerType.Network)
+                new LobbyPlayerInfo(greeting.PlayerName, tempTeamNumber, EPlayerType.Network)
             };
 
             LobbyPlayerListUpdate playerListUpdateMessage = new LobbyPlayerListUpdate(playerInfos);
@@ -174,13 +174,32 @@ namespace FDG.Network.Connection
             //Maybe something else should make these but eh.
             GameDataStore gameDataStore = GameDataStore.GameDataStoreBuilder.GetDefault();
 
-            FDGServer server = new FDGServer(gameDataStore, _host);
+            //Make a player controller for each player. TODO: This is overly simplistic for now.
+            PlayerSlot[] playerSlots = GetPlayerSlots();
+
+
+            FDGServer server = new FDGServer(gameDataStore, _host, _gameSettings, playerSlots);
             FDGGame_AsLocal gameModel = new FDGGame_AsLocal(gameDataStore);
 
             OnLaunched?.Invoke(gameModel);
 
             LaunchGameMessage launchGameMessage = new LaunchGameMessage();
             await _commandDispatcher.SendCommandAsync(launchGameMessage);
+        }
+        
+        private PlayerSlot[] GetPlayerSlots()
+        {
+            PlayerSlot[] playerSlots = new PlayerSlot[_playerInfos.Value.Count];
+            for (int i = 0; i < playerSlots.Length; i++)
+            {
+                LobbyPlayerInfo lobbyPlayerInfo = _playerInfos.Value[i];
+
+                PlayerSlot playerSlot = new PlayerSlot(i, lobbyPlayerInfo.TeamNumber);
+
+                playerSlots[i] = playerSlot;
+            }
+
+            return playerSlots;
         }
 
         public void SetArmyPoints(int armyPoints)

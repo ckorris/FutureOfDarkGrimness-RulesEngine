@@ -1,6 +1,11 @@
 ﻿using FDG.Data;
 using FDG.Network.Connection;
 using FDG.Network.Synchronization;
+using FDG.Players;
+using FDG.Samples;
+using FDG.Stages;
+using FDG.StateMachine;
+using FutureOfDarkGrimness.StateMachine.StateMachineBuilders;
 
 namespace FDG.GameModel
 {
@@ -9,8 +14,12 @@ namespace FDG.GameModel
         private IReadWriteableGameDataStore _gameDataStore;
         private FDGHost _host;
         private GameDataUpdateSender _synchronizer;
+        private PlayerSlotManager _playerSlotManager;
+        private GameContext _gameContext;
+        private StateMachine<IGameContext> _stateMachine;
 
-        public FDGServer(IReadWriteableGameDataStore gameDataStore, FDGHost fdgHost)
+        public FDGServer(IReadWriteableGameDataStore gameDataStore, FDGHost fdgHost, GameSettings gameSettings,
+            PlayerSlot[] playerSlots)
         {
             _gameDataStore = gameDataStore;
             _host = fdgHost;
@@ -19,11 +28,46 @@ namespace FDG.GameModel
             //For players/player slots, work backwards from here to create what you need to send updates to players,
             //then what you need to make that thing, then what you need for that, etc. until you lead back to these args.
 
-            //TODO: Not implementing the state machine just yet.
+            _playerSlotManager = new PlayerSlotManager(playerSlots);
 
+            TableState tableState = new TableState(_gameDataStore);
+
+            //TODO: Below has stage handlers assigned, but I'm removing this. That'll break hard. We can't run the game until that's
+            //removed from all stages.
+            _gameContext = new GameContext(GetTextOutput(), GetDiceRoller(gameSettings), _playerSlotManager, handlers: null, tableState, _gameDataStore);
+
+            _stateMachine = new StateMachine<IGameContext>(new GDFStateMachineBuilder(), _gameContext);
 
             //For test, make a thing. 
             LoadTestData();
+
+            _ = LaunchStateMachineOnceReady(_stateMachine, _gameContext);
+        }
+
+        private ITextOutput GetTextOutput()
+        {
+            return new BasicConsoleLogger();
+        }
+
+        private IDiceRoller GetDiceRoller(GameSettings gameSettings)
+        {
+            IDiceRoller diceRoller = gameSettings.RandomnessType switch
+            {
+                ERandomnessType.Probabilistic => new ProbabilisticDiceRoller(),
+                ERandomnessType.Realistic => new RealisticDiceRoller(),
+                _ => throw new ArgumentOutOfRangeException()
+            };
+
+            return diceRoller;
+        }
+
+        private async Task LaunchStateMachineOnceReady(StateMachine<IGameContext> stateMachine, IGameContext context)
+        {
+            //TODO: Wait for all clients to indicate that they are connected and ready.
+            //Await something.
+            await Task.Delay(500); //Half a second. At least lets us test before implementing this.
+
+            stateMachine.Enter(context);
         }
 
         private void LoadTestData()

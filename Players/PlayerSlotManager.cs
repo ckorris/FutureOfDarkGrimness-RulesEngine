@@ -1,14 +1,9 @@
 ﻿using FDG.StageResolution;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace FDG.Players
 {
-    internal class PlayerSlotManager //TODO: I don't like "Manager" in names. Brainstorm.
+    internal class PlayerSlotManager : IPlayerRequestByID //TODO: I don't like "Manager" in names. Brainstorm.
     {
         /// <summary>
         /// Gets a copy of the player slots array presented as info that's publicly available and UI-friendly.
@@ -23,10 +18,23 @@ namespace FDG.Players
             }
         }
 
+        public bool AreAllSlotsAssigned
+        {
+            get
+            {
+                foreach(PlayerSlot playerSlot in _playerSlots)
+                {
+                    if(playerSlot.IsFilled == false)
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+        }
+
         private PlayerSlot[] _playerSlots;
-
-        
-
 
         public PlayerSlotManager(int slotCount)
         {
@@ -42,7 +50,21 @@ namespace FDG.Players
             _playerSlots = playerSlots;
         }
 
-        public void AssignControllerToSlot(int slotID, IPlayerController playerController)
+        public bool TryGetNextOpenSlotID(int? nextSlotID)
+        {
+            for(int i = 0; i < _playerSlots.Length; i++)
+            {
+                if (_playerSlots[i].IsFilled == false)
+                {
+                    nextSlotID = i;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public PlayerID AssignControllerToSlot(int slotID, IPlayerController playerController)
         {
             if(slotID >  _playerSlots.Length)
             {
@@ -51,6 +73,8 @@ namespace FDG.Players
             }
 
             _playerSlots[slotID].AssignPlayerController(playerController);
+
+            return _playerSlots[slotID].PlayerID;
         }
 
         public Task<TReply> RequestDecision<TRequest, TReply>(PlayerID playerId, TRequest request) 
@@ -98,8 +122,11 @@ namespace FDG.Players
                 : base($"Method {memberName} tried to perform an operation on {nameof(IPlayerController)} in slot " + 
                       $"{playerSlot.SlotID}, Player ID {playerSlot.PlayerID}, but no controller was assigned.") { }
         }
+    }
 
-
-
+    public interface IPlayerRequestByID
+    {
+        Task<TReply> RequestDecision<TRequest, TReply>(PlayerID playerId, TRequest request)
+            where TRequest : IStageTaskRequest<TReply>;
     }
 }

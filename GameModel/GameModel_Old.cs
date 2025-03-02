@@ -1,5 +1,6 @@
 ﻿
 using FDG.Data;
+using FDG.Players;
 using FDG.Stages;
 using FDG.StateMachine;
 using FutureOfDarkGrimness.StateMachine.StateMachineBuilders;
@@ -58,7 +59,9 @@ namespace FDG
 
             _tableState = new TableState(_gameDataStore);
 
-            _gameContext = new GameContext(_textOutputRelayer, diceRoller, stageHandlerRegistry, _tableState,
+            PlayerSlotManager playerSlotManager = new PlayerSlotManager(slotCount: 2); //Temp but so is this whole class.
+
+            _gameContext = new GameContext(_textOutputRelayer, diceRoller, playerSlotManager, stageHandlerRegistry, _tableState,
                 _gameDataStore);
 
             //TODO: Get this procedurally depending on settings.

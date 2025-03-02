@@ -12,7 +12,7 @@ namespace FDG.Network.Connection.Lobby
         /// The second is a request to provide a reference to a <see cref="StageResolution.StageResolverRegistry"/>, 
         /// and you must fulfill this action before you can play the game.
         /// </summary>
-        event Action<IFDGGame, AssignStageResolverRegistryDelegate>? OnLaunched; //Need arguments?
+        event Action<IFDGGame>? OnLaunched; //Need arguments?
 
         IObservable<string> ServerName { get; }
 

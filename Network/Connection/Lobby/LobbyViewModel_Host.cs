@@ -47,7 +47,7 @@ namespace FDG.Network.Connection
         private const string SERVER_START_MESSAGE = "Server started successfully.";
         private const string LAUNCHING_GAME_MESSAGE = "About to launch game.";
 
-        public event Action<IFDGGame, AssignStageResolverRegistryDelegate>? OnLaunched;
+        public event Action<IFDGGame>? OnLaunched;
 
         private GameSettings _gameSettings = GameSettings.GetDefault();
 
@@ -175,22 +175,21 @@ namespace FDG.Network.Connection
             //Maybe something else should make these but eh.
             GameDataStore gameDataStore = GameDataStore.GameDataStoreBuilder.GetDefault();
 
-            //Make a player controller for each player. TODO: This is overly simplistic for now.
-            PlayerSlot[] playerSlots = GetPlayerSlots(gameDataStore, 
-                out AssignStageResolverRegistryDelegate assignStageResolverRegistryDelegate);
-
-
-            FDGServer server = new FDGServer(gameDataStore, _host, _gameSettings, playerSlots);
             FDGGame_AsLocal gameModel = new FDGGame_AsLocal(gameDataStore);
 
-            OnLaunched?.Invoke(gameModel, assignStageResolverRegistryDelegate);
+            //Make a player controller for each player. TODO: This is overly simplistic for now.
+            PlayerSlot[] playerSlots = GetPlayerSlots(gameModel.StageResolverRegistry, gameDataStore);
+
+            FDGServer server = new FDGServer(gameDataStore, _host, _gameSettings, playerSlots);
+
+
+            OnLaunched?.Invoke(gameModel);
 
             LaunchGameMessage launchGameMessage = new LaunchGameMessage();
             await _commandDispatcher.SendCommandAsync(launchGameMessage);
         }
         
-        private PlayerSlot[] GetPlayerSlots(IReadableGameDataStore gameDataStore, 
-            out AssignStageResolverRegistryDelegate assignStageHandlerRegistryDelegate)
+        private PlayerSlot[] GetPlayerSlots(StageResolverRegistry stageResolverRegister, IReadableGameDataStore gameDataStore)
         {
             PlayerSlot[] playerSlots = new PlayerSlot[_playerInfos.Value.Count];
 
@@ -202,13 +201,15 @@ namespace FDG.Network.Connection
                 LobbyPlayerInfo lobbyPlayerInfo = _playerInfos.Value[i];
 
                 PlayerSlot playerSlot = new PlayerSlot(i, lobbyPlayerInfo.TeamNumber);
+                playerSlots[i] = playerSlot;
 
-                switch(lobbyPlayerInfo.PlayerType)
+                switch (lobbyPlayerInfo.PlayerType)
                 {
                     case EPlayerType.Local:
-                        LocalPlayerController localPlayerController = new LocalPlayerController(lobbyPlayerInfo.PlayerName, playerSlot.PlayerID);
+                        LocalPlayerController localPlayerController = new LocalPlayerController(lobbyPlayerInfo.PlayerName, 
+                            playerSlot.PlayerID, stageResolverRegister);
                         localPlayerControllers.Add(localPlayerController);
-                        playerSlots[i].AssignPlayerController(localPlayerController);
+                        playerSlot.AssignPlayerController(localPlayerController);
                         break;
                     case EPlayerType.Network:
                         NetworkPlayerController networkPlayerController = new NetworkPlayerController(lobbyPlayerInfo.PlayerName, playerSlot.PlayerID,
@@ -218,22 +219,8 @@ namespace FDG.Network.Connection
                         throw new NotImplementedException();
                     default:
                         throw new ArgumentOutOfRangeException();
-
-                }
-
-
-                playerSlots[i] = playerSlot;
-            }
-
-            void AssignStageHandlerRegistry(StageResolverRegistry stageResolverRegistry)
-            {
-                foreach(LocalPlayerController localPlayerController in localPlayerControllers)
-                {
-                    localPlayerController.AssignStageResolverRegistry(stageResolverRegistry);
                 }
             }
-
-            assignStageHandlerRegistryDelegate = AssignStageHandlerRegistry;
 
             return playerSlots;
         }

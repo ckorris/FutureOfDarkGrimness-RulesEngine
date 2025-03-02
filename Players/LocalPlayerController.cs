@@ -8,41 +8,23 @@ namespace FDG.Players
 
         public PlayerID ID { get; }
 
-        public bool IsReady { get; private set; } = false;
+        public bool IsReady { get; private set; } = true;
 
         public event Action<bool>? OnReadyStateChanged;
 
-        private StageResolverRegistry? _stageResolverRegistry = null;
+        private StageResolverRegistry _stageResolverRegistry;
 
         
-        public LocalPlayerController(string name, PlayerID id)
+        public LocalPlayerController(string name, PlayerID id, StageResolverRegistry stageResolverRegistry)
         {
             Name = name;
             ID = id;
-        }
-
-        public void AssignStageResolverRegistry(StageResolverRegistry stageResolverRegistry)
-        {
-            if(_stageResolverRegistry != null)
-            {
-                throw new InvalidOperationException($"{nameof(StageResolverRegistry)} already assigned.");
-            }
-
             _stageResolverRegistry = stageResolverRegistry;
-
-            IsReady = true;
-            OnReadyStateChanged?.Invoke(true);
         }
 
         public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
             where TRequest : IStageTaskRequest<TReply> 
         {
-            if(IsReady == false)
-            {
-                throw new InvalidOperationException($"Tried to request decision of a {nameof(LocalPlayerController)} " + 
-                    "that wasn't ready.");
-            }
-
             return _stageResolverRegistry.ResolveRequest<TRequest, TReply>(request);
         }
     }

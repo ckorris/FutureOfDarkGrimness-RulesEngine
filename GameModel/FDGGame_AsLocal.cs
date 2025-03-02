@@ -8,7 +8,9 @@ namespace FDG.GameModel
     {
         public ITableState TableState { get; }
 
-        public IStageResolverRegistry StageResolverRegistry { get; }
+        IStageResolverRegistry IFDGGame.StageResolverRegistry => StageResolverRegistry;
+
+        internal StageResolverRegistry StageResolverRegistry { get; }
 
         private IReadableGameDataStore _gameDataStore;
 

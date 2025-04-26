@@ -13,7 +13,7 @@ namespace FDG.Stages
             ToChooseUnitToActivate = new StageBinding(this);
         }
 
-        public override void Enter(IPlayerTurnContext context)
+        public override async Task Enter(IPlayerTurnContext context)
         {
             GameContext.Log("Determine Player Turn Stage entered and moving through.");
             ToChooseUnitToActivate.Activate(context);

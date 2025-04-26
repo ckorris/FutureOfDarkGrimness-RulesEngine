@@ -13,7 +13,7 @@ namespace FDG.Stages
             BackToChooseAction = new StageBinding(this);
         }
 
-        public override void Enter(ICombatActionContext context)
+        public override async Task Enter(ICombatActionContext context)
         {
             GameContext.Log("Entered Choose Melee Defender.");
 

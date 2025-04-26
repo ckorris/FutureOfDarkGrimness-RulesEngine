@@ -15,7 +15,7 @@ namespace FDG.Stages
             OnOfferRejected = new StageBinding(this);
         }
 
-        public override void Enter(ICombatActionContext context)
+        public override async Task Enter(ICombatActionContext context)
         {
             GameContext.Log("Offering strikeback.");
 

@@ -12,7 +12,7 @@ namespace FDG.Stages
             ToRollForMorale = new StageBinding(this);
         }
 
-        public override void Enter(ICombatActionContext context)
+        public override async Task Enter(ICombatActionContext context)
         {
             if (context.QueryForResult(out DetermineMeleeWinnerResults meleeWinnerResult) == false)
             {

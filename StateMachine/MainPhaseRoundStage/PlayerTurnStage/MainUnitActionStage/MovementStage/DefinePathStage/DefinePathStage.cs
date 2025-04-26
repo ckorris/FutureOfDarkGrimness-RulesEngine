@@ -13,7 +13,7 @@ namespace FDG.Stages
             OnPathDefined = new StageBinding(this);
         }
 
-        public override void Enter(IMovementActionContext context)
+        public override async Task Enter(IMovementActionContext context)
         {
             PathTemplate pathTemplate = new PathTemplate(context.MovingUnit, context);
 

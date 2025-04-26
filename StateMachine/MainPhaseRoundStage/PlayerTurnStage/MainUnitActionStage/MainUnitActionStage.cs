@@ -23,7 +23,7 @@ namespace FDG.Stages
             
         }
 
-        public override void Enter(IPlayerTurnContext context)
+        public override async Task Enter(IPlayerTurnContext context)
         {
             GameContext.Log("Main Unit Action stage entered.");
 

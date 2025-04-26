@@ -14,7 +14,7 @@ namespace FDG.Stages
             OnChoseWeapon = new StageBinding(this);
         }
 
-        public override void Enter(ICombatActionContext context)
+        public override async Task Enter(ICombatActionContext context)
         {
             if (context.AvailableWeapons.Count == 0)
             {

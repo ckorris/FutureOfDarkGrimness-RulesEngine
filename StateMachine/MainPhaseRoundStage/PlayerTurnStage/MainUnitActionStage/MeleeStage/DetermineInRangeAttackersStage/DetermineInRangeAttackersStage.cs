@@ -13,7 +13,7 @@ namespace FDG.Stages
             ToDetermineDefenders = new StageBinding(this);
         }
 
-        public override void Enter(ICombatActionContext context)
+        public override async Task Enter(ICombatActionContext context)
         {
             GameContext.Log("Entering Determine In Range Attackers. Skipping, for now we let everyone fight.");
             ToDetermineDefenders.Activate(context);

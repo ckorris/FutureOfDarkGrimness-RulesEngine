@@ -10,7 +10,7 @@ namespace FDG.Stages
             OnPiledIn = new StageBinding(this);
         }
 
-        public override void Enter(ICombatActionContext context)
+        public override async Task Enter(ICombatActionContext context)
         {
             GameContext.Log("Entered pile in stage. Skipping for now.");
             OnPiledIn.Activate(context);

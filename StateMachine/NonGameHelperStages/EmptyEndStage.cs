@@ -8,7 +8,7 @@ namespace FDG.Stages
         {
         }
 
-        public override void Enter(TContext context)
+        public override async Task Enter(TContext context)
         {
             GameContext.Log("End reached.");
         }

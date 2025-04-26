@@ -44,7 +44,7 @@ namespace FDG.Stages
             _hasBoundNextStage = true;
         }
 
-        public override void Enter(TMetadata context)
+        public override async Task Enter(TMetadata context)
         {
             foreach (ISpecialRule_Combat rule in context.AllSpecialRules)
             {

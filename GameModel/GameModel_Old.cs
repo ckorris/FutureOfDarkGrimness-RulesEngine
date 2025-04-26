@@ -72,7 +72,7 @@ namespace FDG
 
         public void Begin()
         {
-            _stateMachine.Enter(_gameContext);
+            _ = _stateMachine.Enter(_gameContext);
         }
 
         public void RegisterTextOutput(ITextOutput textOutput)

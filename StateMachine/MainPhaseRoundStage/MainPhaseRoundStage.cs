@@ -18,7 +18,7 @@ namespace FDG.Stages
             
         }
 
-        public override void Enter(IGameContext context)
+        public override async Task Enter(IGameContext context)
         {
             GameContext.TextOutput.Log($"Main Phase stage entering child: Reconcile New Turn.");
 

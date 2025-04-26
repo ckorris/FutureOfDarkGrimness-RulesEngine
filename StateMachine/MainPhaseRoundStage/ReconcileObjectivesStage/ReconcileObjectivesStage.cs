@@ -18,7 +18,7 @@ namespace FDG.Stages
             ToVictoryCalculation = new StageBinding(this);
         }
 
-        public override void Enter(IMainPhaseContext context)
+        public override async Task Enter(IMainPhaseContext context)
         {
             //Temp, we'll just count to three and leave the phase when we're done.
             _timesEntered++;

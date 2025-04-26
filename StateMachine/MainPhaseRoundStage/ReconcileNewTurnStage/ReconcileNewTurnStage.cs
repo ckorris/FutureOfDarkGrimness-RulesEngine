@@ -13,7 +13,7 @@ namespace FDG.Stages
             ToStartExtraActions = new StageBinding(this);
         }
 
-        public override void Enter(IMainPhaseContext context)
+        public override async Task Enter(IMainPhaseContext context)
         {
             context.Log($"Entered {nameof(ReconcileNewTurnStage)}.");
             GameContext.GetHandler<IReconcileNewTurnHandler>().Handle(context, ToStartExtraActions.Activate);

@@ -11,7 +11,7 @@ namespace FDG.Stages
             OnAppliedNonMovementTerrainEffects = new StageBinding(this);
         }
 
-        public override void Enter(IMovementActionContext context)
+        public override async Task Enter(IMovementActionContext context)
         {
             //Not going to worry about this for now.
             OnAppliedNonMovementTerrainEffects.Activate(context);

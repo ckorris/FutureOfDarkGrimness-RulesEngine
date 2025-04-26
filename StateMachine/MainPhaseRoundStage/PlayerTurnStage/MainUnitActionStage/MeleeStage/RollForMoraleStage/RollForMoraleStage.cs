@@ -16,7 +16,7 @@ namespace FDG.Stages
             OnMoraleFailed = new StageBinding(this);
         }
 
-        public override void Enter(ICombatActionContext context)
+        public override async Task Enter(ICombatActionContext context)
         {
             //TODO: Modifiers need to be able to affect this roll. Can we make these combat stages?
 

@@ -11,7 +11,7 @@ namespace FDG.Stages
             ToMainUnitAction = new StageBinding(this);
         }
 
-        public override void Enter(IPlayerTurnContext context)
+        public override async Task Enter(IPlayerTurnContext context)
         {
             context.Log($"Entered {nameof(ChooseUnitToActivateStage)}.");
 

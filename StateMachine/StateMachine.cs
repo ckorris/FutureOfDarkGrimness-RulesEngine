@@ -18,12 +18,12 @@ namespace FDG.Stages
             _transitions = builder.BuildStateMachine(this, gameContext, out _startingStage);
         }
 
-        public void Enter(TTopLevel topLevelContext)
+        public async Task Enter(TTopLevel topLevelContext)
         {
-            _startingStage.Enter(topLevelContext);
+            await _startingStage.Enter(topLevelContext);
         }
 
-        public void ExecuteTransition(string eventName, StageBase<TTopLevel> leavingChild, TTopLevel childContext)
+        public async Task ExecuteTransition(string eventName, StageBase<TTopLevel> leavingChild, TTopLevel childContext)
         {
             if (_transitions.TryGetValue(eventName, out StageBase<TTopLevel> enteringChild) == false)
             {
@@ -33,7 +33,7 @@ namespace FDG.Stages
             leavingChild.Exit();
             NotifyChildExited(leavingChild);
 
-            enteringChild.Enter(childContext);
+            await enteringChild.Enter(childContext);
             NotifyChildEntered(enteringChild);
         }
 

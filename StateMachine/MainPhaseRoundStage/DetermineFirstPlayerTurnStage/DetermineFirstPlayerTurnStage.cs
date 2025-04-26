@@ -11,7 +11,7 @@ namespace FDG.Stages
             ToPlayerTurn = new StageBinding(this);
         }
 
-        public override void Enter(IMainPhaseContext context)
+        public override async Task Enter(IMainPhaseContext context)
         {
             GameContext.Log("Skipping Determine First Player Turn for now.");
             ToPlayerTurn.Activate(context);

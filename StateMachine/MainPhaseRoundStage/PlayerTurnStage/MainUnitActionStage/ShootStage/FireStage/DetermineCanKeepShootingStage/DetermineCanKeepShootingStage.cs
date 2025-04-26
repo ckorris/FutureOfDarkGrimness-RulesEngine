@@ -13,7 +13,7 @@ namespace FDG.Stages
             ToFinishShooting = new StageBinding(this);
         }
 
-        public override void Enter(ICombatActionContext context)
+        public override async Task Enter(ICombatActionContext context)
         {
             //Return to choose weapon again if there are weapons remaining and the target is still alive.
             if (context.AvailableWeapons.Count == 0)

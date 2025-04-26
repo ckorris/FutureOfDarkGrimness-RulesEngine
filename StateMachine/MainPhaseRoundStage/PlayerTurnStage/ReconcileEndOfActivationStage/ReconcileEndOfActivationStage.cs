@@ -16,7 +16,7 @@ namespace FDG.Stages
             ToReconcileObjectives = new StageBinding(this);
         }
 
-        public override void Enter(IPlayerTurnContext context)
+        public override async Task Enter(IPlayerTurnContext context)
         {
             //Temp, just have it count to 3, as if there are three units to activate.
             _enterCount++;

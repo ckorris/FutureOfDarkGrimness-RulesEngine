@@ -71,7 +71,7 @@ namespace FDG.GameModel
             //Await something.
             await Task.Delay(500); //Half a second. At least lets us test before implementing this.
 
-            stateMachine.Enter(context);
+            _ = stateMachine.Enter(context);
         }
 
         private void LoadTestData()

@@ -12,7 +12,7 @@ namespace FDG.Stages
             ToDetermineFirstTurn = new StageBinding(this);
         }
 
-        public override void Enter(IMainPhaseContext context)
+        public override async Task Enter(IMainPhaseContext context)
         {
             context.Log($"Entered {nameof(StartOfTurnExtraActionStage)}.");
             GameContext.GetHandler<IStartOfTurnExtraActionsHandler>().Handle(context, ToDetermineFirstTurn.Activate);

@@ -15,7 +15,7 @@ namespace FDG.Stages
             OnDoesntNeedRollToDecide = new StageBinding(this);
         }
 
-        public override void Enter(ICombatActionContext context)
+        public override async Task Enter(ICombatActionContext context)
         {
             //Get wounds dealt by each side.
             float attackerWoundsDealt = context.DefenderRemainingWoundsAtStart - context.DefendingUnit.RemainingWounds;

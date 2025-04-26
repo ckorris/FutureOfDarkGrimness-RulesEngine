@@ -17,7 +17,7 @@ namespace FDG.Stages
             OnDefenderKilled = new StageBinding(this);
         }
 
-        public override void Enter(ICombatActionContext context)
+        public override async Task Enter(ICombatActionContext context)
         {
             int remainingWeaponCount = context.AvailableWeapons.Count;
 

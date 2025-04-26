@@ -12,7 +12,7 @@ namespace FDG.Stages
             ToChooseMeleeWeapons = new StageBinding(this);
         }
 
-        public override void Enter(ICombatActionContext context)
+        public override async Task Enter(ICombatActionContext context)
         {
             GameContext.Log("Entering Determine In Range Defenders. Skipping, for now we let everyone fight.");
             ToChooseMeleeWeapons.Activate(context);

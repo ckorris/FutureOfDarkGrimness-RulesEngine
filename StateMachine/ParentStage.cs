@@ -25,14 +25,14 @@ namespace FDG.Stages
         private TContextSelf _currentContext = default;
         private bool _hasContext = false;
 
-        public override void Enter(TContextSelf context)
+        public override async Task Enter(TContextSelf context)
         {
             _currentContext = context;
             _hasContext = true;
 
             TContextChild childContext = GetNewChildContext(context);
 
-            TransitionToChild(_startingChild, childContext);
+            await TransitionToChild(_startingChild, childContext);
         }
 
         public override void Exit()
@@ -47,7 +47,7 @@ namespace FDG.Stages
             _hasContext = false;
         }
 
-        public void ExecuteTransition(string eventName, StageBase<TContextChild> leavingChild, TContextChild childContext)
+        public async Task ExecuteTransition(string eventName, StageBase<TContextChild> leavingChild, TContextChild childContext)
         {
             if (_transitions.TryGetValue(eventName, out Transition transition) == false)
             {
@@ -60,12 +60,12 @@ namespace FDG.Stages
             transition.Invoke(childContext);
         }
 
-        private void TransitionToChild(StageBase<TContextChild> newChild, TContextChild childContext)
+        private async Task TransitionToChild(StageBase<TContextChild> newChild, TContextChild childContext)
         {
             CurrentChild = newChild;
 
-            newChild.Enter(childContext);
             Parent?.NotifyChildExited(newChild);
+            await newChild.Enter(childContext);
         }
 
         private void TransitionToSibling(StageBinding siblingBinding)
@@ -108,7 +108,7 @@ namespace FDG.Stages
 
             public TransitionSetBuilder AddChild(StageBase<TContextChild> stage)
             {
-                _dictionary.Add(stage.Name, (context) => _parentStage.TransitionToChild(stage, context));
+                _dictionary.Add(stage.Name, async (context) => await _parentStage.TransitionToChild(stage, context));
                 return this;
             }
 

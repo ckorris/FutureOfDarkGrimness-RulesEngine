@@ -23,7 +23,7 @@ namespace FDG.Stages
             ToReconcileEndOfActivation = new StageBinding(this);
         }
 
-        public override void Enter(IUnitActionContext context)
+        public override async Task Enter(IUnitActionContext context)
         {
 
             GameContext.Log("Entered Choose Action.");

@@ -33,7 +33,7 @@ namespace FDG.Stages
             Parent.ExecuteTransition(eventName, this, context);
         }
 
-        public abstract void Enter(TContext context);
+        public abstract Task Enter(TContext context);
 
         public virtual void Exit() { } //Optional.
     }

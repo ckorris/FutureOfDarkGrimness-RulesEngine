@@ -15,7 +15,7 @@ namespace FDG.Stages
             OnMoveExecuted = new StageBinding(this);
         }
 
-        public override void Enter(IMovementActionContext context)
+        public override async Task Enter(IMovementActionContext context)
         {
             bool gotPaths = context.TryGetPaths(out IReadOnlyDictionary<IModel, IReadOnlyList<Position>> paths);
 

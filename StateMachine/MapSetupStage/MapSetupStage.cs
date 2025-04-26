@@ -14,7 +14,7 @@ namespace FDG.Stages
             ToDeployment = new StageBinding(this);
         }
 
-        public override void Enter(IGameContext context)
+        public override async Task Enter(IGameContext context)
         {
             //TODO: Implement.
             context.Log($"Entered {nameof(MapSetupStage)}.");

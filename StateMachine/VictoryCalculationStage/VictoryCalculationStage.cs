@@ -9,7 +9,7 @@ namespace FDG.Stages
         {
         }
 
-        public override void Enter(IGameContext context)
+        public override async Task Enter(IGameContext context)
         {
             //Overly simple for now.
             GameContext.TextOutput.Log("Reached victory calculation.");

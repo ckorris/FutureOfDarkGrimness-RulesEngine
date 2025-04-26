@@ -17,7 +17,7 @@ namespace FDG.Stages
             ToMain = new StageBinding(this);
         }
 
-        public override void Enter(IGameContext context)
+        public override async Task Enter(IGameContext context)
         {
             context.Log($"Entered {nameof(DeploymentStage)}.");
             //GameContext.GetHandler<IDeploymentHandler>().Handle(GameContext, ToMain.Activate);

@@ -16,7 +16,7 @@ namespace FDG.Stages
             
         }
 
-        public override void Enter(ICombatActionContext context)
+        public override async Task Enter(ICombatActionContext context)
         {
             GameContext.Log("Swinging.");
 

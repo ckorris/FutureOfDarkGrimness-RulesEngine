@@ -165,6 +165,152 @@ namespace FDG.Tests
             Assert.That(deserializedInvalidOption.Reason, Is.EqualTo("This model is too large"));
         }
 
+        [Test]
+        public async Task StringSelectionRequest_ResolvesCorrectly()
+        {
+            var registry = new StageResolverRegistry();
+            var playerID = new PlayerID(Guid.NewGuid());
+            var taskID = new TaskID(Guid.NewGuid());
+
+            var validOptions = new List<string> { "Attack", "Defend", "Move" };
+            var invalidOptions = new List<StringSelectionRequest.InvalidOption>
+            {
+                new StringSelectionRequest.InvalidOption("Retreat", "Unit is too brave to retreat")
+            };
+
+            var request = new StringSelectionRequest(
+                playerID,
+                taskID,
+                "Choose your action",
+                validOptions,
+                invalidOptions);
+
+            var expectedChoice = "Attack";
+            var resolver = new TestStringSelectionResolver(expectedChoice);
+
+            registry.RegisterResolver<StringSelectionRequest, string>(resolver);
+            var result = await registry.ResolveRequest<StringSelectionRequest, string>(request);
+
+            Assert.That(result, Is.EqualTo(expectedChoice));
+        }
+
+        [Test]
+        public void StringSelectionRequest_SerializesAndDeserializesCorrectly()
+        {
+            var playerID = new PlayerID(Guid.NewGuid());
+            var taskID = new TaskID(Guid.NewGuid());
+
+            var validOptions = new List<string> { "Attack", "Defend", "Move" };
+            var invalidOptions = new List<StringSelectionRequest.InvalidOption>
+            {
+                new StringSelectionRequest.InvalidOption("Retreat", "Unit is too brave to retreat")
+            };
+
+            var request = new StringSelectionRequest(
+                playerID,
+                taskID,
+                "Choose your action",
+                validOptions,
+                invalidOptions);
+
+            string serialized = JsonConvert.SerializeObject(request);
+            var deserialized = JsonConvert.DeserializeObject<StringSelectionRequest>(serialized);
+
+            Assert.That(deserialized, Is.Not.Null);
+            Assert.That(deserialized.ValidOptions.Count, Is.EqualTo(3));
+            Assert.That(deserialized.InvalidOptions.Count, Is.EqualTo(1));
+            Assert.That(deserialized.ValidOptions[0], Is.EqualTo("Attack"));
+            Assert.That(deserialized.ValidOptions[1], Is.EqualTo("Defend"));
+            Assert.That(deserialized.ValidOptions[2], Is.EqualTo("Move"));
+            Assert.That(deserialized.InvalidOptions[0].Option, Is.EqualTo("Retreat"));
+            Assert.That(deserialized.InvalidOptions[0].Reason, Is.EqualTo("Unit is too brave to retreat"));
+            Assert.That(deserialized.Instructions, Is.EqualTo("Choose your action"));
+        }
+
+        [Test]
+        public async Task SingleBindingRequest_ResolvesCorrectly()
+        {
+            // Arrange
+            var gameDataStore = new GameDataStore.GameDataStoreBuilder()
+                .RegisterType<float>(64)
+                .RegisterType<Position>(64)
+                .RegisterType<ModelData>(64)
+                .Build();
+
+            var registry = new StageResolverRegistry();
+            var playerID = new PlayerID(Guid.NewGuid());
+            var taskID = new TaskID(Guid.NewGuid());
+
+            // Create test data
+            var model = new ModelData(1.0f, new List<Weapon>(), new List<SpecialRule>(), new Position(), gameDataStore);
+            var ref1 = gameDataStore.Create(model);
+            var binding = gameDataStore.GetDataBinding<ModelData>(ref1);
+
+            var request = new SingleBindingRequest<ModelData>(
+                playerID,
+                taskID,
+                "Select your army");
+
+            var resolver = new TestSingleBindingResolver<ModelData>(binding);
+
+            // Act
+            registry.RegisterResolver<SingleBindingRequest<ModelData>, DataBinding<ModelData>>(resolver);
+            var result = await registry.ResolveRequest<SingleBindingRequest<ModelData>, DataBinding<ModelData>>(request);
+
+            // Assert
+            Assert.That(result, Is.EqualTo(binding));
+            Assert.That(result.GetValue(), Is.EqualTo(model));
+        }
+
+        [Test]
+        public void SingleBindingRequest_SerializesAndDeserializesCorrectly()
+        {
+            // Arrange
+            var gameDataStoreFrom = new GameDataStore.GameDataStoreBuilder()
+                .RegisterType<float>(64)
+                .RegisterType<Position>(64)
+                .RegisterType<ModelData>(64)
+                .Build();
+
+            var gameDataStoreTo = new GameDataStore.GameDataStoreBuilder()
+                .RegisterType<float>(64)
+                .RegisterType<Position>(64)
+                .RegisterType<ModelData>(64)
+                .Build();
+
+            // Create test data in the source store
+            var model = new ModelData(1.0f, new List<Weapon>(), new List<SpecialRule>(), new Position(), gameDataStoreFrom);
+            var ref1 = gameDataStoreFrom.Create(model);
+            var binding = gameDataStoreFrom.GetDataBinding<ModelData>(ref1);
+
+            var request = new SingleBindingRequest<ModelData>(
+                new PlayerID(Guid.NewGuid()),
+                new TaskID(Guid.NewGuid()),
+                "Select your army");
+
+            // Create the same data in the target store
+            var modelTo = new ModelData(1.0f, new List<Weapon>(), new List<SpecialRule>(), new Position(), gameDataStoreTo);
+            gameDataStoreTo.CreateFromReferenceAndJson(ref1, gameDataStoreFrom.GetValueAsJson<ModelData>(ref1));
+
+            // Act
+            var converterFrom = new DataBindingJsonConverter<ModelData>(gameDataStoreFrom);
+            var converterTo = new DataBindingJsonConverter<ModelData>(gameDataStoreTo);
+
+            string serialized = JsonConvert.SerializeObject(request, new JsonSerializerSettings
+            {
+                Converters = new List<JsonConverter> { converterFrom }
+            });
+
+            var deserialized = JsonConvert.DeserializeObject<SingleBindingRequest<ModelData>>(serialized, new JsonSerializerSettings
+            {
+                Converters = new List<JsonConverter> { converterTo }
+            });
+
+            // Assert
+            Assert.That(deserialized, Is.Not.Null);
+            Assert.That(deserialized.Instructions, Is.EqualTo("Select your army"));
+        }
+
         #region Test Resolvers
 
         private class TestYesNoResolver : IStageResolver<YesNoRequest, bool>
@@ -192,6 +338,36 @@ namespace FDG.Tests
             }
 
             public Task<DataBinding<T>> Resolve(SelectionRequest<T> request)
+            {
+                return Task.FromResult(_expectedResponse);
+            }
+        }
+
+        private class TestStringSelectionResolver : IStageResolver<StringSelectionRequest, string>
+        {
+            private readonly string _expectedResponse;
+
+            public TestStringSelectionResolver(string expectedResponse)
+            {
+                _expectedResponse = expectedResponse;
+            }
+
+            public Task<string> Resolve(StringSelectionRequest request)
+            {
+                return Task.FromResult(_expectedResponse);
+            }
+        }
+
+        private class TestSingleBindingResolver<T> : IStageResolver<SingleBindingRequest<T>, DataBinding<T>>
+        {
+            private readonly DataBinding<T> _expectedResponse;
+
+            public TestSingleBindingResolver(DataBinding<T> expectedResponse)
+            {
+                _expectedResponse = expectedResponse;
+            }
+
+            public Task<DataBinding<T>> Resolve(SingleBindingRequest<T> request)
             {
                 return Task.FromResult(_expectedResponse);
             }

@@ -3,6 +3,7 @@ using FDG.Network.Connection;
 using FDG.Network.Synchronization;
 using FDG.Players;
 using FDG.Samples;
+using FDG.StageResolution;
 using FDG.Stages;
 using FDG.StateMachine;
 using FutureOfDarkGrimness.StateMachine.StateMachineBuilders;
@@ -34,7 +35,10 @@ namespace FDG.GameModel
 
             //TODO: Below has stage handlers assigned, but I'm removing this. That'll break hard. We can't run the game until that's
             //removed from all stages.
-            _gameContext = new GameContext(GetTextOutput(), GetDiceRoller(gameSettings), _playerSlotManager, handlers: null, tableState, _gameDataStore);
+            _gameContext = new GameContext(GetTextOutput(), GetDiceRoller(gameSettings), _playerSlotManager, 
+                handlers: null, 
+                tableState, 
+                _gameDataStore);
 
             _stateMachine = new StateMachine<IGameContext>(new GDFStateMachineBuilder(), _gameContext);
 

@@ -1,6 +1,6 @@
-
 using FDG.Data;
 using FDG.Players;
+using FDG.StageResolution;
 
 namespace FDG
 {
@@ -45,7 +45,8 @@ namespace FDG
 
         public GameContext(ITextOutput textOutput, IDiceRoller diceRoller,
                 IPlayerRequestByID playerRequester,
-                StageHandlerRegistry handlers, TableState tableState,
+                StageHandlerRegistry handlers,
+                TableState tableState,
                 IReadWriteableGameDataStore gameDataStore)
         {
             TextOutput = textOutput;

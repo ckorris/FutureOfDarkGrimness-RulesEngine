@@ -1,5 +1,4 @@
-﻿
-using FDG.Data;
+﻿using FDG.Data;
 using FDG.Players;
 using FDG.Stages;
 using FDG.StateMachine;
@@ -61,7 +60,9 @@ namespace FDG
 
             PlayerSlotManager playerSlotManager = new PlayerSlotManager(slotCount: 2); //Temp but so is this whole class.
 
-            _gameContext = new GameContext(_textOutputRelayer, diceRoller, playerSlotManager, stageHandlerRegistry, _tableState,
+            _gameContext = new GameContext(_textOutputRelayer, diceRoller, playerSlotManager, 
+                _stageHandlerRegistry, 
+                _tableState,
                 _gameDataStore);
 
             //TODO: Get this procedurally depending on settings.

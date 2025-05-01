@@ -45,6 +45,9 @@ namespace FDG.GameModel
             //For test, make a thing. 
             LoadTestData();
 
+            //TEMP TEST
+            return;
+
             _ = LaunchStateMachineOnceReady(_stateMachine, _gameContext);
         }
 

@@ -10,20 +10,21 @@ namespace FDG.StageResolution.Requests
     /// <typeparam name="T">The type of data to select from. Must be a type registered in GameDataStore.</typeparam>
     public class SelectionRequest<T> : IStageTaskRequest<DataBinding<T>>
     {
-        public record InvalidOption(DataBinding<T> Option, string Reason);
+        public record ValidOption(DataBinding<T> Option, string Name);
+        public record InvalidOption(DataBinding<T> Option, string Name, string Reason);
 
         public PlayerID TargetPlayerID { get; }
         public TaskID TaskID { get; }
         public string TaskName { get; }
         public string Instructions { get; }
-        public IReadOnlyList<DataBinding<T>> ValidOptions { get; }
+        public IReadOnlyList<ValidOption> ValidOptions { get; }
         public IReadOnlyList<InvalidOption> InvalidOptions { get; }
 
         public SelectionRequest(
             PlayerID targetPlayerID, 
             TaskID taskID, 
             string instructions,
-            IReadOnlyList<DataBinding<T>> validOptions,
+            IReadOnlyList<ValidOption> validOptions,
             IReadOnlyList<InvalidOption> invalidOptions)
         {
             TargetPlayerID = targetPlayerID;

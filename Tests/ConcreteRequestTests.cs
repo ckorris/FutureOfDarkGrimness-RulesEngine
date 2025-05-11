@@ -61,9 +61,14 @@ namespace FDG.Tests
             var binding2 = gameDataStore.GetDataBinding<ModelData>(ref2);
             var binding3 = gameDataStore.GetDataBinding<ModelData>(ref3);
 
-            var validOptions = new List<DataBinding<ModelData>> { binding1, binding2 };
+            var validOptions = new List<SelectionRequest<ModelData>.ValidOption>
+            { 
+                new SelectionRequest<ModelData>.ValidOption(binding1, "Binding 1"), 
+                new SelectionRequest<ModelData>.ValidOption(binding2, "Binding 2")
+            };
+
             var invalidOptions = new List<SelectionRequest<ModelData>.InvalidOption>()
-            {  new SelectionRequest<ModelData>.InvalidOption(binding3, "This model is too large")  };
+            {  new SelectionRequest<ModelData>.InvalidOption(binding3, "Binding 3", "This model is too large")  };
 
             var request = new SelectionRequest<ModelData>(
                 playerID,
@@ -112,10 +117,14 @@ namespace FDG.Tests
             var binding2 = gameDataStoreFrom.GetDataBinding<ModelData>(ref2);
             var binding3 = gameDataStoreFrom.GetDataBinding<ModelData>(ref3);
 
-            var validOptions = new List<DataBinding<ModelData>> { binding1, binding2 };
+            var validOptions = new List<SelectionRequest<ModelData>.ValidOption>
+            {
+                new SelectionRequest<ModelData>.ValidOption(binding1, "Binding 1"),
+                new SelectionRequest<ModelData>.ValidOption(binding2, "Binding 2")
+            };
             var invalidOptions = new List<SelectionRequest<ModelData>.InvalidOption>
             {
-                new SelectionRequest<ModelData>.InvalidOption(binding3, "This model is too large")
+                new SelectionRequest<ModelData>.InvalidOption(binding3, "Binding 3", "This model is too large")
             };
 
             var request = new SelectionRequest<ModelData>(
@@ -156,8 +165,8 @@ namespace FDG.Tests
             // Verify valid options
             var deserializedBinding1 = deserialized.ValidOptions[0];
             var deserializedBinding2 = deserialized.ValidOptions[1];
-            Assert.That(deserializedBinding1.GetValue().BaseRadiusInches, Is.EqualTo(model1To.BaseRadiusInches));
-            Assert.That(deserializedBinding2.GetValue().BaseRadiusInches, Is.EqualTo(model2To.BaseRadiusInches));
+            Assert.That(deserializedBinding1.Option.GetValue().BaseRadiusInches, Is.EqualTo(model1To.BaseRadiusInches));
+            Assert.That(deserializedBinding2.Option.GetValue().BaseRadiusInches, Is.EqualTo(model2To.BaseRadiusInches));
 
             // Verify invalid options
             var deserializedInvalidOption = deserialized.InvalidOptions[0];

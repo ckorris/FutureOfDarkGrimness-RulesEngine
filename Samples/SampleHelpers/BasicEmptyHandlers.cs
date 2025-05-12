@@ -5,6 +5,7 @@ using System.Linq;
 
 namespace FDG.Samples
 {
+    /*
     /// <summary>
     /// Will perform only the action listed by <see cref="TestActionChoice"/>, then will pass after the first time.
     /// </summary>
@@ -58,6 +59,7 @@ namespace FDG.Samples
             Ranged
         }
     }
+    */
     
 
     public class BasicTesterDefinePathHandler : IDefinePathHandler
@@ -67,38 +69,6 @@ namespace FDG.Samples
             //Just don't move. Not moving will pretty much always be valid.
             onTemplateValid.Invoke();
 
-        }
-    }
-
-    public class BasicTesterOfferStrikeBackHandler : IOfferStrikeBackHandler
-    {
-        public  bool StrikeBack;
-        public BasicTesterOfferStrikeBackHandler(bool strikeBack)
-        {
-            StrikeBack = strikeBack;
-        }
-
-        public void Handle(ICombatActionContext context, Action acceptStrikeBack, Action rejectStrikeBack)
-        {
-            if(StrikeBack)
-            {
-                acceptStrikeBack();
-            }
-            else
-            {
-                rejectStrikeBack();
-            }
-        }
-    }
-
-    public class BasicTesterChooseWeaponHandler : IChooseMeleeWeaponHandler, IChooseRangedWeaponHandler
-    {
-        public void Handle(IReadOnlyDictionary<IWeapon, int> availableWeapons, IReadOnlyDictionary<IWeapon, int> unavailableWeapons,
-            Action<IWeapon> onChoseWeapon)
-        {
-            //Just choose the next weapon automatically.
-            IWeapon firstWeapon = availableWeapons.First().Key;
-            onChoseWeapon(firstWeapon);
         }
     }
 
@@ -124,42 +94,6 @@ namespace FDG.Samples
         {
             woundsResults.AutoFill();
             onWoundsAssigned();
-        }
-    }
-
-    public class BasicTesterMapSetupHandler : IMapSetupHandler
-    {
-        public void Handle(IGameContext context, Action<IGameContext> exitStage)
-        {
-            //Just accepts it. Will need to actually implement later.
-            exitStage.Invoke(context);
-        }
-    }
-
-    public class BasicReconcileNewTurnHandler : IReconcileNewTurnHandler
-    {
-        public void Handle(IMainPhaseContext context, Action<IMainPhaseContext> exitStage)
-        {
-            //Just accepts it. Will need to actually implement later.
-            exitStage.Invoke(context);
-        }
-    }
-
-    public class BasicStartOfTurnExtraActionsHandler : IStartOfTurnExtraActionsHandler
-    {
-        public void Handle(IMainPhaseContext context, Action<IMainPhaseContext> exitStage)
-        {
-            //Just accepts it. Will need to actually implement later.
-            exitStage.Invoke(context);
-        }
-    }
-
-    public class BasicChooseUnitToActivateHandler : IChooseUnitToActivateHandler
-    {
-        public void Handle(IPlayerTurnContext context, List<ActionChoice> unitChoices)
-        {
-            //Just choose the first.
-            unitChoices.First(choice => choice.CanActivate).Choose();
         }
     }
 }

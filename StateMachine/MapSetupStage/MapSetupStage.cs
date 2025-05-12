@@ -18,16 +18,9 @@ namespace FDG.Stages
         {
             //TODO: Implement.
             context.Log($"Entered {nameof(MapSetupStage)}.");
-            GameContext.GetHandler<IMapSetupHandler>().Handle(GameContext, ToDeployment.Activate);
-        }
 
-        public override void Exit()
-        {
+            ToDeployment.Activate(context);
         }
     }
 
-    public interface IMapSetupHandler : IExitOnlyHandler<IGameContext>
-    {
-
-    }
 }

@@ -14,13 +14,9 @@ namespace FDG.Stages
 
         public override async Task Enter(IMainPhaseContext context)
         {
+            //TODO: Implement.
             context.Log($"Entered {nameof(StartOfTurnExtraActionStage)}.");
-            GameContext.GetHandler<IStartOfTurnExtraActionsHandler>().Handle(context, ToDetermineFirstTurn.Activate);
+            ToDetermineFirstTurn.Activate(context);
         }
-    }
-
-    public interface IStartOfTurnExtraActionsHandler : IExitOnlyHandler<IMainPhaseContext>
-    {
-
     }
 }

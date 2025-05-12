@@ -1,4 +1,5 @@
 using FDG.StageResolution;
+using System.Text.Json.Serialization;
 
 namespace FDG.StageResolution.Requests
 {
@@ -12,10 +13,19 @@ namespace FDG.StageResolution.Requests
         public string TaskName { get; }
         public string QuestionText { get; }
 
+        [JsonConstructor]
         public YesNoRequest(PlayerID targetPlayerID, TaskID taskID, string questionText)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
+            QuestionText = questionText;
+            TaskName = "Yes/No Question";
+        }
+
+        public YesNoRequest(PlayerID targetPlayerID,string questionText)
+        {
+            TargetPlayerID = targetPlayerID;
+            TaskID = new TaskID(Guid.NewGuid());
             QuestionText = questionText;
             TaskName = "Yes/No Question";
         }

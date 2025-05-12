@@ -32,8 +32,8 @@ namespace FDG.Stages
 
         protected override IUnitActionContext GetNewChildContext(IPlayerTurnContext contextSelf)
         {
-            UnitActionContext unitActionContext = new UnitActionContext(GameContext, contextSelf.ActivatedUnit);
-            unitActionContext.Reset(contextSelf.ActivatedUnit);
+            UnitActionContext unitActionContext = new UnitActionContext(GameContext, contextSelf.ActivatedUnit.GetValue());
+            unitActionContext.Reset(contextSelf.ActivatedUnit.GetValue());
             return unitActionContext;
         }
 

@@ -1,11 +1,14 @@
 
+using FDG.Data;
+using FDG.StageResolution.Requests;
+
 namespace FDG.Stages
 {
 
     public class ChooseUnitToActivateStage : StageBase<IPlayerTurnContext>
     {
         public StageBinding ToMainUnitAction;
-        public ChooseUnitToActivateStage(IGameContext gameContext, IStateMachineLayer<IPlayerTurnContext> parent) 
+        public ChooseUnitToActivateStage(IGameContext gameContext, IStateMachineLayer<IPlayerTurnContext> parent)
             : base(gameContext, parent)
         {
             ToMainUnitAction = new StageBinding(this);
@@ -14,35 +17,53 @@ namespace FDG.Stages
         public override async Task Enter(IPlayerTurnContext context)
         {
             context.Log($"Entered {nameof(ChooseUnitToActivateStage)}.");
+    
+            if(context.ActivatedPlayer == null)
+            {
+                throw new InvalidOperationException($"Entered {nameof(ChooseUnitToActivateStage)} while activated player was null.");
+            }
 
             List<ActionChoice> unitChoices = new List<ActionChoice>();
 
             //Find all units.
             //In the future, just do ones that the player owns, and that haven't yet activated.
             bool canActivate = true; //Temp.
-            foreach(IArmy army in GameContext.TableState.Armies.Objects)
+
+            List<SelectionRequest<UnitData>.ValidOption> validOptions = new List<SelectionRequest<UnitData>.ValidOption>();
+            List<SelectionRequest<UnitData>.InvalidOption> invalidOptions = new List<SelectionRequest<UnitData>.InvalidOption>();
+
+            foreach (ArmyData army in GameContext.GameDataStore.GetAllValues<ArmyData>()
+                .Where(a => a.IsOwnedBy(context.ActivatedPlayer.Value)))
             {
-                foreach (IUnit unit in army.Units)
-                { 
-                    ActionChoice choice = new ActionChoice(() => OnChoseUnit(context, unit), unit.Name, canActivate, "");
-                    unitChoices.Add(choice);
+                foreach(DataBinding<UnitData> potentialUnit in army.UnitBindings)
+                {
+                    if (potentialUnit.GetValue().HasActivatedThisTurn)
+                    {
+                        if (potentialUnit.GetValue().GetIsAlive())
+                        {
+                            validOptions.Add(new SelectionRequest<UnitData>.ValidOption(potentialUnit, potentialUnit.GetValue().Name));
+                        }
+                        
+                        //If the unit is dead, don't bother listing it, the reason is obvious.
+                    }
+                    else
+                    {
+                        invalidOptions.Add(new SelectionRequest<UnitData>.InvalidOption(potentialUnit, potentialUnit.GetValue().Name,
+                            "This unit has already activated."));
+                    }
                 }
             }
 
+            //TODO: We don't catch if there are no options and we're stuck in the menu forever.
+            SelectionRequest<UnitData> request = new SelectionRequest<UnitData>(context.ActivatedPlayer.Value, "Choose Unit to Activate",
+                validOptions, invalidOptions);
 
-            GameContext.GetHandler<IChooseUnitToActivateHandler>().Handle(context, unitChoices);
-        }
+            DataBinding<UnitData> chosenUnit = await GameContext.PlayerRequester.RequestDecision<SelectionRequest<UnitData>, DataBinding<UnitData>>
+                (context.ActivatedPlayer.Value, request);
 
-        private void OnChoseUnit(IPlayerTurnContext context, IUnit chosenUnit)
-        {
-            context.Log($"Activating: {chosenUnit.Name}.");
+            context.Log($"Activating: {chosenUnit.GetValue().Name}.");
             context.ChooseUnitToActivate(chosenUnit);
             ToMainUnitAction.Activate(context);
         }
-    }
-
-    public interface IChooseUnitToActivateHandler
-    {
-        public void Handle(IPlayerTurnContext context, List<ActionChoice> unitChoices);
     }
 }

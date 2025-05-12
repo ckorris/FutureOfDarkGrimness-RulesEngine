@@ -31,9 +31,9 @@ namespace FDG.Stages
                     kvp.Key.SetPosition(kvp.Value.Last());
                 }
             }
-            //For now, just give the base a chance to show that the models moved.
 
-            GameContext.GetHandler<IExecuteMoveHandler>().Handle(() => OnMoveExecuted.Activate(context));
+            //TODO: Some sort of delay to show the objects moving.
+            OnMoveExecuted.Activate(context);
         }
     }
 

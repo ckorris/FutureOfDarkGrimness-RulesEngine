@@ -1,3 +1,4 @@
+using FDG.StageResolution.Requests;
 using System;
 using System.Collections.Generic;
 
@@ -14,6 +15,7 @@ namespace FDG.Stages
         public const string MOVEMENT_CHOICE_NAME = "Move";
         public const string CHARGE_CHOICE_NAME = "Charge";
         public const string SHOOT_CHOICE_NAME = "Shoot";
+        public const string PASS_CHOICE_NAME = "Pass";
 
         public ChooseActionStage(IGameContext gameContext, IStateMachineLayer<IUnitActionContext> parent) : base(gameContext, parent)
         {
@@ -43,16 +45,57 @@ namespace FDG.Stages
                 return;
             }
 
-            List<ActionChoice> actionChoices = new List<ActionChoice>()
+            List<string> validOptions = new List<string>();
+            List<StringSelectionRequest.InvalidOption> invalidOptions = new List<StringSelectionRequest.InvalidOption>();
+
+            Dictionary<string, Action> outcomes = new Dictionary<string, Action>();
+
+            if(canMove)
             {
-                new ActionChoice(() => ToMovement.Activate(context), MOVEMENT_CHOICE_NAME, canMove, canMove ? "" : cantMoveReason),
-                new ActionChoice(() => ToCharge.Activate(context), CHARGE_CHOICE_NAME, canCharge, canCharge ? "" : cantChargeReason),
-                new ActionChoice(() => ToShoot.Activate(context), SHOOT_CHOICE_NAME, canShoot, canShoot ? "" : cantShootReason)
-            };
+                validOptions.Add(MOVEMENT_CHOICE_NAME);
+                outcomes.Add(MOVEMENT_CHOICE_NAME, () => ToMovement.Activate(context));
+            }
+            else
+            {
+                invalidOptions.Add(new StringSelectionRequest.InvalidOption(MOVEMENT_CHOICE_NAME, cantMoveReason));
+            }
 
+            if(canCharge)
+            {
+                validOptions.Add(CHARGE_CHOICE_NAME);
+                outcomes.Add(CHARGE_CHOICE_NAME, () => ToCharge.Activate(context));
+            }
+            else
+            {
+                invalidOptions.Add(new StringSelectionRequest.InvalidOption(CHARGE_CHOICE_NAME, cantChargeReason));
+            }
 
-            GameContext.GetHandler<IChooseActionHandler>()
-                .Handle(context, actionChoices, () => ToReconcileEndOfActivation.Activate(context));
+            if(canShoot)
+            {
+                validOptions.Add(SHOOT_CHOICE_NAME);
+                outcomes.Add(SHOOT_CHOICE_NAME, () => ToShoot.Activate(context));
+            }
+            else
+            {
+                invalidOptions.Add(new StringSelectionRequest.InvalidOption(SHOOT_CHOICE_NAME, cantShootReason));
+            }
+
+            //Add any others here somehow.
+
+            //Add pass option.
+            validOptions.Add(PASS_CHOICE_NAME);
+            outcomes.Add(PASS_CHOICE_NAME, () => ToReconcileEndOfActivation.Activate(context));
+
+            StringSelectionRequest request = new StringSelectionRequest(context.ActivatingUnit.PlayerID, "Choose Action", validOptions, invalidOptions);
+
+            string choice = await GameContext.PlayerRequester.RequestDecision<StringSelectionRequest, string>(context.ActivatingUnit.PlayerID, request);
+            
+            if(outcomes.ContainsKey(choice) == false)
+            {
+                throw new ArgumentException($"Request option was {choice}, but that wasn't an option.");
+            }
+
+            outcomes[choice].Invoke();
         }
 
 
@@ -128,10 +171,5 @@ namespace FDG.Stages
         }
 
 
-    }
-
-    public interface IChooseActionHandler
-    {
-        public void Handle(IUnitActionContext context, List<ActionChoice> actionChoices, Action onPass);
     }
 }

@@ -1,4 +1,8 @@
 ﻿
+using FDG.Data;
+using FDG.StageResolution.Requests;
+using FDG.Utilities;
+
 namespace FDG.Stages
 {
     public class ChooseMeleeDefenderStage : StageBase<ICombatActionContext>
@@ -21,7 +25,44 @@ namespace FDG.Stages
 
             PlayerID attackingPlayer = context.AttackingUnit.PlayerID;
             
-            //TODO: Use player team instead of ID, to prevent attacking allies.
+            List<SelectionRequest<UnitData>.ValidOption> validDefenders = new List<SelectionRequest<UnitData>.ValidOption>();
+            List<SelectionRequest<UnitData>.InvalidOption> invalidDefenders = new List<SelectionRequest<UnitData>.InvalidOption>();
+
+            //There has GOT to be a better way to look up what team a player is on.
+            TeamData? playerTeam = GameContext.GameDataStore.GetAllValues<TeamData>()
+                .FirstOrDefault(teamData => teamData.IsPlayerOnTeam(attackingPlayer));
+
+            IReadOnlyList<PlayerID> alliedPlayers;
+
+            if (playerTeam == null)
+            {
+                alliedPlayers = new List<PlayerID>() { attackingPlayer }; 
+            }
+            else
+            {
+                alliedPlayers = playerTeam.Players;
+            }
+
+
+            foreach(ArmyData army in GameContext.GameDataStore.GetAllValues<ArmyData>()
+                .Where(a => alliedPlayers.Contains(a.PlayerID) == false))
+            {
+                foreach(DataBinding<UnitData> potentialDefender in army.UnitBindings)
+                {
+                    float minDistanceToUnit = UnitCompareUtilities.MinDistanceBetweenUnits(context.AttackingUnit, potentialDefender.GetValue(),
+                        out _, out _, includeVertical: false);
+                    if(minDistanceToUnit <= GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL)
+                    {
+                        //TODO: Deal with vertical, but we might leave that for pile-in.
+                        validDefenders.Add(new SelectionRequest<UnitData>.ValidOption(potentialDefender, potentialDefender.GetValue().Name));
+                    }
+                    else
+                    {
+                        invalidDefenders.Add(new SelectionRequest<UnitData>.InvalidOption(potentialDefender, potentialDefender.GetValue().Name,
+                            "This unit is too far away."));
+                    }
+                }
+            }
 
             void ChooseDefender(IUnit defender)
             {
@@ -31,24 +72,27 @@ namespace FDG.Stages
                 OnDefenderChosen.Activate(context);
             }
 
-            foreach(IArmy army in GameContext.TableState.Armies.Objects
-                .Where(a => a.IsNotOwnedBy(attackingPlayer)))
+            if (validDefenders.Count == 0)
             {
-                foreach(IUnit unit in army.Units)
-                {
-                    //TODO: Judge distance from attacking unit. For now, list them all.
-                    ActionChoice choice = new ActionChoice(() => ChooseDefender(unit), unit.Name, true, null);
-                    choices.Add(choice);
-                }
+                GameContext.Log("No potential melee units found.");
+                BackToChooseAction.Activate(context); //TODO: Tell the user somehow besides the log?
+            }
+            else if(validDefenders.Count == 1)
+            {
+                //No need to pose the request, just attack.
+                ChooseDefender(validDefenders.First().Option.GetValue());
+                return;
             }
 
-            GameContext.GetHandler<IChooseMeleeDefenderHandler>()
-                .Handle(context, choices, () => BackToChooseAction.Activate(context));
-        }
-    }
+            //If we're here, we have multiple potential targets. Ask the user who to attack.
+            SelectionRequest<UnitData> request = new SelectionRequest<UnitData>(attackingPlayer, "Choose defending unit",
+                validDefenders, invalidDefenders);
 
-    public interface IChooseMeleeDefenderHandler
-    {
-        public void Handle(ICombatActionContext context, List<ActionChoice> actionChoices, Action onCancel);
+            DataBinding<UnitData> chosenDefender
+                = await GameContext.PlayerRequester.RequestDecision<SelectionRequest<UnitData>, DataBinding<UnitData>>
+                (attackingPlayer, request);
+
+            ChooseDefender(chosenDefender.GetValue());
+        }
     }
 }

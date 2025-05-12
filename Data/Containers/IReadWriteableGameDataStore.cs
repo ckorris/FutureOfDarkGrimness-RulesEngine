@@ -14,5 +14,7 @@ namespace FDG.Data
         bool Destroy(DataReference reference);
 
         DataBinding<T> GetDataBinding<T>(DataReference dataReference);
+
+        IEnumerable<DataBinding<T>> GetAllDataBindings<T>();
     }
 }

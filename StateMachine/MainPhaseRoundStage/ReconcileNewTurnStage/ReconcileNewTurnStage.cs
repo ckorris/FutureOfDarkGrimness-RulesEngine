@@ -15,14 +15,11 @@ namespace FDG.Stages
 
         public override async Task Enter(IMainPhaseContext context)
         {
+            //TODO: Implement.
             context.Log($"Entered {nameof(ReconcileNewTurnStage)}.");
-            GameContext.GetHandler<IReconcileNewTurnHandler>().Handle(context, ToStartExtraActions.Activate);
+
+            ToStartExtraActions.Activate(context);
         }
-
-    }
-
-    public interface IReconcileNewTurnHandler : IExitOnlyHandler<IMainPhaseContext>
-    {
 
     }
 }

@@ -257,7 +257,6 @@ namespace FDG.Tests
 
             var request = new SingleBindingRequest<ModelData>(
                 playerID,
-                taskID,
                 "Select your army");
 
             var resolver = new TestSingleBindingResolver<ModelData>(binding);
@@ -294,7 +293,6 @@ namespace FDG.Tests
 
             var request = new SingleBindingRequest<ModelData>(
                 new PlayerID(Guid.NewGuid()),
-                new TaskID(Guid.NewGuid()),
                 "Select your army");
 
             // Create the same data in the target store

@@ -1,5 +1,6 @@
 using FDG.Data;
 using FDG.StageResolution;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace FDG.StageResolution.Requests
@@ -14,13 +15,20 @@ namespace FDG.StageResolution.Requests
         public string TaskName { get; }
         public string Instructions { get; }
 
-        public SingleBindingRequest(
-            PlayerID targetPlayerID,
-            TaskID taskID,
+        [JsonConstructor]
+        public SingleBindingRequest(PlayerID targetPlayerID, TaskID taskID,
             string instructions)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
+            Instructions = instructions;
+            TaskName = "Select Item";
+        }
+
+        public SingleBindingRequest(PlayerID targetPlayerID, string instructions)
+        {
+            TargetPlayerID = targetPlayerID;
+            TaskID = new TaskID(Guid.NewGuid());
             Instructions = instructions;
             TaskName = "Select Item";
         }

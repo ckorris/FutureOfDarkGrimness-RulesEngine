@@ -1,6 +1,7 @@
 using FDG.Data;
 using FDG.StageResolution;
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace FDG.StageResolution.Requests
 {
@@ -20,15 +21,23 @@ namespace FDG.StageResolution.Requests
         public IReadOnlyList<ValidOption> ValidOptions { get; }
         public IReadOnlyList<InvalidOption> InvalidOptions { get; }
 
-        public SelectionRequest(
-            PlayerID targetPlayerID, 
-            TaskID taskID, 
-            string instructions,
-            IReadOnlyList<ValidOption> validOptions,
-            IReadOnlyList<InvalidOption> invalidOptions)
+        [JsonConstructor]
+        public SelectionRequest(PlayerID targetPlayerID, TaskID taskID, string instructions,
+            IReadOnlyList<ValidOption> validOptions, IReadOnlyList<InvalidOption> invalidOptions)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
+            Instructions = instructions;
+            ValidOptions = validOptions;
+            InvalidOptions = invalidOptions;
+            TaskName = $"Select {typeof(T).Name}";
+        }
+
+        public SelectionRequest(PlayerID targetPlayerID, string instructions,
+            IReadOnlyList<ValidOption> validOptions, IReadOnlyList<InvalidOption> invalidOptions)
+        {
+            TargetPlayerID = targetPlayerID;
+            TaskID = new TaskID(Guid.NewGuid());
             Instructions = instructions;
             ValidOptions = validOptions;
             InvalidOptions = invalidOptions;

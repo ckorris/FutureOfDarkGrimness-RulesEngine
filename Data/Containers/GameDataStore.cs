@@ -150,6 +150,18 @@ namespace FDG.Data
             return GetComponentStoreOrThrow<T>().GetDataBinding(dataReference);
         }
 
+        public IEnumerable<DataBinding<T>> GetAllDataBindings<T>()
+        {
+            GetTypeAndIDOrThrow<T>(out _, out TypeID typeID);
+            ComponentStore<T> store = (ComponentStore<T>)_componentStores[typeID];
+
+            foreach(DataReference reference in store.GetAllDataReferences())
+            {
+                yield return store.GetDataBinding(reference);
+            }
+        }
+
+
         public bool IsValid(DataReference reference, out EInvalidReason failReason)
         {
             if (_componentStores.ContainsKey(reference.TypeID) == false)

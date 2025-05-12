@@ -8,6 +8,18 @@ namespace FDG
         public const float CHARGE_DISTANCE_INCHES = 12;
 
         /// <summary>
+        /// How close models must be to engage in melee, after the charge has already happened.
+        /// This is for horizontal distances.
+        /// </summary>
+        public const float MELEE_RANGE_INCHES_HORIZONTAL = 2;
+
+        /// <summary>
+        /// How close models must be to engage in melee, after the charge has already happened.
+        /// This is for vertical distance.
+        /// </summary>
+        public const float MELEE_RANGE_INCHES_VERTICAL = 4;
+
+        /// <summary>
         /// Furthest any model in a unit can be from the closest other model in the same unit.
         /// </summary>
         public const float MAX_MODEL_DISTANCE_FROM_ANY_OTHER_MODEL_INCHES = 1;

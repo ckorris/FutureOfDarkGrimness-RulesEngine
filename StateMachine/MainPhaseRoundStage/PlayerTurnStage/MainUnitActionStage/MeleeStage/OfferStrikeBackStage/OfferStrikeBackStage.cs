@@ -1,4 +1,5 @@
 
+using FDG.StageResolution.Requests;
 using System;
 
 namespace FDG.Stages
@@ -19,8 +20,22 @@ namespace FDG.Stages
         {
             GameContext.Log("Offering strikeback.");
 
-            GameContext.GetHandler<IOfferStrikeBackHandler>().Handle(context, 
-                () => MoveToStrikingBack(context), () =>  SkipStrikingBack(context));
+            //TODO: Indicate if they have struck back yet.
+            YesNoRequest yesNoRequest = new YesNoRequest(context.DefendingUnit.PlayerID, "Strike back?");
+
+            Task<bool> task = GameContext.PlayerRequester.RequestDecision<YesNoRequest, bool>(
+                context.DefendingUnit.PlayerID, yesNoRequest);
+
+            await task;
+
+            if(task.Result)
+            {
+                MoveToStrikingBack(context);
+            }
+            else
+            {
+                SkipStrikingBack(context);
+            }
         }
 
         private void MoveToStrikingBack(ICombatActionContext context)
@@ -34,10 +49,5 @@ namespace FDG.Stages
             GameContext.Log("Defenders not striking back.");
             OnOfferRejected.Activate(context);
         }
-    }
-
-    public interface IOfferStrikeBackHandler
-    {
-        public void Handle(ICombatActionContext context, Action acceptStrikeBack, Action rejectStrikeBack);
     }
 }

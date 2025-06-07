@@ -7,6 +7,10 @@ using System.Threading.Tasks;
 
 namespace FDG.SaveLoad
 {
+    //TODO: This may have worked but I couldn't test it because the GUI I was using couldn't handle line breaks.
+    //I'm commenting it out but it may need to be updated because of changes to the entries, such as
+    //going from serializing special rules as strings to records.
+    /*
     public static class ArmyListParser
     {
         //Regex that recognises a unit header line.
@@ -137,5 +141,7 @@ namespace FDG.SaveLoad
                 unit.Weapons.Add(w);
             }
         }
+    
     }
+    */
 }

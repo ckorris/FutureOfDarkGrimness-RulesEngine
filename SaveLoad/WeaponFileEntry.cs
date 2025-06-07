@@ -24,6 +24,6 @@ namespace FDG.SaveLoad
 
         public int ArmorPenetration { get; set; }
 
-        public List<string> SpecialRules { get; set; } = new List<string>();
+        public List<SpecialRuleEntry> SpecialRules { get; set; } = new List<SpecialRuleEntry>();
     }
 }

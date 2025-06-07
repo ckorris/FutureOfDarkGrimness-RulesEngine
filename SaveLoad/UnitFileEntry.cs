@@ -22,13 +22,10 @@ namespace FDG.SaveLoad
 
         public int Defense { get; set; }
 
-        public List<string> SpecialRules { get; set; } = new List<string>();
+        public List<SpecialRuleEntry> SpecialRules { get; set; } = new List<SpecialRuleEntry>();
 
         public List<WeaponFileEntry> Weapons { get; set; } = new List<WeaponFileEntry>();
 
         public int PointCost { get; set; }
-
-        
-
     }
 }

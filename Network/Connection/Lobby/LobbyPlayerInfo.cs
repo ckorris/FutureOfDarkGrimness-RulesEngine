@@ -1,11 +1,10 @@
 ﻿using FDG.Players;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using FutureOfDarkGrimness.Players;
 
 namespace FDG.Network.Connection.Lobby
 {
-    public record LobbyPlayerInfo(string PlayerName, int TeamNumber, EPlayerType PlayerType, ConnectionID connectionID);
+    public record LobbyPlayerInfo(string PlayerName, ArmyListSummary ArmyListSummary, ETeamOption TeamNumber, 
+        EPlayerType PlayerType, ConnectionID connectionID);
+
+    
 }

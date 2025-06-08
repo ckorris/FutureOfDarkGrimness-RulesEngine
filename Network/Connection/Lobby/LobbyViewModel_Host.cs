@@ -6,6 +6,7 @@ using FDG.Network.Messages;
 using FDG.Players;
 using FDG.StageResolution;
 using FutureOfDarkGrimness.Network.Messages;
+using FutureOfDarkGrimness.Players;
 using System.Diagnostics;
 using System.Reactive.Subjects;
 
@@ -80,9 +81,12 @@ namespace FDG.Network.Connection
             _settings_TurnMethod = new BehaviorSubject<ETurnStyle>(_gameSettings.TurnStyle);
 
             //First init just ourselves.
+
+            ArmyListSummary tempSummary = new ArmyListSummary("Manhandlers", "Battle Brothers", 2000);
+
             List<LobbyPlayerInfo> initialLobbyPlayerInfos = new List<LobbyPlayerInfo>()
             {
-                new LobbyPlayerInfo(hostPlayerName, 0, EPlayerType.Local, new ConnectionID(Guid.Empty))
+                new LobbyPlayerInfo(hostPlayerName, tempSummary, ETeamOption.None, EPlayerType.Local, new ConnectionID(Guid.Empty))
             };
 
             _playerInfos = new BehaviorSubject<IReadOnlyList<LobbyPlayerInfo>>(initialLobbyPlayerInfos);
@@ -133,9 +137,12 @@ namespace FDG.Network.Connection
             //TODO: Have something behind the player info list instead of doing this.
             int tempTeamNumber = _playerInfos.Value.Count + 1;
 
+            ArmyListSummary tempSummary = new ArmyListSummary("Knifeybois", "Alien Hives", 2000);
+
+
             List<LobbyPlayerInfo> playerInfos = new List<LobbyPlayerInfo>(_playerInfos.Value)
             {
-                new LobbyPlayerInfo(greeting.PlayerName, tempTeamNumber, EPlayerType.Network, connectionID)
+                new LobbyPlayerInfo(greeting.PlayerName, tempSummary, (ETeamOption)tempTeamNumber, EPlayerType.Network, connectionID)
             };
 
             LobbyPlayerListUpdate playerListUpdateMessage = new LobbyPlayerListUpdate(playerInfos);
@@ -221,7 +228,7 @@ namespace FDG.Network.Connection
             {
                 LobbyPlayerInfo lobbyPlayerInfo = _playerInfos.Value[i];
 
-                PlayerSlot playerSlot = new PlayerSlot(i, lobbyPlayerInfo.TeamNumber);
+                PlayerSlot playerSlot = new PlayerSlot(i, (int)lobbyPlayerInfo.TeamNumber);
                 playerSlots[i] = playerSlot;
 
                 switch (lobbyPlayerInfo.PlayerType)

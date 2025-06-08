@@ -14,16 +14,31 @@ namespace FDG.Network.Connection.Lobby
         /// </summary>
         event Action<IFDGGame>? OnLaunched; //Need arguments?
 
-        IObservable<string> ServerName { get; }
+        IObservable<string> ServerNameObservable { get; }
 
-        IObservable<LobbyChatMessage> ChatMessages { get; }
+        IObservable<LobbyChatMessage> ChatMessagesObservable { get; }
 
-        IObservable<IReadOnlyList<LobbyPlayerInfo>> PlayerInfos { get; }
+        IObservable<IReadOnlyList<LobbyPlayerInfo>> PlayerInfosObservable { get; }
 
-        IObservable<int> Settings_ArmyPoints { get; }
-        IObservable<int> Settings_TerrainPieceCount { get; }
-        IObservable<ERandomnessType> Settings_RandomnessType { get; }
-        IObservable<ETurnStyle> Settings_TurnStyle { get; }
+        IObservable<int> ArmyPointsObservable { get; }
+        IObservable<int> TerrainPieceCountObservable { get; }
+        IObservable<ERandomnessType> RandomnessTypeObservable { get; }
+        IObservable<ETurnStyle> TurnStyleObservable { get; }
+
+        string ServerName { get; }
+
+        IReadOnlyList<LobbyChatMessage> ChatMessages { get; }
+
+        IReadOnlyList<LobbyPlayerInfo> PlayerInfos { get; }
+
+        int ArmyPoints { get; }
+
+        int TerrainCount { get; }
+
+        ERandomnessType RandomnessType { get; }
+
+        ETurnStyle TurnStyle { get; }
+
 
         void SendMessage(string message);
 

@@ -15,20 +15,35 @@ namespace FDG.Network.Connection
     {
         public bool HasHostPrivileges => true;
 
-        public IObservable<string> ServerName => _serverName;
+        public IObservable<string> ServerNameObservable => _serverName;
 
-        public IObservable<LobbyChatMessage> ChatMessages => _chatMessages;
+        public IObservable<LobbyChatMessage> ChatMessagesObservable => _chatMessagesSubject;
 
-        public IObservable<IReadOnlyList<LobbyPlayerInfo>> PlayerInfos => _playerInfos;
+        public IObservable<IReadOnlyList<LobbyPlayerInfo>> PlayerInfosObservable => _playerInfos;
 
-        public IObservable<int> Settings_ArmyPoints => _settings_ArmyPoints;
-        public IObservable<int> Settings_TerrainPieceCount => _settings_TerrainPieceCount;
-        public IObservable<ERandomnessType> Settings_RandomnessType => _settings_RandomnessType;
-        public IObservable<ETurnStyle> Settings_TurnStyle => _settings_TurnMethod;
+        public IObservable<int> ArmyPointsObservable => _settings_ArmyPoints;
+        public IObservable<int> TerrainPieceCountObservable => _settings_TerrainPieceCount;
+        public IObservable<ERandomnessType> RandomnessTypeObservable => _settings_RandomnessType;
+        public IObservable<ETurnStyle> TurnStyleObservable => _settings_TurnMethod;
+
+        public string ServerName => _serverName.Value;
+
+        public IReadOnlyList<LobbyChatMessage> ChatMessages => _chatMessages;
+
+        public IReadOnlyList<LobbyPlayerInfo> PlayerInfos => _playerInfos.Value;
+
+        public int ArmyPoints => _settings_ArmyPoints.Value;
+
+        public int TerrainCount => _settings_TerrainPieceCount.Value;
+
+        public ERandomnessType RandomnessType => _settings_RandomnessType.Value;
+
+        public ETurnStyle TurnStyle => _settings_TurnMethod.Value;
 
         private BehaviorSubject<string> _serverName;
 
-        private ReplaySubject<LobbyChatMessage> _chatMessages;
+        private ReplaySubject<LobbyChatMessage> _chatMessagesSubject;
+        private readonly List<LobbyChatMessage> _chatMessages = new List<LobbyChatMessage>();
 
         private BehaviorSubject<IReadOnlyList<LobbyPlayerInfo>> _playerInfos;
 
@@ -57,7 +72,7 @@ namespace FDG.Network.Connection
             _hostPlayerName = hostPlayerName;
 
             _serverName = new BehaviorSubject<string>(serverName);
-            _chatMessages = new ReplaySubject<LobbyChatMessage>();
+            _chatMessagesSubject = new ReplaySubject<LobbyChatMessage>();
 
             _settings_ArmyPoints = new BehaviorSubject<int>(_gameSettings.ArmyPoints);
             _settings_TerrainPieceCount = new BehaviorSubject<int>(_gameSettings.TerrainPieceCount);
@@ -81,7 +96,7 @@ namespace FDG.Network.Connection
             _commandDispatcher.RegisterForMessageEvent<NewLobbyClientGreeting>(OnReceiveNewClientGreeting);
 
             //Show init message in chatbox.
-            _chatMessages.OnNext(new LobbyChatMessage("System", SERVER_START_MESSAGE));
+            AddMessageToLocalList(new LobbyChatMessage("System", SERVER_START_MESSAGE));
         }
 
 
@@ -90,7 +105,13 @@ namespace FDG.Network.Connection
             LobbyChatMessage chatMessage = new LobbyChatMessage(_hostPlayerName, message);
             _commandDispatcher.SendCommandAsync(chatMessage);
 
-            _chatMessages.OnNext(chatMessage);
+            AddMessageToLocalList(chatMessage);
+        }
+
+        private void AddMessageToLocalList(LobbyChatMessage chatMessage)
+        {
+            _chatMessagesSubject.OnNext(chatMessage);
+            _chatMessages.Add(chatMessage);
         }
 
         private void OnNewClientConnected(ConnectionID connectionID)
@@ -139,7 +160,7 @@ namespace FDG.Network.Connection
             _commandDispatcher.SendCommandAsync(chatMessage); //TODO: Release the byte array but gotta be careful on timing.
 
             //Put the chat message in our own box.
-            _chatMessages.OnNext(chatMessage);
+            AddMessageToLocalList(chatMessage);
         }
 
         public void Dispose()
@@ -162,13 +183,13 @@ namespace FDG.Network.Connection
         private async Task Launch()
         {
             LobbyChatMessage gameStartingMessage = new LobbyChatMessage("System", LAUNCHING_GAME_MESSAGE);
-            _chatMessages.OnNext(gameStartingMessage);
+            AddMessageToLocalList(gameStartingMessage);
             await _commandDispatcher.SendCommandAsync(gameStartingMessage);
             await Task.Delay(300);
 
             //Give a quick tribute.
             LobbyChatMessage tributeMessage = new LobbyChatMessage("Mukumioke", "buck futter");
-            _chatMessages.OnNext(tributeMessage);
+            AddMessageToLocalList(tributeMessage);
             await _commandDispatcher.SendCommandAsync(tributeMessage);
             await Task.Delay(50);
 

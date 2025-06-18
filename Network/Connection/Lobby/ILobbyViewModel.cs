@@ -1,5 +1,6 @@
 ﻿using FDG.EngineInterface;
 using FDG.Network.Messages;
+using FDG.SaveLoad;
 
 namespace FDG.Network.Connection.Lobby
 {
@@ -18,7 +19,7 @@ namespace FDG.Network.Connection.Lobby
 
         IObservable<LobbyChatMessage> ChatMessagesObservable { get; }
 
-        IObservable<IReadOnlyList<LobbyPlayerInfo>> PlayerInfosObservable { get; }
+        IObservable<IReadOnlyList<LobbyPlayerInfoSummary>> PlayerInfosObservable { get; }
 
         IObservable<int> ArmyPointsObservable { get; }
         IObservable<int> TerrainPieceCountObservable { get; }
@@ -29,7 +30,7 @@ namespace FDG.Network.Connection.Lobby
 
         IReadOnlyList<LobbyChatMessage> ChatMessages { get; }
 
-        IReadOnlyList<LobbyPlayerInfo> PlayerInfos { get; }
+        IReadOnlyList<LobbyPlayerInfoSummary> PlayerInfos { get; }
 
         int ArmyPoints { get; }
 
@@ -39,8 +40,11 @@ namespace FDG.Network.Connection.Lobby
 
         ETurnStyle TurnStyle { get; }
 
+        bool CheckCanModifyPlayerIDInfo(PlayerID playerID);
 
         void SendMessage(string message);
+
+        void UpdateArmyListFile(PlayerID playerId, ArmyListFile armyListFile);
 
         void SetArmyPoints(int armyPoints);
 

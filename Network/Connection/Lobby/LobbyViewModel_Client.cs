@@ -4,6 +4,7 @@ using FDG.EngineInterface;
 using FDG.Network.Connection;
 using FDG.Network.Connection.Lobby;
 using FDG.Network.Messages;
+using FDG.SaveLoad;
 using FutureOfDarkGrimness.Network.Messages;
 using System.Diagnostics;
 using System.Reactive.Linq;
@@ -19,7 +20,7 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
 
         public IObservable<LobbyChatMessage> ChatMessagesObservable => _chatMessagesSubject;
 
-        public IObservable<IReadOnlyList<LobbyPlayerInfo>> PlayerInfosObservable => _playerInfos;
+        public IObservable<IReadOnlyList<LobbyPlayerInfoSummary>> PlayerInfosObservable => _playerInfos;
 
         public IObservable<int> ArmyPointsObservable => _settings_ArmyPoints;
         public IObservable<int> TerrainPieceCountObservable => _settings_TerrainPieceCount;
@@ -30,7 +31,7 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
 
         public IReadOnlyList<LobbyChatMessage> ChatMessages => _chatMessages;
 
-        public IReadOnlyList<LobbyPlayerInfo> PlayerInfos => _playerInfos.Value;
+        public IReadOnlyList<LobbyPlayerInfoSummary> PlayerInfos => _playerInfos.Value;
 
         public int ArmyPoints => _settings_ArmyPoints.Value;
 
@@ -45,13 +46,14 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
         private ReplaySubject<LobbyChatMessage> _chatMessagesSubject;
         private readonly List<LobbyChatMessage> _chatMessages = new List<LobbyChatMessage>();
 
-        private BehaviorSubject<IReadOnlyList<LobbyPlayerInfo>> _playerInfos;
+        private BehaviorSubject<IReadOnlyList<LobbyPlayerInfoSummary>> _playerInfos;
 
         private BehaviorSubject<int> _settings_ArmyPoints;
         private BehaviorSubject<int> _settings_TerrainPieceCount;
         private BehaviorSubject<ERandomnessType> _settings_RandomnessType;
         private BehaviorSubject<ETurnStyle> _settings_TurnMethod;
 
+        private PlayerID? _thisPlayerID = null;
         private string _thisPlayerName;
 
         private ICommandDispatcher _commandDispatcher;
@@ -77,10 +79,11 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
             _settings_TurnMethod = new BehaviorSubject<ETurnStyle>(ETurnStyle.Standard);
 
             //Init empty player list. The host should update us.
-            _playerInfos = new BehaviorSubject<IReadOnlyList<LobbyPlayerInfo>>(new List<LobbyPlayerInfo>());
+            _playerInfos = new BehaviorSubject<IReadOnlyList<LobbyPlayerInfoSummary>>(new List<LobbyPlayerInfoSummary>());
 
             _commandDispatcher = client;
 
+            _commandDispatcher.RegisterForMessageEvent<LobbyPlayerIDAssignment>(OnPlayerIDAssignmentReceived);
             _commandDispatcher.RegisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);
             _commandDispatcher.RegisterForMessageEvent<LobbyServerNameMessage>(OnServerNameUpdateReceived);
             _commandDispatcher.RegisterForMessageEvent<LobbyPlayerListUpdate>(OnPlayerListUpdateReceived);
@@ -119,6 +122,11 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
         public void Dispose()
         {
             _commandDispatcher.DeregisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);
+        }
+
+        private void OnPlayerIDAssignmentReceived(LobbyPlayerIDAssignment assignment, ConnectionID _)
+        {
+            _thisPlayerID = assignment.playerID;
         }
 
         private void OnChatMessageReceived(LobbyChatMessage message, ConnectionID _)
@@ -183,6 +191,17 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
         }
 
         public void SetTurnStyle(ETurnStyle turnStyle)
+        {
+            throw new NotImplementedException();
+        }
+
+        public bool CheckCanModifyPlayerIDInfo(PlayerID playerID)
+        {
+            //If we haven't been assigned a value yet, assume no.
+            return _thisPlayerID.HasValue && _thisPlayerID.Value == playerID;
+        }
+
+        public void UpdateArmyListFile(PlayerID playerId, ArmyListFile armyListFile)
         {
             throw new NotImplementedException();
         }

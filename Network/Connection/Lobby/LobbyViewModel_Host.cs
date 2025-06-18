@@ -4,10 +4,13 @@ using FDG.GameModel;
 using FDG.Network.Connection.Lobby;
 using FDG.Network.Messages;
 using FDG.Players;
+using FDG.SaveLoad;
 using FDG.StageResolution;
 using FutureOfDarkGrimness.Network.Messages;
 using FutureOfDarkGrimness.Players;
+using NUnit.Framework.Constraints;
 using System.Diagnostics;
+using System.Reactive.Linq;
 using System.Reactive.Subjects;
 
 namespace FDG.Network.Connection
@@ -20,7 +23,7 @@ namespace FDG.Network.Connection
 
         public IObservable<LobbyChatMessage> ChatMessagesObservable => _chatMessagesSubject;
 
-        public IObservable<IReadOnlyList<LobbyPlayerInfo>> PlayerInfosObservable => _playerInfos;
+        public IObservable<IReadOnlyList<LobbyPlayerInfoSummary>> PlayerInfosObservable => _playerInfos;
 
         public IObservable<int> ArmyPointsObservable => _settings_ArmyPoints;
         public IObservable<int> TerrainPieceCountObservable => _settings_TerrainPieceCount;
@@ -31,7 +34,7 @@ namespace FDG.Network.Connection
 
         public IReadOnlyList<LobbyChatMessage> ChatMessages => _chatMessages;
 
-        public IReadOnlyList<LobbyPlayerInfo> PlayerInfos => _playerInfos.Value;
+        public IReadOnlyList<LobbyPlayerInfoSummary> PlayerInfos => _playerInfos.Value;
 
         public int ArmyPoints => _settings_ArmyPoints.Value;
 
@@ -46,7 +49,8 @@ namespace FDG.Network.Connection
         private ReplaySubject<LobbyChatMessage> _chatMessagesSubject;
         private readonly List<LobbyChatMessage> _chatMessages = new List<LobbyChatMessage>();
 
-        private BehaviorSubject<IReadOnlyList<LobbyPlayerInfo>> _playerInfos;
+        private BehaviorSubject<IReadOnlyList<LobbyPlayerInfoSummary>> _playerInfos;
+        private Dictionary<PlayerID, LobbyPlayerInfoFull> _playerInfosFull = new Dictionary<PlayerID, LobbyPlayerInfoFull>();
 
         private BehaviorSubject<int> _settings_ArmyPoints;
         private BehaviorSubject<int> _settings_TerrainPieceCount;
@@ -67,10 +71,13 @@ namespace FDG.Network.Connection
 
         private GameSettings _gameSettings = GameSettings.GetDefault();
 
+        
+
         public LobbyViewModel_Host(string hostPlayerName, string serverName, string? password, FDGHost host)
         {
             _host = host;
             _hostPlayerName = hostPlayerName;
+            PlayerID thisPlayerID = new PlayerID(Guid.NewGuid());
 
             _serverName = new BehaviorSubject<string>(serverName);
             _chatMessagesSubject = new ReplaySubject<LobbyChatMessage>();
@@ -80,16 +87,7 @@ namespace FDG.Network.Connection
             _settings_RandomnessType = new BehaviorSubject<ERandomnessType>(_gameSettings.RandomnessType);
             _settings_TurnMethod = new BehaviorSubject<ETurnStyle>(_gameSettings.TurnStyle);
 
-            //First init just ourselves.
-
-            ArmyListSummary tempSummary = new ArmyListSummary("Manhandlers", "Battle Brothers", 2000);
-
-            List<LobbyPlayerInfo> initialLobbyPlayerInfos = new List<LobbyPlayerInfo>()
-            {
-                new LobbyPlayerInfo(hostPlayerName, tempSummary, ETeamOption.None, EPlayerType.Local, new ConnectionID(Guid.Empty))
-            };
-
-            _playerInfos = new BehaviorSubject<IReadOnlyList<LobbyPlayerInfo>>(initialLobbyPlayerInfos);
+            _playerInfos = new BehaviorSubject<IReadOnlyList<LobbyPlayerInfoSummary>>(new List<LobbyPlayerInfoSummary>());
 
             _commandDispatcher = host;
 
@@ -98,9 +96,18 @@ namespace FDG.Network.Connection
 
             _commandDispatcher.RegisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);
             _commandDispatcher.RegisterForMessageEvent<NewLobbyClientGreeting>(OnReceiveNewClientGreeting);
+            _commandDispatcher.RegisterForMessageEvent<ArmyListUpdateMessage>(OnArmyListFileUpdateReceived);
 
             //Show init message in chatbox.
             AddMessageToLocalList(new LobbyChatMessage("System", SERVER_START_MESSAGE));
+
+            //First init just ourselves.
+            //ArmyListSummary tempSummary = new ArmyListSummary("Manhandlers", "Battle Brothers", 2000);
+
+            LobbyPlayerInfoFull newLobbyPlayerInfo = new LobbyPlayerInfoFull(hostPlayerName, null, ETeamOption.Team1,
+                EPlayerType.Local, new ConnectionID(Guid.Empty), thisPlayerID);
+            _playerInfosFull.Add(thisPlayerID, newLobbyPlayerInfo);
+            UpdateInfoSummariesFromFullList();
         }
 
 
@@ -130,6 +137,11 @@ namespace FDG.Network.Connection
         {
             Debug.WriteLine($"Received greeting from new client: {greeting.PlayerName}");
 
+            //Assign a player ID to this person. 
+            //TODO: I may have decided to give players their IDs elsewhere but I can't remember, double check that.
+            PlayerID newClientPlayerID = new PlayerID(Guid.NewGuid());
+            _commandDispatcher.SendCommandAsync(new LobbyPlayerIDAssignment(newClientPlayerID));
+
             //Send the server name.
             LobbyServerNameMessage lobbyServerNameMessage = new LobbyServerNameMessage(_serverName.Value);
             _commandDispatcher.SendCommandAsync(lobbyServerNameMessage);
@@ -137,26 +149,40 @@ namespace FDG.Network.Connection
             //TODO: Have something behind the player info list instead of doing this.
             int tempTeamNumber = _playerInfos.Value.Count + 1;
 
-            ArmyListSummary tempSummary = new ArmyListSummary("Knifeybois", "Alien Hives", 2000);
+            //ArmyListSummary tempSummary = new ArmyListSummary("Knifeybois", "Alien Hives", 2000);
 
-
-            List<LobbyPlayerInfo> playerInfos = new List<LobbyPlayerInfo>(_playerInfos.Value)
-            {
-                new LobbyPlayerInfo(greeting.PlayerName, tempSummary, (ETeamOption)tempTeamNumber, EPlayerType.Network, connectionID)
-            };
-
-            LobbyPlayerListUpdate playerListUpdateMessage = new LobbyPlayerListUpdate(playerInfos);
-            _commandDispatcher.SendCommandAsync(playerListUpdateMessage);
+            LobbyPlayerInfoFull newLobbyPlayerInfo = new LobbyPlayerInfoFull(greeting.PlayerName, null, (ETeamOption)tempTeamNumber,
+                EPlayerType.Network, connectionID, newClientPlayerID);
+            _playerInfosFull.Add(newClientPlayerID, newLobbyPlayerInfo);
+            UpdateInfoSummariesFromFullList();
 
             LobbyGameSettingsUpdate gameSettingsUpdate = new LobbyGameSettingsUpdate(_gameSettings);
             _commandDispatcher.SendCommandAsync(gameSettingsUpdate);
-
-            _playerInfos.OnNext(playerInfos);
         }
 
         private void OnClientDisconnected(ConnectionID disconnectedClientID)
         {
             //TODO.
+        }
+
+        private void UpdateInfoSummariesFromFullList()
+        {
+            //Not exactly optimized, but done quite infrequently.
+            List<LobbyPlayerInfoSummary> infoSummaries = new List<LobbyPlayerInfoSummary>();
+            foreach(LobbyPlayerInfoFull fullInfo in _playerInfosFull.Values)
+            {
+                ArmyListSummary? summary = fullInfo.ArmyListFile != null
+                    ? new ArmyListSummary(fullInfo.ArmyListFile.Name, fullInfo.ArmyListFile.Faction,
+                    fullInfo.ArmyListFile.TotalPoints)
+                    : new ArmyListSummary("N/A", "N/A", 0);
+                infoSummaries.Add(new LobbyPlayerInfoSummary(fullInfo.PlayerName, summary, fullInfo.TeamNumber, fullInfo.PlayerType,
+                    fullInfo.ConnectionID, fullInfo.PlayerID));
+            }
+
+            LobbyPlayerListUpdate playerListUpdateMessage = new LobbyPlayerListUpdate(infoSummaries);
+            _commandDispatcher.SendCommandAsync(playerListUpdateMessage);
+
+            _playerInfos.OnNext(infoSummaries);
         }
 
         private void OnChatMessageReceived(LobbyChatMessage chatMessage, ConnectionID _)
@@ -168,6 +194,11 @@ namespace FDG.Network.Connection
 
             //Put the chat message in our own box.
             AddMessageToLocalList(chatMessage);
+        }
+
+        private void OnArmyListFileUpdateReceived(ArmyListUpdateMessage armyUpdate, ConnectionID _)
+        {
+            UpdateArmyListFile(armyUpdate.playerID, armyUpdate.armyListFile);
         }
 
         public void Dispose()
@@ -226,7 +257,7 @@ namespace FDG.Network.Connection
 
             for (int i = 0; i < playerSlots.Length; i++)
             {
-                LobbyPlayerInfo lobbyPlayerInfo = _playerInfos.Value[i];
+                LobbyPlayerInfoSummary lobbyPlayerInfo = _playerInfos.Value[i];
 
                 PlayerSlot playerSlot = new PlayerSlot(i, (int)lobbyPlayerInfo.TeamNumber);
                 playerSlots[i] = playerSlot;
@@ -310,6 +341,32 @@ namespace FDG.Network.Connection
             {
                 _settings_TurnMethod.OnNext(_settings_TurnMethod.Value);
             }
+        }
+
+        public bool CheckCanModifyPlayerIDInfo(PlayerID playerID)
+        {
+            LobbyPlayerInfoSummary? queryPlayer = _playerInfos.Value.FirstOrDefault(info => info.PlayerID == playerID);
+
+            if(queryPlayer == null)
+            {
+                Debug.WriteLine($"Queried about a player with an ID not found in the list: {playerID.ID}");
+                return false;
+            }
+
+            return queryPlayer.PlayerType != EPlayerType.Network;
+        }
+
+        public void UpdateArmyListFile(PlayerID playerId, ArmyListFile armyListFile)
+        {
+            if(_playerInfosFull.ContainsKey(playerId) == false)
+            {
+                Debug.WriteLine($"Couldn't find ID of player {playerId}.");
+                return;
+            }
+
+            _playerInfosFull[playerId].ArmyListFile = armyListFile;
+
+            UpdateInfoSummariesFromFullList();
         }
     }
 }

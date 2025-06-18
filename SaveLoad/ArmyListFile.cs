@@ -10,6 +10,9 @@ namespace FDG.SaveLoad
     [Serializable]
     public class ArmyListFile
     {
+        public const string EXTENSION_NO_PERIOD = "fdgarmy";
+        public const string EXTENSION_WITH_PERIOD = "." + EXTENSION_NO_PERIOD;
+
         public string Name { get; set; } = String.Empty;
 
         public string Faction { get; set; } = String.Empty;

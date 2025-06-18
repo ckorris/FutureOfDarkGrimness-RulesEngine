@@ -9,9 +9,9 @@ namespace FDG.Network.Messages
 {
     internal class LobbyPlayerListUpdate
     {
-        public List<LobbyPlayerInfo> PlayerInfoList;
+        public List<LobbyPlayerInfoSummary> PlayerInfoList;
 
-        public LobbyPlayerListUpdate(List<LobbyPlayerInfo> playerInfoList)
+        public LobbyPlayerListUpdate(List<LobbyPlayerInfoSummary> playerInfoList)
         {
             PlayerInfoList = playerInfoList;
         }

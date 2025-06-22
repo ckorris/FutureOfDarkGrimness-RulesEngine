@@ -36,15 +36,6 @@ namespace FDG.Players
 
         private PlayerSlot[] _playerSlots;
 
-        public PlayerSlotManager(int slotCount)
-        {
-            _playerSlots = new PlayerSlot[slotCount];
-            for (int i = 0; i < _playerSlots.Length; i++)
-            {
-                _playerSlots[i] = new PlayerSlot(slotID: i, teamNumber: i);
-            }
-        }
-
         public PlayerSlotManager(PlayerSlot[] playerSlots)
         {
             _playerSlots = playerSlots;
@@ -76,6 +67,25 @@ namespace FDG.Players
             _playerSlots[slotID].AssignPlayerController(playerController);
 
             return _playerSlots[slotID].PlayerID;
+        }
+
+        public Task WaitUntilAllSlotsReady()
+        {
+            List<Task> playerReadyTasks = new List<Task>(_playerSlots.Length);
+
+            foreach (PlayerSlot slot in _playerSlots)
+            {
+                if (slot.IsFilled == false)
+                {
+                    throw new InvalidOperationException("Tried to await all slots to be ready when not all were assigned.");
+                }
+
+                playerReadyTasks.Add(slot.Controller.WaitUntilReadyAsync());
+            }
+
+            System.Diagnostics.Debug.WriteLine($"Awaiting {playerReadyTasks.Count} player(s) to be ready.");
+
+            return Task.WhenAll(playerReadyTasks);
         }
 
         public Task<TReply> RequestDecision<TRequest, TReply>(PlayerID playerId, TRequest request) 

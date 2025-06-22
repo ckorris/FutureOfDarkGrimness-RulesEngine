@@ -236,20 +236,60 @@ namespace FDG.Network.Connection
             //Maybe something else should make these but eh.
             GameDataStore gameDataStore = GameDataStore.GameDataStoreBuilder.GetDefault();
 
-            FDGGame_AsLocal gameModel = new FDGGame_AsLocal(gameDataStore);
+            FDGGame_AsLocal? gameModel = null; //We may not have a local player.
 
-            //Make a player controller for each player. TODO: This is overly simplistic for now.
-            PlayerSlot[] playerSlots = GetPlayerSlots(gameModel.StageResolverRegistry, gameDataStore);
+            //Make a player controller for each player.
+            PlayerSlot[] playerSlots = new PlayerSlot[_playerInfosFull.Count];
+
+            List<FDGGame_AsLocal> localPlayers = new List<FDGGame_AsLocal>(2);
+
+            LobbyPlayerInfoFull[] lobbyPlayerInfosArray = _playerInfosFull.Values.ToArray();
+
+            for (int i = 0; i < playerSlots.Length; i++)
+            {
+                LobbyPlayerInfoFull lobbyPlayerInfo = lobbyPlayerInfosArray[i];
+
+                PlayerSlot playerSlot = new PlayerSlot(i, (int)lobbyPlayerInfo.TeamNumber, lobbyPlayerInfo.PlayerID);
+                playerSlots[i] = playerSlot;
+
+                switch (lobbyPlayerInfo.PlayerType)
+                {
+                    case EPlayerType.Local:
+
+                        if(gameModel == null)
+                        {
+                            gameModel = new FDGGame_AsLocal(gameDataStore);
+                        }
+
+                        LocalPlayerController localPlayerController = new LocalPlayerController(lobbyPlayerInfo.PlayerName,
+                            playerSlot.PlayerID, gameModel);
+                        localPlayers.Add(gameModel);
+                        playerSlot.AssignPlayerController(localPlayerController);
+                        break;
+                    case EPlayerType.Network:
+                        NetworkPlayerController networkPlayerController = new NetworkPlayerController(lobbyPlayerInfo.PlayerName, playerSlot.PlayerID,
+                            lobbyPlayerInfo.ConnectionID, _commandDispatcher, gameDataStore);
+                        playerSlot.AssignPlayerController(networkPlayerController);
+                        break;
+                    case EPlayerType.AI:
+                        throw new NotImplementedException();
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+            }
 
             FDGServer server = new FDGServer(gameDataStore, _host, _gameSettings, playerSlots);
 
-
-            OnLaunched?.Invoke(gameModel);
+            if (gameModel != null) //Dedicated server really doesn't need to do this.
+            {
+                OnLaunched?.Invoke(gameModel);
+            }
 
             LaunchGameMessage launchGameMessage = new LaunchGameMessage();
             await _commandDispatcher.SendCommandAsync(launchGameMessage);
         }
         
+        /*
         private PlayerSlot[] GetPlayerSlots(IStageResolverRegistry stageResolverRegister, IReadableGameDataStore gameDataStore)
         {
             PlayerSlot[] playerSlots = new PlayerSlot[_playerInfos.Value.Count];
@@ -285,6 +325,7 @@ namespace FDG.Network.Connection
 
             return playerSlots;
         }
+        */
 
         public void SetArmyPoints(int armyPoints)
         {

@@ -1,4 +1,5 @@
-﻿using FDG.StageResolution;
+﻿using FDG.GameModel;
+using FDG.StageResolution;
 
 namespace FDG.Players
 {
@@ -12,27 +13,51 @@ namespace FDG.Players
 
         public event Action<bool>? OnReadyStateChanged;
 
-        private StageResolverRegistry _stageResolverRegistry;
+        private FDGGame_AsLocal _localPlayer;
 
-        
-        public LocalPlayerController(string name, PlayerID id, StageResolverRegistry stageResolverRegistry)
+        public LocalPlayerController(string name, PlayerID id, FDGGame_AsLocal localPlayer)
         {
             Name = name;
             ID = id;
-            _stageResolverRegistry = stageResolverRegistry;
+            _localPlayer = localPlayer;
         }
 
         public Task WaitUntilReadyAsync()
         {
-            return this.WaitUntilReadyAsyncStatic();
+            if(_localPlayer.StageResolverRegistry != null)
+            {
+                System.Diagnostics.Debug.WriteLine("Local player was ready when queried.");
+
+                return Task.CompletedTask;
+            }
+
+            TaskCompletionSource<bool> source
+                = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+
+            void Handler()
+            {
+                _localPlayer.OnStageResolverAssigned -= Handler;
+                System.Diagnostics.Debug.WriteLine("Local player became ready.");
+
+                source.SetResult(true);
+            }
+
+            _localPlayer.OnStageResolverAssigned += Handler;
+
+            return source.Task;
         }
 
         public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
             where TRequest : IStageTaskRequest<TReply> 
         {
-            return _stageResolverRegistry.ResolveRequest<TRequest, TReply>(request);
-        }
+            if(_localPlayer.StageResolverRegistry == null)
+            {
+                throw new InvalidOperationException($"Tried to request decision in a {nameof(LocalPlayerController)} " + 
+                    $"when the {nameof(IStageResolverRegistry)} was null.");
+            }
 
-        
+            return _localPlayer.StageResolverRegistry.ResolveRequest<TRequest, TReply>(request);
+        }
     }
 }

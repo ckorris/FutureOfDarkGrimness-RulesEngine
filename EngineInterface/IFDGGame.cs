@@ -9,7 +9,7 @@ namespace FDG.EngineInterface
     {
         ITableState TableState { get;}
 
-        IStageResolverRegistry StageResolverRegistry { get; }
+        IStageResolverRegistry? StageResolverRegistry { get; }
 
         void AssignStageResolverRegistry(IStageResolverRegistry registry);
     }

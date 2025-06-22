@@ -19,13 +19,6 @@ namespace FDG.Players
         internal IPlayerController? Controller;
 
 
-        public PlayerSlot(int slotID, int teamNumber)
-        {
-            SlotID = slotID;
-            TeamNumber = teamNumber;
-            PlayerID = new PlayerID(Guid.NewGuid());
-        }
-
         public PlayerSlot(int slotID, int teamNumber, PlayerID playerID)
         {
             SlotID = slotID;

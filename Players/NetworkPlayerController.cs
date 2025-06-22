@@ -35,7 +35,31 @@ namespace FDG.Players
 
         public Task WaitUntilReadyAsync()
         {
-            return this.WaitUntilReadyAsyncStatic();
+            if (IsReady)
+            {
+                System.Diagnostics.Debug.WriteLine("Networked player was ready when queried.");
+
+                return Task.CompletedTask;
+            }
+
+            TaskCompletionSource<bool> source
+                = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            void Handler(bool ready)
+            {
+                if (ready == false)
+                {
+                    return;
+                }
+
+                OnReadyStateChanged -= Handler;
+                System.Diagnostics.Debug.WriteLine("Networked player became ready.");
+
+                source.SetResult(true);
+            }
+
+            OnReadyStateChanged += Handler;
+            return source.Task;
         }
 
         public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request) where TRequest : IStageTaskRequest<TReply>

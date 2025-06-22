@@ -8,8 +8,9 @@ namespace FDG.GameModel
     {
         public ITableState TableState { get; }
 
-        public IStageResolverRegistry StageResolverRegistry { get; private set; }
+        public IStageResolverRegistry? StageResolverRegistry { get; private set; }
 
+        public event Action OnStageResolverAssigned;
 
         private IReadableGameDataStore _gameDataStore;
 
@@ -23,6 +24,8 @@ namespace FDG.GameModel
         public void AssignStageResolverRegistry(IStageResolverRegistry registry)
         {
             StageResolverRegistry = registry;
+
+            OnStageResolverAssigned?.Invoke();
 
             //TODO: Need to tell server we're ready.
         }

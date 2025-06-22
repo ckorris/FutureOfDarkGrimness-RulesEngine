@@ -69,7 +69,9 @@ namespace FDG.GameModel
         {
             //TODO: Wait for all clients to indicate that they are connected and ready.
             //Await something.
-            await Task.Delay(500); //Half a second. At least lets us test before implementing this.
+            System.Diagnostics.Debug.WriteLine("Awaiting players to be ready.");
+            await _playerSlotManager.WaitUntilAllSlotsReady(); //Half a second. At least lets us test before implementing this.
+            System.Diagnostics.Debug.WriteLine("All players are ready.");
 
             _ = stateMachine.Enter(context);
         }

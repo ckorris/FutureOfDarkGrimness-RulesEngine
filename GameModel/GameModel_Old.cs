@@ -58,7 +58,7 @@ namespace FDG
 
             _tableState = new TableState(_gameDataStore);
 
-            PlayerSlotManager playerSlotManager = new PlayerSlotManager(slotCount: 2); //Temp but so is this whole class.
+            PlayerSlotManager playerSlotManager = new PlayerSlotManager(Array.Empty<PlayerSlot>()); //Temp but so is this whole class.
 
             _gameContext = new GameContext(_textOutputRelayer, diceRoller, playerSlotManager, 
                 _stageHandlerRegistry, 

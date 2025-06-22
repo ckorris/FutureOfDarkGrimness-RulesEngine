@@ -1,17 +1,21 @@
 ﻿
+using FDG.Data;
+
 namespace FDG.Stages
 {
     public interface IDeploymentContext : IGameContextAccessor
     {
-        public List<ITeam>? MapSideRollOrder { get; }
+        List<ITeam>? MapSideRollOrder { get; }
 
-        public List<ITeam>? FirstDeploymentRollOrder { get; }
+        List<ITeam>? FirstDeploymentRollOrder { get; }
 
-        public Dictionary<ITeam, RectangularZone>? PlayerDeploymentZones {  get; }
+        Dictionary<ITeam, DataBinding<RectangularZone>>? PlayerDeploymentZones {  get; }
 
-        public void SetMapSideRollWinner(List<ITeam> mapSideRollOrder);
+        void SetMapSideRollWinner(List<ITeam> mapSideRollOrder);
 
-        public void SetFirstDeploymentRollWinner(List<ITeam> firstDeploymentRollOrder);
+        void SetDeploymentZones(Dictionary<ITeam, DataBinding<RectangularZone>> playerDeploymentZones);
+        
+        void SetFirstDeploymentRollWinner(List<ITeam> firstDeploymentRollOrder);
     }
 
     public class DeploymentContext : IDeploymentContext
@@ -22,7 +26,7 @@ namespace FDG.Stages
 
         public List<ITeam>? FirstDeploymentRollOrder { get; private set; } = null;
 
-        public Dictionary<ITeam, RectangularZone>? PlayerDeploymentZones { get; private set; } = null;
+        public Dictionary<ITeam, DataBinding<RectangularZone>>? PlayerDeploymentZones { get; private set; } = null;
 
         public DeploymentContext(IGameContext gameContext)
         {
@@ -39,7 +43,7 @@ namespace FDG.Stages
             MapSideRollOrder = mapSideRollOrder;
         }
 
-        public void SetDeploymentZones(Dictionary<ITeam, RectangularZone> playerDeploymentZones)
+        public void SetDeploymentZones(Dictionary<ITeam, DataBinding<RectangularZone>> playerDeploymentZones)
         {
             if(PlayerDeploymentZones != null)
             {

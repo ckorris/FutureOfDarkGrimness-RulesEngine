@@ -2,6 +2,7 @@ using FDG.Stages;
 using FDG.StageResolution;
 using System.Threading.Tasks;
 using FDG.Data;
+using FDG.Players;
 
 namespace FDG
 {
@@ -36,6 +37,11 @@ namespace FDG
         public static IReadWriteableGameDataStore GameDataStore(this IGameContextAccessor contextAccessor)
         {
             return contextAccessor.GameContext.GameDataStore();
+        }
+
+        public static IPlayerRequestByID PlayerRequester(this IGameContextAccessor contextAccessor)
+        {
+            return contextAccessor.GameContext.PlayerRequester;
         }
     }
 

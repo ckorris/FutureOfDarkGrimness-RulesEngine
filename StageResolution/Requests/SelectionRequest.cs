@@ -1,6 +1,4 @@
 using FDG.Data;
-using FDG.StageResolution;
-using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace FDG.StageResolution.Requests
@@ -11,9 +9,6 @@ namespace FDG.StageResolution.Requests
     /// <typeparam name="T">The type of data to select from. Must be a type registered in GameDataStore.</typeparam>
     public class SelectionRequest<T> : IStageTaskRequest<DataBinding<T>>
     {
-        public record ValidOption(DataBinding<T> Option, string Name);
-        public record InvalidOption(DataBinding<T> Option, string Name, string Reason);
-
         public PlayerID TargetPlayerID { get; }
         public TaskID TaskID { get; }
         public string TaskName { get; }
@@ -48,5 +43,8 @@ namespace FDG.StageResolution.Requests
         {
             return Task.FromResult(resolution);
         }
+
+        public record ValidOption(DataBinding<T> Option, string Name);
+        public record InvalidOption(DataBinding<T> Option, string Name, string Reason);
     }
 } 

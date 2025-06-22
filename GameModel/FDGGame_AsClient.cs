@@ -5,6 +5,7 @@ using FDG.Network.Connection;
 using FDG.Network.Messages;
 using FDG.Network.Synchronization;
 using FDG.StageResolution;
+using FDG.TextInterface;
 
 namespace F.GameModel
 {
@@ -13,6 +14,10 @@ namespace F.GameModel
         public ITableState TableState { get; }
 
         public IStageResolverRegistry StageResolverRegistry { get; private set; }
+
+        public ILogMessageUI? LogMessageUI { get; private set; }
+
+        public IPlayerMessageUI? PlayerMessageUI { get; private set; }
 
         private ICommandDispatcher _commandDispatcher;
 
@@ -35,9 +40,12 @@ namespace F.GameModel
             _dataUpdateReceiver.RequestAllCurrentData();
         }
 
-        public void AssignStageResolverRegistry(IStageResolverRegistry stageResolverRegistry)
+        public void AssignInterfaces(ILogMessageUI logMessageUI, IPlayerMessageUI playerMessageUI, IStageResolverRegistry stageResolverRegistry)
         {
-            //Do stuff.
+            LogMessageUI = logMessageUI;
+
+            PlayerMessageUI = playerMessageUI;
+
             StageResolverRegistry = stageResolverRegistry;
 
             _commandDispatcher.SendCommandAsync(new PostLaunchPlayerReadyMessage(_thisPlayerID));

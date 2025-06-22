@@ -1,6 +1,8 @@
 ﻿using FDG.Data;
 using FDG.EngineInterface;
 using FDG.StageResolution;
+using FDG.TextInterface;
+using Microsoft.Win32;
 
 namespace FDG.GameModel
 {
@@ -9,6 +11,10 @@ namespace FDG.GameModel
         public ITableState TableState { get; }
 
         public IStageResolverRegistry? StageResolverRegistry { get; private set; }
+
+        public ILogMessageUI? LogMessageUI { get; private set; }
+
+        public IPlayerMessageUI? PlayerMessageUI { get; private set; }
 
         public event Action OnStageResolverAssigned;
 
@@ -21,13 +27,23 @@ namespace FDG.GameModel
             TableState = new TableState(gameDataStore);
         }
 
-        public void AssignStageResolverRegistry(IStageResolverRegistry registry)
+        public void AssignInterfaces(IStageResolverRegistry registry)
         {
-            StageResolverRegistry = registry;
-
-            OnStageResolverAssigned?.Invoke();
+            
 
             //TODO: Need to tell server we're ready.
+        }
+
+        public void AssignInterfaces(ILogMessageUI logMessageUI, IPlayerMessageUI playerMessageUI, 
+            IStageResolverRegistry stageResolverRegistry)
+        {
+            LogMessageUI = logMessageUI;
+
+            PlayerMessageUI = playerMessageUI;
+
+            StageResolverRegistry = stageResolverRegistry;
+
+            OnStageResolverAssigned?.Invoke();
         }
     }
 }

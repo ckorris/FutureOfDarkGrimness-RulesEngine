@@ -59,5 +59,16 @@ namespace FDG.Players
 
             return _localPlayer.StageResolverRegistry.ResolveRequest<TRequest, TReply>(request);
         }
+
+        public void SendLogMessage(string logMessage)
+        {
+            _localPlayer.LogMessageUI?.DisplayLogMessage(logMessage);
+        }
+
+        public void SendPlayerMessage(string sendingPlayerName, EChatMessageType messageType, string message)
+        {
+            _localPlayer.PlayerMessageUI?.DisplayPlayerMessage(sendingPlayerName, messageType, message);
+        }
+
     }
 }

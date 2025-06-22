@@ -1,4 +1,5 @@
 ﻿using FDG.StageResolution;
+using FDG.TextInterface;
 
 namespace FDG.EngineInterface
 {
@@ -9,8 +10,13 @@ namespace FDG.EngineInterface
     {
         ITableState TableState { get;}
 
+        ILogMessageUI? LogMessageUI { get;}
+
+        IPlayerMessageUI? PlayerMessageUI { get;}
+
         IStageResolverRegistry? StageResolverRegistry { get; }
 
-        void AssignStageResolverRegistry(IStageResolverRegistry registry);
+        void AssignInterfaces(ILogMessageUI logMessageUI, IPlayerMessageUI playerMessageUI,
+            IStageResolverRegistry stageResolverRegistry);
     }
 }

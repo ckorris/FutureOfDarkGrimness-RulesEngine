@@ -3,9 +3,8 @@ using FDG.Network.Connection;
 using FDG.Network.Synchronization;
 using FDG.Players;
 using FDG.Samples;
-using FDG.StageResolution;
 using FDG.Stages;
-using FDG.StateMachine;
+using FDG.TextInterface;
 using FutureOfDarkGrimness.StateMachine.StateMachineBuilders;
 
 namespace FDG.GameModel
@@ -31,11 +30,13 @@ namespace FDG.GameModel
 
             _playerSlotManager = new PlayerSlotManager(playerSlots);
 
+            LogAndChatMessageRelayer chatMessageRelayer = new LogAndChatMessageRelayer(_playerSlotManager);
+
+            ITextOutput textOutput = new PlayerLogSender(chatMessageRelayer);
+
             TableState tableState = new TableState(_gameDataStore);
 
-            //TODO: Below has stage handlers assigned, but I'm removing this. That'll break hard. We can't run the game until that's
-            //removed from all stages.
-            _gameContext = new GameContext(GetTextOutput(), GetDiceRoller(gameSettings), _playerSlotManager, 
+            _gameContext = new GameContext(textOutput, GetDiceRoller(gameSettings), _playerSlotManager, 
                 tableState, 
                 _gameDataStore);
 
@@ -47,10 +48,6 @@ namespace FDG.GameModel
             _ = LaunchStateMachineOnceReady(_stateMachine, _gameContext);
         }
 
-        private ITextOutput GetTextOutput()
-        {
-            return new BasicConsoleLogger();
-        }
 
         private IDiceRoller GetDiceRoller(GameSettings gameSettings)
         {

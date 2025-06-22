@@ -75,5 +75,17 @@ namespace FDG.Players
                 OnReadyStateChanged?.Invoke(true);
             }
         }
+
+        public void SendLogMessage(string logMessage)
+        {
+            LogChatNetworkMessage messageRecord = new LogChatNetworkMessage(logMessage);
+            _commandDispatcher.SendCommandAsync(messageRecord);
+        }
+
+        public void SendPlayerMessage(string sendingPlayerName, EChatMessageType messageType, string message)
+        {
+            PlayerChatNetworkMessage messageRecord = new PlayerChatNetworkMessage(sendingPlayerName, messageType, message);
+            _commandDispatcher.SendCommandAsync(messageRecord);
+        }
     }
 }

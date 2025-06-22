@@ -36,7 +36,6 @@ namespace FDG.GameModel
             //TODO: Below has stage handlers assigned, but I'm removing this. That'll break hard. We can't run the game until that's
             //removed from all stages.
             _gameContext = new GameContext(GetTextOutput(), GetDiceRoller(gameSettings), _playerSlotManager, 
-                handlers: null, 
                 tableState, 
                 _gameDataStore);
 
@@ -76,6 +75,7 @@ namespace FDG.GameModel
             _ = stateMachine.Enter(context);
         }
 
+        /*
         private void LoadTestData()
         {
             float baseRadiusInches = 0.75f;
@@ -107,5 +107,6 @@ namespace FDG.GameModel
                 _gameDataStore.Create(modelData);
             }
         }
+        */
     }
 }

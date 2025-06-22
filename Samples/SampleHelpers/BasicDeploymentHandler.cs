@@ -11,7 +11,7 @@ namespace FDG.Samples
 
         private Dictionary<RectangularZone, float> _xValuesPerZone = new Dictionary<RectangularZone, float>();
 
-        public void Handle(DeploymentTurnContext turnContext, Action<DeploymentSelection> onSelected)
+        public void Handle(DeploymentTurn turnContext, Action<DeploymentSelection> onSelected)
         {
             //Just line up the next unit's models along the middle of the zone.
             RectangularZone deployZone = turnContext.DeploymentZone;

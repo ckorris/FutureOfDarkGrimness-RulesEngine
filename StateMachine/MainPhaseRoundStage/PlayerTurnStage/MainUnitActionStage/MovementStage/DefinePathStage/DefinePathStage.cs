@@ -17,9 +17,11 @@ namespace FDG.Stages
         {
             PathTemplate pathTemplate = new PathTemplate(context.MovingUnit, context);
 
+            throw new NotImplementedException();
+            /*
             IDefinePathHandler pathHandler = GameContext.GetHandler<IDefinePathHandler>();
-
             pathHandler.Handle(pathTemplate, () => OnSubmittedTemplateAsValid(pathTemplate, context));
+            */
         }
 
         private void OnSubmittedTemplateAsValid(PathTemplate pathTemplate, IMovementActionContext context)

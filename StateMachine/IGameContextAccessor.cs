@@ -1,6 +1,7 @@
 using FDG.Stages;
 using FDG.StageResolution;
 using System.Threading.Tasks;
+using FDG.Data;
 
 namespace FDG
 {
@@ -12,34 +13,29 @@ namespace FDG
 
     public static class IGameContextAccessorExtensions
     {
-        public static void Log(this IGameContextAccessor context, string message)
+        public static void Log(this IGameContextAccessor contextAccessor, string message)
         {
-            context.GameContext.TextOutput.Log(message);
+            contextAccessor.GameContext.TextOutput.Log(message);
         }
 
-        public static THandler GetHandler<THandler>(this IGameContextAccessor context) where THandler : class
+        public static ITextOutput TextOutput(this IGameContextAccessor contextAccessor)
         {
-            return context.GameContext.Handlers.GetHandlerOfType<THandler>();
+            return contextAccessor.GameContext.TextOutput;
         }
 
-        public static ITextOutput TextOutput(this IGameContextAccessor context)
+        public static IDiceRoller DiceRoller(this IGameContextAccessor contextAccessor)
         {
-            return context.GameContext.TextOutput;
+            return contextAccessor.GameContext.DiceRoller;
         }
 
-        public static IDiceRoller DiceRoller(this IGameContextAccessor context)
+        public static ITableState TableState(this IGameContextAccessor contextAccessor)
         {
-            return context.GameContext.DiceRoller;
+            return contextAccessor.GameContext.TableState;
         }
 
-        public static StageHandlerRegistry Handlers(this IGameContextAccessor context)
+        public static IReadWriteableGameDataStore GameDataStore(this IGameContextAccessor contextAccessor)
         {
-            return context.GameContext.Handlers;
-        }
-
-        public static ITableState TableState(this IGameContextAccessor context)
-        {
-            return context.GameContext.TableState;
+            return contextAccessor.GameContext.GameDataStore();
         }
     }
 

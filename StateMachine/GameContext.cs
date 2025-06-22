@@ -1,6 +1,5 @@
 using FDG.Data;
 using FDG.Players;
-using FDG.StageResolution;
 
 namespace FDG
 {
@@ -15,8 +14,6 @@ namespace FDG
         public IDiceRoller DiceRoller { get; }
 
         public IPlayerRequestByID PlayerRequester { get; }
-
-        public StageHandlerRegistry Handlers { get; }
 
         public TableState TableState { get; }
 
@@ -36,8 +33,6 @@ namespace FDG
 
         public IPlayerRequestByID PlayerRequester { get; }
 
-        public StageHandlerRegistry Handlers { get; }
-
         public TableState TableState { get; }
 
         public IReadWriteableGameDataStore GameDataStore { get; }
@@ -45,14 +40,12 @@ namespace FDG
 
         public GameContext(ITextOutput textOutput, IDiceRoller diceRoller,
                 IPlayerRequestByID playerRequester,
-                StageHandlerRegistry handlers,
                 TableState tableState,
                 IReadWriteableGameDataStore gameDataStore)
         {
             TextOutput = textOutput;
             DiceRoller = diceRoller;
             PlayerRequester = playerRequester;
-            Handlers = handlers;
             TableState = tableState;
             GameDataStore = gameDataStore;
         }

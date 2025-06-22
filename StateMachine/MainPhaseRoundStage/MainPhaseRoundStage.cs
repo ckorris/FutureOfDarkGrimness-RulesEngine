@@ -10,13 +10,11 @@ namespace FDG.Stages
         
         private const string MAIN_TO_RECONCILE_NEW_TURN_STAGE = "MainToReconcileNewTurn";
 
-        public StageBinding ToReconcileNewTurn;
-        public StageBinding ToVictoryCalculation;
+        public StageBinding? ToReconcileNewTurn;
+        public StageBinding? ToVictoryCalculation;
 
-        public MainPhaseRoundStage(IGameContext gameContext, IStateMachineLayer<IGameContext> parent) : base(gameContext, parent)
-        {
-            
-        }
+        public MainPhaseRoundStage(IGameContext gameContext, IStateMachineLayer<IGameContext> parent)
+            : base(gameContext, parent) { }
 
         public override async Task Enter(IGameContext context)
         {

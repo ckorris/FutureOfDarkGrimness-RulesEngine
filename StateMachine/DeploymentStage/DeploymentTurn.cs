@@ -3,7 +3,7 @@ using FDG.Data;
 
 namespace FDG.Stages
 {
-    public class DeploymentTurnContext
+    public class DeploymentTurn
     {
         public List<IUnit> RemainingUnits
         {
@@ -17,11 +17,11 @@ namespace FDG.Stages
 
         private List<DataBinding<UnitData>> _unitBindings;
 
-        public DeploymentTurnContext(List<DataBinding<UnitData>> remainingUnits, RectangularZone deploymentZone)
+        public DeploymentTurn(List<DataBinding<UnitData>> remainingUnits, RectangularZone deploymentZone)
         {
             if(remainingUnits.Count == 0)
             {
-                throw new InvalidOperationException($"Tried to make a {nameof(DeploymentTurnContext)} " +
+                throw new InvalidOperationException($"Tried to make a {nameof(DeploymentTurn)} " +
                     "with an empty unit list.");
             }
 
@@ -33,7 +33,7 @@ namespace FDG.Stages
         {
             if(RemainingUnits.Contains(selectedUnit) == false)
             {
-                throw new ArgumentException($"Selected unit {selectedUnit.Name} not in {nameof(DeploymentTurnContext)}.");
+                throw new ArgumentException($"Selected unit {selectedUnit.Name} not in {nameof(DeploymentTurn)}.");
             }
 
             //RemainingUnits.Remove(selectedUnit); //TODO: How does this compile? Does it work?

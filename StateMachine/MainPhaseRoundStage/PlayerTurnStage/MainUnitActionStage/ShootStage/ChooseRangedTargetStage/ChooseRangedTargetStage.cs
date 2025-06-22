@@ -49,8 +49,11 @@ namespace FDG.Stages
                 }
             }
 
+            throw new NotImplementedException();
+            /*
             GameContext.GetHandler<IChooseRangedTargetHandler>()
                 .Handle(context, choices, () => BackToChooseAction.Activate(context));
+            */
         }
 
         private void OnChoseRangedTarget(ICombatActionContext context, IUnit targetUnit)

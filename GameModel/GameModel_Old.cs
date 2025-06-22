@@ -26,16 +26,14 @@ namespace FDG
 
         private TableState _tableState;
 
-        private StageHandlerRegistry _stageHandlerRegistry;
 
         private TextOutputRelayer _textOutputRelayer;
 
         private StateMachine<IGameContext> _stateMachine;
 
 
-        public GameModel_Old(GameSettings gameSettings, StageHandlerRegistry stageHandlerRegistry)
+        public GameModel_Old(GameSettings gameSettings)
         {
-            _stageHandlerRegistry = stageHandlerRegistry;
             _textOutputRelayer = new TextOutputRelayer();
 
             IDiceRoller diceRoller = gameSettings.RandomnessType switch
@@ -60,8 +58,7 @@ namespace FDG
 
             PlayerSlotManager playerSlotManager = new PlayerSlotManager(Array.Empty<PlayerSlot>()); //Temp but so is this whole class.
 
-            _gameContext = new GameContext(_textOutputRelayer, diceRoller, playerSlotManager, 
-                _stageHandlerRegistry, 
+            _gameContext = new GameContext(_textOutputRelayer, diceRoller, playerSlotManager,  
                 _tableState,
                 _gameDataStore);
 

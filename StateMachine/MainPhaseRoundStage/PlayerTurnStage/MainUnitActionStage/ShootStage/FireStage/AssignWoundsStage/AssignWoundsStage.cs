@@ -42,7 +42,8 @@ namespace FDG.Stages
                 //I'm also putting this TODO in the results class.
                 AssignWoundsResults assignWoundsResults = new AssignWoundsResults(metaData.DefendingUnit, totalWoundsDealt);
 
-                GameContext.GetHandler<IAssignWoundsHandler>().Handle(metaData.DefendingUnit, assignWoundsResults, () => OnHandled(assignWoundsResults, onFinished));
+                throw new NotImplementedException();
+                //GameContext.GetHandler<IAssignWoundsHandler>().Handle(metaData.DefendingUnit, assignWoundsResults, () => OnHandled(assignWoundsResults, onFinished));
             }
         }
 

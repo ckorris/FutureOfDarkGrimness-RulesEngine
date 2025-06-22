@@ -8,17 +8,23 @@ namespace FDG.GameModel
     {
         public ITableState TableState { get; }
 
-        IStageResolverRegistry IFDGGame.StageResolverRegistry => StageResolverRegistry;
+        public IStageResolverRegistry StageResolverRegistry { get; private set; }
 
-        internal StageResolverRegistry StageResolverRegistry { get; }
 
         private IReadableGameDataStore _gameDataStore;
+
 
         public FDGGame_AsLocal(IReadableGameDataStore gameDataStore)
         { 
             _gameDataStore = gameDataStore;
             TableState = new TableState(gameDataStore);
-            StageResolverRegistry = new StageResolverRegistry();
+        }
+
+        public void AssignStageResolverRegistry(IStageResolverRegistry registry)
+        {
+            StageResolverRegistry = registry;
+
+            //TODO: Need to tell server we're ready.
         }
     }
 }

@@ -160,9 +160,11 @@ namespace FDG.Network.Connection
             _commandDispatcher.SendCommandAsync(gameSettingsUpdate);
         }
 
-        private void OnClientDisconnected(ConnectionID disconnectedClientID)
+        private void OnClientDisconnected(ConnectionID disconnectedConnectionID)
         {
-            //TODO.
+            PlayerID leavingPlayerID = _playerInfosFull.First(info => info.Value.ConnectionID == disconnectedConnectionID).Key;
+            _playerInfosFull.Remove(leavingPlayerID);
+            UpdateInfoSummariesFromFullList();
         }
 
         private void UpdateInfoSummariesFromFullList()
@@ -248,7 +250,7 @@ namespace FDG.Network.Connection
             await _commandDispatcher.SendCommandAsync(launchGameMessage);
         }
         
-        private PlayerSlot[] GetPlayerSlots(StageResolverRegistry stageResolverRegister, IReadableGameDataStore gameDataStore)
+        private PlayerSlot[] GetPlayerSlots(IStageResolverRegistry stageResolverRegister, IReadableGameDataStore gameDataStore)
         {
             PlayerSlot[] playerSlots = new PlayerSlot[_playerInfos.Value.Count];
 

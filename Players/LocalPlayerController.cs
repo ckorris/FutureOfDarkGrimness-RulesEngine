@@ -22,10 +22,17 @@ namespace FDG.Players
             _stageResolverRegistry = stageResolverRegistry;
         }
 
+        public Task WaitUntilReadyAsync()
+        {
+            return this.WaitUntilReadyAsyncStatic();
+        }
+
         public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
             where TRequest : IStageTaskRequest<TReply> 
         {
             return _stageResolverRegistry.ResolveRequest<TRequest, TReply>(request);
         }
+
+        
     }
 }

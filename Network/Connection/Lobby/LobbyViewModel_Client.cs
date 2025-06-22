@@ -171,29 +171,37 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
         {
             Debug.WriteLine($"Received launch game message. ");
 
-            FDGGame_AsClient fdgGame = new FDGGame_AsClient(_client);
+            if(_thisPlayerID.HasValue == false)
+            {
+                throw new InvalidOperationException("Tried to launch game without a PlayerID being assigned.");
+            }
+
+            FDGGame_AsClient fdgGame = new FDGGame_AsClient(_client, _thisPlayerID.Value);
 
             OnLaunched?.Invoke(fdgGame);
         }
 
         public void SetArmyPoints(int armyPoints)
         {
-            throw new NotImplementedException();
+            throw new InvalidOperationException("Tried to set army points when not the host.");
         }
 
         public void SetTerrainCount(int terrainCount)
         {
-            throw new NotImplementedException();
+            throw new InvalidOperationException("Tried to set terrain count when not the host.");
+
         }
 
         public void SetRandomnessType(ERandomnessType randomnessType)
         {
-            throw new NotImplementedException();
+            throw new InvalidOperationException("Tried to set randomness type when not the host.");
+
         }
 
         public void SetTurnStyle(ETurnStyle turnStyle)
         {
-            throw new NotImplementedException();
+            throw new InvalidOperationException("Tried to set turn style when not the host.");
+
         }
 
         public bool CheckCanModifyPlayerIDInfo(PlayerID playerID)

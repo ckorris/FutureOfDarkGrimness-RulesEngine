@@ -50,7 +50,7 @@ namespace FDG.Players
             _playerSlots = playerSlots;
         }
 
-        public bool TryGetNextOpenSlotID(int? nextSlotID)
+        public bool TryGetNextOpenSlotID(out int? nextSlotID)
         {
             for(int i = 0; i < _playerSlots.Length; i++)
             {
@@ -61,6 +61,7 @@ namespace FDG.Players
                 }
             }
 
+            nextSlotID = null;
             return false;
         }
 

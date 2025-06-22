@@ -2,6 +2,7 @@
 using FDG.Data;
 using FDG.EngineInterface;
 using FDG.Network.Connection;
+using FDG.Network.Messages;
 using FDG.Network.Synchronization;
 using FDG.StageResolution;
 
@@ -11,17 +12,20 @@ namespace F.GameModel
     {
         public ITableState TableState { get; }
 
-        public IStageResolverRegistry StageResolverRegistry { get; }
+        public IStageResolverRegistry StageResolverRegistry { get; private set; }
 
         private ICommandDispatcher _commandDispatcher;
+
+        private PlayerID _thisPlayerID;
 
         private GameDataStore _gameDataStore;
 
         private GameDataUpdateReceiver _dataUpdateReceiver;
 
-        public FDGGame_AsClient(ICommandDispatcher commandDispatcher)
+        public FDGGame_AsClient(ICommandDispatcher commandDispatcher, PlayerID thisPlayerID)
         {
             _commandDispatcher = commandDispatcher;
+            _thisPlayerID = thisPlayerID;
 
             _gameDataStore = GameDataStore.GameDataStoreBuilder.GetDefault();
             TableState = new TableState(_gameDataStore);
@@ -33,7 +37,10 @@ namespace F.GameModel
 
         public void AssignStageResolverRegistry(IStageResolverRegistry stageResolverRegistry)
         {
+            //Do stuff.
+            StageResolverRegistry = stageResolverRegistry;
 
+            _commandDispatcher.SendCommandAsync(new PostLaunchPlayerReadyMessage(_thisPlayerID));
         }
     }
 }

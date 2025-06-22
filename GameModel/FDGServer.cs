@@ -43,10 +43,7 @@ namespace FDG.GameModel
             _stateMachine = new StateMachine<IGameContext>(new GDFStateMachineBuilder(), _gameContext);
 
             //For test, make a thing. 
-            LoadTestData();
-
-            //TEMP TEST
-            return;
+            //LoadTestData();
 
             _ = LaunchStateMachineOnceReady(_stateMachine, _gameContext);
         }

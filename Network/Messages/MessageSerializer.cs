@@ -27,6 +27,11 @@ namespace FDG.Network.Messages
 
         private readonly Dictionary<Type, List<Delegate>> _messageHandlers = new Dictionary<Type, List<Delegate>>();
 
+        private static JsonSerializerSettings _settings = new JsonSerializerSettings()
+        {
+            TypeNameHandling = TypeNameHandling.Auto,
+        };
+
         public void RegisterForMessageEvent<T>(Action<T, ConnectionID> onMessageReceived)
         {
             string messageType = typeof(T).ToString();
@@ -64,7 +69,7 @@ namespace FDG.Network.Messages
             string typeString = typeof(T).ToString();
             int typeLength = Encoding.UTF8.GetByteCount(typeString);
 
-            string json = JsonConvert.SerializeObject(message);
+            string json = JsonConvert.SerializeObject(message, _settings);
             int jsonLength = Encoding.UTF8.GetByteCount(json);
 
             int combinedLength = sizeof(int) + typeLength + jsonLength;
@@ -105,7 +110,8 @@ namespace FDG.Network.Messages
             int jsonLength = data.Count - jsonOffset;
 
             string jsonString = Encoding.UTF8.GetString(data.Array, data.Offset + jsonOffset, jsonLength);
-            object message = JsonConvert.DeserializeObject(jsonString, messageType);
+
+            object message = JsonConvert.DeserializeObject(jsonString, messageType, _settings);
 
             DispatchToHandlers(message, connectionID);
         }

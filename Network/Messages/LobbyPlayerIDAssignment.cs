@@ -8,7 +8,10 @@ using System.Threading.Tasks;
 namespace FutureOfDarkGrimness.Network.Messages
 {
     /// <summary>
-    /// Message sent to a new client to inform them of what their PlayerID is.
+    /// Sent when the client first connects to the host to inform the client what their Player ID is.
+    /// This may need to change if we ever allow a combined hot seat and networked game, such that
+    /// a remote device can have multiple players on it.
     /// </summary>
+    /// <param name="playerID">ID assigned to the newly-connected player.</param>
     public record LobbyPlayerIDAssignment(PlayerID playerID);
 }

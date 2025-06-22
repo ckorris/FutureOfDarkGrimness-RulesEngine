@@ -7,7 +7,6 @@ using FDG.Network.Messages;
 using FDG.SaveLoad;
 using FutureOfDarkGrimness.Network.Messages;
 using System.Diagnostics;
-using System.Reactive.Linq;
 using System.Reactive.Subjects;
 
 namespace FutureOfDarkGrimness.Network.Connection.Lobby
@@ -97,6 +96,8 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
             //Show init message in chatbox.
             AddMessageToLocalList(new LobbyChatMessage("System", SERVER_JOIN_MESSAGE));
         }
+
+
 
         public void SendMessage(string message)
         {
@@ -203,7 +204,20 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
 
         public void UpdateArmyListFile(PlayerID playerId, ArmyListFile armyListFile)
         {
-            throw new NotImplementedException();
+            if(_thisPlayerID.HasValue == false)
+            {
+                throw new Exception($"Tried to update army list before we've been assigned an ID.");
+            }
+
+            if(playerId !=  _thisPlayerID.Value)
+            {
+                throw new InvalidOperationException("Client to update an army list for the wrong player. " +
+                    $"Client's ID: {_thisPlayerID.Value} Update attempt ID: {playerId}");
+            }
+
+            ArmyListUpdateMessage message = new ArmyListUpdateMessage(playerId, armyListFile);
+
+            _commandDispatcher.SendCommandAsync(message);
         }
     }
 }

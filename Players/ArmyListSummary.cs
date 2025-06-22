@@ -1,5 +1,5 @@
 ﻿
 namespace FutureOfDarkGrimness.Players
 {
-    public record ArmyListSummary(string ArmyName, string FactionName, int PointCost);
+    public record ArmyListSummary(bool IsAssigned, string ArmyName, string FactionName, int PointCost);
 }

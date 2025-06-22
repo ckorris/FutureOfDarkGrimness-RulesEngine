@@ -172,9 +172,9 @@ namespace FDG.Network.Connection
             foreach(LobbyPlayerInfoFull fullInfo in _playerInfosFull.Values)
             {
                 ArmyListSummary? summary = fullInfo.ArmyListFile != null
-                    ? new ArmyListSummary(fullInfo.ArmyListFile.Name, fullInfo.ArmyListFile.Faction,
+                    ? new ArmyListSummary(true, fullInfo.ArmyListFile.Name, fullInfo.ArmyListFile.Faction,
                     fullInfo.ArmyListFile.TotalPoints)
-                    : new ArmyListSummary("N/A", "N/A", 0);
+                    : new ArmyListSummary(false, "N/A", "N/A", 0);
                 infoSummaries.Add(new LobbyPlayerInfoSummary(fullInfo.PlayerName, summary, fullInfo.TeamNumber, fullInfo.PlayerType,
                     fullInfo.ConnectionID, fullInfo.PlayerID));
             }

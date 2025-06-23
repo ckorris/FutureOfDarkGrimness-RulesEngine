@@ -58,19 +58,5 @@ namespace FDG.TextInterface
                 }
             }
         }
-
-        public void SendDirectPlayerMessage(PlayerID sendingPlayer, PlayerID targetPlayer, string message)
-        {
-            PlayerSlot sendingSlot = _playerSlotManager.GetSlotByID(sendingPlayer);
-            PlayerSlot targetSlot = _playerSlotManager.GetSlotByID(targetPlayer);
-
-            if (targetSlot.IsFilled == false)
-            {
-                System.Diagnostics.Debug.WriteLine("Can't send message to player because slot is unassigned.");
-                return;
-            }
-
-            targetSlot.Controller.SendPlayerMessage(sendingSlot.Name, EChatMessageType.Direct, message);
-        }
     }
 }

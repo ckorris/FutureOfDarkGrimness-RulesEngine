@@ -4,11 +4,7 @@ namespace FDG.TextInterface
 {
     public interface IPlayerMessageUI
     {
-        event Action<string> OnGlobalMessageRequested;
-
-        event Action<string> OnTeamMessageRequested;
-
-        event Action<PlayerID, string> OnDirectMessageRequested;
+        event Action<string, EChatMessageType> OnMessageRequested;
 
         void DisplayPlayerMessage(string sendingPlayerName, EChatMessageType messageType, string message);
     }

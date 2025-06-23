@@ -10,8 +10,5 @@ namespace FutureOfDarkGrimness.TextInterface
         void SendGlobalPlayerMessage(PlayerID sendingPlayer, string message);
 
         void SendTeamPlayerMessage(PlayerID sendingPlayer, string message);
-
-        void SendDirectPlayerMessage(PlayerID sendingPlayer, PlayerID targetPlayer, string message);
-
     }
 }

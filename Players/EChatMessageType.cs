@@ -10,10 +10,6 @@ namespace FDG.Players
         /// <summary>
         /// Sent from one person to members of their team.
         /// </summary>
-        Team,
-        /// <summary>
-        /// Sent from one person to just one other person.
-        /// </summary>
-        Direct
+        Team
     }
 }

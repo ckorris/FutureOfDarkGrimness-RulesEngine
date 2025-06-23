@@ -48,7 +48,24 @@ namespace F.GameModel
 
             StageResolverRegistry = stageResolverRegistry;
 
+            _commandDispatcher.RegisterForMessageEvent<LogChatNetworkMessage>(OnLogMessageReceived);
+            _commandDispatcher.RegisterForMessageEvent<PlayerChatNetworkMessage>(OnPlayerMessageReceived);
+
             _commandDispatcher.SendCommandAsync(new PostLaunchPlayerReadyMessage(_thisPlayerID));
+
+            
         }
+
+        private void OnLogMessageReceived(LogChatNetworkMessage message, ConnectionID _)
+        {
+            LogMessageUI?.DisplayLogMessage(message.LogMessage);
+        }
+
+        private void OnPlayerMessageReceived(PlayerChatNetworkMessage message, ConnectionID iD)
+        {
+            PlayerMessageUI?.DisplayPlayerMessage(message.SendingPlayerName, message.MessageType, message.Message);
+        }
+
+        
     }
 }

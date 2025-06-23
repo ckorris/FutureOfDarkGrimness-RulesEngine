@@ -1,5 +1,6 @@
 ﻿using FDG.GameModel;
 using FDG.StageResolution;
+using System.Diagnostics;
 
 namespace FDG.Players
 {
@@ -38,7 +39,7 @@ namespace FDG.Players
             void Handler()
             {
                 _localPlayer.OnStageResolverAssigned -= Handler;
-                System.Diagnostics.Debug.WriteLine("Local player became ready.");
+                Debug.WriteLine("Local player became ready.");
 
                 source.SetResult(true);
             }

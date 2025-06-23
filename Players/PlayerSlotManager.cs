@@ -1,5 +1,4 @@
 ﻿using FDG.StageResolution;
-using FutureOfDarkGrimness.TextInterface;
 using System.Runtime.CompilerServices;
 
 namespace FDG.Players

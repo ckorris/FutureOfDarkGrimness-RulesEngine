@@ -2,7 +2,6 @@
 using FDG.Network.Connection;
 using FDG.Network.Synchronization;
 using FDG.Players;
-using FDG.Samples;
 using FDG.Stages;
 using FDG.TextInterface;
 using FutureOfDarkGrimness.StateMachine.StateMachineBuilders;
@@ -30,6 +29,8 @@ namespace FDG.GameModel
 
             _playerSlotManager = new PlayerSlotManager(playerSlots);
 
+            AddTeamDataToGameDataStore(playerSlots, gameDataStore);
+
             LogAndChatMessageRelayer chatMessageRelayer = new LogAndChatMessageRelayer(_playerSlotManager);
 
             ITextOutput textOutput = new PlayerLogSender(chatMessageRelayer);
@@ -46,6 +47,34 @@ namespace FDG.GameModel
             //LoadTestData();
 
             _ = LaunchStateMachineOnceReady(_stateMachine, _gameContext);
+        }
+
+        private void AddTeamDataToGameDataStore(PlayerSlot[] playerSlots, IReadWriteableGameDataStore gameDataStore)
+        {
+            Dictionary<int, List<PlayerID>> teams = new Dictionary<int, List<PlayerID>>();
+
+            //This assumes team numbers are unique already. But if we ever use -1 for
+            //those not on a team or something like that, there will be issues.
+
+            for(int i = 0; i < playerSlots.Length; i++)
+            {
+                PlayerSlot slot = playerSlots[i];
+
+                int teamSlot = slot.TeamNumber;
+                if(teams.ContainsKey(teamSlot) == false)
+                {
+                    teams.Add(teamSlot, new List<PlayerID>());
+                }
+
+                teams[teamSlot].Add(slot.PlayerID);
+            }
+            
+            foreach(KeyValuePair<int, List<PlayerID>> kvp in teams)
+            {
+                TeamData teamData = new TeamData(kvp.Key, kvp.Value);
+                DataReference teamReference = gameDataStore.Create(teamData);
+            }
+
         }
 
 

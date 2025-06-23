@@ -2,7 +2,6 @@
 using FDG.EngineInterface;
 using FDG.StageResolution;
 using FDG.TextInterface;
-using Microsoft.Win32;
 
 namespace FDG.GameModel
 {
@@ -25,13 +24,6 @@ namespace FDG.GameModel
         { 
             _gameDataStore = gameDataStore;
             TableState = new TableState(gameDataStore);
-        }
-
-        public void AssignInterfaces(IStageResolverRegistry registry)
-        {
-            
-
-            //TODO: Need to tell server we're ready.
         }
 
         public void AssignInterfaces(ILogMessageUI logMessageUI, IPlayerMessageUI playerMessageUI, 

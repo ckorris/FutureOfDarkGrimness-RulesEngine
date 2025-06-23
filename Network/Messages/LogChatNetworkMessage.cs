@@ -6,5 +6,5 @@ namespace FDG.Network.Messages
     /// </summary>
     /// <param name="logMessage"></param>
     /// <seealso cref="FDG.Players.NetworkPlayerController"/>
-    public record LogChatNetworkMessage(string logMessage);
+    public record LogChatNetworkMessage(string LogMessage);
 }

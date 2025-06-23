@@ -32,7 +32,7 @@ namespace FDG.Data
             throw new NotImplementedException();
         }
 
-        private GameDataStore() 
+        private GameDataStore()
         {
             //TODO: Initialize converters?
         }
@@ -56,7 +56,7 @@ namespace FDG.Data
                 object converterInstance = Activator.CreateInstance(converterGenericType, [this as IReadWriteableGameDataStore]);
                 _jsonConverters[i - 1] = (JsonConverter)converterInstance;
             }
-           
+
         }
 
         /// <summary>
@@ -93,7 +93,7 @@ namespace FDG.Data
 
             TypeID typeID = new TypeID(_registeredTypes.Count - 1);
 
-            if(capacity <= 0)
+            if (capacity <= 0)
             {
                 capacity = DEFAULT_COMPONENT_STORE_CAPACITY;
             }
@@ -123,8 +123,16 @@ namespace FDG.Data
 
         public void CreateFromReferenceAndJson(DataReference reference, string initValueAsJson)
         {
+            JsonSerializerSettings settings = new JsonSerializerSettings()
+            {
+                TypeNameHandling = TypeNameHandling.Auto,
+                Converters = _jsonConverters.ToList()
+            };
+
+
             Type objectType = _registeredTypes[reference.TypeID.ID];
-            object? deserializedValue = JsonConvert.DeserializeObject(initValueAsJson, objectType, _jsonConverters);
+            //object? deserializedValue = JsonConvert.DeserializeObject(initValueAsJson, objectType, _jsonConverters, );
+            object? deserializedValue = JsonConvert.DeserializeObject(initValueAsJson, objectType, settings);
 
             if (deserializedValue == null)
             {
@@ -155,7 +163,7 @@ namespace FDG.Data
             GetTypeAndIDOrThrow<T>(out _, out TypeID typeID);
             ComponentStore<T> store = (ComponentStore<T>)_componentStores[typeID];
 
-            foreach(DataReference reference in store.GetAllDataReferences())
+            foreach (DataReference reference in store.GetAllDataReferences())
             {
                 yield return store.GetDataBinding(reference);
             }
@@ -192,7 +200,7 @@ namespace FDG.Data
         {
             GetTypeAndIDOrThrow<T>(out Type type, out TypeID typeID);
 
-            if(reference.TypeID != typeID)
+            if (reference.TypeID != typeID)
             {
                 throw new TypeMismatchException(type, reference.TypeID.ID, typeID.ID);
             }
@@ -240,7 +248,7 @@ namespace FDG.Data
 
             foreach (IComponentStore componentStore in _componentStores.Values)
             {
-                foreach(DataReference reference in componentStore.GetAllDataReferences())
+                foreach (DataReference reference in componentStore.GetAllDataReferences())
                 {
                     object? value = componentStore.GetValueUntyped(reference);
                     string valueAsJson = JsonConvert.SerializeObject(value, _jsonConverters);
@@ -286,7 +294,7 @@ namespace FDG.Data
             {
                 throw new NullReferenceException();
             }
-            if(OnDataAddedAsJson != null)
+            if (OnDataAddedAsJson != null)
             {
                 string asJson = JsonConvert.SerializeObject(typedValue, _jsonConverters);
                 OnDataAddedAsJson.Invoke(dataReference, asJson);
@@ -300,7 +308,7 @@ namespace FDG.Data
                 throw new NullReferenceException();
             }
 
-            if(OnDataUpdatedAsJson != null)
+            if (OnDataUpdatedAsJson != null)
             {
                 string asJson = JsonConvert.SerializeObject(typedValue, _jsonConverters);
                 OnDataUpdatedAsJson.Invoke(dataReference, asJson);
@@ -321,8 +329,9 @@ namespace FDG.Data
         private class TypeMismatchException : Exception
         {
             public TypeMismatchException(Type providedType, int providedIndex, int realIndex)
-                : base($"Tried to access value in {nameof(GameDataStore)} of type {providedType}, but passed in a " + 
-                      $"{nameof(DataReference)} object with type index {providedIndex} when the correct index is {realIndex}.") { }
+                : base($"Tried to access value in {nameof(GameDataStore)} of type {providedType}, but passed in a " +
+                      $"{nameof(DataReference)} object with type index {providedIndex} when the correct index is {realIndex}.")
+            { }
         }
 
         private ComponentStore<T> GetComponentStoreOrThrow<T>()
@@ -385,6 +394,6 @@ namespace FDG.Data
         /// Exists so that the index of any used type is not 0, so that a default TypeID doesn't erroneously
         /// point to a valid type, causing bugs to be harder to find.
         /// </summary>
-        private struct UnreferenceableTypeStruct { } 
+        private struct UnreferenceableTypeStruct { }
     }
 }

@@ -13,16 +13,10 @@ namespace FDG
         private List<PlayerID> _players;
 
         [JsonConstructor]
-        public TeamData(int teamNumber, List<PlayerID> playerBindings)
+        public TeamData(int teamNumber, List<PlayerID> players)
         {
             TeamNumber = teamNumber;
-            _players = playerBindings;
-        }
-
-        public TeamData(int teamNumber)
-        {
-            TeamNumber = teamNumber;
-            _players = new List<PlayerID>();
+            _players = players;
         }
     }
 }

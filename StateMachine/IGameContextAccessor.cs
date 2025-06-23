@@ -36,7 +36,7 @@ namespace FDG
 
         public static IReadWriteableGameDataStore GameDataStore(this IGameContextAccessor contextAccessor)
         {
-            return contextAccessor.GameContext.GameDataStore();
+            return contextAccessor.GameContext.GameDataStore;
         }
 
         public static IPlayerRequestByID PlayerRequester(this IGameContextAccessor contextAccessor)

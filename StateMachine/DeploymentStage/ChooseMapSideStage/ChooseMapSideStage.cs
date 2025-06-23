@@ -18,7 +18,11 @@ namespace FDG.Stages
 
         public override async Task Enter(IDeploymentContext context)
         {
-            List<RectangularZone> zoneOptions = new List<RectangularZone>();
+            context.Log("Entered Choose Map Side stage.");
+
+            List<ITeam> teamOrderedByRoll = context.MapSideRollOrder;
+
+            List<RectangularZone> zoneOptions = GetRectangularZones(teamOrderedByRoll.Count);
 
             List<DataBinding<RectangularZone>> zoneBindings = new List<DataBinding<RectangularZone>>(zoneOptions.Count);
 
@@ -36,8 +40,7 @@ namespace FDG.Stages
                 throw new NullReferenceException();
             }
 
-            List<ITeam> teamOrderedByRoll = context.MapSideRollOrder;
-
+            
             Dictionary<ITeam, DataBinding<RectangularZone>> choices = new Dictionary<ITeam, DataBinding<RectangularZone>>(teamOrderedByRoll.Count);
 
             for(int i = 0; i < teamOrderedByRoll.Count; i++)

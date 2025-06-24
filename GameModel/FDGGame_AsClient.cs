@@ -4,6 +4,7 @@ using FDG.EngineInterface;
 using FDG.Network.Connection;
 using FDG.Network.Messages;
 using FDG.Network.Synchronization;
+using FDG.Players;
 using FDG.StageResolution;
 using FDG.TextInterface;
 
@@ -53,7 +54,7 @@ namespace F.GameModel
 
             _commandDispatcher.SendCommandAsync(new PostLaunchPlayerReadyMessage(_thisPlayerID));
 
-            
+            PlayerMessageUI.OnMessageSentByPlayer += SendChatMessage;
         }
 
         private void OnLogMessageReceived(LogChatNetworkMessage message, ConnectionID _)
@@ -66,6 +67,10 @@ namespace F.GameModel
             PlayerMessageUI?.DisplayPlayerMessage(message.SendingPlayerName, message.MessageType, message.Message);
         }
 
-        
+        private void SendChatMessage(string message, EChatMessageType messageType)
+        {
+            NetworkPlayerSubmitChatMessage chatMessage = new NetworkPlayerSubmitChatMessage(messageType, message);
+            _commandDispatcher.SendCommandAsync(chatMessage);
+        }
     }
 }

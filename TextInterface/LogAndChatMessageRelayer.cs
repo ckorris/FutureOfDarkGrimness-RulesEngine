@@ -10,6 +10,27 @@ namespace FDG.TextInterface
         public LogAndChatMessageRelayer(PlayerSlotManager playerSlotManager)
         {
             _playerSlotManager = playerSlotManager;
+
+            for(int i = 0; i < playerSlotManager.PlayerSlots.Length; i++)
+            {
+                playerSlotManager.PlayerSlots[i].Controller.OnMessageSentByPlayer += OnPlayerSentMessage;
+
+            }
+        }
+
+        private void OnPlayerSentMessage(PlayerID playerID, EChatMessageType chatMessageType, string message)
+        {
+            switch(chatMessageType)
+            {
+                case EChatMessageType.Global:
+                    SendGlobalPlayerMessage(playerID, message);
+                    break;
+                case EChatMessageType.Team:
+                    SendTeamPlayerMessage(playerID, message);
+                    break;
+                default:
+                    throw new System.IndexOutOfRangeException();
+            }
         }
 
         public void SendLogMessageToAll(string message)
@@ -51,12 +72,13 @@ namespace FDG.TextInterface
                     continue;
                 }
 
-                if (slot != sendingSlot && slot.TeamNumber == sendingSlot.TeamNumber)
+                if (slot.TeamNumber == sendingSlot.TeamNumber)
                 {
                     slot.Controller.SendPlayerMessage(sendingSlot.Name, EChatMessageType.Team, message);
 
                 }
             }
         }
+
     }
 }

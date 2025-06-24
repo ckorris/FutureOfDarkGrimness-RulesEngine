@@ -13,6 +13,7 @@ namespace FDG.Players
         public bool IsReady { get; private set; } = true;
 
         public event Action<bool>? OnReadyStateChanged;
+        public event Action<PlayerID, EChatMessageType, string> OnMessageSentByPlayer;
 
         private FDGGame_AsLocal _localPlayer;
 
@@ -21,6 +22,22 @@ namespace FDG.Players
             Name = name;
             ID = id;
             _localPlayer = localPlayer;
+
+            //Subscribe to the player messages once they're assigned.
+            if(_localPlayer.PlayerMessageUI != null)
+            {
+                localPlayer.PlayerMessageUI.OnMessageSentByPlayer += OnPlayerSentMessage;
+            }
+            else
+            {
+                _localPlayer.OnStageResolverAssigned += () => 
+                    localPlayer.PlayerMessageUI.OnMessageSentByPlayer += OnPlayerSentMessage;
+            }
+        }
+
+        private void OnPlayerSentMessage(string message, EChatMessageType messageType)
+        {
+            OnMessageSentByPlayer?.Invoke(ID, messageType, message);
         }
 
         public Task WaitUntilReadyAsync()

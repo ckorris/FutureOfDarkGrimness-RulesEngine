@@ -20,6 +20,7 @@ namespace FDG.Players
         private NetworkRequestMessageSender _requestMessageSender;
 
         public event Action<bool>? OnReadyStateChanged;
+        public event Action<PlayerID, EChatMessageType, string> OnMessageSentByPlayer;
 
         public NetworkPlayerController(string name, PlayerID playerID, ConnectionID connectionID, ICommandDispatcher commandDispatcher,
             IReadableGameDataStore gameDataStore)
@@ -31,6 +32,18 @@ namespace FDG.Players
             _requestMessageSender = new NetworkRequestMessageSender(playerID, connectionID, commandDispatcher, gameDataStore);
 
             _commandDispatcher.RegisterForMessageEvent<PostLaunchPlayerReadyMessage>(OnPlayerReadyMessageReceived);
+            
+            _commandDispatcher.RegisterForMessageEvent<NetworkPlayerSubmitChatMessage>(OnPlayerChatMessageReceived);
+        }
+
+        private void OnPlayerChatMessageReceived(NetworkPlayerSubmitChatMessage message, ConnectionID iD)
+        {
+            if(iD != _connectionID)
+            {
+                return; //Not this player.
+            }
+
+            OnMessageSentByPlayer?.Invoke(ID, message.MessageType, message.Message);
         }
 
         public Task WaitUntilReadyAsync()

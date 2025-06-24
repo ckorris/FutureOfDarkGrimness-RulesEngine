@@ -8,6 +8,8 @@ namespace FDG.Players
 
         public event Action<bool> OnReadyStateChanged;
 
+        public event Action<PlayerID, EChatMessageType, string> OnMessageSentByPlayer;
+
         public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
             where TRequest : IStageTaskRequest<TReply>;
 

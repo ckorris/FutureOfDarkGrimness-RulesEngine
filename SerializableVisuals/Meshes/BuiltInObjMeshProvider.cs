@@ -1,4 +1,5 @@
 ﻿using FDG.BuiltInAssets;
+using System.Globalization;
 using System.Numerics;
 using System.Text;
 using System.Text.Json.Serialization;
@@ -77,50 +78,164 @@ namespace FDG.SerializableVisuals.Meshes
             string objData = Encoding.UTF8.GetString(meshData);
             StringReader reader = new StringReader(objData);
 
-            List<Vector3> vertices = new List<Vector3>();
-            List<int> triangles = new List<int>();
-            List<Vector2> uvs = new List<Vector2>();
-            List<Vector3> normals = new List<Vector3>();
+            //Directly from the .obj.
+            List<Vector3> srcVertices = new List<Vector3>();
+            List<Vector2> srcUVs = new List<Vector2>();
+            List<Vector3> srcNormals = new List<Vector3>();
+
+            //Unified mesh data.
+            List<Vector3> outVertices = new List<Vector3>();
+            List<Vector2> outUVs = new List<Vector2>();
+            List<Vector3> outNormals = new List<Vector3>();
+            List<int> outTriangles = new List<int>();
+
+            //Map (v,vt,vn) triplet to unified vertex index.
+            Dictionary<(int v, int vt, int vn), int> vertexMap = new Dictionary<(int, int, int), int>();
+
+            NumberFormatInfo nfi = CultureInfo.InvariantCulture.NumberFormat;
 
             string line;
 
             while ((line = reader.ReadLine()) != null)
             {
-                if (line.StartsWith("v ")) //Vertex.
+                line = line.Trim();
+
+
+                string[] tokens = line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+                string tag = tokens[0];
+
+
+                if(line.Length == 0 || line.StartsWith("#"))
                 {
-                    string[]? parts = line.Substring(2).Split(' ');
-                    vertices.Add(new Vector3(float.Parse(parts[0]), float.Parse(parts[1]), float.Parse(parts[2])));
+                    continue; //Empty line or a comment.
                 }
-                else if (line.StartsWith("f ")) //Face.
+
+                if (tag == "v") //Vertex.
                 {
-                    string[]? parts = line.Substring(2).Split(' ');
-                    foreach (string part in parts)
+                    srcVertices.Add(new Vector3(float.Parse(tokens[1], nfi), float.Parse(tokens[2], nfi), float.Parse(tokens[3], nfi)));
+                }
+                else if (tag == "vt") //UVs.
+                {
+                    string[] parts = SplitWhitespace(line, 2);
+                    string[] uv = SplitWhitespace(parts[1]);
+                    srcUVs.Add(new Vector2(float.Parse(tokens[1], nfi), float.Parse(tokens[2], nfi)));
+
+                }
+                else if (tag == "vn") //Vertex normals.
+                {
+                    srcNormals.Add(new Vector3(float.Parse(tokens[1], nfi), float.Parse(tokens[2], nfi), float.Parse(tokens[3], nfi)));
+                }
+                else if (tag == "f") //Face.
+                {
+                    //Face with N corners; each corner token is v, v/vt, v//vn, or v/vt/vn.
+                    //We triangulate as a fan: (0, i, i+1) for i=1..N-2.
+
+                    int cornerCount = tokens.Length;
+                    if(cornerCount < 3)
                     {
-                        //OBJ format indices are 1-based, so subtract 1 to get 0-based indices.
-                        int index = int.Parse(part.Split('/')[0]) - 1;
-                        triangles.Add(index);
+                        continue; //Skipping degenerate face. TODO: Throw error?
                     }
-                }
-                else if (line.StartsWith("vt ")) //UVs.
-                {
-                    string[]? parts = line.Substring(3).Split(' ');
-                    uvs.Add(new Vector2(float.Parse(parts[0]), float.Parse(parts[1])));
-                }
-                else if (line.StartsWith("vn ")) //Vertex normals.
-                {
-                    string[]? parts = line.Substring(3).Split(' ');
-                    normals.Add(new Vector3(float.Parse(parts[0]), float.Parse(parts[1]), float.Parse(parts[2])));
+
+                    int[] faceIdx = new int[cornerCount];
+                    for(int c = 0; c < cornerCount; c++)
+                    {
+                        string corner = tokens[c + 1];
+                        int vIndex;
+                        int vtIndex;
+                        int vnIndex;
+                        ParseCorner(corner, srcVertices.Count, srcUVs.Count, srcNormals.Count,
+                            out vIndex, out vtIndex, out vnIndex);
+
+                        //Ugh, I don't like tuples but let's do this.
+                        (int v, int vt, int vn) key = (vIndex, vtIndex, vnIndex);
+
+                        int unifiedIndex;
+                        if(vertexMap.TryGetValue(key, out unifiedIndex) == false)
+                        {
+                            //Create a new unified vertex.
+                            Vector3 vertex = srcVertices[vIndex];
+                            Vector2 uv = (vtIndex >= 0) ? srcUVs[vtIndex] : new Vector2(0f, 0f);
+                            Vector3 normal = (vnIndex >= 0) ? srcNormals[vnIndex] : new Vector3(0f, 0f, 0f);
+
+                            unifiedIndex = outVertices.Count;
+                            vertexMap.Add(key, unifiedIndex);
+                            outVertices.Add(vertex);
+                            outUVs.Add(uv);
+                            outNormals.Add(normal);
+                        }
+
+                        faceIdx[c] = unifiedIndex;
+                    }
+
+                    //Triangulate like a "folding fan". (Huh, this is a neat trick.)
+                    for(int i = 1; i < cornerCount - 1; i++)
+                    {
+                        outTriangles.Add(faceIdx[0]);
+                        outTriangles.Add(faceIdx[i]);
+                        outTriangles.Add(faceIdx[i + 1]);
+
+                    }
                 }
             }
 
-            _vertices = vertices.ToArray();
-            _triangles = triangles.ToArray();
-            _uvs = uvs.ToArray();
-            _normals = normals.ToArray();
+
+            //If there are any missing normals, recompute all of them. 
+            //This seems like a waste, but if you fill in only some normals, things might look whack.
+            //TODO
+
+
+            //Assign unified arrays to fields.
+            _vertices = outVertices.ToArray();
+            _uvs = outUVs.ToArray();
+            _normals = outNormals.ToArray();
+            _triangles = outTriangles.ToArray();
 
             _hasLoaded = true;
         }
 
+        private static string[] SplitWhitespace(string s, int maxParts = int.MaxValue)
+        {
+            return s.Split((char[])null, maxParts, StringSplitOptions.RemoveEmptyEntries);
+        }
 
+        private static void ParseCorner(string token, int vCount, int vtCount, int vnCount, 
+            out int v, out int vt, out int vn)
+        {
+            string[] parts = token.Split('/');
+            v = ParseOneIndex(parts[0], vCount);
+
+            if(parts.Length >= 2 && parts[1].Length > 0)
+            {
+                vt = ParseOneIndex(parts[1], vtCount);
+            }
+            else
+            {
+                vt = -1;
+            }
+
+            if(parts.Length >= 3 && parts[2].Length > 0)
+            {
+                vn = ParseOneIndex(parts[2], vnCount);
+            }
+            else
+            {
+                vn = -1;
+            }
+        }
+
+        private static int ParseOneIndex(string s, int count)
+        {
+            //.obj is 1-based, so negative is relative to the end.
+            int index = int.Parse(s, CultureInfo.InvariantCulture);
+
+            if(index < 0)
+            {
+                return index - 1;
+            }
+            else
+            {
+                return count + index;
+            }
+        }
     }
 }

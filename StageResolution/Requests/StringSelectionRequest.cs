@@ -1,5 +1,4 @@
-
-using System.Text.Json.Serialization;
+using Newtonsoft.Json;
 
 namespace FDG.StageResolution.Requests
 {
@@ -18,11 +17,12 @@ namespace FDG.StageResolution.Requests
         public IReadOnlyList<InvalidOption> InvalidOptions { get; }
 
         [JsonConstructor]
-        public StringSelectionRequest(PlayerID targetPlayerID, TaskID taskID, string instructions,
-            IReadOnlyList<string> validOptions, IReadOnlyList<InvalidOption> invalidOptions)
+        public StringSelectionRequest(PlayerID targetPlayerID, TaskID taskID, string taskName, 
+            string instructions, IReadOnlyList<string> validOptions, IReadOnlyList<InvalidOption> invalidOptions)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
+            TaskName = taskName;
             Instructions = instructions;
             ValidOptions = validOptions;
             InvalidOptions = invalidOptions;

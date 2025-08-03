@@ -1,35 +1,78 @@
 ﻿using FDG.BuiltInAssets;
 using System.Numerics;
 using System.Text;
+using System.Text.Json.Serialization;
 
 namespace FDG.SerializableVisuals.Meshes
 {
+    [Serializable]
     public class BuiltInMeshProvider : IMeshProvider
     {
-        private List<Vector3> vertices = new List<Vector3>();
-        private List<int> triangles = new List<int>();
-        private List<Vector2> uvs = new List<Vector2>();
-        private List<Vector3> normals = new List<Vector3>();
+        public readonly string ResourcePath;
 
-        public Vector3[] Vertices => _vertices;
+        [JsonIgnore]
+        public Vector3[] Vertices
+        {
+            get
+            {
+                LoadIfNeeded();
+                return _vertices;
+            }
+        }
 
-        public int[] Triangles => _triangles;
+        [JsonIgnore]
+        public int[] Triangles
+        {
+            get
+            {
+                LoadIfNeeded();
+                return _triangles;
+            }
+        }
 
-        public Vector2[] UVs => _uvs;
+        [JsonIgnore]
+        public Vector2[] UVs
+        {
+            get
+            {
+                LoadIfNeeded();
+                return _uvs;
+            }
+        }
 
-        public Vector3[] Normals => _normals;
+        [JsonIgnore]
+        public Vector3[] Normals
+        {
+            get
+            {
+                LoadIfNeeded();
+                return _normals;
+            }
+        }
 
-        private readonly Vector3[] _vertices;
+        private bool _hasLoaded = false;
 
-        private readonly int[] _triangles;
+        private Vector3[] _vertices;
 
-        private readonly Vector2[] _uvs;
+        private int[] _triangles;
 
-        private readonly Vector3[] _normals;
+        private Vector2[] _uvs;
+
+        private Vector3[] _normals;
 
         public BuiltInMeshProvider(string resourcePath)
         {
-            byte[] meshData = BuiltInAssetHelper.GetEmbeddedResource(resourcePath);
+            ResourcePath = resourcePath;
+        }
+
+        private void LoadIfNeeded()
+        {
+            if (_hasLoaded)
+            {
+                return;
+            }
+
+            byte[] meshData = BuiltInAssetHelper.GetEmbeddedResource(ResourcePath);
 
             string objData = Encoding.UTF8.GetString(meshData);
             StringReader reader = new StringReader(objData);
@@ -41,9 +84,9 @@ namespace FDG.SerializableVisuals.Meshes
 
             string line;
 
-            while((line = reader.ReadLine()) != null)
+            while ((line = reader.ReadLine()) != null)
             {
-                if(line.StartsWith("v ")) //Vertex.
+                if (line.StartsWith("v ")) //Vertex.
                 {
                     string[]? parts = line.Substring(2).Split(' ');
                     vertices.Add(new Vector3(float.Parse(parts[0]), float.Parse(parts[1]), float.Parse(parts[2])));
@@ -58,7 +101,7 @@ namespace FDG.SerializableVisuals.Meshes
                         triangles.Add(index);
                     }
                 }
-                else if(line.StartsWith("vt ")) //UVs.
+                else if (line.StartsWith("vt ")) //UVs.
                 {
                     string[]? parts = line.Substring(3).Split(' ');
                     uvs.Add(new Vector2(float.Parse(parts[0]), float.Parse(parts[1])));
@@ -74,6 +117,8 @@ namespace FDG.SerializableVisuals.Meshes
             _triangles = triangles.ToArray();
             _uvs = uvs.ToArray();
             _normals = normals.ToArray();
+
+            _hasLoaded = true;
         }
 
 

@@ -73,6 +73,7 @@ namespace FDG.Tests
             var request = new SelectionRequest<ModelData>(
                 playerID,
                 taskID,
+                "Test Task",
                 "Select a model to move",
                 validOptions,
                 invalidOptions);
@@ -130,6 +131,7 @@ namespace FDG.Tests
             var request = new SelectionRequest<ModelData>(
                 new PlayerID(Guid.NewGuid()),
                 new TaskID(Guid.NewGuid()),
+                "Test Task",
                 "Select a model to move",
                 validOptions,
                 invalidOptions);
@@ -190,6 +192,7 @@ namespace FDG.Tests
             var request = new StringSelectionRequest(
                 playerID,
                 taskID,
+                "Test Task",
                 "Choose your action",
                 validOptions,
                 invalidOptions);
@@ -218,6 +221,7 @@ namespace FDG.Tests
             var request = new StringSelectionRequest(
                 playerID,
                 taskID,
+                "Test Task",
                 "Choose your action",
                 validOptions,
                 invalidOptions);

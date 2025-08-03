@@ -1,7 +1,5 @@
 using FDG.Data;
-using FDG.StageResolution;
-using System.Text.Json.Serialization;
-using System.Threading.Tasks;
+using Newtonsoft.Json;
 
 namespace FDG.StageResolution.Requests
 {
@@ -17,10 +15,11 @@ namespace FDG.StageResolution.Requests
 
         [JsonConstructor]
         public SingleBindingRequest(PlayerID targetPlayerID, TaskID taskID,
-            string instructions)
+            string taskName, string instructions)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
+            TaskName = taskName;
             Instructions = instructions;
             TaskName = "Select Item";
         }

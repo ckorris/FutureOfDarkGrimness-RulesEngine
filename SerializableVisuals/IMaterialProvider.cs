@@ -4,9 +4,9 @@ namespace FDG.SerializableVisuals
 {
     public interface IMaterialProvider
     {
-        Vector4 BaseColor { get; }
+        Vector4? BaseColor { get; }
 
-        Vector4 EmissiveColor { get; }
+        Vector4? EmissiveColor { get; }
 
         ITextureProvider? BaseColorTexture { get; }
 

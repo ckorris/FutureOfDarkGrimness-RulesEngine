@@ -6,6 +6,8 @@ namespace FDG.BuiltInAssets
     {
         public const string SILLYMANMODEL_PATH = "FutureOfDarkGrimness.BuiltInAssets.SillyManModel.obj";
 
+        public const string SILLYMANTEXTURE_PATH = "FutureOfDarkGrimness.BuiltInAssets.SillyManTexture.png";
+
         public static byte[] GetEmbeddedResource(string resourcePath)
         {
             Assembly assembly = Assembly.GetExecutingAssembly();

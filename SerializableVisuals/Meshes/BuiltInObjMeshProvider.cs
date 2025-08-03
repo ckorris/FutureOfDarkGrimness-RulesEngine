@@ -6,7 +6,7 @@ using System.Text.Json.Serialization;
 namespace FDG.SerializableVisuals.Meshes
 {
     [Serializable]
-    public class BuiltInMeshProvider : IMeshProvider
+    public class BuiltInObjMeshProvider : IMeshProvider
     {
         public readonly string ResourcePath;
 
@@ -60,7 +60,7 @@ namespace FDG.SerializableVisuals.Meshes
 
         private Vector3[] _normals;
 
-        public BuiltInMeshProvider(string resourcePath)
+        public BuiltInObjMeshProvider(string resourcePath)
         {
             ResourcePath = resourcePath;
         }

@@ -50,6 +50,7 @@ namespace FDG.Stages
                 //If there's only one option left, take that one.
                 if(zoneBindings.Count == 1)
                 {
+                    context.Log("Auto-assigning deployment zone as only one is left to pick.");
                     choices.Add(thisTeam, zoneBindings.First());
                 }
                 else if (zoneBindings.Count == 0)
@@ -60,6 +61,7 @@ namespace FDG.Stages
                 //Have the first player on the team choose a zone.
                 PlayerID firstTeamPlayer = thisTeam.Players.First();
 
+                context.Log($"Requesting player choose deployment zone.");
                 ChooseDeploymentZoneRequest request = new ChooseDeploymentZoneRequest(firstTeamPlayer,
                     "Choose Deployment Zone", zoneBindings, choices.Values.ToList());
 

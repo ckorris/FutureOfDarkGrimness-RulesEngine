@@ -14,12 +14,10 @@ namespace FDG.StageResolution.Requests
         public string Instructions { get; }
 
         [JsonConstructor]
-        public SingleBindingRequest(PlayerID targetPlayerID, TaskID taskID,
-            string taskName, string instructions)
+        public SingleBindingRequest(PlayerID targetPlayerID, TaskID taskID,string instructions)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
-            TaskName = taskName;
             Instructions = instructions;
             TaskName = "Select Item";
         }

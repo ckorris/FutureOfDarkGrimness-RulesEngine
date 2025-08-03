@@ -17,12 +17,11 @@ namespace FDG.StageResolution.Requests
         public IReadOnlyList<InvalidOption> InvalidOptions { get; }
 
         [JsonConstructor]
-        public StringSelectionRequest(PlayerID targetPlayerID, TaskID taskID, string taskName, 
+        public StringSelectionRequest(PlayerID targetPlayerID, TaskID taskID,
             string instructions, IReadOnlyList<string> validOptions, IReadOnlyList<InvalidOption> invalidOptions)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
-            TaskName = taskName;
             Instructions = instructions;
             ValidOptions = validOptions;
             InvalidOptions = invalidOptions;

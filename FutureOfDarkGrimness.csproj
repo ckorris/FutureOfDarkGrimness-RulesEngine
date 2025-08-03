@@ -7,6 +7,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="BuiltInAssets\SillyManModel.obj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="BuiltInAssets\SillyManModel.obj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageReference Include="Moq" Version="4.20.72" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />

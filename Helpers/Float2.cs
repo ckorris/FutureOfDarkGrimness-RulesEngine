@@ -1,7 +1,7 @@
 
 namespace FDG
 {
-    [System.Serializable]
+    [Serializable]
     public struct Float2
     {
         public float X { get; private set; }

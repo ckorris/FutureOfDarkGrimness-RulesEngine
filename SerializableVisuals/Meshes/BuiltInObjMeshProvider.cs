@@ -100,15 +100,14 @@ namespace FDG.SerializableVisuals.Meshes
             {
                 line = line.Trim();
 
+                if (line.Length == 0 || line.StartsWith("#"))
+                {
+                    continue; //Empty line or a comment.
+                }
 
                 string[] tokens = line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
                 string tag = tokens[0];
 
-
-                if(line.Length == 0 || line.StartsWith("#"))
-                {
-                    continue; //Empty line or a comment.
-                }
 
                 if (tag == "v") //Vertex.
                 {
@@ -130,7 +129,7 @@ namespace FDG.SerializableVisuals.Meshes
                     //Face with N corners; each corner token is v, v/vt, v//vn, or v/vt/vn.
                     //We triangulate as a fan: (0, i, i+1) for i=1..N-2.
 
-                    int cornerCount = tokens.Length;
+                    int cornerCount = tokens.Length - 1;
                     if(cornerCount < 3)
                     {
                         continue; //Skipping degenerate face. TODO: Throw error?
@@ -171,8 +170,8 @@ namespace FDG.SerializableVisuals.Meshes
                     for(int i = 1; i < cornerCount - 1; i++)
                     {
                         outTriangles.Add(faceIdx[0]);
-                        outTriangles.Add(faceIdx[i]);
                         outTriangles.Add(faceIdx[i + 1]);
+                        outTriangles.Add(faceIdx[i]);
 
                     }
                 }
@@ -228,7 +227,7 @@ namespace FDG.SerializableVisuals.Meshes
             //.obj is 1-based, so negative is relative to the end.
             int index = int.Parse(s, CultureInfo.InvariantCulture);
 
-            if(index < 0)
+            if(index > 0)
             {
                 return index - 1;
             }

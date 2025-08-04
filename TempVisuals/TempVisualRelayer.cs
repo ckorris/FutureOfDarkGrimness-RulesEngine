@@ -25,12 +25,14 @@ namespace FDG.TempVisuals
             var textureProvider = new BuiltInPngTextureProvider(BuiltInAssetHelper.SILLYMANTEXTURE_PATH);
 
             var materialProvider = new BasicMaterial();
-            materialProvider.BaseColor = new Vector4(1, 0, 0, 255);
+            materialProvider.BaseColor = new Vector4(1, 1, 1, 1);
             materialProvider.BaseColorTexture = textureProvider;
 
             Position position = new Position(20f, 20f);
+            Quaternion rotation = new Quaternion(Vector3.UnitY, 0f);
+            Vector3 scale = new Vector3(1, 1, 1);
 
-            TempVisual tempVisual = new TempVisual(meshProvider, materialProvider, position);
+            TempVisual tempVisual = new TempVisual(meshProvider, materialProvider, position, rotation, scale);
 
             _visualDrawer.AddVisual(tempVisual);
         }

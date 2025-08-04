@@ -2,6 +2,7 @@
 using Newtonsoft.Json;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
 
 namespace FDG.SerializableVisuals.Textures
 {
@@ -68,6 +69,9 @@ namespace FDG.SerializableVisuals.Textures
             using (MemoryStream stream = new MemoryStream(textureData))
             {
                 _image = Image.Load<Rgba32>(stream);
+
+                //ImageSharp assumes Y coordinates are top-down, but most graphics APIs do the opposite. So flip the data.
+                _image.Mutate(x => x.Flip(FlipMode.Vertical));
             }
 
             _hasLoaded = true;

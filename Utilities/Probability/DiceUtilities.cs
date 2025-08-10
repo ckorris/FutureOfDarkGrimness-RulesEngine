@@ -158,7 +158,8 @@ public static class DiceUtilities
             {
                 bucket = new List<T>();
                 rollBuckets[roll] = bucket;
-                nameBuckets[roll] = nameBuckets[roll];
+                //nameBuckets[roll] = nameBuckets[roll];
+                nameBuckets[roll] = new List<string>();
             }
 
             bucket.Add(group[i]);

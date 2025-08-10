@@ -6,6 +6,8 @@ using FDG.Network.Messages;
 using FDG.Network.Synchronization;
 using FDG.Players;
 using FDG.StageResolution;
+using FDG.TempVisuals;
+using FDG.TempVisuals.Messages;
 using FDG.TextInterface;
 
 namespace F.GameModel
@@ -20,7 +22,10 @@ namespace F.GameModel
 
         public IPlayerMessageUI? PlayerMessageUI { get; private set; }
 
+        public ITempVisualDrawer? TempVisualDrawer { get; private set; }
+
         private ICommandDispatcher _commandDispatcher;
+
 
         private PlayerID _thisPlayerID;
 
@@ -41,7 +46,8 @@ namespace F.GameModel
             _dataUpdateReceiver.RequestAllCurrentData();
         }
 
-        public void AssignInterfaces(ILogMessageUI logMessageUI, IPlayerMessageUI playerMessageUI, IStageResolverRegistry stageResolverRegistry)
+        public void AssignInterfaces(ILogMessageUI logMessageUI, IPlayerMessageUI playerMessageUI,
+            IStageResolverRegistry stageResolverRegistry, ITempVisualDrawer tempVisualDrawer)
         {
             LogMessageUI = logMessageUI;
 
@@ -52,9 +58,13 @@ namespace F.GameModel
             _commandDispatcher.RegisterForMessageEvent<LogChatNetworkMessage>(OnLogMessageReceived);
             _commandDispatcher.RegisterForMessageEvent<PlayerChatNetworkMessage>(OnPlayerMessageReceived);
 
+            _commandDispatcher.RegisterForMessageEvent<AddTempVisualMessage>(OnAddTempVisualReceived);
+
             _commandDispatcher.SendCommandAsync(new PostLaunchPlayerReadyMessage(_thisPlayerID));
 
             PlayerMessageUI.OnMessageSentByPlayer += SendChatMessage;
+
+            TempVisualDrawer = tempVisualDrawer;
         }
 
         private void OnLogMessageReceived(LogChatNetworkMessage message, ConnectionID _)
@@ -62,9 +72,19 @@ namespace F.GameModel
             LogMessageUI?.DisplayLogMessage(message.LogMessage);
         }
 
-        private void OnPlayerMessageReceived(PlayerChatNetworkMessage message, ConnectionID iD)
+        private void OnPlayerMessageReceived(PlayerChatNetworkMessage message, ConnectionID _)
         {
             PlayerMessageUI?.DisplayPlayerMessage(message.SendingPlayerName, message.MessageType, message.Message);
+        }
+
+        private void OnAddTempVisualReceived(AddTempVisualMessage message, ConnectionID _)
+        {
+            TempVisualDrawer?.AddVisual(message.TempVisual);
+        }
+
+        private void OnUpdateTempVisualTransformReceiver(UpdateTempVisualTransformMessage message, ConnectionID _)
+        {
+            throw new NotImplementedException();
         }
 
         private void SendChatMessage(string message, EChatMessageType messageType)

@@ -4,9 +4,9 @@ namespace FDG.BuiltInAssets
 {
     public static class BuiltInAssetHelper
     {
-        public const string SILLYMANMODEL_PATH = "FutureOfDarkGrimness.BuiltInAssets.SillyManModel.obj";
+        public const string SILLYMANMODEL_PATH = "FDG.BuiltInAssets.SillyManModel.obj";
 
-        public const string SILLYMANTEXTURE_PATH = "FutureOfDarkGrimness.BuiltInAssets.SillyManTexture.png";
+        public const string SILLYMANTEXTURE_PATH = "FDG.BuiltInAssets.SillyManTexture.png";
 
         public static byte[] GetEmbeddedResource(string resourcePath)
         {

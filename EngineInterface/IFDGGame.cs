@@ -1,4 +1,5 @@
 ﻿using FDG.StageResolution;
+using FDG.TempVisuals;
 using FDG.TextInterface;
 
 namespace FDG.EngineInterface
@@ -16,7 +17,9 @@ namespace FDG.EngineInterface
 
         IStageResolverRegistry? StageResolverRegistry { get; }
 
+        ITempVisualDrawer? TempVisualDrawer { get; }
+
         void AssignInterfaces(ILogMessageUI logMessageUI, IPlayerMessageUI playerMessageUI,
-            IStageResolverRegistry stageResolverRegistry);
+            IStageResolverRegistry stageResolverRegistry, ITempVisualDrawer tempVisualDrawer);
     }
 }

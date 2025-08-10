@@ -1,5 +1,6 @@
 using FDG.Data;
 using FDG.Players;
+using FDG.TempVisuals;
 
 namespace FDG
 {
@@ -17,10 +18,12 @@ namespace FDG
 
         public TableState TableState { get; }
 
-        //TODO: Maybe emove these from being accessible, if the engine layer
+        //TODO: Maybe move these from being accessible, if the engine layer
         //is to have access to it (I'm undecided). But that would
         //mean redoing lots of stages, and I'm on an airplane as I type this.
         public IReadWriteableGameDataStore GameDataStore { get; }
+
+        public ITempVisualDrawer TempVisualDrawer { get; }
     }
 
     public class GameContext : IGameContext
@@ -37,17 +40,20 @@ namespace FDG
 
         public IReadWriteableGameDataStore GameDataStore { get; }
 
+        public ITempVisualDrawer TempVisualDrawer { get; }
 
         public GameContext(ITextOutput textOutput, IDiceRoller diceRoller,
                 IPlayerRequestByID playerRequester,
                 TableState tableState,
-                IReadWriteableGameDataStore gameDataStore)
+                IReadWriteableGameDataStore gameDataStore, 
+                ITempVisualDrawer tempVisualDrawer)
         {
             TextOutput = textOutput;
             DiceRoller = diceRoller;
             PlayerRequester = playerRequester;
             TableState = tableState;
             GameDataStore = gameDataStore;
+            TempVisualDrawer = tempVisualDrawer;
         }
     }
 }

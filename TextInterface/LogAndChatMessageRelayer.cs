@@ -9,6 +9,12 @@ namespace FDG.TextInterface
 
         public LogAndChatMessageRelayer(PlayerSlotManager playerSlotManager)
         {
+            if(playerSlotManager == null)
+            {
+                throw new NullReferenceException($"{nameof(PlayerSlotManager)} passed into {nameof(LogAndChatMessageRelayer)} " + 
+                    "constructor was null.");
+            }
+
             _playerSlotManager = playerSlotManager;
 
             for(int i = 0; i < playerSlotManager.PlayerSlots.Length; i++)

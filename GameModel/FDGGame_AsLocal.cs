@@ -1,6 +1,7 @@
 ﻿using FDG.Data;
 using FDG.EngineInterface;
 using FDG.StageResolution;
+using FDG.TempVisuals;
 using FDG.TextInterface;
 
 namespace FDG.GameModel
@@ -15,6 +16,8 @@ namespace FDG.GameModel
 
         public IPlayerMessageUI? PlayerMessageUI { get; private set; }
 
+        public ITempVisualDrawer? TempVisualDrawer { get; private set; }
+
         public event Action OnStageResolverAssigned;
 
         private IReadableGameDataStore _gameDataStore;
@@ -27,7 +30,7 @@ namespace FDG.GameModel
         }
 
         public void AssignInterfaces(ILogMessageUI logMessageUI, IPlayerMessageUI playerMessageUI, 
-            IStageResolverRegistry stageResolverRegistry)
+            IStageResolverRegistry stageResolverRegistry, ITempVisualDrawer tempVisualDrawer)
         {
             LogMessageUI = logMessageUI;
 
@@ -36,6 +39,8 @@ namespace FDG.GameModel
             StageResolverRegistry = stageResolverRegistry;
 
             OnStageResolverAssigned?.Invoke();
+
+            TempVisualDrawer = tempVisualDrawer;
         }
     }
 }

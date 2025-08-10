@@ -1,7 +1,13 @@
 ﻿
 
+using FDG.BuiltInAssets;
 using FDG.Data;
+using FDG.SerializableVisuals.Materials;
+using FDG.SerializableVisuals.Meshes;
+using FDG.SerializableVisuals.Textures;
 using FDG.StageResolution.Requests;
+using FDG.TempVisuals;
+using System.Numerics;
 
 namespace FDG.Stages
 {
@@ -25,6 +31,10 @@ namespace FDG.Stages
             List<RectangularZone> zoneOptions = GetRectangularZones(teamOrderedByRoll.Count);
 
             List<DataBinding<RectangularZone>> zoneBindings = new List<DataBinding<RectangularZone>>(zoneOptions.Count);
+
+            //TEST because this is where I'm at: Create temp visuals.
+
+            TempTestVisuals(context);
 
             for(int i = 0; i < zoneOptions.Count; i++)
             {
@@ -73,6 +83,36 @@ namespace FDG.Stages
             }
 
             context.SetDeploymentZones(choices);
+
+            ToRollForFirstDeployment.Activate(context);
+        }
+
+        private void TempTestVisuals(IDeploymentContext context)
+        {
+            //TODO: This doesn't belong here but I want to make sure we can make visuals happen from the stage machine.
+            System.Diagnostics.Debug.WriteLine("Testing drawing something in ChooseMapSideStage.");
+            var meshProvider = new BuiltInObjMeshProvider(BuiltInAssetHelper.SILLYMANMODEL_PATH);
+            var textureProvider = new BuiltInPngTextureProvider(BuiltInAssetHelper.SILLYMANTEXTURE_PATH);
+
+            var materialProvider = new BasicMaterial();
+            materialProvider.BaseColor = new Vector4(1, 1, 1, 1);
+            materialProvider.BaseColorTexture = textureProvider;
+
+            Position position = new Position(10f, 25f);
+            Quaternion rotation = new Quaternion(Vector3.UnitY, 0f);
+            Vector3 scale = new Vector3(1, 1, 1);
+
+            TempVisual tempVisual1 = new TempVisual(meshProvider, materialProvider, position, rotation, scale);
+            context.GameContext.TempVisualDrawer.AddVisual(tempVisual1);
+
+            position = new Position(12f, 25f);
+
+            TempVisual tempVisual2 = new TempVisual(meshProvider, materialProvider, position, rotation, scale);
+            context.GameContext.TempVisualDrawer.AddVisual(tempVisual2);
+
+            position = new Position(14f, 25f);
+            TempVisual tempVisual3 = new TempVisual(meshProvider, materialProvider, position, rotation, scale);
+            context.GameContext.TempVisualDrawer.AddVisual(tempVisual3);
         }
 
 

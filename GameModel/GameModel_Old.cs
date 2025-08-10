@@ -59,8 +59,7 @@ namespace FDG
             PlayerSlotManager playerSlotManager = new PlayerSlotManager(Array.Empty<PlayerSlot>()); //Temp but so is this whole class.
 
             _gameContext = new GameContext(_textOutputRelayer, diceRoller, playerSlotManager,  
-                _tableState,
-                _gameDataStore);
+                _tableState, _gameDataStore, null);
 
             //TODO: Get this procedurally depending on settings.
             GDFStateMachineBuilder gDFStateMachineBuilder = new GDFStateMachineBuilder();

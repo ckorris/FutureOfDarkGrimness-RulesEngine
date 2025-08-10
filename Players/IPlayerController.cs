@@ -1,4 +1,5 @@
 ﻿using FDG.StageResolution;
+using FDG.TempVisuals;
 
 namespace FDG.Players
 {
@@ -9,6 +10,8 @@ namespace FDG.Players
         public event Action<bool> OnReadyStateChanged;
 
         public event Action<PlayerID, EChatMessageType, string> OnMessageSentByPlayer;
+
+        public ITempVisualDrawer? TempVisualDrawer { get; }
 
         public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
             where TRequest : IStageTaskRequest<TReply>;

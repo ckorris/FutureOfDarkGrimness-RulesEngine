@@ -2,6 +2,7 @@
 using FDG.Network.Connection;
 using FDG.Network.Messages;
 using FDG.StageResolution;
+using FDG.TempVisuals;
 
 namespace FDG.Players
 {
@@ -12,6 +13,8 @@ namespace FDG.Players
         public PlayerID ID { get; }
 
         public bool IsReady { get; private set; } = false; //May need to change.
+
+        public ITempVisualDrawer? TempVisualDrawer { get; }
 
         private ConnectionID _connectionID;
 
@@ -34,6 +37,8 @@ namespace FDG.Players
             _commandDispatcher.RegisterForMessageEvent<PostLaunchPlayerReadyMessage>(OnPlayerReadyMessageReceived);
             
             _commandDispatcher.RegisterForMessageEvent<NetworkPlayerSubmitChatMessage>(OnPlayerChatMessageReceived);
+
+            TempVisualDrawer = new NetworkedTempVisualDrawer(commandDispatcher, connectionID);
         }
 
         private void OnPlayerChatMessageReceived(NetworkPlayerSubmitChatMessage message, ConnectionID iD)

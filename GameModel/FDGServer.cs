@@ -3,6 +3,7 @@ using FDG.Network.Connection;
 using FDG.Network.Synchronization;
 using FDG.Players;
 using FDG.Stages;
+using FDG.TempVisuals;
 using FDG.TextInterface;
 using FutureOfDarkGrimness.StateMachine.StateMachineBuilders;
 
@@ -16,6 +17,7 @@ namespace FDG.GameModel
         private PlayerSlotManager _playerSlotManager;
         private GameContext _gameContext;
         private StateMachine<IGameContext> _stateMachine;
+        private NetworkedTempVisualDrawer _tempVisualRelayer;
 
         public FDGServer(IReadWriteableGameDataStore gameDataStore, FDGHost fdgHost, GameSettings gameSettings,
             PlayerSlot[] playerSlots)
@@ -37,9 +39,10 @@ namespace FDG.GameModel
 
             TableState tableState = new TableState(_gameDataStore);
 
+            TempVisualRelayer tempVisualRelayer = new TempVisualRelayer(_playerSlotManager);
+
             _gameContext = new GameContext(textOutput, GetDiceRoller(gameSettings), _playerSlotManager, 
-                tableState, 
-                _gameDataStore);
+                tableState, _gameDataStore, tempVisualRelayer);
 
             _stateMachine = new StateMachine<IGameContext>(new GDFStateMachineBuilder(), _gameContext);
 

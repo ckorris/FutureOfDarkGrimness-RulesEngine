@@ -1,5 +1,6 @@
 ﻿using FDG.GameModel;
 using FDG.StageResolution;
+using FDG.TempVisuals;
 using System.Diagnostics;
 
 namespace FDG.Players
@@ -11,6 +12,8 @@ namespace FDG.Players
         public PlayerID ID { get; }
 
         public bool IsReady { get; private set; } = true;
+
+        public ITempVisualDrawer? TempVisualDrawer => _localPlayer.TempVisualDrawer;
 
         public event Action<bool>? OnReadyStateChanged;
         public event Action<PlayerID, EChatMessageType, string> OnMessageSentByPlayer;
@@ -44,7 +47,7 @@ namespace FDG.Players
         {
             if(_localPlayer.StageResolverRegistry != null)
             {
-                System.Diagnostics.Debug.WriteLine("Local player was ready when queried.");
+                Debug.WriteLine("Local player was ready when queried.");
 
                 return Task.CompletedTask;
             }
@@ -87,6 +90,5 @@ namespace FDG.Players
         {
             _localPlayer.PlayerMessageUI?.DisplayPlayerMessage(sendingPlayerName, messageType, message);
         }
-
     }
 }

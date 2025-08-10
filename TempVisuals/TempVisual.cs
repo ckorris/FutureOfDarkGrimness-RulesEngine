@@ -18,7 +18,18 @@ namespace FDG.TempVisuals
         public Quaternion Rotation { get; private set; }
 
         public Vector3 Scale { get; private set; }
-        
+
+        [JsonConstructor]
+        public TempVisual(Guid id, IMeshProvider mesh, IMaterialProvider material,
+            Position position, Quaternion rotation, Vector3 scale)
+        {
+            ID = id;
+            Mesh = mesh;
+            Material = material;
+            Position = position;
+            Rotation = rotation;
+            Scale = scale;
+        }
 
         public TempVisual(IMeshProvider meshProvider, IMaterialProvider materialProvider,
             Position position, Quaternion rotation = default, Vector3 scale = default)
@@ -43,16 +54,16 @@ namespace FDG.TempVisuals
             Scale = scale;
         }
 
-        [JsonConstructor]
-        public TempVisual(Guid id, IMeshProvider mesh, IMaterialProvider material,
-            Position position, Quaternion rotation, Vector3 scale)
+        public TempVisual(ITempVisual visual)
         {
-            ID = id;
-            Mesh = mesh;
-            Material = material;
-            Position = position;
-            Rotation = rotation;
-            Scale = scale;
+            ID = visual.ID;
+            Mesh = visual.Mesh;
+            Material = visual.Material;
+            Position = visual.Position;
+            Rotation = visual.Rotation;
+            Scale = visual.Scale;
         }
+
+
     }
 }

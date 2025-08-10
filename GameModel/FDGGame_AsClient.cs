@@ -29,9 +29,12 @@ namespace F.GameModel
 
         private PlayerID _thisPlayerID;
 
+
         private GameDataStore _gameDataStore;
 
         private GameDataUpdateReceiver _dataUpdateReceiver;
+
+        private NetworkedRequestMessageReceiver _networkedRequestReceiver;
 
         public FDGGame_AsClient(ICommandDispatcher commandDispatcher, PlayerID thisPlayerID)
         {
@@ -40,10 +43,10 @@ namespace F.GameModel
 
             _gameDataStore = GameDataStore.GameDataStoreBuilder.GetDefault();
             TableState = new TableState(_gameDataStore);
-            StageResolverRegistry = new StageResolverRegistry();
 
             _dataUpdateReceiver = new GameDataUpdateReceiver(_gameDataStore, commandDispatcher);
             _dataUpdateReceiver.RequestAllCurrentData();
+
         }
 
         public void AssignInterfaces(ILogMessageUI logMessageUI, IPlayerMessageUI playerMessageUI,
@@ -65,6 +68,9 @@ namespace F.GameModel
             PlayerMessageUI.OnMessageSentByPlayer += SendChatMessage;
 
             TempVisualDrawer = tempVisualDrawer;
+
+            _networkedRequestReceiver = new NetworkedRequestMessageReceiver(_thisPlayerID, _commandDispatcher, stageResolverRegistry,
+                new OutstandingTaskLister(), _gameDataStore);
         }
 
         private void OnLogMessageReceived(LogChatNetworkMessage message, ConnectionID _)

@@ -8,13 +8,13 @@ namespace FDG.StageResolution
     {
         private PlayerID _playerID;
         private ICommandDispatcher _commandDispatcher;
-        private StageResolverRegistry _stageResolverRegistry;
+        private IStageResolverRegistry _stageResolverRegistry;
         private OutstandingTaskLister _outstandingTaskLister;
         private IReadableGameDataStore _gameDataStore;
 
 
         public NetworkedRequestMessageReceiver(PlayerID playerID, ICommandDispatcher commandDispatcher, 
-            StageResolverRegistry stageResolverRegistry, OutstandingTaskLister outstandingTaskLister,
+            IStageResolverRegistry stageResolverRegistry, OutstandingTaskLister outstandingTaskLister,
             IReadableGameDataStore gameDataStore)
         {
             _playerID = playerID;

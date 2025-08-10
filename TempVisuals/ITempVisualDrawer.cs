@@ -1,6 +1,6 @@
 ﻿
+using System.Drawing;
 using System.Numerics;
-using System.Security.AccessControl;
 
 namespace FDG.TempVisuals
 {
@@ -8,10 +8,10 @@ namespace FDG.TempVisuals
     {
         public void AddVisual(ITempVisual visual);
 
-        public void UpdateVisual(ITempVisual visual);
-
         public void UpdateVisualTransform(Guid tempVisualID, Position position, 
             Quaternion rotation, Vector3 scale);
+
+        public void UpdateVisualColor(Guid tempVisualID, Color color);
 
         public void RemoveVisual(Guid tempVisualID);
 

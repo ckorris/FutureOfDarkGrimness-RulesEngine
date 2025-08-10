@@ -1,5 +1,7 @@
 ﻿using FDG.Players;
+using System.Drawing;
 using System.Numerics;
+using static System.Formats.Asn1.AsnWriter;
 
 namespace FDG.TempVisuals
 {
@@ -38,24 +40,73 @@ namespace FDG.TempVisuals
             }
         }
 
-        public void RemoveVisual(Guid tempVisualID)
+        public void RemoveVisual(Guid visualID)
         {
-            throw new NotImplementedException();
+            if(_currentVisuals.Remove(visualID) == false)
+            {
+                throw new ArgumentException($"Tried to remove a visual with ID {visualID} but none was found.");
+            }
+
+            for (int i = 0; i < _playerSlotManager.PlayerSlots.Length; i++)
+            {
+                if (TryGetPlayerVisualDrawer(i, out ITempVisualDrawer? visualDrawer) == false)
+                {
+                    continue;
+                }
+
+                visualDrawer?.RemoveVisual(visualID);
+            }
         }
 
-        public void UpdateVisual(ITempVisual visual)
+        public void UpdateVisualTransform(Guid visualID, Position position, Quaternion rotation, Vector3 scale)
         {
-            throw new NotImplementedException();
+            if (_currentVisuals.ContainsKey(visualID))
+            {
+                throw new ArgumentException($"Tried to update a visual with ID {visualID} but it wasn't found.");
+            }
+
+            for (int i = 0; i < _playerSlotManager.PlayerSlots.Length; i++)
+            {
+                if (TryGetPlayerVisualDrawer(i, out ITempVisualDrawer? visualDrawer) == false)
+                {
+                    continue;
+                }
+
+                visualDrawer?.UpdateVisualTransform(visualID, position, rotation, scale);
+            }
         }
 
-        public void UpdateVisualTransform(Guid tempVisualID, Position position, Quaternion rotation, Vector3 scale)
+        public void UpdateVisualColor(Guid visualID, Color color)
         {
-            throw new NotImplementedException();
+            if (_currentVisuals.ContainsKey(visualID))
+            {
+                throw new ArgumentException($"Tried to update a visual with ID {visualID} but it wasn't found.");
+            }
+
+            for (int i = 0; i < _playerSlotManager.PlayerSlots.Length; i++)
+            {
+                if (TryGetPlayerVisualDrawer(i, out ITempVisualDrawer? visualDrawer) == false)
+                {
+                    continue;
+                }
+
+                visualDrawer?.UpdateVisualColor(visualID, color);
+            }
         }
 
         public void ClearAllVisuals()
         {
-            throw new NotImplementedException();
+            for (int i = 0; i < _playerSlotManager.PlayerSlots.Length; i++)
+            {
+                if (TryGetPlayerVisualDrawer(i, out ITempVisualDrawer? visualDrawer) == false)
+                {
+                    continue;
+                }
+
+                visualDrawer?.ClearAllVisuals();
+            }
+
+            _currentVisuals.Clear();
         }
 
 

@@ -1,6 +1,7 @@
 ﻿using System.Numerics;
 using FDG.TempVisuals.Messages;
 using FDG.Network.Connection;
+using System.Drawing;
 
 namespace FDG.TempVisuals
 {
@@ -33,47 +34,28 @@ namespace FDG.TempVisuals
             _dispatcher.SendCommandAsync(addMessage);
         }
 
-        public void UpdateVisual(ITempVisual visual)
-        {
-            throw new NotImplementedException();
-        }
-
         public void UpdateVisualTransform(Guid tempVisualID, Position position, Quaternion rotation, Vector3 scale)
         {
-            throw new NotImplementedException();
+            var message = new UpdateTempVisualTransformMessage(tempVisualID, position, rotation, scale);
+            _dispatcher.SendCommandAsync(message);
+        }
+
+        public void UpdateVisualColor(Guid tempVisualID, Color color)
+        {
+            var message = new UpdateTempVisualColorMessage(tempVisualID, color);
+            _dispatcher.SendCommandAsync(message);
         }
 
         public void RemoveVisual(Guid tempVisualID)
         {
-            throw new NotImplementedException();
+            var message = new RemoveTempVisualMessage(tempVisualID);
+            _dispatcher.SendCommandAsync(message);
         }
 
         public void ClearAllVisuals()
         {
-            throw new NotImplementedException();
+            var message = new ClearAllTempVisualsMessage();
+            _dispatcher.SendCommandAsync(message);
         }
-
-
-
-        /*
-        private void TestDrawer()
-        {
-            System.Diagnostics.Debug.WriteLine("Testing drawing something in TempVisualRelayer.");
-            var meshProvider = new BuiltInObjMeshProvider(BuiltInAssetHelper.SILLYMANMODEL_PATH);
-            var textureProvider = new BuiltInPngTextureProvider(BuiltInAssetHelper.SILLYMANTEXTURE_PATH);
-
-            var materialProvider = new BasicMaterial();
-            materialProvider.BaseColor = new Vector4(1, 1, 1, 1);
-            materialProvider.BaseColorTexture = textureProvider;
-
-            Position position = new Position(20f, 20f);
-            Quaternion rotation = new Quaternion(Vector3.UnitY, 0f);
-            Vector3 scale = new Vector3(1, 1, 1);
-
-            TempVisual tempVisual = new TempVisual(meshProvider, materialProvider, position, rotation, scale);
-
-            _visualDrawer.AddVisual(tempVisual);
-        }
-        */
     }
 }

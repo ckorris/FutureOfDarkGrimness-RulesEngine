@@ -62,6 +62,10 @@ namespace F.GameModel
             _commandDispatcher.RegisterForMessageEvent<PlayerChatNetworkMessage>(OnPlayerMessageReceived);
 
             _commandDispatcher.RegisterForMessageEvent<AddTempVisualMessage>(OnAddTempVisualReceived);
+            _commandDispatcher.RegisterForMessageEvent<UpdateTempVisualTransformMessage>(OnUpdateTempVisualTransformReceived);
+            _commandDispatcher.RegisterForMessageEvent<UpdateTempVisualColorMessage>(OnUpdateTempVisualColorReceived);
+            _commandDispatcher.RegisterForMessageEvent<RemoveTempVisualMessage>(OnRemoveTempVisualReceived);
+            _commandDispatcher.RegisterForMessageEvent<ClearAllTempVisualsMessage>(OnClearTempVisualsReceived);
 
             _commandDispatcher.SendCommandAsync(new PostLaunchPlayerReadyMessage(_thisPlayerID));
 
@@ -88,10 +92,26 @@ namespace F.GameModel
             TempVisualDrawer?.AddVisual(message.TempVisual);
         }
 
-        private void OnUpdateTempVisualTransformReceiver(UpdateTempVisualTransformMessage message, ConnectionID _)
+        private void OnUpdateTempVisualTransformReceived(UpdateTempVisualTransformMessage message, ConnectionID iD)
         {
-            throw new NotImplementedException();
+            TempVisualDrawer?.UpdateVisualTransform(message.VisualID, message.Position, message.Rotation, message.Scale);
         }
+
+        private void OnUpdateTempVisualColorReceived(UpdateTempVisualColorMessage message, ConnectionID iD)
+        {
+            TempVisualDrawer?.UpdateVisualColor(message.TempVisualID, message.Color);
+        }
+
+        private void OnRemoveTempVisualReceived(RemoveTempVisualMessage message, ConnectionID iD)
+        {
+            TempVisualDrawer?.RemoveVisual(message.VisualID);
+        }
+
+        private void OnClearTempVisualsReceived(ClearAllTempVisualsMessage message, ConnectionID iD)
+        {
+            TempVisualDrawer?.ClearAllVisuals();
+        }
+
 
         private void SendChatMessage(string message, EChatMessageType messageType)
         {

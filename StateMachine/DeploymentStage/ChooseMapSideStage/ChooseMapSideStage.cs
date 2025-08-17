@@ -32,10 +32,6 @@ namespace FDG.Stages
 
             List<DataBinding<RectangularZone>> zoneBindings = new List<DataBinding<RectangularZone>>(zoneOptions.Count);
 
-            //TEST because this is where I'm at: Create temp visuals.
-
-            TempTestVisuals(context);
-
             for(int i = 0; i < zoneOptions.Count; i++)
             {
                 RectangularZone zone = zoneOptions[i];

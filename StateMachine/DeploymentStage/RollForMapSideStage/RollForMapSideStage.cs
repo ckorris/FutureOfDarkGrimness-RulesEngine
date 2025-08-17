@@ -5,12 +5,12 @@ namespace FDG.Stages
 {
     public class RollForMapSideStage : StageBase<IDeploymentContext>
     {
-        public StageBinding ToChooseMapSide;
+        public StageBinding OnFinish;
 
         public RollForMapSideStage(IGameContext gameContext, IStateMachineLayer<IDeploymentContext> parent)
             : base(gameContext, parent)
         {
-            ToChooseMapSide = new StageBinding(this);
+            OnFinish = new StageBinding(this);
         }
 
         public override async Task Enter(IDeploymentContext context)
@@ -27,7 +27,7 @@ namespace FDG.Stages
 
             context.SetMapSideRollWinner(rollOrder);
 
-            ToChooseMapSide.Activate(context);
+            OnFinish.Activate(context);
         }
     }
 }

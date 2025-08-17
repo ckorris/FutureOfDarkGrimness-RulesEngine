@@ -41,7 +41,7 @@ namespace FDG.Stages
 
             startingChild = rollForMapSide;
 
-            rollForMapSide.ToChooseMapSide.Bind(chooseMapSide);
+            rollForMapSide.OnFinish.Bind(chooseMapSide);
             chooseMapSide.ToRollForFirstDeployment.Bind(rollForFirstDeployment);
             rollForFirstDeployment.ToDeployAllUnits.Bind(deployAllUnits);
             deployAllUnits.ToMain.Bind(toMainEvent);

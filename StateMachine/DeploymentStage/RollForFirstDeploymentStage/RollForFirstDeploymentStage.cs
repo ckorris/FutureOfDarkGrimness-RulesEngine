@@ -24,7 +24,7 @@ namespace FDG.Stages
 
             context.Log($"Team {rollOrder.First().TeamNumber} won the roll-off and will deploy first.");
 
-            context.SetFirstDeploymentRollWinner(rollOrder);
+            context.SetFirstDeploymentRollOrder(rollOrder);
 
             ToDeployAllUnits.Activate(context);
         }

@@ -1,7 +1,7 @@
 ﻿using FDG.Stages;
 using System.Reflection.Metadata;
 
-
+/*
 namespace FDG.Samples
 {
     public class BasicDeploymentHandler : IDeploymentHandler
@@ -39,3 +39,4 @@ namespace FDG.Samples
         }
     }
 }
+*/

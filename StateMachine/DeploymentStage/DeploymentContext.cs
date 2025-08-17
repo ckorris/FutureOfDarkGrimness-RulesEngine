@@ -15,7 +15,7 @@ namespace FDG.Stages
 
         void SetDeploymentZones(Dictionary<ITeam, DataBinding<RectangularZone>> playerDeploymentZones);
         
-        void SetFirstDeploymentRollWinner(List<ITeam> firstDeploymentRollOrder);
+        void SetFirstDeploymentRollOrder(List<ITeam> firstDeploymentRollOrder);
     }
 
     public class DeploymentContext : IDeploymentContext
@@ -53,7 +53,7 @@ namespace FDG.Stages
             PlayerDeploymentZones = playerDeploymentZones;
         }
 
-        public void SetFirstDeploymentRollWinner(List<ITeam> firstDeploymentRollWinner)
+        public void SetFirstDeploymentRollOrder(List<ITeam> firstDeploymentRollWinner)
         {
             if (FirstDeploymentRollOrder != null)
             {

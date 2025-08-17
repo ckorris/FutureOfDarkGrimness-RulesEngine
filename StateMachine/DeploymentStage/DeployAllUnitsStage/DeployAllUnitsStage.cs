@@ -4,16 +4,42 @@ using FDG.Data;
 
 namespace FDG.Stages
 {
-    public class DeployAllUnitsStage : StageBase<IDeploymentContext>
+    public class DeployAllUnitsStage : ParentStage<IDeploymentContext, IDeploymentTurnContext>
     {
         public StageBinding ToMain;
 
         public DeployAllUnitsStage(IGameContext gameContext, IStateMachineLayer<IDeploymentContext> parent)
-            : base(gameContext, parent)
+            : base(gameContext, parent) { }
+
+        protected override IDeploymentTurnContext GetNewChildContext(IDeploymentContext contextSelf)
         {
-            ToMain = new StageBinding(this);
+            throw new NotImplementedException();
         }
 
+        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IDeploymentTurnContext> startingChild)
+        {
+            ToMain = new StageBinding(this);
+
+            Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
+                .AddChild(new DetermineNextDeployPlayerStage(GameContext, this), out var determineNextDeployPlayer)
+                .AddChild(new ChooseUnitToDeployStage(GameContext, this), out var chooseUnitToDeploy)
+                .AddChild(new ChooseDeployActionStage(GameContext, this), out var chooseDeployAction)
+                .AddChild(new DeployUnitStage(GameContext, this), out var deployUnitStage)
+                .AddSibling(nameof(ToMain), ToMain, out string toMainEvent)
+                .Build();
+
+            startingChild = determineNextDeployPlayer;
+
+            determineNextDeployPlayer.OnFinish.Bind(chooseUnitToDeploy);
+            determineNextDeployPlayer.OnFinishedDeployingAllUnits.Bind(toMainEvent);
+            chooseUnitToDeploy.OnFinish.Bind(chooseDeployAction);
+            chooseDeployAction.OnFinish.Bind(deployUnitStage);
+            deployUnitStage.OnFinish.Bind(chooseUnitToDeploy);
+
+            return dictionary;
+        }
+
+        /*
         public override Task Enter(IDeploymentContext context)
         {
             //Below was copy-pasted from parent.
@@ -75,13 +101,11 @@ namespace FDG.Stages
             }
 
             throw new NotImplementedException();
-            /*
-            IDeploymentHandler handler = GameContext.GetHandler<IDeploymentHandler>();
-            DeployHandlerRepeater repeater = new DeployHandlerRepeater(turnContexts, handler, 
-                () => ToMain.Activate(context), context);
-            */
+
+            
         }
 
+   
         private class DeployHandlerRepeater
         {
             //TODO: There's better ways to do this, but I'm running on very little sleep and just want this to work
@@ -161,11 +185,14 @@ namespace FDG.Stages
                 _handler.Handle(nextTurnContext, OnChoiceMade);
             }
         }
+        */
     }
 
+    /*
     public interface IDeploymentHandler
     {
         void Handle(DeploymentTurn turnContext, Action<DeploymentSelection> onSelected);
     }
+    */
 }
 

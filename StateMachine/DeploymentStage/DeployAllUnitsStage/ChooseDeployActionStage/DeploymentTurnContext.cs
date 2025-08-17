@@ -1,6 +1,8 @@
 ﻿
 
 using FDG.Data;
+using System.Collections.Generic;
+using System.Numerics;
 
 namespace FDG.Stages
 {
@@ -22,6 +24,8 @@ namespace FDG.Stages
 
         public bool DoesPlayerHaveRemainingDeployments(PlayerID playerID);
 
+        public Dictionary<PlayerID, List<DataBinding<UnitData>>> UndeployedUnits { get; }
+
     }
 
     public class DeploymentTurnContext : IDeploymentTurnContext
@@ -34,19 +38,41 @@ namespace FDG.Stages
 
         public int CurrentDeployingTeamIndex { get; set; }
 
-        public Dictionary<ITeam, int> CurrentDeployingPlayerIndexPerTeam => throw new NotImplementedException();
+        public Dictionary<ITeam, int> CurrentDeployingPlayerIndexPerTeam { get; }
 
         public bool HasStarted { get; set; } = false;
 
+        public Dictionary<PlayerID, List<DataBinding<UnitData>>> UndeployedUnits { get; }
 
 
 
-        public DeploymentTurnContext(IGameContext gameContext, List<ITeam>? firstDeploymentRollOrder, 
-            Dictionary<ITeam, DataBinding<RectangularZone>>? playerDeploymentZones)
+        public DeploymentTurnContext(IGameContext gameContext, List<ITeam> firstDeploymentRollOrder,
+            Dictionary<ITeam, DataBinding<RectangularZone>> playerDeploymentZones)
         {
             GameContext = gameContext;
             FirstDeploymentRollOrder = firstDeploymentRollOrder;
             PlayerDeploymentZones = playerDeploymentZones;
+
+            UndeployedUnits = new Dictionary<PlayerID, List<DataBinding<UnitData>>>();
+            CurrentDeployingPlayerIndexPerTeam = new Dictionary<ITeam, int>();
+
+            List<ArmyData> armies = GameContext.GameDataStore().GetAllValues<ArmyData>().ToList();
+
+            foreach (ITeam team in firstDeploymentRollOrder)
+            {
+                CurrentDeployingPlayerIndexPerTeam.Add(team, 0);
+
+                foreach (PlayerID playerID in team.Players)
+                {
+                    List<DataBinding<UnitData>> playerUnits = new List<DataBinding<UnitData>>();
+
+                    foreach (ArmyData army in armies.Where(a => a.IsOwnedBy(playerID)))
+                    {
+                        playerUnits.AddRange(army.UnitBindings);
+                    }
+                    UndeployedUnits.Add(playerID, playerUnits);
+                }
+            }
         }
 
         public PlayerID GetCurrentDeployingPlayerID()
@@ -60,12 +86,20 @@ namespace FDG.Stages
 
         public bool DoesTeamHaveRemainingDeployments(ITeam team)
         {
-            throw new NotImplementedException();
+            foreach(PlayerID playerID in team.Players)
+            {
+                if(DoesPlayerHaveRemainingDeployments(playerID))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public bool DoesPlayerHaveRemainingDeployments(PlayerID playerID)
         {
-            throw new NotImplementedException();
+            return UndeployedUnits[playerID].Count > 0;
         }
     }
 }

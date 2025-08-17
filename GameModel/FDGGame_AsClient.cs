@@ -24,6 +24,7 @@ namespace F.GameModel
 
         public ITempVisualDrawer? TempVisualDrawer { get; private set; }
 
+
         private ICommandDispatcher _commandDispatcher;
 
 
@@ -32,7 +33,9 @@ namespace F.GameModel
 
         private GameDataStore _gameDataStore;
 
+
         private GameDataUpdateReceiver _dataUpdateReceiver;
+
 
         private NetworkedRequestMessageReceiver _networkedRequestReceiver;
 
@@ -46,7 +49,6 @@ namespace F.GameModel
 
             _dataUpdateReceiver = new GameDataUpdateReceiver(_gameDataStore, commandDispatcher);
             _dataUpdateReceiver.RequestAllCurrentData();
-
         }
 
         public void AssignInterfaces(ILogMessageUI logMessageUI, IPlayerMessageUI playerMessageUI,

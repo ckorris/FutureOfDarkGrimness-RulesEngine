@@ -90,13 +90,21 @@ namespace FDG.GameModel
             }
         }
 
-        private void CreateArmyDataFromArmyFile(PlayerID playerID, ArmyListFile armyList, IReadWriteableGameDataStore gameDataStore)
+        private void CreateArmyDataFromArmyFile(PlayerID playerID, ArmyListFile armyListFile, IReadWriteableGameDataStore gameDataStore)
         {
-            foreach (UnitFileEntry unitEntry in armyList.Units)
+            List<DataBinding<UnitData>> unitBindings = new List<DataBinding<UnitData>>(armyListFile.Units.Count);
+
+            foreach (UnitFileEntry unitEntry in armyListFile.Units)
             {
                 UnitData unitData = new UnitData(playerID, unitEntry, gameDataStore);
-                DataReference dataReference = gameDataStore.Create(unitData);
+                DataReference unitDataReference = gameDataStore.Create(unitData);
+                DataBinding<UnitData> unitBinding = gameDataStore.GetDataBinding<UnitData>(unitDataReference);
+                unitBindings.Add(unitBinding);
             }
+
+            ArmyData armyData = new ArmyData(playerID, unitBindings);
+
+            DataReference armyDataReference = gameDataStore.Create(armyData);
         }
 
 

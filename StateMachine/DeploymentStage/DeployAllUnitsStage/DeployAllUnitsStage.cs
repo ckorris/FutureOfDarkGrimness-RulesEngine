@@ -43,7 +43,7 @@ namespace FDG.Stages
             determineNextDeployPlayer.OnFinishedDeployingAllUnits.Bind(toMainEvent);
             chooseUnitToDeploy.OnFinish.Bind(chooseDeployAction);
             chooseDeployAction.OnFinish.Bind(deployUnitStage);
-            deployUnitStage.OnFinish.Bind(chooseUnitToDeploy);
+            deployUnitStage.OnFinish.Bind(determineNextDeployPlayer);
 
             return dictionary;
         }

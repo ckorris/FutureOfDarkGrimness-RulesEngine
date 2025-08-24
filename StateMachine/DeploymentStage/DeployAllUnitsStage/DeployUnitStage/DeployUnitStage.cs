@@ -33,8 +33,12 @@ namespace FDG.Stages
                     $"Unit: {deployingUnit.Name} owned by PlayerID {deployingUnit.PlayerID}. Current player: {currentPlayerID}.");
             }
 
+            ITeam deployingTeam = context.FirstDeploymentRollOrder[context.CurrentDeployingTeamIndex];
+
+            DataBinding<RectangularZone> deploymentZone = context.PlayerDeploymentZones[deployingTeam];
+
             var placeObjectsRequest = new PlaceObjectsRequest<ModelData>(currentPlayerID, "Place Unit Models",
-                deployingUnit.ModelBindings);
+                deploymentZone, deployingUnit.ModelBindings);
 
             Dictionary<DataBinding<ModelData>, Position> modelPositions = await GameContext.PlayerRequester.RequestDecision
                 <PlaceObjectsRequest<ModelData>, Dictionary<DataBinding<ModelData>, Position>>(

@@ -1,8 +1,5 @@
-﻿
+﻿using FDG.Data;
 
-using FDG.Data;
-using System.Collections.Generic;
-using System.Numerics;
 
 namespace FDG.Stages
 {

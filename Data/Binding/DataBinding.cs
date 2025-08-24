@@ -45,5 +45,10 @@ namespace FDG.Data
         {
             IsValid = false;
         }
+
+        public static implicit operator T(DataBinding<T> dataBinding)
+        {
+            return dataBinding.GetValue();
+        }
     }
 }

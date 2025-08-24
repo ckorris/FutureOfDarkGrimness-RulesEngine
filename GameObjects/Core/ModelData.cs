@@ -1,5 +1,11 @@
-﻿using FDG.Data;
+﻿using FDG.BuiltInAssets;
+using FDG.Data;
+using FDG.SerializableVisuals;
+using FDG.SerializableVisuals.Materials;
+using FDG.SerializableVisuals.Meshes;
+using FDG.SerializableVisuals.Textures;
 using Newtonsoft.Json;
+using System.Numerics;
 
 
 namespace FDG
@@ -32,6 +38,7 @@ namespace FDG
 
         IReadOnlyList<SpecialRule> IModel.SpecialRules => SpecialRules;
 
+
         event DataValueChangedHandler<Position> IModel.OnPositionChanged
         {
             add { PositionBinding.OnValueChanged += value; }
@@ -43,6 +50,29 @@ namespace FDG
             add { RemainingWoundsBinding.OnValueChanged += value; }
             remove { RemainingWoundsBinding.OnValueChanged -= value; }
         }
+
+
+        #region Visuals
+        public IMeshProvider MeshProvider => new BuiltInObjMeshProvider(BuiltInAssetHelper.SILLYMANMODEL_PATH); //TEMP default.
+
+
+        public IMaterialProvider MaterialProvider
+        {
+            get
+            {
+                //TEMP default.
+                var textureProvider = new BuiltInPngTextureProvider(BuiltInAssetHelper.SILLYMANTEXTURE_PATH);
+
+                var materialProvider = new BasicMaterial();
+                materialProvider.BaseColor = new Vector4(1, 1, 1, 1);
+                materialProvider.BaseColorTexture = textureProvider;
+
+                return materialProvider;
+            }
+        }
+
+        #endregion
+
 
         public void DealWounds(float wounds)
         {

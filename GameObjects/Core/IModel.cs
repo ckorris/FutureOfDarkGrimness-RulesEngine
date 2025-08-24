@@ -1,4 +1,5 @@
 using FDG.Data;
+using FDG.SerializableVisuals;
 
 namespace FDG
 {
@@ -17,6 +18,10 @@ namespace FDG
         public IReadOnlyList<Weapon> Weapons { get; }
 
         public IReadOnlyList<SpecialRule> SpecialRules { get; }
+
+        public IMeshProvider MeshProvider { get; }
+
+        public IMaterialProvider MaterialProvider { get; }
 
         public void SetPosition(Position newPosition);
 

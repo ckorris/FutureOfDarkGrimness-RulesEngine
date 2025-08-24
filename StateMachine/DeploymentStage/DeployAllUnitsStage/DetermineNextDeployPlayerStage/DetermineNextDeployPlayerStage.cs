@@ -23,6 +23,7 @@ namespace FDG.Stages
             {
                 context.HasStarted = true;
                 OnFinish.Activate(context);
+                return;
             }
 
 

@@ -134,7 +134,7 @@ namespace FDG
                     modelWeapons.Add(unitWeapons[w]);
                 }
 
-                ModelData modelData = new ModelData(tempBaseSizeInches, unitWeapons, SpecialRules, new Position(), gameDataStore);
+                ModelData modelData = new ModelData(tempBaseSizeInches, modelWeapons, SpecialRules, new Position(), gameDataStore);
 
                 DataReference modelReference = gameDataStore.Create(modelData);
                 DataBinding<ModelData> modelBinding = gameDataStore.GetDataBinding<ModelData>(modelReference);

@@ -47,6 +47,8 @@ namespace FDG.Stages
             }
 
             context.CurrentDeployingUnit = null; //Cleanup.
+
+            OnFinish.Activate(context);
         }
     }
 }

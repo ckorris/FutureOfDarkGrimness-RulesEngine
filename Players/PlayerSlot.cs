@@ -1,4 +1,6 @@
 ﻿
+using FDG.SaveLoad;
+
 namespace FDG.Players
 {
     public class PlayerSlot : IPlayerSlotInfo
@@ -16,14 +18,17 @@ namespace FDG.Players
 
         public PlayerID PlayerID;
 
+        public readonly ArmyListFile ArmyListFile;
+
         internal IPlayerController? Controller;
 
 
-        public PlayerSlot(int slotID, int teamNumber, PlayerID playerID)
+        public PlayerSlot(int slotID, int teamNumber, PlayerID playerID, ArmyListFile armyListFile)
         {
             SlotID = slotID;
             TeamNumber = teamNumber;
             PlayerID = playerID;
+            ArmyListFile = armyListFile;
         }
 
         internal void AssignPlayerController(IPlayerController newController)

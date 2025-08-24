@@ -1,4 +1,5 @@
 ﻿using FDG.Data;
+using FDG.SaveLoad;
 using Newtonsoft.Json;
 namespace FDG
 {
@@ -50,14 +51,14 @@ namespace FDG
         public List<IModel> Models => ModelBindings.Select(binding => binding.GetValue())
             .Cast<IModel>()
             .ToList();
-        
+
         [JsonIgnore]
         List<ISpecialRule> IUnit.SpecialRules => SpecialRules.Cast<ISpecialRule>().ToList();
 
         public bool HasActivatedThisTurn => false; //TODO: Implement with some kind of token system.
 
         [JsonConstructor]
-        public UnitData(PlayerID playerID, string name, int quality, int defense, 
+        public UnitData(PlayerID playerID, string name, int quality, int defense,
             List<SpecialRule> specialRules, List<DataBinding<ModelData>> modelBindings)
         {
             PlayerID = playerID;
@@ -88,6 +89,71 @@ namespace FDG
             //TEMP
             SpecialRules = new List<SpecialRule>();
         }
+
+        public UnitData(PlayerID playerID, UnitFileEntry unitFileEntry, IReadWriteableGameDataStore gameDataStore)
+        {
+            PlayerID = playerID;
+            Name = unitFileEntry.Name;
+            Quality = unitFileEntry.Quality;
+            Defense = unitFileEntry.Defense;
+            SpecialRules = GetRealSpecialRulesFromArmyList(unitFileEntry.SpecialRules);
+
+            ModelBindings = new List<DataBinding<ModelData>>(unitFileEntry.ModelCount);
+
+            List<Weapon> weapons = new List<Weapon>();
+
+            List<WeaponFileEntry> sortedWeaponEntries = (unitFileEntry.Weapons);
+            sortedWeaponEntries.Sort((x, y) => x.Quantity.CompareTo(y.Quantity));
+
+            //Distribute weapons in order of quantity, should be a decent approximate of how they're
+            //actually distributed.
+            List<Weapon> unitWeapons = new List<Weapon>();
+            for (int i = 0; i < sortedWeaponEntries.Count; i++)
+            {
+                WeaponFileEntry weaponEntry = sortedWeaponEntries[i];
+                HashSet<ISpecialRule_Weapon> weaponRules = GetRealWeaponSpecialRulesFromEntries(weaponEntry.SpecialRules);
+
+                for (int q = 0; q < weaponEntry.Quantity; q++)
+                {
+                    Weapon weapon = new Weapon(weaponEntry.Name, weaponEntry.RangeInches, weaponEntry.Attacks,
+                            weaponEntry.ArmorPenetration, weaponRules);
+
+                    unitWeapons.Add(weapon);
+                }
+            }
+
+            for (int i = 0; i < unitFileEntry.ModelCount; i++)
+            {
+                //TEMP get default base size.
+                float tempBaseSizeInches = 1.1023622f; //28mm.
+
+                List<Weapon> modelWeapons = new List<Weapon>();
+
+                for (int w = i; w < unitWeapons.Count; w += unitFileEntry.ModelCount)
+                {
+                    modelWeapons.Add(unitWeapons[w]);
+                }
+
+                ModelData modelData = new ModelData(tempBaseSizeInches, unitWeapons, SpecialRules, new Position(), gameDataStore);
+
+                DataReference modelReference = gameDataStore.Create(modelData);
+                DataBinding<ModelData> modelBinding = gameDataStore.GetDataBinding<ModelData>(modelReference);
+                ModelBindings.Add(modelBinding);
+            }
+        }
+
+        private List<SpecialRule> GetRealSpecialRulesFromArmyList(List<SpecialRuleEntry> specialRuleEntries)
+        {
+            //TODO: Implement for real.
+            return new List<SpecialRule>();
+        }
+
+        private HashSet<ISpecialRule_Weapon> GetRealWeaponSpecialRulesFromEntries(List<SpecialRuleEntry> weaponRules)
+        {
+            //TODO: Implement for real.
+            return new HashSet<ISpecialRule_Weapon>();
+        }
+
 
         private void OnModelWoundsDealt(float oldWoundsCount, float newWoundsCount)
         {

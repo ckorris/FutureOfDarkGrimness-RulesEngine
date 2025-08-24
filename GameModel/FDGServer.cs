@@ -2,6 +2,7 @@
 using FDG.Network.Connection;
 using FDG.Network.Synchronization;
 using FDG.Players;
+using FDG.SaveLoad;
 using FDG.Stages;
 using FDG.TempVisuals;
 using FDG.TextInterface;
@@ -32,6 +33,8 @@ namespace FDG.GameModel
             _playerSlotManager = new PlayerSlotManager(playerSlots);
 
             AddTeamDataToGameDataStore(playerSlots, gameDataStore);
+
+            CreateArmies(playerSlots, gameDataStore);
 
             LogAndChatMessageRelayer chatMessageRelayer = new LogAndChatMessageRelayer(_playerSlotManager);
 
@@ -77,7 +80,23 @@ namespace FDG.GameModel
                 TeamData teamData = new TeamData(kvp.Key, kvp.Value);
                 DataReference teamReference = gameDataStore.Create(teamData);
             }
+        }
 
+        private void CreateArmies(PlayerSlot[] playerSlots, IReadWriteableGameDataStore gameDataStore)
+        {
+            for (int i = 0; i < playerSlots.Length; i++)
+            {
+                CreateArmyDataFromArmyFile(playerSlots[i].PlayerID, playerSlots[i].ArmyListFile, gameDataStore);
+            }
+        }
+
+        private void CreateArmyDataFromArmyFile(PlayerID playerID, ArmyListFile armyList, IReadWriteableGameDataStore gameDataStore)
+        {
+            foreach (UnitFileEntry unitEntry in armyList.Units)
+            {
+                UnitData unitData = new UnitData(playerID, unitEntry, gameDataStore);
+                DataReference dataReference = gameDataStore.Create(unitData);
+            }
         }
 
 

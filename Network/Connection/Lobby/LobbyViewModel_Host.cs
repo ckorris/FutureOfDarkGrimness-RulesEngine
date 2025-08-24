@@ -249,7 +249,14 @@ namespace FDG.Network.Connection
             {
                 LobbyPlayerInfoFull lobbyPlayerInfo = lobbyPlayerInfosArray[i];
 
-                PlayerSlot playerSlot = new PlayerSlot(i, (int)lobbyPlayerInfo.TeamNumber, lobbyPlayerInfo.PlayerID);
+                //TEMP this should not be okay.
+                if(lobbyPlayerInfo.ArmyListFile == null)
+                {
+                    Console.WriteLine("Player had empty army list. Making a simple one.");
+                    lobbyPlayerInfo.ArmyListFile = new ArmyListFile();
+                }
+
+                PlayerSlot playerSlot = new PlayerSlot(i, (int)lobbyPlayerInfo.TeamNumber, lobbyPlayerInfo.PlayerID, lobbyPlayerInfo.ArmyListFile);
                 playerSlots[i] = playerSlot;
 
                 switch (lobbyPlayerInfo.PlayerType)

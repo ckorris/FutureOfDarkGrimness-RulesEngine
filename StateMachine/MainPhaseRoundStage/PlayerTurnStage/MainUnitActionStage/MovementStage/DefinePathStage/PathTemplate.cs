@@ -200,12 +200,12 @@ namespace FDG
         {
             if (model == default)
             {
-                throw new System.ArgumentException($"{nameof(PathTemplate)}.{methodName} called with null model.");
+                throw new ArgumentException($"{nameof(PathTemplate)}.{methodName} called with null model.");
             }
 
             if (_paths.Keys.Contains(model) == false)
             {
-                throw new System.ArgumentException($"{nameof(PathTemplate)}.{methodName} called with model not in the unit.");
+                throw new ArgumentException($"{nameof(PathTemplate)}.{methodName} called with model not in the unit.");
             }
         }
     }

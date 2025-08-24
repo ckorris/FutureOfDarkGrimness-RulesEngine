@@ -26,6 +26,8 @@ namespace FDG.Stages
 
         public Dictionary<PlayerID, List<DataBinding<UnitData>>> UndeployedUnits { get; }
 
+        public DataBinding<UnitData>? CurrentDeployingUnit { get; set; }  
+
     }
 
     public class DeploymentTurnContext : IDeploymentTurnContext
@@ -44,7 +46,7 @@ namespace FDG.Stages
 
         public Dictionary<PlayerID, List<DataBinding<UnitData>>> UndeployedUnits { get; }
 
-
+        public DataBinding<UnitData>? CurrentDeployingUnit { get; set; } = null;
 
         public DeploymentTurnContext(IGameContext gameContext, List<ITeam> firstDeploymentRollOrder,
             Dictionary<ITeam, DataBinding<RectangularZone>> playerDeploymentZones)

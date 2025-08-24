@@ -16,19 +16,14 @@ namespace FDG.Stages
 
         public override async Task Enter(IPlayerTurnContext context)
         {
-            context.Log($"Entered {nameof(ChooseUnitToActivateStage)}.");
+            context.Log("Entered Choose Unit to Activate stage.");
     
             if(context.ActivatedPlayer == null)
             {
                 throw new InvalidOperationException($"Entered {nameof(ChooseUnitToActivateStage)} while activated player was null.");
             }
 
-            List<ActionChoice> unitChoices = new List<ActionChoice>();
-
             //Find all units.
-            //In the future, just do ones that the player owns, and that haven't yet activated.
-            bool canActivate = true; //Temp.
-
             List<SelectionRequest<UnitData>.ValidOption> validOptions = new List<SelectionRequest<UnitData>.ValidOption>();
             List<SelectionRequest<UnitData>.InvalidOption> invalidOptions = new List<SelectionRequest<UnitData>.InvalidOption>();
 

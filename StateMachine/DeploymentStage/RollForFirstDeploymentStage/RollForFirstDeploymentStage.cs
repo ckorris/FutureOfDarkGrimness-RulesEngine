@@ -14,6 +14,8 @@ namespace FDG.Stages
 
         public override async Task Enter(IDeploymentContext context)
         {
+            context.Log("Entered Roll for First Deployment stage.");
+
             Random random = new Random();
 
             List<ITeam> teams = context.TableState().Teams.Objects.ToList();

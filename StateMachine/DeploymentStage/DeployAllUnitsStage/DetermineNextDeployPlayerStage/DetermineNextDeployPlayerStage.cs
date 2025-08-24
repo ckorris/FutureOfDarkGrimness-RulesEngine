@@ -16,6 +16,8 @@ namespace FDG.Stages
 
         public override async Task Enter(IDeploymentTurnContext context)
         {
+            context.Log("Entering Determine Next Deploy Player stage.");
+
             if (context.HasStarted == false)
             {
                 //If we haven't started yet, then the default values point to the first player. 

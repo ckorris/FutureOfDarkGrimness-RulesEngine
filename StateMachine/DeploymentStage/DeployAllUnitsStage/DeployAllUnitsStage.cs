@@ -1,5 +1,4 @@
 ﻿
-
 using FDG.Data;
 
 namespace FDG.Stages
@@ -13,7 +12,17 @@ namespace FDG.Stages
 
         protected override IDeploymentTurnContext GetNewChildContext(IDeploymentContext contextSelf)
         {
-            throw new NotImplementedException();
+            if(contextSelf.FirstDeploymentRollOrder == null)
+            {
+                throw new NullReferenceException($"{nameof(contextSelf.FirstDeploymentRollOrder)}");
+            }
+
+            if (contextSelf.PlayerDeploymentZones == null)
+            {
+                throw new NullReferenceException($"{nameof(contextSelf.PlayerDeploymentZones)}");
+            }
+
+            return new DeploymentTurnContext(GameContext, contextSelf.FirstDeploymentRollOrder, contextSelf.PlayerDeploymentZones);
         }
 
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IDeploymentTurnContext> startingChild)

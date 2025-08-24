@@ -49,7 +49,7 @@ namespace FDG.StageResolution
                 throw new InvalidOperationException($"Type {typeof(TReply)} has no full type name.");
             }
 
-            string? requestJson = JsonConvert.SerializeObject(request, _gameDataStore.GetJsonConverters());
+            string? requestJson = JsonConvert.SerializeObject(request, _gameDataStore.GetJsonSettings());
 
             if (requestJson == null)
             {
@@ -117,7 +117,7 @@ namespace FDG.StageResolution
 
         private void DeserializeAndReturnReply<TReply>(string replyJson, TaskCompletionSource<TReply> replyTask)
         {
-            TReply? reply = JsonConvert.DeserializeObject<TReply>(replyJson, _gameDataStore.GetJsonConverters());
+            TReply? reply = JsonConvert.DeserializeObject<TReply>(replyJson, _gameDataStore.GetJsonSettings());
 
             if (reply == null)
             {

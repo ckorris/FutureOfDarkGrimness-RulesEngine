@@ -60,7 +60,7 @@ namespace FDG.StageResolution
         private async Task<string> ResolveRequestAsJson_Typed<TRequest, TReply>(string requestJson, IReadableGameDataStore gameDataStore)
             where TRequest : IStageTaskRequest<TReply>
         {
-            TRequest? request = JsonConvert.DeserializeObject<TRequest>(requestJson, gameDataStore.GetJsonConverters()); //TODO: Get data binding settings.
+            TRequest? request = JsonConvert.DeserializeObject<TRequest>(requestJson, gameDataStore.GetJsonSettings()); 
 
             if (request == null)
             {
@@ -70,7 +70,7 @@ namespace FDG.StageResolution
             Task<TReply> reply = ResolveRequest<TRequest, TReply>(request);
             await reply;
 
-            string replyAsJson = JsonConvert.SerializeObject(reply.Result, gameDataStore.GetJsonConverters());
+            string replyAsJson = JsonConvert.SerializeObject(reply.Result, gameDataStore.GetJsonSettings());
 
             return replyAsJson;
         }

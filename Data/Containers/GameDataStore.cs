@@ -19,7 +19,9 @@ namespace FDG.Data
 
         private const int DEFAULT_COMPONENT_STORE_CAPACITY = 256;
 
-        JsonConverter[] _jsonConverters;
+        private JsonConverter[] _jsonConverters;
+
+        private JsonSerializerSettings _jsonConvertSettings;
 
         /// <summary>
         /// Creates a new instance with types mapped to IDs according to <paramref name="typeMap"/>. Use if 
@@ -57,6 +59,12 @@ namespace FDG.Data
                 _jsonConverters[i - 1] = (JsonConverter)converterInstance;
             }
 
+             _jsonConvertSettings = new JsonSerializerSettings()
+             {
+                 TypeNameHandling = TypeNameHandling.Auto,
+                 Converters = _jsonConverters.ToList()
+             };
+
         }
 
         /// <summary>
@@ -69,9 +77,9 @@ namespace FDG.Data
             return new List<Type>(_registeredTypes);
         }
 
-        public JsonConverter[] GetJsonConverters()
+        public JsonSerializerSettings GetJsonSettings()
         {
-            return _jsonConverters;
+            return _jsonConvertSettings;
         }
 
         /// <summary>
@@ -123,16 +131,9 @@ namespace FDG.Data
 
         public void CreateFromReferenceAndJson(DataReference reference, string initValueAsJson)
         {
-            JsonSerializerSettings settings = new JsonSerializerSettings()
-            {
-                TypeNameHandling = TypeNameHandling.Auto,
-                Converters = _jsonConverters.ToList()
-            };
-
-
             Type objectType = _registeredTypes[reference.TypeID.ID];
             //object? deserializedValue = JsonConvert.DeserializeObject(initValueAsJson, objectType, _jsonConverters, );
-            object? deserializedValue = JsonConvert.DeserializeObject(initValueAsJson, objectType, settings);
+            object? deserializedValue = JsonConvert.DeserializeObject(initValueAsJson, objectType, _jsonConvertSettings);
 
             if (deserializedValue == null)
             {

@@ -53,9 +53,10 @@ namespace FDG
 
 
         #region Visuals
+        [JsonIgnore] //Only while it's a default.
         public IMeshProvider MeshProvider => new BuiltInObjMeshProvider(BuiltInAssetHelper.SILLYMANMODEL_PATH); //TEMP default.
 
-
+        [JsonIgnore] //Only while it's a default.
         public IMaterialProvider MaterialProvider
         {
             get

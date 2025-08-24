@@ -18,7 +18,7 @@ namespace FDG.Data
         event Action<DataReference, string> OnDataUpdatedAsJson;
         event Action<DataReference> OnDataRemoved;
 
-        JsonConverter[] GetJsonConverters();
+        JsonSerializerSettings GetJsonSettings();
 
         List<ReferenceJsonValuePair> GetAllDataReferencesAsJson();
 

@@ -40,14 +40,14 @@ namespace FDG.Stages
             var placeObjectsRequest = new PlaceObjectsRequest<ModelData>(currentPlayerID, "Place Unit Models",
                 deploymentZone, deployingUnit.ModelBindings);
 
-            Dictionary<DataBinding<ModelData>, Position> modelPositions = await GameContext.PlayerRequester.RequestDecision
-                <PlaceObjectsRequest<ModelData>, Dictionary<DataBinding<ModelData>, Position>>(
+            List<PlacedObjectEntry<ModelData>> modelPositions = await GameContext.PlayerRequester.RequestDecision
+                <PlaceObjectsRequest<ModelData>, List<PlacedObjectEntry<ModelData>>>(
                 currentPlayerID, placeObjectsRequest);
 
             //Actually place the objects.
-            foreach(KeyValuePair<DataBinding<ModelData>, Position> kvp in modelPositions)
+            foreach(PlacedObjectEntry<ModelData> entry in modelPositions)
             {
-                kvp.Key.GetValue().SetPosition(kvp.Value);
+                entry.Binding.GetValue().SetPosition(entry.Position);
             }
 
             context.CurrentDeployingUnit = null; //Cleanup.

@@ -3,7 +3,7 @@ using Newtonsoft.Json;
 
 namespace FDG.StageResolution.Requests
 {
-    public class PlaceObjectsRequest<T> : IStageTaskRequest<Dictionary<DataBinding<T>, Position>>
+    public class PlaceObjectsRequest<T> : IStageTaskRequest<List<PlacedObjectEntry<T>>>
     {
         public PlayerID TargetPlayerID { get; }
 
@@ -35,9 +35,11 @@ namespace FDG.StageResolution.Requests
             ModelsToPlace = modelsToPlace;
         }
 
-        public Task<Dictionary<DataBinding<T>, Position>> Resolve(Dictionary<DataBinding<T>, Position> resolution)
+        public Task<List<PlacedObjectEntry<T>>> Resolve(List<PlacedObjectEntry<T>> resolution)
         {
             return Task.FromResult(resolution);
         }
     }
+
+    public record PlacedObjectEntry<T>(DataBinding<T> Binding, Position Position);
 }

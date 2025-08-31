@@ -58,6 +58,8 @@ namespace FDG.Stages
                 {
                     context.Log("Auto-assigning deployment zone as only one is left to pick.");
                     choices.Add(thisTeam, zoneBindings.First());
+                    zoneBindings.RemoveAt(0); //Still removing so that we can hit the next exception if the team count is malaligned.
+                    continue;
                 }
                 else if (zoneBindings.Count == 0)
                 {
@@ -74,6 +76,8 @@ namespace FDG.Stages
                 DataBinding<RectangularZone> choice 
                     = await context.PlayerRequester().RequestDecision<ChooseDeploymentZoneRequest, DataBinding<RectangularZone>>
                         (firstTeamPlayer, request);
+
+                zoneBindings.Remove(choice);
 
                 choices.Add(thisTeam, choice);
             }

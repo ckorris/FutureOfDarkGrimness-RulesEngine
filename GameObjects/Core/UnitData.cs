@@ -55,8 +55,6 @@ namespace FDG
         [JsonIgnore]
         List<ISpecialRule> IUnit.SpecialRules => SpecialRules.Cast<ISpecialRule>().ToList();
 
-        public bool HasActivatedThisTurn => false; //TODO: Implement with some kind of token system.
-
         [JsonConstructor]
         public UnitData(PlayerID playerID, string name, int quality, int defense,
             List<SpecialRule> specialRules, List<DataBinding<ModelData>> modelBindings)

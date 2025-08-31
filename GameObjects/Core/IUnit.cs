@@ -25,11 +25,6 @@ namespace FDG
 
         public List<ISpecialRule> SpecialRules { get; }
 
-        /// <summary>
-        /// Whether or not this unit has been activated so far.
-        /// </summary>
-        public bool HasActivatedThisTurn { get; }
-
         public bool GetMobility(out float moveShootDistanceInches, out float chargeDistanceInches);
 
         public event DataValueChangedHandler<float> OnWoundsDealt;

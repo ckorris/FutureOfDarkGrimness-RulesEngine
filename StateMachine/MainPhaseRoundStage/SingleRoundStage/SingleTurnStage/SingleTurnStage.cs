@@ -1,4 +1,6 @@
 ﻿
+using FDG.Data;
+
 namespace FDG.Stages
 {
     public class SingleTurnStage : ParentStage<ISingleRoundContext, ISingleTurnContext>
@@ -13,7 +15,10 @@ namespace FDG.Stages
         protected override ISingleTurnContext GetNewChildContext(ISingleRoundContext contextSelf)
         {
             PlayerID currentPlayerID = contextSelf.GetCurrentPlayerID();
-            return new SingleTurnContext(GameContext, currentPlayerID, contextSelf.UnactivatedUnits[currentPlayerID]);
+            List<DataBinding<UnitData>> playerUnits = contextSelf.UnactivatedUnits[currentPlayerID]
+                .Where(unit => unit.GetValue().GetIsAlive())
+                .ToList();
+            return new SingleTurnContext(GameContext, currentPlayerID, playerUnits);
         }
 
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<ISingleTurnContext> startingChild)

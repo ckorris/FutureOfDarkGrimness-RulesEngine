@@ -22,7 +22,7 @@ namespace FDG.Stages
 
         public DataBinding<UnitData>? ActivatedUnit { get; private set; }
 
-        public IReadOnlyList<DataBinding<UnitData>> PlayerUnactivatedUnits { get; }
+        public IReadOnlyList<DataBinding<UnitData>> PlayerUnactivatedUnits => _playerUnactivatedUnits;
 
         private List<DataBinding<UnitData>> _playerUnactivatedUnits;
 

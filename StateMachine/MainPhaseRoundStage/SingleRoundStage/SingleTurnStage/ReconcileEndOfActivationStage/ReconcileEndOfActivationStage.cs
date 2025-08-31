@@ -2,7 +2,7 @@
 namespace FDG.Stages
 {
 
-    public class ReconcileEndOfActivationStage : StageBase<IPlayerTurnContext>
+    public class ReconcileEndOfActivationStage : StageBase<ISingleTurnContext>
     {
 
         public StageBinding ToDeterminePlayerTurn;
@@ -10,13 +10,13 @@ namespace FDG.Stages
 
         int _enterCount = 0;
 
-        public ReconcileEndOfActivationStage(IGameContext gameContext, IStateMachineLayer<IPlayerTurnContext> parent) : base(gameContext, parent)
+        public ReconcileEndOfActivationStage(IGameContext gameContext, IStateMachineLayer<ISingleTurnContext> parent) : base(gameContext, parent)
         {
             ToDeterminePlayerTurn = new StageBinding(this);
             ToReconcileObjectives = new StageBinding(this);
         }
 
-        public override async Task Enter(IPlayerTurnContext context)
+        public override async Task Enter(ISingleTurnContext context)
         {
             //Temp, just have it count to 3, as if there are three units to activate.
             _enterCount++;

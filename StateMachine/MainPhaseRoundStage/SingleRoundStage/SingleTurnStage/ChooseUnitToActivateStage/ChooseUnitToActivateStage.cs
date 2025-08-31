@@ -5,16 +5,16 @@ using FDG.StageResolution.Requests;
 namespace FDG.Stages
 {
 
-    public class ChooseUnitToActivateStage : StageBase<IPlayerTurnContext>
+    public class ChooseUnitToActivateStage : StageBase<ISingleTurnContext>
     {
         public StageBinding ToMainUnitAction;
-        public ChooseUnitToActivateStage(IGameContext gameContext, IStateMachineLayer<IPlayerTurnContext> parent)
+        public ChooseUnitToActivateStage(IGameContext gameContext, IStateMachineLayer<ISingleTurnContext> parent)
             : base(gameContext, parent)
         {
             ToMainUnitAction = new StageBinding(this);
         }
 
-        public override async Task Enter(IPlayerTurnContext context)
+        public override async Task Enter(ISingleTurnContext context)
         {
             context.Log("Entered Choose Unit to Activate stage.");
     
@@ -28,7 +28,7 @@ namespace FDG.Stages
             List<SelectionRequest<UnitData>.InvalidOption> invalidOptions = new List<SelectionRequest<UnitData>.InvalidOption>();
 
             foreach (ArmyData army in GameContext.GameDataStore.GetAllValues<ArmyData>()
-                .Where(a => a.IsOwnedBy(context.ActivatedPlayer.Value)))
+                .Where(a => a.IsOwnedBy(context.ActivatedPlayer)))
             {
                 foreach(DataBinding<UnitData> potentialUnit in army.UnitBindings)
                 {
@@ -50,11 +50,11 @@ namespace FDG.Stages
             }
 
             //TODO: We don't catch if there are no options and we're stuck in the menu forever.
-            SelectionRequest<UnitData> request = new SelectionRequest<UnitData>(context.ActivatedPlayer.Value, "Choose Unit to Activate",
+            SelectionRequest<UnitData> request = new SelectionRequest<UnitData>(context.ActivatedPlayer, "Choose Unit to Activate",
                 validOptions, invalidOptions);
 
             DataBinding<UnitData> chosenUnit = await GameContext.PlayerRequester.RequestDecision<SelectionRequest<UnitData>, DataBinding<UnitData>>
-                (context.ActivatedPlayer.Value, request);
+                (context.ActivatedPlayer, request);
 
             context.Log($"Activating: {chosenUnit.GetValue().Name}.");
             context.ChooseUnitToActivate(chosenUnit);

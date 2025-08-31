@@ -4,7 +4,7 @@ namespace FDG.Stages
 
     public class MainPhaseRoundStage : ParentStage<IGameContext, IMainPhaseContext>
     {
-        public StageBinding? ToReconcileNewTurn;
+        public StageBinding? ToReconcileNewRound;
         public StageBinding? ToVictoryCalculation;
 
         public MainPhaseRoundStage(IGameContext gameContext, IStateMachineLayer<IGameContext> parent)
@@ -30,15 +30,15 @@ namespace FDG.Stages
 
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IMainPhaseContext> startingChild)
         {
-            ToReconcileNewTurn = new StageBinding(this);
+            ToReconcileNewRound = new StageBinding(this);
             ToVictoryCalculation = new StageBinding(this);
 
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
                 .AddChild(new ReconcileNewRoundStage(GameContext, this), out var reconcileNewTurn)
                 .AddChild(new StartOfRoundExtraActionStage(GameContext, this), out var startOfTurnExtraActions)
-                .AddChild(new PlayerTurnStage(GameContext, this), out var playerTurn)
+                .AddChild(new SingleRoundStage(GameContext, this), out var playerTurn)
                 .AddChild(new ReconcileObjectivesStage(GameContext, this), out var reconcileObjectives)
-                .AddSibling(nameof(ToReconcileNewTurn), ToReconcileNewTurn, out string reconcileNewTurnEvent)
+                .AddSibling(nameof(ToReconcileNewRound), ToReconcileNewRound, out string reconcileNewTurnEvent)
                 .AddSibling(nameof(ToVictoryCalculation), ToVictoryCalculation, out string toVictoryCalculationEvent)
                 .Build();
 
@@ -46,7 +46,7 @@ namespace FDG.Stages
 
             reconcileNewTurn.ToStartExtraActions.Bind(startOfTurnExtraActions);
             startOfTurnExtraActions.OnFinished.Bind(playerTurn);
-            playerTurn.OnTurnFinished.Bind(reconcileObjectives);
+            playerTurn.OnRoundFinished.Bind(reconcileObjectives);
             reconcileObjectives.ToReconcileEndOfTurn.Bind(reconcileNewTurn);
             reconcileObjectives.ToVictoryCalculation.Bind(toVictoryCalculationEvent);
 

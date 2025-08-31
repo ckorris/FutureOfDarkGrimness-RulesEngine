@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace FDG.Stages
 {
 
-    public class MainUnitActionStage : ParentStage<IPlayerTurnContext, IUnitActionContext>
+    public class MainUnitActionStage : ParentStage<ISingleTurnContext, IUnitActionContext>
     {
         public const string MAIN_UNIT_ACTION_TO_CHILD_CHOOSE_ACTION_TRANSITION =
             "MainUnitActionToChildChooseAction";
@@ -18,19 +18,19 @@ namespace FDG.Stages
 
         private readonly ShootStage _shootStage;
 
-        public MainUnitActionStage(IGameContext gameContext, IStateMachineLayer<IPlayerTurnContext> parent) : base(gameContext, parent)
+        public MainUnitActionStage(IGameContext gameContext, IStateMachineLayer<ISingleTurnContext> parent) : base(gameContext, parent)
         {
             
         }
 
-        public override async Task Enter(IPlayerTurnContext context)
+        public override async Task Enter(ISingleTurnContext context)
         {
             GameContext.Log("Main Unit Action stage entered.");
 
             base.Enter(context);
         }
 
-        protected override IUnitActionContext GetNewChildContext(IPlayerTurnContext contextSelf)
+        protected override IUnitActionContext GetNewChildContext(ISingleTurnContext contextSelf)
         {
             UnitActionContext unitActionContext = new UnitActionContext(GameContext, contextSelf.ActivatedUnit.GetValue());
             unitActionContext.Reset(contextSelf.ActivatedUnit.GetValue());

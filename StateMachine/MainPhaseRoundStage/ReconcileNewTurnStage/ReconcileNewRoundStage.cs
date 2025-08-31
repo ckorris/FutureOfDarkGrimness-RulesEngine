@@ -17,7 +17,7 @@ namespace FDG.Stages
         {
             context.Log($"Entered {nameof(ReconcileNewRoundStage)}.");
 
-            context.NewRound();
+            //TODO: Not sure we actually need to do anything here, if we call OnEndOfRound elsewhere.
 
             ToStartExtraActions.Activate(context);
         }

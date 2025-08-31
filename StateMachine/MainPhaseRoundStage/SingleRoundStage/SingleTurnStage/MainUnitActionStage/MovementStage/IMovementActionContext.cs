@@ -1,12 +1,14 @@
 ﻿
+using FDG.Data;
+using FDG.StageResolution.Requests;
 using System;
 using System.Collections.Generic;
 
 namespace FDG.Stages
 {
-    public interface IMovementActionContext
+    public interface IMovementActionContext : IGameContextAccessor
     {
-        public IUnit MovingUnit { get; }
+        public DataBinding<UnitData> MovingUnit { get; }
 
         public float MaxAdvanceDistance { get; }
 
@@ -16,14 +18,17 @@ namespace FDG.Stages
 
         public bool TryGetMovementDistance(out float distance);
 
-        public bool TryGetPaths(out IReadOnlyDictionary<IModel, IReadOnlyList<Position>> paths);
+        public bool TryGetPaths(out IReadOnlyList<ModelMoveEntry> paths);
 
         public void SubmitValidPathTemplate(PathTemplate pathTemplate);
     }
 
     public class MovementActionContext : IMovementActionContext
     {
-        public IUnit MovingUnit { get; private set; }
+        public IGameContext GameContext { get; }
+
+
+        public DataBinding<UnitData> MovingUnit { get; private set; }
 
         public float MaxAdvanceDistance
         {
@@ -49,15 +54,18 @@ namespace FDG.Stages
 
         private bool _hasMoved = false;
         private float? _movementDistance;
-        private IReadOnlyDictionary<IModel, IReadOnlyList<Position>> _paths;
+        private List<ModelMoveEntry> _paths;
 
-        public MovementActionContext(IGameContext gameContext, IUnit movingUnit)
+
+        public MovementActionContext(IGameContext gameContext, DataBinding<UnitData> movingUnit)
         {
+            GameContext = gameContext;
+
             MovingUnit = movingUnit;
 
             MovementContextPrecursor precursor = MovementContextPrecursor.GetDefault(gameContext);
 
-            List<ISpecialRule_Movement> movementSpecialRules = movingUnit.GetMovementSpecialRules();
+            List<ISpecialRule_Movement> movementSpecialRules = movingUnit.GetValue().GetMovementSpecialRules();
 
             foreach(ISpecialRule_Movement movementSpecialRule in movementSpecialRules)
             {
@@ -70,8 +78,9 @@ namespace FDG.Stages
             RelevantTerrain = precursor.RelevantTerrain;
         }
 
-        public void SubmitValidPathTemplate(PathTemplate pathTemplate)
+        public void SubmitValidPathTemplate(List<ModelMoveEntry> paths)
         {
+            /*
             if (pathTemplate.ValidatePaths(out List<ReasonForInvalidMove> errorReasons) == false)
             {
                 throw new InvalidOperationException($"Defined invalid path to {nameof(DefinePathStage)}. Contained {errorReasons.Count} errors. " +
@@ -81,6 +90,7 @@ namespace FDG.Stages
             _hasMoved = true;
             _movementDistance = pathTemplate.GetMaxMoveDistance();
             _paths = pathTemplate.CurrentPaths;
+            */
         }
 
         public bool TryGetMovementDistance(out float distance)
@@ -96,7 +106,7 @@ namespace FDG.Stages
         }
 
 
-        public bool TryGetPaths(out IReadOnlyDictionary<IModel, IReadOnlyList<Position>> paths)
+        public bool TryGetPaths(out IReadOnlyList<ModelMoveEntry> paths)
         {
             if(_hasMoved)
             {

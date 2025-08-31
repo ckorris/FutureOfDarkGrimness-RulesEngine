@@ -1,4 +1,5 @@
 ﻿
+using FDG.StageResolution.Requests;
 using System;
 
 namespace FDG.Stages
@@ -15,9 +16,14 @@ namespace FDG.Stages
 
         public override async Task Enter(IMovementActionContext context)
         {
-            PathTemplate pathTemplate = new PathTemplate(context.MovingUnit, context);
 
-            throw new NotImplementedException();
+            PlayerID playerID = context.MovingUnit.GetValue().PlayerID; //Shorthand.
+
+            var pathRequest = new DefineMovementPathRequest(playerID, "Move Unit", context.MovingUnit);
+
+            List<ModelMoveEntry> movements = await context.PlayerRequester()
+                .RequestDecision<DefineMovementPathRequest, List<ModelMoveEntry>>(playerID, pathRequest);
+
             /*
             IDefinePathHandler pathHandler = GameContext.GetHandler<IDefinePathHandler>();
             pathHandler.Handle(pathTemplate, () => OnSubmittedTemplateAsValid(pathTemplate, context));

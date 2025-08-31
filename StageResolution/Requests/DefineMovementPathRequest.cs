@@ -1,0 +1,42 @@
+﻿using FDG.Data;
+using Newtonsoft.Json;
+
+namespace FDG.StageResolution.Requests
+{
+    public class DefineMovementPathRequest : IStageTaskRequest<List<ModelMoveEntry>>
+    {
+        public PlayerID TargetPlayerID { get; }
+
+        public TaskID TaskID { get; }
+
+        public string TaskName { get; }
+
+        public DataBinding<UnitData> UnitDataBinding { get; }
+
+        [JsonConstructor]
+        public DefineMovementPathRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
+            DataBinding<UnitData> unitDataBinding)
+        {
+            TargetPlayerID = targetPlayerID;
+            TaskID = taskID;
+            TaskName = taskName;
+            UnitDataBinding = unitDataBinding;
+        }
+
+        public DefineMovementPathRequest(PlayerID targetPlayerID,  string taskName, 
+            DataBinding<UnitData> unitDataBinding)
+        {
+            TargetPlayerID = targetPlayerID;
+            TaskID = new TaskID(Guid.NewGuid());
+            TaskName = taskName;
+            UnitDataBinding = unitDataBinding;
+        }
+
+        public Task<List<ModelMoveEntry>> Resolve(List<ModelMoveEntry> resolution)
+        {
+            return Task.FromResult(resolution);
+        }
+    }
+
+    public record ModelMoveEntry(DataBinding<ModelData> Model, List<Position> Positions);
+}

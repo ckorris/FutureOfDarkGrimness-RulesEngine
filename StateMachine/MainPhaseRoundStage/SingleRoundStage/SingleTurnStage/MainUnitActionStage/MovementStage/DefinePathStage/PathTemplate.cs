@@ -1,4 +1,6 @@
 ﻿
+using FDG.Data;
+using FDG.StageResolution;
 using FDG.Stages;
 using System;
 using System.Collections.Generic;
@@ -33,14 +35,14 @@ namespace FDG
 
         public void AddStep(IModel model, Position nextStep)
         {
-            AssertModelInUnit(model);
+            //AssertModelInUnit(model);
 
             _paths[model].Add(nextStep);
         }
 
         public void RemoveLastStep(IModel model)
         {
-            AssertModelInUnit(model);
+            //AssertModelInUnit(model);
 
             List<Position> modelSteps = _paths[model];
 
@@ -54,7 +56,7 @@ namespace FDG
 
         public void ClearModelSteps(IModel model)
         {
-            AssertModelInUnit(model);
+            //AssertModelInUnit(model);
 
             _paths[model].Clear();
         }
@@ -67,6 +69,7 @@ namespace FDG
             }
         }
 
+        /*
         public bool ValidatePaths(out List<ReasonForInvalidMove> errors)
         {
             errors = new List<ReasonForInvalidMove>();
@@ -208,30 +211,7 @@ namespace FDG
                 throw new ArgumentException($"{nameof(PathTemplate)}.{methodName} called with model not in the unit.");
             }
         }
+        */
     }
 
-    public readonly struct ReasonForInvalidMove
-    {
-
-        public readonly EErrorReasonType ErrorReasonType;
-        public readonly IModel RelevantModel;
-
-
-        public ReasonForInvalidMove(EErrorReasonType errorReasonType, IModel relevantModel)
-        {
-            ErrorReasonType = errorReasonType;
-            RelevantModel = relevantModel;
-        }
-
-        
-    }
-
-    public enum EErrorReasonType
-    {
-        OutOfMoveRange,
-        MovingThroughImpassibleTerrain,
-        MovingThroughEnemyUnit,
-        TooFarFromAnyUnitModel,
-        TooFarFromAllUnitModels
-    }
 }

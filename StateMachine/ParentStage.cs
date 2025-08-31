@@ -60,6 +60,12 @@ namespace FDG.Stages
             transition.Invoke(childContext);
         }
 
+        protected virtual void ReconcileChildContextBeforeLeaving(TContextSelf selfContext, TContextChild childContext)
+        {
+            //Not always needed, but this allows you to access the final child's context before transitioning out of this stage.
+            //This can be used to set the larger context based on something that happened inside the child one.
+        }
+
         private async Task TransitionToChild(StageBase<TContextChild> newChild, TContextChild childContext)
         {
             CurrentChild = newChild;
@@ -126,7 +132,12 @@ namespace FDG.Stages
                     throw new NullReferenceException();
                 }
 
-                _dictionary.Add(eventName, (context) => _parentStage.TransitionToSibling(siblingBinding));
+                //_dictionary.Add(eventName, (context) => _parentStage.TransitionToSibling(siblingBinding));
+                _dictionary.Add(eventName, (childContext) =>
+                {
+                    _parentStage.ReconcileChildContextBeforeLeaving(_parentStage._currentContext, childContext);
+                    _parentStage.TransitionToSibling(siblingBinding);
+                });
                 return this;
             }
 

@@ -48,5 +48,13 @@ namespace FDG.Stages
 
             return dictionary;
         }
+
+        protected override void ReconcileChildContextBeforeLeaving(IGameContext selfContext, IDeploymentContext childContext)
+        {
+            //We use the first deployment role to decide who goes first, so add that to the context.
+            selfContext.SetFirstDeploymentRollOrder(childContext.FirstDeploymentRollOrder);
+
+
+        }
     }
 }

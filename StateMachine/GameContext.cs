@@ -24,6 +24,10 @@ namespace FDG
         public IReadWriteableGameDataStore GameDataStore { get; }
 
         public ITempVisualDrawer TempVisualDrawer { get; }
+
+        public List<ITeam>? FirstDeploymentRollOrder { get; }
+
+        public void SetFirstDeploymentRollOrder(List<ITeam> firstDeploymentRollWinner);
     }
 
     public class GameContext : IGameContext
@@ -42,6 +46,8 @@ namespace FDG
 
         public ITempVisualDrawer TempVisualDrawer { get; }
 
+        public List<ITeam>? FirstDeploymentRollOrder { get; private set; } = null;
+
         public GameContext(ITextOutput textOutput, IDiceRoller diceRoller,
                 IPlayerRequestByID playerRequester,
                 TableState tableState,
@@ -54,6 +60,16 @@ namespace FDG
             TableState = tableState;
             GameDataStore = gameDataStore;
             TempVisualDrawer = tempVisualDrawer;
+        }
+
+        public void SetFirstDeploymentRollOrder(List<ITeam> firstDeploymentRollWinner)
+        {
+            if (FirstDeploymentRollOrder != null)
+            {
+                throw new InvalidOperationException($"Tried to set roll winner order, but it was already set.");
+            }
+
+            FirstDeploymentRollOrder = firstDeploymentRollWinner;
         }
     }
 }

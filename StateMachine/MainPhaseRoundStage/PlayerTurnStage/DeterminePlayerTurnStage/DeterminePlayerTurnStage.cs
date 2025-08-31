@@ -18,6 +18,8 @@ namespace FDG.Stages
             //NOTE: See DetermineNextDeployPlayerStage for code that iterates through teams and players to see who should deploy next.
             //Might be able to move that code to a utility somehow, though differences exist.
 
+            context.Log("Entering Determine Next Player Turn stage.");
+
             GameContext.Log("Determine Player Turn Stage entered and moving through.");
             ToChooseUnitToActivate.Activate(context);
         }

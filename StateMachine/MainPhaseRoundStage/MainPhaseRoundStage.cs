@@ -25,7 +25,13 @@ namespace FDG.Stages
 
         protected override IMainPhaseContext GetNewChildContext(IGameContext contextSelf)
         {
-            return new MainPhaseContext(GameContext);
+            if(contextSelf.FirstDeploymentRollOrder == null)
+            {
+                throw new NullReferenceException($"{nameof(contextSelf.FirstDeploymentRollOrder)} in parent context was null when getting " + 
+                    $"child context in {nameof(MainPhaseRoundStage)}.");
+            }
+
+            return new MainPhaseContext(GameContext, contextSelf.FirstDeploymentRollOrder);
         }
 
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IMainPhaseContext> startingChild)

@@ -253,7 +253,7 @@ namespace FDG.Network.Connection
                 if(lobbyPlayerInfo.ArmyListFile == null)
                 {
                     Console.WriteLine("Player had empty army list. Making a simple one.");
-                    lobbyPlayerInfo.ArmyListFile = new ArmyListFile();
+                    lobbyPlayerInfo.ArmyListFile = GetTempTestArmyFile();
                 }
 
                 PlayerSlot playerSlot = new PlayerSlot(i, (int)lobbyPlayerInfo.TeamNumber, lobbyPlayerInfo.PlayerID, lobbyPlayerInfo.ArmyListFile);
@@ -296,6 +296,27 @@ namespace FDG.Network.Connection
             await _commandDispatcher.SendCommandAsync(launchGameMessage);
         }
         
+        private ArmyListFile GetTempTestArmyFile()
+        {
+            var armyfile  = new ArmyListFile()
+            {
+                Faction = "Test Faction",
+                PointsLimit = 100,
+                Name = "Test Army"
+            };
+
+            UnitFileEntry unitFileEntry = new UnitFileEntry();
+            unitFileEntry.Name = "Test Unit";
+            unitFileEntry.Quality = 4;
+            unitFileEntry.Defense = 4;
+            unitFileEntry.ModelCount = 1;
+            unitFileEntry.PointCost = 100;
+
+            armyfile.Units.Add(unitFileEntry);
+
+            return armyfile;
+        }
+
         /*
         private PlayerSlot[] GetPlayerSlots(IStageResolverRegistry stageResolverRegister, IReadableGameDataStore gameDataStore)
         {

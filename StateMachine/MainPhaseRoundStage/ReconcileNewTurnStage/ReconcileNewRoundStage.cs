@@ -2,21 +2,22 @@
 
 namespace FDG.Stages
 {
-    public class ReconcileNewTurnStage : StageBase<IMainPhaseContext>
+    public class ReconcileNewRoundStage : StageBase<IMainPhaseContext>
     {
         public const string TO_START_EXTRA_ACTIONS_TRANSITION = "ReconcileToStartExtraActions";
 
         public StageBinding ToStartExtraActions;
 
-        public ReconcileNewTurnStage(IGameContext gameContext, IStateMachineLayer<IMainPhaseContext> parent) : base(gameContext, parent)
+        public ReconcileNewRoundStage(IGameContext gameContext, IStateMachineLayer<IMainPhaseContext> parent) : base(gameContext, parent)
         {
             ToStartExtraActions = new StageBinding(this);
         }
 
         public override async Task Enter(IMainPhaseContext context)
         {
-            //TODO: Implement.
-            context.Log($"Entered {nameof(ReconcileNewTurnStage)}.");
+            context.Log($"Entered {nameof(ReconcileNewRoundStage)}.");
+
+            context.NewRound();
 
             ToStartExtraActions.Activate(context);
         }

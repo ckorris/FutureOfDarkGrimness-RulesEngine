@@ -70,5 +70,12 @@ namespace FDG.Stages
         {
             return new PlayerTurnContext(GameContext);
         }
+
+        protected override void ReconcileChildContextBeforeLeaving(IMainPhaseContext selfContext, IPlayerTurnContext childContext)
+        {
+            base.ReconcileChildContextBeforeLeaving(selfContext, childContext);
+
+            selfContext.MarkUnitAsActivated(childContext.ActivatedUnit);
+        }
     }
 }

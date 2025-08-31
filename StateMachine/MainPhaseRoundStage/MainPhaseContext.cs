@@ -19,6 +19,8 @@ namespace FDG.Stages
 
         public void MarkUnitAsActivated(DataBinding<UnitData> activatedUnit);
 
+        public bool DoesAnyTeamHaveRemainingActivations();
+
         public bool DoesTeamHaveRemainingActivations(ITeam team);
 
         public bool DoesPlayerHaveRemainingActivations(PlayerID playerID);
@@ -35,7 +37,7 @@ namespace FDG.Stages
 
         public Dictionary<PlayerID, List<DataBinding<UnitData>>> _unactivatedUnits { get; }
 
-        public int RoundCount { get; private set; } = 1;
+        public int RoundCount { get; private set; } = 0;
 
         public IReadOnlyList<ITeam> TeamActivateOrder => _teamActivateOrder;
 
@@ -46,15 +48,12 @@ namespace FDG.Stages
         public Dictionary<ITeam, int> CurrentActivePlayerIndexPerTeam { get; }
 
 
-        private List<PlayerID> _currentRoundPlayerFinishOrder = new List<PlayerID>();
+        private List<ITeam> _currentRoundTeamFinishOrder = new List<ITeam>();
 
         public MainPhaseContext(IGameContext gameContext, List<ITeam> firstDeploymentRollOrder)
         {
             GameContext = gameContext;
             _teamActivateOrder = firstDeploymentRollOrder;
-
-            //For the first round, we get the team start order from deployment. 
-            //For subsequent rounds, that should be reset in NewRound().
 
             _unactivatedUnits = new Dictionary<PlayerID, List<DataBinding<UnitData>>>();
             CurrentActivePlayerIndexPerTeam = new Dictionary<ITeam, int>();
@@ -63,13 +62,18 @@ namespace FDG.Stages
             {
                 CurrentActivePlayerIndexPerTeam.Add(team, 0); //TODO: Same as elsewhere, this makes first player in each team kind of arbitrary.
 
-                foreach(PlayerID playerID in team.Players)
+                foreach (PlayerID playerID in team.Players)
                 {
                     _unactivatedUnits.Add(playerID, new List<DataBinding<UnitData>>());
                 }
             }
 
-            SetUnactivatedUnits();
+            //Slightly hacky but since we use the deploy roll for the first turn, and team finish order
+            //for subsequent ones, we can use NewRound to set up the first one by just inserting the roll order
+            //as the finished order.
+            _currentRoundTeamFinishOrder = new List<ITeam>(firstDeploymentRollOrder);
+
+            //Buuut we don't actually call NewRound here because the stage should call that.
         }
 
         public PlayerID GetCurrentPlayerID()
@@ -95,8 +99,36 @@ namespace FDG.Stages
             {
                 //Clean that player's list just in case there are dead units.
                 _unactivatedUnits[playerID].Clear();
-                _currentRoundPlayerFinishOrder.Add(playerID);
+
+                //If that player's team is all done, mark the team as finished.
+                ITeam playerTeam = GameContext.TableState.Teams.Objects.First(team => team.IsPlayerOnTeam(playerID));
+                bool foundTeammateWithActivations = false;
+                foreach(PlayerID teamPlayer in playerTeam.Players)
+                {
+                    if(teamPlayer != playerID && DoesPlayerHaveRemainingActivations(teamPlayer))
+                    {
+                        foundTeammateWithActivations = true;
+                    }
+                }
+
+                if(foundTeammateWithActivations == false)
+                {
+                    _currentRoundTeamFinishOrder.Add(playerTeam);
+                }
             }
+        }
+
+        public bool DoesAnyTeamHaveRemainingActivations()
+        {
+            foreach (ITeam team in GameContext.TableState.Teams.Objects)
+            {
+                if (DoesTeamHaveRemainingActivations(team))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public bool DoesTeamHaveRemainingActivations(ITeam team)
@@ -117,6 +149,8 @@ namespace FDG.Stages
             return _unactivatedUnits[playerID].Where(unit => unit.GetValue().GetIsAlive()).Count() > 0;
         }
 
+
+
         public void NewRound()
         {
             List<ArmyData> armies = GameContext.GameDataStore().GetAllValues<ArmyData>().ToList();
@@ -130,51 +164,19 @@ namespace FDG.Stages
 
             foreach (ITeam team in GameContext.TableState.Teams.Objects)
             {
-
-                foreach (PlayerID playerID in team.Players)
+                if (_currentRoundTeamFinishOrder.Contains(team) == false)
                 {
-                    if (_currentRoundPlayerFinishOrder.Contains(playerID) == false)
-                    {
-                        throw new InvalidOperationException($"Couldn't find playerID {playerID} in finished players during call to {nameof(NewRound)}. " +
-                            $"Total players listed as finished: {_currentRoundPlayerFinishOrder.Count}");
-                    }
+                    throw new InvalidOperationException($"Couldn't find team {team.TeamNumber} in finished teams during call to {nameof(NewRound)}. " +
+                        $"Total teams listed as finished: {_currentRoundTeamFinishOrder.Count}");
                 }
             }
 
             SetUnactivatedUnits();
 
-            //Get the order of finished teams.
-            IEnumerable<ITeam> allTeams = GameContext.TableState.Teams.Objects;
-            int teamCount = allTeams.Count();
-            int playerCount = _currentRoundPlayerFinishOrder.Count();
+            _teamActivateOrder = new List<ITeam>(_currentRoundTeamFinishOrder);
+            _currentRoundTeamFinishOrder.Clear();
 
-            ITeam[] teamOrder = new ITeam[GameContext.TableState.Teams.Objects.Count()];
-
-            HashSet<ITeam> finishedTeams = new HashSet<ITeam>(GameContext.TableState.Teams.Objects);
-
-            int finishedTeamIndex = teamCount - 1;
-            for (int pc = playerCount - 1; pc > 0; pc--)
-            {
-                PlayerID finishedPlayer = _currentRoundPlayerFinishOrder[pc];
-
-                ITeam finishedPlayerTeam = allTeams.First(thisTeam => thisTeam.IsPlayerOnTeam(finishedPlayer));
-
-                if (finishedTeams.Contains(finishedPlayerTeam))
-                {
-                    //We haven't yet come across a player who finished from this team yet, so register it.
-                    teamOrder[finishedTeamIndex] = finishedPlayerTeam;
-                    finishedTeamIndex--;
-                    finishedTeams.Remove(finishedPlayerTeam);
-
-                    if (finishedTeamIndex < 0)
-                    {
-                        break; //We've assigned all teams to the array.
-                    }
-                }
-            }
-
-            _teamActivateOrder = new List<ITeam>(teamOrder);
-            _currentRoundPlayerFinishOrder.Clear();
+            RoundCount++;
         }
 
         private void SetUnactivatedUnits()
@@ -189,8 +191,6 @@ namespace FDG.Stages
 
                 foreach (PlayerID playerID in team.Players)
                 {
-
-
                     List<DataBinding<UnitData>> playerUnits = new List<DataBinding<UnitData>>();
 
                     foreach (ArmyData army in armies.Where(a => a.IsOwnedBy(playerID)))
@@ -201,6 +201,5 @@ namespace FDG.Stages
                 }
             }
         }
-
     }
 }

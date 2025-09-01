@@ -22,9 +22,7 @@ namespace FDG.Stages
 
         public DataBinding<UnitData>? ActivatedUnit { get; private set; }
 
-        public IReadOnlyList<DataBinding<UnitData>> PlayerUnactivatedUnits => _playerUnactivatedUnits;
-
-        private List<DataBinding<UnitData>> _playerUnactivatedUnits;
+        public IReadOnlyList<DataBinding<UnitData>> PlayerUnactivatedUnits { get; }
 
         public SingleTurnContext(IGameContext gameContext, PlayerID activatedPlayer, List<DataBinding<UnitData>> playerUnactivatedUnits)
         {
@@ -39,19 +37,18 @@ namespace FDG.Stages
 
             GameContext = gameContext;
             ActivatedPlayer = activatedPlayer;
-            _playerUnactivatedUnits = playerUnactivatedUnits;
+            PlayerUnactivatedUnits = playerUnactivatedUnits;
         }
 
         public void ChooseUnitToActivate(DataBinding<UnitData> unitToActivate)
         {
-            if(_playerUnactivatedUnits.Contains(unitToActivate) == false)
+            if(PlayerUnactivatedUnits.Contains(unitToActivate) == false)
             {
                 throw new ArgumentOutOfRangeException("Tried to activate unit that wasn't in the list of available units: " +
-                    $"{unitToActivate.GetValue().Name}. Remaining units: {_playerUnactivatedUnits.Count}");
+                    $"{unitToActivate.GetValue().Name}. Remaining units: {PlayerUnactivatedUnits.Count}");
             }
 
             ActivatedUnit = unitToActivate;
-            _playerUnactivatedUnits.Remove(unitToActivate);
         }
     }
 }

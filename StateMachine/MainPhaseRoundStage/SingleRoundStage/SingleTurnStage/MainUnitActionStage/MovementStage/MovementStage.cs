@@ -1,7 +1,4 @@
 
-using System;
-using System.Collections.Generic;
-
 namespace FDG.Stages
 {
 
@@ -40,11 +37,15 @@ namespace FDG.Stages
             return dictionary;
         }
 
-        private void OnMove(IUnitActionContext context, float distance)
+        protected override void ReconcileChildContextBeforeLeaving(IUnitActionContext selfContext, IMovementActionContext childContext)
         {
-            //TEMP distance is just for testing.
-            context.RegisterMoveFinished(distance);
-            OnFinishedMovement.Activate(context);
+            base.ReconcileChildContextBeforeLeaving(selfContext, childContext);
+
+            if(childContext.TryGetMovementDistance(out var distance) == false)
+            {
+                throw new InvalidOperationException($"Indicated that the unit didn't move at the end of {nameof(MovementStage)}.");
+            }
+            selfContext.RegisterMoveFinished(distance);
         }
     }
 }

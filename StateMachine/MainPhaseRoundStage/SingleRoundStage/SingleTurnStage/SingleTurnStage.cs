@@ -15,9 +15,14 @@ namespace FDG.Stages
         protected override ISingleTurnContext GetNewChildContext(ISingleRoundContext contextSelf)
         {
             PlayerID currentPlayerID = contextSelf.GetCurrentPlayerID();
+
+            contextSelf.CleanDeadUnitsFromUnactivated();
+            
             List<DataBinding<UnitData>> playerUnits = contextSelf.UnactivatedUnits[currentPlayerID]
                 .Where(unit => unit.GetValue().GetIsAlive())
                 .ToList();
+
+            //return new SingleTurnContext(GameContext, currentPlayerID, contextSelf.UnactivatedUnits[currentPlayerID]);
             return new SingleTurnContext(GameContext, currentPlayerID, playerUnits);
         }
 
@@ -39,6 +44,18 @@ namespace FDG.Stages
             reconcileEndOfActivationStage.ToDeterminePlayerTurn.Bind(turnFinishedEventName);
 
             return dictionary;
+        }
+
+        protected override void ReconcileChildContextBeforeLeaving(ISingleRoundContext selfContext, ISingleTurnContext childContext)
+        {
+            base.ReconcileChildContextBeforeLeaving(selfContext, childContext);
+
+            if(childContext.ActivatedUnit == null)
+            {
+                throw new NullReferenceException($"Activated unit was null after finishing a turn in {nameof(SingleTurnStage)}.");
+            }
+
+            selfContext.MarkUnitAsActivated(childContext.ActivatedUnit);
         }
     }
 }

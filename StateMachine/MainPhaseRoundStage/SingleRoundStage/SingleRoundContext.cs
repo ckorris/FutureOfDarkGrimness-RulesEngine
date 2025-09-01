@@ -1,6 +1,7 @@
 
 
 using FDG.Data;
+using FDG.Utilities;
 
 namespace FDG.Stages
 {
@@ -30,6 +31,8 @@ namespace FDG.Stages
         public PlayerID GetCurrentPlayerID();
 
         public void MarkUnitAsActivated(DataBinding<UnitData> activatedUnit);
+
+        public void CleanDeadUnitsFromUnactivated();
 
         public bool TryAdvanceToNextPlayer(out ITeam? nextTeam, out PlayerID? nextPlayerID);
 
@@ -127,6 +130,14 @@ namespace FDG.Stages
                 {
                     _currentRoundTeamFinishOrder.Add(playerTeam);
                 }
+            }
+        }
+
+        public void CleanDeadUnitsFromUnactivated()
+        {
+            foreach(KeyValuePair<PlayerID, List<DataBinding<UnitData>>> kvp in _unactivatedUnits)
+            {
+                kvp.Value.RemoveAll(unit => unit.GetIsDead());
             }
         }
 

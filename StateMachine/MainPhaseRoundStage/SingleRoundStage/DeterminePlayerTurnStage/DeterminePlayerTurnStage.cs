@@ -22,6 +22,7 @@ namespace FDG.Stages
 
             if(context.TryAdvanceToNextPlayer(out ITeam? nextTeam, out PlayerID? nextPlayerID) == false)
             {
+                context.Log("No players left to activate. Ending round.");
                 OnNoPlayersLeft.Activate(context);
                 return;
             }

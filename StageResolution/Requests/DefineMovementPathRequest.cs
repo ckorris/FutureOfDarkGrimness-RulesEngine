@@ -13,26 +13,30 @@ namespace FDG.StageResolution.Requests
 
         public DataBinding<UnitData> UnitDataBinding { get; }
 
-        public float MaxMovementInches { get; }
+        public float MaxAdvanceDistance { get; }
+        public float MaxChargeDistance { get; }
 
         [JsonConstructor]
         public DefineMovementPathRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
-            DataBinding<UnitData> unitDataBinding, float maxMovementInches)
+            DataBinding<UnitData> unitDataBinding, float maxAdvanceDistance, float maxChargeDistance)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
             TaskName = taskName;
             UnitDataBinding = unitDataBinding;
-            MaxMovementInches = maxMovementInches;
+            MaxAdvanceDistance = maxAdvanceDistance;
+            MaxChargeDistance = maxChargeDistance;
         }
 
         public DefineMovementPathRequest(PlayerID targetPlayerID,  string taskName, 
-            DataBinding<UnitData> unitDataBinding)
+            DataBinding<UnitData> unitDataBinding, float maxAdvanceDistance, float maxChargeDistance)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = new TaskID(Guid.NewGuid());
             TaskName = taskName;
             UnitDataBinding = unitDataBinding;
+            MaxAdvanceDistance = maxAdvanceDistance;
+            MaxChargeDistance = maxChargeDistance;
         }
 
         public Task<List<ModelMoveEntry>> Resolve(List<ModelMoveEntry> resolution)

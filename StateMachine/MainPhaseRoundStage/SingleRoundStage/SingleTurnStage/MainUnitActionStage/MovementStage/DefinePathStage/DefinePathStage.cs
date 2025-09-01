@@ -19,7 +19,8 @@ namespace FDG.Stages
 
             PlayerID playerID = context.MovingUnit.GetValue().PlayerID; //Shorthand.
 
-            var pathRequest = new DefineMovementPathRequest(playerID, "Move Unit", context.MovingUnit);
+            var pathRequest = new DefineMovementPathRequest(playerID, "Move Unit", context.MovingUnit, 
+                context.MaxAdvanceDistance, context.MaxChargeDistance);
 
             List<ModelMoveEntry> movements = await context.PlayerRequester()
                 .RequestDecision<DefineMovementPathRequest, List<ModelMoveEntry>>(playerID, pathRequest);

@@ -1,4 +1,6 @@
 ﻿
+using FDG.Utilities;
+
 namespace FDG.Stages
 {
     public class DetermineMeleeWinnerStage : StageBase<ICombatActionContext>
@@ -18,8 +20,8 @@ namespace FDG.Stages
         public override async Task Enter(ICombatActionContext context)
         {
             //Get wounds dealt by each side.
-            float attackerWoundsDealt = context.DefenderRemainingWoundsAtStart - context.DefendingUnit.RemainingWounds;
-            float defenderWoundsDealt = context.AttackerRemainingWoundsAtStart - context.AttackingUnit.RemainingWounds;
+            float attackerWoundsDealt = context.DefenderRemainingWoundsAtStart - context.DefendingUnit.RemainingWounds();
+            float defenderWoundsDealt = context.AttackerRemainingWoundsAtStart - context.AttackingUnit.RemainingWounds();
 
             //TODO: This needs to have effects somehow so things like fear or fearless can apply.
             //Right now, it's a problem that this isn't a combat stage.

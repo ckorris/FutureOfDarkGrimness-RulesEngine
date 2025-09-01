@@ -1,7 +1,6 @@
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
+using FDG.Data;
+using FDG.Utilities;
 
 namespace FDG.Stages
 {
@@ -25,29 +24,33 @@ namespace FDG.Stages
 
             List<ActionChoice> choices = new List<ActionChoice>();
 
-            PlayerID attackingPlayer = context.AttackingUnit.PlayerID;
+            PlayerID attackingPlayer = context.AttackingUnit.PlayerID();
 
             //TODO: Use player team instead of ID, to prevent attacking allies.
 
 
-            void ChooseDefender(IUnit defender)
+            void ChooseDefender(DataBinding<UnitData> defender)
             {
                 //Set the defender on the context.
-                GameContext.Log($"Chose {defender.Name} as defender.");
+                GameContext.Log($"Chose {defender.Name()} as defender.");
                 context.BeginNewAttack(defender);
                 OnChoseTarget.Activate(context);
             }
 
-            foreach (IArmy army in GameContext.TableState.Armies.Objects
-                .Where(a => a.IsNotOwnedBy(attackingPlayer)))
+
+
+            //foreach (IArmy army in GameContext.TableState.Armies.Objects
+            //    .Where(a => a.IsNotOwnedBy(attackingPlayer)))
+
+            //foreach (IUnit unit in army.Units)
+            foreach (DataBinding<UnitData> unitBinding in GameContext.GameDataStore.GetAllDataBindings<UnitData>()
+            .Where(a => a.PlayerID() != attackingPlayer))
             {
-                foreach (IUnit unit in army.Units)
-                {
-                    //TODO: Make sure at least one model has a weapon that can fire. For now, list them all.
-                    ActionChoice choice = new ActionChoice(() => ChooseDefender(unit), unit.Name, true, null);
-                    choices.Add(choice);
-                }
+                //TODO: Make sure at least one model has a weapon that can fire. For now, list them all.
+                ActionChoice choice = new ActionChoice(() => ChooseDefender(unitBinding), unitBinding.Name(), true, null);
+                choices.Add(choice);
             }
+
 
             throw new NotImplementedException();
             /*
@@ -56,10 +59,10 @@ namespace FDG.Stages
             */
         }
 
-        private void OnChoseRangedTarget(ICombatActionContext context, IUnit targetUnit)
+        private void OnChoseRangedTarget(ICombatActionContext context, DataBinding<UnitData> targetUnit)
         {
             context.BeginNewAttack(targetUnit);
-            GameContext.Log($"Chose target unit: {targetUnit.Name}.");
+            GameContext.Log($"Chose target unit: {targetUnit.Name()}.");
 
             OnChoseTarget.Activate(context);
         }

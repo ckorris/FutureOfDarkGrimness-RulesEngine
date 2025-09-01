@@ -1,3 +1,5 @@
+using FDG.Data;
+using FDG.Utilities;
 using System.Collections.Generic;
 
 namespace FDG
@@ -10,9 +12,9 @@ namespace FDG
 
         public int WeaponCount { get; }
 
-        public IUnit AttackingUnit { get; }
+        public DataBinding<UnitData> AttackingUnit { get; }
 
-        public IUnit DefendingUnit { get; }
+        public DataBinding<UnitData> DefendingUnit { get; }
 
         IReadOnlyList<ISpecialRule_Combat> AllSpecialRules { get; }
 
@@ -30,9 +32,9 @@ namespace FDG
 
         public int WeaponCount { get; private set; }
 
-        public IUnit AttackingUnit { get; private set; }
+        public DataBinding<UnitData> AttackingUnit { get; private set; }
 
-        public IUnit DefendingUnit { get; private set; }
+        public DataBinding<UnitData> DefendingUnit { get; private set; }
 
 
         public IReadOnlyList<ISpecialRule_Combat> AllSpecialRules { get; private set; }
@@ -40,8 +42,8 @@ namespace FDG
 
         private QueryableResults _queryableResults = new QueryableResults();
 
-        public CombatMetadata(IGameContext gameContext, IUnit attackingUnit,
-            IUnit defendingUnit, IWeapon weaponType, int weaponCount)
+        public CombatMetadata(IGameContext gameContext, DataBinding<UnitData> attackingUnit,
+            DataBinding<UnitData> defendingUnit, IWeapon weaponType, int weaponCount)
         {
             GameContext = gameContext;
             AttackingUnit = attackingUnit;
@@ -62,7 +64,7 @@ namespace FDG
             return _queryableResults.QueryForResult(out result);
         }
 
-        private List<ISpecialRule_Combat> GetAllSpecialRules(IUnit attackingUnit, IUnit defendingUnit,
+        private List<ISpecialRule_Combat> GetAllSpecialRules(DataBinding<UnitData> attackingUnit, DataBinding<UnitData> defendingUnit,
             IWeapon weaponType)
         {
             List<ISpecialRule_Combat> specialRules = new List<ISpecialRule_Combat>();

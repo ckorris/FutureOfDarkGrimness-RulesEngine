@@ -1,4 +1,5 @@
 
+using FDG.Utilities;
 using System;
 
 namespace FDG.Stages
@@ -15,7 +16,7 @@ namespace FDG.Stages
 
         protected override void RunStage(ICombatMetadata metaData, Action<DetermineHitRollNeededResults> onFinished)
         {
-            DetermineHitRollNeededResults results = new DetermineHitRollNeededResults(metaData.AttackingUnit.Quality);
+            DetermineHitRollNeededResults results = new DetermineHitRollNeededResults(metaData.AttackingUnit.Quality());
 
             GameContext.Log($"Base hit roll required is {results.HitRollNeeded} based on attacker's quality.");
 

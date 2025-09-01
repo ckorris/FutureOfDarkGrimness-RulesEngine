@@ -1,4 +1,6 @@
 ﻿
+using FDG.Utilities;
+
 namespace FDG.Stages
 {
     internal class DetermineCanKeepSwingingStage : StageBase<ICombatActionContext>
@@ -29,7 +31,7 @@ namespace FDG.Stages
                 return;
             }
 
-            if (context.DefendingUnit.RemainingWounds <= 0)
+            if (context.DefendingUnit.RemainingWounds() <= 0)
             {
                 GameContext.Log("Has killed all target units.");
                 OnDefenderKilled.Activate(context);

@@ -1,6 +1,8 @@
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using FDG.Data;
+using FDG.Utilities;
 
 namespace FDG
 {
@@ -10,17 +12,17 @@ namespace FDG
         public readonly float TotalWoundsToAssign;
         public float TotalAssignedWounds { get; private set; } = 0;
 
-        public IReadOnlyDictionary<IModel, float> PendingWounds => _pendingWounds;
+        public IReadOnlyDictionary<DataBinding<ModelData>, float> PendingWounds => _pendingWounds;
 
-        private Dictionary<IModel, float> _pendingWounds;
+        private Dictionary<DataBinding<ModelData>, float> _pendingWounds;
 
-        public AssignWoundsResults(IUnit defendingUnit, float totalWoundsToAssign)
+        public AssignWoundsResults(DataBinding<UnitData> defendingUnit, float totalWoundsToAssign)
         {
             //TODO: Add nuance of applying wounds to existing models with tough before others.
             //I'm also putting this TODO in the stage.
 
-            _pendingWounds = new Dictionary<IModel, float>();
-            foreach(IModel model in defendingUnit.Models
+            _pendingWounds = new Dictionary<DataBinding<ModelData>, float>();
+            foreach(DataBinding<ModelData> model in defendingUnit.ModelBindings()
                 .Where(model => model.GetIsAlive()))
             {
                 _pendingWounds.Add(model, 0);
@@ -32,7 +34,7 @@ namespace FDG
         public bool IsFinishedAssigning => TotalAssignedWounds == TotalWoundsToAssign;
 
 
-        public bool TryAddWounds(IModel model, int woundsToAdd)
+        public bool TryAddWounds(DataBinding<ModelData> model, int woundsToAdd)
         {
             if(_pendingWounds.ContainsKey(model) == false)
             {
@@ -40,7 +42,7 @@ namespace FDG
                     "that was already dead or does not belong to the defending unit.");
             }
 
-            if (_pendingWounds[model] + woundsToAdd > model.TotalWounds - model.WoundsDealt)
+            if (_pendingWounds[model] + woundsToAdd > model.TotalWounds() - model.WoundsDealt())
             {
                 return false;
             }
@@ -58,9 +60,9 @@ namespace FDG
         {
             float woundsToAssign = TotalWoundsToAssign - TotalAssignedWounds;
 
-            foreach(KeyValuePair<IModel, float> kvp in _pendingWounds)
+            foreach(KeyValuePair<DataBinding<ModelData>, float> kvp in _pendingWounds)
             {
-                float modelWoundsRemaining = kvp.Key.TotalWounds - kvp.Key.WoundsDealt;
+                float modelWoundsRemaining = kvp.Key.TotalWounds() - kvp.Key.WoundsDealt();
 
                 float woundsToAssignThisModel = Math.Min(woundsToAssign, modelWoundsRemaining);
                 _pendingWounds[kvp.Key] += woundsToAssignThisModel; //Might break, let's see.

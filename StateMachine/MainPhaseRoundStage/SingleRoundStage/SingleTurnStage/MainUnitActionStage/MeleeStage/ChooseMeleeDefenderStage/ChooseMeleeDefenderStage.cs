@@ -23,7 +23,7 @@ namespace FDG.Stages
 
             List<ActionChoice> choices = new List<ActionChoice>();
 
-            PlayerID attackingPlayer = context.AttackingUnit.PlayerID;
+            PlayerID attackingPlayer = context.AttackingUnit.PlayerID();
             
             List<SelectionRequest<UnitData>.ValidOption> validDefenders = new List<SelectionRequest<UnitData>.ValidOption>();
             List<SelectionRequest<UnitData>.InvalidOption> invalidDefenders = new List<SelectionRequest<UnitData>.InvalidOption>();
@@ -49,7 +49,7 @@ namespace FDG.Stages
             {
                 foreach(DataBinding<UnitData> potentialDefender in army.UnitBindings)
                 {
-                    float minDistanceToUnit = UnitCompareUtilities.MinDistanceBetweenUnits(context.AttackingUnit, potentialDefender.GetValue(),
+                    float minDistanceToUnit = UnitCompareUtilities.MinDistanceBetweenUnits(context.AttackingUnit.GetValue(), potentialDefender.GetValue(),
                         out _, out _, includeVertical: false);
                     if(minDistanceToUnit <= GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL)
                     {

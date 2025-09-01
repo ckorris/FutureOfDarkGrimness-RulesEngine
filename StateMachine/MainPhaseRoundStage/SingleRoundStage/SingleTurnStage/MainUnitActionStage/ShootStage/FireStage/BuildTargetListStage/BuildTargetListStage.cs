@@ -1,4 +1,6 @@
 
+using FDG.Data;
+using FDG.Utilities;
 using System;
 using System.Collections.Generic;
 
@@ -14,9 +16,9 @@ namespace FDG.Stages
 
         protected override void RunStage(ICombatMetadata metaData, Action<BuildTargetListResults> onFinished)
         {
-            List<IModel> targets = new List<IModel>();
+            List<DataBinding<ModelData>> targets = new List<DataBinding<ModelData>>();
 
-            targets.AddRange(metaData.DefendingUnit.Models);
+            targets.AddRange(metaData.DefendingUnit.ModelBindings());
 
             string pluralizedModelWord = (targets.Count == 1) ? "model" : "models";
             GameContext.Log($"Created ordered target list of {targets.Count} {pluralizedModelWord}.");

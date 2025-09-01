@@ -1,4 +1,6 @@
 ﻿
+using FDG.Utilities;
+
 namespace FDG.Stages
 {
 
@@ -23,7 +25,7 @@ namespace FDG.Stages
                 return;
             }
 
-            if (context.DefendingUnit.RemainingWounds <= 0)
+            if (context.DefendingUnit.RemainingWounds() <= 0)
             {
                 GameContext.Log("Has killed all target units.");
                 ToFinishShooting.Activate(context);

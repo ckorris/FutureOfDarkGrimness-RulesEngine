@@ -1,14 +1,13 @@
-
-using System.Collections.Generic;
+using FDG.Data;
 
 namespace FDG
 {
 
     public struct BuildTargetListResults
     {
-        public List<IModel> OrderedTargetList;
+        public List<DataBinding<ModelData>> OrderedTargetList;
 
-        public BuildTargetListResults(List<IModel> orderedTargetList)
+        public BuildTargetListResults(List<DataBinding<ModelData>> orderedTargetList)
         {
             OrderedTargetList = orderedTargetList;
         }

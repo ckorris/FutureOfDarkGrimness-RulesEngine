@@ -1,4 +1,5 @@
 
+using FDG.Utilities;
 using System;
 using System.Collections.Generic;
 
@@ -18,7 +19,7 @@ namespace FDG.Stages
         {
             List<PendingSaveRolls> pendingSaveRollsList = new List<PendingSaveRolls>();
 
-            int baseDefense = metaData.DefendingUnit.Defense;
+            int baseDefense = metaData.DefendingUnit.Defense();
             int ap = metaData.WeaponType.ArmorPenetration; //Shorthand.
             int baseDefenseWithAP = baseDefense + ap;
 

@@ -10,9 +10,9 @@ namespace FDG.Stages
     //Having a query handler like the combat metadata could be an improvement.
     public interface ICombatActionContext
     {
-        public IUnit AttackingUnit { get; }
+        public DataBinding<UnitData> AttackingUnit { get; }
 
-        public IUnit? DefendingUnit { get; }
+        public DataBinding<UnitData> DefendingUnit { get; }
 
         public IReadOnlyDictionary<IWeapon, int> AvailableWeapons { get; }
         public IReadOnlyDictionary<IWeapon, int> AlreadyUsedWeapons { get; }
@@ -38,11 +38,9 @@ namespace FDG.Stages
 
     public class CombatActionContext : ICombatActionContext
     {
-        public IUnit AttackingUnit => _attackingUnit.GetValue();
-        private DataBinding<UnitData> _attackingUnit;
+        public DataBinding<UnitData> AttackingUnit { get; }
 
-        public IUnit? DefendingUnit => _defendingUnit.IsValid ? _defendingUnit.GetValue() : null;
-        private DataBinding<UnitData> _defendingUnit;
+        public DataBinding<UnitData> DefendingUnit { get; private set; }
 
         public IModel InRangeAttackingModels { get; private set; }
 
@@ -66,7 +64,7 @@ namespace FDG.Stages
 
         public CombatActionContext(DataBinding<UnitData> attackingUnit)
         {
-            _attackingUnit = attackingUnit;
+            AttackingUnit = attackingUnit;
             _availableWeapons = GetTypeSortedWeapons(attackingUnit.GetValue().GetMeleeWeapons());
             AttackerRemainingWoundsAtStart = attackingUnit.GetValue().RemainingWounds;
         }
@@ -89,12 +87,12 @@ namespace FDG.Stages
                 throw new InvalidOperationException($"Started attack before the last was consumed.");
             }
 
-            _defendingUnit = defendingUnit;
+            DefendingUnit = defendingUnit;
 
             _currentPendingAttack = new PendingAttack();
             _currentPendingAttack.DefendingUnit = DefendingUnit;
 
-            DefenderRemainingWoundsAtStart = DefendingUnit.RemainingWounds;
+            DefenderRemainingWoundsAtStart = DefendingUnit.GetValue().RemainingWounds;
         }
 
         public void SetAttackWeapon(IWeapon weaponToConsume, out int weaponCount)
@@ -167,7 +165,7 @@ namespace FDG.Stages
         {
             public bool IsReady => DefendingUnit != default && WeaponType != default && WeaponCount != default;
 
-            public IUnit DefendingUnit = default;
+            public DataBinding<UnitData> DefendingUnit = default;
 
             public IWeapon WeaponType = default;
 

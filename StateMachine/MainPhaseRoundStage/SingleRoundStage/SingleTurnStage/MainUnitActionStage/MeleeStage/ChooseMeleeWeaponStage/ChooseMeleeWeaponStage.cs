@@ -1,4 +1,5 @@
 ﻿using FDG.StageResolution.Requests;
+using FDG.Utilities;
 using System.Collections.Concurrent;
 
 namespace FDG.Stages
@@ -39,11 +40,11 @@ namespace FDG.Stages
                     "The unit has already attacked with this weapon."));
             }
 
-            StringSelectionRequest request = new StringSelectionRequest(context.AttackingUnit.PlayerID, 
+            StringSelectionRequest request = new StringSelectionRequest(context.AttackingUnit.PlayerID(), 
                 "Choose weapon:", validOptions.Select(option => option.Item1).ToList(), invalidOptions);
 
             string chosenWeaponStatsName = await GameContext.PlayerRequester.RequestDecision<StringSelectionRequest, string>(
-                context.AttackingUnit.PlayerID, request);
+                context.AttackingUnit.PlayerID(), request);
 
             IWeapon chosenWeapon = validOptions.First(option => option.Item1 == chosenWeaponStatsName).Item2;
 

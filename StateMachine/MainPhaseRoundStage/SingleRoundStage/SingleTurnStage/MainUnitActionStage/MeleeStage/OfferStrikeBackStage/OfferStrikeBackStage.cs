@@ -1,5 +1,6 @@
 
 using FDG.StageResolution.Requests;
+using FDG.Utilities;
 using System;
 
 namespace FDG.Stages
@@ -21,10 +22,10 @@ namespace FDG.Stages
             GameContext.Log("Offering strikeback.");
 
             //TODO: Indicate if they have struck back yet.
-            YesNoRequest yesNoRequest = new YesNoRequest(context.DefendingUnit.PlayerID, "Strike back?");
+            YesNoRequest yesNoRequest = new YesNoRequest(context.DefendingUnit.PlayerID(), "Strike back?");
 
             Task<bool> task = GameContext.PlayerRequester.RequestDecision<YesNoRequest, bool>(
-                context.DefendingUnit.PlayerID, yesNoRequest);
+                context.DefendingUnit.PlayerID(), yesNoRequest);
 
             await task;
 

@@ -1,3 +1,4 @@
+using FDG.Utilities;
 using System;
 
 namespace FDG.Stages
@@ -21,7 +22,7 @@ namespace FDG.Stages
                 totalWoundsDealt += failedSaves.SaveCount;
             }
 
-            float defenderRemainingWounds = metaData.DefendingUnit.RemainingWounds;
+            float defenderRemainingWounds = metaData.DefendingUnit.RemainingWounds();
 
             if (totalWoundsDealt >= defenderRemainingWounds)
             {

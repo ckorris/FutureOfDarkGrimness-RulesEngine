@@ -1,4 +1,5 @@
-﻿using System;
+﻿using FDG.Utilities;
+using System;
 
 namespace FDG.Stages
 {
@@ -23,10 +24,10 @@ namespace FDG.Stages
             switch (meleeWinnerResult.Winner)
             {
                 case DetermineMeleeWinnerResults.EMeleeWinnerResult.AttackerWon:
-                    context.AddResult(new DetermineMoraleSaveNeededResult(context.DefendingUnit.Quality));
+                    context.AddResult(new DetermineMoraleSaveNeededResult(context.DefendingUnit.Quality()));
                     break;
                 case DetermineMeleeWinnerResults.EMeleeWinnerResult.DefenderWon:
-                    context.AddResult(new DetermineMoraleSaveNeededResult(context.AttackingUnit.Quality));
+                    context.AddResult(new DetermineMoraleSaveNeededResult(context.AttackingUnit.Quality()));
                     break;
                 case DetermineMeleeWinnerResults.EMeleeWinnerResult.Tie:
                     throw new InvalidOperationException($"Somehow reached the {nameof(DetermineMoraleSaveNeededStage)} stage " +

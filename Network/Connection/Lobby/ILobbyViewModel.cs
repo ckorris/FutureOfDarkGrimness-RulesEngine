@@ -42,6 +42,8 @@ namespace FDG.Network.Connection.Lobby
 
         bool CheckCanModifyPlayerIDInfo(PlayerID playerID);
 
+        void AddLocalPlayer();
+
         void SendMessage(string message);
 
         void UpdateArmyListFile(PlayerID playerId, ArmyListFile armyListFile);

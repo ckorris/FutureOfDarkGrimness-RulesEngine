@@ -7,6 +7,7 @@ using FDG.Stages;
 using FDG.TempVisuals;
 using FDG.TextInterface;
 using FutureOfDarkGrimness.StateMachine.StateMachineBuilders;
+using System.Diagnostics;
 
 namespace FDG.GameModel
 {
@@ -23,6 +24,8 @@ namespace FDG.GameModel
         public FDGServer(IReadWriteableGameDataStore gameDataStore, FDGHost fdgHost, GameSettings gameSettings,
             PlayerSlot[] playerSlots)
         {
+            Debug.WriteLine($"Started {nameof(FDGServer)}.");
+
             _gameDataStore = gameDataStore;
             _host = fdgHost;
             _synchronizer = new GameDataUpdateSender(gameDataStore, fdgHost);
@@ -124,9 +127,9 @@ namespace FDG.GameModel
         {
             //TODO: Wait for all clients to indicate that they are connected and ready.
             //Await something.
-            System.Diagnostics.Debug.WriteLine("Awaiting players to be ready.");
+            Debug.WriteLine("Awaiting players to be ready.");
             await _playerSlotManager.WaitUntilAllSlotsReady(); //Half a second. At least lets us test before implementing this.
-            System.Diagnostics.Debug.WriteLine("All players are ready.");
+            Debug.WriteLine("All players are ready. Launching stage machine.");
 
             _ = stateMachine.Enter(context);
         }

@@ -22,7 +22,6 @@ namespace FDG.Stages
                 .Where(unit => unit.GetValue().GetIsAlive())
                 .ToList();
 
-            //return new SingleTurnContext(GameContext, currentPlayerID, contextSelf.UnactivatedUnits[currentPlayerID]);
             return new SingleTurnContext(GameContext, currentPlayerID, playerUnits);
         }
 
@@ -41,7 +40,7 @@ namespace FDG.Stages
 
             chooseUnitToActivateStage.ToMainUnitAction.Bind(mainUnitActionStage.Name);
             mainUnitActionStage.ToReconcileEndOfActivation.Bind(reconcileEndOfActivationStage.Name);
-            reconcileEndOfActivationStage.ToDeterminePlayerTurn.Bind(turnFinishedEventName);
+            reconcileEndOfActivationStage.OnFinished.Bind(turnFinishedEventName);
 
             return dictionary;
         }

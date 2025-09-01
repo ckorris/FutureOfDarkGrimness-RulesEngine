@@ -97,7 +97,10 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
             AddMessageToLocalList(new LobbyChatMessage("System", SERVER_JOIN_MESSAGE));
         }
 
-
+        public void AddLocalPlayer()
+        {
+            throw new InvalidOperationException("Tried to add local player when not the host.");
+        }
 
         public void SendMessage(string message)
         {

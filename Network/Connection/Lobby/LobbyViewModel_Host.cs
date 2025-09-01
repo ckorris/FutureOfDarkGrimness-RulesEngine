@@ -312,6 +312,26 @@ namespace FDG.Network.Connection
             unitFileEntry.ModelCount = 1;
             unitFileEntry.PointCost = 100;
 
+            WeaponFileEntry meleeWeaponFile = new WeaponFileEntry()
+            {
+                Name = "Stabby Knife",
+                Attacks = 1,
+                Quantity = 1,
+                RangeInches = 0
+            };
+
+            WeaponFileEntry rangedWeaponFile = new WeaponFileEntry()
+            {
+                Name = "Shooty Gun",
+                Attacks = 1,
+                Quantity = 1,
+                RangeInches = 30
+            };
+
+            unitFileEntry.Weapons.Add(meleeWeaponFile);
+            unitFileEntry.Weapons.Add(rangedWeaponFile);
+
+
             armyfile.Units.Add(unitFileEntry);
 
             return armyfile;
@@ -438,6 +458,27 @@ namespace FDG.Network.Connection
             _playerInfosFull[playerId].ArmyListFile = armyListFile;
 
             UpdateInfoSummariesFromFullList();
+        }
+
+        public void AddLocalPlayer()
+        {
+            string tempName = $"Local Player {(_playerInfos.Value.Count + 1)}"; //Will need to be able to set this later.
+            Debug.WriteLine($"Added local player: {tempName}");
+
+            //Assign a player ID to this person. 
+            //TODO: I may have decided to give players their IDs elsewhere but I can't remember, double check that.
+            PlayerID newClientPlayerID = new PlayerID(Guid.NewGuid());
+
+            //TODO: Have something behind the player info list instead of doing this.
+            int tempTeamNumber = _playerInfos.Value.Count + 1;
+
+            LobbyPlayerInfoFull newLobbyPlayerInfo = new LobbyPlayerInfoFull(tempName, null, (ETeamOption)tempTeamNumber,
+                EPlayerType.Local, new ConnectionID(Guid.Empty), newClientPlayerID);
+            _playerInfosFull.Add(newClientPlayerID, newLobbyPlayerInfo);
+            UpdateInfoSummariesFromFullList();
+
+            LobbyGameSettingsUpdate gameSettingsUpdate = new LobbyGameSettingsUpdate(_gameSettings);
+            _commandDispatcher.SendCommandAsync(gameSettingsUpdate);
         }
     }
 }

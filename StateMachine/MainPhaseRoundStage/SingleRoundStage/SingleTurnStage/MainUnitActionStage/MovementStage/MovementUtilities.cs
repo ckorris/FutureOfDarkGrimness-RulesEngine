@@ -21,7 +21,7 @@ namespace FDG.Stages
             ValidateMovingThroughEnemyUnits(moves, ref errors);
             ValidateCoherency(moves, ref errors);
 
-            return errors.Count > 0;
+            return errors.Count == 0;
         }
 
         private static Dictionary<ModelMoveEntry, float> GetTotalMoveDistances(List<ModelMoveEntry> moves)
@@ -59,7 +59,7 @@ namespace FDG.Stages
 
             foreach (KeyValuePair<ModelMoveEntry, float> kvp in totalMoveDistances)
             {
-                if (kvp.Value < maxChargeDistance)
+                if (kvp.Value > maxChargeDistance)
                 {
                     reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.OutOfMoveRange, kvp.Key.Model));
                 }
@@ -152,6 +152,27 @@ namespace FDG.Stages
             if (unit.GetValue().ModelBindings.Contains(model) == false)
             {
                 throw new ArgumentException($"{nameof(PathTemplate)}.{methodName} called with model not in the unit.");
+            }
+        }
+
+        public static string ErrorReasonToString(EErrorReasonType reason)
+        {
+            switch(reason)
+            {
+                case EErrorReasonType.OutOfMoveRange:
+                    return "Unit moving too far";
+                case EErrorReasonType.MovingThroughEnemyUnit:
+                    return "Moves through an enemy unit";
+                case EErrorReasonType.MovingThroughImpassibleTerrain:
+                    return "Moves through impassible terrain";
+                case EErrorReasonType.TooFarFromAnyUnitModel:
+                    return $"Breaks cohesion: Model is further than {GameWideConstants.MAX_MODEL_DISTANCE_FROM_ANY_OTHER_MODEL_INCHES} " + 
+                        "inches from the closest model";
+                case EErrorReasonType.TooFarFromAllUnitModels:
+                    return $"Breaks cohesion: Model is further than {GameWideConstants.MAX_MODEL_DISTANCE_FROM_ALL_OTHER_MODELS_INCHES} " + 
+                        "inches from another model in the unit";
+                default:
+                    throw new ArgumentOutOfRangeException();
             }
         }
     }

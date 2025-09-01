@@ -4,6 +4,16 @@ namespace FDG.Utilities
 {
     public static class ModelDataBindingExtension
     {
+        public static Position Position(this DataBinding<ModelData> modelBinding)
+        {
+            return modelBinding.GetValue().PositionBinding.GetValue();
+        }
+
+        public static DataBinding<Position> PositionBinding(this DataBinding<ModelData> modelBinding)
+        {
+            return modelBinding.GetValue().PositionBinding;
+        }
+
         public static float TotalWounds(this DataBinding<ModelData> modelBinding)
         {
             return modelBinding.GetValue().TotalWounds;

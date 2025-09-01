@@ -141,7 +141,7 @@ namespace FDG.Stages
         }
 
 
-        private static void AssertModelInUnit(DataBinding<UnitData> unit, DataBinding<ModelData> model, 
+        public static void AssertModelInUnit(DataBinding<UnitData> unit, DataBinding<ModelData> model, 
             [CallerMemberName] string methodName = null)
         {
             if (model == default)

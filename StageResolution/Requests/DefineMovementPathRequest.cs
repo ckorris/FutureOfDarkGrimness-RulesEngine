@@ -13,14 +13,17 @@ namespace FDG.StageResolution.Requests
 
         public DataBinding<UnitData> UnitDataBinding { get; }
 
+        public float MaxMovementInches { get; }
+
         [JsonConstructor]
         public DefineMovementPathRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
-            DataBinding<UnitData> unitDataBinding)
+            DataBinding<UnitData> unitDataBinding, float maxMovementInches)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
             TaskName = taskName;
             UnitDataBinding = unitDataBinding;
+            MaxMovementInches = maxMovementInches;
         }
 
         public DefineMovementPathRequest(PlayerID targetPlayerID,  string taskName, 

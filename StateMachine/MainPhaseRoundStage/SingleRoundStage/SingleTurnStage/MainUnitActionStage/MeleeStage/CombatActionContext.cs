@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
+using FDG.Data;
 
 namespace FDG.Stages
 {
@@ -11,7 +12,7 @@ namespace FDG.Stages
     {
         public IUnit AttackingUnit { get; }
 
-        public IUnit DefendingUnit { get; }
+        public IUnit? DefendingUnit { get; }
 
         public IReadOnlyDictionary<IWeapon, int> AvailableWeapons { get; }
         public IReadOnlyDictionary<IWeapon, int> AlreadyUsedWeapons { get; }
@@ -28,7 +29,7 @@ namespace FDG.Stages
 
         public bool QueryForResult<TResult>(out TResult result);
 
-        public void BeginNewAttack(IUnit defendingUnit);
+        public void BeginNewAttack(DataBinding<UnitData> defendingUnit);
 
         public void SetAttackWeapon(IWeapon weaponToConsume, out int weaponCount);
 
@@ -37,9 +38,11 @@ namespace FDG.Stages
 
     public class CombatActionContext : ICombatActionContext
     {
-        public IUnit AttackingUnit { get; private set; }
+        public IUnit AttackingUnit => _attackingUnit.GetValue();
+        private DataBinding<UnitData> _attackingUnit;
 
-        public IUnit DefendingUnit { get; private set; }
+        public IUnit? DefendingUnit => _defendingUnit.IsValid ? _defendingUnit.GetValue() : null;
+        private DataBinding<UnitData> _defendingUnit;
 
         public IModel InRangeAttackingModels { get; private set; }
 
@@ -61,11 +64,11 @@ namespace FDG.Stages
 
         private PendingAttack _currentPendingAttack = null;
 
-        public CombatActionContext(IUnit attackingUnit)
+        public CombatActionContext(DataBinding<UnitData> attackingUnit)
         {
-            AttackingUnit = attackingUnit;
-            _availableWeapons = GetTypeSortedWeapons(attackingUnit.GetMeleeWeapons());
-            AttackerRemainingWoundsAtStart = attackingUnit.RemainingWounds;
+            _attackingUnit = attackingUnit;
+            _availableWeapons = GetTypeSortedWeapons(attackingUnit.GetValue().GetMeleeWeapons());
+            AttackerRemainingWoundsAtStart = attackingUnit.GetValue().RemainingWounds;
         }
 
         public void AddResult<TResult>(TResult result)
@@ -78,7 +81,7 @@ namespace FDG.Stages
             return _queryableResults.QueryForResult(out result);
         }
 
-        public void BeginNewAttack(IUnit defendingUnit)
+        public void BeginNewAttack(DataBinding<UnitData> defendingUnit)
         {
             if(_currentPendingAttack != null)
             {
@@ -86,11 +89,12 @@ namespace FDG.Stages
                 throw new InvalidOperationException($"Started attack before the last was consumed.");
             }
 
-            _currentPendingAttack = new PendingAttack();
-            _currentPendingAttack.DefendingUnit = defendingUnit;
+            _defendingUnit = defendingUnit;
 
-            DefendingUnit = defendingUnit;
-            DefenderRemainingWoundsAtStart = defendingUnit.RemainingWounds;
+            _currentPendingAttack = new PendingAttack();
+            _currentPendingAttack.DefendingUnit = DefendingUnit;
+
+            DefenderRemainingWoundsAtStart = DefendingUnit.RemainingWounds;
         }
 
         public void SetAttackWeapon(IWeapon weaponToConsume, out int weaponCount)

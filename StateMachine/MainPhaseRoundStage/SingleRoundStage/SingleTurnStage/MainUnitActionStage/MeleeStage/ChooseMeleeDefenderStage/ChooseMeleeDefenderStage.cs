@@ -64,10 +64,10 @@ namespace FDG.Stages
                 }
             }
 
-            void ChooseDefender(IUnit defender)
+            void ChooseDefender(DataBinding<UnitData> defender)
             {
                 //Set the defender on the context.
-                GameContext.Log($"Chose {defender.Name} as defender.");
+                GameContext.Log($"Chose {defender.GetValue().Name} as defender.");
                 context.BeginNewAttack(defender);
                 OnDefenderChosen.Activate(context);
             }
@@ -80,7 +80,7 @@ namespace FDG.Stages
             else if(validDefenders.Count == 1)
             {
                 //No need to pose the request, just attack.
-                ChooseDefender(validDefenders.First().Option.GetValue());
+                ChooseDefender(validDefenders.First().Option);
                 return;
             }
 
@@ -92,7 +92,7 @@ namespace FDG.Stages
                 = await GameContext.PlayerRequester.RequestDecision<SelectionRequest<UnitData>, DataBinding<UnitData>>
                 (attackingPlayer, request);
 
-            ChooseDefender(chosenDefender.GetValue());
+            ChooseDefender(chosenDefender);
         }
     }
 }

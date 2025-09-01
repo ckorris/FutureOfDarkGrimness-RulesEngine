@@ -32,8 +32,13 @@ namespace FDG.Stages
 
         protected override IUnitActionContext GetNewChildContext(ISingleTurnContext contextSelf)
         {
-            UnitActionContext unitActionContext = new UnitActionContext(GameContext, contextSelf.ActivatedUnit.GetValue());
-            unitActionContext.Reset(contextSelf.ActivatedUnit.GetValue());
+            if(contextSelf.ActivatedUnit == null)
+            {
+                throw new NullReferenceException($"{nameof(ISingleTurnContext.ActivatedUnit)} was null when creating child context in {nameof(MainUnitActionStage)}.");
+            }
+
+            UnitActionContext unitActionContext = new UnitActionContext(GameContext, contextSelf.ActivatedUnit);
+            unitActionContext.Reset(contextSelf.ActivatedUnit);
             return unitActionContext;
         }
 

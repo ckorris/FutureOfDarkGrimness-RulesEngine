@@ -2,7 +2,7 @@
 using FDG.StageResolution.Requests;
 using System.Runtime.CompilerServices;
 
-namespace FDG.StageResolution
+namespace FDG.Stages
 {
     public static class MovementUtilities
     {
@@ -159,7 +159,6 @@ namespace FDG.StageResolution
 
     public readonly struct ReasonForInvalidMove
     {
-
         public readonly EErrorReasonType ErrorReasonType;
         public readonly DataBinding<ModelData> RelevantModel;
 
@@ -169,8 +168,6 @@ namespace FDG.StageResolution
             ErrorReasonType = errorReasonType;
             RelevantModel = relevantModel;
         }
-
-
     }
 
     public enum EErrorReasonType

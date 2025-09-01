@@ -1,8 +1,6 @@
 ﻿
 using FDG.Data;
 using FDG.StageResolution.Requests;
-using System;
-using System.Collections.Generic;
 
 namespace FDG.Stages
 {
@@ -20,7 +18,7 @@ namespace FDG.Stages
 
         public bool TryGetPaths(out IReadOnlyList<ModelMoveEntry> paths);
 
-        public void SubmitValidPathTemplate(PathTemplate pathTemplate);
+        public void SubmitValidPathTemplate(List<ModelMoveEntry> paths);
     }
 
     public class MovementActionContext : IMovementActionContext
@@ -80,17 +78,9 @@ namespace FDG.Stages
 
         public void SubmitValidPathTemplate(List<ModelMoveEntry> paths)
         {
-            /*
-            if (pathTemplate.ValidatePaths(out List<ReasonForInvalidMove> errorReasons) == false)
-            {
-                throw new InvalidOperationException($"Defined invalid path to {nameof(DefinePathStage)}. Contained {errorReasons.Count} errors. " +
-                    $"You can call {nameof(PathTemplate)}.{nameof(PathTemplate.ValidatePaths)} before listing the path as valid.");
-            }
-
             _hasMoved = true;
-            _movementDistance = pathTemplate.GetMaxMoveDistance();
-            _paths = pathTemplate.CurrentPaths;
-            */
+            _movementDistance = MovementUtilities.GetMaxMoveDistance(paths);
+            _paths = paths;
         }
 
         public bool TryGetMovementDistance(out float distance)

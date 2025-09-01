@@ -86,9 +86,9 @@ namespace FDG.Stages
             validOptions.Add(PASS_CHOICE_NAME);
             outcomes.Add(PASS_CHOICE_NAME, () => ToReconcileEndOfActivation.Activate(context));
 
-            StringSelectionRequest request = new StringSelectionRequest(context.ActivatingUnit.PlayerID, "Choose Action", validOptions, invalidOptions);
+            StringSelectionRequest request = new StringSelectionRequest(context.ActivatingPlayer(), "Choose Action", validOptions, invalidOptions);
 
-            string choice = await GameContext.PlayerRequester.RequestDecision<StringSelectionRequest, string>(context.ActivatingUnit.PlayerID, request);
+            string choice = await GameContext.PlayerRequester.RequestDecision<StringSelectionRequest, string>(context.ActivatingPlayer(), request);
             
             if(outcomes.ContainsKey(choice) == false)
             {
@@ -103,21 +103,21 @@ namespace FDG.Stages
         {
             if (context.HasMoved == true)
             {
-                reasonIfCant = $"{context.ActivatingUnit.Name} has already moved.";
+                reasonIfCant = $"{context.ActivatingUnit.GetValue().Name} has already moved.";
                 return false;
             }
 
             if (context.HasAttacked == true)
             {
-                reasonIfCant = $"{context.ActivatingUnit.Name} has already attacked.";
+                reasonIfCant = $"{context.ActivatingUnit.GetValue().Name} has already attacked.";
                 return false;
             }
 
-            bool canMoveFromUnit = context.ActivatingUnit.GetMobility(out _, out _);
+            bool canMoveFromUnit = context.ActivatingUnit.GetValue().GetMobility(out _, out _);
 
             if (canMoveFromUnit == false)
             {
-                reasonIfCant = $"{context.ActivatingUnit.Name} is immobile.";
+                reasonIfCant = $"{context.ActivatingUnit.GetValue().Name} is immobile.";
 
                 return false;
             }
@@ -134,9 +134,9 @@ namespace FDG.Stages
                 return false;
             }
 
-            if (context.ActivatingUnit.GetMeleeWeapons().Count == 0)
+            if (context.ActivatingUnit.GetValue().GetMeleeWeapons().Count == 0)
             {
-                reasonIfCant = $"{context.ActivatingUnit.Name} unit has no melee weapons.";
+                reasonIfCant = $"{context.ActivatingUnit.GetValue().Name} unit has no melee weapons.";
                 return false;
             }
 
@@ -152,17 +152,18 @@ namespace FDG.Stages
                 return false;
             }
 
-            context.ActivatingUnit.GetMobility(out float moveShootDistanceInches, out _);
+            context.ActivatingUnit.GetValue().GetMobility(out float moveShootDistanceInches, out _);
 
             if (context.MoveDistance > moveShootDistanceInches)
             {
-                reasonIfCant = $"Moved {context.MoveDistance} inches, when max to move and shoot for {context.ActivatingUnit.Name} is {moveShootDistanceInches}.";
+                reasonIfCant = $"Moved {context.MoveDistance} inches, when max to move and shoot for {context.ActivatingUnit.GetValue().Name} " + 
+                    $" is {moveShootDistanceInches}.";
                 return false;
             }
 
-            if (context.ActivatingUnit.GetRangedWeapons().Count == 0)
+            if (context.ActivatingUnit.GetValue().GetRangedWeapons().Count == 0)
             {
-                reasonIfCant = $"{context.ActivatingUnit.Name} has no ranged weapons.";
+                reasonIfCant = $"{context.ActivatingUnit.GetValue().Name} has no ranged weapons.";
                 return false;
             }
 

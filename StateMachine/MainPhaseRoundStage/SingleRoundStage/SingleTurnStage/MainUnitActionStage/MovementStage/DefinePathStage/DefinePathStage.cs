@@ -1,6 +1,6 @@
-﻿
+﻿using System;
+using System.Text;
 using FDG.StageResolution.Requests;
-using System;
 
 namespace FDG.Stages
 {
@@ -24,22 +24,23 @@ namespace FDG.Stages
             List<ModelMoveEntry> movements = await context.PlayerRequester()
                 .RequestDecision<DefineMovementPathRequest, List<ModelMoveEntry>>(playerID, pathRequest);
 
-            /*
-            IDefinePathHandler pathHandler = GameContext.GetHandler<IDefinePathHandler>();
-            pathHandler.Handle(pathTemplate, () => OnSubmittedTemplateAsValid(pathTemplate, context));
-            */
-        }
+            if(MovementUtilities.ValidatePaths(movements, context.MaxChargeDistance, 
+                out List<ReasonForInvalidMove> invalidReasons) == false)
+            {
+                StringBuilder sb = new StringBuilder(invalidReasons[0].ToString());
+                for(int i = 1; i < invalidReasons.Count; i++)
+                {
+                    sb.Append(", " + invalidReasons[i].ToString());
+                }
 
-        private void OnSubmittedTemplateAsValid(PathTemplate pathTemplate, IMovementActionContext context)
-        {
-            context.SubmitValidPathTemplate(pathTemplate);
+                throw new RequestResponseInvalidException($"Response to {nameof(DefinePathStage)} movement request was invalid for the following reasons: "
+                    + sb.ToString());
+            }
+
+            context.SubmitValidPathTemplate(movements);
 
             OnPathDefined.Activate(context);
         }
-    }
 
-    public interface IDefinePathHandler
-    {
-        public void Handle(PathTemplate pathTemplate, Action onTemplateValid); //TODO: Will need a lot more info.
     }
 }

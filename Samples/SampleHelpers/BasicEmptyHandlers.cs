@@ -60,17 +60,7 @@ namespace FDG.Samples
         }
     }
     */
-    
-
-    public class BasicTesterDefinePathHandler : IDefinePathHandler
-    {
-        public void Handle(PathTemplate pathTemplate, Action onTemplateValid)
-        {
-            //Just don't move. Not moving will pretty much always be valid.
-            onTemplateValid.Invoke();
-
-        }
-    }
+   
 
     public class BasicTesterChooseRangedTargetHandler : IChooseRangedTargetHandler
     {

@@ -1,7 +1,5 @@
 ﻿
-using System;
-using System.Collections.Generic;
-using System.Linq;
+using FDG.StageResolution.Requests;
 
 namespace FDG.Stages
 {
@@ -17,22 +15,26 @@ namespace FDG.Stages
 
         public override async Task Enter(IMovementActionContext context)
         {
-            bool gotPaths = context.TryGetPaths(out IReadOnlyDictionary<IModel, IReadOnlyList<Position>> paths);
+            bool gotPaths = context.TryGetPaths(out IReadOnlyList<ModelMoveEntry> paths);
 
             if (gotPaths == false)
             {
                 throw new InvalidOperationException($"Entered {nameof(ExecuteMoveStage)} before paths were set."); 
             }
 
-            foreach(KeyValuePair<IModel, IReadOnlyList<Position>> kvp in paths)
+            foreach(ModelMoveEntry modelEntry in paths)
             {
-                if(kvp.Value.Count > 0)
+                if(modelEntry.Positions.Count > 0)
                 {
-                    kvp.Key.SetPosition(kvp.Value.Last());
+                    //Setting each position may be redundant for awhile, but we might add some kind of animation
+                    //where the position updates queue up. So, we'll do this anyway.
+                    for (int i = 0; i < modelEntry.Positions.Count; i++)
+                    {
+                        modelEntry.Model.GetValue().SetPosition(modelEntry.Positions[i]);
+                    }
                 }
             }
 
-            //TODO: Some sort of delay to show the objects moving.
             OnMoveExecuted.Activate(context);
         }
     }

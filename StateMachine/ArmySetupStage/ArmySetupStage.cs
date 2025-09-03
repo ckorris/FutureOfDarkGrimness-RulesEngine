@@ -27,7 +27,7 @@ namespace FDG.Stages
                 {
                     SingleBindingRequest<ArmyData> armyRequest = new SingleBindingRequest<ArmyData>(playerID, "Choose an Army.");
                     Task<DataBinding<ArmyData>> task = context.PlayerRequester.RequestDecision<SingleBindingRequest<ArmyData>, 
-                        DataBinding<ArmyData>>(playerID, armyRequest);
+                        DataBinding<ArmyData>>(armyRequest);
 
                     requestTasks.Add(task);
                 }

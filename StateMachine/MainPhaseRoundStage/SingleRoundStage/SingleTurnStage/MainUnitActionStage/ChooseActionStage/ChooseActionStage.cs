@@ -88,7 +88,7 @@ namespace FDG.Stages
 
             StringSelectionRequest request = new StringSelectionRequest(context.ActivatingPlayer(), "Choose Action", validOptions, invalidOptions);
 
-            string choice = await GameContext.PlayerRequester.RequestDecision<StringSelectionRequest, string>(context.ActivatingPlayer(), request);
+            string choice = await GameContext.PlayerRequester.RequestDecision<StringSelectionRequest, string>(request);
             
             if(outcomes.ContainsKey(choice) == false)
             {

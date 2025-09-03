@@ -89,8 +89,8 @@ namespace FDG.Stages
                 validDefenders, invalidDefenders);
 
             DataBinding<UnitData> chosenDefender
-                = await GameContext.PlayerRequester.RequestDecision<SelectionRequest<UnitData>, DataBinding<UnitData>>
-                (attackingPlayer, request);
+                = await GameContext.PlayerRequester
+                .RequestDecision<SelectionRequest<UnitData>, DataBinding<UnitData>>(request);
 
             ChooseDefender(chosenDefender);
         }

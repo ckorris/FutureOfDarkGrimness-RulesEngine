@@ -23,7 +23,7 @@ namespace FDG.Stages
                 context.MaxAdvanceDistance, context.MaxChargeDistance);
 
             List<ModelMoveEntry> movements = await context.PlayerRequester()
-                .RequestDecision<DefineMovementPathRequest, List<ModelMoveEntry>>(playerID, pathRequest);
+                .RequestDecision<DefineMovementPathRequest, List<ModelMoveEntry>>(pathRequest);
 
             if(MovementUtilities.ValidatePaths(movements, context.MaxChargeDistance, 
                 out List<ReasonForInvalidMove> invalidReasons) == false)

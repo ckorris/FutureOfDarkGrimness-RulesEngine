@@ -49,7 +49,7 @@ namespace FDG.Stages
 
             DataBinding<UnitData> chosenUnit = 
                 await GameContext.PlayerRequester.RequestDecision<SelectionRequest<UnitData>, DataBinding<UnitData>>
-                (currentPlayerID, request);
+                (request);
 
             context.Log($"Activating {chosenUnit.GetValue().Name}.");
 

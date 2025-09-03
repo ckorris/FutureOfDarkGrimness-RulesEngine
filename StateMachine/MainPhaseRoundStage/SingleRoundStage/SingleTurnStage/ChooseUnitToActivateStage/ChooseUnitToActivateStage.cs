@@ -49,8 +49,8 @@ namespace FDG.Stages
             SelectionRequest<UnitData> request = new SelectionRequest<UnitData>(context.ActivatedPlayer, "Choose Unit to Activate",
                 validOptions, invalidOptions);
 
-            DataBinding<UnitData> chosenUnit = await GameContext.PlayerRequester.RequestDecision<SelectionRequest<UnitData>, DataBinding<UnitData>>
-                (context.ActivatedPlayer, request);
+            DataBinding<UnitData> chosenUnit = await GameContext.PlayerRequester
+                .RequestDecision<SelectionRequest<UnitData>, DataBinding<UnitData>>(request);
 
             context.Log($"Activating: {chosenUnit.GetValue().Name}.");
             context.ChooseUnitToActivate(chosenUnit);

@@ -43,8 +43,8 @@ namespace FDG.Stages
             StringSelectionRequest request = new StringSelectionRequest(context.AttackingUnit.PlayerID(), 
                 "Choose weapon:", validOptions.Select(option => option.Item1).ToList(), invalidOptions);
 
-            string chosenWeaponStatsName = await GameContext.PlayerRequester.RequestDecision<StringSelectionRequest, string>(
-                context.AttackingUnit.PlayerID(), request);
+            string chosenWeaponStatsName = await GameContext.PlayerRequester
+                .RequestDecision<StringSelectionRequest, string>(request);
 
             IWeapon chosenWeapon = validOptions.First(option => option.Item1 == chosenWeaponStatsName).Item2;
 

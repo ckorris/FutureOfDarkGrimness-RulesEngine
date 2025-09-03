@@ -24,8 +24,8 @@ namespace FDG.Stages
             //TODO: Indicate if they have struck back yet.
             YesNoRequest yesNoRequest = new YesNoRequest(context.DefendingUnit.PlayerID(), "Strike back?");
 
-            Task<bool> task = GameContext.PlayerRequester.RequestDecision<YesNoRequest, bool>(
-                context.DefendingUnit.PlayerID(), yesNoRequest);
+            Task<bool> task = GameContext.PlayerRequester
+                .RequestDecision<YesNoRequest, bool>(yesNoRequest);
 
             await task;
 

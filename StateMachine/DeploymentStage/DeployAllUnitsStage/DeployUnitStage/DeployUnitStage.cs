@@ -41,8 +41,7 @@ namespace FDG.Stages
                 deploymentZone, deployingUnit.ModelBindings);
 
             List<PlacedObjectEntry<ModelData>> modelPositions = await GameContext.PlayerRequester.RequestDecision
-                <PlaceObjectsRequest<ModelData>, List<PlacedObjectEntry<ModelData>>>(
-                currentPlayerID, placeObjectsRequest);
+                <PlaceObjectsRequest<ModelData>, List<PlacedObjectEntry<ModelData>>>(placeObjectsRequest);
 
             //Actually place the objects.
             foreach(PlacedObjectEntry<ModelData> entry in modelPositions)

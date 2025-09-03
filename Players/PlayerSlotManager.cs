@@ -88,10 +88,10 @@ namespace FDG.Players
             return Task.WhenAll(playerReadyTasks);
         }
 
-        public Task<TReply> RequestDecision<TRequest, TReply>(PlayerID playerId, TRequest request) 
+        public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request) 
             where TRequest : IStageTaskRequest<TReply>
         {
-            IPlayerController playerController = GetPlayerControllerByID(playerId);
+            IPlayerController playerController = GetPlayerControllerByID(request.TargetPlayerID);
             return playerController.RequestDecision<TRequest, TReply>(request);
         }
 
@@ -137,7 +137,7 @@ namespace FDG.Players
 
     public interface IPlayerRequestByID
     {
-        Task<TReply> RequestDecision<TRequest, TReply>(PlayerID playerId, TRequest request)
+        Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
             where TRequest : IStageTaskRequest<TReply>;
     }
 }

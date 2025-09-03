@@ -75,7 +75,7 @@ namespace FDG.Stages
 
                 DataBinding<RectangularZone> choice 
                     = await context.PlayerRequester().RequestDecision<ChooseDeploymentZoneRequest, DataBinding<RectangularZone>>
-                        (firstTeamPlayer, request);
+                        (request);
 
                 zoneBindings.Remove(choice);
 

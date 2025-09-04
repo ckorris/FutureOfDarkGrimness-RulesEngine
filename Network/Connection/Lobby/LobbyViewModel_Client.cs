@@ -91,7 +91,7 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
 
             //Send greeting. 
             NewLobbyClientGreeting greeting = new NewLobbyClientGreeting(thisPlayerName);
-            _commandDispatcher.SendCommandAsync(greeting);
+            _commandDispatcher.SendCommandToAllAsync(greeting);
 
             //Show init message in chatbox.
             AddMessageToLocalList(new LobbyChatMessage("System", SERVER_JOIN_MESSAGE));
@@ -108,7 +108,7 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
 
             LobbyChatMessage chatMessage = new LobbyChatMessage(_thisPlayerName, message);
 
-            _commandDispatcher.SendCommandAsync(chatMessage);
+            _commandDispatcher.SendCommandToAllAsync(chatMessage);
         }
 
         private void AddMessageToLocalList(LobbyChatMessage chatMessage)
@@ -228,7 +228,7 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
 
             ArmyListUpdateMessage message = new ArmyListUpdateMessage(playerId, armyListFile);
 
-            _commandDispatcher.SendCommandAsync(message);
+            _commandDispatcher.SendCommandToAllAsync(message);
         }
     }
 }

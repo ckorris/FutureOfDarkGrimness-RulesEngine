@@ -6,9 +6,27 @@ using System.Net.Sockets;
 
 namespace FDG.Network.Connection
 {
-    public class FDGHost : ICommandDispatcher
+    public interface INetworkHost
     {
-        private readonly Dictionary<ConnectionID, TcpClient> _connectedClients 
+        event Action<ConnectionID>? OnNewClientConnected;
+
+        event Action<ConnectionID>? OnClientDisconnected;
+
+        event Action<ArraySegment<byte>>? OnMessageReceived;
+
+        Task StartAsync();
+
+        Task SendCommandToAllAsync(ArraySegment<byte> data, bool isPooled);
+
+        Task SendCommandToSingleClientAsync(ConnectionID client, ArraySegment<byte> data, bool isPooled);
+
+        void Stop();
+
+    }
+
+    public class FDGHost : INetworkHost //ICommandDispatcher
+    {
+        private readonly Dictionary<ConnectionID, TcpClient> _connectedClients
             = new Dictionary<ConnectionID, TcpClient>();
 
         private TcpListener? _listener;
@@ -19,17 +37,7 @@ namespace FDG.Network.Connection
 
         public event Action<ConnectionID>? OnClientDisconnected;
 
-        private IMessageSerializer _messageSerializer;
-
-        public FDGHost()
-        {
-            _messageSerializer = new MessageSerializer();
-        }
-
-        internal FDGHost(IMessageSerializer messageSerializer)
-        {
-            _messageSerializer = messageSerializer;
-        }
+        public event Action<ArraySegment<byte>>? OnMessageReceived;
 
         public async Task StartAsync()
         {
@@ -71,7 +79,7 @@ namespace FDG.Network.Connection
                         _connectedClients.Add(connectionID, client);
                         Debug.WriteLine($"Accepted client. Count: {_connectedClients.Count}");
                     }
-                    
+
                     _ = HandleClientAsync(connectionID, client, _cancelTokenSource.Token);
 
                     OnNewClientConnected?.Invoke(connectionID);
@@ -87,7 +95,7 @@ namespace FDG.Network.Connection
 
         private async Task HandleClientAsync(ConnectionID connectionID, TcpClient client, CancellationToken cancellationToken)
         {
-            using(client)
+            using (client)
             {
                 NetworkStream stream = client.GetStream();
 
@@ -100,18 +108,19 @@ namespace FDG.Network.Connection
 
                         Debug.WriteLine("Received data as host.");
 
-                        _messageSerializer.DeserializeMessageAndInvoke(payloadSegment, connectionID);
+                        OnMessageReceived?.Invoke(payloadSegment);
+
                         if (payloadSegment.Array != null)
                         {
                             ArrayPool<byte>.Shared.Return(payloadSegment.Array);
-                    }
+                        }
                     }
                 }
-                catch(IOException ioException)
+                catch (IOException ioException)
                 {
                     Console.WriteLine("Client disconnected or read error: " + ioException.Message);
                 }
-                catch(Exception exception)
+                catch (Exception exception)
                 {
                     Console.WriteLine($"Exception in {nameof(HandleClientAsync)}: {exception.Message}");
                 }
@@ -129,106 +138,62 @@ namespace FDG.Network.Connection
             }
         }
 
-        //TODO: Private? Not sure what will need this.
-        public async Task SendCommandToSingleClientAsync(TcpClient client, ArraySegment<byte> data)
+        public async Task SendCommandToSingleClientAsync(ConnectionID clientID, ArraySegment<byte> messageBytes, bool isPooled)
         {
-            if(_isRunning == false || client == null)
+            if (_isRunning == false)
             {
                 return;
             }
 
             try
             {
+                TcpClient client = _connectedClients[clientID];
                 NetworkStream stream = client.GetStream();
-                await CommandProtocol.WriteCommandAsync(stream, data)
+                await CommandProtocol.WriteCommandAsync(stream, messageBytes)
                     .ConfigureAwait(false);
             }
-            catch(Exception exception)
+            catch (Exception exception)
             {
                 Debug.WriteLine($"Exception while sending command to single client: {exception.Message}");
             }
+            finally
+            {
+                if (messageBytes.Array != null)
+                {
+                    ArrayPool<byte>.Shared.Return(messageBytes.Array);
+                }
+            }
         }
 
-        public async Task SendCommandAsync<TMessage>(TMessage message)
+        public async Task SendCommandToAllAsync(ArraySegment<Byte> messageBytes, bool isPooled)
         {
-            if(_isRunning == false)
-            {
-                Debug.WriteLine("Didn't sent command because wasn't running.");
-                return;
-            }
-
-            ArraySegment<byte> commandBytes = _messageSerializer.SerializeMessage(message);
-
             List<TcpClient> clientsCopy;
 
-            lock(_connectedClients)
+            lock (_connectedClients)
             {
                 clientsCopy = new List<TcpClient>(_connectedClients.Values);
             }
 
             Debug.WriteLine($"Sending command to {clientsCopy.Count} clients.");
 
-            foreach(TcpClient client in clientsCopy)
+            foreach (TcpClient client in clientsCopy)
             {
                 try
                 {
                     NetworkStream stream = client.GetStream();
-                    await CommandProtocol.WriteCommandAsync(stream, commandBytes)
+                    await CommandProtocol.WriteCommandAsync(stream, messageBytes)
                         .ConfigureAwait(false);
                 }
-                catch(Exception exception)
+                catch (Exception exception)
                 {
                     Debug.WriteLine($"Exception while broadcasting to all clients: {exception.Message}");
                 }
             }
 
-            if (commandBytes.Array != null)
+            if (messageBytes.Array != null && isPooled)
             {
-                ArrayPool<byte>.Shared.Return(commandBytes.Array);
+                ArrayPool<byte>.Shared.Return(messageBytes.Array);
             }
-        }
-        public async Task SendCommandAsync<TMessage>(TMessage message, ConnectionID connectionID)
-        {
-            if (_isRunning == false)
-            {
-                Debug.WriteLine("Didn't sent command because wasn't running.");
-                return;
-            }
-
-            if (_connectedClients.ContainsKey(connectionID) == false)
-            {
-                throw new ArgumentException($"No connected client with ID {connectionID}.");
-            }
-
-            ArraySegment<byte> commandBytes = _messageSerializer.SerializeMessage(message);
-
-            TcpClient client = _connectedClients[connectionID];
-
-            try
-            {
-                NetworkStream stream = client.GetStream();
-                await CommandProtocol.WriteCommandAsync(stream, commandBytes)
-                    .ConfigureAwait(false);
-            }
-            catch (Exception exception)
-            {
-                Debug.WriteLine($"Exception while broadcasting to client ID {connectionID}: {exception.Message}");
-            }
-
-            if (commandBytes.Array != null)
-            {
-                ArrayPool<byte>.Shared.Return(commandBytes.Array);
-            }
-        }
-
-        public void RegisterForMessageEvent<T>(Action<T, ConnectionID> onMessageReceived)
-        {
-            _messageSerializer.RegisterForMessageEvent(onMessageReceived);
-        }
-
-        public void DeregisterForMessageEvent<T>(Action<T, ConnectionID> messageToUnsubscribe)
-        {
-            _messageSerializer.DeregisterForMessageEvent(messageToUnsubscribe);
         }
 
 
@@ -236,19 +201,19 @@ namespace FDG.Network.Connection
         {
             _isRunning = false;
 
-            if(_listener != null)
+            if (_listener != null)
             {
                 _listener.Stop();
             }
 
-            if(_cancelTokenSource != null)
+            if (_cancelTokenSource != null)
             {
                 _cancelTokenSource.Cancel();
             }
 
-            lock(_connectedClients)
+            lock (_connectedClients)
             {
-                foreach(TcpClient client in  _connectedClients.Values)
+                foreach (TcpClient client in _connectedClients.Values)
                 {
                     client.Close();
                 }

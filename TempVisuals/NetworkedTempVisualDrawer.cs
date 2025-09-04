@@ -31,31 +31,31 @@ namespace FDG.TempVisuals
             }
 
             var addMessage = new AddTempVisualMessage(visualToSend);
-            _dispatcher.SendCommandAsync(addMessage);
+            _dispatcher.SendCommandToAllAsync(addMessage);
         }
 
         public void UpdateVisualTransform(Guid tempVisualID, Position position, Quaternion rotation, Vector3 scale)
         {
             var message = new UpdateTempVisualTransformMessage(tempVisualID, position, rotation, scale);
-            _dispatcher.SendCommandAsync(message);
+            _dispatcher.SendCommandToAllAsync(message);
         }
 
         public void UpdateVisualColor(Guid tempVisualID, Color color)
         {
             var message = new UpdateTempVisualColorMessage(tempVisualID, color);
-            _dispatcher.SendCommandAsync(message);
+            _dispatcher.SendCommandToAllAsync(message);
         }
 
         public void RemoveVisual(Guid tempVisualID)
         {
             var message = new RemoveTempVisualMessage(tempVisualID);
-            _dispatcher.SendCommandAsync(message);
+            _dispatcher.SendCommandToAllAsync(message);
         }
 
         public void ClearAllVisuals()
         {
             var message = new ClearAllTempVisualsMessage();
-            _dispatcher.SendCommandAsync(message);
+            _dispatcher.SendCommandToAllAsync(message);
         }
     }
 }

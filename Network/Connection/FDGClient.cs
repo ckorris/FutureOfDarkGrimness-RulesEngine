@@ -6,23 +6,24 @@ using System.Net.Sockets;
 
 namespace FDG.Network.Connection
 {
-    public class FDGClient : ICommandDispatcher
+    public interface INetworkClient
+    {
+        Task<bool> ConnectAsync(IPAddress serverIP);
+
+        event Action<ArraySegment<byte>>? OnMessageReceived;
+
+        Task SendCommandToHost(ArraySegment<byte> command, bool isPooled);
+
+        void Disconnect();
+    }
+
+    public class FDGClient : INetworkClient
     {
         private TcpClient? _tcpClient;
         private CancellationTokenSource? _cancelTokenSource;
         private bool _isConnected;
 
-        private IMessageSerializer _messageSerializer;
-
-        public FDGClient()
-        {
-            _messageSerializer = new MessageSerializer();
-        }
-
-        internal FDGClient(IMessageSerializer messageSerializer)
-        {
-            _messageSerializer = messageSerializer;
-        }
+        public event Action<ArraySegment<byte>>? OnMessageReceived;
 
         public async Task<bool> ConnectAsync(IPAddress serverIP)
         {
@@ -48,21 +49,8 @@ namespace FDG.Network.Connection
             }
         }
 
-
-        public void RegisterForMessageEvent<T>(Action<T, ConnectionID> onMessageReceived)
+        public async Task SendCommandToHost(ArraySegment<byte> commandBytes, bool isPooled)
         {
-            _messageSerializer.RegisterForMessageEvent(onMessageReceived);
-        }
-
-        public void DeregisterForMessageEvent<T>(Action<T, ConnectionID> messageToUnsubscribe)
-        {
-            _messageSerializer.DeregisterForMessageEvent(messageToUnsubscribe);
-        }
-
-        public async Task SendCommandAsync<TMessage>(TMessage message)
-        {
-            ArraySegment<byte> commandBytes = _messageSerializer.SerializeMessage(message);
-
             if (_isConnected == false || _tcpClient == null)
             {
                 Debug.WriteLine("Cannot send command. Not connected.");
@@ -82,17 +70,11 @@ namespace FDG.Network.Connection
             }
             finally
             {
-                if (commandBytes.Array != null)
+                if (commandBytes.Array != null && isPooled)
                 {
                     ArrayPool<byte>.Shared.Return(commandBytes.Array);
                 }
             }
-        }
-
-        public Task SendCommandAsync<TMessage>(TMessage message, ConnectionID connectionID)
-        {
-            //Not expecting this to be called on the client, but can't expect it to know the difference and catch that.
-            return SendCommandAsync(message); 
         }
 
         public void Disconnect()
@@ -132,7 +114,7 @@ namespace FDG.Network.Connection
 
                         Debug.WriteLine("Received data as client.");
 
-                        _messageSerializer.DeserializeMessageAndInvoke(payloadSegment, hostConnectionID);
+                        OnMessageReceived?.Invoke(payloadSegment);
                     }
                 }
             }

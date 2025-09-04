@@ -27,26 +27,26 @@ namespace FDG.Network.Synchronization
         private void SendDataAddedMessageToAll(DataReference data, string newObjectJson)
         {
             AddSingleDataMessage addMessage = new AddSingleDataMessage(data, newObjectJson);
-            _commandDispatcher.SendCommandAsync(addMessage);
+            _commandDispatcher.SendCommandToAllAsync(addMessage);
         }
 
         private void SendDataUpdatedMessageToAll(DataReference data, string newValueJson)
         {
             UpdateSingleDataMessage updateMessage = new UpdateSingleDataMessage(data, newValueJson);
-            _commandDispatcher.SendCommandAsync(updateMessage);
+            _commandDispatcher.SendCommandToAllAsync(updateMessage);
         }
 
         private void SendDataRemovedMessageToAll(DataReference data)
         {
             RemoveSingleDataMessage removeMessage = new RemoveSingleDataMessage(data);
-            _commandDispatcher.SendCommandAsync(removeMessage);
+            _commandDispatcher.SendCommandToAllAsync(removeMessage);
         }
 
         private void OnReceivedRequestAllDataMessage(RequestAllDataMessage _, ConnectionID connectionID)
         {
             List<ReferenceJsonValuePair> allData = _gameDataStore.GetAllDataReferencesAsJson();
             AddAllDataMessage allDataMessage = new AddAllDataMessage(allData);
-            _commandDispatcher.SendCommandAsync(allDataMessage, connectionID);
+            _commandDispatcher.SendCommandToSingleAsync(allDataMessage, connectionID);
         }
 
 

@@ -69,7 +69,7 @@ namespace F.GameModel
             _commandDispatcher.RegisterForMessageEvent<RemoveTempVisualMessage>(OnRemoveTempVisualReceived);
             _commandDispatcher.RegisterForMessageEvent<ClearAllTempVisualsMessage>(OnClearTempVisualsReceived);
 
-            _commandDispatcher.SendCommandAsync(new PostLaunchPlayerReadyMessage(_thisPlayerID));
+            _commandDispatcher.SendCommandToAllAsync(new PostLaunchPlayerReadyMessage(_thisPlayerID));
 
             PlayerMessageUI.OnMessageSentByPlayer += SendChatMessage;
 
@@ -118,7 +118,7 @@ namespace F.GameModel
         private void SendChatMessage(string message, EChatMessageType messageType)
         {
             NetworkPlayerSubmitChatMessage chatMessage = new NetworkPlayerSubmitChatMessage(messageType, message);
-            _commandDispatcher.SendCommandAsync(chatMessage);
+            _commandDispatcher.SendCommandToAllAsync(chatMessage);
         }
     }
 }

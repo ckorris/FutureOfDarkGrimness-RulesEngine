@@ -28,7 +28,7 @@ namespace FDG.Network.Synchronization
         /// </summary>
         public void RequestAllCurrentData()
         {
-            _commandDispatcher.SendCommandAsync(new RequestAllDataMessage());
+            _commandDispatcher.SendCommandToAllAsync(new RequestAllDataMessage());
         }
 
         private void OnReceivedDataAddedMessage(AddSingleDataMessage addMessage, ConnectionID _)

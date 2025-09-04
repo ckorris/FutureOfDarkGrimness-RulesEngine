@@ -192,7 +192,7 @@ namespace FDG.Tests
                 _messageHandlers.Remove(typeof(T));
             }
 
-            public Task SendCommandAsync<TMessage>(TMessage command)
+            public Task SendCommandToAllAsync<TMessage>(TMessage command)
             {
                 if (command is StageTaskRequestMessage requestMessage)
                 {
@@ -202,7 +202,7 @@ namespace FDG.Tests
                 return Task.CompletedTask;
             }
 
-            public Task SendCommandAsync<TMessage>(TMessage command, ConnectionID connectionID)
+            public Task SendCommandToSingleAsync<TMessage>(TMessage command, ConnectionID connectionID)
             {
                 if (command is StageTaskRequestMessage requestMessage)
                 {

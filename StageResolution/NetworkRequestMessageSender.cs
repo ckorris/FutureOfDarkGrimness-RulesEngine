@@ -69,7 +69,7 @@ namespace FDG.StageResolution
 
             _pendingTaskAndResolvers.Add(taskID, actions);
 
-            _commandDispatcher.SendCommandAsync(requestMessage);
+            _commandDispatcher.SendCommandToAllAsync(requestMessage);
 
             return taskCompletionSource.Task;
         }

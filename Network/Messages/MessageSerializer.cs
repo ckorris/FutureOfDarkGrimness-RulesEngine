@@ -1,4 +1,5 @@
 ﻿using FDG.Network.Connection;
+using Microsoft.VisualStudio.TestPlatform.CommunicationUtilities.ObjectModel;
 using Newtonsoft.Json;
 using System.Buffers;
 using System.Diagnostics;
@@ -9,13 +10,11 @@ namespace FDG.Network.Messages
 {
     internal interface IMessageSerializer
     {
-        public void RegisterForMessageEvent<T>(Action<T, ConnectionID> onMessageReceived);
-
-        public void DeregisterForMessageEvent<T>(Action<T, ConnectionID> messageToUnsubscribe);
+        public void RegisterMessageType<T>();
 
         public ArraySegment<byte> SerializeMessage<T>(T message);
 
-        public void DeserializeMessageAndInvoke(ArraySegment<byte> data, ConnectionID connectionID);
+        public object? DeserializeMessage(ArraySegment<byte> data);
     }
 
     /// <summary>
@@ -25,14 +24,14 @@ namespace FDG.Network.Messages
     {
         private readonly Dictionary<string, Type> _messageTypeRegistry = new Dictionary<string, Type>();
 
-        private readonly Dictionary<Type, List<Delegate>> _messageHandlers = new Dictionary<Type, List<Delegate>>();
 
         private static JsonSerializerSettings _settings = new JsonSerializerSettings()
         {
             TypeNameHandling = TypeNameHandling.Auto,
         };
 
-        public void RegisterForMessageEvent<T>(Action<T, ConnectionID> onMessageReceived)
+
+        public void RegisterMessageType<T>()
         {
             string messageType = typeof(T).ToString();
 
@@ -40,25 +39,8 @@ namespace FDG.Network.Messages
             {
                 _messageTypeRegistry.Add(messageType, typeof(T));
             }
-
-            Type typeKey = typeof(T);
-            if (_messageHandlers.TryGetValue(typeKey, out List<Delegate>? handlers) == false)
-            {
-                handlers = new List<Delegate>();
-                _messageHandlers[typeKey] = handlers;
-            }
-
-            handlers.Add(onMessageReceived);
         }
 
-        public void DeregisterForMessageEvent<T>(Action<T, ConnectionID> messageToUnsubscribe)
-        {
-            Type typeKey = typeof(T);
-            if(_messageHandlers.TryGetValue(typeKey, out List<Delegate>? handlers))
-            {
-                handlers.Remove(messageToUnsubscribe);
-            }
-        }
 
         /// <summary>
         /// Serializes a message into a custom byte format:
@@ -90,7 +72,9 @@ namespace FDG.Network.Messages
             return new ArraySegment<byte>(messageArray, 0, combinedLength);
         }
 
-        public void DeserializeMessageAndInvoke(ArraySegment<byte> data, ConnectionID connectionID)
+
+
+        public object? DeserializeMessage(ArraySegment<byte> data)
         {
             int typeLength = BitConverter.ToInt32(data.Array.AsSpan(0, sizeof(int)));
 
@@ -100,7 +84,7 @@ namespace FDG.Network.Messages
             {
                 //This should be okay, not everyone cares about every message.
                 Debug.WriteLine($"Received unregistered message type {typeString}. Discarding.");
-                return;
+                return null;
                 //throw new InvalidOperationException($"Tried to deserialize unregistered type: {typeString}");
             }
 
@@ -111,23 +95,11 @@ namespace FDG.Network.Messages
 
             string jsonString = Encoding.UTF8.GetString(data.Array, data.Offset + jsonOffset, jsonLength);
 
-            object message = JsonConvert.DeserializeObject(jsonString, messageType, _settings);
+            object? message = JsonConvert.DeserializeObject(jsonString, messageType, _settings);
 
-            DispatchToHandlers(message, connectionID);
-        }
+            return message;
 
-        private void DispatchToHandlers(object messageObject, ConnectionID connectionID)
-        {
-            Type actualType = messageObject.GetType();
-            if(_messageHandlers.TryGetValue(actualType, out List<Delegate>? handlers))
-            {
-                Debug.WriteLine($"Handlers: {handlers.Count}");
-
-                foreach(Delegate del in handlers)
-                {
-                    del.DynamicInvoke(messageObject, connectionID);
-                }
-            }
+            //DispatchToHandlers(message, connectionID);
         }
     }
 }

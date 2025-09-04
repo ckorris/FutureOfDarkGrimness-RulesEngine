@@ -10,8 +10,8 @@ namespace FDG.Network.Connection
 
         public void DeregisterForMessageEvent<T>(Action<T, ConnectionID> messageToUnsubscribe);
 
-        public Task SendCommandAsync<TMessage>(TMessage message);
+        public Task SendCommandToAllAsync<TMessage>(TMessage message);
 
-        public Task SendCommandAsync<TMessage>(TMessage message, ConnectionID connectionID);
+        public Task SendCommandToSingleAsync<TMessage>(TMessage message, ConnectionID connectionID);
     }
 }

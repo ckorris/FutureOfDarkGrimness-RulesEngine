@@ -37,7 +37,7 @@ namespace FDG.StageResolution
 
                 StageTaskRequestErrorMessage errorMessage =
                     new StageTaskRequestErrorMessage(requestMessage.PlayerID, requestMessage.TaskID, errorString);
-                _commandDispatcher.SendCommandAsync(errorMessage);
+                _commandDispatcher.SendCommandToAllAsync(errorMessage);
 
                 return;
             }
@@ -57,7 +57,7 @@ namespace FDG.StageResolution
                 StageTaskReplyMessage replyMessage = new StageTaskReplyMessage(requestMessage.PlayerID, requestMessage.TaskID,
                     requestMessage.ReplyFullTypeName, replyJson.Result);
 
-                await _commandDispatcher.SendCommandAsync(replyMessage, sourceConnectionID);
+                await _commandDispatcher.SendCommandToSingleAsync(replyMessage, sourceConnectionID);
             }
             catch (Exception ex)
             {

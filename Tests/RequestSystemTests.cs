@@ -102,7 +102,7 @@ namespace FDG.Tests
             var connectionID = new ConnectionID(Guid.NewGuid());
             var mockCommandDispatcher = new MockMessageBusHost();
             var gameDataStore = new GameDataStore.GameDataStoreBuilder().Build();
-            var sender = new NetworkRequestMessageSender(playerID, connectionID, mockCommandDispatcher, gameDataStore);
+            var sender = new RequestMessageSender(playerID, connectionID, mockCommandDispatcher, gameDataStore);
 
             var request = new TestRequest(playerID, new TaskID(Guid.NewGuid()), "Test Task");
 
@@ -134,7 +134,7 @@ namespace FDG.Tests
             var connectionID = new ConnectionID(Guid.NewGuid());
             var mockCommandDispatcher = new MockMessageBusHost();
             var gameDataStore = new GameDataStore.GameDataStoreBuilder().Build();
-            var sender = new NetworkRequestMessageSender(playerID, connectionID, mockCommandDispatcher, gameDataStore);
+            var sender = new RequestMessageSender(playerID, connectionID, mockCommandDispatcher, gameDataStore);
 
             var request = new TestRequest(playerID, new TaskID(Guid.NewGuid()), "Test Task");
 
@@ -150,7 +150,7 @@ namespace FDG.Tests
             mockCommandDispatcher.SimulateMessageReceived(errorMessage);
 
             // Assert
-            var exception = Assert.ThrowsAsync<NetworkRequestMessageSender.NetworkedRequestFailedException>(
+            var exception = Assert.ThrowsAsync<RequestMessageSender.NetworkedRequestFailedException>(
                 async () => await resolveTask);
             Assert.That(exception.Message, Does.Contain("Test Error"));
         }

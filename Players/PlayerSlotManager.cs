@@ -93,6 +93,9 @@ namespace FDG.Players
         {
             IPlayerController playerController = GetPlayerControllerByID(request.TargetPlayerID);
             return playerController.RequestDecision<TRequest, TReply>(request);
+            //TODO: I think we want to send globally via the message bus, but look into
+            //how the requests are serialized. I wanna avoid serializing and deserializing
+            //locally if possible, but also avoid hacks.
         }
 
         private IPlayerController GetPlayerControllerByID(PlayerID playerID)

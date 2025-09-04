@@ -13,7 +13,7 @@ namespace FDG.StageResolution
     /// Intending to be player-specific and used within networked players, but might be
     /// able to be absorbed by it.
     /// </remarks>
-    internal class NetworkRequestMessageSender : IDisposable
+    internal class RequestMessageSender : IDisposable
     {
         private PlayerID _targetPlayerID;
         private ConnectionID _connectionID;
@@ -22,7 +22,7 @@ namespace FDG.StageResolution
 
         private Dictionary<TaskID, SuccessAndFailActions> _pendingTaskAndResolvers = new Dictionary<TaskID, SuccessAndFailActions>();
 
-        public NetworkRequestMessageSender(PlayerID targetPlayerID, ConnectionID connectionID,
+        public RequestMessageSender(PlayerID targetPlayerID, ConnectionID connectionID,
             IMessageBusHost messageBusHost, IReadableGameDataStore gameDataStore)
         {
             _targetPlayerID = targetPlayerID;

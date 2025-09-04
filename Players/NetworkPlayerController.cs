@@ -21,8 +21,6 @@ namespace FDG.Players
 
         private IMessageBusHost _messageBusHost; 
 
-        private NetworkRequestMessageSender _requestMessageSender;
-
         public event Action<bool>? OnReadyStateChanged;
         public event Action<PlayerID, EChatMessageType, string> OnMessageSentByPlayer;
 
@@ -33,7 +31,6 @@ namespace FDG.Players
             ID = playerID;
             _connectionID = connectionID;
             _messageBusHost = messageBusHost;
-            _requestMessageSender = new NetworkRequestMessageSender(playerID, connectionID, _messageBusHost, gameDataStore);
 
             _messageBusHost.RegisterForMessageEvent<PostLaunchPlayerReadyMessage>(OnPlayerReadyMessageReceived);
 
@@ -80,11 +77,6 @@ namespace FDG.Players
 
             OnReadyStateChanged += Handler;
             return source.Task;
-        }
-
-        public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request) where TRequest : IStageTaskRequest<TReply>
-        {
-            return _requestMessageSender.ResolveRequestOverNetwork<TRequest, TReply>(request);
         }
 
         private void OnPlayerReadyMessageReceived(PostLaunchPlayerReadyMessage message, ConnectionID _)

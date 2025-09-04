@@ -69,18 +69,6 @@ namespace FDG.Players
             return source.Task;
         }
 
-        public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
-            where TRequest : IStageTaskRequest<TReply> 
-        {
-            if(_localPlayer.StageResolverRegistry == null)
-            {
-                throw new InvalidOperationException($"Tried to request decision in a {nameof(LocalPlayerController)} " + 
-                    $"when the {nameof(IStageResolverRegistry)} was null.");
-            }
-
-            return _localPlayer.StageResolverRegistry.ResolveRequest<TRequest, TReply>(request);
-        }
-
         public void SendLogMessage(string logMessage)
         {
             _localPlayer.LogMessageUI?.DisplayLogMessage(logMessage);

@@ -13,9 +13,6 @@ namespace FDG.Players
 
         public ITempVisualDrawer? TempVisualDrawer { get; }
 
-        public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
-            where TRequest : IStageTaskRequest<TReply>;
-
         public Task WaitUntilReadyAsync();
 
         public void SendLogMessage(string logMessage);

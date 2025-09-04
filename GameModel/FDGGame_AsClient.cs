@@ -1,6 +1,7 @@
 ﻿using FDG;
 using FDG.Data;
 using FDG.EngineInterface;
+using FDG.MessageBus;
 using FDG.Network.Connection;
 using FDG.Network.Messages;
 using FDG.Network.Synchronization;
@@ -25,7 +26,7 @@ namespace F.GameModel
         public ITempVisualDrawer? TempVisualDrawer { get; private set; }
 
 
-        private ICommandDispatcher _commandDispatcher;
+        private IMessageBusClient _messageBusClient;
 
 
         private PlayerID _thisPlayerID;
@@ -39,15 +40,15 @@ namespace F.GameModel
 
         private NetworkedRequestMessageReceiver _networkedRequestReceiver;
 
-        public FDGGame_AsClient(ICommandDispatcher commandDispatcher, PlayerID thisPlayerID)
+        public FDGGame_AsClient(IMessageBusClient messageBusClient, PlayerID thisPlayerID)
         {
-            _commandDispatcher = commandDispatcher;
+            _messageBusClient = messageBusClient;
             _thisPlayerID = thisPlayerID;
 
             _gameDataStore = GameDataStore.GameDataStoreBuilder.GetDefault();
             TableState = new TableState(_gameDataStore);
 
-            _dataUpdateReceiver = new GameDataUpdateReceiver(_gameDataStore, commandDispatcher);
+            _dataUpdateReceiver = new GameDataUpdateReceiver(_gameDataStore, messageBusClient);
             _dataUpdateReceiver.RequestAllCurrentData();
         }
 
@@ -60,22 +61,22 @@ namespace F.GameModel
 
             StageResolverRegistry = stageResolverRegistry;
 
-            _commandDispatcher.RegisterForMessageEvent<LogChatNetworkMessage>(OnLogMessageReceived);
-            _commandDispatcher.RegisterForMessageEvent<PlayerChatNetworkMessage>(OnPlayerMessageReceived);
+            _messageBusClient.RegisterForMessageEvent<LogChatNetworkMessage>(OnLogMessageReceived);
+            _messageBusClient.RegisterForMessageEvent<PlayerChatNetworkMessage>(OnPlayerMessageReceived);
 
-            _commandDispatcher.RegisterForMessageEvent<AddTempVisualMessage>(OnAddTempVisualReceived);
-            _commandDispatcher.RegisterForMessageEvent<UpdateTempVisualTransformMessage>(OnUpdateTempVisualTransformReceived);
-            _commandDispatcher.RegisterForMessageEvent<UpdateTempVisualColorMessage>(OnUpdateTempVisualColorReceived);
-            _commandDispatcher.RegisterForMessageEvent<RemoveTempVisualMessage>(OnRemoveTempVisualReceived);
-            _commandDispatcher.RegisterForMessageEvent<ClearAllTempVisualsMessage>(OnClearTempVisualsReceived);
+            _messageBusClient.RegisterForMessageEvent<AddTempVisualMessage>(OnAddTempVisualReceived);
+            _messageBusClient.RegisterForMessageEvent<UpdateTempVisualTransformMessage>(OnUpdateTempVisualTransformReceived);
+            _messageBusClient.RegisterForMessageEvent<UpdateTempVisualColorMessage>(OnUpdateTempVisualColorReceived);
+            _messageBusClient.RegisterForMessageEvent<RemoveTempVisualMessage>(OnRemoveTempVisualReceived);
+            _messageBusClient.RegisterForMessageEvent<ClearAllTempVisualsMessage>(OnClearTempVisualsReceived);
 
-            _commandDispatcher.SendCommandToAllAsync(new PostLaunchPlayerReadyMessage(_thisPlayerID));
+            _messageBusClient.SendCommandToHostAsync(new PostLaunchPlayerReadyMessage(_thisPlayerID));
 
             PlayerMessageUI.OnMessageSentByPlayer += SendChatMessage;
 
             TempVisualDrawer = tempVisualDrawer;
 
-            _networkedRequestReceiver = new NetworkedRequestMessageReceiver(_thisPlayerID, _commandDispatcher, stageResolverRegistry,
+            _networkedRequestReceiver = new NetworkedRequestMessageReceiver(_thisPlayerID, _messageBusClient, stageResolverRegistry,
                 new OutstandingTaskLister(), _gameDataStore);
         }
 
@@ -118,7 +119,7 @@ namespace F.GameModel
         private void SendChatMessage(string message, EChatMessageType messageType)
         {
             NetworkPlayerSubmitChatMessage chatMessage = new NetworkPlayerSubmitChatMessage(messageType, message);
-            _commandDispatcher.SendCommandToAllAsync(chatMessage);
+            _messageBusClient.SendCommandToHostAsync(chatMessage);
         }
     }
 }

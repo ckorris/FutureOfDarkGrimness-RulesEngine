@@ -1,4 +1,5 @@
 using FDG.Data;
+using FDG.MessageBus;
 using FDG.Network.Connection;
 using FDG.Network.Messages.StageRequestMessages;
 using FDG.StageResolution;
@@ -99,7 +100,7 @@ namespace FDG.Tests
             // Arrange
             var playerID = new PlayerID(Guid.NewGuid());
             var connectionID = new ConnectionID(Guid.NewGuid());
-            var mockCommandDispatcher = new MockCommandDispatcher();
+            var mockCommandDispatcher = new MockMessageBusHost();
             var gameDataStore = new GameDataStore.GameDataStoreBuilder().Build();
             var sender = new NetworkRequestMessageSender(playerID, connectionID, mockCommandDispatcher, gameDataStore);
 
@@ -131,7 +132,7 @@ namespace FDG.Tests
             // Arrange
             var playerID = new PlayerID(Guid.NewGuid());
             var connectionID = new ConnectionID(Guid.NewGuid());
-            var mockCommandDispatcher = new MockCommandDispatcher();
+            var mockCommandDispatcher = new MockMessageBusHost();
             var gameDataStore = new GameDataStore.GameDataStoreBuilder().Build();
             var sender = new NetworkRequestMessageSender(playerID, connectionID, mockCommandDispatcher, gameDataStore);
 
@@ -177,7 +178,7 @@ namespace FDG.Tests
         }
 
         // Mock command dispatcher for testing network requests
-        private class MockCommandDispatcher : ICommandDispatcher
+        private class MockMessageBusHost : IMessageBusHost
         {
             private readonly Dictionary<Type, Action<object, ConnectionID>> _messageHandlers = new();
             public StageTaskRequestMessage? LastRequestMessage { get; private set; }

@@ -2,18 +2,19 @@
 using FDG.TempVisuals.Messages;
 using FDG.Network.Connection;
 using System.Drawing;
+using FDG.MessageBus;
 
 namespace FDG.TempVisuals
 {
     public class NetworkedTempVisualDrawer : ITempVisualDrawer
     {
-        private readonly ICommandDispatcher _dispatcher;
+        private readonly IMessageBusHost _messageBusHost;
         private readonly ConnectionID _connectionID;
 
 
-        public NetworkedTempVisualDrawer(ICommandDispatcher dispatcher, ConnectionID connectionID)
+        public NetworkedTempVisualDrawer(IMessageBusHost messageBusHost, ConnectionID connectionID)
         {
-            _dispatcher = dispatcher;
+            _messageBusHost = messageBusHost;
             _connectionID = connectionID;
         }
 
@@ -31,31 +32,31 @@ namespace FDG.TempVisuals
             }
 
             var addMessage = new AddTempVisualMessage(visualToSend);
-            _dispatcher.SendCommandToAllAsync(addMessage);
+            _messageBusHost.SendCommandToAllAsync(addMessage);
         }
 
         public void UpdateVisualTransform(Guid tempVisualID, Position position, Quaternion rotation, Vector3 scale)
         {
             var message = new UpdateTempVisualTransformMessage(tempVisualID, position, rotation, scale);
-            _dispatcher.SendCommandToAllAsync(message);
+            _messageBusHost.SendCommandToAllAsync(message);
         }
 
         public void UpdateVisualColor(Guid tempVisualID, Color color)
         {
             var message = new UpdateTempVisualColorMessage(tempVisualID, color);
-            _dispatcher.SendCommandToAllAsync(message);
+            _messageBusHost.SendCommandToAllAsync(message);
         }
 
         public void RemoveVisual(Guid tempVisualID)
         {
             var message = new RemoveTempVisualMessage(tempVisualID);
-            _dispatcher.SendCommandToAllAsync(message);
+            _messageBusHost.SendCommandToAllAsync(message);
         }
 
         public void ClearAllVisuals()
         {
             var message = new ClearAllTempVisualsMessage();
-            _dispatcher.SendCommandToAllAsync(message);
+            _messageBusHost.SendCommandToAllAsync(message);
         }
     }
 }

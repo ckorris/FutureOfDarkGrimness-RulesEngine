@@ -1,4 +1,5 @@
 ﻿using FDG.Data;
+using FDG.MessageBus;
 using FDG.Network.Connection;
 using FDG.Network.Messages;
 using FDG.StageResolution;
@@ -18,27 +19,28 @@ namespace FDG.Players
 
         private ConnectionID _connectionID;
 
-        private ICommandDispatcher _commandDispatcher; 
+        private IMessageBusHost _messageBusHost; 
 
         private NetworkRequestMessageSender _requestMessageSender;
 
         public event Action<bool>? OnReadyStateChanged;
         public event Action<PlayerID, EChatMessageType, string> OnMessageSentByPlayer;
 
-        public NetworkPlayerController(string name, PlayerID playerID, ConnectionID connectionID, ICommandDispatcher commandDispatcher,
-            IReadableGameDataStore gameDataStore)
+        public NetworkPlayerController(string name, PlayerID playerID, ConnectionID connectionID, 
+            IMessageBusHost messageBusHost, IReadableGameDataStore gameDataStore)
         {
             Name = name;
             ID = playerID;
             _connectionID = connectionID;
-            _commandDispatcher = commandDispatcher;
-            _requestMessageSender = new NetworkRequestMessageSender(playerID, connectionID, commandDispatcher, gameDataStore);
+            _messageBusHost = messageBusHost;
+            _requestMessageSender = new NetworkRequestMessageSender(playerID, connectionID, _messageBusHost, gameDataStore);
 
-            _commandDispatcher.RegisterForMessageEvent<PostLaunchPlayerReadyMessage>(OnPlayerReadyMessageReceived);
-            
-            _commandDispatcher.RegisterForMessageEvent<NetworkPlayerSubmitChatMessage>(OnPlayerChatMessageReceived);
+            _messageBusHost.RegisterForMessageEvent<PostLaunchPlayerReadyMessage>(OnPlayerReadyMessageReceived);
 
-            TempVisualDrawer = new NetworkedTempVisualDrawer(commandDispatcher, connectionID);
+            _messageBusHost.RegisterForMessageEvent<NetworkPlayerSubmitChatMessage>(OnPlayerChatMessageReceived);
+
+            //TODO: THis needs to be moved elsewhere.
+            TempVisualDrawer = new NetworkedTempVisualDrawer(_messageBusHost, connectionID);
         }
 
         private void OnPlayerChatMessageReceived(NetworkPlayerSubmitChatMessage message, ConnectionID iD)
@@ -97,13 +99,13 @@ namespace FDG.Players
         public void SendLogMessage(string logMessage)
         {
             LogChatNetworkMessage messageRecord = new LogChatNetworkMessage(logMessage);
-            _commandDispatcher.SendCommandToAllAsync(messageRecord);
+            _messageBusHost.SendCommandToAllAsync(messageRecord);
         }
 
         public void SendPlayerMessage(string sendingPlayerName, EChatMessageType messageType, string message)
         {
             PlayerChatNetworkMessage messageRecord = new PlayerChatNetworkMessage(sendingPlayerName, messageType, message);
-            _commandDispatcher.SendCommandToAllAsync(messageRecord);
+            _messageBusHost.SendCommandToAllAsync(messageRecord);
         }
     }
 }

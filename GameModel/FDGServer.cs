@@ -1,4 +1,5 @@
 ﻿using FDG.Data;
+using FDG.MessageBus;
 using FDG.Network.Connection;
 using FDG.Network.Synchronization;
 using FDG.Players;
@@ -14,21 +15,21 @@ namespace FDG.GameModel
     public class FDGServer
     {
         private IReadWriteableGameDataStore _gameDataStore;
-        private FDGHost _host;
+        private IMessageBusHost _messgeBusHost;
         private GameDataUpdateSender _synchronizer;
         private PlayerSlotManager _playerSlotManager;
         private GameContext _gameContext;
         private StateMachine<IGameContext> _stateMachine;
         private NetworkedTempVisualDrawer _tempVisualRelayer;
 
-        public FDGServer(IReadWriteableGameDataStore gameDataStore, FDGHost fdgHost, GameSettings gameSettings,
-            PlayerSlot[] playerSlots)
+        public FDGServer(IReadWriteableGameDataStore gameDataStore, IMessageBusHost messageBusHost, 
+            GameSettings gameSettings, PlayerSlot[] playerSlots)
         {
             Debug.WriteLine($"Started {nameof(FDGServer)}.");
 
             _gameDataStore = gameDataStore;
-            _host = fdgHost;
-            _synchronizer = new GameDataUpdateSender(gameDataStore, fdgHost);
+            _messgeBusHost = messageBusHost;
+            _synchronizer = new GameDataUpdateSender(gameDataStore, messageBusHost);
 
             //For players/player slots, work backwards from here to create what you need to send updates to players,
             //then what you need to make that thing, then what you need for that, etc. until you lead back to these args.

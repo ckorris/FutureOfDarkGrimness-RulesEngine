@@ -7,8 +7,11 @@ using System.Threading.Tasks;
 
 namespace FDG.MessageBus
 {
-    internal interface IMessageBusHost : IMessageReceiver
+    public interface IMessageBusHost : IMessageReceiver
     {
         public Task SendCommandToAllAsync<TMessage>(TMessage message);
+
+        public Task SendCommandToSingleAsync<TMessage>(TMessage message, ConnectionID connectionID);
+
     }
 }

@@ -1,5 +1,6 @@
 ﻿using FDG.Data;
 using FDG.Data.Containers;
+using FDG.MessageBus;
 using FDG.Network.Connection;
 using FDG.Network.Messages.DataMessages;
 
@@ -9,17 +10,17 @@ namespace FDG.Network.Synchronization
     {
         private IReadWriteableGameDataStore _gameDataStore;
 
-        private ICommandDispatcher _commandDispatcher;
+        private IMessageBusClient _messageBusClient;
 
-        public GameDataUpdateReceiver(IReadWriteableGameDataStore gameDataStore, ICommandDispatcher commandDispatcher)
+        public GameDataUpdateReceiver(IReadWriteableGameDataStore gameDataStore, IMessageBusClient messageBusClient)
         {
             _gameDataStore = gameDataStore;
-            _commandDispatcher = commandDispatcher;
+            _messageBusClient = messageBusClient;
 
-            _commandDispatcher.RegisterForMessageEvent<AddSingleDataMessage>(OnReceivedDataAddedMessage);
-            _commandDispatcher.RegisterForMessageEvent<UpdateSingleDataMessage>(OnReceivedDataUpdatedMessage);
-            _commandDispatcher.RegisterForMessageEvent<RemoveSingleDataMessage>(OnReceivedDataRemovedMessage);
-            _commandDispatcher.RegisterForMessageEvent<AddAllDataMessage>(OnReceivedAllDataMessage);
+            _messageBusClient.RegisterForMessageEvent<AddSingleDataMessage>(OnReceivedDataAddedMessage);
+            _messageBusClient.RegisterForMessageEvent<UpdateSingleDataMessage>(OnReceivedDataUpdatedMessage);
+            _messageBusClient.RegisterForMessageEvent<RemoveSingleDataMessage>(OnReceivedDataRemovedMessage);
+            _messageBusClient.RegisterForMessageEvent<AddAllDataMessage>(OnReceivedAllDataMessage);
 
         }
 
@@ -28,7 +29,7 @@ namespace FDG.Network.Synchronization
         /// </summary>
         public void RequestAllCurrentData()
         {
-            _commandDispatcher.SendCommandToAllAsync(new RequestAllDataMessage());
+            _messageBusClient.SendCommandToHostAsync(new RequestAllDataMessage());
         }
 
         private void OnReceivedDataAddedMessage(AddSingleDataMessage addMessage, ConnectionID _)

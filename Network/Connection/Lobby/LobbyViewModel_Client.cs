@@ -1,6 +1,7 @@
 ﻿using F.GameModel;
 using FDG;
 using FDG.EngineInterface;
+using FDG.MessageBus;
 using FDG.Network.Connection;
 using FDG.Network.Connection.Lobby;
 using FDG.Network.Messages;
@@ -55,17 +56,16 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
         private PlayerID? _thisPlayerID = null;
         private string _thisPlayerName;
 
-        private ICommandDispatcher _commandDispatcher;
+        private IMessageBusClient _messageBusClient;
 
-        private FDGClient _client;
 
         private const string SERVER_JOIN_MESSAGE = "Welcome to the server.";
 
         public event Action<IFDGGame>? OnLaunched;
 
-        public LobbyViewModel_Client(string thisPlayerName, FDGClient client)
+        public LobbyViewModel_Client(string thisPlayerName, INetworkClient networkclient)
         {
-            _client = client;
+            _messageBusClient = new MessageBusClient_Networked(networkclient);
 
             _thisPlayerName = thisPlayerName;
 
@@ -80,18 +80,16 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
             //Init empty player list. The host should update us.
             _playerInfos = new BehaviorSubject<IReadOnlyList<LobbyPlayerInfoSummary>>(new List<LobbyPlayerInfoSummary>());
 
-            _commandDispatcher = client;
-
-            _commandDispatcher.RegisterForMessageEvent<LobbyPlayerIDAssignment>(OnPlayerIDAssignmentReceived);
-            _commandDispatcher.RegisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);
-            _commandDispatcher.RegisterForMessageEvent<LobbyServerNameMessage>(OnServerNameUpdateReceived);
-            _commandDispatcher.RegisterForMessageEvent<LobbyPlayerListUpdate>(OnPlayerListUpdateReceived);
-            _commandDispatcher.RegisterForMessageEvent<LaunchGameMessage>(OnLaunchGameMessageReceived);
-            _commandDispatcher.RegisterForMessageEvent<LobbyGameSettingsUpdate>(OnGameSettingsUpdateReceived);
+            _messageBusClient.RegisterForMessageEvent<LobbyPlayerIDAssignment>(OnPlayerIDAssignmentReceived);
+            _messageBusClient.RegisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);
+            _messageBusClient.RegisterForMessageEvent<LobbyServerNameMessage>(OnServerNameUpdateReceived);
+            _messageBusClient.RegisterForMessageEvent<LobbyPlayerListUpdate>(OnPlayerListUpdateReceived);
+            _messageBusClient.RegisterForMessageEvent<LaunchGameMessage>(OnLaunchGameMessageReceived);
+            _messageBusClient.RegisterForMessageEvent<LobbyGameSettingsUpdate>(OnGameSettingsUpdateReceived);
 
             //Send greeting. 
             NewLobbyClientGreeting greeting = new NewLobbyClientGreeting(thisPlayerName);
-            _commandDispatcher.SendCommandToAllAsync(greeting);
+            _messageBusClient.SendCommandToHostAsync(greeting);
 
             //Show init message in chatbox.
             AddMessageToLocalList(new LobbyChatMessage("System", SERVER_JOIN_MESSAGE));
@@ -108,7 +106,7 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
 
             LobbyChatMessage chatMessage = new LobbyChatMessage(_thisPlayerName, message);
 
-            _commandDispatcher.SendCommandToAllAsync(chatMessage);
+            _messageBusClient.SendCommandToHostAsync(chatMessage);
         }
 
         private void AddMessageToLocalList(LobbyChatMessage chatMessage)
@@ -125,7 +123,7 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
 
         public void Dispose()
         {
-            _commandDispatcher.DeregisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);
+            _messageBusClient.DeregisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);
         }
 
         private void OnPlayerIDAssignmentReceived(LobbyPlayerIDAssignment assignment, ConnectionID _)
@@ -179,7 +177,7 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
                 throw new InvalidOperationException("Tried to launch game without a PlayerID being assigned.");
             }
 
-            FDGGame_AsClient fdgGame = new FDGGame_AsClient(_client, _thisPlayerID.Value);
+            FDGGame_AsClient fdgGame = new FDGGame_AsClient(_messageBusClient, _thisPlayerID.Value);
 
             OnLaunched?.Invoke(fdgGame);
         }
@@ -228,7 +226,7 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
 
             ArmyListUpdateMessage message = new ArmyListUpdateMessage(playerId, armyListFile);
 
-            _commandDispatcher.SendCommandToAllAsync(message);
+            _messageBusClient.SendCommandToHostAsync(message);
         }
     }
 }

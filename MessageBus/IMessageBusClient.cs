@@ -1,9 +1,9 @@
 ﻿
 namespace FDG.MessageBus
 {
-    internal interface IMessageBusClient : IMessageReceiver
+    public interface IMessageBusClient : IMessageReceiver
     {
-        public Task SendMessageToHostAsync<TMessage>(TMessage message);
+        public Task SendCommandToHostAsync<TMessage>(TMessage message);
 
     }
 }

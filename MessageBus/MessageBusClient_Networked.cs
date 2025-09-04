@@ -31,7 +31,7 @@ namespace FDG.MessageBus
 
 
 
-        public Task SendMessageToHostAsync<TMessage>(TMessage message)
+        public Task SendCommandToHostAsync<TMessage>(TMessage message)
         {
             ArraySegment<Byte> messageBytes = _messageSerializer.SerializeMessage(message);
             return _networkClient.SendCommandToHost(messageBytes, true);

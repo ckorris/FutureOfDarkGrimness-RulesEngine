@@ -1,4 +1,5 @@
 ﻿using FDG.Data;
+using FDG.MessageBus;
 using FDG.Network.Connection;
 using FDG.Network.Messages.StageRequestMessages;
 using Newtonsoft.Json;
@@ -16,20 +17,20 @@ namespace FDG.StageResolution
     {
         private PlayerID _targetPlayerID;
         private ConnectionID _connectionID;
-        private ICommandDispatcher _commandDispatcher;
+        private IMessageBusHost _messageBusHost;
         private IReadableGameDataStore _gameDataStore;
 
         private Dictionary<TaskID, SuccessAndFailActions> _pendingTaskAndResolvers = new Dictionary<TaskID, SuccessAndFailActions>();
 
         public NetworkRequestMessageSender(PlayerID targetPlayerID, ConnectionID connectionID,
-            ICommandDispatcher commandDispatcher, IReadableGameDataStore gameDataStore)
+            IMessageBusHost messageBusHost, IReadableGameDataStore gameDataStore)
         {
             _targetPlayerID = targetPlayerID;
-            _commandDispatcher = commandDispatcher;
+            _messageBusHost = messageBusHost;
             _gameDataStore = gameDataStore;
 
-            _commandDispatcher.RegisterForMessageEvent<StageTaskReplyMessage>(OnReceivedReplyMessage);
-            _commandDispatcher.RegisterForMessageEvent<StageTaskRequestErrorMessage>(OnReceivedErrorMessage);
+            _messageBusHost.RegisterForMessageEvent<StageTaskReplyMessage>(OnReceivedReplyMessage);
+            _messageBusHost.RegisterForMessageEvent<StageTaskRequestErrorMessage>(OnReceivedErrorMessage);
         }
 
         public Task<TReply> ResolveRequestOverNetwork<TRequest, TReply>(TRequest request)
@@ -69,7 +70,7 @@ namespace FDG.StageResolution
 
             _pendingTaskAndResolvers.Add(taskID, actions);
 
-            _commandDispatcher.SendCommandToAllAsync(requestMessage);
+            _messageBusHost.SendCommandToAllAsync(requestMessage);
 
             return taskCompletionSource.Task;
         }
@@ -134,8 +135,8 @@ namespace FDG.StageResolution
 
         public void Dispose()
         {
-            _commandDispatcher.DeregisterForMessageEvent<StageTaskReplyMessage>(OnReceivedReplyMessage);
-            _commandDispatcher.DeregisterForMessageEvent<StageTaskRequestErrorMessage>(OnReceivedErrorMessage);
+            _messageBusHost.DeregisterForMessageEvent<StageTaskReplyMessage>(OnReceivedReplyMessage);
+            _messageBusHost.DeregisterForMessageEvent<StageTaskRequestErrorMessage>(OnReceivedErrorMessage);
         }
 
         private class SuccessAndFailActions

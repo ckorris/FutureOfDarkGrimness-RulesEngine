@@ -1,31 +1,32 @@
 ﻿using FDG.Data;
+using FDG.MessageBus;
 using FDG.Network.Connection;
 using FDG.Network.Messages.StageRequestMessages;
 
 namespace FDG.StageResolution
 {
-    internal class NetworkedRequestMessageReceiver : IDisposable
+    internal class NetworkedRequestMessageReceiver : IDisposable //TODO: Doesn't need to be named "Networked" anymore.
     {
         private PlayerID _playerID;
-        private ICommandDispatcher _commandDispatcher;
+        private IMessageBusClient _messageBusClient;
         private IStageResolverRegistry _stageResolverRegistry;
         private OutstandingTaskLister _outstandingTaskLister;
         private IReadableGameDataStore _gameDataStore;
 
 
-        public NetworkedRequestMessageReceiver(PlayerID playerID, ICommandDispatcher commandDispatcher, 
+        public NetworkedRequestMessageReceiver(PlayerID playerID, IMessageBusClient messageBusClient, 
             IStageResolverRegistry stageResolverRegistry, OutstandingTaskLister outstandingTaskLister,
             IReadableGameDataStore gameDataStore)
         {
             _playerID = playerID;
-            _commandDispatcher = commandDispatcher;
+            _messageBusClient = messageBusClient;
             _stageResolverRegistry = stageResolverRegistry;
             _outstandingTaskLister = outstandingTaskLister;
             _gameDataStore = gameDataStore;
 
-            _commandDispatcher.RegisterForMessageEvent<StageTaskRequestMessage>(OnReceivedStageTaskRequestMessage);
-            _commandDispatcher.RegisterForMessageEvent<StageTaskNotifyAwaitingMessage>(OnReceivedNotifyAwaitingMessage);
-            _commandDispatcher.RegisterForMessageEvent<StageTaskNotifyResolvedMessage>(OnReceivedNotifyResolvedMessage);
+            _messageBusClient.RegisterForMessageEvent<StageTaskRequestMessage>(OnReceivedStageTaskRequestMessage);
+            _messageBusClient.RegisterForMessageEvent<StageTaskNotifyAwaitingMessage>(OnReceivedNotifyAwaitingMessage);
+            _messageBusClient.RegisterForMessageEvent<StageTaskNotifyResolvedMessage>(OnReceivedNotifyResolvedMessage);
         }
 
         private void OnReceivedStageTaskRequestMessage(StageTaskRequestMessage requestMessage, ConnectionID sourceConnectionID)
@@ -37,7 +38,7 @@ namespace FDG.StageResolution
 
                 StageTaskRequestErrorMessage errorMessage =
                     new StageTaskRequestErrorMessage(requestMessage.PlayerID, requestMessage.TaskID, errorString);
-                _commandDispatcher.SendCommandToAllAsync(errorMessage);
+                _messageBusClient.SendCommandToHostAsync(errorMessage);
 
                 return;
             }
@@ -57,7 +58,7 @@ namespace FDG.StageResolution
                 StageTaskReplyMessage replyMessage = new StageTaskReplyMessage(requestMessage.PlayerID, requestMessage.TaskID,
                     requestMessage.ReplyFullTypeName, replyJson.Result);
 
-                await _commandDispatcher.SendCommandToSingleAsync(replyMessage, sourceConnectionID);
+                await _messageBusClient.SendCommandToHostAsync(replyMessage);
             }
             catch (Exception ex)
             {
@@ -81,9 +82,9 @@ namespace FDG.StageResolution
 
         public void Dispose()
         {
-            _commandDispatcher.DeregisterForMessageEvent<StageTaskRequestMessage>(OnReceivedStageTaskRequestMessage);
-            _commandDispatcher.DeregisterForMessageEvent<StageTaskNotifyAwaitingMessage>(OnReceivedNotifyAwaitingMessage);
-            _commandDispatcher.DeregisterForMessageEvent<StageTaskNotifyResolvedMessage>(OnReceivedNotifyResolvedMessage);
+            _messageBusClient.DeregisterForMessageEvent<StageTaskRequestMessage>(OnReceivedStageTaskRequestMessage);
+            _messageBusClient.DeregisterForMessageEvent<StageTaskNotifyAwaitingMessage>(OnReceivedNotifyAwaitingMessage);
+            _messageBusClient.DeregisterForMessageEvent<StageTaskNotifyResolvedMessage>(OnReceivedNotifyResolvedMessage);
         }
     }
 }

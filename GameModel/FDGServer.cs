@@ -6,8 +6,10 @@ using FDG.Players;
 using FDG.SaveLoad;
 using FDG.StageResolution;
 using FDG.Stages;
+using FDG.StateMachine.StateMachineBuilders;
 using FDG.TempVisuals;
 using FDG.TextInterface;
+using FDG.Utilities;
 using FutureOfDarkGrimness.StateMachine.StateMachineBuilders;
 using System.Diagnostics;
 
@@ -22,6 +24,8 @@ namespace FDG.GameModel
         private GameContext _gameContext;
         private StateMachine<IGameContext> _stateMachine;
         private NetworkedTempVisualDrawer _tempVisualRelayer;
+
+        private static bool TEST_SINGLE_TURN = true; //Turn on to skip most of the game.
 
         public FDGServer(IReadWriteableGameDataStore gameDataStore, IMessageBusHost messageBusHost, 
             GameSettings gameSettings, PlayerSlot[] playerSlots)
@@ -54,6 +58,12 @@ namespace FDG.GameModel
             _gameContext = new GameContext(textOutput, GetDiceRoller(gameSettings), requestMessageSender, 
                 tableState, _gameDataStore, tempVisualRelayer);
 
+            if (TEST_SINGLE_TURN)
+            {
+                LaunchSingleTurnTester(_gameContext);
+                return;
+            }
+
             _stateMachine = new StateMachine<IGameContext>(new GDFStateMachineBuilder(), _gameContext);
 
             //For test, make a thing. 
@@ -61,6 +71,8 @@ namespace FDG.GameModel
 
             _ = LaunchStateMachineOnceReady(_stateMachine, _gameContext);
         }
+
+
 
         private void AddTeamDataToGameDataStore(PlayerSlot[] playerSlots, IReadWriteableGameDataStore gameDataStore)
         {
@@ -131,6 +143,56 @@ namespace FDG.GameModel
         {
             //TODO: Wait for all clients to indicate that they are connected and ready.
             //Await something.
+            Debug.WriteLine("Awaiting players to be ready.");
+            await _playerSlotManager.WaitUntilAllSlotsReady(); //Half a second. At least lets us test before implementing this.
+            Debug.WriteLine("All players are ready. Launching stage machine.");
+
+            _ = stateMachine.Enter(context);
+        }
+
+        private async void LaunchSingleTurnTester(GameContext gameContext)
+        {
+            SingleTurnStageTestBuilder testBuilder = new SingleTurnStageTestBuilder();
+
+            //_stateMachine = new StateMachine<IGameContext>(new GDFStateMachineBuilder(), _gameContext);
+
+            StateMachine<ISingleRoundContext> stateMachine = new StateMachine<ISingleRoundContext>(testBuilder, gameContext);
+
+            int playerCount = _playerSlotManager.SlotInfos.Count();
+
+            float xOffset = GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES / (playerCount + 2);
+            float zStart = 16; //Arbitrary.
+            float zOffset = 3f; //Arbitrary.
+
+            Dictionary<PlayerID, int> modelDeployCount = new Dictionary<PlayerID, int>();
+
+            //Place the units on the board already since we're skipping deployment.
+            foreach (DataBinding<UnitData> unit in gameContext.GameDataStore.GetAllDataBindings<UnitData>())
+            {
+                PlayerID playerID = unit.PlayerID();
+                int playerSlotIndex = Array.IndexOf(_playerSlotManager.PlayerSlots, _playerSlotManager.GetSlotByID(playerID));
+                float xPos = xOffset * (playerSlotIndex + 1);
+
+                if(modelDeployCount.ContainsKey(playerID) == false)
+                {
+                    modelDeployCount[playerID] = 0;
+                }
+
+                foreach(DataBinding<ModelData> model in unit.ModelBindings())
+                {
+                    float zPos = zStart + modelDeployCount[playerID] * zOffset;
+
+                    model.GetValue().SetPosition(new Position(xPos, zPos));
+
+                    modelDeployCount[playerID]++;
+                }
+            }
+
+
+            List<ITeam> teamOrder = gameContext.TableState.Teams.Objects.ToList();
+
+            SingleRoundContext context = new SingleRoundContext(gameContext, teamOrder);
+
             Debug.WriteLine("Awaiting players to be ready.");
             await _playerSlotManager.WaitUntilAllSlotsReady(); //Half a second. At least lets us test before implementing this.
             Debug.WriteLine("All players are ready. Launching stage machine.");

@@ -99,15 +99,14 @@ namespace FDG.Tests
         {
             // Arrange
             var playerID = new PlayerID(Guid.NewGuid());
-            var connectionID = new ConnectionID(Guid.NewGuid());
             var mockCommandDispatcher = new MockMessageBusHost();
             var gameDataStore = new GameDataStore.GameDataStoreBuilder().Build();
-            var sender = new RequestMessageSender(playerID, connectionID, mockCommandDispatcher, gameDataStore);
+            var sender = new RequestMessageSender(mockCommandDispatcher, gameDataStore);
 
             var request = new TestRequest(playerID, new TaskID(Guid.NewGuid()), "Test Task");
 
             // Act
-            var resolveTask = sender.ResolveRequestOverNetwork<TestRequest, string>(request);
+            var resolveTask = sender.RequestDecision<TestRequest, string>(request);
             
             // Get the actual task ID used in the request
             var actualTaskID = mockCommandDispatcher.LastRequestMessage?.TaskID 
@@ -131,15 +130,14 @@ namespace FDG.Tests
         {
             // Arrange
             var playerID = new PlayerID(Guid.NewGuid());
-            var connectionID = new ConnectionID(Guid.NewGuid());
             var mockCommandDispatcher = new MockMessageBusHost();
             var gameDataStore = new GameDataStore.GameDataStoreBuilder().Build();
-            var sender = new RequestMessageSender(playerID, connectionID, mockCommandDispatcher, gameDataStore);
+            var sender = new RequestMessageSender(mockCommandDispatcher, gameDataStore);
 
             var request = new TestRequest(playerID, new TaskID(Guid.NewGuid()), "Test Task");
 
             // Act
-            var resolveTask = sender.ResolveRequestOverNetwork<TestRequest, string>(request);
+            var resolveTask = sender.RequestDecision<TestRequest, string>(request);
             
             // Get the actual task ID used in the request
             var actualTaskID = mockCommandDispatcher.LastRequestMessage?.TaskID 

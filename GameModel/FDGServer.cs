@@ -4,6 +4,7 @@ using FDG.Network.Connection;
 using FDG.Network.Synchronization;
 using FDG.Players;
 using FDG.SaveLoad;
+using FDG.StageResolution;
 using FDG.Stages;
 using FDG.TempVisuals;
 using FDG.TextInterface;
@@ -48,7 +49,9 @@ namespace FDG.GameModel
 
             TempVisualRelayer tempVisualRelayer = new TempVisualRelayer(_playerSlotManager);
 
-            _gameContext = new GameContext(textOutput, GetDiceRoller(gameSettings), _playerSlotManager, 
+            RequestMessageSender requestMessageSender = new RequestMessageSender(messageBusHost, gameDataStore);
+
+            _gameContext = new GameContext(textOutput, GetDiceRoller(gameSettings), requestMessageSender, 
                 tableState, _gameDataStore, tempVisualRelayer);
 
             _stateMachine = new StateMachine<IGameContext>(new GDFStateMachineBuilder(), _gameContext);

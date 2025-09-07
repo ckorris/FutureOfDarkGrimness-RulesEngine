@@ -3,7 +3,7 @@ using System.Runtime.CompilerServices;
 
 namespace FDG.Players
 {
-    internal class PlayerSlotManager : IPlayerRequestByID
+    internal class PlayerSlotManager
     {
         /// <summary>
         /// Gets a copy of the player slots array presented as info that's publicly available and UI-friendly.
@@ -88,6 +88,7 @@ namespace FDG.Players
             return Task.WhenAll(playerReadyTasks);
         }
 
+        /*
         public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request) 
             where TRequest : IStageTaskRequest<TReply>
         {
@@ -97,6 +98,7 @@ namespace FDG.Players
             //how the requests are serialized. I wanna avoid serializing and deserializing
             //locally if possible, but also avoid hacks.
         }
+        */
 
         private IPlayerController GetPlayerControllerByID(PlayerID playerID)
         {

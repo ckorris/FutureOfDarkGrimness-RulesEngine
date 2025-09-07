@@ -2,30 +2,21 @@
 using FDG.MessageBus;
 using FDG.Network.Connection;
 using FDG.Network.Messages.StageRequestMessages;
+using FDG.Players;
 using Newtonsoft.Json;
 
 namespace FDG.StageResolution
 {
-    /// <summary>
-    /// 
-    /// </summary>
-    /// <remarks>
-    /// Intending to be player-specific and used within networked players, but might be
-    /// able to be absorbed by it.
-    /// </remarks>
-    internal class RequestMessageSender : IDisposable
+    internal class RequestMessageSender :  IPlayerRequestByID,  IDisposable
     {
-        private PlayerID _targetPlayerID;
-        private ConnectionID _connectionID;
         private IMessageBusHost _messageBusHost;
         private IReadableGameDataStore _gameDataStore;
 
         private Dictionary<TaskID, SuccessAndFailActions> _pendingTaskAndResolvers = new Dictionary<TaskID, SuccessAndFailActions>();
 
-        public RequestMessageSender(PlayerID targetPlayerID, ConnectionID connectionID,
-            IMessageBusHost messageBusHost, IReadableGameDataStore gameDataStore)
+        public RequestMessageSender(IMessageBusHost messageBusHost, IReadableGameDataStore gameDataStore)
         {
-            _targetPlayerID = targetPlayerID;
+            //_targetPlayerID = targetPlayerID;
             _messageBusHost = messageBusHost;
             _gameDataStore = gameDataStore;
 
@@ -33,9 +24,12 @@ namespace FDG.StageResolution
             _messageBusHost.RegisterForMessageEvent<StageTaskRequestErrorMessage>(OnReceivedErrorMessage);
         }
 
-        public Task<TReply> ResolveRequestOverNetwork<TRequest, TReply>(TRequest request)
+        public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request) 
             where TRequest : IStageTaskRequest<TReply>
         {
+
+            PlayerID targetPlayerID = request.TargetPlayerID;
+
             TaskID taskID = new TaskID(Guid.NewGuid());
             string? requestFullTypeName = typeof(TRequest).FullName;
             string? replyFullTypeName = typeof(TReply).FullName;
@@ -57,13 +51,13 @@ namespace FDG.StageResolution
                 throw new JsonSerializationException($"Failed to serialize request of type {typeof(TRequest)}.");
             }
 
-            StageTaskRequestMessage requestMessage = new StageTaskRequestMessage(_targetPlayerID, taskID, requestFullTypeName,
+            StageTaskRequestMessage requestMessage = new StageTaskRequestMessage(targetPlayerID, taskID, requestFullTypeName,
                 replyFullTypeName, requestJson);
 
             TaskCompletionSource<TReply> taskCompletionSource = new TaskCompletionSource<TReply>();
 
             Action<string> onSuccess = (replyJson) => DeserializeAndReturnReply(replyJson, taskCompletionSource);
-            Action<string> onFailed = (replyJson) => ReturnFailure(_targetPlayerID, requestFullTypeName,
+            Action<string> onFailed = (replyJson) => ReturnFailure(targetPlayerID, requestFullTypeName,
                 replyJson, taskCompletionSource);
 
             SuccessAndFailActions actions = new SuccessAndFailActions(onSuccess, onFailed);
@@ -77,11 +71,13 @@ namespace FDG.StageResolution
 
         private void OnReceivedReplyMessage(StageTaskReplyMessage replyMessage, ConnectionID _)
         {
+            /*
             if (replyMessage.PlayerID != _targetPlayerID)
             {
                 return;
                 //Ignore this message, and it's okay, all instances of this are listening.
             }
+            */
 
             if (_pendingTaskAndResolvers.TryGetValue(replyMessage.TaskID, out SuccessAndFailActions? actions) == false)
             {
@@ -100,11 +96,13 @@ namespace FDG.StageResolution
 
         private void OnReceivedErrorMessage(StageTaskRequestErrorMessage errorMessage, ConnectionID _)
         {
+            /*
             if (errorMessage.PlayerID != _targetPlayerID)
             {
                 return;
                 //Ignore this message, and it's okay, all instances of this are listening.
             }
+            */
 
             if (_pendingTaskAndResolvers.TryGetValue(errorMessage.TaskID, out SuccessAndFailActions? actions) == false)
             {
@@ -138,6 +136,8 @@ namespace FDG.StageResolution
             _messageBusHost.DeregisterForMessageEvent<StageTaskReplyMessage>(OnReceivedReplyMessage);
             _messageBusHost.DeregisterForMessageEvent<StageTaskRequestErrorMessage>(OnReceivedErrorMessage);
         }
+
+
 
         private class SuccessAndFailActions
         {

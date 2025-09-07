@@ -1,12 +1,9 @@
 ﻿using FDG.BuiltInAssets;
 using Newtonsoft.Json;
-/*
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
-*/
 
-//TODO: I had to comment out this on a flight because I couldn't download the proper NuGet package.
 
 namespace FDG.SerializableVisuals.Textures
 {
@@ -20,9 +17,8 @@ namespace FDG.SerializableVisuals.Textures
         { 
             get
             {
-                return 1;
                 LoadIfNeeded();
-                //return _image.Width;
+                return _image.Width;
             }
         }
 
@@ -31,9 +27,8 @@ namespace FDG.SerializableVisuals.Textures
         {
             get
             {
-                return 1;
                 LoadIfNeeded();
-                //return _image.Height;
+                return _image.Height;
             }
         }
 
@@ -42,13 +37,12 @@ namespace FDG.SerializableVisuals.Textures
         {
             get
             {
-                return new byte[4] { 1,1,1,1};
                 LoadIfNeeded();
                 
-                //byte[] rawData = new byte[_image.Width * _image.Height * 4]; //4 one-byte channels.
-                //_image.CopyPixelDataTo(rawData);
+                byte[] rawData = new byte[_image.Width * _image.Height * 4]; //4 one-byte channels.
+                _image.CopyPixelDataTo(rawData);
 
-                //return rawData;
+                return rawData;
             }
         }
 
@@ -57,7 +51,7 @@ namespace FDG.SerializableVisuals.Textures
 
         private bool _hasLoaded = false;
 
-        //private Image<Rgba32> _image;
+        private Image<Rgba32> _image;
 
         public BuiltInPngTextureProvider(string resourcePath)
         {
@@ -73,7 +67,7 @@ namespace FDG.SerializableVisuals.Textures
 
             byte[] textureData = BuiltInAssetHelper.GetEmbeddedResource(ResourcePath);
 
-            /*
+            
             using (MemoryStream stream = new MemoryStream(textureData))
             {
                 _image = Image.Load<Rgba32>(stream);
@@ -81,7 +75,7 @@ namespace FDG.SerializableVisuals.Textures
                 //ImageSharp assumes Y coordinates are top-down, but most graphics APIs do the opposite. So flip the data.
                 _image.Mutate(x => x.Flip(FlipMode.Vertical));
             }
-            */
+            
             _hasLoaded = true;
         }
     }

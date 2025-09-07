@@ -178,15 +178,15 @@ namespace FDG.Tests
         // Mock command dispatcher for testing network requests
         private class MockMessageBusHost : IMessageBusHost
         {
-            private readonly Dictionary<Type, Action<object, ConnectionID>> _messageHandlers = new();
+            private readonly Dictionary<Type, Action<object>> _messageHandlers = new();
             public StageTaskRequestMessage? LastRequestMessage { get; private set; }
 
-            public void RegisterForMessageEvent<T>(Action<T, ConnectionID> handler)
+            public void RegisterForMessageEvent<T>(Action<T> handler)
             {
-                _messageHandlers[typeof(T)] = (message, connectionID) => handler((T)message, connectionID);
+                _messageHandlers[typeof(T)] = (message) => handler((T)message);
             }
 
-            public void DeregisterForMessageEvent<T>(Action<T, ConnectionID> handler)
+            public void DeregisterForMessageEvent<T>(Action<T> handler)
             {
                 _messageHandlers.Remove(typeof(T));
             }
@@ -215,11 +215,16 @@ namespace FDG.Tests
             {
                 if (_messageHandlers.TryGetValue(typeof(T), out var handler))
                 {
-                    handler(message, new ConnectionID(Guid.NewGuid()));
+                    handler(message);
                 }
             }
 
             public void Dispose() { }
+
+            public ConnectionID GetCurrentMessageConnectionID()
+            {
+                throw new NotImplementedException();
+            }
         }
     }
 } 

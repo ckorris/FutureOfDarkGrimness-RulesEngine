@@ -32,22 +32,22 @@ namespace FDG.Network.Synchronization
             _messageBusClient.SendCommandToHostAsync(new RequestAllDataMessage());
         }
 
-        private void OnReceivedDataAddedMessage(AddSingleDataMessage addMessage, ConnectionID _)
+        private void OnReceivedDataAddedMessage(AddSingleDataMessage addMessage)
         {
             _gameDataStore.CreateFromReferenceAndJson(addMessage.DataReference, addMessage.InitialValueAsJson);
         }
 
-        private void OnReceivedDataUpdatedMessage(UpdateSingleDataMessage updateMessage, ConnectionID _)
+        private void OnReceivedDataUpdatedMessage(UpdateSingleDataMessage updateMessage)
         {
             _gameDataStore.SetValueWithJson(updateMessage.DataReference, updateMessage.ValueAsJson);
         }
 
-        private void OnReceivedDataRemovedMessage(RemoveSingleDataMessage removeMessage, ConnectionID _)
+        private void OnReceivedDataRemovedMessage(RemoveSingleDataMessage removeMessage)
         {
             _gameDataStore.Destroy(removeMessage.DataReference);
         }
 
-        private void OnReceivedAllDataMessage(AddAllDataMessage allDataMessage, ConnectionID _)
+        private void OnReceivedAllDataMessage(AddAllDataMessage allDataMessage)
         {
             foreach (ReferenceJsonValuePair refValuePair in allDataMessage.AllData)
             {

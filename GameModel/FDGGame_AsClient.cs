@@ -80,37 +80,37 @@ namespace F.GameModel
                 new OutstandingTaskLister(), _gameDataStore);
         }
 
-        private void OnLogMessageReceived(LogChatNetworkMessage message, ConnectionID _)
+        private void OnLogMessageReceived(LogChatNetworkMessage message)
         {
             LogMessageUI?.DisplayLogMessage(message.LogMessage);
         }
 
-        private void OnPlayerMessageReceived(PlayerChatNetworkMessage message, ConnectionID _)
+        private void OnPlayerMessageReceived(PlayerChatNetworkMessage message)
         {
             PlayerMessageUI?.DisplayPlayerMessage(message.SendingPlayerName, message.MessageType, message.Message);
         }
 
-        private void OnAddTempVisualReceived(AddTempVisualMessage message, ConnectionID _)
+        private void OnAddTempVisualReceived(AddTempVisualMessage message)
         {
             TempVisualDrawer?.AddVisual(message.TempVisual);
         }
 
-        private void OnUpdateTempVisualTransformReceived(UpdateTempVisualTransformMessage message, ConnectionID iD)
+        private void OnUpdateTempVisualTransformReceived(UpdateTempVisualTransformMessage message)
         {
             TempVisualDrawer?.UpdateVisualTransform(message.VisualID, message.Position, message.Rotation, message.Scale);
         }
 
-        private void OnUpdateTempVisualColorReceived(UpdateTempVisualColorMessage message, ConnectionID iD)
+        private void OnUpdateTempVisualColorReceived(UpdateTempVisualColorMessage message)
         {
             TempVisualDrawer?.UpdateVisualColor(message.TempVisualID, message.Color);
         }
 
-        private void OnRemoveTempVisualReceived(RemoveTempVisualMessage message, ConnectionID iD)
+        private void OnRemoveTempVisualReceived(RemoveTempVisualMessage message)
         {
             TempVisualDrawer?.RemoveVisual(message.VisualID);
         }
 
-        private void OnClearTempVisualsReceived(ClearAllTempVisualsMessage message, ConnectionID iD)
+        private void OnClearTempVisualsReceived(ClearAllTempVisualsMessage message)
         {
             TempVisualDrawer?.ClearAllVisuals();
         }

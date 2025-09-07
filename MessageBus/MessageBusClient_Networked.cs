@@ -18,14 +18,14 @@ namespace FDG.MessageBus
             _networkClient.OnMessageReceived += OnMessageBytesReceived;
         }
 
-        public void RegisterForMessageEvent<T>(Action<T, ConnectionID> onMessageReceived)
+        public void RegisterForMessageEvent<T>(Action<T> onMessageReceived)
         {
             _messageRegistrar.RegisterForMessageEvent(onMessageReceived);
             _messageSerializer.RegisterMessageType<T>();
         }
 
 
-        public void DeregisterForMessageEvent<T>(Action<T, ConnectionID> messageToUnsubscribe)
+        public void DeregisterForMessageEvent<T>(Action<T> messageToUnsubscribe)
         {
             _messageRegistrar.DeregisterForMessageEvent(messageToUnsubscribe);
         }

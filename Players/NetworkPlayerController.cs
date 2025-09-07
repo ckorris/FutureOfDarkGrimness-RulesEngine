@@ -40,12 +40,14 @@ namespace FDG.Players
             TempVisualDrawer = new NetworkedTempVisualDrawer(_messageBusHost, connectionID);
         }
 
-        private void OnPlayerChatMessageReceived(NetworkPlayerSubmitChatMessage message, ConnectionID iD)
+        private void OnPlayerChatMessageReceived(NetworkPlayerSubmitChatMessage message)
         {
+            /*
             if(iD != _connectionID)
             {
                 return; //Not this player.
             }
+            */
 
             OnMessageSentByPlayer?.Invoke(ID, message.MessageType, message.Message);
         }
@@ -79,7 +81,7 @@ namespace FDG.Players
             return source.Task;
         }
 
-        private void OnPlayerReadyMessageReceived(PostLaunchPlayerReadyMessage message, ConnectionID _)
+        private void OnPlayerReadyMessageReceived(PostLaunchPlayerReadyMessage message)
         {
             if (message.ReadyPlayerID == ID)
             {

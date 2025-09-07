@@ -12,6 +12,8 @@ namespace FDG.MessageBus
         private IMessageRegistrar _messageRegistrar;
         private IMessageSerializer _messageSerializer;
 
+        private ConnectionID? _lastMessageConnectionID = null;
+
         internal MessageBusHost_Networked(INetworkHost networkHost)
         {
             _networkHost = networkHost;
@@ -20,13 +22,13 @@ namespace FDG.MessageBus
             _networkHost.OnMessageReceived += OnMessageBytesReceived;
         }
 
-        public void RegisterForMessageEvent<T>(Action<T, ConnectionID> onMessageReceived)
+        public void RegisterForMessageEvent<T>(Action<T> onMessageReceived)
         {
             _messageRegistrar.RegisterForMessageEvent(onMessageReceived);
             _messageSerializer.RegisterMessageType<T>();
         }
 
-        public void DeregisterForMessageEvent<T>(Action<T, ConnectionID> messageToUnsubscribe)
+        public void DeregisterForMessageEvent<T>(Action<T> messageToUnsubscribe)
         {
             _messageRegistrar.DeregisterForMessageEvent(messageToUnsubscribe);
         }
@@ -53,7 +55,7 @@ namespace FDG.MessageBus
             return Task.CompletedTask;
         }
 
-        private void OnMessageBytesReceived(ArraySegment<Byte> receivedBytes)
+        private void OnMessageBytesReceived(ArraySegment<Byte> receivedBytes, ConnectionID connectionID)
         {
             object? message = _messageSerializer.DeserializeMessage(receivedBytes);
 
@@ -62,9 +64,19 @@ namespace FDG.MessageBus
                 System.Diagnostics.Debug.WriteLine($"Client received message: {message.GetType()}");
             }
 
-            if (message != null)
+            //Cache connection ID in case it's needed during invocation.
+            _lastMessageConnectionID = connectionID;
+
+            try
             {
-                _messageRegistrar.DispatchToHandlers(message);
+                if (message != null)
+                {
+                    _messageRegistrar.DispatchToHandlers(message);
+                }
+            }
+            finally
+            {
+                _lastMessageConnectionID = null;
             }
         }
 
@@ -74,6 +86,17 @@ namespace FDG.MessageBus
             {
                 _networkHost.OnMessageReceived -= OnMessageBytesReceived;
             }
+        }
+
+        public ConnectionID GetCurrentMessageConnectionID()
+        {
+            if(_lastMessageConnectionID.HasValue == false)
+            {
+                throw new InvalidOperationException($"{nameof(GetCurrentMessageConnectionID)} was called when no {nameof(ConnectionID)} was registered " + 
+                    "for a message. It's likely this was called outside the invocation of an event when a message was received.");
+            }
+
+            return _lastMessageConnectionID.Value;
         }
     }
 }

@@ -132,7 +132,7 @@ namespace FDG.Network.Connection
             //Maybe do nothing?
         }
 
-        private void OnReceiveNewClientGreeting(NewLobbyClientGreeting greeting, ConnectionID connectionID)
+        private void OnReceiveNewClientGreeting(NewLobbyClientGreeting greeting)
         {
             Debug.WriteLine($"Received greeting from new client: {greeting.PlayerName}");
 
@@ -149,6 +149,8 @@ namespace FDG.Network.Connection
             int tempTeamNumber = _playerInfos.Value.Count + 1;
 
             //ArmyListSummary tempSummary = new ArmyListSummary("Knifeybois", "Alien Hives", 2000);
+
+            ConnectionID connectionID = _messageBusHost.GetCurrentMessageConnectionID();
 
             LobbyPlayerInfoFull newLobbyPlayerInfo = new LobbyPlayerInfoFull(greeting.PlayerName, null, (ETeamOption)tempTeamNumber,
                 EPlayerType.Network, connectionID, newClientPlayerID);
@@ -186,7 +188,7 @@ namespace FDG.Network.Connection
             _playerInfos.OnNext(infoSummaries);
         }
 
-        private void OnChatMessageReceived(LobbyChatMessage chatMessage, ConnectionID _)
+        private void OnChatMessageReceived(LobbyChatMessage chatMessage)
         {
             Debug.WriteLine($"Received chat message as host: {chatMessage.Message}");
 
@@ -197,7 +199,7 @@ namespace FDG.Network.Connection
             AddMessageToLocalList(chatMessage);
         }
 
-        private void OnArmyListFileUpdateReceived(ArmyListUpdateMessage armyUpdate, ConnectionID _)
+        private void OnArmyListFileUpdateReceived(ArmyListUpdateMessage armyUpdate)
         {
             UpdateArmyListFile(armyUpdate.playerID, armyUpdate.armyListFile);
         }

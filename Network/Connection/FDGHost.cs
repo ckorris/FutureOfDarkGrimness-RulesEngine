@@ -12,7 +12,7 @@ namespace FDG.Network.Connection
 
         event Action<ConnectionID>? OnClientDisconnected;
 
-        event Action<ArraySegment<byte>>? OnMessageReceived;
+        event Action<ArraySegment<byte>, ConnectionID>? OnMessageReceived;
 
         Task StartAsync();
 
@@ -37,7 +37,7 @@ namespace FDG.Network.Connection
 
         public event Action<ConnectionID>? OnClientDisconnected;
 
-        public event Action<ArraySegment<byte>>? OnMessageReceived;
+        public event Action<ArraySegment<byte>, ConnectionID>? OnMessageReceived;
 
         public async Task StartAsync()
         {
@@ -108,7 +108,7 @@ namespace FDG.Network.Connection
 
                         Debug.WriteLine("Received data as host.");
 
-                        OnMessageReceived?.Invoke(payloadSegment);
+                        OnMessageReceived?.Invoke(payloadSegment, connectionID);
 
                         if (payloadSegment.Array != null)
                         {

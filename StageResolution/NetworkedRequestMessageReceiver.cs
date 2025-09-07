@@ -29,7 +29,7 @@ namespace FDG.StageResolution
             _messageBusClient.RegisterForMessageEvent<StageTaskNotifyResolvedMessage>(OnReceivedNotifyResolvedMessage);
         }
 
-        private void OnReceivedStageTaskRequestMessage(StageTaskRequestMessage requestMessage, ConnectionID sourceConnectionID)
+        private void OnReceivedStageTaskRequestMessage(StageTaskRequestMessage requestMessage)
         {
             if(requestMessage.PlayerID != _playerID)
             {
@@ -43,10 +43,10 @@ namespace FDG.StageResolution
                 return;
             }
 
-            _ = HandleRequestMessageAsync(requestMessage, sourceConnectionID);
+            _ = HandleRequestMessageAsync(requestMessage);
         }
 
-        private async Task HandleRequestMessageAsync(StageTaskRequestMessage requestMessage, ConnectionID sourceConnectionID)
+        private async Task HandleRequestMessageAsync(StageTaskRequestMessage requestMessage)
         {
             try
             {
@@ -67,15 +67,13 @@ namespace FDG.StageResolution
             }
         }
 
-        private void OnReceivedNotifyAwaitingMessage(StageTaskNotifyAwaitingMessage awaitingMessage, 
-            ConnectionID sourceConnectionID)
+        private void OnReceivedNotifyAwaitingMessage(StageTaskNotifyAwaitingMessage awaitingMessage)
         {
             _outstandingTaskLister.NotifyTaskRequested(awaitingMessage.PlayerID, awaitingMessage.TaskID, 
                 awaitingMessage.UserFriendlyTaskName);
         }
 
-        private void OnReceivedNotifyResolvedMessage(StageTaskNotifyResolvedMessage resolvedMessage, 
-            ConnectionID sourceConnectionID)
+        private void OnReceivedNotifyResolvedMessage(StageTaskNotifyResolvedMessage resolvedMessage)
         {
             _outstandingTaskLister.NotifyTaskResolved(resolvedMessage.TaskID);
         }

@@ -69,7 +69,7 @@ namespace FDG.StageResolution
             return taskCompletionSource.Task;
         }
 
-        private void OnReceivedReplyMessage(StageTaskReplyMessage replyMessage, ConnectionID _)
+        private void OnReceivedReplyMessage(StageTaskReplyMessage replyMessage)
         {
             /*
             if (replyMessage.PlayerID != _targetPlayerID)
@@ -94,7 +94,7 @@ namespace FDG.StageResolution
             _pendingTaskAndResolvers.Remove(replyMessage.TaskID);
         }
 
-        private void OnReceivedErrorMessage(StageTaskRequestErrorMessage errorMessage, ConnectionID _)
+        private void OnReceivedErrorMessage(StageTaskRequestErrorMessage errorMessage)
         {
             /*
             if (errorMessage.PlayerID != _targetPlayerID)

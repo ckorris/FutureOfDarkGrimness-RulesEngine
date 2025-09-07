@@ -43,10 +43,12 @@ namespace FDG.Network.Synchronization
             _messageBusHost.SendCommandToAllAsync(removeMessage);
         }
 
-        private void OnReceivedRequestAllDataMessage(RequestAllDataMessage _, ConnectionID connectionID)
+        private void OnReceivedRequestAllDataMessage(RequestAllDataMessage _)
         {
             List<ReferenceJsonValuePair> allData = _gameDataStore.GetAllDataReferencesAsJson();
             AddAllDataMessage allDataMessage = new AddAllDataMessage(allData);
+
+            ConnectionID connectionID = _messageBusHost.GetCurrentMessageConnectionID();
             _messageBusHost.SendCommandToSingleAsync(allDataMessage, connectionID);
         }
 

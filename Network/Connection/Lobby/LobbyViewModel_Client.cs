@@ -104,7 +104,7 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
         {
             Debug.WriteLine($"Sending message: {message}");
 
-            LobbyChatMessage chatMessage = new LobbyChatMessage(_thisPlayerName, message);
+            LobbyChatMessage_FromClient chatMessage = new LobbyChatMessage_FromClient(_thisPlayerName, message);
 
             _messageBusClient.SendCommandToHostAsync(chatMessage);
         }

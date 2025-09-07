@@ -1,7 +1,7 @@
 ﻿using FDG.Data;
 using FDG.MessageBus;
-using FDG.Network.Connection;
 using FDG.Network.Messages.StageRequestMessages;
+using System.Diagnostics;
 
 namespace FDG.StageResolution
 {
@@ -31,17 +31,16 @@ namespace FDG.StageResolution
 
         private void OnReceivedStageTaskRequestMessage(StageTaskRequestMessage requestMessage)
         {
+            Debug.WriteLine($"{nameof(NetworkedRequestMessageReceiver)} received {nameof(StageTaskRequestMessage)} of type: {requestMessage.RequestFullTypeName}.");
+
             if(requestMessage.PlayerID != _playerID)
             {
-                string errorString = $"Received a message targeting the wrong player. This ID: {_playerID}. " + 
-                    $"Target: {requestMessage.PlayerID}. Request type: {requestMessage.RequestFullTypeName} Request ID: {requestMessage.TaskID}.";
-
-                StageTaskRequestErrorMessage errorMessage =
-                    new StageTaskRequestErrorMessage(requestMessage.PlayerID, requestMessage.TaskID, errorString);
-                _messageBusClient.SendCommandToHostAsync(errorMessage);
+                Debug.WriteLine($"{nameof(NetworkedRequestMessageReceiver)} ignoring message because ID didn't match.");
 
                 return;
             }
+
+            Debug.WriteLine($"{nameof(NetworkedRequestMessageReceiver)} handling stage request.");
 
             _ = HandleRequestMessageAsync(requestMessage);
         }

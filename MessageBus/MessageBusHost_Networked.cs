@@ -36,7 +36,7 @@ namespace FDG.MessageBus
         public Task SendCommandToAllAsync<TMessage>(TMessage message)
         {
             ArraySegment<Byte> messageBytes = _messageSerializer.SerializeMessage(message);
-            _messageRegistrar.DispatchToHandlers(messageBytes); //For local player.
+            _messageRegistrar.DispatchToHandlers(message); //For local player.
             return _networkHost.SendCommandToAllAsync(messageBytes, true);
         }
 

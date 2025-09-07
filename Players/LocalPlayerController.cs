@@ -1,5 +1,4 @@
 ﻿using FDG.GameModel;
-using FDG.StageResolution;
 using FDG.TempVisuals;
 using System.Diagnostics;
 

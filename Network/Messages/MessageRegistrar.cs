@@ -18,7 +18,6 @@ namespace FDG.Network.Messages
 
         private readonly Dictionary<Type, List<Delegate>> _messageHandlers = new Dictionary<Type, List<Delegate>>();
 
-        //public void RegisterForMessageEvent<T>(Action<T, ConnectionID> onMessageReceived)
         public void RegisterForMessageEvent<T>(Action<T> onMessageReceived)
         {
             Type typeKey = typeof(T);
@@ -31,7 +30,6 @@ namespace FDG.Network.Messages
             handlers.Add(onMessageReceived);
         }
 
-        //public void DeregisterForMessageEvent<T>(Action<T, ConnectionID> messageToUnsubscribe)
         public void DeregisterForMessageEvent<T>(Action<T> messageToUnsubscribe)
         {
             Type typeKey = typeof(T);
@@ -44,6 +42,9 @@ namespace FDG.Network.Messages
         public void DispatchToHandlers(object messageObject)
         {
             Type actualType = messageObject.GetType();
+
+            Debug.WriteLine($"~Dispatching {messageObject.GetType()} message.");
+            
             if (_messageHandlers.TryGetValue(actualType, out List<Delegate>? handlers))
             {
                 Debug.WriteLine($"Handlers: {handlers.Count}");

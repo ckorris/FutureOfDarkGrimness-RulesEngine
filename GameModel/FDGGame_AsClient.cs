@@ -38,7 +38,7 @@ namespace F.GameModel
         private GameDataUpdateReceiver _dataUpdateReceiver;
 
 
-        private NetworkedRequestMessageReceiver _networkedRequestReceiver;
+        private NetworkedRequestMessageReceiver _requestReceiver;
 
         public FDGGame_AsClient(IMessageBusClient messageBusClient, PlayerID thisPlayerID)
         {
@@ -76,7 +76,7 @@ namespace F.GameModel
 
             TempVisualDrawer = tempVisualDrawer;
 
-            _networkedRequestReceiver = new NetworkedRequestMessageReceiver(_thisPlayerID, _messageBusClient, stageResolverRegistry,
+            _requestReceiver = new NetworkedRequestMessageReceiver(_thisPlayerID, _messageBusClient, stageResolverRegistry,
                 new OutstandingTaskLister(), _gameDataStore);
         }
 

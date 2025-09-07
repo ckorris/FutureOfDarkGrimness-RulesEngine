@@ -27,7 +27,6 @@ namespace FDG.StageResolution
         public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request) 
             where TRequest : IStageTaskRequest<TReply>
         {
-
             PlayerID targetPlayerID = request.TargetPlayerID;
 
             TaskID taskID = new TaskID(Guid.NewGuid());

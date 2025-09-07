@@ -62,7 +62,7 @@ namespace FDG.Network.Connection
 
         private string _hostPlayerName;
 
-        private IMessageBusHost _messageBusHost;
+        private MessageBusHost_Networked _messageBus;
 
         private const string SERVER_START_MESSAGE = "Server started successfully.";
         private const string LAUNCHING_GAME_MESSAGE = "About to launch game.";
@@ -75,7 +75,7 @@ namespace FDG.Network.Connection
 
         public LobbyViewModel_Host(string hostPlayerName, string serverName, string? password, INetworkHost host)
         {
-            _messageBusHost = new MessageBusHost_Networked(host);
+            _messageBus = new MessageBusHost_Networked(host);
             _host = host;
             _hostPlayerName = hostPlayerName;
             PlayerID thisPlayerID = new PlayerID(Guid.NewGuid());
@@ -93,9 +93,10 @@ namespace FDG.Network.Connection
             host.OnNewClientConnected += OnNewClientConnected;
             host.OnClientDisconnected += OnClientDisconnected;
 
-            _messageBusHost.RegisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);
-            _messageBusHost.RegisterForMessageEvent<NewLobbyClientGreeting>(OnReceiveNewClientGreeting);
-            _messageBusHost.RegisterForMessageEvent<ArmyListUpdateMessage>(OnArmyListFileUpdateReceived);
+            _messageBus.RegisterForMessageEvent<LobbyChatMessage>(OnLocalChatMessageReceived);
+            _messageBus.RegisterForMessageEvent<LobbyChatMessage_FromClient>(OnChatMessageReceived);
+            _messageBus.RegisterForMessageEvent<NewLobbyClientGreeting>(OnReceiveNewClientGreeting);
+            _messageBus.RegisterForMessageEvent<ArmyListUpdateMessage>(OnArmyListFileUpdateReceived);
 
             //Show init message in chatbox.
             AddMessageToLocalList(new LobbyChatMessage("System", SERVER_START_MESSAGE));
@@ -109,13 +110,10 @@ namespace FDG.Network.Connection
             UpdateInfoSummariesFromFullList();
         }
 
-
         public void SendMessage(string message)
         {
             LobbyChatMessage chatMessage = new LobbyChatMessage(_hostPlayerName, message);
-            _messageBusHost.SendCommandToAllAsync(chatMessage);
-
-            AddMessageToLocalList(chatMessage);
+            _messageBus.SendCommandToAllAsync(chatMessage);
         }
 
         private void AddMessageToLocalList(LobbyChatMessage chatMessage)
@@ -139,18 +137,18 @@ namespace FDG.Network.Connection
             //Assign a player ID to this person. 
             //TODO: I may have decided to give players their IDs elsewhere but I can't remember, double check that.
             PlayerID newClientPlayerID = new PlayerID(Guid.NewGuid());
-            _messageBusHost.SendCommandToAllAsync(new LobbyPlayerIDAssignment(newClientPlayerID));
+            _messageBus.SendCommandToAllAsync(new LobbyPlayerIDAssignment(newClientPlayerID));
 
             //Send the server name.
             LobbyServerNameMessage lobbyServerNameMessage = new LobbyServerNameMessage(_serverName.Value);
-            _messageBusHost.SendCommandToAllAsync(lobbyServerNameMessage);
+            _messageBus.SendCommandToAllAsync(lobbyServerNameMessage);
 
             //TODO: Have something behind the player info list instead of doing this.
             int tempTeamNumber = _playerInfos.Value.Count + 1;
 
             //ArmyListSummary tempSummary = new ArmyListSummary("Knifeybois", "Alien Hives", 2000);
 
-            ConnectionID connectionID = _messageBusHost.GetCurrentMessageConnectionID();
+            ConnectionID connectionID = _messageBus.GetCurrentMessageConnectionID();
 
             LobbyPlayerInfoFull newLobbyPlayerInfo = new LobbyPlayerInfoFull(greeting.PlayerName, null, (ETeamOption)tempTeamNumber,
                 EPlayerType.Network, connectionID, newClientPlayerID);
@@ -158,7 +156,7 @@ namespace FDG.Network.Connection
             UpdateInfoSummariesFromFullList();
 
             LobbyGameSettingsUpdate gameSettingsUpdate = new LobbyGameSettingsUpdate(_gameSettings);
-            _messageBusHost.SendCommandToAllAsync(gameSettingsUpdate);
+            _messageBus.SendCommandToAllAsync(gameSettingsUpdate);
         }
 
         private void OnClientDisconnected(ConnectionID disconnectedConnectionID)
@@ -183,18 +181,23 @@ namespace FDG.Network.Connection
             }
 
             LobbyPlayerListUpdate playerListUpdateMessage = new LobbyPlayerListUpdate(infoSummaries);
-            _messageBusHost.SendCommandToAllAsync(playerListUpdateMessage);
+            _messageBus.SendCommandToAllAsync(playerListUpdateMessage);
 
             _playerInfos.OnNext(infoSummaries);
         }
 
-        private void OnChatMessageReceived(LobbyChatMessage chatMessage)
+        private void OnChatMessageReceived(LobbyChatMessage_FromClient chatMessageClient)
         {
-            Debug.WriteLine($"Received chat message as host: {chatMessage.Message}");
+            Debug.WriteLine($"Received chat message as host: {chatMessageClient.Message}");
+
+            LobbyChatMessage chatMessage = new LobbyChatMessage(chatMessageClient.SendingPlayerName, chatMessageClient.Message);
 
             //Relay it to everyone else.
-            _messageBusHost.SendCommandToAllAsync(chatMessage); //TODO: Release the byte array but gotta be careful on timing.
+            _messageBus.SendCommandToAllAsync(chatMessage); //TODO: Release the byte array but gotta be careful on timing.
+        }
 
+        private void OnLocalChatMessageReceived(LobbyChatMessage chatMessage)
+        {
             //Put the chat message in our own box.
             AddMessageToLocalList(chatMessage);
         }
@@ -206,7 +209,7 @@ namespace FDG.Network.Connection
 
         public void Dispose()
         {
-            _messageBusHost.DeregisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);
+            _messageBus.DeregisterForMessageEvent<LobbyChatMessage_FromClient>(OnChatMessageReceived);
             _host.OnNewClientConnected -= OnNewClientConnected;
             _host.OnClientDisconnected -= OnClientDisconnected;
         }
@@ -225,13 +228,13 @@ namespace FDG.Network.Connection
         {
             LobbyChatMessage gameStartingMessage = new LobbyChatMessage("System", LAUNCHING_GAME_MESSAGE);
             AddMessageToLocalList(gameStartingMessage);
-            await _messageBusHost.SendCommandToAllAsync(gameStartingMessage);
+            await _messageBus.SendCommandToAllAsync(gameStartingMessage);
             await Task.Delay(300);
 
             //Give a quick tribute.
             LobbyChatMessage tributeMessage = new LobbyChatMessage("Mukumioke", "buck futter");
             AddMessageToLocalList(tributeMessage);
-            await _messageBusHost.SendCommandToAllAsync(tributeMessage);
+            await _messageBus.SendCommandToAllAsync(tributeMessage);
             await Task.Delay(50);
 
             //Maybe something else should make these but eh.
@@ -266,7 +269,7 @@ namespace FDG.Network.Connection
 
                         if(gameModel == null)
                         {
-                            gameModel = new FDGGame_AsLocal(gameDataStore);
+                            gameModel = new FDGGame_AsLocal(gameDataStore, _messageBus, playerSlot.PlayerID);
                         }
 
                         LocalPlayerController localPlayerController = new LocalPlayerController(lobbyPlayerInfo.PlayerName,
@@ -276,7 +279,7 @@ namespace FDG.Network.Connection
                         break;
                     case EPlayerType.Network:
                         NetworkPlayerController networkPlayerController = new NetworkPlayerController(lobbyPlayerInfo.PlayerName, playerSlot.PlayerID,
-                            lobbyPlayerInfo.ConnectionID, _messageBusHost, gameDataStore);
+                            lobbyPlayerInfo.ConnectionID, _messageBus, gameDataStore);
                         playerSlot.AssignPlayerController(networkPlayerController);
                         break;
                     case EPlayerType.AI:
@@ -286,7 +289,7 @@ namespace FDG.Network.Connection
                 }
             }
 
-            FDGServer server = new FDGServer(gameDataStore, _messageBusHost, _gameSettings, playerSlots);
+            FDGServer server = new FDGServer(gameDataStore, _messageBus, _gameSettings, playerSlots);
 
             if (gameModel != null) //Dedicated server really doesn't need to do this.
             {
@@ -294,7 +297,7 @@ namespace FDG.Network.Connection
             }
 
             LaunchGameMessage launchGameMessage = new LaunchGameMessage();
-            await _messageBusHost.SendCommandToAllAsync(launchGameMessage);
+            await _messageBus.SendCommandToAllAsync(launchGameMessage);
         }
         
         private ArmyListFile GetTempTestArmyFile()
@@ -382,7 +385,7 @@ namespace FDG.Network.Connection
             {
                 _settings_ArmyPoints.OnNext(armyPoints);
                 _gameSettings.ArmyPoints = armyPoints;
-                _messageBusHost.SendCommandToAllAsync(new LobbyGameSettingsUpdate(_gameSettings));
+                _messageBus.SendCommandToAllAsync(new LobbyGameSettingsUpdate(_gameSettings));
 
             }
             else
@@ -397,7 +400,7 @@ namespace FDG.Network.Connection
             {
                 _settings_TerrainPieceCount.OnNext(terrainCount);
                 _gameSettings.TerrainPieceCount = terrainCount;
-                _messageBusHost.SendCommandToAllAsync(new LobbyGameSettingsUpdate(_gameSettings));
+                _messageBus.SendCommandToAllAsync(new LobbyGameSettingsUpdate(_gameSettings));
             }
             else
             {
@@ -411,7 +414,7 @@ namespace FDG.Network.Connection
             {
                 _settings_RandomnessType.OnNext(randomnessType);
                 _gameSettings.RandomnessType = randomnessType;
-                _messageBusHost.SendCommandToAllAsync(new LobbyGameSettingsUpdate(_gameSettings));
+                _messageBus.SendCommandToAllAsync(new LobbyGameSettingsUpdate(_gameSettings));
 
             }
             else
@@ -426,7 +429,7 @@ namespace FDG.Network.Connection
             {
                 _settings_TurnMethod.OnNext(turnStyle);
                 _gameSettings.TurnStyle = turnStyle;
-                _messageBusHost.SendCommandToAllAsync(new LobbyGameSettingsUpdate(_gameSettings));
+                _messageBus.SendCommandToAllAsync(new LobbyGameSettingsUpdate(_gameSettings));
 
             }
             else
@@ -479,7 +482,7 @@ namespace FDG.Network.Connection
             UpdateInfoSummariesFromFullList();
 
             LobbyGameSettingsUpdate gameSettingsUpdate = new LobbyGameSettingsUpdate(_gameSettings);
-            _messageBusHost.SendCommandToAllAsync(gameSettingsUpdate);
+            _messageBus.SendCommandToAllAsync(gameSettingsUpdate);
         }
     }
 }

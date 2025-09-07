@@ -269,13 +269,15 @@ namespace FDG.Network.Connection
 
                         if(gameModel == null)
                         {
-                            gameModel = new FDGGame_AsLocal(gameDataStore, _messageBus, playerSlot.PlayerID);
+                            gameModel = new FDGGame_AsLocal(gameDataStore, _messageBus);
                         }
 
                         LocalPlayerController localPlayerController = new LocalPlayerController(lobbyPlayerInfo.PlayerName,
                             playerSlot.PlayerID, gameModel);
                         localPlayers.Add(gameModel);
                         playerSlot.AssignPlayerController(localPlayerController);
+
+                        gameModel.AddLocalPlayerID(playerSlot.PlayerID);
                         break;
                     case EPlayerType.Network:
                         NetworkPlayerController networkPlayerController = new NetworkPlayerController(lobbyPlayerInfo.PlayerName, playerSlot.PlayerID,

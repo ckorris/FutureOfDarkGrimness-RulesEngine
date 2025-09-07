@@ -22,7 +22,7 @@ namespace FDG.Stages
 
         protected override ICombatActionContext GetNewChildContext(IUnitActionContext contextSelf)
         {
-            return new CombatActionContext(contextSelf.ActivatingUnit);
+            return new CombatActionContext(contextSelf.GameContext, contextSelf.ActivatingUnit);
         }
 
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<ICombatActionContext> startingChild)

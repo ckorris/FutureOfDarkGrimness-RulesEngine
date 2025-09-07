@@ -33,5 +33,15 @@ namespace FDG.Utilities
         {
             return modelBinding.GetValue().GetIsDead();
         }
+
+        public static List<Weapon> Weapons(this DataBinding<ModelData> modelBinding)
+        {
+            return modelBinding.GetValue().Weapons;
+        }
+
+        public static List<SpecialRule> SpecialRules(this DataBinding<ModelData> modelBinding)
+        {
+            return modelBinding.GetValue().SpecialRules;
+        }
     }
 }

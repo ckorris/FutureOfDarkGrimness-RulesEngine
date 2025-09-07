@@ -61,23 +61,6 @@ namespace FDG.Samples
     }
     */
    
-
-    public class BasicTesterChooseRangedTargetHandler : IChooseRangedTargetHandler
-    {
-        public void Handle(IReadOnlyList<IUnit> potentialTargetUnits, Action<IUnit> onChoseUnit)
-        {
-            //Just choose the first.
-            IUnit firstUnit = potentialTargetUnits.First();
-            onChoseUnit(firstUnit);
-        }
-
-        public void Handle(ICombatActionContext context, List<ActionChoice> actionChoices, Action onCancel)
-        {
-            //Just choose the first.
-            actionChoices.First(choice => choice.CanActivate).Choose();
-        }
-    }
-
     public class BasicTesterAssignWoundsHandler : IAssignWoundsHandler
     {
         public void Handle(IUnit defendingUnit, AssignWoundsResults woundsResults, Action onWoundsAssigned)

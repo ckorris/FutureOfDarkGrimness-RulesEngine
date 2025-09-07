@@ -31,7 +31,7 @@ namespace FDG.StageResolution.Requests
             UnavailableZones = unavailableZones;
         }
 
-        public ChooseDeploymentZoneRequest(PlayerID targetPlayerID,string taskName,
+        public ChooseDeploymentZoneRequest(PlayerID targetPlayerID, string taskName,
             IReadOnlyList<DataBinding<RectangularZone>> availableZones,
             IReadOnlyList<DataBinding<RectangularZone>> unavailableZones)
         {

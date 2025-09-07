@@ -8,7 +8,7 @@ namespace FDG.Stages
 {
     //TODO: There's lots of info that's specific to parts of the melee process.
     //Having a query handler like the combat metadata could be an improvement.
-    public interface ICombatActionContext
+    public interface ICombatActionContext : IGameContextAccessor
     {
         public DataBinding<UnitData> AttackingUnit { get; }
 
@@ -54,6 +54,8 @@ namespace FDG.Stages
 
         public float DefenderRemainingWoundsAtStart { get; private set; }
 
+        public IGameContext GameContext { get; }
+
         private ConcurrentDictionary<IWeapon, int> _availableWeapons;
 
         private ConcurrentDictionary<IWeapon, int> _alreadyUsedWeapons = new ConcurrentDictionary<IWeapon, int>();
@@ -62,8 +64,9 @@ namespace FDG.Stages
 
         private PendingAttack _currentPendingAttack = null;
 
-        public CombatActionContext(DataBinding<UnitData> attackingUnit)
+        public CombatActionContext(IGameContext gameContext, DataBinding<UnitData> attackingUnit)
         {
+            GameContext = gameContext;
             AttackingUnit = attackingUnit;
             _availableWeapons = GetTypeSortedWeapons(attackingUnit.GetValue().GetMeleeWeapons());
             AttackerRemainingWoundsAtStart = attackingUnit.GetValue().RemainingWounds;

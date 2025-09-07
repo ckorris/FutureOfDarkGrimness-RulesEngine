@@ -2,7 +2,7 @@
 
 namespace FDG.MessageBus
 {
-    public interface IMessageReceiver
+    public interface IMessageReceiver : IDisposable
     {
         public void RegisterForMessageEvent<T>(Action<T, ConnectionID> onMessageReceived);
 

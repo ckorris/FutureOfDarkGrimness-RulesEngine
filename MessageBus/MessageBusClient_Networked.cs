@@ -15,6 +15,7 @@ namespace FDG.MessageBus
             _networkClient = networkClient;
             _messageRegistrar = new MessageRegistrar();
             _messageSerializer = new MessageSerializer();
+            _networkClient.OnMessageReceived += OnMessageBytesReceived;
         }
 
         public void RegisterForMessageEvent<T>(Action<T, ConnectionID> onMessageReceived)
@@ -33,6 +34,7 @@ namespace FDG.MessageBus
 
         public Task SendCommandToHostAsync<TMessage>(TMessage message)
         {
+            System.Diagnostics.Debug.WriteLine($"Client sending message: {typeof(TMessage)}");
             ArraySegment<Byte> messageBytes = _messageSerializer.SerializeMessage(message);
             return _networkClient.SendCommandToHost(messageBytes, true);
         }
@@ -43,7 +45,20 @@ namespace FDG.MessageBus
 
             if (message != null)
             {
+                System.Diagnostics.Debug.WriteLine($"Client received message: {message.GetType()}");
+            }
+
+            if (message != null)
+            {
                 _messageRegistrar.DispatchToHandlers(message);
+            }
+        }
+
+        public void Dispose()
+        {
+            if (_networkClient != null)
+            {
+                _networkClient.OnMessageReceived -= OnMessageBytesReceived;
             }
         }
     }

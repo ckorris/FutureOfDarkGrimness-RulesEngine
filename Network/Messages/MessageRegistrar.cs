@@ -19,11 +19,12 @@ namespace FDG.Network.Messages
     }
     internal class MessageRegistrar : IMessageRegistrar
     {
-        //private readonly Dictionary<string, Type> _messageTypeRegistry = new Dictionary<string, Type>();
+        private readonly Dictionary<string, Type> _messageTypeRegistry = new Dictionary<string, Type>();
 
         private readonly Dictionary<Type, List<Delegate>> _messageHandlers = new Dictionary<Type, List<Delegate>>();
 
         public void RegisterForMessageEvent<T>(Action<T, ConnectionID> onMessageReceived)
+        //public void RegisterForMessageEvent<T>(Action<T> onMessageReceived)
         {
             Type typeKey = typeof(T);
             if (_messageHandlers.TryGetValue(typeKey, out List<Delegate>? handlers) == false)
@@ -36,6 +37,7 @@ namespace FDG.Network.Messages
         }
 
         public void DeregisterForMessageEvent<T>(Action<T, ConnectionID> messageToUnsubscribe)
+        //public void DeregisterForMessageEvent<T>(Action<T> messageToUnsubscribe)
         {
             Type typeKey = typeof(T);
             if (_messageHandlers.TryGetValue(typeKey, out List<Delegate>? handlers))
@@ -53,7 +55,8 @@ namespace FDG.Network.Messages
 
                 foreach (Delegate del in handlers)
                 {
-                    del.DynamicInvoke(messageObject);
+                    //del.DynamicInvoke(messageObject);
+                    del.DynamicInvoke(messageObject, new ConnectionID()); //TEST
                 }
             }
         }

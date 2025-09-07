@@ -218,6 +218,8 @@ namespace FDG.Tests
                     handler(message, new ConnectionID(Guid.NewGuid()));
                 }
             }
+
+            public void Dispose() { }
         }
     }
 } 

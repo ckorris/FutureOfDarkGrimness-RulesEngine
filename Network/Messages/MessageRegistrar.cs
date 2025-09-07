@@ -42,13 +42,9 @@ namespace FDG.Network.Messages
         public void DispatchToHandlers(object messageObject)
         {
             Type actualType = messageObject.GetType();
-
-            Debug.WriteLine($"~Dispatching {messageObject.GetType()} message.");
             
             if (_messageHandlers.TryGetValue(actualType, out List<Delegate>? handlers))
             {
-                Debug.WriteLine($"Handlers: {handlers.Count}");
-
                 foreach (Delegate del in handlers)
                 {
                     del.DynamicInvoke(messageObject);

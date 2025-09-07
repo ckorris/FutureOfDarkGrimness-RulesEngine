@@ -174,8 +174,6 @@ namespace FDG.Network.Connection
                 clientsCopy = new List<TcpClient>(_connectedClients.Values);
             }
 
-            Debug.WriteLine($"Sending command to {clientsCopy.Count} clients.");
-
             foreach (TcpClient client in clientsCopy)
             {
                 try

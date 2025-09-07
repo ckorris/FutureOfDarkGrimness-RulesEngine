@@ -1,5 +1,6 @@
 ﻿
 using FDG.Data;
+using System.Diagnostics;
 
 namespace FDG.Stages
 {
@@ -14,6 +15,7 @@ namespace FDG.Stages
 
         protected override ISingleTurnContext GetNewChildContext(ISingleRoundContext contextSelf)
         {
+            Debug.WriteLine($"Getting context for {nameof(SingleTurnStage)}.");
             PlayerID currentPlayerID = contextSelf.GetCurrentPlayerID();
 
             contextSelf.CleanDeadUnitsFromUnactivated();

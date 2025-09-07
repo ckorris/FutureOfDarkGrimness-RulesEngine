@@ -35,12 +35,8 @@ namespace FDG.StageResolution
 
             if(requestMessage.PlayerID != _playerID)
             {
-                Debug.WriteLine($"{nameof(NetworkedRequestMessageReceiver)} ignoring message because ID didn't match.");
-
                 return;
             }
-
-            Debug.WriteLine($"{nameof(NetworkedRequestMessageReceiver)} handling stage request.");
 
             _ = HandleRequestMessageAsync(requestMessage);
         }

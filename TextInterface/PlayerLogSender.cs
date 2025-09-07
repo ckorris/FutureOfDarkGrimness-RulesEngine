@@ -25,7 +25,7 @@ namespace FDG.TextInterface
         {
             _playerTextRelayer.SendLogMessageToAll(message);
 
-            System.Diagnostics.Debug.WriteLine(message);
+            System.Diagnostics.Debug.WriteLine($"LOG: {message}");
         }
     }
 }

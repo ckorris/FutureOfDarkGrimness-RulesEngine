@@ -68,7 +68,7 @@ namespace FDG.Stages
             {
                 //Set the defender on the context.
                 GameContext.Log($"Chose {defender.GetValue().Name} as defender.");
-                context.BeginNewAttack(defender);
+                context.SetDefender(defender);
                 OnDefenderChosen.Activate(context);
             }
 

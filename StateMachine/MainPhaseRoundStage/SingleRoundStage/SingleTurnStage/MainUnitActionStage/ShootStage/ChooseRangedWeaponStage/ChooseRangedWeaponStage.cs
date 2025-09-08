@@ -1,8 +1,9 @@
-using System;
-using System.Collections.Generic;
-using System.Collections.Concurrent;
+using FDG.Data;
 using FDG.StageResolution.Requests;
 using FDG.Utilities;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 
 namespace FDG.Stages
 {
@@ -24,20 +25,20 @@ namespace FDG.Stages
             }
 
             //TODO: Handle situations like Deadly, where you have to use a specific weapon first.
-            IReadOnlyDictionary<IWeapon, int> availableWeapons = new ConcurrentDictionary<IWeapon, int>(context.AvailableWeapons);
-            IReadOnlyDictionary<IWeapon, int> unavailableWeapons = new ConcurrentDictionary<IWeapon, int>(context.AlreadyUsedWeapons);
+            IReadOnlyDictionary<Weapon, int> availableWeapons = new ConcurrentDictionary<Weapon, int>(context.AvailableWeapons);
+            IReadOnlyDictionary<Weapon, int> unavailableWeapons = new ConcurrentDictionary<Weapon, int>(context.AlreadyUsedWeapons);
 
             //TODO: Since we don't store weapons in bindings, we're hackedly using their stats names, which have no
             //protection against identical names.
-            List<(string, IWeapon)> validOptions = new List<(string, IWeapon)>();
+            List<(string, Weapon)> validOptions = new List<(string, Weapon)>();
             List<StringSelectionRequest.InvalidOption> invalidOptions = new List<StringSelectionRequest.InvalidOption>();
 
-            foreach (KeyValuePair<IWeapon, int> kvp in availableWeapons)
+            foreach (KeyValuePair<Weapon, int> kvp in availableWeapons)
             {
                 validOptions.Add((kvp.Key.GetWeaponNameAndStats(kvp.Value), kvp.Key));
             }
 
-            foreach (KeyValuePair<IWeapon, int> kvp in unavailableWeapons)
+            foreach (KeyValuePair<Weapon, int> kvp in unavailableWeapons)
             {
                 invalidOptions.Add(new StringSelectionRequest.InvalidOption(kvp.Key.GetWeaponNameAndStats(kvp.Value),
                     "The unit has already attacked with this weapon."));
@@ -49,12 +50,93 @@ namespace FDG.Stages
             string chosenWeaponStatsName = await GameContext.PlayerRequester
                 .RequestDecision<StringSelectionRequest, string>(request);
 
-            IWeapon chosenWeapon = validOptions.First(option => option.Item1 == chosenWeaponStatsName).Item2;
+            Weapon chosenWeapon = validOptions.First(option => option.Item1 == chosenWeaponStatsName).Item2;
 
             context.SetAttackWeapon(chosenWeapon, out int weaponCount);
             GameContext.Log($"Chose weapon: {chosenWeapon.Name}. Count: {weaponCount}.");
 
             OnChoseWeapon.Activate(context);
         }
+
+        /*
+         *The below was taken from ChooseRangedTargetStage when it came before weapons. Maybe of use?
+        private static bool IsTargetValid(UnitData attackingUnit, UnitData defendingUnit,
+            out List<DataBinding<ModelData>> validAttackingModels, out List<Weapon> validWeapons)
+        {
+            //Iterate through all models in the attacking unit, and make sure it can see at least one enemy unit.
+            //TODO: Not handling cover here.
+            validAttackingModels = new List<DataBinding<ModelData>>();
+            validWeapons = new List<Weapon>();
+            List<Weapon> toRemoveBuffer = new List<Weapon>(); //Reused to remove weapons during iteration.
+
+            foreach (DataBinding<ModelData> attackingModel in attackingUnit.ModelBindings)
+            {
+                //In GDF as of v3.4, each weapon only needs to see one valid target model to be able to target
+                //the whole unit. So once we have that for each weapon, we can stop checking that one.
+                //Note: I had an idea to sort the weapon list by range so you can skip all greater than the first,
+                //but I don't think that conveys a consistent performance advantage and it makes things more complex.
+
+                //Copy list of weapons, so we can stop checking each once it has a single valid model target.
+                List<Weapon> weaponsNotYetHitting = attackingModel.Weapons()
+                    .Where(weapon => weapon.IsRanged())
+                    .ToList();
+
+                bool canAnyWeaponHit = false;
+
+                foreach (DataBinding<ModelData> targetModel in defendingUnit.ModelBindings)
+                {
+                    if (DoesModelHaveLineOfSight(attackingModel, targetModel) == false)
+                    {
+                        continue;
+                    }
+
+                    foreach (Weapon weapon in weaponsNotYetHitting)
+                    {
+                        if (IsTargetWithinRange(attackingModel, targetModel, weapon))
+                        {
+                            validWeapons.Add(weapon);
+                            toRemoveBuffer.Add(weapon);
+                            canAnyWeaponHit = true;
+                        }
+                    }
+
+                    foreach (Weapon toRemove in toRemoveBuffer)
+                    {
+                        weaponsNotYetHitting.Remove(toRemove);
+                    }
+                    toRemoveBuffer.Clear();
+
+
+                    //If all weapons are marked as shootable, there's no reason to keep going.
+                    //TODO: May need to do something here for Sniper, or maybe Blast if some people care.
+                    if (weaponsNotYetHitting.Count == 0)
+                    {
+                        continue;
+                    }
+                }
+
+                //If any can hit, we can mark this model as being able to shoot.
+                if (canAnyWeaponHit)
+                {
+                    validAttackingModels.Add(attackingModel);
+                }
+            }
+
+            return validWeapons.Count > 0;
+        }
+
+        private static bool DoesModelHaveLineOfSight(ModelData attacker, ModelData target)
+        {
+            //TODO: There's no hard terrain yet as of writing, so always return true.
+            return true;
+        }
+
+        private static bool IsTargetWithinRange(ModelData attacker, ModelData target, Weapon weapon)
+        {
+            float distance = DistanceUtilities.GetBaseToBaseDistanceInches_3D(attacker.PositionBinding.GetValue(),
+                target.PositionBinding.GetValue(), attacker.BaseRadiusInches, target.BaseRadiusInches);
+            return distance <= weapon.RangeInches;
+        }
+        */
     }
 }

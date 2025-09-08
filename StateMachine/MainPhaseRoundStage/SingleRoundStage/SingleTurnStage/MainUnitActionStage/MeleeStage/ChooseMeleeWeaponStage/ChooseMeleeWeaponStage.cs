@@ -21,20 +21,20 @@ namespace FDG.Stages
             }
 
             //TODO: Handle situations like Deadly, where you have to use a specific weapon first.
-            IReadOnlyDictionary<IWeapon, int> availableWeapons = new ConcurrentDictionary<IWeapon, int>(context.AvailableWeapons);
-            IReadOnlyDictionary<IWeapon, int> unavailableWeapons = new ConcurrentDictionary<IWeapon, int>(context.AlreadyUsedWeapons);
+            IReadOnlyDictionary<Weapon, int> availableWeapons = new ConcurrentDictionary<Weapon, int>(context.AvailableWeapons);
+            IReadOnlyDictionary<Weapon, int> unavailableWeapons = new ConcurrentDictionary<Weapon, int>(context.AlreadyUsedWeapons);
 
             //TODO: Since we don't store weapons in bindings, we're hackedly using their stats names, which have no
             //protection against identical names.
-            List<(string, IWeapon)> validOptions = new List<(string, IWeapon)>();
+            List<(string, Weapon)> validOptions = new List<(string, Weapon)>();
             List<StringSelectionRequest.InvalidOption> invalidOptions = new List<StringSelectionRequest.InvalidOption>();
 
-            foreach(KeyValuePair<IWeapon, int> kvp in availableWeapons)
+            foreach(KeyValuePair<Weapon, int> kvp in availableWeapons)
             {
                 validOptions.Add((kvp.Key.GetWeaponNameAndStats(kvp.Value), kvp.Key));
             }
             
-            foreach(KeyValuePair<IWeapon, int> kvp in unavailableWeapons)
+            foreach(KeyValuePair<Weapon, int> kvp in unavailableWeapons)
             {
                 invalidOptions.Add(new StringSelectionRequest.InvalidOption(kvp.Key.GetWeaponNameAndStats(kvp.Value),
                     "The unit has already attacked with this weapon."));
@@ -46,7 +46,7 @@ namespace FDG.Stages
             string chosenWeaponStatsName = await GameContext.PlayerRequester
                 .RequestDecision<StringSelectionRequest, string>(request);
 
-            IWeapon chosenWeapon = validOptions.First(option => option.Item1 == chosenWeaponStatsName).Item2;
+            Weapon chosenWeapon = validOptions.First(option => option.Item1 == chosenWeaponStatsName).Item2;
 
             context.SetAttackWeapon(chosenWeapon, out int weaponCount);
             GameContext.Log($"Chose weapon: {chosenWeapon.Name}. Count: {weaponCount}.");

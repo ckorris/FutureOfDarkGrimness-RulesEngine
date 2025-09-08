@@ -33,19 +33,19 @@ namespace FDG.Stages
             OnFinishedShooting.OnWillActivate += OnShootingFinished;
 
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
-                .AddChild(new ChooseRangedTargetStage(GameContext, this), out var chooseRangedTarget)
                 .AddChild(new ChooseRangedWeaponStage(GameContext, this), out var chooseRangedWeapon)
+                .AddChild(new ChooseRangedTargetStage(GameContext, this), out var chooseRangedTarget)
                 .AddChild(new FireStage(GameContext, this), out var fire)
                 .AddChild(new ResolveRangedMoraleStage(GameContext, this), out var resolveRangedMorale)
                 .AddChild(new DetermineCanKeepShootingStage(GameContext, this), out var determineCanKeepShooting)
                 .AddSibling(nameof(OnFinishedShooting), OnFinishedShooting, out string onFinishedShootingEvent)
                 .Build();
 
-            startingChild = chooseRangedTarget;
+            startingChild = chooseRangedWeapon;
 
-            chooseRangedTarget.OnChoseTarget.Bind(chooseRangedWeapon);
-            chooseRangedTarget.BackToChooseAction.Bind(onFinishedShootingEvent);
-            chooseRangedWeapon.OnChoseWeapon.Bind(fire);
+            chooseRangedWeapon.OnChoseWeapon.Bind(chooseRangedTarget);
+            chooseRangedTarget.OnChoseTarget.Bind(fire);
+            
             fire.OnFinishedFiring.Bind(resolveRangedMorale);
             resolveRangedMorale.ToFinished.Bind(determineCanKeepShooting);
             determineCanKeepShooting.ReturnToChooseWeapon.Bind(chooseRangedWeapon);

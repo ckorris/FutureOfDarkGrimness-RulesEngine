@@ -55,9 +55,9 @@ namespace FDG
             return allWeapons;
         }
 
-        public static List<IWeapon> AllWeapons(this IUnit unit, Func<IWeapon, bool> predicate)
+        public static List<Weapon> AllWeapons(this IUnit unit, Func<Weapon, bool> predicate)
         {
-            List<IWeapon> allWeapons = new List<IWeapon>();
+            List<Weapon> allWeapons = new List<Weapon>();
 
             foreach (IModel model in unit.Models)
             {
@@ -67,12 +67,12 @@ namespace FDG
             return allWeapons;
         }
 
-        public static List<IWeapon> GetMeleeWeapons(this IUnit unit)
+        public static List<Weapon> GetMeleeWeapons(this IUnit unit)
         {
             return unit.AllWeapons(u => u.IsMelee());
         }
 
-        public static List<IWeapon> GetRangedWeapons(this IUnit unit)
+        public static List<Weapon> GetRangedWeapons(this IUnit unit)
         {
             return unit.AllWeapons(u => u.IsRanged());
         }

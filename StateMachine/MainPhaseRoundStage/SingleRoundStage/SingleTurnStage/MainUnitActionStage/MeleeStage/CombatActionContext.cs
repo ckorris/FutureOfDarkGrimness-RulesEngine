@@ -14,12 +14,16 @@ namespace FDG.Stages
 
         public DataBinding<UnitData> DefendingUnit { get; }
 
-        public IReadOnlyDictionary<IWeapon, int> AvailableWeapons { get; }
-        public IReadOnlyDictionary<IWeapon, int> AlreadyUsedWeapons { get; }
+        public IReadOnlyDictionary<Weapon, int> AvailableWeapons { get; }
+        public IReadOnlyDictionary<Weapon, int> AlreadyUsedWeapons { get; }
 
         public IModel InRangeAttackingModels { get; }
 
         public IModel InRangeDefendingModels { get; }
+
+        public Weapon? ShootingWeaponType { get; }
+
+        public int? ShootingWeaponCount { get; }
 
         public float AttackerRemainingWoundsAtStart { get; }
 
@@ -29,9 +33,9 @@ namespace FDG.Stages
 
         public bool QueryForResult<TResult>(out TResult result);
 
-        public void BeginNewAttack(DataBinding<UnitData> defendingUnit);
+        public void SetDefender(DataBinding<UnitData> defendingUnit);
 
-        public void SetAttackWeapon(IWeapon weaponToConsume, out int weaponCount);
+        public void SetAttackWeapon(Weapon weaponToConsume, out int weaponCount);
 
         public ICombatMetadata ConsumeAttackIntoContext(IGameContext gameContext);
     }
@@ -46,9 +50,9 @@ namespace FDG.Stages
 
         public IModel InRangeDefendingModels { get; private set; }
 
-        public IReadOnlyDictionary<IWeapon, int> AvailableWeapons => _availableWeapons;
+        public IReadOnlyDictionary<Weapon, int> AvailableWeapons => _availableWeapons;
 
-        public IReadOnlyDictionary<IWeapon, int> AlreadyUsedWeapons => _alreadyUsedWeapons;
+        public IReadOnlyDictionary<Weapon, int> AlreadyUsedWeapons => _alreadyUsedWeapons;
 
         public float AttackerRemainingWoundsAtStart { get; private set; }
 
@@ -56,13 +60,16 @@ namespace FDG.Stages
 
         public IGameContext GameContext { get; }
 
-        private ConcurrentDictionary<IWeapon, int> _availableWeapons;
+        public Weapon? ShootingWeaponType { get; private set; } = null;
 
-        private ConcurrentDictionary<IWeapon, int> _alreadyUsedWeapons = new ConcurrentDictionary<IWeapon, int>();
+        public int? ShootingWeaponCount { get; private set; } = null;
+
+        private ConcurrentDictionary<Weapon, int> _availableWeapons;
+
+        private ConcurrentDictionary<Weapon, int> _alreadyUsedWeapons = new ConcurrentDictionary<Weapon, int>();
 
         private QueryableResults _queryableResults = new QueryableResults();
 
-        private PendingAttack _currentPendingAttack = null;
 
         public CombatActionContext(IGameContext gameContext, DataBinding<UnitData> attackingUnit)
         {
@@ -82,29 +89,9 @@ namespace FDG.Stages
             return _queryableResults.QueryForResult(out result);
         }
 
-        public void BeginNewAttack(DataBinding<UnitData> defendingUnit)
+       
+        public void SetAttackWeapon(Weapon weaponToConsume, out int weaponCount)
         {
-            if(_currentPendingAttack != null)
-            {
-                //TODO: Allow for cancelling. 
-                throw new InvalidOperationException($"Started attack before the last was consumed.");
-            }
-
-            DefendingUnit = defendingUnit;
-
-            _currentPendingAttack = new PendingAttack();
-            _currentPendingAttack.DefendingUnit = DefendingUnit;
-
-            DefenderRemainingWoundsAtStart = DefendingUnit.GetValue().RemainingWounds;
-        }
-
-        public void SetAttackWeapon(IWeapon weaponToConsume, out int weaponCount)
-        {
-            if(_currentPendingAttack == null)
-            {
-                throw new InvalidOperationException($"Called {nameof(SetAttackWeapon)} before calling {nameof(BeginNewAttack)}.");
-            }
-
             if (_availableWeapons.ContainsKey(weaponToConsume) == false)
             {
                 throw new ArgumentException($"{nameof(CombatActionContext)}.{nameof(SetAttackWeapon)} called on weapon " +
@@ -115,41 +102,47 @@ namespace FDG.Stages
 
             _alreadyUsedWeapons.TryAdd(weaponToConsume, weaponCount);
 
-            _currentPendingAttack.WeaponType = weaponToConsume;
-            _currentPendingAttack.WeaponCount = weaponCount;
+            ShootingWeaponType = weaponToConsume;
+            ShootingWeaponCount = weaponCount;
+        }
+
+        public void SetDefender(DataBinding<UnitData> defendingUnit)
+        {
+            DefendingUnit = defendingUnit;
+            DefenderRemainingWoundsAtStart = DefendingUnit.GetValue().RemainingWounds;
         }
 
         public ICombatMetadata ConsumeAttackIntoContext(IGameContext gameContext)
         {
-            if(_currentPendingAttack == null)
-            {
-                throw new InvalidOperationException($"Called {nameof(ConsumeAttackIntoContext)} when no attack was set.");
-            }
 
-            if(_currentPendingAttack.IsReady == false)
+            if(DefendingUnit == default || ShootingWeaponType != default || ShootingWeaponCount != default)
             {
                 throw new InvalidOperationException($"Called {nameof(ConsumeAttackIntoContext)} when attack was not set up. " + 
                     "Must have all values set before consuming.");
             }
 
             CombatMetadata meleeCombatMetadata = new CombatMetadata(gameContext, AttackingUnit, 
-                _currentPendingAttack.DefendingUnit, _currentPendingAttack.WeaponType, _currentPendingAttack.WeaponCount);
+                DefendingUnit, ShootingWeaponType, ShootingWeaponCount.Value);
 
-            _currentPendingAttack = null;
+            //TODO: In much older code, we had this PendingCombat class, which was reset when we did this.
+            //But I don't imagine we reuse contexts anymore. So I'll reset it but we may be able to just leave it.
+            DefendingUnit = null;
+            ShootingWeaponType = null;
+            ShootingWeaponCount = null;
 
             return meleeCombatMetadata;
         }
 
         //TODO: Repeated in Ranged version. Move to static class.
-        private ConcurrentDictionary<IWeapon, int> GetTypeSortedWeapons(List<IWeapon> weapons)
+        private ConcurrentDictionary<Weapon, int> GetTypeSortedWeapons(List<Weapon> weapons)
         {
-            ConcurrentDictionary<IWeapon, int> weaponsAndCounts = new ConcurrentDictionary<IWeapon, int>();
+            ConcurrentDictionary<Weapon, int> weaponsAndCounts = new ConcurrentDictionary<Weapon, int>();
 
             WeaponComparer comparer = new WeaponComparer();
 
-            foreach (IWeapon newWeapon in weapons)
+            foreach (Weapon newWeapon in weapons)
             {
-                IWeapon identicalWeapon = weaponsAndCounts.Keys.FirstOrDefault(keyWeapon => comparer.Equals(newWeapon, keyWeapon));
+                Weapon identicalWeapon = weaponsAndCounts.Keys.FirstOrDefault(keyWeapon => comparer.Equals(newWeapon, keyWeapon));
 
                 if (identicalWeapon != default)
                 {
@@ -164,16 +157,18 @@ namespace FDG.Stages
             return weaponsAndCounts;
         }
 
-        private class PendingAttack //TODO: Duplicated from shooting.
+        /*
+        private class PendingAttack 
         {
             public bool IsReady => DefendingUnit != default && WeaponType != default && WeaponCount != default;
 
             public DataBinding<UnitData> DefendingUnit = default;
 
-            public IWeapon WeaponType = default;
+            public Weapon WeaponType = default;
 
             public int WeaponCount = default;
         }
+        */
     }
 
 

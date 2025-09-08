@@ -13,29 +13,47 @@ namespace FDG.StageResolution.Requests
 
         public DataBinding<UnitData> AttackingUnit { get; }
 
+        public List<DataBinding<ModelData>> ModelsWithWeapons { get; } 
+
+        public Weapon Weapon { get; }
+
+        public int WeaponCount { get; }
+
         public List<ValidRangeTargetOption> ValidRangeTargets { get; }
 
         public List<DataBinding<UnitData>> InvalidRangeTargets { get; }
 
         [JsonConstructor]
         public ChooseRangedTargetRequest(PlayerID targetPlayerID, TaskID taskID, string taskName, DataBinding<UnitData> attackingUnit,
+            List<DataBinding<ModelData>> modelsWithWeapons, Weapon weapon, int weaponCount,
             List<ValidRangeTargetOption> validRangeTargetOptions, List<DataBinding<UnitData>> invalidRangeTargetOptions)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
             TaskName = taskName;
+
             AttackingUnit = attackingUnit;
+            ModelsWithWeapons = modelsWithWeapons;
+            Weapon = weapon;
+            WeaponCount = weaponCount;
+
             ValidRangeTargets = validRangeTargetOptions;
             InvalidRangeTargets = invalidRangeTargetOptions;
         }
 
-        public ChooseRangedTargetRequest(PlayerID targetPlayerID,  string taskName, DataBinding<UnitData> attackingUnit, 
+        public ChooseRangedTargetRequest(PlayerID targetPlayerID,  string taskName, DataBinding<UnitData> attackingUnit,
+            List<DataBinding<ModelData>> modelsWithWeapons, Weapon weapon, int weaponCount,
             List<ValidRangeTargetOption> validRangeTargetOptions, List<DataBinding<UnitData>> invalidRangeTargetOptions)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = new TaskID(Guid.NewGuid());
             TaskName = taskName;
+
             AttackingUnit = attackingUnit;
+            ModelsWithWeapons = modelsWithWeapons;
+            Weapon = weapon;
+            WeaponCount = weaponCount;
+
             ValidRangeTargets = validRangeTargetOptions;
             InvalidRangeTargets = invalidRangeTargetOptions;
         }
@@ -59,14 +77,10 @@ namespace FDG.StageResolution.Requests
 
             public List<DataBinding<ModelData>> ModelsWithValidAttacks;
 
-            public List<Weapon> ShootableWeapons;
-
-            public ValidRangeTargetOption(DataBinding<UnitData> targetUnit, List<DataBinding<ModelData>> modelsWithValidAttacks,
-                List<Weapon> shootableWeapons)
+            public ValidRangeTargetOption(DataBinding<UnitData> targetUnit, List<DataBinding<ModelData>> modelsWithValidAttacks)
             {
                 TargetUnit = targetUnit;
                 ModelsWithValidAttacks = modelsWithValidAttacks;
-                ShootableWeapons = shootableWeapons;
             }
         }
     }

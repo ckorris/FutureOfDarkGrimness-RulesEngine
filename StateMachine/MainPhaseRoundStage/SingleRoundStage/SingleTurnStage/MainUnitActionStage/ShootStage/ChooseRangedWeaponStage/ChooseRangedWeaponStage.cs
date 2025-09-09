@@ -4,6 +4,9 @@ using FDG.Utilities;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Security.Cryptography.X509Certificates;
+
+using static FDG.StageResolution.Requests.ChooseRangedWeaponRequest;
 
 namespace FDG.Stages
 {
@@ -44,19 +47,42 @@ namespace FDG.Stages
                     "The unit has already attacked with this weapon."));
             }
 
+
+            List<WeaponOption> weaponOptions = GetWeaponOptions(context.AttackingUnit, context.AvailableWeapons, context.GameContext);
+
+            ChooseRangedWeaponRequest chooseWeaponRequest = new ChooseRangedWeaponRequest(context.AttackingUnit.PlayerID(), "Choose Ranged Weapon",
+                context.AttackingUnit, weaponOptions);
+
+            //Some weirdness here because we're not using bindings for weapons as of now.
+            Weapon weaponFromRequest = await context.PlayerRequester().RequestDecision<ChooseRangedWeaponRequest, Weapon>(chooseWeaponRequest);
+
+            Weapon chosenWeapon = validOptions.First(option => option.Item1 == weaponFromRequest.Name).Item2;
+
+            context.SetAttackWeapon(chosenWeapon, out int weaponCount);
+            GameContext.Log($"Chose weapon: {chosenWeapon.Name}. Count: {weaponCount}.");
+
+            /*
             StringSelectionRequest request = new StringSelectionRequest(context.AttackingUnit.PlayerID(),
                 "Choose weapon:", validOptions.Select(option => option.Item1).ToList(), invalidOptions);
 
             string chosenWeaponStatsName = await GameContext.PlayerRequester
                 .RequestDecision<StringSelectionRequest, string>(request);
-
+            
             Weapon chosenWeapon = validOptions.First(option => option.Item1 == chosenWeaponStatsName).Item2;
 
             context.SetAttackWeapon(chosenWeapon, out int weaponCount);
             GameContext.Log($"Chose weapon: {chosenWeapon.Name}. Count: {weaponCount}.");
+            */
 
             OnChoseWeapon.Activate(context);
         }
+
+        private List<WeaponOption> GetWeaponOptions(DataBinding<UnitData> attackingUnit, IReadOnlyDictionary<Weapon, int> availableWeapons, IGameContext gameContext)
+        {
+            throw new NotImplementedException();
+        }
+
+
 
         /*
          *The below was taken from ChooseRangedTargetStage when it came before weapons. Maybe of use?

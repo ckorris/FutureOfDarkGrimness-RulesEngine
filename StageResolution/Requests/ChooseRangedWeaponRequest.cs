@@ -49,8 +49,7 @@ namespace FDG.StageResolution.Requests
         /// </summary>
         /// <param name="TargetUnit">Unit being targeted.</param>
         /// <param name="modelsThatCanShoot">Models with the weapon that can hit (have line of sight and range)</param>
-        /// <param name="modelsWithWeaponThatCantShoot">Models with the weapon but that can't shoot for whatever reason.</param>
         public record WeaponTargetStats(DataBinding<UnitData> TargetUnit, List<DataBinding<ModelData>> modelsThatCanShoot,
-            List<DataBinding<ModelData>> modelsWithWeaponThatCantShoot);
+            List<DataBinding<ModelData>> modelsWithWeaponThatCannotShoot);
     }
 }

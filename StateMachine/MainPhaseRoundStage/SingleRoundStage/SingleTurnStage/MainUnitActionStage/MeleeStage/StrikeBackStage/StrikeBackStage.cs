@@ -16,7 +16,8 @@ namespace FDG.Stages
 
         protected override ICombatActionContext GetNewChildContext(ICombatActionContext contextSelf)
         {
-            CombatActionContext meleeContext = new CombatActionContext(contextSelf.GameContext, contextSelf.DefendingUnit);
+            CombatActionContext meleeContext = new CombatActionContext(contextSelf.GameContext, 
+                contextSelf.DefendingUnit, isMelee: true);
             meleeContext.SetDefender(contextSelf.AttackingUnit); //Purposefully reversed.
             return meleeContext;
         }

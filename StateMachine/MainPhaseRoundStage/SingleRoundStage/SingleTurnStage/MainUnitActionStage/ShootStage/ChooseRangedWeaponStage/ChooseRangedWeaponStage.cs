@@ -55,98 +55,18 @@ namespace FDG.Stages
                 context.AttackingUnit, weaponOptions);
 
             //Some weirdness here because we're not using bindings for weapons as of now.
-            Weapon weaponFromRequest = await context.PlayerRequester().RequestDecision<ChooseRangedWeaponRequest, Weapon>(chooseWeaponRequest);
+            //Weapon weaponFromRequest = await context.PlayerRequester().RequestDecision<ChooseRangedWeaponRequest, Weapon>(chooseWeaponRequest);
+            RangedAttackChoice rangedAttackChoice = await context.PlayerRequester()
+                .RequestDecision<ChooseRangedWeaponRequest, RangedAttackChoice>(chooseWeaponRequest);
 
-            Weapon chosenWeapon = validOptions.First(option => option.Item1 == weaponFromRequest.Name).Item2;
+            Weapon chosenWeapon = validOptions.First(option => option.Item1 == rangedAttackChoice.Weapon.Name).Item2;
 
             context.SetAttackWeapon(chosenWeapon, out int weaponCount);
+            context.SetDefender(rangedAttackChoice.TargetUnit);
             GameContext.Log($"Chose weapon: {chosenWeapon.Name}. Count: {weaponCount}.");
 
             OnChoseWeapon.Activate(context);
         }
-
-
-
-        /*
-         *The below was taken from ChooseRangedTargetStage when it came before weapons. Maybe of use?
-        private static bool IsTargetValid(UnitData attackingUnit, UnitData defendingUnit,
-            out List<DataBinding<ModelData>> validAttackingModels, out List<Weapon> validWeapons)
-        {
-            //Iterate through all models in the attacking unit, and make sure it can see at least one enemy unit.
-            //TODO: Not handling cover here.
-            validAttackingModels = new List<DataBinding<ModelData>>();
-            validWeapons = new List<Weapon>();
-            List<Weapon> toRemoveBuffer = new List<Weapon>(); //Reused to remove weapons during iteration.
-
-            foreach (DataBinding<ModelData> attackingModel in attackingUnit.ModelBindings)
-            {
-                //In GDF as of v3.4, each weapon only needs to see one valid target model to be able to target
-                //the whole unit. So once we have that for each weapon, we can stop checking that one.
-                //Note: I had an idea to sort the weapon list by range so you can skip all greater than the first,
-                //but I don't think that conveys a consistent performance advantage and it makes things more complex.
-
-                //Copy list of weapons, so we can stop checking each once it has a single valid model target.
-                List<Weapon> weaponsNotYetHitting = attackingModel.Weapons()
-                    .Where(weapon => weapon.IsRanged())
-                    .ToList();
-
-                bool canAnyWeaponHit = false;
-
-                foreach (DataBinding<ModelData> targetModel in defendingUnit.ModelBindings)
-                {
-                    if (DoesModelHaveLineOfSight(attackingModel, targetModel) == false)
-                    {
-                        continue;
-                    }
-
-                    foreach (Weapon weapon in weaponsNotYetHitting)
-                    {
-                        if (IsTargetWithinRange(attackingModel, targetModel, weapon))
-                        {
-                            validWeapons.Add(weapon);
-                            toRemoveBuffer.Add(weapon);
-                            canAnyWeaponHit = true;
-                        }
-                    }
-
-                    foreach (Weapon toRemove in toRemoveBuffer)
-                    {
-                        weaponsNotYetHitting.Remove(toRemove);
-                    }
-                    toRemoveBuffer.Clear();
-
-
-                    //If all weapons are marked as shootable, there's no reason to keep going.
-                    //TODO: May need to do something here for Sniper, or maybe Blast if some people care.
-                    if (weaponsNotYetHitting.Count == 0)
-                    {
-                        continue;
-                    }
-                }
-
-                //If any can hit, we can mark this model as being able to shoot.
-                if (canAnyWeaponHit)
-                {
-                    validAttackingModels.Add(attackingModel);
-                }
-            }
-
-            return validWeapons.Count > 0;
-        }
-
-        private static bool DoesModelHaveLineOfSight(ModelData attacker, ModelData target)
-        {
-            //TODO: There's no hard terrain yet as of writing, so always return true.
-            return true;
-        }
-
-        private static bool IsTargetWithinRange(ModelData attacker, ModelData target, Weapon weapon)
-        {
-            float distance = DistanceUtilities.GetBaseToBaseDistanceInches_3D(attacker.PositionBinding.GetValue(),
-                target.PositionBinding.GetValue(), attacker.BaseRadiusInches, target.BaseRadiusInches);
-            return distance <= weapon.RangeInches;
-        }
-        */
 
         private List<WeaponOption> GetWeaponOptions(DataBinding<UnitData> attackingUnit,
             IReadOnlyDictionary<Weapon, int> availableWeapons, IGameContext gameContext)

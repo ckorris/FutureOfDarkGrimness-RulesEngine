@@ -1,9 +1,10 @@
 ﻿using FDG.Data;
 using Newtonsoft.Json;
+using static FDG.StageResolution.Requests.ChooseRangedWeaponRequest;
 
 namespace FDG.StageResolution.Requests
 {
-    public class ChooseRangedWeaponRequest : IStageTaskRequest<Weapon> 
+    public class ChooseRangedWeaponRequest : IStageTaskRequest<RangedAttackChoice> 
     {
         public PlayerID TargetPlayerID { get; }
 
@@ -36,7 +37,7 @@ namespace FDG.StageResolution.Requests
             WeaponOptions = weaponOptions;
         }
 
-        public Task<Weapon> Resolve(Weapon resolution)
+        public Task<RangedAttackChoice> Resolve(RangedAttackChoice resolution)
         {
             return Task.FromResult(resolution);
         }
@@ -51,5 +52,12 @@ namespace FDG.StageResolution.Requests
         /// <param name="modelsThatCanShoot">Models with the weapon that can hit (have line of sight and range)</param>
         public record WeaponTargetStats(DataBinding<UnitData> TargetUnit, HashSet<DataBinding<ModelData>> modelsThatCanShoot,
             HashSet<DataBinding<ModelData>> modelsWithWeaponThatCannotShoot);
+
+        /// <summary>
+        /// Record suited to choosing your attack, with the attacking unit implied.
+        /// </summary>
+        /// <param name="Weapon">Weapon used to shoot.</param>
+        /// <param name="TargetUnit">Unit to target.</param>
+        public record RangedAttackChoice(Weapon Weapon, DataBinding<UnitData> TargetUnit);
     }
 }

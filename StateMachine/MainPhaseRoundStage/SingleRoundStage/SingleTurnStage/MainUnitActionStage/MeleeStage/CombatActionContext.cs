@@ -3,6 +3,7 @@ using System.Linq;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using FDG.Data;
+using System.Numerics;
 
 namespace FDG.Stages
 {
@@ -71,11 +72,21 @@ namespace FDG.Stages
         private QueryableResults _queryableResults = new QueryableResults();
 
 
-        public CombatActionContext(IGameContext gameContext, DataBinding<UnitData> attackingUnit)
+        public CombatActionContext(IGameContext gameContext, DataBinding<UnitData> attackingUnit, bool isMelee)
         {
             GameContext = gameContext;
             AttackingUnit = attackingUnit;
-            _availableWeapons = GetTypeSortedWeapons(attackingUnit.GetValue().GetMeleeWeapons());
+            if(isMelee)
+            {
+                _availableWeapons = GetTypeSortedWeapons(attackingUnit.GetValue().GetMeleeWeapons());
+
+            }
+            else
+            {
+                _availableWeapons = GetTypeSortedWeapons(attackingUnit.GetValue().GetRangedWeapons());
+
+            }
+
             AttackerRemainingWoundsAtStart = attackingUnit.GetValue().RemainingWounds;
         }
 

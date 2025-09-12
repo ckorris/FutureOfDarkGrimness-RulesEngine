@@ -24,7 +24,8 @@ namespace FDG.Stages
 
         protected override ICombatActionContext GetNewChildContext(IUnitActionContext contextSelf)
         {
-            return new CombatActionContext(contextSelf.GameContext, contextSelf.ActivatingUnit);
+            return new CombatActionContext(contextSelf.GameContext, contextSelf.ActivatingUnit, 
+                isMelee: false);
         }
 
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<ICombatActionContext> startingChild)
@@ -34,7 +35,7 @@ namespace FDG.Stages
 
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
                 .AddChild(new ChooseRangedWeaponStage(GameContext, this), out var chooseRangedWeapon)
-                .AddChild(new ChooseRangedTargetStage(GameContext, this), out var chooseRangedTarget)
+                //.AddChild(new ChooseRangedTargetStage(GameContext, this), out var chooseRangedTarget)
                 .AddChild(new FireStage(GameContext, this), out var fire)
                 .AddChild(new ResolveRangedMoraleStage(GameContext, this), out var resolveRangedMorale)
                 .AddChild(new DetermineCanKeepShootingStage(GameContext, this), out var determineCanKeepShooting)
@@ -43,8 +44,7 @@ namespace FDG.Stages
 
             startingChild = chooseRangedWeapon;
 
-            chooseRangedWeapon.OnChoseWeapon.Bind(chooseRangedTarget);
-            chooseRangedTarget.OnChoseTarget.Bind(fire);
+            chooseRangedWeapon.OnChoseWeapon.Bind(fire);
             
             fire.OnFinishedFiring.Bind(resolveRangedMorale);
             resolveRangedMorale.ToFinished.Bind(determineCanKeepShooting);

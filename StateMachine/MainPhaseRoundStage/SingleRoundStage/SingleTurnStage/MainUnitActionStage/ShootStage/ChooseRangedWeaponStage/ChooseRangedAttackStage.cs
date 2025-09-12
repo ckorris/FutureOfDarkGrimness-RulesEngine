@@ -7,16 +7,16 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Security.Cryptography.X509Certificates;
 
-using static FDG.StageResolution.Requests.ChooseRangedWeaponRequest;
+using static FDG.StageResolution.Requests.ChooseRangedAttackRequest;
 
 namespace FDG.Stages
 {
 
-    public class ChooseRangedWeaponStage : StageBase<ICombatActionContext>
+    public class ChooseRangedAttackStage : StageBase<ICombatActionContext>
     {
         public StageBinding OnChoseWeapon;
 
-        public ChooseRangedWeaponStage(IGameContext gameContext, IStateMachineLayer<ICombatActionContext> parent) : base(gameContext, parent)
+        public ChooseRangedAttackStage(IGameContext gameContext, IStateMachineLayer<ICombatActionContext> parent) : base(gameContext, parent)
         {
             OnChoseWeapon = new StageBinding(this);
         }
@@ -25,7 +25,7 @@ namespace FDG.Stages
         {
             if (context.AvailableWeapons.Count == 0)
             {
-                throw new Exception($"Available weapon dictionary was empty when entering {nameof(ChooseRangedWeaponStage)}.");
+                throw new Exception($"Available weapon dictionary was empty when entering {nameof(ChooseRangedAttackStage)}.");
             }
 
             //TODO: Handle situations like Deadly, where you have to use a specific weapon first.
@@ -51,13 +51,13 @@ namespace FDG.Stages
 
             List<WeaponOption> weaponOptions = GetWeaponOptions(context.AttackingUnit, context.AvailableWeapons, context.GameContext);
 
-            ChooseRangedWeaponRequest chooseWeaponRequest = new ChooseRangedWeaponRequest(context.AttackingUnit.PlayerID(), "Choose Ranged Weapon",
+            ChooseRangedAttackRequest chooseWeaponRequest = new ChooseRangedAttackRequest(context.AttackingUnit.PlayerID(), "Choose Ranged Weapon",
                 context.AttackingUnit, weaponOptions);
 
             //Some weirdness here because we're not using bindings for weapons as of now.
             //Weapon weaponFromRequest = await context.PlayerRequester().RequestDecision<ChooseRangedWeaponRequest, Weapon>(chooseWeaponRequest);
             RangedAttackChoice rangedAttackChoice = await context.PlayerRequester()
-                .RequestDecision<ChooseRangedWeaponRequest, RangedAttackChoice>(chooseWeaponRequest);
+                .RequestDecision<ChooseRangedAttackRequest, RangedAttackChoice>(chooseWeaponRequest);
 
             Weapon chosenWeapon = validOptions.First(option => option.Item1 == rangedAttackChoice.Weapon.Name).Item2;
 

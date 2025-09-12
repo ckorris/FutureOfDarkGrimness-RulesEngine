@@ -34,7 +34,7 @@ namespace FDG.Stages
             OnFinishedShooting.OnWillActivate += OnShootingFinished;
 
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
-                .AddChild(new ChooseRangedWeaponStage(GameContext, this), out var chooseRangedWeapon)
+                .AddChild(new ChooseRangedAttackStage(GameContext, this), out var chooseRangedWeapon)
                 //.AddChild(new ChooseRangedTargetStage(GameContext, this), out var chooseRangedTarget)
                 .AddChild(new FireStage(GameContext, this), out var fire)
                 .AddChild(new ResolveRangedMoraleStage(GameContext, this), out var resolveRangedMorale)

@@ -1,10 +1,10 @@
 ﻿using FDG.Data;
 using Newtonsoft.Json;
-using static FDG.StageResolution.Requests.ChooseRangedWeaponRequest;
+using static FDG.StageResolution.Requests.ChooseRangedAttackRequest;
 
 namespace FDG.StageResolution.Requests
 {
-    public class ChooseRangedWeaponRequest : IStageTaskRequest<RangedAttackChoice> 
+    public class ChooseRangedAttackRequest : IStageTaskRequest<RangedAttackChoice> 
     {
         public PlayerID TargetPlayerID { get; }
 
@@ -17,7 +17,7 @@ namespace FDG.StageResolution.Requests
         public List<WeaponOption> WeaponOptions { get; }
 
         [JsonConstructor]
-        public ChooseRangedWeaponRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
+        public ChooseRangedAttackRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
             DataBinding<UnitData> attackingUnit, List<WeaponOption> weaponOptions)
         {
             TargetPlayerID = targetPlayerID;
@@ -27,7 +27,7 @@ namespace FDG.StageResolution.Requests
             WeaponOptions = weaponOptions;
         }
 
-        public ChooseRangedWeaponRequest(PlayerID targetPlayerID, string taskName,
+        public ChooseRangedAttackRequest(PlayerID targetPlayerID, string taskName,
             DataBinding<UnitData> attackingUnit, List<WeaponOption> weaponOptions)
         {
             TargetPlayerID = targetPlayerID;

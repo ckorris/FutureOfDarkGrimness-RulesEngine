@@ -1,3 +1,4 @@
+using FDG;
 using FDG.Data;
 using FDG.StageResolution.Requests;
 using FDG.Utilities;
@@ -60,19 +61,6 @@ namespace FDG.Stages
 
             context.SetAttackWeapon(chosenWeapon, out int weaponCount);
             GameContext.Log($"Chose weapon: {chosenWeapon.Name}. Count: {weaponCount}.");
-
-            /*
-            StringSelectionRequest request = new StringSelectionRequest(context.AttackingUnit.PlayerID(),
-                "Choose weapon:", validOptions.Select(option => option.Item1).ToList(), invalidOptions);
-
-            string chosenWeaponStatsName = await GameContext.PlayerRequester
-                .RequestDecision<StringSelectionRequest, string>(request);
-            
-            Weapon chosenWeapon = validOptions.First(option => option.Item1 == chosenWeaponStatsName).Item2;
-
-            context.SetAttackWeapon(chosenWeapon, out int weaponCount);
-            GameContext.Log($"Chose weapon: {chosenWeapon.Name}. Count: {weaponCount}.");
-            */
 
             OnChoseWeapon.Activate(context);
         }
@@ -169,17 +157,7 @@ namespace FDG.Stages
                 .First(team => team.IsPlayerOnTeam(playerID));
 
             Dictionary<string, WeaponOption> nameAndWeaponOptions = new Dictionary<string, WeaponOption>();
-
-            //Reuse the below.
-            Dictionary<string, WeaponTargetStats> weaponToStatsCache = new Dictionary<string, WeaponTargetStats>();
-
-            foreach (Weapon weapon in availableWeapons.Keys)
-            {
-                WeaponOption option = new WeaponOption(weapon, new List<WeaponTargetStats>());
-                nameAndWeaponOptions.Add(weapon.Name, option);
-
-                weaponToStatsCache.Add(weapon.Name, null);
-            }
+            
 
             IEnumerable<DataBinding<UnitData>> enemyUnits = gameContext.GameDataStore().GetAllDataBindings<ArmyData>()
                 .Where(army => playerTeam.IsPlayerOnTeam(army.GetValue().PlayerID) == false)
@@ -188,56 +166,88 @@ namespace FDG.Stages
             //Go through each enemy unit, which will correspond to a WeaponTargetStats.
             foreach (DataBinding<UnitData> enemyUnit in enemyUnits)
             {
-                //Okay I hate how layered this is.
-                foreach (KeyValuePair<string, WeaponTargetStats> stats in weaponToStatsCache)
-                {
-                    weaponToStatsCache[stats.Key] = new WeaponTargetStats(enemyUnit, new List<DataBinding<ModelData>>(), new List<DataBinding<ModelData>>());
-                }
 
-                //Go through each of our models that have weapons.
-                foreach (DataBinding<ModelData> attackingModel in attackingUnit.ModelBindings())
-                {
-                    //TODO: Cache model weapons, both outside of this to look up, and 
-                    //within here. Should make a list before this scope of just models with relevant weapons.
-                    //Also that should have list of relevant weapons.
+                Dictionary<string, WeaponTargetStats> weaponToStats =
+                    GetAttacksForEnemyUnit(attackingUnit, enemyUnit, nameAndWeaponOptions.Keys);
 
-                    foreach (Weapon weapon in attackingModel.Weapons()) //For now relying on melee to be out of range.
-                    {
-                        if (nameAndWeaponOptions.ContainsKey(weapon.Name) == false)
-                        {
-                            continue;
-                        }
+                
 
-                        WeaponTargetStats targetStats = weaponToStatsCache[weapon.Name];
-                        bool foundOne = false;
-
-                        foreach (DataBinding<ModelData> defendingModel in enemyUnit.ModelBindings())
-                        {
-                            bool hasLineOfSight = DoesModelHaveLineOfSight(attackingModel, defendingModel);
-
-                            if (hasLineOfSight && IsTargetWithinRange(attackingModel, defendingModel, weapon))
-                            {
-                                //Gaaaawd this is so much branching.
-                                targetStats.modelsThatCanShoot.Add(attackingModel);
-                                foundOne = true;
-                                break;
-                            }
-                        }
-
-                        if(foundOne == false)
-                        {
-                            targetStats.modelsWithWeaponThatCannotShoot.Add(attackingModel);
-                        }
-                    }
-                }
-
-                foreach (KeyValuePair<string, WeaponTargetStats> kvp in weaponToStatsCache)
+                foreach (KeyValuePair<string, WeaponTargetStats> kvp in weaponToStats)
                 {
                     nameAndWeaponOptions[kvp.Key].WeaponTargetStats.Add(kvp.Value);
                 }
             }
 
             return nameAndWeaponOptions.Values.ToList();
+        }
+
+        private Dictionary<string, WeaponTargetStats> GetAttacksForEnemyUnit(DataBinding<UnitData> attackingUnit,
+            DataBinding<UnitData> enemyUnit, IEnumerable<string> weaponNames)
+        {
+            Dictionary<string, WeaponTargetStats> weaponToStats = new Dictionary<string, WeaponTargetStats>();
+
+            foreach (string weaponName in weaponNames)
+            {
+                weaponToStats[weaponName] = new WeaponTargetStats(enemyUnit,
+                    new HashSet<DataBinding<ModelData>>(), 
+                    new HashSet<DataBinding<ModelData>>());
+            }
+
+            //TODO: Cache line of sight lookups.
+
+            //Go through each of our models that have weapons.
+            foreach (DataBinding<ModelData> attackingModel in attackingUnit.ModelBindings())
+            {
+                //TODO: Cache model weapons, both outside of this to look up, and 
+                //within here. Should make a list before this scope of just models with relevant weapons.
+                //Also that should have list of relevant weapons.
+
+                Dictionary<DataBinding<ModelData>, bool> lineOfSightCache 
+                    = new Dictionary<DataBinding<ModelData>, bool>();
+
+                foreach (Weapon weapon in attackingModel.Weapons()) //For now relying on melee to be out of range.
+                {
+                    if (weaponToStats.ContainsKey(weapon.Name) == false)
+                    {
+                        continue;
+                    }
+
+                    WeaponTargetStats weaponTargetStats = weaponToStats[weapon.Name];
+                    if(CanWeaponShootAtUnit(attackingModel, enemyUnit, weapon,
+                        ref lineOfSightCache))
+                    {
+                        weaponTargetStats.modelsThatCanShoot.Add(attackingModel);
+                    }
+                    else
+                    {
+                        weaponTargetStats.modelsWithWeaponThatCannotShoot.Add(attackingModel);
+                    }
+                }
+            }
+
+            return weaponToStats;
+        }
+
+        private bool CanWeaponShootAtUnit(DataBinding<ModelData> attackingModel,
+            DataBinding<UnitData> enemyUnit, Weapon weapon,
+            ref Dictionary<DataBinding<ModelData>, bool> cachedLineOfSights)
+        {
+            foreach (DataBinding<ModelData> defendingModel in enemyUnit.ModelBindings())
+            {
+
+                if (cachedLineOfSights.TryGetValue(defendingModel, out bool hasLineOfSight) == false)
+                {
+                    hasLineOfSight = DoesModelHaveLineOfSight(attackingModel, defendingModel);
+                    cachedLineOfSights[defendingModel] = hasLineOfSight;
+                }
+
+                if (hasLineOfSight && IsTargetWithinRange(attackingModel, defendingModel, weapon))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool DoesModelHaveLineOfSight(ModelData attacker, ModelData target)

@@ -1,6 +1,6 @@
 using FDG.Data;
 using FDG.Utilities;
-using System.Text.Json.Serialization;
+using Newtonsoft.Json;
 
 namespace FDG
 {
@@ -8,16 +8,19 @@ namespace FDG
     public class AssignWoundsResults
     {
         public readonly float TotalWoundsToAssign;
+
         public float TotalAssignedWounds { get; private set; } = 0;
+
 
         public List<PendingWounds> PendingWounds;
 
-        /// <summary>
-        /// This exists so that we can disallow assigning wounds to units that aren't hurt when there are other
-        /// units that already have damage.
-        /// </summary>
-        [JsonIgnore]
-        public IReadOnlyList<PendingWounds> ModelsWithDamageAlreadyDealt;
+        [JsonConstructor]
+        public AssignWoundsResults(float totalWoundsToAssign, float totalAssignedWounds, List<PendingWounds> pendingWounds)
+        {
+            TotalWoundsToAssign = totalWoundsToAssign;
+            TotalAssignedWounds = totalAssignedWounds;
+            PendingWounds = pendingWounds;
+        }
 
         public AssignWoundsResults(DataBinding<UnitData> defendingUnit, float totalWoundsToAssign)
         {
@@ -28,11 +31,6 @@ namespace FDG
             {
                 PendingWounds.Add(new PendingWounds(model, 0));
             }
-
-            //If there are any models with damage already, put that in a list that must be resolved first.
-            ModelsWithDamageAlreadyDealt = PendingWounds
-                .Where(entry => entry.Model.GetValue().WoundsDealt > 0)
-                .ToList();
 
             TotalWoundsToAssign = totalWoundsToAssign;
         }

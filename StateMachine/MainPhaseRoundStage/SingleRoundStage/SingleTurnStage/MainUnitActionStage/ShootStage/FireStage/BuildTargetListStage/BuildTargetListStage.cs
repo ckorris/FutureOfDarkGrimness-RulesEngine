@@ -14,7 +14,7 @@ namespace FDG.Stages
         {
         }
 
-        protected override void RunStage(ICombatMetadata metaData, Action<BuildTargetListResults> onFinished)
+        protected override async Task RunStage(ICombatMetadata metaData, Action<BuildTargetListResults> onFinished)
         {
             List<DataBinding<ModelData>> targets = new List<DataBinding<ModelData>>();
 

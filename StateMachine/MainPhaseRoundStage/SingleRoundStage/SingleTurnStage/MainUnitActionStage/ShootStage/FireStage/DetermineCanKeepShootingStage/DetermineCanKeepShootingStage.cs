@@ -25,12 +25,19 @@ namespace FDG.Stages
                 return;
             }
 
+            /*
+            if(context.DefendingUnit == null)
+            {
+                throw new NullReferenceException($"{nameof(context.DefendingUnit)} was null when entering {nameof(DetermineCanKeepShootingStage)}.");
+            }
+
             if (context.DefendingUnit.RemainingWounds() <= 0)
             {
                 GameContext.Log("Has killed all target units.");
                 ToFinishShooting.Activate(context);
                 return;
             }
+            */
 
             //We've still got weapons to shoot, and baddies to shoot at. 
             ReturnToChooseWeapon.Activate(context);

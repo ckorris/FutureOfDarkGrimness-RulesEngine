@@ -311,18 +311,26 @@ namespace FDG.Network.Connection
                 Name = "Test Army"
             };
 
+            armyfile.Units.Add(GetTempTestUnit());
+
+
+            return armyfile;
+        }
+
+        private UnitFileEntry GetTempTestUnit()
+        {
             UnitFileEntry unitFileEntry = new UnitFileEntry();
             unitFileEntry.Name = "Test Unit";
             unitFileEntry.Quality = 4;
             unitFileEntry.Defense = 4;
-            unitFileEntry.ModelCount = 1;
+            unitFileEntry.ModelCount = 5;
             unitFileEntry.PointCost = 100;
 
             WeaponFileEntry meleeWeaponFile = new WeaponFileEntry()
             {
                 Name = "Stabby Knife",
                 Attacks = 1,
-                Quantity = 1,
+                Quantity = 4,
                 RangeInches = 0
             };
 
@@ -330,17 +338,35 @@ namespace FDG.Network.Connection
             {
                 Name = "Shooty Gun",
                 Attacks = 1,
-                Quantity = 1,
-                RangeInches = 30
+                Quantity = unitFileEntry.ModelCount,
+                RangeInches = 18
             };
 
             unitFileEntry.Weapons.Add(meleeWeaponFile);
             unitFileEntry.Weapons.Add(rangedWeaponFile);
 
+            WeaponFileEntry betterMeleeWeaponFile = new WeaponFileEntry()
+            {
+                Name = "Extra Stabby Knife",
+                Attacks = 2,
+                Quantity = 4,
+                RangeInches = 0,
+                ArmorPenetration = 1
+            };
 
-            armyfile.Units.Add(unitFileEntry);
+            WeaponFileEntry betterRangedWeaponFile = new WeaponFileEntry()
+            {
+                Name = "ExtraShooty Gun",
+                Attacks = 2,
+                Quantity = unitFileEntry.ModelCount,
+                RangeInches = 30,
+                ArmorPenetration = 1
+            };
 
-            return armyfile;
+            unitFileEntry.Weapons.Add(betterMeleeWeaponFile);
+            unitFileEntry.Weapons.Add(betterRangedWeaponFile);
+
+            return unitFileEntry;
         }
 
         /*

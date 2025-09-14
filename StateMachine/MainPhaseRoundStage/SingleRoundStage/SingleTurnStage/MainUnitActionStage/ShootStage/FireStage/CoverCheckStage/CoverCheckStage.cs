@@ -10,7 +10,7 @@ namespace FDG.Stages
         {
         }
 
-        protected override void RunStage(ICombatMetadata metaData, Action<CoverCheckResults> onFinished)
+        protected override async Task RunStage(ICombatMetadata metaData, Action<CoverCheckResults> onFinished)
         {
             //TODO: Test cover, and add mod to things.
 

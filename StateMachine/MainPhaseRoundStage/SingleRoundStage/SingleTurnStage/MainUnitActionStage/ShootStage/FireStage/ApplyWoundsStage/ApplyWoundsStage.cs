@@ -11,7 +11,7 @@ namespace FDG.Stages
         {
         }
 
-        protected override void RunStage(ICombatMetadata metaData, Action<ApplyWoundsResults> onFinished)
+        protected override async Task RunStage(ICombatMetadata metaData, Action<ApplyWoundsResults> onFinished)
         {
             AssignWoundsResults assignWoundsResults = QueryForResultOrThrowException<AssignWoundsResults>(metaData);
 

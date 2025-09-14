@@ -14,7 +14,7 @@ namespace FDG.Stages
         {
         }
 
-        protected override void RunStage(ICombatMetadata metaData, Action<DetermineHitRollNeededResults> onFinished)
+        protected override async Task RunStage(ICombatMetadata metaData, Action<DetermineHitRollNeededResults> onFinished)
         {
             DetermineHitRollNeededResults results = new DetermineHitRollNeededResults(metaData.AttackingUnit.Quality());
 

@@ -1,5 +1,7 @@
+using FDG.StageResolution.Requests;
 using FDG.Utilities;
 using System;
+using System.Threading.Tasks;
 
 namespace FDG.Stages
 {
@@ -12,7 +14,7 @@ namespace FDG.Stages
         {
         }
 
-        protected override void RunStage(ICombatMetadata metaData, Action<AssignWoundsResults> onFinished)
+        protected override async Task RunStage(ICombatMetadata metaData, Action<AssignWoundsResults> onFinished)
         {
             metaData.QueryForResult(out RollToSaveResults rollToSaveResults);
 
@@ -48,7 +50,7 @@ namespace FDG.Stages
             }
             else if (metaData.DefendingUnit.ModelBindings()
                 .Where(model => model.GetIsAlive())
-                .Count() > 0)
+                .Count() == 1)
             {
                 //If we only have one living model, just autoresolve it.
                 assignWoundsResults = new AssignWoundsResults(metaData.DefendingUnit, defenderRemainingWounds);
@@ -59,8 +61,11 @@ namespace FDG.Stages
                 //TODO: Add nuance of applying wounds to existing models with tough before others.
                 //I'm also putting this TODO in the results class.
                 //assignWoundsResults = new AssignWoundsResults(metaData.DefendingUnit, totalWoundsDealt);
-
-                throw new NotImplementedException();
+                AssignWoundsRequest request = new AssignWoundsRequest(metaData.DefendingUnit.PlayerID(), "Assign Wounds", 
+                    metaData.DefendingUnit, totalWoundsDealt);
+                assignWoundsResults = await metaData.GameContext.PlayerRequester()
+                    .RequestDecision<AssignWoundsRequest, AssignWoundsResults>(request);
+                //throw new NotImplementedException();
                 //GameContext.GetHandler<IAssignWoundsHandler>().Handle(metaData.DefendingUnit, assignWoundsResults, () => OnHandled(assignWoundsResults, onFinished));
             }
 

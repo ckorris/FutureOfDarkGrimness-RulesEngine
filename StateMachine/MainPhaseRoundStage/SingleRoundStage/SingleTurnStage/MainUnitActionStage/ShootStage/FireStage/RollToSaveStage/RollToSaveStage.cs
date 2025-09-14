@@ -12,7 +12,7 @@ namespace FDG.Stages
         {
         }
 
-        protected override void RunStage(ICombatMetadata metaData, Action<RollToSaveResults> onFinished)
+        protected override async Task RunStage(ICombatMetadata metaData, Action<RollToSaveResults> onFinished)
         {
             List<SuccessfulSaveInfo> successfulSaves = new List<SuccessfulSaveInfo>();
             List<FailedSaveInfo> failedSaves = new List<FailedSaveInfo>();

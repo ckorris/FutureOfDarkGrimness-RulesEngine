@@ -15,7 +15,7 @@ namespace FDG.Stages
         {
         }
 
-        protected override void RunStage(ICombatMetadata metaData, Action<DetermineSaveRollNeededResults> onFinished)
+        protected override async Task RunStage(ICombatMetadata metaData, Action<DetermineSaveRollNeededResults> onFinished)
         {
             List<PendingSaveRolls> pendingSaveRollsList = new List<PendingSaveRolls>();
 

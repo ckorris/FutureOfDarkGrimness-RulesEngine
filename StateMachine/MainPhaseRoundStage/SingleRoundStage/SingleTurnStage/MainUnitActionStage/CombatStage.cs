@@ -54,7 +54,7 @@ namespace FDG.Stages
                 }
             }
 
-            Execute(context);
+            await Execute(context);
         }
 
         public sealed override void Exit()
@@ -64,7 +64,7 @@ namespace FDG.Stages
             _effects.Clear();
         }
 
-        private void Execute(TMetadata context)
+        private Task Execute(TMetadata context)
         {
             if (context.QueryForResult(out TResult _) == true)
             {
@@ -79,7 +79,7 @@ namespace FDG.Stages
                 effect.OnPreExecute(context, this);
             }
 
-            RunStage(context, (result) => RunPostExecuteEffects(context, result));
+            return RunStage(context, (result) => RunPostExecuteEffects(context, result));
         }
 
         private void RunPostExecuteEffects(TMetadata context, TResult result)
@@ -114,6 +114,6 @@ namespace FDG.Stages
             return result;
         }
 
-        protected abstract void RunStage(ICombatMetadata metaData, Action<TResult> onFinished);
+        protected abstract Task RunStage(ICombatMetadata metaData, Action<TResult> onFinished);
     }
 }

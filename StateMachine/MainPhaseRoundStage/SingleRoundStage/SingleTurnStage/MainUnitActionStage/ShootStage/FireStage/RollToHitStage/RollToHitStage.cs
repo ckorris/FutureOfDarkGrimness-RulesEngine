@@ -11,7 +11,7 @@ namespace FDG.Stages
         {
         }
 
-        protected override void RunStage(ICombatMetadata metaData, Action<RollToHitResults> onFinished)
+        protected override async Task RunStage(ICombatMetadata metaData, Action<RollToHitResults> onFinished)
         {
             //TODO: Calculate attack count in separate stage, it may need its own mods.
             float attacks = metaData.WeaponType.Attacks * metaData.WeaponCount;

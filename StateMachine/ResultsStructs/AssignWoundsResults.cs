@@ -1,8 +1,6 @@
-using System;
-using System.Linq;
-using System.Collections.Generic;
 using FDG.Data;
 using FDG.Utilities;
+using System.Text.Json.Serialization;
 
 namespace FDG
 {
@@ -12,24 +10,18 @@ namespace FDG
         public readonly float TotalWoundsToAssign;
         public float TotalAssignedWounds { get; private set; } = 0;
 
-        //public IReadOnlyDictionary<DataBinding<ModelData>, float> PendingWounds => _pendingWounds;
-        //private Dictionary<DataBinding<ModelData>, float> _pendingWounds;
-
-
         public List<PendingWounds> PendingWounds;
+
+        /// <summary>
+        /// This exists so that we can disallow assigning wounds to units that aren't hurt when there are other
+        /// units that already have damage.
+        /// </summary>
+        [JsonIgnore]
+        public IReadOnlyList<PendingWounds> ModelsWithDamageAlreadyDealt;
 
         public AssignWoundsResults(DataBinding<UnitData> defendingUnit, float totalWoundsToAssign)
         {
             //TODO: Add nuance of applying wounds to existing models with tough before others.
-            //I'm also putting this TODO in the stage.
-            /*
-            _pendingWounds = new Dictionary<DataBinding<ModelData>, float>();
-            foreach(DataBinding<ModelData> model in defendingUnit.ModelBindings()
-                .Where(model => model.GetIsAlive()))
-            {
-                _pendingWounds.Add(model, 0);
-            }*/
-
             PendingWounds = new List<PendingWounds>();
             foreach (DataBinding<ModelData> model in defendingUnit.ModelBindings()
                 .Where(model => model.GetIsAlive()))
@@ -37,6 +29,10 @@ namespace FDG
                 PendingWounds.Add(new PendingWounds(model, 0));
             }
 
+            //If there are any models with damage already, put that in a list that must be resolved first.
+            ModelsWithDamageAlreadyDealt = PendingWounds
+                .Where(entry => entry.Model.GetValue().WoundsDealt > 0)
+                .ToList();
 
             TotalWoundsToAssign = totalWoundsToAssign;
         }
@@ -44,16 +40,19 @@ namespace FDG
         public bool IsFinishedAssigning => TotalAssignedWounds == TotalWoundsToAssign;
 
 
-        public bool TryAddWounds(DataBinding<ModelData> model, int woundsToAdd)
+        public bool TryAddWounds(DataBinding<ModelData> model)
         {
-            PendingWounds pendingWoundsEntry = PendingWounds.FirstOrDefault(entry => entry.Model == model);
-            if ((pendingWoundsEntry == default))
+            PendingWounds? pendingWoundsEntry = PendingWounds.FirstOrDefault(entry => entry.Model == model);
+            if ((pendingWoundsEntry == null))
             {
                 throw new ArgumentOutOfRangeException($"Tried to add model to {nameof(AssignWoundsResults)} " +
                     "that was already dead or does not belong to the defending unit.");
             }
 
-
+            //TODO: You could split wounds in an unallowed way by assigning when there's less than its total left,
+            //Then unassigning from a different model, then assigning to another tough model. Fix.
+            float woundsToAdd = Math.Min(pendingWoundsEntry.Model.GetValue().RemainingWoundsBinding.GetValue(),
+                TotalWoundsToAssign);
 
             if (pendingWoundsEntry.Wounds + woundsToAdd > model.TotalWounds() - model.WoundsDealt())
             {
@@ -64,6 +63,20 @@ namespace FDG
             TotalAssignedWounds += woundsToAdd;
 
             return true;
+        }
+
+        public void TryRemoveWounds(DataBinding<ModelData> model)
+        {
+            PendingWounds? pendingWoundsEntry = PendingWounds.FirstOrDefault(entry => entry.Model == model);
+            if ((pendingWoundsEntry == null))
+            {
+                throw new ArgumentOutOfRangeException($"Tried to add model to {nameof(AssignWoundsResults)} " +
+                    "that was already dead or does not belong to the defending unit.");
+            }
+
+            float assignedWounds = pendingWoundsEntry.Wounds;
+            pendingWoundsEntry.Wounds = 0;
+            TotalAssignedWounds -= assignedWounds;
         }
 
         /// <summary>

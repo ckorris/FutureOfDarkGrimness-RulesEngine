@@ -28,7 +28,13 @@ namespace FDG.Stages
             //then just do it automatically.
             AssignWoundsResults assignWoundsResults;
 
-            if (totalWoundsDealt >= defenderRemainingWounds)
+            if(totalWoundsDealt == 0)
+            {
+                assignWoundsResults = new AssignWoundsResults(metaData.DefendingUnit, 0);
+                //Should be auto-filled regardless but just do it. 
+                assignWoundsResults.AutoFill();
+            }
+            else if (totalWoundsDealt >= defenderRemainingWounds)
             {
                 //We've killed off the unit. No need to use the handler to ask what will die.
                 //Fill results with wounds it would take to kill.
@@ -61,6 +67,7 @@ namespace FDG.Stages
             onFinished(assignWoundsResults);
         }
 
+        /*
         private void OnHandled(AssignWoundsResults woundsResults, Action<AssignWoundsResults> onFinished)
         {
             if (woundsResults.IsFinishedAssigning == false)
@@ -71,17 +78,6 @@ namespace FDG.Stages
 
             onFinished(woundsResults);
         }
-    }
-
-    public interface IAssignWoundsHandler
-    {
-        /// <summary>
-        /// When called, you must assign a wound on <paramref name="woundsResults"/> until its 
-        /// <see cref="AssignWoundsResults.TotalAssignedWounds"/> is equal to <see cref="AssignWoundsResults.TotalWoundsToAssign"/> value.
-        /// </summary>
-        /// <param name="defendingUnit">Unit to which we're assigning wounds.</param>
-        /// <param name="woundsResults">Wounds class used to assign wounds.</param>
-        /// <param name="onWoundsAssigned">Call this when finished assigning wounds.</param>
-        public void Handle(IUnit defendingUnit, AssignWoundsResults woundsResults, Action onWoundsAssigned);
+        */
     }
 }

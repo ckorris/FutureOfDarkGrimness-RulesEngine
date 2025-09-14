@@ -1,7 +1,4 @@
-using FDG.Data;
 using FDG.Utilities;
-using System;
-using System.Collections.Generic;
 
 namespace FDG.Stages
 {
@@ -21,20 +18,22 @@ namespace FDG.Stages
             float totalWoundsApplied = 0;
             int modelsKilled = 0;
 
-            foreach(KeyValuePair<DataBinding<ModelData>, float> kvp in assignWoundsResults.PendingWounds)
+            foreach(PendingWounds pendingWound in assignWoundsResults.PendingWounds)
             {
-                float woundsToDeal = kvp.Value;
-                float modelRemainingWounds = kvp.Key.TotalWounds() - kvp.Key.WoundsDealt();
+                ModelData model = pendingWound.Model; //Shorthand.
+                float woundsToDeal = pendingWound.Wounds;
+
+                float modelRemainingWounds = model.TotalWounds - model.WoundsDealt;
 
                 if (woundsToDeal > modelRemainingWounds)
                 {
                     throw new Exception($"Tried to deal {woundsToDeal} to a model with only {modelRemainingWounds} left.");
                 }
 
-                kvp.Key.GetValue().DealWounds(kvp.Value);
-                totalWoundsApplied += kvp.Value;
+                model.DealWounds(woundsToDeal);
+                totalWoundsApplied += woundsToDeal;
 
-                if(kvp.Key.GetIsDead())
+                if(model.GetIsDead())
                 {
                     modelsKilled++;
                 }

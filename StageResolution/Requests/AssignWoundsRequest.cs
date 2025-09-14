@@ -1,9 +1,4 @@
 ﻿using FDG.Data;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Newtonsoft.Json;
 
 namespace FDG.StageResolution.Requests
@@ -44,7 +39,7 @@ namespace FDG.StageResolution.Requests
 
         public Task<AssignWoundsResults> Resolve(AssignWoundsResults resolution)
         {
-            throw new NotImplementedException();
+            return Task.FromResult(resolution);
         }
     }
 }

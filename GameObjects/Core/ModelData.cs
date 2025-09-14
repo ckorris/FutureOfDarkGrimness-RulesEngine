@@ -12,7 +12,6 @@ namespace FDG
 {
     public class ModelData : IModel
     {
-        public float BaseRadiusInches;
 
         [JsonIgnore]
         public float TotalWounds { get; }
@@ -28,11 +27,12 @@ namespace FDG
 
         #region IModel Non-Serialized
 
-        float IModel.WoundsDealt => TotalWounds - RemainingWoundsBinding.GetValue();
+        public float WoundsDealt => TotalWounds - RemainingWoundsBinding.GetValue();
 
-        Position IModel.Position => PositionBinding.GetValue();
+        public Position Position => PositionBinding.GetValue();
 
-        float IModel.BaseRadiusInches => BaseRadiusInches;
+        public float BaseRadiusInches { get; }
+
 
         IReadOnlyList<Weapon> IModel.Weapons => Weapons;
 
@@ -71,6 +71,10 @@ namespace FDG
                 return materialProvider;
             }
         }
+
+        float IModel.WoundsDealt => WoundsDealt;
+
+        Position IModel.Position => Position;
 
         #endregion
 
@@ -134,6 +138,31 @@ namespace FDG
         {
             //TODO: Get ones that modify total wounds somehow, and process.
             return 1;
+        }
+    }
+
+    public static class ModelDataExtensions
+    {
+        public static bool GetIsAlive(this ModelData model)
+        {
+            return model.WoundsDealt < model.TotalWounds;
+        }
+
+        public static bool GetIsDead(this ModelData model)
+        {
+            return model.WoundsDealt >= model.TotalWounds;
+        }
+
+        public static float BaseDistanceToOtherModel_2D(this ModelData thisModel, ModelData otherModel)
+        {
+            return DistanceUtilities.GetBaseToBaseDistanceInches_2D(thisModel.PositionBinding.GetValue(), 
+                otherModel.PositionBinding.GetValue(),thisModel.BaseRadiusInches, otherModel.BaseRadiusInches);
+        }
+
+        public static float BaseDistanceToOtherModel_3D(this ModelData thisModel, ModelData otherModel)
+        {
+            return DistanceUtilities.GetBaseToBaseDistanceInches_3D(thisModel.PositionBinding.GetValue(), 
+                otherModel.PositionBinding.GetValue(),thisModel.BaseRadiusInches, otherModel.BaseRadiusInches);
         }
     }
 }

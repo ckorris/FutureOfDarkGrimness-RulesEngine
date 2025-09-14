@@ -30,7 +30,6 @@ namespace FDG.StageResolution
             OutstandingTaskInfo taskInfo = new OutstandingTaskInfo(awaitingMessage.PlayerInfo.GetValue(), 
                 awaitingMessage.UserFriendlyTaskName);
             _outstandingTaskInfos.Add(awaitingMessage.TaskID, taskInfo);
-            //_outstandingTaskInfos.Add(taskID, new OutstandingTaskInfo(targetPlayerID, taskName));
             _outstandingTasks.OnNext(_outstandingTaskInfos.Values);
         }
 

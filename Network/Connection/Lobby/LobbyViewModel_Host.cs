@@ -352,7 +352,7 @@ namespace FDG.Network.Connection
                 Attacks = 2,
                 Quantity = 4,
                 RangeInches = 0,
-                ArmorPenetration = 1
+                ArmorPenetration = 4
             };
 
             WeaponFileEntry betterRangedWeaponFile = new WeaponFileEntry()
@@ -361,7 +361,7 @@ namespace FDG.Network.Connection
                 Attacks = 2,
                 Quantity = 1,
                 RangeInches = 30,
-                ArmorPenetration = 1
+                ArmorPenetration = 4
             };
 
             unitFileEntry.Weapons.Add(betterMeleeWeaponFile);

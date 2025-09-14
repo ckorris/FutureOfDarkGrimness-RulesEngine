@@ -74,6 +74,10 @@ namespace FDG.Stages
 
             Dictionary<string, WeaponOption> nameAndWeaponOptions = new Dictionary<string, WeaponOption>();
             
+            foreach(Weapon weapon in availableWeapons.Keys)
+            {
+                nameAndWeaponOptions.Add(weapon.Name, new WeaponOption(weapon, new List<WeaponTargetStats>()));
+            }
 
             IEnumerable<DataBinding<UnitData>> enemyUnits = gameContext.GameDataStore().GetAllDataBindings<ArmyData>()
                 .Where(army => playerTeam.IsPlayerOnTeam(army.GetValue().PlayerID) == false)
@@ -82,11 +86,8 @@ namespace FDG.Stages
             //Go through each enemy unit, which will correspond to a WeaponTargetStats.
             foreach (DataBinding<UnitData> enemyUnit in enemyUnits)
             {
-
                 Dictionary<string, WeaponTargetStats> weaponToStats =
-                    GetAttacksForEnemyUnit(attackingUnit, enemyUnit, nameAndWeaponOptions.Keys);
-
-                
+                    GetAttacksForEnemyUnit(attackingUnit, enemyUnit, availableWeapons.Keys.Select(weapon => weapon.Name));
 
                 foreach (KeyValuePair<string, WeaponTargetStats> kvp in weaponToStats)
                 {

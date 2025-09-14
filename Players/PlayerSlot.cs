@@ -22,7 +22,7 @@ namespace FDG.Players
 
         internal IPlayerController? Controller;
 
-        internal DataBinding<PlayerSlotInfo> _infoBinding;
+        internal DataBinding<PlayerSlotInfo> InfoBinding;
 
         public PlayerSlot(int slotID, int teamNumber, PlayerID playerID, ArmyListFile armyListFile, 
             IReadWriteableGameDataStore gameDataStore)
@@ -34,7 +34,7 @@ namespace FDG.Players
 
             PlayerSlotInfo info = new PlayerSlotInfo(this);
             DataReference infoReference = gameDataStore.Create(info);
-            _infoBinding = gameDataStore.GetDataBinding<PlayerSlotInfo>(infoReference);
+            InfoBinding = gameDataStore.GetDataBinding<PlayerSlotInfo>(infoReference);
         }
 
         internal void AssignPlayerController(IPlayerController newController)
@@ -47,7 +47,7 @@ namespace FDG.Players
 
             Controller = newController;
 
-            _infoBinding.SetValue(new PlayerSlotInfo(this)); //Update the binding.
+            InfoBinding.SetValue(new PlayerSlotInfo(this)); //Update the binding.
         }
 
         public void ClearPlayerController()
@@ -55,7 +55,7 @@ namespace FDG.Players
             //Thinking we shouldn't throw an exception if it's not filled to make cleanup easier.
             Controller = null;
 
-            _infoBinding.SetValue(new PlayerSlotInfo(this)); //Update the binding.
+            InfoBinding.SetValue(new PlayerSlotInfo(this)); //Update the binding.
         }
 
     }

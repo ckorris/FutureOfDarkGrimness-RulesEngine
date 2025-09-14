@@ -53,7 +53,8 @@ namespace FDG.GameModel
 
             TempVisualRelayer tempVisualRelayer = new TempVisualRelayer(_playerSlotManager);
 
-            RequestMessageSender requestMessageSender = new RequestMessageSender(messageBusHost, gameDataStore);
+            RequestMessageSender requestMessageSender = new RequestMessageSender(messageBusHost, gameDataStore, 
+                _playerSlotManager);
 
             _gameContext = new GameContext(textOutput, GetDiceRoller(gameSettings), requestMessageSender, 
                 tableState, _gameDataStore, tempVisualRelayer);

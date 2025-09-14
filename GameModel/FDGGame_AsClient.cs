@@ -40,6 +40,10 @@ namespace F.GameModel
 
         private NetworkedRequestMessageReceiver _requestReceiver;
 
+
+        private OutstandingTaskLister _outstandingTaskLister;
+
+
         public FDGGame_AsClient(IMessageBusClient messageBusClient, PlayerID thisPlayerID)
         {
             _messageBusClient = messageBusClient;
@@ -53,7 +57,8 @@ namespace F.GameModel
         }
 
         public void AssignInterfaces(ILogMessageUI logMessageUI, IPlayerMessageUI playerMessageUI,
-            IStageResolverRegistry stageResolverRegistry, ITempVisualDrawer tempVisualDrawer)
+            IStageResolverRegistry stageResolverRegistry, ITempVisualDrawer tempVisualDrawer,
+            IOutstandingListDisplay? outstandingTaskDisplay)
         {
             LogMessageUI = logMessageUI;
 
@@ -78,6 +83,12 @@ namespace F.GameModel
 
             _requestReceiver = new NetworkedRequestMessageReceiver(_thisPlayerID, _messageBusClient, 
                 stageResolverRegistry, _gameDataStore);
+
+            if(outstandingTaskDisplay != null)
+            {
+                _outstandingTaskLister = new OutstandingTaskLister(_messageBusClient);
+                outstandingTaskDisplay.AssignLister(_outstandingTaskLister);
+            }
         }
 
         private void OnLogMessageReceived(LogChatNetworkMessage message)

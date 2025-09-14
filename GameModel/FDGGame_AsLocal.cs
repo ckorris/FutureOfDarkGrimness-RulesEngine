@@ -29,7 +29,11 @@ namespace FDG.GameModel
 
         private IReadableGameDataStore _gameDataStore;
 
+
         private List<NetworkedRequestMessageReceiver> _requestReceivers = new List<NetworkedRequestMessageReceiver>();
+
+
+        private OutstandingTaskLister _outstandingTaskLister;
 
 
         public FDGGame_AsLocal(IReadableGameDataStore gameDataStore, IMessageBusClient messageBusClient)
@@ -51,7 +55,8 @@ namespace FDG.GameModel
         }
 
         public void AssignInterfaces(ILogMessageUI logMessageUI, IPlayerMessageUI playerMessageUI, 
-            IStageResolverRegistry stageResolverRegistry, ITempVisualDrawer tempVisualDrawer)
+            IStageResolverRegistry stageResolverRegistry, ITempVisualDrawer tempVisualDrawer,
+            IOutstandingListDisplay? outstandingTaskDisplay)
         {
             LogMessageUI = logMessageUI;
 
@@ -70,7 +75,13 @@ namespace FDG.GameModel
                 _requestReceivers.Add(new NetworkedRequestMessageReceiver(playerID, _messageBusClient, 
                     stageResolverRegistry, _gameDataStore));
             }
-                
+
+            if (outstandingTaskDisplay != null)
+            {
+                _outstandingTaskLister = new OutstandingTaskLister(_messageBusClient);
+                outstandingTaskDisplay.AssignLister(_outstandingTaskLister);
+            }
+
             OnStageResolverAssigned?.Invoke();
         }
     }

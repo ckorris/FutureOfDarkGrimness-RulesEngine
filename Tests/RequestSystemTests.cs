@@ -101,8 +101,14 @@ namespace FDG.Tests
             // Arrange
             var playerID = new PlayerID(Guid.NewGuid());
             var mockCommandDispatcher = new MockMessageBusHost();
-            var gameDataStore = new GameDataStore.GameDataStoreBuilder().Build();
-            var sender = new RequestMessageSender(mockCommandDispatcher, gameDataStore);
+            var gameDataStore = new GameDataStore.GameDataStoreBuilder()
+                .RegisterType<PlayerSlotInfo>(1)
+                .Build();
+
+            PlayerSlot slot = new PlayerSlot(1, 1, playerID, null, gameDataStore);
+            PlayerSlotManager playerSlotManager = new PlayerSlotManager(new PlayerSlot[] { slot });
+            
+            var sender = new RequestMessageSender(mockCommandDispatcher, gameDataStore, playerSlotManager);
 
             var request = new TestRequest(playerID, new TaskID(Guid.NewGuid()), "Test Task");
 
@@ -132,8 +138,14 @@ namespace FDG.Tests
             // Arrange
             var playerID = new PlayerID(Guid.NewGuid());
             var mockCommandDispatcher = new MockMessageBusHost();
-            var gameDataStore = new GameDataStore.GameDataStoreBuilder().Build();
-            var sender = new RequestMessageSender(mockCommandDispatcher, gameDataStore);
+            var gameDataStore = new GameDataStore.GameDataStoreBuilder()
+                .RegisterType<PlayerSlotInfo>(1)
+                .Build();
+
+            PlayerSlot slot = new PlayerSlot(1, 1, playerID, null, gameDataStore);
+            PlayerSlotManager playerSlotManager = new PlayerSlotManager(new PlayerSlot[] { slot });
+
+            var sender = new RequestMessageSender(mockCommandDispatcher, gameDataStore, playerSlotManager);
 
             var request = new TestRequest(playerID, new TaskID(Guid.NewGuid()), "Test Task");
 

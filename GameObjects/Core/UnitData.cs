@@ -123,7 +123,7 @@ namespace FDG
             for (int i = 0; i < unitFileEntry.ModelCount; i++)
             {
                 //TEMP get default base size.
-                float tempBaseSizeInches = 1.1023622f; //28mm.
+                float tempBaseDiameterInches = 1.1023622f; //28mm.
 
                 List<Weapon> modelWeapons = new List<Weapon>();
 
@@ -132,7 +132,7 @@ namespace FDG
                     modelWeapons.Add(unitWeapons[w]);
                 }
 
-                ModelData modelData = new ModelData(tempBaseSizeInches, modelWeapons, SpecialRules, new Position(), gameDataStore);
+                ModelData modelData = new ModelData(tempBaseDiameterInches / 2f, modelWeapons, SpecialRules, new Position(), gameDataStore);
 
                 DataReference modelReference = gameDataStore.Create(modelData);
                 DataBinding<ModelData> modelBinding = gameDataStore.GetDataBinding<ModelData>(modelReference);

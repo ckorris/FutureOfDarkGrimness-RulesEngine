@@ -338,7 +338,7 @@ namespace FDG.Network.Connection
             {
                 Name = "Shooty Gun",
                 Attacks = 1,
-                Quantity = unitFileEntry.ModelCount,
+                Quantity = 4,
                 RangeInches = 18
             };
 
@@ -356,9 +356,9 @@ namespace FDG.Network.Connection
 
             WeaponFileEntry betterRangedWeaponFile = new WeaponFileEntry()
             {
-                Name = "ExtraShooty Gun",
+                Name = "Extra Shooty Gun",
                 Attacks = 2,
-                Quantity = unitFileEntry.ModelCount,
+                Quantity = 1,
                 RangeInches = 30,
                 ArmorPenetration = 1
             };

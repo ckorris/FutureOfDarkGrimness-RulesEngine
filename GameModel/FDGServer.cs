@@ -160,9 +160,9 @@ namespace FDG.GameModel
 
             int playerCount = _playerSlotManager.SlotInfos.Count();
 
-            float xOffset = GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES / (playerCount + 2);
-            float zStart = 16; //Arbitrary.
-            float zOffset = 3f; //Arbitrary.
+            float zOffset = GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES / (playerCount + 1);
+            float xStart = GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES / 2;
+            float xOffset = 0.1f; //Arbitrary.
 
             Dictionary<PlayerID, int> modelDeployCount = new Dictionary<PlayerID, int>();
 
@@ -171,7 +171,7 @@ namespace FDG.GameModel
             {
                 PlayerID playerID = unit.PlayerID();
                 int playerSlotIndex = Array.IndexOf(_playerSlotManager.PlayerSlots, _playerSlotManager.GetSlotByID(playerID));
-                float xPos = xOffset * (playerSlotIndex + 1);
+                float zPos = zOffset * (playerSlotIndex + 1);
 
                 if(modelDeployCount.ContainsKey(playerID) == false)
                 {
@@ -180,7 +180,7 @@ namespace FDG.GameModel
 
                 foreach(DataBinding<ModelData> model in unit.ModelBindings())
                 {
-                    float zPos = zStart + modelDeployCount[playerID] * zOffset;
+                    float xPos = xStart + modelDeployCount[playerID] * (xOffset + model.GetValue().BaseRadiusInches * 2);
 
                     model.GetValue().SetPosition(new Position(xPos, zPos));
 

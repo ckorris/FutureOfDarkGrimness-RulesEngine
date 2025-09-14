@@ -1,11 +1,7 @@
-using FDG;
 using FDG.Data;
 using FDG.StageResolution.Requests;
 using FDG.Utilities;
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Security.Cryptography.X509Certificates;
 
 using static FDG.StageResolution.Requests.ChooseRangedAttackRequest;
 

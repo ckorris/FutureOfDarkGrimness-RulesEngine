@@ -126,7 +126,7 @@ namespace FDG.Stages
         public ICombatMetadata ConsumeAttackIntoContext(IGameContext gameContext)
         {
 
-            if(DefendingUnit == default || ShootingWeaponType != default || ShootingWeaponCount != default)
+            if(DefendingUnit == default || ShootingWeaponType == default || ShootingWeaponCount == default)
             {
                 throw new InvalidOperationException($"Called {nameof(ConsumeAttackIntoContext)} when attack was not set up. " + 
                     "Must have all values set before consuming.");

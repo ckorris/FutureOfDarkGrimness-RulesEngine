@@ -25,25 +25,6 @@ namespace FDG.Stages
             }
 
             //TODO: Handle situations like Deadly, where you have to use a specific weapon first.
-            IReadOnlyDictionary<Weapon, int> availableWeapons = new ConcurrentDictionary<Weapon, int>(context.AvailableWeapons);
-            IReadOnlyDictionary<Weapon, int> unavailableWeapons = new ConcurrentDictionary<Weapon, int>(context.AlreadyUsedWeapons);
-
-            //TODO: Since we don't store weapons in bindings, we're hackedly using their stats names, which have no
-            //protection against identical names.
-            List<(string, Weapon)> validOptions = new List<(string, Weapon)>();
-            List<StringSelectionRequest.InvalidOption> invalidOptions = new List<StringSelectionRequest.InvalidOption>();
-
-            foreach (KeyValuePair<Weapon, int> kvp in availableWeapons)
-            {
-                validOptions.Add((kvp.Key.GetWeaponNameAndStats(kvp.Value), kvp.Key));
-            }
-
-            foreach (KeyValuePair<Weapon, int> kvp in unavailableWeapons)
-            {
-                invalidOptions.Add(new StringSelectionRequest.InvalidOption(kvp.Key.GetWeaponNameAndStats(kvp.Value),
-                    "The unit has already attacked with this weapon."));
-            }
-
 
             List<WeaponOption> weaponOptions = GetWeaponOptions(context.AttackingUnit, context.AvailableWeapons, context.GameContext);
 
@@ -55,7 +36,9 @@ namespace FDG.Stages
             RangedAttackChoice rangedAttackChoice = await context.PlayerRequester()
                 .RequestDecision<ChooseRangedAttackRequest, RangedAttackChoice>(chooseWeaponRequest);
 
-            Weapon chosenWeapon = validOptions.First(option => option.Item1 == rangedAttackChoice.Weapon.Name).Item2;
+            //Weapon chosenWeapon = validOptions.First(option => option.Item2.Name == rangedAttackChoice.Weapon.Name).Item2;
+            Weapon chosenWeapon = context.AvailableWeapons.Keys
+                .First(option => option.Name == rangedAttackChoice.Weapon.Name);
 
             context.SetAttackWeapon(chosenWeapon, out int weaponCount);
             context.SetDefender(rangedAttackChoice.TargetUnit);

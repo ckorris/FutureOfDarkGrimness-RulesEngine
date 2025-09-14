@@ -9,6 +9,8 @@ namespace FDG.Players
     /// </summary>
     public interface IPlayerSlotInfo
     {
+        public PlayerID PlayerID { get; }
+
         int SlotID { get; }
 
         int TeamNumber { get; }
@@ -20,6 +22,8 @@ namespace FDG.Players
 
     public struct PlayerSlotInfo : IPlayerSlotInfo
     {
+        public PlayerID PlayerID { get; }
+
         public int SlotID { get; }
 
         public int TeamNumber { get; }
@@ -30,8 +34,9 @@ namespace FDG.Players
 
 
         [JsonConstructor]
-        public PlayerSlotInfo(int slotID, int teamNumber, string name, bool isFilled)
+        public PlayerSlotInfo(PlayerID playerID, int slotID, int teamNumber, string name, bool isFilled)
         {
+            PlayerID = playerID;
             SlotID = slotID;
             TeamNumber = teamNumber;
             Name = name;
@@ -40,6 +45,7 @@ namespace FDG.Players
 
         public PlayerSlotInfo(PlayerSlot slot)
         {
+            PlayerID = slot.PlayerID;
             SlotID = slot.SlotID;
             TeamNumber = slot.TeamNumber;
             Name = slot.Name;

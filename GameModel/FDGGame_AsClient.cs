@@ -76,8 +76,8 @@ namespace F.GameModel
 
             TempVisualDrawer = tempVisualDrawer;
 
-            _requestReceiver = new NetworkedRequestMessageReceiver(_thisPlayerID, _messageBusClient, stageResolverRegistry,
-                new OutstandingTaskLister(), _gameDataStore);
+            _requestReceiver = new NetworkedRequestMessageReceiver(_thisPlayerID, _messageBusClient, 
+                stageResolverRegistry, _gameDataStore);
         }
 
         private void OnLogMessageReceived(LogChatNetworkMessage message)

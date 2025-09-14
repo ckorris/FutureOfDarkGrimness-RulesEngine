@@ -2,6 +2,7 @@ using FDG.Data;
 using FDG.MessageBus;
 using FDG.Network.Connection;
 using FDG.Network.Messages.StageRequestMessages;
+using FDG.Players;
 using FDG.StageResolution;
 using NUnit.Framework;
 using System;
@@ -156,27 +157,44 @@ namespace FDG.Tests
         [Test]
         public void OutstandingTaskLister_TracksMultipleTasks()
         {
-            // Arrange
-            var taskLister = new OutstandingTaskLister();
+            var mockCommandDispatcher = new MockMessageBusHost();
+
+            var gameDataStore = new GameDataStore.GameDataStoreBuilder()
+                .RegisterType<PlayerSlotInfo>(1)
+                .Build();
+
             var playerID = new PlayerID(Guid.NewGuid());
+            PlayerSlotInfo slotInfo = new PlayerSlotInfo(playerID, 0, 0, "Bob", true);
+
+            DataReference playerInfoReference = gameDataStore.Create<PlayerSlotInfo>(slotInfo);
+            DataBinding<PlayerSlotInfo> playerBinding = gameDataStore.GetDataBinding<PlayerSlotInfo>(playerInfoReference);
+
+            var taskLister = new OutstandingTaskLister(mockCommandDispatcher);
+            
             var taskID1 = new TaskID(Guid.NewGuid());
             var taskID2 = new TaskID(Guid.NewGuid());
 
             var taskList = new List<IReadOnlyCollection<OutstandingTaskInfo>>();
             taskLister.OutstandingTasks.Subscribe(taskList.Add);
 
+            StageTaskNotifyAwaitingMessage notifyMessage1 = new StageTaskNotifyAwaitingMessage(taskID1, playerBinding, "Task 1");
+            mockCommandDispatcher.SimulateMessageReceived(notifyMessage1);
+
+
+            StageTaskNotifyAwaitingMessage notifyMessage2 = new StageTaskNotifyAwaitingMessage(taskID2, playerBinding, "Task 2");
+            mockCommandDispatcher.SimulateMessageReceived(notifyMessage2);
             // Act
-            taskLister.NotifyTaskRequested(playerID, taskID1, "Task 1");
-            taskLister.NotifyTaskRequested(playerID, taskID2, "Task 2");
+            //taskLister.NotifyTaskRequested(playerID, taskID1, "Task 1");
+            //taskLister.NotifyTaskRequested(playerID, taskID2, "Task 2");
 
             // Assert
             Assert.That(taskList.Last().Count, Is.EqualTo(2));
-            Assert.That(taskList.Last().Any(t => t.PlayerID == playerID && t.TaskName == "Task 1"), Is.True);
-            Assert.That(taskList.Last().Any(t => t.PlayerID == playerID && t.TaskName == "Task 2"), Is.True);
+            Assert.That(taskList.Last().Any(t => t.PlayerInfo.PlayerID == playerID && t.TaskName == "Task 1"), Is.True);
+            Assert.That(taskList.Last().Any(t => t.PlayerInfo.PlayerID == playerID && t.TaskName == "Task 2"), Is.True);
         }
 
         // Mock command dispatcher for testing network requests
-        private class MockMessageBusHost : IMessageBusHost
+        public class MockMessageBusHost : IMessageBusHost, IMessageBusClient
         {
             private readonly Dictionary<Type, Action<object>> _messageHandlers = new();
             public StageTaskRequestMessage? LastRequestMessage { get; private set; }
@@ -222,6 +240,11 @@ namespace FDG.Tests
             public void Dispose() { }
 
             public ConnectionID GetCurrentMessageConnectionID()
+            {
+                throw new NotImplementedException();
+            }
+
+            public Task SendCommandToHostAsync<TMessage>(TMessage message)
             {
                 throw new NotImplementedException();
             }

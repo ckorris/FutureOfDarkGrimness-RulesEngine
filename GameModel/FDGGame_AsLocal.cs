@@ -61,14 +61,14 @@ namespace FDG.GameModel
 
             TempVisualDrawer = tempVisualDrawer;
 
-            OutstandingTaskLister outstandingTaskLister = new OutstandingTaskLister(); //TODO: Don't pass in, will duplicate.
+            OutstandingTaskLister outstandingTaskLister = new OutstandingTaskLister(_messageBusClient); //TODO: Don't pass in, will duplicate.
 
             //Note that as of writing, we've got no safeguards if multiple requests come in at the same time for different local players.
             //Not sure if we'll ever need that, but if so, it's currently up to the resolvers to handle.
             foreach( PlayerID playerID in _localPlayerIDs)
             {
-                _requestReceivers.Add(new NetworkedRequestMessageReceiver(playerID, _messageBusClient, stageResolverRegistry,
-                    outstandingTaskLister, _gameDataStore));
+                _requestReceivers.Add(new NetworkedRequestMessageReceiver(playerID, _messageBusClient, 
+                    stageResolverRegistry, _gameDataStore));
             }
                 
             OnStageResolverAssigned?.Invoke();

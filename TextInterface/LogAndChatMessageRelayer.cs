@@ -17,9 +17,9 @@ namespace FDG.TextInterface
 
             _playerSlotManager = playerSlotManager;
 
-            for(int i = 0; i < playerSlotManager.PlayerSlots.Length; i++)
+            for(int i = 0; i < playerSlotManager._playerSlots.Length; i++)
             {
-                playerSlotManager.PlayerSlots[i].Controller.OnMessageSentByPlayer += OnPlayerSentMessage;
+                playerSlotManager._playerSlots[i].Controller.OnMessageSentByPlayer += OnPlayerSentMessage;
 
             }
         }
@@ -41,7 +41,7 @@ namespace FDG.TextInterface
 
         public void SendLogMessageToAll(string message)
         {
-            foreach (PlayerSlot slot in _playerSlotManager.PlayerSlots)
+            foreach (PlayerSlot slot in _playerSlotManager._playerSlots)
             {
                 if (slot.IsFilled == false)
                 {
@@ -56,7 +56,7 @@ namespace FDG.TextInterface
         {
             string sourcePlayerName = _playerSlotManager.GetSlotByID(sendingPlayer).Name;
 
-            foreach (PlayerSlot slot in _playerSlotManager.PlayerSlots)
+            foreach (PlayerSlot slot in _playerSlotManager._playerSlots)
             {
                 if (slot.IsFilled == false)
                 {
@@ -71,7 +71,7 @@ namespace FDG.TextInterface
         {
             PlayerSlot sendingSlot = _playerSlotManager.GetSlotByID(sendingPlayer);
 
-            foreach (PlayerSlot slot in _playerSlotManager.PlayerSlots)
+            foreach (PlayerSlot slot in _playerSlotManager._playerSlots)
             {
                 if (slot.IsFilled == false)
                 {

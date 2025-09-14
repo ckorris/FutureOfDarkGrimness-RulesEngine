@@ -29,7 +29,7 @@ namespace FDG.TempVisuals
                 throw new ArgumentException($"Tried to add a visual with ID {visual.ID} but one was already added.");
             }
 
-            for (int i = 0; i < _playerSlotManager.PlayerSlots.Length; i++)
+            for (int i = 0; i < _playerSlotManager._playerSlots.Length; i++)
             {
                 if(TryGetPlayerVisualDrawer(i, out ITempVisualDrawer? visualDrawer) == false)
                 {
@@ -47,7 +47,7 @@ namespace FDG.TempVisuals
                 throw new ArgumentException($"Tried to remove a visual with ID {visualID} but none was found.");
             }
 
-            for (int i = 0; i < _playerSlotManager.PlayerSlots.Length; i++)
+            for (int i = 0; i < _playerSlotManager._playerSlots.Length; i++)
             {
                 if (TryGetPlayerVisualDrawer(i, out ITempVisualDrawer? visualDrawer) == false)
                 {
@@ -65,7 +65,7 @@ namespace FDG.TempVisuals
                 throw new ArgumentException($"Tried to update a visual with ID {visualID} but it wasn't found.");
             }
 
-            for (int i = 0; i < _playerSlotManager.PlayerSlots.Length; i++)
+            for (int i = 0; i < _playerSlotManager._playerSlots.Length; i++)
             {
                 if (TryGetPlayerVisualDrawer(i, out ITempVisualDrawer? visualDrawer) == false)
                 {
@@ -83,7 +83,7 @@ namespace FDG.TempVisuals
                 throw new ArgumentException($"Tried to update a visual with ID {visualID} but it wasn't found.");
             }
 
-            for (int i = 0; i < _playerSlotManager.PlayerSlots.Length; i++)
+            for (int i = 0; i < _playerSlotManager._playerSlots.Length; i++)
             {
                 if (TryGetPlayerVisualDrawer(i, out ITempVisualDrawer? visualDrawer) == false)
                 {
@@ -96,7 +96,7 @@ namespace FDG.TempVisuals
 
         public void ClearAllVisuals()
         {
-            for (int i = 0; i < _playerSlotManager.PlayerSlots.Length; i++)
+            for (int i = 0; i < _playerSlotManager._playerSlots.Length; i++)
             {
                 if (TryGetPlayerVisualDrawer(i, out ITempVisualDrawer? visualDrawer) == false)
                 {
@@ -113,7 +113,7 @@ namespace FDG.TempVisuals
 
         private bool TryGetPlayerVisualDrawer(int playerSlot, out ITempVisualDrawer? visualDrawer)
         {
-            IPlayerController? controller = _playerSlotManager.PlayerSlots[playerSlot].Controller;
+            IPlayerController? controller = _playerSlotManager._playerSlots[playerSlot].Controller;
             if (controller == null)
             {
                 visualDrawer = default;

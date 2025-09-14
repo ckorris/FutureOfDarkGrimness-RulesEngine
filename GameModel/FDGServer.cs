@@ -18,7 +18,7 @@ namespace FDG.GameModel
     public class FDGServer
     {
         private IReadWriteableGameDataStore _gameDataStore;
-        private IMessageBusHost _messgeBusHost;
+        private IMessageBusHost _messageBusHost;
         private GameDataUpdateSender _synchronizer;
         private PlayerSlotManager _playerSlotManager;
         private GameContext _gameContext;
@@ -33,7 +33,7 @@ namespace FDG.GameModel
             Debug.WriteLine($"Started {nameof(FDGServer)}.");
 
             _gameDataStore = gameDataStore;
-            _messgeBusHost = messageBusHost;
+            _messageBusHost = messageBusHost;
             _synchronizer = new GameDataUpdateSender(gameDataStore, messageBusHost);
 
             //For players/player slots, work backwards from here to create what you need to send updates to players,
@@ -158,7 +158,7 @@ namespace FDG.GameModel
 
             StateMachine<ISingleRoundContext> stateMachine = new StateMachine<ISingleRoundContext>(testBuilder, gameContext);
 
-            int playerCount = _playerSlotManager.SlotInfos.Count();
+            int playerCount = _playerSlotManager.PlayerCount;
 
             float zOffset = GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES / (playerCount + 1);
             float xStart = GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES / 2;
@@ -170,7 +170,7 @@ namespace FDG.GameModel
             foreach (DataBinding<UnitData> unit in gameContext.GameDataStore.GetAllDataBindings<UnitData>())
             {
                 PlayerID playerID = unit.PlayerID();
-                int playerSlotIndex = Array.IndexOf(_playerSlotManager.PlayerSlots, _playerSlotManager.GetSlotByID(playerID));
+                int playerSlotIndex = Array.IndexOf(_playerSlotManager._playerSlots, _playerSlotManager.GetSlotByID(playerID));
                 float zPos = zOffset * (playerSlotIndex + 1);
 
                 if(modelDeployCount.ContainsKey(playerID) == false)

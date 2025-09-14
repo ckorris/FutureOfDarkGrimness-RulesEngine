@@ -260,7 +260,8 @@ namespace FDG.Network.Connection
                     lobbyPlayerInfo.ArmyListFile = GetTempTestArmyFile();
                 }
 
-                PlayerSlot playerSlot = new PlayerSlot(i, (int)lobbyPlayerInfo.TeamNumber, lobbyPlayerInfo.PlayerID, lobbyPlayerInfo.ArmyListFile);
+                PlayerSlot playerSlot = new PlayerSlot(i, (int)lobbyPlayerInfo.TeamNumber, lobbyPlayerInfo.PlayerID, 
+                    lobbyPlayerInfo.ArmyListFile, gameDataStore);
                 playerSlots[i] = playerSlot;
 
                 switch (lobbyPlayerInfo.PlayerType)

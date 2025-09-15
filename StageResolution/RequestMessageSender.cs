@@ -4,7 +4,6 @@ using FDG.Network.Connection;
 using FDG.Network.Messages.StageRequestMessages;
 using FDG.Players;
 using Newtonsoft.Json;
-using System.Threading.Tasks;
 
 namespace FDG.StageResolution
 {
@@ -19,7 +18,6 @@ namespace FDG.StageResolution
         public RequestMessageSender(IMessageBusHost messageBusHost, IReadableGameDataStore gameDataStore, 
             PlayerSlotManager playerSlotManager)
         {
-            //_targetPlayerID = targetPlayerID;
             _messageBusHost = messageBusHost;
             _gameDataStore = gameDataStore;
             _playerSlotManager = playerSlotManager;

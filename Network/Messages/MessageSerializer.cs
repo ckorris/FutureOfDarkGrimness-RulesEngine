@@ -1,6 +1,4 @@
 ﻿using FDG.Data;
-using FDG.Network.Connection;
-using Microsoft.VisualStudio.TestPlatform.CommunicationUtilities.ObjectModel;
 using Newtonsoft.Json;
 using System.Buffers;
 using System.Diagnostics;

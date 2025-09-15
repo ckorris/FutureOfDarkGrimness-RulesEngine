@@ -25,6 +25,7 @@ namespace F.GameModel
 
         public ITempVisualDrawer? TempVisualDrawer { get; private set; }
 
+        //private IReadableGameDataStore _gameDataStore;
 
         private IMessageBusClient _messageBusClient;
 
@@ -32,7 +33,7 @@ namespace F.GameModel
         private PlayerID _thisPlayerID;
 
 
-        private GameDataStore _gameDataStore;
+        private IReadWriteableGameDataStore _gameDataStore;
 
 
         private GameDataUpdateReceiver _dataUpdateReceiver;
@@ -44,12 +45,13 @@ namespace F.GameModel
         private OutstandingTaskLister _outstandingTaskLister;
 
 
-        public FDGGame_AsClient(IMessageBusClient messageBusClient, PlayerID thisPlayerID)
+        public FDGGame_AsClient(IReadWriteableGameDataStore gameDataStore, IMessageBusClient messageBusClient, PlayerID thisPlayerID)
         {
+            _gameDataStore = gameDataStore;
             _messageBusClient = messageBusClient;
             _thisPlayerID = thisPlayerID;
 
-            _gameDataStore = GameDataStore.GameDataStoreBuilder.GetDefault();
+            //_gameDataStore = GameDataStore.GameDataStoreBuilder.GetDefault();
             TableState = new TableState(_gameDataStore);
 
             _dataUpdateReceiver = new GameDataUpdateReceiver(_gameDataStore, messageBusClient);

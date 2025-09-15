@@ -1,4 +1,5 @@
-﻿using FDG.Network.Connection;
+﻿using FDG.Data;
+using FDG.Network.Connection;
 using FDG.Network.Messages;
 
 namespace FDG.MessageBus
@@ -14,11 +15,11 @@ namespace FDG.MessageBus
 
         private ConnectionID? _lastMessageConnectionID = null;
 
-        internal MessageBusHost_Networked(INetworkHost networkHost)
+        internal MessageBusHost_Networked(INetworkHost networkHost, IReadableGameDataStore gameDataStore)
         {
             _networkHost = networkHost;
             _messageRegistrar = new MessageRegistrar();
-            _messageSerializer = new MessageSerializer();
+            _messageSerializer = new MessageSerializer(gameDataStore);
             _networkHost.OnMessageReceived += OnMessageBytesReceived;
         }
 

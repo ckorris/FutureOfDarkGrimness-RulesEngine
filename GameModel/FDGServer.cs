@@ -25,7 +25,7 @@ namespace FDG.GameModel
         private StateMachine<IGameContext> _stateMachine;
         private NetworkedTempVisualDrawer _tempVisualRelayer;
 
-        private static bool TEST_SINGLE_TURN = true; //Turn on to skip most of the game.
+        private static bool TEST_SINGLE_TURN = false; //Turn on to skip most of the game and just do one run of a model's activation.
 
         public FDGServer(IReadWriteableGameDataStore gameDataStore, IMessageBusHost messageBusHost, 
             GameSettings gameSettings, PlayerSlot[] playerSlots)

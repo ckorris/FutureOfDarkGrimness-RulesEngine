@@ -1,5 +1,6 @@
 ﻿using F.GameModel;
 using FDG;
+using FDG.Data;
 using FDG.EngineInterface;
 using FDG.MessageBus;
 using FDG.Network.Connection;
@@ -56,6 +57,8 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
         private PlayerID? _thisPlayerID = null;
         private string _thisPlayerName;
 
+        IReadWriteableGameDataStore _gameDataStore;
+
         private IMessageBusClient _messageBusClient;
 
 
@@ -65,7 +68,9 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
 
         public LobbyViewModel_Client(string thisPlayerName, INetworkClient networkclient)
         {
-            _messageBusClient = new MessageBusClient_Networked(networkclient);
+             _gameDataStore = GameDataStore.GameDataStoreBuilder.GetDefault();
+
+            _messageBusClient = new MessageBusClient_Networked(networkclient, _gameDataStore);
 
             _thisPlayerName = thisPlayerName;
 
@@ -177,7 +182,7 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
                 throw new InvalidOperationException("Tried to launch game without a PlayerID being assigned.");
             }
 
-            FDGGame_AsClient fdgGame = new FDGGame_AsClient(_messageBusClient, _thisPlayerID.Value);
+            FDGGame_AsClient fdgGame = new FDGGame_AsClient(_gameDataStore, _messageBusClient, _thisPlayerID.Value);
 
             OnLaunched?.Invoke(fdgGame);
         }

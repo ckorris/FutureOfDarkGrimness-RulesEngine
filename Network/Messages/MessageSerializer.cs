@@ -1,4 +1,5 @@
-﻿using FDG.Network.Connection;
+﻿using FDG.Data;
+using FDG.Network.Connection;
 using Microsoft.VisualStudio.TestPlatform.CommunicationUtilities.ObjectModel;
 using Newtonsoft.Json;
 using System.Buffers;
@@ -24,12 +25,19 @@ namespace FDG.Network.Messages
     {
         private readonly Dictionary<string, Type> _messageTypeRegistry = new Dictionary<string, Type>();
 
+        private JsonSerializerSettings _settings;
 
+        /*
         private static JsonSerializerSettings _settings = new JsonSerializerSettings()
         {
             TypeNameHandling = TypeNameHandling.Auto,
         };
+        */
 
+        public MessageSerializer(IReadableGameDataStore gameDataStore)
+        {
+            _settings = gameDataStore.GetJsonSettings();
+        }
 
         public void RegisterMessageType<T>()
         {

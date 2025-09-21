@@ -229,13 +229,13 @@ namespace FDG.Network.Connection
         private async Task Launch()
         {
             LobbyChatMessage gameStartingMessage = new LobbyChatMessage("System", LAUNCHING_GAME_MESSAGE);
-            AddMessageToLocalList(gameStartingMessage);
+            //AddMessageToLocalList(gameStartingMessage);
             await _messageBus.SendCommandToAllAsync(gameStartingMessage);
             await Task.Delay(300);
 
             //Give a quick tribute.
             LobbyChatMessage tributeMessage = new LobbyChatMessage("Mukumioke", "buck futter");
-            AddMessageToLocalList(tributeMessage);
+            //AddMessageToLocalList(tributeMessage);
             await _messageBus.SendCommandToAllAsync(tributeMessage);
             await Task.Delay(50);
 

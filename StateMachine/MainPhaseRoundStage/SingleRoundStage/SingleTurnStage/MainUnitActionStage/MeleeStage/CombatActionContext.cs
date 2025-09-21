@@ -133,9 +133,10 @@ namespace FDG.Stages
 
             //TODO: In much older code, we had this PendingCombat class, which was reset when we did this.
             //But I don't imagine we reuse contexts anymore. So I'll reset it but we may be able to just leave it.
-            DefendingUnit = null;
-            ShootingWeaponType = null;
-            ShootingWeaponCount = null;
+            //EDIT: It's used to swing back, so let's try it.
+            //DefendingUnit = null;
+            //ShootingWeaponType = null;
+            //ShootingWeaponCount = null;
 
             return meleeCombatMetadata;
         }

@@ -1,6 +1,7 @@
 ﻿using FDG.Data;
 using FDG.EngineInterface;
 using FDG.MessageBus;
+using FDG.Network.Messages;
 using FDG.StageResolution;
 using FDG.TempVisuals;
 using FDG.TextInterface;
@@ -61,6 +62,12 @@ namespace FDG.GameModel
             LogMessageUI = logMessageUI;
 
             PlayerMessageUI = playerMessageUI;
+
+            if (logMessageUI != null || playerMessageUI != null)
+            {
+                LogChatMessageEndpoint logChatMessageListener = new LogChatMessageEndpoint(logMessageUI, playerMessageUI, TableState,
+                    _localPlayerIDs, _messageBusClient);
+            }
 
             StageResolverRegistry = stageResolverRegistry;
 

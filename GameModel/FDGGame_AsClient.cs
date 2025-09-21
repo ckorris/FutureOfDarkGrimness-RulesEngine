@@ -66,10 +66,13 @@ namespace F.GameModel
 
             PlayerMessageUI = playerMessageUI;
 
-            StageResolverRegistry = stageResolverRegistry;
+            if(logMessageUI != null || playerMessageUI != null)
+            {
+                LogChatMessageEndpoint logChatMessageListener = new LogChatMessageEndpoint(logMessageUI, playerMessageUI, TableState,
+                    new List<PlayerID> { _thisPlayerID }, _messageBusClient);
+            }
 
-            _messageBusClient.RegisterForMessageEvent<LogChatNetworkMessage>(OnLogMessageReceived);
-            _messageBusClient.RegisterForMessageEvent<PlayerChatNetworkMessage>(OnPlayerMessageReceived);
+            StageResolverRegistry = stageResolverRegistry;
 
             _messageBusClient.RegisterForMessageEvent<AddTempVisualMessage>(OnAddTempVisualReceived);
             _messageBusClient.RegisterForMessageEvent<UpdateTempVisualTransformMessage>(OnUpdateTempVisualTransformReceived);
@@ -79,28 +82,16 @@ namespace F.GameModel
 
             _messageBusClient.SendCommandToHostAsync(new PostLaunchPlayerReadyMessage(_thisPlayerID));
 
-            PlayerMessageUI.OnMessageSentByPlayer += SendChatMessage;
-
             TempVisualDrawer = tempVisualDrawer;
 
-            _requestReceiver = new NetworkedRequestMessageReceiver(_thisPlayerID, _messageBusClient, 
+            _requestReceiver = new NetworkedRequestMessageReceiver(_thisPlayerID, _messageBusClient,
                 stageResolverRegistry, _gameDataStore);
 
-            if(outstandingTaskDisplay != null)
+            if (outstandingTaskDisplay != null)
             {
                 _outstandingTaskLister = new OutstandingTaskLister(_messageBusClient);
                 outstandingTaskDisplay.AssignLister(_outstandingTaskLister);
             }
-        }
-
-        private void OnLogMessageReceived(LogChatNetworkMessage message)
-        {
-            LogMessageUI?.DisplayLogMessage(message.LogMessage);
-        }
-
-        private void OnPlayerMessageReceived(PlayerChatNetworkMessage message)
-        {
-            PlayerMessageUI?.DisplayPlayerMessage(message.SendingPlayerName, message.MessageType, message.Message);
         }
 
         private void OnAddTempVisualReceived(AddTempVisualMessage message)
@@ -126,13 +117,6 @@ namespace F.GameModel
         private void OnClearTempVisualsReceived(ClearAllTempVisualsMessage message)
         {
             TempVisualDrawer?.ClearAllVisuals();
-        }
-
-
-        private void SendChatMessage(string message, EChatMessageType messageType)
-        {
-            NetworkPlayerSubmitChatMessage chatMessage = new NetworkPlayerSubmitChatMessage(messageType, message);
-            _messageBusClient.SendCommandToHostAsync(chatMessage);
         }
     }
 }

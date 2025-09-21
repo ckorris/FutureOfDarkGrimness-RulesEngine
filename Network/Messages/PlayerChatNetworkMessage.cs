@@ -3,10 +3,7 @@
 namespace FDG.Network.Messages
 {
     /// <summary>
-    /// Used for sending player messages to/from network players.
+    /// Used for sending player messages to/from network players when sending to everyone at once.
     /// </summary>
-    /// <param name="logMessage"></param>
-    /// <seealso cref="NetworkPlayerController"/>
-    public record PlayerChatNetworkMessage(string SendingPlayerName, EChatMessageType MessageType,
-        string Message);
+    public record PlayerChatNetworkMessage(PlayerID PlayerID, EChatMessageType MessageType, string Message);
 }

@@ -45,7 +45,7 @@ namespace FDG.GameModel
 
             CreateArmies(playerSlots, gameDataStore);
 
-            LogAndChatMessageRelayer chatMessageRelayer = new LogAndChatMessageRelayer(_playerSlotManager);
+            LogAndChatMessageRelayer chatMessageRelayer = new LogAndChatMessageRelayer(messageBusHost);
 
             ITextOutput textOutput = new PlayerLogSender(chatMessageRelayer);
 

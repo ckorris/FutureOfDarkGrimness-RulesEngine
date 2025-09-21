@@ -9,14 +9,15 @@ namespace FDG.Players
 
         public event Action<bool> OnReadyStateChanged;
 
-        public event Action<PlayerID, EChatMessageType, string> OnMessageSentByPlayer;
+        //public event Action<PlayerID, EChatMessageType, string> OnMessageSentByPlayer;
 
         public ITempVisualDrawer? TempVisualDrawer { get; }
 
         public Task WaitUntilReadyAsync();
 
-        public void SendLogMessage(string logMessage);
 
-        public void SendPlayerMessage(string sendingPlayerName, EChatMessageType messageType, string message);
+        //public void SendLogMessage(string logMessage);
+
+        //public void SendPlayerMessage(string sendingPlayerName, EChatMessageType messageType, string message);
     }
 }

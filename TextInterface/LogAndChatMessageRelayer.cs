@@ -1,89 +1,35 @@
-﻿using FDG.Players;
+﻿using FDG.MessageBus;
+using FDG.Network.Messages;
 using FutureOfDarkGrimness.TextInterface;
 
 namespace FDG.TextInterface
 {
     internal class LogAndChatMessageRelayer : IPlayerTextRelayer
     {
-        private PlayerSlotManager _playerSlotManager;
+        private IMessageBusHost _messageBusHost;
 
-        public LogAndChatMessageRelayer(PlayerSlotManager playerSlotManager)
+        public LogAndChatMessageRelayer(IMessageBusHost messageBusHost)
         {
-            if(playerSlotManager == null)
+            if(messageBusHost == null)
             {
-                throw new NullReferenceException($"{nameof(PlayerSlotManager)} passed into {nameof(LogAndChatMessageRelayer)} " + 
+                throw new NullReferenceException($"{nameof(IMessageBusHost)} passed into {nameof(LogAndChatMessageRelayer)} " + 
                     "constructor was null.");
             }
 
-            _playerSlotManager = playerSlotManager;
-
-            for(int i = 0; i < playerSlotManager._playerSlots.Length; i++)
-            {
-                playerSlotManager._playerSlots[i].Controller.OnMessageSentByPlayer += OnPlayerSentMessage;
-
-            }
+            _messageBusHost = messageBusHost;
+            _messageBusHost.RegisterForMessageEvent<NetworkPlayerSubmitChatMessage>(OnPlayerSentMessage);
         }
 
-        private void OnPlayerSentMessage(PlayerID playerID, EChatMessageType chatMessageType, string message)
+        private void OnPlayerSentMessage(NetworkPlayerSubmitChatMessage message)
         {
-            switch(chatMessageType)
-            {
-                case EChatMessageType.Global:
-                    SendGlobalPlayerMessage(playerID, message);
-                    break;
-                case EChatMessageType.Team:
-                    SendTeamPlayerMessage(playerID, message);
-                    break;
-                default:
-                    throw new System.IndexOutOfRangeException();
-            }
+            PlayerChatNetworkMessage globalMessage = new PlayerChatNetworkMessage(message.PlayerID, message.MessageType, message.Message);
+            _messageBusHost.SendCommandToAllAsync(globalMessage);
         }
 
         public void SendLogMessageToAll(string message)
         {
-            foreach (PlayerSlot slot in _playerSlotManager._playerSlots)
-            {
-                if (slot.IsFilled == false)
-                {
-                    continue;
-                }
-
-                slot.Controller.SendLogMessage(message);
-            }
-        }
-
-        public void SendGlobalPlayerMessage(PlayerID sendingPlayer, string message)
-        {
-            string sourcePlayerName = _playerSlotManager.GetSlotByID(sendingPlayer).Name;
-
-            foreach (PlayerSlot slot in _playerSlotManager._playerSlots)
-            {
-                if (slot.IsFilled == false)
-                {
-                    continue;
-                }
-
-                slot.Controller.SendPlayerMessage(sourcePlayerName, EChatMessageType.Global, message);
-            }
-        }
-
-        public void SendTeamPlayerMessage(PlayerID sendingPlayer, string message)
-        {
-            PlayerSlot sendingSlot = _playerSlotManager.GetSlotByID(sendingPlayer);
-
-            foreach (PlayerSlot slot in _playerSlotManager._playerSlots)
-            {
-                if (slot.IsFilled == false)
-                {
-                    continue;
-                }
-
-                if (slot.TeamNumber == sendingSlot.TeamNumber)
-                {
-                    slot.Controller.SendPlayerMessage(sendingSlot.Name, EChatMessageType.Team, message);
-
-                }
-            }
+            LogChatNetworkMessage logMessage = new LogChatNetworkMessage(message);
+            _messageBusHost.SendCommandToAllAsync(logMessage);
         }
 
     }

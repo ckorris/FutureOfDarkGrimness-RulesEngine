@@ -17,40 +17,32 @@ namespace FDG.Players
 
         public ITempVisualDrawer? TempVisualDrawer { get; }
 
-        private ConnectionID _connectionID;
-
-        private IMessageBusHost _messageBusHost; 
+        private IMessageBusHost _messageBusHost;
 
         public event Action<bool>? OnReadyStateChanged;
         public event Action<PlayerID, EChatMessageType, string> OnMessageSentByPlayer;
 
-        public NetworkPlayerController(string name, PlayerID playerID, ConnectionID connectionID, 
+        public NetworkPlayerController(string name, PlayerID playerID, ConnectionID connectionID,
             IMessageBusHost messageBusHost, IReadableGameDataStore gameDataStore)
         {
             Name = name;
             ID = playerID;
-            _connectionID = connectionID;
             _messageBusHost = messageBusHost;
 
             _messageBusHost.RegisterForMessageEvent<PostLaunchPlayerReadyMessage>(OnPlayerReadyMessageReceived);
 
-            _messageBusHost.RegisterForMessageEvent<NetworkPlayerSubmitChatMessage>(OnPlayerChatMessageReceived);
+            //_messageBusHost.RegisterForMessageEvent<NetworkPlayerSubmitChatMessage>(OnPlayerChatMessageReceived);
 
-            //TODO: THis needs to be moved elsewhere.
+            //TODO: This needs to be moved elsewhere.
             TempVisualDrawer = new NetworkedTempVisualDrawer(_messageBusHost, connectionID);
         }
 
+        /*
         private void OnPlayerChatMessageReceived(NetworkPlayerSubmitChatMessage message)
         {
-            /*
-            if(iD != _connectionID)
-            {
-                return; //Not this player.
-            }
-            */
-
             OnMessageSentByPlayer?.Invoke(ID, message.MessageType, message.Message);
         }
+        */
 
         public Task WaitUntilReadyAsync()
         {
@@ -93,12 +85,6 @@ namespace FDG.Players
         public void SendLogMessage(string logMessage)
         {
             LogChatNetworkMessage messageRecord = new LogChatNetworkMessage(logMessage);
-            _messageBusHost.SendCommandToAllAsync(messageRecord);
-        }
-
-        public void SendPlayerMessage(string sendingPlayerName, EChatMessageType messageType, string message)
-        {
-            PlayerChatNetworkMessage messageRecord = new PlayerChatNetworkMessage(sendingPlayerName, messageType, message);
             _messageBusHost.SendCommandToAllAsync(messageRecord);
         }
     }

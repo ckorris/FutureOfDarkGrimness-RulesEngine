@@ -28,7 +28,8 @@ namespace FDG
             _unit = unit;
             _maxDistanceInches = maxDistanceInches;
 
-            foreach (DataBinding<ModelData> model in unit.ModelBindings())
+            foreach (DataBinding<ModelData> model in unit.ModelBindings()
+                .Where(model => model.GetIsAlive()))
             {
                 _paths.Add(model, new List<Position>());
             }

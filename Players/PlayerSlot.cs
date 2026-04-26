@@ -31,7 +31,7 @@ namespace FDG.Players
             ArmyListFile = armyListFile;
         }
 
-        internal void AssignPlayerController(IPlayerController newController)
+        public void AssignPlayerController(IPlayerController newController)
         {
             if(Controller != null)
             {

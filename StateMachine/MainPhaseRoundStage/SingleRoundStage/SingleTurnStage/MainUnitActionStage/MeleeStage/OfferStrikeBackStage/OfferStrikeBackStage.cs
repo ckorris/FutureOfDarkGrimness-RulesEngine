@@ -19,6 +19,14 @@ namespace FDG.Stages
 
         public override async Task Enter(ICombatActionContext context)
         {
+            // Skip if the defender has no melee weapons to fight back with.
+            if (context.DefendingUnit.GetValue().GetMeleeWeapons().Count == 0)
+            {
+                GameContext.Log("Defender has no melee weapons; skipping strikeback.");
+                SkipStrikingBack(context);
+                return;
+            }
+
             GameContext.Log("Offering strikeback.");
 
             //TODO: Indicate if they have struck back yet.

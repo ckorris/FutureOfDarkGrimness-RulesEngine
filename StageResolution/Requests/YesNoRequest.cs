@@ -1,5 +1,5 @@
 using FDG.StageResolution;
-using System.Text.Json.Serialization;
+using Newtonsoft.Json;
 
 namespace FDG.StageResolution.Requests
 {

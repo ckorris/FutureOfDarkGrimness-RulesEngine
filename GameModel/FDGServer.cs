@@ -17,6 +17,8 @@ namespace FDG.GameModel
 {
     public class FDGServer
     {
+        public event Action<string>? OnGameEnded;
+
         private IReadWriteableGameDataStore _gameDataStore;
         private IMessageBusHost _messgeBusHost;
         private GameDataUpdateSender _synchronizer;
@@ -55,8 +57,9 @@ namespace FDG.GameModel
 
             RequestMessageSender requestMessageSender = new RequestMessageSender(messageBusHost, gameDataStore);
 
-            _gameContext = new GameContext(textOutput, GetDiceRoller(gameSettings), requestMessageSender, 
+            _gameContext = new GameContext(textOutput, GetDiceRoller(gameSettings), requestMessageSender,
                 tableState, _gameDataStore, tempVisualRelayer);
+            _gameContext.OnGameEnded += result => OnGameEnded?.Invoke(result);
 
             if (TEST_SINGLE_TURN)
             {

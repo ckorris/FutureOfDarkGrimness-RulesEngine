@@ -11,8 +11,8 @@ namespace FDG.Stages
 
         public override async Task Enter(IGameContext context)
         {
-            //Overly simple for now.
-            GameContext.TextOutput.Log("Reached victory calculation.");
+            GameContext.TextOutput.Log("Game over — it's a tie!");
+            GameContext.NotifyGameEnded("It's a tie!");
         }
 
         public override void Exit()

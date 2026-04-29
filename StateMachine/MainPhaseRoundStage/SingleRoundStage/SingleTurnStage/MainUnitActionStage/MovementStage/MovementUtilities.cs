@@ -13,11 +13,15 @@ namespace FDG.Stages
         }
 
         public static bool ValidatePaths(List<ModelMoveEntry> moves, float maxChargeDistance, out List<ReasonForInvalidMove> errors)
+            => ValidatePaths(moves, maxChargeDistance, terrain: null, out errors);
+
+        public static bool ValidatePaths(List<ModelMoveEntry> moves, float maxChargeDistance,
+            IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors)
         {
             errors = new List<ReasonForInvalidMove>();
 
             ValidateOutOfMoveRange(moves, maxChargeDistance, ref errors);
-            ValidateMovingThroughImpassibleTerrain(moves, ref errors);
+            ValidateMovingThroughImpassibleTerrain(moves, terrain, ref errors);
             ValidateMovingThroughEnemyUnits(moves, ref errors);
             ValidateCoherency(moves, ref errors);
 
@@ -66,10 +70,44 @@ namespace FDG.Stages
             }
         }
 
-        private static void ValidateMovingThroughImpassibleTerrain(List<ModelMoveEntry> moves, 
-            ref List<ReasonForInvalidMove> reasonsForInvalidMove)
+        private static void ValidateMovingThroughImpassibleTerrain(List<ModelMoveEntry> moves,
+            IEnumerable<ITerrain>? terrain, ref List<ReasonForInvalidMove> reasonsForInvalidMove)
         {
-            //TODO: Implement.
+            if (terrain == null) return;
+
+            //Snapshot impassable pieces so each model walk doesn't re-enumerate.
+            List<ITerrain> impassable = terrain
+                .Where(t => t.TerrainType.HasFlag(ETerrainType.Impassible))
+                .ToList();
+            if (impassable.Count == 0) return;
+
+            foreach (ModelMoveEntry move in moves)
+            {
+                if (move.Positions.Count == 0) continue;
+
+                Position startPos = move.Model.GetValue().PositionBinding.GetValue();
+                Float2 segmentStart = new Float2(startPos.x, startPos.z);
+
+                bool blocked = false;
+                for (int i = 0; i < move.Positions.Count && !blocked; i++)
+                {
+                    Position stepPos = move.Positions[i];
+                    Float2 segmentEnd = new Float2(stepPos.x, stepPos.z);
+
+                    foreach (ITerrain piece in impassable)
+                    {
+                        if (piece.DoesPathIntersectZone(segmentStart, segmentEnd))
+                        {
+                            reasonsForInvalidMove.Add(
+                                new ReasonForInvalidMove(EErrorReasonType.MovingThroughImpassibleTerrain, move.Model));
+                            blocked = true;
+                            break;
+                        }
+                    }
+
+                    segmentStart = segmentEnd;
+                }
+            }
         }
 
         private static void ValidateMovingThroughEnemyUnits(List<ModelMoveEntry> moves,

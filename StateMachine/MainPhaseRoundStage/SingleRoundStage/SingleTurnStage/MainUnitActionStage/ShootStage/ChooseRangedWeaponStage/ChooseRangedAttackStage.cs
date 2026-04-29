@@ -26,7 +26,10 @@ namespace FDG.Stages
 
             //TODO: Handle situations like Deadly, where you have to use a specific weapon first.
 
-            List<WeaponOption> weaponOptions = GetWeaponOptions(context.AttackingUnit, context.AvailableWeapons, context.GameContext);
+            List<ITerrain> terrainSnapshot = context.GameContext.TableState.Terrain.Objects.ToList();
+
+            List<WeaponOption> weaponOptions = GetWeaponOptions(context.AttackingUnit, context.AvailableWeapons,
+                context.GameContext, terrainSnapshot);
 
             ChooseRangedAttackRequest chooseWeaponRequest = new ChooseRangedAttackRequest(context.AttackingUnit.PlayerID(), "Choose Ranged Weapon",
                 context.AttackingUnit, weaponOptions);
@@ -48,7 +51,8 @@ namespace FDG.Stages
         }
 
         private List<WeaponOption> GetWeaponOptions(DataBinding<UnitData> attackingUnit,
-            IReadOnlyDictionary<Weapon, int> availableWeapons, IGameContext gameContext)
+            IReadOnlyDictionary<Weapon, int> availableWeapons, IGameContext gameContext,
+            IReadOnlyList<ITerrain> terrain)
         {
             PlayerID playerID = attackingUnit.PlayerID();
 
@@ -70,7 +74,7 @@ namespace FDG.Stages
             foreach (DataBinding<UnitData> enemyUnit in enemyUnits)
             {
                 Dictionary<string, WeaponTargetStats> weaponToStats =
-                    GetAttacksForEnemyUnit(attackingUnit, enemyUnit, availableWeapons.Keys.Select(weapon => weapon.Name));
+                    GetAttacksForEnemyUnit(attackingUnit, enemyUnit, availableWeapons.Keys.Select(weapon => weapon.Name), terrain);
 
                 foreach (KeyValuePair<string, WeaponTargetStats> kvp in weaponToStats)
                 {
@@ -82,7 +86,7 @@ namespace FDG.Stages
         }
 
         private Dictionary<string, WeaponTargetStats> GetAttacksForEnemyUnit(DataBinding<UnitData> attackingUnit,
-            DataBinding<UnitData> enemyUnit, IEnumerable<string> weaponNames)
+            DataBinding<UnitData> enemyUnit, IEnumerable<string> weaponNames, IReadOnlyList<ITerrain> terrain)
         {
             Dictionary<string, WeaponTargetStats> weaponToStats = new Dictionary<string, WeaponTargetStats>();
 
@@ -114,7 +118,7 @@ namespace FDG.Stages
 
                     WeaponTargetStats weaponTargetStats = weaponToStats[weapon.Name];
                     if(CanWeaponShootAtUnit(attackingModel, enemyUnit, weapon,
-                        ref lineOfSightCache))
+                        ref lineOfSightCache, terrain))
                     {
                         weaponTargetStats.modelsThatCanShoot.Add(attackingModel);
                     }
@@ -130,14 +134,15 @@ namespace FDG.Stages
 
         private bool CanWeaponShootAtUnit(DataBinding<ModelData> attackingModel,
             DataBinding<UnitData> enemyUnit, Weapon weapon,
-            ref Dictionary<DataBinding<ModelData>, bool> cachedLineOfSights)
+            ref Dictionary<DataBinding<ModelData>, bool> cachedLineOfSights,
+            IReadOnlyList<ITerrain> terrain)
         {
             foreach (DataBinding<ModelData> defendingModel in enemyUnit.ModelBindings())
             {
 
                 if (cachedLineOfSights.TryGetValue(defendingModel, out bool hasLineOfSight) == false)
                 {
-                    hasLineOfSight = DoesModelHaveLineOfSight(attackingModel, defendingModel);
+                    hasLineOfSight = DoesModelHaveLineOfSight(attackingModel.GetValue(), defendingModel.GetValue(), terrain);
                     cachedLineOfSights[defendingModel] = hasLineOfSight;
                 }
 
@@ -150,11 +155,15 @@ namespace FDG.Stages
             return false;
         }
 
-        private static bool DoesModelHaveLineOfSight(ModelData attacker, ModelData target)
+        private static bool DoesModelHaveLineOfSight(ModelData attacker, ModelData target,
+            IReadOnlyList<ITerrain> terrain)
         {
-            //TODO: There's no hard terrain yet as of writing, so always return true.
-            //Also: Incorporate Indirect.
-            return true;
+            //TODO (TERRAIN_FOLLOWUPS.md): Incorporate Indirect at the call site, before the
+            //per-defender LoS cache is consulted, since Indirect is weapon-scoped.
+            return LineOfSightUtilities.HasLineOfSight(
+                attacker.PositionBinding.GetValue(),
+                target.PositionBinding.GetValue(),
+                terrain);
         }
 
         private static bool IsTargetWithinRange(ModelData attacker, ModelData target, Weapon weapon)

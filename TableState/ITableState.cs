@@ -43,7 +43,7 @@ namespace FDG
             Models = new DataState<IModel, ModelData>(gameDataStore);
             Armies = new DataState<IArmy, ArmyData>(gameDataStore);
             Teams = new DataState<ITeam, TeamData>(gameDataStore);
-            Terrain = new DataState<ITerrain, Terrain>(gameDataStore);
+            Terrain = new DataState<ITerrain, TerrainData>(gameDataStore);
         }
     }
 }

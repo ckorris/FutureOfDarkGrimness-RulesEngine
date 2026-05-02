@@ -90,11 +90,14 @@ namespace FDG.Stages
         {
             Dictionary<string, WeaponTargetStats> weaponToStats = new Dictionary<string, WeaponTargetStats>();
 
+            bool hasCover = ComputeHasCover(attackingUnit, enemyUnit, terrain);
+
             foreach (string weaponName in weaponNames)
             {
                 weaponToStats[weaponName] = new WeaponTargetStats(enemyUnit,
-                    new HashSet<DataBinding<ModelData>>(), 
-                    new HashSet<DataBinding<ModelData>>());
+                    new HashSet<DataBinding<ModelData>>(),
+                    new HashSet<DataBinding<ModelData>>(),
+                    hasCover);
             }
 
             //TODO: Cache line of sight lookups.
@@ -171,6 +174,32 @@ namespace FDG.Stages
             float distance = DistanceUtilities.GetBaseToBaseDistanceInches_3D(attacker.PositionBinding.GetValue(),
                 target.PositionBinding.GetValue(), attacker.BaseRadiusInches, target.BaseRadiusInches);
             return distance <= weapon.RangeInches;
+        }
+
+        private static bool ComputeHasCover(DataBinding<UnitData> attackingUnit,
+            DataBinding<UnitData> defendingUnit, IReadOnlyList<ITerrain> terrain)
+        {
+            List<DataBinding<ModelData>> attackers = attackingUnit.ModelBindings().ToList();
+            List<DataBinding<ModelData>> defenders = defendingUnit.ModelBindings().ToList();
+            if (defenders.Count == 0) return false;
+
+            int modelsInCover = 0;
+            foreach (DataBinding<ModelData> defender in defenders)
+            {
+                Position defPos = defender.GetValue().PositionBinding.GetValue();
+                foreach (DataBinding<ModelData> attacker in attackers)
+                {
+                    ESightLineEffect effect = LineOfSightUtilities.EvaluateSightLine(
+                        attacker.GetValue().PositionBinding.GetValue(), defPos, terrain);
+                    if (effect == ESightLineEffect.Cover)
+                    {
+                        modelsInCover++;
+                        break;
+                    }
+                }
+            }
+
+            return modelsInCover * 2 > defenders.Count;
         }
     }
 }

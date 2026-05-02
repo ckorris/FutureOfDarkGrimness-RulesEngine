@@ -87,8 +87,7 @@ namespace FDG
             foreach (PendingWounds pendingWoundsEntry in PendingWounds)
             {
                 ModelData modelData = pendingWoundsEntry.Model; //Shorthand.
-                //float modelWoundsRemaining = kvp.Key.TotalWounds() - kvp.Key.WoundsDealt();
-                float modelWoundsRemaining = modelData.TotalWounds - modelData.TotalWounds;
+                float modelWoundsRemaining = modelData.TotalWounds - modelData.WoundsDealt;
 
                 float woundsToAssignThisModel = Math.Min(woundsToAssign, modelWoundsRemaining);
                 pendingWoundsEntry.Wounds += woundsToAssignThisModel; //Might break, let's see.

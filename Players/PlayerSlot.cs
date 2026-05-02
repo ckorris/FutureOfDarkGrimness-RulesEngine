@@ -37,7 +37,7 @@ namespace FDG.Players
             InfoBinding = gameDataStore.GetDataBinding<PlayerSlotInfo>(infoReference);
         }
 
-        internal void AssignPlayerController(IPlayerController newController)
+        public void AssignPlayerController(IPlayerController newController)
         {
             if(Controller != null)
             {

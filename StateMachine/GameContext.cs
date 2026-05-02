@@ -28,6 +28,8 @@ namespace FDG
         public List<ITeam>? FirstDeploymentRollOrder { get; }
 
         public void SetFirstDeploymentRollOrder(List<ITeam> firstDeploymentRollWinner);
+
+        public void NotifyGameEnded(string result);
     }
 
     public class GameContext : IGameContext
@@ -47,6 +49,8 @@ namespace FDG
         public ITempVisualDrawer TempVisualDrawer { get; }
 
         public List<ITeam>? FirstDeploymentRollOrder { get; private set; } = null;
+
+        public event Action<string>? OnGameEnded;
 
         public GameContext(ITextOutput textOutput, IDiceRoller diceRoller,
                 IPlayerRequestByID playerRequester,
@@ -70,6 +74,11 @@ namespace FDG
             }
 
             FirstDeploymentRollOrder = firstDeploymentRollWinner;
+        }
+
+        public void NotifyGameEnded(string result)
+        {
+            OnGameEnded?.Invoke(result);
         }
     }
 }

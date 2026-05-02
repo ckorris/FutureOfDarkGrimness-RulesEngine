@@ -52,8 +52,9 @@ namespace FDG.StageResolution
             }
             catch (Exception ex)
             {
-                StageTaskRequestErrorMessage errorMessage = 
+                StageTaskRequestErrorMessage errorMessage =
                     new StageTaskRequestErrorMessage(requestMessage.PlayerID, requestMessage.TaskID, ex.ToString());
+                await _messageBusClient.SendCommandToHostAsync(errorMessage);
             }
         }
 

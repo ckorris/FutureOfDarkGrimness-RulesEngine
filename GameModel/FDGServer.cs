@@ -17,6 +17,8 @@ namespace FDG.GameModel
 {
     public class FDGServer
     {
+        public event Action<string>? OnGameEnded;
+
         private IReadWriteableGameDataStore _gameDataStore;
         private IMessageBusHost _messageBusHost;
         private GameDataUpdateSender _synchronizer;
@@ -27,8 +29,8 @@ namespace FDG.GameModel
 
         private static bool TEST_SINGLE_TURN = false; //Turn on to skip most of the game and just do one run of a model's activation.
 
-        public FDGServer(IReadWriteableGameDataStore gameDataStore, IMessageBusHost messageBusHost, 
-            GameSettings gameSettings, PlayerSlot[] playerSlots)
+        public FDGServer(IReadWriteableGameDataStore gameDataStore, IMessageBusHost messageBusHost,
+            GameSettings gameSettings, PlayerSlot[] playerSlots, TerrainLayoutFile? terrainLayout = null)
         {
             Debug.WriteLine($"Started {nameof(FDGServer)}.");
 
@@ -45,7 +47,12 @@ namespace FDG.GameModel
 
             CreateArmies(playerSlots, gameDataStore);
 
-            LogAndChatMessageRelayer chatMessageRelayer = new LogAndChatMessageRelayer(messageBusHost);
+            if (terrainLayout != null)
+            {
+                CreateTerrain(terrainLayout, gameDataStore);
+            }
+
+            LogAndChatMessageRelayer chatMessageRelayer = new LogAndChatMessageRelayer(_playerSlotManager);
 
             ITextOutput textOutput = new PlayerLogSender(chatMessageRelayer);
 
@@ -56,8 +63,9 @@ namespace FDG.GameModel
             RequestMessageSender requestMessageSender = new RequestMessageSender(messageBusHost, gameDataStore, 
                 _playerSlotManager);
 
-            _gameContext = new GameContext(textOutput, GetDiceRoller(gameSettings), requestMessageSender, 
+            _gameContext = new GameContext(textOutput, GetDiceRoller(gameSettings), requestMessageSender,
                 tableState, _gameDataStore, tempVisualRelayer);
+            _gameContext.OnGameEnded += result => OnGameEnded?.Invoke(result);
 
             if (TEST_SINGLE_TURN)
             {
@@ -127,6 +135,21 @@ namespace FDG.GameModel
             DataReference armyDataReference = gameDataStore.Create(armyData);
         }
 
+
+        private void CreateTerrain(TerrainLayoutFile layout, IReadWriteableGameDataStore gameDataStore)
+        {
+            foreach (TerrainPieceEntry entry in layout.Pieces)
+            {
+                if (entry.Shape == null)
+                {
+                    Debug.WriteLine($"Skipping terrain piece in layout '{layout.Name}' with null shape.");
+                    continue;
+                }
+                TerrainData terrainData = new TerrainData(entry.TerrainType, entry.Shape, entry.HeightInches);
+                gameDataStore.Create(terrainData);
+            }
+            Debug.WriteLine($"Created {layout.Pieces.Count} terrain pieces from layout '{layout.Name}'.");
+        }
 
         private IDiceRoller GetDiceRoller(GameSettings gameSettings)
         {

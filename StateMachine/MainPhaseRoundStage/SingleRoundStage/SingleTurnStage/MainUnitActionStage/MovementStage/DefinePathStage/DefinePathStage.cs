@@ -25,8 +25,8 @@ namespace FDG.Stages
             List<ModelMoveEntry> movements = await context.PlayerRequester()
                 .RequestDecision<DefineMovementPathRequest, List<ModelMoveEntry>>(pathRequest);
 
-            if(MovementUtilities.ValidatePaths(movements, context.MaxChargeDistance, 
-                out List<ReasonForInvalidMove> invalidReasons) == false)
+            if(MovementUtilities.ValidatePaths(movements, context.MaxChargeDistance,
+                context.RelevantTerrain, out List<ReasonForInvalidMove> invalidReasons) == false)
             {
                 StringBuilder sb = new StringBuilder(invalidReasons[0].ToString());
                 for(int i = 1; i < invalidReasons.Count; i++)

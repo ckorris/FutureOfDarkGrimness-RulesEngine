@@ -29,6 +29,8 @@ namespace FDG
         /// </summary>
         public const float MAX_MODEL_DISTANCE_FROM_ALL_OTHER_MODELS_INCHES = 9;
 
+        public const float DIFFICULT_TERRAIN_MOVE_CAP_INCHES = 6f;
+
         public const float DEPLOYMENT_DISTANCE_INCHES = 9;
 
         public const float DEFAULT_TABLE_WIDTH_INCHES = 72;

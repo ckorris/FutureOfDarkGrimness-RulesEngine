@@ -243,6 +243,64 @@ namespace FDG.Tests
                 Is.False);
         }
 
+        [Test]
+        public void DoesPathCrossDangerousTerrain_PathCrosses_ReturnsTrue()
+        {
+            DataBinding<ModelData> model = MakeModel(new Position(0, 0));
+            ModelMoveEntry move = new ModelMoveEntry(model, new List<Position> { new Position(8, 0) });
+
+            List<ITerrain> terrain = new List<ITerrain>
+            {
+                new TerrainData(ETerrainType.Dangerous, new RectangularZone(3, 5, -2, 2))
+            };
+
+            Assert.That(MovementUtilities.DoesPathCrossDangerousTerrain(move, terrain), Is.True);
+        }
+
+        [Test]
+        public void DoesPathCrossDangerousTerrain_PathMisses_ReturnsFalse()
+        {
+            DataBinding<ModelData> model = MakeModel(new Position(0, 5));
+            ModelMoveEntry move = new ModelMoveEntry(model, new List<Position> { new Position(8, 5) });
+
+            List<ITerrain> terrain = new List<ITerrain>
+            {
+                new TerrainData(ETerrainType.Dangerous, new RectangularZone(3, 5, -2, 2))
+            };
+
+            Assert.That(MovementUtilities.DoesPathCrossDangerousTerrain(move, terrain), Is.False);
+        }
+
+        [Test]
+        public void DoesPathCrossDangerousTerrain_NonDangerousTerrain_ReturnsFalse()
+        {
+            // Difficult-only terrain — must not trigger dangerous check.
+            DataBinding<ModelData> model = MakeModel(new Position(0, 0));
+            ModelMoveEntry move = new ModelMoveEntry(model, new List<Position> { new Position(8, 0) });
+
+            List<ITerrain> terrain = new List<ITerrain>
+            {
+                new TerrainData(ETerrainType.Difficult, new RectangularZone(3, 5, -2, 2))
+            };
+
+            Assert.That(MovementUtilities.DoesPathCrossDangerousTerrain(move, terrain), Is.False);
+        }
+
+        [Test]
+        public void DoesPathCrossDangerousTerrain_NoPositions_ReturnsFalse()
+        {
+            // Model that didn't move — positions list is empty.
+            DataBinding<ModelData> model = MakeModel(new Position(0, 0));
+            ModelMoveEntry move = new ModelMoveEntry(model, new List<Position>());
+
+            List<ITerrain> terrain = new List<ITerrain>
+            {
+                new TerrainData(ETerrainType.Dangerous, new RectangularZone(3, 5, -2, 2))
+            };
+
+            Assert.That(MovementUtilities.DoesPathCrossDangerousTerrain(move, terrain), Is.False);
+        }
+
         private DataBinding<ModelData> MakeModel(Position initialPosition)
         {
             ModelData modelData = new ModelData(

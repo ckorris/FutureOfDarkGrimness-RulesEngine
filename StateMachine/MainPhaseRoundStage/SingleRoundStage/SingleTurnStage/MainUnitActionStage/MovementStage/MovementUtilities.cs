@@ -111,6 +111,30 @@ namespace FDG.Stages
             }
         }
 
+        public static bool DoesPathCrossDangerousTerrain(ModelMoveEntry move, IEnumerable<ITerrain> terrain)
+        {
+            List<ITerrain> dangerous = terrain
+                .Where(t => t.TerrainType.HasFlag(ETerrainType.Dangerous))
+                .ToList();
+            if (dangerous.Count == 0 || move.Positions.Count == 0) return false;
+
+            Position startPos = move.Model.GetValue().PositionBinding.GetValue();
+            Float2 segmentStart = new Float2(startPos.x, startPos.z);
+
+            for (int i = 0; i < move.Positions.Count; i++)
+            {
+                Float2 segmentEnd = new Float2(move.Positions[i].x, move.Positions[i].z);
+                foreach (ITerrain piece in dangerous)
+                {
+                    if (piece.DoesPathIntersectZone(segmentStart, segmentEnd))
+                        return true;
+                }
+                segmentStart = segmentEnd;
+            }
+
+            return false;
+        }
+
         private static void ValidateMovingThroughDifficultTerrain(List<ModelMoveEntry> moves,
             IEnumerable<ITerrain>? terrain, ref List<ReasonForInvalidMove> reasonsForInvalidMove)
         {

@@ -44,7 +44,7 @@ namespace FDG.Network.Connection
             }
             catch (Exception exception)
             {
-                Debug.WriteLine($"Exception while trying to connect to host: {exception.Message}");
+                Console.WriteLine($"Exception while trying to connect to host: {exception.Message}");
                 return false;
             }
         }
@@ -65,7 +65,7 @@ namespace FDG.Network.Connection
             }
             catch (Exception exception)
             {
-                Debug.WriteLine($"Exception while sending data: {exception.Message}");
+                Console.WriteLine($"Exception while sending data: {exception.Message}");
                 Disconnect();
             }
             finally
@@ -120,11 +120,11 @@ namespace FDG.Network.Connection
             }
             catch (IOException ioException)
             {
-                Debug.WriteLine($"Connection closed, or read error: {ioException.Message}");
+                Console.WriteLine($"Connection closed, or read error: {ioException.Message}");
             }
             catch (Exception exception)
             {
-                Debug.WriteLine($"Exception in {nameof(ReceiveLoopAsync)}: {exception.Message}");
+                Console.WriteLine($"Exception in {nameof(ReceiveLoopAsync)}: {exception}");
             }
             finally
             {

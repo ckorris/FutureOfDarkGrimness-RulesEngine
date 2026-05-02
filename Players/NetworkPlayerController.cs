@@ -87,5 +87,11 @@ namespace FDG.Players
             LogChatNetworkMessage messageRecord = new LogChatNetworkMessage(logMessage);
             _messageBusHost.SendCommandToAllAsync(messageRecord);
         }
+
+        public void SendPlayerMessage(string sendingPlayerName, EChatMessageType messageType, string message)
+        {
+            PlayerChatNetworkMessage messageRecord = new PlayerChatNetworkMessage(sendingPlayerName, messageType, message);
+            _messageBusHost.SendCommandToAllAsync(messageRecord);
+        }
     }
 }

@@ -25,6 +25,7 @@ namespace FDG.Players
         }
 
         internal PlayerSlot[] _playerSlots;
+        internal PlayerSlot[] PlayerSlots => _playerSlots;
 
         public PlayerSlotManager(PlayerSlot[] playerSlots)
         {

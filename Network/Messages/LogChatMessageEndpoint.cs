@@ -62,23 +62,24 @@ namespace FDG.Network.Messages
                 return;
             }
 
-            IPlayerSlotInfo sendingPlayerSlot = _tableState.Players.Objects
-                .First(player => player.PlayerID == message.PlayerID);
-
             switch (message.MessageType)
             {
                 case EChatMessageType.Global:
-                    _playerMessageUI?.DisplayPlayerMessage(sendingPlayerSlot.Name, message.MessageType, message.Message);
+                    _playerMessageUI?.DisplayPlayerMessage(message.SendingPlayerName, message.MessageType, message.Message);
                     break;
                 case EChatMessageType.Team:
-                    ITeam sendingTeam = _tableState.Teams.Objects.First(team => team.TeamNumber == sendingPlayerSlot.TeamNumber);
+                    IPlayerSlotInfo sendingPlayerSlot = _tableState.Players.Objects
+                        .FirstOrDefault(player => player.Name == message.SendingPlayerName);
+                    ITeam sendingTeam = sendingPlayerSlot != null
+                        ? _tableState.Teams.Objects.First(team => team.TeamNumber == sendingPlayerSlot.TeamNumber)
+                        : null;
 
                     //Show the message if _any_ local players are on that team.
                     foreach(PlayerID localID in _localPlayerIDs)
                     {
-                        if(sendingTeam.IsPlayerOnTeam(localID))
+                        if(sendingTeam != null && sendingTeam.IsPlayerOnTeam(localID))
                         {
-                            _playerMessageUI?.DisplayPlayerMessage(sendingPlayerSlot.Name, message.MessageType, message.Message);
+                            _playerMessageUI?.DisplayPlayerMessage(message.SendingPlayerName, message.MessageType, message.Message);
                             break; //Don't show more than once.
                         }
                     }

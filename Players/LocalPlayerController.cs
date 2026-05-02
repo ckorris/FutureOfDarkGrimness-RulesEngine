@@ -15,7 +15,7 @@ namespace FDG.Players
         public ITempVisualDrawer? TempVisualDrawer => _localPlayer.TempVisualDrawer;
 
         public event Action<bool>? OnReadyStateChanged;
-        //public event Action<PlayerID, EChatMessageType, string> OnMessageSentByPlayer;
+        public event Action<PlayerID, EChatMessageType, string> OnMessageSentByPlayer;
 
         private FDGGame_AsLocal _localPlayer;
 
@@ -24,6 +24,22 @@ namespace FDG.Players
             Name = name;
             ID = id;
             _localPlayer = localPlayer;
+
+            //Subscribe to the player messages once they're assigned.
+            if(_localPlayer.PlayerMessageUI != null)
+            {
+                localPlayer.PlayerMessageUI.OnMessageSentByPlayer += OnPlayerSentMessage;
+            }
+            else
+            {
+                _localPlayer.OnStageResolverAssigned += () =>
+                    localPlayer.PlayerMessageUI.OnMessageSentByPlayer += OnPlayerSentMessage;
+            }
+        }
+
+        private void OnPlayerSentMessage(string message, EChatMessageType messageType)
+        {
+            OnMessageSentByPlayer?.Invoke(ID, messageType, message);
         }
 
         public Task WaitUntilReadyAsync()
@@ -50,6 +66,16 @@ namespace FDG.Players
             _localPlayer.OnStageResolverAssigned += Handler;
 
             return source.Task;
+        }
+
+        public void SendLogMessage(string logMessage)
+        {
+            _localPlayer.LogMessageUI?.DisplayLogMessage(logMessage);
+        }
+
+        public void SendPlayerMessage(string sendingPlayerName, EChatMessageType messageType, string message)
+        {
+            _localPlayer.PlayerMessageUI?.DisplayPlayerMessage(sendingPlayerName, messageType, message);
         }
     }
 }

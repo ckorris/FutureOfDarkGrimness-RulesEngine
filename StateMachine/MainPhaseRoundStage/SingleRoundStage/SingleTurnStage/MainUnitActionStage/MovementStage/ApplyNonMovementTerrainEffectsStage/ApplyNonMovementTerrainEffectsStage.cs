@@ -40,7 +40,11 @@ namespace FDG.Stages
                 if (!MovementUtilities.DoesPathCrossDangerousTerrain(move, dangerous)) continue;
 
                 IDiceResults roll = GameContext.DiceRoller.Roll(6, 1);
-                int rollValue = (int)roll[0];
+
+                // Die faces start at SideMin (1), not 0 — find which face came up.
+                int rollValue = roll.SideMin;
+                for (int v = roll.SideMin; v <= roll.SideMax; v++)
+                    if (roll.At(v) > 0f) { rollValue = v; break; }
 
                 if (roll.At(1) > 0)
                 {

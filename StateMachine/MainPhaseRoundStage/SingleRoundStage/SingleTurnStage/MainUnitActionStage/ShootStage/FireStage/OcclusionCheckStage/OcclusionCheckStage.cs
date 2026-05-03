@@ -14,7 +14,10 @@ namespace FDG.Stages
 
         protected override async Task RunStage(ICombatMetadata metaData, Action<OcclusionCheckResults> onFinished)
         {
-            IReadOnlyList<ITerrain> terrain = GameContext.TableState.Terrain.Objects.ToList();
+            var modelBlockers = LineOfSightUtilities.BuildModelBlockers(
+                GameContext.TableState, metaData.AttackingUnit, metaData.DefendingUnit);
+            IReadOnlyList<ITerrain> terrain = GameContext.TableState.Terrain.Objects
+                .Concat(modelBlockers).ToList();
 
             bool hasLoS = false;
             foreach (DataBinding<ModelData> attacker in metaData.AttackingUnit.ModelBindings())

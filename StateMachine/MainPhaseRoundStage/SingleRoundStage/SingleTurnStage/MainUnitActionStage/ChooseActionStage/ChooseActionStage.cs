@@ -1,4 +1,5 @@
 using FDG.StageResolution.Requests;
+using FDG.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -137,7 +138,28 @@ namespace FDG.Stages
 
             if (context.ActivatingUnit.GetValue().GetMeleeWeapons().Count == 0)
             {
-                reasonIfCant = $"{context.ActivatingUnit.GetValue().Name} unit has no melee weapons.";
+                reasonIfCant = $"{context.ActivatingUnit.GetValue().Name} has no melee weapons.";
+                return false;
+            }
+
+            PlayerID attackingPlayer = context.ActivatingPlayer();
+            TeamData? playerTeam = GameContext.GameDataStore().GetAllValues<TeamData>()
+                .FirstOrDefault(t => t.IsPlayerOnTeam(attackingPlayer));
+            IReadOnlyList<PlayerID> alliedPlayers = playerTeam != null
+                ? playerTeam.Players
+                : new List<PlayerID> { attackingPlayer };
+
+            bool anyInRange = GameContext.GameDataStore().GetAllValues<ArmyData>()
+                .Where(a => !alliedPlayers.Contains(a.PlayerID))
+                .SelectMany(a => a.UnitBindings)
+                .Any(enemyUnit => UnitCompareUtilities.MinDistanceBetweenUnits(
+                    context.ActivatingUnit.GetValue(), enemyUnit.GetValue(),
+                    out _, out _, includeVertical: false)
+                    <= GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL);
+
+            if (!anyInRange)
+            {
+                reasonIfCant = "No enemies within melee range.";
                 return false;
             }
 

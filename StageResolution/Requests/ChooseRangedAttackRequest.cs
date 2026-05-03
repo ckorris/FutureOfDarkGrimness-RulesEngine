@@ -51,7 +51,7 @@ namespace FDG.StageResolution.Requests
         /// <param name="TargetUnit">Unit being targeted.</param>
         /// <param name="modelsThatCanShoot">Models with the weapon that can hit (have line of sight and range)</param>
         public record WeaponTargetStats(DataBinding<UnitData> TargetUnit, HashSet<DataBinding<ModelData>> modelsThatCanShoot,
-            HashSet<DataBinding<ModelData>> modelsWithWeaponThatCannotShoot);
+            HashSet<DataBinding<ModelData>> modelsWithWeaponThatCannotShoot, bool HasCover = false);
 
         /// <summary>
         /// Record suited to choosing your attack, with the attacking unit implied.

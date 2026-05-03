@@ -100,11 +100,14 @@ namespace FDG
                 }
             }
 
-            if (IsFinishedAssigning == false)
+            /*
+            //Below check fails if you actually kill off the unit.
+            if (IsFinishedAssigning == false || TotalAssignedWounds == )
             {
                 throw new Exception($"Used {nameof(AssignWoundsResults)}.{nameof(AutoFill)} but results were not " +
                     $"finished. Required to assign: {TotalWoundsToAssign} Assigned: {TotalAssignedWounds}.");
             }
+            */
         }
     }
 

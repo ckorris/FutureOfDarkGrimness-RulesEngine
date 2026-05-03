@@ -32,7 +32,7 @@ namespace FDG.Players
             }
             else
             {
-                _localPlayer.OnStageResolverAssigned += () => 
+                _localPlayer.OnStageResolverAssigned += () =>
                     localPlayer.PlayerMessageUI.OnMessageSentByPlayer += OnPlayerSentMessage;
             }
         }

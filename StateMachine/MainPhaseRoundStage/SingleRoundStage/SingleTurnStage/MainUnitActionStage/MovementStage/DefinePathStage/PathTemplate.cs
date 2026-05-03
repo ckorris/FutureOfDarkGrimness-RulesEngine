@@ -3,6 +3,7 @@ using FDG.Data;
 using FDG.StageResolution.Requests;
 using FDG.Stages;
 using FDG.Utilities;
+using System.IO;
 
 namespace FDG
 {
@@ -20,6 +21,10 @@ namespace FDG
 
         public IUnit Unit => _unit.GetValue();
 
+        public float MaxAdvanceDistance => _maxDistanceInches / 2f; //TODO: Things can buff one distance but not the other.
+
+        public float MaxChargeDistance => _maxDistanceInches; 
+
         private DataBinding<UnitData> _unit;
         private float _maxDistanceInches;
 
@@ -28,7 +33,8 @@ namespace FDG
             _unit = unit;
             _maxDistanceInches = maxDistanceInches;
 
-            foreach (DataBinding<ModelData> model in unit.ModelBindings())
+            foreach (DataBinding<ModelData> model in unit.ModelBindings()
+                .Where(model => model.GetIsAlive()))
             {
                 _paths.Add(model, new List<Position>());
             }
@@ -81,6 +87,39 @@ namespace FDG
             {
                 path.Clear();
             }
+        }
+
+        public float GetTotalDistanceMoved(IModel model)
+        {
+            IReadOnlyList<Position> path = _paths.First(kvp => kvp.Key.GetValue() == model).Value;
+
+            if (path.Count == 0) return 0;
+
+            float totalDistance = 0;
+            Position currentPos = model.Position;
+
+            //Distance from model to first waypoint.
+            totalDistance += Position.GetDistance3D(currentPos, path[0]);
+
+            //Distance between waypoints.
+            for (int i = 1; i < path.Count; i++)
+            {
+                totalDistance += Position.GetDistance3D(path[i - 1], path[i]);
+            }
+
+            return totalDistance;
+        }
+
+        public Position GetModelLastPathPosition(IModel model)
+        {
+            IReadOnlyList<Position> path = _paths.First(kvp => kvp.Key.GetValue() == model).Value;
+
+            if (path.Count == 0)
+            {
+                return model.Position;
+            }
+
+            return path.Last();
         }
 
         public List<ModelMoveEntry> GetResultsAsList()

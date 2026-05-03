@@ -1,6 +1,7 @@
 ﻿using FDG.Data;
 using FDG.EngineInterface;
 using FDG.MessageBus;
+using FDG.Network.Messages;
 using FDG.StageResolution;
 using FDG.TempVisuals;
 using FDG.TextInterface;
@@ -29,7 +30,11 @@ namespace FDG.GameModel
 
         private IReadableGameDataStore _gameDataStore;
 
+
         private List<NetworkedRequestMessageReceiver> _requestReceivers = new List<NetworkedRequestMessageReceiver>();
+
+
+        private OutstandingTaskLister _outstandingTaskLister;
 
 
         public FDGGame_AsLocal(IReadableGameDataStore gameDataStore, IMessageBusClient messageBusClient)
@@ -51,26 +56,39 @@ namespace FDG.GameModel
         }
 
         public void AssignInterfaces(ILogMessageUI logMessageUI, IPlayerMessageUI playerMessageUI, 
-            IStageResolverRegistry stageResolverRegistry, ITempVisualDrawer tempVisualDrawer)
+            IStageResolverRegistry stageResolverRegistry, ITempVisualDrawer tempVisualDrawer,
+            IOutstandingListDisplay? outstandingTaskDisplay)
         {
             LogMessageUI = logMessageUI;
 
             PlayerMessageUI = playerMessageUI;
 
+            if (logMessageUI != null || playerMessageUI != null)
+            {
+                LogChatMessageEndpoint logChatMessageListener = new LogChatMessageEndpoint(logMessageUI, playerMessageUI, TableState,
+                    _localPlayerIDs, _messageBusClient);
+            }
+
             StageResolverRegistry = stageResolverRegistry;
 
             TempVisualDrawer = tempVisualDrawer;
 
-            OutstandingTaskLister outstandingTaskLister = new OutstandingTaskLister(); //TODO: Don't pass in, will duplicate.
+            OutstandingTaskLister outstandingTaskLister = new OutstandingTaskLister(_messageBusClient); //TODO: Don't pass in, will duplicate.
 
             //Note that as of writing, we've got no safeguards if multiple requests come in at the same time for different local players.
             //Not sure if we'll ever need that, but if so, it's currently up to the resolvers to handle.
             foreach( PlayerID playerID in _localPlayerIDs)
             {
-                _requestReceivers.Add(new NetworkedRequestMessageReceiver(playerID, _messageBusClient, stageResolverRegistry,
-                    outstandingTaskLister, _gameDataStore));
+                _requestReceivers.Add(new NetworkedRequestMessageReceiver(playerID, _messageBusClient, 
+                    stageResolverRegistry, _gameDataStore));
             }
-                
+
+            if (outstandingTaskDisplay != null)
+            {
+                _outstandingTaskLister = new OutstandingTaskLister(_messageBusClient);
+                outstandingTaskDisplay.AssignLister(_outstandingTaskLister);
+            }
+
             OnStageResolverAssigned?.Invoke();
         }
     }

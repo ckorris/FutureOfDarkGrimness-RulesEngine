@@ -1,4 +1,4 @@
-﻿using FDG.Players;
+using FDG.Players;
 using FutureOfDarkGrimness.TextInterface;
 
 namespace FDG.TextInterface
@@ -11,7 +11,7 @@ namespace FDG.TextInterface
         {
             if(playerSlotManager == null)
             {
-                throw new NullReferenceException($"{nameof(PlayerSlotManager)} passed into {nameof(LogAndChatMessageRelayer)} " + 
+                throw new NullReferenceException($"{nameof(PlayerSlotManager)} passed into {nameof(LogAndChatMessageRelayer)} " +
                     "constructor was null.");
             }
 

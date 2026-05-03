@@ -177,7 +177,7 @@ namespace FDG.Stages
 
             context.ActivatingUnit.GetValue().GetMobility(out float moveShootDistanceInches, out _);
 
-            if (context.MoveDistance > moveShootDistanceInches)
+            if (context.MoveDistance.LessThanOrAlmostEqual(moveShootDistanceInches) == false)
             {
                 reasonIfCant = $"Moved {context.MoveDistance} inches, when max to move and shoot for {context.ActivatingUnit.GetValue().Name} " + 
                     $" is {moveShootDistanceInches}.";

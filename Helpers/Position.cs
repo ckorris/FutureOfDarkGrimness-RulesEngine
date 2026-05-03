@@ -42,14 +42,14 @@ namespace FDG
         // 2D distance between two positions (ignores Z)
         public static float GetDistance2D(Position a, Position b)
         {
-            Float2 delta = new Float2(a.Position3D.X - b.Position3D.X, a.Position3D.Y - b.Position3D.Y);
+            Float2 delta = new Float2(a.Position3D.X - b.Position3D.X, a.Position3D.Z - b.Position3D.Z);
             return (float)Math.Sqrt(delta.X * delta.X + delta.Y * delta.Y);
         }
 
         // Vertical distance (difference in Z)
         public static float GetVerticalDistance(Position a, Position b)
         {
-            return Math.Abs(a.Position3D.Z - b.Position3D.Z);
+            return Math.Abs(a.Position3D.Y - b.Position3D.Y);
         }
 
         public static implicit operator Float2(Position a)

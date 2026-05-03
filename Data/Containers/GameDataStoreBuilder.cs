@@ -1,4 +1,5 @@
-﻿using FDG.SaveLoad;
+﻿using FDG.Players;
+using FDG.SaveLoad;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -53,8 +54,10 @@ namespace FDG.Data
                 return new GameDataStoreBuilder()
                 .RegisterType<int>(64)
                 .RegisterType<float>(64)
+                .RegisterType<string>(32)
                 .RegisterType<Position>(128)
                 .RegisterType<ModelData>(64)
+                .RegisterType<PlayerSlotInfo>(8)
                 .RegisterType<TeamData>(2)
                 .RegisterType<UnitData>(32)
                 .RegisterType<ArmyData>(8)

@@ -115,7 +115,8 @@ namespace FDG.Stages
             //TODO: Cache line of sight lookups.
 
             //Go through each of our models that have weapons.
-            foreach (DataBinding<ModelData> attackingModel in attackingUnit.ModelBindings())
+            foreach (DataBinding<ModelData> attackingModel in attackingUnit.ModelBindings()
+                .Where(model => model.GetIsAlive()))
             {
                 //TODO: Cache model weapons, both outside of this to look up, and 
                 //within here. Should make a list before this scope of just models with relevant weapons.
@@ -152,7 +153,8 @@ namespace FDG.Stages
             ref Dictionary<DataBinding<ModelData>, bool> cachedLineOfSights,
             IReadOnlyList<ITerrain> terrain)
         {
-            foreach (DataBinding<ModelData> defendingModel in enemyUnit.ModelBindings())
+            foreach (DataBinding<ModelData> defendingModel in enemyUnit.ModelBindings()
+                .Where(model => model.GetIsAlive()))
             {
 
                 if (cachedLineOfSights.TryGetValue(defendingModel, out bool hasLineOfSight) == false)

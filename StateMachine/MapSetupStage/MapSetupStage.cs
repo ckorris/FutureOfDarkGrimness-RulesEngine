@@ -1,28 +1,31 @@
 
 namespace FDG.Stages
 {
-
-    public class MapSetupStage : StageBase<IGameContext>
+    public class MapSetupStage : ParentStage<IGameContext, IGameContext>
     {
-        public const string TO_DEPLOYMENT_TRANSITION = "MapSetupToDeployment";
-
         public StageBinding ToDeployment;
 
-        public MapSetupStage(IGameContext gameContext, IStateMachineLayer<IGameContext> parent) 
-            : base(gameContext, parent)
+        public MapSetupStage(IGameContext gameContext, IStateMachineLayer<IGameContext> parent)
+            : base(gameContext, parent) { }
+
+        protected override IGameContext GetNewChildContext(IGameContext contextSelf) => contextSelf;
+
+        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IGameContext> startingChild)
         {
             ToDeployment = new StageBinding(this);
-        }
 
-        public override async Task Enter(IGameContext context)
-        {
-            //TODO: Implement. Should set up terrain and also objectives.
-            //Perhaps sub-stages? Roll for first terrain, place, roll for objective count, place.
-            //Or maybe in the options you could have a pre-configured one, in which case you just do that.
-            context.Log($"Entered {nameof(MapSetupStage)}.");
+            var dictionary = new TransitionSetBuilder(this)
+                .AddChild(new PlaceTerrainStage(GameContext, this), out var placeTerrain)
+                .AddChild(new PlaceObjectivesStage(GameContext, this), out var placeObjectives)
+                .AddSibling(nameof(ToDeployment), ToDeployment, out string toDeploymentEvent)
+                .Build();
 
-            ToDeployment.Activate(context);
+            startingChild = placeTerrain;
+
+            placeTerrain.OnTerrainPlaced.Bind(placeObjectives);
+            placeObjectives.OnObjectivesPlaced.Bind(toDeploymentEvent);
+
+            return dictionary;
         }
     }
-
 }

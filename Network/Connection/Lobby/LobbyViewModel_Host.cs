@@ -73,12 +73,6 @@ namespace FDG.Network.Connection
 
         IReadWriteableGameDataStore _gameDataStore;
 
-        /// <summary>
-        /// Optional terrain layout to use when launching the game. The GUI/CLI lobby sets this
-        /// before the host starts the game; if left null, FDGServer creates no terrain.
-        /// </summary>
-        public TerrainLayoutFile? TerrainLayout { get; set; }
-
         public LobbyViewModel_Host(string hostPlayerName, string serverName, string? password, INetworkHost host)
         {
             _gameDataStore = GameDataStore.GameDataStoreBuilder.GetDefault();
@@ -297,7 +291,7 @@ namespace FDG.Network.Connection
                 }
             }
 
-            FDGServer server = new FDGServer(_gameDataStore, _messageBus, _gameSettings, playerSlots, TerrainLayout);
+            FDGServer server = new FDGServer(_gameDataStore, _messageBus, _gameSettings, playerSlots);
 
             if (gameModel != null) //Dedicated server really doesn't need to do this.
             {

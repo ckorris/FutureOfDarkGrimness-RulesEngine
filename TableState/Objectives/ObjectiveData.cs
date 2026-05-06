@@ -6,6 +6,7 @@ namespace FDG
     {
         Position Position { get; }
         PlayerID? OwnerID { get; }
+        void SetOwner(PlayerID? ownerID);
     }
 
     public class ObjectiveData : IObjective

@@ -1,9 +1,9 @@
 ﻿using FDG.Data;
 using FDG.MessageBus;
+using FDG.SaveLoad;
 using FDG.Network.Connection;
 using FDG.Network.Synchronization;
 using FDG.Players;
-using FDG.SaveLoad;
 using FDG.StageResolution;
 using FDG.Stages;
 using FDG.StateMachine.StateMachineBuilders;
@@ -30,7 +30,7 @@ namespace FDG.GameModel
         private static bool TEST_SINGLE_TURN = false; //Turn on to skip most of the game and just do one run of a model's activation.
 
         public FDGServer(IReadWriteableGameDataStore gameDataStore, IMessageBusHost messageBusHost,
-            GameSettings gameSettings, PlayerSlot[] playerSlots, TerrainLayoutFile? terrainLayout = null)
+            GameSettings gameSettings, PlayerSlot[] playerSlots)
         {
             Debug.WriteLine($"Started {nameof(FDGServer)}.");
 
@@ -46,11 +46,6 @@ namespace FDG.GameModel
             AddTeamDataToGameDataStore(playerSlots, gameDataStore);
 
             CreateArmies(playerSlots, gameDataStore);
-
-            if (terrainLayout != null)
-            {
-                CreateTerrain(terrainLayout, gameDataStore);
-            }
 
             LogAndChatMessageRelayer chatMessageRelayer = new LogAndChatMessageRelayer(_playerSlotManager);
 
@@ -135,21 +130,6 @@ namespace FDG.GameModel
             DataReference armyDataReference = gameDataStore.Create(armyData);
         }
 
-
-        private void CreateTerrain(TerrainLayoutFile layout, IReadWriteableGameDataStore gameDataStore)
-        {
-            foreach (TerrainPieceEntry entry in layout.Pieces)
-            {
-                if (entry.Shape == null)
-                {
-                    Debug.WriteLine($"Skipping terrain piece in layout '{layout.Name}' with null shape.");
-                    continue;
-                }
-                TerrainData terrainData = new TerrainData(entry.TerrainType, entry.Shape, entry.HeightInches);
-                gameDataStore.Create(terrainData);
-            }
-            Debug.WriteLine($"Created {layout.Pieces.Count} terrain pieces from layout '{layout.Name}'.");
-        }
 
         private IDiceRoller GetDiceRoller(GameSettings gameSettings)
         {

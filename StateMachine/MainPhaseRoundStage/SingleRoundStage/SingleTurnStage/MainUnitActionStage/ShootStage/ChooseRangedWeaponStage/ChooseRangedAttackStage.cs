@@ -11,10 +11,12 @@ namespace FDG.Stages
     public class ChooseRangedAttackStage : StageBase<ICombatActionContext>
     {
         public StageBinding OnChoseWeapon;
+        public StageBinding BackToChooseAction;
 
         public ChooseRangedAttackStage(IGameContext gameContext, IStateMachineLayer<ICombatActionContext> parent) : base(gameContext, parent)
         {
             OnChoseWeapon = new StageBinding(this);
+            BackToChooseAction = new StageBinding(this);
         }
 
         public override async Task Enter(ICombatActionContext context)
@@ -36,8 +38,14 @@ namespace FDG.Stages
 
             //Some weirdness here because we're not using bindings for weapons as of now.
             //Weapon weaponFromRequest = await context.PlayerRequester().RequestDecision<ChooseRangedWeaponRequest, Weapon>(chooseWeaponRequest);
-            RangedAttackChoice rangedAttackChoice = await context.PlayerRequester()
+            RangedAttackChoice? rangedAttackChoice = await context.PlayerRequester()
                 .RequestDecision<ChooseRangedAttackRequest, RangedAttackChoice>(chooseWeaponRequest);
+
+            if (rangedAttackChoice == null)
+            {
+                BackToChooseAction.Activate(context);
+                return;
+            }
 
             //Weapon chosenWeapon = validOptions.First(option => option.Item2.Name == rangedAttackChoice.Weapon.Name).Item2;
             Weapon chosenWeapon = context.AvailableWeapons.Keys
@@ -90,7 +98,11 @@ namespace FDG.Stages
         {
             Dictionary<string, WeaponTargetStats> weaponToStats = new Dictionary<string, WeaponTargetStats>();
 
-            bool hasCover = ComputeHasCover(attackingUnit, enemyUnit, terrain);
+            var modelBlockers = LineOfSightUtilities.BuildModelBlockers(
+                GameContext.TableState, attackingUnit, enemyUnit);
+            IReadOnlyList<ITerrain> allTerrain = terrain.Concat(modelBlockers).ToList();
+
+            bool hasCover = ComputeHasCover(attackingUnit, enemyUnit, allTerrain);
 
             foreach (string weaponName in weaponNames)
             {
@@ -122,7 +134,7 @@ namespace FDG.Stages
 
                     WeaponTargetStats weaponTargetStats = weaponToStats[weapon.Name];
                     if(CanWeaponShootAtUnit(attackingModel, enemyUnit, weapon,
-                        ref lineOfSightCache, terrain))
+                        ref lineOfSightCache, allTerrain))
                     {
                         weaponTargetStats.modelsThatCanShoot.Add(attackingModel);
                     }

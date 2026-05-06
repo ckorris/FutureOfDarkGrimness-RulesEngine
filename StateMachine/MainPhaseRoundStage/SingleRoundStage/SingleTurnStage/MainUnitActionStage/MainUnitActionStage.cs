@@ -63,6 +63,7 @@ namespace FDG.Stages
             movement.OnFinishedMovement.Bind(chooseAction);
             melee.OnFinishedMelee.Bind(chooseAction);
             shoot.OnFinishedShooting.Bind(chooseAction);
+            shoot.BackToChooseAction.Bind(chooseAction);
 
             return dictionary;
         }

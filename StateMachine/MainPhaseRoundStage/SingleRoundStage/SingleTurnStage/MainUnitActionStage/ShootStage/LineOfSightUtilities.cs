@@ -1,3 +1,5 @@
+using FDG.Data;
+using FDG.Utilities;
 
 namespace FDG.Stages
 {
@@ -8,6 +10,32 @@ namespace FDG.Stages
     /// </summary>
     public static class LineOfSightUtilities
     {
+        /// <summary>
+        /// Returns a blocker list representing every placed model on the table that
+        /// belongs to neither <paramref name="attackingUnit"/> nor
+        /// <paramref name="defendingUnit"/>. Pass the result to
+        /// <see cref="EvaluateSightLine"/> / <see cref="HasLineOfSight"/> after
+        /// concatenating with the normal terrain snapshot.
+        /// </summary>
+        public static List<ITerrain> BuildModelBlockers(ITableState tableState,
+            DataBinding<UnitData> attackingUnit, DataBinding<UnitData> defendingUnit)
+        {
+            var excluded = new HashSet<IModel>(ReferenceEqualityComparer.Instance);
+            foreach (DataBinding<ModelData> b in attackingUnit.ModelBindings())
+                excluded.Add(b.GetValue());
+            foreach (DataBinding<ModelData> b in defendingUnit.ModelBindings())
+                excluded.Add(b.GetValue());
+
+            var blockers = new List<ITerrain>();
+            foreach (IModel model in tableState.Models.Objects)
+            {
+                if (model.Position.x == 0f && model.Position.z == 0f) continue;
+                if (excluded.Contains(model)) continue;
+                blockers.Add(new TerrainData(ETerrainType.Blocking,
+                    new CircularZone(model.Position.x, model.Position.z, model.BaseRadiusInches)));
+            }
+            return blockers;
+        }
         public static ESightLineEffect EvaluateSightLine(Position attacker, Position target,
             IEnumerable<ITerrain>? terrain)
         {

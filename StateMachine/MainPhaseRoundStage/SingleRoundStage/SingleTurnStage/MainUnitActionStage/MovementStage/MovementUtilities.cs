@@ -22,6 +22,7 @@ namespace FDG.Stages
 
             ValidateOutOfMoveRange(moves, maxChargeDistance, ref errors);
             ValidateMovingThroughImpassibleTerrain(moves, terrain, ref errors);
+            ValidateMovingThroughDifficultTerrain(moves, terrain, ref errors);
             ValidateMovingThroughEnemyUnits(moves, ref errors);
             ValidateCoherency(moves, ref errors);
 
@@ -106,6 +107,72 @@ namespace FDG.Stages
                     }
 
                     segmentStart = segmentEnd;
+                }
+            }
+        }
+
+        public static bool DoesPathCrossDangerousTerrain(ModelMoveEntry move, IEnumerable<ITerrain> terrain)
+        {
+            List<ITerrain> dangerous = terrain
+                .Where(t => t.TerrainType.HasFlag(ETerrainType.Dangerous))
+                .ToList();
+            if (dangerous.Count == 0 || move.Positions.Count == 0) return false;
+
+            Position startPos = move.Model.GetValue().PositionBinding.GetValue();
+            Float2 segmentStart = new Float2(startPos.x, startPos.z);
+
+            for (int i = 0; i < move.Positions.Count; i++)
+            {
+                Float2 segmentEnd = new Float2(move.Positions[i].x, move.Positions[i].z);
+                foreach (ITerrain piece in dangerous)
+                {
+                    if (piece.DoesPathIntersectZone(segmentStart, segmentEnd))
+                        return true;
+                }
+                segmentStart = segmentEnd;
+            }
+
+            return false;
+        }
+
+        private static void ValidateMovingThroughDifficultTerrain(List<ModelMoveEntry> moves,
+            IEnumerable<ITerrain>? terrain, ref List<ReasonForInvalidMove> reasonsForInvalidMove)
+        {
+            if (terrain == null) return;
+
+            List<ITerrain> difficult = terrain
+                .Where(t => t.TerrainType.HasFlag(ETerrainType.Difficult))
+                .ToList();
+            if (difficult.Count == 0) return;
+
+            Dictionary<ModelMoveEntry, float> distances = GetTotalMoveDistances(moves);
+
+            foreach (ModelMoveEntry move in moves)
+            {
+                if (move.Positions.Count == 0) continue;
+
+                Position startPos = move.Model.GetValue().PositionBinding.GetValue();
+                Float2 segmentStart = new Float2(startPos.x, startPos.z);
+
+                bool crossesDifficult = false;
+                for (int i = 0; i < move.Positions.Count && !crossesDifficult; i++)
+                {
+                    Float2 segmentEnd = new Float2(move.Positions[i].x, move.Positions[i].z);
+                    foreach (ITerrain piece in difficult)
+                    {
+                        if (piece.DoesPathIntersectZone(segmentStart, segmentEnd))
+                        {
+                            crossesDifficult = true;
+                            break;
+                        }
+                    }
+                    segmentStart = segmentEnd;
+                }
+
+                if (crossesDifficult && distances[move] > GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES)
+                {
+                    reasonsForInvalidMove.Add(
+                        new ReasonForInvalidMove(EErrorReasonType.ExceededDifficultTerrainMoveLimit, move.Model));
                 }
             }
         }
@@ -203,6 +270,8 @@ namespace FDG.Stages
                     return "Moves through an enemy unit";
                 case EErrorReasonType.MovingThroughImpassibleTerrain:
                     return "Moves through impassible terrain";
+                case EErrorReasonType.ExceededDifficultTerrainMoveLimit:
+                    return $"Moved more than {GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES}\" through difficult terrain";
                 case EErrorReasonType.TooFarFromAnyUnitModel:
                     return $"Breaks cohesion: Model is further than {GameWideConstants.MAX_MODEL_DISTANCE_FROM_ANY_OTHER_MODEL_INCHES} " + 
                         "inches from the closest model";
@@ -233,6 +302,7 @@ namespace FDG.Stages
     {
         OutOfMoveRange,
         MovingThroughImpassibleTerrain,
+        ExceededDifficultTerrainMoveLimit,
         MovingThroughEnemyUnit,
         TooFarFromAnyUnitModel,
         TooFarFromAllUnitModels

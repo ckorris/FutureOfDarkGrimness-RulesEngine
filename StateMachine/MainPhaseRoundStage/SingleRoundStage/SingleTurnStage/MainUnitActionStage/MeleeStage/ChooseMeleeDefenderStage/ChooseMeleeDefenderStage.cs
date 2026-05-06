@@ -75,7 +75,8 @@ namespace FDG.Stages
             if (validDefenders.Count == 0)
             {
                 GameContext.Log("No potential melee units found.");
-                BackToChooseAction.Activate(context); //TODO: Tell the user somehow besides the log?
+                BackToChooseAction.Activate(context);
+                return;
             }
             else if(validDefenders.Count == 1)
             {
@@ -88,9 +89,15 @@ namespace FDG.Stages
             SelectionRequest<UnitData> request = new SelectionRequest<UnitData>(attackingPlayer, "Choose defending unit",
                 validDefenders, invalidDefenders);
 
-            DataBinding<UnitData> chosenDefender
+            DataBinding<UnitData>? chosenDefender
                 = await GameContext.PlayerRequester
                 .RequestDecision<SelectionRequest<UnitData>, DataBinding<UnitData>>(request);
+
+            if (chosenDefender == null)
+            {
+                BackToChooseAction.Activate(context);
+                return;
+            }
 
             ChooseDefender(chosenDefender);
         }

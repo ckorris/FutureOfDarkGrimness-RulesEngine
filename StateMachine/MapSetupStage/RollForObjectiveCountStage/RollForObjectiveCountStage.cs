@@ -4,10 +4,14 @@ namespace FDG.Stages
     {
         public StageBinding OnRollComplete;
 
-        public RollForObjectiveCountStage(IGameContext gameContext, IStateMachineLayer<IGameContext> parent)
+        private readonly Action<int>? _onCountDetermined;
+
+        public RollForObjectiveCountStage(IGameContext gameContext, IStateMachineLayer<IGameContext> parent,
+            Action<int>? onCountDetermined = null)
             : base(gameContext, parent)
         {
             OnRollComplete = new StageBinding(this);
+            _onCountDetermined = onCountDetermined;
         }
 
         public override async Task Enter(IGameContext context)
@@ -21,6 +25,7 @@ namespace FDG.Stages
 
             context.Log($"Rolled {roll} — {objectiveCount} objectives will be placed.");
 
+            _onCountDetermined?.Invoke(objectiveCount);
             OnRollComplete.Activate(context);
         }
     }

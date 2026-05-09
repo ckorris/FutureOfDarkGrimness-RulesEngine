@@ -63,7 +63,7 @@ namespace FDG.Stages
                 context.Log($"Warning: could only place {placed.Count}/{count} objectives (terrain may be blocking).");
 
             foreach (var pos in placed)
-                context.GameDataStore.Create(new ObjectiveData(new Position(pos.X, pos.Y)));
+                context.GameDataStore.Create(new ObjectiveData(new Position(pos.X, pos.Y), context.GameDataStore));
 
             context.Log($"Placed {placed.Count} objectives.");
             OnObjectivesPlaced.Activate(context);

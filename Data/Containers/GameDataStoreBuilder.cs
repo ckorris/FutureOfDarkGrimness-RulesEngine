@@ -64,6 +64,7 @@ namespace FDG.Data
                 .RegisterType<TerrainData>(32)
                 .RegisterType<RectangularZone>(16)
                 .RegisterType<ObjectiveData>(8)
+                .RegisterType<PlayerID>(8)
                 .Build();
             }
         }

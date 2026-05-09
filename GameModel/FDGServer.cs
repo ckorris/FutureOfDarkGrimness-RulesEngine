@@ -1,9 +1,9 @@
 ﻿using FDG.Data;
 using FDG.MessageBus;
+using FDG.SaveLoad;
 using FDG.Network.Connection;
 using FDG.Network.Synchronization;
 using FDG.Players;
-using FDG.SaveLoad;
 using FDG.StageResolution;
 using FDG.Stages;
 using FDG.StateMachine.StateMachineBuilders;
@@ -17,23 +17,25 @@ namespace FDG.GameModel
 {
     public class FDGServer
     {
+        public event Action<string>? OnGameEnded;
+
         private IReadWriteableGameDataStore _gameDataStore;
-        private IMessageBusHost _messgeBusHost;
+        private IMessageBusHost _messageBusHost;
         private GameDataUpdateSender _synchronizer;
         private PlayerSlotManager _playerSlotManager;
         private GameContext _gameContext;
         private StateMachine<IGameContext> _stateMachine;
         private NetworkedTempVisualDrawer _tempVisualRelayer;
 
-        private static bool TEST_SINGLE_TURN = true; //Turn on to skip most of the game.
+        private static bool TEST_SINGLE_TURN = false; //Turn on to skip most of the game and just do one run of a model's activation.
 
-        public FDGServer(IReadWriteableGameDataStore gameDataStore, IMessageBusHost messageBusHost, 
+        public FDGServer(IReadWriteableGameDataStore gameDataStore, IMessageBusHost messageBusHost,
             GameSettings gameSettings, PlayerSlot[] playerSlots)
         {
             Debug.WriteLine($"Started {nameof(FDGServer)}.");
 
             _gameDataStore = gameDataStore;
-            _messgeBusHost = messageBusHost;
+            _messageBusHost = messageBusHost;
             _synchronizer = new GameDataUpdateSender(gameDataStore, messageBusHost);
 
             //For players/player slots, work backwards from here to create what you need to send updates to players,
@@ -53,10 +55,12 @@ namespace FDG.GameModel
 
             TempVisualRelayer tempVisualRelayer = new TempVisualRelayer(_playerSlotManager);
 
-            RequestMessageSender requestMessageSender = new RequestMessageSender(messageBusHost, gameDataStore);
+            RequestMessageSender requestMessageSender = new RequestMessageSender(messageBusHost, gameDataStore, 
+                _playerSlotManager);
 
-            _gameContext = new GameContext(textOutput, GetDiceRoller(gameSettings), requestMessageSender, 
+            _gameContext = new GameContext(textOutput, GetDiceRoller(gameSettings), requestMessageSender,
                 tableState, _gameDataStore, tempVisualRelayer);
+            _gameContext.OnGameEnded += result => OnGameEnded?.Invoke(result);
 
             if (TEST_SINGLE_TURN)
             {
@@ -158,7 +162,7 @@ namespace FDG.GameModel
 
             StateMachine<ISingleRoundContext> stateMachine = new StateMachine<ISingleRoundContext>(testBuilder, gameContext);
 
-            int playerCount = _playerSlotManager.SlotInfos.Count();
+            int playerCount = _playerSlotManager.PlayerCount;
 
             float zOffset = GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES / (playerCount + 1);
             float xStart = GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES / 2;
@@ -170,7 +174,7 @@ namespace FDG.GameModel
             foreach (DataBinding<UnitData> unit in gameContext.GameDataStore.GetAllDataBindings<UnitData>())
             {
                 PlayerID playerID = unit.PlayerID();
-                int playerSlotIndex = Array.IndexOf(_playerSlotManager.PlayerSlots, _playerSlotManager.GetSlotByID(playerID));
+                int playerSlotIndex = Array.IndexOf(_playerSlotManager._playerSlots, _playerSlotManager.GetSlotByID(playerID));
                 float zPos = zOffset * (playerSlotIndex + 1);
 
                 if(modelDeployCount.ContainsKey(playerID) == false)

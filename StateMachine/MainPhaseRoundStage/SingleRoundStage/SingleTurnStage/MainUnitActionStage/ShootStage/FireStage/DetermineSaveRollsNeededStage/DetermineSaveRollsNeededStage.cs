@@ -21,9 +21,11 @@ namespace FDG.Stages
 
             int baseDefense = metaData.DefendingUnit.Defense();
             int ap = metaData.WeaponType.ArmorPenetration; //Shorthand.
-            int baseDefenseWithAP = baseDefense + ap;
+            CoverCheckResults coverResults = QueryForResultOrThrowException<CoverCheckResults>(metaData);
+            int baseDefenseWithAP = baseDefense + ap - coverResults.DefenseRollBonus;
 
-            GameContext.Log($"Base roll to save is {baseDefense}, minus {ap}, is {baseDefenseWithAP} (not yet clamped). ");
+            GameContext.Log($"Base roll to save is {baseDefense}, AP {ap}, cover -{coverResults.DefenseRollBonus}, " +
+                $"effective threshold {baseDefenseWithAP} (not yet clamped).");
 
             RollToHitResults rollToHitResults = QueryForResultOrThrowException<RollToHitResults>(metaData);
 

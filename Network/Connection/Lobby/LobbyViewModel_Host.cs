@@ -71,11 +71,13 @@ namespace FDG.Network.Connection
 
         private GameSettings _gameSettings = GameSettings.GetDefault();
 
-        
+        IReadWriteableGameDataStore _gameDataStore;
 
         public LobbyViewModel_Host(string hostPlayerName, string serverName, string? password, INetworkHost host)
         {
-            _messageBus = new MessageBusHost_Networked(host);
+            _gameDataStore = GameDataStore.GameDataStoreBuilder.GetDefault();
+
+            _messageBus = new MessageBusHost_Networked(host, _gameDataStore);
             _host = host;
             _hostPlayerName = hostPlayerName;
             PlayerID thisPlayerID = new PlayerID(Guid.NewGuid());
@@ -227,18 +229,15 @@ namespace FDG.Network.Connection
         private async Task Launch()
         {
             LobbyChatMessage gameStartingMessage = new LobbyChatMessage("System", LAUNCHING_GAME_MESSAGE);
-            AddMessageToLocalList(gameStartingMessage);
+            //AddMessageToLocalList(gameStartingMessage);
             await _messageBus.SendCommandToAllAsync(gameStartingMessage);
             await Task.Delay(300);
 
             //Give a quick tribute.
             LobbyChatMessage tributeMessage = new LobbyChatMessage("Mukumioke", "buck futter");
-            AddMessageToLocalList(tributeMessage);
+            //AddMessageToLocalList(tributeMessage);
             await _messageBus.SendCommandToAllAsync(tributeMessage);
             await Task.Delay(50);
-
-            //Maybe something else should make these but eh.
-            GameDataStore gameDataStore = GameDataStore.GameDataStoreBuilder.GetDefault();
 
             FDGGame_AsLocal? gameModel = null; //We may not have a local player.
 
@@ -260,7 +259,8 @@ namespace FDG.Network.Connection
                     lobbyPlayerInfo.ArmyListFile = GetTempTestArmyFile();
                 }
 
-                PlayerSlot playerSlot = new PlayerSlot(i, (int)lobbyPlayerInfo.TeamNumber, lobbyPlayerInfo.PlayerID, lobbyPlayerInfo.ArmyListFile);
+                PlayerSlot playerSlot = new PlayerSlot(i, (int)lobbyPlayerInfo.TeamNumber, lobbyPlayerInfo.PlayerID, 
+                    lobbyPlayerInfo.ArmyListFile, _gameDataStore);
                 playerSlots[i] = playerSlot;
 
                 switch (lobbyPlayerInfo.PlayerType)
@@ -269,7 +269,7 @@ namespace FDG.Network.Connection
 
                         if(gameModel == null)
                         {
-                            gameModel = new FDGGame_AsLocal(gameDataStore, _messageBus);
+                            gameModel = new FDGGame_AsLocal(_gameDataStore, _messageBus);
                         }
 
                         LocalPlayerController localPlayerController = new LocalPlayerController(lobbyPlayerInfo.PlayerName,
@@ -281,7 +281,7 @@ namespace FDG.Network.Connection
                         break;
                     case EPlayerType.Network:
                         NetworkPlayerController networkPlayerController = new NetworkPlayerController(lobbyPlayerInfo.PlayerName, playerSlot.PlayerID,
-                            lobbyPlayerInfo.ConnectionID, _messageBus, gameDataStore);
+                            lobbyPlayerInfo.ConnectionID, _messageBus, _gameDataStore);
                         playerSlot.AssignPlayerController(networkPlayerController);
                         break;
                     case EPlayerType.AI:
@@ -291,7 +291,7 @@ namespace FDG.Network.Connection
                 }
             }
 
-            FDGServer server = new FDGServer(gameDataStore, _messageBus, _gameSettings, playerSlots);
+            FDGServer server = new FDGServer(_gameDataStore, _messageBus, _gameSettings, playerSlots);
 
             if (gameModel != null) //Dedicated server really doesn't need to do this.
             {
@@ -351,7 +351,7 @@ namespace FDG.Network.Connection
                 Attacks = 2,
                 Quantity = 4,
                 RangeInches = 0,
-                ArmorPenetration = 1
+                ArmorPenetration = 4
             };
 
             WeaponFileEntry betterRangedWeaponFile = new WeaponFileEntry()
@@ -360,7 +360,7 @@ namespace FDG.Network.Connection
                 Attacks = 2,
                 Quantity = 1,
                 RangeInches = 30,
-                ArmorPenetration = 1
+                ArmorPenetration = 4
             };
 
             unitFileEntry.Weapons.Add(betterMeleeWeaponFile);

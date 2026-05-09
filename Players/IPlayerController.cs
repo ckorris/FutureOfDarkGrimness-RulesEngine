@@ -3,7 +3,7 @@ using FDG.TempVisuals;
 
 namespace FDG.Players
 {
-    internal interface IPlayerController : IPlayerInfo
+    public interface IPlayerController : IPlayerInfo
     {
         public bool IsReady { get; }
 

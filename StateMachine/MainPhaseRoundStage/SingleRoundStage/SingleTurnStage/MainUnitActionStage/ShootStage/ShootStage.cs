@@ -9,6 +9,7 @@ namespace FDG.Stages
         public const string SHOOT_TO_CHILD_CHOOSE_RANGED_WEAPON_TRANSITION = "ShootToChildChooseRangedWeapon";
 
         public StageBinding OnFinishedShooting;
+        public StageBinding BackToChooseAction;
 
         public ShootStage(IGameContext gameContext, IStateMachineLayer<IUnitActionContext> parent) : base(gameContext, parent)
         {
@@ -32,6 +33,7 @@ namespace FDG.Stages
         {
             OnFinishedShooting = new StageBinding(this);
             OnFinishedShooting.OnWillActivate += OnShootingFinished;
+            BackToChooseAction = new StageBinding(this);
 
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
                 .AddChild(new ChooseRangedAttackStage(GameContext, this), out var chooseRangedWeapon)
@@ -40,11 +42,13 @@ namespace FDG.Stages
                 .AddChild(new ResolveRangedMoraleStage(GameContext, this), out var resolveRangedMorale)
                 .AddChild(new DetermineCanKeepShootingStage(GameContext, this), out var determineCanKeepShooting)
                 .AddSibling(nameof(OnFinishedShooting), OnFinishedShooting, out string onFinishedShootingEvent)
+                .AddSibling(nameof(BackToChooseAction), BackToChooseAction, out string backToChooseEvent)
                 .Build();
 
             startingChild = chooseRangedWeapon;
 
             chooseRangedWeapon.OnChoseWeapon.Bind(fire);
+            chooseRangedWeapon.BackToChooseAction.Bind(backToChooseEvent);
             
             fire.OnFinishedFiring.Bind(resolveRangedMorale);
             resolveRangedMorale.ToFinished.Bind(determineCanKeepShooting);

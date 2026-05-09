@@ -193,7 +193,7 @@ namespace FDG.Data
         public string GetValueAsJson<T>(DataReference reference)
         {
             T value = GetValue<T>(reference);
-            string valueAsJson = JsonConvert.SerializeObject(value, _jsonConverters);
+            string valueAsJson = JsonConvert.SerializeObject(value, _jsonConvertSettings);
             return valueAsJson;
         }
 
@@ -215,7 +215,7 @@ namespace FDG.Data
         {
             Type objectType = _registeredTypes[reference.TypeID.ID];
 
-            object? deserializedValue = JsonConvert.DeserializeObject(json, objectType, _jsonConverters);
+            object? deserializedValue = JsonConvert.DeserializeObject(json, objectType, _jsonConvertSettings);
 
             if (deserializedValue == null)
             {
@@ -252,7 +252,7 @@ namespace FDG.Data
                 foreach (DataReference reference in componentStore.GetAllDataReferences())
                 {
                     object? value = componentStore.GetValueUntyped(reference);
-                    string valueAsJson = JsonConvert.SerializeObject(value, _jsonConverters);
+                    string valueAsJson = JsonConvert.SerializeObject(value, _jsonConvertSettings);
                     allReferences.Add(new ReferenceJsonValuePair(reference, valueAsJson));
                 }
             }
@@ -297,7 +297,7 @@ namespace FDG.Data
             }
             if (OnDataAddedAsJson != null)
             {
-                string asJson = JsonConvert.SerializeObject(typedValue, _jsonConverters);
+                string asJson = JsonConvert.SerializeObject(typedValue, _jsonConvertSettings);
                 OnDataAddedAsJson.Invoke(dataReference, asJson);
             }
         }
@@ -311,7 +311,7 @@ namespace FDG.Data
 
             if (OnDataUpdatedAsJson != null)
             {
-                string asJson = JsonConvert.SerializeObject(typedValue, _jsonConverters);
+                string asJson = JsonConvert.SerializeObject(typedValue, _jsonConvertSettings);
                 OnDataUpdatedAsJson.Invoke(dataReference, asJson);
             }
         }

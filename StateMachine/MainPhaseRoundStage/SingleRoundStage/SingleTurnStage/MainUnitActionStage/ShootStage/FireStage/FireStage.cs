@@ -45,6 +45,8 @@ namespace FDG.Stages
 
             startingChild = buildTargetList;
 
+            occlusionCheck.OnOccluded.Bind(finishedFiringName);
+
             buildTargetList.BindNextStage(rangeCheck)
                 .BindNextStage(occlusionCheck)
                 .BindNextStage(coverCheck)

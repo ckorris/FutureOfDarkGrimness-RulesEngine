@@ -1,8 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿
+using FDG.Data;
+using Newtonsoft.Json;
 
 namespace FDG.Players
 {
@@ -11,6 +9,8 @@ namespace FDG.Players
     /// </summary>
     public interface IPlayerSlotInfo
     {
+        public PlayerID PlayerID { get; }
+
         int SlotID { get; }
 
         int TeamNumber { get; }
@@ -18,5 +18,38 @@ namespace FDG.Players
         string Name { get; }
 
         bool IsFilled { get; }
+    }
+
+    public struct PlayerSlotInfo : IPlayerSlotInfo
+    {
+        public PlayerID PlayerID { get; }
+
+        public int SlotID { get; }
+
+        public int TeamNumber { get; }
+
+        public string Name { get; set; }
+
+        public bool IsFilled { get; set; }
+
+
+        [JsonConstructor]
+        public PlayerSlotInfo(PlayerID playerID, int slotID, int teamNumber, string name, bool isFilled)
+        {
+            PlayerID = playerID;
+            SlotID = slotID;
+            TeamNumber = teamNumber;
+            Name = name;
+            IsFilled = isFilled;
+        }
+
+        public PlayerSlotInfo(PlayerSlot slot)
+        {
+            PlayerID = slot.PlayerID;
+            SlotID = slot.SlotID;
+            TeamNumber = slot.TeamNumber;
+            Name = slot.Name;
+            IsFilled = slot.IsFilled;
+        }
     }
 }

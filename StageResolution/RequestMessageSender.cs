@@ -11,14 +11,16 @@ namespace FDG.StageResolution
     {
         private IMessageBusHost _messageBusHost;
         private IReadableGameDataStore _gameDataStore;
+        private PlayerSlotManager _playerSlotManager;
 
         private Dictionary<TaskID, SuccessAndFailActions> _pendingTaskAndResolvers = new Dictionary<TaskID, SuccessAndFailActions>();
 
-        public RequestMessageSender(IMessageBusHost messageBusHost, IReadableGameDataStore gameDataStore)
+        public RequestMessageSender(IMessageBusHost messageBusHost, IReadableGameDataStore gameDataStore, 
+            PlayerSlotManager playerSlotManager)
         {
-            //_targetPlayerID = targetPlayerID;
             _messageBusHost = messageBusHost;
             _gameDataStore = gameDataStore;
+            _playerSlotManager = playerSlotManager;
 
             _messageBusHost.RegisterForMessageEvent<StageTaskReplyMessage>(OnReceivedReplyMessage);
             _messageBusHost.RegisterForMessageEvent<StageTaskRequestErrorMessage>(OnReceivedErrorMessage);
@@ -65,6 +67,11 @@ namespace FDG.StageResolution
 
             _messageBusHost.SendCommandToAllAsync(requestMessage);
 
+            //Notify all clients of a pending task, so they can display it on the UI.
+            DataBinding<PlayerSlotInfo> playerInfoBinding =  _playerSlotManager.GetSlotByID(request.TargetPlayerID).InfoBinding;
+            StageTaskNotifyAwaitingMessage awaitingMessage = new StageTaskNotifyAwaitingMessage(taskID, playerInfoBinding, request.TaskName);
+            _messageBusHost.SendCommandToAllAsync(awaitingMessage);
+
             return taskCompletionSource.Task;
         }
 
@@ -88,6 +95,10 @@ namespace FDG.StageResolution
             {
                 throw new NullReferenceException($"Missing instance of {nameof(SuccessAndFailActions)} for task ID {replyMessage.TaskID}.");
             }
+
+            //Notify all clients that the task is finished, so they can stop displaying it on the UI.
+            StageTaskNotifyResolvedMessage finishedMessage = new StageTaskNotifyResolvedMessage(replyMessage.TaskID);
+            _messageBusHost.SendCommandToAllAsync(finishedMessage);
 
             actions.OnSuccessful.Invoke(replyMessage.ReplyJson);
             _pendingTaskAndResolvers.Remove(replyMessage.TaskID);

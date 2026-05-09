@@ -131,9 +131,7 @@ namespace FDG.Stages
             CombatMetadata meleeCombatMetadata = new CombatMetadata(gameContext, AttackingUnit, 
                 DefendingUnit, ShootingWeaponType, ShootingWeaponCount.Value);
 
-            //TODO: In much older code, we had this PendingCombat class, which was reset when we did this.
-            //But I don't imagine we reuse contexts anymore. So I'll reset it but we may be able to just leave it.
-            DefendingUnit = null;
+            // Don't clear DefendingUnit — OfferStrikeBackStage needs it after this call.
             ShootingWeaponType = null;
             ShootingWeaponCount = null;
 

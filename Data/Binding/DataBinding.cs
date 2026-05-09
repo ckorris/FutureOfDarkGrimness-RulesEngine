@@ -19,6 +19,11 @@ namespace FDG.Data
 
         public DataBinding(DataReference reference, ComponentStore<T> componentStore)
         {
+            if(reference.TypeID.ID == 6)
+            {
+                int x = 0;
+                x++;
+            }
             Reference = reference;
             _componentStore = componentStore;
             IsValid = true;

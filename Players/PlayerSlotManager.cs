@@ -1,28 +1,18 @@
-﻿using FDG.StageResolution;
+﻿using FDG.Data;
+using FDG.StageResolution;
 using System.Runtime.CompilerServices;
 
 namespace FDG.Players
 {
     internal class PlayerSlotManager
     {
-        /// <summary>
-        /// Gets a copy of the player slots array presented as info that's publicly available and UI-friendly.
-        /// </summary>
-        public IPlayerSlotInfo[] SlotInfos
-        {
-            get
-            {
-                IPlayerSlotInfo[] infos = new IPlayerSlotInfo[PlayerSlots.Length];
-                Array.Copy(PlayerSlots, infos, infos.Length);
-                return infos;
-            }
-        }
+        public int PlayerCount => _playerSlots.Length;
 
         public bool AreAllSlotsAssigned
         {
             get
             {
-                foreach(PlayerSlot playerSlot in PlayerSlots)
+                foreach(PlayerSlot playerSlot in _playerSlots)
                 {
                     if(playerSlot.IsFilled == false)
                     {
@@ -34,18 +24,19 @@ namespace FDG.Players
             }
         }
 
-        internal PlayerSlot[] PlayerSlots;
+        internal PlayerSlot[] _playerSlots;
+        internal PlayerSlot[] PlayerSlots => _playerSlots;
 
         public PlayerSlotManager(PlayerSlot[] playerSlots)
         {
-            PlayerSlots = playerSlots;
+            _playerSlots = playerSlots;
         }
 
         public bool TryGetNextOpenSlotID(out int? nextSlotID)
         {
-            for(int i = 0; i < PlayerSlots.Length; i++)
+            for(int i = 0; i < _playerSlots.Length; i++)
             {
-                if (PlayerSlots[i].IsFilled == false)
+                if (_playerSlots[i].IsFilled == false)
                 {
                     nextSlotID = i;
                     return true;
@@ -58,22 +49,22 @@ namespace FDG.Players
 
         public PlayerID AssignControllerToSlot(int slotID, IPlayerController playerController)
         {
-            if(slotID >  PlayerSlots.Length)
+            if(slotID >  _playerSlots.Length)
             {
                 throw new IndexOutOfRangeException($"Tried to assign a {nameof(playerController)} named {playerController.Name} " + 
-                    $"to slot ID {slotID}, when there are only {PlayerSlots.Length} slots.");
+                    $"to slot ID {slotID}, when there are only {_playerSlots.Length} slots.");
             }
 
-            PlayerSlots[slotID].AssignPlayerController(playerController);
+            _playerSlots[slotID].AssignPlayerController(playerController);
 
-            return PlayerSlots[slotID].PlayerID;
+            return _playerSlots[slotID].PlayerID;
         }
 
         public Task WaitUntilAllSlotsReady()
         {
-            List<Task> playerReadyTasks = new List<Task>(PlayerSlots.Length);
+            List<Task> playerReadyTasks = new List<Task>(_playerSlots.Length);
 
-            foreach (PlayerSlot slot in PlayerSlots)
+            foreach (PlayerSlot slot in _playerSlots)
             {
                 if (slot.IsFilled == false)
                 {
@@ -114,7 +105,7 @@ namespace FDG.Players
 
         internal PlayerSlot GetSlotByID(PlayerID playerID)
         {
-            PlayerSlot? playerSlot = PlayerSlots.FirstOrDefault(slot => slot.PlayerID == playerID);
+            PlayerSlot? playerSlot = _playerSlots.FirstOrDefault(slot => slot.PlayerID == playerID);
 
             if(playerSlot == null)
             {

@@ -6,5 +6,5 @@ namespace FDG.Network.Messages
     /// Used when a network player wants to send a chat message. This goes to the server, 
     /// which then relays it as a different message.
     /// </summary>
-    public record NetworkPlayerSubmitChatMessage(EChatMessageType MessageType, string Message);
+    public record NetworkPlayerSubmitChatMessage(PlayerID PlayerID, EChatMessageType MessageType, string Message);
 }

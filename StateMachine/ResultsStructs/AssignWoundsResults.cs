@@ -87,8 +87,7 @@ namespace FDG
             foreach (PendingWounds pendingWoundsEntry in PendingWounds)
             {
                 ModelData modelData = pendingWoundsEntry.Model; //Shorthand.
-                //float modelWoundsRemaining = kvp.Key.TotalWounds() - kvp.Key.WoundsDealt();
-                float modelWoundsRemaining = modelData.TotalWounds - modelData.TotalWounds;
+                float modelWoundsRemaining = modelData.TotalWounds - modelData.WoundsDealt;
 
                 float woundsToAssignThisModel = Math.Min(woundsToAssign, modelWoundsRemaining);
                 pendingWoundsEntry.Wounds += woundsToAssignThisModel; //Might break, let's see.
@@ -101,11 +100,14 @@ namespace FDG
                 }
             }
 
-            if (IsFinishedAssigning == false)
+            /*
+            //Below check fails if you actually kill off the unit.
+            if (IsFinishedAssigning == false || TotalAssignedWounds == )
             {
                 throw new Exception($"Used {nameof(AssignWoundsResults)}.{nameof(AutoFill)} but results were not " +
                     $"finished. Required to assign: {TotalWoundsToAssign} Assigned: {TotalAssignedWounds}.");
             }
+            */
         }
     }
 

@@ -55,8 +55,8 @@ namespace FDG.GameModel
             _localPlayerIDs.Add(playerID);
         }
 
-        public void AssignInterfaces(ILogMessageUI logMessageUI, IPlayerMessageUI playerMessageUI, 
-            IStageResolverRegistry stageResolverRegistry, ITempVisualDrawer tempVisualDrawer,
+        public void AssignInterfaces(ILogMessageUI? logMessageUI, IPlayerMessageUI? playerMessageUI,
+            IStageResolverRegistry stageResolverRegistry, ITempVisualDrawer? tempVisualDrawer,
             IOutstandingListDisplay? outstandingTaskDisplay)
         {
             LogMessageUI = logMessageUI;

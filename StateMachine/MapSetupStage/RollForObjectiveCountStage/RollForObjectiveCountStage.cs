@@ -15,7 +15,7 @@ namespace FDG.Stages
             context.Log($"Entered {nameof(RollForObjectiveCountStage)}.");
 
             // D3+2 gives 3–5 objectives, a common scenario spread.
-            int roll = (int)context.DiceRoller.Roll(1)[0];
+            int roll = (int)context.DiceRoller.Roll(1)[1];
             int d3 = (roll + 1) / 2; // 1→1, 2–3→2, 4–6→3
             int objectiveCount = d3 + 2;
 

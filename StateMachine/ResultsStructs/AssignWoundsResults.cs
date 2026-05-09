@@ -29,7 +29,7 @@ namespace FDG
             foreach (DataBinding<ModelData> model in defendingUnit.ModelBindings()
                 .Where(model => model.GetIsAlive()))
             {
-                PendingWounds.Add(new PendingWounds(model, 0));
+                PendingWounds.Add(new PendingWounds(model));
             }
 
             TotalWoundsToAssign = totalWoundsToAssign;
@@ -50,7 +50,7 @@ namespace FDG
             //TODO: You could split wounds in an unallowed way by assigning when there's less than its total left,
             //Then unassigning from a different model, then assigning to another tough model. Fix.
             float woundsToAdd = Math.Min(pendingWoundsEntry.Model.GetValue().RemainingWoundsBinding.GetValue(),
-                TotalWoundsToAssign);
+                TotalWoundsToAssign - TotalAssignedWounds);
 
             if (pendingWoundsEntry.Wounds + woundsToAdd > model.TotalWounds() - model.WoundsDealt())
             {
@@ -78,36 +78,20 @@ namespace FDG
         }
 
         /// <summary>
-        /// For assigning when the unit will be killed, or debug/tests.
+        /// Distributes remaining wounds across models in order. For use when the unit will be killed
+        /// or when there is no meaningful player choice (e.g. single model, zero wounds).
         /// </summary>
         public void AutoFill()
         {
-            float woundsToAssign = TotalWoundsToAssign - TotalAssignedWounds;
-
-            foreach (PendingWounds pendingWoundsEntry in PendingWounds)
+            foreach (PendingWounds entry in PendingWounds)
             {
-                ModelData modelData = pendingWoundsEntry.Model; //Shorthand.
-                float modelWoundsRemaining = modelData.TotalWounds - modelData.WoundsDealt;
-
-                float woundsToAssignThisModel = Math.Min(woundsToAssign, modelWoundsRemaining);
-                pendingWoundsEntry.Wounds += woundsToAssignThisModel; //Might break, let's see.
-                woundsToAssign -= woundsToAssignThisModel;
-                TotalAssignedWounds += woundsToAssignThisModel;
-
-                if (woundsToAssign == 0)
-                {
-                    break;
-                }
+                if (IsFinishedAssigning) break;
+                TryAddWounds(entry.Model);
             }
 
-            /*
-            //Below check fails if you actually kill off the unit.
-            if (IsFinishedAssigning == false || TotalAssignedWounds == )
-            {
-                throw new Exception($"Used {nameof(AssignWoundsResults)}.{nameof(AutoFill)} but results were not " +
-                    $"finished. Required to assign: {TotalWoundsToAssign} Assigned: {TotalAssignedWounds}.");
-            }
-            */
+            if (!IsFinishedAssigning)
+                throw new Exception($"{nameof(AutoFill)} could not assign all wounds. " +
+                    $"Required: {TotalWoundsToAssign}, assigned: {TotalAssignedWounds}.");
         }
     }
 
@@ -116,7 +100,7 @@ namespace FDG
         public DataBinding<ModelData> Model { get; }
         public float Wounds { get; set; }
 
-        public PendingWounds(DataBinding<ModelData> model, float remainingWoundsPrior)
+        public PendingWounds(DataBinding<ModelData> model)
         {
             Model = model;
             Wounds = 0;

@@ -105,6 +105,11 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
             throw new InvalidOperationException("Tried to add local player when not the host.");
         }
 
+        public void AddAiPlayer()
+        {
+            throw new InvalidOperationException("Tried to add AI player when not the host.");
+        }
+
         public void SendMessage(string message)
         {
             Debug.WriteLine($"Sending message: {message}");

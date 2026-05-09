@@ -1,4 +1,5 @@
-﻿using FDG.Data;
+﻿using FDG.Ai;
+using FDG.Data;
 using FDG.EngineInterface;
 using FDG.GameModel;
 using FDG.MessageBus;
@@ -285,7 +286,11 @@ namespace FDG.Network.Connection
                         playerSlot.AssignPlayerController(networkPlayerController);
                         break;
                     case EPlayerType.AI:
-                        throw new NotImplementedException();
+                        FDGGame_AsLocal aiGame = new FDGGame_AsLocal(_gameDataStore, _messageBus);
+                        ComputerPlayerController aiController = AiResolverRegistryFactory.CreateSoloRulesController(
+                            lobbyPlayerInfo.PlayerName, playerSlot.PlayerID, aiGame);
+                        playerSlot.AssignPlayerController(aiController);
+                        break;
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
@@ -497,7 +502,7 @@ namespace FDG.Network.Connection
             string tempName = $"Local Player {(_playerInfos.Value.Count + 1)}"; //Will need to be able to set this later.
             Debug.WriteLine($"Added local player: {tempName}");
 
-            //Assign a player ID to this person. 
+            //Assign a player ID to this person.
             //TODO: I may have decided to give players their IDs elsewhere but I can't remember, double check that.
             PlayerID newClientPlayerID = new PlayerID(Guid.NewGuid());
 
@@ -507,6 +512,24 @@ namespace FDG.Network.Connection
             LobbyPlayerInfoFull newLobbyPlayerInfo = new LobbyPlayerInfoFull(tempName, null, (ETeamOption)tempTeamNumber,
                 EPlayerType.Local, new ConnectionID(Guid.Empty), newClientPlayerID);
             _playerInfosFull.Add(newClientPlayerID, newLobbyPlayerInfo);
+            UpdateInfoSummariesFromFullList();
+
+            LobbyGameSettingsUpdate gameSettingsUpdate = new LobbyGameSettingsUpdate(_gameSettings);
+            _messageBus.SendCommandToAllAsync(gameSettingsUpdate);
+        }
+
+        public void AddAiPlayer()
+        {
+            int playerNumber = _playerInfos.Value.Count + 1;
+            string name = $"Computer Player {playerNumber}";
+            Debug.WriteLine($"Added AI player: {name}");
+
+            PlayerID newPlayerID = new PlayerID(Guid.NewGuid());
+            int tempTeamNumber = playerNumber;
+
+            LobbyPlayerInfoFull newLobbyPlayerInfo = new LobbyPlayerInfoFull(name, GetTempTestArmyFile(),
+                (ETeamOption)tempTeamNumber, EPlayerType.AI, new ConnectionID(Guid.Empty), newPlayerID);
+            _playerInfosFull.Add(newPlayerID, newLobbyPlayerInfo);
             UpdateInfoSummariesFromFullList();
 
             LobbyGameSettingsUpdate gameSettingsUpdate = new LobbyGameSettingsUpdate(_gameSettings);

@@ -19,8 +19,8 @@ namespace FDG.EngineInterface
 
         ITempVisualDrawer? TempVisualDrawer { get; }
 
-        void AssignInterfaces(ILogMessageUI logMessageUI, IPlayerMessageUI playerMessageUI,
-            IStageResolverRegistry stageResolverRegistry, ITempVisualDrawer tempVisualDrawer,
+        void AssignInterfaces(ILogMessageUI? logMessageUI, IPlayerMessageUI? playerMessageUI,
+            IStageResolverRegistry stageResolverRegistry, ITempVisualDrawer? tempVisualDrawer,
             IOutstandingListDisplay? outstandingTaskDisplay);
     }
 }

@@ -44,6 +44,8 @@ namespace FDG.Network.Connection.Lobby
 
         void AddLocalPlayer();
 
+        void AddAiPlayer();
+
         void SendMessage(string message);
 
         void UpdateArmyListFile(PlayerID playerId, ArmyListFile armyListFile);

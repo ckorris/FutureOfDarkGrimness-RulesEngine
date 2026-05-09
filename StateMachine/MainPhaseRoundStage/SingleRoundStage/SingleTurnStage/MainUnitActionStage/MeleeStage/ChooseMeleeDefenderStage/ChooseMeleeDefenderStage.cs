@@ -86,12 +86,12 @@ namespace FDG.Stages
             }
 
             //If we're here, we have multiple potential targets. Ask the user who to attack.
-            SelectionRequest<UnitData> request = new SelectionRequest<UnitData>(attackingPlayer, "Choose defending unit",
-                validDefenders, invalidDefenders);
+            ChooseMeleeDefenderRequest request = new ChooseMeleeDefenderRequest(attackingPlayer, "Choose defending unit",
+                context.AttackingUnit, validDefenders, invalidDefenders);
 
             DataBinding<UnitData>? chosenDefender
                 = await GameContext.PlayerRequester
-                .RequestDecision<SelectionRequest<UnitData>, DataBinding<UnitData>>(request);
+                .RequestDecision<ChooseMeleeDefenderRequest, DataBinding<UnitData>>(request);
 
             if (chosenDefender == null)
             {

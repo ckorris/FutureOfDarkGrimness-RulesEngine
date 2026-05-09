@@ -14,12 +14,13 @@ namespace FDG.Stages
         {
             ToDeployment = new StageBinding(this);
 
+            int objectiveCount = 4; // fallback; overwritten by RollForObjectiveCountStage
             var dictionary = new TransitionSetBuilder(this)
                 .AddChild(new RollForFirstTerrainPlacementStage(GameContext, this), out var rollForFirstTerrain)
                 .AddChild(new PlaceTerrainStage(GameContext, this), out var placeTerrain)
-                .AddChild(new RollForObjectiveCountStage(GameContext, this), out var rollForObjectiveCount)
+                .AddChild(new RollForObjectiveCountStage(GameContext, this, count => objectiveCount = count), out var rollForObjectiveCount)
                 .AddChild(new RollForFirstObjectivePlacementStage(GameContext, this), out var rollForFirstObjective)
-                .AddChild(new PlaceObjectivesStage(GameContext, this), out var placeObjectives)
+                .AddChild(new PlaceObjectivesStage(GameContext, this, () => objectiveCount), out var placeObjectives)
                 .AddSibling(nameof(ToDeployment), ToDeployment, out string toDeploymentEvent)
                 .Build();
 

@@ -20,15 +20,17 @@ namespace FDG
 
         public IDataState<ITerrain> Terrain { get; }
 
+        public IDataState<IObjective> Objectives { get; }
+
     }
 
     public class TableState : ITableState
     {
         //public IDataState<IPlayerInfo> Players { get;
         public IDataState<IPlayerSlotInfo> Players { get; }
-        
+
         public IDataState<ITeam> Teams { get; }
-        
+
         public IDataState<IArmy> Armies { get; }
 
         public IDataState<IUnit> Units { get; }
@@ -36,6 +38,8 @@ namespace FDG
         public IDataState<IModel> Models { get; }
 
         public IDataState<ITerrain> Terrain { get; }
+
+        public IDataState<IObjective> Objectives { get; }
 
 
         public TableState(IReadableGameDataStore gameDataStore)
@@ -47,6 +51,7 @@ namespace FDG
             Armies = new DataState<IArmy, ArmyData>(gameDataStore);
             Teams = new DataState<ITeam, TeamData>(gameDataStore);
             Terrain = new DataState<ITerrain, TerrainData>(gameDataStore);
+            Objectives = new DataState<IObjective, ObjectiveData>(gameDataStore);
         }
     }
 }

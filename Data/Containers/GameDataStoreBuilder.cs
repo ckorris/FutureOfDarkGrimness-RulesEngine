@@ -63,6 +63,7 @@ namespace FDG.Data
                 .RegisterType<ArmyData>(8)
                 .RegisterType<TerrainData>(32)
                 .RegisterType<RectangularZone>(16)
+                .RegisterType<ObjectiveData>(8)
                 .Build();
             }
         }

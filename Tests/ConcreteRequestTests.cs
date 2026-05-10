@@ -318,6 +318,121 @@ namespace FDG.Tests
             Assert.That(deserialized.Instructions, Is.EqualTo("Select your army"));
         }
 
+        [Test]
+        public void ChooseRangedAttackRequest_SerializesAndDeserializesCorrectly_SameStore()
+        {
+            // Single-store variant: confirms Newtonsoft.Json can round-trip
+            // WeaponTargetStats (record) with HashSet<DataBinding<ModelData>>.
+            var store    = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var playerID = new PlayerID(Guid.NewGuid());
+
+            var attackerModel   = new ModelData(0.75f,
+                new List<Weapon> { new Weapon("Rifle", 24f, 1, 0, new HashSet<ISpecialRule_Weapon>()) },
+                new List<SpecialRule>(), new Position(), store);
+            var attackerModelRef     = store.Create(attackerModel);
+            var attackerModelBinding = store.GetDataBinding<ModelData>(attackerModelRef);
+
+            var attackerUnit    = new UnitData(playerID, "Attacker", 3, 3, new List<SpecialRule>(),
+                new List<DataBinding<ModelData>> { attackerModelBinding });
+            var attackerUnitRef     = store.Create(attackerUnit);
+            var attackerUnitBinding = store.GetDataBinding<UnitData>(attackerUnitRef);
+
+            var targetModel   = new ModelData(0.75f, new List<Weapon>(), new List<SpecialRule>(),
+                new Position(), store);
+            var targetModelRef     = store.Create(targetModel);
+            var targetModelBinding = store.GetDataBinding<ModelData>(targetModelRef);
+
+            var targetUnit    = new UnitData(playerID, "Target", 3, 3, new List<SpecialRule>(),
+                new List<DataBinding<ModelData>> { targetModelBinding });
+            var targetUnitRef     = store.Create(targetUnit);
+            var targetUnitBinding = store.GetDataBinding<UnitData>(targetUnitRef);
+
+            var canShoot    = new HashSet<DataBinding<ModelData>> { attackerModelBinding };
+            var cannotShoot = new HashSet<DataBinding<ModelData>>();
+            var targetStats = new ChooseRangedAttackRequest.WeaponTargetStats(
+                targetUnitBinding, canShoot, cannotShoot, false);
+            var weapon      = new Weapon("Rifle", 24f, 1, 0, new HashSet<ISpecialRule_Weapon>());
+            var weaponOpt   = new ChooseRangedAttackRequest.WeaponOption(
+                weapon, new List<ChooseRangedAttackRequest.WeaponTargetStats> { targetStats });
+            var request     = new ChooseRangedAttackRequest(playerID, "Choose Ranged Weapon",
+                attackerUnitBinding,
+                new List<ChooseRangedAttackRequest.WeaponOption> { weaponOpt });
+
+            string json        = Newtonsoft.Json.JsonConvert.SerializeObject(request, store.GetJsonSettings());
+            var    deserialized = Newtonsoft.Json.JsonConvert.DeserializeObject<ChooseRangedAttackRequest>(json, store.GetJsonSettings());
+
+            Assert.That(deserialized,                                                         Is.Not.Null);
+            Assert.That(deserialized.WeaponOptions,                                           Is.Not.Null);
+            Assert.That(deserialized.WeaponOptions.Count,                                     Is.EqualTo(1));
+            Assert.That(deserialized.WeaponOptions[0].Weapon.Name,                            Is.EqualTo("Rifle"));
+            Assert.That(deserialized.WeaponOptions[0].WeaponTargetStats.Count,                Is.EqualTo(1));
+            Assert.That(deserialized.WeaponOptions[0].WeaponTargetStats[0].modelsThatCanShoot.Count, Is.EqualTo(1));
+            Assert.That(deserialized.AttackingUnit.GetValue().Name,                           Is.EqualTo("Attacker"));
+        }
+
+        [Test]
+        public void ChooseRangedAttackRequest_SerializesAndDeserializesCorrectly_CrossStore()
+        {
+            // Two-store variant: simulates multiplayer where the client store is
+            // pre-populated via OnDataAddedAsJson (same way the real game works).
+            var hostStore   = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var clientStore = GameDataStore.GameDataStoreBuilder.GetDefault();
+
+            // Wire replication: host → client (mirrors how GameDataUpdateSender works)
+            hostStore.OnDataAddedAsJson += (reference, json) =>
+                clientStore.CreateFromReferenceAndJson(reference, json);
+            hostStore.OnDataUpdatedAsJson += (reference, json) =>
+                clientStore.SetValueWithJson(reference, json);
+
+            var playerID = new PlayerID(Guid.NewGuid());
+
+            // Create data on host — replication fires automatically via events
+            var attackerModel   = new ModelData(0.75f,
+                new List<Weapon> { new Weapon("Rifle", 24f, 1, 0, new HashSet<ISpecialRule_Weapon>()) },
+                new List<SpecialRule>(), new Position(), hostStore);
+            var attackerModelRef     = hostStore.Create(attackerModel);
+            var attackerModelBinding = hostStore.GetDataBinding<ModelData>(attackerModelRef);
+
+            var attackerUnit    = new UnitData(playerID, "Attacker", 3, 3, new List<SpecialRule>(),
+                new List<DataBinding<ModelData>> { attackerModelBinding });
+            var attackerUnitRef     = hostStore.Create(attackerUnit);
+            var attackerUnitBinding = hostStore.GetDataBinding<UnitData>(attackerUnitRef);
+
+            var targetModel   = new ModelData(0.75f, new List<Weapon>(), new List<SpecialRule>(),
+                new Position(), hostStore);
+            var targetModelRef     = hostStore.Create(targetModel);
+            var targetModelBinding = hostStore.GetDataBinding<ModelData>(targetModelRef);
+
+            var targetUnit    = new UnitData(playerID, "Target", 3, 3, new List<SpecialRule>(),
+                new List<DataBinding<ModelData>> { targetModelBinding });
+            var targetUnitRef     = hostStore.Create(targetUnit);
+            var targetUnitBinding = hostStore.GetDataBinding<UnitData>(targetUnitRef);
+
+            // Build request on host side
+            var canShoot    = new HashSet<DataBinding<ModelData>> { attackerModelBinding };
+            var cannotShoot = new HashSet<DataBinding<ModelData>>();
+            var targetStats = new ChooseRangedAttackRequest.WeaponTargetStats(
+                targetUnitBinding, canShoot, cannotShoot, false);
+            var weapon      = new Weapon("Rifle", 24f, 1, 0, new HashSet<ISpecialRule_Weapon>());
+            var weaponOpt   = new ChooseRangedAttackRequest.WeaponOption(
+                weapon, new List<ChooseRangedAttackRequest.WeaponTargetStats> { targetStats });
+            var request     = new ChooseRangedAttackRequest(playerID, "Choose Ranged Weapon",
+                attackerUnitBinding,
+                new List<ChooseRangedAttackRequest.WeaponOption> { weaponOpt });
+
+            // Serialize with host settings, deserialize with client settings
+            string json        = Newtonsoft.Json.JsonConvert.SerializeObject(request, hostStore.GetJsonSettings());
+            var    deserialized = Newtonsoft.Json.JsonConvert.DeserializeObject<ChooseRangedAttackRequest>(json, clientStore.GetJsonSettings());
+
+            Assert.That(deserialized,                                                              Is.Not.Null);
+            Assert.That(deserialized.WeaponOptions,                                                Is.Not.Null);
+            Assert.That(deserialized.WeaponOptions.Count,                                          Is.EqualTo(1));
+            Assert.That(deserialized.WeaponOptions[0].Weapon.Name,                                 Is.EqualTo("Rifle"));
+            Assert.That(deserialized.WeaponOptions[0].WeaponTargetStats.Count,                     Is.EqualTo(1));
+            Assert.That(deserialized.WeaponOptions[0].WeaponTargetStats[0].modelsThatCanShoot.Count, Is.EqualTo(1));
+            Assert.That(deserialized.AttackingUnit.GetValue().Name,                                Is.EqualTo("Attacker"));
+        }
+
         #region Test Resolvers
 
         private class TestYesNoResolver : IStageResolver<YesNoRequest, bool>

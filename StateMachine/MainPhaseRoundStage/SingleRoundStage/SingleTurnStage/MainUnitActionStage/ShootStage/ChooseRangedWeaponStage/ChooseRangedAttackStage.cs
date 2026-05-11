@@ -1,4 +1,5 @@
 using FDG.Data;
+using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 using FDG.Utilities;
 using System.Collections.Concurrent;
@@ -36,18 +37,17 @@ namespace FDG.Stages
             ChooseRangedAttackRequest chooseWeaponRequest = new ChooseRangedAttackRequest(context.AttackingUnit.PlayerID(), "Choose Ranged Weapon",
                 context.AttackingUnit, weaponOptions);
 
-            //Some weirdness here because we're not using bindings for weapons as of now.
-            //Weapon weaponFromRequest = await context.PlayerRequester().RequestDecision<ChooseRangedWeaponRequest, Weapon>(chooseWeaponRequest);
-            RangedAttackChoice? rangedAttackChoice = await context.PlayerRequester()
-                .RequestDecision<ChooseRangedAttackRequest, RangedAttackChoice>(chooseWeaponRequest);
+            CancellableResult<RangedAttackChoice> attackResult = await context.PlayerRequester()
+                .RequestDecision<ChooseRangedAttackRequest, CancellableResult<RangedAttackChoice>>(chooseWeaponRequest);
 
-            if (rangedAttackChoice == null)
+            if (attackResult is Cancelled<RangedAttackChoice>)
             {
                 BackToChooseAction.Activate(context);
                 return;
             }
 
-            //Weapon chosenWeapon = validOptions.First(option => option.Item2.Name == rangedAttackChoice.Weapon.Name).Item2;
+            RangedAttackChoice rangedAttackChoice = ((Selected<RangedAttackChoice>)attackResult).Value;
+
             Weapon chosenWeapon = context.AvailableWeapons.Keys
                 .First(option => option.Name == rangedAttackChoice.Weapon.Name);
 

@@ -4,7 +4,7 @@ using static FDG.StageResolution.Requests.ChooseRangedAttackRequest;
 
 namespace FDG.StageResolution.Requests
 {
-    public class ChooseRangedAttackRequest : IStageTaskRequest<RangedAttackChoice> 
+    public class ChooseRangedAttackRequest : IStageTaskRequest<CancellableResult<RangedAttackChoice>>
     {
         public PlayerID TargetPlayerID { get; }
 
@@ -37,7 +37,7 @@ namespace FDG.StageResolution.Requests
             WeaponOptions = weaponOptions;
         }
 
-        public Task<RangedAttackChoice> Resolve(RangedAttackChoice resolution)
+        public Task<CancellableResult<RangedAttackChoice>> Resolve(CancellableResult<RangedAttackChoice> resolution)
         {
             return Task.FromResult(resolution);
         }

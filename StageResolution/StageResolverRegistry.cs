@@ -70,7 +70,10 @@ namespace FDG.StageResolution
             Task<TReply> reply = ResolveRequest<TRequest, TReply>(request);
             await reply;
 
-            string replyAsJson = JsonConvert.SerializeObject(reply.Result, gameDataStore.GetJsonSettings());
+            // Pass typeof(TReply) so TypeNameHandling.Auto can record the concrete
+            // subtype when the declared reply is a polymorphic base
+            // (e.g. CancellableResult<T>).
+            string replyAsJson = JsonConvert.SerializeObject(reply.Result, typeof(TReply), gameDataStore.GetJsonSettings());
 
             return replyAsJson;
         }

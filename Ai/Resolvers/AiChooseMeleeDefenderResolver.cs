@@ -5,12 +5,13 @@ using FDG.StageResolution.Requests;
 namespace FDG.Ai.Resolvers
 {
     /// <summary>
-    /// Picks the melee defender with the fewest remaining alive models (i.e. the weakest unit).
-    /// Falls back to first valid option.
+    /// Picks a melee defender unit with the fewest remaining alive models.
+    /// Replies with Selected — the AI never backs out.
     /// </summary>
-    public class AiChooseMeleeDefenderResolver : IStageResolver<ChooseMeleeDefenderRequest, DataBinding<UnitData>>
+    public class AiChooseMeleeDefenderResolver
+        : IStageResolver<CancellableSelectionRequest<UnitData>, CancellableResult<DataBinding<UnitData>>>
     {
-        public Task<DataBinding<UnitData>> Resolve(ChooseMeleeDefenderRequest request)
+        public Task<CancellableResult<DataBinding<UnitData>>> Resolve(CancellableSelectionRequest<UnitData> request)
         {
             if (request.ValidOptions.Count == 0)
                 throw new InvalidOperationException("AI received a melee defender request with no valid options.");
@@ -19,7 +20,8 @@ namespace FDG.Ai.Resolvers
                 .OrderBy(o => o.Option.GetValue().Models.Count(m => ((ModelData)m).GetIsAlive()))
                 .First();
 
-            return Task.FromResult(weakest.Option);
+            CancellableResult<DataBinding<UnitData>> result = new Selected<DataBinding<UnitData>>(weakest.Option);
+            return Task.FromResult(result);
         }
     }
 }

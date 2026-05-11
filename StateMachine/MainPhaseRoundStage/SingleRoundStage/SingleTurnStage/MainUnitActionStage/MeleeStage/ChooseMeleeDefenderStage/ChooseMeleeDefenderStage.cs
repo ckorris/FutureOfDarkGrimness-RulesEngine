@@ -1,5 +1,6 @@
 ﻿
 using FDG.Data;
+using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 using FDG.Utilities;
 
@@ -25,8 +26,8 @@ namespace FDG.Stages
 
             PlayerID attackingPlayer = context.AttackingUnit.PlayerID();
             
-            List<SelectionRequest<UnitData>.ValidOption> validDefenders = new List<SelectionRequest<UnitData>.ValidOption>();
-            List<SelectionRequest<UnitData>.InvalidOption> invalidDefenders = new List<SelectionRequest<UnitData>.InvalidOption>();
+            List<CancellableSelectionRequest<UnitData>.ValidOption> validDefenders = new List<CancellableSelectionRequest<UnitData>.ValidOption>();
+            List<CancellableSelectionRequest<UnitData>.InvalidOption> invalidDefenders = new List<CancellableSelectionRequest<UnitData>.InvalidOption>();
 
             //There has GOT to be a better way to look up what team a player is on.
             TeamData? playerTeam = GameContext.GameDataStore.GetAllValues<TeamData>()
@@ -54,11 +55,11 @@ namespace FDG.Stages
                     if(minDistanceToUnit <= GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL)
                     {
                         //TODO: Deal with vertical, but we might leave that for pile-in.
-                        validDefenders.Add(new SelectionRequest<UnitData>.ValidOption(potentialDefender, potentialDefender.GetValue().Name));
+                        validDefenders.Add(new CancellableSelectionRequest<UnitData>.ValidOption(potentialDefender, potentialDefender.GetValue().Name));
                     }
                     else
                     {
-                        invalidDefenders.Add(new SelectionRequest<UnitData>.InvalidOption(potentialDefender, potentialDefender.GetValue().Name,
+                        invalidDefenders.Add(new CancellableSelectionRequest<UnitData>.InvalidOption(potentialDefender, potentialDefender.GetValue().Name,
                             "This unit is too far away."));
                     }
                 }
@@ -86,20 +87,20 @@ namespace FDG.Stages
             }
 
             //If we're here, we have multiple potential targets. Ask the user who to attack.
-            ChooseMeleeDefenderRequest request = new ChooseMeleeDefenderRequest(attackingPlayer, "Choose defending unit",
-                context.AttackingUnit, validDefenders, invalidDefenders);
+            CancellableSelectionRequest<UnitData> request = new CancellableSelectionRequest<UnitData>(attackingPlayer, "Choose defending unit",
+                validDefenders, invalidDefenders);
 
-            DataBinding<UnitData>? chosenDefender
+            CancellableResult<DataBinding<UnitData>> defenderResult
                 = await GameContext.PlayerRequester
-                .RequestDecision<ChooseMeleeDefenderRequest, DataBinding<UnitData>>(request);
+                .RequestDecision<CancellableSelectionRequest<UnitData>, CancellableResult<DataBinding<UnitData>>>(request);
 
-            if (chosenDefender == null)
+            if (defenderResult is Cancelled<DataBinding<UnitData>>)
             {
                 BackToChooseAction.Activate(context);
                 return;
             }
 
-            ChooseDefender(chosenDefender);
+            ChooseDefender(((Selected<DataBinding<UnitData>>)defenderResult).Value);
         }
     }
 }

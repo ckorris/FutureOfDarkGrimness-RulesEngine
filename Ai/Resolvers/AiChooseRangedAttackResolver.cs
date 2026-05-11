@@ -8,9 +8,10 @@ namespace FDG.Ai.Resolvers
     /// Picks a ranged attack target following the solo-rules priority:
     /// prefer targets not in cover; among equal candidates, prefer the one with the most shooters.
     /// </summary>
-    public class AiChooseRangedAttackResolver : IStageResolver<ChooseRangedAttackRequest, RangedAttackChoice>
+    public class AiChooseRangedAttackResolver
+        : IStageResolver<ChooseRangedAttackRequest, CancellableResult<RangedAttackChoice>>
     {
-        public Task<RangedAttackChoice> Resolve(ChooseRangedAttackRequest request)
+        public Task<CancellableResult<RangedAttackChoice>> Resolve(ChooseRangedAttackRequest request)
         {
             // Prefer options where at least one model has LOS and is in range.
             var options = BuildOptions(request, requireShooters: true);
@@ -27,7 +28,9 @@ namespace FDG.Ai.Resolvers
                 .ThenByDescending(o => o.stats.modelsThatCanShoot.Count)
                 .First();
 
-            return Task.FromResult(new RangedAttackChoice(best.weapon, best.stats.TargetUnit));
+            CancellableResult<RangedAttackChoice> result =
+                new Selected<RangedAttackChoice>(new RangedAttackChoice(best.weapon, best.stats.TargetUnit));
+            return Task.FromResult(result);
         }
 
         private static List<(Weapon weapon, WeaponTargetStats stats)> BuildOptions(

@@ -57,7 +57,11 @@ namespace FDG.Stages
             _currentRoundTeamFinishOrder.Clear();
             */
 
-            TeamActivateOrder = new List<ITeam>(newTeamActivateOrder);
+            // If no team finished this round (because every unit was already dead going in),
+            // keep the previous order. Otherwise we'd hand an empty list to the next round's
+            // SingleRoundContext and crash on the first TryAdvance.
+            if (newTeamActivateOrder.Count > 0)
+                TeamActivateOrder = new List<ITeam>(newTeamActivateOrder);
 
             RoundCount++;
         }

@@ -299,6 +299,7 @@ namespace FDG.Tests
             public TableState TableState { get; }
             public IReadWriteableGameDataStore GameDataStore { get; }
             public ITempVisualDrawer TempVisualDrawer { get; } = new NullTempVisualDrawer();
+            public GameSettings Settings { get; } = GameSettings.GetDefault();
             public List<ITeam>? FirstDeploymentRollOrder => null;
             IGameContext IGameContextAccessor.GameContext => this;
 

@@ -2,24 +2,24 @@ using FDG.SaveLoad;
 
 namespace FDG.Stages
 {
-    public class PlaceTerrainStage : StageBase<IGameContext>
+    public class PlaceTerrainStage : StageBase<IMapSetupContext>
     {
         public StageBinding OnTerrainPlaced;
 
-        public PlaceTerrainStage(IGameContext gameContext, IStateMachineLayer<IGameContext> parent)
+        public PlaceTerrainStage(IGameContext gameContext, IStateMachineLayer<IMapSetupContext> parent)
             : base(gameContext, parent)
         {
             OnTerrainPlaced = new StageBinding(this);
         }
 
-        public override async Task Enter(IGameContext context)
+        public override async Task Enter(IMapSetupContext context)
         {
             context.Log($"Entered {nameof(PlaceTerrainStage)}.");
 
             foreach (var entry in BuildTestLayout().Pieces)
             {
                 if (entry.Shape == null) continue;
-                context.GameDataStore.Create(new TerrainData(entry.TerrainType, entry.Shape, entry.HeightInches));
+                context.GameContext.GameDataStore.Create(new TerrainData(entry.TerrainType, entry.Shape, entry.HeightInches));
             }
 
             OnTerrainPlaced.Activate(context);

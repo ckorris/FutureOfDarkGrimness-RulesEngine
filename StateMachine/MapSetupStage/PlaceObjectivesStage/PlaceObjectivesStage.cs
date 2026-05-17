@@ -1,92 +1,68 @@
 namespace FDG.Stages
 {
-    public class PlaceObjectivesStage : StageBase<IGameContext>
+    /// <summary>
+    /// Drives D3+2 alternating objective placement (GF Beginner's Guide v3.5.1 p.6).
+    /// Reads the rolled count + starting team order from the surrounding
+    /// <see cref="IMapSetupContext"/>, builds a per-turn context that owns
+    /// the round-robin cursor and placement counter, and bounces between
+    /// <see cref="DetermineNextObjectivePlacerStage"/> and
+    /// <see cref="PlaceOneObjectiveStage"/> until every marker is on the table.
+    /// </summary>
+    public class PlaceObjectivesStage : ParentStage<IMapSetupContext, IObjectivePlacementTurnContext>
     {
         public StageBinding OnObjectivesPlaced;
 
-        private const float MinObjectiveSeparationInches = 9f;
-        private const float CandidateGridStepInches = 3f;
-        private const float TableEdgeMarginInches = 2f;
+        // The rules say "outside the deployment zones" — i.e. 12" from each long edge.
+        // We intentionally do NOT use GameWideConstants.DEPLOYMENT_DISTANCE_INCHES here
+        // because that constant is currently 9" and is also read by deployment code;
+        // changing the deployment depth is out of scope for this work item.
+        private const float ObjectiveLegalBandMarginInches = 12f;
 
-        private readonly Func<int> _getObjectiveCount;
-
-        public PlaceObjectivesStage(IGameContext gameContext, IStateMachineLayer<IGameContext> parent,
-            Func<int> getObjectiveCount)
+        public PlaceObjectivesStage(IGameContext gameContext, IStateMachineLayer<IMapSetupContext> parent)
             : base(gameContext, parent)
         {
             OnObjectivesPlaced = new StageBinding(this);
-            _getObjectiveCount = getObjectiveCount;
         }
 
-        public override async Task Enter(IGameContext context)
+        protected override IObjectivePlacementTurnContext GetNewChildContext(IMapSetupContext contextSelf)
         {
-            int count = _getObjectiveCount();
-            context.Log($"Auto-placing {count} objectives.");
+            if (contextSelf.ObjectiveCount is not int count)
+                throw new InvalidOperationException(
+                    $"{nameof(PlaceObjectivesStage)} entered before {nameof(IMapSetupContext.ObjectiveCount)} was set.");
 
-            var tableState = context.TableState;
+            if (contextSelf.ObjectivePlacementTeamOrder is not IReadOnlyList<ITeam> teamOrder)
+                throw new InvalidOperationException(
+                    $"{nameof(PlaceObjectivesStage)} entered before {nameof(IMapSetupContext.ObjectivePlacementTeamOrder)} was set.");
+
             float tableW = GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES;
             float tableH = GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES;
-            float deployDepth = GameWideConstants.DEPLOYMENT_DISTANCE_INCHES;
+            var legalBand = new RectangularZone(
+                left: 0f,
+                right: tableW,
+                bottom: ObjectiveLegalBandMarginInches,
+                top: tableH - ObjectiveLegalBandMarginInches);
 
-            // Objectives must land in the middle band — outside both deployment zones.
-            float zMin = deployDepth + TableEdgeMarginInches;
-            float zMax = tableH - deployDepth - TableEdgeMarginInches;
-
-            var impassable = tableState.Terrain.Objects
-                .Where(t => t.TerrainType.HasFlag(ETerrainType.Impassible))
-                .ToList();
-
-            // Build and shuffle candidate grid positions.
-            var candidates = new List<Float2>();
-            for (float x = TableEdgeMarginInches; x <= tableW - TableEdgeMarginInches; x += CandidateGridStepInches)
-                for (float z = zMin; z <= zMax; z += CandidateGridStepInches)
-                    candidates.Add(new Float2(x, z));
-
-            var rng = new Random();
-            for (int i = candidates.Count - 1; i > 0; i--)
-            {
-                int j = rng.Next(i + 1);
-                (candidates[i], candidates[j]) = (candidates[j], candidates[i]);
-            }
-
-            // Greedily pick positions that satisfy separation and terrain constraints.
-            var placed = new List<Float2>();
-            foreach (var candidate in candidates)
-            {
-                if (placed.Count >= count) break;
-                if (IsTooCloseToExisting(candidate, placed)) continue;
-                if (IsInImpassableTerrain(candidate, impassable)) continue;
-                placed.Add(candidate);
-            }
-
-            if (placed.Count < count)
-                context.Log($"Warning: could only place {placed.Count}/{count} objectives (terrain may be blocking).");
-
-            foreach (var pos in placed)
-                context.GameDataStore.Create(new ObjectiveData(new Position(pos.X, pos.Y), context.GameDataStore));
-
-            context.Log($"Placed {placed.Count} objectives.");
-            OnObjectivesPlaced.Activate(context);
+            return new ObjectivePlacementTurnContext(GameContext, teamOrder, count, legalBand);
         }
 
-        private static bool IsTooCloseToExisting(Float2 candidate, List<Float2> placed)
+        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IObjectivePlacementTurnContext> startingChild)
         {
-            foreach (var p in placed)
-            {
-                float dx = candidate.X - p.X;
-                float dz = candidate.Y - p.Y;
-                if (MathF.Sqrt(dx * dx + dz * dz) < MinObjectiveSeparationInches)
-                    return true;
-            }
-            return false;
-        }
+            var determineNext = new DetermineNextObjectivePlacerStage(GameContext, this);
+            var placeOne = new PlaceOneObjectiveStage(GameContext, this);
 
-        private static bool IsInImpassableTerrain(Float2 candidate, List<ITerrain> impassable)
-        {
-            foreach (var t in impassable)
-                if (t.IsPointWithinZone(candidate))
-                    return true;
-            return false;
+            var dictionary = new TransitionSetBuilder(this)
+                .AddChild(determineNext)
+                .AddChild(placeOne)
+                .AddSibling(nameof(OnObjectivesPlaced), OnObjectivesPlaced, out string toParentEvent)
+                .Build();
+
+            startingChild = determineNext;
+
+            determineNext.OnPlacerDetermined.Bind(placeOne);
+            placeOne.OnObjectivePlaced.Bind(determineNext);
+            determineNext.OnAllMarkersPlaced.Bind(toParentEvent);
+
+            return dictionary;
         }
     }
 }

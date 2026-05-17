@@ -59,7 +59,7 @@ namespace FDG.GameModel
                 _playerSlotManager);
 
             _gameContext = new GameContext(textOutput, GetDiceRoller(gameSettings), requestMessageSender,
-                tableState, _gameDataStore, tempVisualRelayer);
+                tableState, _gameDataStore, tempVisualRelayer, gameSettings);
             _gameContext.OnGameEnded += result => OnGameEnded?.Invoke(result);
 
             if (TEST_SINGLE_TURN)

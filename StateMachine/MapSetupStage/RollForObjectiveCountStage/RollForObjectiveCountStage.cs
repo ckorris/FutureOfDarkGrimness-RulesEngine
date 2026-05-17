@@ -1,25 +1,21 @@
 namespace FDG.Stages
 {
-    public class RollForObjectiveCountStage : StageBase<IGameContext>
+    public class RollForObjectiveCountStage : StageBase<IMapSetupContext>
     {
         public StageBinding OnRollComplete;
 
-        private readonly Action<int>? _onCountDetermined;
-
-        public RollForObjectiveCountStage(IGameContext gameContext, IStateMachineLayer<IGameContext> parent,
-            Action<int>? onCountDetermined = null)
+        public RollForObjectiveCountStage(IGameContext gameContext, IStateMachineLayer<IMapSetupContext> parent)
             : base(gameContext, parent)
         {
             OnRollComplete = new StageBinding(this);
-            _onCountDetermined = onCountDetermined;
         }
 
-        public override async Task Enter(IGameContext context)
+        public override async Task Enter(IMapSetupContext context)
         {
             context.Log($"Entered {nameof(RollForObjectiveCountStage)}.");
 
             // D3+2 gives 3–5 objectives. Roll a d6; sides are 1-indexed.
-            IDiceResults rollResult = context.DiceRoller.Roll(1);
+            IDiceResults rollResult = context.GameContext.DiceRoller.Roll(1);
             int roll = rollResult.SideMin;
             for (int v = rollResult.SideMin; v <= rollResult.SideMax; v++)
                 if (rollResult.At(v) > 0f) { roll = v; break; }
@@ -28,7 +24,7 @@ namespace FDG.Stages
 
             context.Log($"Rolled {roll} — {objectiveCount} objectives will be placed.");
 
-            _onCountDetermined?.Invoke(objectiveCount);
+            context.SetObjectiveCount(objectiveCount);
             OnRollComplete.Activate(context);
         }
     }

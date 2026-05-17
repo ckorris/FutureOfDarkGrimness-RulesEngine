@@ -296,6 +296,8 @@ namespace FDG.Stages
             ErrorReasonType = errorReasonType;
             RelevantModel = relevantModel;
         }
+
+        public override string ToString() => MovementUtilities.ErrorReasonToString(ErrorReasonType);
     }
 
     public enum EErrorReasonType

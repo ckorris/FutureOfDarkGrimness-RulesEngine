@@ -19,10 +19,7 @@ namespace FDG.Stages
         private const float ObjectiveLegalBandMarginInches = 12f;
 
         public PlaceObjectivesStage(IGameContext gameContext, IStateMachineLayer<IMapSetupContext> parent)
-            : base(gameContext, parent)
-        {
-            OnObjectivesPlaced = new StageBinding(this);
-        }
+            : base(gameContext, parent) { }
 
         protected override IObjectivePlacementTurnContext GetNewChildContext(IMapSetupContext contextSelf)
         {
@@ -47,6 +44,10 @@ namespace FDG.Stages
 
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IObjectivePlacementTurnContext> startingChild)
         {
+            // Bindings must be created here, not in the ctor body — ParentStage's base ctor
+            // calls PopulateTransitions before the derived ctor runs.
+            OnObjectivesPlaced = new StageBinding(this);
+
             var determineNext = new DetermineNextObjectivePlacerStage(GameContext, this);
             var placeOne = new PlaceOneObjectiveStage(GameContext, this);
 

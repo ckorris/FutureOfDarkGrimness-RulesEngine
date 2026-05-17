@@ -1,4 +1,5 @@
-﻿using FDG.Data;
+using FDG.Data;
+using FDG.Utilities;
 
 
 namespace FDG.Stages
@@ -10,6 +11,8 @@ namespace FDG.Stages
         IReadOnlyList<ITeam> FirstDeploymentRollOrder { get; }
 
         IReadOnlyDictionary<ITeam, DataBinding<RectangularZone>>? PlayerDeploymentZones { get; }
+
+        TeamPlayerAlternationCursor Cursor { get; }
 
         int CurrentDeployingTeamIndex { get; set; }
 
@@ -23,7 +26,7 @@ namespace FDG.Stages
 
         public Dictionary<PlayerID, List<DataBinding<UnitData>>> UndeployedUnits { get; }
 
-        public DataBinding<UnitData>? CurrentDeployingUnit { get; set; }  
+        public DataBinding<UnitData>? CurrentDeployingUnit { get; set; }
 
     }
 
@@ -35,9 +38,15 @@ namespace FDG.Stages
 
         public IReadOnlyDictionary<ITeam, DataBinding<RectangularZone>> PlayerDeploymentZones { get; }
 
-        public int CurrentDeployingTeamIndex { get; set; }
+        public TeamPlayerAlternationCursor Cursor { get; }
 
-        public Dictionary<ITeam, int> CurrentDeployingPlayerIndexPerTeam { get; }
+        public int CurrentDeployingTeamIndex
+        {
+            get => Cursor.CurrentTeamIndex;
+            set => Cursor.CurrentTeamIndex = value;
+        }
+
+        public Dictionary<ITeam, int> CurrentDeployingPlayerIndexPerTeam => Cursor.CurrentPlayerIndexPerTeam;
 
         public bool HasStarted { get; set; } = false;
 
@@ -51,16 +60,14 @@ namespace FDG.Stages
             GameContext = gameContext;
             FirstDeploymentRollOrder = firstDeploymentRollOrder;
             PlayerDeploymentZones = playerDeploymentZones;
+            Cursor = new TeamPlayerAlternationCursor(firstDeploymentRollOrder);
 
             UndeployedUnits = new Dictionary<PlayerID, List<DataBinding<UnitData>>>();
-            CurrentDeployingPlayerIndexPerTeam = new Dictionary<ITeam, int>();
 
             List<ArmyData> armies = GameContext.GameDataStore().GetAllValues<ArmyData>().ToList();
 
             foreach (ITeam team in firstDeploymentRollOrder)
             {
-                CurrentDeployingPlayerIndexPerTeam.Add(team, 0);
-
                 foreach (PlayerID playerID in team.Players)
                 {
                     List<DataBinding<UnitData>> playerUnits = new List<DataBinding<UnitData>>();
@@ -74,14 +81,7 @@ namespace FDG.Stages
             }
         }
 
-        public PlayerID GetCurrentDeployingPlayerID()
-        {
-            ITeam currentTeam = FirstDeploymentRollOrder[CurrentDeployingTeamIndex];
-            int playerIndex = CurrentDeployingPlayerIndexPerTeam[currentTeam];
-            PlayerID currentPlayerID = currentTeam.Players[playerIndex];
-
-            return currentPlayerID;
-        }
+        public PlayerID GetCurrentDeployingPlayerID() => Cursor.GetCurrentPlayerID();
 
         public bool DoesTeamHaveRemainingDeployments(ITeam team)
         {

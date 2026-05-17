@@ -26,7 +26,8 @@ namespace FDG.Ai
                 .RegisterResolver(new AiSelectionResolver<UnitData>())
                 .RegisterResolver(new AiSelectionResolver<ModelData>())
                 .RegisterResolver(new AiSelectionResolver<RectangularZone>())
-                .RegisterResolver(new AiPlaceObjectsResolver<ModelData>(tableState));
+                .RegisterResolver(new AiPlaceObjectsResolver<ModelData>(tableState))
+                .RegisterResolver(new AiPlaceObjectiveResolver(tableState));
 
             if (SlowMode)
                 registry = new AiSlowModeRegistry(registry, SlowModeDelayMs);

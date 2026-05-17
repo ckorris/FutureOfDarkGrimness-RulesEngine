@@ -11,6 +11,13 @@ namespace FDG
 
         public ETurnStyle TurnStyle;
 
+        /// <summary>
+        /// Debug: when true, <see cref="FDG.Stages.PlaceObjectivesStage"/> skips
+        /// interactive placement and runs the legacy grid-RNG auto-placer. Off by
+        /// default; intended for headless / piped automation only.
+        /// </summary>
+        public bool AutoPlaceObjectivesDebug;
+
         public static GameSettings GetDefault()
         {
             return new GameSettings()
@@ -18,7 +25,8 @@ namespace FDG
                 ArmyPoints = 2000,
                 TerrainPieceCount = 12,
                 RandomnessType = ERandomnessType.Realistic,
-                TurnStyle = ETurnStyle.Standard
+                TurnStyle = ETurnStyle.Standard,
+                AutoPlaceObjectivesDebug = false,
             };
         }
     }

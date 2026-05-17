@@ -65,12 +65,15 @@ namespace FDG.StageResolution
 
             _pendingTaskAndResolvers.Add(taskID, actions);
 
-            _messageBusHost.SendCommandToAllAsync(requestMessage);
-
-            //Notify all clients of a pending task, so they can display it on the UI.
+            // Send the awaiting notification BEFORE the request message so OutstandingTaskLister
+            // entries are populated before any synchronous resolver (e.g. AI) can produce a reply
+            // and trigger the resolve notification — otherwise the resolve fires against an empty
+            // lister dict and the entry that arrives next stays stuck forever.
             DataBinding<PlayerSlotInfo> playerInfoBinding =  _playerSlotManager.GetSlotByID(request.TargetPlayerID).InfoBinding;
             StageTaskNotifyAwaitingMessage awaitingMessage = new StageTaskNotifyAwaitingMessage(taskID, playerInfoBinding, request.TaskName);
             _messageBusHost.SendCommandToAllAsync(awaitingMessage);
+
+            _messageBusHost.SendCommandToAllAsync(requestMessage);
 
             return taskCompletionSource.Task;
         }

@@ -25,6 +25,8 @@ namespace FDG
 
         public ITempVisualDrawer TempVisualDrawer { get; }
 
+        public GameSettings Settings { get; }
+
         public List<ITeam>? FirstDeploymentRollOrder { get; }
 
         public void SetFirstDeploymentRollOrder(List<ITeam> firstDeploymentRollWinner);
@@ -48,6 +50,8 @@ namespace FDG
 
         public ITempVisualDrawer TempVisualDrawer { get; }
 
+        public GameSettings Settings { get; }
+
         public List<ITeam>? FirstDeploymentRollOrder { get; private set; } = null;
 
         public event Action<string>? OnGameEnded;
@@ -55,8 +59,9 @@ namespace FDG
         public GameContext(ITextOutput textOutput, IDiceRoller diceRoller,
                 IPlayerRequestByID playerRequester,
                 TableState tableState,
-                IReadWriteableGameDataStore gameDataStore, 
-                ITempVisualDrawer tempVisualDrawer)
+                IReadWriteableGameDataStore gameDataStore,
+                ITempVisualDrawer tempVisualDrawer,
+                GameSettings settings)
         {
             TextOutput = textOutput;
             DiceRoller = diceRoller;
@@ -64,6 +69,7 @@ namespace FDG
             TableState = tableState;
             GameDataStore = gameDataStore;
             TempVisualDrawer = tempVisualDrawer;
+            Settings = settings;
         }
 
         public void SetFirstDeploymentRollOrder(List<ITeam> firstDeploymentRollWinner)

@@ -68,6 +68,8 @@ namespace FDG.Network.Connection
         private const string SERVER_START_MESSAGE = "Server started successfully.";
         private const string LAUNCHING_GAME_MESSAGE = "About to launch game.";
 
+        private static readonly Random _tributeRng = new Random();
+
         public event Action<IFDGGame>? OnLaunched;
 
         private GameSettings _gameSettings = GameSettings.GetDefault();
@@ -234,11 +236,14 @@ namespace FDG.Network.Connection
             await _messageBus.SendCommandToAllAsync(gameStartingMessage);
             await Task.Delay(300);
 
-            //Give a quick tribute.
-            LobbyChatMessage tributeMessage = new LobbyChatMessage("Mukumioke", "buck futter");
-            //AddMessageToLocalList(tributeMessage);
-            await _messageBus.SendCommandToAllAsync(tributeMessage);
-            await Task.Delay(50);
+            //Give a quick tribute. Easter egg — fires ~10% of launches.
+            if (_tributeRng.Next(10) == 0)
+            {
+                LobbyChatMessage tributeMessage = new LobbyChatMessage("Mukumioke", "buck futter");
+                //AddMessageToLocalList(tributeMessage);
+                await _messageBus.SendCommandToAllAsync(tributeMessage);
+                await Task.Delay(50);
+            }
 
             FDGGame_AsLocal? gameModel = null; //We may not have a local player.
 

@@ -39,8 +39,11 @@ namespace FDG.Ai.Resolvers
             var result = new List<(Weapon, WeaponTargetStats)>();
             foreach (var weaponOption in request.WeaponOptions)
                 foreach (var targetStats in weaponOption.WeaponTargetStats)
+                {
+                    if (targetStats.UnselectableReason != null) continue;
                     if (!requireShooters || targetStats.modelsThatCanShoot.Count > 0)
                         result.Add((weaponOption.Weapon, targetStats));
+                }
             return result;
         }
     }

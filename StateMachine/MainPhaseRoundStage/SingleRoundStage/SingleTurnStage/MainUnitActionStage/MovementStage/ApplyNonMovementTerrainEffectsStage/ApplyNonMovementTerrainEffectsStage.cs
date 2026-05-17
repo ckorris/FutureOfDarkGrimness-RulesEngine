@@ -49,11 +49,11 @@ namespace FDG.Stages
                 if (roll.At(1) > 0)
                 {
                     move.Model.GetValue().DealWounds(1);
-                    GameContext.Log($"{unitName}: model crossed dangerous terrain, rolled {rollValue} — 1 wound dealt.");
+                    GameContext.Log($"{unitName}: model crossed dangerous terrain, rolled {rollValue} - 1 wound dealt.");
                 }
                 else
                 {
-                    GameContext.Log($"{unitName}: model crossed dangerous terrain, rolled {rollValue} — safe.");
+                    GameContext.Log($"{unitName}: model crossed dangerous terrain, rolled {rollValue} - safe.");
                 }
             }
 

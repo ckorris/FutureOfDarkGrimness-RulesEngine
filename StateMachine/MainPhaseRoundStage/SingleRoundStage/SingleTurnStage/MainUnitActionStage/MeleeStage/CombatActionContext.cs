@@ -32,6 +32,17 @@ namespace FDG.Stages
 
         public void SetDefender(DataBinding<UnitData> defendingUnit);
 
+        /// <summary>
+        /// Distinct defender unit references this attacker has already engaged during the current action.
+        /// Used by ranged shooting to enforce the 2-targets-per-shoot-action rule.
+        /// </summary>
+        public IReadOnlyCollection<DataReference> AttackedDefenderRefs { get; }
+
+        /// <summary>
+        /// Add a defender to <see cref="AttackedDefenderRefs"/>. Safe to call multiple times with the same defender.
+        /// </summary>
+        public void RegisterAttackedDefender(DataBinding<UnitData> defender);
+
         public void SetAttackWeapon(Weapon weaponToConsume, out int weaponCount);
 
         public ICombatMetadata ConsumeAttackIntoContext(IGameContext gameContext);
@@ -64,6 +75,15 @@ namespace FDG.Stages
         private ConcurrentDictionary<Weapon, int> _availableWeapons;
 
         private ConcurrentDictionary<Weapon, int> _alreadyUsedWeapons = new ConcurrentDictionary<Weapon, int>();
+
+        private HashSet<DataReference> _attackedDefenderRefs = new HashSet<DataReference>();
+
+        public IReadOnlyCollection<DataReference> AttackedDefenderRefs => _attackedDefenderRefs;
+
+        public void RegisterAttackedDefender(DataBinding<UnitData> defender)
+        {
+            _attackedDefenderRefs.Add(defender.Reference);
+        }
 
         private QueryableResults _queryableResults = new QueryableResults();
 

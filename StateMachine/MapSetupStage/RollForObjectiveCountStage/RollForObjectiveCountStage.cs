@@ -26,7 +26,7 @@ namespace FDG.Stages
             int d3 = (roll + 1) / 2; // 1→1, 2–3→2, 4–6→3
             int objectiveCount = d3 + 2;
 
-            context.Log($"Rolled {roll} — {objectiveCount} objectives will be placed.");
+            context.Log($"Rolled {roll} - {objectiveCount} objectives will be placed.");
 
             _onCountDetermined?.Invoke(objectiveCount);
             OnRollComplete.Activate(context);

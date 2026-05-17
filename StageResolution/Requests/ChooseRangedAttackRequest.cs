@@ -50,8 +50,12 @@ namespace FDG.StageResolution.Requests
         /// </summary>
         /// <param name="TargetUnit">Unit being targeted.</param>
         /// <param name="modelsThatCanShoot">Models with the weapon that can hit (have line of sight and range)</param>
+        /// <param name="UnselectableReason">If non-null, the target is unselectable even when it has shooters in range
+        /// (e.g. the attacker has already targeted the maximum number of distinct units this shoot action). UIs should
+        /// list the target as disabled and surface the reason as a tooltip.</param>
         public record WeaponTargetStats(DataBinding<UnitData> TargetUnit, HashSet<DataBinding<ModelData>> modelsThatCanShoot,
-            HashSet<DataBinding<ModelData>> modelsWithWeaponThatCannotShoot, bool HasCover = false);
+            HashSet<DataBinding<ModelData>> modelsWithWeaponThatCannotShoot, bool HasCover = false,
+            string? UnselectableReason = null);
 
         /// <summary>
         /// Record suited to choosing your attack, with the attacking unit implied.

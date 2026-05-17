@@ -49,6 +49,7 @@ namespace FDG.Stages
 
             chooseRangedWeapon.OnChoseWeapon.Bind(fire);
             chooseRangedWeapon.BackToChooseAction.Bind(backToChooseEvent);
+            chooseRangedWeapon.OnNoValidShots.Bind(onFinishedShootingEvent);
             
             fire.OnFinishedFiring.Bind(resolveRangedMorale);
             resolveRangedMorale.ToFinished.Bind(determineCanKeepShooting);

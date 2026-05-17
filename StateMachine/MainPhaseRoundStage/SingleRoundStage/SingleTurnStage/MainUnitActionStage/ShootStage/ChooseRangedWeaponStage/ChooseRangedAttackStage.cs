@@ -13,11 +13,13 @@ namespace FDG.Stages
     {
         public StageBinding OnChoseWeapon;
         public StageBinding BackToChooseAction;
+        public StageBinding OnNoValidShots;
 
         public ChooseRangedAttackStage(IGameContext gameContext, IStateMachineLayer<ICombatActionContext> parent) : base(gameContext, parent)
         {
             OnChoseWeapon = new StageBinding(this);
             BackToChooseAction = new StageBinding(this);
+            OnNoValidShots = new StageBinding(this);
         }
 
         public override async Task Enter(ICombatActionContext context)
@@ -31,8 +33,26 @@ namespace FDG.Stages
 
             List<ITerrain> terrainSnapshot = context.GameContext.TableState.Terrain.Objects.ToList();
 
-            List<WeaponOption> weaponOptions = GetWeaponOptions(context.AttackingUnit, context.AvailableWeapons,
-                context.GameContext, terrainSnapshot);
+            List<WeaponOption> weaponOptions = BuildWeaponOptions(context.AttackingUnit, context.AvailableWeapons,
+                context.GameContext, terrainSnapshot, context.AttackedDefenderRefs);
+
+            if (!HasAnyFireableOption(weaponOptions))
+            {
+                // No weapon has any selectable target with shooters in range. If the unit has already fired at least
+                // once this shoot action, finish the shoot stage; otherwise fall back to the regular cancel path so the
+                // player can return to Choose Action without burning their shoot.
+                if (context.AlreadyUsedWeapons.Count > 0)
+                {
+                    GameContext.Log("No remaining weapon has a valid target - ending shoot action.");
+                    OnNoValidShots.Activate(context);
+                }
+                else
+                {
+                    GameContext.Log("No weapon has a valid target - returning to Choose Action.");
+                    BackToChooseAction.Activate(context);
+                }
+                return;
+            }
 
             ChooseRangedAttackRequest chooseWeaponRequest = new ChooseRangedAttackRequest(context.AttackingUnit.PlayerID(), "Choose Ranged Weapon",
                 context.AttackingUnit, weaponOptions);
@@ -53,18 +73,59 @@ namespace FDG.Stages
 
             context.SetAttackWeapon(chosenWeapon, out int weaponCount);
             context.SetDefender(rangedAttackChoice.TargetUnit);
+            context.RegisterAttackedDefender(rangedAttackChoice.TargetUnit);
             GameContext.Log($"Chose weapon: {chosenWeapon.Name}. Count: {weaponCount}.");
 
             OnChoseWeapon.Activate(context);
         }
 
-        private List<WeaponOption> GetWeaponOptions(DataBinding<UnitData> attackingUnit,
+        private static bool HasAnyFireableOption(List<WeaponOption> weaponOptions)
+        {
+            foreach (WeaponOption wo in weaponOptions)
+                foreach (WeaponTargetStats ts in wo.WeaponTargetStats)
+                    if (ts.UnselectableReason == null && ts.modelsThatCanShoot.Count > 0)
+                        return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Returns true if the attacker has at least one ranged weapon that, ignoring any
+        /// per-shoot-action target limit, can hit some enemy unit (i.e. some model with the
+        /// weapon has both line of sight and range). Used by ChooseActionStage to gray out
+        /// Shoot when there is nothing to shoot at.
+        /// </summary>
+        public static bool HasAnyFireableTarget(DataBinding<UnitData> attackingUnit, IGameContext gameContext)
+        {
+            UnitData unitValue = attackingUnit.GetValue();
+            List<Weapon> rangedWeapons = unitValue.GetRangedWeapons();
+            if (rangedWeapons.Count == 0) return false;
+
+            // GetRangedWeapons returns one Weapon instance per model that carries it, so duplicates
+            // are normal. BuildWeaponOptions keys by Weapon.Name internally and will throw on collisions,
+            // so dedupe by name (same semantics CombatActionContext uses for its AvailableWeapons dict).
+            var availableWeapons = new Dictionary<Weapon, int>();
+            var seenNames = new HashSet<string>();
+            foreach (Weapon w in rangedWeapons)
+                if (seenNames.Add(w.Name)) availableWeapons[w] = 1;
+
+            List<ITerrain> terrainSnapshot = gameContext.TableState.Terrain.Objects.ToList();
+            List<WeaponOption> options = BuildWeaponOptions(attackingUnit, availableWeapons, gameContext,
+                terrainSnapshot, Array.Empty<DataReference>());
+
+            foreach (WeaponOption wo in options)
+                foreach (WeaponTargetStats ts in wo.WeaponTargetStats)
+                    if (ts.UnselectableReason == null && ts.modelsThatCanShoot.Count > 0)
+                        return true;
+            return false;
+        }
+
+        private static List<WeaponOption> BuildWeaponOptions(DataBinding<UnitData> attackingUnit,
             IReadOnlyDictionary<Weapon, int> availableWeapons, IGameContext gameContext,
-            IReadOnlyList<ITerrain> terrain)
+            IReadOnlyList<ITerrain> terrain, IReadOnlyCollection<DataReference> attackedDefenderRefs)
         {
             PlayerID playerID = attackingUnit.PlayerID();
 
-            ITeam playerTeam = GameContext.TableState.Teams.Objects
+            ITeam playerTeam = gameContext.TableState.Teams.Objects
                 .First(team => team.IsPlayerOnTeam(playerID));
 
             Dictionary<string, WeaponOption> nameAndWeaponOptions = new Dictionary<string, WeaponOption>();
@@ -78,11 +139,22 @@ namespace FDG.Stages
                 .Where(army => playerTeam.IsPlayerOnTeam(army.GetValue().PlayerID) == false)
                 .SelectMany(army => army.GetValue().UnitBindings);
 
+            // If the attacker has already engaged the max number of distinct units this shoot action, any further
+            // unit that wasn't already among them is unselectable.
+            bool atTargetLimit = attackedDefenderRefs.Count >= GameWideConstants.MAX_TARGETED_UNITS_PER_SHOOT_ACTION;
+
             //Go through each enemy unit, which will correspond to a WeaponTargetStats.
             foreach (DataBinding<UnitData> enemyUnit in enemyUnits)
             {
+                string? unselectableReason = null;
+                if (atTargetLimit && !attackedDefenderRefs.Contains(enemyUnit.Reference))
+                {
+                    unselectableReason = $"Already targeting {GameWideConstants.MAX_TARGETED_UNITS_PER_SHOOT_ACTION} units this shoot action.";
+                }
+
                 Dictionary<string, WeaponTargetStats> weaponToStats =
-                    GetAttacksForEnemyUnit(attackingUnit, enemyUnit, availableWeapons.Keys.Select(weapon => weapon.Name), terrain);
+                    BuildAttacksForEnemyUnit(attackingUnit, enemyUnit, availableWeapons.Keys.Select(weapon => weapon.Name),
+                        terrain, gameContext, unselectableReason);
 
                 foreach (KeyValuePair<string, WeaponTargetStats> kvp in weaponToStats)
                 {
@@ -93,13 +165,14 @@ namespace FDG.Stages
             return nameAndWeaponOptions.Values.ToList();
         }
 
-        private Dictionary<string, WeaponTargetStats> GetAttacksForEnemyUnit(DataBinding<UnitData> attackingUnit,
-            DataBinding<UnitData> enemyUnit, IEnumerable<string> weaponNames, IReadOnlyList<ITerrain> terrain)
+        private static Dictionary<string, WeaponTargetStats> BuildAttacksForEnemyUnit(DataBinding<UnitData> attackingUnit,
+            DataBinding<UnitData> enemyUnit, IEnumerable<string> weaponNames, IReadOnlyList<ITerrain> terrain,
+            IGameContext gameContext, string? unselectableReason = null)
         {
             Dictionary<string, WeaponTargetStats> weaponToStats = new Dictionary<string, WeaponTargetStats>();
 
             var modelBlockers = LineOfSightUtilities.BuildModelBlockers(
-                GameContext.TableState, attackingUnit, enemyUnit);
+                gameContext.TableState, attackingUnit, enemyUnit);
             IReadOnlyList<ITerrain> allTerrain = terrain.Concat(modelBlockers).ToList();
 
             bool hasCover = ComputeHasCover(attackingUnit, enemyUnit, allTerrain);
@@ -109,7 +182,8 @@ namespace FDG.Stages
                 weaponToStats[weaponName] = new WeaponTargetStats(enemyUnit,
                     new HashSet<DataBinding<ModelData>>(),
                     new HashSet<DataBinding<ModelData>>(),
-                    hasCover);
+                    hasCover,
+                    unselectableReason);
             }
 
             //TODO: Cache line of sight lookups.
@@ -148,7 +222,7 @@ namespace FDG.Stages
             return weaponToStats;
         }
 
-        private bool CanWeaponShootAtUnit(DataBinding<ModelData> attackingModel,
+        private static bool CanWeaponShootAtUnit(DataBinding<ModelData> attackingModel,
             DataBinding<UnitData> enemyUnit, Weapon weapon,
             ref Dictionary<DataBinding<ModelData>, bool> cachedLineOfSights,
             IReadOnlyList<ITerrain> terrain)

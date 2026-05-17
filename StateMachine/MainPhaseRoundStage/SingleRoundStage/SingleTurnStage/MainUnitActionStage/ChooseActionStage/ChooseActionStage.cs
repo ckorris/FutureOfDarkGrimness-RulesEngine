@@ -190,6 +190,12 @@ namespace FDG.Stages
                 return false;
             }
 
+            if (!ChooseRangedAttackStage.HasAnyFireableTarget(context.ActivatingUnit, context.GameContext))
+            {
+                reasonIfCant = "No enemies in range or line of sight.";
+                return false;
+            }
+
             reasonIfCant = null;
             return true;
         }

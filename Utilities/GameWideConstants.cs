@@ -36,5 +36,10 @@ namespace FDG
         public const float DEFAULT_TABLE_WIDTH_INCHES = 72;
 
         public const float DEFAULT_TABLE_HEIGHT_INCHES = 48;
+
+        /// <summary>
+        /// Maximum number of distinct enemy units a single unit may target during one shoot action.
+        /// </summary>
+        public const int MAX_TARGETED_UNITS_PER_SHOOT_ACTION = 2;
     }
 }

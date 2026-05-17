@@ -46,14 +46,14 @@ namespace FDG.Stages
                 else if (nearbyPlayers.Count > 1)
                 {
                     objective.SetOwner(null);
-                    GameContext.Log($"  Objective contested — becomes neutral.");
+                    GameContext.Log($"  Objective contested - becomes neutral.");
                 }
                 else
                 {
                     string ownerDesc = objective.OwnerID.HasValue
                         ? $"player {objective.OwnerID.Value.ID}"
                         : "neutral";
-                    GameContext.Log($"  Objective uncontested — remains {ownerDesc}.");
+                    GameContext.Log($"  Objective uncontested - remains {ownerDesc}.");
                 }
             }
 

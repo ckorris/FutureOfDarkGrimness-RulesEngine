@@ -25,7 +25,12 @@ namespace FDG.Stages
 
         protected override ICombatMetadata GetNewChildContext(ICombatActionContext contextSelf)
         {
-            return contextSelf.ConsumeAttackIntoContext(GameContext);
+            ICombatMetadata metadata = contextSelf.ConsumeAttackIntoContext(GameContext);
+            // Melee never runs CoverCheckStage (cover is a ranged-only mechanic), but the shared
+            // DetermineSaveRollsNeededStage still queries CoverCheckResults from metadata. Seed
+            // a zero-bonus result so the shared stage doesn't throw.
+            metadata.AddResult(new CoverCheckResults(0));
+            return metadata;
         }
 
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<ICombatMetadata> startingChild)

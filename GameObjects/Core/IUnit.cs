@@ -49,6 +49,7 @@ namespace FDG
 
             foreach (IModel model in unit.Models)
             {
+                if (!model.GetIsAlive()) continue;
                 allWeapons.AddRange(model.Weapons);
             }
 
@@ -61,6 +62,7 @@ namespace FDG
 
             foreach (IModel model in unit.Models)
             {
+                if (!model.GetIsAlive()) continue;
                 allWeapons.AddRange(model.Weapons.Where(predicate));
             }
 

@@ -1,0 +1,79 @@
+using FDG.SaveLoad;
+using Newtonsoft.Json;
+
+namespace FDG.StageResolution.Requests
+{
+    /// <summary>
+    /// Result of a single terrain placement: which template in the pool the player
+    /// picked, and the world-space center where its footprint should land. The
+    /// stage translates the template's shape so its center lands at
+    /// <see cref="Center"/> before creating the <c>TerrainData</c>.
+    /// </summary>
+    public class TerrainPlacementResult
+    {
+        public int TemplateIndex { get; }
+
+        public Float2 Center { get; }
+
+        [JsonConstructor]
+        public TerrainPlacementResult(int templateIndex, Float2 center)
+        {
+            TemplateIndex = templateIndex;
+            Center = center;
+        }
+    }
+
+    /// <summary>
+    /// Asks one player to pick a template from the pool and place it on the table.
+    /// Emitted once per piece in Alternating mode until
+    /// <see cref="GameSettings.TerrainPieceCount"/> pieces have been placed.
+    /// </summary>
+    /// <remarks>
+    /// Existing terrain isn't snapshotted on the request — resolvers should read
+    /// it live from <c>ITableState.Terrain</c> so they always see the current
+    /// state when the validator runs.
+    /// </remarks>
+    public class PlaceOneTerrainRequest : IStageTaskRequest<TerrainPlacementResult>
+    {
+        public PlayerID TargetPlayerID { get; }
+        public TaskID TaskID { get; }
+        public string TaskName { get; }
+
+        /// <summary>Pieces already placed before this request (0-based for the next one).</summary>
+        public int PiecesPlaced { get; }
+
+        /// <summary>Total pieces to place this game.</summary>
+        public int TotalPieces { get; }
+
+        /// <summary>Template pool the player chooses from. The same pool is sent every turn — duplicates are allowed and templates do not deplete.</summary>
+        public IReadOnlyList<TerrainPieceEntry> Pool { get; }
+
+        public float TableWidthInches { get; }
+
+        public float TableHeightInches { get; }
+
+        [JsonConstructor]
+        public PlaceOneTerrainRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
+            int piecesPlaced, int totalPieces, IReadOnlyList<TerrainPieceEntry> pool,
+            float tableWidthInches, float tableHeightInches)
+        {
+            TargetPlayerID = targetPlayerID;
+            TaskID = taskID;
+            TaskName = taskName;
+            PiecesPlaced = piecesPlaced;
+            TotalPieces = totalPieces;
+            Pool = pool;
+            TableWidthInches = tableWidthInches;
+            TableHeightInches = tableHeightInches;
+        }
+
+        public PlaceOneTerrainRequest(PlayerID targetPlayerID, string taskName,
+            int piecesPlaced, int totalPieces, IReadOnlyList<TerrainPieceEntry> pool,
+            float tableWidthInches, float tableHeightInches)
+            : this(targetPlayerID, new TaskID(Guid.NewGuid()), taskName,
+                   piecesPlaced, totalPieces, pool, tableWidthInches, tableHeightInches)
+        { }
+
+        public Task<TerrainPlacementResult> Resolve(TerrainPlacementResult resolution) => Task.FromResult(resolution);
+    }
+}

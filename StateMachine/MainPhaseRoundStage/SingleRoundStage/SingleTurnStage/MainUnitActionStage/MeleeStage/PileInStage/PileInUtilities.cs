@@ -51,31 +51,27 @@ namespace FDG.Stages
             Dictionary<DataBinding<ModelData>, Position> workingDefenderPositions = liveDefenders
                 .ToDictionary(d => d, d => d.GetValue().Position);
 
-            // Candidate set: defenders not already in BTB with any charger (using starting positions).
-            List<DataBinding<ModelData>> candidates = liveDefenders
-                .Where(d => !IsInBaseContactWithAny(d.GetValue(), liveChargers))
-                .ToList();
-
-            // Process closest-to-front first: by smallest current b2b to nearest charger.
-            candidates.Sort((a, b) =>
+            // Candidate set: defenders not already in BTB with any charger, paired with their nearest charger
+            // and current b2b. Ordered closest-to-front first so the leading models settle their final
+            // positions before models behind them — later defenders' obstruction checks then see the
+            // up-to-date layout.
+            var candidates = new List<(DataBinding<ModelData> Defender, DataBinding<ModelData> Charger, float B2B)>();
+            foreach (DataBinding<ModelData> d in liveDefenders)
             {
-                float da = NearestB2BToCharger(a.GetValue(), liveChargers, out _);
-                float db = NearestB2BToCharger(b.GetValue(), liveChargers, out _);
-                return da.CompareTo(db);
-            });
+                float b2b = NearestB2BAt(d.GetValue().Position, d.GetValue().BaseRadiusInches, liveChargers,
+                    out DataBinding<ModelData>? nearest);
+                if (nearest == null) continue;
+                if (b2b <= BTB_EPSILON_INCHES) continue;
+                candidates.Add((d, nearest, b2b));
+            }
+            candidates.Sort((a, b) => a.B2B.CompareTo(b.B2B));
 
             HashSet<DataBinding<ModelData>> movedDefenders = new HashSet<DataBinding<ModelData>>();
 
-            foreach (DataBinding<ModelData> defender in candidates)
+            foreach (var (defender, targetCharger, currentB2B) in candidates)
             {
                 ModelData defenderModel = defender.GetValue();
                 Position defenderPos = workingDefenderPositions[defender];
-
-                // Re-pick nearest charger using the (unchanged) charger positions but defender's working pos.
-                float currentB2B = NearestB2BAt(defenderPos, defenderModel.BaseRadiusInches, liveChargers,
-                    out DataBinding<ModelData>? targetCharger);
-                if (targetCharger == null) continue;
-                if (currentB2B <= BTB_EPSILON_INCHES) continue;
 
                 ModelData chargerModel = targetCharger.GetValue();
                 float dx = chargerModel.Position.x - defenderPos.x;
@@ -125,22 +121,6 @@ namespace FDG.Stages
             }
             return result;
         }
-
-        private static bool IsInBaseContactWithAny(ModelData defender, List<DataBinding<ModelData>> chargers)
-        {
-            foreach (DataBinding<ModelData> c in chargers)
-            {
-                float b2b = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
-                    defender.Position, c.GetValue().Position,
-                    defender.BaseRadiusInches, c.GetValue().BaseRadiusInches);
-                if (b2b <= BTB_EPSILON_INCHES) return true;
-            }
-            return false;
-        }
-
-        private static float NearestB2BToCharger(ModelData defender, List<DataBinding<ModelData>> chargers,
-            out DataBinding<ModelData>? nearest)
-            => NearestB2BAt(defender.Position, defender.BaseRadiusInches, chargers, out nearest);
 
         private static float NearestB2BAt(Position pos, float radius, List<DataBinding<ModelData>> chargers,
             out DataBinding<ModelData>? nearest)

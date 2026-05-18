@@ -23,6 +23,8 @@ namespace FDG.Network.Connection.Lobby
 
         IObservable<int> ArmyPointsObservable { get; }
         IObservable<int> TerrainPieceCountObservable { get; }
+        IObservable<ETerrainPlacementMode> TerrainPlacementModeObservable { get; }
+        IObservable<string?> TerrainLayoutPathObservable { get; }
         IObservable<ERandomnessType> RandomnessTypeObservable { get; }
         IObservable<ETurnStyle> TurnStyleObservable { get; }
 
@@ -35,6 +37,10 @@ namespace FDG.Network.Connection.Lobby
         int ArmyPoints { get; }
 
         int TerrainCount { get; }
+
+        ETerrainPlacementMode TerrainPlacementMode { get; }
+
+        string? TerrainLayoutPath { get; }
 
         ERandomnessType RandomnessType { get; }
 
@@ -53,6 +59,10 @@ namespace FDG.Network.Connection.Lobby
         void SetArmyPoints(int armyPoints);
 
         void SetTerrainCount(int terrainCount);
+
+        void SetTerrainPlacementMode(ETerrainPlacementMode mode);
+
+        void SetTerrainLayoutPath(string? path);
 
         void SetRandomnessType(ERandomnessType randomnessType);
 

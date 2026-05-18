@@ -1,5 +1,13 @@
 namespace FDG.Stages
 {
+    /// <summary>
+    /// Rolls off to pick which team places terrain first. In Alternating mode,
+    /// records the full alternation order on the surrounding
+    /// <see cref="IMapSetupContext"/>; the winning team is first, remaining teams
+    /// follow in their current declaration order. Non-interactive modes ignore the
+    /// recorded order but the roll still runs (and logs) for narrative
+    /// consistency.
+    /// </summary>
     public class RollForFirstTerrainPlacementStage : StageBase<IMapSetupContext>
     {
         public StageBinding OnRollComplete;
@@ -19,8 +27,14 @@ namespace FDG.Stages
 
             ITeam winner = DiceUtilities.RollOff_SingleWinner(teams, teamNames, context.GameContext.TextOutput);
 
+            var order = new List<ITeam> { winner };
+            foreach (var t in teams)
+                if (!ReferenceEquals(t, winner))
+                    order.Add(t);
+
             context.Log($"Team {winner.TeamNumber} won the roll-off and will place terrain first.");
 
+            context.SetTerrainPlacementTeamOrder(order);
             OnRollComplete.Activate(context);
         }
     }

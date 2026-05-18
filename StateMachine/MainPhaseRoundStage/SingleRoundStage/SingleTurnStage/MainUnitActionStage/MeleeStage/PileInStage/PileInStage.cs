@@ -1,4 +1,4 @@
-﻿
+
 namespace FDG.Stages
 {
     public class PileInStage : StageBase<ICombatActionContext>
@@ -12,7 +12,26 @@ namespace FDG.Stages
 
         public override async Task Enter(ICombatActionContext context)
         {
-            GameContext.Log("Entered pile in stage. Skipping for now.");
+            GameContext.Log("Entered pile in stage.");
+
+            var chargingUnit = context.AttackingUnit.GetValue();
+            var defendingUnit = context.DefendingUnit.GetValue();
+
+            var moves = PileInUtilities.ComputePileInMoves(
+                chargingUnit.ModelBindings,
+                defendingUnit.ModelBindings,
+                GameContext.TableState.Terrain.Objects);
+
+            foreach (var move in moves)
+            {
+                move.Model.GetValue().SetPosition(move.NewPosition);
+            }
+
+            if (moves.Count > 0)
+            {
+                GameContext.Log($"Pile in: {moves.Count} defender model(s) moved toward the charging unit.");
+            }
+
             OnPiledIn.Activate(context);
         }
     }

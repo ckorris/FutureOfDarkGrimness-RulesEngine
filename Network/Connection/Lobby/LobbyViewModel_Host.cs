@@ -233,10 +233,32 @@ namespace FDG.Network.Connection
         {
             Debug.WriteLine("TryLaunchGame.");
 
-            //If we ever require readying up, this is where that can go.
+            failReason = ValidateLaunchSettings();
+            if (failReason != null)
+                return false;
+
             _ = Launch();
-            failReason = null;
             return true;
+        }
+
+        private string? ValidateLaunchSettings()
+        {
+            switch (_gameSettings.TerrainPlacementMode)
+            {
+                case ETerrainPlacementMode.Alternating:
+                    if (_gameSettings.TerrainPieceCount < 1 || _gameSettings.TerrainPieceCount > 30)
+                        return $"Terrain piece count ({_gameSettings.TerrainPieceCount}) must be between 1 and 30.";
+                    break;
+
+                case ETerrainPlacementMode.LoadFromFile:
+                    if (string.IsNullOrWhiteSpace(_gameSettings.TerrainLayoutPath))
+                        return "Terrain mode is 'Load From File' but no layout file was chosen.";
+                    var layout = SaveLoad.TerrainLayoutLoader.TryLoadFromFile(_gameSettings.TerrainLayoutPath, out string? error);
+                    if (layout == null)
+                        return $"Could not load terrain layout: {error}";
+                    break;
+            }
+            return null;
         }
 
         private async Task Launch()

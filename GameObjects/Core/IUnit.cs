@@ -5,6 +5,13 @@ namespace FDG
 {
     public interface IUnit : IPlayerOwnable
     {
+        /// <summary>
+        /// Stable per-unit identifier, used by the rule system to track cross-unit
+        /// token ownership and to re-link saved state on load. Assigned at unit
+        /// creation; survives JSON / network round-trips.
+        /// </summary>
+        public UnitID ID { get; }
+
         public string Name { get; }
 
         public int Quality { get; }

@@ -5,6 +5,8 @@ namespace FDG
 {
     public class UnitData : IUnit
     {
+        public UnitID ID { get; private set; }
+
         public PlayerID PlayerID { get; private set; }
 
         public string Name { get; set; }
@@ -57,8 +59,11 @@ namespace FDG
 
         [JsonConstructor]
         public UnitData(PlayerID playerID, string name, int quality, int defense,
-            List<SpecialRule> specialRules, List<DataBinding<ModelData>> modelBindings)
+            List<SpecialRule> specialRules, List<DataBinding<ModelData>> modelBindings,
+            UnitID? id = null)
         {
+            ID = id ?? new UnitID(System.Guid.NewGuid());
+
             PlayerID = playerID;
             Name = name;
             Quality = quality;
@@ -71,6 +76,8 @@ namespace FDG
 
         public UnitData(IUnitTemplate unitToCopy, List<DataReference> modelReferences, IReadWriteableGameDataStore gameDataStore)
         {
+            ID = new UnitID(System.Guid.NewGuid());
+
             PlayerID = unitToCopy.PlayerID;
             Name = unitToCopy.Name;
             Quality = unitToCopy.Quality;
@@ -90,6 +97,8 @@ namespace FDG
 
         public UnitData(PlayerID playerID, UnitFileEntry unitFileEntry, IReadWriteableGameDataStore gameDataStore)
         {
+            ID = new UnitID(System.Guid.NewGuid());
+
             PlayerID = playerID;
             Name = unitFileEntry.Name;
             Quality = unitFileEntry.Quality;

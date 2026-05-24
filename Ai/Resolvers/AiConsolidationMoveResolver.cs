@@ -1,0 +1,126 @@
+using FDG.Data;
+using FDG.StageResolution;
+using FDG.StageResolution.Requests;
+
+namespace FDG.Ai.Resolvers
+{
+    /// <summary>
+    /// Wipeout: shuffle up to 3" toward the nearest living enemy model.
+    /// Disengage: step 1" directly away from the defender unit's center, satisfying the disengage rule.
+    /// Skips (stays in place) when there's no sensible target.
+    /// </summary>
+    public class AiConsolidationMoveResolver : IStageResolver<ConsolidationMoveRequest, List<ModelMoveEntry>>
+    {
+        private readonly ITableState _tableState;
+        private readonly PlayerID _playerID;
+
+        public AiConsolidationMoveResolver(ITableState tableState, PlayerID playerID)
+        {
+            _tableState = tableState;
+            _playerID = playerID;
+        }
+
+        public Task<List<ModelMoveEntry>> Resolve(ConsolidationMoveRequest request)
+        {
+            var unit = request.UnitDataBinding.GetValue();
+            var aliveModels = unit.ModelBindings.Where(mb => mb.GetValue().GetIsAlive()).ToList();
+            if (aliveModels.Count == 0)
+                return Task.FromResult(StayInPlace(aliveModels));
+
+            float cx = aliveModels.Average(mb => mb.GetValue().Position.x);
+            float cz = aliveModels.Average(mb => mb.GetValue().Position.z);
+
+            (float dx, float dz)? target = request.Reason == EConsolidationReason.Disengage
+                ? GetDisengageDelta(cx, cz)
+                : GetWipeoutDelta(cx, cz);
+
+            if (target == null)
+                return Task.FromResult(StayInPlace(aliveModels));
+
+            float dist = MathF.Sqrt(target.Value.dx * target.Value.dx + target.Value.dz * target.Value.dz);
+            if (dist < 0.01f)
+                return Task.FromResult(StayInPlace(aliveModels));
+
+            float step = MathF.Min(request.MaxDistanceInches - 0.001f, dist);
+            float ndx = target.Value.dx / dist * step;
+            float ndz = target.Value.dz / dist * step;
+
+            // Scale the unit-wide delta so no model leaves the table — preserves cohesion.
+            float scale = MaxInBoundsScale(aliveModels, ndx, ndz);
+            ndx *= scale;
+            ndz *= scale;
+
+            var entries = aliveModels.Select(mb =>
+            {
+                var m = mb.GetValue();
+                return new ModelMoveEntry(mb,
+                    new List<Position> { new Position(m.Position.x + ndx, m.Position.z + ndz) });
+            }).ToList();
+            return Task.FromResult(entries);
+        }
+
+        private (float dx, float dz)? GetWipeoutDelta(float cx, float cz)
+        {
+            Position? nearest = null;
+            float nearestSq = float.MaxValue;
+            foreach (var u in _tableState.Units.Objects)
+            {
+                if (u.PlayerID == _playerID) continue;
+                foreach (var m in u.Models)
+                {
+                    if (!m.GetIsAlive()) continue;
+                    float dx = m.Position.x - cx, dz = m.Position.z - cz;
+                    float d2 = dx * dx + dz * dz;
+                    if (d2 < nearestSq) { nearestSq = d2; nearest = m.Position; }
+                }
+            }
+            return nearest is { } p ? (p.x - cx, p.z - cz) : null;
+        }
+
+        // Disengage: pull away from the average position of the nearest enemy unit's alive models.
+        // Disengage only fires when at least one enemy is in melee, so there's always a "back" direction.
+        private (float dx, float dz)? GetDisengageDelta(float cx, float cz)
+        {
+            Position? nearest = null;
+            float nearestSq = float.MaxValue;
+            foreach (var u in _tableState.Units.Objects)
+            {
+                if (u.PlayerID == _playerID) continue;
+                foreach (var m in u.Models)
+                {
+                    if (!m.GetIsAlive()) continue;
+                    float dx = m.Position.x - cx, dz = m.Position.z - cz;
+                    float d2 = dx * dx + dz * dz;
+                    if (d2 < nearestSq) { nearestSq = d2; nearest = m.Position; }
+                }
+            }
+            return nearest is { } p ? (cx - p.x, cz - p.z) : null;
+        }
+
+        // Largest t in [0,1] such that for every model, position + t*(dx,dz) keeps the base inside the table.
+        private static float MaxInBoundsScale(List<DataBinding<ModelData>> aliveModels, float dx, float dz)
+        {
+            float w = GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES;
+            float h = GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES;
+            float t = 1f;
+            foreach (var mb in aliveModels)
+            {
+                var m = mb.GetValue();
+                float r = m.BaseRadiusInches;
+                t = MathF.Min(t, AxisLimit(m.Position.x, dx, r, w - r));
+                t = MathF.Min(t, AxisLimit(m.Position.z, dz, r, h - r));
+            }
+            return MathF.Max(0f, t);
+        }
+
+        private static float AxisLimit(float p, float d, float lo, float hi)
+        {
+            if (d > 0f && p + d > hi) return (hi - p) / d;
+            if (d < 0f && p + d < lo) return (lo - p) / d;
+            return 1f;
+        }
+
+        private static List<ModelMoveEntry> StayInPlace(List<DataBinding<ModelData>> aliveModels) =>
+            aliveModels.Select(mb => new ModelMoveEntry(mb, new List<Position>())).ToList();
+    }
+}

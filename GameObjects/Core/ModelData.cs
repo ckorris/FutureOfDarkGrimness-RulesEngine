@@ -1,5 +1,6 @@
 ﻿using FDG.BuiltInAssets;
 using FDG.Data;
+using FDG.Rules.Tokens;
 using FDG.SerializableVisuals;
 using FDG.SerializableVisuals.Materials;
 using FDG.SerializableVisuals.Meshes;
@@ -12,6 +13,10 @@ namespace FDG
 {
     public class ModelData : IModel
     {
+
+        [JsonProperty] private TokenContainer _tokens = new TokenContainer();
+
+        [JsonIgnore] public ITokenContainer Tokens => _tokens;
 
         [JsonIgnore]
         public float TotalWounds { get; }

@@ -1,5 +1,6 @@
 
 using FDG.Data;
+using FDG.Rules.Tokens;
 
 namespace FDG
 {
@@ -11,6 +12,14 @@ namespace FDG
         /// creation; survives JSON / network round-trips.
         /// </summary>
         public UnitID ID { get; }
+
+        /// <summary>
+        /// Per-unit token container holding rule-system state (cost gates, status
+        /// conditions, stacking markers, target tags, per-activation effects).
+        /// Tokens survive JSON / network round-trips; subscriptions to the
+        /// container's events do not and must be re-attached after rehydration.
+        /// </summary>
+        public ITokenContainer Tokens { get; }
 
         public string Name { get; }
 

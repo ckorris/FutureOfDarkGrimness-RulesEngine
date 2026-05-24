@@ -1,4 +1,5 @@
 ﻿using FDG.Data;
+using FDG.Rules.Tokens;
 using FDG.SaveLoad;
 using Newtonsoft.Json;
 namespace FDG
@@ -6,6 +7,10 @@ namespace FDG
     public class UnitData : IUnit
     {
         public UnitID ID { get; private set; }
+
+        [JsonProperty] private TokenContainer _tokens = new TokenContainer();
+
+        [JsonIgnore] public ITokenContainer Tokens => _tokens;
 
         public PlayerID PlayerID { get; private set; }
 

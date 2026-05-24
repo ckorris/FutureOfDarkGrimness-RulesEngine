@@ -1,4 +1,5 @@
 using FDG.Data;
+using FDG.Rules.Tokens;
 using FDG.SerializableVisuals;
 
 namespace FDG
@@ -6,6 +7,14 @@ namespace FDG
     public interface IModel
     {
         public const int DEFAULT_WOUND_COUNT = 1;
+
+        /// <summary>
+        /// Per-model token container holding rule-system state. Used for
+        /// model-scoped markers (e.g. Regenerative Strength accumulates a count
+        /// on the specific model that ignored the wound). Tokens survive JSON /
+        /// network round-trips; subscriptions to the container's events do not.
+        /// </summary>
+        public ITokenContainer Tokens { get; }
 
         public float TotalWounds { get; }
 

@@ -3,17 +3,11 @@ using FDG.SaveLoad;
 namespace FDG.Stages
 {
     /// <summary>
-    /// Built-in terrain pool used by <see cref="ETerrainPlacementMode.AutoFromLayout"/>
-    /// (placed verbatim) and as the template pool for
-    /// <see cref="ETerrainPlacementMode.Alternating"/> (positions ignored; only
-    /// dimensions + type matter). User-supplied layouts (<c>LoadFromFile</c>) bypass
-    /// this and use the file's pieces directly.
+    /// Built-in terrain pool. Templates only — design-time positions are ignored;
+    /// only the dimensions + type matter. Used by AutoFromLayout (verbatim) and by
+    /// Alternating (as the pool the player picks from). Externalization to a JSON
+    /// asset is tracked under #044.
     /// </summary>
-    /// <remarks>
-    /// Defined in code rather than as a JSON asset for v1 — externalizing to a
-    /// shipped <see cref="TerrainLayoutFile"/> asset is tracked under #044
-    /// (multi-pool selection).
-    /// </remarks>
     public static class DefaultTerrainPool
     {
         public static TerrainLayoutFile Get() => new TerrainLayoutFile
@@ -28,45 +22,68 @@ namespace FDG.Stages
                     Shape = new RectangularZone(33, 39, 22, 26),
                     HeightInches = 4f,
                 },
-                // Forest, left-center — cover + difficult.
+                // Small building.
+                new TerrainPieceEntry
+                {
+                    TerrainType = ETerrainType.Blocking | ETerrainType.Impassible,
+                    Shape = new RectangularZone(0, 4, 0, 3),
+                    HeightInches = 3f,
+                },
+                // Tall building.
+                new TerrainPieceEntry
+                {
+                    TerrainType = ETerrainType.Blocking | ETerrainType.Impassible,
+                    Shape = new RectangularZone(0, 5, 0, 5),
+                    HeightInches = 5f,
+                },
+                // L-shaped building (small). 4x4 bounding box.
+                new TerrainPieceEntry
+                {
+                    TerrainType = ETerrainType.Blocking | ETerrainType.Impassible,
+                    Shape = new CompositeZone(new List<IZone>
+                    {
+                        new RectangularZone(0, 4, 0, 2),  // horizontal bar
+                        new RectangularZone(0, 2, 2, 4),  // vertical bar above-left
+                    }),
+                    HeightInches = 4f,
+                },
+                // L-shaped building (large). 6x6 bounding box.
+                new TerrainPieceEntry
+                {
+                    TerrainType = ETerrainType.Blocking | ETerrainType.Impassible,
+                    Shape = new CompositeZone(new List<IZone>
+                    {
+                        new RectangularZone(0, 6, 0, 2),  // horizontal bar
+                        new RectangularZone(0, 2, 2, 6),  // vertical bar above-left
+                    }),
+                    HeightInches = 4f,
+                },
+                // Forest — cover + difficult. Rectangular (brown patch).
                 new TerrainPieceEntry
                 {
                     TerrainType = ETerrainType.Cover | ETerrainType.Difficult,
-                    Shape = new CircularZone(20, 24, 5),
+                    Shape = new RectangularZone(0, 6, 0, 6),
                     HeightInches = 0f,
                 },
-                // Forest, right-center — cover + difficult.
-                new TerrainPieceEntry
-                {
-                    TerrainType = ETerrainType.Cover | ETerrainType.Difficult,
-                    Shape = new CircularZone(52, 24, 5),
-                    HeightInches = 0f,
-                },
-                // Sandbags near each deployment line — cover.
+                // Sandbags — cover.
                 new TerrainPieceEntry
                 {
                     TerrainType = ETerrainType.Cover,
-                    Shape = new RectangularZone(28, 36, 12, 13),
-                    HeightInches = 0f,
-                },
-                new TerrainPieceEntry
-                {
-                    TerrainType = ETerrainType.Cover,
-                    Shape = new RectangularZone(36, 44, 35, 36),
+                    Shape = new RectangularZone(0, 8, 0, 1),
                     HeightInches = 0f,
                 },
                 // Mine field — dangerous.
                 new TerrainPieceEntry
                 {
                     TerrainType = ETerrainType.Dangerous,
-                    Shape = new RectangularZone(8, 14, 30, 36),
+                    Shape = new RectangularZone(0, 6, 0, 6),
                     HeightInches = 0f,
                 },
                 // Rubble — difficult.
                 new TerrainPieceEntry
                 {
                     TerrainType = ETerrainType.Difficult,
-                    Shape = new RectangularZone(58, 66, 12, 18),
+                    Shape = new RectangularZone(0, 8, 0, 6),
                     HeightInches = 0f,
                 },
             }

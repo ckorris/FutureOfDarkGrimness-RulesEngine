@@ -128,6 +128,56 @@ namespace FDG.Tests
             Assert.That(result, Is.EqualTo(TerrainPlacementValidity.Valid));
         }
 
+        private static ITerrain LShape() =>
+            new TerrainData(ETerrainType.Blocking | ETerrainType.Impassible,
+                new CompositeZone(new List<IZone>
+                {
+                    new RectangularZone(10, 16, 10, 12),  // horizontal bar
+                    new RectangularZone(10, 12, 12, 16),  // vertical bar
+                }));
+
+        [Test]
+        public void Composite_FullyInside_Valid()
+        {
+            var composite = new CompositeZone(new List<IZone>
+            {
+                new RectangularZone(20, 26, 20, 22),
+                new RectangularZone(20, 22, 22, 26),
+            });
+            var result = TerrainPlacementValidator.Check(composite, TableW, TableH, Array.Empty<ITerrain>());
+            Assert.That(result, Is.EqualTo(TerrainPlacementValidity.Valid));
+        }
+
+        [Test]
+        public void Composite_OnePartOffTable_OutOfBounds()
+        {
+            var composite = new CompositeZone(new List<IZone>
+            {
+                new RectangularZone(20, 26, 20, 22),
+                new RectangularZone(-2, 1, 22, 26),  // pokes off the left edge
+            });
+            var result = TerrainPlacementValidator.Check(composite, TableW, TableH, Array.Empty<ITerrain>());
+            Assert.That(result, Is.EqualTo(TerrainPlacementValidity.OutOfBounds));
+        }
+
+        [Test]
+        public void RectOverlapsCompositeBar_Rejected()
+        {
+            // Candidate rect overlaps the L's vertical bar at (10..12, 12..16).
+            var result = TerrainPlacementValidator.Check(
+                new RectangularZone(11, 14, 13, 15), TableW, TableH, new[] { LShape() });
+            Assert.That(result, Is.EqualTo(TerrainPlacementValidity.OverlapsExistingTerrain));
+        }
+
+        [Test]
+        public void RectInLShapeNotch_Valid()
+        {
+            // The L has a 4x4 notch at (12..16, 12..16); a rect sitting in the notch is legal.
+            var result = TerrainPlacementValidator.Check(
+                new RectangularZone(13, 15, 13, 15), TableW, TableH, new[] { LShape() });
+            Assert.That(result, Is.EqualTo(TerrainPlacementValidity.Valid));
+        }
+
         [Test]
         public void CircleVsRect_Symmetric()
         {

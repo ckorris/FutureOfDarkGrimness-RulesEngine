@@ -71,12 +71,11 @@ namespace FDG.Ai.Resolvers
                 minY + (float)_rng.NextDouble() * (maxY - minY));
         }
 
-        private static (float halfW, float halfH) GetHalfExtents(IZone zone) => zone switch
+        private static (float halfW, float halfH) GetHalfExtents(IZone zone)
         {
-            RectangularZone r => ((r.Right - r.Left) * 0.5f, (r.Top - r.Bottom) * 0.5f),
-            CircularZone c => (c.Radius, c.Radius),
-            _ => throw new NotSupportedException($"Unsupported zone type: {zone.GetType().Name}.")
-        };
+            (float lx, float hx, float ly, float hy) = zone.GetAABB();
+            return ((hx - lx) * 0.5f, (hy - ly) * 0.5f);
+        }
 
         private TerrainPlacementResult GridSearchFallback(PlaceOneTerrainRequest request, List<ITerrain> existing)
         {
@@ -113,11 +112,12 @@ namespace FDG.Ai.Resolvers
                 0, new Float2(request.TableWidthInches * 0.5f, request.TableHeightInches * 0.5f));
         }
 
-        private static float FootprintArea(IZone zone) => zone switch
+        private static float FootprintArea(IZone zone)
         {
-            RectangularZone r => (r.Right - r.Left) * (r.Top - r.Bottom),
-            CircularZone c => MathF.PI * c.Radius * c.Radius,
-            _ => 0f,
-        };
+            // AABB area — used only to order "smallest first" in the grid fallback,
+            // so exact area isn't important.
+            (float lx, float hx, float ly, float hy) = zone.GetAABB();
+            return (hx - lx) * (hy - ly);
+        }
     }
 }

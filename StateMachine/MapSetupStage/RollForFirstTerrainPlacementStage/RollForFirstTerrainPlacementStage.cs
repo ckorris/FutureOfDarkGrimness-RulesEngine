@@ -22,6 +22,13 @@ namespace FDG.Stages
         {
             context.Log($"Entered {nameof(RollForFirstTerrainPlacementStage)}.");
 
+            if (PlaceTerrainStage.ShouldSkipTerrainPhase(context.GameContext.Settings))
+            {
+                context.Log("  Terrain count is 0 in Alternating mode; skipping terrain roll-off.");
+                OnRollComplete.Activate(context);
+                return;
+            }
+
             List<ITeam> teams = context.GameContext.TableState.Teams.Objects.ToList();
             List<string> teamNames = teams.Select(t => $"Team {t.TeamNumber}").ToList();
 

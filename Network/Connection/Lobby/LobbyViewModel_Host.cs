@@ -246,8 +246,8 @@ namespace FDG.Network.Connection
             switch (_gameSettings.TerrainPlacementMode)
             {
                 case ETerrainPlacementMode.Alternating:
-                    if (_gameSettings.TerrainPieceCount < 1 || _gameSettings.TerrainPieceCount > 30)
-                        return $"Terrain piece count ({_gameSettings.TerrainPieceCount}) must be between 1 and 30.";
+                    if (_gameSettings.TerrainPieceCount < 0 || _gameSettings.TerrainPieceCount > 30)
+                        return $"Terrain piece count ({_gameSettings.TerrainPieceCount}) must be between 0 and 30.";
                     break;
 
                 case ETerrainPlacementMode.LoadFromFile:

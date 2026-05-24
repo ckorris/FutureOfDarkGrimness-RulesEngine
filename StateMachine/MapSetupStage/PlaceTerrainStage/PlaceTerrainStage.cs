@@ -22,6 +22,15 @@ namespace FDG.Stages
         /// <summary>Inclusive upper bound on the Alternating-mode piece count, per #002 Decisions.</summary>
         public const int MaxAlternatingPieceCount = 30;
 
+        /// <summary>
+        /// True if the terrain phase should be skipped entirely (no roll, no placement).
+        /// Currently triggers only when Alternating mode is paired with a count of 0;
+        /// AutoFromLayout / LoadFromFile have their own pool/file that already may be empty.
+        /// </summary>
+        public static bool ShouldSkipTerrainPhase(GameSettings settings) =>
+            settings.TerrainPlacementMode == ETerrainPlacementMode.Alternating
+            && settings.TerrainPieceCount <= 0;
+
         public PlaceTerrainStage(IGameContext gameContext, IStateMachineLayer<IMapSetupContext> parent)
             : base(gameContext, parent)
         {
@@ -31,6 +40,13 @@ namespace FDG.Stages
         public override async Task Enter(IMapSetupContext context)
         {
             context.Log($"Entered {nameof(PlaceTerrainStage)} in mode {context.GameContext.Settings.TerrainPlacementMode}.");
+
+            if (ShouldSkipTerrainPhase(context.GameContext.Settings))
+            {
+                context.Log("  Terrain count is 0; skipping terrain placement.");
+                OnTerrainPlaced.Activate(context);
+                return;
+            }
 
             switch (context.GameContext.Settings.TerrainPlacementMode)
             {
@@ -90,7 +106,8 @@ namespace FDG.Stages
                 throw new InvalidOperationException(
                     $"{nameof(PlaceTerrainStage)} entered Alternating mode before {nameof(IMapSetupContext.TerrainPlacementTeamOrder)} was set.");
 
-            int totalPieces = Math.Clamp(context.GameContext.Settings.TerrainPieceCount, 1, MaxAlternatingPieceCount);
+            int totalPieces = Math.Clamp(context.GameContext.Settings.TerrainPieceCount, 0, MaxAlternatingPieceCount);
+            if (totalPieces == 0) return;
             var pool = DefaultTerrainPool.Get().Pieces;
 
             if (pool.Count == 0)

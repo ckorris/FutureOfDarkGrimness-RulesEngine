@@ -46,6 +46,7 @@ namespace FDG.Stages
                 .AddChild(new RollForMoraleStage(GameContext, this), out var rollForMorale)
                 .AddChild(new AssignMeleeMoralePenaltyStage(GameContext, this), out var assignMeleeMoralePenalty)
                 .AddChild(new ApplyFatigueStage(GameContext, this), out var applyFatigueStage)
+                .AddChild(new ConsolidateStage(GameContext, this), out var consolidate)
                 .AddSibling(nameof(OnFinishedMelee), OnFinishedMelee, out string meleeFinishedEvent)
                 .Build();
 
@@ -71,7 +72,8 @@ namespace FDG.Stages
             rollForMorale.OnMoralePassed.Bind(applyFatigueStage);
             rollForMorale.OnMoraleFailed.Bind(assignMeleeMoralePenalty);
             assignMeleeMoralePenalty.OnAssignedPenalty.Bind(applyFatigueStage);
-            applyFatigueStage.OnFatigueApplied.Bind(meleeFinishedEvent);
+            applyFatigueStage.OnFatigueApplied.Bind(consolidate);
+            consolidate.OnConsolidated.Bind(meleeFinishedEvent);
 
             return dictionary;
         }

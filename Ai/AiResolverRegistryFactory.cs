@@ -22,6 +22,7 @@ namespace FDG.Ai
                 .RegisterResolver(new AiChooseRangedAttackResolver())
                 .RegisterResolver(new AiChooseMeleeDefenderResolver())
                 .RegisterResolver(new AiDefineMovementResolver(tableState, playerID))
+                .RegisterResolver(new AiConsolidationMoveResolver(tableState, playerID))
                 .RegisterResolver(new AiAssignWoundsResolver())
                 .RegisterResolver(new AiSelectionResolver<UnitData>())
                 .RegisterResolver(new AiSelectionResolver<ModelData>())

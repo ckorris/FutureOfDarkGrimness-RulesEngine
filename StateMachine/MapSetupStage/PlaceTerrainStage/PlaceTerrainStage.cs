@@ -132,7 +132,8 @@ namespace FDG.Stages
                     context, placer, piecesPlaced, totalPieces, pool, tableW, tableH);
 
                 TerrainPieceEntry template = pool[result.TemplateIndex];
-                IZone placedShape = TerrainTemplateUtilities.TranslateToCenter(template.Shape, result.Center);
+                IZone rotated = TerrainTemplateUtilities.Rotate(template.Shape, result.RotationDegrees);
+                IZone placedShape = TerrainTemplateUtilities.TranslateToCenter(rotated, result.Center);
 
                 context.GameContext.GameDataStore.Create(
                     new TerrainData(template.TerrainType, placedShape, template.HeightInches));
@@ -166,8 +167,9 @@ namespace FDG.Stages
                     continue;
                 }
 
-                IZone candidateShape = TerrainTemplateUtilities.TranslateToCenter(
-                    pool[result.TemplateIndex].Shape, result.Center);
+                IZone rotatedCandidate = TerrainTemplateUtilities.Rotate(
+                    pool[result.TemplateIndex].Shape, result.RotationDegrees);
+                IZone candidateShape = TerrainTemplateUtilities.TranslateToCenter(rotatedCandidate, result.Center);
 
                 var validity = TerrainPlacementValidator.Check(
                     candidateShape, tableW, tableH,

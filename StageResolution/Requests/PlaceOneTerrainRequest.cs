@@ -15,12 +15,19 @@ namespace FDG.StageResolution.Requests
 
         public Float2 Center { get; }
 
+        /// <summary>Rotation applied to the template before translation, in degrees. 0 = no rotation.</summary>
+        public float RotationDegrees { get; }
+
         [JsonConstructor]
-        public TerrainPlacementResult(int templateIndex, Float2 center)
+        public TerrainPlacementResult(int templateIndex, Float2 center, float rotationDegrees)
         {
             TemplateIndex = templateIndex;
             Center = center;
+            RotationDegrees = rotationDegrees;
         }
+
+        public TerrainPlacementResult(int templateIndex, Float2 center)
+            : this(templateIndex, center, 0f) { }
     }
 
     /// <summary>

@@ -30,20 +30,22 @@ namespace FDG.Ai.Resolvers
 
             var existing = _tableState.Terrain.Objects.ToList();
 
-            // Try repeatedly: random template, random center, accept if validator passes.
+            // Try repeatedly: random template, random rotation (45° steps), random center, accept if valid.
             for (int attempt = 0; attempt < MaxAttempts; attempt++)
             {
                 int templateIndex = _rng.Next(request.Pool.Count);
+                float rotationDeg = _rng.Next(8) * 45f;
                 TerrainPieceEntry template = request.Pool[templateIndex];
 
-                Float2 center = RandomInteriorPoint(template.Shape, request.TableWidthInches, request.TableHeightInches);
-                IZone candidate = TerrainTemplateUtilities.TranslateToCenter(template.Shape, center);
+                IZone rotated = TerrainTemplateUtilities.Rotate(template.Shape, rotationDeg);
+                Float2 center = RandomInteriorPoint(rotated, request.TableWidthInches, request.TableHeightInches);
+                IZone candidate = TerrainTemplateUtilities.TranslateToCenter(rotated, center);
 
                 var validity = TerrainPlacementValidator.Check(
                     candidate, request.TableWidthInches, request.TableHeightInches, existing);
 
                 if (validity == TerrainPlacementValidity.Valid)
-                    return Task.FromResult(new TerrainPlacementResult(templateIndex, center));
+                    return Task.FromResult(new TerrainPlacementResult(templateIndex, center, rotationDeg));
             }
 
             // Fell through — likely a very crowded table. Find the smallest template

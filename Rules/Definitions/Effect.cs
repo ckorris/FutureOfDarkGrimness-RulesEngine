@@ -1,0 +1,152 @@
+using FDG.Rules.Foundation;
+
+namespace FDG.Rules.Definitions;
+
+/// <summary>
+/// What a rule does when its <see cref="Condition"/> matches at a hook.
+/// Stored on a <c>HookEntry</c> (passive rules) or on an <c>ActivatedAbility</c>
+/// (player-triggered abilities and spells). The engine translates a matched
+/// effect into one or more <c>RuleOperation</c> items in the operation queue,
+/// which it then applies to game state.
+///
+/// Closed sum type — abstract record with sealed nested record subtypes, same
+/// pattern as <see cref="Condition"/>, <see cref="TokenClearTrigger"/>, and
+/// <see cref="Cost"/>. Pattern-match in the effect dispatcher to translate
+/// each subtype into the operations it queues.
+///
+/// Vocabulary grows on demand. Subtypes not exercised by current tests can be
+/// left out of the initial commit and added when a rule first needs them.
+/// </summary>
+public abstract record Effect
+{
+    /// <summary>
+    /// Modifies a base stat (Quality / Defense / Tough) by <see cref="Delta"/>
+    /// for the duration given by <see cref="LifetimeScope"/>. Unlike
+    /// <see cref="RollModifier"/>, this persists across multiple rolls — e.g.
+    /// "+1 Defense until end of round" rather than "+1 to this one save roll."
+    /// </summary>
+    public sealed record StatModifier(EStatKind Stat, int Delta, ELifetime LifetimeScope) : Effect;
+
+    /// <summary>
+    /// Adds or subtracts <see cref="Delta"/> to a single dice roll of the given
+    /// <see cref="RollKind"/>. The most common effect: Stealth -1 to hit,
+    /// Courage +1 to morale, AP(X) -X to enemy defense, etc. Applies only to
+    /// the one roll in flight at the firing hook.
+    /// </summary>
+    public sealed record RollModifier(ERollKind RollKind, int Delta) : Effect;
+
+    /// <summary>
+    /// Forces a reroll of dice in the current roll matching
+    /// <see cref="Condition"/>. Covers Bane (reroll unmodified Defense 6s),
+    /// Lacerate (reroll same on attacker side), Fearless (reroll failed morale
+    /// on 4+).
+    /// </summary>
+    public sealed record Reroll(ERollKind Roll, RerollCondition Condition) : Effect;
+
+    /// <summary>
+    /// Each die that came up unmodified <see cref="OnRollValue"/> generates
+    /// <see cref="Count"/> additional hits (defaults to one). Covers Furious,
+    /// Surge, Relentless — all the "natural 6 → bonus hit" rules.
+    /// </summary>
+    public sealed record AddExtraHit(int OnRollValue, int Count = 1) : Effect;
+
+    /// <summary>
+    /// Same shape as <see cref="AddExtraHit"/> but for wound generation.
+    /// Covers Shred (+1 wound on unmodified 1 to block).
+    /// </summary>
+    public sealed record AddExtraWound(int OnRollValue, int Count = 1) : Effect;
+
+    /// <summary>
+    /// Adjusts the bearer's movement distance by <see cref="DistanceInches"/>
+    /// (positive or negative) when the action being taken is
+    /// <see cref="ActionType"/>. Covers Fast (+2"/Advance, +4"/Rush+Charge),
+    /// Slow, Rapid Rush (+6"/Rush), and target-perspective movement penalties
+    /// like Melee Shrouding (-3" on enemy Charge).
+    /// </summary>
+    public sealed record MovementBonus(EActionType ActionType, float DistanceInches) : Effect;
+
+    /// <summary>
+    /// Suppresses another rule named <see cref="RuleName"/> in the current
+    /// evaluation chain — removes its effects from the operation queue before
+    /// the engine applies them. Covers Bane / Smash / Unstoppable (ignore
+    /// Regeneration). This is the rule-vs-rule primitive that lets Plan B
+    /// express "X counters Y" without engine code.
+    /// </summary>
+    public sealed record IgnoreRule(string RuleName) : Effect;
+
+    /// <summary>
+    /// Grants the bearer the rule named <see cref="RuleName"/> for the duration
+    /// of <see cref="Scope"/>. Typical use: spell-applied "next time" buffs
+    /// (Blessed Ammo, Fade in the Dark, Protective Dome) with
+    /// <see cref="ELifetime.NextTrigger"/>; activation-scoped grants
+    /// (Versatile Attack/Reach) with <see cref="ELifetime.ThisActivation"/>.
+    /// Distinct from <see cref="Aura"/>, which grants to all unit-mates.
+    /// </summary>
+    public sealed record AddRule(string RuleName, ELifetime Scope) : Effect;
+
+    /// <summary>
+    /// Grants the rule named <see cref="RuleName"/> to every model in the
+    /// bearer's unit for as long as the bearer remains alive. Distinct from
+    /// <see cref="AddRule"/> because aura propagation is unit-wide and tied to
+    /// bearer existence rather than a named lifetime. Covers Regeneration
+    /// Aura, Furious Aura, Melee Shrouding Aura, etc.
+    /// </summary>
+    public sealed record Aura(string RuleName) : Effect;
+
+    /// <summary>
+    /// Inflicts <see cref="Count"/> hits on the target unit, with each hit
+    /// carrying the additional rules named in <see cref="WithRules"/>
+    /// (e.g. <c>AP</c>, <c>Blast</c>, <c>Lacerate</c>, <c>Deadly</c>).
+    /// The universal offensive-spell shape: Cerebral Trauma
+    /// (1 hit with Blast and Lacerate), Lightning Fog (4 hits), Psychic Terror
+    /// (9 hits with Bane). <see cref="Count"/> is a fixed authored value
+    /// because every offensive-spell hit-count we've seen in the corpus is
+    /// fixed — no rule-data randomness on the count itself.
+    /// </summary>
+    public sealed record DealHits(int Count, IReadOnlyList<string> WithRules) : Effect;
+
+    /// <summary>
+    /// Removes <see cref="Amount"/> wounds from the target model. The only
+    /// rule-data effect with a genuinely random amount — Mend uses D3 — hence
+    /// the <see cref="DiceExpression"/> parameter rather than a fixed int.
+    /// </summary>
+    public sealed record Heal(DiceExpression Amount) : Effect;
+
+    /// <summary>
+    /// Adds <see cref="Count"/> tokens of <see cref="TType"/> to the bearer's
+    /// container with the specified <see cref="Clear"/> policy. Covers cost-
+    /// gate setup ("used-this-activation" markers cleared at
+    /// <see cref="EHookID.Activation_OnEndOfActivation"/>), spell-token
+    /// replenishment, marker placement (Piercing Frenzy grants one marker on
+    /// enemy-destroyed), and cross-unit target tagging when paired with a
+    /// target selector.
+    /// </summary>
+    public sealed record GrantToken(TokenType TType, int Count, TokenClearTrigger Clear) : Effect;
+
+    /// <summary>
+    /// Removes <see cref="Count"/> tokens of <see cref="TType"/> from the
+    /// bearer's container. Covers paying activated-ability costs — spending
+    /// spell tokens, consuming once-per-game markers, etc. Pairs with
+    /// <see cref="Cost.ConsumesToken"/> at the activated-ability layer.
+    /// </summary>
+    public sealed record ConsumeToken(TokenType TType, int Count) : Effect;
+
+    /// <summary>
+    /// Invokes the movement subsystem inline — the bearer moves up to
+    /// <see cref="MaxInches"/>. If <see cref="IsOptional"/>, the player may
+    /// decline the move. Engine primitive (Phase 7h / item #042 engine refactor)
+    /// that rules invoke without re-implementing movement logic. Covers
+    /// Harassing (3" after shooting/melee, optional), Re-Position Artillery,
+    /// Vanguard reposition.
+    /// </summary>
+    public sealed record TriggeredMove(float MaxInches, bool IsOptional) : Effect;
+
+    /// <summary>
+    /// Triggers a second activation of the bearer this round. Engine primitive
+    /// the Martial Prowess rule invokes. Currently no parameters because
+    /// self-reactivation is the only case in the corpus; could grow a
+    /// <c>UnitID Target</c> parameter if a future rule reactivates a different
+    /// unit.
+    /// </summary>
+    public sealed record Reactivate : Effect;
+}

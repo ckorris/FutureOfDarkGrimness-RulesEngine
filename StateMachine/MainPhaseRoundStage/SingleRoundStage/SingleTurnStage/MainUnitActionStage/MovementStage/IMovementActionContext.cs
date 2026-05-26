@@ -10,6 +10,8 @@ namespace FDG.Stages
 
         public float MaxAdvanceDistance { get; }
 
+        public float MaxRushDistance { get; }
+
         public float MaxChargeDistance { get; }
 
         public List<ITerrain> RelevantTerrain { get; }
@@ -36,6 +38,14 @@ namespace FDG.Stages
             }
         }
 
+        public float MaxRushDistance
+        {
+            get
+            {
+                return _canMove ? _maxRushDistance : 0f;
+            }
+        }
+
         public float MaxChargeDistance
         {
             get
@@ -48,6 +58,7 @@ namespace FDG.Stages
 
         private bool _canMove;
         private float _maxAdvanceDistance;
+        private float _maxRushDistance;
         private float _maxChargeDistance;
 
         private bool _hasMoved = false;
@@ -72,6 +83,7 @@ namespace FDG.Stages
 
             _canMove = precursor.CanMove;
             _maxAdvanceDistance = precursor.MaxAdvanceDistance;
+            _maxRushDistance = precursor.MaxRushDistance;
             _maxChargeDistance = precursor.MaxChargeDistance;
             RelevantTerrain = precursor.RelevantTerrain;
         }
@@ -115,6 +127,8 @@ namespace FDG.Stages
 
         public float MaxAdvanceDistance;
 
+        public float MaxRushDistance;
+
         public float MaxChargeDistance;
 
         public List<ITerrain> RelevantTerrain;
@@ -125,6 +139,7 @@ namespace FDG.Stages
             {
                 CanMove = true,
                 MaxAdvanceDistance = GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES,
+                MaxRushDistance = GameWideConstants.RUSH_DISTANCE_INCHES,
                 MaxChargeDistance = GameWideConstants.CHARGE_DISTANCE_INCHES,
                 RelevantTerrain = new List<ITerrain>(gameContext.TableState.Terrain.Objects)
             };

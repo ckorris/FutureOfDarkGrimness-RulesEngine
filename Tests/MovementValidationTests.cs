@@ -24,7 +24,7 @@ namespace FDG.Tests
 
             bool ok = MovementUtilities.ValidatePaths(
                 new List<ModelMoveEntry> { move },
-                maxChargeDistance: 12f,
+                maxDistanceInches: 12f,
                 terrain: null,
                 out List<ReasonForInvalidMove> errors);
 
@@ -46,7 +46,7 @@ namespace FDG.Tests
 
             bool ok = MovementUtilities.ValidatePaths(
                 new List<ModelMoveEntry> { move },
-                maxChargeDistance: 12f,
+                maxDistanceInches: 12f,
                 terrain: terrain,
                 out List<ReasonForInvalidMove> errors);
 
@@ -68,7 +68,7 @@ namespace FDG.Tests
 
             bool ok = MovementUtilities.ValidatePaths(
                 new List<ModelMoveEntry> { move },
-                maxChargeDistance: 12f,
+                maxDistanceInches: 12f,
                 terrain: terrain,
                 out List<ReasonForInvalidMove> errors);
 
@@ -91,7 +91,7 @@ namespace FDG.Tests
 
             bool ok = MovementUtilities.ValidatePaths(
                 new List<ModelMoveEntry> { move },
-                maxChargeDistance: 12f,
+                maxDistanceInches: 12f,
                 terrain: terrain,
                 out List<ReasonForInvalidMove> errors);
 
@@ -122,7 +122,7 @@ namespace FDG.Tests
 
             bool ok = MovementUtilities.ValidatePaths(
                 new List<ModelMoveEntry> { move },
-                maxChargeDistance: 100f, //high so distance doesn't dominate
+                maxDistanceInches: 100f, //high so distance doesn't dominate
                 terrain: terrain,
                 out List<ReasonForInvalidMove> errors);
 
@@ -145,7 +145,7 @@ namespace FDG.Tests
 
             bool ok = MovementUtilities.ValidatePaths(
                 new List<ModelMoveEntry> { move },
-                maxChargeDistance: 12f,
+                maxDistanceInches: 12f,
                 terrain: terrain,
                 out List<ReasonForInvalidMove> errors);
 
@@ -168,7 +168,7 @@ namespace FDG.Tests
 
             bool ok = MovementUtilities.ValidatePaths(
                 new List<ModelMoveEntry> { move },
-                maxChargeDistance: 12f,
+                maxDistanceInches: 12f,
                 terrain: terrain,
                 out List<ReasonForInvalidMove> errors);
 
@@ -190,7 +190,7 @@ namespace FDG.Tests
 
             bool ok = MovementUtilities.ValidatePaths(
                 new List<ModelMoveEntry> { move },
-                maxChargeDistance: 12f,
+                maxDistanceInches: 12f,
                 terrain: terrain,
                 out List<ReasonForInvalidMove> errors);
 
@@ -213,7 +213,7 @@ namespace FDG.Tests
 
             bool ok = MovementUtilities.ValidatePaths(
                 new List<ModelMoveEntry> { move },
-                maxChargeDistance: 12f,
+                maxDistanceInches: 12f,
                 terrain: terrain,
                 out List<ReasonForInvalidMove> errors);
 
@@ -235,7 +235,7 @@ namespace FDG.Tests
 
             MovementUtilities.ValidatePaths(
                 new List<ModelMoveEntry> { move },
-                maxChargeDistance: 12f,
+                maxDistanceInches: 12f,
                 terrain: terrain,
                 out List<ReasonForInvalidMove> errors);
 

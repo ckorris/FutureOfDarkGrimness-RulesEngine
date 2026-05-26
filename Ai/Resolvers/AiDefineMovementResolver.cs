@@ -28,7 +28,7 @@ namespace FDG.Ai.Resolvers
             // Shooting units advance (can still shoot); melee/hybrid rush to close distance.
             float moveDistance = archetype == AiUnitArchetype.Shooting
                 ? request.MaxAdvanceDistance - 0.001f
-                : request.MaxChargeDistance - 0.001f;
+                : request.MaxDistanceInches - 0.001f;
 
             var enemyPositions = GetLiveEnemyPositions();
             if (enemyPositions.Count == 0)

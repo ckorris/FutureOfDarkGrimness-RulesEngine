@@ -37,6 +37,7 @@ namespace FDG.Stages
             bool canMove = GetCanMove(context, out string cantMoveReason);
             bool canCharge = GetCanCharge(context, out string cantChargeReason);
             bool canShoot = GetCanShoot(context, out string cantShootReason);
+            bool canPass = GetCanPass(GameContext, context, out string cantPassReason);
             bool hasCustomActionsAvailable = false; //TODO: Implement.
 
             //If we have no available actions 
@@ -85,8 +86,15 @@ namespace FDG.Stages
             //Add any others here somehow.
 
             //Add pass option.
-            validOptions.Add(PASS_CHOICE_NAME);
-            outcomes.Add(PASS_CHOICE_NAME, () => ToReconcileEndOfActivation.Activate(context));
+            if(canPass)
+            {
+                validOptions.Add(PASS_CHOICE_NAME);
+                outcomes.Add(PASS_CHOICE_NAME, () => ToReconcileEndOfActivation.Activate(context));
+            }
+            else
+            {
+                invalidOptions.Add(new StringSelectionRequest.InvalidOption(PASS_CHOICE_NAME, cantPassReason));
+            }
 
             StringSelectionRequest request = new StringSelectionRequest(context.ActivatingPlayer(), "Choose Action", validOptions, invalidOptions);
 
@@ -160,6 +168,26 @@ namespace FDG.Stages
             if (!anyInRange)
             {
                 reasonIfCant = "No enemies within melee range.";
+                return false;
+            }
+
+            reasonIfCant = null;
+            return true;
+        }
+
+        public static bool GetCanPass(IGameContext gameContext, IUnitActionContext context, out string reasonIfCant)
+        {
+            //If the unit moved further than its Rush distance, the move was only legal
+            //because it ended in melee — so it must follow through and engage. Pass is gated off.
+            MovementContextPrecursor precursor = MovementContextPrecursor.GetDefault(gameContext);
+            foreach(ISpecialRule_Movement rule in context.ActivatingUnit.GetValue().GetMovementSpecialRules())
+            {
+                rule.ProcessMovementContextPrecursor(ref precursor);
+            }
+
+            if(context.MoveDistance > precursor.MaxRushDistance + 0.0001f)
+            {
+                reasonIfCant = $"Moved {context.MoveDistance:F2}\" — beyond Rush range; must engage in melee.";
                 return false;
             }
 

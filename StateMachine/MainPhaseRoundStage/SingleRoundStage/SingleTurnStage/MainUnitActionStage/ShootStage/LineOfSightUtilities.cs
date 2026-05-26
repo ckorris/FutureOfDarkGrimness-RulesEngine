@@ -82,5 +82,46 @@ namespace FDG.Stages
         public static bool HasLineOfSight(Position attacker, Position target,
             IEnumerable<ITerrain>? terrain)
             => EvaluateSightLine(attacker, target, terrain) != ESightLineEffect.Blocking;
+
+        /// <summary>
+        /// Returns the position along the segment from <paramref name="attacker"/> to
+        /// <paramref name="target"/> where the closest Blocking piece first interrupts
+        /// the sight line, plus the piece that interrupted it, or null if nothing
+        /// Blocking lies on the segment. Cover pieces are ignored — only Blocking is
+        /// considered. Intended for UI overlays that want to draw "blocked here"
+        /// indicators; do not use it for the "can the attacker see the target" gate
+        /// (use <see cref="HasLineOfSight"/> for that).
+        /// </summary>
+        public static (Position hit, ITerrain piece)? GetFirstBlockingHit(Position attacker, Position target,
+            IEnumerable<ITerrain>? terrain)
+        {
+            if (terrain == null) return null;
+
+            Float2 a = new Float2(attacker.x, attacker.z);
+            Float2 b = new Float2(target.x, target.z);
+            float bestDistSq = float.MaxValue;
+            Float2 bestHit = default;
+            ITerrain? bestPiece = null;
+
+            foreach (ITerrain piece in terrain)
+            {
+                if (piece.EvaluateSightLine(attacker, target) != ESightLineEffect.Blocking) continue;
+                Float2? entry = piece.Shape.GetFirstSegmentEntry(a, b);
+                if (!entry.HasValue) continue;
+
+                float dx = entry.Value.X - a.X;
+                float dy = entry.Value.Y - a.Y;
+                float distSq = dx * dx + dy * dy;
+                if (distSq < bestDistSq)
+                {
+                    bestDistSq = distSq;
+                    bestHit = entry.Value;
+                    bestPiece = piece;
+                }
+            }
+
+            if (bestPiece == null) return null;
+            return (new Position(bestHit.X, bestHit.Y), bestPiece);
+        }
     }
 }

@@ -129,6 +129,66 @@ namespace FDG.Tests
                 Is.EqualTo(ESightLineEffect.Clear));
         }
 
+        [Test]
+        public void GetFirstBlockingHit_NoTerrain_ReturnsNull()
+        {
+            Assert.That(LineOfSightUtilities.GetFirstBlockingHit(Attacker, Target, terrain: null), Is.Null);
+            Assert.That(LineOfSightUtilities.GetFirstBlockingHit(Attacker, Target, new List<ITerrain>()), Is.Null);
+        }
+
+        [Test]
+        public void GetFirstBlockingHit_RectangleOnLine_ReturnsLeftEdge()
+        {
+            // Rect spans x 8..12, y 3..7. Segment (0,5)→(20,5) enters at x=8.
+            var rect = new TerrainData(ETerrainType.Blocking, new RectangularZone(8, 12, 3, 7));
+            var result = LineOfSightUtilities.GetFirstBlockingHit(Attacker, Target, new[] { rect });
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result!.Value.hit.x, Is.EqualTo(8f).Within(0.001f));
+            Assert.That(result.Value.hit.z, Is.EqualTo(5f).Within(0.001f));
+            Assert.That(result.Value.piece, Is.SameAs(rect));
+        }
+
+        [Test]
+        public void GetFirstBlockingHit_CircleOnLine_ReturnsNearEdge()
+        {
+            // Circle centered (10,5) radius 2. Segment (0,5)→(20,5) enters at x=8.
+            var circle = new TerrainData(ETerrainType.Blocking, new CircularZone(10f, 5f, 2f));
+            var result = LineOfSightUtilities.GetFirstBlockingHit(Attacker, Target, new[] { circle });
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result!.Value.hit.x, Is.EqualTo(8f).Within(0.001f));
+            Assert.That(result.Value.hit.z, Is.EqualTo(5f).Within(0.001f));
+        }
+
+        [Test]
+        public void GetFirstBlockingHit_TwoBlockers_ReturnsCloserOne()
+        {
+            var far  = new TerrainData(ETerrainType.Blocking, new RectangularZone(15, 18, 3, 7));
+            var near = new TerrainData(ETerrainType.Blocking, new RectangularZone(5, 8, 3, 7));
+            var result = LineOfSightUtilities.GetFirstBlockingHit(Attacker, Target, new[] { far, near });
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result!.Value.piece, Is.SameAs(near));
+            Assert.That(result.Value.hit.x, Is.EqualTo(5f).Within(0.001f));
+        }
+
+        [Test]
+        public void GetFirstBlockingHit_CoverPieceIgnored()
+        {
+            // A Cover-only piece on the line must not register as a blocking hit.
+            var cover = new TerrainData(ETerrainType.Cover, new RectangularZone(8, 12, 3, 7));
+            Assert.That(LineOfSightUtilities.GetFirstBlockingHit(Attacker, Target, new[] { cover }), Is.Null);
+        }
+
+        [Test]
+        public void GetFirstBlockingHit_AttackerInsideBlocker_ReturnsAttackerPosition()
+        {
+            // Attacker is at (0,5) inside a rect spanning x -1..3, y 3..7.
+            var enclosing = new TerrainData(ETerrainType.Blocking, new RectangularZone(-1, 3, 3, 7));
+            var result = LineOfSightUtilities.GetFirstBlockingHit(Attacker, Target, new[] { enclosing });
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result!.Value.hit.x, Is.EqualTo(Attacker.x).Within(0.001f));
+            Assert.That(result.Value.hit.z, Is.EqualTo(Attacker.z).Within(0.001f));
+        }
+
         private class DoorTerrain : ITerrain
         {
             private readonly bool _closed;
@@ -138,6 +198,7 @@ namespace FDG.Tests
             public float HeightInches => 4f;
             public bool IsPointWithinZone(Float2 p) => Shape.IsPointWithinZone(p);
             public bool DoesPathIntersectZone(Float2 a, Float2 b) => Shape.DoesPathIntersectZone(a, b);
+            public Float2? GetFirstSegmentEntry(Float2 a, Float2 b) => Shape.GetFirstSegmentEntry(a, b);
             public ESightLineEffect EvaluateSightLine(Position attacker, Position target)
                 => _closed ? ESightLineEffect.Blocking : ESightLineEffect.Clear;
         }

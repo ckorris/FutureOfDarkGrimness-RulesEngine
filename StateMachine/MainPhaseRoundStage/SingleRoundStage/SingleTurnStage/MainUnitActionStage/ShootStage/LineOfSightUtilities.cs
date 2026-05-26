@@ -21,8 +21,12 @@ namespace FDG.Stages
         /// </summary>
         public static List<ITerrain> BuildModelBlockers(ITableState tableState,
             DataBinding<UnitData> attackingUnit, DataBinding<UnitData> defendingUnit)
+            => BuildModelBlockers(tableState, (IUnit)attackingUnit.GetValue(), (IUnit)defendingUnit.GetValue());
+
+        public static List<ITerrain> BuildModelBlockers(ITableState tableState,
+            IUnit attackingUnit, IUnit defendingUnit)
         {
-            PlayerID attackerPlayerID = attackingUnit.GetValue().PlayerID;
+            PlayerID attackerPlayerID = attackingUnit.PlayerID;
             ITeam? attackerTeam = tableState.Teams.Objects
                 .FirstOrDefault(t => t.IsPlayerOnTeam(attackerPlayerID));
 
@@ -35,8 +39,7 @@ namespace FDG.Stages
                 if (!isAlly) continue;
                 foreach (IModel m in unit.Models) excluded.Add(m);
             }
-            foreach (DataBinding<ModelData> b in defendingUnit.ModelBindings())
-                excluded.Add(b.GetValue());
+            foreach (IModel m in defendingUnit.Models) excluded.Add(m);
 
             var blockers = new List<ITerrain>();
             foreach (IModel model in tableState.Models.Objects)

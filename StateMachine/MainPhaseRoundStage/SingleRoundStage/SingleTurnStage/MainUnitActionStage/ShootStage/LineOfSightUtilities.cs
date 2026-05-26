@@ -12,17 +12,29 @@ namespace FDG.Stages
     {
         /// <summary>
         /// Returns a blocker list representing every placed model on the table that
-        /// belongs to neither <paramref name="attackingUnit"/> nor
-        /// <paramref name="defendingUnit"/>. Pass the result to
-        /// <see cref="EvaluateSightLine"/> / <see cref="HasLineOfSight"/> after
-        /// concatenating with the normal terrain snapshot.
+        /// does not belong to a unit on the attacker's team and does not belong to
+        /// <paramref name="defendingUnit"/>. Per the game rules a unit's sight line
+        /// passes through models of its own player and allied players, so every
+        /// same-team model is excluded. Pass the result to <see cref="EvaluateSightLine"/>
+        /// / <see cref="HasLineOfSight"/> after concatenating with the normal terrain
+        /// snapshot.
         /// </summary>
         public static List<ITerrain> BuildModelBlockers(ITableState tableState,
             DataBinding<UnitData> attackingUnit, DataBinding<UnitData> defendingUnit)
         {
+            PlayerID attackerPlayerID = attackingUnit.GetValue().PlayerID;
+            ITeam? attackerTeam = tableState.Teams.Objects
+                .FirstOrDefault(t => t.IsPlayerOnTeam(attackerPlayerID));
+
             var excluded = new HashSet<IModel>(ReferenceEqualityComparer.Instance);
-            foreach (DataBinding<ModelData> b in attackingUnit.ModelBindings())
-                excluded.Add(b.GetValue());
+            foreach (IUnit unit in tableState.Units.Objects)
+            {
+                bool isAlly = attackerTeam != null
+                    ? attackerTeam.IsPlayerOnTeam(unit.PlayerID)
+                    : unit.PlayerID.Equals(attackerPlayerID);
+                if (!isAlly) continue;
+                foreach (IModel m in unit.Models) excluded.Add(m);
+            }
             foreach (DataBinding<ModelData> b in defendingUnit.ModelBindings())
                 excluded.Add(b.GetValue());
 

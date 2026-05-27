@@ -29,13 +29,7 @@ namespace FDG.Stages
                     Shape = new RectangularZone(8, 14, 18, 24),
                     HeightInches = 3f,
                 },
-                // Left-side collapsed wall — blocking + impassible.
-                new TerrainPieceEntry
-                {
-                    TerrainType = ETerrainType.Blocking | ETerrainType.Impassible,
-                    Shape = new RectangularZone(4, 6, 32, 39),
-                    HeightInches = 2f,
-                },
+
                 // Small building.
                 new TerrainPieceEntry
                 {

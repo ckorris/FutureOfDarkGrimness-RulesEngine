@@ -25,6 +25,8 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
 
         public IObservable<int> ArmyPointsObservable => _settings_ArmyPoints;
         public IObservable<int> TerrainPieceCountObservable => _settings_TerrainPieceCount;
+        public IObservable<ETerrainPlacementMode> TerrainPlacementModeObservable => _settings_TerrainPlacementMode;
+        public IObservable<string?> TerrainLayoutPathObservable => _settings_TerrainLayoutPath;
         public IObservable<ERandomnessType> RandomnessTypeObservable => _settings_RandomnessType;
         public IObservable<ETurnStyle> TurnStyleObservable => _settings_TurnMethod;
 
@@ -37,6 +39,10 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
         public int ArmyPoints => _settings_ArmyPoints.Value;
 
         public int TerrainCount => _settings_TerrainPieceCount.Value;
+
+        public ETerrainPlacementMode TerrainPlacementMode => _settings_TerrainPlacementMode.Value;
+
+        public string? TerrainLayoutPath => _settings_TerrainLayoutPath.Value;
 
         public ERandomnessType RandomnessType => _settings_RandomnessType.Value;
 
@@ -51,6 +57,8 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
 
         private BehaviorSubject<int> _settings_ArmyPoints;
         private BehaviorSubject<int> _settings_TerrainPieceCount;
+        private BehaviorSubject<ETerrainPlacementMode> _settings_TerrainPlacementMode;
+        private BehaviorSubject<string?> _settings_TerrainLayoutPath;
         private BehaviorSubject<ERandomnessType> _settings_RandomnessType;
         private BehaviorSubject<ETurnStyle> _settings_TurnMethod;
 
@@ -79,6 +87,8 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
 
             _settings_ArmyPoints = new BehaviorSubject<int>(0);
             _settings_TerrainPieceCount = new BehaviorSubject<int>(0);
+            _settings_TerrainPlacementMode = new BehaviorSubject<ETerrainPlacementMode>(ETerrainPlacementMode.AutoFromLayout);
+            _settings_TerrainLayoutPath = new BehaviorSubject<string?>(null);
             _settings_RandomnessType = new BehaviorSubject<ERandomnessType>(ERandomnessType.Realistic);
             _settings_TurnMethod = new BehaviorSubject<ETurnStyle>(ETurnStyle.Standard);
 
@@ -168,6 +178,14 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
             {
                 _settings_TerrainPieceCount.OnNext(gameSettingsUpdate.GameSettings.TerrainPieceCount);
             }
+            if (_settings_TerrainPlacementMode.Value != gameSettingsUpdate.GameSettings.TerrainPlacementMode)
+            {
+                _settings_TerrainPlacementMode.OnNext(gameSettingsUpdate.GameSettings.TerrainPlacementMode);
+            }
+            if (_settings_TerrainLayoutPath.Value != gameSettingsUpdate.GameSettings.TerrainLayoutPath)
+            {
+                _settings_TerrainLayoutPath.OnNext(gameSettingsUpdate.GameSettings.TerrainLayoutPath);
+            }
             if (_settings_RandomnessType.Value != gameSettingsUpdate.GameSettings.RandomnessType)
             {
                 _settings_RandomnessType.OnNext(gameSettingsUpdate.GameSettings.RandomnessType);
@@ -201,6 +219,16 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
         {
             throw new InvalidOperationException("Tried to set terrain count when not the host.");
 
+        }
+
+        public void SetTerrainPlacementMode(ETerrainPlacementMode mode)
+        {
+            throw new InvalidOperationException("Tried to set terrain placement mode when not the host.");
+        }
+
+        public void SetTerrainLayoutPath(string? path)
+        {
+            throw new InvalidOperationException("Tried to set terrain layout path when not the host.");
         }
 
         public void SetRandomnessType(ERandomnessType randomnessType)

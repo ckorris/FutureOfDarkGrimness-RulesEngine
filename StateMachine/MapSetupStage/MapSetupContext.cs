@@ -6,9 +6,13 @@ namespace FDG.Stages
 
         IReadOnlyList<ITeam>? ObjectivePlacementTeamOrder { get; }
 
+        IReadOnlyList<ITeam>? TerrainPlacementTeamOrder { get; }
+
         void SetObjectiveCount(int count);
 
         void SetObjectivePlacementTeamOrder(List<ITeam> order);
+
+        void SetTerrainPlacementTeamOrder(List<ITeam> order);
     }
 
     public class MapSetupContext : IMapSetupContext
@@ -19,7 +23,10 @@ namespace FDG.Stages
 
         public IReadOnlyList<ITeam>? ObjectivePlacementTeamOrder => _objectivePlacementTeamOrder;
 
+        public IReadOnlyList<ITeam>? TerrainPlacementTeamOrder => _terrainPlacementTeamOrder;
+
         private List<ITeam>? _objectivePlacementTeamOrder;
+        private List<ITeam>? _terrainPlacementTeamOrder;
 
         public MapSetupContext(IGameContext gameContext)
         {
@@ -42,6 +49,15 @@ namespace FDG.Stages
             if (order == null || order.Count == 0)
                 throw new ArgumentException("Team order must contain at least one team.", nameof(order));
             _objectivePlacementTeamOrder = order;
+        }
+
+        public void SetTerrainPlacementTeamOrder(List<ITeam> order)
+        {
+            if (_terrainPlacementTeamOrder != null)
+                throw new InvalidOperationException("Terrain placement team order was already set.");
+            if (order == null || order.Count == 0)
+                throw new ArgumentException("Team order must contain at least one team.", nameof(order));
+            _terrainPlacementTeamOrder = order;
         }
     }
 }

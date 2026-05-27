@@ -29,6 +29,8 @@ namespace FDG.Network.Connection
 
         public IObservable<int> ArmyPointsObservable => _settings_ArmyPoints;
         public IObservable<int> TerrainPieceCountObservable => _settings_TerrainPieceCount;
+        public IObservable<ETerrainPlacementMode> TerrainPlacementModeObservable => _settings_TerrainPlacementMode;
+        public IObservable<string?> TerrainLayoutPathObservable => _settings_TerrainLayoutPath;
         public IObservable<ERandomnessType> RandomnessTypeObservable => _settings_RandomnessType;
         public IObservable<ETurnStyle> TurnStyleObservable => _settings_TurnMethod;
 
@@ -41,6 +43,10 @@ namespace FDG.Network.Connection
         public int ArmyPoints => _settings_ArmyPoints.Value;
 
         public int TerrainCount => _settings_TerrainPieceCount.Value;
+
+        public ETerrainPlacementMode TerrainPlacementMode => _settings_TerrainPlacementMode.Value;
+
+        public string? TerrainLayoutPath => _settings_TerrainLayoutPath.Value;
 
         public ERandomnessType RandomnessType => _settings_RandomnessType.Value;
 
@@ -56,6 +62,8 @@ namespace FDG.Network.Connection
 
         private BehaviorSubject<int> _settings_ArmyPoints;
         private BehaviorSubject<int> _settings_TerrainPieceCount;
+        private BehaviorSubject<ETerrainPlacementMode> _settings_TerrainPlacementMode;
+        private BehaviorSubject<string?> _settings_TerrainLayoutPath;
         private BehaviorSubject<ERandomnessType> _settings_RandomnessType;
         private BehaviorSubject<ETurnStyle> _settings_TurnMethod;
 
@@ -90,6 +98,8 @@ namespace FDG.Network.Connection
 
             _settings_ArmyPoints = new BehaviorSubject<int>(_gameSettings.ArmyPoints);
             _settings_TerrainPieceCount = new BehaviorSubject<int>(_gameSettings.TerrainPieceCount);
+            _settings_TerrainPlacementMode = new BehaviorSubject<ETerrainPlacementMode>(_gameSettings.TerrainPlacementMode);
+            _settings_TerrainLayoutPath = new BehaviorSubject<string?>(_gameSettings.TerrainLayoutPath);
             _settings_RandomnessType = new BehaviorSubject<ERandomnessType>(_gameSettings.RandomnessType);
             _settings_TurnMethod = new BehaviorSubject<ETurnStyle>(_gameSettings.TurnStyle);
 
@@ -223,10 +233,32 @@ namespace FDG.Network.Connection
         {
             Debug.WriteLine("TryLaunchGame.");
 
-            //If we ever require readying up, this is where that can go.
+            failReason = ValidateLaunchSettings();
+            if (failReason != null)
+                return false;
+
             _ = Launch();
-            failReason = null;
             return true;
+        }
+
+        private string? ValidateLaunchSettings()
+        {
+            switch (_gameSettings.TerrainPlacementMode)
+            {
+                case ETerrainPlacementMode.Alternating:
+                    if (_gameSettings.TerrainPieceCount < 0 || _gameSettings.TerrainPieceCount > 30)
+                        return $"Terrain piece count ({_gameSettings.TerrainPieceCount}) must be between 0 and 30.";
+                    break;
+
+                case ETerrainPlacementMode.LoadFromFile:
+                    if (string.IsNullOrWhiteSpace(_gameSettings.TerrainLayoutPath))
+                        return "Terrain mode is 'Load From File' but no layout file was chosen.";
+                    var layout = SaveLoad.TerrainLayoutLoader.TryLoadFromFile(_gameSettings.TerrainLayoutPath, out string? error);
+                    if (layout == null)
+                        return $"Could not load terrain layout: {error}";
+                    break;
+            }
+            return null;
         }
 
         private async Task Launch()
@@ -444,6 +476,29 @@ namespace FDG.Network.Connection
             {
                 _settings_TerrainPieceCount.OnNext(_settings_TerrainPieceCount.Value);
             }
+        }
+
+        public void SetTerrainPlacementMode(ETerrainPlacementMode mode)
+        {
+            if (Enum.IsDefined(mode))
+            {
+                _settings_TerrainPlacementMode.OnNext(mode);
+                _gameSettings.TerrainPlacementMode = mode;
+                _messageBus.SendCommandToAllAsync(new LobbyGameSettingsUpdate(_gameSettings));
+            }
+            else
+            {
+                _settings_TerrainPlacementMode.OnNext(_settings_TerrainPlacementMode.Value);
+            }
+        }
+
+        public void SetTerrainLayoutPath(string? path)
+        {
+            //Empty string and null are equivalent for "no file chosen".
+            string? normalized = string.IsNullOrWhiteSpace(path) ? null : path;
+            _settings_TerrainLayoutPath.OnNext(normalized);
+            _gameSettings.TerrainLayoutPath = normalized;
+            _messageBus.SendCommandToAllAsync(new LobbyGameSettingsUpdate(_gameSettings));
         }
 
         public void SetRandomnessType(ERandomnessType randomnessType)

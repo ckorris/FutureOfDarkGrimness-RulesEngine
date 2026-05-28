@@ -1,4 +1,5 @@
 ﻿using FDG.Data;
+using FDG.Rules.Dispatch;
 using FDG.Rules.Tokens;
 using FDG.SaveLoad;
 using Newtonsoft.Json;
@@ -21,6 +22,10 @@ namespace FDG
         public int Defense { get; set; }
 
         public List<SpecialRule> SpecialRules { get; set; } //TODO: Implement, looking at models.
+
+        private readonly List<ResolvedRule> _ruleDefinitions = new();
+
+        [JsonIgnore] public IReadOnlyList<ResolvedRule> RuleDefinitions => _ruleDefinitions;
 
         public List<DataBinding<ModelData>> ModelBindings;
 
@@ -179,6 +184,13 @@ namespace FDG
 
             OnWoundsDealt?.Invoke(oldUnitTotalWounds, newUnitTotalWounds);
         }
+
+        /// <summary>
+        /// Attaches a resolved special-rule definition to this unit. Attachment is
+        /// post-construction (army-load / harness) rather than a constructor param so
+        /// the existing constructors stay untouched.
+        /// </summary>
+        public void AttachRuleDefinition(ResolvedRule rule) => _ruleDefinitions.Add(rule);
 
         public bool GetMobility(out float moveShootDistanceInches, out float chargeDistanceInches)
         {

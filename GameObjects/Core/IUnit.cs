@@ -1,5 +1,6 @@
 
 using FDG.Data;
+using FDG.Rules.Dispatch;
 using FDG.Rules.Tokens;
 
 namespace FDG
@@ -40,6 +41,19 @@ namespace FDG
         public List<IModel> Models { get; }
 
         public List<ISpecialRule> SpecialRules { get; }
+
+        /// <summary>
+        /// Special-rule definitions attached to this unit under the #042 rule
+        /// framework, each paired (via <see cref="ResolvedRule"/>) with the name
+        /// it was requested under so alias display ("Healing Pods (Regeneration)")
+        /// survives. The hook bus reads this to find a unit's passive hook entries
+        /// and activated abilities at dispatch time.
+        ///
+        /// Not serialized: a unit's rules are resolved from army-list rule *names*
+        /// against the host registry at load (see #042 arch notes), so the names —
+        /// not the full definitions — are the persisted form.
+        /// </summary>
+        public IReadOnlyList<ResolvedRule> RuleDefinitions { get; }
 
         public bool GetMobility(out float moveShootDistanceInches, out float chargeDistanceInches);
 

@@ -243,7 +243,7 @@ namespace FDG.Tests
                 {
                     new HookEntry(EHookID.Shooting_OnUnitDestroyed,
                         new Condition.Always(),
-                        new Effect.GrantToken(marker, 1, new TokenClearTrigger.ManualOnly()),
+                        new Effect.GrantToken(marker, new ValueSource.Literal(1), new TokenClearTrigger.ManualOnly()),
                         ELifetime.UntilEndOfGame),
                 },
                 NoAbilities));
@@ -313,7 +313,7 @@ namespace FDG.Tests
             var markType = new TokenType("UnstoppableMark");
             var ability = new ActivatedAbility(EHookID.Activation_OnPreAttack, new Cost.OncePerActivation(),
                 new TargetSelector(18f, 1, 1, ETargetAffinity.Foe, RequireLineOfSight: true),
-                new Effect.GrantToken(markType, 1, new TokenClearTrigger.OwnerDestroyed()), new Condition.Always());
+                new Effect.GrantToken(markType, new ValueSource.Literal(1), new TokenClearTrigger.OwnerDestroyed()), new Condition.Always());
             harness.Register(new SpecialRuleDefinition("Unstoppable Mark", Array.Empty<HookEntry>(), new[] { ability }));
 
             IUnit bearer = harness.BuildUnit("P1", modelCount: 3, "Unstoppable Mark");
@@ -744,6 +744,279 @@ namespace FDG.Tests
             var ops = harness.Fire(new MeleeResolutionContext(attacker, defender));
 
             ops.HasOperation<RuleOperation.ExtraMeleeWoundCount>(op => op.Amount == 2);
+        }
+
+        // Caster(X) (core) — gains X spell tokens at the start of each round.
+        // Arg-driven token grant: count comes from the rule's argument via the
+        // GrantToken effect's ValueSource. The 6-token cap is execution (Phase 8).
+        [Test]
+        public void Caster_OnRoundStart_GrantsArgumentSpellTokens()
+        {
+            var harness = new TestRuleHarness();
+            var caster = new SpecialRuleDefinition("Caster",
+                new[]
+                {
+                    new HookEntry(EHookID.Round_OnRoundStart,
+                        new Condition.Always(),
+                        new Effect.GrantToken(TokenType.SpellTokens, new ValueSource.Arg(0),
+                            new TokenClearTrigger.ManualOnly()),
+                        ELifetime.UntilEndOfGame),
+                },
+                NoAbilities);
+            harness.Register(caster);
+
+            IUnit unit = harness.BuildUnit("P1", modelCount: 1);
+            harness.AttachRule(unit, caster, new RuleArgument.Int(2));
+
+            var ops = harness.Fire(new RoundStartContext(unit));
+
+            ops.HasOperation<RuleOperation.GrantTokenToUnit>(op => op.Unit == unit &&
+                op.TokenToGrant.Type == TokenType.SpellTokens && op.TokenToGrant.Count == 2);
+        }
+
+        // Artillery (core) — +1 to hit when shooting at enemies over 9" away. Reuses
+        // the roll-modifier vocabulary. The other facets — enemies get -2 to hit from
+        // over 9", and the unit may only Hold — are separate entries (RangeModifier /
+        // RestrictActions) added when modelled.
+        [Test]
+        public void Artillery_WhenShootingBeyond9_AddsOneToHit()
+        {
+            var harness = new TestRuleHarness();
+            harness.Register(new SpecialRuleDefinition("Artillery",
+                new[]
+                {
+                    new HookEntry(EHookID.Shooting_OnHitRollModifier,
+                        new Condition.DistanceGreaterThan(9f),
+                        new Effect.RollModifier(ERollKind.Hit, Delta: +1),
+                        ELifetime.ThisAttack),
+                },
+                NoAbilities));
+
+            IUnit attacker = harness.BuildUnit("P1", modelCount: 1, "Artillery");
+            IUnit target = harness.BuildUnit("P2", modelCount: 5);
+
+            var ops = harness.Fire(new HitRollModifierContext(attacker, target, DistanceInches: 12f));
+
+            ops.HasOperation<RuleOperation.ApplyRollModifier>(op => op.Roll == ERollKind.Hit && op.Delta == +1);
+        }
+
+        // Limited (core) — the weapon may only be used once per game. Modelled at the
+        // queue level as marking itself "used" after shooting; the gate that suppresses
+        // a second use reads that marker (Phase 8).
+        [Test]
+        public void Limited_AfterShooting_MarksWeaponUsed()
+        {
+            var harness = new TestRuleHarness();
+            var usedMarker = new TokenType("LimitedUsed");
+            harness.Register(new SpecialRuleDefinition("Limited",
+                new[]
+                {
+                    new HookEntry(EHookID.Shooting_OnPostShoot,
+                        new Condition.Always(),
+                        new Effect.GrantToken(usedMarker, new ValueSource.Literal(1),
+                            new TokenClearTrigger.ManualOnly()),
+                        ELifetime.UntilEndOfGame),
+                },
+                NoAbilities));
+
+            IUnit attacker = harness.BuildUnit("P1", modelCount: 1, "Limited");
+            IUnit target = harness.BuildUnit("P2", modelCount: 5);
+
+            var ops = harness.Fire(new PostShootContext(attacker, target));
+
+            ops.HasOperation<RuleOperation.GrantTokenToUnit>(
+                op => op.Unit == attacker && op.TokenToGrant.Type == usedMarker);
+        }
+
+        // Counter (core) — a charged bearer strikes first. The companion facet (the
+        // charger loses 1 Impact roll per Counter model) is an Impact-count modifier
+        // added when that interaction is modelled.
+        [Test]
+        public void Counter_WhenCharged_StrikesFirst()
+        {
+            var harness = new TestRuleHarness();
+            harness.Register(new SpecialRuleDefinition("Counter",
+                new[]
+                {
+                    new HookEntry(EHookID.Melee_OnCounterTrigger,
+                        new Condition.Always(),
+                        new Effect.StrikeFirst(),
+                        ELifetime.ThisActivation),
+                },
+                NoAbilities));
+
+            IUnit charger = harness.BuildUnit("P1", modelCount: 3);
+            IUnit defender = harness.BuildUnit("P2", modelCount: 5, "Counter");
+
+            var ops = harness.Fire(new CounterTriggerContext(charger, defender));
+
+            ops.HasOperation<RuleOperation.StrikeFirst>();
+        }
+
+        // Takedown (core) — may pick one model in the target unit, resolved as a unit
+        // of one. The "resolved before other weapons" ordering is a dispatch detail.
+        [Test]
+        public void Takedown_OnTargetsSelected_TargetsIndividualModel()
+        {
+            var harness = new TestRuleHarness();
+            harness.Register(new SpecialRuleDefinition("Takedown",
+                new[]
+                {
+                    new HookEntry(EHookID.Shooting_OnShootTargetsSelected,
+                        new Condition.Always(),
+                        new Effect.TargetIndividualModel(),
+                        ELifetime.ThisAttack),
+                },
+                NoAbilities));
+
+            IUnit attacker = harness.BuildUnit("P1", modelCount: 1, "Takedown");
+            IUnit target = harness.BuildUnit("P2", modelCount: 5);
+
+            var ops = harness.Fire(new ShootTargetsSelectedContext(attacker, target));
+
+            ops.HasOperation<RuleOperation.TargetIndividualModel>();
+        }
+
+        // Immobile (core) — may only use Hold actions. Fires when a non-Hold action is
+        // declared and restricts the choice set back to Hold.
+        [Test]
+        public void Immobile_OnNonHoldAction_RestrictsToHold()
+        {
+            var harness = new TestRuleHarness();
+            harness.Register(new SpecialRuleDefinition("Immobile",
+                new[]
+                {
+                    new HookEntry(EHookID.Movement_OnMoveActionDeclared,
+                        new Condition.Not(new Condition.ActionTypeIs(EActionType.Hold)),
+                        new Effect.RestrictActions(new[] { EActionType.Hold }),
+                        ELifetime.ThisActivation),
+                },
+                NoAbilities));
+
+            IUnit unit = harness.BuildUnit("P1", modelCount: 1, "Immobile");
+
+            var ops = harness.Fire(new MoveActionDeclaredContext(unit, EActionType.Advance, BaseDistanceInches: 6f));
+
+            ops.HasOperation<RuleOperation.RestrictActions>(
+                op => op.Allowed.Count == 1 && op.Allowed[0] == EActionType.Hold);
+        }
+
+        // Aircraft (core) — units targeting it get -12" range. (Movement constraints —
+        // Advance-only, +30" straight line — are separate RestrictActions / movement
+        // entries added with the engine refactor.)
+        [Test]
+        public void Aircraft_WhenTargeted_AppliesMinus12Range()
+        {
+            var harness = new TestRuleHarness();
+            harness.Register(new SpecialRuleDefinition("Aircraft",
+                new[]
+                {
+                    new HookEntry(EHookID.Shooting_OnHitRollModifier,
+                        new Condition.Always(),
+                        new Effect.RangeModifier(Delta: -12),
+                        ELifetime.ThisAttack),
+                },
+                NoAbilities));
+
+            IUnit attacker = harness.BuildUnit("P1", modelCount: 3);
+            IUnit aircraft = harness.BuildUnit("P2", modelCount: 1, "Aircraft");
+
+            var ops = harness.Fire(new HitRollModifierContext(attacker, aircraft, DistanceInches: 20f));
+
+            ops.HasOperation<RuleOperation.ApplyRangeModifier>(op => op.Delta == -12);
+        }
+
+        // Flying (core) — moves through units and terrain, ignoring terrain effects.
+        // The through-units facet is a separate movement-permission flag (Phase 8).
+        [Test]
+        public void Flying_OnMove_IgnoresTerrainEffects()
+        {
+            var harness = new TestRuleHarness();
+            harness.Register(new SpecialRuleDefinition("Flying",
+                new[]
+                {
+                    new HookEntry(EHookID.Movement_OnMoveActionDeclared,
+                        new Condition.Always(),
+                        new Effect.IgnoreTerrainEffects(),
+                        ELifetime.ThisActivation),
+                },
+                NoAbilities));
+
+            IUnit unit = harness.BuildUnit("P1", modelCount: 3, "Flying");
+
+            var ops = harness.Fire(new MoveActionDeclaredContext(unit, EActionType.Advance, BaseDistanceInches: 6f));
+
+            ops.HasOperation<RuleOperation.IgnoreTerrainEffects>();
+        }
+
+        // Strider (core) — ignores difficult-terrain effects when moving. Same queued
+        // operation as Flying; the difficult-only vs all-terrain distinction is
+        // execution (Phase 8).
+        [Test]
+        public void Strider_OnMove_IgnoresTerrainEffects()
+        {
+            var harness = new TestRuleHarness();
+            harness.Register(new SpecialRuleDefinition("Strider",
+                new[]
+                {
+                    new HookEntry(EHookID.Movement_OnMoveActionDeclared,
+                        new Condition.Always(),
+                        new Effect.IgnoreTerrainEffects(),
+                        ELifetime.ThisActivation),
+                },
+                NoAbilities));
+
+            IUnit unit = harness.BuildUnit("P1", modelCount: 3, "Strider");
+
+            var ops = harness.Fire(new MoveActionDeclaredContext(unit, EActionType.Advance, BaseDistanceInches: 6f));
+
+            ops.HasOperation<RuleOperation.IgnoreTerrainEffects>();
+        }
+
+        // Scout (core) — set aside, then deployed after others within 12" of the zone.
+        // Queue level asserts only that it defers deployment; placement is Phase 8.
+        [Test]
+        public void Scout_OnPreDeployment_DefersDeployment()
+        {
+            var harness = new TestRuleHarness();
+            harness.Register(new SpecialRuleDefinition("Scout",
+                new[]
+                {
+                    new HookEntry(EHookID.Deployment_OnPreDeploymentSelect,
+                        new Condition.Always(),
+                        new Effect.DeferDeployment(),
+                        ELifetime.UntilEndOfGame),
+                },
+                NoAbilities));
+
+            IUnit unit = harness.BuildUnit("P1", modelCount: 3, "Scout");
+
+            var ops = harness.Fire(new PreDeploymentSelectContext(unit));
+
+            ops.HasOperation<RuleOperation.DeferDeployment>();
+        }
+
+        // Ambush (core) — set aside, then deployed a later round >9" from enemies.
+        // Same deferral operation as Scout; the round timing is Phase 8.
+        [Test]
+        public void Ambush_OnPreDeployment_DefersDeployment()
+        {
+            var harness = new TestRuleHarness();
+            harness.Register(new SpecialRuleDefinition("Ambush",
+                new[]
+                {
+                    new HookEntry(EHookID.Deployment_OnPreDeploymentSelect,
+                        new Condition.Always(),
+                        new Effect.DeferDeployment(),
+                        ELifetime.UntilEndOfGame),
+                },
+                NoAbilities));
+
+            IUnit unit = harness.BuildUnit("P1", modelCount: 3, "Ambush");
+
+            var ops = harness.Fire(new PreDeploymentSelectContext(unit));
+
+            ops.HasOperation<RuleOperation.DeferDeployment>();
         }
     }
 }

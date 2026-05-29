@@ -197,4 +197,40 @@ public abstract record RuleOperation
     /// <see cref="Effect.ExtraMeleeWoundCount"/> (Fear).
     /// </summary>
     public sealed record ExtraMeleeWoundCount(int Amount) : RuleOperation;
+
+    /// <summary>
+    /// Insert the bearer's strikes ahead of the charging unit's. Resolution of
+    /// <see cref="Effect.StrikeFirst"/> (Counter).
+    /// </summary>
+    public sealed record StrikeFirst : RuleOperation;
+
+    /// <summary>
+    /// Re-scope the in-flight attack to a single chosen model in the target unit.
+    /// Resolution of <see cref="Effect.TargetIndividualModel"/> (Takedown).
+    /// </summary>
+    public sealed record TargetIndividualModel : RuleOperation;
+
+    /// <summary>
+    /// Limit the bearer's declarable actions to <see cref="Allowed"/>. Resolution of
+    /// <see cref="Effect.RestrictActions"/> (Immobile, Artillery Hold-only).
+    /// </summary>
+    public sealed record RestrictActions(IReadOnlyList<EActionType> Allowed) : RuleOperation;
+
+    /// <summary>
+    /// Adjust the effective range of attacks against the bearer by <see cref="Delta"/>
+    /// inches. Resolution of <see cref="Effect.RangeModifier"/> (Aircraft).
+    /// </summary>
+    public sealed record ApplyRangeModifier(int Delta) : RuleOperation;
+
+    /// <summary>
+    /// Suppress terrain effects for the bearer's current move. Resolution of
+    /// <see cref="Effect.IgnoreTerrainEffects"/> (Strider, Flying).
+    /// </summary>
+    public sealed record IgnoreTerrainEffects : RuleOperation;
+
+    /// <summary>
+    /// Remove the bearer from the normal deployment pool for later placement.
+    /// Resolution of <see cref="Effect.DeferDeployment"/> (Ambush, Scout).
+    /// </summary>
+    public sealed record DeferDeployment : RuleOperation;
 }

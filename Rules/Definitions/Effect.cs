@@ -117,11 +117,13 @@ public abstract record Effect
     /// container with the specified <see cref="Clear"/> policy. Covers cost-
     /// gate setup ("used-this-activation" markers cleared at
     /// <see cref="EHookID.Activation_OnEndOfActivation"/>), spell-token
-    /// replenishment, marker placement (Piercing Frenzy grants one marker on
-    /// enemy-destroyed), and cross-unit target tagging when paired with a
-    /// target selector.
+    /// replenishment (Caster(X) grants <c>Arg(0)</c> at round start), marker
+    /// placement (Piercing Frenzy grants one marker on enemy-destroyed), and
+    /// cross-unit target tagging when paired with a target selector. The count is
+    /// a <see cref="ValueSource"/> so fixed grants use <c>Literal</c> while
+    /// arg-driven grants (Caster) use <c>Arg</c>.
     /// </summary>
-    public sealed record GrantToken(TokenType TType, int Count, TokenClearTrigger Clear) : Effect;
+    public sealed record GrantToken(TokenType TType, ValueSource Count, TokenClearTrigger Clear) : Effect;
 
     /// <summary>
     /// Removes <see cref="Count"/> tokens of <see cref="TType"/> from the
@@ -197,4 +199,52 @@ public abstract record Effect
     /// melee. Covers Fear(X) — the amount is the rule's argument.
     /// </summary>
     public sealed record ExtraMeleeWoundCount(ValueSource Amount) : Effect;
+
+    /// <summary>
+    /// The bearer strikes before the charging unit resolves its strikes. Covers
+    /// Counter ("Strikes first with this weapon when charged"). The companion facet
+    /// — the charger losing 1 Impact roll per Counter model — is a separate
+    /// Impact-count modifier added when that interaction is modelled.
+    /// </summary>
+    public sealed record StrikeFirst : Effect;
+
+    /// <summary>
+    /// Resolves the attack against a single chosen model in the target unit, as if
+    /// it were a unit of one. Covers Takedown. Structural targeting change with no
+    /// numeric parameter; the "resolved first, before other weapons" ordering is a
+    /// dispatch-time detail (Phase 8).
+    /// </summary>
+    public sealed record TargetIndividualModel : Effect;
+
+    /// <summary>
+    /// Restricts the bearer to declaring only the actions in <see cref="Allowed"/>.
+    /// Covers Immobile (<c>[Hold]</c> only) and Artillery's Hold-only facet. The
+    /// engine drops disallowed actions from the choice set.
+    /// </summary>
+    public sealed record RestrictActions(IReadOnlyList<EActionType> Allowed) : Effect;
+
+    /// <summary>
+    /// Adjusts the effective range of attacks made against the bearer by
+    /// <see cref="Delta"/> inches. Covers Aircraft ("units targeting it get -12\"
+    /// range"). Distinct from <see cref="RollModifier"/>, which adjusts the roll
+    /// itself rather than the range threshold.
+    /// </summary>
+    public sealed record RangeModifier(int Delta) : Effect;
+
+    /// <summary>
+    /// The bearer ignores terrain effects while moving. Covers Strider (difficult
+    /// terrain only) and Flying (all terrain effects). The Flying-only facet —
+    /// moving through units as well — is a separate movement-permission flag added
+    /// when that distinction is executed (Phase 8).
+    /// </summary>
+    public sealed record IgnoreTerrainEffects : Effect;
+
+    /// <summary>
+    /// Sets the bearer aside during normal deployment to be placed by its own
+    /// dedicated stage. Covers Ambush (deploy a later round, &gt;9" from enemies)
+    /// and Scout (deploy after others, within 12" of the zone). The timing and
+    /// placement constraints that distinguish the two are execution details
+    /// (Phase 8 / the #042 engine refactor).
+    /// </summary>
+    public sealed record DeferDeployment : Effect;
 }

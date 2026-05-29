@@ -149,4 +149,52 @@ public abstract record Effect
     /// unit.
     /// </summary>
     public sealed record Reactivate : Effect;
+
+    /// <summary>
+    /// Multiplies each wound the attack deals by <see cref="Multiplier"/>. Covers
+    /// Deadly(X) — the multiplier is the rule's argument, so it's a
+    /// <see cref="ValueSource"/> (typically <c>Arg(0)</c>) rather than a literal.
+    /// </summary>
+    public sealed record MultiplyWounds(ValueSource Multiplier) : Effect;
+
+    /// <summary>
+    /// Caps the bearer's hit-roll target at <see cref="Quality"/> (a floor on the
+    /// roll needed): the attack hits on <see cref="Quality"/>+ regardless of the
+    /// model's own Quality. Covers Reliable ("Attacks at Quality 2+"). A fixed
+    /// authored value, not a rule argument.
+    /// </summary>
+    public sealed record QualityFloor(int Quality) : Effect;
+
+    /// <summary>
+    /// Each wound the bearer would take is ignored on an unmodified roll of
+    /// <see cref="MinRoll"/> or higher. Covers Regeneration (5+). Fixed authored
+    /// threshold, not a rule argument.
+    /// </summary>
+    public sealed record IgnoreWoundOnRoll(int MinRoll) : Effect;
+
+    /// <summary>
+    /// Sets the bearer model's maximum wounds to <see cref="Amount"/> at creation.
+    /// Covers Tough(X) — the value is the rule's argument (<c>Arg(0)</c>). Models
+    /// default to 1 max wound; Tough raises it.
+    /// </summary>
+    public sealed record SetMaxWounds(ValueSource Amount) : Effect;
+
+    /// <summary>
+    /// Multiplies each hit the attack scores by <see cref="Multiplier"/> (capped at
+    /// the target's model count by the engine). Covers Blast(X) — the multiplier is
+    /// the rule's argument.
+    /// </summary>
+    public sealed record MultiplyHits(ValueSource Multiplier) : Effect;
+
+    /// <summary>
+    /// On a charge, rolls <see cref="DiceCount"/> impact dice (each 2+ a hit) before
+    /// strikes. Covers Impact(X) — the dice count is the rule's argument.
+    /// </summary>
+    public sealed record ChargeImpactHits(ValueSource DiceCount) : Effect;
+
+    /// <summary>
+    /// Adds <see cref="Amount"/> to the bearer's wound tally when deciding who won a
+    /// melee. Covers Fear(X) — the amount is the rule's argument.
+    /// </summary>
+    public sealed record ExtraMeleeWoundCount(ValueSource Amount) : Effect;
 }

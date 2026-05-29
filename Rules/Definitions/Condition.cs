@@ -106,4 +106,10 @@ public abstract record Condition
     /// "not fatigued," "not in cover," etc.
     /// </summary>
     public sealed record Not(Condition Inner) : Condition;
+
+    /// <summary>
+    /// True if the attacking unit moved before this attack. Used by Indirect
+    /// (-1 to hit when shooting after moving).
+    /// </summary>
+    public sealed record AfterMoving : Condition;
 }

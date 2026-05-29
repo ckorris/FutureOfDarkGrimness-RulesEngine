@@ -1,3 +1,5 @@
+using FDG.Rules.Foundation;
+
 namespace FDG.Rules.Tokens;
 
 /// <summary>
@@ -30,5 +32,12 @@ namespace FDG.Rules.Tokens;
 /// </summary>
 public abstract record TokenPayload
 {
-
+    /// <summary>
+    /// Records that the token grants the rule named <see cref="RuleName"/> to its
+    /// bearer for the duration of <see cref="Lifetime"/>. Backs <c>Effect.AddRule</c>
+    /// and <c>Effect.Aura</c> resolution — a "next time you shoot you have Blessed
+    /// Ammo" buff, or an aura granting Regeneration to a whole unit, becomes a token
+    /// carrying this payload rather than a bespoke token type per grantable rule.
+    /// </summary>
+    public sealed record RuleGrant(string RuleName, ELifetime Lifetime) : TokenPayload;
 }

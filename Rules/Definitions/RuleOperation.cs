@@ -152,4 +152,49 @@ public abstract record RuleOperation
     /// concrete int — the queue is deterministic once produced.
     /// </summary>
     public sealed record InvokeHeal(IModel Target, int Amount) : RuleOperation;
+
+    /// <summary>
+    /// Multiply each wound the in-flight attack deals by <see cref="Multiplier"/>.
+    /// Resolution of <see cref="Effect.MultiplyWounds"/>; the rule's argument has
+    /// already been read, so <see cref="Multiplier"/> is a concrete int.
+    /// </summary>
+    public sealed record MultiplyWounds(int Multiplier) : RuleOperation;
+
+    /// <summary>
+    /// Cap the in-flight hit roll's target at <see cref="Quality"/>+. Resolution of
+    /// <see cref="Effect.QualityFloor"/> (Reliable).
+    /// </summary>
+    public sealed record QualityFloor(int Quality) : RuleOperation;
+
+    /// <summary>
+    /// Ignore each wound on an unmodified roll of <see cref="MinRoll"/>+. Resolution
+    /// of <see cref="Effect.IgnoreWoundOnRoll"/> (Regeneration). Suppressible by
+    /// <see cref="SuppressRule"/> from Bane / Rending / Unstoppable.
+    /// </summary>
+    public sealed record IgnoreWound(int MinRoll) : RuleOperation;
+
+    /// <summary>
+    /// Set a model's maximum wounds to <see cref="MaxWounds"/>. Resolution of
+    /// <see cref="Effect.SetMaxWounds"/> (Tough). Carries no model reference yet —
+    /// per-model targeting lands with model-scoped rule attachment in Phase 7.
+    /// </summary>
+    public sealed record SetMaxWounds(int MaxWounds) : RuleOperation;
+
+    /// <summary>
+    /// Multiply the in-flight hit count by <see cref="Multiplier"/> (engine caps at
+    /// target model count). Resolution of <see cref="Effect.MultiplyHits"/> (Blast).
+    /// </summary>
+    public sealed record MultiplyHits(int Multiplier) : RuleOperation;
+
+    /// <summary>
+    /// Roll <see cref="DiceCount"/> impact dice (each 2+ a hit) on the charge.
+    /// Resolution of <see cref="Effect.ChargeImpactHits"/> (Impact).
+    /// </summary>
+    public sealed record ChargeImpactHits(int DiceCount) : RuleOperation;
+
+    /// <summary>
+    /// Add <see cref="Amount"/> to the bearer's melee-won wound tally. Resolution of
+    /// <see cref="Effect.ExtraMeleeWoundCount"/> (Fear).
+    /// </summary>
+    public sealed record ExtraMeleeWoundCount(int Amount) : RuleOperation;
 }

@@ -9,7 +9,8 @@ namespace FDG.Rules.Dispatch.Contexts
     /// (Indirect's -1 after moving).
     /// </summary>
     public sealed record HitRollModifierContext(
-        IUnit Attacker, IUnit Target, float DistanceInches, bool AttackerMoved = false) : IHookContext
+        IUnit Attacker, IUnit Target, float DistanceInches, bool AttackerMoved = false)
+        : IHookContext, IHasDistance
     {
         public EHookID Hook => EHookID.Shooting_OnHitRollModifier;
     }

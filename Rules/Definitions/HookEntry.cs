@@ -16,5 +16,11 @@ namespace FDG.Rules.Definitions;
 /// Distinct from <see cref="ActivatedAbility"/>, which represents
 /// player-triggered (cost-gated, target-picking) abilities rather than passive
 /// fire-on-hook wiring.
+///
+/// <see cref="Seat"/> is the perspective half of the "when": the role the bearer
+/// must be playing in the firing context for this entry to fire. Defaults to
+/// <see cref="ERuleSeat.Actor"/> (the acting side), so only defensive entries
+/// (Stealth, Bane, ...) need to state <see cref="ERuleSeat.Subject"/> explicitly.
 /// </summary>
-public record HookEntry(EHookID HookID, Condition Condition, Effect Effect, ELifetime Lifetime);
+public record HookEntry(EHookID HookID, Condition Condition, Effect Effect, ELifetime Lifetime,
+    ERuleSeat Seat = ERuleSeat.Actor);

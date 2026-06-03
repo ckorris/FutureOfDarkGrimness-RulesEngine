@@ -65,16 +65,47 @@ namespace FDG.Tests
                     new HookEntry(EHookID.Shooting_OnHitRollModifier,
                         new Condition.DistanceGreaterThan(9f),
                         new Effect.RollModifier(ERollKind.Hit, Delta: -1),
-                        ELifetime.ThisAttack),
+                        ELifetime.ThisAttack,
+                        ERuleSeat.Subject),
                 },
                 NoAbilities));
 
             IUnit attacker = harness.BuildUnit("P1", modelCount: 3);
             IUnit defender = harness.BuildUnit("P2", modelCount: 5, "Stealth");
 
-            var ops = harness.Fire(new HitRollModifierContext(attacker, defender, DistanceInches: 12f));
+            var ops = harness.Evaluate(defender, ERuleSeat.Subject,
+                new HitRollModifierContext(attacker, defender, DistanceInches: 12f));
 
             ops.HasOperation<RuleOperation.ApplyRollModifier>(op => op.Roll == ERollKind.Hit && op.Delta == -1);
+        }
+
+        // 02b — Stealth is a SUBJECT-seat rule: it must NOT fire when the unit carrying
+        // it is the attacker. Stealth is defensive; a shooter with Stealth gains nothing.
+        [Test]
+        public void Stealth_OnAttacker_DoesNotApplyModifier()
+        {
+            var harness = new TestRuleHarness();
+            harness.Register(new SpecialRuleDefinition("Stealth",
+                new[]
+                {
+                    new HookEntry(EHookID.Shooting_OnHitRollModifier,
+                        new Condition.DistanceGreaterThan(9f),
+                        new Effect.RollModifier(ERollKind.Hit, Delta: -1),
+                        ELifetime.ThisAttack,
+                        ERuleSeat.Subject),
+                },
+                NoAbilities));
+
+            IUnit attacker = harness.BuildUnit("P1", modelCount: 3, "Stealth");
+            IUnit defender = harness.BuildUnit("P2", modelCount: 5);
+
+            // The attacker plays the Actor seat; Stealth only fires from Subject, so the
+            // seat mismatch must yield no operation — even though the distance condition
+            // would otherwise pass.
+            var ops = harness.Evaluate(attacker, ERuleSeat.Actor,
+                new HitRollModifierContext(attacker, defender, DistanceInches: 12f));
+
+            Assert.That(ops, Is.Empty);
         }
 
         // 03 — Fast: +2" when the declared action is Advance.

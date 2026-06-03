@@ -23,6 +23,7 @@ namespace FDG.Tests.RulesHarness
 
         public RuleResolver Resolver { get; } = new();
         public RuleHookBus Bus { get; } = new();
+        public RuleEvaluator Evaluator { get; } = new();
         public TestGameContext GameContext { get; }
 
         private readonly GameDataStore _store;
@@ -92,6 +93,15 @@ namespace FDG.Tests.RulesHarness
 
         /// <summary> Fires a hook through the bus and returns the resulting operations. </summary>
         public IReadOnlyList<RuleOperation> Fire(IHookContext context) => Bus.Dispatch(context);
+
+        /// <summary>
+        /// Evaluates <paramref name="unit"/>'s passive rules against <paramref name="context"/>
+        /// from the given <paramref name="seat"/> (the role this unit plays in the event) and
+        /// returns the resolved operations. The direct-addressing replacement for <see cref="Fire"/>:
+        /// the caller states which unit and which seat instead of letting a bus infer them.
+        /// </summary>
+        public IReadOnlyList<RuleOperation> Evaluate(IUnit unit, ERuleSeat seat, IHookContext context)
+            => Evaluator.Evaluate(unit, seat, context);
 
         /// <summary>
         /// Returns the player-triggered abilities the bus offers at this hook (affordable,

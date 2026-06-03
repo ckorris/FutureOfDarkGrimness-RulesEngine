@@ -48,8 +48,8 @@ namespace FDG.Tests
             IUnit attacker = harness.BuildUnit("P1", modelCount: 3, "Furious");
             IUnit target = harness.BuildUnit("P2", modelCount: 5);
 
-            var ops = harness.Fire(new HitRollCompleteContext(attacker, target,
-                UnmodifiedHitRolls: new[] { 6, 3, 6 }));
+            var ops = harness.Evaluate(attacker, ERuleSeat.Actor, new HitRollCompleteContext(attacker, target,
+                UnmodifiedHitRolls: TestDice.Faces(6, 3, 6)));
 
             ops.HasOperation<RuleOperation.InsertExtraHits>();
         }
@@ -174,7 +174,7 @@ namespace FDG.Tests
             IUnit defender = harness.BuildUnit("P2", modelCount: 5);
 
             var ops = harness.Fire(new SaveRollCompleteContext(attacker, defender,
-                UnmodifiedSaveRolls: new[] { 6, 2, 6 }));
+                UnmodifiedSaveRolls: TestDice.Faces(6, 2, 6)));
 
             ops.HasOperation<RuleOperation.ApplyReroll>(op => op.Roll == ERollKind.Save);
         }
@@ -199,7 +199,7 @@ namespace FDG.Tests
             IUnit target = harness.BuildUnit("P2", modelCount: 5);
 
             var ops = harness.Fire(new HitRollCompleteContext(attacker, target,
-                UnmodifiedHitRolls: new[] { 6, 4, 2 }));
+                UnmodifiedHitRolls: TestDice.Faces(6, 4, 2)));
 
             ops.HasOperation<RuleOperation.ApplyRollModifier>(op => op.Roll == ERollKind.Save && op.Delta == -4);
         }
@@ -308,7 +308,7 @@ namespace FDG.Tests
             harness.SeedToken(attacker, marker, count: 2);
             IUnit target = harness.BuildUnit("P2", modelCount: 5);
 
-            var ops = harness.Fire(new HitRollCompleteContext(attacker, target, new[] { 4, 4, 4 }));
+            var ops = harness.Fire(new HitRollCompleteContext(attacker, target, TestDice.Faces(4, 4, 4)));
 
             ops.HasOperation<RuleOperation.ApplyRollModifier>(op => op.Roll == ERollKind.Save && op.Delta == -2);
         }
@@ -473,7 +473,7 @@ namespace FDG.Tests
             IUnit attacker = harness.BuildUnit("P1", modelCount: 3, "Surge");
             IUnit target = harness.BuildUnit("P2", modelCount: 5);
 
-            var ops = harness.Fire(new HitRollCompleteContext(attacker, target, new[] { 6, 2, 6 }));
+            var ops = harness.Fire(new HitRollCompleteContext(attacker, target, TestDice.Faces(6, 2, 6)));
 
             ops.HasOperation<RuleOperation.InsertExtraHits>();
         }
@@ -498,7 +498,7 @@ namespace FDG.Tests
             IUnit target = harness.BuildUnit("P2", modelCount: 5);
 
             var ops = harness.Fire(new HitRollCompleteContext(attacker, target,
-                new[] { 6, 4, 6 }, DistanceInches: 12f));
+                TestDice.Faces(6, 4, 6), DistanceInches: 12f));
 
             ops.HasOperation<RuleOperation.InsertExtraHits>();
         }
@@ -626,7 +626,7 @@ namespace FDG.Tests
             IUnit attacker = harness.BuildUnit("P1", modelCount: 3, "Unstoppable");
             IUnit defender = harness.BuildUnit("P2", modelCount: 5);
 
-            var ops = harness.Fire(new SaveRollCompleteContext(attacker, defender, new[] { 3, 4 }));
+            var ops = harness.Fire(new SaveRollCompleteContext(attacker, defender, TestDice.Faces(3, 4)));
 
             ops.HasOperation<RuleOperation.SuppressRule>(op => op.RuleName == "Regeneration");
         }
@@ -673,7 +673,7 @@ namespace FDG.Tests
             IUnit attacker = harness.BuildUnit("P1", modelCount: 3);
             IUnit defender = harness.BuildUnit("P2", modelCount: 5, "Regeneration");
 
-            var ops = harness.Fire(new SaveRollCompleteContext(attacker, defender, new[] { 2, 3 }));
+            var ops = harness.Fire(new SaveRollCompleteContext(attacker, defender, TestDice.Faces(2, 3)));
 
             ops.HasOperation<RuleOperation.IgnoreWound>(op => op.MinRoll == 5);
         }
@@ -722,7 +722,7 @@ namespace FDG.Tests
             harness.AttachRule(attacker, blast, new RuleArgument.Int(3));
             IUnit target = harness.BuildUnit("P2", modelCount: 5);
 
-            var ops = harness.Fire(new HitRollCompleteContext(attacker, target, new[] { 5 }));
+            var ops = harness.Fire(new HitRollCompleteContext(attacker, target, TestDice.Faces(5)));
 
             ops.HasOperation<RuleOperation.MultiplyHits>(op => op.Multiplier == 3);
         }

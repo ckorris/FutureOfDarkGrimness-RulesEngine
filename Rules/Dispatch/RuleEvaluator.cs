@@ -49,7 +49,7 @@ public sealed class RuleEvaluator
                     continue;
                 }
 
-                MapEffect(entry.Effect, ops);
+                MapEffect(entry.Effect, context, ops);
             }
         }
 
@@ -58,6 +58,7 @@ public sealed class RuleEvaluator
 
     private static bool EvaluateCondition(Condition condition, IHookContext context)
     {
+        //I don't love that this is one big switch statement, but not yet sure how to keep it all data otherwise.
         switch (condition)
         {
             case Condition.DistanceGreaterThan distance:
@@ -70,13 +71,23 @@ public sealed class RuleEvaluator
                     $"{nameof(Condition.DistanceGreaterThan)} fired against a context that " +
                     $"carries no distance ({context.GetType().Name}).");
 
+            case Condition.UnmodifiedRollEquals unmodifiedRoll:
+                if (context is IHasUnmodifiedHitRolls withRolls)
+                {
+                    return withRolls.UnmodifiedHitRolls.At(unmodifiedRoll.DieValue) > 0;
+                }
+                
+                throw new InvalidOperationException(
+                    $"{nameof(Condition.UnmodifiedRollEquals)} fired against a context that " +
+                    $"carries no unmodified hit rolls ({context.GetType().Name}).");
+            
             default:
                 throw new NotImplementedException(
                     $"Condition '{condition.GetType().Name}' is not yet handled by RuleEvaluator.");
         }
     }
 
-    private static void MapEffect(Effect effect, List<RuleOperation> ops)
+    private static void MapEffect(Effect effect, IHookContext context, List<RuleOperation> ops)
     {
         switch (effect)
         {
@@ -84,6 +95,19 @@ public sealed class RuleEvaluator
                 ops.Add(new RuleOperation.ApplyRollModifier(rollModifier.RollKind, rollModifier.Delta));
                 break;
 
+            case Effect.AddExtraHit addExtraHit:
+                if (context is IHasUnmodifiedHitRolls withRolls)
+                {
+                    float extraHits = withRolls.UnmodifiedHitRolls.At(addExtraHit.OnRollValue) * addExtraHit.Count;
+                    ops.Add(new RuleOperation.InsertExtraHits(extraHits));
+                    break;
+                }
+                
+                throw new InvalidOperationException(
+                    $"{nameof(Effect.AddExtraHit)} fired against a context that " +
+                    $"carries no unmodified hit rolls ({context.GetType().Name}).");
+
+            
             default:
                 throw new NotImplementedException(
                     $"Effect '{effect.GetType().Name}' is not yet handled by RuleEvaluator.");

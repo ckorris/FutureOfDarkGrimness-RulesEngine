@@ -4,12 +4,14 @@ namespace FDG.Rules.Dispatch.Contexts
 {
     /// <summary>
     /// Fires at <see cref="EHookID.Shooting_OnSaveRollComplete"/>: after defense
-    /// rolls, before applying wounds. Carries the unmodified save-roll values so
-    /// rules that react to natural results (Bane re-rolls unmodified Defense 6s)
-    /// can decide. Attacker is the source of the attack; Defender holds the saves.
+    /// rolls, before applying wounds. Carries the unmodified save rolls as an
+    /// <see cref="IDiceResults"/> histogram (so rules reacting to natural results,
+    /// e.g. Bane re-rolling unmodified Defense 6s, read <c>UnmodifiedSaveRolls.At(6)</c>
+    /// and stay correct under the probabilistic roller). Attacker is the source of
+    /// the attack; Defender holds the saves.
     /// </summary>
     public sealed record SaveRollCompleteContext(
-        IUnit Attacker, IUnit Defender, IReadOnlyList<int> UnmodifiedSaveRolls) : IHookContext
+        IUnit Attacker, IUnit Defender, IDiceResults UnmodifiedSaveRolls) : IHookContext
     {
         public EHookID Hook => EHookID.Shooting_OnSaveRollComplete;
     }

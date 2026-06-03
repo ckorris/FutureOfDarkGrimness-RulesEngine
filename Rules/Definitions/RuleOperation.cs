@@ -59,16 +59,19 @@ public abstract record RuleOperation
     /// <summary>
     /// Add <see cref="Count"/> extra hits to the current attack's hit pool.
     /// Resolution of <see cref="Effect.AddExtraHit"/> after the dispatcher has
-    /// counted matching natural-roll dice; one operation per matching die, or
-    /// a single batched operation with the total — dispatcher's choice.
+    /// counted matching natural-roll dice (<c>results.At(value)</c>). Count is a
+    /// float because that match count is fractional under the probabilistic
+    /// roller (e.g. n dice yield n/6 natural 6s).
     /// </summary>
-    public sealed record InsertExtraHits(int Count) : RuleOperation;
+    public sealed record InsertExtraHits(float Count) : RuleOperation;
 
     /// <summary>
     /// Add <see cref="Count"/> extra wounds to the current attack's wound
-    /// total. Resolution of <see cref="Effect.AddExtraWound"/>.
+    /// total. Resolution of <see cref="Effect.AddExtraWound"/>. Count is a float
+    /// for the same reason as <see cref="InsertExtraHits"/> — the matching-die
+    /// count is fractional under the probabilistic roller.
     /// </summary>
-    public sealed record InsertExtraWounds(int Count) : RuleOperation;
+    public sealed record InsertExtraWounds(float Count) : RuleOperation;
 
     /// <summary>
     /// Apply a persistent stat modifier of <see cref="Delta"/> to
@@ -147,11 +150,12 @@ public abstract record RuleOperation
 
     /// <summary>
     /// Restore <see cref="Amount"/> wounds on <see cref="Target"/>. Resolution
-    /// of <see cref="Effect.Heal"/>; the random <see cref="DiceExpression"/>
-    /// has already been rolled by the dispatcher, so <see cref="Amount"/> is a
-    /// concrete int — the queue is deterministic once produced.
+    /// of <see cref="Effect.Heal"/>; the <see cref="DiceExpression"/> has already
+    /// been rolled by the dispatcher, so <see cref="Amount"/> is concrete — a
+    /// float, since a rolled heal is fractional under the probabilistic roller
+    /// (a D6 heal averages 3.5).
     /// </summary>
-    public sealed record InvokeHeal(IModel Target, int Amount) : RuleOperation;
+    public sealed record InvokeHeal(IModel Target, float Amount) : RuleOperation;
 
     /// <summary>
     /// Multiply each wound the in-flight attack deals by <see cref="Multiplier"/>.

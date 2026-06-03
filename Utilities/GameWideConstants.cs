@@ -4,7 +4,9 @@ namespace FDG
     public static class GameWideConstants
     {
         public const float MOVE_SHOOT_DISTANCE_INCHES = 6;
-        
+
+        public const float RUSH_DISTANCE_INCHES = 12;
+
         public const float CHARGE_DISTANCE_INCHES = 12;
 
         /// <summary>

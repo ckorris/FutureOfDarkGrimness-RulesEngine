@@ -21,16 +21,18 @@ namespace FDG
 
         public IUnit Unit => _unit.GetValue();
 
-        public float MaxAdvanceDistance => _maxDistanceInches / 2f; //TODO: Things can buff one distance but not the other.
+        public float MaxAdvanceDistance => _maxAdvanceDistance;
 
-        public float MaxChargeDistance => _maxDistanceInches; 
+        public float MaxDistanceInches => _maxDistanceInches;
 
         private DataBinding<UnitData> _unit;
+        private float _maxAdvanceDistance;
         private float _maxDistanceInches;
 
-        public PathTemplate(DataBinding<UnitData> unit, float maxDistanceInches)
+        public PathTemplate(DataBinding<UnitData> unit, float maxAdvanceDistance, float maxDistanceInches)
         {
             _unit = unit;
+            _maxAdvanceDistance = maxAdvanceDistance;
             _maxDistanceInches = maxDistanceInches;
 
             foreach (DataBinding<ModelData> model in unit.ModelBindings()

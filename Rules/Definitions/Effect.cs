@@ -19,6 +19,13 @@ namespace FDG.Rules.Definitions;
 /// </summary>
 public abstract record Effect
 {
+    public virtual void Apply(IHookContext context, List<RuleOperation> operations)
+    {
+        throw new NotImplementedException("Effect is not yet applyable.");
+    }
+    
+    public virtual IReadOnlyCollection<Type> RequiredCapabilities => Array.Empty<Type>();
+    
     /// <summary>
     /// Modifies a base stat (Quality / Defense / Tough) by <see cref="Delta"/>
     /// for the duration given by <see cref="LifetimeScope"/>. Unlike
@@ -33,7 +40,13 @@ public abstract record Effect
     /// Courage +1 to morale, AP(X) -X to enemy defense, etc. Applies only to
     /// the one roll in flight at the firing hook.
     /// </summary>
-    public sealed record RollModifier(ERollKind RollKind, int Delta) : Effect;
+    public sealed record RollModifier(ERollKind RollKind, int Delta) : Effect
+    {
+        public override void Apply(IHookContext context, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.ApplyRollModifier(RollKind, Delta));
+        }
+    }
 
     /// <summary>
     /// Forces a reroll of dice in the current roll matching
@@ -48,7 +61,13 @@ public abstract record Effect
     /// <see cref="Count"/> additional hits (defaults to one). Covers Furious,
     /// Surge, Relentless — all the "natural 6 → bonus hit" rules.
     /// </summary>
-    public sealed record AddExtraHit(int OnRollValue, int Count = 1) : Effect;
+    public sealed record AddExtraHit(int OnRollValue, int Count = 1) : CapabilityEffect<IHasUnmodifiedHitRolls>
+    {
+        protected override void ApplyCore(IHasUnmodifiedHitRolls context, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.InsertExtraHits(context.UnmodifiedHitRolls.At(OnRollValue) * Count));
+        }
+    }
 
     /// <summary>
     /// Same shape as <see cref="AddExtraHit"/> but for wound generation.

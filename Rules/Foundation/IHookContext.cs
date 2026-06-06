@@ -1,6 +1,4 @@
-using FDG.Rules.Foundation;
-
-namespace FDG.Rules.Dispatch;
+namespace FDG.Rules.Foundation;
 
 public interface IHookContext
 {

@@ -28,6 +28,14 @@ namespace FDG.Rules.Definitions;
 /// </summary>
 public abstract record Condition
 {
+
+    public virtual bool Evaluate(IHookContext context)
+    {
+        throw new NotImplementedException("Condition is not yet evaluable.");
+    }
+    
+    public virtual IReadOnlyCollection<Type> RequiredCapabilities => Array.Empty<Type>();
+
     /// <summary>
     /// Always matches. Used for unconditional effects (e.g. passive aura
     /// modifiers that don't gate on any runtime state).
@@ -58,14 +66,26 @@ public abstract record Condition
     /// were applied. Typically <see cref="DieValue"/> is 6 (Furious / Rending /
     /// Surge fire on natural 6) or 1 (Shred fires on natural 1 to block).
     /// </summary>
-    public sealed record UnmodifiedRollEquals(int DieValue) : Condition;
+    public sealed record UnmodifiedRollEquals(int DieValue) : CapabilityCondition<IHasUnmodifiedHitRolls>
+    {
+        protected override bool EvaluateCore(IHasUnmodifiedHitRolls context)
+        {
+            return context.UnmodifiedHitRolls.At(DieValue) > 0;
+        }
+    }
 
     /// <summary>
     /// True if the source-to-target distance exceeds the given inches.
     /// E.g. Stealth applies when shot from &gt; 9" away; Piercing Hunter
     /// at &gt; 9".
     /// </summary>
-    public sealed record DistanceGreaterThan(float DistanceInches) : Condition;
+    public sealed record DistanceGreaterThan(float DistanceInches) : CapabilityCondition<IHasDistance>
+    {
+        protected override bool EvaluateCore(IHasDistance context)
+        {
+            return context.DistanceInches > DistanceInches;
+        }
+    }
 
     /// <summary>
     /// True if the target's value for the given stat is at least the threshold.

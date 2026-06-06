@@ -1,4 +1,4 @@
-namespace FDG.Rules.Dispatch;
+namespace FDG.Rules.Foundation;
 
 /// <summary>
 /// Capability interface: a hook context that carries the unmodified hit-roll
@@ -9,7 +9,7 @@ namespace FDG.Rules.Dispatch;
 /// and the <c>ProbabilisticDiceRoller</c> (fractional expected counts, e.g.
 /// At(6) == rolls / 6).
 /// </summary>
-public interface IHasUnmodifiedHitRolls
+public interface IHasUnmodifiedHitRolls : ICapability
 {
     public IDiceResults UnmodifiedHitRolls { get; }
 }

@@ -1,4 +1,4 @@
-namespace FDG.Rules.Dispatch;
+namespace FDG.Rules.Foundation;
 
 /// <summary>
 /// Capability interface: a hook context that carries a source-to-target distance.
@@ -8,7 +8,7 @@ namespace FDG.Rules.Dispatch;
 /// concrete context. More such capability interfaces are added per condition as
 /// Phase 7a grows (unmodified rolls, action type, ...).
 /// </summary>
-public interface IHasDistance
+public interface IHasDistance : ICapability
 {
     /// <summary> Source-to-target distance in inches for this event. </summary>
     float DistanceInches { get; }

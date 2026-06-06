@@ -3,10 +3,34 @@ using FDG.Rules.Foundation;
 namespace FDG.Rules.Definitions;
 
 /// <summary>
-/// One firing of one rule instance: the world event (<see cref="Hook"/>) plus who
-/// the rule is attached to (<see cref="Bearer"/>) and that attachment's arguments
-/// (<see cref="Arguments"/>, e.g. Deadly(3)). The hook context can't carry the last
-/// two because the same event is evaluated for several units/seats — they vary per
-/// bearer, which is what RuleEvaluator knows as it walks a unit's rules.
+/// The resolution environment for one firing of one rule instance: the world event
+/// (<see cref="Hook"/> — null when resolving an accepted activated ability, which
+/// happens off the live-event path), who the rule is attached to (<see cref="Bearer"/>),
+/// that attachment's arguments (<see cref="Arguments"/>, e.g. Deadly(3)), the entity
+/// the effect lands on (<see cref="Target"/> — null for passive rules, which act on the
+/// bearer), and a <see cref="DiceRoller"/> for effects with random amounts (Mend's D3).
+/// Bearer/arguments/target/roller can't live on the hook context because the same event
+/// is evaluated for several units/seats — they vary per firing, which is what builds the
+/// invocation.
 /// </summary>
-public sealed record RuleInvocation(IHookContext Hook, IUnit Bearer, IReadOnlyList<RuleArgument> Arguments);
+public sealed record RuleInvocation(
+    IHookContext? Hook,
+    IUnit Bearer,
+    IReadOnlyList<RuleArgument> Arguments,
+    IUnit? Target = null,
+    IDiceRoller? DiceRoller = null)
+{
+    /// <summary>
+    /// The unit an effect lands on: the explicit <see cref="Target"/> for activated
+    /// abilities, or the <see cref="Bearer"/> itself for passive rules.
+    /// </summary>
+    public IUnit EffectiveTarget => Target ?? Bearer;
+
+    /// <summary>
+    /// The owner to stamp on a token this firing grants: the bearer when the token lands
+    /// on another unit (cross-unit provenance — drives OwnerDestroyed cleanup and
+    /// per-placer stacking), null when the token lands on the bearer itself.
+    /// </summary>
+    public UnitID? OwnerForEffectiveTarget =>
+        EffectiveTarget.ID != Bearer.ID ? Bearer.ID : null;
+}

@@ -23,7 +23,7 @@ namespace FDG.Tests.RulesHarness
 
         public RuleResolver Resolver { get; } = new();
         public RuleHookBus Bus { get; } = new();
-        public RuleEvaluator Evaluator { get; } = new();
+        public RuleEvaluator Evaluator { get; }
         public TestGameContext GameContext { get; }
 
         private readonly GameDataStore _store;
@@ -33,6 +33,7 @@ namespace FDG.Tests.RulesHarness
         {
             _store = GameDataStore.GameDataStoreBuilder.GetDefault();
             GameContext = new TestGameContext(_store, diceRoller ?? new FixedDiceRoller(4));
+            Evaluator = new RuleEvaluator(GameContext.DiceRoller);
         }
 
         /// <summary> Registers a rule definition under its canonical name. </summary>
@@ -107,7 +108,7 @@ namespace FDG.Tests.RulesHarness
         /// Returns the player-triggered abilities the bus offers at this hook (affordable,
         /// available, trigger matches). The observable for "an ability was offered."
         /// </summary>
-        public IReadOnlyList<AbilityOffer> OfferAbilities(IHookContext context) => Bus.GatherOffers(context);
+        public IReadOnlyList<AbilityOffer> OfferAbilities(IHookContext context) => Evaluator.GatherOffers(context);
 
         /// <summary>
         /// Accepts an offered ability against the chosen <paramref name="targets"/>,
@@ -115,7 +116,7 @@ namespace FDG.Tests.RulesHarness
         /// operations).
         /// </summary>
         public IReadOnlyList<RuleOperation> Accept(AbilityOffer offer, params IUnit[] targets)
-            => Bus.ResolveAbility(offer, targets);
+            => Evaluator.ResolveAbility(offer, targets);
 
         /// <summary>
         /// Seeds <paramref name="count"/> tokens of <paramref name="type"/> onto a unit's

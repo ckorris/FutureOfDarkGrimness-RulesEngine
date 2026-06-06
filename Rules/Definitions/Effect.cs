@@ -1,3 +1,4 @@
+using System.Linq;
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
 
@@ -120,7 +121,32 @@ public abstract record Effect
     /// (Versatile Attack/Reach) with <see cref="ELifetime.ThisActivation"/>.
     /// Distinct from <see cref="Effect.Aura"/>, which grants to all unit-mates.
     /// </summary>
-    public sealed record AddRule(string RuleName, ELifetime Scope) : Effect;
+    public sealed record AddRule(string RuleName, ELifetime Scope) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.GrantTokenToUnit(
+                ruleInvocation.EffectiveTarget,
+                new Token(TokenType.RuleGrant, 1, ClearTriggerFor(Scope),
+                    Payload: new TokenPayload.RuleGrant(RuleName, Scope),
+                    OwnerUnitID: ruleInvocation.OwnerForEffectiveTarget)));
+        }
+    }
+
+    /// <summary>
+    /// Maps a rule-effect <see cref="ELifetime"/> onto the token clear trigger that
+    /// realizes it, for effects (<see cref="AddRule"/>) that persist by granting a
+    /// <see cref="TokenType.RuleGrant"/> token. Aura / until-end-of-game grants never
+    /// auto-clear (<see cref="TokenClearTrigger.ManualOnly"/>).
+    /// </summary>
+    private static TokenClearTrigger ClearTriggerFor(ELifetime lifetime) => lifetime switch
+    {
+        ELifetime.NextTrigger => new TokenClearTrigger.FirstTrigger(),
+        ELifetime.ThisActivation => new TokenClearTrigger.ActivationEnd(),
+        ELifetime.ThisRound => new TokenClearTrigger.RoundEnd(),
+        ELifetime.ThisAttack => new TokenClearTrigger.AttackEnd(),
+        _ => new TokenClearTrigger.ManualOnly(),
+    };
 
     /// <summary>
     /// Grants the rule named <see cref="RuleName"/> to every model in the
@@ -149,14 +175,37 @@ public abstract record Effect
     /// because every offensive-spell hit-count we've seen in the corpus is
     /// fixed — no rule-data randomness on the count itself.
     /// </summary>
-    public sealed record DealHits(int Count, IReadOnlyList<string> WithRules) : Effect;
+    public sealed record DealHits(int Count, IReadOnlyList<string> WithRules) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.InvokeDealHits(ruleInvocation.EffectiveTarget, Count, WithRules));
+        }
+    }
 
     /// <summary>
     /// Removes <see cref="Amount"/> wounds from the target model. The only
     /// rule-data effect with a genuinely random amount — Mend uses D3 — hence
     /// the <see cref="DiceExpression"/> parameter rather than a fixed int.
     /// </summary>
-    public sealed record Heal(DiceExpression Amount) : Effect;
+    public sealed record Heal(DiceExpression Amount) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            // Roll the heal die now and reduce the per-face histogram to a scalar pip
+            // total (Σ face·count) — fractional under the probabilistic roller, hence
+            // InvokeHeal.Amount is a float. Model selection ("most-wounded first") is
+            // Phase 8; queue-level just needs a model.
+            IDiceResults results = ruleInvocation.DiceRoller!.Roll(Amount.Sides, 1f);
+            float amount = 0f;
+            for (int face = results.SideMin; face <= results.SideMax; face++)
+            {
+                amount += face * results.At(face);
+            }
+
+            operations.Add(new RuleOperation.InvokeHeal(ruleInvocation.EffectiveTarget.Models.First(), amount));
+        }
+    }
 
     /// <summary>
     /// Adds <see cref="Count"/> tokens of <see cref="TType"/> to the bearer's
@@ -174,7 +223,9 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.GrantTokenToUnit(
-                ruleInvocation.Bearer, new Token(TType, Count.Resolve(ruleInvocation.Arguments), Clear)));
+                ruleInvocation.EffectiveTarget,
+                new Token(TType, Count.Resolve(ruleInvocation.Arguments), Clear,
+                    OwnerUnitID: ruleInvocation.OwnerForEffectiveTarget)));
         }
     }
 
@@ -194,7 +245,13 @@ public abstract record Effect
     /// Harassing (3" after shooting/melee, optional), Re-Position Artillery,
     /// Vanguard reposition.
     /// </summary>
-    public sealed record TriggeredMove(float MaxInches, bool IsOptional) : Effect;
+    public sealed record TriggeredMove(float MaxInches, bool IsOptional) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.InvokeTriggeredMove(ruleInvocation.EffectiveTarget, MaxInches, IsOptional));
+        }
+    }
 
     /// <summary>
     /// Triggers a second activation of the bearer this round. Engine primitive
@@ -203,7 +260,13 @@ public abstract record Effect
     /// <c>UnitID Target</c> parameter if a future rule reactivates a different
     /// unit.
     /// </summary>
-    public sealed record Reactivate : Effect;
+    public sealed record Reactivate : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.InvokeReactivate(ruleInvocation.EffectiveTarget));
+        }
+    }
 
     /// <summary>
     /// Multiplies each wound the attack deals by <see cref="Multiplier"/>. Covers

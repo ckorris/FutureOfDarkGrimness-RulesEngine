@@ -8,8 +8,10 @@ namespace FDG.Rules.Dispatch.Contexts
     /// attack action, before targets and weapons resolve. The trigger point at which
     /// activated abilities (Mend, Re-Position Artillery, Unstoppable Mark) are offered.
     /// </summary>
-    public sealed record PreAttackContext(IUnit Unit, EActionType ActionType) : IHookContext
+    public sealed record PreAttackContext(IUnit Unit, EActionType ActionType) : IHookContext, IHasActingUnit
     {
         public EHookID Hook => EHookID.Activation_OnPreAttack;
+
+        public IUnit ActingUnit => Unit;
     }
 }

@@ -1,4 +1,5 @@
 using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 
 namespace FDG.Rules.Definitions;
 
@@ -29,7 +30,7 @@ public abstract record Effect
     /// <summary>
     /// Modifies a base stat (Quality / Defense / Tough) by <see cref="Delta"/>
     /// for the duration given by <see cref="LifetimeScope"/>. Unlike
-    /// <see cref="RollModifier"/>, this persists across multiple rolls — e.g.
+    /// <see cref="Effect.RollModifier"/>, this persists across multiple rolls — e.g.
     /// "+1 Defense until end of round" rather than "+1 to this one save roll."
     /// </summary>
     public sealed record StatModifier(EStatKind Stat, int Delta, ELifetime LifetimeScope) : Effect;
@@ -76,7 +77,7 @@ public abstract record Effect
     }
 
     /// <summary>
-    /// Same shape as <see cref="AddExtraHit"/> but for wound generation.
+    /// Same shape as <see cref="Effect.AddExtraHit"/> but for wound generation.
     /// Covers Shred (+1 wound on unmodified 1 to block).
     /// </summary>
     public sealed record AddExtraWound(int OnRollValue, int Count = 1) : Effect;
@@ -117,18 +118,26 @@ public abstract record Effect
     /// (Blessed Ammo, Fade in the Dark, Protective Dome) with
     /// <see cref="ELifetime.NextTrigger"/>; activation-scoped grants
     /// (Versatile Attack/Reach) with <see cref="ELifetime.ThisActivation"/>.
-    /// Distinct from <see cref="Aura"/>, which grants to all unit-mates.
+    /// Distinct from <see cref="Effect.Aura"/>, which grants to all unit-mates.
     /// </summary>
     public sealed record AddRule(string RuleName, ELifetime Scope) : Effect;
 
     /// <summary>
     /// Grants the rule named <see cref="RuleName"/> to every model in the
     /// bearer's unit for as long as the bearer remains alive. Distinct from
-    /// <see cref="AddRule"/> because aura propagation is unit-wide and tied to
+    /// <see cref="Effect.AddRule"/> because aura propagation is unit-wide and tied to
     /// bearer existence rather than a named lifetime. Covers Regeneration
     /// Aura, Furious Aura, Melee Shrouding Aura, etc.
     /// </summary>
-    public sealed record Aura(string RuleName) : Effect;
+    public sealed record Aura(string RuleName) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.GrantTokenToUnit(
+                ruleInvocation.Bearer, new Token(TokenType.RuleGrant, 1, new TokenClearTrigger.ManualOnly(),
+                    Payload: new TokenPayload.RuleGrant(RuleName, ELifetime.Aura))));
+        }
+    }
 
     /// <summary>
     /// Inflicts <see cref="Count"/> hits on the target unit, with each hit
@@ -160,7 +169,14 @@ public abstract record Effect
     /// a <see cref="ValueSource"/> so fixed grants use <c>Literal</c> while
     /// arg-driven grants (Caster) use <c>Arg</c>.
     /// </summary>
-    public sealed record GrantToken(TokenType TType, ValueSource Count, TokenClearTrigger Clear) : Effect;
+    public sealed record GrantToken(TokenType TType, ValueSource Count, TokenClearTrigger Clear) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.GrantTokenToUnit(
+                ruleInvocation.Bearer, new Token(TType, Count.Resolve(ruleInvocation.Arguments), Clear)));
+        }
+    }
 
     /// <summary>
     /// Removes <see cref="Count"/> tokens of <see cref="TType"/> from the
@@ -323,7 +339,7 @@ public abstract record Effect
     /// <summary>
     /// Adjusts the effective range of attacks made against the bearer by
     /// <see cref="Delta"/> inches. Covers Aircraft ("units targeting it get -12\"
-    /// range"). Distinct from <see cref="RollModifier"/>, which adjusts the roll
+    /// range"). Distinct from <see cref="Effect.RollModifier"/>, which adjusts the roll
     /// itself rather than the range threshold.
     /// </summary>
     public sealed record RangeModifier(int Delta) : Effect

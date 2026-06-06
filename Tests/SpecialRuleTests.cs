@@ -285,7 +285,7 @@ namespace FDG.Tests
             IUnit attacker = harness.BuildUnit("P1", modelCount: 3, "Piercing Frenzy");
             IUnit enemy = harness.BuildUnit("P2", modelCount: 1);
 
-            var ops = harness.Fire(new UnitDestroyedContext(DestroyedUnit: enemy, KillerUnit: attacker));
+            var ops = harness.Evaluate(attacker, ERuleSeat.Actor, new UnitDestroyedContext(DestroyedUnit: enemy, KillerUnit: attacker));
 
             ops.HasOperation<RuleOperation.GrantTokenToUnit>(
                 op => op.Unit == attacker && op.TokenToGrant.Type == marker);
@@ -311,7 +311,7 @@ namespace FDG.Tests
             harness.SeedToken(attacker, marker, count: 2);
             IUnit target = harness.BuildUnit("P2", modelCount: 5);
 
-            var ops = harness.Fire(new HitRollCompleteContext(attacker, target, TestDice.Faces(4, 4, 4)));
+            var ops = harness.Evaluate(attacker, ERuleSeat.Actor, new HitRollCompleteContext(attacker, target, TestDice.Faces(4, 4, 4)));
 
             ops.HasOperation<RuleOperation.ApplyRollModifier>(op => op.Roll == ERollKind.Save && op.Delta == -2);
         }
@@ -333,7 +333,7 @@ namespace FDG.Tests
 
             IUnit unit = harness.BuildUnit("P1", modelCount: 4, "Regeneration Aura");
 
-            var ops = harness.Fire(new UnitCreatedContext(unit));
+            var ops = harness.Evaluate(unit, ERuleSeat.Actor, new UnitCreatedContext(unit));
 
             ops.HasOperation<RuleOperation.GrantTokenToUnit>(op => op.Unit == unit &&
                 op.TokenToGrant.Payload is TokenPayload.RuleGrant rg && rg.RuleName == "Regeneration");
@@ -806,7 +806,7 @@ namespace FDG.Tests
             IUnit unit = harness.BuildUnit("P1", modelCount: 1);
             harness.AttachRule(unit, caster, new RuleArgument.Int(2));
 
-            var ops = harness.Fire(new RoundStartContext(unit));
+            var ops = harness.Evaluate(unit, ERuleSeat.Actor, new RoundStartContext(unit));
 
             ops.HasOperation<RuleOperation.GrantTokenToUnit>(op => op.Unit == unit &&
                 op.TokenToGrant.Type == TokenType.SpellTokens && op.TokenToGrant.Count == 2);
@@ -860,7 +860,7 @@ namespace FDG.Tests
             IUnit attacker = harness.BuildUnit("P1", modelCount: 1, "Limited");
             IUnit target = harness.BuildUnit("P2", modelCount: 5);
 
-            var ops = harness.Fire(new PostShootContext(attacker, target));
+            var ops = harness.Evaluate(attacker, ERuleSeat.Actor, new PostShootContext(attacker, target));
 
             ops.HasOperation<RuleOperation.GrantTokenToUnit>(
                 op => op.Unit == attacker && op.TokenToGrant.Type == usedMarker);

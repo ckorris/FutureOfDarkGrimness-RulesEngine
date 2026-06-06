@@ -116,7 +116,13 @@ public abstract record Condition
     /// the "do they have any?" case ergonomic; values &gt; 1 support stacking-
     /// marker thresholds (e.g. "do they have 2+ Piercing Frenzy markers?").
     /// </summary>
-    public sealed record TokenPresent(TokenType TType, int MinCount = 1) : Condition;
+    public sealed record TokenPresent(TokenType TType, int MinCount = 1) : Condition
+    {
+        public override bool Evaluate(RuleInvocation invocation)
+        {
+            return invocation.Bearer.Tokens.GetTokenCount(TType) >= MinCount;
+        }
+    }
 
     /// <summary>
     /// Logical AND of two conditions. Both must match.

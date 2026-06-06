@@ -1,6 +1,7 @@
 using FDG.Data;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
 
@@ -28,6 +29,7 @@ namespace FDG.Tests.RulesHarness
 
         private readonly GameDataStore _store;
         private readonly Dictionary<string, PlayerID> _playersByName = new();
+        private readonly TokenClearService _tokenClearService = new();
 
         public TestRuleHarness(IDiceRoller? diceRoller = null)
         {
@@ -92,8 +94,35 @@ namespace FDG.Tests.RulesHarness
             ((UnitData)unit).AttachRuleDefinition(new ResolvedRule(definition.Name, definition, arguments));
         }
 
-        /// <summary> Fires a hook through the bus and returns the resulting operations. </summary>
-        public IReadOnlyList<RuleOperation> Fire(IHookContext context) => Bus.Dispatch(context);
+        /// <summary>
+        /// Fires a hook and returns the resulting operations. A <see cref="UnitDestroyedContext"/>
+        /// additionally runs owner-destroyed token cleanup across every container (the
+        /// stand-in for the stage that will drive this once rules are wired into the engine);
+        /// other hooks go through the (now vestigial) bus stub.
+        /// </summary>
+        public IReadOnlyList<RuleOperation> Fire(IHookContext context)
+        {
+            if (context is UnitDestroyedContext destroyed)
+            {
+                _tokenClearService.ClearForDestroyedOwner(destroyed.DestroyedUnit.ID, AllTokenContainers());
+            }
+
+            return Bus.Dispatch(context);
+        }
+
+        /// <summary> Every token container on the table — unit- and model-scoped. </summary>
+        private IEnumerable<ITokenContainer> AllTokenContainers()
+        {
+            foreach (UnitData unit in _store.GetAllValues<UnitData>())
+            {
+                yield return unit.Tokens;
+            }
+
+            foreach (ModelData model in _store.GetAllValues<ModelData>())
+            {
+                yield return model.Tokens;
+            }
+        }
 
         /// <summary>
         /// Evaluates <paramref name="unit"/>'s passive rules against <paramref name="context"/>

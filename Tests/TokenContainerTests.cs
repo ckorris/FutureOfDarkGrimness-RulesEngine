@@ -169,6 +169,39 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void RemoveTokensWithOwner_OnlyRemovesThatOwnersEntry()
+        {
+            // The owner-scoped counterpart to the drain-across-owners test above: removing
+            // one placer's marks must leave another placer's same-type marks untouched.
+            var ownerA = new UnitID(Guid.NewGuid());
+            var ownerB = new UnitID(Guid.NewGuid());
+            var c = new TokenContainer();
+            c.AddToken(MakeToken(TokenType.SpellTokens, count: 2, owner: ownerA));
+            c.AddToken(MakeToken(TokenType.SpellTokens, count: 3, owner: ownerB));
+
+            int actually = c.RemoveTokensWithOwner(TokenType.SpellTokens, ownerA, count: 5);
+
+            Assert.That(actually, Is.EqualTo(2), "only owner A's 2 tokens are eligible");
+            Assert.That(c.TokensWithOwner(ownerA).Count(), Is.Zero);
+            Assert.That(c.TokensWithOwner(ownerB).Single().Count, Is.EqualTo(3),
+                "owner B's same-type tokens must be left alone");
+        }
+
+        [Test]
+        public void RemoveTokensWithOwner_MissingOwner_ReturnsZero()
+        {
+            var ownerA = new UnitID(Guid.NewGuid());
+            var ownerB = new UnitID(Guid.NewGuid());
+            var c = new TokenContainer();
+            c.AddToken(MakeToken(TokenType.SpellTokens, count: 2, owner: ownerA));
+
+            int actually = c.RemoveTokensWithOwner(TokenType.SpellTokens, ownerB, count: 1);
+
+            Assert.That(actually, Is.Zero);
+            Assert.That(c.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(2));
+        }
+
+        [Test]
         public void RemoveTokens_NonPositiveCount_IsNoOp()
         {
             var c = new TokenContainer();

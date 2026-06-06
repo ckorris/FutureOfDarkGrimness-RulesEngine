@@ -38,17 +38,29 @@ public class TokenContainer : ITokenContainer
     }
 
     public int RemoveTokens(TokenType tokenType, int count = 1)
+        => RemoveMatching(entry => entry.Type == tokenType, count);
+
+    public int RemoveTokensWithOwner(TokenType tokenType, UnitID owner, int count = 1)
+        => RemoveMatching(entry => entry.Type == tokenType && entry.OwnerUnitID == owner, count);
+
+    /// <summary>
+    /// Drains up to <paramref name="count"/> tokens from entries satisfying
+    /// <paramref name="match"/>, in insertion order, firing OnTokenRemoved when an entry
+    /// hits zero and OnTokenCountChanged on a partial draw. Shared by the owner-agnostic
+    /// and owner-scoped public removers — they differ only in the predicate.
+    /// </summary>
+    private int RemoveMatching(Func<Token, bool> match, int count)
     {
         if (count <= 0)
         {
             return 0; //lolwut
         }
-        
+
         int totalRemoved = 0;
         for (int i = 0; i < _tokens.Count && totalRemoved < count;)
         {
             Token entry =  _tokens[i];
-            if (entry.Type != tokenType)
+            if (!match(entry))
             {
                 i++;
                 continue;

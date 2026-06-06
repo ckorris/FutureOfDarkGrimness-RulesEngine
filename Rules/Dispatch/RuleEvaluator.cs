@@ -34,6 +34,8 @@ public sealed class RuleEvaluator
 
         foreach (ResolvedRule rule in unit.RuleDefinitions)
         {
+            var invocation = new RuleInvocation(context, unit, rule.Arguments);
+
             foreach (HookEntry entry in rule.Definition.Passive)
             {
                 if (entry.HookID != context.Hook || entry.Seat != seat)
@@ -41,12 +43,12 @@ public sealed class RuleEvaluator
                     continue;
                 }
 
-                if (!entry.Condition.Evaluate(context))
+                if (!entry.Condition.Evaluate(invocation))
                 {
                     continue;
                 }
 
-                entry.Effect.Apply(context, operations);
+                entry.Effect.Apply(invocation, operations);
             }
         }
 

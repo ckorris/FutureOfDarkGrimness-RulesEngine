@@ -6,9 +6,9 @@ public abstract record CapabilityEffect<TCap> : Effect where TCap : class, ICapa
 {
     protected abstract void ApplyCore(TCap context, List<RuleOperation> operations);
 
-    public sealed override void Apply(IHookContext context, List<RuleOperation> operations)
+    public sealed override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
     {
-        if (context is TCap typed)
+        if (ruleInvocation.Hook is TCap typed)
         {
             ApplyCore(typed, operations);
             return;
@@ -16,7 +16,7 @@ public abstract record CapabilityEffect<TCap> : Effect where TCap : class, ICapa
 
         throw new InvalidOperationException(
             $"{GetType().Name} requires {typeof(TCap).Name}, but the firing context " +
-            $"({context.GetType().Name}) does not provide it.");
+            $"({ruleInvocation.Hook.GetType().Name}) does not provide it.");
     }
 
     public sealed override IReadOnlyCollection<Type> RequiredCapabilities => [typeof(TCap)];

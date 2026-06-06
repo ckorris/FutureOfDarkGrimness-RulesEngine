@@ -6,12 +6,13 @@ public abstract record CapabilityCondition<TCap> : Condition where TCap : class,
 {
     protected abstract bool EvaluateCore(TCap context);
 
-    public sealed override bool Evaluate(IHookContext context)
+    public sealed override bool Evaluate(RuleInvocation invocation)
     {
-        return context is TCap typed
+        return invocation.Hook is TCap typed
             ? EvaluateCore(typed)
             : throw new InvalidOperationException(
-                $"{GetType().Name} required {typeof(TCap).Name} but the firing context, {context.GetType().Name} doesn't provide it.");
+                $"{GetType().Name} requires {typeof(TCap).Name}, but the firing context " +
+                $"({invocation.Hook.GetType().Name}) does not provide it.");
     }
 
     public sealed override IReadOnlyCollection<Type> RequiredCapabilities => [typeof(TCap)];

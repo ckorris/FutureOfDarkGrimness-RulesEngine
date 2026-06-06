@@ -1,3 +1,5 @@
+using FDG.Rules.Foundation;
+
 namespace FDG.Rules.Definitions;
 
 /// <summary>
@@ -14,9 +16,25 @@ namespace FDG.Rules.Definitions;
 /// </summary>
 public abstract record ValueSource
 {
+    public abstract int Resolve(IReadOnlyList<RuleArgument> arguments);
+
     /// <summary> A fixed value authored directly on the effect. </summary>
-    public sealed record Literal(int Value) : ValueSource;
+    public sealed record Literal(int Value) : ValueSource
+    {
+        public override int Resolve(IReadOnlyList<RuleArgument> arguments)
+        {
+            return Value;
+        }
+    }
 
     /// <summary> The bearing rule's argument at <see cref="Index"/> (e.g. Deadly's X is <c>Arg(0)</c>). </summary>
-    public sealed record Arg(int Index) : ValueSource;
+    public sealed record Arg(int Index) : ValueSource
+    {
+        public override int Resolve(IReadOnlyList<RuleArgument> arguments)
+        {
+            return arguments[Index] is RuleArgument.Int i
+                ? i.Value
+                : throw new InvalidOperationException($"Arg({Index}) expected an Int argument.");
+        }
+    }
 }

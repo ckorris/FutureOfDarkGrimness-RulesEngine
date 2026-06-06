@@ -30,7 +30,7 @@ namespace FDG.Rules.Definitions;
 public abstract record Condition
 {
 
-    public virtual bool Evaluate(IHookContext context)
+    public virtual bool Evaluate(RuleInvocation invocation)
     {
         throw new NotImplementedException("Condition is not yet evaluable.");
     }
@@ -43,7 +43,7 @@ public abstract record Condition
     /// </summary>
     public sealed record Always : Condition
     {
-        public override bool Evaluate(IHookContext context) => true;
+        public override bool Evaluate(RuleInvocation invocation) => true;
     }
 
     /// <summary>
@@ -123,8 +123,8 @@ public abstract record Condition
     /// </summary>
     public sealed record And(Condition Left, Condition Right) : Condition
     {
-        public override bool Evaluate(IHookContext context) =>
-            Left.Evaluate(context) && Right.Evaluate(context);
+        public override bool Evaluate(RuleInvocation invocation) =>
+            Left.Evaluate(invocation) && Right.Evaluate(invocation);
 
         public override IReadOnlyCollection<Type> RequiredCapabilities =>
             Left.RequiredCapabilities.Concat(Right.RequiredCapabilities).Distinct().ToArray();
@@ -141,7 +141,7 @@ public abstract record Condition
     /// </summary>
     public sealed record Not(Condition Inner) : Condition
     {
-        public override bool Evaluate(IHookContext context) => !Inner.Evaluate(context);
+        public override bool Evaluate(RuleInvocation invocation) => !Inner.Evaluate(invocation);
 
         public override IReadOnlyCollection<Type> RequiredCapabilities => Inner.RequiredCapabilities;
     }

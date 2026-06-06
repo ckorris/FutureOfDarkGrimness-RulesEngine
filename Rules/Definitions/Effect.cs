@@ -19,7 +19,7 @@ namespace FDG.Rules.Definitions;
 /// </summary>
 public abstract record Effect
 {
-    public virtual void Apply(IHookContext context, List<RuleOperation> operations)
+    public virtual void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
     {
         throw new NotImplementedException("Effect is not yet applyable.");
     }
@@ -42,7 +42,7 @@ public abstract record Effect
     /// </summary>
     public sealed record RollModifier(ERollKind RollKind, int Delta) : Effect
     {
-        public override void Apply(IHookContext context, List<RuleOperation> operations)
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.ApplyRollModifier(RollKind, Delta));
         }
@@ -56,7 +56,7 @@ public abstract record Effect
     /// </summary>
     public sealed record Reroll(ERollKind Roll, RerollCondition Condition) : Effect
     {
-        public override void Apply(IHookContext context, List<RuleOperation> operations)
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.ApplyReroll(Roll, Condition));
         }
@@ -90,7 +90,7 @@ public abstract record Effect
     /// </summary>
     public sealed record MovementBonus(EActionType ActionType, float DistanceInches) : Effect
     {
-        public override void Apply(IHookContext context, List<RuleOperation> operations)
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.ApplyMovementBonus(ActionType, DistanceInches));
         }
@@ -105,7 +105,7 @@ public abstract record Effect
     /// </summary>
     public sealed record IgnoreRule(string RuleName) : Effect
     {
-        public override void Apply(IHookContext context, List<RuleOperation> operations)
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.SuppressRule(RuleName));
         }
@@ -194,7 +194,13 @@ public abstract record Effect
     /// Deadly(X) — the multiplier is the rule's argument, so it's a
     /// <see cref="ValueSource"/> (typically <c>Arg(0)</c>) rather than a literal.
     /// </summary>
-    public sealed record MultiplyWounds(ValueSource Multiplier) : Effect;
+    public sealed record MultiplyWounds(ValueSource Multiplier) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.MultiplyWounds(Multiplier.Resolve(ruleInvocation.Arguments)));
+        }
+    }
 
     /// <summary>
     /// Caps the bearer's hit-roll target at <see cref="Quality"/> (a floor on the
@@ -204,7 +210,7 @@ public abstract record Effect
     /// </summary>
     public sealed record QualityFloor(int Quality) : Effect
     {
-        public override void Apply(IHookContext context, List<RuleOperation> operations)
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.QualityFloor(Quality));
         }
@@ -217,7 +223,7 @@ public abstract record Effect
     /// </summary>
     public sealed record IgnoreWoundOnRoll(int MinRoll) : Effect
     {
-        public override void Apply(IHookContext context, List<RuleOperation> operations)
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.IgnoreWound(MinRoll));
         }
@@ -228,26 +234,50 @@ public abstract record Effect
     /// Covers Tough(X) — the value is the rule's argument (<c>Arg(0)</c>). Models
     /// default to 1 max wound; Tough raises it.
     /// </summary>
-    public sealed record SetMaxWounds(ValueSource Amount) : Effect;
+    public sealed record SetMaxWounds(ValueSource Amount) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.SetMaxWounds(Amount.Resolve(ruleInvocation.Arguments)));
+        }
+    }
 
     /// <summary>
     /// Multiplies each hit the attack scores by <see cref="Multiplier"/> (capped at
     /// the target's model count by the engine). Covers Blast(X) — the multiplier is
     /// the rule's argument.
     /// </summary>
-    public sealed record MultiplyHits(ValueSource Multiplier) : Effect;
+    public sealed record MultiplyHits(ValueSource Multiplier) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.MultiplyHits(Multiplier.Resolve(ruleInvocation.Arguments)));
+        }
+    }
 
     /// <summary>
     /// On a charge, rolls <see cref="DiceCount"/> impact dice (each 2+ a hit) before
     /// strikes. Covers Impact(X) — the dice count is the rule's argument.
     /// </summary>
-    public sealed record ChargeImpactHits(ValueSource DiceCount) : Effect;
+    public sealed record ChargeImpactHits(ValueSource DiceCount) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.ChargeImpactHits(DiceCount.Resolve(ruleInvocation.Arguments)));
+        }
+    }
 
     /// <summary>
     /// Adds <see cref="Amount"/> to the bearer's wound tally when deciding who won a
     /// melee. Covers Fear(X) — the amount is the rule's argument.
     /// </summary>
-    public sealed record ExtraMeleeWoundCount(ValueSource Amount) : Effect;
+    public sealed record ExtraMeleeWoundCount(ValueSource Amount) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.ExtraMeleeWoundCount(Amount.Resolve(ruleInvocation.Arguments)));
+        }
+    }
 
     /// <summary>
     /// The bearer strikes before the charging unit resolves its strikes. Covers
@@ -257,7 +287,7 @@ public abstract record Effect
     /// </summary>
     public sealed record StrikeFirst : Effect
     {
-        public override void Apply(IHookContext context, List<RuleOperation> operations)
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.StrikeFirst());
         }
@@ -271,7 +301,7 @@ public abstract record Effect
     /// </summary>
     public sealed record TargetIndividualModel : Effect
     {
-        public override void Apply(IHookContext context, List<RuleOperation> operations)
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.TargetIndividualModel());
         }
@@ -284,7 +314,7 @@ public abstract record Effect
     /// </summary>
     public sealed record RestrictActions(IReadOnlyList<EActionType> Allowed) : Effect
     {
-        public override void Apply(IHookContext context, List<RuleOperation> operations)
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.RestrictActions(Allowed));
         }
@@ -298,7 +328,7 @@ public abstract record Effect
     /// </summary>
     public sealed record RangeModifier(int Delta) : Effect
     {
-        public override void Apply(IHookContext context, List<RuleOperation> operations)
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.ApplyRangeModifier(Delta));
         }
@@ -312,7 +342,7 @@ public abstract record Effect
     /// </summary>
     public sealed record IgnoreTerrainEffects : Effect
     {
-        public override void Apply(IHookContext context, List<RuleOperation> operations)
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.IgnoreTerrainEffects());
         }
@@ -327,7 +357,7 @@ public abstract record Effect
     /// </summary>
     public sealed record DeferDeployment : Effect
     {
-        public override void Apply(IHookContext context, List<RuleOperation> operations)
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.DeferDeployment());
         }

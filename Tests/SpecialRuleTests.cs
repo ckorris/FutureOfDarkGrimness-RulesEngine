@@ -453,7 +453,7 @@ namespace FDG.Tests
             harness.AttachRule(attacker, deadly, new RuleArgument.Int(3));
             IUnit defender = harness.BuildUnit("P2", modelCount: 5);
 
-            var ops = harness.Fire(new PreApplyWoundContext(attacker, defender));
+            var ops = harness.Evaluate(attacker, ERuleSeat.Actor, new PreApplyWoundContext(attacker, defender));
 
             ops.HasOperation<RuleOperation.MultiplyWounds>(op => op.Multiplier == 3);
         }
@@ -704,7 +704,7 @@ namespace FDG.Tests
             IUnit unit = harness.BuildUnit("P1", modelCount: 1);
             harness.AttachRule(unit, tough, new RuleArgument.Int(6));
 
-            var ops = harness.Fire(new UnitCreatedContext(unit));
+            var ops = harness.Evaluate(unit, ERuleSeat.Actor, new UnitCreatedContext(unit));
 
             ops.HasOperation<RuleOperation.SetMaxWounds>(op => op.MaxWounds == 6);
         }
@@ -729,7 +729,7 @@ namespace FDG.Tests
             harness.AttachRule(attacker, blast, new RuleArgument.Int(3));
             IUnit target = harness.BuildUnit("P2", modelCount: 5);
 
-            var ops = harness.Fire(new HitRollCompleteContext(attacker, target, TestDice.Faces(5)));
+            var ops = harness.Evaluate(attacker, ERuleSeat.Actor, new HitRollCompleteContext(attacker, target, TestDice.Faces(5)));
 
             ops.HasOperation<RuleOperation.MultiplyHits>(op => op.Multiplier == 3);
         }
@@ -754,7 +754,7 @@ namespace FDG.Tests
             harness.AttachRule(attacker, impact, new RuleArgument.Int(2));
             IUnit defender = harness.BuildUnit("P2", modelCount: 5);
 
-            var ops = harness.Fire(new ChargeContactContext(attacker, defender));
+            var ops = harness.Evaluate(attacker, ERuleSeat.Actor, new ChargeContactContext(attacker, defender));
 
             ops.HasOperation<RuleOperation.ChargeImpactHits>(op => op.DiceCount == 2);
         }
@@ -779,7 +779,7 @@ namespace FDG.Tests
             harness.AttachRule(attacker, fear, new RuleArgument.Int(2));
             IUnit defender = harness.BuildUnit("P2", modelCount: 5);
 
-            var ops = harness.Fire(new MeleeResolutionContext(attacker, defender));
+            var ops = harness.Evaluate(attacker, ERuleSeat.Actor, new MeleeResolutionContext(attacker, defender));
 
             ops.HasOperation<RuleOperation.ExtraMeleeWoundCount>(op => op.Amount == 2);
         }

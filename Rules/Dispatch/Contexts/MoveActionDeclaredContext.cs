@@ -10,7 +10,7 @@ namespace FDG.Rules.Dispatch.Contexts
     /// movement-bonus rules (Fast, Slow, Rapid Rush) can adjust it.
     /// </summary>
     public sealed record MoveActionDeclaredContext(
-        IUnit Unit, EActionType ActionType, float BaseDistanceInches) : IHookContext
+        IUnit Unit, EActionType ActionType, float BaseDistanceInches) : IHookContext, IHasActionType
     {
         public EHookID Hook => EHookID.Movement_OnMoveActionDeclared;
     }

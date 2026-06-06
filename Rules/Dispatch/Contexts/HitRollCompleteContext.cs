@@ -16,7 +16,7 @@ namespace FDG.Rules.Dispatch.Contexts
     /// </summary>
     public sealed record HitRollCompleteContext(
         IUnit Attacker, IUnit Target, IDiceResults UnmodifiedHitRolls,
-        float DistanceInches = 0f) : IHookContext, IHasUnmodifiedHitRolls
+        float DistanceInches = 0f) : IHookContext, IHasUnmodifiedHitRolls, IHasDistance
     {
         public EHookID Hook => EHookID.Shooting_OnHitRollComplete;
     }

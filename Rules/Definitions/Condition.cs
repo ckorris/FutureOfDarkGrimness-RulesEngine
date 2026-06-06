@@ -1,3 +1,4 @@
+using System.Linq;
 using FDG.Rules.Foundation;
 
 namespace FDG.Rules.Definitions;
@@ -62,7 +63,10 @@ public abstract record Condition
     /// True if the action the bearer just declared matches the given type.
     /// E.g. Rapid Rush applies only when the action is <see cref="EActionType.Rush"/>.
     /// </summary>
-    public sealed record ActionTypeIs(EActionType ActionType) : Condition;
+    public sealed record ActionTypeIs(EActionType ActionType) : CapabilityCondition<IHasActionType>
+    {
+        protected override bool EvaluateCore(IHasActionType context) => context.ActionType == ActionType;
+    }
 
     /// <summary>
     /// True if the relevant die came up exactly this value before any modifiers
@@ -117,7 +121,14 @@ public abstract record Condition
     /// <summary>
     /// Logical AND of two conditions. Both must match.
     /// </summary>
-    public sealed record And(Condition Left, Condition Right) : Condition;
+    public sealed record And(Condition Left, Condition Right) : Condition
+    {
+        public override bool Evaluate(IHookContext context) =>
+            Left.Evaluate(context) && Right.Evaluate(context);
+
+        public override IReadOnlyCollection<Type> RequiredCapabilities =>
+            Left.RequiredCapabilities.Concat(Right.RequiredCapabilities).Distinct().ToArray();
+    }
 
     /// <summary>
     /// Logical OR of two conditions. Either matching is sufficient.
@@ -128,11 +139,19 @@ public abstract record Condition
     /// Logical NOT — true when the inner condition is false. Used for
     /// "not fatigued," "not in cover," etc.
     /// </summary>
-    public sealed record Not(Condition Inner) : Condition;
+    public sealed record Not(Condition Inner) : Condition
+    {
+        public override bool Evaluate(IHookContext context) => !Inner.Evaluate(context);
+
+        public override IReadOnlyCollection<Type> RequiredCapabilities => Inner.RequiredCapabilities;
+    }
 
     /// <summary>
     /// True if the attacking unit moved before this attack. Used by Indirect
     /// (-1 to hit when shooting after moving).
     /// </summary>
-    public sealed record AfterMoving : Condition;
+    public sealed record AfterMoving : CapabilityCondition<IHasAttackerMoved>
+    {
+        protected override bool EvaluateCore(IHasAttackerMoved context) => context.AttackerMoved;
+    }
 }

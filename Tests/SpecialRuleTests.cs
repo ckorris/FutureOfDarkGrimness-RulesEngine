@@ -125,7 +125,8 @@ namespace FDG.Tests
 
             IUnit unit = harness.BuildUnit("P1", modelCount: 3, "Fast");
 
-            var ops = harness.Fire(new MoveActionDeclaredContext(unit, EActionType.Advance, BaseDistanceInches: 6f));
+            var ops = harness.Evaluate(unit, ERuleSeat.Actor,
+                new MoveActionDeclaredContext(unit, EActionType.Advance, BaseDistanceInches: 6f));
 
             ops.HasOperation<RuleOperation.ApplyMovementBonus>(
                 op => op.ActionType == EActionType.Advance && op.DistanceInches == 2f);
@@ -142,14 +143,16 @@ namespace FDG.Tests
                     new HookEntry(EHookID.Movement_OnChargeDeclared,
                         new Condition.Always(),
                         new Effect.MovementBonus(EActionType.Charge, DistanceInches: -3f),
-                        ELifetime.ThisActivation),
+                        ELifetime.ThisActivation,
+                        ERuleSeat.Subject),
                 },
                 NoAbilities));
 
             IUnit charger = harness.BuildUnit("P1", modelCount: 3);
             IUnit defender = harness.BuildUnit("P2", modelCount: 5, "Melee Shrouding");
 
-            var ops = harness.Fire(new ChargeDeclaredContext(charger, defender, BaseDistanceInches: 12f));
+            var ops = harness.Evaluate(defender, ERuleSeat.Subject,
+                new ChargeDeclaredContext(charger, defender, BaseDistanceInches: 12f));
 
             ops.HasOperation<RuleOperation.ApplyMovementBonus>(
                 op => op.ActionType == EActionType.Charge && op.DistanceInches == -3f);
@@ -173,8 +176,8 @@ namespace FDG.Tests
             IUnit attacker = harness.BuildUnit("P1", modelCount: 3, "Bane");
             IUnit defender = harness.BuildUnit("P2", modelCount: 5);
 
-            var ops = harness.Fire(new SaveRollCompleteContext(attacker, defender,
-                UnmodifiedSaveRolls: TestDice.Faces(6, 2, 6)));
+            var ops = harness.Evaluate(attacker, ERuleSeat.Actor,
+                new SaveRollCompleteContext(attacker, defender, UnmodifiedSaveRolls: TestDice.Faces(6, 2, 6)));
 
             ops.HasOperation<RuleOperation.ApplyReroll>(op => op.Roll == ERollKind.Save);
         }
@@ -497,8 +500,8 @@ namespace FDG.Tests
             IUnit attacker = harness.BuildUnit("P1", modelCount: 3, "Relentless");
             IUnit target = harness.BuildUnit("P2", modelCount: 5);
 
-            var ops = harness.Fire(new HitRollCompleteContext(attacker, target,
-                TestDice.Faces(6, 4, 6), DistanceInches: 12f));
+            var ops = harness.Evaluate(attacker, ERuleSeat.Actor,
+                new HitRollCompleteContext(attacker, target, TestDice.Faces(6, 4, 6), DistanceInches: 12f));
 
             ops.HasOperation<RuleOperation.InsertExtraHits>();
         }
@@ -528,7 +531,8 @@ namespace FDG.Tests
 
             IUnit unit = harness.BuildUnit("P1", modelCount: 3, "Slow");
 
-            var ops = harness.Fire(new MoveActionDeclaredContext(unit, EActionType.Advance, BaseDistanceInches: 6f));
+            var ops = harness.Evaluate(unit, ERuleSeat.Actor,
+                new MoveActionDeclaredContext(unit, EActionType.Advance, BaseDistanceInches: 6f));
 
             ops.HasOperation<RuleOperation.ApplyMovementBonus>(
                 op => op.ActionType == EActionType.Advance && op.DistanceInches == -2f);
@@ -552,7 +556,7 @@ namespace FDG.Tests
             IUnit attacker = harness.BuildUnit("P1", modelCount: 3, "Thrust");
             IUnit defender = harness.BuildUnit("P2", modelCount: 5);
 
-            var ops = harness.Fire(new ChargeContactContext(attacker, defender));
+            var ops = harness.Evaluate(attacker, ERuleSeat.Actor, new ChargeContactContext(attacker, defender));
 
             ops.HasOperation<RuleOperation.ApplyRollModifier>(op => op.Roll == ERollKind.Hit && op.Delta == +1);
             ops.HasOperation<RuleOperation.ApplyRollModifier>(op => op.Roll == ERollKind.Save && op.Delta == -1);
@@ -576,8 +580,8 @@ namespace FDG.Tests
             IUnit attacker = harness.BuildUnit("P1", modelCount: 3, "Indirect");
             IUnit target = harness.BuildUnit("P2", modelCount: 5);
 
-            var ops = harness.Fire(new HitRollModifierContext(attacker, target,
-                DistanceInches: 10f, AttackerMoved: true));
+            var ops = harness.Evaluate(attacker, ERuleSeat.Actor,
+                new HitRollModifierContext(attacker, target, DistanceInches: 10f, AttackerMoved: true));
 
             ops.HasOperation<RuleOperation.ApplyRollModifier>(op => op.Roll == ERollKind.Hit && op.Delta == -1);
         }
@@ -626,7 +630,8 @@ namespace FDG.Tests
             IUnit attacker = harness.BuildUnit("P1", modelCount: 3, "Unstoppable");
             IUnit defender = harness.BuildUnit("P2", modelCount: 5);
 
-            var ops = harness.Fire(new SaveRollCompleteContext(attacker, defender, TestDice.Faces(3, 4)));
+            var ops = harness.Evaluate(attacker, ERuleSeat.Actor,
+                new SaveRollCompleteContext(attacker, defender, TestDice.Faces(3, 4)));
 
             ops.HasOperation<RuleOperation.SuppressRule>(op => op.RuleName == "Regeneration");
         }
@@ -650,7 +655,7 @@ namespace FDG.Tests
 
             IUnit unit = harness.BuildUnit("P1", modelCount: 5, "Fearless");
 
-            var ops = harness.Fire(new MoraleTestContext(unit));
+            var ops = harness.Evaluate(unit, ERuleSeat.Actor, new MoraleTestContext(unit));
 
             ops.HasOperation<RuleOperation.ApplyReroll>(op => op.Roll == ERollKind.Morale);
         }
@@ -666,14 +671,16 @@ namespace FDG.Tests
                     new HookEntry(EHookID.Shooting_OnSaveRollComplete,
                         new Condition.Always(),
                         new Effect.IgnoreWoundOnRoll(MinRoll: 5),
-                        ELifetime.ThisAttack),
+                        ELifetime.ThisAttack,
+                        ERuleSeat.Subject),
                 },
                 NoAbilities));
 
             IUnit attacker = harness.BuildUnit("P1", modelCount: 3);
             IUnit defender = harness.BuildUnit("P2", modelCount: 5, "Regeneration");
 
-            var ops = harness.Fire(new SaveRollCompleteContext(attacker, defender, TestDice.Faces(2, 3)));
+            var ops = harness.Evaluate(defender, ERuleSeat.Subject,
+                new SaveRollCompleteContext(attacker, defender, TestDice.Faces(2, 3)));
 
             ops.HasOperation<RuleOperation.IgnoreWound>(op => op.MinRoll == 5);
         }
@@ -872,14 +879,16 @@ namespace FDG.Tests
                     new HookEntry(EHookID.Melee_OnCounterTrigger,
                         new Condition.Always(),
                         new Effect.StrikeFirst(),
-                        ELifetime.ThisActivation),
+                        ELifetime.ThisActivation,
+                        ERuleSeat.Subject),
                 },
                 NoAbilities));
 
             IUnit charger = harness.BuildUnit("P1", modelCount: 3);
             IUnit defender = harness.BuildUnit("P2", modelCount: 5, "Counter");
 
-            var ops = harness.Fire(new CounterTriggerContext(charger, defender));
+            var ops = harness.Evaluate(defender, ERuleSeat.Subject,
+                new CounterTriggerContext(charger, defender));
 
             ops.HasOperation<RuleOperation.StrikeFirst>();
         }
@@ -903,7 +912,8 @@ namespace FDG.Tests
             IUnit attacker = harness.BuildUnit("P1", modelCount: 1, "Takedown");
             IUnit target = harness.BuildUnit("P2", modelCount: 5);
 
-            var ops = harness.Fire(new ShootTargetsSelectedContext(attacker, target));
+            var ops = harness.Evaluate(attacker, ERuleSeat.Actor,
+                new ShootTargetsSelectedContext(attacker, target));
 
             ops.HasOperation<RuleOperation.TargetIndividualModel>();
         }
@@ -926,7 +936,8 @@ namespace FDG.Tests
 
             IUnit unit = harness.BuildUnit("P1", modelCount: 1, "Immobile");
 
-            var ops = harness.Fire(new MoveActionDeclaredContext(unit, EActionType.Advance, BaseDistanceInches: 6f));
+            var ops = harness.Evaluate(unit, ERuleSeat.Actor,
+                new MoveActionDeclaredContext(unit, EActionType.Advance, BaseDistanceInches: 6f));
 
             ops.HasOperation<RuleOperation.RestrictActions>(
                 op => op.Allowed.Count == 1 && op.Allowed[0] == EActionType.Hold);
@@ -976,7 +987,8 @@ namespace FDG.Tests
 
             IUnit unit = harness.BuildUnit("P1", modelCount: 3, "Flying");
 
-            var ops = harness.Fire(new MoveActionDeclaredContext(unit, EActionType.Advance, BaseDistanceInches: 6f));
+            var ops = harness.Evaluate(unit, ERuleSeat.Actor,
+                new MoveActionDeclaredContext(unit, EActionType.Advance, BaseDistanceInches: 6f));
 
             ops.HasOperation<RuleOperation.IgnoreTerrainEffects>();
         }
@@ -1000,7 +1012,8 @@ namespace FDG.Tests
 
             IUnit unit = harness.BuildUnit("P1", modelCount: 3, "Strider");
 
-            var ops = harness.Fire(new MoveActionDeclaredContext(unit, EActionType.Advance, BaseDistanceInches: 6f));
+            var ops = harness.Evaluate(unit, ERuleSeat.Actor,
+                new MoveActionDeclaredContext(unit, EActionType.Advance, BaseDistanceInches: 6f));
 
             ops.HasOperation<RuleOperation.IgnoreTerrainEffects>();
         }
@@ -1023,7 +1036,7 @@ namespace FDG.Tests
 
             IUnit unit = harness.BuildUnit("P1", modelCount: 3, "Scout");
 
-            var ops = harness.Fire(new PreDeploymentSelectContext(unit));
+            var ops = harness.Evaluate(unit, ERuleSeat.Actor, new PreDeploymentSelectContext(unit));
 
             ops.HasOperation<RuleOperation.DeferDeployment>();
         }
@@ -1046,7 +1059,7 @@ namespace FDG.Tests
 
             IUnit unit = harness.BuildUnit("P1", modelCount: 3, "Ambush");
 
-            var ops = harness.Fire(new PreDeploymentSelectContext(unit));
+            var ops = harness.Evaluate(unit, ERuleSeat.Actor, new PreDeploymentSelectContext(unit));
 
             ops.HasOperation<RuleOperation.DeferDeployment>();
         }

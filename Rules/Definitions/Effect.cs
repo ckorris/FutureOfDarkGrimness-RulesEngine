@@ -54,7 +54,13 @@ public abstract record Effect
     /// Lacerate (reroll same on attacker side), Fearless (reroll failed morale
     /// on 4+).
     /// </summary>
-    public sealed record Reroll(ERollKind Roll, RerollCondition Condition) : Effect;
+    public sealed record Reroll(ERollKind Roll, RerollCondition Condition) : Effect
+    {
+        public override void Apply(IHookContext context, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.ApplyReroll(Roll, Condition));
+        }
+    }
 
     /// <summary>
     /// Each die that came up unmodified <see cref="OnRollValue"/> generates
@@ -82,7 +88,13 @@ public abstract record Effect
     /// Slow, Rapid Rush (+6"/Rush), and target-perspective movement penalties
     /// like Melee Shrouding (-3" on enemy Charge).
     /// </summary>
-    public sealed record MovementBonus(EActionType ActionType, float DistanceInches) : Effect;
+    public sealed record MovementBonus(EActionType ActionType, float DistanceInches) : Effect
+    {
+        public override void Apply(IHookContext context, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.ApplyMovementBonus(ActionType, DistanceInches));
+        }
+    }
 
     /// <summary>
     /// Suppresses another rule named <see cref="RuleName"/> in the current
@@ -91,7 +103,13 @@ public abstract record Effect
     /// Regeneration). This is the rule-vs-rule primitive that lets Plan B
     /// express "X counters Y" without engine code.
     /// </summary>
-    public sealed record IgnoreRule(string RuleName) : Effect;
+    public sealed record IgnoreRule(string RuleName) : Effect
+    {
+        public override void Apply(IHookContext context, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.SuppressRule(RuleName));
+        }
+    }
 
     /// <summary>
     /// Grants the bearer the rule named <see cref="RuleName"/> for the duration
@@ -197,7 +215,13 @@ public abstract record Effect
     /// <see cref="MinRoll"/> or higher. Covers Regeneration (5+). Fixed authored
     /// threshold, not a rule argument.
     /// </summary>
-    public sealed record IgnoreWoundOnRoll(int MinRoll) : Effect;
+    public sealed record IgnoreWoundOnRoll(int MinRoll) : Effect
+    {
+        public override void Apply(IHookContext context, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.IgnoreWound(MinRoll));
+        }
+    }
 
     /// <summary>
     /// Sets the bearer model's maximum wounds to <see cref="Amount"/> at creation.
@@ -231,7 +255,13 @@ public abstract record Effect
     /// — the charger losing 1 Impact roll per Counter model — is a separate
     /// Impact-count modifier added when that interaction is modelled.
     /// </summary>
-    public sealed record StrikeFirst : Effect;
+    public sealed record StrikeFirst : Effect
+    {
+        public override void Apply(IHookContext context, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.StrikeFirst());
+        }
+    }
 
     /// <summary>
     /// Resolves the attack against a single chosen model in the target unit, as if
@@ -239,14 +269,26 @@ public abstract record Effect
     /// numeric parameter; the "resolved first, before other weapons" ordering is a
     /// dispatch-time detail (Phase 8).
     /// </summary>
-    public sealed record TargetIndividualModel : Effect;
+    public sealed record TargetIndividualModel : Effect
+    {
+        public override void Apply(IHookContext context, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.TargetIndividualModel());
+        }
+    }
 
     /// <summary>
     /// Restricts the bearer to declaring only the actions in <see cref="Allowed"/>.
     /// Covers Immobile (<c>[Hold]</c> only) and Artillery's Hold-only facet. The
     /// engine drops disallowed actions from the choice set.
     /// </summary>
-    public sealed record RestrictActions(IReadOnlyList<EActionType> Allowed) : Effect;
+    public sealed record RestrictActions(IReadOnlyList<EActionType> Allowed) : Effect
+    {
+        public override void Apply(IHookContext context, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.RestrictActions(Allowed));
+        }
+    }
 
     /// <summary>
     /// Adjusts the effective range of attacks made against the bearer by
@@ -268,7 +310,13 @@ public abstract record Effect
     /// moving through units as well — is a separate movement-permission flag added
     /// when that distinction is executed (Phase 8).
     /// </summary>
-    public sealed record IgnoreTerrainEffects : Effect;
+    public sealed record IgnoreTerrainEffects : Effect
+    {
+        public override void Apply(IHookContext context, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.IgnoreTerrainEffects());
+        }
+    }
 
     /// <summary>
     /// Sets the bearer aside during normal deployment to be placed by its own
@@ -277,5 +325,11 @@ public abstract record Effect
     /// placement constraints that distinguish the two are execution details
     /// (Phase 8 / the #042 engine refactor).
     /// </summary>
-    public sealed record DeferDeployment : Effect;
+    public sealed record DeferDeployment : Effect
+    {
+        public override void Apply(IHookContext context, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.DeferDeployment());
+        }
+    }
 }

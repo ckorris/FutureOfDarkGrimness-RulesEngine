@@ -40,7 +40,10 @@ public abstract record Condition
     /// Always matches. Used for unconditional effects (e.g. passive aura
     /// modifiers that don't gate on any runtime state).
     /// </summary>
-    public sealed record Always : Condition;
+    public sealed record Always : Condition
+    {
+        public override bool Evaluate(IHookContext context) => true;
+    }
 
     /// <summary>
     /// True if the unit the rule is attached to has another named rule.

@@ -600,7 +600,7 @@ namespace FDG.Tests
             IUnit attacker = harness.BuildUnit("P1", modelCount: 3, "Reliable");
             IUnit target = harness.BuildUnit("P2", modelCount: 5);
 
-            var ops = harness.Fire(new HitRollModifierContext(attacker, target, DistanceInches: 6f));
+            var ops = harness.Evaluate(attacker, ERuleSeat.Actor, new HitRollModifierContext(attacker, target, DistanceInches: 6f));
 
             ops.HasOperation<RuleOperation.QualityFloor>(op => op.Quality == 2);
         }
@@ -945,14 +945,15 @@ namespace FDG.Tests
                     new HookEntry(EHookID.Shooting_OnHitRollModifier,
                         new Condition.Always(),
                         new Effect.RangeModifier(Delta: -12),
-                        ELifetime.ThisAttack),
+                        ELifetime.ThisAttack,
+                        ERuleSeat.Subject),
                 },
                 NoAbilities));
 
             IUnit attacker = harness.BuildUnit("P1", modelCount: 3);
             IUnit aircraft = harness.BuildUnit("P2", modelCount: 1, "Aircraft");
 
-            var ops = harness.Fire(new HitRollModifierContext(attacker, aircraft, DistanceInches: 20f));
+            var ops = harness.Evaluate(aircraft, ERuleSeat.Subject, new HitRollModifierContext(attacker, aircraft, DistanceInches: 20f));
 
             ops.HasOperation<RuleOperation.ApplyRangeModifier>(op => op.Delta == -12);
         }

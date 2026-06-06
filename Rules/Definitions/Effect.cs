@@ -184,7 +184,13 @@ public abstract record Effect
     /// model's own Quality. Covers Reliable ("Attacks at Quality 2+"). A fixed
     /// authored value, not a rule argument.
     /// </summary>
-    public sealed record QualityFloor(int Quality) : Effect;
+    public sealed record QualityFloor(int Quality) : Effect
+    {
+        public override void Apply(IHookContext context, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.QualityFloor(Quality));
+        }
+    }
 
     /// <summary>
     /// Each wound the bearer would take is ignored on an unmodified roll of
@@ -248,7 +254,13 @@ public abstract record Effect
     /// range"). Distinct from <see cref="RollModifier"/>, which adjusts the roll
     /// itself rather than the range threshold.
     /// </summary>
-    public sealed record RangeModifier(int Delta) : Effect;
+    public sealed record RangeModifier(int Delta) : Effect
+    {
+        public override void Apply(IHookContext context, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.ApplyRangeModifier(Delta));
+        }
+    }
 
     /// <summary>
     /// The bearer ignores terrain effects while moving. Covers Strider (difficult

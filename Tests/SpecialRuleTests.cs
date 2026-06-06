@@ -198,7 +198,7 @@ namespace FDG.Tests
             IUnit attacker = harness.BuildUnit("P1", modelCount: 3, "Rending");
             IUnit target = harness.BuildUnit("P2", modelCount: 5);
 
-            var ops = harness.Fire(new HitRollCompleteContext(attacker, target,
+            var ops = harness.Evaluate(attacker, ERuleSeat.Actor, new HitRollCompleteContext(attacker, target,
                 UnmodifiedHitRolls: TestDice.Faces(6, 4, 2)));
 
             ops.HasOperation<RuleOperation.ApplyRollModifier>(op => op.Roll == ERollKind.Save && op.Delta == -4);
@@ -473,7 +473,7 @@ namespace FDG.Tests
             IUnit attacker = harness.BuildUnit("P1", modelCount: 3, "Surge");
             IUnit target = harness.BuildUnit("P2", modelCount: 5);
 
-            var ops = harness.Fire(new HitRollCompleteContext(attacker, target, TestDice.Faces(6, 2, 6)));
+            var ops = harness.Evaluate(attacker, ERuleSeat.Actor, new HitRollCompleteContext(attacker, target, TestDice.Faces(6, 2, 6)));
 
             ops.HasOperation<RuleOperation.InsertExtraHits>();
         }
@@ -826,7 +826,7 @@ namespace FDG.Tests
             IUnit attacker = harness.BuildUnit("P1", modelCount: 1, "Artillery");
             IUnit target = harness.BuildUnit("P2", modelCount: 5);
 
-            var ops = harness.Fire(new HitRollModifierContext(attacker, target, DistanceInches: 12f));
+            var ops = harness.Evaluate(attacker, ERuleSeat.Actor, new HitRollModifierContext(attacker, target, DistanceInches: 12f));
 
             ops.HasOperation<RuleOperation.ApplyRollModifier>(op => op.Roll == ERollKind.Hit && op.Delta == +1);
         }

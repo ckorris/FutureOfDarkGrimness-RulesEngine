@@ -28,7 +28,7 @@ namespace FDG.Ai.Resolvers
             // Shooting units advance (can still shoot); melee/hybrid rush to close distance.
             float moveDistance = archetype == AiUnitArchetype.Shooting
                 ? request.MaxAdvanceDistance - 0.001f
-                : request.MaxChargeDistance - 0.001f;
+                : request.MaxDistanceInches - 0.001f;
 
             var enemyPositions = GetLiveEnemyPositions();
             if (enemyPositions.Count == 0)
@@ -50,13 +50,32 @@ namespace FDG.Ai.Resolvers
 
             // Don't overshoot — stop 1" base-to-base short to avoid illegal overlap.
             float step = Math.Min(moveDistance, Math.Max(0f, dist - 1f));
-            float ndx = dx / dist * step;
-            float ndz = dz / dist * step;
+
+            // Check terrain along the unit centroid's path before committing the step.
+            var allTerrain = _tableState.Terrain.Objects.ToList();
+            var unitCentroidStart = new Float2(cx, cz);
+            float ndx = dx / dist;
+            float ndz = dz / dist;
+            var unitCentroidEnd = new Float2(cx + ndx * step, cz + ndz * step);
+
+            bool crossesImpassible = allTerrain
+                .Any(t => t.TerrainType.HasFlag(ETerrainType.Impassible)
+                          && t.Shape.DoesPathIntersectZone(unitCentroidStart, unitCentroidEnd));
+
+            if (crossesImpassible)
+                return Task.FromResult(StayInPlace(request));
+
+            bool crossesDifficult = allTerrain
+                .Any(t => t.TerrainType.HasFlag(ETerrainType.Difficult)
+                          && t.Shape.DoesPathIntersectZone(unitCentroidStart, unitCentroidEnd));
+
+            if (crossesDifficult)
+                step = Math.Min(step, GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES - 0.001f);
 
             var entries = unit.ModelBindings.Select(mb =>
             {
                 var m = mb.GetValue();
-                var newPos = new Position(m.Position.x + ndx, m.Position.z + ndz);
+                var newPos = new Position(m.Position.x + ndx * step, m.Position.z + ndz * step);
                 return new ModelMoveEntry(mb, new List<Position> { newPos });
             }).ToList();
 

@@ -136,6 +136,7 @@ namespace FDG.Tests
         public IGameContext GameContext => _gameContext;
         public DataBinding<UnitData> MovingUnit => _unit;
         public float MaxAdvanceDistance => 12f;
+        public float MaxRushDistance => 12f;
         public float MaxChargeDistance => 12f;
         public List<ITerrain> RelevantTerrain => _terrain;
 

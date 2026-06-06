@@ -61,5 +61,27 @@ namespace FDG
 
             return distanceSquared <= Radius * Radius;
         }
+
+        public Float2? GetFirstSegmentEntry(Float2 startPosition, Float2 endPosition)
+        {
+            if (IsPointWithinZone(startPosition)) return startPosition;
+
+            Float2 d = endPosition - startPosition;
+            float a = d.X * d.X + d.Y * d.Y;
+            if (a <= 0f) return null;
+
+            Float2 f = startPosition - Center;
+            float b = 2f * (f.X * d.X + f.Y * d.Y);
+            float c = f.X * f.X + f.Y * f.Y - Radius * Radius;
+            float disc = b * b - 4f * a * c;
+            if (disc < 0f) return null;
+
+            float sqrtDisc = MathF.Sqrt(disc);
+            float t1 = (-b - sqrtDisc) / (2f * a);
+            // t1 is the nearer intersection; t2 is the further one. Since start is
+            // outside the circle, t1 is the entry point we want.
+            if (t1 < 0f || t1 > 1f) return null;
+            return new Float2(startPosition.X + d.X * t1, startPosition.Y + d.Y * t1);
+        }
     }
 }

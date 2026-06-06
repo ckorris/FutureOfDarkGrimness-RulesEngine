@@ -40,5 +40,29 @@ namespace FDG
                 if (part.DoesPathIntersectZone(startPosition, endPosition)) return true;
             return false;
         }
+
+        /// <summary>
+        /// Returns the nearest segment-entry point across all parts, or null if no
+        /// part is entered.
+        /// </summary>
+        public Float2? GetFirstSegmentEntry(Float2 startPosition, Float2 endPosition)
+        {
+            Float2? best = null;
+            float bestDistSq = float.MaxValue;
+            foreach (var part in Parts)
+            {
+                Float2? entry = part.GetFirstSegmentEntry(startPosition, endPosition);
+                if (!entry.HasValue) continue;
+                float dx = entry.Value.X - startPosition.X;
+                float dy = entry.Value.Y - startPosition.Y;
+                float distSq = dx * dx + dy * dy;
+                if (distSq < bestDistSq)
+                {
+                    bestDistSq = distSq;
+                    best = entry;
+                }
+            }
+            return best;
+        }
     }
 }

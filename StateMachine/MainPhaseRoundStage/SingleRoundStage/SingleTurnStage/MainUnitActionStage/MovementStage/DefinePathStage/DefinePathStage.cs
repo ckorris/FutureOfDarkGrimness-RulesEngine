@@ -19,13 +19,18 @@ namespace FDG.Stages
 
             PlayerID playerID = context.MovingUnit.GetValue().PlayerID; //Shorthand.
 
-            var pathRequest = new DefineMovementPathRequest(playerID, "Move Unit", context.MovingUnit, 
-                context.MaxAdvanceDistance, context.MaxChargeDistance);
+            float hardCap = System.Math.Max(context.MaxRushDistance, context.MaxChargeDistance);
+
+            var pathRequest = new DefineMovementPathRequest(playerID, "Move Unit", context.MovingUnit,
+                context.MaxAdvanceDistance, context.MaxRushDistance, hardCap);
 
             List<ModelMoveEntry> movements = await context.PlayerRequester()
                 .RequestDecision<DefineMovementPathRequest, List<ModelMoveEntry>>(pathRequest);
 
-            if(MovementUtilities.ValidatePaths(movements, context.MaxChargeDistance,
+            List<Position> enemyPositions = MovementUtilities.GetEnemyModelPositions(context.MovingUnit, context.GameContext);
+
+            if(MovementUtilities.ValidatePaths(movements, context.MaxRushDistance, hardCap,
+                enemyPositions,
                 context.RelevantTerrain, out List<ReasonForInvalidMove> invalidReasons) == false)
             {
                 StringBuilder sb = new StringBuilder(invalidReasons[0].ToString());

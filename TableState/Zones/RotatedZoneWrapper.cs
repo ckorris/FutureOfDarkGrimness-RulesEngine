@@ -36,5 +36,18 @@ namespace FDG
             => Inner.DoesPathIntersectZone(
                 ZoneExtensions.RotateAround(startPosition, Pivot, -AngleDegrees),
                 ZoneExtensions.RotateAround(endPosition, Pivot, -AngleDegrees));
+
+        /// <summary>
+        /// Inverse-rotates the segment into the inner zone's local frame, delegates,
+        /// then forward-rotates the entry point back to world space.
+        /// </summary>
+        public Float2? GetFirstSegmentEntry(Float2 startPosition, Float2 endPosition)
+        {
+            Float2 localStart = ZoneExtensions.RotateAround(startPosition, Pivot, -AngleDegrees);
+            Float2 localEnd   = ZoneExtensions.RotateAround(endPosition,   Pivot, -AngleDegrees);
+            Float2? localEntry = Inner.GetFirstSegmentEntry(localStart, localEnd);
+            if (!localEntry.HasValue) return null;
+            return ZoneExtensions.RotateAround(localEntry.Value, Pivot, AngleDegrees);
+        }
     }
 }

@@ -98,9 +98,51 @@ namespace FDG.Tests
                 "A model that does not intersect the sight line must not block.");
         }
 
+        [Test]
+        public void AlliedUnitModel_OnSightLine_DoesNotBlock()
+        {
+            // Same-team but different-unit allied model on the line — must NOT block.
+            var attackerPlayer = new PlayerID(Guid.NewGuid());
+            var allyPlayer     = new PlayerID(Guid.NewGuid());
+            var enemyPlayer    = new PlayerID(Guid.NewGuid());
+            _store.Create(new TeamData(0, new List<PlayerID> { attackerPlayer, allyPlayer }));
+            _store.Create(new TeamData(1, new List<PlayerID> { enemyPlayer }));
+
+            DataBinding<UnitData> attackerUnit = MakeUnit(new[] { AttackerPos }, attackerPlayer);
+            MakeUnit(new[] { BlockerPos }, allyPlayer); // allied unit on the line
+            DataBinding<UnitData> defenderUnit = MakeUnit(new[] { TargetPos }, enemyPlayer);
+
+            var blockers = LineOfSightUtilities.BuildModelBlockers(_ctx.TableState, attackerUnit, defenderUnit);
+            var allTerrain = blockers.Concat(new List<ITerrain>()).ToList();
+
+            Assert.That(LineOfSightUtilities.HasLineOfSight(AttackerPos, TargetPos, allTerrain), Is.True,
+                "Models in allied units (same team as the attacker) must not block LoS.");
+        }
+
+        [Test]
+        public void ThirdPartyEnemyUnitModel_OnSightLine_StillBlocks()
+        {
+            // Different-team unit on the line that is neither attacker nor defender — must block.
+            var attackerPlayer = new PlayerID(Guid.NewGuid());
+            var enemyAPlayer   = new PlayerID(Guid.NewGuid());
+            var enemyBPlayer   = new PlayerID(Guid.NewGuid());
+            _store.Create(new TeamData(0, new List<PlayerID> { attackerPlayer }));
+            _store.Create(new TeamData(1, new List<PlayerID> { enemyAPlayer, enemyBPlayer }));
+
+            DataBinding<UnitData> attackerUnit = MakeUnit(new[] { AttackerPos }, attackerPlayer);
+            MakeUnit(new[] { BlockerPos }, enemyAPlayer); // some other enemy unit on the line
+            DataBinding<UnitData> defenderUnit = MakeUnit(new[] { TargetPos }, enemyBPlayer);
+
+            var blockers = LineOfSightUtilities.BuildModelBlockers(_ctx.TableState, attackerUnit, defenderUnit);
+            var allTerrain = blockers.Concat(new List<ITerrain>()).ToList();
+
+            Assert.That(LineOfSightUtilities.HasLineOfSight(AttackerPos, TargetPos, allTerrain), Is.False,
+                "Models in enemy units that are neither attacker nor defender must still block LoS.");
+        }
+
         // Helpers
 
-        private DataBinding<UnitData> MakeUnit(IEnumerable<Position> positions)
+        private DataBinding<UnitData> MakeUnit(IEnumerable<Position> positions, PlayerID? playerID = null)
         {
             var models = positions.Select(pos =>
             {
@@ -113,7 +155,7 @@ namespace FDG.Tests
                 return _store.GetDataBinding<ModelData>(_store.Create(md));
             }).ToList();
 
-            var unit = new UnitData(new PlayerID(Guid.NewGuid()), "TestUnit",
+            var unit = new UnitData(playerID ?? new PlayerID(Guid.NewGuid()), "TestUnit",
                 quality: 4, defense: 4,
                 specialRules: new List<SpecialRule>(), modelBindings: models);
             return _store.GetDataBinding<UnitData>(_store.Create(unit));

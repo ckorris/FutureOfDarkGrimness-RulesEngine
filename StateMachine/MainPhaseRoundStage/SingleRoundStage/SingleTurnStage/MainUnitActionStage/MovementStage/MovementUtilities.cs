@@ -1,5 +1,6 @@
 ﻿using FDG.Data;
 using FDG.StageResolution.Requests;
+using FDG.Utilities;
 using System.Runtime.CompilerServices;
 
 namespace FDG.Stages
@@ -12,21 +13,100 @@ namespace FDG.Stages
             return distances.Values.Max();
         }
 
-        public static bool ValidatePaths(List<ModelMoveEntry> moves, float maxChargeDistance, out List<ReasonForInvalidMove> errors)
-            => ValidatePaths(moves, maxChargeDistance, terrain: null, out errors);
+        public static bool ValidatePaths(List<ModelMoveEntry> moves, float maxDistanceInches, out List<ReasonForInvalidMove> errors)
+            => ValidatePaths(moves, maxDistanceInches, terrain: null, out errors);
 
-        public static bool ValidatePaths(List<ModelMoveEntry> moves, float maxChargeDistance,
+        public static bool ValidatePaths(List<ModelMoveEntry> moves, float maxDistanceInches,
             IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors)
         {
             errors = new List<ReasonForInvalidMove>();
 
-            ValidateOutOfMoveRange(moves, maxChargeDistance, ref errors);
+            ValidateOutOfMoveRange(moves, maxDistanceInches, ref errors);
             ValidateMovingThroughImpassibleTerrain(moves, terrain, ref errors);
             ValidateMovingThroughDifficultTerrain(moves, terrain, ref errors);
             ValidateMovingThroughEnemyUnits(moves, ref errors);
             ValidateCoherency(moves, ref errors);
 
             return errors.Count == 0;
+        }
+
+        /// <summary>
+        /// Full Move-action validation: paths must stay within the hard cap (Charge distance),
+        /// and any path that exceeds the Rush distance requires at least one model to end within
+        /// melee range of an enemy model.
+        /// </summary>
+        public static bool ValidatePaths(List<ModelMoveEntry> moves,
+            float maxRushDistance, float maxDistanceInches,
+            IEnumerable<Position> enemyModelPositions,
+            IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors)
+        {
+            errors = new List<ReasonForInvalidMove>();
+
+            ValidateOutOfMoveRange(moves, maxDistanceInches, ref errors);
+            ValidateMovingThroughImpassibleTerrain(moves, terrain, ref errors);
+            ValidateMovingThroughDifficultTerrain(moves, terrain, ref errors);
+            ValidateMovingThroughEnemyUnits(moves, ref errors);
+            ValidateCoherency(moves, ref errors);
+            ValidateChargeReach(moves, maxRushDistance, enemyModelPositions, ref errors);
+
+            return errors.Count == 0;
+        }
+
+        public static List<Position> GetEnemyModelPositions(DataBinding<UnitData> movingUnit, IGameContext gameContext)
+        {
+            PlayerID owner = movingUnit.GetValue().PlayerID;
+
+            TeamData? ownerTeam = gameContext.GameDataStore().GetAllValues<TeamData>()
+                .FirstOrDefault(t => t.IsPlayerOnTeam(owner));
+            IReadOnlyList<PlayerID> alliedPlayers = ownerTeam != null
+                ? ownerTeam.Players
+                : new List<PlayerID> { owner };
+
+            List<Position> positions = new List<Position>();
+            foreach (ArmyData enemyArmy in gameContext.GameDataStore().GetAllValues<ArmyData>()
+                .Where(a => !alliedPlayers.Contains(a.PlayerID)))
+            {
+                foreach (DataBinding<UnitData> enemyUnit in enemyArmy.UnitBindings)
+                {
+                    foreach (DataBinding<ModelData> enemyModel in enemyUnit.ModelBindings()
+                        .Where(m => m.GetIsAlive()))
+                    {
+                        positions.Add(enemyModel.GetValue().PositionBinding.GetValue());
+                    }
+                }
+            }
+
+            return positions;
+        }
+
+        public static void ValidateChargeReach(List<ModelMoveEntry> moves, float maxRushDistance,
+            IEnumerable<Position> enemyModelPositions, ref List<ReasonForInvalidMove> errors)
+        {
+            Dictionary<ModelMoveEntry, float> totalDistances = GetTotalMoveDistances(moves);
+
+            //If nobody exceeds the Rush cap, the rule doesn't apply.
+            bool anyBeyondRush = totalDistances.Values.Any(d => d > maxRushDistance + 0.0001f);
+            if (!anyBeyondRush) return;
+
+            //At least one model in the unit must end within melee range of an enemy model (horizontal).
+            List<Position> enemies = enemyModelPositions?.ToList() ?? new List<Position>();
+            float meleeRange = GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL;
+
+            bool anyInMelee = moves.Any(move =>
+            {
+                Position end = move.Positions.Count == 0
+                    ? move.Model.GetValue().PositionBinding.GetValue()
+                    : move.Positions[move.Positions.Count - 1];
+
+                return enemies.Any(e => Position.GetDistance2D(end, e) <= meleeRange + 0.0001f);
+            });
+
+            if (!anyInMelee)
+            {
+                //Attach the violation to the first model that went beyond Rush.
+                ModelMoveEntry culprit = totalDistances.First(kvp => kvp.Value > maxRushDistance + 0.0001f).Key;
+                errors.Add(new ReasonForInvalidMove(EErrorReasonType.ChargeRangeRequiresMeleeReach, culprit.Model));
+            }
         }
 
         private static Dictionary<ModelMoveEntry, float> GetTotalMoveDistances(List<ModelMoveEntry> moves)
@@ -276,8 +356,10 @@ namespace FDG.Stages
                     return $"Breaks cohesion: Model is further than {GameWideConstants.MAX_MODEL_DISTANCE_FROM_ANY_OTHER_MODEL_INCHES} " + 
                         "inches from the closest model";
                 case EErrorReasonType.TooFarFromAllUnitModels:
-                    return $"Breaks cohesion: Model is further than {GameWideConstants.MAX_MODEL_DISTANCE_FROM_ALL_OTHER_MODELS_INCHES} " + 
+                    return $"Breaks cohesion: Model is further than {GameWideConstants.MAX_MODEL_DISTANCE_FROM_ALL_OTHER_MODELS_INCHES} " +
                         "inches from another model in the unit";
+                case EErrorReasonType.ChargeRangeRequiresMeleeReach:
+                    return $"A model moved beyond Rush range, but no model ends within {GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL}\" of an enemy";
                 default:
                     throw new ArgumentOutOfRangeException();
             }
@@ -307,6 +389,7 @@ namespace FDG.Stages
         ExceededDifficultTerrainMoveLimit,
         MovingThroughEnemyUnit,
         TooFarFromAnyUnitModel,
-        TooFarFromAllUnitModels
+        TooFarFromAllUnitModels,
+        ChargeRangeRequiresMeleeReach
     }
 }

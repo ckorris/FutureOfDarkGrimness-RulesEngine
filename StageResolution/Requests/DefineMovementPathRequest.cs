@@ -1,4 +1,4 @@
-﻿using FDG.Data;
+using FDG.Data;
 using Newtonsoft.Json;
 
 namespace FDG.StageResolution.Requests
@@ -14,29 +14,32 @@ namespace FDG.StageResolution.Requests
         public DataBinding<UnitData> UnitDataBinding { get; }
 
         public float MaxAdvanceDistance { get; }
-        public float MaxChargeDistance { get; }
+        public float MaxRushDistance { get; }
+        public float MaxDistanceInches { get; }
 
         [JsonConstructor]
         public DefineMovementPathRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
-            DataBinding<UnitData> unitDataBinding, float maxAdvanceDistance, float maxChargeDistance)
+            DataBinding<UnitData> unitDataBinding, float maxAdvanceDistance, float maxRushDistance, float maxDistanceInches)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
             TaskName = taskName;
             UnitDataBinding = unitDataBinding;
             MaxAdvanceDistance = maxAdvanceDistance;
-            MaxChargeDistance = maxChargeDistance;
+            MaxRushDistance = maxRushDistance;
+            MaxDistanceInches = maxDistanceInches;
         }
 
-        public DefineMovementPathRequest(PlayerID targetPlayerID,  string taskName, 
-            DataBinding<UnitData> unitDataBinding, float maxAdvanceDistance, float maxChargeDistance)
+        public DefineMovementPathRequest(PlayerID targetPlayerID,  string taskName,
+            DataBinding<UnitData> unitDataBinding, float maxAdvanceDistance, float maxRushDistance, float maxDistanceInches)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = new TaskID(Guid.NewGuid());
             TaskName = taskName;
             UnitDataBinding = unitDataBinding;
             MaxAdvanceDistance = maxAdvanceDistance;
-            MaxChargeDistance = maxChargeDistance;
+            MaxRushDistance = maxRushDistance;
+            MaxDistanceInches = maxDistanceInches;
         }
 
         public Task<List<ModelMoveEntry>> Resolve(List<ModelMoveEntry> resolution)

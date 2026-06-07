@@ -1,3 +1,7 @@
+using FDG.Rules.Definitions;
+using FDG.Rules.Dispatch;
+using FDG.Rules.Dispatch.Contexts;
+using FDG.Rules.Foundation;
 using FDG.StageResolution.Requests;
 using FDG.Utilities;
 using System;
@@ -23,6 +27,21 @@ namespace FDG.Stages
             {
                 totalWoundsDealt += failedSaves.SaveCount;
             }
+
+            // #042 wound-multiplier rules (Deadly) fire at pre-apply-wound: evaluate the attacker's
+            // rules, fold MultiplyWounds ops through the sink, and scale the wound count. The stage
+            // interprets no operation; it just reads the net multiplier.
+            // SCOPE: this multiplies the TOTAL wound count (faithful for total damage). Deadly's
+            // per-wound / single-model / no-carry-over allocation nuance is Phase-8 behavior, tracked
+            // by the tough-aware allocation TODO below.
+            IUnit attacker = metaData.AttackingUnit.GetValue();
+            IUnit defender = metaData.DefendingUnit.GetValue();
+            IReadOnlyList<RuleOperation> woundOperations = GameContext.RuleEvaluator.EvaluateAll(
+                new PreApplyWoundContext(attacker, defender),
+                (attacker, ERuleSeat.Actor));
+            WoundModifierSink woundModifier = new WoundModifierSink();
+            woundModifier.ApplyFrom(woundOperations);
+            totalWoundsDealt *= woundModifier.NetMultiplier;
 
             float defenderRemainingWounds = metaData.DefendingUnit.RemainingWounds();
 

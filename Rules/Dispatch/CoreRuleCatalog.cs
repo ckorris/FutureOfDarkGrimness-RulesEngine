@@ -22,7 +22,7 @@ public static class CoreRuleCatalog
     /// </summary>
     public static IReadOnlyList<SpecialRuleDefinition> All => new[]
     {
-        Stealth, Artillery, Indirect, Fast, VeryFast, Slow, Surge, Relentless, Furious,
+        Stealth, Artillery, Indirect, Fast, VeryFast, Slow, Surge, Relentless, Furious, Deadly,
     };
 
     /// <summary>
@@ -151,6 +151,19 @@ public static class CoreRuleCatalog
                 new Condition.And(new Condition.IsMelee(),
                                   new Condition.UnmodifiedRollEquals(6)),
                 new Effect.AddExtraHit(OnRollValue: 6),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    // Wound-modifier sink (AssignWoundsStage) ------------------------------------
+
+    /// <summary> Deadly(X): the attack's wounds are multiplied by X (the rule's argument). </summary>
+    public static SpecialRuleDefinition Deadly { get; } = new SpecialRuleDefinition("Deadly",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnPreApplyWound,
+                new Condition.Always(),
+                new Effect.MultiplyWounds(new ValueSource.Arg(0)),
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>());

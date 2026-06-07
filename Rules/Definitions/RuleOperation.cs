@@ -205,11 +205,23 @@ public abstract record RuleOperation
     public sealed record InvokeHeal(IModel Target, float Amount) : RuleOperation;
 
     /// <summary>
-    /// Multiply each wound the in-flight attack deals by <see cref="Multiplier"/>.
+    /// Multiply the in-flight attack's wound count by <see cref="Multiplier"/>.
     /// Resolution of <see cref="Effect.MultiplyWounds"/>; the rule's argument has
-    /// already been read, so <see cref="Multiplier"/> is a concrete int.
+    /// already been read, so <see cref="Multiplier"/> is a concrete int. Folded by
+    /// <c>WoundModifierSink</c> at wound-assignment time.
     /// </summary>
-    public sealed record MultiplyWounds(int Multiplier) : RuleOperation;
+    public sealed record MultiplyWounds(int Multiplier) : SinkOperation<IWoundModifierSink>
+    {
+        public override void ApplyTo(IWoundModifierSink sink)
+        {
+            sink.Multiply(Multiplier);
+        }
+
+        public override string Describe()
+        {
+            return $"multiplied wounds by {Multiplier}";
+        }
+    }
 
     /// <summary>
     /// Cap the in-flight hit roll's target at <see cref="Quality"/>+. Resolution of

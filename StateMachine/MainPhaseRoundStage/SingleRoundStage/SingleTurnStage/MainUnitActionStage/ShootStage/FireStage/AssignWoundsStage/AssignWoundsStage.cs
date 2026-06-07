@@ -43,6 +43,26 @@ namespace FDG.Stages
             woundModifier.ApplyFrom(woundOperations);
             totalWoundsDealt *= woundModifier.NetMultiplier;
 
+            // #042 wound-ignore rules (Regeneration) fire at save-roll-complete: the defender ignores
+            // each wound on a roll of X+. Evaluate BOTH participants so an attacker suppressor
+            // (Bane / Rending / Unstoppable "ignore Regeneration") can cancel it via the evaluator's
+            // suppression first-pass; fold the ignore sink, then roll one d6 per wound at the best
+            // threshold and drop the ignored count. The stage interprets no operation — it reads only
+            // the threshold and rolls.
+            // ORDER: applied AFTER Deadly's multiply (the rulebook tags Deadly "resolved first"). The
+            // per-wound / single-model allocation nuance of both rules stays Phase-8 (tough-aware TODO below).
+            IReadOnlyList<RuleOperation> saveCompleteOperations = GameContext.RuleEvaluator.EvaluateAll(
+                new SaveRollCompleteContext(attacker, defender, CombineSaveRolls(rollToSaveResults)),
+                (attacker, ERuleSeat.Actor),
+                (defender, ERuleSeat.Subject));
+            WoundIgnoreSink woundIgnore = new WoundIgnoreSink();
+            woundIgnore.ApplyFrom(saveCompleteOperations);
+            if (woundIgnore.HasIgnore && totalWoundsDealt > 0f)
+            {
+                float ignored = GameContext.DiceRoller.Roll(totalWoundsDealt).AtOrAbove(woundIgnore.Threshold);
+                totalWoundsDealt -= ignored;
+            }
+
             float defenderRemainingWounds = metaData.DefendingUnit.RemainingWounds();
 
             //If the opponent doesn't have to provide a choice, like if the unit will die or there's just one model, 
@@ -89,6 +109,34 @@ namespace FDG.Stages
             }
 
             onFinished(assignWoundsResults);
+        }
+
+        // Reconstructs the full unmodified save-roll histogram from the failed + successful subsets,
+        // so SaveRollCompleteContext carries the real rolls. Regeneration reads nothing from them
+        // (Condition.Always), but a future Bane re-rolling unmodified Defense 6s needs At(6) accurate,
+        // so build it honestly now. Saves are d6.
+        private static IDiceResults CombineSaveRolls(RollToSaveResults saves)
+        {
+            float[] perFace = new float[IDiceRollerExtensions.DEFAULT_SIDE_COUNT];
+
+            foreach (SuccessfulSaveInfo successful in saves.SuccessfulSaveList)
+            {
+                AccumulateFaces(successful.Rolls, perFace);
+            }
+            foreach (FailedSaveInfo failed in saves.FailedSaveList)
+            {
+                AccumulateFaces(failed.Rolls, perFace);
+            }
+
+            return new DiceResults(perFace);
+        }
+
+        private static void AccumulateFaces(IDiceResults rolls, float[] perFace)
+        {
+            for (int face = rolls.SideMin; face <= rolls.SideMax && face <= perFace.Length; face++)
+            {
+                perFace[face - 1] += rolls.At(face);
+            }
         }
 
         /*

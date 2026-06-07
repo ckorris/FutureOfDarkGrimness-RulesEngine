@@ -132,8 +132,8 @@ namespace FDG.Tests
     internal sealed class WoundTestContext : IGameContext
     {
         public ITextOutput TextOutput { get; } = new EmptyTextOutput();
-        public IDiceRoller DiceRoller { get; } = new FixedDiceRoller(4);
-        public RuleEvaluator RuleEvaluator { get; } = new RuleEvaluator(new FixedDiceRoller(4));
+        public IDiceRoller DiceRoller { get; }
+        public RuleEvaluator RuleEvaluator { get; }
         public IPlayerRequestByID PlayerRequester { get; }
         public TableState TableState { get; }
         public IReadWriteableGameDataStore GameDataStore { get; }
@@ -142,11 +142,15 @@ namespace FDG.Tests
         public List<ITeam>? FirstDeploymentRollOrder => null;
         IGameContext IGameContextAccessor.GameContext => this;
 
-        public WoundTestContext(GameDataStore store, IPlayerRequestByID requester)
+        // diceRoller defaults to a fixed 4 (Deadly tests don't roll); the wound-ignore tests inject a
+        // ProbabilisticDiceRoller so Regeneration's per-wound roll is deterministic and fractional.
+        public WoundTestContext(GameDataStore store, IPlayerRequestByID requester, IDiceRoller? diceRoller = null)
         {
             GameDataStore = store;
             TableState = new TableState(store);
             PlayerRequester = requester;
+            DiceRoller = diceRoller ?? new FixedDiceRoller(4);
+            RuleEvaluator = new RuleEvaluator(DiceRoller);
         }
 
         public void SetFirstDeploymentRollOrder(List<ITeam> order) { }

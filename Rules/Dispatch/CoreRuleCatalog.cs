@@ -23,6 +23,7 @@ public static class CoreRuleCatalog
     public static IReadOnlyList<SpecialRuleDefinition> All => new[]
     {
         Stealth, Artillery, Indirect, Fast, VeryFast, Slow, Surge, Relentless, Furious, Deadly,
+        Regeneration, Unstoppable,
     };
 
     /// <summary>
@@ -164,6 +165,35 @@ public static class CoreRuleCatalog
             new HookEntry(EHookID.Shooting_OnPreApplyWound,
                 new Condition.Always(),
                 new Effect.MultiplyWounds(new ValueSource.Arg(0)),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    // Wound-ignore sink (AssignWoundsStage) --------------------------------------
+
+    /// <summary> Defensive: the unit ignores each wound on a roll of 5+. </summary>
+    public static SpecialRuleDefinition Regeneration { get; } = new SpecialRuleDefinition("Regeneration",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnSaveRollComplete,
+                new Condition.Always(),
+                new Effect.IgnoreWoundOnRoll(MinRoll: 5),
+                ELifetime.ThisAttack,
+                ERuleSeat.Subject),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary>
+    /// Attacker: ignores the target's Regeneration (the suppression facet). The rulebook's second
+    /// facet — "ignores all negative modifiers to this weapon" — needs a modifier-immunity effect
+    /// and lands when that's modelled.
+    /// </summary>
+    public static SpecialRuleDefinition Unstoppable { get; } = new SpecialRuleDefinition("Unstoppable",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnSaveRollComplete,
+                new Condition.Always(),
+                new Effect.IgnoreRule("Regeneration"),
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>());

@@ -237,10 +237,23 @@ public abstract record RuleOperation
 
     /// <summary>
     /// Ignore each wound on an unmodified roll of <see cref="MinRoll"/>+. Resolution
-    /// of <see cref="Effect.IgnoreWoundOnRoll"/> (Regeneration). Suppressible by
-    /// <see cref="SuppressRule"/> from Bane / Rending / Unstoppable.
+    /// of <see cref="Effect.IgnoreWoundOnRoll"/> (Regeneration). Folded by
+    /// <c>WoundIgnoreSink</c> at wound-assignment time. Suppressible by
+    /// <see cref="SuppressRule"/> from Bane / Rending / Unstoppable (the suppression
+    /// first-pass drops this op before the sink ever sees it).
     /// </summary>
-    public sealed record IgnoreWound(int MinRoll) : RuleOperation;
+    public sealed record IgnoreWound(int MinRoll) : SinkOperation<IWoundIgnoreSink>
+    {
+        public override void ApplyTo(IWoundIgnoreSink sink)
+        {
+            sink.IgnoreOn(MinRoll);
+        }
+
+        public override string Describe()
+        {
+            return $"ignored wounds on a {MinRoll}+";
+        }
+    }
 
     /// <summary>
     /// Set a model's maximum wounds to <see cref="MaxWounds"/>. Resolution of

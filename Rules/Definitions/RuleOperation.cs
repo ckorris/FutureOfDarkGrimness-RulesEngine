@@ -140,7 +140,13 @@ public abstract record RuleOperation
     /// <see cref="Effect.IgnoreRule"/>. The mechanism that lets Bane / Smash /
     /// Unstoppable cancel Regeneration without engine code.
     /// </summary>
-    public sealed record SuppressRule(string RuleName) : RuleOperation;
+    public sealed record SuppressRule(string RuleName) : RuleOperation
+    {
+        public override string Describe()
+        {
+            return $"ignored {RuleName}";
+        }
+    }
 
     /// <summary>
     /// Add <see cref="TokenToGrant"/> to <see cref="Unit"/>'s token container.

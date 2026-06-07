@@ -19,6 +19,29 @@ namespace FDG.Tests
     {
         private static readonly ActivatedAbility[] NoAbilities = Array.Empty<ActivatedAbility>();
 
+        // Attacker rule that cancels Regeneration at save-roll-complete (the suppressor).
+        private static SpecialRuleDefinition UnstoppableDef() => new("Unstoppable",
+            new[]
+            {
+                new HookEntry(EHookID.Shooting_OnSaveRollComplete,
+                    new Condition.Always(),
+                    new Effect.IgnoreRule("Regeneration"),
+                    ELifetime.ThisAttack),
+            },
+            NoAbilities);
+
+        // Defender rule that ignores each wound on a 5+ (the suppression victim).
+        private static SpecialRuleDefinition RegenerationDef() => new("Regeneration",
+            new[]
+            {
+                new HookEntry(EHookID.Shooting_OnSaveRollComplete,
+                    new Condition.Always(),
+                    new Effect.IgnoreWoundOnRoll(MinRoll: 5),
+                    ELifetime.ThisAttack,
+                    ERuleSeat.Subject),
+            },
+            NoAbilities);
+
         // Sanity check on the harness wiring itself, independent of any rule.
         [Test]
         public void HarnessFires_NoRules_ReturnsEmpty()
@@ -683,6 +706,72 @@ namespace FDG.Tests
                 new SaveRollCompleteContext(attacker, defender, TestDice.Faces(2, 3)));
 
             ops.HasOperation<RuleOperation.IgnoreWound>(op => op.MinRoll == 5);
+        }
+
+        // Suppression first-pass — Unstoppable's SuppressRule("Regeneration") removes the
+        // defender's Regeneration operation from the combined queue, and the suppressor itself
+        // is consumed (a stage never applies it).
+        [Test]
+        public void Suppression_UnstoppableRemovesRegenerationFromCombinedQueue()
+        {
+            var harness = new TestRuleHarness();
+            harness.Register(UnstoppableDef());
+            harness.Register(RegenerationDef());
+
+            IUnit attacker = harness.BuildUnit("P1", modelCount: 3, "Unstoppable");
+            IUnit defender = harness.BuildUnit("P2", modelCount: 5, "Regeneration");
+
+            var ops = harness.EvaluateAll(
+                new SaveRollCompleteContext(attacker, defender, TestDice.Faces(2, 3)),
+                (attacker, ERuleSeat.Actor),
+                (defender, ERuleSeat.Subject));
+
+            Assert.That(ops.OfType<RuleOperation.IgnoreWound>(), Is.Empty,
+                "Regeneration's IgnoreWound should be suppressed.");
+            Assert.That(ops.OfType<RuleOperation.SuppressRule>(), Is.Empty,
+                "The SuppressRule meta-operation should be consumed by the first-pass.");
+        }
+
+        // Suppression baseline — with no suppressor present, Regeneration survives the combined
+        // queue (proves the first-pass is conditional, not an unconditional drop).
+        [Test]
+        public void Suppression_WithoutSuppressor_RegenerationSurvives()
+        {
+            var harness = new TestRuleHarness();
+            harness.Register(RegenerationDef());
+
+            IUnit attacker = harness.BuildUnit("P1", modelCount: 3);
+            IUnit defender = harness.BuildUnit("P2", modelCount: 5, "Regeneration");
+
+            var ops = harness.EvaluateAll(
+                new SaveRollCompleteContext(attacker, defender, TestDice.Faces(2, 3)),
+                (attacker, ERuleSeat.Actor),
+                (defender, ERuleSeat.Subject));
+
+            ops.HasOperation<RuleOperation.IgnoreWound>(op => op.MinRoll == 5);
+        }
+
+        // Suppression matches by canonical name — a defender that authored Regeneration under the
+        // alias "Healing Pods" is still suppressed by IgnoreRule("Regeneration"), because the
+        // first-pass compares against the origin rule's Definition.Name, not its requested name.
+        [Test]
+        public void Suppression_MatchesAliasedVictimByCanonicalName()
+        {
+            var harness = new TestRuleHarness();
+            harness.Register(UnstoppableDef());
+            harness.Register(RegenerationDef());
+            harness.RegisterAlias("Healing Pods", "Regeneration");
+
+            IUnit attacker = harness.BuildUnit("P1", modelCount: 3, "Unstoppable");
+            IUnit defender = harness.BuildUnit("P2", modelCount: 5, "Healing Pods");
+
+            var ops = harness.EvaluateAll(
+                new SaveRollCompleteContext(attacker, defender, TestDice.Faces(2, 3)),
+                (attacker, ERuleSeat.Actor),
+                (defender, ERuleSeat.Subject));
+
+            Assert.That(ops.OfType<RuleOperation.IgnoreWound>(), Is.Empty,
+                "Aliased Regeneration ('Healing Pods') should still be suppressed by canonical name.");
         }
 
         // Tough(X) (core) — sets the model's max wounds to its argument at creation.

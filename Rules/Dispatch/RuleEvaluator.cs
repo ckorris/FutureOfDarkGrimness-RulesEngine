@@ -39,8 +39,72 @@ public sealed class RuleEvaluator
     /// </summary>
     public IReadOnlyList<RuleOperation> Evaluate(IUnit unit, ERuleSeat seat, IHookContext context)
     {
-        var operations = new List<RuleOperation>();
+        var tagged = new List<TaggedOperation>();
+        CollectTagged(unit, seat, context, tagged);
 
+        // Per-unit Evaluate does NOT run the suppression first-pass — cross-unit suppression
+        // (an attacker's Unstoppable cancelling a defender's Regeneration) only exists once the
+        // participants are combined in EvaluateAll. So here every produced op is logged and
+        // returned as-is, including any SuppressRule (the queue-level tests assert on it).
+        foreach (TaggedOperation t in tagged)
+        {
+            Log(t);
+        }
+
+        return tagged.Select(t => t.Op).ToList();
+    }
+
+    public IReadOnlyList<RuleOperation> EvaluateAll(IHookContext context,
+        params (IUnit Unit, ERuleSeat Seat)[] participants)
+    {
+        var tagged = new List<TaggedOperation>();
+
+        foreach ((IUnit unit, ERuleSeat seat) in participants)
+        {
+            CollectTagged(unit, seat, context, tagged);
+        }
+
+        // Suppression first-pass: a queued SuppressRule("X") removes every op whose origin rule's
+        // canonical name is "X" (Definition.Name, so an alias-renamed victim is still caught).
+        var suppressedRuleNames = tagged
+            .Select(t => t.Op)
+            .OfType<RuleOperation.SuppressRule>()
+            .Select(s => s.RuleName)
+            .ToHashSet();
+
+        var result = new List<RuleOperation>(tagged.Count);
+        foreach (TaggedOperation t in tagged)
+        {
+            if (t.Op is RuleOperation.SuppressRule)
+            {
+                // The suppressor is internal machinery a stage never applies. Log the action
+                // ("X ignored Y"), then drop it from the queue handed back.
+                Log(t);
+                continue;
+            }
+
+            if (suppressedRuleNames.Contains(t.Origin.Definition.Name))
+            {
+                // Dropped by a suppressor — emit no log line (this is the phantom-log fix:
+                // logging now happens post-suppression, so a cancelled op never prints).
+                continue;
+            }
+
+            Log(t);
+            result.Add(t.Op);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Walks <paramref name="unit"/>'s passive rules for entries matching the firing
+    /// <paramref name="context"/> and <paramref name="seat"/> whose condition passes, and appends
+    /// each produced operation to <paramref name="sink"/> paired with its origin rule + bearer.
+    /// Does not log — callers log after deciding which operations survive.
+    /// </summary>
+    private void CollectTagged(IUnit unit, ERuleSeat seat, IHookContext context, List<TaggedOperation> sink)
+    {
         foreach (ResolvedRule rule in unit.RuleDefinitions)
         {
             var invocation = new RuleInvocation(context, unit, rule.Arguments, DiceRoller: _diceRoller);
@@ -56,36 +120,30 @@ public sealed class RuleEvaluator
                 {
                     continue;
                 }
-                
-                int producedFrom = operations.Count;
-                entry.Effect.Apply(invocation, operations);
 
-                for (int i = producedFrom; i < operations.Count; i++)
+                var produced = new List<RuleOperation>();
+                entry.Effect.Apply(invocation, produced);
+
+                foreach (RuleOperation op in produced)
                 {
-                    _log?.Log($"{unit.Name}'s {rule.RequestedName} {operations[i].Describe()}.");
+                    sink.Add(new TaggedOperation(op, rule, unit));
                 }
             }
         }
-
-        return operations;
     }
 
-    public IReadOnlyList<RuleOperation> EvaluateAll(IHookContext context,
-        params (IUnit Unit, ERuleSeat Seat)[] participants)
+    private void Log(TaggedOperation t)
     {
-        var operations = new List<RuleOperation>();
-
-        foreach ((IUnit unit, ERuleSeat seat) in participants)
-        {
-            operations.AddRange((Evaluate(unit, seat, context)));
-        }
-
-        //TODO: Suppression first-pass seam: once SuppressRule is wired, drop operations from the named
-        //rules here, before any sink applies. No-op until then.
-
-        
-        return operations;
+        _log?.Log($"{t.Bearer.Name}'s {t.Origin.RequestedName} {t.Op.Describe()}.");
     }
+
+    /// <summary>
+    /// A produced operation paired with the rule that produced it and the unit carrying that rule.
+    /// Origin tracking is dispatcher sidecar metadata — not a field on <see cref="RuleOperation"/> —
+    /// so the suppression first-pass can match ops by their origin rule's canonical name and the
+    /// game-log can name the bearer and rule. The public API still returns bare operations.
+    /// </summary>
+    private readonly record struct TaggedOperation(RuleOperation Op, ResolvedRule Origin, IUnit Bearer);
 
     /// <summary>
     /// The player-triggered abilities available at this hook: abilities whose

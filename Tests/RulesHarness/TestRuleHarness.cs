@@ -134,6 +134,15 @@ namespace FDG.Tests.RulesHarness
             => Evaluator.Evaluate(unit, seat, context);
 
         /// <summary>
+        /// Evaluates every participant's rules into one combined queue and runs the suppression
+        /// first-pass (a queued <c>SuppressRule</c> drops the suppressed rule's operations). The
+        /// stage-facing counterpart of <see cref="Evaluate"/>; what real stages call.
+        /// </summary>
+        public IReadOnlyList<RuleOperation> EvaluateAll(IHookContext context,
+            params (IUnit Unit, ERuleSeat Seat)[] participants)
+            => Evaluator.EvaluateAll(context, participants);
+
+        /// <summary>
         /// Returns the player-triggered abilities the bus offers at this hook (affordable,
         /// available, trigger matches). The observable for "an ability was offered."
         /// </summary>

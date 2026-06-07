@@ -59,43 +59,11 @@ namespace FDG.Tests
                 "Slow subtracts 4\" from Charge.");
         }
 
-        private static void AttachFast(DataBinding<UnitData> unit)
-        {
-            var fast = new SpecialRuleDefinition("Fast",
-                new[]
-                {
-                    new HookEntry(EHookID.Movement_OnMoveActionDeclared,
-                        new Condition.ActionTypeIs(EActionType.Advance),
-                        new Effect.MovementBonus(EActionType.Advance, DistanceInches: 2f),
-                        ELifetime.ThisActivation),
-                },
-                System.Array.Empty<ActivatedAbility>());
+        private static void AttachFast(DataBinding<UnitData> unit) =>
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Fast", CoreRuleCatalog.Fast));
 
-            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Fast", fast));
-        }
-
-        private static void AttachSlow(DataBinding<UnitData> unit)
-        {
-            var slow = new SpecialRuleDefinition("Slow",
-                new[]
-                {
-                    new HookEntry(EHookID.Movement_OnMoveActionDeclared,
-                        new Condition.ActionTypeIs(EActionType.Advance),
-                        new Effect.MovementBonus(EActionType.Advance, DistanceInches: -2f),
-                        ELifetime.ThisActivation),
-                    new HookEntry(EHookID.Movement_OnMoveActionDeclared,
-                        new Condition.ActionTypeIs(EActionType.Rush),
-                        new Effect.MovementBonus(EActionType.Rush, DistanceInches: -4f),
-                        ELifetime.ThisActivation),
-                    new HookEntry(EHookID.Movement_OnMoveActionDeclared,
-                        new Condition.ActionTypeIs(EActionType.Charge),
-                        new Effect.MovementBonus(EActionType.Charge, DistanceInches: -4f),
-                        ELifetime.ThisActivation),
-                },
-                System.Array.Empty<ActivatedAbility>());
-
-            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Slow", slow));
-        }
+        private static void AttachSlow(DataBinding<UnitData> unit) =>
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Slow", CoreRuleCatalog.Slow));
 
         private DataBinding<UnitData> MakeUnit()
         {

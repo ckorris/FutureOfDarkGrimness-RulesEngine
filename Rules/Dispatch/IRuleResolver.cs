@@ -22,4 +22,13 @@ public interface IRuleResolver
     /// </summary>
     /// <exception cref="KeyNotFoundException">No rule is registered under this name.</exception>
     ResolvedRule Resolve(string rule);
+
+    /// <summary>
+    /// Non-throwing variant of <see cref="Resolve"/>. Returns <c>true</c> and sets
+    /// <paramref name="resolved"/> when a rule is registered under
+    /// <paramref name="rule"/>; otherwise returns <c>false</c>. Used by army-load to
+    /// skip-and-warn for valid-but-not-yet-implemented rule names without catching
+    /// exceptions as control flow.
+    /// </summary>
+    bool TryResolve(string rule, out ResolvedRule resolved);
 }

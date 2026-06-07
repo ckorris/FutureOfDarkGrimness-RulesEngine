@@ -127,52 +127,14 @@ namespace FDG.Tests
             return total;
         }
 
-        private static void AttachSurge(DataBinding<UnitData> unit)
-        {
-            var surge = new SpecialRuleDefinition("Surge",
-                new[]
-                {
-                    new HookEntry(EHookID.Shooting_OnHitRollComplete,
-                        new Condition.UnmodifiedRollEquals(6),
-                        new Effect.AddExtraHit(OnRollValue: 6),
-                        ELifetime.ThisAttack),
-                },
-                System.Array.Empty<ActivatedAbility>());
+        private static void AttachSurge(DataBinding<UnitData> unit) =>
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Surge", CoreRuleCatalog.Surge));
 
-            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Surge", surge));
-        }
+        private static void AttachRelentless(DataBinding<UnitData> unit) =>
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Relentless", CoreRuleCatalog.Relentless));
 
-        private static void AttachRelentless(DataBinding<UnitData> unit)
-        {
-            var relentless = new SpecialRuleDefinition("Relentless",
-                new[]
-                {
-                    new HookEntry(EHookID.Shooting_OnHitRollComplete,
-                        new Condition.And(new Condition.UnmodifiedRollEquals(6),
-                                          new Condition.DistanceGreaterThan(9f)),
-                        new Effect.AddExtraHit(OnRollValue: 6),
-                        ELifetime.ThisAttack),
-                },
-                System.Array.Empty<ActivatedAbility>());
-
-            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Relentless", relentless));
-        }
-
-        private static void AttachFurious(DataBinding<UnitData> unit)
-        {
-            var furious = new SpecialRuleDefinition("Furious",
-                new[]
-                {
-                    new HookEntry(EHookID.Shooting_OnHitRollComplete,
-                        new Condition.And(new Condition.IsMelee(),
-                                          new Condition.UnmodifiedRollEquals(6)),
-                        new Effect.AddExtraHit(OnRollValue: 6),
-                        ELifetime.ThisAttack),
-                },
-                System.Array.Empty<ActivatedAbility>());
-
-            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Furious", furious));
-        }
+        private static void AttachFurious(DataBinding<UnitData> unit) =>
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Furious", CoreRuleCatalog.Furious));
 
         private DataBinding<UnitData> MakeUnit(Position position)
         {

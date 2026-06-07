@@ -71,4 +71,17 @@ public sealed class RuleResolver : IRuleResolver
             ? new ResolvedRule(rule, result)
             : throw new KeyNotFoundException($"No rule named {rule} was registered in {nameof(RuleResolver)}.");
     }
+
+    /// <inheritdoc />
+    public bool TryResolve(string rule, out ResolvedRule resolved)
+    {
+        if (_rules.TryGetValue(rule, out SpecialRuleDefinition? result))
+        {
+            resolved = new ResolvedRule(rule, result);
+            return true;
+        }
+
+        resolved = null!;
+        return false;
+    }
 }

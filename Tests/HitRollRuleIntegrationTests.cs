@@ -155,51 +155,14 @@ namespace FDG.Tests
             return result;
         }
 
-        private static void AttachStealth(DataBinding<UnitData> unit)
-        {
-            var stealth = new SpecialRuleDefinition("Stealth",
-                new[]
-                {
-                    new HookEntry(EHookID.Shooting_OnHitRollModifier,
-                        new Condition.DistanceGreaterThan(9f),
-                        new Effect.RollModifier(ERollKind.Hit, Delta: -1),
-                        ELifetime.ThisAttack,
-                        ERuleSeat.Subject),
-                },
-                System.Array.Empty<ActivatedAbility>());
+        private static void AttachStealth(DataBinding<UnitData> unit) =>
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Stealth", CoreRuleCatalog.Stealth));
 
-            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Stealth", stealth));
-        }
+        private static void AttachArtillery(DataBinding<UnitData> unit) =>
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Artillery", CoreRuleCatalog.Artillery));
 
-        private static void AttachArtillery(DataBinding<UnitData> unit)
-        {
-            var artillery = new SpecialRuleDefinition("Artillery",
-                new[]
-                {
-                    new HookEntry(EHookID.Shooting_OnHitRollModifier,
-                        new Condition.DistanceGreaterThan(9f),
-                        new Effect.RollModifier(ERollKind.Hit, Delta: +1),
-                        ELifetime.ThisAttack),
-                },
-                System.Array.Empty<ActivatedAbility>());
-
-            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Artillery", artillery));
-        }
-
-        private static void AttachIndirect(DataBinding<UnitData> unit)
-        {
-            var indirect = new SpecialRuleDefinition("Indirect",
-                new[]
-                {
-                    new HookEntry(EHookID.Shooting_OnHitRollModifier,
-                        new Condition.AfterMoving(),
-                        new Effect.RollModifier(ERollKind.Hit, Delta: -1),
-                        ELifetime.ThisAttack),
-                },
-                System.Array.Empty<ActivatedAbility>());
-
-            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Indirect", indirect));
-        }
+        private static void AttachIndirect(DataBinding<UnitData> unit) =>
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Indirect", CoreRuleCatalog.Indirect));
 
         private DataBinding<UnitData> MakeUnit(Position position)
         {

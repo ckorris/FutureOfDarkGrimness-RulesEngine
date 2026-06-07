@@ -110,53 +110,22 @@ namespace FDG.GameModel
 
         private void CreateArmies(PlayerSlot[] playerSlots, IReadWriteableGameDataStore gameDataStore)
         {
+            RuleResolver ruleResolver = CoreRuleCatalog.CreateResolver();
+
             for (int i = 0; i < playerSlots.Length; i++)
             {
-                CreateArmyDataFromArmyFile(playerSlots[i].PlayerID, playerSlots[i].ArmyListFile, gameDataStore);
-            }
-
-            //TEST: until an army-list -> rule-registry loader exists, no real unit carries #042
-            //rules in a live game. To watch the dispatch path fire end-to-end, hand the SECOND
-            //player's whole army Stealth (-1 to hit from beyond 9"). Delete this whole block once
-            //rules load from army data.
-            if (playerSlots.Length > 1)
-            {
-                AttachTestStealthToArmy(playerSlots[1].PlayerID, gameDataStore);
+                CreateArmyDataFromArmyFile(playerSlots[i].PlayerID, playerSlots[i].ArmyListFile, gameDataStore, ruleResolver);
             }
         }
 
-        //TEST: temporary demo wiring — see the call site in CreateArmies. Builds Stealth inline
-        //(same definition as HitRollRuleIntegrationTests) and attaches it to every unit owned by
-        //the given player, so the real DetermineHitRollNeededStage logs the modifier in play.
-        private void AttachTestStealthToArmy(PlayerID playerID, IReadWriteableGameDataStore gameDataStore)
-        {
-            SpecialRuleDefinition stealth = new SpecialRuleDefinition("Stealth",
-                new[]
-                {
-                    new HookEntry(EHookID.Shooting_OnHitRollModifier,
-                        new Condition.DistanceGreaterThan(9f),
-                        new Effect.RollModifier(ERollKind.Hit, Delta: -1),
-                        ELifetime.ThisAttack,
-                        ERuleSeat.Subject),
-                },
-                Array.Empty<ActivatedAbility>());
-
-            foreach (DataBinding<UnitData> unit in gameDataStore.GetAllDataBindings<UnitData>())
-            {
-                if (unit.PlayerID() == playerID)
-                {
-                    unit.GetValue().AttachRuleDefinition(new ResolvedRule("Stealth", stealth));
-                }
-            }
-        }
-
-        private void CreateArmyDataFromArmyFile(PlayerID playerID, ArmyListFile armyListFile, IReadWriteableGameDataStore gameDataStore)
+        private void CreateArmyDataFromArmyFile(PlayerID playerID, ArmyListFile armyListFile, IReadWriteableGameDataStore gameDataStore, IRuleResolver ruleResolver)
         {
             List<DataBinding<UnitData>> unitBindings = new List<DataBinding<UnitData>>(armyListFile.Units.Count);
 
             foreach (UnitFileEntry unitEntry in armyListFile.Units)
             {
                 UnitData unitData = new UnitData(playerID, unitEntry, gameDataStore);
+                AttachRulesFromArmyList(unitData, unitEntry, ruleResolver);
                 DataReference unitDataReference = gameDataStore.Create(unitData);
                 DataBinding<UnitData> unitBinding = gameDataStore.GetDataBinding<UnitData>(unitDataReference);
                 unitBindings.Add(unitBinding);
@@ -165,6 +134,47 @@ namespace FDG.GameModel
             ArmyData armyData = new ArmyData(playerID, unitBindings);
 
             DataReference armyDataReference = gameDataStore.Create(armyData);
+        }
+
+        //Resolves each special rule named on the army-list entry against the rule registry and
+        //attaches the resolved #042 definition to the unit. A valid-but-not-yet-implemented core
+        //rule (one with no definition in the catalog) is skipped with a warning so partial armies
+        //still load and the rules that ARE implemented still fire.
+        private void AttachRulesFromArmyList(UnitData unitData, UnitFileEntry unitEntry, IRuleResolver ruleResolver)
+        {
+            foreach (SpecialRuleEntry ruleEntry in unitEntry.SpecialRules)
+            {
+                (string lookupName, IReadOnlyList<RuleArgument> arguments) = DescribeRuleEntry(ruleEntry);
+
+                if (ruleResolver.TryResolve(lookupName, out ResolvedRule resolved))
+                {
+                    unitData.AttachRuleDefinition(
+                        new ResolvedRule(ruleEntry.PrintableName, resolved.Definition, arguments));
+                }
+                else
+                {
+                    Debug.WriteLine(
+                        $"[#042] Skipping unimplemented special rule '{ruleEntry.PrintableName}' on unit '{unitData.Name}'.");
+                }
+            }
+        }
+
+        //Maps an army-list rule entry to the canonical name used for registry lookup plus any
+        //per-instance arguments. Core rules look up by name; numeric rules carry their value as a
+        //single Int argument; aliases look up by the rule they rename.
+        private static (string lookupName, IReadOnlyList<RuleArgument> arguments) DescribeRuleEntry(SpecialRuleEntry ruleEntry)
+        {
+            switch (ruleEntry)
+            {
+                case SpecialRuleEntry_CoreNumeric numeric:
+                    return (numeric.Name, new RuleArgument[] { new RuleArgument.Int(numeric.NumericValue) });
+                case SpecialRuleEntry_Alias alias:
+                    return DescribeRuleEntry(alias.AliasedRule);
+                case SpecialRuleEntry_Core core:
+                    return (core.Name, Array.Empty<RuleArgument>());
+                default:
+                    return (ruleEntry.PrintableName, Array.Empty<RuleArgument>());
+            }
         }
 
 

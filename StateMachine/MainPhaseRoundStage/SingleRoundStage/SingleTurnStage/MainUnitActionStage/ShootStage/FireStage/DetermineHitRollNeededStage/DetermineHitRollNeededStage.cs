@@ -27,8 +27,8 @@ namespace FDG.Stages
             float distance = UnitCompareUtilities.MinDistanceBetweenUnits(attacker, defender, out _, out _, includeVertical:true);
 
             IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
-                new HitRollModifierContext(attacker, defender, distance, AttackerMoved: false),
-                (attacker, ERuleSeat.Actor), (defender, ERuleSeat.Subject)); //TODO: saying the attacker moved is hard-coded but shouldn't be.
+                new HitRollModifierContext(attacker, defender, distance, AttackerMoved: metaData.AttackerMoved),
+                (attacker, ERuleSeat.Actor), (defender, ERuleSeat.Subject));
             RollModifierSink rollModifiers = new RollModifierSink();
             rollModifiers.ApplyFrom(operations);
 

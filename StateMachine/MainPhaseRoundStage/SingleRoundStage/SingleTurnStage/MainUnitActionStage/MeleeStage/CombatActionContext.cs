@@ -87,11 +87,18 @@ namespace FDG.Stages
 
         private QueryableResults _queryableResults = new QueryableResults();
 
+        // Whether the attacking unit moved earlier this activation. Carried into each
+        // CombatMetadata so hit-roll rules (Indirect) can read it; sourced from the
+        // parent IUnitActionContext.HasMoved at child-context creation.
+        private readonly bool _attackerMoved;
 
-        public CombatActionContext(IGameContext gameContext, DataBinding<UnitData> attackingUnit, bool isMelee)
+
+        public CombatActionContext(IGameContext gameContext, DataBinding<UnitData> attackingUnit, bool isMelee,
+            bool attackerMoved = false)
         {
             GameContext = gameContext;
             AttackingUnit = attackingUnit;
+            _attackerMoved = attackerMoved;
             if(isMelee)
             {
                 _availableWeapons = GetTypeSortedWeapons(attackingUnit.GetValue().GetMeleeWeapons());
@@ -148,8 +155,8 @@ namespace FDG.Stages
                     "Must have all values set before consuming.");
             }
 
-            CombatMetadata meleeCombatMetadata = new CombatMetadata(gameContext, AttackingUnit, 
-                DefendingUnit, ShootingWeaponType, ShootingWeaponCount.Value);
+            CombatMetadata meleeCombatMetadata = new CombatMetadata(gameContext, AttackingUnit,
+                DefendingUnit, ShootingWeaponType, ShootingWeaponCount.Value, _attackerMoved);
 
             // Don't clear DefendingUnit — OfferStrikeBackStage needs it after this call.
             ShootingWeaponType = null;

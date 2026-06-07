@@ -25,8 +25,8 @@ namespace FDG.Stages
 
         protected override ICombatActionContext GetNewChildContext(IUnitActionContext contextSelf)
         {
-            return new CombatActionContext(contextSelf.GameContext, contextSelf.ActivatingUnit, 
-                isMelee: false);
+            return new CombatActionContext(contextSelf.GameContext, contextSelf.ActivatingUnit,
+                isMelee: false, attackerMoved: contextSelf.HasMoved);
         }
 
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<ICombatActionContext> startingChild)

@@ -16,6 +16,9 @@ namespace FDG
 
         public DataBinding<UnitData> DefendingUnit { get; }
 
+        /// <summary>True if the attacking unit moved earlier this activation (drives Indirect's -1 to hit).</summary>
+        public bool AttackerMoved { get; }
+
         IReadOnlyList<ISpecialRule_Combat> AllSpecialRules { get; }
 
         //TODO: Next value can replace everything after?
@@ -36,6 +39,8 @@ namespace FDG
 
         public DataBinding<UnitData> DefendingUnit { get; private set; }
 
+        public bool AttackerMoved { get; private set; }
+
 
         public IReadOnlyList<ISpecialRule_Combat> AllSpecialRules { get; private set; }
 
@@ -43,13 +48,15 @@ namespace FDG
         private QueryableResults _queryableResults = new QueryableResults();
 
         public CombatMetadata(IGameContext gameContext, DataBinding<UnitData> attackingUnit,
-            DataBinding<UnitData> defendingUnit, IWeapon weaponType, int weaponCount)
+            DataBinding<UnitData> defendingUnit, IWeapon weaponType, int weaponCount,
+            bool attackerMoved = false)
         {
             GameContext = gameContext;
             AttackingUnit = attackingUnit;
             DefendingUnit = defendingUnit;
             WeaponType = weaponType;
             WeaponCount = weaponCount;
+            AttackerMoved = attackerMoved;
 
             AllSpecialRules = GetAllSpecialRules(attackingUnit, defendingUnit, weaponType);
         }

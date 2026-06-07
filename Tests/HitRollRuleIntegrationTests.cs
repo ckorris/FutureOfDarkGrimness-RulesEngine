@@ -79,8 +79,66 @@ namespace FDG.Tests
             Assert.That(result.HitRollNeeded, Is.EqualTo(4), "no rules → just the attacker's quality.");
         }
 
+        // Artillery is an attacker-seat (Actor) rule: +1 to hit beyond 9", which LOWERS the
+        // threshold (easier). It reuses the distance the stage already computes — pure attach,
+        // no new wiring beyond Stealth's.
+        [Test]
+        public async Task ArtilleryAttacker_BeyondNine_LowersHitThreshold()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(FarPos);
+            AttachArtillery(attacker);
+
+            DetermineHitRollNeededResults result = await RunStage(attacker, defender);
+
+            Assert.That(result.HitRollNeeded, Is.EqualTo(3),
+                "base 4, lowered by 1 because Artillery gives +1 to hit beyond 9\".");
+        }
+
+        [Test]
+        public async Task ArtilleryAttacker_WithinNine_NoChange()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(NearPos);
+            AttachArtillery(attacker);
+
+            DetermineHitRollNeededResults result = await RunStage(attacker, defender);
+
+            Assert.That(result.HitRollNeeded, Is.EqualTo(4),
+                "Artillery's distance condition fails within 9\", so no modifier is applied.");
+        }
+
+        // Indirect is an attacker-seat rule: -1 to hit when the unit moved this activation,
+        // which RAISES the threshold. The condition reads AttackerMoved off the metadata —
+        // this exercises the HasMoved → CombatMetadata threading, not just a distance check.
+        [Test]
+        public async Task IndirectAttacker_AfterMoving_RaisesHitThreshold()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(FarPos);
+            AttachIndirect(attacker);
+
+            DetermineHitRollNeededResults result = await RunStage(attacker, defender, attackerMoved: true);
+
+            Assert.That(result.HitRollNeeded, Is.EqualTo(5),
+                "base 4, raised by 1 because Indirect applies -1 to hit after the attacker moved.");
+        }
+
+        [Test]
+        public async Task IndirectAttacker_WithoutMoving_NoChange()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(FarPos);
+            AttachIndirect(attacker);
+
+            DetermineHitRollNeededResults result = await RunStage(attacker, defender, attackerMoved: false);
+
+            Assert.That(result.HitRollNeeded, Is.EqualTo(4),
+                "Indirect's AfterMoving condition fails when the attacker held, so no modifier is applied.");
+        }
+
         private async Task<DetermineHitRollNeededResults> RunStage(
-            DataBinding<UnitData> attacker, DataBinding<UnitData> defender)
+            DataBinding<UnitData> attacker, DataBinding<UnitData> defender, bool attackerMoved = false)
         {
             var layer = new NoOpLayer<ICombatMetadata>();
             var stage = new DetermineHitRollNeededStage<ICombatMetadata>(_ctx, layer);
@@ -88,7 +146,7 @@ namespace FDG.Tests
 
             var weapon = new Weapon("Test", rangeInches: 48f, attacks: 1, armorPenetration: 0,
                 specialRules: new HashSet<ISpecialRule_Weapon>());
-            var metadata = new CombatMetadata(_ctx, attacker, defender, weapon, weaponCount: 1);
+            var metadata = new CombatMetadata(_ctx, attacker, defender, weapon, weaponCount: 1, attackerMoved);
 
             await stage.Enter(metadata);
 
@@ -111,6 +169,36 @@ namespace FDG.Tests
                 System.Array.Empty<ActivatedAbility>());
 
             unit.GetValue().AttachRuleDefinition(new ResolvedRule("Stealth", stealth));
+        }
+
+        private static void AttachArtillery(DataBinding<UnitData> unit)
+        {
+            var artillery = new SpecialRuleDefinition("Artillery",
+                new[]
+                {
+                    new HookEntry(EHookID.Shooting_OnHitRollModifier,
+                        new Condition.DistanceGreaterThan(9f),
+                        new Effect.RollModifier(ERollKind.Hit, Delta: +1),
+                        ELifetime.ThisAttack),
+                },
+                System.Array.Empty<ActivatedAbility>());
+
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Artillery", artillery));
+        }
+
+        private static void AttachIndirect(DataBinding<UnitData> unit)
+        {
+            var indirect = new SpecialRuleDefinition("Indirect",
+                new[]
+                {
+                    new HookEntry(EHookID.Shooting_OnHitRollModifier,
+                        new Condition.AfterMoving(),
+                        new Effect.RollModifier(ERollKind.Hit, Delta: -1),
+                        ELifetime.ThisAttack),
+                },
+                System.Array.Empty<ActivatedAbility>());
+
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Indirect", indirect));
         }
 
         private DataBinding<UnitData> MakeUnit(Position position)

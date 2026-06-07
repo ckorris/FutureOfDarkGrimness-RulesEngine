@@ -34,6 +34,12 @@ namespace FDG
 
         public void SetPosition(Position newPosition);
 
+        /// <summary>
+        /// Sets this model's maximum wounds (Tough) and fills it to that maximum. A creation-time
+        /// primitive — applied once at unit setup before any wounds are dealt.
+        /// </summary>
+        public void SetMaxWounds(int maxWounds);
+
         public void DealWounds(float wounds);
 
         public event DataValueChangedHandler<Position> OnPositionChanged;

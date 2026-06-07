@@ -19,7 +19,7 @@ namespace FDG
         [JsonIgnore] public ITokenContainer Tokens => _tokens;
 
         [JsonIgnore]
-        public float TotalWounds { get; }
+        public float TotalWounds { get; private set; }
 
         public DataBinding<float> RemainingWoundsBinding;
 
@@ -87,6 +87,12 @@ namespace FDG
         public void DealWounds(float wounds)
         {
             RemainingWoundsBinding.SetValue(RemainingWoundsBinding.GetValue() - wounds);
+        }
+
+        public void SetMaxWounds(int maxWounds)
+        {
+            TotalWounds = maxWounds;
+            RemainingWoundsBinding.SetValue(maxWounds);
         }
 
         public void SetPosition(Position newPosition)

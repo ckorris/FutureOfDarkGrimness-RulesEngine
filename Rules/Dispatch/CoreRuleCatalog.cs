@@ -23,7 +23,7 @@ public static class CoreRuleCatalog
     public static IReadOnlyList<SpecialRuleDefinition> All => new[]
     {
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
-        Deadly, Regeneration, Unstoppable,
+        Deadly, Regeneration, Unstoppable, Tough,
     };
 
     /// <summary>
@@ -206,6 +206,19 @@ public static class CoreRuleCatalog
                 new Condition.Always(),
                 new Effect.IgnoreRule("Regeneration"),
                 ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    // Max-wounds sink (UnitCreationRules, at army-load) ---------------------------
+
+    /// <summary> Tough(X): each model in the unit has X wounds instead of 1. </summary>
+    public static SpecialRuleDefinition Tough { get; } = new SpecialRuleDefinition("Tough",
+        new[]
+        {
+            new HookEntry(EHookID.Lifecycle_OnUnitCreated,
+                new Condition.Always(),
+                new Effect.SetMaxWounds(new ValueSource.Arg(0)),
+                ELifetime.UntilEndOfGame),
         },
         Array.Empty<ActivatedAbility>());
 }

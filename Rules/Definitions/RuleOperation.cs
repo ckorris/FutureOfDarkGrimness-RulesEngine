@@ -269,10 +269,22 @@ public abstract record RuleOperation
 
     /// <summary>
     /// Set a model's maximum wounds to <see cref="MaxWounds"/>. Resolution of
-    /// <see cref="Effect.SetMaxWounds"/> (Tough). Carries no model reference yet —
-    /// per-model targeting lands with model-scoped rule attachment in Phase 7.
+    /// <see cref="Effect.SetMaxWounds"/> (Tough). Folded by <c>MaxWoundsSink</c> at unit creation
+    /// and applied to every model in the bearer unit (carries no model reference — it's a
+    /// whole-unit creation-time stat).
     /// </summary>
-    public sealed record SetMaxWounds(int MaxWounds) : RuleOperation;
+    public sealed record SetMaxWounds(int MaxWounds) : SinkOperation<IMaxWoundsSink>
+    {
+        public override void ApplyTo(IMaxWoundsSink sink)
+        {
+            sink.SetMax(MaxWounds);
+        }
+
+        public override string Describe()
+        {
+            return $"set max wounds to {MaxWounds}";
+        }
+    }
 
     /// <summary>
     /// Multiply the in-flight hit count by <see cref="Multiplier"/> (engine caps at

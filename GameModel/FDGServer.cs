@@ -65,6 +65,14 @@ namespace FDG.GameModel
                 tableState, _gameDataStore, tempVisualRelayer, gameSettings);
             _gameContext.OnGameEnded += result => OnGameEnded?.Invoke(result);
 
+            // #042 creation-time rules (Tough): now that the evaluator exists, fire OnUnitCreated for
+            // every army unit and apply its results (e.g. set each model's max wounds). Done here, not
+            // in CreateArmies, because CreateArmies runs before the GameContext/RuleEvaluator is built.
+            foreach (DataBinding<UnitData> unitBinding in _gameContext.GameDataStore.GetAllDataBindings<UnitData>())
+            {
+                UnitCreationRules.Apply(unitBinding.GetValue(), _gameContext.RuleEvaluator);
+            }
+
             if (TEST_SINGLE_TURN)
             {
                 LaunchSingleTurnTester(_gameContext);

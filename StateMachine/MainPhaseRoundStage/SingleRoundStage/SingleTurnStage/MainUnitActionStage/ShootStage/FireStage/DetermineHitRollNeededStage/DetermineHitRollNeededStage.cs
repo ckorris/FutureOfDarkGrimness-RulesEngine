@@ -20,8 +20,6 @@ namespace FDG.Stages
 
         protected override async Task RunStage(ICombatMetadata metaData, Action<DetermineHitRollNeededResults> onFinished)
         {
-            DetermineHitRollNeededResults results = new DetermineHitRollNeededResults(metaData.AttackingUnit.Quality());
-            
             IUnit attacker = metaData.AttackingUnit.GetValue();
             IUnit defender = metaData.DefendingUnit.GetValue();
             float distance = UnitCompareUtilities.MinDistanceBetweenUnits(attacker, defender, out _, out _, includeVertical:true);
@@ -29,11 +27,25 @@ namespace FDG.Stages
             IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
                 new HitRollModifierContext(attacker, defender, distance, AttackerMoved: metaData.AttackerMoved),
                 (attacker, ERuleSeat.Actor), (defender, ERuleSeat.Subject));
+
+            // #042 quality-floor rules (Reliable) set the BASE quality before per-roll modifiers:
+            // "treated as 2+, still modifiable". Fold the floor sink and improve the base, then let
+            // the roll-modifier sink (Stealth/Artillery/Indirect) stack on top. Stage interprets no op.
+            int baseQuality = metaData.AttackingUnit.Quality();
+            QualityFloorSink qualityFloor = new QualityFloorSink();
+            qualityFloor.ApplyFrom(operations);
+            if (qualityFloor.HasFloor)
+            {
+                baseQuality = Math.Min(baseQuality, qualityFloor.Quality);
+            }
+
+            DetermineHitRollNeededResults results = new DetermineHitRollNeededResults(baseQuality);
+
             RollModifierSink rollModifiers = new RollModifierSink();
             rollModifiers.ApplyFrom(operations);
 
             results.HitRollNeeded -= rollModifiers.Net(ERollKind.Hit);
-            
+
             GameContext.Log($"Base hit roll required is {results.HitRollNeeded} based on attacker's quality.");
 
             onFinished(results);

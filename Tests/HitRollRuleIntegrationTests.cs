@@ -137,6 +137,39 @@ namespace FDG.Tests
                 "Indirect's AfterMoving condition fails when the attacker held, so no modifier is applied.");
         }
 
+        // Reliable is an attacker-seat rule that FLOORS the base quality to 2+ before per-roll
+        // modifiers — a different sink (QualityFloorSink) than the modifier rules above, but riding
+        // the same OnHitRollModifier evaluation. Units are quality 4, so Reliable improves 4 → 2.
+        [Test]
+        public async Task ReliableAttacker_FloorsBaseQualityToTwo()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(FarPos);
+            AttachReliable(attacker);
+
+            DetermineHitRollNeededResults result = await RunStage(attacker, defender);
+
+            Assert.That(result.HitRollNeeded, Is.EqualTo(2),
+                "Reliable floors the attacker's base quality 4 to 2+.");
+        }
+
+        // "Still modifiable": Reliable floors the base to 2, then a defender's Stealth (-1 to hit
+        // from beyond 9") stacks on top, raising the threshold to 3. Proves the floor sets the BASE,
+        // not the final value.
+        [Test]
+        public async Task ReliableAttacker_WithStealthDefender_FloorThenModifierStacks()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(FarPos);
+            AttachReliable(attacker);
+            AttachStealth(defender);
+
+            DetermineHitRollNeededResults result = await RunStage(attacker, defender);
+
+            Assert.That(result.HitRollNeeded, Is.EqualTo(3),
+                "base floored to 2 by Reliable, then +1 harder from Stealth's -1 to hit.");
+        }
+
         private async Task<DetermineHitRollNeededResults> RunStage(
             DataBinding<UnitData> attacker, DataBinding<UnitData> defender, bool attackerMoved = false)
         {
@@ -163,6 +196,9 @@ namespace FDG.Tests
 
         private static void AttachIndirect(DataBinding<UnitData> unit) =>
             unit.GetValue().AttachRuleDefinition(new ResolvedRule("Indirect", CoreRuleCatalog.Indirect));
+
+        private static void AttachReliable(DataBinding<UnitData> unit) =>
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Reliable", CoreRuleCatalog.Reliable));
 
         private DataBinding<UnitData> MakeUnit(Position position)
         {

@@ -22,8 +22,8 @@ public static class CoreRuleCatalog
     /// </summary>
     public static IReadOnlyList<SpecialRuleDefinition> All => new[]
     {
-        Stealth, Artillery, Indirect, Fast, VeryFast, Slow, Surge, Relentless, Furious, Deadly,
-        Regeneration, Unstoppable,
+        Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
+        Deadly, Regeneration, Unstoppable,
     };
 
     /// <summary>
@@ -72,6 +72,17 @@ public static class CoreRuleCatalog
             new HookEntry(EHookID.Shooting_OnHitRollModifier,
                 new Condition.AfterMoving(),
                 new Effect.RollModifier(ERollKind.Hit, Delta: -1),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary> Attacker: base Quality is treated as 2+ (still modifiable). </summary>
+    public static SpecialRuleDefinition Reliable { get; } = new SpecialRuleDefinition("Reliable",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnHitRollModifier,
+                new Condition.Always(),
+                new Effect.QualityFloor(Quality: 2),
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>());

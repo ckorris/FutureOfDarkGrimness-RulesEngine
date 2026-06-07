@@ -230,10 +230,22 @@ public abstract record RuleOperation
     }
 
     /// <summary>
-    /// Cap the in-flight hit roll's target at <see cref="Quality"/>+. Resolution of
-    /// <see cref="Effect.QualityFloor"/> (Reliable).
+    /// Floor the in-flight hit roll's base quality to <see cref="Quality"/>+ (before per-roll
+    /// modifiers). Resolution of <see cref="Effect.QualityFloor"/> (Reliable). Folded by
+    /// <c>QualityFloorSink</c> at the hit stage.
     /// </summary>
-    public sealed record QualityFloor(int Quality) : RuleOperation;
+    public sealed record QualityFloor(int Quality) : SinkOperation<IQualityFloorSink>
+    {
+        public override void ApplyTo(IQualityFloorSink sink)
+        {
+            sink.FloorTo(Quality);
+        }
+
+        public override string Describe()
+        {
+            return $"set base Quality to {Quality}+";
+        }
+    }
 
     /// <summary>
     /// Ignore each wound on an unmodified roll of <see cref="MinRoll"/>+. Resolution

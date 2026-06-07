@@ -86,7 +86,18 @@ public abstract record RuleOperation
     /// float because that match count is fractional under the probabilistic
     /// roller (e.g. n dice yield n/6 natural 6s).
     /// </summary>
-    public sealed record InsertExtraHits(float Count) : RuleOperation;
+    public sealed record InsertExtraHits(float Count) : SinkOperation<IHitInjectionSink>
+    {
+        public override void ApplyTo(IHitInjectionSink sink)
+        {
+            sink.AddHits(Count);
+        }
+
+        public override string Describe()
+        {
+            return $"added {Count} extra hits";
+        }
+    }
 
     /// <summary>
     /// Add <see cref="Count"/> extra wounds to the current attack's wound

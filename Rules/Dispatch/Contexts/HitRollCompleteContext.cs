@@ -10,13 +10,16 @@ namespace FDG.Rules.Dispatch.Contexts
     /// and probabilistic rollers), plus the shooting distance for range-gated ones
     /// (Relentless &gt; 9").
     ///
+    /// <see cref="IsMelee"/> distinguishes the shooting and melee uses of this hook
+    /// (the hit-roll stages are shared) so melee-only rules (Furious) can gate on it.
+    ///
     /// Fields still grow on demand — likely future additions: the weapon and its AP
-    /// (Rending promotes AP on a 6), and an is-melee flag once melee hit rolls share
-    /// this hook.
+    /// (Rending promotes AP on a 6), and an is-charging flag (Furious's charge gate, #051).
     /// </summary>
     public sealed record HitRollCompleteContext(
         IUnit Attacker, IUnit Target, IDiceResults UnmodifiedHitRolls,
-        float DistanceInches = 0f) : IHookContext, IHasUnmodifiedHitRolls, IHasDistance
+        float DistanceInches = 0f, bool IsMelee = false)
+        : IHookContext, IHasUnmodifiedHitRolls, IHasDistance, IHasCombatKind
     {
         public EHookID Hook => EHookID.Shooting_OnHitRollComplete;
     }

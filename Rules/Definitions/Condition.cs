@@ -160,4 +160,14 @@ public abstract record Condition
     {
         protected override bool EvaluateCore(IHasAttackerMoved context) => context.AttackerMoved;
     }
+
+    /// <summary>
+    /// True when the attack being resolved is melee (vs. shooting). Gates melee-only
+    /// rules (Furious) on hooks that fire in both combat kinds. Shooting-only rules
+    /// rely on a different condition (e.g. distance) rather than an explicit IsShooting.
+    /// </summary>
+    public sealed record IsMelee : CapabilityCondition<IHasCombatKind>
+    {
+        protected override bool EvaluateCore(IHasCombatKind context) => context.IsMelee;
+    }
 }

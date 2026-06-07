@@ -92,6 +92,10 @@ namespace FDG.Stages
         // parent IUnitActionContext.HasMoved at child-context creation.
         private readonly bool _attackerMoved;
 
+        // Whether this is the melee branch (vs. shooting). Carried into each CombatMetadata
+        // so melee-only hit-roll rules (Furious) can gate on it; the hit-roll stages are shared.
+        private readonly bool _isMelee;
+
 
         public CombatActionContext(IGameContext gameContext, DataBinding<UnitData> attackingUnit, bool isMelee,
             bool attackerMoved = false)
@@ -99,6 +103,7 @@ namespace FDG.Stages
             GameContext = gameContext;
             AttackingUnit = attackingUnit;
             _attackerMoved = attackerMoved;
+            _isMelee = isMelee;
             if(isMelee)
             {
                 _availableWeapons = GetTypeSortedWeapons(attackingUnit.GetValue().GetMeleeWeapons());
@@ -156,7 +161,7 @@ namespace FDG.Stages
             }
 
             CombatMetadata meleeCombatMetadata = new CombatMetadata(gameContext, AttackingUnit,
-                DefendingUnit, ShootingWeaponType, ShootingWeaponCount.Value, _attackerMoved);
+                DefendingUnit, ShootingWeaponType, ShootingWeaponCount.Value, _attackerMoved, _isMelee);
 
             // Don't clear DefendingUnit — OfferStrikeBackStage needs it after this call.
             ShootingWeaponType = null;

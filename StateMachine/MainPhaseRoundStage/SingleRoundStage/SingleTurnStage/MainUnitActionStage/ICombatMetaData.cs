@@ -19,6 +19,9 @@ namespace FDG
         /// <summary>True if the attacking unit moved earlier this activation (drives Indirect's -1 to hit).</summary>
         public bool AttackerMoved { get; }
 
+        /// <summary>True when this is a melee attack (vs. shooting); the hit-roll stages are shared.</summary>
+        public bool IsMelee { get; }
+
         IReadOnlyList<ISpecialRule_Combat> AllSpecialRules { get; }
 
         //TODO: Next value can replace everything after?
@@ -41,6 +44,8 @@ namespace FDG
 
         public bool AttackerMoved { get; private set; }
 
+        public bool IsMelee { get; private set; }
+
 
         public IReadOnlyList<ISpecialRule_Combat> AllSpecialRules { get; private set; }
 
@@ -49,7 +54,7 @@ namespace FDG
 
         public CombatMetadata(IGameContext gameContext, DataBinding<UnitData> attackingUnit,
             DataBinding<UnitData> defendingUnit, IWeapon weaponType, int weaponCount,
-            bool attackerMoved = false)
+            bool attackerMoved = false, bool isMelee = false)
         {
             GameContext = gameContext;
             AttackingUnit = attackingUnit;
@@ -57,6 +62,7 @@ namespace FDG
             WeaponType = weaponType;
             WeaponCount = weaponCount;
             AttackerMoved = attackerMoved;
+            IsMelee = isMelee;
 
             AllSpecialRules = GetAllSpecialRules(attackingUnit, defendingUnit, weaponType);
         }

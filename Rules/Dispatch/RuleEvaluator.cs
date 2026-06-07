@@ -23,10 +23,12 @@ namespace FDG.Rules.Dispatch;
 public sealed class RuleEvaluator
 {
     private readonly IDiceRoller _diceRoller;
-
-    public RuleEvaluator(IDiceRoller diceRoller)
+    private readonly ITextOutput? _log; 
+    
+    public RuleEvaluator(IDiceRoller diceRoller, ITextOutput? log = null)
     {
         _diceRoller = diceRoller;
+        _log = log;
     }
 
     /// <summary>
@@ -54,11 +56,34 @@ public sealed class RuleEvaluator
                 {
                     continue;
                 }
-
+                
+                int producedFrom = operations.Count;
                 entry.Effect.Apply(invocation, operations);
+
+                for (int i = producedFrom; i < operations.Count; i++)
+                {
+                    _log?.Log($"{unit.Name}'s {rule.RequestedName} {operations[i].Describe()}.");
+                }
             }
         }
 
+        return operations;
+    }
+
+    public IReadOnlyList<RuleOperation> EvaluateAll(IHookContext context,
+        params (IUnit Unit, ERuleSeat Seat)[] participants)
+    {
+        var operations = new List<RuleOperation>();
+
+        foreach ((IUnit unit, ERuleSeat seat) in participants)
+        {
+            operations.AddRange((Evaluate(unit, seat, context)));
+        }
+
+        //TODO: Suppression first-pass seam: once SuppressRule is wired, drop operations from the named
+        //rules here, before any sink applies. No-op until then.
+
+        
         return operations;
     }
 

@@ -45,10 +45,32 @@ namespace FDG.Rules.Definitions;
 public abstract record RuleOperation
 {
     /// <summary>
+    /// Human-readable description of what this operation does, for game-log output. The
+    /// evaluator pairs it with the bearer + rule ("Goblins' Stealth added -1 to Hit rolls").
+    /// Default is generic; operations override it where a specific phrasing reads better.
+    /// </summary>
+
+    public virtual string Describe()
+    {
+        return "applied an effect."; //Placeholder, should be overridden.
+    }
+    
+    /// <summary>
     /// Adjust the modifier stack of the in-flight roll of <see cref="Roll"/>
     /// kind by <see cref="Delta"/>. Resolution of <see cref="Effect.RollModifier"/>.
     /// </summary>
-    public sealed record ApplyRollModifier(ERollKind Roll, int Delta) : RuleOperation;
+    public sealed record ApplyRollModifier(ERollKind Roll, int Delta) : SinkOperation<IRollModifierSink>
+    {
+        public override void ApplyTo(IRollModifierSink sink)
+        {
+            sink.Add(Roll, Delta);
+        }
+
+        public override string Describe()
+        {
+            return $"added {(Delta >= 0 ? "+" : "-")}{Delta} to {Roll} rolls.";
+        }
+    }
 
     /// <summary>
     /// Re-roll dice in the current <see cref="Roll"/> matching
@@ -237,4 +259,18 @@ public abstract record RuleOperation
     /// Resolution of <see cref="Effect.DeferDeployment"/> (Ambush, Scout).
     /// </summary>
     public sealed record DeferDeployment : RuleOperation;
+}
+
+/// <summary>
+/// A <see cref="RuleOperation"/> that applies itself to a sink of type <typeparamref name="TSink"/>.
+/// The generic parameter declares which sink the operation targets — the operation-side mirror of
+/// <c>CapabilityEffect&lt;TCap&gt;</c>. A stage folds a whole category of operations by pulling them with
+/// <c>OfType&lt;SinkOperation&lt;TSink&gt;&gt;()</c> and calling <see cref="ApplyTo"/>; new operations of the
+/// same sink category are caught automatically, with no concrete-type switch. Operations that target no sink
+/// (e.g. <see cref="RuleOperation.SuppressRule"/>) stay plain <see cref="RuleOperation"/>.
+/// </summary>
+
+public abstract record SinkOperation<TSink> : RuleOperation
+{
+    public abstract void ApplyTo(TSink sink);
 }

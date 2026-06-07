@@ -1,5 +1,6 @@
 using FDG.Data;
 using FDG.Players;
+using FDG.Rules.Dispatch;
 using FDG.TempVisuals;
 
 namespace FDG
@@ -14,6 +15,8 @@ namespace FDG
 
         public IDiceRoller DiceRoller { get; }
 
+        public RuleEvaluator RuleEvaluator { get; }
+        
         public IPlayerRequestByID PlayerRequester { get; }
 
         public TableState TableState { get; }
@@ -42,6 +45,8 @@ namespace FDG
 
         public IDiceRoller DiceRoller { get; }
 
+        public RuleEvaluator RuleEvaluator { get; }
+        
         public IPlayerRequestByID PlayerRequester { get; }
 
         public TableState TableState { get; }
@@ -65,6 +70,7 @@ namespace FDG
         {
             TextOutput = textOutput;
             DiceRoller = diceRoller;
+            RuleEvaluator = new RuleEvaluator(diceRoller, textOutput);
             PlayerRequester = playerRequester;
             TableState = tableState;
             GameDataStore = gameDataStore;

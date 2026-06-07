@@ -1,5 +1,6 @@
 using FDG.Data;
 using FDG.Players;
+using FDG.Rules.Dispatch;
 using FDG.TempVisuals;
 
 namespace FDG.Tests
@@ -9,6 +10,7 @@ namespace FDG.Tests
     {
         public ITextOutput TextOutput { get; } = new EmptyTextOutput();
         public IDiceRoller DiceRoller { get; }
+        public RuleEvaluator RuleEvaluator { get; }
         public IPlayerRequestByID PlayerRequester { get; } = new NullPlayerRequester();
         public TableState TableState { get; }
         public IReadWriteableGameDataStore GameDataStore { get; }
@@ -22,6 +24,7 @@ namespace FDG.Tests
             GameDataStore = store;
             TableState = new TableState(store);
             DiceRoller = diceRoller;
+            RuleEvaluator = new RuleEvaluator(diceRoller);
         }
 
         public void SetFirstDeploymentRollOrder(List<ITeam> order) { }

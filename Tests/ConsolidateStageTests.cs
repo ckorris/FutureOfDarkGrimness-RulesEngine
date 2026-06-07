@@ -4,6 +4,7 @@ using FDG.Stages;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 using FDG.TempVisuals;
+using FDG.Rules.Dispatch;
 using NUnit.Framework;
 
 namespace FDG.Tests
@@ -187,6 +188,7 @@ namespace FDG.Tests
         {
             public ITextOutput TextOutput { get; } = new EmptyTextOutput();
             public IDiceRoller DiceRoller { get; } = new FixedDiceRoller(4);
+            public RuleEvaluator RuleEvaluator { get; } = new(new FixedDiceRoller(4));
             public IPlayerRequestByID PlayerRequester { get; }
             public TableState TableState { get; }
             public IReadWriteableGameDataStore GameDataStore { get; }

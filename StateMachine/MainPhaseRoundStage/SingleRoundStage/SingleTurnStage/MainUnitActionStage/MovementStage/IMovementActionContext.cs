@@ -1,5 +1,9 @@
 ﻿
 using FDG.Data;
+using FDG.Rules.Definitions;
+using FDG.Rules.Dispatch;
+using FDG.Rules.Dispatch.Contexts;
+using FDG.Rules.Foundation;
 using FDG.StageResolution.Requests;
 
 namespace FDG.Stages
@@ -86,6 +90,29 @@ namespace FDG.Stages
             _maxRushDistance = precursor.MaxRushDistance;
             _maxChargeDistance = precursor.MaxChargeDistance;
             RelevantTerrain = precursor.RelevantTerrain;
+            
+            //Movement special rules.
+            IUnit unit = movingUnit.GetValue();
+            MovementModifierSink movementModifiers = new MovementModifierSink();
+            
+            AccumulateMovementRules(unit, EActionType.Advance, _maxAdvanceDistance, movementModifiers);
+            AccumulateMovementRules(unit, EActionType.Rush, _maxRushDistance, movementModifiers);
+            AccumulateMovementRules(unit, EActionType.Charge, _maxChargeDistance, movementModifiers);
+
+            _maxAdvanceDistance += movementModifiers.Net(EActionType.Advance);
+            _maxRushDistance += movementModifiers.Net(EActionType.Rush);
+            _maxChargeDistance += movementModifiers.Net(EActionType.Charge);
+
+        }
+        
+        //TODO: Move down.
+        private void AccumulateMovementRules(IUnit unit, EActionType action, float baseDistance,
+            MovementModifierSink sink)
+        {
+            IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
+                new MoveActionDeclaredContext(unit, action, baseDistance),
+                (unit, ERuleSeat.Actor));
+            sink.ApplyFrom(operations);
         }
 
         public void SubmitValidPathTemplate(List<ModelMoveEntry> paths)

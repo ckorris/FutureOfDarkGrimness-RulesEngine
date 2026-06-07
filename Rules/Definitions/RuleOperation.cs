@@ -1,5 +1,6 @@
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
+using Microsoft.ApplicationInsights.Extensibility;
 
 namespace FDG.Rules.Definitions;
 
@@ -107,7 +108,20 @@ public abstract record RuleOperation
     /// when the declared action is <see cref="ActionType"/>. Resolution of
     /// <see cref="Effect.MovementBonus"/>.
     /// </summary>
-    public sealed record ApplyMovementBonus(EActionType ActionType, float DistanceInches) : RuleOperation;
+    public sealed record ApplyMovementBonus(EActionType ActionType, float DistanceInches)
+        : SinkOperation<IMovementModifierSink>
+    {
+        public override void ApplyTo(IMovementModifierSink sink)
+        {
+            sink.Add(ActionType, DistanceInches);
+        }
+
+        public override string Describe()
+        {
+            return $"added {(DistanceInches >= 0 ? "+" : "")}{DistanceInches}\" to {ActionType} movement";
+
+        }
+    }
 
     /// <summary>
     /// Walk the rest of the pending operation queue and remove any operations

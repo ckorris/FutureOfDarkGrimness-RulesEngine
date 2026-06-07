@@ -4,6 +4,9 @@ using FDG.SaveLoad;
 using FDG.Network.Connection;
 using FDG.Network.Synchronization;
 using FDG.Players;
+using FDG.Rules.Definitions;
+using FDG.Rules.Dispatch;
+using FDG.Rules.Foundation;
 using FDG.StageResolution;
 using FDG.Stages;
 using FDG.StateMachine.StateMachineBuilders;
@@ -110,6 +113,40 @@ namespace FDG.GameModel
             for (int i = 0; i < playerSlots.Length; i++)
             {
                 CreateArmyDataFromArmyFile(playerSlots[i].PlayerID, playerSlots[i].ArmyListFile, gameDataStore);
+            }
+
+            //TEST: until an army-list -> rule-registry loader exists, no real unit carries #042
+            //rules in a live game. To watch the dispatch path fire end-to-end, hand the SECOND
+            //player's whole army Stealth (-1 to hit from beyond 9"). Delete this whole block once
+            //rules load from army data.
+            if (playerSlots.Length > 1)
+            {
+                AttachTestStealthToArmy(playerSlots[1].PlayerID, gameDataStore);
+            }
+        }
+
+        //TEST: temporary demo wiring — see the call site in CreateArmies. Builds Stealth inline
+        //(same definition as HitRollRuleIntegrationTests) and attaches it to every unit owned by
+        //the given player, so the real DetermineHitRollNeededStage logs the modifier in play.
+        private void AttachTestStealthToArmy(PlayerID playerID, IReadWriteableGameDataStore gameDataStore)
+        {
+            SpecialRuleDefinition stealth = new SpecialRuleDefinition("Stealth",
+                new[]
+                {
+                    new HookEntry(EHookID.Shooting_OnHitRollModifier,
+                        new Condition.DistanceGreaterThan(9f),
+                        new Effect.RollModifier(ERollKind.Hit, Delta: -1),
+                        ELifetime.ThisAttack,
+                        ERuleSeat.Subject),
+                },
+                Array.Empty<ActivatedAbility>());
+
+            foreach (DataBinding<UnitData> unit in gameDataStore.GetAllDataBindings<UnitData>())
+            {
+                if (unit.PlayerID() == playerID)
+                {
+                    unit.GetValue().AttachRuleDefinition(new ResolvedRule("Stealth", stealth));
+                }
             }
         }
 

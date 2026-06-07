@@ -52,7 +52,7 @@ public abstract record RuleOperation
 
     public virtual string Describe()
     {
-        return "applied an effect."; //Placeholder, should be overridden.
+        return "applied an effect"; //Placeholder, should be overridden.
     }
     
     /// <summary>
@@ -68,7 +68,7 @@ public abstract record RuleOperation
 
         public override string Describe()
         {
-            return $"added {(Delta >= 0 ? "+" : "-")}{Delta} to {Roll} rolls.";
+            return $"added {(Delta >= 0 ? "+" : "")}{Delta} to {Roll} rolls";
         }
     }
 

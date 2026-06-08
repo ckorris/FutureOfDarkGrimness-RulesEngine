@@ -1,5 +1,6 @@
 using FDG.Data;
 using FDG.Players;
+using FDG.SaveLoad;
 using FDG.Stages;
 using FDG.StageResolution;
 using FDG.TempVisuals;
@@ -183,6 +184,83 @@ namespace FDG.Tests
             Assert.That(progress, Is.Not.Null, "Entering the stage should write a rolling snapshot.");
             Assert.That(progress!.RoundCount, Is.EqualTo(3));
             Assert.That(progress.UnactivatedUnits.Count, Is.EqualTo(1));
+        }
+
+        // ──────────────────────────────────────────────────────────────────────
+        // Resume (Phase 3b): rebuild the round from a snapshot
+        // ──────────────────────────────────────────────────────────────────────
+
+        [Test]
+        public void RestoreSingleRoundContext_RebuildsRoundCursorAndUnactivatedSet()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var playerA = new PlayerID(Guid.NewGuid());
+            var playerB = new PlayerID(Guid.NewGuid());
+            var teamA = new TeamData(0, new List<PlayerID> { playerA });
+            var teamB = new TeamData(1, new List<PlayerID> { playerB });
+            store.Create(teamA);
+            store.Create(teamB);
+
+            DataBinding<UnitData> a1 = MakeUnit(store, playerA, "A1", new[] { MakeModel(store, new Position(1, 1)) });
+            DataBinding<UnitData> a2 = MakeUnit(store, playerA, "A2", new[] { MakeModel(store, new Position(2, 1)) });
+            store.Create(new ArmyData(playerA, new List<DataBinding<UnitData>> { a1, a2 }));
+            DataBinding<UnitData> b1 = MakeUnit(store, playerB, "B1", new[] { MakeModel(store, new Position(1, 5)) });
+            store.Create(new ArmyData(playerB, new List<DataBinding<UnitData>> { b1 }));
+
+            var ctx = new CaptureTestCtx(store);
+            var live = new SingleRoundContext(ctx, new List<ITeam> { teamA, teamB }, roundCount: 3);
+            live.MarkUnitAsActivated(a1); // A still has A2 to go
+
+            GameProgressData snapshot = GameProgressUtilities.Capture(live, ctx.Settings, EResumeStage.MainPhase);
+            SingleRoundContext restored = GameProgressUtilities.RestoreSingleRoundContext(ctx, snapshot);
+
+            Assert.That(restored.RoundCount, Is.EqualTo(3));
+            Assert.That(restored.TeamActivateOrder.Select(t => t.TeamNumber), Is.EqualTo(new[] { 0, 1 }).AsCollection);
+
+            List<string> stillUnactivated = restored.UnactivatedUnits
+                .SelectMany(kvp => kvp.Value).Select(u => u.GetValue().Name).ToList();
+            Assert.That(stillUnactivated, Is.EquivalentTo(new[] { "A2", "B1" }));
+            Assert.That(stillUnactivated, Does.Not.Contain("A1"), "Already-activated unit must not return to the queue.");
+        }
+
+        [Test]
+        public void Resume_AfterSaveAndLoad_NextActivationPicksThePendingPlayer()
+        {
+            // Round 3: player A finished their only activatable unit; player B still has one. Save, load
+            // into a fresh store, restore the round — the next pick must be player B.
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var playerA = new PlayerID(Guid.NewGuid());
+            var playerB = new PlayerID(Guid.NewGuid());
+            var teamA = new TeamData(0, new List<PlayerID> { playerA });
+            var teamB = new TeamData(1, new List<PlayerID> { playerB });
+            store.Create(teamA);
+            store.Create(teamB);
+
+            DataBinding<UnitData> a1 = MakeUnit(store, playerA, "A1", new[] { MakeModel(store, new Position(1, 1)) });
+            store.Create(new ArmyData(playerA, new List<DataBinding<UnitData>> { a1 }));
+            DataBinding<UnitData> b1 = MakeUnit(store, playerB, "B1", new[] { MakeModel(store, new Position(1, 5)) });
+            store.Create(new ArmyData(playerB, new List<DataBinding<UnitData>> { b1 }));
+
+            var ctx = new CaptureTestCtx(store);
+            var live = new SingleRoundContext(ctx, new List<ITeam> { teamA, teamB }, roundCount: 3);
+            live.MarkUnitAsActivated(a1);
+            GameProgressUtilities.WriteProgress(store, GameProgressUtilities.Capture(live, ctx.Settings, EResumeStage.MainPhase));
+
+            string json = GameSaveSerializer.Save(store);
+            GameDataStore loaded = GameSaveSerializer.Load(json);
+
+            var loadedCtx = new CaptureTestCtx(loaded);
+            GameProgressData? progress = GameProgressUtilities.TryGetProgress(loaded);
+            Assert.That(progress, Is.Not.Null);
+            SingleRoundContext restored = GameProgressUtilities.RestoreSingleRoundContext(loadedCtx, progress!);
+
+            Assert.That(restored.RoundCount, Is.EqualTo(3));
+            Assert.That(restored.UnactivatedUnits.Sum(kvp => kvp.Value.Count), Is.EqualTo(1));
+
+            bool advanced = restored.TryAdvanceToNextPlayer(out ITeam? nextTeam, out PlayerID? nextPlayer);
+            Assert.That(advanced, Is.True);
+            Assert.That(nextPlayer, Is.EqualTo(playerB));
+            Assert.That(nextTeam!.TeamNumber, Is.EqualTo(1));
         }
 
         [Test]

@@ -23,6 +23,21 @@ namespace FDG.Stages
             await _startingStage.Enter(topLevelContext);
         }
 
+        /// <summary>
+        /// Enters at a specific top-level stage by name (its <see cref="IStage.Name"/>) instead of the
+        /// default starting stage. Used to resume a loaded game directly in the main phase rather than
+        /// replaying map setup and deployment.
+        /// </summary>
+        public async Task Enter(TTopLevel topLevelContext, string startingStageName)
+        {
+            if (_transitions.TryGetValue(startingStageName, out StageBase<TTopLevel> startingStage) == false)
+            {
+                throw new KeyNotFoundException($"No top-level stage named '{startingStageName}' to resume into.");
+            }
+
+            await startingStage.Enter(topLevelContext);
+        }
+
         public async Task ExecuteTransition(string eventName, StageBase<TTopLevel> leavingChild, TTopLevel childContext)
         {
             if (_transitions.TryGetValue(eventName, out StageBase<TTopLevel> enteringChild) == false)

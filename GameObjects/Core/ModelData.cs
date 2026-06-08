@@ -18,7 +18,9 @@ namespace FDG
 
         [JsonIgnore] public ITokenContainer Tokens => _tokens;
 
-        [JsonIgnore]
+        // Serialized: max wounds is set imperatively after creation (e.g. Tough via UnitCreationRules),
+        // so it can't be recomputed on load — it must round-trip, or a loaded/networked Tough model
+        // would revert to 1.
         public float TotalWounds { get; private set; }
 
         public DataBinding<float> RemainingWoundsBinding;
@@ -103,7 +105,7 @@ namespace FDG
         #endregion
 
         [JsonConstructor]
-        public ModelData(float baseRadiusInches, DataBinding<float> remainingWoundsBinding, DataBinding<Position> positionBinding, 
+        public ModelData(float baseRadiusInches, float totalWounds, DataBinding<float> remainingWoundsBinding, DataBinding<Position> positionBinding,
             List<Weapon> weapons, List<SpecialRule> specialRules)
         {
             BaseRadiusInches = baseRadiusInches;
@@ -111,7 +113,7 @@ namespace FDG
             PositionBinding = positionBinding;
             Weapons = weapons;
             SpecialRules = specialRules;
-            TotalWounds = CalculateTotalWounds(specialRules);
+            TotalWounds = totalWounds;
         }
 
         public ModelData(float baseRadiusInches, List<Weapon> weapons, List<SpecialRule> specialRules, Position initialPosition,

@@ -80,5 +80,82 @@ namespace FDG
                 unactivatedUnits: unactivated,
                 settings: settings);
         }
+
+        /// <summary>Rebuilds the main-phase context (round number + activation order) from a snapshot.</summary>
+        public static MainPhaseContext RestoreMainPhaseContext(IGameContext gameContext, GameProgressData progress)
+        {
+            List<ITeam> allTeams = gameContext.TableState.Teams.Objects.ToList();
+            return new MainPhaseContext(gameContext, MapTeams(allTeams, progress.TeamActivateOrder), progress.RoundCount);
+        }
+
+        /// <summary>
+        /// Rebuilds the in-progress round context from a snapshot: maps team numbers back to the
+        /// store's canonical <see cref="ITeam"/> instances, restores the cursor + finish order, and
+        /// regroups the unactivated units by owner (with an entry for every player so
+        /// <see cref="ISingleRoundContext.MarkUnitAsActivated"/> never misses a key).
+        /// </summary>
+        public static SingleRoundContext RestoreSingleRoundContext(IGameContext gameContext, GameProgressData progress)
+        {
+            List<ITeam> allTeams = gameContext.TableState.Teams.Objects.ToList();
+            List<ITeam> teamOrder = MapTeams(allTeams, progress.TeamActivateOrder);
+            List<ITeam> finishOrder = MapTeams(allTeams, progress.CurrentRoundTeamFinishOrder);
+
+            Dictionary<ITeam, int> playerIndexPerTeam = new Dictionary<ITeam, int>();
+            foreach (KeyValuePair<int, int> kvp in progress.CurrentPlayerIndexPerTeam)
+            {
+                playerIndexPerTeam[FindTeam(allTeams, kvp.Key)] = kvp.Value;
+            }
+
+            Dictionary<PlayerID, List<DataBinding<UnitData>>> unactivated = new Dictionary<PlayerID, List<DataBinding<UnitData>>>();
+            foreach (ITeam team in allTeams)
+            {
+                foreach (PlayerID playerID in team.Players)
+                {
+                    if (!unactivated.ContainsKey(playerID))
+                    {
+                        unactivated[playerID] = new List<DataBinding<UnitData>>();
+                    }
+                }
+            }
+
+            foreach (DataBinding<UnitData> unit in progress.UnactivatedUnits)
+            {
+                PlayerID owner = unit.GetValue().PlayerID;
+                if (!unactivated.ContainsKey(owner))
+                {
+                    unactivated[owner] = new List<DataBinding<UnitData>>();
+                }
+
+                unactivated[owner].Add(unit);
+            }
+
+            return new SingleRoundContext(gameContext, teamOrder, progress.RoundCount,
+                progress.CurrentTeamIndex, playerIndexPerTeam, finishOrder, unactivated);
+        }
+
+        private static List<ITeam> MapTeams(IReadOnlyList<ITeam> allTeams, List<int> teamNumbers)
+        {
+            List<ITeam> result = new List<ITeam>(teamNumbers.Count);
+            foreach (int teamNumber in teamNumbers)
+            {
+                result.Add(FindTeam(allTeams, teamNumber));
+            }
+
+            return result;
+        }
+
+        private static ITeam FindTeam(IReadOnlyList<ITeam> allTeams, int teamNumber)
+        {
+            foreach (ITeam team in allTeams)
+            {
+                if (team.TeamNumber == teamNumber)
+                {
+                    return team;
+                }
+            }
+
+            throw new InvalidOperationException(
+                $"Saved game references team {teamNumber}, which isn't present in the restored store.");
+        }
     }
 }

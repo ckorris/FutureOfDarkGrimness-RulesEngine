@@ -30,6 +30,15 @@ namespace FDG.Stages
             TeamActivateOrder = firstDeploymentRollOrder;
         }
 
+        // Restore constructor for save/load resume: seeds the round number and activation order from
+        // a snapshot instead of the deployment roll-off.
+        public MainPhaseContext(IGameContext gameContext, List<ITeam> teamActivateOrder, int roundCount)
+        {
+            GameContext = gameContext;
+            TeamActivateOrder = teamActivateOrder;
+            RoundCount = roundCount;
+        }
+
         public void OnEndOfRound(IReadOnlyList<ITeam> newTeamActivateOrder)
         {
             /*

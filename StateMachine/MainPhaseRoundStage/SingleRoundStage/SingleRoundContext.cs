@@ -75,6 +75,31 @@ namespace FDG.Stages
             SetUnactivatedUnits();
         }
 
+        // Restore constructor for save/load resume: rebuilds the round's in-progress state from a
+        // snapshot (cursor position, finish order, and the already-grouped unactivated units) instead
+        // of scanning armies fresh. Does NOT call SetUnactivatedUnits.
+        public SingleRoundContext(
+            IGameContext gameContext,
+            List<ITeam> teamOrder,
+            int roundCount,
+            int currentTeamIndex,
+            IReadOnlyDictionary<ITeam, int> currentPlayerIndexPerTeam,
+            List<ITeam> currentRoundTeamFinishOrder,
+            Dictionary<PlayerID, List<DataBinding<UnitData>>> unactivatedUnits)
+        {
+            GameContext = gameContext;
+            RoundCount = roundCount;
+            Cursor = new TeamPlayerAlternationCursor(teamOrder);
+            Cursor.CurrentTeamIndex = currentTeamIndex;
+            foreach (KeyValuePair<ITeam, int> kvp in currentPlayerIndexPerTeam)
+            {
+                Cursor.CurrentPlayerIndexPerTeam[kvp.Key] = kvp.Value;
+            }
+
+            _currentRoundTeamFinishOrder = currentRoundTeamFinishOrder;
+            _unactivatedUnits = unactivatedUnits;
+        }
+
         public PlayerID GetCurrentPlayerID() => Cursor.GetCurrentPlayerID();
 
         public void MarkUnitAsActivated(DataBinding<UnitData> activatedUnit)

@@ -6,9 +6,25 @@ namespace FDG.Stages
     {
         public StageBinding OnRoundFinished;
 
+        private DeterminePlayerTurnStage? _determinePlayerTurnStage;
+
         public SingleRoundStage(IGameContext gameContext, IStateMachineLayer<IMainPhaseContext> parent)
             : base(gameContext, parent)
         {
+        }
+
+        protected override (StageBase<ISingleRoundContext> Child, ISingleRoundContext Context)? GetResumeEntry(IMainPhaseContext contextSelf)
+        {
+            if (GameContext.ResumeProgress == null)
+            {
+                return null;
+            }
+
+            // Rebuild the round from the snapshot (cursor + unactivated set) and enter at the normal
+            // starting child. Consume the token so every subsequent round builds fresh.
+            ISingleRoundContext restored = GameProgressUtilities.RestoreSingleRoundContext(GameContext, GameContext.ResumeProgress);
+            GameContext.ConsumeResumeProgress();
+            return (_determinePlayerTurnStage!, restored);
         }
 
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<ISingleRoundContext> startingChild)
@@ -22,6 +38,7 @@ namespace FDG.Stages
                 .Build();
 
             startingChild = determinePlayerTurnStage;
+            _determinePlayerTurnStage = determinePlayerTurnStage;
             determinePlayerTurnStage.OnDeterminedPlayerTurn.Bind(singleTurnStage);
             determinePlayerTurnStage.OnNoPlayersLeft.Bind(roundFinishedEventName);
             singleTurnStage.OnTurnFinished.Bind(determinePlayerTurnStage);

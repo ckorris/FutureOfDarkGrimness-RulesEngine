@@ -61,6 +61,14 @@ namespace FDG.Stages
                 results.SuccessfulHitList.Add(new SuccessfulHitInfo(SyntheticHits(hitInjection.TotalExtraHits, rollToHitResults)));
             }
 
+            // #042 save-modifier rules (Rending) also fire at hit-roll-complete: an unmodified 6 to hit
+            // promotes the attack's AP, modelled as a save-roll modifier on the defender. Fold it here —
+            // where the UNMODIFIED roll is still correct (synthetic hits sit at face 6 and would pollute
+            // a later read) — and carry the scalar to the save stage via RollToHitResults.SaveModifier.
+            RollModifierSink saveModifiers = new RollModifierSink();
+            saveModifiers.ApplyFrom(operations);
+            results.SaveModifier = saveModifiers.Net(ERollKind.Save);
+
             onFinished(results);
         }
 

@@ -23,7 +23,7 @@ public static class CoreRuleCatalog
     public static IReadOnlyList<SpecialRuleDefinition> All => new[]
     {
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
-        Deadly, Regeneration, Unstoppable, Tough,
+        Deadly, Regeneration, Unstoppable, Tough, Rending,
     };
 
     /// <summary>
@@ -202,6 +202,26 @@ public static class CoreRuleCatalog
     public static SpecialRuleDefinition Unstoppable { get; } = new SpecialRuleDefinition("Unstoppable",
         new[]
         {
+            new HookEntry(EHookID.Shooting_OnSaveRollComplete,
+                new Condition.Always(),
+                new Effect.IgnoreRule("Regeneration"),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary>
+    /// Attacker: an unmodified 6 to hit promotes the attack's AP (modelled as -4 to the defender's
+    /// save), and the attack ignores Regeneration. The AP facet is folded at hit-roll-complete and
+    /// carried to the save stage; the suppress facet rides the save-complete evaluation. Simplified:
+    /// the save modifier applies to the whole attack when ANY hit rolled a 6 (true per-hit AP deferred).
+    /// </summary>
+    public static SpecialRuleDefinition Rending { get; } = new SpecialRuleDefinition("Rending",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnHitRollComplete,
+                new Condition.UnmodifiedRollEquals(6),
+                new Effect.RollModifier(ERollKind.Save, Delta: -4),
+                ELifetime.ThisAttack),
             new HookEntry(EHookID.Shooting_OnSaveRollComplete,
                 new Condition.Always(),
                 new Effect.IgnoreRule("Regeneration"),

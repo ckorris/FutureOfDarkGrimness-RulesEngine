@@ -86,6 +86,10 @@ namespace FDG.Stages
                 IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator
                     .ResolveAbility(offer, new[] { (IUnit)deployedUnit });
 
+                // Close the cost gate (Vanguard's once-per-game marker) — OperationExecutor runs only the
+                // imperative ExecutableOperations, so the token grant must be applied separately.
+                OperationApplier.ApplyTokenOperations(ops);
+
                 await OperationExecutor.Execute(ops, new GameOperationServices(GameContext));
             }
         }

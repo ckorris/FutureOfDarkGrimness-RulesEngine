@@ -86,24 +86,18 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// Applies the operation queue produced by an accepted reactivation: grants the cost marker the
-        /// once-per-game gate reads, and re-adds the unit to the unactivated pool on the
-        /// <see cref="RuleOperation.InvokeReactivate"/> marker.
+        /// Applies the operation queue produced by an accepted reactivation: the shared token applier grants
+        /// the cost marker the once-per-game gate reads, and the <see cref="RuleOperation.InvokeReactivate"/>
+        /// marker re-adds the unit to the unactivated pool.
         /// </summary>
         private static void ApplyReactivationOps(ISingleRoundContext context, DataBinding<UnitData> unit,
             IReadOnlyList<RuleOperation> ops)
         {
-            foreach (RuleOperation op in ops)
+            OperationApplier.ApplyTokenOperations(ops);
+
+            if (ops.OfType<RuleOperation.InvokeReactivate>().Any())
             {
-                switch (op)
-                {
-                    case RuleOperation.GrantTokenToUnit grant:
-                        grant.Unit.Tokens.AddToken(grant.TokenToGrant);
-                        break;
-                    case RuleOperation.InvokeReactivate:
-                        context.ReinstateUnitForActivation(unit);
-                        break;
-                }
+                context.ReinstateUnitForActivation(unit);
             }
         }
     }

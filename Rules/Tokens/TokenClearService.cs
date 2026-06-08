@@ -23,6 +23,44 @@ public sealed class TokenClearService
     /// unit owns under a different clear trigger are left alone; their lifetime is whatever
     /// that trigger says, not "until the placer dies."
     /// </summary>
+    /// <summary>
+    /// Removes, from each of <paramref name="containers"/>, the tokens whose
+    /// <see cref="TokenClearTrigger"/> fires at <paramref name="firedHook"/> — the lifecycle half of
+    /// the once-per-X cost gates (e.g. an <see cref="TokenClearTrigger.ActivationEnd"/> "used this
+    /// activation" marker clears at <see cref="EHookID.Activation_OnEndOfActivation"/>). Owner-stamped
+    /// tokens are removed owner-scoped so one placer's mark doesn't drag another's of the same type.
+    /// </summary>
+    public void ClearForHook(EHookID firedHook, IEnumerable<ITokenContainer> containers)
+    {
+        foreach (ITokenContainer container in containers)
+        {
+            // Snapshot first — removal mutates the container we're reading.
+            List<Token> expired = container.GetAllTokens()
+                .Where(token => ClearsAtHook(token.ClearTrigger, firedHook))
+                .ToList();
+
+            foreach (Token token in expired)
+            {
+                if (token.OwnerUnitID.HasValue)
+                {
+                    container.RemoveTokensWithOwner(token.Type, token.OwnerUnitID.Value, token.Count);
+                }
+                else
+                {
+                    container.RemoveTokens(token.Type, token.Count);
+                }
+            }
+        }
+    }
+
+    private static bool ClearsAtHook(TokenClearTrigger trigger, EHookID firedHook) => trigger switch
+    {
+        TokenClearTrigger.ActivationEnd => firedHook == EHookID.Activation_OnEndOfActivation,
+        TokenClearTrigger.RoundEnd => firedHook == EHookID.Round_OnRoundEnd,
+        TokenClearTrigger.CustomHook custom => firedHook == custom.Hook,
+        _ => false,
+    };
+
     public void ClearForDestroyedOwner(UnitID destroyedOwner, IEnumerable<ITokenContainer> containers)
     {
         foreach (ITokenContainer container in containers)

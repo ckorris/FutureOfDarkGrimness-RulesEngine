@@ -1,3 +1,5 @@
+using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 
 namespace FDG.Stages
 {
@@ -17,6 +19,17 @@ namespace FDG.Stages
         public override async Task Enter(ISingleTurnContext context)
         {
             GameContext.Log($"ReconcileEndOfActivationStage entrance {_enterCount}");
+
+            // Clear the just-activated unit's "used this activation" markers (once-per-activation cost gates,
+            // e.g. Strafing) so they reset for its next activation.
+            if (context.ActivatedUnit != null)
+            {
+                IUnit unit = context.ActivatedUnit.GetValue();
+                List<ITokenContainer> containers = new List<ITokenContainer> { unit.Tokens };
+                containers.AddRange(unit.Models.Select(model => model.Tokens));
+                new TokenClearService().ClearForHook(EHookID.Activation_OnEndOfActivation, containers);
+            }
+
             OnFinished.Activate(context);
         }
     }

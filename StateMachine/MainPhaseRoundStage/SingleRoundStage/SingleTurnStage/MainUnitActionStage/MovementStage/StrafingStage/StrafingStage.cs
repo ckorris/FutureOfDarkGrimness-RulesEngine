@@ -81,12 +81,9 @@ namespace FDG.Stages
                 IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator
                     .ResolveAbility(offer, new[] { (IUnit)enemy.GetValue() });
 
-                // Grant the cost marker stage-side (OperationExecutor only runs ExecutableOperations, so it
-                // never applies cost tokens — same gap handled for Martial Prowess).
-                foreach (RuleOperation.GrantTokenToUnit grant in ops.OfType<RuleOperation.GrantTokenToUnit>())
-                {
-                    grant.Unit.Tokens.AddToken(grant.TokenToGrant);
-                }
+                // Apply the cost marker (the once-per-activation gate) via the shared token applier;
+                // OperationExecutor runs only ExecutableOperations, so it never applies cost tokens.
+                OperationApplier.ApplyTokenOperations(ops);
 
                 int hits = ops.OfType<RuleOperation.InvokeDealHits>().Select(op => op.Count).FirstOrDefault();
                 if (hits > 0)

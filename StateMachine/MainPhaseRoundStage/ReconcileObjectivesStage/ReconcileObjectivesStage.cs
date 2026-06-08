@@ -1,3 +1,5 @@
+using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 
 namespace FDG.Stages
 {
@@ -26,6 +28,15 @@ namespace FDG.Stages
             GameContext.Log($"Reconciling objectives (end of round {_timesEntered}).");
 
             var tableState = GameContext.TableState;
+
+            // End of round: clear "this round" cost markers (once-per-round gates) across every unit.
+            List<ITokenContainer> containers = new List<ITokenContainer>();
+            foreach (IUnit unit in tableState.Units.Objects)
+            {
+                containers.Add(unit.Tokens);
+                containers.AddRange(unit.Models.Select(model => model.Tokens));
+            }
+            new TokenClearService().ClearForHook(EHookID.Round_OnRoundEnd, containers);
 
             // Build a model→unit map so we can get PlayerID from a model.
             var modelToUnit = new Dictionary<IModel, IUnit>();

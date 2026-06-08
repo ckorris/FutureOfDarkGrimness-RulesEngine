@@ -45,10 +45,11 @@ namespace FDG
         /// <summary>
         /// Snapshots the live round/turn position into a serializable <see cref="GameProgressData"/>.
         /// Teams are recorded by <see cref="ITeam.TeamNumber"/>; unactivated units are flattened
-        /// across players (each unit carries its own <see cref="UnitData.PlayerID"/>).
+        /// across players (each unit carries its own <see cref="UnitData.PlayerID"/>). The round
+        /// number is read from <see cref="ISingleRoundContext.RoundCount"/>, which carries the value
+        /// down from the <see cref="IMainPhaseContext"/>.
         /// </summary>
-        public static GameProgressData CaptureFromContexts(
-            IMainPhaseContext mainPhase,
+        public static GameProgressData Capture(
             ISingleRoundContext round,
             GameSettings settings,
             EResumeStage stage)
@@ -71,7 +72,7 @@ namespace FDG
 
             return new GameProgressData(
                 stage: stage,
-                roundCount: mainPhase.RoundCount,
+                roundCount: round.RoundCount,
                 teamActivateOrder: teamOrder,
                 currentRoundTeamFinishOrder: finishOrder,
                 currentTeamIndex: round.CurrentActivatingTeamIndex,

@@ -31,7 +31,7 @@ namespace FDG.Stages
 
         protected override ISingleRoundContext GetNewChildContext(IMainPhaseContext contextSelf)
         {
-            return new SingleRoundContext(GameContext, contextSelf.TeamActivateOrder);
+            return new SingleRoundContext(GameContext, contextSelf.TeamActivateOrder, contextSelf.RoundCount);
         }
 
         protected override void ReconcileChildContextBeforeLeaving(IMainPhaseContext selfContext, ISingleRoundContext childContext)

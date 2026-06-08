@@ -135,11 +135,10 @@ namespace FDG.Tests
 
             var ctx = new CaptureTestCtx(store);
             var teamOrder = new List<ITeam> { teamA, teamB };
-            var mainPhase = new MainPhaseContext(ctx, teamOrder);
-            var round = new SingleRoundContext(ctx, teamOrder);
+            var round = new SingleRoundContext(ctx, teamOrder, roundCount: 1);
 
-            GameProgressData before = GameProgressUtilities.CaptureFromContexts(
-                mainPhase, round, ctx.Settings, EResumeStage.MainPhase);
+            GameProgressData before = GameProgressUtilities.Capture(
+                round, ctx.Settings, EResumeStage.MainPhase);
 
             Assert.That(before.RoundCount, Is.EqualTo(1));
             Assert.That(before.Stage, Is.EqualTo(EResumeStage.MainPhase));
@@ -151,11 +150,39 @@ namespace FDG.Tests
 
             round.MarkUnitAsActivated(a1);
 
-            GameProgressData after = GameProgressUtilities.CaptureFromContexts(
-                mainPhase, round, ctx.Settings, EResumeStage.MainPhase);
+            GameProgressData after = GameProgressUtilities.Capture(
+                round, ctx.Settings, EResumeStage.MainPhase);
 
             Assert.That(after.UnactivatedUnits.Count, Is.EqualTo(2), "One unit has now activated.");
             Assert.That(after.CurrentRoundTeamFinishOrder, Is.Empty, "Team A still has A2 to activate.");
+        }
+
+        [Test]
+        public async Task Trigger_DeterminePlayerTurnStage_WritesRollingSnapshotToStore()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var player = new PlayerID(Guid.NewGuid());
+            var team = new TeamData(0, new List<PlayerID> { player });
+            store.Create(team);
+            DataBinding<UnitData> unit = MakeUnit(store, player, "A1",
+                new[] { MakeModel(store, new Position(1, 1)) });
+            store.Create(new ArmyData(player, new List<DataBinding<UnitData>> { unit }));
+
+            var ctx = new CaptureTestCtx(store);
+            var round = new SingleRoundContext(ctx, new List<ITeam> { team }, roundCount: 3);
+
+            var stage = new DeterminePlayerTurnStage(ctx, new NoOpLayer<ISingleRoundContext>());
+            stage.OnDeterminedPlayerTurn.Bind("determined");
+            stage.OnNoPlayersLeft.Bind("none");
+
+            Assert.That(GameProgressUtilities.TryGetProgress(store), Is.Null, "No snapshot before the stage runs.");
+
+            await stage.Enter(round);
+
+            GameProgressData? progress = GameProgressUtilities.TryGetProgress(store);
+            Assert.That(progress, Is.Not.Null, "Entering the stage should write a rolling snapshot.");
+            Assert.That(progress!.RoundCount, Is.EqualTo(3));
+            Assert.That(progress.UnactivatedUnits.Count, Is.EqualTo(1));
         }
 
         [Test]
@@ -207,7 +234,7 @@ namespace FDG.Tests
         /// <summary>Minimal context: only the store + table state are exercised by the round/turn contexts.</summary>
         private class CaptureTestCtx : IGameContext
         {
-            public ITextOutput TextOutput => null!;
+            public ITextOutput TextOutput { get; } = new EmptyTextOutput();
             public IDiceRoller DiceRoller => null!;
             public RuleEvaluator RuleEvaluator => null!;
             public IPlayerRequestByID PlayerRequester => null!;

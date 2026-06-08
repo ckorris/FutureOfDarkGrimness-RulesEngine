@@ -8,6 +8,8 @@ namespace FDG.Stages
 
     public interface ISingleRoundContext : IGameContextAccessor
     {
+        public int RoundCount { get; }
+
         public IReadOnlyDictionary<PlayerID, List<DataBinding<UnitData>>> UnactivatedUnits { get; }
 
         public IReadOnlyList<ITeam> TeamActivateOrder { get; }
@@ -44,7 +46,7 @@ namespace FDG.Stages
 
         public Dictionary<PlayerID, List<DataBinding<UnitData>>> _unactivatedUnits { get; }
 
-        public int RoundCount { get; private set; } = 0;
+        public int RoundCount { get; private set; }
 
         public IReadOnlyList<ITeam> TeamActivateOrder => Cursor.TeamOrder;
 
@@ -62,9 +64,10 @@ namespace FDG.Stages
 
         private List<ITeam> _currentRoundTeamFinishOrder = new List<ITeam>();
 
-        public SingleRoundContext(IGameContext gameContext, List<ITeam> teamOrder)
+        public SingleRoundContext(IGameContext gameContext, List<ITeam> teamOrder, int roundCount = 0)
         {
             GameContext = gameContext;
+            RoundCount = roundCount;
             Cursor = new TeamPlayerAlternationCursor(teamOrder);
 
             _unactivatedUnits = new Dictionary<PlayerID, List<DataBinding<UnitData>>>();

@@ -1,3 +1,5 @@
+using FDG.Presentation;
+using FDG.Presentation.Beats;
 using FDG.Utilities;
 
 namespace FDG.Stages
@@ -18,6 +20,8 @@ namespace FDG.Stages
             float totalWoundsApplied = 0;
             int modelsKilled = 0;
 
+            UnitData defendingUnit = metaData.DefendingUnit.GetValue();
+
             foreach(PendingWounds pendingWound in assignWoundsResults.PendingWounds)
             {
                 ModelData model = pendingWound.Model; //Shorthand.
@@ -36,6 +40,11 @@ namespace FDG.Stages
                 if(model.GetIsDead())
                 {
                     modelsKilled++;
+
+                    // Present the death where the model fell. State is already dead; the front-end
+                    // plays the death animation over the beat's duration before dropping the model.
+                    await GameContext.Presenter.Present(
+                        new ModelDiedBeat(model.ID, defendingUnit.ID, defendingUnit.Name, model.Position));
                 }
             }
 

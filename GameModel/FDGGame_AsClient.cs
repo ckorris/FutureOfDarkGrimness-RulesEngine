@@ -6,6 +6,8 @@ using FDG.Network.Connection;
 using FDG.Network.Messages;
 using FDG.Network.Synchronization;
 using FDG.Players;
+using FDG.Presentation;
+using FDG.Presentation.Messages;
 using FDG.StageResolution;
 using FDG.TempVisuals;
 using FDG.TempVisuals.Messages;
@@ -24,6 +26,8 @@ namespace F.GameModel
         public IPlayerMessageUI? PlayerMessageUI { get; private set; }
 
         public ITempVisualDrawer? TempVisualDrawer { get; private set; }
+
+        public IPresentationSink? PresentationSink { get; private set; }
 
         //private IReadableGameDataStore _gameDataStore;
 
@@ -60,6 +64,7 @@ namespace F.GameModel
 
         public void AssignInterfaces(ILogMessageUI? logMessageUI, IPlayerMessageUI? playerMessageUI,
             IStageResolverRegistry stageResolverRegistry, ITempVisualDrawer? tempVisualDrawer,
+            IPresentationSink? presentationSink,
             IOutstandingListDisplay? outstandingTaskDisplay)
         {
             LogMessageUI = logMessageUI;
@@ -80,9 +85,13 @@ namespace F.GameModel
             _messageBusClient.RegisterForMessageEvent<RemoveTempVisualMessage>(OnRemoveTempVisualReceived);
             _messageBusClient.RegisterForMessageEvent<ClearAllTempVisualsMessage>(OnClearTempVisualsReceived);
 
+            _messageBusClient.RegisterForMessageEvent<PresentBeatMessage>(OnPresentBeatReceived);
+
             _messageBusClient.SendCommandToHostAsync(new PostLaunchPlayerReadyMessage(_thisPlayerID));
 
             TempVisualDrawer = tempVisualDrawer;
+
+            PresentationSink = presentationSink;
 
             _requestReceiver = new NetworkedRequestMessageReceiver(_thisPlayerID, _messageBusClient,
                 stageResolverRegistry, _gameDataStore);
@@ -92,6 +101,11 @@ namespace F.GameModel
                 _outstandingTaskLister = new OutstandingTaskLister(_messageBusClient);
                 outstandingTaskDisplay.AssignLister(_outstandingTaskLister);
             }
+        }
+
+        private void OnPresentBeatReceived(PresentBeatMessage message)
+        {
+            PresentationSink?.OnBeat(message.Beat);
         }
 
         private void OnAddTempVisualReceived(AddTempVisualMessage message)

@@ -1,4 +1,5 @@
-﻿using FDG.StageResolution;
+﻿using FDG.Presentation;
+using FDG.StageResolution;
 using FDG.TempVisuals;
 
 namespace FDG.Players
@@ -12,6 +13,13 @@ namespace FDG.Players
         public event Action<PlayerID, EChatMessageType, string> OnMessageSentByPlayer;
 
         public ITempVisualDrawer? TempVisualDrawer { get; }
+
+        /// <summary>
+        /// This player's presentation-beat consumer. Local players expose their front-end's
+        /// sink; remote players get a <see cref="NetworkedPresentationSink"/> that forwards
+        /// beats over the bus; AI players have none. Mirrors <see cref="TempVisualDrawer"/>.
+        /// </summary>
+        public IPresentationSink? PresentationSink { get; }
 
         public Task WaitUntilReadyAsync();
 

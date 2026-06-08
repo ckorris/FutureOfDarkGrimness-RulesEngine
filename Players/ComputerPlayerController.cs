@@ -1,4 +1,5 @@
 using FDG.GameModel;
+using FDG.Presentation;
 using FDG.StageResolution;
 using FDG.TempVisuals;
 
@@ -14,6 +15,8 @@ namespace FDG.Players
 
         public ITempVisualDrawer? TempVisualDrawer => null;
 
+        public IPresentationSink? PresentationSink => null;
+
         public event Action<bool>? OnReadyStateChanged;
         public event Action<PlayerID, EChatMessageType, string>? OnMessageSentByPlayer;
 
@@ -23,7 +26,7 @@ namespace FDG.Players
             Name = name;
             ID = id;
             localGame.AddLocalPlayerID(id);
-            localGame.AssignInterfaces(null, null, registry, null, null);
+            localGame.AssignInterfaces(null, null, registry, null, null, null);
         }
 
         public Task WaitUntilReadyAsync() => Task.CompletedTask;

@@ -1,4 +1,5 @@
 ﻿using FDG.GameModel;
+using FDG.Presentation;
 using FDG.TempVisuals;
 using System.Diagnostics;
 
@@ -13,6 +14,8 @@ namespace FDG.Players
         public bool IsReady { get; private set; } = true;
 
         public ITempVisualDrawer? TempVisualDrawer => _localPlayer.TempVisualDrawer;
+
+        public IPresentationSink? PresentationSink => _localPlayer.PresentationSink;
 
         public event Action<bool>? OnReadyStateChanged;
         public event Action<PlayerID, EChatMessageType, string> OnMessageSentByPlayer;

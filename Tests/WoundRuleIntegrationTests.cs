@@ -6,6 +6,7 @@ using FDG.Rules.Foundation;
 using FDG.Stages;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
+using FDG.Presentation;
 using FDG.TempVisuals;
 using FDG.Tests.RulesHarness;
 using NUnit.Framework;
@@ -138,6 +139,7 @@ namespace FDG.Tests
         public TableState TableState { get; }
         public IReadWriteableGameDataStore GameDataStore { get; }
         public ITempVisualDrawer TempVisualDrawer { get; } = new NullTempVisualDrawer();
+        public IPresenter Presenter { get; } = new LocalPresenter(null, new InstantPresentationClock());
         public GameSettings Settings { get; } = GameSettings.GetDefault();
         public List<ITeam>? FirstDeploymentRollOrder => null;
         IGameContext IGameContextAccessor.GameContext => this;

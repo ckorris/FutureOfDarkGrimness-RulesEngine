@@ -1,5 +1,6 @@
 using FDG.Data;
 using FDG.Players;
+using FDG.Presentation;
 using FDG.Rules.Dispatch;
 using FDG.TempVisuals;
 
@@ -28,6 +29,13 @@ namespace FDG
 
         public ITempVisualDrawer TempVisualDrawer { get; }
 
+        /// <summary>
+        /// Outbound presentation channel. Stages emit paced, semantic beats here
+        /// (<c>await context.Presenter.Present(beat)</c>) to narrate the play-by-play. See
+        /// <see cref="IPresenter"/>.
+        /// </summary>
+        public IPresenter Presenter { get; }
+
         public GameSettings Settings { get; }
 
         public List<ITeam>? FirstDeploymentRollOrder { get; }
@@ -55,6 +63,8 @@ namespace FDG
 
         public ITempVisualDrawer TempVisualDrawer { get; }
 
+        public IPresenter Presenter { get; }
+
         public GameSettings Settings { get; }
 
         public List<ITeam>? FirstDeploymentRollOrder { get; private set; } = null;
@@ -66,6 +76,7 @@ namespace FDG
                 TableState tableState,
                 IReadWriteableGameDataStore gameDataStore,
                 ITempVisualDrawer tempVisualDrawer,
+                IPresenter presenter,
                 GameSettings settings)
         {
             TextOutput = textOutput;
@@ -75,6 +86,7 @@ namespace FDG
             TableState = tableState;
             GameDataStore = gameDataStore;
             TempVisualDrawer = tempVisualDrawer;
+            Presenter = presenter;
             Settings = settings;
         }
 

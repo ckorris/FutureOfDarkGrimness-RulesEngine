@@ -4,6 +4,7 @@ using FDG.SaveLoad;
 using FDG.Network.Connection;
 using FDG.Network.Synchronization;
 using FDG.Players;
+using FDG.Presentation;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
@@ -33,7 +34,7 @@ namespace FDG.GameModel
         private static bool TEST_SINGLE_TURN = false; //Turn on to skip most of the game and just do one run of a model's activation.
 
         public FDGServer(IReadWriteableGameDataStore gameDataStore, IMessageBusHost messageBusHost,
-            GameSettings gameSettings, PlayerSlot[] playerSlots)
+            GameSettings gameSettings, PlayerSlot[] playerSlots, IPresentationClock? presentationClock = null)
         {
             Debug.WriteLine($"Started {nameof(FDGServer)}.");
 
@@ -58,11 +59,17 @@ namespace FDG.GameModel
 
             TempVisualRelayer tempVisualRelayer = new TempVisualRelayer(_playerSlotManager);
 
-            RequestMessageSender requestMessageSender = new RequestMessageSender(messageBusHost, gameDataStore, 
+            // The host owns presentation pacing. Default to instant (headless / automated /
+            // tests stay deterministic); the GUI host injects a real-time clock so the battle
+            // unfolds at a presentable tempo. State computation is never paced — only emission.
+            IPresentationClock presentationClock_ = presentationClock ?? new InstantPresentationClock();
+            PresentationRelayer presentationRelayer = new PresentationRelayer(_playerSlotManager, presentationClock_);
+
+            RequestMessageSender requestMessageSender = new RequestMessageSender(messageBusHost, gameDataStore,
                 _playerSlotManager);
 
             _gameContext = new GameContext(textOutput, GetDiceRoller(gameSettings), requestMessageSender,
-                tableState, _gameDataStore, tempVisualRelayer, gameSettings);
+                tableState, _gameDataStore, tempVisualRelayer, presentationRelayer, gameSettings);
             _gameContext.OnGameEnded += result => OnGameEnded?.Invoke(result);
 
             // #042 creation-time rules (Tough): now that the evaluator exists, fire OnUnitCreated for

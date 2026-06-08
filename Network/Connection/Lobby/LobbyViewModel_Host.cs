@@ -430,7 +430,10 @@ namespace FDG.Network.Connection
                 }
             }
 
-            FDGServer server = new FDGServer(_gameDataStore, _messageBus, playerSlots);
+            // Resume on the GUI host animates just like a new game — give it a real-time clock so the
+            // presentation beats play at a presentable tempo (without it the beats run instantly).
+            FDGServer server = new FDGServer(_gameDataStore, _messageBus, playerSlots,
+                new RealtimePresentationClock());
 
             if (gameModel != null)
             {

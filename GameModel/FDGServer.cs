@@ -65,12 +65,13 @@ namespace FDG.GameModel
         /// (re-crewed) players to the saved <see cref="PlayerID"/>s.
         /// </summary>
         public FDGServer(IReadWriteableGameDataStore loadedGameDataStore, IMessageBusHost messageBusHost,
-            PlayerSlot[] playerSlots)
+            PlayerSlot[] playerSlots, IPresentationClock? presentationClock = null)
         {
             Debug.WriteLine($"Started {nameof(FDGServer)} (resume).");
 
             _gameDataStore = loadedGameDataStore;
             _messageBusHost = messageBusHost;
+            _presentationClock = presentationClock;
             _synchronizer = new GameDataUpdateSender(loadedGameDataStore, messageBusHost);
             _playerSlotManager = new PlayerSlotManager(playerSlots);
 

@@ -117,5 +117,56 @@ namespace FDG.Tests
             Assert.That(died.Position.x, Is.EqualTo(5f).Within(0.0001f));
             Assert.That(died.Position.z, Is.EqualTo(6f).Within(0.0001f));
         }
+
+        [Test]
+        public void DiceRolledBeat_From_CapturesHistogramAndComputesSuccesses()
+        {
+            // d6: one 2, two 4s, one 6  →  4 dice, 3 of them at-or-above 4.
+            var roll = new DiceResults(new float[] { 0f, 1f, 0f, 2f, 0f, 1f }, 1);
+
+            var beat = DiceRolledBeat.From(roll, successThreshold: 4, ERandomnessType.Realistic, "To Hit");
+
+            Assert.That(beat.SideMin, Is.EqualTo(1));
+            Assert.That(beat.SideMax, Is.EqualTo(6));
+            Assert.That(beat.Total, Is.EqualTo(4f).Within(0.0001f));
+            Assert.That(beat.Successes, Is.EqualTo(3f).Within(0.0001f), "faces 4,4,6 are >= 4");
+            Assert.That(beat.Text, Is.EqualTo("To Hit (4+): 3 / 4"));
+        }
+
+        [Test]
+        public void DiceRolledBeat_Realistic_SurvivesWireRoundTrip()
+        {
+            var original = new DiceRolledBeat(new List<float> { 0f, 1f, 0f, 2f, 0f, 1f },
+                sideMin: 1, successThreshold: 4, ERandomnessType.Realistic, "To Hit");
+
+            PresentationBeat result = RoundTrip(original);
+
+            Assert.That(result, Is.TypeOf<DiceRolledBeat>());
+            var dice = (DiceRolledBeat)result;
+            Assert.That(dice.FaceCounts, Is.EqualTo(new[] { 0f, 1f, 0f, 2f, 0f, 1f }));
+            Assert.That(dice.SideMin, Is.EqualTo(1));
+            Assert.That(dice.SuccessThreshold, Is.EqualTo(4));
+            Assert.That(dice.Mode, Is.EqualTo(ERandomnessType.Realistic));
+            Assert.That(dice.Label, Is.EqualTo("To Hit"));
+        }
+
+        [Test]
+        public void DiceRolledBeat_Probabilistic_RoundTrip_PreservesFractionsAndMode()
+        {
+            // 5 dice spread evenly: 5/6 per face. Successes for 4+ = three faces * 0.8333…
+            float per = 5f / 6f;
+            var original = new DiceRolledBeat(new List<float> { per, per, per, per, per, per },
+                sideMin: 1, successThreshold: 4, ERandomnessType.Probabilistic, "To Save");
+
+            PresentationBeat result = RoundTrip(original);
+
+            var dice = (DiceRolledBeat)result;
+            Assert.That(dice.Mode, Is.EqualTo(ERandomnessType.Probabilistic),
+                "the mode must ride on the beat — the front-end renders fractional rolls differently");
+            Assert.That(dice.Total, Is.EqualTo(5f).Within(0.0001f));
+            Assert.That(dice.Successes, Is.EqualTo(3f * per).Within(0.0001f));
+            for (int i = 0; i < dice.FaceCounts.Count; i++)
+                Assert.That(dice.FaceCounts[i], Is.EqualTo(per).Within(0.0001f), "fractional counts must survive the wire");
+        }
     }
 }

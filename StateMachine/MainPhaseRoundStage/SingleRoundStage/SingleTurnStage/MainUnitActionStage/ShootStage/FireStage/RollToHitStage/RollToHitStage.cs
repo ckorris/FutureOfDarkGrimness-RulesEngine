@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using FDG.Presentation;
+using FDG.Presentation.Beats;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
@@ -41,6 +43,10 @@ namespace FDG.Stages
                 new List<FailedHitInfo>() { new FailedHitInfo(failedResults) });
 
             GameContext.Log($"Rolled {successfulResults.TotalRolls} successful hits out of {attacks} total attacks.");
+
+            // Show the natural to-hit roll (the synthetic extra-hits below aren't dice).
+            await GameContext.Presenter.Present(
+                DiceRolledBeat.From(rollToHitResults, hitRollNeeded, GameContext.Settings.RandomnessType, "To Hit"));
 
             // #042 extra-hit rules (Surge / Furious / Relentless) fire at hit-roll-complete: an
             // unmodified 6 spawns extra hits. Evaluate the attacker's rules against the UNMODIFIED

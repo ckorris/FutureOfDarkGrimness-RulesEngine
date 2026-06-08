@@ -11,5 +11,6 @@ namespace FDG.Presentation
     {
         public static readonly TimeSpan UnitMove   = TimeSpan.FromMilliseconds(600);
         public static readonly TimeSpan ModelDeath = TimeSpan.FromMilliseconds(500);
+        public static readonly TimeSpan DiceRoll   = TimeSpan.FromMilliseconds(700);
     }
 }

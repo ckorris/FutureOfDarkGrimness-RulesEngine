@@ -1,6 +1,8 @@
 
 using System;
 using System.Collections.Generic;
+using FDG.Presentation;
+using FDG.Presentation.Beats;
 
 namespace FDG.Stages
 {
@@ -36,6 +38,9 @@ namespace FDG.Stages
 
                 totalSuccesses += successfulResults.TotalRolls;
                 totalFailures += failedResults.TotalRolls;
+
+                await GameContext.Presenter.Present(
+                    DiceRolledBeat.From(rollToSaveResults, saveNeeded, GameContext.Settings.RandomnessType, "To Save"));
             }
 
             RollToSaveResults results = new RollToSaveResults(successfulSaves, failedSaves);

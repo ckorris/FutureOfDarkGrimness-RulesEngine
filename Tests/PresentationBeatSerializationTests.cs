@@ -189,6 +189,32 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void ModelWoundedBeat_SurvivesWireRoundTrip()
+        {
+            var modelId = new ModelID(Guid.NewGuid());
+            var original = new ModelWoundedBeat(modelId, new Position(4f, 7f));
+
+            var result = (ModelWoundedBeat)RoundTrip(original);
+            Assert.That(result.Model, Is.EqualTo(modelId));
+            Assert.That(result.Position.x, Is.EqualTo(4f).Within(0.0001f));
+            Assert.That(result.Position.z, Is.EqualTo(7f).Within(0.0001f));
+            Assert.That(result.NominalDuration, Is.EqualTo(PresentationDurations.ModelWounded));
+        }
+
+        [Test]
+        public void SaveBeat_SurvivesWireRoundTrip_PreservingCountAndPositions()
+        {
+            var original = new SaveBeat(
+                new List<Position> { new Position(1f, 1f), new Position(2f, 2f) },
+                savedCount: 3);
+
+            var result = (SaveBeat)RoundTrip(original);
+            Assert.That(result.SavedCount, Is.EqualTo(3));
+            Assert.That(result.DefenderPositions, Has.Count.EqualTo(2));
+            Assert.That(result.DefenderPositions[1].x, Is.EqualTo(2f).Within(0.0001f));
+        }
+
+        [Test]
         public void BannerBeat_SurvivesWireRoundTrip_PreservingTextAndColor()
         {
             var original = new BannerBeat("Round 3", new TextColor(120, 200, 255, 255));

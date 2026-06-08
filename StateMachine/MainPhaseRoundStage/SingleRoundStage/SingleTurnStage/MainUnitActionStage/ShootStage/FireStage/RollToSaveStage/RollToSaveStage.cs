@@ -47,6 +47,16 @@ namespace FDG.Stages
 
             GameContext.Log($"Saved {totalSuccesses} wounds, taking {totalFailures}.");
 
+            // Deflection "pings" for the saved shots. Saves are resolved per AP group, not per
+            // defending model, so this is unit-level (a count across the defender's models).
+            int savedCount = (int)MathF.Round(totalSuccesses);
+            if (savedCount > 0)
+            {
+                List<Position> defenders = AttackBeatPositions.AlivePlaced(metaData.DefendingUnit);
+                if (defenders.Count > 0)
+                    await GameContext.Presenter.Present(new SaveBeat(defenders, savedCount));
+            }
+
             onFinished(results);
         }
     }

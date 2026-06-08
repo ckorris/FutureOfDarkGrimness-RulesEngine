@@ -46,6 +46,11 @@ namespace FDG.Stages
                     await GameContext.Presenter.Present(
                         new ModelDiedBeat(model.ID, defendingUnit.ID, defendingUnit.Name, model.Position));
                 }
+                else if (woundsToDeal > 0)
+                {
+                    // Survived a wound (e.g. Tough) — a hurt flinch, distinct from death.
+                    await GameContext.Presenter.Present(new ModelWoundedBeat(model.ID, model.Position));
+                }
             }
 
             if(metaData.DefendingUnit.GetIsAlive())

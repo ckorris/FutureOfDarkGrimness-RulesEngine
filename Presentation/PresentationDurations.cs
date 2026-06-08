@@ -9,9 +9,11 @@ namespace FDG.Presentation
     public static class PresentationDurations
     {
         /// <summary>Fallback move duration (a ~6" Advance); see <see cref="ForMoveDistance"/>.</summary>
-        public static readonly TimeSpan UnitMove   = TimeSpan.FromMilliseconds(600);
-        public static readonly TimeSpan ModelDeath = TimeSpan.FromMilliseconds(500);
-        public static readonly TimeSpan DiceRoll   = TimeSpan.FromMilliseconds(700);
+        public static readonly TimeSpan UnitMove     = TimeSpan.FromMilliseconds(600);
+        public static readonly TimeSpan ModelDeath   = TimeSpan.FromMilliseconds(500);
+        public static readonly TimeSpan ModelWounded = TimeSpan.FromMilliseconds(300);
+        public static readonly TimeSpan Saves        = TimeSpan.FromMilliseconds(350);
+        public static readonly TimeSpan DiceRoll     = TimeSpan.FromMilliseconds(700);
         public static readonly TimeSpan Banner      = TimeSpan.FromMilliseconds(1300);
         // A volley = a weapon group's weapons all firing once, simultaneously; a weapon's Attacks
         // value is how many volleys it fires, played one after another. Total time scales with the

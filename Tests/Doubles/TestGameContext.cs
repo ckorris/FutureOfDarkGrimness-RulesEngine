@@ -2,7 +2,6 @@ using FDG.Data;
 using FDG.Players;
 using FDG.Presentation;
 using FDG.Rules.Dispatch;
-using FDG.TempVisuals;
 
 namespace FDG.Tests
 {
@@ -15,7 +14,6 @@ namespace FDG.Tests
         public IPlayerRequestByID PlayerRequester { get; } = new NullPlayerRequester();
         public TableState TableState { get; }
         public IReadWriteableGameDataStore GameDataStore { get; }
-        public ITempVisualDrawer TempVisualDrawer { get; } = new NullTempVisualDrawer();
         // Instant clock + no sink: beats emitted by stages under test are paced instantly and
         // dropped, so tests that don't assert presentation are unaffected. Tests that DO assert
         // beats build their own LocalPresenter with a RecordingPresentationSink.

@@ -11,7 +11,6 @@ using FDG.Rules.Foundation;
 using FDG.StageResolution;
 using FDG.Stages;
 using FDG.StateMachine.StateMachineBuilders;
-using FDG.TempVisuals;
 using FDG.TextInterface;
 using FDG.Utilities;
 using FutureOfDarkGrimness.StateMachine.StateMachineBuilders;
@@ -29,7 +28,6 @@ namespace FDG.GameModel
         private PlayerSlotManager _playerSlotManager;
         private GameContext _gameContext;
         private StateMachine<IGameContext> _stateMachine;
-        private NetworkedTempVisualDrawer _tempVisualRelayer;
 
         private static bool TEST_SINGLE_TURN = false; //Turn on to skip most of the game and just do one run of a model's activation.
 
@@ -57,8 +55,6 @@ namespace FDG.GameModel
 
             TableState tableState = new TableState(_gameDataStore);
 
-            TempVisualRelayer tempVisualRelayer = new TempVisualRelayer(_playerSlotManager);
-
             // The host owns presentation pacing. Default to instant (headless / automated /
             // tests stay deterministic); the GUI host injects a real-time clock so the battle
             // unfolds at a presentable tempo. State computation is never paced — only emission.
@@ -69,7 +65,7 @@ namespace FDG.GameModel
                 _playerSlotManager);
 
             _gameContext = new GameContext(textOutput, GetDiceRoller(gameSettings), requestMessageSender,
-                tableState, _gameDataStore, tempVisualRelayer, presentationRelayer, gameSettings);
+                tableState, _gameDataStore, presentationRelayer, gameSettings);
             _gameContext.OnGameEnded += result => OnGameEnded?.Invoke(result);
 
             // #042 creation-time rules (Tough): now that the evaluator exists, fire OnUnitCreated for

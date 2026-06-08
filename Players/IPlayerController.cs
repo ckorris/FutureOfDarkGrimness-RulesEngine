@@ -1,6 +1,5 @@
 ﻿using FDG.Presentation;
 using FDG.StageResolution;
-using FDG.TempVisuals;
 
 namespace FDG.Players
 {
@@ -11,8 +10,6 @@ namespace FDG.Players
         public event Action<bool> OnReadyStateChanged;
 
         public event Action<PlayerID, EChatMessageType, string> OnMessageSentByPlayer;
-
-        public ITempVisualDrawer? TempVisualDrawer { get; }
 
         /// <summary>
         /// This player's presentation-beat consumer. Local players expose their front-end's

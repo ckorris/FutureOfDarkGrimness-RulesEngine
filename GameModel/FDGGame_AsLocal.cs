@@ -4,7 +4,6 @@ using FDG.MessageBus;
 using FDG.Network.Messages;
 using FDG.Presentation;
 using FDG.StageResolution;
-using FDG.TempVisuals;
 using FDG.TextInterface;
 
 namespace FDG.GameModel
@@ -18,8 +17,6 @@ namespace FDG.GameModel
         public ILogMessageUI? LogMessageUI { get; private set; }
 
         public IPlayerMessageUI? PlayerMessageUI { get; private set; }
-
-        public ITempVisualDrawer? TempVisualDrawer { get; private set; }
 
         public IPresentationSink? PresentationSink { get; private set; }
 
@@ -59,7 +56,7 @@ namespace FDG.GameModel
         }
 
         public void AssignInterfaces(ILogMessageUI? logMessageUI, IPlayerMessageUI? playerMessageUI,
-            IStageResolverRegistry stageResolverRegistry, ITempVisualDrawer? tempVisualDrawer,
+            IStageResolverRegistry stageResolverRegistry,
             IPresentationSink? presentationSink,
             IOutstandingListDisplay? outstandingTaskDisplay)
         {
@@ -74,8 +71,6 @@ namespace FDG.GameModel
             }
 
             StageResolverRegistry = stageResolverRegistry;
-
-            TempVisualDrawer = tempVisualDrawer;
 
             PresentationSink = presentationSink;
 

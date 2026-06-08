@@ -6,7 +6,6 @@ using FDG.SerializableVisuals.Materials;
 using FDG.SerializableVisuals.Meshes;
 using FDG.SerializableVisuals.Textures;
 using FDG.StageResolution.Requests;
-using FDG.TempVisuals;
 using System.Numerics;
 
 namespace FDG.Stages
@@ -87,6 +86,13 @@ namespace FDG.Stages
             ToRollForFirstDeployment.Activate(context);
         }
 
+        // RETIRED (work item 052): dead debug probe — never called — that proved a stage could push
+        // TempVisuals. The TempVisual system is superseded by the presentation-beat stream
+        // (FDG.Presentation); a stage now narrates via context.Presenter.Present(beat). Kept
+        // commented for reference rather than deleted. The rest of the TempVisual plumbing
+        // (ITempVisualDrawer on the contexts/controllers, NetworkedTempVisualDrawer, TempVisualRelayer,
+        // the TempVisual messages) is still wired but unused, pending the full interface sweep.
+        /*
         private void TempTestVisuals(IDeploymentContext context)
         {
             //TODO: This doesn't belong here but I want to make sure we can make visuals happen from the stage machine.
@@ -114,6 +120,7 @@ namespace FDG.Stages
             TempVisual tempVisual3 = new TempVisual(meshProvider, materialProvider, position, rotation, scale);
             context.GameContext.TempVisualDrawer.AddVisual(tempVisual3);
         }
+        */
 
 
         private List<RectangularZone> GetRectangularZones(int teamCount)

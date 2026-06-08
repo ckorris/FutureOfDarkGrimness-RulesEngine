@@ -1,7 +1,6 @@
 using FDG.GameModel;
 using FDG.Presentation;
 using FDG.StageResolution;
-using FDG.TempVisuals;
 
 namespace FDG.Players
 {
@@ -12,8 +11,6 @@ namespace FDG.Players
         public PlayerID ID { get; }
 
         public bool IsReady => true;
-
-        public ITempVisualDrawer? TempVisualDrawer => null;
 
         public IPresentationSink? PresentationSink => null;
 
@@ -26,7 +23,7 @@ namespace FDG.Players
             Name = name;
             ID = id;
             localGame.AddLocalPlayerID(id);
-            localGame.AssignInterfaces(null, null, registry, null, null, null);
+            localGame.AssignInterfaces(null, null, registry, null, null);
         }
 
         public Task WaitUntilReadyAsync() => Task.CompletedTask;

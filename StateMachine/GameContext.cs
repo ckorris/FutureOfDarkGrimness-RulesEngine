@@ -2,7 +2,6 @@ using FDG.Data;
 using FDG.Players;
 using FDG.Presentation;
 using FDG.Rules.Dispatch;
-using FDG.TempVisuals;
 
 namespace FDG
 {
@@ -26,8 +25,6 @@ namespace FDG
         //is to have access to it (I'm undecided). But that would
         //mean redoing lots of stages, and I'm on an airplane as I type this.
         public IReadWriteableGameDataStore GameDataStore { get; }
-
-        public ITempVisualDrawer TempVisualDrawer { get; }
 
         /// <summary>
         /// Outbound presentation channel. Stages emit paced, semantic beats here
@@ -61,8 +58,6 @@ namespace FDG
 
         public IReadWriteableGameDataStore GameDataStore { get; }
 
-        public ITempVisualDrawer TempVisualDrawer { get; }
-
         public IPresenter Presenter { get; }
 
         public GameSettings Settings { get; }
@@ -75,7 +70,6 @@ namespace FDG
                 IPlayerRequestByID playerRequester,
                 TableState tableState,
                 IReadWriteableGameDataStore gameDataStore,
-                ITempVisualDrawer tempVisualDrawer,
                 IPresenter presenter,
                 GameSettings settings)
         {
@@ -85,7 +79,6 @@ namespace FDG
             PlayerRequester = playerRequester;
             TableState = tableState;
             GameDataStore = gameDataStore;
-            TempVisualDrawer = tempVisualDrawer;
             Presenter = presenter;
             Settings = settings;
         }

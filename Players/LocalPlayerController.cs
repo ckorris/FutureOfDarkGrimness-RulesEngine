@@ -1,6 +1,5 @@
 ﻿using FDG.GameModel;
 using FDG.Presentation;
-using FDG.TempVisuals;
 using System.Diagnostics;
 
 namespace FDG.Players
@@ -12,8 +11,6 @@ namespace FDG.Players
         public PlayerID ID { get; }
 
         public bool IsReady { get; private set; } = true;
-
-        public ITempVisualDrawer? TempVisualDrawer => _localPlayer.TempVisualDrawer;
 
         public IPresentationSink? PresentationSink => _localPlayer.PresentationSink;
 

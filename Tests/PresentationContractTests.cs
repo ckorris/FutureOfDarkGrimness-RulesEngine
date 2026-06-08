@@ -129,6 +129,25 @@ namespace FDG.Tests
             Assert.That(new TestBeat(TimeSpan.Zero, "Squad advances.").Text, Is.EqualTo("Squad advances."));
         }
 
+        // ---- Distance-based move duration ----
+
+        [Test]
+        public void ForMoveDistance_ScalesWithDistance_AtConstantSpeed()
+        {
+            // 10 in/s → 6" Advance ≈ 600ms, 12" Rush ≈ 1200ms.
+            Assert.That(PresentationDurations.ForMoveDistance(6f).TotalMilliseconds, Is.EqualTo(600).Within(1));
+            Assert.That(PresentationDurations.ForMoveDistance(12f).TotalMilliseconds, Is.EqualTo(1200).Within(1));
+        }
+
+        [Test]
+        public void ForMoveDistance_ClampsTinyAndHugeMoves()
+        {
+            Assert.That(PresentationDurations.ForMoveDistance(0.1f), Is.EqualTo(PresentationDurations.MoveMin),
+                "a tiny shuffle still takes the minimum, not ~instant");
+            Assert.That(PresentationDurations.ForMoveDistance(1000f), Is.EqualTo(PresentationDurations.MoveMax),
+                "a huge move is capped so it doesn't drag");
+        }
+
         // ---- Announce: flashes a banner AND logs the same text, both in the given color ----
 
         [Test]

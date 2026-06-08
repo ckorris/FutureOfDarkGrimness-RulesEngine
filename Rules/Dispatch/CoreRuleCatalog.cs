@@ -24,7 +24,7 @@ public static class CoreRuleCatalog
     {
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
         Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Vanguard, Scout, Ambush, Thrust,
-        Blast, Takedown, Impact, Counter,
+        Blast, Takedown, Impact, Counter, MartialProwess, Strafing,
     };
 
     /// <summary>
@@ -416,4 +416,53 @@ public static class CoreRuleCatalog
                 ELifetime.UntilEndOfGame),
         },
         Array.Empty<ActivatedAbility>());
+
+    // Reactivation primitive (DeterminePlayerTurnStage offer -> activation list) ----
+
+    /// <summary>
+    /// Martial Prowess: once per game, when the engine asks the owner which unit to activate next,
+    /// this already-activated unit may activate a second time. An activated ability offered at
+    /// <see cref="EHookID.Activation_OnNextActivatorRequested"/>; accepting it queues an
+    /// <see cref="RuleOperation.InvokeReactivate"/> that the activation stage reads to re-add the
+    /// unit to the round's unactivated pool.
+    ///
+    /// Like <see cref="RuleOperation.DeferDeployment"/>, the reactivate operation stays a plain marker
+    /// (NOT an <see cref="RuleOperation.InvokeTriggeredMove">ExecutableOperation</see>): it mutates
+    /// activation-turn-scoped state (the round's unactivated pool) that the <c>IOperationServices</c>
+    /// seam — which only sees <c>IGameContext</c> — can't reach, so the stage applies it directly.
+    /// </summary>
+    public static SpecialRuleDefinition MartialProwess { get; } = new SpecialRuleDefinition("Martial Prowess",
+        Array.Empty<HookEntry>(),
+        new[]
+        {
+            new ActivatedAbility(EHookID.Activation_OnNextActivatorRequested, new Cost.OncePerGame(),
+                new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
+                new Effect.Reactivate(),
+                new Condition.Always()),
+        });
+
+    // Mid-move attack primitive (StrafingStage offer -> save+wound sub-pipeline) ---
+
+    /// <summary>
+    /// Strafing: when this unit moves through an enemy unit, once per activation it may make a mid-move
+    /// attack against that enemy (3 hits). An activated ability offered at
+    /// <see cref="EHookID.Movement_OnMoveThroughEnemy"/>; accepting it queues an
+    /// <see cref="RuleOperation.InvokeDealHits"/> that StrafingStage reads to resolve the hits through the
+    /// shared save+wound stages.
+    ///
+    /// Like Martial Prowess, the deal-hits operation is applied stage-side rather than through the
+    /// <c>IOperationServices</c> seam: the save/wound resolution is a child-stage pipeline, and the engine's
+    /// fire-and-forget stage transitions only sequence correctly when that pipeline runs as a real child of
+    /// the movement stage (the way Impact's hits run as a child of the melee stage) — not when driven from a
+    /// service call that would return before the AssignWounds request is answered.
+    /// </summary>
+    public static SpecialRuleDefinition Strafing { get; } = new SpecialRuleDefinition("Strafing",
+        Array.Empty<HookEntry>(),
+        new[]
+        {
+            new ActivatedAbility(EHookID.Movement_OnMoveThroughEnemy, new Cost.OncePerActivation(),
+                new TargetSelector(1f, 1, 1, ETargetAffinity.Foe, false),
+                new Effect.DealHits(Count: 3, WithRules: Array.Empty<string>()),
+                new Condition.Always()),
+        });
 }

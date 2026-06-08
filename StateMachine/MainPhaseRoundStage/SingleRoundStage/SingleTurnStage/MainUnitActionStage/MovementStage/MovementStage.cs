@@ -24,6 +24,7 @@ namespace FDG.Stages
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
                 .AddChild(new DefinePathStage(GameContext, this), out var definePath)
                 .AddChild(new ApplyNonMovementTerrainEffectsStage(GameContext, this), out var applyEffects)
+                .AddChild(new StrafingStage(GameContext, this), out var strafing)
                 .AddChild(new ExecuteMoveStage(GameContext, this), out var executeMove)
                 .AddSibling(nameof(OnFinishedMovement), OnFinishedMovement, out string onFinishedMovement)
                 .Build();
@@ -31,7 +32,10 @@ namespace FDG.Stages
             startingChild = definePath;
 
             definePath.OnPathDefined.Bind(applyEffects);
-            applyEffects.OnAppliedNonMovementTerrainEffects.Bind(executeMove);
+            // Strafing runs before the move is committed, so move-through detection reads the path from each
+            // model's start position; on a strafe it resolves hits, then movement executes.
+            applyEffects.OnAppliedNonMovementTerrainEffects.Bind(strafing);
+            strafing.OnStrafeResolved.Bind(executeMove);
             executeMove.OnMoveExecuted.Bind(onFinishedMovement);
 
             return dictionary;

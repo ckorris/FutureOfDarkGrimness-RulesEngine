@@ -79,6 +79,89 @@ namespace FDG.Stages
             return positions;
         }
 
+        /// <summary>
+        /// The distinct living enemy units whose footprint the move <paramref name="moves"/> pass through:
+        /// any moving model's path segment comes within base-to-base contact (moving radius + enemy radius)
+        /// of any living enemy model. Trigger detection for Strafing's mid-move attack. Call while the moving
+        /// models are still at their START positions (the segment origin is read from each model's current
+        /// position), i.e. before the move is committed.
+        /// </summary>
+        public static List<DataBinding<UnitData>> GetEnemyUnitsMovedThrough(
+            IReadOnlyList<ModelMoveEntry> moves, DataBinding<UnitData> movingUnit, IGameContext gameContext)
+        {
+            PlayerID owner = movingUnit.GetValue().PlayerID;
+
+            TeamData? ownerTeam = gameContext.GameDataStore().GetAllValues<TeamData>()
+                .FirstOrDefault(t => t.IsPlayerOnTeam(owner));
+            IReadOnlyList<PlayerID> alliedPlayers = ownerTeam != null
+                ? ownerTeam.Players
+                : new List<PlayerID> { owner };
+
+            List<DataBinding<UnitData>> crossed = new List<DataBinding<UnitData>>();
+            foreach (ArmyData enemyArmy in gameContext.GameDataStore().GetAllValues<ArmyData>()
+                .Where(a => !alliedPlayers.Contains(a.PlayerID)))
+            {
+                foreach (DataBinding<UnitData> enemyUnit in enemyArmy.UnitBindings)
+                {
+                    if (enemyUnit.GetValue().GetIsDead()) continue;
+                    if (PathPassesThroughUnit(moves, enemyUnit))
+                    {
+                        crossed.Add(enemyUnit);
+                    }
+                }
+            }
+
+            return crossed;
+        }
+
+        private static bool PathPassesThroughUnit(IReadOnlyList<ModelMoveEntry> moves, DataBinding<UnitData> enemyUnit)
+        {
+            foreach (DataBinding<ModelData> enemyModel in enemyUnit.GetValue().ModelBindings)
+            {
+                if (!enemyModel.GetIsAlive()) continue;
+
+                Position enemyCenter = enemyModel.GetValue().PositionBinding.GetValue();
+                float enemyRadius = enemyModel.GetValue().BaseRadiusInches;
+
+                foreach (ModelMoveEntry move in moves)
+                {
+                    if (move.Positions.Count == 0) continue;
+
+                    float contactDistance = enemyRadius + move.Model.GetValue().BaseRadiusInches;
+                    Position segmentStart = move.Model.GetValue().PositionBinding.GetValue();
+
+                    foreach (Position step in move.Positions)
+                    {
+                        if (DistancePointToSegment2D(enemyCenter, segmentStart, step) <= contactDistance)
+                        {
+                            return true;
+                        }
+                        segmentStart = step;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        // Shortest 2D (x,z) distance from point p to the segment a->b.
+        private static float DistancePointToSegment2D(Position p, Position a, Position b)
+        {
+            float abx = b.x - a.x;
+            float abz = b.z - a.z;
+            float lengthSq = abx * abx + abz * abz;
+
+            float t = lengthSq <= 1e-6f ? 0f : ((p.x - a.x) * abx + (p.z - a.z) * abz) / lengthSq;
+            t = Math.Clamp(t, 0f, 1f);
+
+            float closestX = a.x + t * abx;
+            float closestZ = a.z + t * abz;
+            float dx = p.x - closestX;
+            float dz = p.z - closestZ;
+
+            return MathF.Sqrt(dx * dx + dz * dz);
+        }
+
         public static void ValidateChargeReach(List<ModelMoveEntry> moves, float maxRushDistance,
             IEnumerable<Position> enemyModelPositions, ref List<ReasonForInvalidMove> errors)
         {

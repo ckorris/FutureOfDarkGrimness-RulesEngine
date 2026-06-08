@@ -24,6 +24,8 @@ namespace FDG.Stages
 
         public void MarkUnitAsActivated(DataBinding<UnitData> activatedUnit);
 
+        public void ReinstateUnitForActivation(DataBinding<UnitData> unit);
+
         public void CleanDeadUnitsFromUnactivated();
 
         public bool TryAdvanceToNextPlayer(out ITeam? nextTeam, out PlayerID? nextPlayerID);
@@ -104,6 +106,22 @@ namespace FDG.Stages
                 {
                     _currentRoundTeamFinishOrder.Add(playerTeam);
                 }
+            }
+        }
+
+        /// <summary>
+        /// Re-adds an already-activated unit to its player's unactivated pool so it can be chosen again
+        /// this round (Martial Prowess reactivation). No-op if the unit is already pending. The unit must
+        /// be back in the master pool before its next activation, or <see cref="MarkUnitAsActivated"/>
+        /// would fail to find it on the way out.
+        /// </summary>
+        public void ReinstateUnitForActivation(DataBinding<UnitData> unit)
+        {
+            PlayerID playerID = unit.GetValue().PlayerID;
+
+            if (_unactivatedUnits[playerID].Contains(unit) == false)
+            {
+                _unactivatedUnits[playerID].Add(unit);
             }
         }
 

@@ -23,7 +23,7 @@ public static class CoreRuleCatalog
     public static IReadOnlyList<SpecialRuleDefinition> All => new[]
     {
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
-        Deadly, Regeneration, Unstoppable, Tough, Rending,
+        Deadly, Regeneration, Unstoppable, Tough, Rending, Bane,
     };
 
     /// <summary>
@@ -221,6 +221,24 @@ public static class CoreRuleCatalog
             new HookEntry(EHookID.Shooting_OnHitRollComplete,
                 new Condition.UnmodifiedRollEquals(6),
                 new Effect.RollModifier(ERollKind.Save, Delta: -4),
+                ELifetime.ThisAttack),
+            new HookEntry(EHookID.Shooting_OnSaveRollComplete,
+                new Condition.Always(),
+                new Effect.IgnoreRule("Regeneration"),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary>
+    /// Attacker: the defender must re-roll unmodified Defense 6s (turning saved 6s into possible
+    /// failures), and the attack ignores Regeneration. Both facets ride the save-complete evaluation.
+    /// </summary>
+    public static SpecialRuleDefinition Bane { get; } = new SpecialRuleDefinition("Bane",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnSaveRollComplete,
+                new Condition.Always(),
+                new Effect.Reroll(ERollKind.Save, new RerollCondition.OnUnmodifiedValue()),
                 ELifetime.ThisAttack),
             new HookEntry(EHookID.Shooting_OnSaveRollComplete,
                 new Condition.Always(),

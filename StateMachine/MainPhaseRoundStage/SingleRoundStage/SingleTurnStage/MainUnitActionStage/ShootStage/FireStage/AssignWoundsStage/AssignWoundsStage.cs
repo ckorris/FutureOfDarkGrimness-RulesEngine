@@ -28,14 +28,40 @@ namespace FDG.Stages
                 totalWoundsDealt += failedSaves.SaveCount;
             }
 
+            IUnit attacker = metaData.AttackingUnit.GetValue();
+            IUnit defender = metaData.DefendingUnit.GetValue();
+
+            // #042 save-roll-complete rules (Bane reroll, Regeneration ignore, plus the suppressors'
+            // ignore-Regeneration facet) all fire here. Evaluate BOTH participants once, so the
+            // evaluator's suppression first-pass can cancel Regeneration before its op is folded. The
+            // resulting queue feeds the reroll (below, before Deadly) and the wound-ignore (after Deadly).
+            IReadOnlyList<RuleOperation> saveCompleteOperations = GameContext.RuleEvaluator.EvaluateAll(
+                new SaveRollCompleteContext(attacker, defender, CombineSaveRolls(rollToSaveResults)),
+                (attacker, ERuleSeat.Actor),
+                (defender, ERuleSeat.Subject));
+
+            // #042 save-reroll rules (Bane): the defender re-rolls unmodified-6 saves, turning saved 6s
+            // into possible failures. Re-roll each successful group's natural-6 count and add the new
+            // failures to the wound total — done BEFORE Deadly multiplies, since it finalizes the saves.
+            RerollSink rerollSink = new RerollSink();
+            rerollSink.ApplyFrom(saveCompleteOperations);
+            if (rerollSink.RerollSavesOnUnmodifiedMax)
+            {
+                foreach (SuccessfulSaveInfo saved in rollToSaveResults.SuccessfulSaveList)
+                {
+                    float naturalMax = saved.Rolls.At(saved.Rolls.SideMax);
+                    if (naturalMax <= 0f) continue;
+                    int saveNeeded = DiceUtilities.ClampSuccessRollNeeded(saved.RollNeededInfo.SaveNeeded);
+                    totalWoundsDealt += GameContext.DiceRoller.Roll(naturalMax).Below(saveNeeded);
+                }
+            }
+
             // #042 wound-multiplier rules (Deadly) fire at pre-apply-wound: evaluate the attacker's
             // rules, fold MultiplyWounds ops through the sink, and scale the wound count. The stage
             // interprets no operation; it just reads the net multiplier.
             // SCOPE: this multiplies the TOTAL wound count (faithful for total damage). Deadly's
             // per-wound / single-model / no-carry-over allocation nuance is Phase-8 behavior, tracked
             // by the tough-aware allocation TODO below.
-            IUnit attacker = metaData.AttackingUnit.GetValue();
-            IUnit defender = metaData.DefendingUnit.GetValue();
             IReadOnlyList<RuleOperation> woundOperations = GameContext.RuleEvaluator.EvaluateAll(
                 new PreApplyWoundContext(attacker, defender),
                 (attacker, ERuleSeat.Actor));
@@ -43,18 +69,11 @@ namespace FDG.Stages
             woundModifier.ApplyFrom(woundOperations);
             totalWoundsDealt *= woundModifier.NetMultiplier;
 
-            // #042 wound-ignore rules (Regeneration) fire at save-roll-complete: the defender ignores
-            // each wound on a roll of X+. Evaluate BOTH participants so an attacker suppressor
-            // (Bane / Rending / Unstoppable "ignore Regeneration") can cancel it via the evaluator's
-            // suppression first-pass; fold the ignore sink, then roll one d6 per wound at the best
-            // threshold and drop the ignored count. The stage interprets no operation — it reads only
-            // the threshold and rolls.
+            // #042 wound-ignore rules (Regeneration) from the same save-complete queue: the defender
+            // ignores each wound on a roll of X+. Fold the ignore sink, then roll one d6 per wound at the
+            // best threshold and drop the ignored count. The stage interprets no operation.
             // ORDER: applied AFTER Deadly's multiply (the rulebook tags Deadly "resolved first"). The
             // per-wound / single-model allocation nuance of both rules stays Phase-8 (tough-aware TODO below).
-            IReadOnlyList<RuleOperation> saveCompleteOperations = GameContext.RuleEvaluator.EvaluateAll(
-                new SaveRollCompleteContext(attacker, defender, CombineSaveRolls(rollToSaveResults)),
-                (attacker, ERuleSeat.Actor),
-                (defender, ERuleSeat.Subject));
             WoundIgnoreSink woundIgnore = new WoundIgnoreSink();
             woundIgnore.ApplyFrom(saveCompleteOperations);
             if (woundIgnore.HasIgnore && totalWoundsDealt > 0f)

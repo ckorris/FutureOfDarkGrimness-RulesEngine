@@ -77,7 +77,18 @@ public abstract record RuleOperation
     /// Re-roll dice in the current <see cref="Roll"/> matching
     /// <see cref="Condition"/>. Resolution of <see cref="Effect.Reroll"/>.
     /// </summary>
-    public sealed record ApplyReroll(ERollKind Roll, RerollCondition Condition) : RuleOperation;
+    public sealed record ApplyReroll(ERollKind Roll, RerollCondition Condition) : SinkOperation<IRerollSink>
+    {
+        public override void ApplyTo(IRerollSink sink)
+        {
+            sink.RequestReroll(Roll, Condition);
+        }
+
+        public override string Describe()
+        {
+            return $"triggered a {Roll} re-roll";
+        }
+    }
 
     /// <summary>
     /// Add <see cref="Count"/> extra hits to the current attack's hit pool.

@@ -26,22 +26,7 @@ namespace FDG.Stages
         {
             if (context.AvailableWeapons.Count == 0)
             {
-                // The unit has no ranged weapons to fire. ChooseAction guards this with GetCanShoot, but in
-                // the multi-threaded headless game the shared data store can change between that check and
-                // here (a concurrent attack kills the last model carrying a ranged weapon), leaving this
-                // context empty. End the shoot gracefully rather than throwing — BackToChooseAction
-                // re-evaluates GetCanShoot against the now-current state, so no action loops.
-                if (context.AlreadyUsedWeapons.Count > 0)
-                {
-                    GameContext.Log("No ranged weapons available - ending shoot action.");
-                    OnNoValidShots.Activate(context);
-                }
-                else
-                {
-                    GameContext.Log("No ranged weapons available - returning to Choose Action.");
-                    BackToChooseAction.Activate(context);
-                }
-                return;
+                throw new Exception($"Available weapon dictionary was empty when entering {nameof(ChooseRangedAttackStage)}.");
             }
 
             //TODO: Handle situations like Deadly, where you have to use a specific weapon first.

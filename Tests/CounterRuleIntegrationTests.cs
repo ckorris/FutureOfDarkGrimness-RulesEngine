@@ -53,6 +53,20 @@ namespace FDG.Tests
             Assert.That(context.DefendingUnit.GetValue(), Is.SameAs(defender.GetValue()));
         }
 
+        [Test]
+        public async Task CounterUnitWithoutMeleeWeapons_DoesNotStrikeFirst()
+        {
+            DataBinding<UnitData> charger = MakeUnit(modelCount: 3);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 5, withMeleeWeapon: false);
+            AttachCounter(defender);
+
+            var context = await RunStage(charger, defender);
+
+            Assert.That(context.AttackingUnit.GetValue(), Is.SameAs(charger.GetValue()),
+                "a Counter unit with no melee weapons cannot strike first — the swap is suppressed.");
+            Assert.That(context.DefendingUnit.GetValue(), Is.SameAs(defender.GetValue()));
+        }
+
         private async Task<CombatActionContext> RunStage(DataBinding<UnitData> charger, DataBinding<UnitData> defender)
         {
             var stage = new DetermineStrikeOrderStage(_ctx, new NoOpLayer<ICombatActionContext>());
@@ -68,14 +82,21 @@ namespace FDG.Tests
         private static void AttachCounter(DataBinding<UnitData> unit) =>
             unit.GetValue().AttachRuleDefinition(new ResolvedRule("Counter", CoreRuleCatalog.Counter));
 
-        private DataBinding<UnitData> MakeUnit(int modelCount)
+        private DataBinding<UnitData> MakeUnit(int modelCount, bool withMeleeWeapon = true)
         {
+            // Counter only strikes first if the unit can actually fight, so DetermineStrikeOrderStage's
+            // guard requires a living melee-armed model. Most tests give every model a melee weapon
+            // (RangeInches 0); the no-weapon case proves the guard suppresses the swap.
+            var weapons = withMeleeWeapon
+                ? new List<Weapon> { new Weapon("Blade", rangeInches: 0f, attacks: 1, armorPenetration: 0,
+                    specialRules: new HashSet<ISpecialRule_Weapon>()) }
+                : new List<Weapon>();
             var modelBindings = new List<DataBinding<ModelData>>(modelCount);
             for (int i = 0; i < modelCount; i++)
             {
                 var model = new ModelData(
                     baseRadiusInches: 0.75f,
-                    weapons: new List<Weapon>(),
+                    weapons: weapons,
                     specialRules: new List<SpecialRule>(),
                     initialPosition: new Position(0, 0),
                     gameDataStore: _store);

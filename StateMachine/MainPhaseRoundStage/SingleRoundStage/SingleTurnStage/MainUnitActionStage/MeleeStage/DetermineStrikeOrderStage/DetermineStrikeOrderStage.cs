@@ -34,7 +34,13 @@ namespace FDG.Stages
                 new CounterTriggerContext(attacker, defender),
                 (defender, ERuleSeat.Subject));
 
-            if (operations.OfType<RuleOperation.StrikeFirst>().Any())
+            // Only strike first if the Counter unit can actually fight — it must have a living model with a
+            // melee weapon. Weapons are distributed across models (round-robin), so a unit can lose its only
+            // melee-armed model yet keep others; swapping such a unit in as the attacker would enter
+            // ChooseMeleeWeaponStage with an empty weapon pool and throw. (The normal strike-back path guards
+            // the same way in OfferStrikeBackStage.)
+            if (operations.OfType<RuleOperation.StrikeFirst>().Any()
+                && context.DefendingUnit.GetValue().GetMeleeWeapons().Count > 0)
             {
                 GameContext.Log($"{defender.Name}'s Counter: it strikes first against the charging {attacker.Name}.");
                 context.SwapCombatRoles();

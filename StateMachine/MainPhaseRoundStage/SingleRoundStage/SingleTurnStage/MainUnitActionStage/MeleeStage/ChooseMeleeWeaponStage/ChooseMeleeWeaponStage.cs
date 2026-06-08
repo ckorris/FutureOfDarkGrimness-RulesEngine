@@ -17,7 +17,7 @@ namespace FDG.Stages
         {
             if (context.AvailableWeapons.Count == 0)
             {
-                throw new Exception($"Available weapon dictionary was empty when entering {nameof(ChooseRangedAttackStage)}.");
+                throw new Exception($"Available weapon dictionary was empty when entering {nameof(ChooseMeleeWeaponStage)}.");
             }
 
             //TODO: Handle situations like Deadly, where you have to use a specific weapon first.

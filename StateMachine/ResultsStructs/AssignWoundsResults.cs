@@ -35,6 +35,18 @@ namespace FDG
             TotalWoundsToAssign = totalWoundsToAssign;
         }
 
+        /// <summary>
+        /// Single-model assignment (Takedown's "resolve as a unit of [1]"): the only recipient is
+        /// <paramref name="singleModel"/>, so all assigned wounds funnel to it with no carry-over to
+        /// the rest of the unit. Callers must cap <paramref name="totalWoundsToAssign"/> at the model's
+        /// remaining wounds before constructing (AutoFill throws if it can't place every wound).
+        /// </summary>
+        public AssignWoundsResults(DataBinding<ModelData> singleModel, float totalWoundsToAssign)
+        {
+            PendingWounds = new List<PendingWounds> { new PendingWounds(singleModel) };
+            TotalWoundsToAssign = totalWoundsToAssign;
+        }
+
         public bool IsFinishedAssigning => TotalAssignedWounds == TotalWoundsToAssign;
 
 

@@ -24,7 +24,7 @@ public static class CoreRuleCatalog
     {
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
         Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Vanguard, Scout, Ambush, Thrust,
-        Blast,
+        Blast, Takedown,
     };
 
     /// <summary>
@@ -181,6 +181,26 @@ public static class CoreRuleCatalog
             new HookEntry(EHookID.Shooting_OnHitRollComplete,
                 new Condition.Always(),
                 new Effect.MultiplyHits(new ValueSource.Arg(0)),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    // Targets-selected marker (BuildTargetListStage, shooting) -------------------
+
+    /// <summary>
+    /// Takedown: the shooter may pick a single model in the target unit and resolve the attack against
+    /// just it ("a unit of [1]") — all wounds funnel to that model with no carry-over. A passive rule at
+    /// <see cref="EHookID.Shooting_OnShootTargetsSelected"/> that queues
+    /// <see cref="RuleOperation.TargetIndividualModel"/>; BuildTargetListStage reads it, asks the
+    /// attacker to pick the model, and AssignWoundsStage confines the wounds. The rulebook's
+    /// "ignore intervening LoS/cover" facet is deferred (see Appendix C).
+    /// </summary>
+    public static SpecialRuleDefinition Takedown { get; } = new SpecialRuleDefinition("Takedown",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnShootTargetsSelected,
+                new Condition.Always(),
+                new Effect.TargetIndividualModel(),
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>());

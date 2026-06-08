@@ -82,9 +82,27 @@ namespace FDG.Stages
                 totalWoundsDealt -= ignored;
             }
 
+            // #042 Takedown: if the attack was re-scoped to a single model (IndividualTargetResult,
+            // produced by BuildTargetListStage), all wounds funnel to that one model — capped at its
+            // remaining wounds, no carry-over to the rest of the unit ("resolve as a unit of [1]"). This
+            // bypasses the normal allocation branches (which spread across, or kill, the whole unit).
+            if (metaData.QueryForResult(out IndividualTargetResult individualTarget))
+            {
+                float modelRemaining = individualTarget.Model.GetValue().RemainingWoundsBinding.GetValue();
+                float confined = Math.Min(totalWoundsDealt, modelRemaining);
+                AssignWoundsResults takedownResults = new AssignWoundsResults(individualTarget.Model, confined);
+                takedownResults.AutoFill();
+                if (confined > 0f)
+                {
+                    GameContext.Log($"Takedown assigned {confined} wound(s) to the single targeted model.");
+                }
+                onFinished(takedownResults);
+                return;
+            }
+
             float defenderRemainingWounds = metaData.DefendingUnit.RemainingWounds();
 
-            //If the opponent doesn't have to provide a choice, like if the unit will die or there's just one model, 
+            //If the opponent doesn't have to provide a choice, like if the unit will die or there's just one model,
             //then just do it automatically.
             AssignWoundsResults assignWoundsResults;
 

@@ -348,7 +348,13 @@ public abstract record RuleOperation
     /// Re-scope the in-flight attack to a single chosen model in the target unit.
     /// Resolution of <see cref="Effect.TargetIndividualModel"/> (Takedown).
     /// </summary>
-    public sealed record TargetIndividualModel : RuleOperation;
+    public sealed record TargetIndividualModel : RuleOperation
+    {
+        public override string Describe()
+        {
+            return "re-scoped the attack to a single target model";
+        }
+    }
 
     /// <summary>
     /// Limit the bearer's declarable actions to <see cref="Allowed"/>. Resolution of

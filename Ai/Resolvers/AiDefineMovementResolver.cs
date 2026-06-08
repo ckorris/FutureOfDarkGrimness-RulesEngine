@@ -1,5 +1,7 @@
+using FDG.Data;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
+using FDG.Stages;
 
 namespace FDG.Ai.Resolvers
 {
@@ -34,8 +36,14 @@ namespace FDG.Ai.Resolvers
             if (enemyPositions.Count == 0)
                 return Task.FromResult(StayInPlace(request));
 
-            float cx = unit.ModelBindings.Average(mb => mb.GetValue().Position.x);
-            float cz = unit.ModelBindings.Average(mb => mb.GetValue().Position.z);
+            // Move (and re-form) only the living models. Dead ones leave holes in the formation and stay
+            // put — they're omitted from the move entries, so the cohesion check only sees living models.
+            var living = unit.ModelBindings.Where(mb => mb.GetValue().GetIsAlive()).ToList();
+            if (living.Count == 0)
+                return Task.FromResult(StayInPlace(request));
+
+            float cx = living.Average(mb => mb.GetValue().Position.x);
+            float cz = living.Average(mb => mb.GetValue().Position.z);
 
             Position nearest = enemyPositions
                 .OrderBy(p => Dist(p.x, p.z, cx, cz))
@@ -72,14 +80,21 @@ namespace FDG.Ai.Resolvers
             if (crossesDifficult)
                 step = Math.Min(step, GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES - 0.001f);
 
-            var entries = unit.ModelBindings.Select(mb =>
+            // A single living model has no cohesion to maintain — just step it toward the enemy.
+            if (living.Count == 1)
             {
-                var m = mb.GetValue();
-                var newPos = new Position(m.Position.x + ndx * step, m.Position.z + ndz * step);
-                return new ModelMoveEntry(mb, new List<Position> { newPos });
-            }).ToList();
+                var only = living[0].GetValue();
+                var dest = new Position(only.Position.x + ndx * step, only.Position.z + ndz * step);
+                return Task.FromResult(new List<ModelMoveEntry>
+                    { new ModelMoveEntry(living[0], new List<Position> { dest }) });
+            }
 
-            return Task.FromResult(entries);
+            // Re-pack the living models into a tight cohesive grid at the destination. A rigid translate
+            // would preserve any hole a casualty left in the formation (neighbours of a dead model end up
+            // >1" apart), so the move would be rejected for breaking cohesion. The grid always satisfies
+            // the 1" rule. Clamp the advance so each model's re-pack move stays within budget.
+            step = CohesiveFormation.ClampRepackStep(living, cx, cz, step, request.MaxDistanceInches);
+            return Task.FromResult(CohesiveFormation.PackGrid(living, cx + ndx * step, cz + ndz * step));
         }
 
         private List<Position> GetLiveEnemyPositions()

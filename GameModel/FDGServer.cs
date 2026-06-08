@@ -200,13 +200,30 @@ namespace FDG.GameModel
 
         private async Task LaunchStateMachineOnceReady(StateMachine<IGameContext> stateMachine, IGameContext context)
         {
+            // Yield back to the constructor immediately. WaitUntilAllSlotsReady + the resolvers can all
+            // complete synchronously (e.g. headless with piped/AI input), which would otherwise run the
+            // entire game inside the constructor — before callers (CliApp) can subscribe to OnGameEnded,
+            // so the game-ended signal would be missed and the app would hang post-game. Yielding ensures
+            // construction returns first and the game runs on a continuation.
+            await Task.Yield();
+
             //TODO: Wait for all clients to indicate that they are connected and ready.
             //Await something.
             Debug.WriteLine("Awaiting players to be ready.");
             await _playerSlotManager.WaitUntilAllSlotsReady(); //Half a second. At least lets us test before implementing this.
             Debug.WriteLine("All players are ready. Launching stage machine.");
 
-            _ = stateMachine.Enter(context);
+            try
+            {
+                await stateMachine.Enter(context);
+            }
+            catch (Exception ex)
+            {
+                // The state machine runs detached, so an unhandled fault would otherwise be unobserved
+                // (silent hang) — surface it and end the game so the app can exit cleanly.
+                Console.WriteLine($"[GAME ERROR] State machine faulted: {ex}");
+                OnGameEnded?.Invoke($"Game error: {ex.Message}");
+            }
         }
 
         private async void LaunchSingleTurnTester(GameContext gameContext)

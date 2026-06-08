@@ -13,6 +13,7 @@ namespace FDG
 {
     public class ModelData : IModel
     {
+        public ModelID ID { get; private set; }
 
         [JsonProperty] private TokenContainer _tokens = new TokenContainer();
 
@@ -103,9 +104,11 @@ namespace FDG
         #endregion
 
         [JsonConstructor]
-        public ModelData(float baseRadiusInches, DataBinding<float> remainingWoundsBinding, DataBinding<Position> positionBinding, 
-            List<Weapon> weapons, List<SpecialRule> specialRules)
+        public ModelData(float baseRadiusInches, DataBinding<float> remainingWoundsBinding, DataBinding<Position> positionBinding,
+            List<Weapon> weapons, List<SpecialRule> specialRules, ModelID? id = null)
         {
+            ID = id ?? new ModelID(System.Guid.NewGuid());
+
             BaseRadiusInches = baseRadiusInches;
             RemainingWoundsBinding = remainingWoundsBinding;
             PositionBinding = positionBinding;
@@ -117,6 +120,8 @@ namespace FDG
         public ModelData(float baseRadiusInches, List<Weapon> weapons, List<SpecialRule> specialRules, Position initialPosition,
             IReadWriteableGameDataStore gameDataStore)
         {
+            ID = new ModelID(System.Guid.NewGuid());
+
             BaseRadiusInches = baseRadiusInches;
             TotalWounds = CalculateTotalWounds(specialRules);
 
@@ -132,6 +137,8 @@ namespace FDG
 
         public ModelData(IModelTemplate modelToCopy, IReadWriteableGameDataStore gameDataStore)
         {
+            ID = new ModelID(System.Guid.NewGuid());
+
             BaseRadiusInches = modelToCopy.BaseRadiusInches;
             TotalWounds = CalculateTotalWounds(modelToCopy.SpecialRules);
 

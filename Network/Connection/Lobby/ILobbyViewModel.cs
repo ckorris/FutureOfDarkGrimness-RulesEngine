@@ -9,6 +9,19 @@ namespace FDG.Network.Connection.Lobby
         bool HasHostPrivileges { get; }
 
         /// <summary>
+        /// True when this side owns the authoritative game state and can produce a save (host only;
+        /// see work item #054 for client-initiated saving).
+        /// </summary>
+        bool CanSaveGame { get; }
+
+        /// <summary>
+        /// Serializes the current in-progress game to a save string (see
+        /// <see cref="SaveLoad.GameSaveSerializer"/>), or null if this side can't save. The caller
+        /// writes it to a <c>.fdgsave</c> file.
+        /// </summary>
+        string? SaveGameToJson();
+
+        /// <summary>
         /// The first parameter is the instance that you can use to bind your entire game view to.
         /// The second is a request to provide a reference to a <see cref="StageResolution.StageResolverRegistry"/>, 
         /// and you must fulfill this action before you can play the game.

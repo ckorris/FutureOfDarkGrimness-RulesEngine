@@ -17,6 +17,11 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
     {
         public bool HasHostPrivileges => false;
 
+        // Clients don't hold the authoritative store; saving from a client is #054 (host produces it).
+        public bool CanSaveGame => false;
+
+        public string? SaveGameToJson() => null;
+
         public IObservable<string> ServerNameObservable => _serverName;
 
         public IObservable<LobbyChatMessage> ChatMessagesObservable => _chatMessagesSubject;

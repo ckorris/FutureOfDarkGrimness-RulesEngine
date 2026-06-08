@@ -13,6 +13,8 @@ namespace FDG.SaveLoad
         /// <summary>File extension for saved games (no leading period), mirroring `fdgarmy`/`fdglayout`.</summary>
         public const string EXTENSION_NO_PERIOD = "fdgsave";
 
+        public const string EXTENSION_WITH_PERIOD = "." + EXTENSION_NO_PERIOD;
+
         public int Version { get; set; }
 
         public List<SavedTypeEntry> TypeMap { get; set; } = new List<SavedTypeEntry>();

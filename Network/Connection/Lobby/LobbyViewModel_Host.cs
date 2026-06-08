@@ -21,6 +21,15 @@ namespace FDG.Network.Connection
     {
         public bool HasHostPrivileges => true;
 
+        public bool CanSaveGame => true;
+
+        // The host owns the authoritative store, so it serializes directly. Called from the UI thread
+        // while the engine runs on another thread; in practice the player triggers a save while the
+        // engine is awaiting their input (quiescent), and the snapshot iterates fixed-capacity stores
+        // without resizing, so a torn read is unlikely. (#054 will move saving to a request the host
+        // services at a guaranteed-safe point.)
+        public string? SaveGameToJson() => GameSaveSerializer.Save((GameDataStore)_gameDataStore);
+
         public IObservable<string> ServerNameObservable => _serverName;
 
         public IObservable<LobbyChatMessage> ChatMessagesObservable => _chatMessagesSubject;

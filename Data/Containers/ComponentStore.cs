@@ -5,6 +5,8 @@ namespace FDG.Data
 {
     public interface IComponentStore
     {
+        int Capacity { get; }
+
         bool IsValid(DataReference reference, out EInvalidReason reason);
 
         void CreateFromReference(DataReference existingReference, object initialValue);
@@ -35,6 +37,8 @@ namespace FDG.Data
         private TypeID _typeID;
 
         private Dictionary<int, DataBinding<T>> _bindings;
+
+        public int Capacity => _capacity;
 
         public ComponentStore(int capacity, TypeID typeID)
         {

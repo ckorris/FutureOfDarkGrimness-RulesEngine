@@ -30,8 +30,27 @@ namespace FDG.Data
         /// <param name="typeMap">List of all types that should be registered, in the order of their corresponding IDs.</param>
         public static GameDataStore CreateFromTypeMap(List<Type> typeMap)
         {
-            //ACTUALLY don't use, I want to make a builder class.
-            throw new NotImplementedException();
+            // No per-type capacities available, so size every store to the default. Adequate when
+            // the data is known to fit; prefer the TypeAndCapacity overload when loading a save,
+            // where the original capacities are recorded (component stores do not grow).
+            List<TypeAndCapacity> withCapacities = new List<TypeAndCapacity>(typeMap.Count);
+            foreach (Type type in typeMap)
+            {
+                withCapacities.Add(new TypeAndCapacity(type, DEFAULT_COMPONENT_STORE_CAPACITY));
+            }
+
+            return new GameDataStore(withCapacities);
+        }
+
+        /// <summary>
+        /// Creates a store whose type map (and per-type capacities) exactly match those captured by
+        /// <see cref="GetTypeMapWithCapacities"/>. Used when loading a save: the recorded capacities
+        /// guarantee every saved <see cref="DataReference"/> index fits, since component stores are
+        /// fixed-size.
+        /// </summary>
+        public static GameDataStore CreateFromTypeMap(List<TypeAndCapacity> typeMap)
+        {
+            return new GameDataStore(typeMap);
         }
 
         private GameDataStore()
@@ -75,6 +94,26 @@ namespace FDG.Data
         public List<Type> GetTypeMap()
         {
             return new List<Type>(_registeredTypes);
+        }
+
+        /// <summary>
+        /// The full type map paired with each type's component-store capacity, in TypeID order.
+        /// Sufficient to recreate an identically-shaped store via
+        /// <see cref="CreateFromTypeMap(List{TypeAndCapacity})"/>. The placeholder type at index 0
+        /// has no component store and reports capacity 0.
+        /// </summary>
+        public List<TypeAndCapacity> GetTypeMapWithCapacities()
+        {
+            List<TypeAndCapacity> result = new List<TypeAndCapacity>(_registeredTypes.Count);
+            for (int i = 0; i < _registeredTypes.Count; i++)
+            {
+                int capacity = _componentStores.TryGetValue(new TypeID(i), out IComponentStore store)
+                    ? store.Capacity
+                    : 0;
+                result.Add(new TypeAndCapacity(_registeredTypes[i], capacity));
+            }
+
+            return result;
         }
 
         public JsonSerializerSettings GetJsonSettings()

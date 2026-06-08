@@ -40,6 +40,16 @@ namespace FDG
         public void SetFirstDeploymentRollOrder(List<ITeam> firstDeploymentRollWinner);
 
         public void NotifyGameEnded(string result);
+
+        /// <summary>
+        /// When resuming a loaded game, the flow-state snapshot to rebuild the first round from;
+        /// null for a fresh game. Consumed once (see <see cref="ConsumeResumeProgress"/>) so later
+        /// rounds run normally. Defaulted so non-resuming contexts (e.g. tests) needn't implement it.
+        /// </summary>
+        public GameProgressData? ResumeProgress => null;
+
+        /// <summary>Clears <see cref="ResumeProgress"/> after the resumed round has been rebuilt.</summary>
+        public void ConsumeResumeProgress() { }
     }
 
     public class GameContext : IGameContext
@@ -64,6 +74,8 @@ namespace FDG
 
         public List<ITeam>? FirstDeploymentRollOrder { get; private set; } = null;
 
+        public GameProgressData? ResumeProgress { get; private set; }
+
         public event Action<string>? OnGameEnded;
 
         public GameContext(ITextOutput textOutput, IDiceRoller diceRoller,
@@ -71,7 +83,8 @@ namespace FDG
                 TableState tableState,
                 IReadWriteableGameDataStore gameDataStore,
                 IPresenter presenter,
-                GameSettings settings)
+                GameSettings settings,
+                GameProgressData? resumeProgress = null)
         {
             TextOutput = textOutput;
             DiceRoller = diceRoller;
@@ -81,7 +94,10 @@ namespace FDG
             GameDataStore = gameDataStore;
             Presenter = presenter;
             Settings = settings;
+            ResumeProgress = resumeProgress;
         }
+
+        public void ConsumeResumeProgress() => ResumeProgress = null;
 
         public void SetFirstDeploymentRollOrder(List<ITeam> firstDeploymentRollWinner)
         {

@@ -1,5 +1,6 @@
 ﻿using FDG.EngineInterface;
 using FDG.Network.Messages;
+using FDG.Players;
 using FDG.SaveLoad;
 
 namespace FDG.Network.Connection.Lobby
@@ -7,6 +8,19 @@ namespace FDG.Network.Connection.Lobby
     public interface ILobbyViewModel : IDisposable
     {
         bool HasHostPrivileges { get; }
+
+        /// <summary>
+        /// True when this side owns the authoritative game state and can produce a save (host only;
+        /// see work item #054 for client-initiated saving).
+        /// </summary>
+        bool CanSaveGame { get; }
+
+        /// <summary>
+        /// Serializes the current in-progress game to a save string (see
+        /// <see cref="SaveLoad.GameSaveSerializer"/>), or null if this side can't save. The caller
+        /// writes it to a <c>.fdgsave</c> file.
+        /// </summary>
+        string? SaveGameToJson();
 
         /// <summary>
         /// The first parameter is the instance that you can use to bind your entire game view to.
@@ -69,5 +83,14 @@ namespace FDG.Network.Connection.Lobby
         void SetTurnStyle(ETurnStyle turnStyle);
 
         bool TryLaunchGame(out string? failReason);
+
+        /// <summary>True when this lobby was created from a saved game and resumes instead of starting fresh.</summary>
+        bool IsResumeMode { get; }
+
+        /// <summary>Re-crews a saved slot (by its preserved PlayerID) before resuming. No-op when not host/resume.</summary>
+        void SetSavedSlotPlayerType(PlayerID slotPlayerID, EPlayerType playerType);
+
+        /// <summary>Resumes the loaded game (host only). Returns false with a reason if this isn't a resume lobby.</summary>
+        bool TryResumeGame(out string? failReason);
     }
 }

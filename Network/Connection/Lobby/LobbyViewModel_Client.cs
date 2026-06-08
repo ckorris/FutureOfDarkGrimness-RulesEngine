@@ -6,6 +6,7 @@ using FDG.MessageBus;
 using FDG.Network.Connection;
 using FDG.Network.Connection.Lobby;
 using FDG.Network.Messages;
+using FDG.Players;
 using FDG.SaveLoad;
 using FutureOfDarkGrimness.Network.Messages;
 using System.Diagnostics;
@@ -16,6 +17,22 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
     public class LobbyViewModel_Client : ILobbyViewModel
     {
         public bool HasHostPrivileges => false;
+
+        // Clients don't hold the authoritative store; saving from a client is #054 (host produces it).
+        public bool CanSaveGame => false;
+
+        public string? SaveGameToJson() => null;
+
+        // Only the host can load/resume a saved game.
+        public bool IsResumeMode => false;
+
+        public void SetSavedSlotPlayerType(PlayerID slotPlayerID, EPlayerType playerType) { }
+
+        public bool TryResumeGame(out string? failReason)
+        {
+            failReason = "Only the host can resume a saved game.";
+            return false;
+        }
 
         public IObservable<string> ServerNameObservable => _serverName;
 

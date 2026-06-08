@@ -6,6 +6,8 @@ namespace FDG.Data
 {
     public interface IReadableGameDataStore
     {
+        bool IsTypeAssigned<T>();
+
         T GetValue<T>(DataReference reference);
 
         string GetValueAsJson<T>(DataReference reference);

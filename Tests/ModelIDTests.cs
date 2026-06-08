@@ -38,6 +38,7 @@ namespace FDG.Tests
 
             var model = new ModelData(
                 baseRadiusInches: 0.75f,
+                totalWounds: 1,
                 remainingWoundsBinding: store.GetDataBinding<float>(woundsRef),
                 positionBinding: store.GetDataBinding<Position>(positionRef),
                 weapons: new List<Weapon>(),

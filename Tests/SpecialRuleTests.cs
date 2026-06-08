@@ -561,17 +561,22 @@ namespace FDG.Tests
                 op => op.ActionType == EActionType.Advance && op.DistanceInches == -2f);
         }
 
-        // Thrust (core) — when charging, +1 to hit and AP(+1) (modelled as save -1).
+        // Thrust (core) — when charging in melee, +1 to hit and AP(+1) (modelled as save -1). The
+        // two facets ride existing sinks at different shared shoot/melee hooks: +1 to hit at
+        // OnHitRollModifier, AP at OnHitRollComplete, each gated on melee + charging. Mirrors
+        // CoreRuleCatalog.Thrust.
         [Test]
-        public void Thrust_OnCharge_AddsHitAndAP()
+        public void Thrust_WhenChargingInMelee_AddsHitAndAP()
         {
             var harness = new TestRuleHarness();
             harness.Register(new SpecialRuleDefinition("Thrust",
                 new[]
                 {
-                    new HookEntry(EHookID.Melee_OnChargeContact, new Condition.Always(),
+                    new HookEntry(EHookID.Shooting_OnHitRollModifier,
+                        new Condition.And(new Condition.IsMelee(), new Condition.IsCharging()),
                         new Effect.RollModifier(ERollKind.Hit, Delta: +1), ELifetime.ThisAttack),
-                    new HookEntry(EHookID.Melee_OnChargeContact, new Condition.Always(),
+                    new HookEntry(EHookID.Shooting_OnHitRollComplete,
+                        new Condition.And(new Condition.IsMelee(), new Condition.IsCharging()),
                         new Effect.RollModifier(ERollKind.Save, Delta: -1), ELifetime.ThisAttack),
                 },
                 NoAbilities));
@@ -579,10 +584,13 @@ namespace FDG.Tests
             IUnit attacker = harness.BuildUnit("P1", modelCount: 3, "Thrust");
             IUnit defender = harness.BuildUnit("P2", modelCount: 5);
 
-            var ops = harness.Evaluate(attacker, ERuleSeat.Actor, new ChargeContactContext(attacker, defender));
+            var hitOps = harness.Evaluate(attacker, ERuleSeat.Actor,
+                new HitRollModifierContext(attacker, defender, 1f, IsMelee: true, IsCharging: true));
+            hitOps.HasOperation<RuleOperation.ApplyRollModifier>(op => op.Roll == ERollKind.Hit && op.Delta == +1);
 
-            ops.HasOperation<RuleOperation.ApplyRollModifier>(op => op.Roll == ERollKind.Hit && op.Delta == +1);
-            ops.HasOperation<RuleOperation.ApplyRollModifier>(op => op.Roll == ERollKind.Save && op.Delta == -1);
+            var saveOps = harness.Evaluate(attacker, ERuleSeat.Actor,
+                new HitRollCompleteContext(attacker, defender, TestDice.Faces(3), IsMelee: true, IsCharging: true));
+            saveOps.HasOperation<RuleOperation.ApplyRollModifier>(op => op.Roll == ERollKind.Save && op.Delta == -1);
         }
 
         // Indirect (core) — -1 to hit when shooting after moving.

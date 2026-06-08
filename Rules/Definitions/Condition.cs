@@ -170,4 +170,14 @@ public abstract record Condition
     {
         protected override bool EvaluateCore(IHasCombatKind context) => context.IsMelee;
     }
+
+    /// <summary>
+    /// True when the attacking unit is charging (resolving the melee it initiated this
+    /// activation, not striking back). Gates charge-only rules (Thrust) on hit/save hooks
+    /// shared by the charger's swing and the defender's strike-back.
+    /// </summary>
+    public sealed record IsCharging : CapabilityCondition<IHasCharging>
+    {
+        protected override bool EvaluateCore(IHasCharging context) => context.IsCharging;
+    }
 }

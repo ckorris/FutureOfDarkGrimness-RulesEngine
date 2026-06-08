@@ -22,8 +22,11 @@ namespace FDG.Stages
 
         protected override ICombatActionContext GetNewChildContext(IUnitActionContext contextSelf)
         {
+            // Melee is only ever entered via a Charge action, so the activating unit's melee swing
+            // is a charge — isCharging:true drives charge-only rules (Thrust). The defender's
+            // strike-back (StrikeBackStage) builds its context with isCharging:false.
             return new CombatActionContext(contextSelf.GameContext, contextSelf.ActivatingUnit,
-                isMelee: true, attackerMoved: contextSelf.HasMoved);
+                isMelee: true, attackerMoved: contextSelf.HasMoved, isCharging: true);
         }
 
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<ICombatActionContext> startingChild)

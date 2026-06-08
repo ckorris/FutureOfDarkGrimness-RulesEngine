@@ -23,7 +23,7 @@ public static class CoreRuleCatalog
     public static IReadOnlyList<SpecialRuleDefinition> All => new[]
     {
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
-        Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Vanguard, Scout, Ambush,
+        Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Vanguard, Scout, Ambush, Thrust,
     };
 
     /// <summary>
@@ -163,6 +163,29 @@ public static class CoreRuleCatalog
                 new Condition.And(new Condition.IsMelee(),
                                   new Condition.UnmodifiedRollEquals(6)),
                 new Effect.AddExtraHit(OnRollValue: 6),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    // Melee charge rules on the shared hit + save sinks --------------------------
+
+    /// <summary>
+    /// Thrust: when charging in melee, +1 to hit and AP(+1). Both ride existing sinks — the +1
+    /// to hit folds through the hit-roll-modifier sink at <see cref="EHookID.Shooting_OnHitRollModifier"/>
+    /// (shared shoot/melee hook), and AP(+1) is modelled as a -1 save modifier folded at
+    /// <see cref="EHookID.Shooting_OnHitRollComplete"/> and carried to the save stage (same machinery
+    /// as Rending). The melee + charging gate distinguishes the charger's swing from a strike-back.
+    /// </summary>
+    public static SpecialRuleDefinition Thrust { get; } = new SpecialRuleDefinition("Thrust",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnHitRollModifier,
+                new Condition.And(new Condition.IsMelee(), new Condition.IsCharging()),
+                new Effect.RollModifier(ERollKind.Hit, Delta: +1),
+                ELifetime.ThisAttack),
+            new HookEntry(EHookID.Shooting_OnHitRollComplete,
+                new Condition.And(new Condition.IsMelee(), new Condition.IsCharging()),
+                new Effect.RollModifier(ERollKind.Save, Delta: -1),
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>());

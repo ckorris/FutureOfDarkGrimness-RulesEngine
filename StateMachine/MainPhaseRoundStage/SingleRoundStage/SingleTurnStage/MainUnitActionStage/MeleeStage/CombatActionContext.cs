@@ -96,14 +96,21 @@ namespace FDG.Stages
         // so melee-only hit-roll rules (Furious) can gate on it; the hit-roll stages are shared.
         private readonly bool _isMelee;
 
+        // Whether the attacking unit is charging (the charger's swing, not a strike-back).
+        // Melee is only ever entered via Charge, so the charger's swing is charging; StrikeBackStage
+        // builds its role-swapped context with isCharging:false. Carried into each CombatMetadata
+        // so charge-only rules (Thrust) can gate on it.
+        private readonly bool _isCharging;
+
 
         public CombatActionContext(IGameContext gameContext, DataBinding<UnitData> attackingUnit, bool isMelee,
-            bool attackerMoved = false)
+            bool attackerMoved = false, bool isCharging = false)
         {
             GameContext = gameContext;
             AttackingUnit = attackingUnit;
             _attackerMoved = attackerMoved;
             _isMelee = isMelee;
+            _isCharging = isCharging;
             if(isMelee)
             {
                 _availableWeapons = GetTypeSortedWeapons(attackingUnit.GetValue().GetMeleeWeapons());
@@ -161,7 +168,7 @@ namespace FDG.Stages
             }
 
             CombatMetadata meleeCombatMetadata = new CombatMetadata(gameContext, AttackingUnit,
-                DefendingUnit, ShootingWeaponType, ShootingWeaponCount.Value, _attackerMoved, _isMelee);
+                DefendingUnit, ShootingWeaponType, ShootingWeaponCount.Value, _attackerMoved, _isMelee, _isCharging);
 
             // Don't clear DefendingUnit — OfferStrikeBackStage needs it after this call.
             ShootingWeaponType = null;

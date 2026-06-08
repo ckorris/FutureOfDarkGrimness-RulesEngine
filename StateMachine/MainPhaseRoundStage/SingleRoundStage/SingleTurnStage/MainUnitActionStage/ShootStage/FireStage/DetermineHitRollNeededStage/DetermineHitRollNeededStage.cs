@@ -25,7 +25,8 @@ namespace FDG.Stages
             float distance = UnitCompareUtilities.MinDistanceBetweenUnits(attacker, defender, out _, out _, includeVertical:true);
 
             IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
-                new HitRollModifierContext(attacker, defender, distance, AttackerMoved: metaData.AttackerMoved),
+                new HitRollModifierContext(attacker, defender, distance, AttackerMoved: metaData.AttackerMoved,
+                    IsMelee: metaData.IsMelee, IsCharging: metaData.IsCharging),
                 (attacker, ERuleSeat.Actor), (defender, ERuleSeat.Subject));
 
             // #042 quality-floor rules (Reliable) set the BASE quality before per-roll modifiers:

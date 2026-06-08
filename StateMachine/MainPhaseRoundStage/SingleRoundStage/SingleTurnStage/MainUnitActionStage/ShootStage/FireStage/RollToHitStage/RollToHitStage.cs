@@ -51,7 +51,8 @@ namespace FDG.Stages
             float distance = UnitCompareUtilities.MinDistanceBetweenUnits(attacker, defender, out _, out _, includeVertical: true);
 
             IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
-                new HitRollCompleteContext(attacker, defender, rollToHitResults, distance, metaData.IsMelee),
+                new HitRollCompleteContext(attacker, defender, rollToHitResults, distance, metaData.IsMelee,
+                    metaData.IsCharging),
                 (attacker, ERuleSeat.Actor));
             HitInjectionSink hitInjection = new HitInjectionSink();
             hitInjection.ApplyFrom(operations);

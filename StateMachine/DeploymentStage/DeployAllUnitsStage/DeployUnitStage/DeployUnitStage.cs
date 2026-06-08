@@ -1,6 +1,9 @@
 ﻿
 
 using FDG.Data;
+using FDG.Rules.Definitions;
+using FDG.Rules.Dispatch;
+using FDG.Rules.Dispatch.Contexts;
 using FDG.StageResolution.Requests;
 
 namespace FDG.Stages
@@ -49,9 +52,42 @@ namespace FDG.Stages
                 entry.Binding.GetValue().SetPosition(entry.Position);
             }
 
+            await OfferPostDeploymentAbilities(deployingUnit, currentPlayerID);
+
             context.CurrentDeployingUnit = null; //Cleanup.
 
             OnFinish.Activate(context);
+        }
+
+        /// <summary>
+        /// Fires the Deployment_OnUnitDeployed "when" for the just-deployed unit and offers any
+        /// activated abilities triggered there (Vanguard's reposition). For each offer the owning
+        /// player accepts, the resolved operation queue is enacted through the engine's imperative-op
+        /// executor — the movement subsystem, for a triggered move. First production use of the
+        /// GatherOffers / ResolveAbility / OperationExecutor chain.
+        /// </summary>
+        private async Task OfferPostDeploymentAbilities(UnitData deployedUnit, PlayerID owningPlayer)
+        {
+            var deployedContext = new UnitDeployedContext(deployedUnit);
+
+            foreach (AbilityOffer offer in GameContext.RuleEvaluator.GatherOffers(deployedContext))
+            {
+                var question = new YesNoRequest(owningPlayer, $"Use {offer.RuleName} on {deployedUnit.Name}?");
+                bool accepted = await GameContext.PlayerRequester
+                    .RequestDecision<YesNoRequest, bool>(question);
+
+                if (!accepted) continue;
+
+                GameContext.Log($"{deployedUnit.Name} used {offer.RuleName}.");
+
+                // Corpus deployment abilities are all Self-targeted (Vanguard) — the bearer is the
+                // target. Foe/Friend target selection (none at this hook yet) lands with the next
+                // activated-ability slice.
+                IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator
+                    .ResolveAbility(offer, new[] { (IUnit)deployedUnit });
+
+                await OperationExecutor.Execute(ops, new GameOperationServices(GameContext));
+            }
         }
     }
 }

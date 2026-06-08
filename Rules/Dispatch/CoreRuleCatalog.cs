@@ -23,7 +23,7 @@ public static class CoreRuleCatalog
     public static IReadOnlyList<SpecialRuleDefinition> All => new[]
     {
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
-        Deadly, Regeneration, Unstoppable, Tough, Rending, Bane,
+        Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Vanguard,
     };
 
     /// <summary>
@@ -259,4 +259,22 @@ public static class CoreRuleCatalog
                 ELifetime.UntilEndOfGame),
         },
         Array.Empty<ActivatedAbility>());
+
+    // Triggered-move primitive (DeployUnitStage offer -> MovementExecutor) --------
+
+    /// <summary>
+    /// Vanguard: once per game, after this unit deploys it may immediately move up to 9".
+    /// An activated ability offered at <see cref="EHookID.Deployment_OnUnitDeployed"/>; accepting
+    /// it queues an <see cref="RuleOperation.InvokeTriggeredMove"/> the engine enacts via the
+    /// movement subsystem.
+    /// </summary>
+    public static SpecialRuleDefinition Vanguard { get; } = new SpecialRuleDefinition("Vanguard",
+        Array.Empty<HookEntry>(),
+        new[]
+        {
+            new ActivatedAbility(EHookID.Deployment_OnUnitDeployed, new Cost.OncePerGame(),
+                new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
+                new Effect.TriggeredMove(MaxInches: 9f, IsOptional: true),
+                new Condition.Always()),
+        });
 }

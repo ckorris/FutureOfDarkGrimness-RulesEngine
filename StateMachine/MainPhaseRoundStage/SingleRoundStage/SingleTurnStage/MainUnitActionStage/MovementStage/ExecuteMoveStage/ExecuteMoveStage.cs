@@ -19,21 +19,10 @@ namespace FDG.Stages
 
             if (gotPaths == false)
             {
-                throw new InvalidOperationException($"Entered {nameof(ExecuteMoveStage)} before paths were set."); 
+                throw new InvalidOperationException($"Entered {nameof(ExecuteMoveStage)} before paths were set.");
             }
 
-            foreach(ModelMoveEntry modelEntry in paths)
-            {
-                if(modelEntry.Positions.Count > 0)
-                {
-                    //Setting each position may be redundant for awhile, but we might add some kind of animation
-                    //where the position updates queue up. So, we'll do this anyway.
-                    for (int i = 0; i < modelEntry.Positions.Count; i++)
-                    {
-                        modelEntry.Model.GetValue().SetPosition(modelEntry.Positions[i]);
-                    }
-                }
-            }
+            MovementExecutor.CommitPositions(paths);
 
             OnMoveExecuted.Activate(context);
         }

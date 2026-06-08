@@ -22,14 +22,14 @@ namespace FDG.Stages
         protected override async Task RunStage(ICombatMetadata metaData, Action<RollToHitResults> onFinished)
         {
             // Show the attack — tracers (ranged) or a clash (melee) — before the dice resolve it.
-            List<Position> attackerPositions = AlivePlacedPositions(metaData.AttackingUnit);
-            List<Position> targetPositions = AlivePlacedPositions(metaData.DefendingUnit);
+            // Fire from the actual weapon-carrying models so a mixed unit shows the right source.
+            List<Position> attackerPositions = AttackBeatPositions.FiringModels(metaData.AttackingUnit, metaData.WeaponType);
+            List<Position> targetPositions = AttackBeatPositions.AlivePlaced(metaData.DefendingUnit);
             if (attackerPositions.Count > 0 && targetPositions.Count > 0)
             {
-                // WeaponCount weapons fire together each volley; the weapon's Attacks is the volley count.
+                // Each volley fires every weapon at once; the weapon's Attacks is the volley count.
                 await GameContext.Presenter.Present(new AttackBeat(metaData.IsMelee,
                     attackerPositions, targetPositions,
-                    shotsPerVolley: metaData.WeaponCount,
                     volleyCount: metaData.WeaponType.Attacks,
                     armorPenetration: metaData.WeaponType.ArmorPenetration));
             }
@@ -90,21 +90,6 @@ namespace FDG.Stages
             results.SaveModifier = saveModifiers.Net(ERollKind.Save);
 
             onFinished(results);
-        }
-
-        // Alive, on-table model positions for a unit. Models held in reserve (Ambush) sit at the
-        // origin (0,0,0) and are excluded, matching the renderer/AI "unplaced" convention.
-        private static List<Position> AlivePlacedPositions(DataBinding<UnitData> unit)
-        {
-            var positions = new List<Position>();
-            foreach (IModel model in unit.GetValue().Models)
-            {
-                if (!model.GetIsAlive()) continue;
-                Position pos = model.Position;
-                if (pos.x == 0f && pos.z == 0f) continue;
-                positions.Add(pos);
-            }
-            return positions;
         }
 
         // Bridges a scalar extra-hit count into the IDiceResults the save flow consumes. Injected

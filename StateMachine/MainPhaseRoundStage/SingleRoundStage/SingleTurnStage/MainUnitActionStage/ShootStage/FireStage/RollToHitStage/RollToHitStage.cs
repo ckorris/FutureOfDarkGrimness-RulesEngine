@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using FDG.Data;
 using FDG.Presentation;
 using FDG.Presentation.Beats;
 using FDG.Rules.Definitions;
@@ -20,6 +21,15 @@ namespace FDG.Stages
 
         protected override async Task RunStage(ICombatMetadata metaData, Action<RollToHitResults> onFinished)
         {
+            // Show the attack — tracers (ranged) or a clash (melee) — before the dice resolve it.
+            List<Position> attackerPositions = AlivePlacedPositions(metaData.AttackingUnit);
+            List<Position> targetPositions = AlivePlacedPositions(metaData.DefendingUnit);
+            if (attackerPositions.Count > 0 && targetPositions.Count > 0)
+            {
+                await GameContext.Presenter.Present(
+                    new AttackBeat(metaData.IsMelee, attackerPositions, targetPositions));
+            }
+
             //TODO: Calculate attack count in separate stage, it may need its own mods.
             float attacks = metaData.WeaponType.Attacks * metaData.WeaponCount;
 
@@ -76,6 +86,21 @@ namespace FDG.Stages
             results.SaveModifier = saveModifiers.Net(ERollKind.Save);
 
             onFinished(results);
+        }
+
+        // Alive, on-table model positions for a unit. Models held in reserve (Ambush) sit at the
+        // origin (0,0,0) and are excluded, matching the renderer/AI "unplaced" convention.
+        private static List<Position> AlivePlacedPositions(DataBinding<UnitData> unit)
+        {
+            var positions = new List<Position>();
+            foreach (IModel model in unit.GetValue().Models)
+            {
+                if (!model.GetIsAlive()) continue;
+                Position pos = model.Position;
+                if (pos.x == 0f && pos.z == 0f) continue;
+                positions.Add(pos);
+            }
+            return positions;
         }
 
         // Bridges a scalar extra-hit count into the IDiceResults the save flow consumes. Injected

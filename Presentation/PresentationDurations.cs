@@ -13,15 +13,16 @@ namespace FDG.Presentation
         public static readonly TimeSpan ModelDeath = TimeSpan.FromMilliseconds(500);
         public static readonly TimeSpan DiceRoll   = TimeSpan.FromMilliseconds(700);
         public static readonly TimeSpan Banner      = TimeSpan.FromMilliseconds(1300);
-        // One shot/strike per attack, played one after another; total scales with the attack count
-        // but is capped so a big volley still resolves promptly (the slices just get quicker).
-        public static readonly TimeSpan PerAttack = TimeSpan.FromMilliseconds(280);
-        public static readonly TimeSpan AttackMax = TimeSpan.FromMilliseconds(1600);
+        // A volley = a weapon group's weapons all firing once, simultaneously; a weapon's Attacks
+        // value is how many volleys it fires, played one after another. Total time scales with the
+        // volley count (not shots-per-volley, which fire together), capped so it stays prompt.
+        public static readonly TimeSpan PerVolley = TimeSpan.FromMilliseconds(400);
+        public static readonly TimeSpan VolleyMax = TimeSpan.FromMilliseconds(1600);
 
-        public static TimeSpan ForAttack(int attackCount)
+        public static TimeSpan ForVolleys(int volleyCount)
         {
-            int n = Math.Max(1, attackCount);
-            double ms = Math.Min(PerAttack.TotalMilliseconds * n, AttackMax.TotalMilliseconds);
+            int n = Math.Max(1, volleyCount);
+            double ms = Math.Min(PerVolley.TotalMilliseconds * n, VolleyMax.TotalMilliseconds);
             return TimeSpan.FromMilliseconds(ms);
         }
 

@@ -153,20 +153,22 @@ namespace FDG.Tests
         [Test]
         public void AttackBeat_Ranged_SurvivesWireRoundTrip_PreservingPositionsAndKind()
         {
+            // Five A2 rifles: five shots per volley, two volleys.
             var original = new AttackBeat(isMelee: false,
                 from: new List<Position> { new Position(1f, 2f), new Position(3f, 2f) },
                 to: new List<Position> { new Position(10f, 20f) },
-                attackCount: 3, armorPenetration: 2);
+                shotsPerVolley: 5, volleyCount: 2, armorPenetration: 2);
 
             PresentationBeat result = RoundTrip(original);
 
             Assert.That(result, Is.TypeOf<AttackBeat>());
             var atk = (AttackBeat)result;
             Assert.That(atk.IsMelee, Is.False);
-            Assert.That(atk.AttackCount, Is.EqualTo(3));
+            Assert.That(atk.ShotsPerVolley, Is.EqualTo(5));
+            Assert.That(atk.VolleyCount, Is.EqualTo(2));
             Assert.That(atk.ArmorPenetration, Is.EqualTo(2));
-            Assert.That(atk.NominalDuration, Is.EqualTo(PresentationDurations.ForAttack(3)),
-                "duration scales with the number of attacks");
+            Assert.That(atk.NominalDuration, Is.EqualTo(PresentationDurations.ForVolleys(2)),
+                "duration scales with the volley count, not shots-per-volley (those fire together)");
             Assert.That(atk.From, Has.Count.EqualTo(2));
             Assert.That(atk.To, Has.Count.EqualTo(1));
             Assert.That(atk.From[1].x, Is.EqualTo(3f).Within(0.0001f));
@@ -174,17 +176,17 @@ namespace FDG.Tests
         }
 
         [Test]
-        public void AttackBeat_Melee_DurationScalesWithAttackCount()
+        public void AttackBeat_Melee_DurationScalesWithVolleyCount()
         {
             var melee = new AttackBeat(isMelee: true,
                 from: new List<Position> { new Position(1f, 1f) },
                 to: new List<Position> { new Position(2f, 1f) },
-                attackCount: 4, armorPenetration: 0);
+                shotsPerVolley: 2, volleyCount: 4, armorPenetration: 0);
 
             var result = (AttackBeat)RoundTrip(melee);
             Assert.That(result.IsMelee, Is.True);
-            Assert.That(result.AttackCount, Is.EqualTo(4));
-            Assert.That(result.NominalDuration, Is.EqualTo(PresentationDurations.ForAttack(4)));
+            Assert.That(result.VolleyCount, Is.EqualTo(4));
+            Assert.That(result.NominalDuration, Is.EqualTo(PresentationDurations.ForVolleys(4)));
         }
 
         [Test]

@@ -26,9 +26,12 @@ namespace FDG.Stages
             List<Position> targetPositions = AlivePlacedPositions(metaData.DefendingUnit);
             if (attackerPositions.Count > 0 && targetPositions.Count > 0)
             {
-                int attackCount = metaData.WeaponType.Attacks * metaData.WeaponCount;
+                // WeaponCount weapons fire together each volley; the weapon's Attacks is the volley count.
                 await GameContext.Presenter.Present(new AttackBeat(metaData.IsMelee,
-                    attackerPositions, targetPositions, attackCount, metaData.WeaponType.ArmorPenetration));
+                    attackerPositions, targetPositions,
+                    shotsPerVolley: metaData.WeaponCount,
+                    volleyCount: metaData.WeaponType.Attacks,
+                    armorPenetration: metaData.WeaponType.ArmorPenetration));
             }
 
             //TODO: Calculate attack count in separate stage, it may need its own mods.

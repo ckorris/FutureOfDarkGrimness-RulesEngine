@@ -7,9 +7,10 @@ namespace FDG.Presentation.Beats
     /// A unit attacking another — shots in flight (ranged) or a clash (melee). Carries the
     /// attacker model positions (<see cref="From"/>) and the target model positions (<see cref="To"/>)
     /// so the front-end can animate between them; it renders differently per <see cref="IsMelee"/>
-    /// (tracers vs. a clash). <see cref="AttackCount"/> individual shots/strikes play one after
-    /// another (so an A3 weapon shows three), and <see cref="ArmorPenetration"/> scales their size.
-    /// Emitted before the hit dice; the dice then show the resolution.
+    /// (tracers vs. a clash). Each volley fires <see cref="ShotsPerVolley"/> shots/strikes
+    /// simultaneously (one per weapon in the group), and <see cref="VolleyCount"/> volleys play one
+    /// after another — so five A2 rifles show five together, then five more. <see cref="ArmorPenetration"/>
+    /// scales their size. Emitted before the hit dice; the dice then show the resolution.
     /// </summary>
     [Serializable]
     public sealed class AttackBeat : PresentationBeat
@@ -17,20 +18,22 @@ namespace FDG.Presentation.Beats
         public bool IsMelee { get; }
         public IReadOnlyList<Position> From { get; }
         public IReadOnlyList<Position> To { get; }
-        public int AttackCount { get; }
+        public int ShotsPerVolley { get; }   // weapons firing together (WeaponCount)
+        public int VolleyCount { get; }       // volleys fired one after another (Attacks per weapon)
         public int ArmorPenetration { get; }
 
         public AttackBeat(bool isMelee, IReadOnlyList<Position> from, IReadOnlyList<Position> to,
-            int attackCount, int armorPenetration)
+            int shotsPerVolley, int volleyCount, int armorPenetration)
         {
             IsMelee = isMelee;
             From = from;
             To = to;
-            AttackCount = attackCount;
+            ShotsPerVolley = shotsPerVolley;
+            VolleyCount = volleyCount;
             ArmorPenetration = armorPenetration;
         }
 
-        public override TimeSpan NominalDuration => PresentationDurations.ForAttack(AttackCount);
+        public override TimeSpan NominalDuration => PresentationDurations.ForVolleys(VolleyCount);
 
         // Purely visual — the surrounding hit/wound logs already narrate the outcome.
         public override string? Text => null;

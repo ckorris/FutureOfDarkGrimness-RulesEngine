@@ -36,6 +36,7 @@ namespace FDG.Stages
 
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
                 .AddChild(new ChooseMeleeDefenderStage(GameContext, this), out var chooseMeleeDefender)
+                .AddChild(new ResolveImpactHitsStage(GameContext, this), out var resolveImpact)
                 .AddChild(new PileInStage(GameContext, this), out var pileIn)
                 .AddChild(new DetermineInRangeAttackersStage(GameContext, this), out var determineInRangeAttackers)
                 .AddChild(new DetermineInRangeDefendersStage(GameContext, this), out var determineInRangeDefenders)
@@ -55,8 +56,9 @@ namespace FDG.Stages
 
             startingChild = chooseMeleeDefender;
 
-            chooseMeleeDefender.OnDefenderChosen.Bind(pileIn);
+            chooseMeleeDefender.OnDefenderChosen.Bind(resolveImpact);
             chooseMeleeDefender.BackToChooseAction.Bind(meleeFinishedEvent); //Should go back to choosing.
+            resolveImpact.OnImpactResolved.Bind(pileIn); // #042 Impact: charge-contact auto-hits before swings.
             pileIn.OnPiledIn.Bind(determineInRangeAttackers);
             determineInRangeAttackers.ToDetermineDefenders.Bind(determineInRangeDefenders);
             determineInRangeDefenders.ToChooseMeleeWeapons.Bind(chooseMeleeWeapon);

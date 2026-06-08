@@ -330,7 +330,18 @@ public abstract record RuleOperation
     /// Roll <see cref="DiceCount"/> impact dice (each 2+ a hit) on the charge.
     /// Resolution of <see cref="Effect.ChargeImpactHits"/> (Impact).
     /// </summary>
-    public sealed record ChargeImpactHits(int DiceCount) : RuleOperation;
+    public sealed record ChargeImpactHits(int DiceCount) : SinkOperation<IImpactSink>
+    {
+        public override void ApplyTo(IImpactSink sink)
+        {
+            sink.AddDice(DiceCount);
+        }
+
+        public override string Describe()
+        {
+            return $"rolled {DiceCount} impact dice on the charge";
+        }
+    }
 
     /// <summary>
     /// Add <see cref="Amount"/> to the bearer's melee-won wound tally. Resolution of

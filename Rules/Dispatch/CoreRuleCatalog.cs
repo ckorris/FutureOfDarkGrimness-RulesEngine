@@ -24,7 +24,7 @@ public static class CoreRuleCatalog
     {
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
         Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Vanguard, Scout, Ambush, Thrust,
-        Blast, Takedown,
+        Blast, Takedown, Impact,
     };
 
     /// <summary>
@@ -224,6 +224,23 @@ public static class CoreRuleCatalog
             new HookEntry(EHookID.Shooting_OnHitRollComplete,
                 new Condition.And(new Condition.IsMelee(), new Condition.IsCharging()),
                 new Effect.RollModifier(ERollKind.Save, Delta: -1),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary>
+    /// Impact(X): on charge contact, the charger rolls X dice — each 2+ scores an automatic hit on the
+    /// defender, resolved through save + wound BEFORE the normal melee swings. A passive rule at
+    /// <see cref="EHookID.Melee_OnChargeContact"/> that queues <see cref="RuleOperation.ChargeImpactHits"/>;
+    /// ResolveImpactHitsStage rolls the dice and runs the hits through the save→wound sub-pipeline.
+    /// The "not fatigued" gate is deferred (fatigue is absent) — see Appendix C.
+    /// </summary>
+    public static SpecialRuleDefinition Impact { get; } = new SpecialRuleDefinition("Impact",
+        new[]
+        {
+            new HookEntry(EHookID.Melee_OnChargeContact,
+                new Condition.Always(),
+                new Effect.ChargeImpactHits(new ValueSource.Arg(0)),
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>());

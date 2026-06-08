@@ -195,7 +195,18 @@ public abstract record RuleOperation
     /// <see cref="Effect.TriggeredMove"/>. Depends on the engine refactor that
     /// exposes movement as a callable subsystem (item #042 engine work).
     /// </summary>
-    public sealed record InvokeTriggeredMove(IUnit Unit, float MaxInches, bool IsOptional) : RuleOperation;
+    public sealed record InvokeTriggeredMove(IUnit Unit, float MaxInches, bool IsOptional) : ExecutableOperation
+    {
+        public override Task Execute(IOperationServices services)
+        {
+            return services.MoveUnit(Unit, MaxInches, IsOptional);
+        }
+
+        public override string Describe()
+        {
+            return $"moved up to {MaxInches}\"" + (IsOptional ? " (optional)" : "");
+        }
+    }
 
     /// <summary>
     /// Re-enter the activation flow for <see cref="Unit"/> this round.

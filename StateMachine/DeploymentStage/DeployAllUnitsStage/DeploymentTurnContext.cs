@@ -1,9 +1,16 @@
 using FDG.Data;
+using FDG.Rules.Definitions;
+using FDG.Rules.Dispatch.Contexts;
+using FDG.Rules.Foundation;
 using FDG.Utilities;
 
 
 namespace FDG.Stages
 {
+    /// <summary>A unit set aside during normal deployment, with the defer operation that
+    /// describes how/when it should be placed (Scout: after deployment, within range of the zone).</summary>
+    public record DeferredUnitEntry(DataBinding<UnitData> Unit, RuleOperation.DeferDeployment Defer);
+
     public interface IDeploymentTurnContext : IGameContextAccessor
     {
         bool HasStarted { get; set; }
@@ -25,6 +32,10 @@ namespace FDG.Stages
         public bool DoesPlayerHaveRemainingDeployments(PlayerID playerID);
 
         public Dictionary<PlayerID, List<DataBinding<UnitData>>> UndeployedUnits { get; }
+
+        /// <summary>Units pulled out of the normal pool by a DeferDeployment rule (Scout),
+        /// to be placed by their own pass after normal deployment finishes.</summary>
+        public IReadOnlyList<DeferredUnitEntry> DeferredUnits { get; }
 
         public DataBinding<UnitData>? CurrentDeployingUnit { get; set; }
 
@@ -52,6 +63,9 @@ namespace FDG.Stages
 
         public Dictionary<PlayerID, List<DataBinding<UnitData>>> UndeployedUnits { get; }
 
+        public IReadOnlyList<DeferredUnitEntry> DeferredUnits => _deferredUnits;
+        private readonly List<DeferredUnitEntry> _deferredUnits = new();
+
         public DataBinding<UnitData>? CurrentDeployingUnit { get; set; } = null;
 
         public DeploymentTurnContext(IGameContext gameContext, List<ITeam> firstDeploymentRollOrder,
@@ -74,11 +88,33 @@ namespace FDG.Stages
 
                     foreach (ArmyData army in armies.Where(a => a.IsOwnedBy(playerID)))
                     {
-                        playerUnits.AddRange(army.UnitBindings);
+                        foreach (DataBinding<UnitData> unitBinding in army.UnitBindings)
+                        {
+                            // Rules like Scout pull the unit out of the normal pool here (the
+                            // Deployment_OnPreDeploymentSelect "when") to be placed by a later pass.
+                            if (TryGetDefer(unitBinding, out RuleOperation.DeferDeployment defer))
+                            {
+                                _deferredUnits.Add(new DeferredUnitEntry(unitBinding, defer));
+                            }
+                            else
+                            {
+                                playerUnits.Add(unitBinding);
+                            }
+                        }
                     }
                     UndeployedUnits.Add(playerID, playerUnits);
                 }
             }
+        }
+
+        private bool TryGetDefer(DataBinding<UnitData> unitBinding, out RuleOperation.DeferDeployment defer)
+        {
+            IUnit unit = unitBinding.GetValue();
+            IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator.Evaluate(
+                unit, ERuleSeat.Actor, new PreDeploymentSelectContext(unit));
+
+            defer = ops.OfType<RuleOperation.DeferDeployment>().FirstOrDefault();
+            return defer != null;
         }
 
         public PlayerID GetCurrentDeployingPlayerID() => Cursor.GetCurrentPlayerID();

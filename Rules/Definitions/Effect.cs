@@ -428,17 +428,19 @@ public abstract record Effect
     }
 
     /// <summary>
-    /// Sets the bearer aside during normal deployment to be placed by its own
-    /// dedicated stage. Covers Ambush (deploy a later round, &gt;9" from enemies)
-    /// and Scout (deploy after others, within 12" of the zone). The timing and
-    /// placement constraints that distinguish the two are execution details
-    /// (Phase 8 / the #042 engine refactor).
+    /// Sets the bearer aside during normal deployment to be placed by its own dedicated pass.
+    /// Covers Scout (deploy after others, within <see cref="PlacementRangeInches"/>" of the zone)
+    /// and, later, Ambush (deploy a later round, &gt;9" from enemies). <see cref="Timing"/> selects
+    /// the pass; <see cref="PlacementRangeInches"/> is the zone-relative placement range. Both default
+    /// so a bare <c>DeferDeployment()</c> (used by the queue-level shape tests) keeps compiling.
     /// </summary>
-    public sealed record DeferDeployment : Effect
+    public sealed record DeferDeployment(
+        EDeferTiming Timing = EDeferTiming.AfterNormalDeployment,
+        float PlacementRangeInches = 0f) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.DeferDeployment());
+            operations.Add(new RuleOperation.DeferDeployment(Timing, PlacementRangeInches));
         }
     }
 }

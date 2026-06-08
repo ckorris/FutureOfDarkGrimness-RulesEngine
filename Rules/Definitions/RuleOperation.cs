@@ -357,10 +357,18 @@ public abstract record RuleOperation
     public sealed record IgnoreTerrainEffects : RuleOperation;
 
     /// <summary>
-    /// Remove the bearer from the normal deployment pool for later placement.
-    /// Resolution of <see cref="Effect.DeferDeployment"/> (Ambush, Scout).
+    /// Remove the bearer from the normal deployment pool for later placement, governed by
+    /// <see cref="Timing"/> and (for zone-relative placement) <see cref="PlacementRangeInches"/>.
+    /// Resolution of <see cref="Effect.DeferDeployment"/> (Scout; Ambush later).
+    ///
+    /// Stays a plain <see cref="RuleOperation"/> — NOT an <see cref="ExecutableOperation"/>: it is a
+    /// marker the deployment subsystem <em>reads</em> (a query, like <see cref="SuppressRule"/>) to decide
+    /// set-aside, and it mutates deployment-turn-scoped reserve state that isn't reachable from the
+    /// <c>IOperationServices</c> seam (which only sees <c>IGameContext</c>).
     /// </summary>
-    public sealed record DeferDeployment : RuleOperation;
+    public sealed record DeferDeployment(
+        EDeferTiming Timing = EDeferTiming.AfterNormalDeployment,
+        float PlacementRangeInches = 0f) : RuleOperation;
 }
 
 /// <summary>

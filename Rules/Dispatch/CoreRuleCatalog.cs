@@ -23,7 +23,7 @@ public static class CoreRuleCatalog
     public static IReadOnlyList<SpecialRuleDefinition> All => new[]
     {
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
-        Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Vanguard,
+        Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Vanguard, Scout,
     };
 
     /// <summary>
@@ -277,4 +277,23 @@ public static class CoreRuleCatalog
                 new Effect.TriggeredMove(MaxInches: 9f, IsOptional: true),
                 new Condition.Always()),
         });
+
+    // Deferred-deployment primitive (PlaceDeferredUnitsStage) ---------------------
+
+    /// <summary>
+    /// Scout: this unit is set aside during normal deployment and placed after all other units,
+    /// within 12" of its deployment zone (forward deploy). A passive rule at
+    /// <see cref="EHookID.Deployment_OnPreDeploymentSelect"/> that queues
+    /// <see cref="RuleOperation.DeferDeployment"/>; the deployment subsystem reserves the unit and
+    /// the Scout pass places it forward.
+    /// </summary>
+    public static SpecialRuleDefinition Scout { get; } = new SpecialRuleDefinition("Scout",
+        new[]
+        {
+            new HookEntry(EHookID.Deployment_OnPreDeploymentSelect,
+                new Condition.Always(),
+                new Effect.DeferDeployment(EDeferTiming.AfterNormalDeployment, PlacementRangeInches: 12f),
+                ELifetime.UntilEndOfGame),
+        },
+        Array.Empty<ActivatedAbility>());
 }

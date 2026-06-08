@@ -34,16 +34,19 @@ namespace FDG.Stages
                 .AddChild(new ChooseUnitToDeployStage(GameContext, this), out var chooseUnitToDeploy)
                 .AddChild(new ChooseDeployActionStage(GameContext, this), out var chooseDeployAction)
                 .AddChild(new DeployUnitStage(GameContext, this), out var deployUnitStage)
+                .AddChild(new PlaceDeferredUnitsStage(GameContext, this), out var placeDeferredUnits)
                 .AddSibling(nameof(ToMain), ToMain, out string toMainEvent)
                 .Build();
 
             startingChild = determineNextDeployPlayer;
 
             determineNextDeployPlayer.OnFinish.Bind(chooseUnitToDeploy);
-            determineNextDeployPlayer.OnFinishedDeployingAllUnits.Bind(toMainEvent);
+            // Normal deployment done → place the units a rule set aside (Scout), then exit to main.
+            determineNextDeployPlayer.OnFinishedDeployingAllUnits.Bind(placeDeferredUnits);
             chooseUnitToDeploy.OnFinish.Bind(chooseDeployAction);
             chooseDeployAction.OnFinish.Bind(deployUnitStage);
             deployUnitStage.OnFinish.Bind(determineNextDeployPlayer);
+            placeDeferredUnits.OnFinish.Bind(toMainEvent);
 
             return dictionary;
         }

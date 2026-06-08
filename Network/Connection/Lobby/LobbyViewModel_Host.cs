@@ -226,6 +226,14 @@ namespace FDG.Network.Connection
 
         private void OnReceiveNewClientGreeting(NewLobbyClientGreeting greeting)
         {
+            // Resume games have a fixed saved roster — route joining clients to saved slots instead of
+            // creating new ones. Strictly isolated so the new-game path below is unchanged.
+            if (_isResume)
+            {
+                OnResumeClientGreeting(greeting);
+                return;
+            }
+
             Debug.WriteLine($"Received greeting from new client: {greeting.PlayerName}");
 
             //Assign a player ID to this person. 
@@ -251,6 +259,35 @@ namespace FDG.Network.Connection
 
             LobbyGameSettingsUpdate gameSettingsUpdate = new LobbyGameSettingsUpdate(_gameSettings);
             _messageBus.SendCommandToAllAsync(gameSettingsUpdate);
+        }
+
+        // Resume mode: assign the joining client to the next saved slot still marked AI (slot order),
+        // have it adopt that slot's SAVED PlayerID, and mark the slot Network. Reuses the saved
+        // PlayerID — no remap. NOT yet live-tested: correct-by-design for 1v1 (one remote client);
+        // multi-client relies on the same broadcast LobbyPlayerIDAssignment as the new-game flow.
+        // Host-chosen connection→slot assignment (vs this auto-fill) is a future refinement.
+        private void OnResumeClientGreeting(NewLobbyClientGreeting greeting)
+        {
+            Debug.WriteLine($"[#052] Resume: greeting from {greeting.PlayerName}.");
+
+            ConnectionID connectionID = _messageBus.GetCurrentMessageConnectionID();
+
+            LobbyPlayerInfoFull? openSlot = _playerInfosFull.Values.FirstOrDefault(p => p.PlayerType == EPlayerType.AI);
+            if (openSlot == null)
+            {
+                Debug.WriteLine("[#052] Resume: no open (AI) saved slot for the joining client.");
+                return;
+            }
+
+            openSlot.PlayerType = EPlayerType.Network;
+            openSlot.PlayerName = greeting.PlayerName;
+            openSlot.ConnectionID = connectionID;
+
+            // Adopt the saved slot's PlayerID (not a fresh one) so the client resumes as that player.
+            _messageBus.SendCommandToAllAsync(new LobbyPlayerIDAssignment(openSlot.PlayerID));
+            _messageBus.SendCommandToAllAsync(new LobbyServerNameMessage(_serverName.Value));
+            _messageBus.SendCommandToAllAsync(new LobbyGameSettingsUpdate(_gameSettings));
+            UpdateInfoSummariesFromFullList();
         }
 
         private void OnClientDisconnected(ConnectionID disconnectedConnectionID)

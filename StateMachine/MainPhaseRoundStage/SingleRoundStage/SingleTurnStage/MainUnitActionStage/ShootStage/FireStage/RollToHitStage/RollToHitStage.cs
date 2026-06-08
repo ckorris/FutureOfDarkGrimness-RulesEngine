@@ -62,6 +62,25 @@ namespace FDG.Stages
                 results.SuccessfulHitList.Add(new SuccessfulHitInfo(SyntheticHits(hitInjection.TotalExtraHits, rollToHitResults)));
             }
 
+            // #042 hit-multiplier rules (Blast) fire at the same hook but resolve "after other rules":
+            // multiply the POST-injection hit total, then cap at the target unit's model count. Folded
+            // after the injection above so Blast multiplies whatever hits landed (including Surge's).
+            HitMultiplierSink hitMultiplier = new HitMultiplierSink();
+            hitMultiplier.ApplyFrom(operations);
+            if (hitMultiplier.NetMultiplier > 1)
+            {
+                float currentHits = TotalHits(results);
+                int targetModelCount = CountLivingModels(defender);
+                float cappedHits = Math.Min(currentHits * hitMultiplier.NetMultiplier, targetModelCount);
+                float extraHits = cappedHits - currentHits;
+                if (extraHits > 0f)
+                {
+                    results.SuccessfulHitList.Add(new SuccessfulHitInfo(SyntheticHits(extraHits, rollToHitResults)));
+                    GameContext.Log($"Blast multiplied {currentHits} hits x{hitMultiplier.NetMultiplier}, capped at " +
+                        $"{targetModelCount} target models → {cappedHits} total.");
+                }
+            }
+
             // #042 save-modifier rules (Rending) also fire at hit-roll-complete: an unmodified 6 to hit
             // promotes the attack's AP, modelled as a save-roll modifier on the defender. Fold it here —
             // where the UNMODIFIED roll is still correct (synthetic hits sit at face 6 and would pollute
@@ -71,6 +90,26 @@ namespace FDG.Stages
             results.SaveModifier = saveModifiers.Net(ERollKind.Save);
 
             onFinished(results);
+        }
+
+        private static float TotalHits(RollToHitResults results)
+        {
+            float total = 0f;
+            foreach (SuccessfulHitInfo hit in results.SuccessfulHitList)
+            {
+                total += hit.HitCount;
+            }
+            return total;
+        }
+
+        private static int CountLivingModels(IUnit unit)
+        {
+            int count = 0;
+            foreach (IModel model in unit.Models)
+            {
+                if (model.GetIsAlive()) count++;
+            }
+            return count;
         }
 
         // Bridges a scalar extra-hit count into the IDiceResults the save flow consumes. Injected

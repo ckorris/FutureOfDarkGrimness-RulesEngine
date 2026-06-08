@@ -24,6 +24,7 @@ public static class CoreRuleCatalog
     {
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
         Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Vanguard, Scout, Ambush, Thrust,
+        Blast,
     };
 
     /// <summary>
@@ -163,6 +164,23 @@ public static class CoreRuleCatalog
                 new Condition.And(new Condition.IsMelee(),
                                   new Condition.UnmodifiedRollEquals(6)),
                 new Effect.AddExtraHit(OnRollValue: 6),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    // Hit-multiplier sink (RollToHitStage, after injection) ----------------------
+
+    /// <summary>
+    /// Blast(X): each hit is multiplied by X (the rule's argument), capped at the target unit's
+    /// model count. Folded at <see cref="EHookID.Shooting_OnHitRollComplete"/> AFTER the
+    /// hit-injection rules ("after other rules"), so it multiplies whatever hits landed.
+    /// </summary>
+    public static SpecialRuleDefinition Blast { get; } = new SpecialRuleDefinition("Blast",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnHitRollComplete,
+                new Condition.Always(),
+                new Effect.MultiplyHits(new ValueSource.Arg(0)),
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>());

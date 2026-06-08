@@ -309,10 +309,22 @@ public abstract record RuleOperation
     }
 
     /// <summary>
-    /// Multiply the in-flight hit count by <see cref="Multiplier"/> (engine caps at
-    /// target model count). Resolution of <see cref="Effect.MultiplyHits"/> (Blast).
+    /// Multiply the in-flight hit count by <see cref="Multiplier"/> (the hit-roll stage
+    /// caps the result at the target's model count, and applies it after hit-injection
+    /// rules — "after other rules"). Resolution of <see cref="Effect.MultiplyHits"/> (Blast).
     /// </summary>
-    public sealed record MultiplyHits(int Multiplier) : RuleOperation;
+    public sealed record MultiplyHits(int Multiplier) : SinkOperation<IHitMultiplierSink>
+    {
+        public override void ApplyTo(IHitMultiplierSink sink)
+        {
+            sink.Multiply(Multiplier);
+        }
+
+        public override string Describe()
+        {
+            return $"multiplied hits by {Multiplier}";
+        }
+    }
 
     /// <summary>
     /// Roll <see cref="DiceCount"/> impact dice (each 2+ a hit) on the charge.

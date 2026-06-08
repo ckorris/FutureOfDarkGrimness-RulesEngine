@@ -81,9 +81,9 @@ namespace FDG.Players
             }
         }
 
-        public void SendLogMessage(string logMessage)
+        public void SendLogMessage(string logMessage, TextColor color)
         {
-            LogChatNetworkMessage messageRecord = new LogChatNetworkMessage(logMessage);
+            LogChatNetworkMessage messageRecord = new LogChatNetworkMessage(logMessage, color);
             _messageBusHost.SendCommandToAllAsync(messageRecord);
         }
 

@@ -4,7 +4,7 @@ namespace FDG.Samples
 {
     public class BasicConsoleLogger : ITextOutput
     {
-        public void Log(string message)
+        public void Log(string message, TextColor? color = null)
         {
             Debug.WriteLine(message);
         }

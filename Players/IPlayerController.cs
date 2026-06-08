@@ -20,7 +20,7 @@ namespace FDG.Players
 
         public Task WaitUntilReadyAsync();
 
-        public void SendLogMessage(string logMessage);
+        public void SendLogMessage(string logMessage, TextColor color);
 
         public void SendPlayerMessage(string sendingPlayerName, EChatMessageType messageType, string message);
     }

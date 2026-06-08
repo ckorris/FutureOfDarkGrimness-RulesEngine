@@ -151,6 +151,20 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void BannerBeat_SurvivesWireRoundTrip_PreservingTextAndColor()
+        {
+            var original = new BannerBeat("Round 3", new TextColor(120, 200, 255, 255));
+
+            PresentationBeat result = RoundTrip(original);
+
+            Assert.That(result, Is.TypeOf<BannerBeat>());
+            var banner = (BannerBeat)result;
+            Assert.That(banner.BannerText, Is.EqualTo("Round 3"));
+            Assert.That(banner.Text, Is.EqualTo("Round 3"), "Text projection mirrors the banner text");
+            Assert.That(banner.Color, Is.EqualTo(new TextColor(120, 200, 255, 255)));
+        }
+
+        [Test]
         public void DiceRolledBeat_Probabilistic_RoundTrip_PreservesFractionsAndMode()
         {
             // 5 dice spread evenly: 5/6 per face. Successes for 4+ = three faces * 0.8333…

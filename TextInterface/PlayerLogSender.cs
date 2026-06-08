@@ -21,9 +21,10 @@ namespace FDG.TextInterface
             _playerTextRelayer = relayer;
         }
 
-        public void Log(string message)
+        public void Log(string message, TextColor? color = null)
         {
-            _playerTextRelayer.SendLogMessageToAll(message);
+            // Resolve the default once here; everything downstream carries a concrete TextColor.
+            _playerTextRelayer.SendLogMessageToAll(message, color ?? TextColor.White);
 
             System.Diagnostics.Debug.WriteLine($"LOG: {message}");
         }

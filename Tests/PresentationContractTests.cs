@@ -1,7 +1,9 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using FDG.Data;
 using FDG.Presentation;
+using FDG.Presentation.Beats;
 using NUnit.Framework;
 
 namespace FDG.Tests
@@ -125,6 +127,46 @@ namespace FDG.Tests
         {
             Assert.That(new TestBeat(TimeSpan.Zero).Text, Is.Null);
             Assert.That(new TestBeat(TimeSpan.Zero, "Squad advances.").Text, Is.EqualTo("Squad advances."));
+        }
+
+        // ---- Announce: flashes a banner AND logs the same text, both in the given color ----
+
+        [Test]
+        public async Task Announce_LogsTheText_AndEmitsABannerBeat_InTheSameColor()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var sink = new RecordingPresentationSink();
+            var textOut = new RecordingTextOutput();
+            var ctx = new TestGameContext(store, new FixedDiceRoller(4),
+                textOutput: textOut, presenter: new LocalPresenter(sink, new InstantPresentationClock()));
+
+            var color = new TextColor(10, 20, 30, 255);
+            await ctx.Announce("Round 3", color);
+
+            Assert.That(textOut.Entries, Has.Count.EqualTo(1), "Announce also writes to the regular log");
+            Assert.That(textOut.Entries[0].Message, Is.EqualTo("Round 3"));
+            Assert.That(textOut.Entries[0].Color, Is.EqualTo(color));
+
+            Assert.That(sink.Beats, Has.Count.EqualTo(1), "Announce flashes a banner");
+            Assert.That(sink.Beats[0], Is.TypeOf<BannerBeat>());
+            var banner = (BannerBeat)sink.Beats[0];
+            Assert.That(banner.BannerText, Is.EqualTo("Round 3"));
+            Assert.That(banner.Color, Is.EqualTo(color));
+        }
+
+        [Test]
+        public async Task Announce_DefaultColorIsWhite()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var sink = new RecordingPresentationSink();
+            var textOut = new RecordingTextOutput();
+            var ctx = new TestGameContext(store, new FixedDiceRoller(4),
+                textOutput: textOut, presenter: new LocalPresenter(sink, new InstantPresentationClock()));
+
+            await ctx.Announce("Deployment");
+
+            Assert.That(textOut.Entries[0].Color, Is.EqualTo(TextColor.White));
+            Assert.That(((BannerBeat)sink.Beats[0]).Color, Is.EqualTo(TextColor.White));
         }
     }
 }

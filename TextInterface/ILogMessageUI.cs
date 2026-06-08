@@ -6,6 +6,6 @@ namespace FDG.TextInterface
     /// </summary>
     public interface ILogMessageUI
     {
-        void DisplayLogMessage(string message);
+        void DisplayLogMessage(string message, TextColor color);
     }
 }

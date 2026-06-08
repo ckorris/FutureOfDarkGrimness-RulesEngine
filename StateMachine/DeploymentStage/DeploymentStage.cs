@@ -17,9 +17,9 @@ namespace FDG.Stages
 
         public override async Task Enter(IGameContext context)
         {
-            GameContext.TextOutput.Log($"Entered Deployment stage.");
+            await context.Announce("Deployment");
 
-            base.Enter(context);
+            await base.Enter(context);
         }
 
         protected override IDeploymentContext GetNewChildContext(IGameContext contextSelf)

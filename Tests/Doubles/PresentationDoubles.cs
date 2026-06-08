@@ -42,6 +42,14 @@ namespace FDG.Tests
         public void OnBeat(PresentationBeat beat) => Beats.Add(beat);
     }
 
+    /// <summary>Records every log line and the color it was logged in.</summary>
+    internal class RecordingTextOutput : ITextOutput
+    {
+        public readonly List<(string Message, TextColor? Color)> Entries = new();
+
+        public void Log(string message, TextColor? color = null) => Entries.Add((message, color));
+    }
+
     /// <summary>Minimal concrete beat for contract tests.</summary>
     internal sealed class TestBeat : PresentationBeat
     {

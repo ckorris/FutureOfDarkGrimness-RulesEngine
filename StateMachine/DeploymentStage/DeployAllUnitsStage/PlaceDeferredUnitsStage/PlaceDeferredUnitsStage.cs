@@ -25,6 +25,13 @@ namespace FDG.Stages
         {
             context.Log("Entered Place Deferred Units stage.");
 
+            // Units set to Ambush stay off-table now and arrive at a later round's start.
+            foreach (DeferredUnitEntry reserved in context.DeferredUnits)
+            {
+                if (reserved.Defer.Timing == EDeferTiming.LaterRound)
+                    await context.Announce($"{reserved.Unit.GetValue().Name} held in Ambush.", new TextColor(255, 170, 60, 255));
+            }
+
             foreach (DeferredUnitEntry entry in context.DeferredUnits)
             {
                 if (entry.Defer.Timing != EDeferTiming.AfterNormalDeployment) continue; // Ambush (LaterRound) handled elsewhere.

@@ -68,9 +68,9 @@ namespace FDG.Players
             return source.Task;
         }
 
-        public void SendLogMessage(string logMessage)
+        public void SendLogMessage(string logMessage, TextColor color)
         {
-            _localPlayer.LogMessageUI?.DisplayLogMessage(logMessage);
+            _localPlayer.LogMessageUI?.DisplayLogMessage(logMessage, color);
         }
 
         public void SendPlayerMessage(string sendingPlayerName, EChatMessageType messageType, string message)

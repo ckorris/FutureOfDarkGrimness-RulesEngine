@@ -45,20 +45,30 @@ namespace FDG.Tests
                 "Warriors",
                 new List<ModelMove>
                 {
-                    new ModelMove(new ModelID(Guid.NewGuid()), new Position(1f, 2f), new Position(3f, 4f)),
-                });
+                    new ModelMove(new ModelID(Guid.NewGuid()),
+                        new List<Position> { new Position(1f, 2f), new Position(3f, 4f) }),
+                },
+                PresentationDurations.UnitMove);
 
             Assert.That(beat.NominalDuration, Is.EqualTo(PresentationDurations.UnitMove));
             Assert.That(beat.Text, Is.EqualTo("Warriors moves."));
         }
 
         [Test]
-        public void UnitMovedBeat_SurvivesWireRoundTrip_PreservingConcreteTypeAndMoves()
+        public void UnitMovedBeat_SurvivesWireRoundTrip_PreservingTypeMovesAndDuration()
         {
             var unitId = new UnitID(Guid.NewGuid());
             var modelId = new ModelID(Guid.NewGuid());
+            // Multi-node polyline: start -> corner -> destination.
             var original = new UnitMovedBeat(unitId, "Warriors",
-                new List<ModelMove> { new ModelMove(modelId, new Position(1f, 2f), new Position(3f, 4f)) });
+                new List<ModelMove>
+                {
+                    new ModelMove(modelId, new List<Position>
+                    {
+                        new Position(1f, 2f), new Position(1f, 5f), new Position(4f, 5f),
+                    }),
+                },
+                TimeSpan.FromMilliseconds(900));
 
             PresentationBeat result = RoundTrip(original);
 
@@ -66,13 +76,18 @@ namespace FDG.Tests
             var moved = (UnitMovedBeat)result;
             Assert.That(moved.Unit, Is.EqualTo(unitId));
             Assert.That(moved.UnitName, Is.EqualTo("Warriors"));
+            Assert.That(moved.NominalDuration, Is.EqualTo(TimeSpan.FromMilliseconds(900)),
+                "carried duration must round-trip so distance-based pacing survives the wire");
             Assert.That(moved.Moves, Has.Count.EqualTo(1));
             ModelMove m = moved.Moves[0];
             Assert.That(m.Model, Is.EqualTo(modelId));
-            Assert.That(m.From.x, Is.EqualTo(1f).Within(0.0001f));
-            Assert.That(m.From.z, Is.EqualTo(2f).Within(0.0001f));
-            Assert.That(m.To.x, Is.EqualTo(3f).Within(0.0001f));
-            Assert.That(m.To.z, Is.EqualTo(4f).Within(0.0001f));
+            Assert.That(m.Waypoints, Has.Count.EqualTo(3), "the full corner-rounding polyline must survive");
+            Assert.That(m.Waypoints[0].x, Is.EqualTo(1f).Within(0.0001f));
+            Assert.That(m.Waypoints[0].z, Is.EqualTo(2f).Within(0.0001f));
+            Assert.That(m.Waypoints[1].x, Is.EqualTo(1f).Within(0.0001f));
+            Assert.That(m.Waypoints[1].z, Is.EqualTo(5f).Within(0.0001f));
+            Assert.That(m.Waypoints[2].x, Is.EqualTo(4f).Within(0.0001f));
+            Assert.That(m.Waypoints[2].z, Is.EqualTo(5f).Within(0.0001f));
         }
 
         [Test]

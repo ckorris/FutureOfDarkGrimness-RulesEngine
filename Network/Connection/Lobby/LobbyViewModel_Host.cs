@@ -6,6 +6,7 @@ using FDG.MessageBus;
 using FDG.Network.Connection.Lobby;
 using FDG.Network.Messages;
 using FDG.Players;
+using FDG.Presentation;
 using FDG.SaveLoad;
 using FDG.StageResolution;
 using FutureOfDarkGrimness.Network.Messages;
@@ -333,7 +334,11 @@ namespace FDG.Network.Connection
                 }
             }
 
-            FDGServer server = new FDGServer(_gameDataStore, _messageBus, _gameSettings, playerSlots);
+            // The GUI host self-paces presentation in real time so the battle unfolds at a
+            // presentable tempo; clients receive beats already spaced by this clock. (Headless play
+            // goes through CliApp, which leaves FDGServer's default instant clock.)
+            FDGServer server = new FDGServer(_gameDataStore, _messageBus, _gameSettings, playerSlots,
+                new RealtimePresentationClock());
 
             if (gameModel != null) //Dedicated server really doesn't need to do this.
             {

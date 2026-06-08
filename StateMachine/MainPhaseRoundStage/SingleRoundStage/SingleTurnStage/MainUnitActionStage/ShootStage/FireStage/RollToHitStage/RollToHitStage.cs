@@ -24,7 +24,13 @@ namespace FDG.Stages
             // Show the attack — tracers (ranged) or a clash (melee) — before the dice resolve it.
             // Fire from the actual weapon-carrying models so a mixed unit shows the right source.
             List<Position> attackerPositions = AttackBeatPositions.FiringModels(metaData.AttackingUnit, metaData.WeaponType);
-            List<Position> targetPositions = AttackBeatPositions.AlivePlaced(metaData.DefendingUnit);
+            // Ranged: only models a shooter can actually see, so tracers spread across the targetable
+            // defenders without ever depicting a shot at an unhittable one. Melee is adjacent — LoS is
+            // moot and the clash just snaps to the nearest model.
+            List<Position> targetPositions = metaData.IsMelee
+                ? AttackBeatPositions.AlivePlaced(metaData.DefendingUnit)
+                : AttackBeatPositions.VisibleTargets(GameContext.TableState,
+                    metaData.AttackingUnit, metaData.DefendingUnit, metaData.WeaponType);
             if (attackerPositions.Count > 0 && targetPositions.Count > 0)
             {
                 // Each volley fires every weapon at once; the weapon's Attacks is the volley count.

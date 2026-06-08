@@ -74,15 +74,27 @@ namespace FDG.Tests
         }
 
         [Test]
-        public async Task Furious_InMelee_AddsExtraHit()
+        public async Task Furious_ChargingInMelee_AddsExtraHit()
         {
             DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
             AttachFurious(attacker);
 
-            RollToHitResults result = await RunStage(attacker, MakeUnit(FarPos), isMelee: true);
+            RollToHitResults result = await RunStage(attacker, MakeUnit(FarPos), isMelee: true, isCharging: true);
 
             Assert.That(TotalHits(result), Is.EqualTo(2f),
-                "in melee, Furious injects an extra hit on a natural 6.");
+                "charging in melee, Furious injects an extra hit on a natural 6.");
+        }
+
+        [Test]
+        public async Task Furious_MeleeNotCharging_NoExtra()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            AttachFurious(attacker);
+
+            RollToHitResults result = await RunStage(attacker, MakeUnit(FarPos), isMelee: true, isCharging: false);
+
+            Assert.That(TotalHits(result), Is.EqualTo(1f),
+                "a strike-back is melee but not charging — Furious's charge gate fails.");
         }
 
         [Test]
@@ -98,7 +110,7 @@ namespace FDG.Tests
         }
 
         private async Task<RollToHitResults> RunStage(DataBinding<UnitData> attacker,
-            DataBinding<UnitData> defender, bool isMelee = false)
+            DataBinding<UnitData> defender, bool isMelee = false, bool isCharging = false)
         {
             var layer = new NoOpLayer<ICombatMetadata>();
             var stage = new RollToHitStage<ICombatMetadata>(_ctx, layer);
@@ -107,7 +119,7 @@ namespace FDG.Tests
             var weapon = new Weapon("Test", rangeInches: 48f, attacks: 1, armorPenetration: 0,
                 specialRules: new HashSet<ISpecialRule_Weapon>());
             var metadata = new CombatMetadata(_ctx, attacker, defender, weapon, weaponCount: 1,
-                attackerMoved: false, isMelee: isMelee);
+                attackerMoved: false, isMelee: isMelee, isCharging: isCharging);
             metadata.AddResult(new DetermineHitRollNeededResults(4)); // a 6 clears a 4+ threshold
 
             await stage.Enter(metadata);

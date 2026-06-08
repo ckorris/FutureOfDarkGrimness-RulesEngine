@@ -156,13 +156,14 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>());
 
-    /// <summary> Extra hit on an unmodified 6 in melee. </summary>
+    /// <summary> Extra hit on an unmodified 6 in melee, but only on the charge (not a strike-back). </summary>
     public static SpecialRuleDefinition Furious { get; } = new SpecialRuleDefinition("Furious",
         new[]
         {
             new HookEntry(EHookID.Shooting_OnHitRollComplete,
                 new Condition.And(new Condition.IsMelee(),
-                                  new Condition.UnmodifiedRollEquals(6)),
+                                  new Condition.And(new Condition.IsCharging(),
+                                                    new Condition.UnmodifiedRollEquals(6))),
                 new Effect.AddExtraHit(OnRollValue: 6),
                 ELifetime.ThisAttack),
         },

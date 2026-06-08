@@ -65,6 +65,9 @@ namespace FDG.Data
                 .RegisterType<RectangularZone>(16)
                 .RegisterType<ObjectiveData>(8)
                 .RegisterType<PlayerID>(8)
+                // Appended last: TypeID is positional and baked into every serialized DataReference,
+                // so new types must go at the end to keep older type maps / saves valid.
+                .RegisterType<GameProgressData>(2)
                 .Build();
             }
         }

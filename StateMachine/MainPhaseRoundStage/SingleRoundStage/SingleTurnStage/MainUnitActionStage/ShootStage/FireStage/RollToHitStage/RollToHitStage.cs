@@ -26,8 +26,9 @@ namespace FDG.Stages
             List<Position> targetPositions = AlivePlacedPositions(metaData.DefendingUnit);
             if (attackerPositions.Count > 0 && targetPositions.Count > 0)
             {
-                await GameContext.Presenter.Present(
-                    new AttackBeat(metaData.IsMelee, attackerPositions, targetPositions));
+                int attackCount = metaData.WeaponType.Attacks * metaData.WeaponCount;
+                await GameContext.Presenter.Present(new AttackBeat(metaData.IsMelee,
+                    attackerPositions, targetPositions, attackCount, metaData.WeaponType.ArmorPenetration));
             }
 
             //TODO: Calculate attack count in separate stage, it may need its own mods.

@@ -13,8 +13,17 @@ namespace FDG.Presentation
         public static readonly TimeSpan ModelDeath = TimeSpan.FromMilliseconds(500);
         public static readonly TimeSpan DiceRoll   = TimeSpan.FromMilliseconds(700);
         public static readonly TimeSpan Banner      = TimeSpan.FromMilliseconds(1300);
-        public static readonly TimeSpan Projectiles = TimeSpan.FromMilliseconds(450);
-        public static readonly TimeSpan MeleeClash  = TimeSpan.FromMilliseconds(400);
+        // One shot/strike per attack, played one after another; total scales with the attack count
+        // but is capped so a big volley still resolves promptly (the slices just get quicker).
+        public static readonly TimeSpan PerAttack = TimeSpan.FromMilliseconds(280);
+        public static readonly TimeSpan AttackMax = TimeSpan.FromMilliseconds(1600);
+
+        public static TimeSpan ForAttack(int attackCount)
+        {
+            int n = Math.Max(1, attackCount);
+            double ms = Math.Min(PerAttack.TotalMilliseconds * n, AttackMax.TotalMilliseconds);
+            return TimeSpan.FromMilliseconds(ms);
+        }
 
         // Movement plays at a roughly constant speed, so a longer move takes longer (a 6" Advance
         // ≈ 600ms, a 12" Rush ≈ 1200ms), clamped so tiny moves aren't instant and big ones don't

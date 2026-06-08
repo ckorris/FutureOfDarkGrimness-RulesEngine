@@ -24,7 +24,7 @@ public static class CoreRuleCatalog
     {
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
         Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Vanguard, Scout, Ambush, Thrust,
-        Blast, Takedown, Impact,
+        Blast, Takedown, Impact, Counter,
     };
 
     /// <summary>
@@ -242,6 +242,24 @@ public static class CoreRuleCatalog
                 new Condition.Always(),
                 new Effect.ChargeImpactHits(new ValueSource.Arg(0)),
                 ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary>
+    /// Counter: when this unit is charged, it strikes FIRST — before the charging unit's strikes. A
+    /// defensive rule (Subject seat) at <see cref="EHookID.Melee_OnCounterTrigger"/> that queues
+    /// <see cref="RuleOperation.StrikeFirst"/>; DetermineStrikeOrderStage swaps the attacker/defender
+    /// roles so the existing swing/strike-back flow resolves the Counter unit first. The companion
+    /// "-1 impact roll per Counter model" facet is deferred (see Appendix C).
+    /// </summary>
+    public static SpecialRuleDefinition Counter { get; } = new SpecialRuleDefinition("Counter",
+        new[]
+        {
+            new HookEntry(EHookID.Melee_OnCounterTrigger,
+                new Condition.Always(),
+                new Effect.StrikeFirst(),
+                ELifetime.ThisActivation,
+                ERuleSeat.Subject),
         },
         Array.Empty<ActivatedAbility>());
 

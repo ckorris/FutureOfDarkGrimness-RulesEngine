@@ -43,6 +43,13 @@ namespace FDG.Stages
         /// </summary>
         public void RegisterAttackedDefender(DataBinding<UnitData> defender);
 
+        /// <summary>
+        /// Swaps the attacker and defender roles for the rest of this melee (Counter: the charged unit
+        /// strikes first, the charger strikes back). Rebuilds the available-weapon pool from the new
+        /// attacker and clears the charging flag — the new (formerly defending) attacker is not charging.
+        /// </summary>
+        public void SwapCombatRoles();
+
         public void SetAttackWeapon(Weapon weaponToConsume, out int weaponCount);
 
         public ICombatMetadata ConsumeAttackIntoContext(IGameContext gameContext);
@@ -50,7 +57,7 @@ namespace FDG.Stages
 
     public class CombatActionContext : ICombatActionContext
     {
-        public DataBinding<UnitData> AttackingUnit { get; }
+        public DataBinding<UnitData> AttackingUnit { get; private set; }
 
         public DataBinding<UnitData> DefendingUnit { get; private set; }
 
@@ -99,8 +106,9 @@ namespace FDG.Stages
         // Whether the attacking unit is charging (the charger's swing, not a strike-back).
         // Melee is only ever entered via Charge, so the charger's swing is charging; StrikeBackStage
         // builds its role-swapped context with isCharging:false. Carried into each CombatMetadata
-        // so charge-only rules (Thrust) can gate on it.
-        private readonly bool _isCharging;
+        // so charge-only rules (Thrust) can gate on it. Cleared by SwapCombatRoles (a Counter swap makes
+        // the formerly-defending unit the attacker, and it is not charging).
+        private bool _isCharging;
 
 
         public CombatActionContext(IGameContext gameContext, DataBinding<UnitData> attackingUnit, bool isMelee,
@@ -156,6 +164,20 @@ namespace FDG.Stages
         {
             DefendingUnit = defendingUnit;
             DefenderRemainingWoundsAtStart = DefendingUnit.GetValue().RemainingWounds;
+        }
+
+        public void SwapCombatRoles()
+        {
+            (AttackingUnit, DefendingUnit) = (DefendingUnit, AttackingUnit);
+            (AttackerRemainingWoundsAtStart, DefenderRemainingWoundsAtStart) =
+                (DefenderRemainingWoundsAtStart, AttackerRemainingWoundsAtStart);
+
+            // The new attacker (the Counter unit) is striking back into the charge, not charging.
+            _isCharging = false;
+
+            // Rebuild the melee-weapon pool from the new attacker; nothing has been used yet this swing.
+            _availableWeapons = GetTypeSortedWeapons(AttackingUnit.GetValue().GetMeleeWeapons());
+            _alreadyUsedWeapons.Clear();
         }
 
         public ICombatMetadata ConsumeAttackIntoContext(IGameContext gameContext)

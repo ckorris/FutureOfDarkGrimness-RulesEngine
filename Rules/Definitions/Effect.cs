@@ -430,9 +430,10 @@ public abstract record Effect
     /// <summary>
     /// Sets the bearer aside during normal deployment to be placed by its own dedicated pass.
     /// Covers Scout (deploy after others, within <see cref="PlacementRangeInches"/>" of the zone)
-    /// and, later, Ambush (deploy a later round, &gt;9" from enemies). <see cref="Timing"/> selects
-    /// the pass; <see cref="PlacementRangeInches"/> is the zone-relative placement range. Both default
-    /// so a bare <c>DeferDeployment()</c> (used by the queue-level shape tests) keeps compiling.
+    /// and Ambush (deploy a later round, over <see cref="PlacementRangeInches"/>" from enemies).
+    /// <see cref="Timing"/> selects the pass; <see cref="PlacementRangeInches"/>'s meaning depends on
+    /// it (zone-forward-extension for Scout, min-distance-from-enemies for Ambush). Both default so a
+    /// bare <c>DeferDeployment()</c> (used by the queue-level shape tests) keeps compiling.
     /// </summary>
     public sealed record DeferDeployment(
         EDeferTiming Timing = EDeferTiming.AfterNormalDeployment,

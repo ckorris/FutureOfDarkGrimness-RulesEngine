@@ -73,6 +73,23 @@ namespace FDG
             return unit.RemainingWounds <= 0;
         }
 
+        /// <summary>
+        /// Whether any living model of this unit is on the table (a non-origin position). A unit kept in
+        /// reserve (Ambush) has never been placed, so all its models sit at the default origin (0,0,0);
+        /// such a unit is alive but not yet on the battlefield, and must be excluded from activation,
+        /// targeting, etc. until it arrives. Mirrors the renderer/AI "(0,0,0) means unplaced" convention.
+        /// </summary>
+        public static bool GetIsOnBattlefield(this IUnit unit)
+        {
+            foreach (IModel model in unit.Models)
+            {
+                if (!model.GetIsAlive()) continue;
+                Position pos = model.Position;
+                if (pos.x != 0f || pos.z != 0f) return true;
+            }
+            return false;
+        }
+
         public static List<IWeapon> AllWeapons(this IUnit unit)
         {
             List<IWeapon> allWeapons = new List<IWeapon>();

@@ -358,8 +358,10 @@ public abstract record RuleOperation
 
     /// <summary>
     /// Remove the bearer from the normal deployment pool for later placement, governed by
-    /// <see cref="Timing"/> and (for zone-relative placement) <see cref="PlacementRangeInches"/>.
-    /// Resolution of <see cref="Effect.DeferDeployment"/> (Scout; Ambush later).
+    /// <see cref="Timing"/>. <see cref="PlacementRangeInches"/> is interpreted per timing:
+    /// for <see cref="EDeferTiming.AfterNormalDeployment"/> (Scout) it's how far the deployment
+    /// zone extends forward; for <see cref="EDeferTiming.LaterRound"/> (Ambush) it's the minimum
+    /// distance from enemy units the unit must arrive. Resolution of <see cref="Effect.DeferDeployment"/>.
     ///
     /// Stays a plain <see cref="RuleOperation"/> — NOT an <see cref="ExecutableOperation"/>: it is a
     /// marker the deployment subsystem <em>reads</em> (a query, like <see cref="SuppressRule"/>) to decide

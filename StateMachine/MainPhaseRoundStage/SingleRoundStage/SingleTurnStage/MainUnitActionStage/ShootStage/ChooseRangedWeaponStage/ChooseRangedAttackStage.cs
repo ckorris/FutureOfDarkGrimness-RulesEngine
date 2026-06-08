@@ -137,7 +137,9 @@ namespace FDG.Stages
 
             IEnumerable<DataBinding<UnitData>> enemyUnits = gameContext.GameDataStore().GetAllDataBindings<ArmyData>()
                 .Where(army => playerTeam.IsPlayerOnTeam(army.GetValue().PlayerID) == false)
-                .SelectMany(army => army.GetValue().UnitBindings);
+                .SelectMany(army => army.GetValue().UnitBindings)
+                // Reserve units (Ambush) not yet on the table can't be targeted.
+                .Where(unit => unit.GetValue().GetIsOnBattlefield());
 
             // If the attacker has already engaged the max number of distinct units this shoot action, any further
             // unit that wasn't already among them is unselectable.

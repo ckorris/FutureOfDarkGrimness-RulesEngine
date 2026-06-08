@@ -23,7 +23,7 @@ public static class CoreRuleCatalog
     public static IReadOnlyList<SpecialRuleDefinition> All => new[]
     {
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
-        Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Vanguard, Scout,
+        Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Vanguard, Scout, Ambush,
     };
 
     /// <summary>
@@ -293,6 +293,23 @@ public static class CoreRuleCatalog
             new HookEntry(EHookID.Deployment_OnPreDeploymentSelect,
                 new Condition.Always(),
                 new Effect.DeferDeployment(EDeferTiming.AfterNormalDeployment, PlacementRangeInches: 12f),
+                ELifetime.UntilEndOfGame),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary>
+    /// Ambush: this unit is kept in reserve instead of deploying normally, and the owner may bring it
+    /// on at the start of any round after the first, placed anywhere over 9" from enemy units. A passive
+    /// rule at <see cref="EHookID.Deployment_OnPreDeploymentSelect"/> that queues
+    /// <see cref="RuleOperation.DeferDeployment"/> with <see cref="EDeferTiming.LaterRound"/>; the
+    /// round-start arrival pass places it.
+    /// </summary>
+    public static SpecialRuleDefinition Ambush { get; } = new SpecialRuleDefinition("Ambush",
+        new[]
+        {
+            new HookEntry(EHookID.Deployment_OnPreDeploymentSelect,
+                new Condition.Always(),
+                new Effect.DeferDeployment(EDeferTiming.LaterRound, PlacementRangeInches: 9f),
                 ELifetime.UntilEndOfGame),
         },
         Array.Empty<ActivatedAbility>());

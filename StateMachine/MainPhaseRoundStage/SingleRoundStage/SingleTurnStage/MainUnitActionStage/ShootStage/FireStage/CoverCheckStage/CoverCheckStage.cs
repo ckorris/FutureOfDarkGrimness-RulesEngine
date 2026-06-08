@@ -1,4 +1,5 @@
 using FDG.Data;
+using FDG.Rules.Dispatch;
 using FDG.Utilities;
 
 namespace FDG.Stages
@@ -37,6 +38,15 @@ namespace FDG.Stages
 
             // Majority rule: more than half of defending models in cover → +1 defense bonus.
             int bonus = modelsInCover * 2 > defenders.Count ? 1 : 0;
+
+            // #042 Blast: the attacking weapon ignores cover — drop the bonus. Derived from the attacker's
+            // rules via the shared query so the cover stage, targeting options, and movement options agree.
+            if (bonus > 0 && SightRuleQueries.IgnoresCover(
+                    metaData.AttackingUnit.GetValue(), metaData.WeaponType, GameContext.RuleEvaluator))
+            {
+                GameContext.Log($"Cover ignored by {metaData.AttackingUnit.GetValue().Name}'s weapon (Blast).");
+                bonus = 0;
+            }
 
             if (bonus > 0)
                 GameContext.Log($"Cover: {modelsInCover}/{defenders.Count} defending models in cover. Defense +{bonus}.");

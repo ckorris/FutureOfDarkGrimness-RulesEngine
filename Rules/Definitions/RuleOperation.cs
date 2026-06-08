@@ -368,6 +368,19 @@ public abstract record RuleOperation
     }
 
     /// <summary>
+    /// The attack ignores the target's cover (drop the cover save bonus). A marker read by the cover
+    /// stage and by the targeting/movement option builders (per-weapon), not folded into a numeric sink.
+    /// Resolution of <see cref="Effect.IgnoreCover"/> (Blast).
+    /// </summary>
+    public sealed record IgnoreCover : RuleOperation
+    {
+        public override string Describe()
+        {
+            return "ignored the target's cover";
+        }
+    }
+
+    /// <summary>
     /// Limit the bearer's declarable actions to <see cref="Allowed"/>. Resolution of
     /// <see cref="Effect.RestrictActions"/> (Immobile, Artillery Hold-only).
     /// </summary>

@@ -428,6 +428,20 @@ public abstract record Effect
     }
 
     /// <summary>
+    /// The bearer's attack ignores the target's cover (the cover save bonus does not apply). Covers
+    /// Blast's "ignores cover" facet. Read by the cover stage (to drop the bonus) and surfaced to the
+    /// movement + ranged-target resolver requests per-weapon, so they can represent that cover-blocked
+    /// targets are still shootable with this weapon.
+    /// </summary>
+    public sealed record IgnoreCover : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.IgnoreCover());
+        }
+    }
+
+    /// <summary>
     /// Sets the bearer aside during normal deployment to be placed by its own dedicated pass.
     /// Covers Scout (deploy after others, within <see cref="PlacementRangeInches"/>" of the zone)
     /// and Ambush (deploy a later round, over <see cref="PlacementRangeInches"/>" from enemies).

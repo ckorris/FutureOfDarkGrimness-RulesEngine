@@ -22,7 +22,8 @@ namespace FDG.Stages
             float hardCap = System.Math.Max(context.MaxRushDistance, context.MaxChargeDistance);
 
             var pathRequest = new DefineMovementPathRequest(playerID, "Move Unit", context.MovingUnit,
-                context.MaxAdvanceDistance, context.MaxRushDistance, hardCap);
+                context.MaxAdvanceDistance, context.MaxRushDistance, hardCap,
+                WeaponSightProfileBuilder.For(context.MovingUnit.GetValue(), context.GameContext.RuleEvaluator));
 
             List<ModelMoveEntry> movements = await context.PlayerRequester()
                 .RequestDecision<DefineMovementPathRequest, List<ModelMoveEntry>>(pathRequest);

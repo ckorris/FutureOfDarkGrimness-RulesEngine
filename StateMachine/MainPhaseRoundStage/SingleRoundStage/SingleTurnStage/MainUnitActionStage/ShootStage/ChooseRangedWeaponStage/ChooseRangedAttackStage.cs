@@ -132,7 +132,15 @@ namespace FDG.Stages
             
             foreach(Weapon weapon in availableWeapons.Keys)
             {
-                nameAndWeaponOptions.Add(weapon.Name, new WeaponOption(weapon, new List<WeaponTargetStats>()));
+                // #042: surface per-weapon whether this weapon ignores cover (Blast) or terrain (Indirect)
+                // so the resolver knows a cover-/terrain-blocked target is still shootable with it. Derived
+                // from the attacker's rules via the shared query (same source the cover stage uses).
+                bool ignoresCover = Rules.Dispatch.SightRuleQueries.IgnoresCover(
+                    attackingUnit.GetValue(), weapon, gameContext.RuleEvaluator);
+                bool ignoresTerrain = Rules.Dispatch.SightRuleQueries.IgnoresTerrain(
+                    attackingUnit.GetValue(), weapon, gameContext.RuleEvaluator);
+                nameAndWeaponOptions.Add(weapon.Name,
+                    new WeaponOption(weapon, new List<WeaponTargetStats>(), ignoresCover, ignoresTerrain));
             }
 
             IEnumerable<DataBinding<UnitData>> enemyUnits = gameContext.GameDataStore().GetAllDataBindings<ArmyData>()

@@ -17,9 +17,18 @@ namespace FDG.StageResolution.Requests
         public float MaxRushDistance { get; }
         public float MaxDistanceInches { get; }
 
+        /// <summary>
+        /// Per-weapon sighting rules for the moving unit's ranged weapons — whether each ignores cover
+        /// (Blast) or intervening terrain (Indirect). The movement resolver doesn't consume this yet, but
+        /// it's the info needed to represent "after I move here, can I shoot that" (a cover-/terrain-blocked
+        /// target may still be shootable with an ignoring weapon). Empty when the unit has no ranged weapons.
+        /// </summary>
+        public IReadOnlyList<WeaponSightProfile> WeaponSightProfiles { get; }
+
         [JsonConstructor]
         public DefineMovementPathRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
-            DataBinding<UnitData> unitDataBinding, float maxAdvanceDistance, float maxRushDistance, float maxDistanceInches)
+            DataBinding<UnitData> unitDataBinding, float maxAdvanceDistance, float maxRushDistance, float maxDistanceInches,
+            IReadOnlyList<WeaponSightProfile>? weaponSightProfiles = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -28,10 +37,12 @@ namespace FDG.StageResolution.Requests
             MaxAdvanceDistance = maxAdvanceDistance;
             MaxRushDistance = maxRushDistance;
             MaxDistanceInches = maxDistanceInches;
+            WeaponSightProfiles = weaponSightProfiles ?? new List<WeaponSightProfile>();
         }
 
         public DefineMovementPathRequest(PlayerID targetPlayerID,  string taskName,
-            DataBinding<UnitData> unitDataBinding, float maxAdvanceDistance, float maxRushDistance, float maxDistanceInches)
+            DataBinding<UnitData> unitDataBinding, float maxAdvanceDistance, float maxRushDistance, float maxDistanceInches,
+            IReadOnlyList<WeaponSightProfile>? weaponSightProfiles = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = new TaskID(Guid.NewGuid());
@@ -40,6 +51,7 @@ namespace FDG.StageResolution.Requests
             MaxAdvanceDistance = maxAdvanceDistance;
             MaxRushDistance = maxRushDistance;
             MaxDistanceInches = maxDistanceInches;
+            WeaponSightProfiles = weaponSightProfiles ?? new List<WeaponSightProfile>();
         }
 
         public Task<List<ModelMoveEntry>> Resolve(List<ModelMoveEntry> resolution)
@@ -49,4 +61,7 @@ namespace FDG.StageResolution.Requests
     }
 
     public record ModelMoveEntry(DataBinding<ModelData> Model, List<Position> Positions);
+
+    /// <summary>One of the moving unit's ranged weapons and whether it ignores cover (Blast) / terrain (Indirect).</summary>
+    public record WeaponSightProfile(Weapon Weapon, bool IgnoresCover, bool IgnoresTerrain);
 }

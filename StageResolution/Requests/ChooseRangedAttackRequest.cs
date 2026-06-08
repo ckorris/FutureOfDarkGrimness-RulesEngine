@@ -42,7 +42,13 @@ namespace FDG.StageResolution.Requests
             return Task.FromResult(resolution);
         }
 
-        public record WeaponOption(Weapon Weapon, List<WeaponTargetStats> WeaponTargetStats);
+        /// <param name="IgnoresCover">True if this weapon ignores the target's cover (Blast). Resolvers
+        /// should treat a target's <see cref="WeaponTargetStats.HasCover"/> as moot for this weapon when
+        /// representing shootability.</param>
+        /// <param name="IgnoresTerrain">True if this weapon ignores intervening terrain for line of sight
+        /// (Indirect). A seam — not yet derived (Indirect's LoS facet is unimplemented), so false today.</param>
+        public record WeaponOption(Weapon Weapon, List<WeaponTargetStats> WeaponTargetStats,
+            bool IgnoresCover = false, bool IgnoresTerrain = false);
 
         /// <summary>
         /// List which models can and cannot shoot at a given unit, of the models in a unit that have a specific weapon.

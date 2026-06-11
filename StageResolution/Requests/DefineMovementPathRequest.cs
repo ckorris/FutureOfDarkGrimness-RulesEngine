@@ -62,6 +62,12 @@ namespace FDG.StageResolution.Requests
 
     public record ModelMoveEntry(DataBinding<ModelData> Model, List<Position> Positions);
 
-    /// <summary>One of the moving unit's ranged weapons and whether it ignores cover (Blast) / terrain (Indirect).</summary>
-    public record WeaponSightProfile(Weapon Weapon, bool IgnoresCover, bool IgnoresTerrain);
+    /// <summary>
+    /// One of the moving unit's ranged weapons and whether it ignores cover (Blast) / line of sight
+    /// (Indirect, Takedown). <see cref="CoverIgnoreRule"/> / <see cref="LineOfSightIgnoreRule"/> carry the
+    /// alias-aware display name of the responsible rule (null when none), so the movement overlay can
+    /// attribute the effect on each fire-line label, e.g. "Huge Gun (Indirect ignores line of sight)".
+    /// </summary>
+    public record WeaponSightProfile(Weapon Weapon, bool IgnoresCover, bool IgnoresTerrain,
+        string? CoverIgnoreRule = null, string? LineOfSightIgnoreRule = null);
 }

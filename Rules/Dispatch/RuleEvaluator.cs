@@ -57,6 +57,32 @@ public sealed class RuleEvaluator
     public IReadOnlyList<RuleOperation> EvaluateAll(IHookContext context,
         params (IUnit Unit, ERuleSeat Seat)[] participants)
     {
+        return CollectSurviving(context, log: true, participants).Select(t => t.Op).ToList();
+    }
+
+    /// <summary>
+    /// Like <see cref="EvaluateAll"/>, but pairs each surviving operation with the alias-aware display
+    /// name (<see cref="ResolvedRule.RequestedName"/>) of the rule that produced it — so presentation
+    /// queries (e.g. <see cref="SightRuleQueries"/>) can attribute an effect to its rule. Does NOT log:
+    /// it's a read-only query callers may run per-frame while building UI, so it must not spam the game log.
+    /// </summary>
+    public IReadOnlyList<(RuleOperation Op, string RuleName)> EvaluateAllNamed(IHookContext context,
+        params (IUnit Unit, ERuleSeat Seat)[] participants)
+    {
+        return CollectSurviving(context, log: false, participants)
+            .Select(t => (t.Op, t.Origin.RequestedName)).ToList();
+    }
+
+    /// <summary>
+    /// Collects every participant's matching operations, runs the suppression first-pass (a queued
+    /// <see cref="RuleOperation.SuppressRule"/>("X") removes every op whose origin rule's canonical name
+    /// is "X" — alias-renamed victims included, since it matches <c>Definition.Name</c>), and returns the
+    /// surviving tagged operations in order. Logs each kept op (and each suppressor's "X ignored Y") only
+    /// when <paramref name="log"/> is true.
+    /// </summary>
+    private List<TaggedOperation> CollectSurviving(IHookContext context, bool log,
+        params (IUnit Unit, ERuleSeat Seat)[] participants)
+    {
         var tagged = new List<TaggedOperation>();
 
         foreach ((IUnit unit, ERuleSeat seat) in participants)
@@ -64,34 +90,32 @@ public sealed class RuleEvaluator
             CollectTagged(unit, seat, context, tagged);
         }
 
-        // Suppression first-pass: a queued SuppressRule("X") removes every op whose origin rule's
-        // canonical name is "X" (Definition.Name, so an alias-renamed victim is still caught).
         var suppressedRuleNames = tagged
             .Select(t => t.Op)
             .OfType<RuleOperation.SuppressRule>()
             .Select(s => s.RuleName)
             .ToHashSet();
 
-        var result = new List<RuleOperation>(tagged.Count);
+        var result = new List<TaggedOperation>(tagged.Count);
         foreach (TaggedOperation t in tagged)
         {
             if (t.Op is RuleOperation.SuppressRule)
             {
                 // The suppressor is internal machinery a stage never applies. Log the action
                 // ("X ignored Y"), then drop it from the queue handed back.
-                Log(t);
+                if (log) Log(t);
                 continue;
             }
 
             if (suppressedRuleNames.Contains(t.Origin.Definition.Name))
             {
-                // Dropped by a suppressor — emit no log line (this is the phantom-log fix:
-                // logging now happens post-suppression, so a cancelled op never prints).
+                // Dropped by a suppressor — emit no log line (logging happens post-suppression,
+                // so a cancelled op never prints).
                 continue;
             }
 
-            Log(t);
-            result.Add(t.Op);
+            if (log) Log(t);
+            result.Add(t);
         }
 
         return result;

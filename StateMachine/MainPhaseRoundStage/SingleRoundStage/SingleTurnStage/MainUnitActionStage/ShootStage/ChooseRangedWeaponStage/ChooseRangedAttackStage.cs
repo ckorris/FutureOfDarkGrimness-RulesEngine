@@ -136,16 +136,18 @@ namespace FDG.Stages
             foreach(Weapon weapon in availableWeapons.Keys)
             {
                 // #042: surface per-weapon whether this weapon ignores cover (Blast) or terrain/LoS
-                // (Indirect, Takedown) so the resolver knows a cover-/LoS-blocked target is still shootable
-                // with it. Derived from the attacker's rules via the shared query (same source the cover
-                // and occlusion stages use).
-                bool ignoresCover = Rules.Dispatch.SightRuleQueries.IgnoresCover(
+                // (Indirect, Takedown), AND which rule causes it, so the resolver can both know a
+                // cover-/LoS-blocked target is still shootable and attribute it to the player ("(Blast
+                // ignores cover)"). Derived from the attacker's rules via the shared query (same source the
+                // cover and occlusion stages use; the *Source variants are non-logging).
+                string? coverIgnoreRule = Rules.Dispatch.SightRuleQueries.CoverIgnoreSource(
                     attackingUnit.GetValue(), weapon, gameContext.RuleEvaluator);
-                bool ignoresTerrain = Rules.Dispatch.SightRuleQueries.IgnoresTerrain(
+                string? losIgnoreRule = Rules.Dispatch.SightRuleQueries.LineOfSightIgnoreSource(
                     attackingUnit.GetValue(), weapon, gameContext.RuleEvaluator);
                 nameAndWeaponOptions.Add(weapon.Name,
-                    new WeaponOption(weapon, new List<WeaponTargetStats>(), ignoresCover, ignoresTerrain));
-                weaponIgnoresLineOfSight.Add(weapon.Name, ignoresTerrain);
+                    new WeaponOption(weapon, new List<WeaponTargetStats>(),
+                        coverIgnoreRule != null, losIgnoreRule != null, coverIgnoreRule, losIgnoreRule));
+                weaponIgnoresLineOfSight.Add(weapon.Name, losIgnoreRule != null);
             }
 
             IEnumerable<DataBinding<UnitData>> enemyUnits = gameContext.GameDataStore().GetAllDataBindings<ArmyData>()

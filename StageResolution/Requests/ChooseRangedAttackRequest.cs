@@ -46,9 +46,14 @@ namespace FDG.StageResolution.Requests
         /// should treat a target's <see cref="WeaponTargetStats.HasCover"/> as moot for this weapon when
         /// representing shootability.</param>
         /// <param name="IgnoresTerrain">True if this weapon ignores intervening terrain for line of sight
-        /// (Indirect). A seam — not yet derived (Indirect's LoS facet is unimplemented), so false today.</param>
+        /// (Indirect, Takedown), so it can fire at targets out of line of sight.</param>
+        /// <param name="CoverIgnoreRule">Display name of the rule causing <paramref name="IgnoresCover"/>
+        /// (alias-aware), for player-facing attribution like "(Blast ignores cover)"; null when none.</param>
+        /// <param name="LineOfSightIgnoreRule">Display name of the rule causing <paramref name="IgnoresTerrain"/>,
+        /// for attribution like "(Indirect ignores line of sight)"; null when none.</param>
         public record WeaponOption(Weapon Weapon, List<WeaponTargetStats> WeaponTargetStats,
-            bool IgnoresCover = false, bool IgnoresTerrain = false);
+            bool IgnoresCover = false, bool IgnoresTerrain = false,
+            string? CoverIgnoreRule = null, string? LineOfSightIgnoreRule = null);
 
         /// <summary>
         /// List which models can and cannot shoot at a given unit, of the models in a unit that have a specific weapon.

@@ -19,9 +19,12 @@ namespace FDG.Stages
             foreach (Weapon weapon in unit.GetRangedWeapons())
             {
                 if (!seenNames.Add(weapon.Name)) continue;
+                // The *Source variants return the responsible rule's display name (or null), so the movement
+                // overlay can attribute the effect; non-logging, safe to call while building the request.
+                string? coverRule = SightRuleQueries.CoverIgnoreSource(unit, weapon, evaluator);
+                string? losRule = SightRuleQueries.LineOfSightIgnoreSource(unit, weapon, evaluator);
                 profiles.Add(new WeaponSightProfile(weapon,
-                    SightRuleQueries.IgnoresCover(unit, weapon, evaluator),
-                    SightRuleQueries.IgnoresTerrain(unit, weapon, evaluator)));
+                    coverRule != null, losRule != null, coverRule, losRule));
             }
             return profiles;
         }

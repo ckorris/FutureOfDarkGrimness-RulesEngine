@@ -12,10 +12,8 @@ namespace FDG.Rules.Dispatch
     /// cover bonus), the ranged-target option builder, and the movement request builder — so the
     /// "ignores cover / ignores terrain" flags they surface to the resolvers stay consistent.
     ///
-    /// Currently unit-scoped: Blast/Indirect are modelled as unit rules, so the result applies to all of
-    /// the unit's weapons. The signatures take a <see cref="Weapon"/> so that when weapon-scoped rules
-    /// land the derivation can tighten per-weapon without callers changing shape; today the weapon is
-    /// unused.
+    /// Per-weapon (#027): the queried weapon's own rules are evaluated alongside the attacker's unit
+    /// rules, so a unit with one Indirect mortar and one plain rifle reports each weapon accurately.
     /// </summary>
     public static class SightRuleQueries
     {
@@ -27,7 +25,7 @@ namespace FDG.Rules.Dispatch
         public static string? CoverIgnoreSource(IUnit attacker, IWeapon weapon, RuleEvaluator evaluator)
         {
             foreach ((RuleOperation op, string ruleName) in evaluator.EvaluateAllNamed(
-                         new CoverIgnoreContext(attacker), (attacker, ERuleSeat.Actor)))
+                         new CoverIgnoreContext(attacker), (attacker, ERuleSeat.Actor, weapon)))
             {
                 if (op is RuleOperation.IgnoreCover) return ruleName;
             }
@@ -46,7 +44,7 @@ namespace FDG.Rules.Dispatch
         public static string? LineOfSightIgnoreSource(IUnit attacker, IWeapon weapon, RuleEvaluator evaluator)
         {
             foreach ((RuleOperation op, string ruleName) in evaluator.EvaluateAllNamed(
-                         new CoverIgnoreContext(attacker), (attacker, ERuleSeat.Actor)))
+                         new CoverIgnoreContext(attacker), (attacker, ERuleSeat.Actor, weapon)))
             {
                 if (op is RuleOperation.IgnoreLineOfSight) return ruleName;
             }

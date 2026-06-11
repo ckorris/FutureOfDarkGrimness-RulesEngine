@@ -351,17 +351,22 @@ public abstract record Effect
     /// Covers Counter's companion facet — "the charging unit rolls -1 Impact die per model in the
     /// Counter unit." A defender-seat effect at charge contact: it resolves the bearer's living-model
     /// count and emits a negative <see cref="RuleOperation.ChargeImpactHits"/> that folds into the same
-    /// <see cref="IImpactSink"/> as the attacker's Impact(X), so the stage rolls the net dice. Counter is
-    /// a unit-wide rule, so every living model of the charged unit is a "Counter model."
+    /// <see cref="IImpactSink"/> as the attacker's Impact(X), so the stage rolls the net dice. A
+    /// "Counter model" is one carrying a weapon with this rule (#027 weapon scope); the unit-attached
+    /// fallback counts every living model, preserving the pre-weapon-scope behavior.
     /// </summary>
     public sealed record ReduceImpactDicePerModel : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            int livingModels = ruleInvocation.Bearer.Models.Count(m => m.GetIsAlive());
-            if (livingModels > 0)
+            int counterModels = ruleInvocation.Weapon == null || ruleInvocation.Definition == null
+                ? ruleInvocation.Bearer.Models.Count(m => m.GetIsAlive())
+                : ruleInvocation.Bearer.Models.Count(m => m.GetIsAlive()
+                    && m.Weapons.Any(w => w.RuleDefinitions.Any(r => r.Definition == ruleInvocation.Definition)));
+
+            if (counterModels > 0)
             {
-                operations.Add(new RuleOperation.ChargeImpactHits(-livingModels));
+                operations.Add(new RuleOperation.ChargeImpactHits(-counterModels));
             }
         }
     }

@@ -43,7 +43,7 @@ public sealed class RuleEvaluator
         IWeapon? weapon = null)
     {
         var tagged = new List<TaggedOperation>();
-        CollectTagged(unit, seat, weapon, context, tagged, new HashSet<(UnitID, SpecialRuleDefinition)>());
+        CollectTagged(unit, seat, weapon, context, tagged, new DedupState());
 
         // Per-unit Evaluate does NOT run the suppression first-pass — cross-unit suppression
         // (an attacker's Unstoppable cancelling a defender's Regeneration) only exists once the
@@ -118,9 +118,10 @@ public sealed class RuleEvaluator
     {
         var tagged = new List<TaggedOperation>();
 
-        // Shared across the whole event so the same definition reached through several
-        // carriers (unit + weapon, or two identical weapons) fires once per bearer.
-        var seen = new HashSet<(UnitID, SpecialRuleDefinition)>();
+        // Shared across the whole event so the same rule reached through several carriers
+        // (unit + weapon, two identical weapons, or the unit walked once per weapon
+        // participant) fires once per bearer.
+        var seen = new DedupState();
 
         foreach ((IUnit unit, ERuleSeat seat, IWeapon? weapon) in participants)
         {
@@ -169,7 +170,7 @@ public sealed class RuleEvaluator
     /// operations survive.
     /// </summary>
     private void CollectTagged(IUnit unit, ERuleSeat seat, IWeapon? weapon, IHookContext context,
-        List<TaggedOperation> sink, HashSet<(UnitID, SpecialRuleDefinition)> seen)
+        List<TaggedOperation> sink, DedupState seen)
     {
         CollectFromRules(unit.RuleDefinitions, unit, carryingWeapon: null, seat, context, sink, seen);
 
@@ -180,18 +181,17 @@ public sealed class RuleEvaluator
     }
 
     private void CollectFromRules(IReadOnlyList<ResolvedRule> rules, IUnit unit, IWeapon? carryingWeapon,
-        ERuleSeat seat, IHookContext context, List<TaggedOperation> sink,
-        HashSet<(UnitID, SpecialRuleDefinition)> seen)
+        ERuleSeat seat, IHookContext context, List<TaggedOperation> sink, DedupState seen)
     {
         foreach (ResolvedRule rule in rules)
         {
-            if (rule.Arguments.Count == 0 && !seen.Add((unit.ID, rule.Definition)))
+            if (!seen.ShouldFire(unit, rule))
             {
                 continue;
             }
 
             var invocation = new RuleInvocation(context, unit, rule.Arguments, DiceRoller: _diceRoller,
-                Weapon: carryingWeapon);
+                Weapon: carryingWeapon, Definition: rule.Definition);
 
             foreach (HookEntry entry in rule.Definition.Passive)
             {
@@ -233,6 +233,36 @@ public sealed class RuleEvaluator
     /// </summary>
     private readonly record struct TaggedOperation(RuleOperation Op, ResolvedRule Origin, IUnit Bearer,
         IWeapon? Weapon = null);
+
+    /// <summary>
+    /// Per-event dedup deciding whether a rule attachment fires (#027). Two layers:
+    /// the same <see cref="ResolvedRule"/> attachment instance never fires twice in one
+    /// event (a unit's rules are walked once per weapon participant; duplicate weapons
+    /// from one army-file entry share their attachment instances); and argument-less
+    /// rules additionally fire at most once per bearer across DISTINCT attachments —
+    /// the rulebook's "effects from multiple instances of the same special rule don't
+    /// stack, unless it is a rule with (X) in its name".
+    /// </summary>
+    private sealed class DedupState
+    {
+        private readonly HashSet<(UnitID, ResolvedRule)> _firedAttachments = new();
+        private readonly HashSet<(UnitID, SpecialRuleDefinition)> _firedArglessDefinitions = new();
+
+        public bool ShouldFire(IUnit bearer, ResolvedRule rule)
+        {
+            if (!_firedAttachments.Add((bearer.ID, rule)))
+            {
+                return false;
+            }
+
+            if (rule.Arguments.Count == 0 && !_firedArglessDefinitions.Add((bearer.ID, rule.Definition)))
+            {
+                return false;
+            }
+
+            return true;
+        }
+    }
 
     /// <summary>
     /// The player-triggered abilities available at this hook: abilities whose

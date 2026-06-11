@@ -38,10 +38,14 @@ namespace FDG.Stages
             IUnit attacker = context.AttackingUnit.GetValue();
             IUnit defender = context.DefendingUnit.GetValue();
 
+            // The defender's melee weapons join as carriers so weapon-scoped Counter's
+            // impact-dice reduction fires (#027); the charger's Impact(X) is a unit rule.
+            var participants = new List<(IUnit, ERuleSeat, IWeapon?)> { (attacker, ERuleSeat.Actor, null) };
+            participants.AddRange(DetermineStrikeOrderStage.SubjectWithMeleeWeapons(defender));
+
             IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
                 new ChargeContactContext(attacker, defender),
-                (attacker, ERuleSeat.Actor),
-                (defender, ERuleSeat.Subject));
+                participants.ToArray());
 
             ImpactSink impact = new ImpactSink();
             impact.ApplyFrom(operations);

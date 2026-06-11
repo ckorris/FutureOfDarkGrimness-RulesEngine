@@ -12,7 +12,9 @@ namespace FDG.Rules.Definitions;
 /// Bearer/arguments/target/roller can't live on the hook context because the same event
 /// is evaluated for several units/seats — they vary per firing, which is what builds the
 /// invocation. <see cref="Weapon"/> is the carrying weapon when the rule is
-/// weapon-attached (#027) — null for unit-attached rules.
+/// weapon-attached (#027) — null for unit-attached rules. <see cref="Definition"/> is
+/// the rule definition being fired, for the rare effect that must reason about its own
+/// rule's identity (Counter counting "models with Counter").
 /// </summary>
 public sealed record RuleInvocation(
     IHookContext? Hook,
@@ -20,7 +22,8 @@ public sealed record RuleInvocation(
     IReadOnlyList<RuleArgument> Arguments,
     IUnit? Target = null,
     IDiceRoller? DiceRoller = null,
-    IWeapon? Weapon = null)
+    IWeapon? Weapon = null,
+    SpecialRuleDefinition? Definition = null)
 {
     /// <summary>
     /// The unit an effect lands on: the explicit <see cref="Target"/> for activated

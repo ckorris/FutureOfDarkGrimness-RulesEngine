@@ -13,7 +13,8 @@ namespace FDG.Stages
     /// unchanged with roles reversed — the Counter unit takes the first swing, and the charger is offered
     /// the strike-back. Runs after charge-contact (Impact) so the charger still deals its impact hits.
     ///
-    /// DEFERRED (Appendix C): the companion "-1 impact roll per Counter model" facet.
+    /// Counter is weapon-scoped (#027: "strikes first with this weapon"), so the defender's melee
+    /// weapons join the evaluation as carriers; the evaluator dedupes duplicate instances.
     /// </summary>
     public class DetermineStrikeOrderStage : StageBase<ICombatActionContext>
     {
@@ -32,7 +33,7 @@ namespace FDG.Stages
 
             IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
                 new CounterTriggerContext(attacker, defender),
-                (defender, ERuleSeat.Subject));
+                SubjectWithMeleeWeapons(defender));
 
             // Only strike first if the Counter unit can actually fight — it must have a living model with a
             // melee weapon. Weapons are distributed across models (round-robin), so a unit can lose its only
@@ -47,6 +48,21 @@ namespace FDG.Stages
             }
 
             OnStrikeOrderDetermined.Activate(context);
+        }
+
+        /// <summary>
+        /// The defender as a Subject participant once per living-model melee weapon (so
+        /// weapon-scoped Counter fires), plus once weaponless (so unit-scoped defensive
+        /// rules fire even with no melee weapons).
+        /// </summary>
+        internal static (IUnit, ERuleSeat, IWeapon?)[] SubjectWithMeleeWeapons(IUnit defender)
+        {
+            var participants = new List<(IUnit, ERuleSeat, IWeapon?)> { (defender, ERuleSeat.Subject, null) };
+            foreach (Weapon meleeWeapon in defender.GetMeleeWeapons())
+            {
+                participants.Add((defender, ERuleSeat.Subject, meleeWeapon));
+            }
+            return participants.ToArray();
         }
     }
 }

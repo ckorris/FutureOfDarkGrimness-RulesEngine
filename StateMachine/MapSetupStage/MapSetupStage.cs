@@ -7,6 +7,12 @@ namespace FDG.Stages
         public MapSetupStage(IGameContext gameContext, IStateMachineLayer<IGameContext> parent)
             : base(gameContext, parent) { }
 
+        public override async Task Enter(IGameContext context)
+        {
+            await context.Announce("Map Setup");
+            await base.Enter(context);
+        }
+
         protected override IMapSetupContext GetNewChildContext(IGameContext contextSelf)
             => new MapSetupContext(contextSelf);
 

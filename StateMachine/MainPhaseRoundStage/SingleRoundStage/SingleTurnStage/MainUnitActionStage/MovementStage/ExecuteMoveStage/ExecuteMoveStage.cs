@@ -1,4 +1,6 @@
 ﻿
+using FDG.Presentation;
+using FDG.Presentation.Beats;
 using FDG.StageResolution.Requests;
 
 namespace FDG.Stages
@@ -22,7 +24,46 @@ namespace FDG.Stages
                 throw new InvalidOperationException($"Entered {nameof(ExecuteMoveStage)} before paths were set.");
             }
 
+            // Capture each model's full traversed polyline before committing, so the beat can
+            // animate around corners exactly as the path was validated (per-segment). The polyline
+            // is [current position] + the committed waypoints; after CommitPositions the
+            // authoritative position is the final waypoint.
+            UnitData movingUnit = context.MovingUnit.GetValue();
+            List<ModelMove> moves = new List<ModelMove>(paths.Count);
+            foreach (ModelMoveEntry entry in paths)
+            {
+                if (entry.Positions.Count == 0) continue;
+                ModelData model = entry.Model.GetValue();
+
+                List<Position> waypoints = new List<Position>(entry.Positions.Count + 1);
+                waypoints.Add(model.Position);       // start
+                waypoints.AddRange(entry.Positions); // through to destination
+                moves.Add(new ModelMove(model.ID, waypoints));
+            }
+
             MovementExecutor.CommitPositions(paths);
+
+            if (moves.Count > 0)
+            {
+                // One total duration for the whole move (the renderer spreads it across segments by
+                // length), scaled by the longest model's path so a longer move takes proportionally
+                // longer at a roughly constant on-screen speed.
+                float longestPath = 0f;
+                foreach (ModelMove move in moves)
+                {
+                    float len = 0f;
+                    for (int i = 1; i < move.Waypoints.Count; i++)
+                    {
+                        Position a = move.Waypoints[i - 1], b = move.Waypoints[i];
+                        float dx = b.x - a.x, dz = b.z - a.z;
+                        len += MathF.Sqrt(dx * dx + dz * dz);
+                    }
+                    if (len > longestPath) longestPath = len;
+                }
+
+                await GameContext.Presenter.Present(new UnitMovedBeat(movingUnit.ID, movingUnit.Name, moves,
+                    PresentationDurations.ForMoveDistance(longestPath)));
+            }
 
             OnMoveExecuted.Activate(context);
         }

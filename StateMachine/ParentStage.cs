@@ -22,6 +22,16 @@ namespace FDG.Stages
 
         protected abstract TContextChild GetNewChildContext(TContextSelf contextSelf);
 
+        /// <summary>
+        /// Save/load resume hook. Return a (child, context) to enter that specific child with a
+        /// restored context instead of the normal start (<see cref="_startingChild"/> +
+        /// <see cref="GetNewChildContext"/>). Default null = no resume, i.e. unchanged behavior.
+        /// </summary>
+        protected virtual (StageBase<TContextChild> Child, TContextChild Context)? GetResumeEntry(TContextSelf contextSelf)
+        {
+            return null;
+        }
+
         private TContextSelf _currentContext = default;
         private bool _hasContext = false;
 
@@ -29,6 +39,13 @@ namespace FDG.Stages
         {
             _currentContext = context;
             _hasContext = true;
+
+            (StageBase<TContextChild> Child, TContextChild Context)? resume = GetResumeEntry(context);
+            if (resume != null)
+            {
+                await TransitionToChild(resume.Value.Child, resume.Value.Context);
+                return;
+            }
 
             TContextChild childContext = GetNewChildContext(context);
 

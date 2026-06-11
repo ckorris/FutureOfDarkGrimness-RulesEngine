@@ -1,6 +1,8 @@
 
 using System;
 using System.Collections.Generic;
+using FDG.Presentation;
+using FDG.Presentation.Beats;
 
 namespace FDG.Stages
 {
@@ -36,11 +38,24 @@ namespace FDG.Stages
 
                 totalSuccesses += successfulResults.TotalRolls;
                 totalFailures += failedResults.TotalRolls;
+
+                await GameContext.Presenter.Present(
+                    DiceRolledBeat.From(rollToSaveResults, saveNeeded, GameContext.Settings.RandomnessType, "To Save"));
             }
 
             RollToSaveResults results = new RollToSaveResults(successfulSaves, failedSaves);
 
             GameContext.Log($"Saved {totalSuccesses} wounds, taking {totalFailures}.");
+
+            // Deflection "pings" for the saved shots. Saves are resolved per AP group, not per
+            // defending model, so this is unit-level (a count across the defender's models).
+            int savedCount = (int)MathF.Round(totalSuccesses);
+            if (savedCount > 0)
+            {
+                List<Position> defenders = AttackBeatPositions.AlivePlaced(metaData.DefendingUnit);
+                if (defenders.Count > 0)
+                    await GameContext.Presenter.Present(new SaveBeat(defenders, savedCount));
+            }
 
             onFinished(results);
         }

@@ -15,7 +15,7 @@ namespace FDG.Stages
 
             if (objectives.Count == 0)
             {
-                GameContext.TextOutput.Log("No objectives on the table - game ends in a tie.");
+                await context.Announce("It's a tie!");
                 GameContext.NotifyGameEnded("It's a tie!");
                 return;
             }
@@ -40,18 +40,20 @@ namespace FDG.Stages
 
             if (winners.Count == 0 || topScore == 0)
             {
-                GameContext.TextOutput.Log("No objectives controlled - game ends in a tie.");
+                await context.Announce("It's a tie!");
                 GameContext.NotifyGameEnded("It's a tie!");
             }
             else if (winners.Count > 1)
             {
-                GameContext.TextOutput.Log($"Tied at {topScore} objective(s) each - game ends in a tie.");
+                await context.Announce("It's a tie!");
                 GameContext.NotifyGameEnded("It's a tie!");
             }
             else
             {
                 var winner = winners[0];
-                GameContext.TextOutput.Log($"Player {winner.ID} wins with {topScore} objective(s)!");
+                string winnerName = GameContext.TableState.Players.Objects
+                    .FirstOrDefault(p => p.PlayerID == winner)?.Name ?? "A player";
+                await context.Announce($"{winnerName} wins!", new TextColor(255, 215, 0, 255));
                 GameContext.NotifyGameEnded($"Player {winner.ID} wins!");
             }
         }

@@ -13,12 +13,15 @@ namespace FDG
 {
     public class ModelData : IModel
     {
+        public ModelID ID { get; private set; }
 
         [JsonProperty] private TokenContainer _tokens = new TokenContainer();
 
         [JsonIgnore] public ITokenContainer Tokens => _tokens;
 
-        [JsonIgnore]
+        // Serialized: max wounds is set imperatively after creation (e.g. Tough via UnitCreationRules),
+        // so it can't be recomputed on load — it must round-trip, or a loaded/networked Tough model
+        // would revert to 1.
         public float TotalWounds { get; private set; }
 
         public DataBinding<float> RemainingWoundsBinding;
@@ -103,20 +106,24 @@ namespace FDG
         #endregion
 
         [JsonConstructor]
-        public ModelData(float baseRadiusInches, DataBinding<float> remainingWoundsBinding, DataBinding<Position> positionBinding, 
-            List<Weapon> weapons, List<SpecialRule> specialRules)
+        public ModelData(float baseRadiusInches, float totalWounds, DataBinding<float> remainingWoundsBinding, DataBinding<Position> positionBinding,
+            List<Weapon> weapons, List<SpecialRule> specialRules, ModelID? id = null)
         {
+            ID = id ?? new ModelID(System.Guid.NewGuid());
+
             BaseRadiusInches = baseRadiusInches;
             RemainingWoundsBinding = remainingWoundsBinding;
             PositionBinding = positionBinding;
             Weapons = weapons;
             SpecialRules = specialRules;
-            TotalWounds = CalculateTotalWounds(specialRules);
+            TotalWounds = totalWounds;
         }
 
         public ModelData(float baseRadiusInches, List<Weapon> weapons, List<SpecialRule> specialRules, Position initialPosition,
             IReadWriteableGameDataStore gameDataStore)
         {
+            ID = new ModelID(System.Guid.NewGuid());
+
             BaseRadiusInches = baseRadiusInches;
             TotalWounds = CalculateTotalWounds(specialRules);
 
@@ -132,6 +139,8 @@ namespace FDG
 
         public ModelData(IModelTemplate modelToCopy, IReadWriteableGameDataStore gameDataStore)
         {
+            ID = new ModelID(System.Guid.NewGuid());
+
             BaseRadiusInches = modelToCopy.BaseRadiusInches;
             TotalWounds = CalculateTotalWounds(modelToCopy.SpecialRules);
 

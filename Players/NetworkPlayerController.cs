@@ -2,8 +2,8 @@
 using FDG.MessageBus;
 using FDG.Network.Connection;
 using FDG.Network.Messages;
+using FDG.Presentation;
 using FDG.StageResolution;
-using FDG.TempVisuals;
 
 namespace FDG.Players
 {
@@ -15,7 +15,7 @@ namespace FDG.Players
 
         public bool IsReady { get; private set; } = false; //May need to change.
 
-        public ITempVisualDrawer? TempVisualDrawer { get; }
+        public IPresentationSink? PresentationSink { get; }
 
         private IMessageBusHost _messageBusHost;
 
@@ -33,8 +33,7 @@ namespace FDG.Players
 
             //_messageBusHost.RegisterForMessageEvent<NetworkPlayerSubmitChatMessage>(OnPlayerChatMessageReceived);
 
-            //TODO: This needs to be moved elsewhere.
-            TempVisualDrawer = new NetworkedTempVisualDrawer(_messageBusHost, connectionID);
+            PresentationSink = new NetworkedPresentationSink(_messageBusHost, connectionID);
         }
 
         /*
@@ -82,9 +81,9 @@ namespace FDG.Players
             }
         }
 
-        public void SendLogMessage(string logMessage)
+        public void SendLogMessage(string logMessage, TextColor color)
         {
-            LogChatNetworkMessage messageRecord = new LogChatNetworkMessage(logMessage);
+            LogChatNetworkMessage messageRecord = new LogChatNetworkMessage(logMessage, color);
             _messageBusHost.SendCommandToAllAsync(messageRecord);
         }
 

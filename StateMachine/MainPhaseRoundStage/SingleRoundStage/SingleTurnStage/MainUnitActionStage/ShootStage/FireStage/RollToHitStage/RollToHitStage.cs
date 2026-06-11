@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using FDG.Data;
+using FDG.Presentation;
+using FDG.Presentation.Beats;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
@@ -18,6 +21,25 @@ namespace FDG.Stages
 
         protected override async Task RunStage(ICombatMetadata metaData, Action<RollToHitResults> onFinished)
         {
+            // Show the attack — tracers (ranged) or a clash (melee) — before the dice resolve it.
+            // Fire from the actual weapon-carrying models so a mixed unit shows the right source.
+            List<Position> attackerPositions = AttackBeatPositions.FiringModels(metaData.AttackingUnit, metaData.WeaponType);
+            // Ranged: only models a shooter can actually see, so tracers spread across the targetable
+            // defenders without ever depicting a shot at an unhittable one. Melee is adjacent — LoS is
+            // moot and the clash just snaps to the nearest model.
+            List<Position> targetPositions = metaData.IsMelee
+                ? AttackBeatPositions.AlivePlaced(metaData.DefendingUnit)
+                : AttackBeatPositions.VisibleTargets(GameContext.TableState,
+                    metaData.AttackingUnit, metaData.DefendingUnit, metaData.WeaponType);
+            if (attackerPositions.Count > 0 && targetPositions.Count > 0)
+            {
+                // Each volley fires every weapon at once; the weapon's Attacks is the volley count.
+                await GameContext.Presenter.Present(new AttackBeat(metaData.IsMelee,
+                    attackerPositions, targetPositions,
+                    volleyCount: metaData.WeaponType.Attacks,
+                    armorPenetration: metaData.WeaponType.ArmorPenetration));
+            }
+
             //TODO: Calculate attack count in separate stage, it may need its own mods.
             float attacks = metaData.WeaponType.Attacks * metaData.WeaponCount;
 
@@ -41,6 +63,10 @@ namespace FDG.Stages
                 new List<FailedHitInfo>() { new FailedHitInfo(failedResults) });
 
             GameContext.Log($"Rolled {successfulResults.TotalRolls} successful hits out of {attacks} total attacks.");
+
+            // Show the natural to-hit roll (the synthetic extra-hits below aren't dice).
+            await GameContext.Presenter.Present(
+                DiceRolledBeat.From(rollToHitResults, hitRollNeeded, GameContext.Settings.RandomnessType, "To Hit"));
 
             // #042 extra-hit rules (Surge / Furious / Relentless) fire at hit-roll-complete: an
             // unmodified 6 spawns extra hits. Evaluate the attacker's rules against the UNMODIFIED

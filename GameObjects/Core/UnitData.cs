@@ -172,6 +172,24 @@ namespace FDG
         }
 
 
+        /// <summary>
+        /// Re-subscribes this unit's wound aggregation to its models' <see cref="IModel.OnWoundsDealt"/>.
+        /// The <see cref="JsonConstructorAttribute"/> path deliberately does NOT do this: it must stay
+        /// order-independent (a model may not be deserialized yet when the unit is, e.g. during network
+        /// full-sync), so it never calls <c>GetValue()</c>. Call this once after a full save/load replay,
+        /// when every referenced model is guaranteed present. Idempotent — removes any existing handler
+        /// before re-adding.
+        /// </summary>
+        public void RewireModelWoundSubscriptions()
+        {
+            foreach (DataBinding<ModelData> modelBinding in ModelBindings)
+            {
+                IModel model = modelBinding.GetValue();
+                model.OnWoundsDealt -= OnModelWoundsDealt;
+                model.OnWoundsDealt += OnModelWoundsDealt;
+            }
+        }
+
         private void OnModelWoundsDealt(float oldWoundsCount, float newWoundsCount)
         {
             //This is called with an individual models' old and new wound count.

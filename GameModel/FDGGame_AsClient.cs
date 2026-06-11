@@ -6,9 +6,9 @@ using FDG.Network.Connection;
 using FDG.Network.Messages;
 using FDG.Network.Synchronization;
 using FDG.Players;
+using FDG.Presentation;
+using FDG.Presentation.Messages;
 using FDG.StageResolution;
-using FDG.TempVisuals;
-using FDG.TempVisuals.Messages;
 using FDG.TextInterface;
 
 namespace F.GameModel
@@ -23,7 +23,7 @@ namespace F.GameModel
 
         public IPlayerMessageUI? PlayerMessageUI { get; private set; }
 
-        public ITempVisualDrawer? TempVisualDrawer { get; private set; }
+        public IPresentationSink? PresentationSink { get; private set; }
 
         //private IReadableGameDataStore _gameDataStore;
 
@@ -59,7 +59,8 @@ namespace F.GameModel
         }
 
         public void AssignInterfaces(ILogMessageUI? logMessageUI, IPlayerMessageUI? playerMessageUI,
-            IStageResolverRegistry stageResolverRegistry, ITempVisualDrawer? tempVisualDrawer,
+            IStageResolverRegistry stageResolverRegistry,
+            IPresentationSink? presentationSink,
             IOutstandingListDisplay? outstandingTaskDisplay)
         {
             LogMessageUI = logMessageUI;
@@ -74,15 +75,11 @@ namespace F.GameModel
 
             StageResolverRegistry = stageResolverRegistry;
 
-            _messageBusClient.RegisterForMessageEvent<AddTempVisualMessage>(OnAddTempVisualReceived);
-            _messageBusClient.RegisterForMessageEvent<UpdateTempVisualTransformMessage>(OnUpdateTempVisualTransformReceived);
-            _messageBusClient.RegisterForMessageEvent<UpdateTempVisualColorMessage>(OnUpdateTempVisualColorReceived);
-            _messageBusClient.RegisterForMessageEvent<RemoveTempVisualMessage>(OnRemoveTempVisualReceived);
-            _messageBusClient.RegisterForMessageEvent<ClearAllTempVisualsMessage>(OnClearTempVisualsReceived);
+            _messageBusClient.RegisterForMessageEvent<PresentBeatMessage>(OnPresentBeatReceived);
 
             _messageBusClient.SendCommandToHostAsync(new PostLaunchPlayerReadyMessage(_thisPlayerID));
 
-            TempVisualDrawer = tempVisualDrawer;
+            PresentationSink = presentationSink;
 
             _requestReceiver = new NetworkedRequestMessageReceiver(_thisPlayerID, _messageBusClient,
                 stageResolverRegistry, _gameDataStore);
@@ -94,29 +91,9 @@ namespace F.GameModel
             }
         }
 
-        private void OnAddTempVisualReceived(AddTempVisualMessage message)
+        private void OnPresentBeatReceived(PresentBeatMessage message)
         {
-            TempVisualDrawer?.AddVisual(message.TempVisual);
-        }
-
-        private void OnUpdateTempVisualTransformReceived(UpdateTempVisualTransformMessage message)
-        {
-            TempVisualDrawer?.UpdateVisualTransform(message.VisualID, message.Position, message.Rotation, message.Scale);
-        }
-
-        private void OnUpdateTempVisualColorReceived(UpdateTempVisualColorMessage message)
-        {
-            TempVisualDrawer?.UpdateVisualColor(message.TempVisualID, message.Color);
-        }
-
-        private void OnRemoveTempVisualReceived(RemoveTempVisualMessage message)
-        {
-            TempVisualDrawer?.RemoveVisual(message.VisualID);
-        }
-
-        private void OnClearTempVisualsReceived(ClearAllTempVisualsMessage message)
-        {
-            TempVisualDrawer?.ClearAllVisuals();
+            PresentationSink?.OnBeat(message.Beat);
         }
     }
 }

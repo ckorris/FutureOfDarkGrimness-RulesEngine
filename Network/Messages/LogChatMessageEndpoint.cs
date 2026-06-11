@@ -52,7 +52,7 @@ namespace FDG.Network.Messages
 
         private void OnLogMessageReceived(LogChatNetworkMessage message)
         {
-            _logMessageUI?.DisplayLogMessage(message.LogMessage);
+            _logMessageUI?.DisplayLogMessage(message.LogMessage, message.Color);
         }
 
         private void OnPlayerMessageReceived(PlayerChatNetworkMessage message)

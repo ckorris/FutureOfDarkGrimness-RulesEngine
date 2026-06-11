@@ -1,7 +1,7 @@
 using FDG.Data;
 using FDG.Players;
+using FDG.Presentation;
 using FDG.Rules.Dispatch;
-using FDG.TempVisuals;
 
 namespace FDG
 {
@@ -26,7 +26,12 @@ namespace FDG
         //mean redoing lots of stages, and I'm on an airplane as I type this.
         public IReadWriteableGameDataStore GameDataStore { get; }
 
-        public ITempVisualDrawer TempVisualDrawer { get; }
+        /// <summary>
+        /// Outbound presentation channel. Stages emit paced, semantic beats here
+        /// (<c>await context.Presenter.Present(beat)</c>) to narrate the play-by-play. See
+        /// <see cref="IPresenter"/>.
+        /// </summary>
+        public IPresenter Presenter { get; }
 
         public GameSettings Settings { get; }
 
@@ -35,6 +40,16 @@ namespace FDG
         public void SetFirstDeploymentRollOrder(List<ITeam> firstDeploymentRollWinner);
 
         public void NotifyGameEnded(string result);
+
+        /// <summary>
+        /// When resuming a loaded game, the flow-state snapshot to rebuild the first round from;
+        /// null for a fresh game. Consumed once (see <see cref="ConsumeResumeProgress"/>) so later
+        /// rounds run normally. Defaulted so non-resuming contexts (e.g. tests) needn't implement it.
+        /// </summary>
+        public GameProgressData? ResumeProgress => null;
+
+        /// <summary>Clears <see cref="ResumeProgress"/> after the resumed round has been rebuilt.</summary>
+        public void ConsumeResumeProgress() { }
     }
 
     public class GameContext : IGameContext
@@ -53,11 +68,13 @@ namespace FDG
 
         public IReadWriteableGameDataStore GameDataStore { get; }
 
-        public ITempVisualDrawer TempVisualDrawer { get; }
+        public IPresenter Presenter { get; }
 
         public GameSettings Settings { get; }
 
         public List<ITeam>? FirstDeploymentRollOrder { get; private set; } = null;
+
+        public GameProgressData? ResumeProgress { get; private set; }
 
         public event Action<string>? OnGameEnded;
 
@@ -65,8 +82,9 @@ namespace FDG
                 IPlayerRequestByID playerRequester,
                 TableState tableState,
                 IReadWriteableGameDataStore gameDataStore,
-                ITempVisualDrawer tempVisualDrawer,
-                GameSettings settings)
+                IPresenter presenter,
+                GameSettings settings,
+                GameProgressData? resumeProgress = null)
         {
             TextOutput = textOutput;
             DiceRoller = diceRoller;
@@ -74,9 +92,12 @@ namespace FDG
             PlayerRequester = playerRequester;
             TableState = tableState;
             GameDataStore = gameDataStore;
-            TempVisualDrawer = tempVisualDrawer;
+            Presenter = presenter;
             Settings = settings;
+            ResumeProgress = resumeProgress;
         }
+
+        public void ConsumeResumeProgress() => ResumeProgress = null;
 
         public void SetFirstDeploymentRollOrder(List<ITeam> firstDeploymentRollWinner)
         {

@@ -1,5 +1,5 @@
 ﻿using FDG.GameModel;
-using FDG.TempVisuals;
+using FDG.Presentation;
 using System.Diagnostics;
 
 namespace FDG.Players
@@ -12,7 +12,7 @@ namespace FDG.Players
 
         public bool IsReady { get; private set; } = true;
 
-        public ITempVisualDrawer? TempVisualDrawer => _localPlayer.TempVisualDrawer;
+        public IPresentationSink? PresentationSink => _localPlayer.PresentationSink;
 
         public event Action<bool>? OnReadyStateChanged;
         public event Action<PlayerID, EChatMessageType, string> OnMessageSentByPlayer;
@@ -68,9 +68,9 @@ namespace FDG.Players
             return source.Task;
         }
 
-        public void SendLogMessage(string logMessage)
+        public void SendLogMessage(string logMessage, TextColor color)
         {
-            _localPlayer.LogMessageUI?.DisplayLogMessage(logMessage);
+            _localPlayer.LogMessageUI?.DisplayLogMessage(logMessage, color);
         }
 
         public void SendPlayerMessage(string sendingPlayerName, EChatMessageType messageType, string message)

@@ -6,6 +6,7 @@ using FDG.MessageBus;
 using FDG.Network.Connection.Lobby;
 using FDG.Network.Messages;
 using FDG.Players;
+using FDG.Presentation;
 using FDG.SaveLoad;
 using FDG.StageResolution;
 using FutureOfDarkGrimness.Network.Messages;
@@ -20,6 +21,15 @@ namespace FDG.Network.Connection
     public class LobbyViewModel_Host : ILobbyViewModel
     {
         public bool HasHostPrivileges => true;
+
+        public bool CanSaveGame => true;
+
+        // The host owns the authoritative store, so it serializes directly. Called from the UI thread
+        // while the engine runs on another thread; in practice the player triggers a save while the
+        // engine is awaiting their input (quiescent), and the snapshot iterates fixed-capacity stores
+        // without resizing, so a torn read is unlikely. (#054 will move saving to a request the host
+        // services at a guaranteed-safe point.)
+        public string? SaveGameToJson() => GameSaveSerializer.Save((GameDataStore)_gameDataStore);
 
         public IObservable<string> ServerNameObservable => _serverName;
 
@@ -84,6 +94,10 @@ namespace FDG.Network.Connection
 
         IReadWriteableGameDataStore _gameDataStore;
 
+        private readonly bool _isResume;
+
+        public bool IsResumeMode => _isResume;
+
         public LobbyViewModel_Host(string hostPlayerName, string serverName, string? password, INetworkHost host)
         {
             _gameDataStore = GameDataStore.GameDataStoreBuilder.GetDefault();
@@ -125,6 +139,72 @@ namespace FDG.Network.Connection
             UpdateInfoSummariesFromFullList();
         }
 
+        /// <summary>
+        /// Resume constructor (work item #052): builds a host lobby around a LOADED game. The store
+        /// already holds the world + <see cref="GameProgressData"/>; the lobby's slot list is seeded
+        /// from the saved <see cref="PlayerSlotInfo"/> entries, preserving the saved PlayerIDs, so the
+        /// host can re-crew each slot (default: host plays the first slot, the rest become AI) before
+        /// resuming. Networked re-crew (assigning connected clients to saved slots) is a follow-up.
+        /// </summary>
+        public LobbyViewModel_Host(string hostPlayerName, string serverName, string? password, INetworkHost host,
+            GameDataStore loadedGameDataStore)
+        {
+            _isResume = true;
+            _gameDataStore = loadedGameDataStore;
+            _messageBus = new MessageBusHost_Networked(host, _gameDataStore);
+            _host = host;
+            _hostPlayerName = hostPlayerName;
+
+            // Faithfully resume the saved game's settings (turn style, randomness, etc.).
+            GameProgressData? progress = GameProgressUtilities.TryGetProgress(loadedGameDataStore);
+            _gameSettings = progress?.Settings ?? GameSettings.GetDefault();
+
+            _serverName = new BehaviorSubject<string>(serverName);
+            _chatMessagesSubject = new ReplaySubject<LobbyChatMessage>();
+
+            _settings_ArmyPoints = new BehaviorSubject<int>(_gameSettings.ArmyPoints);
+            _settings_TerrainPieceCount = new BehaviorSubject<int>(_gameSettings.TerrainPieceCount);
+            _settings_TerrainPlacementMode = new BehaviorSubject<ETerrainPlacementMode>(_gameSettings.TerrainPlacementMode);
+            _settings_TerrainLayoutPath = new BehaviorSubject<string?>(_gameSettings.TerrainLayoutPath);
+            _settings_RandomnessType = new BehaviorSubject<ERandomnessType>(_gameSettings.RandomnessType);
+            _settings_TurnMethod = new BehaviorSubject<ETurnStyle>(_gameSettings.TurnStyle);
+
+            _playerInfos = new BehaviorSubject<IReadOnlyList<LobbyPlayerInfoSummary>>(new List<LobbyPlayerInfoSummary>());
+
+            host.OnNewClientConnected += OnNewClientConnected;
+            host.OnClientDisconnected += OnClientDisconnected;
+
+            _messageBus.RegisterForMessageEvent<LobbyChatMessage>(OnLocalChatMessageReceived);
+            _messageBus.RegisterForMessageEvent<LobbyChatMessage_FromClient>(OnChatMessageReceived);
+            _messageBus.RegisterForMessageEvent<NewLobbyClientGreeting>(OnReceiveNewClientGreeting);
+            _messageBus.RegisterForMessageEvent<ArmyListUpdateMessage>(OnArmyListFileUpdateReceived);
+
+            AddMessageToLocalList(new LobbyChatMessage("System", "Loaded saved game. Assign players to slots, then Resume."));
+
+            SeedSlotsFromSave(loadedGameDataStore, hostPlayerName);
+            UpdateInfoSummariesFromFullList();
+        }
+
+        // Recreate the lobby's slot list from the saved PlayerSlotInfo entries, reusing the saved
+        // PlayerIDs (no remap needed). Default re-crew: the host adopts the lowest-numbered slot
+        // (Local), the rest become AI; the host can change each slot's controller before resuming.
+        private void SeedSlotsFromSave(IReadWriteableGameDataStore store, string hostPlayerName)
+        {
+            List<PlayerSlotInfo> savedSlots = store.GetAllValues<PlayerSlotInfo>().OrderBy(s => s.SlotID).ToList();
+
+            bool hostAssigned = false;
+            foreach (PlayerSlotInfo slot in savedSlots)
+            {
+                EPlayerType type = hostAssigned ? EPlayerType.AI : EPlayerType.Local;
+                string name = hostAssigned ? slot.Name : hostPlayerName;
+                hostAssigned = true;
+
+                LobbyPlayerInfoFull info = new LobbyPlayerInfoFull(name, null, (ETeamOption)slot.TeamNumber,
+                    type, new ConnectionID(Guid.Empty), slot.PlayerID);
+                _playerInfosFull[slot.PlayerID] = info;
+            }
+        }
+
         public void SendMessage(string message)
         {
             LobbyChatMessage chatMessage = new LobbyChatMessage(_hostPlayerName, message);
@@ -147,6 +227,14 @@ namespace FDG.Network.Connection
 
         private void OnReceiveNewClientGreeting(NewLobbyClientGreeting greeting)
         {
+            // Resume games have a fixed saved roster — route joining clients to saved slots instead of
+            // creating new ones. Strictly isolated so the new-game path below is unchanged.
+            if (_isResume)
+            {
+                OnResumeClientGreeting(greeting);
+                return;
+            }
+
             Debug.WriteLine($"Received greeting from new client: {greeting.PlayerName}");
 
             //Assign a player ID to this person. 
@@ -172,6 +260,35 @@ namespace FDG.Network.Connection
 
             LobbyGameSettingsUpdate gameSettingsUpdate = new LobbyGameSettingsUpdate(_gameSettings);
             _messageBus.SendCommandToAllAsync(gameSettingsUpdate);
+        }
+
+        // Resume mode: assign the joining client to the next saved slot still marked AI (slot order),
+        // have it adopt that slot's SAVED PlayerID, and mark the slot Network. Reuses the saved
+        // PlayerID — no remap. NOT yet live-tested: correct-by-design for 1v1 (one remote client);
+        // multi-client relies on the same broadcast LobbyPlayerIDAssignment as the new-game flow.
+        // Host-chosen connection→slot assignment (vs this auto-fill) is a future refinement.
+        private void OnResumeClientGreeting(NewLobbyClientGreeting greeting)
+        {
+            Debug.WriteLine($"[#052] Resume: greeting from {greeting.PlayerName}.");
+
+            ConnectionID connectionID = _messageBus.GetCurrentMessageConnectionID();
+
+            LobbyPlayerInfoFull? openSlot = _playerInfosFull.Values.FirstOrDefault(p => p.PlayerType == EPlayerType.AI);
+            if (openSlot == null)
+            {
+                Debug.WriteLine("[#052] Resume: no open (AI) saved slot for the joining client.");
+                return;
+            }
+
+            openSlot.PlayerType = EPlayerType.Network;
+            openSlot.PlayerName = greeting.PlayerName;
+            openSlot.ConnectionID = connectionID;
+
+            // Adopt the saved slot's PlayerID (not a fresh one) so the client resumes as that player.
+            _messageBus.SendCommandToAllAsync(new LobbyPlayerIDAssignment(openSlot.PlayerID));
+            _messageBus.SendCommandToAllAsync(new LobbyServerNameMessage(_serverName.Value));
+            _messageBus.SendCommandToAllAsync(new LobbyGameSettingsUpdate(_gameSettings));
+            UpdateInfoSummariesFromFullList();
         }
 
         private void OnClientDisconnected(ConnectionID disconnectedConnectionID)
@@ -239,6 +356,91 @@ namespace FDG.Network.Connection
 
             _ = Launch();
             return true;
+        }
+
+        public bool TryResumeGame(out string? failReason)
+        {
+            if (!_isResume)
+            {
+                failReason = "This lobby was not created from a saved game.";
+                return false;
+            }
+
+            failReason = null;
+            _ = LaunchResume();
+            return true;
+        }
+
+        // Re-crew a saved slot before resuming (Local / AI; networked client assignment is a follow-up).
+        public void SetSavedSlotPlayerType(PlayerID slotPlayerID, EPlayerType playerType)
+        {
+            if (_playerInfosFull.TryGetValue(slotPlayerID, out LobbyPlayerInfoFull? info))
+            {
+                info.PlayerType = playerType;
+                UpdateInfoSummariesFromFullList();
+            }
+        }
+
+        // Resume launch: the world already exists in the loaded store, so we only rebuild the
+        // PlayerSlots (reusing saved PlayerIDs) and hand them to the resume FDGServer constructor,
+        // which skips world creation. The saved PlayerSlotInfo entries are removed first so the
+        // rebuilt slots don't create duplicates.
+        private async Task LaunchResume()
+        {
+            await _messageBus.SendCommandToAllAsync(new LobbyChatMessage("System", LAUNCHING_GAME_MESSAGE));
+            await Task.Delay(300);
+
+            foreach (DataReference oldSlotInfo in _gameDataStore.GetAllDataReferences<PlayerSlotInfo>().ToList())
+            {
+                _gameDataStore.Destroy(oldSlotInfo);
+            }
+
+            FDGGame_AsLocal? gameModel = null;
+            LobbyPlayerInfoFull[] infos = _playerInfosFull.Values.ToArray();
+            PlayerSlot[] playerSlots = new PlayerSlot[infos.Length];
+
+            for (int i = 0; i < playerSlots.Length; i++)
+            {
+                LobbyPlayerInfoFull info = infos[i];
+
+                // ArmyListFile is vestigial on resume (armies are already in the loaded store), but the
+                // PlayerSlot ctor requires one.
+                PlayerSlot playerSlot = new PlayerSlot(i, (int)info.TeamNumber, info.PlayerID,
+                    info.ArmyListFile ?? GetTempTestArmyFile(), _gameDataStore);
+                playerSlots[i] = playerSlot;
+
+                switch (info.PlayerType)
+                {
+                    case EPlayerType.Local:
+                        gameModel ??= new FDGGame_AsLocal(_gameDataStore, _messageBus);
+                        playerSlot.AssignPlayerController(new LocalPlayerController(info.PlayerName, playerSlot.PlayerID, gameModel));
+                        gameModel.AddLocalPlayerID(playerSlot.PlayerID);
+                        break;
+                    case EPlayerType.Network:
+                        playerSlot.AssignPlayerController(new NetworkPlayerController(info.PlayerName, playerSlot.PlayerID,
+                            info.ConnectionID, _messageBus, _gameDataStore));
+                        break;
+                    case EPlayerType.AI:
+                        FDGGame_AsLocal aiGame = new FDGGame_AsLocal(_gameDataStore, _messageBus);
+                        playerSlot.AssignPlayerController(AiResolverRegistryFactory.CreateSoloRulesController(
+                            info.PlayerName, playerSlot.PlayerID, aiGame));
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+            }
+
+            // Resume on the GUI host animates just like a new game — give it a real-time clock so the
+            // presentation beats play at a presentable tempo (without it the beats run instantly).
+            FDGServer server = new FDGServer(_gameDataStore, _messageBus, playerSlots,
+                new RealtimePresentationClock());
+
+            if (gameModel != null)
+            {
+                OnLaunched?.Invoke(gameModel);
+            }
+
+            await _messageBus.SendCommandToAllAsync(new LaunchGameMessage());
         }
 
         private string? ValidateLaunchSettings()
@@ -333,7 +535,11 @@ namespace FDG.Network.Connection
                 }
             }
 
-            FDGServer server = new FDGServer(_gameDataStore, _messageBus, _gameSettings, playerSlots);
+            // The GUI host self-paces presentation in real time so the battle unfolds at a
+            // presentable tempo; clients receive beats already spaced by this clock. (Headless play
+            // goes through CliApp, which leaves FDGServer's default instant clock.)
+            FDGServer server = new FDGServer(_gameDataStore, _messageBus, _gameSettings, playerSlots,
+                new RealtimePresentationClock());
 
             if (gameModel != null) //Dedicated server really doesn't need to do this.
             {

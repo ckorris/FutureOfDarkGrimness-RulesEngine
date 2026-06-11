@@ -4,13 +4,13 @@ using FDG.SaveLoad;
 using FDG.Network.Connection;
 using FDG.Network.Synchronization;
 using FDG.Players;
+using FDG.Presentation;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
 using FDG.StageResolution;
 using FDG.Stages;
 using FDG.StateMachine.StateMachineBuilders;
-using FDG.TempVisuals;
 using FDG.TextInterface;
 using FDG.Utilities;
 using FutureOfDarkGrimness.StateMachine.StateMachineBuilders;
@@ -28,17 +28,21 @@ namespace FDG.GameModel
         private PlayerSlotManager _playerSlotManager;
         private GameContext _gameContext;
         private StateMachine<IGameContext> _stateMachine;
-        private NetworkedTempVisualDrawer _tempVisualRelayer;
+
+        // The presentation clock the GUI host injects (null → instant, for headless/automated/resume).
+        // Stored so the extracted BuildContextAndLaunch can reach it on both new-game and resume paths.
+        private IPresentationClock? _presentationClock;
 
         private static bool TEST_SINGLE_TURN = false; //Turn on to skip most of the game and just do one run of a model's activation.
 
         public FDGServer(IReadWriteableGameDataStore gameDataStore, IMessageBusHost messageBusHost,
-            GameSettings gameSettings, PlayerSlot[] playerSlots)
+            GameSettings gameSettings, PlayerSlot[] playerSlots, IPresentationClock? presentationClock = null)
         {
-            Debug.WriteLine($"Started {nameof(FDGServer)}.");
+            Debug.WriteLine($"Started {nameof(FDGServer)} (new game).");
 
             _gameDataStore = gameDataStore;
             _messageBusHost = messageBusHost;
+            _presentationClock = presentationClock;
             _synchronizer = new GameDataUpdateSender(gameDataStore, messageBusHost);
 
             //For players/player slots, work backwards from here to create what you need to send updates to players,
@@ -50,27 +54,67 @@ namespace FDG.GameModel
 
             CreateArmies(playerSlots, gameDataStore);
 
+            BuildContextAndLaunch(gameSettings, applyCreationRules: true, resumeProgress: null);
+        }
+
+        /// <summary>
+        /// Resumes a loaded game (work item #052). The store is already populated (world +
+        /// <see cref="GameProgressData"/>) by <see cref="FDG.SaveLoad.GameSaveSerializer"/>, so this
+        /// does NOT recreate teams/armies/models or re-apply creation rules; it reads settings + flow
+        /// state from the save and resumes the state machine in the main phase. The player slots map
+        /// (re-crewed) players to the saved <see cref="PlayerID"/>s.
+        /// </summary>
+        public FDGServer(IReadWriteableGameDataStore loadedGameDataStore, IMessageBusHost messageBusHost,
+            PlayerSlot[] playerSlots, IPresentationClock? presentationClock = null)
+        {
+            Debug.WriteLine($"Started {nameof(FDGServer)} (resume).");
+
+            _gameDataStore = loadedGameDataStore;
+            _messageBusHost = messageBusHost;
+            _presentationClock = presentationClock;
+            _synchronizer = new GameDataUpdateSender(loadedGameDataStore, messageBusHost);
+            _playerSlotManager = new PlayerSlotManager(playerSlots);
+
+            GameProgressData? progress = GameProgressUtilities.TryGetProgress(loadedGameDataStore);
+            if (progress == null)
+            {
+                throw new InvalidOperationException(
+                    "Tried to resume a game from a store that has no GameProgressData.");
+            }
+
+            BuildContextAndLaunch(progress.Settings, applyCreationRules: false, resumeProgress: progress);
+        }
+
+        private void BuildContextAndLaunch(GameSettings gameSettings, bool applyCreationRules, GameProgressData? resumeProgress)
+        {
             LogAndChatMessageRelayer chatMessageRelayer = new LogAndChatMessageRelayer(_playerSlotManager);
 
             ITextOutput textOutput = new PlayerLogSender(chatMessageRelayer);
 
             TableState tableState = new TableState(_gameDataStore);
 
-            TempVisualRelayer tempVisualRelayer = new TempVisualRelayer(_playerSlotManager);
+            // The host owns presentation pacing. Default to instant (headless / automated /
+            // tests stay deterministic); the GUI host injects a real-time clock so the battle
+            // unfolds at a presentable tempo. State computation is never paced — only emission.
+            IPresentationClock presentationClock_ = _presentationClock ?? new InstantPresentationClock();
+            PresentationRelayer presentationRelayer = new PresentationRelayer(_playerSlotManager, presentationClock_);
 
-            RequestMessageSender requestMessageSender = new RequestMessageSender(messageBusHost, gameDataStore, 
+            RequestMessageSender requestMessageSender = new RequestMessageSender(_messageBusHost, _gameDataStore,
                 _playerSlotManager);
 
             _gameContext = new GameContext(textOutput, GetDiceRoller(gameSettings), requestMessageSender,
-                tableState, _gameDataStore, tempVisualRelayer, gameSettings);
+                tableState, _gameDataStore, presentationRelayer, gameSettings, resumeProgress);
             _gameContext.OnGameEnded += result => OnGameEnded?.Invoke(result);
 
-            // #042 creation-time rules (Tough): now that the evaluator exists, fire OnUnitCreated for
-            // every army unit and apply its results (e.g. set each model's max wounds). Done here, not
-            // in CreateArmies, because CreateArmies runs before the GameContext/RuleEvaluator is built.
-            foreach (DataBinding<UnitData> unitBinding in _gameContext.GameDataStore.GetAllDataBindings<UnitData>())
+            // #042 creation-time rules (Tough): set each model's max wounds now that the evaluator
+            // exists. Skipped on resume — max wounds are already in the loaded store (persisted on
+            // ModelData) and re-applying would reset saved damage.
+            if (applyCreationRules)
             {
-                UnitCreationRules.Apply(unitBinding.GetValue(), _gameContext.RuleEvaluator);
+                foreach (DataBinding<UnitData> unitBinding in _gameContext.GameDataStore.GetAllDataBindings<UnitData>())
+                {
+                    UnitCreationRules.Apply(unitBinding.GetValue(), _gameContext.RuleEvaluator);
+                }
             }
 
             if (TEST_SINGLE_TURN)
@@ -81,10 +125,7 @@ namespace FDG.GameModel
 
             _stateMachine = new StateMachine<IGameContext>(new GDFStateMachineBuilder(), _gameContext);
 
-            //For test, make a thing. 
-            //LoadTestData();
-
-            _ = LaunchStateMachineOnceReady(_stateMachine, _gameContext);
+            _ = LaunchStateMachineOnceReady(_stateMachine, _gameContext, resumeProgress != null);
         }
 
 
@@ -198,7 +239,7 @@ namespace FDG.GameModel
             return diceRoller;
         }
 
-        private async Task LaunchStateMachineOnceReady(StateMachine<IGameContext> stateMachine, IGameContext context)
+        private async Task LaunchStateMachineOnceReady(StateMachine<IGameContext> stateMachine, IGameContext context, bool resume)
         {
             // Yield back to the constructor immediately. WaitUntilAllSlotsReady + the resolvers can all
             // complete synchronously (e.g. headless with piped/AI input), which would otherwise run the
@@ -215,7 +256,15 @@ namespace FDG.GameModel
 
             try
             {
-                await stateMachine.Enter(context);
+                if (resume)
+                {
+                    // Skip map setup + deployment; resume directly in the main phase from the saved flow state.
+                    await stateMachine.Enter(context, nameof(MainPhaseRoundStage));
+                }
+                else
+                {
+                    await stateMachine.Enter(context);
+                }
             }
             catch (Exception ex)
             {

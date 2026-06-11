@@ -1,6 +1,6 @@
 using FDG.GameModel;
+using FDG.Presentation;
 using FDG.StageResolution;
-using FDG.TempVisuals;
 
 namespace FDG.Players
 {
@@ -12,7 +12,7 @@ namespace FDG.Players
 
         public bool IsReady => true;
 
-        public ITempVisualDrawer? TempVisualDrawer => null;
+        public IPresentationSink? PresentationSink => null;
 
         public event Action<bool>? OnReadyStateChanged;
         public event Action<PlayerID, EChatMessageType, string>? OnMessageSentByPlayer;
@@ -28,7 +28,7 @@ namespace FDG.Players
 
         public Task WaitUntilReadyAsync() => Task.CompletedTask;
 
-        public void SendLogMessage(string logMessage) { }
+        public void SendLogMessage(string logMessage, TextColor color) { }
 
         public void SendPlayerMessage(string sendingPlayerName, EChatMessageType messageType, string message) { }
     }

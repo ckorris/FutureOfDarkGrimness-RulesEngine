@@ -20,6 +20,8 @@ namespace FDG.Stages
         {
             context.Log($"Entered {nameof(StartOfRoundExtraActionStage)}.");
 
+            await context.Announce($"Round {context.RoundCount}", new TextColor(120, 200, 255, 255));
+
             // Ambush reserves may arrive from round 2 onward.
             if (context.RoundCount >= 2)
             {
@@ -52,14 +54,13 @@ namespace FDG.Stages
                     if (!bringOn) continue;
 
                     await PlaceFromReserve(unit, defer.PlacementRangeInches);
-
                     // A unit that arrives from reserve can't seize or contest objectives the round it
                     // arrives. Mark it so ReconcileObjectivesStage excludes its models from this round's
                     // objective check; the RoundEnd clear trigger sweeps the marker after that check.
                     unit.Tokens.AddToken(new Token(TokenType.ArrivedFromReserve, 1,
                         new TokenClearTrigger.RoundEnd()));
 
-                    GameContext.Log($"{unit.Name} arrived from Ambush.");
+                    await GameContext.Announce($"{unit.Name} arrives from Ambush!", new TextColor(255, 170, 60, 255));
                 }
             }
         }

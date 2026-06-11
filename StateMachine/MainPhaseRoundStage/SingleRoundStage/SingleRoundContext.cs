@@ -8,6 +8,8 @@ namespace FDG.Stages
 
     public interface ISingleRoundContext : IGameContextAccessor
     {
+        public int RoundCount { get; }
+
         public IReadOnlyDictionary<PlayerID, List<DataBinding<UnitData>>> UnactivatedUnits { get; }
 
         public IReadOnlyList<ITeam> TeamActivateOrder { get; }
@@ -46,7 +48,7 @@ namespace FDG.Stages
 
         public Dictionary<PlayerID, List<DataBinding<UnitData>>> _unactivatedUnits { get; }
 
-        public int RoundCount { get; private set; } = 0;
+        public int RoundCount { get; private set; }
 
         public IReadOnlyList<ITeam> TeamActivateOrder => Cursor.TeamOrder;
 
@@ -64,14 +66,40 @@ namespace FDG.Stages
 
         private List<ITeam> _currentRoundTeamFinishOrder = new List<ITeam>();
 
-        public SingleRoundContext(IGameContext gameContext, List<ITeam> teamOrder)
+        public SingleRoundContext(IGameContext gameContext, List<ITeam> teamOrder, int roundCount = 0)
         {
             GameContext = gameContext;
+            RoundCount = roundCount;
             Cursor = new TeamPlayerAlternationCursor(teamOrder);
 
             _unactivatedUnits = new Dictionary<PlayerID, List<DataBinding<UnitData>>>();
 
             SetUnactivatedUnits();
+        }
+
+        // Restore constructor for save/load resume: rebuilds the round's in-progress state from a
+        // snapshot (cursor position, finish order, and the already-grouped unactivated units) instead
+        // of scanning armies fresh. Does NOT call SetUnactivatedUnits.
+        public SingleRoundContext(
+            IGameContext gameContext,
+            List<ITeam> teamOrder,
+            int roundCount,
+            int currentTeamIndex,
+            IReadOnlyDictionary<ITeam, int> currentPlayerIndexPerTeam,
+            List<ITeam> currentRoundTeamFinishOrder,
+            Dictionary<PlayerID, List<DataBinding<UnitData>>> unactivatedUnits)
+        {
+            GameContext = gameContext;
+            RoundCount = roundCount;
+            Cursor = new TeamPlayerAlternationCursor(teamOrder);
+            Cursor.CurrentTeamIndex = currentTeamIndex;
+            foreach (KeyValuePair<ITeam, int> kvp in currentPlayerIndexPerTeam)
+            {
+                Cursor.CurrentPlayerIndexPerTeam[kvp.Key] = kvp.Value;
+            }
+
+            _currentRoundTeamFinishOrder = currentRoundTeamFinishOrder;
+            _unactivatedUnits = unactivatedUnits;
         }
 
         public PlayerID GetCurrentPlayerID() => Cursor.GetCurrentPlayerID();

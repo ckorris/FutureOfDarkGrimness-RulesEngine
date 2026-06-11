@@ -3,7 +3,7 @@ using FDG.Players;
 using FDG.Stages;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
-using FDG.TempVisuals;
+using FDG.Presentation;
 using Newtonsoft.Json;
 using NUnit.Framework;
 using FDG.Rules.Dispatch;
@@ -300,7 +300,7 @@ namespace FDG.Tests
             public IPlayerRequestByID PlayerRequester { get; }
             public TableState TableState { get; }
             public IReadWriteableGameDataStore GameDataStore { get; }
-            public ITempVisualDrawer TempVisualDrawer { get; } = new NullTempVisualDrawer();
+            public IPresenter Presenter { get; } = new LocalPresenter(null, new InstantPresentationClock());
             public GameSettings Settings { get; } = GameSettings.GetDefault();
             public List<ITeam>? FirstDeploymentRollOrder => null;
             IGameContext IGameContextAccessor.GameContext => this;

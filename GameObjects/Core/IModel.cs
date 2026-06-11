@@ -9,6 +9,13 @@ namespace FDG
         public const int DEFAULT_WOUND_COUNT = 1;
 
         /// <summary>
+        /// Stable per-model identifier, used to name a specific model across JSON /
+        /// network round-trips (e.g. the presentation-beat stream). Assigned at model
+        /// creation. Mirrors <see cref="IUnit.ID"/>.
+        /// </summary>
+        public ModelID ID { get; }
+
+        /// <summary>
         /// Per-model token container holding rule-system state. Used for
         /// model-scoped markers (e.g. Regenerative Strength accumulates a count
         /// on the specific model that ignored the wound). Tokens survive JSON /

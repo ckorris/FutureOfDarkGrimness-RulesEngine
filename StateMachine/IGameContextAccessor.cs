@@ -1,5 +1,9 @@
+using System.Threading;
+using System.Threading.Tasks;
 using FDG.Data;
 using FDG.Players;
+using FDG.Presentation;
+using FDG.Presentation.Beats;
 
 namespace FDG
 {
@@ -11,9 +15,23 @@ namespace FDG
 
     public static class IGameContextAccessorExtensions
     {
-        public static void Log(this IGameContextAccessor contextAccessor, string message)
+        public static void Log(this IGameContextAccessor contextAccessor, string message, TextColor? color = null)
         {
-            contextAccessor.GameContext.TextOutput.Log(message);
+            contextAccessor.GameContext.TextOutput.Log(message, color);
+        }
+
+        /// <summary>
+        /// Announce a beat to the player: shows a big flashing banner (<see cref="BannerBeat"/>) AND
+        /// writes the same text to the regular log, both in <paramref name="color"/> (white by
+        /// default). Manually called, like <see cref="Log"/> — not automatic per stage. Awaitable so
+        /// the engine paces the banner before continuing.
+        /// </summary>
+        public static Task Announce(this IGameContextAccessor contextAccessor, string text,
+            TextColor? color = null, CancellationToken ct = default)
+        {
+            TextColor resolved = color ?? TextColor.White;
+            contextAccessor.Log(text, resolved);
+            return contextAccessor.GameContext.Presenter.Present(new BannerBeat(text, resolved), ct);
         }
 
         public static ITextOutput TextOutput(this IGameContextAccessor contextAccessor)

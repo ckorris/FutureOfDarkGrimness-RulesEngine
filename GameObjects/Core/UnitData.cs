@@ -1,5 +1,6 @@
 ﻿using FDG.Data;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
 using FDG.SaveLoad;
 using Newtonsoft.Json;
@@ -105,7 +106,8 @@ namespace FDG
             SpecialRules = new List<SpecialRule>();
         }
 
-        public UnitData(PlayerID playerID, UnitFileEntry unitFileEntry, IReadWriteableGameDataStore gameDataStore)
+        public UnitData(PlayerID playerID, UnitFileEntry unitFileEntry, IReadWriteableGameDataStore gameDataStore,
+            IRuleResolver? ruleResolver = null)
         {
             ID = new UnitID(System.Guid.NewGuid());
 
@@ -128,12 +130,20 @@ namespace FDG
             for (int i = 0; i < sortedWeaponEntries.Count; i++)
             {
                 WeaponFileEntry weaponEntry = sortedWeaponEntries[i];
-                HashSet<ISpecialRule_Weapon> weaponRules = GetRealWeaponSpecialRulesFromEntries(weaponEntry.SpecialRules);
+
+                //Resolved once per entry and shared across the quantity's instances —
+                //ResolvedRule is immutable, so duplicates of the same weapon can share it.
+                List<ResolvedRule> weaponRuleDefinitions = ResolveWeaponRules(weaponEntry, ruleResolver);
 
                 for (int q = 0; q < weaponEntry.Quantity; q++)
                 {
                     Weapon weapon = new Weapon(weaponEntry.Name, weaponEntry.RangeInches, weaponEntry.Attacks,
-                            weaponEntry.ArmorPenetration, weaponRules);
+                            weaponEntry.ArmorPenetration, new HashSet<ISpecialRule_Weapon>());
+
+                    foreach (ResolvedRule rule in weaponRuleDefinitions)
+                    {
+                        weapon.AttachRuleDefinition(rule);
+                    }
 
                     unitWeapons.Add(weapon);
                 }
@@ -165,10 +175,33 @@ namespace FDG
             return new List<SpecialRule>();
         }
 
-        private HashSet<ISpecialRule_Weapon> GetRealWeaponSpecialRulesFromEntries(List<SpecialRuleEntry> weaponRules)
+        /// <summary>
+        /// Resolves a weapon file entry's special-rule names into attachable #042 definitions
+        /// (#027). Scope-enforced: a unit-scoped rule named on a weapon is skipped with a
+        /// warning. A null resolver (e.g. template-copy construction paths that never see an
+        /// army file) yields no rules.
+        /// </summary>
+        private List<ResolvedRule> ResolveWeaponRules(WeaponFileEntry weaponEntry, IRuleResolver? ruleResolver)
         {
-            //TODO: Implement for real.
-            return new HashSet<ISpecialRule_Weapon>();
+            List<ResolvedRule> resolved = new List<ResolvedRule>();
+
+            if (ruleResolver == null)
+            {
+                return resolved;
+            }
+
+            foreach (SpecialRuleEntry ruleEntry in weaponEntry.SpecialRules)
+            {
+                ResolvedRule? rule = ArmyListRuleResolution.ResolveForScope(
+                    ruleResolver, ruleEntry, ERuleScope.Weapon, $"weapon '{weaponEntry.Name}' of unit '{Name}'");
+
+                if (rule != null)
+                {
+                    resolved.Add(rule);
+                }
+            }
+
+            return resolved;
         }
 
 

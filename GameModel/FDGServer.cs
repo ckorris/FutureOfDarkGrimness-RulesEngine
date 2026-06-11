@@ -173,7 +173,7 @@ namespace FDG.GameModel
 
             foreach (UnitFileEntry unitEntry in armyListFile.Units)
             {
-                UnitData unitData = new UnitData(playerID, unitEntry, gameDataStore);
+                UnitData unitData = new UnitData(playerID, unitEntry, gameDataStore, ruleResolver);
                 AttachRulesFromArmyList(unitData, unitEntry, ruleResolver);
                 DataReference unitDataReference = gameDataStore.Create(unitData);
                 DataBinding<UnitData> unitBinding = gameDataStore.GetDataBinding<UnitData>(unitDataReference);
@@ -187,42 +187,21 @@ namespace FDG.GameModel
 
         //Resolves each special rule named on the army-list entry against the rule registry and
         //attaches the resolved #042 definition to the unit. A valid-but-not-yet-implemented core
-        //rule (one with no definition in the catalog) is skipped with a warning so partial armies
-        //still load and the rules that ARE implemented still fire.
+        //rule (one with no definition in the catalog) — or a weapon-scoped rule misauthored at
+        //unit level (#027) — is skipped with a warning so partial armies still load and the
+        //rules that ARE implemented still fire. Weapon-level rules attach inside the UnitData
+        //constructor via the same ArmyListRuleResolution helper.
         private void AttachRulesFromArmyList(UnitData unitData, UnitFileEntry unitEntry, IRuleResolver ruleResolver)
         {
             foreach (SpecialRuleEntry ruleEntry in unitEntry.SpecialRules)
             {
-                (string lookupName, IReadOnlyList<RuleArgument> arguments) = DescribeRuleEntry(ruleEntry);
+                ResolvedRule? resolved = ArmyListRuleResolution.ResolveForScope(
+                    ruleResolver, ruleEntry, ERuleScope.Unit, $"unit '{unitData.Name}'");
 
-                if (ruleResolver.TryResolve(lookupName, out ResolvedRule resolved))
+                if (resolved != null)
                 {
-                    unitData.AttachRuleDefinition(
-                        new ResolvedRule(ruleEntry.PrintableName, resolved.Definition, arguments));
+                    unitData.AttachRuleDefinition(resolved);
                 }
-                else
-                {
-                    Debug.WriteLine(
-                        $"[#042] Skipping unimplemented special rule '{ruleEntry.PrintableName}' on unit '{unitData.Name}'.");
-                }
-            }
-        }
-
-        //Maps an army-list rule entry to the canonical name used for registry lookup plus any
-        //per-instance arguments. Core rules look up by name; numeric rules carry their value as a
-        //single Int argument; aliases look up by the rule they rename.
-        private static (string lookupName, IReadOnlyList<RuleArgument> arguments) DescribeRuleEntry(SpecialRuleEntry ruleEntry)
-        {
-            switch (ruleEntry)
-            {
-                case SpecialRuleEntry_CoreNumeric numeric:
-                    return (numeric.Name, new RuleArgument[] { new RuleArgument.Int(numeric.NumericValue) });
-                case SpecialRuleEntry_Alias alias:
-                    return DescribeRuleEntry(alias.AliasedRule);
-                case SpecialRuleEntry_Core core:
-                    return (core.Name, Array.Empty<RuleArgument>());
-                default:
-                    return (ruleEntry.PrintableName, Array.Empty<RuleArgument>());
             }
         }
 

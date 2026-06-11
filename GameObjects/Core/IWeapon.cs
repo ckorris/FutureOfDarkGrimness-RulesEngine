@@ -1,3 +1,5 @@
+using FDG.Rules.Dispatch;
+using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.Text;
 
@@ -14,6 +16,13 @@ namespace FDG
         public int ArmorPenetration { get; }
 
         public HashSet<ISpecialRule_Weapon> SpecialRules { get; }
+
+        /// <summary>
+        /// The #042 special-rule definitions this weapon carries (#027). Resolved from the
+        /// army file's per-weapon rule names at load; applies only to attacks made with
+        /// this weapon. Mirrors <see cref="IUnit.RuleDefinitions"/>.
+        /// </summary>
+        public IReadOnlyList<ResolvedRule> RuleDefinitions { get; }
     }
 
     public class WeaponComparer : IEqualityComparer<IWeapon>
@@ -87,6 +96,15 @@ namespace FDG
 
         public HashSet<ISpecialRule_Weapon> SpecialRules { get; }
 
+        private readonly List<ResolvedRule> _ruleDefinitions = new();
+
+        /// <summary>
+        /// Like <see cref="UnitData.RuleDefinitions"/>, deliberately not serialized: rule
+        /// names in the army file are the persisted form, re-resolved against the host's
+        /// registry at load.
+        /// </summary>
+        [JsonIgnore] public IReadOnlyList<ResolvedRule> RuleDefinitions => _ruleDefinitions;
+
         public Weapon(string name, float rangeInches, int attacks, int armorPenetration, HashSet<ISpecialRule_Weapon> specialRules)
         {
             Name = name;
@@ -95,5 +113,11 @@ namespace FDG
             ArmorPenetration = armorPenetration;
             SpecialRules = specialRules;
         }
+
+        /// <summary>
+        /// Attaches a resolved special-rule definition to this weapon. Post-construction
+        /// (army-load / harness), mirroring <see cref="UnitData.AttachRuleDefinition"/>.
+        /// </summary>
+        public void AttachRuleDefinition(ResolvedRule rule) => _ruleDefinitions.Add(rule);
     }
 }

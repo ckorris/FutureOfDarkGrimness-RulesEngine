@@ -1,3 +1,5 @@
+using FDG.Rules.Foundation;
+
 namespace FDG.Rules.Definitions;
 
 /// <summary>
@@ -14,6 +16,9 @@ namespace FDG.Rules.Definitions;
 ///         pure spell rule has no passive entries).</item>
 ///   <item><see cref="Activated"/> — all player-triggered abilities the rule
 ///         provides. May be empty (e.g. Furious is purely passive).</item>
+///   <item><see cref="Scope"/> — whether the rule attaches to a unit or to an
+///         individual weapon (#027). Defaults to <see cref="ERuleScope.Unit"/>;
+///         army-load refuses to attach a rule at the wrong scope.</item>
 /// </list>
 ///
 /// A rule may have only Passive entries (Furious, Stealth), only Activated
@@ -21,4 +26,4 @@ namespace FDG.Rules.Definitions;
 /// at round start" combined with an activated piece).
 /// </summary>
 public record SpecialRuleDefinition(string Name, IReadOnlyList<HookEntry> Passive,
-    IReadOnlyList<ActivatedAbility> Activated);
+    IReadOnlyList<ActivatedAbility> Activated, ERuleScope Scope = ERuleScope.Unit);

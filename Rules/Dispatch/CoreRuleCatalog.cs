@@ -102,9 +102,10 @@ public static class CoreRuleCatalog
                 new Effect.IgnoreCover(),
                 ELifetime.ThisAttack),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        ERuleScope.Weapon);
 
-    /// <summary> Attacker: base Quality is treated as 2+ (still modifiable). </summary>
+    /// <summary> Weapon rule ("models attacks at Quality 2+ with this weapon"): base Quality is treated as 2+ (still modifiable). </summary>
     public static SpecialRuleDefinition Reliable { get; } = new SpecialRuleDefinition("Reliable",
         new[]
         {
@@ -113,7 +114,8 @@ public static class CoreRuleCatalog
                 new Effect.QualityFloor(Quality: 2),
                 ELifetime.ThisAttack),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        ERuleScope.Weapon);
 
     // Movement-modifier sink (MovementActionContext) -----------------------------
 
@@ -160,7 +162,7 @@ public static class CoreRuleCatalog
 
     // Hit-injection sink (RollToHitStage) ----------------------------------------
 
-    /// <summary> Extra hit on an unmodified 6 (shooting and melee). </summary>
+    /// <summary> Weapon rule ("this weapon deals 1 extra hit"): extra hit on an unmodified 6 (shooting and melee). </summary>
     public static SpecialRuleDefinition Surge { get; } = new SpecialRuleDefinition("Surge",
         new[]
         {
@@ -169,7 +171,8 @@ public static class CoreRuleCatalog
                 new Effect.AddExtraHit(OnRollValue: 6),
                 ELifetime.ThisAttack),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        ERuleScope.Weapon);
 
     /// <summary> Extra hit on an unmodified 6 when beyond 9". </summary>
     public static SpecialRuleDefinition Relentless { get; } = new SpecialRuleDefinition("Relentless",
@@ -217,7 +220,8 @@ public static class CoreRuleCatalog
                 new Effect.IgnoreCover(),
                 ELifetime.ThisAttack),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        ERuleScope.Weapon);
 
     // Targets-selected marker (BuildTargetListStage, shooting) -------------------
 
@@ -247,7 +251,8 @@ public static class CoreRuleCatalog
                 new Effect.IgnoreCover(),
                 ELifetime.ThisAttack),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        ERuleScope.Weapon);
 
     // Melee charge rules on the shared hit + save sinks --------------------------
 
@@ -312,11 +317,12 @@ public static class CoreRuleCatalog
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        ERuleScope.Weapon);
 
     // Wound-modifier sink (AssignWoundsStage) ------------------------------------
 
-    /// <summary> Deadly(X): the attack's wounds are multiplied by X (the rule's argument). </summary>
+    /// <summary> Deadly(X), weapon rule: the attack's wounds are multiplied by X (the rule's argument). </summary>
     public static SpecialRuleDefinition Deadly { get; } = new SpecialRuleDefinition("Deadly",
         new[]
         {
@@ -325,7 +331,8 @@ public static class CoreRuleCatalog
                 new Effect.MultiplyWounds(new ValueSource.Arg(0)),
                 ELifetime.ThisAttack),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        ERuleScope.Weapon);
 
     // Wound-ignore sink (AssignWoundsStage) --------------------------------------
 
@@ -354,7 +361,8 @@ public static class CoreRuleCatalog
                 new Effect.IgnoreRule("Regeneration"),
                 ELifetime.ThisAttack),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        ERuleScope.Weapon);
 
     /// <summary>
     /// Attacker: an unmodified 6 to hit promotes the attack's AP (modelled as -4 to the defender's
@@ -374,7 +382,8 @@ public static class CoreRuleCatalog
                 new Effect.IgnoreRule("Regeneration"),
                 ELifetime.ThisAttack),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        ERuleScope.Weapon);
 
     /// <summary>
     /// Attacker: the defender must re-roll unmodified Defense 6s (turning saved 6s into possible
@@ -392,7 +401,8 @@ public static class CoreRuleCatalog
                 new Effect.IgnoreRule("Regeneration"),
                 ELifetime.ThisAttack),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        ERuleScope.Weapon);
 
     // Max-wounds sink (UnitCreationRules, at army-load) ---------------------------
 

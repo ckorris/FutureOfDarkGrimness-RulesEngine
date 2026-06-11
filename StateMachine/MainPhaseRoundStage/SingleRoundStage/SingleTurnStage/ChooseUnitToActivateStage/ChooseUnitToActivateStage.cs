@@ -46,8 +46,10 @@ namespace FDG.Stages
             }
 
             //TODO: We don't catch if there are no options and we're stuck in the menu forever.
+            // Choosing which unit to activate is mandatory — no back-destination, so no cancel (a null/Back
+            // reply has nowhere to go and crashes the networked reply path).
             SelectionRequest<UnitData> request = new SelectionRequest<UnitData>(context.ActivatedPlayer, "Choose Unit to Activate",
-                validOptions, invalidOptions);
+                validOptions, invalidOptions, allowCancel: false);
 
             System.Diagnostics.Debug.WriteLine($"Choose unit requesting player {context.ActivatedPlayer}. ");
 

@@ -131,12 +131,11 @@ namespace FDG.StageResolution
         {
             TReply? reply = JsonConvert.DeserializeObject<TReply>(replyJson, _gameDataStore.GetJsonSettings());
 
-            if (reply == null)
-            {
-                throw new JsonSerializationException($"Failed to deserialize reply from Json.");
-            }
-
-            replyTask.SetResult(reply);
+            // A null reply is a legitimate "cancel / no selection" (e.g. a SelectionRequest's Back button),
+            // NOT a deserialization failure — the requesting stage decides how to handle it. Treating null as
+            // fatal here crashed the whole game on any networked cancel. Value-type replies that can't be null
+            // already throw inside DeserializeObject, so this only forwards intentional reference-type nulls.
+            replyTask.SetResult(reply!);
         }
 
         private void ReturnFailure<TReply>(PlayerID playerID, string requestType, string errorMessage, TaskCompletionSource<TReply> replyTask)

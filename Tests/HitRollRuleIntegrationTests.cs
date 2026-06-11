@@ -108,6 +108,51 @@ namespace FDG.Tests
                 "Artillery's distance condition fails within 9\", so no modifier is applied.");
         }
 
+        // Artillery's defensive facet: as a TARGET, enemies shooting it from beyond 9" take -2 to
+        // hit (Subject seat), which RAISES the threshold. Mirrors Stealth's defender-seat distance
+        // modifier on the same OnHitRollModifier evaluation — proves Artillery's second HookEntry fires.
+        [Test]
+        public async Task ArtilleryDefender_BeyondNine_RaisesAttackerHitThreshold()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(FarPos);
+            AttachArtillery(defender);
+
+            DetermineHitRollNeededResults result = await RunStage(attacker, defender);
+
+            Assert.That(result.HitRollNeeded, Is.EqualTo(6),
+                "base 4, raised by 2 because Artillery gives enemies -2 to hit it from beyond 9\".");
+        }
+
+        [Test]
+        public async Task ArtilleryDefender_WithinNine_NoChange()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(NearPos);
+            AttachArtillery(defender);
+
+            DetermineHitRollNeededResults result = await RunStage(attacker, defender);
+
+            Assert.That(result.HitRollNeeded, Is.EqualTo(4),
+                "Artillery's distance condition fails within 9\", so the -2 defensive modifier is not applied.");
+        }
+
+        // Both facets at once: an Artillery attacker (+1 → -1 threshold) shooting an Artillery defender
+        // (-2 → +2 threshold) from beyond 9". The Actor and Subject entries both fire and stack: 4 - 1 + 2 = 5.
+        [Test]
+        public async Task ArtilleryBothSeats_BeyondNine_StackActorAndSubject()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(FarPos);
+            AttachArtillery(attacker);
+            AttachArtillery(defender);
+
+            DetermineHitRollNeededResults result = await RunStage(attacker, defender);
+
+            Assert.That(result.HitRollNeeded, Is.EqualTo(5),
+                "Artillery attacker +1 (−1 threshold) and Artillery defender −2 (+2 threshold) stack: 4 − 1 + 2 = 5.");
+        }
+
         // Indirect is an attacker-seat rule: -1 to hit when the unit moved this activation,
         // which RAISES the threshold. The condition reads AttackerMoved off the metadata —
         // this exercises the HasMoved → CombatMetadata threading, not just a distance check.

@@ -45,8 +45,11 @@ namespace FDG.Tests
                 "one failed save → one wound to assign, with no rule to multiply it.");
         }
 
+        // Deadly's no-carry-over confinement: against single-wound models the multiplier is WASTED — each
+        // failed save is a clump of X that lands on one model, but a 1-wound model absorbs only 1, the rest
+        // lost (Deadly's whole point is anti-Tough). One failed save → one dead model → one wound to assign.
         [Test]
-        public async Task DeadlyAttacker_MultipliesWoundCountByArgument()
+        public async Task DeadlyAttacker_VsSingleWoundModels_MultiplierWasted()
         {
             DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
             AttachDeadly(attacker, x: 3);
@@ -54,8 +57,39 @@ namespace FDG.Tests
 
             await RunStage(attacker, defender, failedSaves: 1);
 
+            Assert.That(_requester.Captured!.TotalWoundsToAssign, Is.EqualTo(1f),
+                "Deadly(3) against 1-wound models is wasted: the clump kills one model, the extra 2 don't carry over.");
+        }
+
+        // Against a Tough model the clump deals the full multiplier to that one model: Deadly(3) + one
+        // failed save → 3 wounds on a single Tough(5) model (which survives, so it routes to the player).
+        [Test]
+        public async Task DeadlyAttacker_VsToughModels_ClumpDealsMultiplierToOneModel()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            AttachDeadly(attacker, x: 3);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 2, woundsPerModel: 5);
+
+            await RunStage(attacker, defender, failedSaves: 1);
+
             Assert.That(_requester.Captured!.TotalWoundsToAssign, Is.EqualTo(3f),
-                "Deadly(3) multiplies the one failed save into three wounds to assign.");
+                "Deadly(3) lands a full 3-wound clump on one Tough(5) model (vs only 1 on a single-wound model).");
+        }
+
+        // Overkill within a clump is NOT carried to the next model: Deadly(3) + two failed saves against
+        // Tough(5) models spends both clumps on the first model (ceil(5/3) = 2 clumps to kill), dealing 5 —
+        // the 6th wound (overkill) is lost rather than spilling onto the second model. (Naive total×X = 6.)
+        [Test]
+        public async Task DeadlyAttacker_OverkillNotCarriedToNextModel()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            AttachDeadly(attacker, x: 3);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 2, woundsPerModel: 5);
+
+            await RunStage(attacker, defender, failedSaves: 2);
+
+            Assert.That(_requester.Captured!.TotalWoundsToAssign, Is.EqualTo(5f),
+                "two clumps kill the first Tough(5) model (5 wounds); the overkill doesn't carry to the second.");
         }
 
         private async Task RunStage(DataBinding<UnitData> attacker, DataBinding<UnitData> defender, int failedSaves)
@@ -85,7 +119,7 @@ namespace FDG.Tests
                 new ResolvedRule("Deadly", CoreRuleCatalog.Deadly, new RuleArgument[] { new RuleArgument.Int(x) }));
         }
 
-        private DataBinding<UnitData> MakeUnit(int modelCount)
+        private DataBinding<UnitData> MakeUnit(int modelCount, int woundsPerModel = 1)
         {
             var modelBindings = new List<DataBinding<ModelData>>(modelCount);
             for (int i = 0; i < modelCount; i++)
@@ -96,6 +130,7 @@ namespace FDG.Tests
                     specialRules: new List<SpecialRule>(),
                     initialPosition: new Position(0, 0),
                     gameDataStore: _store);
+                if (woundsPerModel != 1) model.SetMaxWounds(woundsPerModel); // Tough(woundsPerModel)
                 modelBindings.Add(_store.GetDataBinding<ModelData>(_store.Create(model)));
             }
 

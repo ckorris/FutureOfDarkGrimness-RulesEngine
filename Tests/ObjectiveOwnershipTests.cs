@@ -67,7 +67,61 @@ namespace FDG.Tests
             Assert.That(objective.OwnerID, Is.Null);
         }
 
+        // A unit that arrived from reserve (Ambush) this round carries the ArrivedFromReserve marker; it
+        // can neither seize nor contest objectives that round, so an objective it sits alone on stays as-is.
+        [Test]
+        public async Task ReconcileObjectivesStage_ArrivedThisRoundUnit_DoesNotSeize()
+        {
+            var objective = CreateObjective(new Position(5, 5));
+            UnitData arrived = CreateUnit(new PlayerID(Guid.NewGuid()), modelPosition: new Position(5, 5));
+            MarkArrivedThisRound(arrived);
+
+            await RunReconcileOnce();
+
+            Assert.That(objective.OwnerID, Is.Null,
+                "a unit that arrived from reserve this round cannot seize the objective it stands on.");
+        }
+
+        // The newcomer doesn't contest either: an enemy sharing the objective seizes it outright, as if
+        // the arrived unit weren't there.
+        [Test]
+        public async Task ReconcileObjectivesStage_ArrivedUnitDoesNotContest_EnemySeizes()
+        {
+            var objective = CreateObjective(new Position(5, 5));
+            var enemy = new PlayerID(Guid.NewGuid());
+            UnitData arrived = CreateUnit(new PlayerID(Guid.NewGuid()), modelPosition: new Position(5.0f, 5));
+            MarkArrivedThisRound(arrived);
+            CreateUnit(enemy, modelPosition: new Position(5.5f, 5));
+
+            await RunReconcileOnce();
+
+            Assert.That(objective.OwnerID, Is.EqualTo(enemy),
+                "the arrived unit can't contest, so the enemy seizes uncontested rather than the objective going neutral.");
+        }
+
+        // The exclusion lasts exactly one round: the marker is cleared at the end of the reconcile that
+        // read it, so on the next round's reconcile the unit seizes normally.
+        [Test]
+        public async Task ReconcileObjectivesStage_ArrivalMarkerClearsAfterCheck_SeizesNextRound()
+        {
+            var playerID = new PlayerID(Guid.NewGuid());
+            var objective = CreateObjective(new Position(5, 5));
+            UnitData arrived = CreateUnit(playerID, modelPosition: new Position(5, 5));
+            MarkArrivedThisRound(arrived);
+
+            await RunReconcileOnce(); // round of arrival — excluded
+            Assert.That(objective.OwnerID, Is.Null, "still excluded the round it arrives.");
+
+            await RunReconcileOnce(); // next round — marker already cleared
+            Assert.That(objective.OwnerID, Is.EqualTo(playerID),
+                "the RoundEnd marker was swept after the first check, so the unit seizes the following round.");
+        }
+
         // Helpers
+
+        private static void MarkArrivedThisRound(UnitData unit) =>
+            unit.Tokens.AddToken(new Rules.Tokens.Token(Rules.Foundation.TokenType.ArrivedFromReserve, 1,
+                new Rules.Foundation.TokenClearTrigger.RoundEnd()));
 
         private ObjectiveData CreateObjective(Position position)
         {
@@ -76,7 +130,7 @@ namespace FDG.Tests
             return obj;
         }
 
-        private void CreateUnit(PlayerID playerID, Position modelPosition)
+        private UnitData CreateUnit(PlayerID playerID, Position modelPosition)
         {
             var modelData = new ModelData(
                 baseRadiusInches: 0.75f,
@@ -91,6 +145,7 @@ namespace FDG.Tests
                 specialRules: new List<SpecialRule>(),
                 modelBindings: new List<DataBinding<ModelData>> { modelBinding });
             _store.Create(unit);
+            return unit;
         }
 
         private Task RunReconcileOnce()

@@ -264,11 +264,13 @@ public static class CoreRuleCatalog
         Array.Empty<ActivatedAbility>());
 
     /// <summary>
-    /// Counter: when this unit is charged, it strikes FIRST — before the charging unit's strikes. A
-    /// defensive rule (Subject seat) at <see cref="EHookID.Melee_OnCounterTrigger"/> that queues
-    /// <see cref="RuleOperation.StrikeFirst"/>; DetermineStrikeOrderStage swaps the attacker/defender
-    /// roles so the existing swing/strike-back flow resolves the Counter unit first. The companion
-    /// "-1 impact roll per Counter model" facet is deferred (see Appendix C).
+    /// Counter: when this unit is charged, it strikes FIRST — before the charging unit's strikes — and
+    /// the charger rolls one fewer Impact die per living model of this unit. Both are defensive (Subject
+    /// seat). StrikeFirst fires at <see cref="EHookID.Melee_OnCounterTrigger"/>; DetermineStrikeOrderStage
+    /// swaps the attacker/defender roles so the existing swing/strike-back flow resolves the Counter unit
+    /// first. The impact reduction fires at <see cref="EHookID.Melee_OnChargeContact"/> (the same when the
+    /// charger's Impact(X) fires), emitting a negative <see cref="RuleOperation.ChargeImpactHits"/> that
+    /// folds into the shared impact-dice sink, so ResolveImpactHitsStage rolls the net count.
     /// </summary>
     public static SpecialRuleDefinition Counter { get; } = new SpecialRuleDefinition("Counter",
         new[]
@@ -277,6 +279,11 @@ public static class CoreRuleCatalog
                 new Condition.Always(),
                 new Effect.StrikeFirst(),
                 ELifetime.ThisActivation,
+                ERuleSeat.Subject),
+            new HookEntry(EHookID.Melee_OnChargeContact,
+                new Condition.Always(),
+                new Effect.ReduceImpactDicePerModel(),
+                ELifetime.ThisAttack,
                 ERuleSeat.Subject),
         },
         Array.Empty<ActivatedAbility>());

@@ -14,8 +14,11 @@ namespace FDG.Stages
     /// runs this stage). The impact hits have no weapon — they ride a synthetic AP-0 attack seeded as a
     /// RollToHitResults, then run the existing save→wound sub-pipeline.
     ///
-    /// DEFERRED (Appendix C): the "not fatigued" gate (fatigue is absent), so Impact always rolls; and
-    /// Counter's "-1 impact roll per Counter model" companion facet.
+    /// The charge-contact "when" is evaluated for BOTH combatants: the charger (Actor) emits its Impact(X)
+    /// dice, and the defender (Subject) emits Counter's "-1 impact die per Counter model" reduction — both
+    /// fold into one ImpactSink, so the stage rolls the net dice.
+    ///
+    /// DEFERRED (Appendix C): the "not fatigued" gate (fatigue is absent), so Impact always rolls.
     /// </summary>
     public class ResolveImpactHitsStage : ParentStage<ICombatActionContext, ICombatMetadata>
     {
@@ -37,14 +40,16 @@ namespace FDG.Stages
 
             IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
                 new ChargeContactContext(attacker, defender),
-                (attacker, ERuleSeat.Actor));
+                (attacker, ERuleSeat.Actor),
+                (defender, ERuleSeat.Subject));
 
             ImpactSink impact = new ImpactSink();
             impact.ApplyFrom(operations);
 
             if (impact.TotalDice <= 0)
             {
-                // No Impact rule on the charger — skip straight to the normal melee flow.
+                // No Impact rule on the charger, or a Counter defender reduced the dice to zero — skip
+                // straight to the normal melee flow.
                 OnImpactResolved.Activate(context);
                 return;
             }

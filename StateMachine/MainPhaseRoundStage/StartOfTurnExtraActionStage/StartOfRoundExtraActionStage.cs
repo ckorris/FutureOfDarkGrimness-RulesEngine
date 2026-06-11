@@ -2,6 +2,7 @@ using FDG.Data;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 using FDG.StageResolution.Requests;
 
 namespace FDG.Stages
@@ -51,6 +52,13 @@ namespace FDG.Stages
                     if (!bringOn) continue;
 
                     await PlaceFromReserve(unit, defer.PlacementRangeInches);
+
+                    // A unit that arrives from reserve can't seize or contest objectives the round it
+                    // arrives. Mark it so ReconcileObjectivesStage excludes its models from this round's
+                    // objective check; the RoundEnd clear trigger sweeps the marker after that check.
+                    unit.Tokens.AddToken(new Token(TokenType.ArrivedFromReserve, 1,
+                        new TokenClearTrigger.RoundEnd()));
+
                     GameContext.Log($"{unit.Name} arrived from Ambush.");
                 }
             }

@@ -29,15 +29,6 @@ namespace FDG.Stages
 
             var tableState = GameContext.TableState;
 
-            // End of round: clear "this round" cost markers (once-per-round gates) across every unit.
-            List<ITokenContainer> containers = new List<ITokenContainer>();
-            foreach (IUnit unit in tableState.Units.Objects)
-            {
-                containers.Add(unit.Tokens);
-                containers.AddRange(unit.Models.Select(model => model.Tokens));
-            }
-            new TokenClearService().ClearForHook(EHookID.Round_OnRoundEnd, containers);
-
             // Build a model→unit map so we can get PlayerID from a model.
             var modelToUnit = new Dictionary<IModel, IUnit>();
             foreach (var unit in tableState.Units.Objects)
@@ -68,6 +59,18 @@ namespace FDG.Stages
                 }
             }
 
+            // End of round: clear "this round" tokens across every unit AFTER the objective check above —
+            // the once-per-round cost gates and the "arrived from reserve this round" marker (which the
+            // check just read to exclude newcomers). Clearing before the check would let a unit that
+            // arrived this round seize objectives the very round it came on.
+            List<ITokenContainer> containers = new List<ITokenContainer>();
+            foreach (IUnit unit in tableState.Units.Objects)
+            {
+                containers.Add(unit.Tokens);
+                containers.AddRange(unit.Models.Select(model => model.Tokens));
+            }
+            new TokenClearService().ClearForHook(EHookID.Round_OnRoundEnd, containers);
+
             if (_timesEntered < 4)
             {
                 ToReconcileEndOfTurn.Activate(context);
@@ -92,6 +95,10 @@ namespace FDG.Stages
             {
                 if (!model.GetIsAlive()) continue;
                 if (!modelToUnit.TryGetValue(model, out var unit)) continue;
+
+                // A unit that arrived from reserve this round can neither seize nor contest — skip its
+                // models so it counts toward neither (the marker is cleared at this round's end below).
+                if (unit.Tokens.HasToken(TokenType.ArrivedFromReserve)) continue;
 
                 float dx = model.Position.x - objPos.x;
                 float dz = model.Position.z - objPos.z;

@@ -37,8 +37,8 @@ namespace FDG.Stages
             // resulting queue feeds the reroll (below, before Deadly) and the wound-ignore (after Deadly).
             IReadOnlyList<RuleOperation> saveCompleteOperations = GameContext.RuleEvaluator.EvaluateAll(
                 new SaveRollCompleteContext(attacker, defender, CombineSaveRolls(rollToSaveResults)),
-                (attacker, ERuleSeat.Actor),
-                (defender, ERuleSeat.Subject));
+                (attacker, ERuleSeat.Actor, metaData.WeaponType),
+                (defender, ERuleSeat.Subject, null));
 
             // #042 save-reroll rules (Bane): the defender re-rolls unmodified-6 saves, turning saved 6s
             // into possible failures. Re-roll each successful group's natural-6 count and add the new
@@ -61,7 +61,7 @@ namespace FDG.Stages
             // interprets no operation; it just reads the net multiplier.
             IReadOnlyList<RuleOperation> woundOperations = GameContext.RuleEvaluator.EvaluateAll(
                 new PreApplyWoundContext(attacker, defender),
-                (attacker, ERuleSeat.Actor));
+                (attacker, ERuleSeat.Actor, metaData.WeaponType));
             WoundModifierSink woundModifier = new WoundModifierSink();
             woundModifier.ApplyFrom(woundOperations);
             if (woundModifier.NetMultiplier > 1)

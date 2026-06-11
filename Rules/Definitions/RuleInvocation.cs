@@ -11,14 +11,16 @@ namespace FDG.Rules.Definitions;
 /// bearer), and a <see cref="DiceRoller"/> for effects with random amounts (Mend's D3).
 /// Bearer/arguments/target/roller can't live on the hook context because the same event
 /// is evaluated for several units/seats — they vary per firing, which is what builds the
-/// invocation.
+/// invocation. <see cref="Weapon"/> is the carrying weapon when the rule is
+/// weapon-attached (#027) — null for unit-attached rules.
 /// </summary>
 public sealed record RuleInvocation(
     IHookContext? Hook,
     IUnit Bearer,
     IReadOnlyList<RuleArgument> Arguments,
     IUnit? Target = null,
-    IDiceRoller? DiceRoller = null)
+    IDiceRoller? DiceRoller = null,
+    IWeapon? Weapon = null)
 {
     /// <summary>
     /// The unit an effect lands on: the explicit <see cref="Target"/> for activated

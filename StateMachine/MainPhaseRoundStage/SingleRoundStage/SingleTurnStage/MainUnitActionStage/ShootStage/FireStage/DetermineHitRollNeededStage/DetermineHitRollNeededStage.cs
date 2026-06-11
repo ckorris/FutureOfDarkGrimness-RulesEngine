@@ -27,7 +27,7 @@ namespace FDG.Stages
             IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
                 new HitRollModifierContext(attacker, defender, distance, AttackerMoved: metaData.AttackerMoved,
                     IsMelee: metaData.IsMelee, IsCharging: metaData.IsCharging),
-                (attacker, ERuleSeat.Actor), (defender, ERuleSeat.Subject));
+                (attacker, ERuleSeat.Actor, metaData.WeaponType), (defender, ERuleSeat.Subject, null));
 
             // #042 quality-floor rules (Reliable) set the BASE quality before per-roll modifiers:
             // "treated as 2+, still modifiable". Fold the floor sink and improve the base, then let

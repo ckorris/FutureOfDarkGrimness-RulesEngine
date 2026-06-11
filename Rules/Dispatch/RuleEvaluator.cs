@@ -35,12 +35,15 @@ public sealed class RuleEvaluator
     /// Operations produced by <paramref name="unit"/>'s passive rules whose hook
     /// matches the firing <paramref name="context"/> and whose seat matches
     /// <paramref name="seat"/> (the role this unit is playing in the event) and
-    /// whose condition passes.
+    /// whose condition passes. When <paramref name="weapon"/> is supplied (#027),
+    /// that weapon's own rules are evaluated too — the per-weapon scoping that makes
+    /// a Blast cannon's rules apply to its shots and not its bearer's other weapons.
     /// </summary>
-    public IReadOnlyList<RuleOperation> Evaluate(IUnit unit, ERuleSeat seat, IHookContext context)
+    public IReadOnlyList<RuleOperation> Evaluate(IUnit unit, ERuleSeat seat, IHookContext context,
+        IWeapon? weapon = null)
     {
         var tagged = new List<TaggedOperation>();
-        CollectTagged(unit, seat, context, tagged);
+        CollectTagged(unit, seat, weapon, context, tagged, new HashSet<(UnitID, SpecialRuleDefinition)>());
 
         // Per-unit Evaluate does NOT run the suppression first-pass — cross-unit suppression
         // (an attacker's Unstoppable cancelling a defender's Regeneration) only exists once the
@@ -57,6 +60,19 @@ public sealed class RuleEvaluator
     public IReadOnlyList<RuleOperation> EvaluateAll(IHookContext context,
         params (IUnit Unit, ERuleSeat Seat)[] participants)
     {
+        return EvaluateAll(context, WithoutWeapons(participants));
+    }
+
+    /// <summary>
+    /// Weapon-aware participant form (#027): a participant with a weapon contributes that
+    /// weapon's rules alongside its unit rules — the attacker's firing weapon in the shoot
+    /// pipeline, each defender melee weapon at strike-order time. Identical rules reached
+    /// through several carriers fire once (the rulebook's "multiple instances of the same
+    /// rule don't stack"), except argumented (X) rules, which stack by the book.
+    /// </summary>
+    public IReadOnlyList<RuleOperation> EvaluateAll(IHookContext context,
+        params (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon)[] participants)
+    {
         return CollectSurviving(context, log: true, participants).Select(t => t.Op).ToList();
     }
 
@@ -69,8 +85,25 @@ public sealed class RuleEvaluator
     public IReadOnlyList<(RuleOperation Op, string RuleName)> EvaluateAllNamed(IHookContext context,
         params (IUnit Unit, ERuleSeat Seat)[] participants)
     {
+        return EvaluateAllNamed(context, WithoutWeapons(participants));
+    }
+
+    /// <summary> Weapon-aware form of <see cref="EvaluateAllNamed"/> (#027). </summary>
+    public IReadOnlyList<(RuleOperation Op, string RuleName)> EvaluateAllNamed(IHookContext context,
+        params (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon)[] participants)
+    {
         return CollectSurviving(context, log: false, participants)
             .Select(t => (t.Op, t.Origin.RequestedName)).ToList();
+    }
+
+    private static (IUnit, ERuleSeat, IWeapon?)[] WithoutWeapons((IUnit Unit, ERuleSeat Seat)[] participants)
+    {
+        var expanded = new (IUnit, ERuleSeat, IWeapon?)[participants.Length];
+        for (int i = 0; i < participants.Length; i++)
+        {
+            expanded[i] = (participants[i].Unit, participants[i].Seat, null);
+        }
+        return expanded;
     }
 
     /// <summary>
@@ -81,13 +114,17 @@ public sealed class RuleEvaluator
     /// when <paramref name="log"/> is true.
     /// </summary>
     private List<TaggedOperation> CollectSurviving(IHookContext context, bool log,
-        params (IUnit Unit, ERuleSeat Seat)[] participants)
+        params (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon)[] participants)
     {
         var tagged = new List<TaggedOperation>();
 
-        foreach ((IUnit unit, ERuleSeat seat) in participants)
+        // Shared across the whole event so the same definition reached through several
+        // carriers (unit + weapon, or two identical weapons) fires once per bearer.
+        var seen = new HashSet<(UnitID, SpecialRuleDefinition)>();
+
+        foreach ((IUnit unit, ERuleSeat seat, IWeapon? weapon) in participants)
         {
-            CollectTagged(unit, seat, context, tagged);
+            CollectTagged(unit, seat, weapon, context, tagged, seen);
         }
 
         var suppressedRuleNames = tagged
@@ -122,16 +159,39 @@ public sealed class RuleEvaluator
     }
 
     /// <summary>
-    /// Walks <paramref name="unit"/>'s passive rules for entries matching the firing
+    /// Walks <paramref name="unit"/>'s passive rules — and, when <paramref name="weapon"/> is
+    /// supplied, that weapon's rules (#027) — for entries matching the firing
     /// <paramref name="context"/> and <paramref name="seat"/> whose condition passes, and appends
     /// each produced operation to <paramref name="sink"/> paired with its origin rule + bearer.
-    /// Does not log — callers log after deciding which operations survive.
+    /// <paramref name="seen"/> dedupes argument-less rules per bearer across carriers (the
+    /// rulebook's "effects from multiple instances of the same special rule don't stack, unless
+    /// it is a rule with (X) in its name"). Does not log — callers log after deciding which
+    /// operations survive.
     /// </summary>
-    private void CollectTagged(IUnit unit, ERuleSeat seat, IHookContext context, List<TaggedOperation> sink)
+    private void CollectTagged(IUnit unit, ERuleSeat seat, IWeapon? weapon, IHookContext context,
+        List<TaggedOperation> sink, HashSet<(UnitID, SpecialRuleDefinition)> seen)
     {
-        foreach (ResolvedRule rule in unit.RuleDefinitions)
+        CollectFromRules(unit.RuleDefinitions, unit, carryingWeapon: null, seat, context, sink, seen);
+
+        if (weapon != null)
         {
-            var invocation = new RuleInvocation(context, unit, rule.Arguments, DiceRoller: _diceRoller);
+            CollectFromRules(weapon.RuleDefinitions, unit, weapon, seat, context, sink, seen);
+        }
+    }
+
+    private void CollectFromRules(IReadOnlyList<ResolvedRule> rules, IUnit unit, IWeapon? carryingWeapon,
+        ERuleSeat seat, IHookContext context, List<TaggedOperation> sink,
+        HashSet<(UnitID, SpecialRuleDefinition)> seen)
+    {
+        foreach (ResolvedRule rule in rules)
+        {
+            if (rule.Arguments.Count == 0 && !seen.Add((unit.ID, rule.Definition)))
+            {
+                continue;
+            }
+
+            var invocation = new RuleInvocation(context, unit, rule.Arguments, DiceRoller: _diceRoller,
+                Weapon: carryingWeapon);
 
             foreach (HookEntry entry in rule.Definition.Passive)
             {
@@ -150,7 +210,7 @@ public sealed class RuleEvaluator
 
                 foreach (RuleOperation op in produced)
                 {
-                    sink.Add(new TaggedOperation(op, rule, unit));
+                    sink.Add(new TaggedOperation(op, rule, unit, carryingWeapon));
                 }
             }
         }
@@ -158,16 +218,21 @@ public sealed class RuleEvaluator
 
     private void Log(TaggedOperation t)
     {
-        _log?.Log($"{t.Bearer.Name}'s {t.Origin.RequestedName} {t.Op.Describe()}.");
+        string carrier = t.Weapon == null
+            ? $"{t.Bearer.Name}'s {t.Origin.RequestedName}"
+            : $"{t.Bearer.Name}'s {t.Weapon.Name}'s {t.Origin.RequestedName}";
+        _log?.Log($"{carrier} {t.Op.Describe()}.");
     }
 
     /// <summary>
-    /// A produced operation paired with the rule that produced it and the unit carrying that rule.
-    /// Origin tracking is dispatcher sidecar metadata — not a field on <see cref="RuleOperation"/> —
-    /// so the suppression first-pass can match ops by their origin rule's canonical name and the
-    /// game-log can name the bearer and rule. The public API still returns bare operations.
+    /// A produced operation paired with the rule that produced it, the unit carrying that rule,
+    /// and — for weapon-attached rules (#027) — the carrying weapon. Origin tracking is dispatcher
+    /// sidecar metadata — not a field on <see cref="RuleOperation"/> — so the suppression
+    /// first-pass can match ops by their origin rule's canonical name and the game-log can name
+    /// the bearer and rule. The public API still returns bare operations.
     /// </summary>
-    private readonly record struct TaggedOperation(RuleOperation Op, ResolvedRule Origin, IUnit Bearer);
+    private readonly record struct TaggedOperation(RuleOperation Op, ResolvedRule Origin, IUnit Bearer,
+        IWeapon? Weapon = null);
 
     /// <summary>
     /// The player-triggered abilities available at this hook: abilities whose

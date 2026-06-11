@@ -51,7 +51,7 @@ namespace FDG.Stages
 
             IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
                 new ShootTargetsSelectedContext(attacker, defender),
-                (attacker, ERuleSeat.Actor));
+                (attacker, ERuleSeat.Actor, metaData.WeaponType));
 
             if (!operations.OfType<RuleOperation.TargetIndividualModel>().Any())
             {

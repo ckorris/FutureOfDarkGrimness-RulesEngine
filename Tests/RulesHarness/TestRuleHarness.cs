@@ -95,6 +95,16 @@ namespace FDG.Tests.RulesHarness
         }
 
         /// <summary>
+        /// Attaches <paramref name="definition"/> to a weapon (#027) — the weapon-scoped
+        /// counterpart of <see cref="AttachRule"/>. The rule fires only when dispatch is
+        /// handed this weapon alongside its bearer.
+        /// </summary>
+        public void AttachWeaponRule(Weapon weapon, SpecialRuleDefinition definition, params RuleArgument[] arguments)
+        {
+            weapon.AttachRuleDefinition(new ResolvedRule(definition.Name, definition, arguments));
+        }
+
+        /// <summary>
         /// Fires a hook and returns the resulting operations. A <see cref="UnitDestroyedContext"/>
         /// additionally runs owner-destroyed token cleanup across every container (the
         /// stand-in for the stage that will drive this once rules are wired into the engine);
@@ -140,6 +150,11 @@ namespace FDG.Tests.RulesHarness
         /// </summary>
         public IReadOnlyList<RuleOperation> EvaluateAll(IHookContext context,
             params (IUnit Unit, ERuleSeat Seat)[] participants)
+            => Evaluator.EvaluateAll(context, participants);
+
+        /// <summary> Weapon-aware participant form (#027): what the fire-pipeline stages call. </summary>
+        public IReadOnlyList<RuleOperation> EvaluateAll(IHookContext context,
+            params (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon)[] participants)
             => Evaluator.EvaluateAll(context, participants);
 
         /// <summary>

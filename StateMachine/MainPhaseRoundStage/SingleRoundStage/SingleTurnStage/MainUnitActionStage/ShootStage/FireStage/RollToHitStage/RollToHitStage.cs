@@ -79,7 +79,7 @@ namespace FDG.Stages
             IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
                 new HitRollCompleteContext(attacker, defender, rollToHitResults, distance, metaData.IsMelee,
                     metaData.IsCharging),
-                (attacker, ERuleSeat.Actor));
+                (attacker, ERuleSeat.Actor, metaData.WeaponType));
             HitInjectionSink hitInjection = new HitInjectionSink();
             hitInjection.ApplyFrom(operations);
 

@@ -48,8 +48,7 @@ namespace FDG.Tests
         {
             DataBinding<UnitData> charger = MakeUnit(MakeBlade());
 
-            Weapon counterRifle = new Weapon("Rifle", rangeInches: 24f, attacks: 1, armorPenetration: 0,
-                specialRules: new HashSet<ISpecialRule_Weapon>());
+            Weapon counterRifle = new Weapon("Rifle", rangeInches: 24f, attacks: 1, armorPenetration: 0);
             counterRifle.AttachRuleDefinition(new ResolvedRule("Counter", CoreRuleCatalog.Counter));
             DataBinding<UnitData> defender = MakeUnit(MakeBlade(), counterRifle);
 
@@ -85,11 +84,9 @@ namespace FDG.Tests
         [Test]
         public void SightQueries_ReportPerWeapon()
         {
-            Weapon mortar = new Weapon("Mortar", rangeInches: 48f, attacks: 1, armorPenetration: 0,
-                specialRules: new HashSet<ISpecialRule_Weapon>());
+            Weapon mortar = new Weapon("Mortar", rangeInches: 48f, attacks: 1, armorPenetration: 0);
             mortar.AttachRuleDefinition(new ResolvedRule("Indirect", CoreRuleCatalog.Indirect));
-            Weapon rifle = new Weapon("Rifle", rangeInches: 24f, attacks: 1, armorPenetration: 0,
-                specialRules: new HashSet<ISpecialRule_Weapon>());
+            Weapon rifle = new Weapon("Rifle", rangeInches: 24f, attacks: 1, armorPenetration: 0);
 
             DataBinding<UnitData> attacker = MakeUnit(mortar, rifle);
             var evaluator = new RuleEvaluator(new FixedDiceRoller(4));
@@ -119,8 +116,7 @@ namespace FDG.Tests
         }
 
         private static Weapon MakeBlade(string name = "Blade") =>
-            new Weapon(name, rangeInches: 0f, attacks: 1, armorPenetration: 0,
-                specialRules: new HashSet<ISpecialRule_Weapon>());
+            new Weapon(name, rangeInches: 0f, attacks: 1, armorPenetration: 0);
 
         /// <summary> A 3-model unit where every model carries the same weapon list. </summary>
         private DataBinding<UnitData> MakeUnit(params Weapon[] weapons) =>

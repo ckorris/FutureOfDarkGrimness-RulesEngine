@@ -67,8 +67,7 @@ namespace FDG.Tests
         [Test]
         public void SightRuleQueries_DeriveLoSAndCoverIgnore_FromIndirectAndTakedown()
         {
-            var weapon = new Weapon("Test", rangeInches: 48f, attacks: 1, armorPenetration: 0,
-                specialRules: new HashSet<ISpecialRule_Weapon>());
+            var weapon = new Weapon("Test", rangeInches: 48f, attacks: 1, armorPenetration: 0);
             RuleEvaluator ev = _ctx.RuleEvaluator;
 
             Assert.That(SightRuleQueries.IgnoresTerrain(_attacker.GetValue(), weapon, ev), Is.False,
@@ -91,8 +90,7 @@ namespace FDG.Tests
             stage.NextStage.Bind("done");
             stage.OnOccluded.Bind("occluded");
 
-            var weapon = new Weapon("Test", rangeInches: 48f, attacks: 1, armorPenetration: 0,
-                specialRules: new HashSet<ISpecialRule_Weapon>());
+            var weapon = new Weapon("Test", rangeInches: 48f, attacks: 1, armorPenetration: 0);
             var metadata = new CombatMetadata(_ctx, attacker, defender, weapon, weaponCount: 1);
 
             await stage.Enter(metadata);

@@ -59,10 +59,10 @@ namespace FDG.Tests
         }
 
         private static Weapon Rifle() =>
-            new Weapon("Rifle", 24f, 1, 0, new HashSet<ISpecialRule_Weapon>());
+            new Weapon("Rifle", 24f, 1, 0);
 
         private static Weapon Sword() =>
-            new Weapon("Sword", 0f, 1, 0, new HashSet<ISpecialRule_Weapon>());
+            new Weapon("Sword", 0f, 1, 0);
 
         private static DataBinding<ModelData> MakeModel(GameDataStore store, params Weapon[] weapons)
         {

@@ -49,8 +49,7 @@ namespace FDG.Tests
         [Test]
         public void SightRuleQueries_DeriveIgnoresCover_FromBlast()
         {
-            var weapon = new Weapon("Test", rangeInches: 24f, attacks: 1, armorPenetration: 0,
-                specialRules: new HashSet<ISpecialRule_Weapon>());
+            var weapon = new Weapon("Test", rangeInches: 24f, attacks: 1, armorPenetration: 0);
 
             Assert.That(SightRuleQueries.IgnoresCover(_attacker.GetValue(), weapon, _ctx.RuleEvaluator), Is.False,
                 "no rule → does not ignore cover.");
@@ -66,8 +65,7 @@ namespace FDG.Tests
             var stage = new CoverCheckStage(_ctx, layer);
             stage.NextStage.Bind("done");
 
-            var weapon = new Weapon("Test", rangeInches: 24f, attacks: 1, armorPenetration: 0,
-                specialRules: new HashSet<ISpecialRule_Weapon>());
+            var weapon = new Weapon("Test", rangeInches: 24f, attacks: 1, armorPenetration: 0);
             var metadata = new CombatMetadata(_ctx, _attacker, defender, weapon, weaponCount: 1);
 
             await stage.Enter(metadata);

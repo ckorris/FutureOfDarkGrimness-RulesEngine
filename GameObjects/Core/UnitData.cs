@@ -138,7 +138,7 @@ namespace FDG
                 for (int q = 0; q < weaponEntry.Quantity; q++)
                 {
                     Weapon weapon = new Weapon(weaponEntry.Name, weaponEntry.RangeInches, weaponEntry.Attacks,
-                            weaponEntry.ArmorPenetration, new HashSet<ISpecialRule_Weapon>());
+                            weaponEntry.ArmorPenetration);
 
                     foreach (ResolvedRule rule in weaponRuleDefinitions)
                     {

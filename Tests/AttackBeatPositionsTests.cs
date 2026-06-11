@@ -33,7 +33,7 @@ namespace FDG.Tests
             return store.GetDataBinding<UnitData>(reference);
         }
 
-        private static Weapon W(string name) => new Weapon(name, 24f, 1, 0, new HashSet<ISpecialRule_Weapon>());
+        private static Weapon W(string name) => new Weapon(name, 24f, 1, 0);
 
         [Test]
         public void FiringModels_ReturnsOnlyTheWeaponCarryingModels()

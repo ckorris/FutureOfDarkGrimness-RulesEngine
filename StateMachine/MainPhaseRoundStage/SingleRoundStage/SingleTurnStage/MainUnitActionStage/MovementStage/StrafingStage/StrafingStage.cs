@@ -106,8 +106,7 @@ namespace FDG.Stages
         {
             // Strafe hits come from passing fire — model them as a synthetic AP-0 attack so the shared
             // save/wound stages can consume them (the histogram face is cosmetic; saves count by TotalRolls).
-            Weapon strafeWeapon = new Weapon("Strafing", rangeInches: 0f, attacks: 0, armorPenetration: 0,
-                specialRules: new HashSet<ISpecialRule_Weapon>());
+            Weapon strafeWeapon = new Weapon("Strafing", rangeInches: 0f, attacks: 0, armorPenetration: 0);
 
             CombatMetadata metadata = new CombatMetadata(GameContext, contextSelf.MovingUnit,
                 _targetEnemy, strafeWeapon, weaponCount: 1, isMelee: false);

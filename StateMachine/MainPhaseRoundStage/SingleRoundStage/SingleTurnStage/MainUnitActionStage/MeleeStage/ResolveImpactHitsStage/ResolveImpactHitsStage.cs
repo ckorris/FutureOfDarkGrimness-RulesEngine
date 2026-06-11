@@ -78,8 +78,7 @@ namespace FDG.Stages
             // Impact hits come from a weaponless charge — model them as a synthetic AP-0 attack so the
             // shared save/wound stages can consume them. The histogram face is cosmetic (only TotalRolls
             // matters downstream).
-            Weapon impactWeapon = new Weapon("Impact", rangeInches: 0f, attacks: 0, armorPenetration: 0,
-                specialRules: new HashSet<ISpecialRule_Weapon>());
+            Weapon impactWeapon = new Weapon("Impact", rangeInches: 0f, attacks: 0, armorPenetration: 0);
 
             CombatMetadata metadata = new CombatMetadata(GameContext, contextSelf.AttackingUnit,
                 contextSelf.DefendingUnit, impactWeapon, weaponCount: 1, isMelee: true);

@@ -1,6 +1,7 @@
 using FDG.Rules.Dispatch;
 using Newtonsoft.Json;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 
 namespace FDG
@@ -15,8 +16,6 @@ namespace FDG
 
         public int ArmorPenetration { get; }
 
-        public HashSet<ISpecialRule_Weapon> SpecialRules { get; }
-
         /// <summary>
         /// The #042 special-rule definitions this weapon carries (#027). Resolved from the
         /// army file's per-weapon rule names at load; applies only to attacks made with
@@ -29,15 +28,43 @@ namespace FDG
     {
         public bool Equals(IWeapon x, IWeapon y)
         {
-            //TODO: Handle special rules. 
-
             return x.Name == y.Name && x.RangeInches == y.RangeInches
-                && x.Attacks == y.Attacks && x.ArmorPenetration == y.ArmorPenetration;
+                && x.Attacks == y.Attacks && x.ArmorPenetration == y.ArmorPenetration
+                && HaveSameRules(x, y);
         }
 
         public int GetHashCode(IWeapon obj)
         {
-            throw new System.NotImplementedException();
+            // Rules are deliberately left out of the hash (only the cheap stats) — weapons
+            // differing only in rules land in one bucket and fall through to Equals.
+            return System.HashCode.Combine(obj.Name, obj.RangeInches, obj.Attacks, obj.ArmorPenetration);
+        }
+
+        /// <summary>
+        /// Order-insensitive comparison of the two weapons' rule attachments by definition
+        /// identity + argument values, counting multiplicity — so a Takedown rifle never
+        /// groups with a plain rifle of the same stat line (#027).
+        /// </summary>
+        private static bool HaveSameRules(IWeapon x, IWeapon y)
+        {
+            if (x.RuleDefinitions.Count != y.RuleDefinitions.Count)
+            {
+                return false;
+            }
+
+            List<ResolvedRule> unmatched = y.RuleDefinitions.ToList();
+            foreach (ResolvedRule rule in x.RuleDefinitions)
+            {
+                int match = unmatched.FindIndex(r => r.Definition == rule.Definition
+                    && r.Arguments.SequenceEqual(rule.Arguments));
+                if (match < 0)
+                {
+                    return false;
+                }
+                unmatched.RemoveAt(match);
+            }
+
+            return true;
         }
     }
 
@@ -66,9 +93,9 @@ namespace FDG
             }
             sb.Append($"A{weapon.Attacks}, AP{weapon.ArmorPenetration}");
 
-            foreach (ISpecialRule_Weapon specialRule in weapon.SpecialRules) //TODO: Use actual name.
+            foreach (ResolvedRule rule in weapon.RuleDefinitions)
             {
-                sb.Append($", {specialRule.GetType().Name}");
+                sb.Append($", {rule.RequestedName}");
             }
 
             return sb.ToString();
@@ -94,8 +121,6 @@ namespace FDG
 
         public int ArmorPenetration { get; }
 
-        public HashSet<ISpecialRule_Weapon> SpecialRules { get; }
-
         private readonly List<ResolvedRule> _ruleDefinitions = new();
 
         /// <summary>
@@ -105,13 +130,12 @@ namespace FDG
         /// </summary>
         [JsonIgnore] public IReadOnlyList<ResolvedRule> RuleDefinitions => _ruleDefinitions;
 
-        public Weapon(string name, float rangeInches, int attacks, int armorPenetration, HashSet<ISpecialRule_Weapon> specialRules)
+        public Weapon(string name, float rangeInches, int attacks, int armorPenetration)
         {
             Name = name;
             RangeInches = rangeInches;
             Attacks = attacks;
             ArmorPenetration = armorPenetration;
-            SpecialRules = specialRules;
         }
 
         /// <summary>

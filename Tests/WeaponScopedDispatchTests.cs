@@ -106,8 +106,7 @@ namespace FDG.Tests
         }
 
         private static Weapon MakeWeapon(string name) =>
-            new Weapon(name, rangeInches: 48f, attacks: 1, armorPenetration: 0,
-                specialRules: new HashSet<ISpecialRule_Weapon>());
+            new Weapon(name, rangeInches: 48f, attacks: 1, armorPenetration: 0);
 
         private static float TotalHits(RollToHitResults results)
         {

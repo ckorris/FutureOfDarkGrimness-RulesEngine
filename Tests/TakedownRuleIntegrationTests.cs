@@ -110,8 +110,7 @@ namespace FDG.Tests
 
         private CombatMetadata MakeMetadata(WoundTestContext ctx, DataBinding<UnitData> attacker, DataBinding<UnitData> defender)
         {
-            var weapon = new Weapon("Test", rangeInches: 48f, attacks: 1, armorPenetration: 0,
-                specialRules: new HashSet<ISpecialRule_Weapon>());
+            var weapon = new Weapon("Test", rangeInches: 48f, attacks: 1, armorPenetration: 0);
             return new CombatMetadata(ctx, attacker, defender, weapon, weaponCount: 1); // isMelee:false
         }
 

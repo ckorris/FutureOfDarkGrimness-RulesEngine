@@ -308,7 +308,7 @@ namespace FDG.GameModel
         private void LoadTestData()
         {
             float baseRadiusInches = 0.75f;
-            List<Weapon> weapons = new List<Weapon>() { new Weapon("Weapon 1", 6, 2, 1, new HashSet<ISpecialRule_Weapon>()) };
+            List<Weapon> weapons = new List<Weapon>() { new Weapon("Weapon 1", 6, 2, 1) };
             List<SpecialRule> specialRules = new List<SpecialRule>() { new Rending() };
 
             int perTeamModelCount = 5;

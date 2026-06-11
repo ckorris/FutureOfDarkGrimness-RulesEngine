@@ -90,7 +90,8 @@ namespace FDG
 
             specialRules.AddRange(attackingUnit.GetAttackerSpecialRules());
             specialRules.AddRange(defendingUnit.GetDefenderSpecialRules()); //TODO: Need to differentiate attacker and defender.
-            specialRules.AddRange(weaponType.SpecialRules); //TODO: Sometimes the number of weapons matters.
+            //#027: weapon rules are #042 RuleDefinitions dispatched per-weapon by RuleEvaluator;
+            //they no longer ride this legacy combat-rule list.
 
             return specialRules;
         }

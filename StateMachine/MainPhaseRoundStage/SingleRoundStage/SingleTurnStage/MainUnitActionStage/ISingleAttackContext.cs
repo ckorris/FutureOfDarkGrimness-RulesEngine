@@ -49,7 +49,8 @@ namespace FDG
         private IReadOnlyList<ISpecialRule_Combat> GetAllSpecialRules(TMetadata combatMetaData)
         {
             List<ISpecialRule_Combat> allSpecialRules = new List<ISpecialRule_Combat>();
-            allSpecialRules.AddRange(combatMetaData.WeaponType.SpecialRules);
+            //#027: weapon rules are #042 RuleDefinitions dispatched per-weapon by RuleEvaluator;
+            //they no longer ride this legacy combat-rule list.
 
             //Add the attacker's offsensive rules.
             allSpecialRules.AddRange(new List<ISpecialRule_Combat>(combatMetaData.AttackingUnit.SpecialRules.OfType<ISpecialRule_Attacker>()));

@@ -134,8 +134,7 @@ namespace FDG.Tests
         private CombatMetadata MakeMetadata(DataBinding<UnitData> attacker, DataBinding<UnitData> defender,
             bool isMelee, bool isCharging)
         {
-            var weapon = new Weapon("Test", rangeInches: 48f, attacks: 1, armorPenetration: 0,
-                specialRules: new HashSet<ISpecialRule_Weapon>());
+            var weapon = new Weapon("Test", rangeInches: 48f, attacks: 1, armorPenetration: 0);
             return new CombatMetadata(_ctx, attacker, defender, weapon, weaponCount: 1,
                 attackerMoved: false, isMelee: isMelee, isCharging: isCharging);
         }

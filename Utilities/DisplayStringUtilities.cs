@@ -30,9 +30,9 @@ namespace FDG.Utilities
         {
             StringBuilder sb = new StringBuilder($"{weapon.Name} - A{weapon.Attacks} AP{weapon.ArmorPenetration} ");
 
-            foreach (SpecialRule rule in weapon.SpecialRules)
+            foreach (Rules.Dispatch.ResolvedRule rule in weapon.RuleDefinitions)
             {
-                sb.Append($"{rule.ToString()} ");
+                sb.Append($"{rule.RequestedName} ");
             }
 
             return sb.ToString();

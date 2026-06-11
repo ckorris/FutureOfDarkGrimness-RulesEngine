@@ -88,8 +88,7 @@ namespace FDG.Tests
             // guard requires a living melee-armed model. Most tests give every model a melee weapon
             // (RangeInches 0); the no-weapon case proves the guard suppresses the swap.
             var weapons = withMeleeWeapon
-                ? new List<Weapon> { new Weapon("Blade", rangeInches: 0f, attacks: 1, armorPenetration: 0,
-                    specialRules: new HashSet<ISpecialRule_Weapon>()) }
+                ? new List<Weapon> { new Weapon("Blade", rangeInches: 0f, attacks: 1, armorPenetration: 0) }
                 : new List<Weapon>();
             var modelBindings = new List<DataBinding<ModelData>>(modelCount);
             for (int i = 0; i < modelCount; i++)

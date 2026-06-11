@@ -186,7 +186,7 @@ namespace FDG.Tests
             // Attacker has a rifle AND a pistol — distinct names so they aren't deduped by WeaponComparer.
             // We'll mark the rifle as already used; the pistol remains "available" but still can't hit anyone.
             var rifle  = Rifle();
-            var pistol = new Weapon("Pistol", 12f, 1, 0, new HashSet<ISpecialRule_Weapon>());
+            var pistol = new Weapon("Pistol", 12f, 1, 0);
             var (ctx, attackerBinding) = BuildTwoTeamWorld(
                 attackerPos: new Position(0, 0, 0),
                 enemyPositions: new[] { new Position(100, 0, 0) },
@@ -228,7 +228,7 @@ namespace FDG.Tests
         }
 
         private static Weapon Rifle(float range = 24f) =>
-            new Weapon("Rifle", range, 1, 0, new HashSet<ISpecialRule_Weapon>());
+            new Weapon("Rifle", range, 1, 0);
 
         private static DataBinding<ModelData> MakeModel(GameDataStore store, Position position, params Weapon[] weapons)
         {

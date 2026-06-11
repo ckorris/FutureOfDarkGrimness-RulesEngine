@@ -115,8 +115,8 @@ namespace FDG.Tests
                 .Build();
 
             float baseRadiusInches = 0.75f;
-            List<Weapon> weapons = new List<Weapon>() { new Weapon("Weapon 1", 6, 2, 1, new HashSet<ISpecialRule_Weapon>()) };
-            List<SpecialRule> specialRules = new List<SpecialRule>() { new Rending() };
+            List<Weapon> weapons = new List<Weapon>() { new Weapon("Weapon 1", 6, 2, 1) };
+            List<SpecialRule> specialRules = new List<SpecialRule>() { new Hero() };
             Position position = new Position(new Float3(1, 2, 3));
 
             ModelData modelData = new ModelData(baseRadiusInches, weapons, specialRules, position, gameDataStoreFrom);
@@ -165,9 +165,9 @@ namespace FDG.Tests
             float baseRadius = 0.75f;
             List<Weapon> weapons = new List<Weapon>()
         {
-            new Weapon("DummyWeapon", 6, 2, 1, new HashSet<ISpecialRule_Weapon>())
+            new Weapon("DummyWeapon", 6, 2, 1)
         };
-            List<SpecialRule> specialRules = new List<SpecialRule>() { new Rending() };
+            List<SpecialRule> specialRules = new List<SpecialRule>() { new Hero() };
             Position position = new Position(new Float3(1, 2, 3));
 
             // Create ModelData via the live constructor.
@@ -240,9 +240,9 @@ namespace FDG.Tests
             float baseRadius = 0.75f;
             List<Weapon> weapons = new List<Weapon>()
         {
-            new Weapon("DummyWeapon", 6, 2, 1, new HashSet<ISpecialRule_Weapon>())
+            new Weapon("DummyWeapon", 6, 2, 1)
         };
-            List<SpecialRule> specialRules = new List<SpecialRule>() { new Rending() };
+            List<SpecialRule> specialRules = new List<SpecialRule>() { new Hero() };
             Position position = new Position(new Float3(1, 2, 3));
             ModelData modelData = new ModelData(baseRadius, weapons, specialRules, position, gameDataStoreFrom);
             DataReference modelDataReference = gameDataStoreFrom.Create(modelData);

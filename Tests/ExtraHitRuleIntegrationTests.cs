@@ -116,8 +116,7 @@ namespace FDG.Tests
             var stage = new RollToHitStage<ICombatMetadata>(_ctx, layer);
             stage.NextStage.Bind("done");
 
-            var weapon = new Weapon("Test", rangeInches: 48f, attacks: 1, armorPenetration: 0,
-                specialRules: new HashSet<ISpecialRule_Weapon>());
+            var weapon = new Weapon("Test", rangeInches: 48f, attacks: 1, armorPenetration: 0);
             var metadata = new CombatMetadata(_ctx, attacker, defender, weapon, weaponCount: 1,
                 attackerMoved: false, isMelee: isMelee, isCharging: isCharging);
             metadata.AddResult(new DetermineHitRollNeededResults(4)); // a 6 clears a 4+ threshold

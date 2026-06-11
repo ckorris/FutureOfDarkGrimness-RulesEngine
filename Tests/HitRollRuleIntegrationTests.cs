@@ -239,8 +239,7 @@ namespace FDG.Tests
             var stage = new DetermineHitRollNeededStage<ICombatMetadata>(_ctx, layer);
             stage.NextStage.Bind("done");
 
-            var weapon = new Weapon("Test", rangeInches: 48f, attacks: 1, armorPenetration: 0,
-                specialRules: new HashSet<ISpecialRule_Weapon>());
+            var weapon = new Weapon("Test", rangeInches: 48f, attacks: 1, armorPenetration: 0);
             var metadata = new CombatMetadata(_ctx, attacker, defender, weapon, weaponCount: 1, attackerMoved, isMelee);
 
             await stage.Enter(metadata);

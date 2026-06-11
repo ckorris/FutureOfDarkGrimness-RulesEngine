@@ -327,7 +327,7 @@ namespace FDG.Tests
             var playerID = new PlayerID(Guid.NewGuid());
 
             var attackerModel   = new ModelData(0.75f,
-                new List<Weapon> { new Weapon("Rifle", 24f, 1, 0, new HashSet<ISpecialRule_Weapon>()) },
+                new List<Weapon> { new Weapon("Rifle", 24f, 1, 0) },
                 new List<SpecialRule>(), new Position(), store);
             var attackerModelRef     = store.Create(attackerModel);
             var attackerModelBinding = store.GetDataBinding<ModelData>(attackerModelRef);
@@ -351,7 +351,7 @@ namespace FDG.Tests
             var cannotShoot = new HashSet<DataBinding<ModelData>>();
             var targetStats = new ChooseRangedAttackRequest.WeaponTargetStats(
                 targetUnitBinding, canShoot, cannotShoot, false);
-            var weapon      = new Weapon("Rifle", 24f, 1, 0, new HashSet<ISpecialRule_Weapon>());
+            var weapon      = new Weapon("Rifle", 24f, 1, 0);
             var weaponOpt   = new ChooseRangedAttackRequest.WeaponOption(
                 weapon, new List<ChooseRangedAttackRequest.WeaponTargetStats> { targetStats });
             var request     = new ChooseRangedAttackRequest(playerID, "Choose Ranged Weapon",
@@ -388,7 +388,7 @@ namespace FDG.Tests
 
             // Create data on host — replication fires automatically via events
             var attackerModel   = new ModelData(0.75f,
-                new List<Weapon> { new Weapon("Rifle", 24f, 1, 0, new HashSet<ISpecialRule_Weapon>()) },
+                new List<Weapon> { new Weapon("Rifle", 24f, 1, 0) },
                 new List<SpecialRule>(), new Position(), hostStore);
             var attackerModelRef     = hostStore.Create(attackerModel);
             var attackerModelBinding = hostStore.GetDataBinding<ModelData>(attackerModelRef);
@@ -413,7 +413,7 @@ namespace FDG.Tests
             var cannotShoot = new HashSet<DataBinding<ModelData>>();
             var targetStats = new ChooseRangedAttackRequest.WeaponTargetStats(
                 targetUnitBinding, canShoot, cannotShoot, false);
-            var weapon      = new Weapon("Rifle", 24f, 1, 0, new HashSet<ISpecialRule_Weapon>());
+            var weapon      = new Weapon("Rifle", 24f, 1, 0);
             var weaponOpt   = new ChooseRangedAttackRequest.WeaponOption(
                 weapon, new List<ChooseRangedAttackRequest.WeaponTargetStats> { targetStats });
             var request     = new ChooseRangedAttackRequest(playerID, "Choose Ranged Weapon",

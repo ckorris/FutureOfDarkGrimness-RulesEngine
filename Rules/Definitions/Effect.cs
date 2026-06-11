@@ -462,6 +462,21 @@ public abstract record Effect
     }
 
     /// <summary>
+    /// The bearer's attack ignores intervening terrain for line of sight — it may fire at targets it has
+    /// no clear line to, as if in line of sight. Covers Indirect's "target non-LoS as if LoS" facet and
+    /// Takedown's "ignore intervening LoS" facet. Read by the ranged-target enumeration and the occlusion
+    /// stage (so the shot isn't blocked) and surfaced per-weapon to the movement + ranged-target resolver
+    /// requests, so they can represent that LoS-blocked targets are still shootable with this weapon.
+    /// </summary>
+    public sealed record IgnoreLineOfSight : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.IgnoreLineOfSight());
+        }
+    }
+
+    /// <summary>
     /// Sets the bearer aside during normal deployment to be placed by its own dedicated pass.
     /// Covers Scout (deploy after others, within <see cref="PlacementRangeInches"/>" of the zone)
     /// and Ambush (deploy a later round, over <see cref="PlacementRangeInches"/>" from enemies).

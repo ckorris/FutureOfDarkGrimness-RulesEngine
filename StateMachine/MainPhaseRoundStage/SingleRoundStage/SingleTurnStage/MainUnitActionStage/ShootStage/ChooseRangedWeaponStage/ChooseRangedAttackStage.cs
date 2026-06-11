@@ -129,18 +129,23 @@ namespace FDG.Stages
                 .First(team => team.IsPlayerOnTeam(playerID));
 
             Dictionary<string, WeaponOption> nameAndWeaponOptions = new Dictionary<string, WeaponOption>();
-            
+            // Per-weapon LoS-ignore (Indirect/Takedown): a weapon that ignores intervening terrain for LoS
+            // can hit targets it has no clear line to, so enumeration must not require LoS for it.
+            Dictionary<string, bool> weaponIgnoresLineOfSight = new Dictionary<string, bool>();
+
             foreach(Weapon weapon in availableWeapons.Keys)
             {
-                // #042: surface per-weapon whether this weapon ignores cover (Blast) or terrain (Indirect)
-                // so the resolver knows a cover-/terrain-blocked target is still shootable with it. Derived
-                // from the attacker's rules via the shared query (same source the cover stage uses).
+                // #042: surface per-weapon whether this weapon ignores cover (Blast) or terrain/LoS
+                // (Indirect, Takedown) so the resolver knows a cover-/LoS-blocked target is still shootable
+                // with it. Derived from the attacker's rules via the shared query (same source the cover
+                // and occlusion stages use).
                 bool ignoresCover = Rules.Dispatch.SightRuleQueries.IgnoresCover(
                     attackingUnit.GetValue(), weapon, gameContext.RuleEvaluator);
                 bool ignoresTerrain = Rules.Dispatch.SightRuleQueries.IgnoresTerrain(
                     attackingUnit.GetValue(), weapon, gameContext.RuleEvaluator);
                 nameAndWeaponOptions.Add(weapon.Name,
                     new WeaponOption(weapon, new List<WeaponTargetStats>(), ignoresCover, ignoresTerrain));
+                weaponIgnoresLineOfSight.Add(weapon.Name, ignoresTerrain);
             }
 
             IEnumerable<DataBinding<UnitData>> enemyUnits = gameContext.GameDataStore().GetAllDataBindings<ArmyData>()
@@ -164,7 +169,7 @@ namespace FDG.Stages
 
                 Dictionary<string, WeaponTargetStats> weaponToStats =
                     BuildAttacksForEnemyUnit(attackingUnit, enemyUnit, availableWeapons.Keys.Select(weapon => weapon.Name),
-                        terrain, gameContext, unselectableReason);
+                        terrain, gameContext, weaponIgnoresLineOfSight, unselectableReason);
 
                 foreach (KeyValuePair<string, WeaponTargetStats> kvp in weaponToStats)
                 {
@@ -177,7 +182,8 @@ namespace FDG.Stages
 
         private static Dictionary<string, WeaponTargetStats> BuildAttacksForEnemyUnit(DataBinding<UnitData> attackingUnit,
             DataBinding<UnitData> enemyUnit, IEnumerable<string> weaponNames, IReadOnlyList<ITerrain> terrain,
-            IGameContext gameContext, string? unselectableReason = null)
+            IGameContext gameContext, IReadOnlyDictionary<string, bool> weaponIgnoresLineOfSight,
+            string? unselectableReason = null)
         {
             Dictionary<string, WeaponTargetStats> weaponToStats = new Dictionary<string, WeaponTargetStats>();
 
@@ -217,8 +223,9 @@ namespace FDG.Stages
                     }
 
                     WeaponTargetStats weaponTargetStats = weaponToStats[weapon.Name];
+                    bool ignoresLoS = weaponIgnoresLineOfSight.TryGetValue(weapon.Name, out bool ig) && ig;
                     if(CanWeaponShootAtUnit(attackingModel, enemyUnit, weapon,
-                        ref lineOfSightCache, allTerrain))
+                        ref lineOfSightCache, allTerrain, ignoresLoS))
                     {
                         weaponTargetStats.modelsThatCanShoot.Add(attackingModel);
                     }
@@ -235,13 +242,19 @@ namespace FDG.Stages
         private static bool CanWeaponShootAtUnit(DataBinding<ModelData> attackingModel,
             DataBinding<UnitData> enemyUnit, Weapon weapon,
             ref Dictionary<DataBinding<ModelData>, bool> cachedLineOfSights,
-            IReadOnlyList<ITerrain> terrain)
+            IReadOnlyList<ITerrain> terrain, bool ignoresLineOfSight)
         {
             foreach (DataBinding<ModelData> defendingModel in enemyUnit.ModelBindings()
                 .Where(model => model.GetIsAlive()))
             {
-
-                if (cachedLineOfSights.TryGetValue(defendingModel, out bool hasLineOfSight) == false)
+                // #042 Indirect/Takedown: a weapon that ignores intervening terrain for LoS may fire at a
+                // target it has no clear line to, so only range gates it.
+                bool hasLineOfSight;
+                if (ignoresLineOfSight)
+                {
+                    hasLineOfSight = true;
+                }
+                else if (cachedLineOfSights.TryGetValue(defendingModel, out hasLineOfSight) == false)
                 {
                     hasLineOfSight = DoesModelHaveLineOfSight(attackingModel.GetValue(), defendingModel.GetValue(), terrain);
                     cachedLineOfSights[defendingModel] = hasLineOfSight;
@@ -259,8 +272,9 @@ namespace FDG.Stages
         private static bool DoesModelHaveLineOfSight(ModelData attacker, ModelData target,
             IReadOnlyList<ITerrain> terrain)
         {
-            //TODO (TERRAIN_FOLLOWUPS.md): Incorporate Indirect at the call site, before the
-            //per-defender LoS cache is consulted, since Indirect is weapon-scoped.
+            // #042 Indirect/Takedown's LoS-ignore is handled by the caller (CanWeaponShootAtUnit short-
+            // circuits before this is reached), since it's a per-weapon property. This is the plain
+            // geometric check for weapons that don't ignore LoS.
             return LineOfSightUtilities.HasLineOfSight(
                 attacker.PositionBinding.GetValue(),
                 target.PositionBinding.GetValue(),

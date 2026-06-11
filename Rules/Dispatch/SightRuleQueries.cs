@@ -27,11 +27,19 @@ namespace FDG.Rules.Dispatch
         }
 
         /// <summary>
-        /// Seam for Indirect's "fire at non-LoS targets as if in line of sight" facet (W9), not yet
-        /// implemented. No rule queues a shooting-terrain-ignore op today (Flying/Strider's
-        /// <see cref="RuleOperation.IgnoreTerrainEffects"/> is a MOVEMENT-terrain rule, not a LoS one), so
-        /// this is false until Indirect's LoS facet lands.
+        /// Whether the attacker's weapon ignores intervening terrain for line of sight — it may fire at
+        /// targets it has no clear line to, as if in line of sight. Covers Indirect's "target non-LoS as
+        /// if LoS" facet and Takedown's "ignore intervening LoS" facet, both queuing
+        /// <see cref="RuleOperation.IgnoreLineOfSight"/>. (Distinct from Flying/Strider's
+        /// <see cref="RuleOperation.IgnoreTerrainEffects"/>, which is MOVEMENT terrain, not LoS.) Shared by
+        /// the ranged-target enumeration, the occlusion stage, and the movement/targeting resolver builders
+        /// so they agree on which targets stay shootable.
         /// </summary>
-        public static bool IgnoresTerrain(IUnit attacker, IWeapon weapon, RuleEvaluator evaluator) => false;
+        public static bool IgnoresTerrain(IUnit attacker, IWeapon weapon, RuleEvaluator evaluator)
+        {
+            IReadOnlyList<RuleOperation> ops = evaluator.EvaluateAll(
+                new CoverIgnoreContext(attacker), (attacker, ERuleSeat.Actor));
+            return ops.OfType<RuleOperation.IgnoreLineOfSight>().Any();
+        }
     }
 }

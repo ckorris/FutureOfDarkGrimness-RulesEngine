@@ -381,6 +381,20 @@ public abstract record RuleOperation
     }
 
     /// <summary>
+    /// The attack ignores intervening terrain for line of sight — the target may be fired at as if in
+    /// line of sight. A marker read by the ranged-target enumeration and the occlusion stage (so a
+    /// terrain-blocked target stays shootable) and surfaced per-weapon to the movement + targeting
+    /// resolver requests. Resolution of <see cref="Effect.IgnoreLineOfSight"/> (Indirect, Takedown).
+    /// </summary>
+    public sealed record IgnoreLineOfSight : RuleOperation
+    {
+        public override string Describe()
+        {
+            return "ignored intervening line of sight";
+        }
+    }
+
+    /// <summary>
     /// Limit the bearer's declarable actions to <see cref="Allowed"/>. Resolution of
     /// <see cref="Effect.RestrictActions"/> (Immobile, Artillery Hold-only).
     /// </summary>

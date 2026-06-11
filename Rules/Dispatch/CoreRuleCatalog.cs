@@ -77,13 +77,29 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>());
 
-    /// <summary> Attacker: -1 to hit when the unit moved this activation. </summary>
+    /// <summary>
+    /// Indirect: -1 to hit when the unit moved this activation (shooting only — the AfterMoving gate is
+    /// joined with Not(IsMelee) so a charge, which sets HasMoved, doesn't wrongly penalise melee swings),
+    /// and the weapon may fire at targets out of line of sight as if in LoS, ignoring cover. The LoS- and
+    /// cover-ignore facets queue <see cref="RuleOperation.IgnoreLineOfSight"/> /
+    /// <see cref="RuleOperation.IgnoreCover"/> at <see cref="EHookID.Shooting_OnSaveRollModifier"/>, read
+    /// by the targeting/occlusion/cover stages (and surfaced to the resolvers) via
+    /// <see cref="Rules.Dispatch.SightRuleQueries"/>.
+    /// </summary>
     public static SpecialRuleDefinition Indirect { get; } = new SpecialRuleDefinition("Indirect",
         new[]
         {
             new HookEntry(EHookID.Shooting_OnHitRollModifier,
-                new Condition.AfterMoving(),
+                new Condition.And(new Condition.AfterMoving(), new Condition.Not(new Condition.IsMelee())),
                 new Effect.RollModifier(ERollKind.Hit, Delta: -1),
+                ELifetime.ThisAttack),
+            new HookEntry(EHookID.Shooting_OnSaveRollModifier,
+                new Condition.Always(),
+                new Effect.IgnoreLineOfSight(),
+                ELifetime.ThisAttack),
+            new HookEntry(EHookID.Shooting_OnSaveRollModifier,
+                new Condition.Always(),
+                new Effect.IgnoreCover(),
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>());
@@ -210,8 +226,10 @@ public static class CoreRuleCatalog
     /// just it ("a unit of [1]") — all wounds funnel to that model with no carry-over. A passive rule at
     /// <see cref="EHookID.Shooting_OnShootTargetsSelected"/> that queues
     /// <see cref="RuleOperation.TargetIndividualModel"/>; BuildTargetListStage reads it, asks the
-    /// attacker to pick the model, and AssignWoundsStage confines the wounds. The rulebook's
-    /// "ignore intervening LoS/cover" facet is deferred (see Appendix C).
+    /// attacker to pick the model, and AssignWoundsStage confines the wounds. The attack also ignores
+    /// intervening line of sight and the target's cover (the W9 facet), queuing
+    /// <see cref="RuleOperation.IgnoreLineOfSight"/> / <see cref="RuleOperation.IgnoreCover"/> at
+    /// <see cref="EHookID.Shooting_OnSaveRollModifier"/> — the same machinery Indirect/Blast use.
     /// </summary>
     public static SpecialRuleDefinition Takedown { get; } = new SpecialRuleDefinition("Takedown",
         new[]
@@ -219,6 +237,14 @@ public static class CoreRuleCatalog
             new HookEntry(EHookID.Shooting_OnShootTargetsSelected,
                 new Condition.Always(),
                 new Effect.TargetIndividualModel(),
+                ELifetime.ThisAttack),
+            new HookEntry(EHookID.Shooting_OnSaveRollModifier,
+                new Condition.Always(),
+                new Effect.IgnoreLineOfSight(),
+                ELifetime.ThisAttack),
+            new HookEntry(EHookID.Shooting_OnSaveRollModifier,
+                new Condition.Always(),
+                new Effect.IgnoreCover(),
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>());

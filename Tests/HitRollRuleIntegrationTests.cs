@@ -182,6 +182,22 @@ namespace FDG.Tests
                 "Indirect's AfterMoving condition fails when the attacker held, so no modifier is applied.");
         }
 
+        // Indirect's -1 is gated on Not(IsMelee): a charge sets HasMoved, so without the gate an Indirect
+        // carrier would wrongly take -1 on its melee swings. In melee (even after moving) the penalty must
+        // not apply — it's a shooting rule.
+        [Test]
+        public async Task IndirectAttacker_InMelee_NoPenalty()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(FarPos);
+            AttachIndirect(attacker);
+
+            DetermineHitRollNeededResults result = await RunStage(attacker, defender, attackerMoved: true, isMelee: true);
+
+            Assert.That(result.HitRollNeeded, Is.EqualTo(4),
+                "Indirect is a shooting rule; its -1-after-moving must not apply to a melee (charge) swing.");
+        }
+
         // Reliable is an attacker-seat rule that FLOORS the base quality to 2+ before per-roll
         // modifiers — a different sink (QualityFloorSink) than the modifier rules above, but riding
         // the same OnHitRollModifier evaluation. Units are quality 4, so Reliable improves 4 → 2.
@@ -216,7 +232,8 @@ namespace FDG.Tests
         }
 
         private async Task<DetermineHitRollNeededResults> RunStage(
-            DataBinding<UnitData> attacker, DataBinding<UnitData> defender, bool attackerMoved = false)
+            DataBinding<UnitData> attacker, DataBinding<UnitData> defender, bool attackerMoved = false,
+            bool isMelee = false)
         {
             var layer = new NoOpLayer<ICombatMetadata>();
             var stage = new DetermineHitRollNeededStage<ICombatMetadata>(_ctx, layer);
@@ -224,7 +241,7 @@ namespace FDG.Tests
 
             var weapon = new Weapon("Test", rangeInches: 48f, attacks: 1, armorPenetration: 0,
                 specialRules: new HashSet<ISpecialRule_Weapon>());
-            var metadata = new CombatMetadata(_ctx, attacker, defender, weapon, weaponCount: 1, attackerMoved);
+            var metadata = new CombatMetadata(_ctx, attacker, defender, weapon, weaponCount: 1, attackerMoved, isMelee);
 
             await stage.Enter(metadata);
 

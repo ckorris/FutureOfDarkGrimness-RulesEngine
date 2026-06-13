@@ -4,6 +4,7 @@ using FDG.Network.Connection;
 using FDG.Network.Messages.StageRequestMessages;
 using FDG.Players;
 using Newtonsoft.Json;
+using System.Collections.Concurrent;
 
 namespace FDG.StageResolution
 {
@@ -13,7 +14,10 @@ namespace FDG.StageResolution
         private IReadableGameDataStore _gameDataStore;
         private PlayerSlotManager _playerSlotManager;
 
-        private Dictionary<TaskID, SuccessAndFailActions> _pendingTaskAndResolvers = new Dictionary<TaskID, SuccessAndFailActions>();
+        // Mutated from both the engine thread (RequestDecision adds) and the bus/network read
+        // thread (reply/error handlers remove) — must be concurrent-safe (#084).
+        private readonly ConcurrentDictionary<TaskID, SuccessAndFailActions> _pendingTaskAndResolvers
+            = new ConcurrentDictionary<TaskID, SuccessAndFailActions>();
 
         public RequestMessageSender(IMessageBusHost messageBusHost, IReadableGameDataStore gameDataStore, 
             PlayerSlotManager playerSlotManager)
@@ -55,7 +59,10 @@ namespace FDG.StageResolution
             StageTaskRequestMessage requestMessage = new StageTaskRequestMessage(targetPlayerID, taskID, requestFullTypeName,
                 replyFullTypeName, requestJson);
 
-            TaskCompletionSource<TReply> taskCompletionSource = new TaskCompletionSource<TReply>();
+            // RunContinuationsAsynchronously so SetResult/SetException doesn't resume the awaiting
+            // engine stage code synchronously on the network read loop (#084).
+            TaskCompletionSource<TReply> taskCompletionSource =
+                new TaskCompletionSource<TReply>(TaskCreationOptions.RunContinuationsAsynchronously);
 
             Action<string> onSuccess = (replyJson) => DeserializeAndReturnReply(replyJson, taskCompletionSource);
             Action<string> onFailed = (replyJson) => ReturnFailure(targetPlayerID, requestFullTypeName,
@@ -63,7 +70,7 @@ namespace FDG.StageResolution
 
             SuccessAndFailActions actions = new SuccessAndFailActions(onSuccess, onFailed);
 
-            _pendingTaskAndResolvers.Add(taskID, actions);
+            _pendingTaskAndResolvers.TryAdd(taskID, actions);
 
             // Send the awaiting notification BEFORE the request message so OutstandingTaskLister
             // entries are populated before any synchronous resolver (e.g. AI) can produce a reply
@@ -80,7 +87,8 @@ namespace FDG.StageResolution
 
         private void OnReceivedReplyMessage(StageTaskReplyMessage replyMessage)
         {
-            if (_pendingTaskAndResolvers.TryGetValue(replyMessage.TaskID, out SuccessAndFailActions? actions) == false)
+            // Atomically claim the task so a duplicate reply can't double-invoke the resolver.
+            if (_pendingTaskAndResolvers.TryRemove(replyMessage.TaskID, out SuccessAndFailActions? actions) == false)
             {
                 throw new ArgumentException($"Received message trying to resolve task with ID that was not pending. Task ID: {replyMessage.TaskID} " +
                     $"Player ID: {replyMessage.PlayerID}");
@@ -96,19 +104,18 @@ namespace FDG.StageResolution
             _messageBusHost.SendCommandToAllAsync(finishedMessage);
 
             actions.OnSuccessful.Invoke(replyMessage.ReplyJson);
-            _pendingTaskAndResolvers.Remove(replyMessage.TaskID);
         }
 
         private void OnReceivedErrorMessage(StageTaskRequestErrorMessage errorMessage)
         {
-            if (_pendingTaskAndResolvers.TryGetValue(errorMessage.TaskID, out SuccessAndFailActions? actions) == false)
+            // Atomically claim the task so a duplicate error reply can't double-invoke the resolver.
+            if (_pendingTaskAndResolvers.TryRemove(errorMessage.TaskID, out SuccessAndFailActions? actions) == false)
             {
                 throw new ArgumentException($"Received error message trying to resolve task with ID that was not pending. Task ID: {errorMessage.TaskID} " +
                     $"Player ID: {errorMessage.PlayerID}");
             }
 
             actions.OnFailed.Invoke(errorMessage.ErrorMessage);
-            _pendingTaskAndResolvers.Remove(errorMessage.TaskID);
         }
 
         private void DeserializeAndReturnReply<TReply>(string replyJson, TaskCompletionSource<TReply> replyTask)

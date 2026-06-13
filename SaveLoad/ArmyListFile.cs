@@ -3,7 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
+using FDG.Rules.Definitions;
 
 namespace FDG.SaveLoad
 {
@@ -20,6 +21,13 @@ namespace FDG.SaveLoad
         public int PointsLimit { get; set; }
 
         public List<UnitFileEntry> Units { get; set; } = new List<UnitFileEntry>();
+
+        /// <summary>
+        /// Special-rule definitions that travel embedded with this army (#059). Registered into the
+        /// game's rule resolver — core-first, then these, override-by-name — when the army loads, so a
+        /// template's own/overriding rules are available before its units resolve their rule names.
+        /// </summary>
+        public List<SpecialRuleDefinition> RuleDefinitions { get; set; } = new List<SpecialRuleDefinition>();
 
         [JsonIgnore]
         public int TotalPoints

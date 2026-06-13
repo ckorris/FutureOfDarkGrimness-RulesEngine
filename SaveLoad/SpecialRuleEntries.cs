@@ -1,7 +1,15 @@
-﻿
+﻿using System.Text.Json.Serialization;
+
 namespace FDG.SaveLoad
 {
-    public abstract record SpecialRuleEntry(string PrintableName);
+    // PrintableName is derived in every subtype (Name, "Name(N)", "Name (Aliased)"), so it's never
+    // persisted — [JsonIgnore] on the settable base property keeps it out of the file (the get-only
+    // strip in RuleJson can't reach it). The subtype ctors recompute it on load.
+    [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
+    [JsonDerivedType(typeof(SpecialRuleEntry_Core), "core")]
+    [JsonDerivedType(typeof(SpecialRuleEntry_CoreNumeric), "coreNumeric")]
+    [JsonDerivedType(typeof(SpecialRuleEntry_Alias), "alias")]
+    public abstract record SpecialRuleEntry([property: JsonIgnore] string PrintableName);
 
     /// <summary>
     /// Holds a "core" rule, that is, one that appears in the base rules, like "Regeneration".

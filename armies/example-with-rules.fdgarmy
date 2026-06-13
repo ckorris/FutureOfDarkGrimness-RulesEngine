@@ -1,0 +1,65 @@
+{
+  "name": "Example Raiders",
+  "faction": "Example",
+  "pointsLimit": 500,
+  "units": [
+    {
+      "name": "Berserkers",
+      "modelCount": 5,
+      "quality": 4,
+      "defense": 4,
+      "specialRules": [
+        {
+          "kind": "core",
+          "name": "Frenzied"
+        },
+        {
+          "kind": "core",
+          "name": "Furious"
+        }
+      ],
+      "weapons": [
+        {
+          "name": "Rifle",
+          "quantity": 1,
+          "rangeInches": 24,
+          "attacks": 1,
+          "armorPenetration": 0,
+          "specialRules": []
+        },
+        {
+          "name": "Blade",
+          "quantity": 1,
+          "rangeInches": 0,
+          "attacks": 2,
+          "armorPenetration": 0,
+          "specialRules": []
+        }
+      ],
+      "pointCost": 150
+    }
+  ],
+  "ruleDefinitions": [
+    {
+      "name": "Frenzied",
+      "passive": [
+        {
+          "hookID": "Shooting_OnHitRollComplete",
+          "condition": {
+            "kind": "unmodifiedRollEquals",
+            "dieValue": 6
+          },
+          "effect": {
+            "kind": "addExtraHit",
+            "onRollValue": 6,
+            "count": 1
+          },
+          "lifetime": "ThisAttack",
+          "seat": "Actor"
+        }
+      ],
+      "activated": [],
+      "scope": "Unit"
+    }
+  ]
+}

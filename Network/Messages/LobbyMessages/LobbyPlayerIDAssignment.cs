@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace FutureOfDarkGrimness.Network.Messages
+namespace FDG.Network.Messages
 {
     /// <summary>
     /// Sent when the client first connects to the host to inform the client what their Player ID is.

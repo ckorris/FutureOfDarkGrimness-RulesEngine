@@ -1,7 +1,7 @@
 ﻿using FDG.Data;
 
 
-namespace FutureOfDarkGrimness.TableState
+namespace FDG
 {
 
     public interface IDataState<TInterface>

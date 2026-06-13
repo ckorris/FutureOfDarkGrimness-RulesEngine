@@ -41,6 +41,13 @@ namespace FDG
             return false;
         }
 
+        public bool DoesPathIntersectZone(Float2 startPosition, Float2 endPosition, float inflationRadius)
+        {
+            foreach (var part in Parts)
+                if (part.DoesPathIntersectZone(startPosition, endPosition, inflationRadius)) return true;
+            return false;
+        }
+
         /// <summary>
         /// Returns the nearest segment-entry point across all parts, or null if no
         /// part is entered.

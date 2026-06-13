@@ -26,8 +26,8 @@ namespace FDG.Network.Connection
 
     public class FDGHost : INetworkHost //ICommandDispatcher
     {
-        private readonly Dictionary<ConnectionID, TcpClient> _connectedClients
-            = new Dictionary<ConnectionID, TcpClient>();
+        private readonly Dictionary<ConnectionID, ClientConnection> _connectedClients
+            = new Dictionary<ConnectionID, ClientConnection>();
 
         private TcpListener? _listener;
         private CancellationTokenSource? _cancelTokenSource;
@@ -76,7 +76,7 @@ namespace FDG.Network.Connection
                     {
                         //TODO: Is this the best place to create a new player ID? 
 
-                        _connectedClients.Add(connectionID, client);
+                        _connectedClients.Add(connectionID, new ClientConnection(client));
                         Debug.WriteLine($"Accepted client. Count: {_connectedClients.Count}");
                     }
 
@@ -147,9 +147,12 @@ namespace FDG.Network.Connection
 
             try
             {
-                TcpClient client = _connectedClients[clientID];
-                NetworkStream stream = client.GetStream();
-                await CommandProtocol.WriteCommandAsync(stream, messageBytes)
+                ClientConnection connection;
+                lock (_connectedClients)
+                {
+                    connection = _connectedClients[clientID];
+                }
+                await WriteLockedAsync(connection, messageBytes)
                     .ConfigureAwait(false);
             }
             catch (Exception exception)
@@ -158,7 +161,7 @@ namespace FDG.Network.Connection
             }
             finally
             {
-                if (messageBytes.Array != null)
+                if (messageBytes.Array != null && isPooled)
                 {
                     ArrayPool<byte>.Shared.Return(messageBytes.Array);
                 }
@@ -167,19 +170,18 @@ namespace FDG.Network.Connection
 
         public async Task SendCommandToAllAsync(ArraySegment<Byte> messageBytes, bool isPooled)
         {
-            List<TcpClient> clientsCopy;
+            List<ClientConnection> clientsCopy;
 
             lock (_connectedClients)
             {
-                clientsCopy = new List<TcpClient>(_connectedClients.Values);
+                clientsCopy = new List<ClientConnection>(_connectedClients.Values);
             }
 
-            foreach (TcpClient client in clientsCopy)
+            foreach (ClientConnection connection in clientsCopy)
             {
                 try
                 {
-                    NetworkStream stream = client.GetStream();
-                    await CommandProtocol.WriteCommandAsync(stream, messageBytes)
+                    await WriteLockedAsync(connection, messageBytes)
                         .ConfigureAwait(false);
                 }
                 catch (Exception exception)
@@ -191,6 +193,24 @@ namespace FDG.Network.Connection
             if (messageBytes.Array != null && isPooled)
             {
                 ArrayPool<byte>.Shared.Return(messageBytes.Array);
+            }
+        }
+
+        // Serializes all writes to a single connection's stream behind its per-connection
+        // write lock so the three WriteCommandAsync writes (magic / length / payload) of one
+        // frame can't interleave with another sender's frame and corrupt the stream (#086).
+        private static async Task WriteLockedAsync(ClientConnection connection, ArraySegment<byte> messageBytes)
+        {
+            await connection.WriteLock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                NetworkStream stream = connection.Client.GetStream();
+                await CommandProtocol.WriteCommandAsync(stream, messageBytes)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                connection.WriteLock.Release();
             }
         }
 
@@ -211,9 +231,9 @@ namespace FDG.Network.Connection
 
             lock (_connectedClients)
             {
-                foreach (TcpClient client in _connectedClients.Values)
+                foreach (ClientConnection connection in _connectedClients.Values)
                 {
-                    client.Close();
+                    connection.Client.Close();
                 }
                 _connectedClients.Clear();
             }
@@ -221,6 +241,17 @@ namespace FDG.Network.Connection
             Debug.WriteLine("Host stopped.");
         }
 
+        // Pairs a connected client's TcpClient with a write lock that serializes outbound
+        // frames on its stream (#086).
+        private sealed class ClientConnection
+        {
+            public readonly TcpClient Client;
+            public readonly SemaphoreSlim WriteLock = new SemaphoreSlim(1, 1);
 
+            public ClientConnection(TcpClient client)
+            {
+                Client = client;
+            }
+        }
     }
 }

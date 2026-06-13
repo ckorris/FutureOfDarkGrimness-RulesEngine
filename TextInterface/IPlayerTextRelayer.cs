@@ -1,7 +1,7 @@
 ﻿
 using FDG;
 
-namespace FutureOfDarkGrimness.TextInterface
+namespace FDG.TextInterface
 {
     public interface IPlayerTextRelayer
     {

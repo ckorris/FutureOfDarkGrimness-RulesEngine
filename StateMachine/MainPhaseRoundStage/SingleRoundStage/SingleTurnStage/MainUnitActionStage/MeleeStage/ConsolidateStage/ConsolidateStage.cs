@@ -1,4 +1,5 @@
 using System.Text;
+using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 using FDG.Utilities;
 

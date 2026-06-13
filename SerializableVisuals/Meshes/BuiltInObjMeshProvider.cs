@@ -2,7 +2,7 @@
 using System.Globalization;
 using System.Numerics;
 using System.Text;
-using System.Text.Json.Serialization;
+using Newtonsoft.Json;
 
 namespace FDG.SerializableVisuals.Meshes
 {

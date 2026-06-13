@@ -82,7 +82,7 @@ namespace FDG.Network.Messages
 
         public object? DeserializeMessage(ArraySegment<byte> data)
         {
-            int typeLength = BitConverter.ToInt32(data.Array.AsSpan(0, sizeof(int)));
+            int typeLength = BitConverter.ToInt32(data.Array.AsSpan(data.Offset, sizeof(int)));
 
             string typeString = Encoding.UTF8.GetString(data.Array, data.Offset + sizeof(int), typeLength);
 

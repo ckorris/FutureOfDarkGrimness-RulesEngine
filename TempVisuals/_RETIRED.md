@@ -1,4 +1,4 @@
-# TempVisuals — RETIRED (work item 052)
+# TempVisuals — RETIRED (work item 071, the presentation beat stream — numbered 052 at retirement time)
 
 This folder is **excluded from compilation** (see `<Compile Remove="TempVisuals/**/*.cs" />`
 in `FutureOfDarkGrimness.csproj`). The files are kept on disk for reference, not deleted.
@@ -22,4 +22,4 @@ The "non-resolver activity" use case (e.g. previewing deployment-zone options du
 choice) should come back as a **new presentation beat**, not by reviving TempVisual. If you do want
 TempVisual back, restore it by deleting the `Compile Remove` line above and re-adding the
 `ITempVisualDrawer` property/parameter to `IGameContext` / `IFDGGame` / `IPlayerController` and their
-implementations (see git history around work item 052).
+implementations (see git history around work item 071 — committed under its pre-renumbering id, 052).

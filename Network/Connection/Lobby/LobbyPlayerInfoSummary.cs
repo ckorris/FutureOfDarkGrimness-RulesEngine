@@ -1,5 +1,5 @@
 ﻿using FDG.Players;
-using FutureOfDarkGrimness.Players;
+using FDG.Players;
 
 namespace FDG.Network.Connection.Lobby
 {

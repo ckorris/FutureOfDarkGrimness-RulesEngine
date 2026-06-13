@@ -1,4 +1,4 @@
-﻿using FutureOfDarkGrimness.TextInterface;
+﻿using FDG.TextInterface;
 
 namespace FDG.TextInterface
 {

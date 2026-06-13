@@ -3,20 +3,16 @@ using FDG.Data;
 using FDG.EngineInterface;
 using FDG.GameModel;
 using FDG.MessageBus;
-using FDG.Network.Connection.Lobby;
 using FDG.Network.Messages;
 using FDG.Players;
 using FDG.Presentation;
 using FDG.SaveLoad;
 using FDG.StageResolution;
-using FutureOfDarkGrimness.Network.Messages;
-using FutureOfDarkGrimness.Players;
-using NUnit.Framework.Constraints;
 using System.Diagnostics;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 
-namespace FDG.Network.Connection
+namespace FDG.Network.Connection.Lobby
 {
     public class LobbyViewModel_Host : ILobbyViewModel
     {

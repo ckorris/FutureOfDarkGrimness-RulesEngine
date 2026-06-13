@@ -1,7 +1,6 @@
 ﻿using System;
-using FDG.StageResolution;
 
-namespace FDG.Stages
+namespace FDG.StageResolution
 {
     /// <summary>
     /// Thrown when the response to a <see cref="IStageTaskRequest"/> was invalid in terms

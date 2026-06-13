@@ -23,6 +23,10 @@ namespace FDG.Network.Connection
         private CancellationTokenSource? _cancelTokenSource;
         private bool _isConnected;
 
+        // Serializes outbound frames so the three WriteCommandAsync writes of one frame can't
+        // interleave with a concurrent send and corrupt the stream (#086).
+        private readonly SemaphoreSlim _writeLock = new SemaphoreSlim(1, 1);
+
         public event Action<ArraySegment<byte>>? OnMessageReceived;
 
         public async Task<bool> ConnectAsync(IPAddress serverIP)
@@ -60,8 +64,16 @@ namespace FDG.Network.Connection
             try
             {
                 NetworkStream stream = _tcpClient.GetStream();
-                await CommandProtocol.WriteCommandAsync(stream, commandBytes)
-                    .ConfigureAwait(false);
+                await _writeLock.WaitAsync().ConfigureAwait(false);
+                try
+                {
+                    await CommandProtocol.WriteCommandAsync(stream, commandBytes)
+                        .ConfigureAwait(false);
+                }
+                finally
+                {
+                    _writeLock.Release();
+                }
             }
             catch (Exception exception)
             {

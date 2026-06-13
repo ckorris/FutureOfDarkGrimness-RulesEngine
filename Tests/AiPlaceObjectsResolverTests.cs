@@ -59,5 +59,43 @@ namespace FDG.Tests
                     $"AI deep-strike placement must stay {minDist}\" from enemies (was {dist:F1}\").");
             }
         }
+
+        [Test]
+        public async Task DoesNotPlaceModelsOnImpassibleTerrain()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var selfPlayer = new PlayerID(System.Guid.NewGuid());
+
+            // A deployment strip with an impassible wall splitting it at x=8..12 (full height). #048.
+            var zone = new RectangularZone(0f, 20f, 0f, 12f);
+            var zoneBinding = store.GetDataBinding<RectangularZone>(store.Create(zone));
+            var wall = new TerrainData(ETerrainType.Impassible, new RectangularZone(8f, 12f, 0f, 12f));
+            store.Create(wall);
+
+            // Five models to deploy.
+            var placing = new List<DataBinding<ModelData>>();
+            for (int i = 0; i < 5; i++)
+            {
+                var m = new ModelData(0.75f, new List<Weapon>(), new Position(0f, 0f), store);
+                placing.Add(store.GetDataBinding<ModelData>(store.Create(m)));
+            }
+            var unit = new UnitData(selfPlayer, "Warriors", 4, 4, placing);
+            store.Create(unit);
+
+            var tableState = new TableState(store);
+            var resolver = new AiPlaceObjectsResolver<ModelData>(tableState);
+            var request = new PlaceObjectsRequest<ModelData>(selfPlayer, "Place Unit Models", zoneBinding, placing);
+
+            List<PlacedObjectEntry<ModelData>> result = await resolver.Resolve(request);
+
+            Assert.That(result, Has.Count.EqualTo(5));
+            var impassible = new List<ITerrain> { wall };
+            foreach (PlacedObjectEntry<ModelData> entry in result)
+            {
+                float r = entry.Binding.GetValue().BaseRadiusInches;
+                Assert.That(PlacementUtilities.OverlapsImpassibleTerrain(entry.Position, r, impassible), Is.False,
+                    $"AI must not deploy a model overlapping impassible terrain (placed at {entry.Position.x:F1}, {entry.Position.z:F1}).");
+            }
+        }
     }
 }

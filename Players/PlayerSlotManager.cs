@@ -49,7 +49,7 @@ namespace FDG.Players
 
         public PlayerID AssignControllerToSlot(int slotID, IPlayerController playerController)
         {
-            if(slotID >  _playerSlots.Length)
+            if(slotID < 0 || slotID >= _playerSlots.Length)
             {
                 throw new IndexOutOfRangeException($"Tried to assign a {nameof(playerController)} named {playerController.Name} " + 
                     $"to slot ID {slotID}, when there are only {_playerSlots.Length} slots.");

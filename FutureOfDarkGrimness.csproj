@@ -17,9 +17,9 @@
     <EmbeddedResource Include="BuiltInAssets\SillyManTexture.png" />
   </ItemGroup>
 
-  <!-- RETIRED (work item 052): the TempVisual system is superseded by the presentation-beat
-       stream (FDG.Presentation). Kept on disk for reference but excluded from compilation.
-       See TempVisuals/_RETIRED.md. -->
+  <!-- RETIRED (work item 071, formerly numbered 052): the TempVisual system is superseded by the
+       presentation-beat stream (FDG.Presentation). Kept on disk for reference but excluded from
+       compilation. See TempVisuals/_RETIRED.md. -->
   <ItemGroup>
     <Compile Remove="TempVisuals/**/*.cs" />
     <None Include="TempVisuals/**/*.cs" />
@@ -32,8 +32,6 @@
     <PackageReference Include="NUnit" Version="4.4.0" />
     <PackageReference Include="NUnit3TestAdapter" Version="5.1.0" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.11" />
-    <!-- <PackageReference Include="SixLabors.ImageSharp" Version="3.1.11" /> //TODO: Put this back. --> 
-    <PackageReference Include="System.Drawing.Common" Version="8.0.1" />
     <PackageReference Include="System.Reactive" Version="6.0.2" />
   </ItemGroup>
 

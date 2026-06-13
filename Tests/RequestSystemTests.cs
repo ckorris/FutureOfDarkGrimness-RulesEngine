@@ -108,7 +108,7 @@ namespace FDG.Tests
             PlayerSlot slot = new PlayerSlot(1, 1, playerID, null, gameDataStore);
             PlayerSlotManager playerSlotManager = new PlayerSlotManager(new PlayerSlot[] { slot });
             
-            var sender = new RequestMessageSender(mockCommandDispatcher, gameDataStore, playerSlotManager);
+            var sender = new RequestMessageSender(mockCommandDispatcher, gameDataStore, playerSlotManager, new EmptyTextOutput());
 
             var request = new TestRequest(playerID, new TaskID(Guid.NewGuid()), "Test Task");
 
@@ -145,7 +145,7 @@ namespace FDG.Tests
             PlayerSlot slot = new PlayerSlot(1, 1, playerID, null, gameDataStore);
             PlayerSlotManager playerSlotManager = new PlayerSlotManager(new PlayerSlot[] { slot });
 
-            var sender = new RequestMessageSender(mockCommandDispatcher, gameDataStore, playerSlotManager);
+            var sender = new RequestMessageSender(mockCommandDispatcher, gameDataStore, playerSlotManager, new EmptyTextOutput());
 
             var request = new TestRequest(playerID, new TaskID(Guid.NewGuid()), "Test Task");
 

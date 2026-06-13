@@ -1,5 +1,6 @@
-﻿
-namespace FDG.Stages.Builders
+﻿using FDG.Stages;
+
+namespace FDG.StateMachine.StateMachineBuilders
 {
     public interface IStateMachineBuilder<TTopLevel>
     {

@@ -2,7 +2,6 @@
 
 using FDG.Data;
 using FDG.Players;
-using FutureOfDarkGrimness.TableState;
 
 namespace FDG
 {

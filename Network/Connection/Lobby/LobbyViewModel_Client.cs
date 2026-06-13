@@ -1,4 +1,4 @@
-﻿using F.GameModel;
+﻿using FDG.GameModel;
 using FDG;
 using FDG.Data;
 using FDG.EngineInterface;
@@ -8,11 +8,10 @@ using FDG.Network.Connection.Lobby;
 using FDG.Network.Messages;
 using FDG.Players;
 using FDG.SaveLoad;
-using FutureOfDarkGrimness.Network.Messages;
 using System.Diagnostics;
 using System.Reactive.Subjects;
 
-namespace FutureOfDarkGrimness.Network.Connection.Lobby
+namespace FDG.Network.Connection.Lobby
 {
     public class LobbyViewModel_Client : ILobbyViewModel
     {

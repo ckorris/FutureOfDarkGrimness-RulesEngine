@@ -12,8 +12,6 @@ namespace FDG.Stages
 
         public StageBinding NextStage;
 
-        private bool _hasBoundNextStage = false;
-
         //Not sure if interface needed.
         #region ICombatEffectsSink 
         public List<ICombatEffect<TResult>> OnExecuteEffectsList => _effects;
@@ -32,16 +30,12 @@ namespace FDG.Stages
         {
             NextStage.Bind(nextStage.Name);
 
-            _hasBoundNextStage = true;
-
             return nextStage; //For fluid syntax.
         }
 
         public void BindToEvent(string eventName) //For transitions.
         {
             NextStage.Bind(eventName);
-
-            _hasBoundNextStage = true;
         }
 
         public override async Task Enter(TMetadata context)

@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace FutureOfDarkGrimness.Network.Messages
+namespace FDG.Network.Messages
 {
     public record NewLobbyClientGreeting(string PlayerName)
     {

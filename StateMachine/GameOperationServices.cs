@@ -1,5 +1,6 @@
 using FDG.Data;
 using FDG.Rules.Definitions;
+using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 
 namespace FDG.Stages

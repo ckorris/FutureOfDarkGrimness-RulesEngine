@@ -7,8 +7,6 @@ namespace FDG.Stages
     {
         private const string SWING_TO_CHILD_ENTRANCE_TRANSITION = "SwingToChildEntrance";
 
-        private readonly ICombatMetadata _attackContext;
-
         public StageBinding FinishedSwinging;
 
         public SwingMeleeWeaponStage(IGameContext gameContext, IStateMachineLayer<ICombatActionContext> parent) : base(gameContext, parent)

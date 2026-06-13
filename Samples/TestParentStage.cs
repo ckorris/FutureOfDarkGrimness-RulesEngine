@@ -5,10 +5,6 @@ namespace FDG.Samples
 {
     public class TestParentStage<TChildContext> : ParentStage<IGameContext, TChildContext>
     {
-        private StageBase<TChildContext> _child;
-        private TChildContext _childContext;
-        private StageBase<TChildContext>.StageBinding _childExitBinding;
-
         public TestParentStage(IGameContext gameContext)
             : base(gameContext, null)
         {

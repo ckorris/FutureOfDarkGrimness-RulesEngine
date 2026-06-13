@@ -392,10 +392,10 @@ namespace FDG.Stages
                         models[i].GetValue().BaseRadiusInches, models[j].GetValue().BaseRadiusInches);
 
                     nearestDistances[i] = Math.Min(distance, nearestDistances[i]);
-                    farthestDistances[i] = Math.Min(distance, nearestDistances[i]);
+                    farthestDistances[i] = Math.Max(distance, farthestDistances[i]);
 
                     nearestDistances[j] = Math.Min(distance, nearestDistances[j]);
-                    farthestDistances[j] = Math.Min(distance, nearestDistances[j]);
+                    farthestDistances[j] = Math.Max(distance, farthestDistances[j]);
                 }
             }
 

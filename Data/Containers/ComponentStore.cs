@@ -79,7 +79,7 @@ namespace FDG.Data
         public void CreateFromReference(DataReference existingReference, object initialValue)
         {
             //Make sure that the given reference fits within the current state.
-            if(existingReference.Index > _capacity)
+            if(existingReference.Index < 0 || existingReference.Index >= _capacity)
             {
                 throw new InvalidDataReferenceAssignmentException(existingReference, EInvalidReason.IndexExceedsCapacity);
             }
@@ -232,7 +232,7 @@ namespace FDG.Data
             }
             if (_generations[reference.Index] != reference.Generation)
             {
-                reason = _generations[reference.Index] < reference.Index
+                reason = _generations[reference.Index] > reference.Generation
                     ? EInvalidReason.OutdatedGeneration
                     : EInvalidReason.FutureGeneration;
                 return false;
@@ -273,7 +273,7 @@ namespace FDG.Data
         private class InvalidDataReferenceException : Exception
         {
             public InvalidDataReferenceException(DataReference reference, EInvalidReason reason)
-                : base($"Passed reference for type {typeof(T)} was invalid. Reason: {reason}. Reference: {reason}") { }
+                : base($"Passed reference for type {typeof(T)} was invalid. Reason: {reason}. Reference: {reference}") { }
         }
 
         private class InvalidDataReferenceAssignmentException : Exception

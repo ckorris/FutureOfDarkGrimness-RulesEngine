@@ -87,7 +87,7 @@ namespace FDG.Stages
         {
             CurrentChild = newChild;
 
-            Parent?.NotifyChildExited(newChild);
+            Parent?.NotifyChildEntered(newChild);
             await newChild.Enter(childContext);
         }
 

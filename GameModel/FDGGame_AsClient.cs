@@ -11,7 +11,7 @@ using FDG.Presentation.Messages;
 using FDG.StageResolution;
 using FDG.TextInterface;
 
-namespace F.GameModel
+namespace FDG.GameModel
 {
     public class FDGGame_AsClient : IFDGGame
     {

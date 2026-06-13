@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace FutureOfDarkGrimness.Network.Messages
+namespace FDG.Network.Messages
 {
     internal record LobbyServerNameMessage(string ServerName);
 }

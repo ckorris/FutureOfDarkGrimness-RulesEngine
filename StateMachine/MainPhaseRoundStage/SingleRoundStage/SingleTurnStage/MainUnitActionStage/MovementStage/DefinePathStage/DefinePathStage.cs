@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Text;
+using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 
 namespace FDG.Stages

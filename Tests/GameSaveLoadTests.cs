@@ -16,15 +16,13 @@ namespace FDG.Tests
             store.Create(new TeamData(0, new List<PlayerID> { player }));
 
             // A model with a real position and a non-default remaining-wound count.
-            var model = new ModelData(0.5f, new List<Weapon>(), new List<SpecialRule>(),
-                new Position(3, 4), store);
+            var model = new ModelData(0.5f, new List<Weapon>(), new Position(3, 4), store);
             DataReference modelRef = store.Create(model);
             DataBinding<ModelData> modelBinding = store.GetDataBinding<ModelData>(modelRef);
             model.SetMaxWounds(3);
             model.DealWounds(1); // remaining = 2
 
-            var unit = new UnitData(player, "Grunt", 4, 4, new List<SpecialRule>(),
-                new List<DataBinding<ModelData>> { modelBinding });
+            var unit = new UnitData(player, "Grunt", 4, 4, new List<DataBinding<ModelData>> { modelBinding });
             DataReference unitRef = store.Create(unit);
             DataBinding<UnitData> unitBinding = store.GetDataBinding<UnitData>(unitRef);
             store.Create(new ArmyData(player, new List<DataBinding<UnitData>> { unitBinding }));
@@ -70,12 +68,10 @@ namespace FDG.Tests
             var store = GameDataStore.GameDataStoreBuilder.GetDefault();
             var player = new PlayerID(Guid.NewGuid());
 
-            var model = new ModelData(0.5f, new List<Weapon>(), new List<SpecialRule>(),
-                new Position(1, 1), store);
+            var model = new ModelData(0.5f, new List<Weapon>(), new Position(1, 1), store);
             DataReference modelRef = store.Create(model);
             model.SetMaxWounds(3);
-            var unit = new UnitData(player, "Grunt", 4, 4, new List<SpecialRule>(),
-                new List<DataBinding<ModelData>> { store.GetDataBinding<ModelData>(modelRef) });
+            var unit = new UnitData(player, "Grunt", 4, 4, new List<DataBinding<ModelData>> { store.GetDataBinding<ModelData>(modelRef) });
             DataReference unitRef = store.Create(unit);
 
             string json = GameSaveSerializer.Save(store);

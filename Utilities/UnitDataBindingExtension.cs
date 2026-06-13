@@ -34,16 +34,6 @@ namespace FDG.Utilities
             return unitBinding.GetValue().RemainingWounds;
         }
 
-        public static List<ISpecialRule_Attacker> GetAttackerSpecialRules(this DataBinding<UnitData> unitBinding)
-        {
-            return unitBinding.GetValue().GetAttackerSpecialRules();
-        }
-
-        public static List<ISpecialRule_Defender> GetDefenderSpecialRules(this DataBinding<UnitData> unitBinding)
-        {
-            return unitBinding.GetValue().GetDefenderSpecialRules();
-        }
-
         public static bool GetIsAlive(this DataBinding<UnitData> unitBinding)
         {
             return unitBinding.GetValue().GetIsAlive();

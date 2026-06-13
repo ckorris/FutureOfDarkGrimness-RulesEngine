@@ -22,8 +22,6 @@ namespace FDG
 
         public int Defense { get; set; }
 
-        public List<SpecialRule> SpecialRules { get; set; } //TODO: Implement, looking at models.
-
         private readonly List<ResolvedRule> _ruleDefinitions = new();
 
         [JsonIgnore] public IReadOnlyList<ResolvedRule> RuleDefinitions => _ruleDefinitions;
@@ -65,12 +63,9 @@ namespace FDG
             .Cast<IModel>()
             .ToList();
 
-        [JsonIgnore]
-        List<ISpecialRule> IUnit.SpecialRules => SpecialRules.Cast<ISpecialRule>().ToList();
-
         [JsonConstructor]
         public UnitData(PlayerID playerID, string name, int quality, int defense,
-            List<SpecialRule> specialRules, List<DataBinding<ModelData>> modelBindings,
+            List<DataBinding<ModelData>> modelBindings,
             UnitID? id = null)
         {
             ID = id ?? new UnitID(System.Guid.NewGuid());
@@ -79,8 +74,6 @@ namespace FDG
             Name = name;
             Quality = quality;
             Defense = defense;
-
-            SpecialRules = specialRules;
 
             ModelBindings = modelBindings;
         }
@@ -101,9 +94,6 @@ namespace FDG
                 ModelBindings.Add(modelBinding);
                 ((IModel)modelBinding.GetValue()).OnWoundsDealt += OnModelWoundsDealt;
             }
-
-            //TEMP
-            SpecialRules = new List<SpecialRule>();
         }
 
         public UnitData(PlayerID playerID, UnitFileEntry unitFileEntry, IReadWriteableGameDataStore gameDataStore,
@@ -115,7 +105,6 @@ namespace FDG
             Name = unitFileEntry.Name;
             Quality = unitFileEntry.Quality;
             Defense = unitFileEntry.Defense;
-            SpecialRules = GetRealSpecialRulesFromArmyList(unitFileEntry.SpecialRules);
 
             ModelBindings = new List<DataBinding<ModelData>>(unitFileEntry.ModelCount);
 
@@ -161,18 +150,12 @@ namespace FDG
                     modelWeapons.Add(unitWeapons[w]);
                 }
 
-                ModelData modelData = new ModelData(tempBaseDiameterInches / 2f, modelWeapons, SpecialRules, new Position(), gameDataStore);
+                ModelData modelData = new ModelData(tempBaseDiameterInches / 2f, modelWeapons, new Position(), gameDataStore);
 
                 DataReference modelReference = gameDataStore.Create(modelData);
                 DataBinding<ModelData> modelBinding = gameDataStore.GetDataBinding<ModelData>(modelReference);
                 ModelBindings.Add(modelBinding);
             }
-        }
-
-        private List<SpecialRule> GetRealSpecialRulesFromArmyList(List<SpecialRuleEntry> specialRuleEntries)
-        {
-            //TODO: Implement for real.
-            return new List<SpecialRule>();
         }
 
         /// <summary>

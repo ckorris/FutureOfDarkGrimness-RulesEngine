@@ -99,14 +99,13 @@ namespace FDG.Tests
                 var model = new ModelData(
                     baseRadiusInches: 0.5f,
                     weapons: new List<Weapon>(),
-                    specialRules: new List<SpecialRule>(),
                     initialPosition: new Position(0f, 0f),
                     gameDataStore: _store);
                 modelBindings.Add(_store.GetDataBinding<ModelData>(_store.Create(model)));
             }
 
             var unit = new UnitData(_player, name, quality: 4, defense: 4,
-                specialRules: new List<SpecialRule>(), modelBindings: modelBindings);
+                modelBindings: modelBindings);
             DataBinding<UnitData> binding = _store.GetDataBinding<UnitData>(_store.Create(unit));
 
             if (scout)

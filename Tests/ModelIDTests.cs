@@ -42,7 +42,6 @@ namespace FDG.Tests
                 remainingWoundsBinding: store.GetDataBinding<float>(woundsRef),
                 positionBinding: store.GetDataBinding<Position>(positionRef),
                 weapons: new List<Weapon>(),
-                specialRules: new List<SpecialRule>(),
                 id: providedId);
 
             Assert.That(model.ID, Is.EqualTo(providedId));
@@ -92,7 +91,6 @@ namespace FDG.Tests
             new ModelData(
                 baseRadiusInches: 0.75f,
                 weapons: new List<Weapon>(),
-                specialRules: new List<SpecialRule>(),
                 initialPosition: new Position(),
                 store);
     }

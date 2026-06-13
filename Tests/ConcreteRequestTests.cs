@@ -49,9 +49,9 @@ namespace FDG.Tests
             var taskID = new TaskID(Guid.NewGuid());
 
             // Create some test data
-            var model1 = new ModelData(0.75f, new List<Weapon>(), new List<SpecialRule>(), new Position(), gameDataStore);
-            var model2 = new ModelData(1.0f, new List<Weapon>(), new List<SpecialRule>(), new Position(), gameDataStore);
-            var model3 = new ModelData(1.25f, new List<Weapon>(), new List<SpecialRule>(), new Position(), gameDataStore);
+            var model1 = new ModelData(0.75f, new List<Weapon>(), new Position(), gameDataStore);
+            var model2 = new ModelData(1.0f, new List<Weapon>(), new Position(), gameDataStore);
+            var model3 = new ModelData(1.25f, new List<Weapon>(), new Position(), gameDataStore);
 
             var ref1 = gameDataStore.Create(model1);
             var ref2 = gameDataStore.Create(model2);
@@ -105,9 +105,9 @@ namespace FDG.Tests
                 .Build();
 
             // Create test data in the source store
-            var model1 = new ModelData(0.75f, new List<Weapon>(), new List<SpecialRule>(), new Position(), gameDataStoreFrom);
-            var model2 = new ModelData(1.0f, new List<Weapon>(), new List<SpecialRule>(), new Position(), gameDataStoreFrom);
-            var model3 = new ModelData(1.25f, new List<Weapon>(), new List<SpecialRule>(), new Position(), gameDataStoreFrom);
+            var model1 = new ModelData(0.75f, new List<Weapon>(), new Position(), gameDataStoreFrom);
+            var model2 = new ModelData(1.0f, new List<Weapon>(), new Position(), gameDataStoreFrom);
+            var model3 = new ModelData(1.25f, new List<Weapon>(), new Position(), gameDataStoreFrom);
 
             var ref1 = gameDataStoreFrom.Create(model1);
             var ref2 = gameDataStoreFrom.Create(model2);
@@ -135,9 +135,9 @@ namespace FDG.Tests
                 invalidOptions);
 
             // Create the same data in the target store
-            var model1To = new ModelData(0.75f, new List<Weapon>(), new List<SpecialRule>(), new Position(), gameDataStoreTo);
-            var model2To = new ModelData(1.0f, new List<Weapon>(), new List<SpecialRule>(), new Position(), gameDataStoreTo);
-            var model3To = new ModelData(1.25f, new List<Weapon>(), new List<SpecialRule>(), new Position(), gameDataStoreTo);
+            var model1To = new ModelData(0.75f, new List<Weapon>(), new Position(), gameDataStoreTo);
+            var model2To = new ModelData(1.0f, new List<Weapon>(), new Position(), gameDataStoreTo);
+            var model3To = new ModelData(1.25f, new List<Weapon>(), new Position(), gameDataStoreTo);
 
             gameDataStoreTo.CreateFromReferenceAndJson(ref1, gameDataStoreFrom.GetValueAsJson<ModelData>(ref1));
             gameDataStoreTo.CreateFromReferenceAndJson(ref2, gameDataStoreFrom.GetValueAsJson<ModelData>(ref2));
@@ -251,7 +251,7 @@ namespace FDG.Tests
             var taskID = new TaskID(Guid.NewGuid());
 
             // Create test data
-            var model = new ModelData(1.0f, new List<Weapon>(), new List<SpecialRule>(), new Position(), gameDataStore);
+            var model = new ModelData(1.0f, new List<Weapon>(), new Position(), gameDataStore);
             var ref1 = gameDataStore.Create(model);
             var binding = gameDataStore.GetDataBinding<ModelData>(ref1);
 
@@ -287,7 +287,7 @@ namespace FDG.Tests
                 .Build();
 
             // Create test data in the source store
-            var model = new ModelData(1.0f, new List<Weapon>(), new List<SpecialRule>(), new Position(), gameDataStoreFrom);
+            var model = new ModelData(1.0f, new List<Weapon>(), new Position(), gameDataStoreFrom);
             var ref1 = gameDataStoreFrom.Create(model);
             var binding = gameDataStoreFrom.GetDataBinding<ModelData>(ref1);
 
@@ -296,7 +296,7 @@ namespace FDG.Tests
                 "Select your army");
 
             // Create the same data in the target store
-            var modelTo = new ModelData(1.0f, new List<Weapon>(), new List<SpecialRule>(), new Position(), gameDataStoreTo);
+            var modelTo = new ModelData(1.0f, new List<Weapon>(), new Position(), gameDataStoreTo);
             gameDataStoreTo.CreateFromReferenceAndJson(ref1, gameDataStoreFrom.GetValueAsJson<ModelData>(ref1));
 
             // Act
@@ -328,22 +328,19 @@ namespace FDG.Tests
 
             var attackerModel   = new ModelData(0.75f,
                 new List<Weapon> { new Weapon("Rifle", 24f, 1, 0) },
-                new List<SpecialRule>(), new Position(), store);
+                new Position(), store);
             var attackerModelRef     = store.Create(attackerModel);
             var attackerModelBinding = store.GetDataBinding<ModelData>(attackerModelRef);
 
-            var attackerUnit    = new UnitData(playerID, "Attacker", 3, 3, new List<SpecialRule>(),
-                new List<DataBinding<ModelData>> { attackerModelBinding });
+            var attackerUnit    = new UnitData(playerID, "Attacker", 3, 3, new List<DataBinding<ModelData>> { attackerModelBinding });
             var attackerUnitRef     = store.Create(attackerUnit);
             var attackerUnitBinding = store.GetDataBinding<UnitData>(attackerUnitRef);
 
-            var targetModel   = new ModelData(0.75f, new List<Weapon>(), new List<SpecialRule>(),
-                new Position(), store);
+            var targetModel   = new ModelData(0.75f, new List<Weapon>(), new Position(), store);
             var targetModelRef     = store.Create(targetModel);
             var targetModelBinding = store.GetDataBinding<ModelData>(targetModelRef);
 
-            var targetUnit    = new UnitData(playerID, "Target", 3, 3, new List<SpecialRule>(),
-                new List<DataBinding<ModelData>> { targetModelBinding });
+            var targetUnit    = new UnitData(playerID, "Target", 3, 3, new List<DataBinding<ModelData>> { targetModelBinding });
             var targetUnitRef     = store.Create(targetUnit);
             var targetUnitBinding = store.GetDataBinding<UnitData>(targetUnitRef);
 
@@ -389,22 +386,19 @@ namespace FDG.Tests
             // Create data on host — replication fires automatically via events
             var attackerModel   = new ModelData(0.75f,
                 new List<Weapon> { new Weapon("Rifle", 24f, 1, 0) },
-                new List<SpecialRule>(), new Position(), hostStore);
+                new Position(), hostStore);
             var attackerModelRef     = hostStore.Create(attackerModel);
             var attackerModelBinding = hostStore.GetDataBinding<ModelData>(attackerModelRef);
 
-            var attackerUnit    = new UnitData(playerID, "Attacker", 3, 3, new List<SpecialRule>(),
-                new List<DataBinding<ModelData>> { attackerModelBinding });
+            var attackerUnit    = new UnitData(playerID, "Attacker", 3, 3, new List<DataBinding<ModelData>> { attackerModelBinding });
             var attackerUnitRef     = hostStore.Create(attackerUnit);
             var attackerUnitBinding = hostStore.GetDataBinding<UnitData>(attackerUnitRef);
 
-            var targetModel   = new ModelData(0.75f, new List<Weapon>(), new List<SpecialRule>(),
-                new Position(), hostStore);
+            var targetModel   = new ModelData(0.75f, new List<Weapon>(), new Position(), hostStore);
             var targetModelRef     = hostStore.Create(targetModel);
             var targetModelBinding = hostStore.GetDataBinding<ModelData>(targetModelRef);
 
-            var targetUnit    = new UnitData(playerID, "Target", 3, 3, new List<SpecialRule>(),
-                new List<DataBinding<ModelData>> { targetModelBinding });
+            var targetUnit    = new UnitData(playerID, "Target", 3, 3, new List<DataBinding<ModelData>> { targetModelBinding });
             var targetUnitRef     = hostStore.Create(targetUnit);
             var targetUnitBinding = hostStore.GetDataBinding<UnitData>(targetUnitRef);
 

@@ -21,20 +21,19 @@ namespace FDG.Tests
 
             // Enemy model parked mid-table.
             var enemyPos = new Position(36f, 24f);
-            var enemyModel = new ModelData(0.5f, new List<Weapon>(), new List<SpecialRule>(), enemyPos, store);
+            var enemyModel = new ModelData(0.5f, new List<Weapon>(), enemyPos, store);
             var enemyBinding = store.GetDataBinding<ModelData>(store.Create(enemyModel));
-            var enemyUnit = new UnitData(enemyPlayer, "Enemies", 4, 4, new List<SpecialRule>(),
-                new List<DataBinding<ModelData>> { enemyBinding });
+            var enemyUnit = new UnitData(enemyPlayer, "Enemies", 4, 4, new List<DataBinding<ModelData>> { enemyBinding });
             store.Create(enemyUnit);
 
             // Placing unit (2 models, still at origin / in reserve).
             var placing = new List<DataBinding<ModelData>>();
             for (int i = 0; i < 2; i++)
             {
-                var m = new ModelData(0.5f, new List<Weapon>(), new List<SpecialRule>(), new Position(0f, 0f), store);
+                var m = new ModelData(0.5f, new List<Weapon>(), new Position(0f, 0f), store);
                 placing.Add(store.GetDataBinding<ModelData>(store.Create(m)));
             }
-            var placingUnit = new UnitData(selfPlayer, "Infiltrators", 4, 4, new List<SpecialRule>(), placing);
+            var placingUnit = new UnitData(selfPlayer, "Infiltrators", 4, 4, placing);
             store.Create(placingUnit);
 
             var tableState = new TableState(store);

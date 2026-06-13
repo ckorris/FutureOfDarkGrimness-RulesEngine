@@ -78,13 +78,6 @@ namespace FDG.Stages
 
             MovementContextPrecursor precursor = MovementContextPrecursor.GetDefault(gameContext);
 
-            List<ISpecialRule_Movement> movementSpecialRules = movingUnit.GetValue().GetMovementSpecialRules();
-
-            foreach(ISpecialRule_Movement movementSpecialRule in movementSpecialRules)
-            {
-                movementSpecialRule.ProcessMovementContextPrecursor(ref precursor);
-            }
-
             _canMove = precursor.CanMove;
             _maxAdvanceDistance = precursor.MaxAdvanceDistance;
             _maxRushDistance = precursor.MaxRushDistance;

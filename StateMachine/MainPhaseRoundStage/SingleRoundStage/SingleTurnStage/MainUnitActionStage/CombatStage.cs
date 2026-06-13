@@ -46,14 +46,6 @@ namespace FDG.Stages
 
         public override async Task Enter(TMetadata context)
         {
-            foreach (ISpecialRule_Combat rule in context.AllSpecialRules)
-            {
-                foreach (ICombatEffect<TResult> effect in rule.GetEffects<TResult>())
-                {
-                    _effects.Add(effect);
-                }
-            }
-
             await Execute(context);
         }
 

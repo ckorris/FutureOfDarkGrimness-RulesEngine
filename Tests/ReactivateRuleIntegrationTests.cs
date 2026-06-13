@@ -142,12 +142,12 @@ namespace FDG.Tests
             var modelBindings = new List<DataBinding<ModelData>>();
             foreach (Position pos in positions)
             {
-                var model = new ModelData(0.5f, new List<Weapon>(), new List<SpecialRule>(), pos, _store);
+                var model = new ModelData(0.5f, new List<Weapon>(), pos, _store);
                 modelBindings.Add(_store.GetDataBinding<ModelData>(_store.Create(model)));
             }
 
             var unit = new UnitData(_player, name, quality: 4, defense: 4,
-                specialRules: new List<SpecialRule>(), modelBindings: modelBindings);
+                modelBindings: modelBindings);
             DataBinding<UnitData> binding = _store.GetDataBinding<UnitData>(_store.Create(unit));
 
             if (withMartialProwess)

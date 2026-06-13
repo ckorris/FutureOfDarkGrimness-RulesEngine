@@ -109,7 +109,6 @@ namespace FDG.Tests
                 var md = new ModelData(
                     baseRadiusInches: 0.75f,
                     weapons: new List<Weapon>(),
-                    specialRules: new List<SpecialRule>(),
                     initialPosition: pos,
                     gameDataStore: _store);
                 return _store.GetDataBinding<ModelData>(_store.Create(md));
@@ -117,7 +116,7 @@ namespace FDG.Tests
 
             var unit = new UnitData(new PlayerID(Guid.NewGuid()), "TestUnit",
                 quality: 4, defense: 4,
-                specialRules: new List<SpecialRule>(), modelBindings: models);
+                modelBindings: models);
             return _store.GetDataBinding<UnitData>(_store.Create(unit));
         }
     }

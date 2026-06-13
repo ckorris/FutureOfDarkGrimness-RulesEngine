@@ -25,8 +25,6 @@ namespace FDG
         /// <summary>True when the attacker is charging (the charger's swing, not a strike-back); drives Thrust.</summary>
         public bool IsCharging { get; }
 
-        IReadOnlyList<ISpecialRule_Combat> AllSpecialRules { get; }
-
         //TODO: Next value can replace everything after?
         public void AddResult<TResult>(TResult result);
 
@@ -52,9 +50,6 @@ namespace FDG
         public bool IsCharging { get; private set; }
 
 
-        public IReadOnlyList<ISpecialRule_Combat> AllSpecialRules { get; private set; }
-
-
         private QueryableResults _queryableResults = new QueryableResults();
 
         public CombatMetadata(IGameContext gameContext, DataBinding<UnitData> attackingUnit,
@@ -69,8 +64,6 @@ namespace FDG
             AttackerMoved = attackerMoved;
             IsMelee = isMelee;
             IsCharging = isCharging;
-
-            AllSpecialRules = GetAllSpecialRules(attackingUnit, defendingUnit, weaponType);
         }
 
         public void AddResult<TResult>(TResult result)
@@ -81,19 +74,6 @@ namespace FDG
         public bool QueryForResult<TResult>(out TResult result)
         {
             return _queryableResults.QueryForResult(out result);
-        }
-
-        private List<ISpecialRule_Combat> GetAllSpecialRules(DataBinding<UnitData> attackingUnit, DataBinding<UnitData> defendingUnit,
-            IWeapon weaponType)
-        {
-            List<ISpecialRule_Combat> specialRules = new List<ISpecialRule_Combat>();
-
-            specialRules.AddRange(attackingUnit.GetAttackerSpecialRules());
-            specialRules.AddRange(defendingUnit.GetDefenderSpecialRules()); //TODO: Need to differentiate attacker and defender.
-            //#027: weapon rules are #042 RuleDefinitions dispatched per-weapon by RuleEvaluator;
-            //they no longer ride this legacy combat-rule list.
-
-            return specialRules;
         }
     }
 

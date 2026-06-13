@@ -41,7 +41,7 @@ namespace FDG.Tests
 
             // Create a unit so we have a real DataBinding<UnitData> reference.
             UnitData unit = new UnitData(new PlayerID(Guid.NewGuid()), "Bob", 4, 4,
-                new List<SpecialRule>(), new List<DataBinding<ModelData>>());
+                new List<DataBinding<ModelData>>());
             DataReference unitRef = store.Create(unit);
             DataBinding<UnitData> unitBinding = store.GetDataBinding<UnitData>(unitRef);
 
@@ -71,7 +71,7 @@ namespace FDG.Tests
             JsonSerializerSettings settings = store.GetJsonSettings();
 
             UnitData unit = new UnitData(new PlayerID(Guid.NewGuid()), "Bob", 4, 4,
-                new List<SpecialRule>(), new List<DataBinding<ModelData>>());
+                new List<DataBinding<ModelData>>());
             DataReference unitRef = store.Create(unit);
             DataBinding<UnitData> unitBinding = store.GetDataBinding<UnitData>(unitRef);
 
@@ -105,7 +105,7 @@ namespace FDG.Tests
             JsonSerializerSettings settings = store.GetJsonSettings();
 
             UnitData unit = new UnitData(new PlayerID(Guid.NewGuid()), "Alice", 4, 4,
-                new List<SpecialRule>(), new List<DataBinding<ModelData>>());
+                new List<DataBinding<ModelData>>());
             DataReference unitRef = store.Create(unit);
             DataBinding<UnitData> unitBinding = store.GetDataBinding<UnitData>(unitRef);
 

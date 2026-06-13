@@ -38,10 +38,5 @@ namespace FDG.Utilities
         {
             return modelBinding.GetValue().Weapons;
         }
-
-        public static List<SpecialRule> SpecialRules(this DataBinding<ModelData> modelBinding)
-        {
-            return modelBinding.GetValue().SpecialRules;
-        }
     }
 }

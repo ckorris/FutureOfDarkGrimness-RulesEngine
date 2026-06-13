@@ -63,14 +63,13 @@ namespace FDG.Tests.RulesHarness
                 var model = new ModelData(
                     baseRadiusInches: DefaultBaseRadiusInches,
                     weapons: new List<Weapon>(),
-                    specialRules: new List<SpecialRule>(),
                     initialPosition: new Position(),
                     gameDataStore: _store);
                 modelBindings.Add(_store.GetDataBinding<ModelData>(_store.Create(model)));
             }
 
             var unit = new UnitData(playerID, $"{playerName}-unit", quality: 4, defense: 4,
-                specialRules: new List<SpecialRule>(), modelBindings: modelBindings);
+                modelBindings: modelBindings);
 
             foreach (string ruleName in ruleNames)
             {

@@ -34,7 +34,6 @@ namespace FDG.Tests
             var model = new ModelData(
                 baseRadiusInches: 0.75f,
                 weapons: new List<Weapon>(),
-                specialRules: new List<SpecialRule>(),
                 initialPosition: new Position(),
                 fromStore);
 
@@ -85,7 +84,6 @@ namespace FDG.Tests
             var modelData = new ModelData(
                 baseRadiusInches: 0.75f,
                 weapons: new List<Weapon>(),
-                specialRules: new List<SpecialRule>(),
                 initialPosition: new Position(),
                 fromStore);
             DataReference modelRef = fromStore.Create(modelData);
@@ -96,7 +94,6 @@ namespace FDG.Tests
                 name: "RoundTripUnit",
                 quality: 4,
                 defense: 4,
-                specialRules: new List<SpecialRule>(),
                 modelBindings: new List<DataBinding<ModelData>> { modelBinding });
 
             // A representative spread: self-owned engine-known token (singleton-shape),
@@ -171,7 +168,7 @@ namespace FDG.Tests
                 .Build();
 
             var modelData = new ModelData(0.75f, new List<Weapon>(),
-                new List<SpecialRule>(), new Position(), fromStore);
+                new Position(), fromStore);
             DataReference modelRef = fromStore.Create(modelData);
             DataBinding<ModelData> modelBinding = fromStore.GetDataBinding<ModelData>(modelRef);
 
@@ -180,7 +177,6 @@ namespace FDG.Tests
                 name: "Empty",
                 quality: 4,
                 defense: 4,
-                specialRules: new List<SpecialRule>(),
                 modelBindings: new List<DataBinding<ModelData>> { modelBinding });
             DataReference unitRef = fromStore.Create(unit);
 

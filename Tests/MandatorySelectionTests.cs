@@ -47,10 +47,9 @@ namespace FDG.Tests
 
         private static DataBinding<UnitData> MakeUnit(GameDataStore store, PlayerID player)
         {
-            var model = new ModelData(0.5f, new List<Weapon>(), new List<SpecialRule>(), new Position(5f, 5f), store);
+            var model = new ModelData(0.5f, new List<Weapon>(), new Position(5f, 5f), store);
             DataBinding<ModelData> modelBinding = store.GetDataBinding<ModelData>(store.Create(model));
             var unit = new UnitData(player, "Unit", quality: 4, defense: 4,
-                specialRules: new List<SpecialRule>(),
                 modelBindings: new List<DataBinding<ModelData>> { modelBinding });
             DataBinding<UnitData> binding = store.GetDataBinding<UnitData>(store.Create(unit));
             store.Create(new ArmyData(player, new List<DataBinding<UnitData>> { binding }));

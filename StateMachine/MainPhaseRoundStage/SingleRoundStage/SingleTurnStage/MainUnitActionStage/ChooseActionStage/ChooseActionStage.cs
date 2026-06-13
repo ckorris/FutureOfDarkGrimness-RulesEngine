@@ -180,10 +180,6 @@ namespace FDG.Stages
             //If the unit moved further than its Rush distance, the move was only legal
             //because it ended in melee — so it must follow through and engage. Pass is gated off.
             MovementContextPrecursor precursor = MovementContextPrecursor.GetDefault(gameContext);
-            foreach(ISpecialRule_Movement rule in context.ActivatingUnit.GetValue().GetMovementSpecialRules())
-            {
-                rule.ProcessMovementContextPrecursor(ref precursor);
-            }
 
             if(context.MoveDistance > precursor.MaxRushDistance + 0.0001f)
             {

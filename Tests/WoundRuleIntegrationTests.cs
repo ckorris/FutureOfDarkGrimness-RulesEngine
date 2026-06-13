@@ -126,7 +126,6 @@ namespace FDG.Tests
                 var model = new ModelData(
                     baseRadiusInches: 0.75f,
                     weapons: new List<Weapon>(),
-                    specialRules: new List<SpecialRule>(),
                     initialPosition: new Position(0, 0),
                     gameDataStore: _store);
                 if (woundsPerModel != 1) model.SetMaxWounds(woundsPerModel); // Tough(woundsPerModel)
@@ -135,7 +134,6 @@ namespace FDG.Tests
 
             var unit = new UnitData(new PlayerID(System.Guid.NewGuid()), "TestUnit",
                 quality: 4, defense: 4,
-                specialRules: new List<SpecialRule>(),
                 modelBindings: modelBindings);
             return _store.GetDataBinding<UnitData>(_store.Create(unit));
         }

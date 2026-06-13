@@ -33,8 +33,6 @@ namespace FDG
 
         public IReadOnlyList<Weapon> Weapons { get; }
 
-        public IReadOnlyList<SpecialRule> SpecialRules { get; }
-
         public IMeshProvider MeshProvider { get; }
 
         public IMaterialProvider MaterialProvider { get; }

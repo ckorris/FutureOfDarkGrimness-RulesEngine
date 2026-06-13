@@ -116,10 +116,9 @@ namespace FDG.Tests
 
             float baseRadiusInches = 0.75f;
             List<Weapon> weapons = new List<Weapon>() { new Weapon("Weapon 1", 6, 2, 1) };
-            List<SpecialRule> specialRules = new List<SpecialRule>() { new Hero() };
             Position position = new Position(new Float3(1, 2, 3));
 
-            ModelData modelData = new ModelData(baseRadiusInches, weapons, specialRules, position, gameDataStoreFrom);
+            ModelData modelData = new ModelData(baseRadiusInches, weapons, position, gameDataStoreFrom);
 
             DataReference modelDataReference = gameDataStoreFrom.Create(modelData);
 
@@ -167,11 +166,10 @@ namespace FDG.Tests
         {
             new Weapon("DummyWeapon", 6, 2, 1)
         };
-            List<SpecialRule> specialRules = new List<SpecialRule>() { new Hero() };
             Position position = new Position(new Float3(1, 2, 3));
 
             // Create ModelData via the live constructor.
-            ModelData modelData = new ModelData(baseRadius, weapons, specialRules, position, gameDataStoreFrom);
+            ModelData modelData = new ModelData(baseRadius, weapons, position, gameDataStoreFrom);
             DataReference modelDataReference = gameDataStoreFrom.Create(modelData);
             DataBinding<ModelData> modelBinding = gameDataStoreFrom.GetDataBinding<ModelData>(modelDataReference);
 
@@ -179,7 +177,7 @@ namespace FDG.Tests
             List<DataReference> modelReferences = new List<DataReference> { modelDataReference };
 
             // Create UnitData using the template constructor.
-            UnitData unitData = new UnitData(new PlayerID(Guid.NewGuid()), "Test Unit", 5, 4, specialRules, 
+            UnitData unitData = new UnitData(new PlayerID(Guid.NewGuid()), "Test Unit", 5, 4, 
                 new List<DataBinding<ModelData>>() { modelBinding });
             DataReference unitDataReference = gameDataStoreFrom.Create(unitData);
 
@@ -242,14 +240,13 @@ namespace FDG.Tests
         {
             new Weapon("DummyWeapon", 6, 2, 1)
         };
-            List<SpecialRule> specialRules = new List<SpecialRule>() { new Hero() };
             Position position = new Position(new Float3(1, 2, 3));
-            ModelData modelData = new ModelData(baseRadius, weapons, specialRules, position, gameDataStoreFrom);
+            ModelData modelData = new ModelData(baseRadius, weapons, position, gameDataStoreFrom);
             DataReference modelDataReference = gameDataStoreFrom.Create(modelData);
             DataBinding<ModelData> modelBinding = gameDataStoreFrom.GetDataBinding<ModelData>(modelDataReference);
 
             List<DataReference> modelReferences = new List<DataReference> { modelDataReference };
-            UnitData unitData = new UnitData(new PlayerID(Guid.NewGuid()), "Test Model", 4, 4, specialRules,
+            UnitData unitData = new UnitData(new PlayerID(Guid.NewGuid()), "Test Model", 4, 4,
                 new List<DataBinding<ModelData>>() { modelBinding });
             DataReference unitDataReference = gameDataStoreFrom.Create(unitData);
             DataBinding<UnitData> unitBinding = gameDataStoreFrom.GetDataBinding<UnitData>(unitDataReference);

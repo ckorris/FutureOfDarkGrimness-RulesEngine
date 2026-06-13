@@ -12,8 +12,6 @@ namespace FDG
         int Defense { get; }
 
         List<ModelTemplate> Models { get; }
-
-        List<SpecialRule> SpecialRules { get; }
     }
 
     public class UnitTemplate : IUnitTemplate
@@ -28,10 +26,8 @@ namespace FDG
 
         public List<ModelTemplate> Models { get; }
 
-        public List<SpecialRule> SpecialRules { get; }
-
         public UnitTemplate(PlayerID playerID, string name, int quality, int defense,
-                List<ModelTemplate> models = null, List<SpecialRule>? specialRules = null)
+                List<ModelTemplate> models = null)
         {
             PlayerID = playerID;
             Name = name;
@@ -39,7 +35,6 @@ namespace FDG
             Defense = defense;
 
             Models = models == null ? new List<ModelTemplate>() : models;
-            SpecialRules = specialRules == null ? new List<SpecialRule>() : specialRules;
         }
     }
 }

@@ -21,14 +21,14 @@ namespace FDG.Tests
 
         private static DataBinding<ModelData> MakeModel(GameDataStore store, List<Weapon> weapons, Position pos)
         {
-            var model = new ModelData(0.5f, weapons, new List<SpecialRule>(), pos, store);
+            var model = new ModelData(0.5f, weapons, pos, store);
             DataReference reference = store.Create(model);
             return store.GetDataBinding<ModelData>(reference);
         }
 
         private static DataBinding<UnitData> MakeUnit(GameDataStore store, List<DataBinding<ModelData>> models)
         {
-            var unit = new UnitData(new PlayerID(Guid.NewGuid()), "U", 4, 4, new List<SpecialRule>(), models);
+            var unit = new UnitData(new PlayerID(Guid.NewGuid()), "U", 4, 4, models);
             DataReference reference = store.Create(unit);
             return store.GetDataBinding<UnitData>(reference);
         }

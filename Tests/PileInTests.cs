@@ -160,7 +160,6 @@ namespace FDG.Tests
             var modelData = new ModelData(
                 baseRadiusInches: radius,
                 weapons: new List<Weapon>(),
-                specialRules: new List<SpecialRule>(),
                 initialPosition: initialPosition,
                 gameDataStore: _store);
             DataReference reference = _store.Create(modelData);

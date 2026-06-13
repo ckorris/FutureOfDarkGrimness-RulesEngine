@@ -30,8 +30,6 @@ namespace FDG
 
         public List<Weapon> Weapons;
 
-        public List<SpecialRule> SpecialRules;
-
 
         #region IModel Non-Serialized
 
@@ -43,8 +41,6 @@ namespace FDG
 
 
         IReadOnlyList<Weapon> IModel.Weapons => Weapons;
-
-        IReadOnlyList<SpecialRule> IModel.SpecialRules => SpecialRules;
 
 
         event DataValueChangedHandler<Position> IModel.OnPositionChanged
@@ -107,7 +103,7 @@ namespace FDG
 
         [JsonConstructor]
         public ModelData(float baseRadiusInches, float totalWounds, DataBinding<float> remainingWoundsBinding, DataBinding<Position> positionBinding,
-            List<Weapon> weapons, List<SpecialRule> specialRules, ModelID? id = null)
+            List<Weapon> weapons, ModelID? id = null)
         {
             ID = id ?? new ModelID(System.Guid.NewGuid());
 
@@ -115,20 +111,18 @@ namespace FDG
             RemainingWoundsBinding = remainingWoundsBinding;
             PositionBinding = positionBinding;
             Weapons = weapons;
-            SpecialRules = specialRules;
             TotalWounds = totalWounds;
         }
 
-        public ModelData(float baseRadiusInches, List<Weapon> weapons, List<SpecialRule> specialRules, Position initialPosition,
+        public ModelData(float baseRadiusInches, List<Weapon> weapons, Position initialPosition,
             IReadWriteableGameDataStore gameDataStore)
         {
             ID = new ModelID(System.Guid.NewGuid());
 
             BaseRadiusInches = baseRadiusInches;
-            TotalWounds = CalculateTotalWounds(specialRules);
+            TotalWounds = CalculateTotalWounds();
 
             Weapons = weapons;
-            SpecialRules = specialRules;
 
             DataReference remainingWoundsRef = gameDataStore.Create(TotalWounds);
             DataReference positionRef = gameDataStore.Create(initialPosition);
@@ -142,10 +136,9 @@ namespace FDG
             ID = new ModelID(System.Guid.NewGuid());
 
             BaseRadiusInches = modelToCopy.BaseRadiusInches;
-            TotalWounds = CalculateTotalWounds(modelToCopy.SpecialRules);
+            TotalWounds = CalculateTotalWounds();
 
             Weapons = new List<Weapon>(modelToCopy.Weapons);
-            SpecialRules = new List<SpecialRule>(modelToCopy.SpecialRules);
 
             DataReference remainingWoundsRef = gameDataStore.Create(TotalWounds);
             DataReference positionRef = gameDataStore.Create(new Position());
@@ -154,7 +147,7 @@ namespace FDG
             PositionBinding = gameDataStore.GetDataBinding<Position>(positionRef);
         }
 
-        private int CalculateTotalWounds(IReadOnlyList<SpecialRule> specialRules)
+        private int CalculateTotalWounds()
         {
             //TODO: Get ones that modify total wounds somehow, and process.
             return 1;

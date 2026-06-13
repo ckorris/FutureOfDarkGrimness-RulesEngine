@@ -40,8 +40,6 @@ namespace FDG
 
         public List<IModel> Models { get; }
 
-        public List<ISpecialRule> SpecialRules { get; }
-
         /// <summary>
         /// Special-rule definitions attached to this unit under the #042 rule
         /// framework, each paired (via <see cref="ResolvedRule"/>) with the name
@@ -124,26 +122,6 @@ namespace FDG
         public static List<Weapon> GetRangedWeapons(this IUnit unit)
         {
             return unit.AllWeapons(u => u.IsRanged());
-        }
-
-        public static List<ISpecialRule_Combat> GetCombatSpecialRules(this IUnit unit)
-        {
-            return unit.SpecialRules.OfType<ISpecialRule_Combat>().ToList();
-        }
-
-        public static List<ISpecialRule_Attacker> GetAttackerSpecialRules(this IUnit unit)
-        {
-            return unit.SpecialRules.OfType<ISpecialRule_Attacker>().ToList();
-        }
-
-        public static List<ISpecialRule_Defender> GetDefenderSpecialRules(this IUnit unit)
-        {
-            return unit.SpecialRules.OfType<ISpecialRule_Defender>().ToList();
-        }
-
-        public static List<ISpecialRule_Movement> GetMovementSpecialRules(this IUnit unit)
-        {
-            return unit.SpecialRules.OfType<ISpecialRule_Movement>().ToList();
         }
     }
 

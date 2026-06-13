@@ -64,7 +64,6 @@ namespace FDG.Tests
                 var md = new ModelData(
                     baseRadiusInches: 0.75f,
                     weapons: new List<Weapon>(),
-                    specialRules: new List<SpecialRule>(),
                     initialPosition: pos,
                     gameDataStore: _store);
                 list.Add(_store.GetDataBinding<ModelData>(_store.Create(md)));

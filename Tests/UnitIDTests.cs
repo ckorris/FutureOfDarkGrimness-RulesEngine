@@ -36,7 +36,6 @@ namespace FDG.Tests
                 name: "Explicit-ID Unit",
                 quality: 4,
                 defense: 4,
-                specialRules: new List<SpecialRule>(),
                 modelBindings: new List<DataBinding<ModelData>>(),
                 id: providedId);
 
@@ -61,7 +60,6 @@ namespace FDG.Tests
             var modelData = new ModelData(
                 baseRadiusInches: 0.75f,
                 weapons: new List<Weapon>(),
-                specialRules: new List<SpecialRule>(),
                 initialPosition: new Position(),
                 fromStore);
             DataReference modelRef = fromStore.Create(modelData);
@@ -72,7 +70,6 @@ namespace FDG.Tests
                 name: "Round-Trip Unit",
                 quality: 5,
                 defense: 4,
-                specialRules: new List<SpecialRule>(),
                 modelBindings: new List<DataBinding<ModelData>> { modelBinding });
             DataReference unitRef = fromStore.Create(originalUnit);
 
@@ -113,7 +110,6 @@ namespace FDG.Tests
                 name: "TestUnit",
                 quality: 4,
                 defense: 4,
-                specialRules: new List<SpecialRule>(),
                 modelBindings: new List<DataBinding<ModelData>>());
     }
 }

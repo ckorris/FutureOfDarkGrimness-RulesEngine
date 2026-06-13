@@ -169,7 +169,6 @@ namespace FDG.Tests
             var model = new ModelData(
                 baseRadiusInches: 0.5f,
                 weapons: new List<Weapon>(),
-                specialRules: new List<SpecialRule>(),
                 initialPosition: p,
                 gameDataStore: store);
             return store.GetDataBinding<ModelData>(store.Create(model));
@@ -179,7 +178,6 @@ namespace FDG.Tests
             IEnumerable<DataBinding<ModelData>> models)
         {
             var unit = new UnitData(playerID, name, quality: 4, defense: 4,
-                specialRules: new List<SpecialRule>(),
                 modelBindings: models.ToList());
             return store.GetDataBinding<UnitData>(store.Create(unit));
         }

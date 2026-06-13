@@ -135,14 +135,12 @@ namespace FDG.Tests
             var modelData = new ModelData(
                 baseRadiusInches: 0.75f,
                 weapons: new List<Weapon>(),
-                specialRules: new List<SpecialRule>(),
                 initialPosition: modelPosition,
                 gameDataStore: _store);
             var modelRef = _store.Create(modelData);
             var modelBinding = _store.GetDataBinding<ModelData>(modelRef);
 
             var unit = new UnitData(playerID, "TestUnit", quality: 4, defense: 4,
-                specialRules: new List<SpecialRule>(),
                 modelBindings: new List<DataBinding<ModelData>> { modelBinding });
             _store.Create(unit);
             return unit;

@@ -80,6 +80,16 @@ namespace FDG.SaveLoad
                 return null;
             }
 
+            int maxArgIndex = RuleArgumentArity.MaxReferencedArgIndex(resolved.Definition);
+            if (maxArgIndex >= arguments.Count)
+            {
+                Debug.WriteLine(
+                    $"[#059] Skipping special rule '{ruleEntry.PrintableName}' on {ownerDescription}: " +
+                    $"its effects read Arg({maxArgIndex}) but the entry supplies only {arguments.Count} " +
+                    "argument(s) — a numeric value is likely missing from the army-list reference.");
+                return null;
+            }
+
             return new ResolvedRule(ruleEntry.PrintableName, resolved.Definition, arguments);
         }
 

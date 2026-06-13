@@ -80,14 +80,6 @@ namespace FDG.StageResolution
 
         private void OnReceivedReplyMessage(StageTaskReplyMessage replyMessage)
         {
-            /*
-            if (replyMessage.PlayerID != _targetPlayerID)
-            {
-                return;
-                //Ignore this message, and it's okay, all instances of this are listening.
-            }
-            */
-
             if (_pendingTaskAndResolvers.TryGetValue(replyMessage.TaskID, out SuccessAndFailActions? actions) == false)
             {
                 throw new ArgumentException($"Received message trying to resolve task with ID that was not pending. Task ID: {replyMessage.TaskID} " +
@@ -109,14 +101,6 @@ namespace FDG.StageResolution
 
         private void OnReceivedErrorMessage(StageTaskRequestErrorMessage errorMessage)
         {
-            /*
-            if (errorMessage.PlayerID != _targetPlayerID)
-            {
-                return;
-                //Ignore this message, and it's okay, all instances of this are listening.
-            }
-            */
-
             if (_pendingTaskAndResolvers.TryGetValue(errorMessage.TaskID, out SuccessAndFailActions? actions) == false)
             {
                 throw new ArgumentException($"Received error message trying to resolve task with ID that was not pending. Task ID: {errorMessage.TaskID} " +
@@ -166,7 +150,7 @@ namespace FDG.StageResolution
         public class NetworkedRequestFailedException : Exception
         {
             public NetworkedRequestFailedException(PlayerID playerID, string requestType, string errorMessage)
-                : base($"Remove client returned an error after receiving request of type {requestType}: {errorMessage}. " +
+                : base($"Remote client returned an error after receiving request of type {requestType}: {errorMessage}. " +
                       $"Player ID: {playerID}.")
             { }
         }

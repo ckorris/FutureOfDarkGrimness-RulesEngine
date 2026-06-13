@@ -62,6 +62,14 @@ namespace FDG
             return distanceSquared <= Radius * Radius;
         }
 
+        public bool DoesPathIntersectZone(Float2 startPosition, Float2 endPosition, float inflationRadius)
+        {
+            //Inflating a circle by r just grows its radius; test the center against the segment.
+            float effectiveRadius = Radius + Math.Max(0f, inflationRadius);
+            float distanceSquared = SegmentGeometry.PointToSegmentDistanceSquared(Center, startPosition, endPosition);
+            return distanceSquared <= effectiveRadius * effectiveRadius;
+        }
+
         public Float2? GetFirstSegmentEntry(Float2 startPosition, Float2 endPosition)
         {
             if (IsPointWithinZone(startPosition)) return startPosition;

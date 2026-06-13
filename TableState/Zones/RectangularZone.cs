@@ -34,6 +34,26 @@ namespace FDG
                    IsPointWithinZone(startPosition) || IsPointWithinZone(endPosition);
         }
 
+        public bool DoesPathIntersectZone(Float2 startPosition, Float2 endPosition, float inflationRadius)
+        {
+            if (inflationRadius <= 0f) return DoesPathIntersectZone(startPosition, endPosition);
+
+            //A bare crossing (edge intersection or endpoint inside) hits regardless of radius.
+            if (DoesPathIntersectZone(startPosition, endPosition)) return true;
+
+            //Otherwise the swept disc hits iff the segment comes within inflationRadius of the boundary.
+            Float2 bottomLeft = new Float2(Left, Bottom);
+            Float2 topLeft = new Float2(Left, Top);
+            Float2 topRight = new Float2(Right, Top);
+            Float2 bottomRight = new Float2(Right, Bottom);
+
+            float radiusSquared = inflationRadius * inflationRadius;
+            return SegmentGeometry.SegmentToSegmentDistanceSquared(startPosition, endPosition, bottomLeft, topLeft) <= radiusSquared
+                || SegmentGeometry.SegmentToSegmentDistanceSquared(startPosition, endPosition, topLeft, topRight) <= radiusSquared
+                || SegmentGeometry.SegmentToSegmentDistanceSquared(startPosition, endPosition, topRight, bottomRight) <= radiusSquared
+                || SegmentGeometry.SegmentToSegmentDistanceSquared(startPosition, endPosition, bottomRight, bottomLeft) <= radiusSquared;
+        }
+
         public bool IsPointWithinZone(Float2 position)
         {
             return position.X >= Left && position.X <= Right &&

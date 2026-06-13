@@ -11,8 +11,6 @@ namespace FDG.StageResolution
         private Dictionary<string, Func<string, IReadableGameDataStore, Task<string>>> _jsonResolverDelegates
             = new Dictionary<string, Func<string, IReadableGameDataStore, Task<string>>>();
 
-        IReadableGameDataStore _gameDataStore; //Cached for JsonConverters.
-
         public IStageResolverRegistry RegisterResolver<TRequest, TReply>(IStageResolver<TRequest, TReply> resolver)
             where TRequest : IStageTaskRequest<TReply>
         {

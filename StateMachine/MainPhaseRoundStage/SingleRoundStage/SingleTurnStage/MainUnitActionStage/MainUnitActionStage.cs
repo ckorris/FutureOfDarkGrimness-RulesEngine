@@ -11,13 +11,6 @@ namespace FDG.Stages
 
         public StageBinding ToReconcileEndOfActivation;
 
-        private readonly ChooseActionStage _chooseActionStage;
-        private readonly MovementStage _movementStage;
-
-        private readonly MeleeStage _meleeStage;
-
-        private readonly ShootStage _shootStage;
-
         public MainUnitActionStage(IGameContext gameContext, IStateMachineLayer<ISingleTurnContext> parent) : base(gameContext, parent)
         {
             

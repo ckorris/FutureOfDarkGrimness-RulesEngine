@@ -279,7 +279,7 @@ namespace FutureOfDarkGrimness.Network.Connection.Lobby
                     $"Client's ID: {_thisPlayerID.Value} Update attempt ID: {playerId}");
             }
 
-            ArmyListUpdateMessage message = new ArmyListUpdateMessage(playerId, armyListFile);
+            ArmyListUpdateMessage message = ArmyListUpdateMessage.FromArmy(playerId, armyListFile);
 
             _messageBusClient.SendCommandToHostAsync(message);
         }

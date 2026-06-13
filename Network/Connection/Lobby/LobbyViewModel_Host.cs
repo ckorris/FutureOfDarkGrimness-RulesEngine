@@ -336,7 +336,7 @@ namespace FDG.Network.Connection
 
         private void OnArmyListFileUpdateReceived(ArmyListUpdateMessage armyUpdate)
         {
-            UpdateArmyListFile(armyUpdate.playerID, armyUpdate.armyListFile);
+            UpdateArmyListFile(armyUpdate.PlayerID, armyUpdate.DecodeArmy());
         }
 
         public void Dispose()

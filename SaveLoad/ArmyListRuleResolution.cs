@@ -20,9 +20,30 @@ namespace FDG.SaveLoad
         /// overriding any rule already registered under the same name (core rules register first, so a
         /// template's embedded definitions retune them by name). Must run before the army's unit/weapon
         /// rule names are resolved, so its own and overriding rules are available at lookup time.
+        ///
+        /// Every definition is validated first (#059 workstream 3): if any rule has a Condition/Effect
+        /// whose required capability its hook's context can't provide, the whole load is rejected with a
+        /// <see cref="RuleValidationException"/> listing every violation — nothing is registered, so the
+        /// resolver is never left half-populated. A capability mismatch is an authoring bug in shipped
+        /// data (distinct from <see cref="ResolveForScope"/>'s tolerance of valid-but-unimplemented
+        /// rules) and must fail loudly rather than misbehave silently at dispatch.
         /// </summary>
-        public static void RegisterEmbeddedDefinitions(RuleResolver ruleResolver, ArmyListFile armyListFile)
+        public static void RegisterEmbeddedDefinitions(RuleResolver ruleResolver, ArmyListFile armyListFile,
+            RuleValidator? validator = null)
         {
+            validator ??= new RuleValidator();
+
+            List<RuleViolation> violations = new List<RuleViolation>();
+            foreach (SpecialRuleDefinition definition in armyListFile.RuleDefinitions)
+            {
+                violations.AddRange(validator.Validate(definition));
+            }
+
+            if (violations.Count > 0)
+            {
+                throw new RuleValidationException(armyListFile.Name, violations);
+            }
+
             foreach (SpecialRuleDefinition definition in armyListFile.RuleDefinitions)
             {
                 ruleResolver.RegisterOrReplace(definition);

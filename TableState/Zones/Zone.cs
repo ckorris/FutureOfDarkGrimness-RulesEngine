@@ -13,6 +13,15 @@ namespace FDG
         public bool DoesPathIntersectZone(Float2 startPosition, Float2 endPosition);
 
         /// <summary>
+        /// Swept-disc variant: whether a disc of radius <paramref name="inflationRadius"/> swept along
+        /// the segment from <paramref name="startPosition"/> to <paramref name="endPosition"/> touches
+        /// this zone. Equivalent to Minkowski-inflating the zone footprint by <paramref name="inflationRadius"/>
+        /// — used so a moving model's *base* (not just its center) is tested against terrain. An
+        /// <paramref name="inflationRadius"/> of 0 is the same as the zero-width overload.
+        /// </summary>
+        public bool DoesPathIntersectZone(Float2 startPosition, Float2 endPosition, float inflationRadius);
+
+        /// <summary>
         /// Returns the point along the segment from <paramref name="startPosition"/> to
         /// <paramref name="endPosition"/> where the segment first enters this zone, or
         /// null if the segment never enters it. If <paramref name="startPosition"/> is

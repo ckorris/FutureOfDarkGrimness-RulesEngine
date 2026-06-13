@@ -13,18 +13,20 @@ namespace FDG.StageResolution
         private IMessageBusHost _messageBusHost;
         private IReadableGameDataStore _gameDataStore;
         private PlayerSlotManager _playerSlotManager;
+        private ITextOutput _textOutput;
 
         // Mutated from both the engine thread (RequestDecision adds) and the bus/network read
         // thread (reply/error handlers remove) — must be concurrent-safe (#084).
         private readonly ConcurrentDictionary<TaskID, SuccessAndFailActions> _pendingTaskAndResolvers
             = new ConcurrentDictionary<TaskID, SuccessAndFailActions>();
 
-        public RequestMessageSender(IMessageBusHost messageBusHost, IReadableGameDataStore gameDataStore, 
-            PlayerSlotManager playerSlotManager)
+        public RequestMessageSender(IMessageBusHost messageBusHost, IReadableGameDataStore gameDataStore,
+            PlayerSlotManager playerSlotManager, ITextOutput textOutput)
         {
             _messageBusHost = messageBusHost;
             _gameDataStore = gameDataStore;
             _playerSlotManager = playerSlotManager;
+            _textOutput = textOutput;
 
             _messageBusHost.RegisterForMessageEvent<StageTaskReplyMessage>(OnReceivedReplyMessage);
             _messageBusHost.RegisterForMessageEvent<StageTaskRequestErrorMessage>(OnReceivedErrorMessage);
@@ -88,10 +90,20 @@ namespace FDG.StageResolution
         private void OnReceivedReplyMessage(StageTaskReplyMessage replyMessage)
         {
             // Atomically claim the task so a duplicate reply can't double-invoke the resolver.
+            // An unknown/duplicate TaskID (stray or replayed reply) must NOT throw here: this runs
+            // inside bus dispatch with no surrounding try/catch, so throwing would tear down the
+            // connection. Log-and-ignore (idempotent) instead; only assert-throw in DEBUG so the
+            // condition still surfaces during development. (#085)
             if (_pendingTaskAndResolvers.TryRemove(replyMessage.TaskID, out SuccessAndFailActions? actions) == false)
             {
+                _textOutput.Log($"Ignoring reply for unknown or already-resolved task. Task ID: {replyMessage.TaskID} " +
+                    $"Player ID: {replyMessage.PlayerID}");
+#if DEBUG
                 throw new ArgumentException($"Received message trying to resolve task with ID that was not pending. Task ID: {replyMessage.TaskID} " +
                     $"Player ID: {replyMessage.PlayerID}");
+#else
+                return;
+#endif
             }
 
             if(actions == null)
@@ -109,10 +121,18 @@ namespace FDG.StageResolution
         private void OnReceivedErrorMessage(StageTaskRequestErrorMessage errorMessage)
         {
             // Atomically claim the task so a duplicate error reply can't double-invoke the resolver.
+            // As with replies, an unknown/duplicate TaskID must not throw inside bus dispatch (it
+            // would kill the connection) — log-and-ignore, assert-throw only in DEBUG. (#085)
             if (_pendingTaskAndResolvers.TryRemove(errorMessage.TaskID, out SuccessAndFailActions? actions) == false)
             {
+                _textOutput.Log($"Ignoring error reply for unknown or already-resolved task. Task ID: {errorMessage.TaskID} " +
+                    $"Player ID: {errorMessage.PlayerID}");
+#if DEBUG
                 throw new ArgumentException($"Received error message trying to resolve task with ID that was not pending. Task ID: {errorMessage.TaskID} " +
                     $"Player ID: {errorMessage.PlayerID}");
+#else
+                return;
+#endif
             }
 
             actions.OnFailed.Invoke(errorMessage.ErrorMessage);

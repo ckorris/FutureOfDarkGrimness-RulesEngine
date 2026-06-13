@@ -100,7 +100,7 @@ namespace FDG.GameModel
             PresentationRelayer presentationRelayer = new PresentationRelayer(_playerSlotManager, presentationClock_);
 
             RequestMessageSender requestMessageSender = new RequestMessageSender(_messageBusHost, _gameDataStore,
-                _playerSlotManager);
+                _playerSlotManager, textOutput);
 
             _gameContext = new GameContext(textOutput, GetDiceRoller(gameSettings), requestMessageSender,
                 tableState, _gameDataStore, presentationRelayer, gameSettings, resumeProgress);

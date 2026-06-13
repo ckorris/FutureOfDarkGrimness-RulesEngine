@@ -14,6 +14,9 @@ namespace FDG.Tests
     //  - Round gate: nothing arrives in round 1.
     //  - Arrival: round 2+, on accept the unit is placed and the request carries the 9" min-enemy-distance.
     //  - Decline: the unit stays in reserve.
+    //  - On arrival the unit is stamped with the ArrivedFromReserve token (#064: the seize-exclusion
+    //    marker that ObjectiveOwnershipTests relies on being set here).
+    //  - A unit without a later-round defer rule is never offered, even at round 2 (#064).
     // The faithful ">9" from enemies" enforcement lives in the place resolvers (the integration test uses
     // a canned requester); AiPlaceObjectsResolverTests proves that enforcement deterministically.
     [TestFixture]
@@ -72,6 +75,31 @@ namespace FDG.Tests
             AssertAllAtOrigin(ambush, "a declined Ambush unit stays in reserve");
         }
 
+        [Test]
+        public async Task RoundTwo_Accept_StampsArrivedFromReserveToken()
+        {
+            DataBinding<UnitData> ambush = MakeAmbushUnit();
+            var requester = new AmbushArrivalRequester(accept: true, destX: 20f, destZ: 20f);
+
+            await RunStage(requester, roundCount: 2);
+
+            Assert.That(ambush.GetValue().Tokens.HasToken(Rules.Foundation.TokenType.ArrivedFromReserve), Is.True,
+                "an arrived reserve unit carries the seize-exclusion marker for the round it arrives.");
+        }
+
+        [Test]
+        public async Task RoundTwo_NonReserveUnit_NotOfferedAndUntouched()
+        {
+            DataBinding<UnitData> plain = MakePlainUnit();
+            var requester = new AmbushArrivalRequester(accept: true, destX: 20f, destZ: 20f);
+
+            await RunStage(requester, roundCount: 2);
+
+            Assert.That(requester.PlaceRequest, Is.Null, "a unit with no later-round defer rule is never offered");
+            AssertAllAtOrigin(plain, "a non-reserve unit is left untouched");
+            Assert.That(plain.GetValue().Tokens.HasToken(Rules.Foundation.TokenType.ArrivedFromReserve), Is.False);
+        }
+
         private async Task RunStage(IPlayerRequestByID requester, int roundCount)
         {
             var ctx = new TriggeredMoveTestContext(_store, requester);
@@ -103,6 +131,26 @@ namespace FDG.Tests
                 specialRules: new List<SpecialRule>(), modelBindings: modelBindings);
             DataBinding<UnitData> binding = _store.GetDataBinding<UnitData>(_store.Create(unit));
             binding.GetValue().AttachRuleDefinition(new ResolvedRule("Ambush", CoreRuleCatalog.Ambush));
+
+            _store.Create(new ArmyData(_player, new List<DataBinding<UnitData>> { binding }));
+            return binding;
+        }
+
+        // Same shape as MakeAmbushUnit but with no special rules attached, so it has no later-round
+        // defer and the stage never offers it.
+        private DataBinding<UnitData> MakePlainUnit()
+        {
+            var modelBindings = new List<DataBinding<ModelData>>();
+            for (int i = 0; i < 2; i++)
+            {
+                var model = new ModelData(0.5f, new List<Weapon>(), new List<SpecialRule>(),
+                    new Position(0f, 0f), _store);
+                modelBindings.Add(_store.GetDataBinding<ModelData>(_store.Create(model)));
+            }
+
+            var unit = new UnitData(_player, "Warriors", quality: 4, defense: 4,
+                specialRules: new List<SpecialRule>(), modelBindings: modelBindings);
+            DataBinding<UnitData> binding = _store.GetDataBinding<UnitData>(_store.Create(unit));
 
             _store.Create(new ArmyData(_player, new List<DataBinding<UnitData>> { binding }));
             return binding;

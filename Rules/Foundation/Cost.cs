@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace FDG.Rules.Foundation;
 
 /// <summary>
@@ -24,6 +26,13 @@ namespace FDG.Rules.Foundation;
 /// and consumptions (see <see cref="TokenClearTrigger"/>) — they exist as first-class
 /// Cost variants so authoring stays readable.
 /// </summary>
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
+[JsonDerivedType(typeof(OncePerActivation), "oncePerActivation")]
+[JsonDerivedType(typeof(OncePerRound), "oncePerRound")]
+[JsonDerivedType(typeof(OncePerGame), "oncePerGame")]
+[JsonDerivedType(typeof(SpellTokens), "spellTokens")]
+[JsonDerivedType(typeof(ConsumesToken), "consumesToken")]
+
 public abstract record Cost
 {
     /// <summary>

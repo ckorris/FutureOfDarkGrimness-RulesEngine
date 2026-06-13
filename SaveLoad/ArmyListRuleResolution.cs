@@ -16,6 +16,20 @@ namespace FDG.SaveLoad
     public static class ArmyListRuleResolution
     {
         /// <summary>
+        /// Registers an army's embedded #059 rule definitions into <paramref name="ruleResolver"/>,
+        /// overriding any rule already registered under the same name (core rules register first, so a
+        /// template's embedded definitions retune them by name). Must run before the army's unit/weapon
+        /// rule names are resolved, so its own and overriding rules are available at lookup time.
+        /// </summary>
+        public static void RegisterEmbeddedDefinitions(RuleResolver ruleResolver, ArmyListFile armyListFile)
+        {
+            foreach (SpecialRuleDefinition definition in armyListFile.RuleDefinitions)
+            {
+                ruleResolver.RegisterOrReplace(definition);
+            }
+        }
+
+        /// <summary>
         /// Resolves <paramref name="ruleEntry"/> against <paramref name="ruleResolver"/> and
         /// returns the attachment-ready <see cref="ResolvedRule"/> (requested name preserved
         /// for alias display, per-instance arguments carried). Returns null — with a debug

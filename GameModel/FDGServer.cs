@@ -161,6 +161,14 @@ namespace FDG.GameModel
         {
             RuleResolver ruleResolver = CoreRuleCatalog.CreateResolver();
 
+            // #059: register every army's embedded rule definitions before any unit resolves its rule
+            // names. Core rules are registered above; these override by name, so a template can retune a
+            // core rule from data. Done for all armies up front since the resolver is shared in-game.
+            for (int i = 0; i < playerSlots.Length; i++)
+            {
+                ArmyListRuleResolution.RegisterEmbeddedDefinitions(ruleResolver, playerSlots[i].ArmyListFile);
+            }
+
             for (int i = 0; i < playerSlots.Length; i++)
             {
                 CreateArmyDataFromArmyFile(playerSlots[i].PlayerID, playerSlots[i].ArmyListFile, gameDataStore, ruleResolver);

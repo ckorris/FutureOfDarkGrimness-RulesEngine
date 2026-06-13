@@ -36,6 +36,19 @@ public sealed class RuleResolver : IRuleResolver
     }
 
     /// <summary>
+    /// Registers <paramref name="definition"/> under its canonical name, REPLACING any rule already
+    /// registered under that name. The override primitive for army-embedded rules (#059): core rules
+    /// register first via <see cref="Register"/>, then a loaded army's definitions replace by name so a
+    /// template can retune a core rule from data. Unlike <see cref="Register"/>, this never throws on a
+    /// duplicate. Existing aliases keep pointing at the prior definition instance (they captured the
+    /// reference at alias time), so override-then-alias ordering matters if both are used for one name.
+    /// </summary>
+    public void RegisterOrReplace(SpecialRuleDefinition definition)
+    {
+        _rules[definition.Name] = definition;
+    }
+
+    /// <summary>
     /// Registers <paramref name="alias"/> as an additional name for the rule
     /// already registered under <paramref name="existingRuleName"/>. After this
     /// call, <see cref="Resolve"/> with either name returns the same

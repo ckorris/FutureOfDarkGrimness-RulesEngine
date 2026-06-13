@@ -1,6 +1,8 @@
 using System.Linq;
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace FDG.Rules.Definitions;
 
@@ -19,6 +21,39 @@ namespace FDG.Rules.Definitions;
 /// Vocabulary grows on demand. Subtypes not exercised by current tests can be
 /// left out of the initial commit and added when a rule first needs them.
 /// </summary>
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
+[JsonDerivedType(typeof(StatModifier), "statModifier")]
+[JsonDerivedType(typeof(RollModifier), "rollModifier")]
+[JsonDerivedType(typeof(Reroll), "reroll")]
+[JsonDerivedType(typeof(AddExtraHit), "addExtraHit")]
+[JsonDerivedType(typeof(AddExtraWound), "addExtraWound")]
+[JsonDerivedType(typeof(MovementBonus), "movementBonus")]
+[JsonDerivedType(typeof(IgnoreRule), "ignoreRule")]
+[JsonDerivedType(typeof(AddRule), "addRule")]
+[JsonDerivedType(typeof(Aura), "aura")]
+[JsonDerivedType(typeof(DealHits), "dealHits")]
+[JsonDerivedType(typeof(Heal), "heal")]
+[JsonDerivedType(typeof(GrantToken), "grantToken")]
+[JsonDerivedType(typeof(ConsumeToken), "consumeToken")]
+[JsonDerivedType(typeof(TriggeredMove), "triggeredMove")]
+[JsonDerivedType(typeof(Reactivate), "reactivate")]
+[JsonDerivedType(typeof(MultiplyWounds), "multiplyWounds")]
+[JsonDerivedType(typeof(QualityFloor), "qualityFloor")]
+[JsonDerivedType(typeof(IgnoreWoundOnRoll), "ignoreWoundOnRoll")]
+[JsonDerivedType(typeof(SetMaxWounds), "setMaxWounds")]
+[JsonDerivedType(typeof(MultiplyHits), "multiplyHits")]
+[JsonDerivedType(typeof(ChargeImpactHits), "chargeImpactHits")]
+[JsonDerivedType(typeof(ReduceImpactDicePerModel), "reduceImpactDicePerModel")]
+[JsonDerivedType(typeof(ExtraMeleeWoundCount), "extraMeleeWoundCount")]
+[JsonDerivedType(typeof(StrikeFirst), "strikeFirst")]
+[JsonDerivedType(typeof(TargetIndividualModel), "targetIndividualModel")]
+[JsonDerivedType(typeof(RestrictActions), "restrictActions")]
+[JsonDerivedType(typeof(RangeModifier), "rangeModifier")]
+[JsonDerivedType(typeof(IgnoreTerrainEffects), "ignoreTerrainEffects")]
+[JsonDerivedType(typeof(IgnoreCover), "ignoreCover")]
+[JsonDerivedType(typeof(IgnoreLineOfSight), "ignoreLineOfSight")]
+[JsonDerivedType(typeof(DeferDeployment), "deferDeployment")]
+
 public abstract record Effect
 {
     public virtual void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)

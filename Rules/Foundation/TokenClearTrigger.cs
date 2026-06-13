@@ -1,3 +1,6 @@
+using System.Text.Json.Serialization;
+using FDG.Rules.Tokens;
+
 namespace FDG.Rules.Foundation;
 
 /// <summary>
@@ -23,6 +26,16 @@ namespace FDG.Rules.Foundation;
 /// Always reference the base type as the field type; construct concrete variants
 /// (e.g. <c>new TokenClearTrigger.RoundEnd()</c>) at the point of use.
 /// </summary>
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
+[JsonDerivedType(typeof(ManualOnly), "manualOnly")]
+[JsonDerivedType(typeof(RoundEnd), "roundEnd")]
+[JsonDerivedType(typeof(ActivationEnd), "activationEnd")]
+[JsonDerivedType(typeof(AttackEnd), "attackEnd")]
+[JsonDerivedType(typeof(FirstTrigger), "firstTrigger")]
+[JsonDerivedType(typeof(UnitDestroyed), "unitDestroyed")]
+[JsonDerivedType(typeof(OwnerDestroyed), "ownerDestroyed")]
+[JsonDerivedType(typeof(CustomHook), "customHook")]
+
 public abstract record TokenClearTrigger
 {
     /// <summary>

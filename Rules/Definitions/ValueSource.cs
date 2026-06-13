@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using FDG.Rules.Foundation;
 
 namespace FDG.Rules.Definitions;
@@ -14,6 +15,9 @@ namespace FDG.Rules.Definitions;
 /// dispatcher resolves <see cref="Arg"/> against the rule instance whose effect is
 /// currently firing.
 /// </summary>
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
+[JsonDerivedType(typeof(Literal), "literal")]
+[JsonDerivedType(typeof(Arg), "arg")]
 public abstract record ValueSource
 {
     public abstract int Resolve(IReadOnlyList<RuleArgument> arguments);

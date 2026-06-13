@@ -1,4 +1,10 @@
+using System.Text.Json.Serialization;
+
 namespace FDG.Rules.Definitions;
+
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
+[JsonDerivedType(typeof(D3), "d3")]
+[JsonDerivedType(typeof(D6), "d6")]
 
 public abstract record DiceExpression
 {

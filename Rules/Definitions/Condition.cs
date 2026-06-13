@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Text.Json.Serialization;
 using FDG.Rules.Foundation;
 
 namespace FDG.Rules.Definitions;
@@ -27,6 +28,22 @@ namespace FDG.Rules.Definitions;
 /// with the half-dozen subtypes the first tests exercise; add the rest when a
 /// real rule needs them.
 /// </summary>
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
+[JsonDerivedType(typeof(Always), "always")]
+[JsonDerivedType(typeof(UnitHasRule), "unitHasRule")]
+[JsonDerivedType(typeof(TargetHasRule), "targetHasRule")]
+[JsonDerivedType(typeof(ActionTypeIs), "actionTypeIs")]
+[JsonDerivedType(typeof(UnmodifiedRollEquals), "unmodifiedRollEquals")]
+[JsonDerivedType(typeof(DistanceGreaterThan), "distanceGreaterThan")]
+[JsonDerivedType(typeof(StatGreaterOrEqualTo), "statGreaterOrEqualTo")]
+[JsonDerivedType(typeof(TargetMajorityHasTough), "targetMajorityHasTough")]
+[JsonDerivedType(typeof(TokenPresent), "tokenPresent")]
+[JsonDerivedType(typeof(And), "and")]
+[JsonDerivedType(typeof(Or), "or")]
+[JsonDerivedType(typeof(Not), "not")]
+[JsonDerivedType(typeof(AfterMoving), "afterMoving")]
+[JsonDerivedType(typeof(IsMelee), "isMelee")]
+[JsonDerivedType(typeof(IsCharging), "isCharging")]
 public abstract record Condition
 {
 

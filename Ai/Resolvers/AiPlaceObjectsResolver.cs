@@ -17,6 +17,9 @@ namespace FDG.Ai.Resolvers
         private readonly Dictionary<PlayerID, int> _deployCountPerPlayer = new();
         private const float ZRowOffset = 2f;
 
+        //Snapshot of impassible terrain for the current Resolve call; models can't be placed overlapping it.
+        private IReadOnlyList<ITerrain> _impassibleTerrain = System.Array.Empty<ITerrain>();
+
         public AiPlaceObjectsResolver(ITableState tableState)
         {
             _tableState = tableState;
@@ -25,6 +28,9 @@ namespace FDG.Ai.Resolvers
         public Task<List<PlacedObjectEntry<T>>> Resolve(PlaceObjectsRequest<T> request)
         {
             var zone = request.DeploymentZone.GetValue();
+            _impassibleTerrain = _tableState.Terrain.Objects
+                .Where(t => t.TerrainType.HasFlag(ETerrainType.Impassible))
+                .ToList();
             float minEnemyDist = request.MinDistanceFromEnemiesInches;
             var enemies = minEnemyDist > 0f
                 ? GetEnemyPositions(request.TargetPlayerID)
@@ -94,6 +100,7 @@ namespace FDG.Ai.Resolvers
                 var candidate = new Position(x, cz);
                 if (OverlapsAny(candidate, r, placedSoFar)) continue;
                 if (OverlapsExisting(candidate, r, existing)) continue;
+                if (PlacementUtilities.OverlapsImpassibleTerrain(candidate, r, _impassibleTerrain)) continue;
                 if (TooCloseToEnemy(candidate, enemies, minEnemyDist)) continue;
                 if (placedSoFar.Count > 0 && !InCohesion(candidate, r, placedSoFar)) continue;
                 return candidate;

@@ -37,6 +37,14 @@ namespace FDG
                 ZoneExtensions.RotateAround(startPosition, Pivot, -AngleDegrees),
                 ZoneExtensions.RotateAround(endPosition, Pivot, -AngleDegrees));
 
+        //Rotation about the pivot is rigid (distance-preserving), so the swept-disc radius carries
+        //through unchanged; only the endpoints are inverse-rotated into the inner zone's local frame.
+        public bool DoesPathIntersectZone(Float2 startPosition, Float2 endPosition, float inflationRadius)
+            => Inner.DoesPathIntersectZone(
+                ZoneExtensions.RotateAround(startPosition, Pivot, -AngleDegrees),
+                ZoneExtensions.RotateAround(endPosition, Pivot, -AngleDegrees),
+                inflationRadius);
+
         /// <summary>
         /// Inverse-rotates the segment into the inner zone's local frame, delegates,
         /// then forward-rotates the entry point back to world space.

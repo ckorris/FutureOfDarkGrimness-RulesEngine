@@ -47,6 +47,9 @@ namespace FDG
         public bool DoesPathIntersectZone(Float2 startPosition, Float2 endPosition)
             => Shape.DoesPathIntersectZone(startPosition, endPosition);
 
+        public bool DoesPathIntersectZone(Float2 startPosition, Float2 endPosition, float inflationRadius)
+            => Shape.DoesPathIntersectZone(startPosition, endPosition, inflationRadius);
+
         public Float2? GetFirstSegmentEntry(Float2 startPosition, Float2 endPosition)
             => Shape.GetFirstSegmentEntry(startPosition, endPosition);
 

@@ -59,42 +59,80 @@ namespace FDG.Ai.Resolvers
             // Don't overshoot — stop 1" base-to-base short to avoid illegal overlap.
             float step = Math.Min(moveDistance, Math.Max(0f, dist - 1f));
 
-            // Check terrain along the unit centroid's path before committing the step.
-            var allTerrain = _tableState.Terrain.Objects.ToList();
-            var unitCentroidStart = new Float2(cx, cz);
             float ndx = dx / dist;
             float ndz = dz / dist;
+
+            // (A) Cheap centroid pre-filter. Inflate terrain footprints by the unit's base radius (the
+            // largest living model) so this matches the base-radius-aware path validator (#050) — the
+            // zero-width line used to let the centroid skirt terrain a model's base would actually clip.
+            var allTerrain = _tableState.Terrain.Objects.ToList();
+            float baseRadius = living.Max(mb => mb.GetValue().BaseRadiusInches);
+            var unitCentroidStart = new Float2(cx, cz);
             var unitCentroidEnd = new Float2(cx + ndx * step, cz + ndz * step);
 
             bool crossesImpassible = allTerrain
                 .Any(t => t.TerrainType.HasFlag(ETerrainType.Impassible)
-                          && t.Shape.DoesPathIntersectZone(unitCentroidStart, unitCentroidEnd));
+                          && t.Shape.DoesPathIntersectZone(unitCentroidStart, unitCentroidEnd, baseRadius));
 
             if (crossesImpassible)
                 return Task.FromResult(StayInPlace(request));
 
             bool crossesDifficult = allTerrain
                 .Any(t => t.TerrainType.HasFlag(ETerrainType.Difficult)
-                          && t.Shape.DoesPathIntersectZone(unitCentroidStart, unitCentroidEnd));
+                          && t.Shape.DoesPathIntersectZone(unitCentroidStart, unitCentroidEnd, baseRadius));
 
             if (crossesDifficult)
                 step = Math.Min(step, GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES - 0.001f);
 
-            // A single living model has no cohesion to maintain — just step it toward the enemy.
+            // (B) The centroid pre-filter can't see per-model paths, cohesion, enemy-unit crossings, or
+            // charge-reach — and an invalid move makes DefinePathStage throw with no retry. So validate the
+            // actual candidate against the same MovementUtilities.ValidatePaths the stage uses, backing the
+            // step off until it passes (and standing still as a last resort). The AI never submits a move
+            // the engine will reject.
+            List<ModelMoveEntry> candidate = BuildCandidate(living, cx, cz, ndx, ndz, step, request);
+            bool valid = MovementUtilities.ValidatePaths(candidate, request.MaxRushDistance,
+                request.MaxDistanceInches, enemyPositions, allTerrain, out _);
+
+            int attempts = 0;
+            while (!valid && attempts < MaxBackoffAttempts)
+            {
+                step *= 0.5f;
+                candidate = step < MinBackoffStepInches
+                    ? StayInPlace(request)
+                    : BuildCandidate(living, cx, cz, ndx, ndz, step, request);
+                valid = MovementUtilities.ValidatePaths(candidate, request.MaxRushDistance,
+                    request.MaxDistanceInches, enemyPositions, allTerrain, out _);
+                attempts++;
+            }
+
+            if (!valid)
+                candidate = StayInPlace(request);
+
+            return Task.FromResult(candidate);
+        }
+
+        //Backoff bounds for (B): halve the step up to this many times before giving up and standing still.
+        private const int MaxBackoffAttempts = 6;
+        private const float MinBackoffStepInches = 0.05f;
+
+        // Builds the move the AI wants for a given step: a single living model steps straight toward the
+        // enemy; multiple models re-pack into a tight cohesive grid at the destination (a rigid translate
+        // would preserve holes left by casualties and break the 1" cohesion rule). Clamps the re-pack so
+        // each model's move stays within budget.
+        private static List<ModelMoveEntry> BuildCandidate(List<DataBinding<ModelData>> living,
+            float cx, float cz, float ndx, float ndz, float step, DefineMovementPathRequest request)
+        {
+            if (step <= 0f) return StayInPlace(request);
+
             if (living.Count == 1)
             {
                 var only = living[0].GetValue();
                 var dest = new Position(only.Position.x + ndx * step, only.Position.z + ndz * step);
-                return Task.FromResult(new List<ModelMoveEntry>
-                    { new ModelMoveEntry(living[0], new List<Position> { dest }) });
+                return new List<ModelMoveEntry> { new ModelMoveEntry(living[0], new List<Position> { dest }) };
             }
 
-            // Re-pack the living models into a tight cohesive grid at the destination. A rigid translate
-            // would preserve any hole a casualty left in the formation (neighbours of a dead model end up
-            // >1" apart), so the move would be rejected for breaking cohesion. The grid always satisfies
-            // the 1" rule. Clamp the advance so each model's re-pack move stays within budget.
-            step = CohesiveFormation.ClampRepackStep(living, cx, cz, step, request.MaxDistanceInches);
-            return Task.FromResult(CohesiveFormation.PackGrid(living, cx + ndx * step, cz + ndz * step));
+            float clamped = CohesiveFormation.ClampRepackStep(living, cx, cz, step, request.MaxDistanceInches);
+            return CohesiveFormation.PackGrid(living, cx + ndx * clamped, cz + ndz * clamped);
         }
 
         private List<Position> GetLiveEnemyPositions()

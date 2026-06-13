@@ -301,6 +301,114 @@ namespace FDG.Tests
             Assert.That(MovementUtilities.DoesPathCrossDangerousTerrain(move, terrain), Is.False);
         }
 
+        [Test]
+        public void ValidatePaths_CenterSkirtsButBaseOverlapsImpassible_Rejected()
+        {
+            //Center runs along z=2.5, just above the rect's top edge (z=2), so the zero-width
+            //center line misses — but the 0.75" base overlaps. Must be rejected (#050).
+            DataBinding<ModelData> model = MakeModel(new Position(0, 2.5f));
+            ModelMoveEntry move = new ModelMoveEntry(model, new List<Position> { new Position(10, 2.5f) });
+
+            List<ITerrain> terrain = new List<ITerrain>
+            {
+                new TerrainData(ETerrainType.Impassible, new RectangularZone(4, 6, -2, 2))
+            };
+
+            bool ok = MovementUtilities.ValidatePaths(
+                new List<ModelMoveEntry> { move },
+                maxDistanceInches: 12f,
+                terrain: terrain,
+                out List<ReasonForInvalidMove> errors);
+
+            Assert.That(ok, Is.False);
+            Assert.That(errors.Any(e => e.ErrorReasonType == EErrorReasonType.MovingThroughImpassibleTerrain), Is.True);
+        }
+
+        [Test]
+        public void ValidatePaths_BaseClearsImpassible_Accepted()
+        {
+            //Center along z=3 — 1.0" clearance above the rect's top edge (z=2), more than the
+            //0.75" base radius. The base does not overlap, so the move stays legal.
+            DataBinding<ModelData> model = MakeModel(new Position(0, 3));
+            ModelMoveEntry move = new ModelMoveEntry(model, new List<Position> { new Position(10, 3) });
+
+            List<ITerrain> terrain = new List<ITerrain>
+            {
+                new TerrainData(ETerrainType.Impassible, new RectangularZone(4, 6, -2, 2))
+            };
+
+            bool ok = MovementUtilities.ValidatePaths(
+                new List<ModelMoveEntry> { move },
+                maxDistanceInches: 12f,
+                terrain: terrain,
+                out List<ReasonForInvalidMove> errors);
+
+            Assert.That(ok, Is.True);
+            Assert.That(errors.Where(e => e.ErrorReasonType == EErrorReasonType.MovingThroughImpassibleTerrain),
+                Is.Empty);
+        }
+
+        [Test]
+        public void ValidatePaths_CircleImpassible_BaseOverlapWithoutCenterCrossing_Rejected()
+        {
+            //Circle radius 2 centered at (5,5); center line at z=2.75 is 2.25" away — outside the
+            //bare radius (2), but the 0.75" base brings effective reach to 2.75" so it touches.
+            DataBinding<ModelData> model = MakeModel(new Position(0, 2.75f));
+            ModelMoveEntry move = new ModelMoveEntry(model, new List<Position> { new Position(10, 2.75f) });
+
+            List<ITerrain> terrain = new List<ITerrain>
+            {
+                new TerrainData(ETerrainType.Impassible, new CircularZone(new Float2(5, 5), 2))
+            };
+
+            bool ok = MovementUtilities.ValidatePaths(
+                new List<ModelMoveEntry> { move },
+                maxDistanceInches: 12f,
+                terrain: terrain,
+                out List<ReasonForInvalidMove> errors);
+
+            Assert.That(ok, Is.False);
+            Assert.That(errors.Any(e => e.ErrorReasonType == EErrorReasonType.MovingThroughImpassibleTerrain), Is.True);
+        }
+
+        [Test]
+        public void ValidatePaths_DifficultTerrain_BaseOverlapExceedsCap_Rejected()
+        {
+            //8" move whose center skirts above difficult terrain (z=2.5 vs top z=2) but whose base
+            //overlaps it; total move exceeds the 6" cap, so it must now be rejected (#050).
+            DataBinding<ModelData> model = MakeModel(new Position(0, 2.5f));
+            ModelMoveEntry move = new ModelMoveEntry(model, new List<Position> { new Position(8, 2.5f) });
+
+            List<ITerrain> terrain = new List<ITerrain>
+            {
+                new TerrainData(ETerrainType.Difficult, new RectangularZone(2, 4, -2, 2))
+            };
+
+            bool ok = MovementUtilities.ValidatePaths(
+                new List<ModelMoveEntry> { move },
+                maxDistanceInches: 12f,
+                terrain: terrain,
+                out List<ReasonForInvalidMove> errors);
+
+            Assert.That(ok, Is.False);
+            Assert.That(errors.Any(e => e.ErrorReasonType == EErrorReasonType.ExceededDifficultTerrainMoveLimit), Is.True);
+        }
+
+        [Test]
+        public void DoesPathCrossDangerousTerrain_CenterSkirtsButBaseOverlaps_ReturnsTrue()
+        {
+            //Center along z=2.5 misses the rect (top z=2); the 0.75" base overlaps it (#050).
+            DataBinding<ModelData> model = MakeModel(new Position(0, 2.5f));
+            ModelMoveEntry move = new ModelMoveEntry(model, new List<Position> { new Position(8, 2.5f) });
+
+            List<ITerrain> terrain = new List<ITerrain>
+            {
+                new TerrainData(ETerrainType.Dangerous, new RectangularZone(3, 5, -2, 2))
+            };
+
+            Assert.That(MovementUtilities.DoesPathCrossDangerousTerrain(move, terrain), Is.True);
+        }
+
         private DataBinding<ModelData> MakeModel(Position initialPosition)
         {
             ModelData modelData = new ModelData(

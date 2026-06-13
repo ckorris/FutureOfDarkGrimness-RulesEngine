@@ -198,6 +198,7 @@ namespace FDG.Tests
             public float HeightInches => 4f;
             public bool IsPointWithinZone(Float2 p) => Shape.IsPointWithinZone(p);
             public bool DoesPathIntersectZone(Float2 a, Float2 b) => Shape.DoesPathIntersectZone(a, b);
+            public bool DoesPathIntersectZone(Float2 a, Float2 b, float inflationRadius) => Shape.DoesPathIntersectZone(a, b, inflationRadius);
             public Float2? GetFirstSegmentEntry(Float2 a, Float2 b) => Shape.GetFirstSegmentEntry(a, b);
             public ESightLineEffect EvaluateSightLine(Position attacker, Position target)
                 => _closed ? ESightLineEffect.Blocking : ESightLineEffect.Clear;

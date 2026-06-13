@@ -1,8 +1,7 @@
 ﻿using FDG;
 using FDG.Stages;
-using FDG.Stages.Builders;
 
-namespace FutureOfDarkGrimness.StateMachine.StateMachineBuilders
+namespace FDG.StateMachine.StateMachineBuilders
 {
     public class GDFStateMachineBuilder : IStateMachineBuilder<IGameContext>
     {

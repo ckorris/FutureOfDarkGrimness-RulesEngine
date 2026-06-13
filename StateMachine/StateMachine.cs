@@ -1,5 +1,5 @@
-using FDG.Stages.Builders;
 using FDG.StateMachine;
+using FDG.StateMachine.StateMachineBuilders;
 
 namespace FDG.Stages
 {

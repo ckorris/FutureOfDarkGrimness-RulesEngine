@@ -158,7 +158,7 @@ namespace FDG.Network.Connection
             }
             finally
             {
-                if (messageBytes.Array != null)
+                if (messageBytes.Array != null && isPooled)
                 {
                     ArrayPool<byte>.Shared.Return(messageBytes.Array);
                 }

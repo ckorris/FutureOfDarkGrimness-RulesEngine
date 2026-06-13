@@ -13,7 +13,7 @@ using FDG.Stages;
 using FDG.StateMachine.StateMachineBuilders;
 using FDG.TextInterface;
 using FDG.Utilities;
-using FutureOfDarkGrimness.StateMachine.StateMachineBuilders;
+using FDG.StateMachine.StateMachineBuilders;
 using System.Diagnostics;
 
 namespace FDG.GameModel

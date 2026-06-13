@@ -86,7 +86,7 @@ namespace FDG.Stages
             ToRollForFirstDeployment.Activate(context);
         }
 
-        // RETIRED (work item 052): dead debug probe — never called — that proved a stage could push
+        // RETIRED (work item 071, formerly numbered 052): dead debug probe — never called — that proved a stage could push
         // TempVisuals. The TempVisual system is superseded by the presentation-beat stream
         // (FDG.Presentation); a stage now narrates via context.Presenter.Present(beat). Kept
         // commented for reference rather than deleted. The rest of the TempVisual plumbing

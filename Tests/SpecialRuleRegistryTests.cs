@@ -67,6 +67,31 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void Picker_ScopeFilter_OffersOnlyRulesThatAttachAtThatScope()
+        {
+            HashSet<string> weaponOnly = SpecialRuleRegistry
+                .GetPickerEntries(scope: ERuleScope.Weapon).Select(e => e.Name).ToHashSet();
+            HashSet<string> unitOnly = SpecialRuleRegistry
+                .GetPickerEntries(scope: ERuleScope.Unit).Select(e => e.Name).ToHashSet();
+
+            // Weapon-scoped rules appear only in the weapon list.
+            foreach (string weapon in new[] { "Deadly", "Blast", "Rending", "Counter", "Reliable" })
+            {
+                Assert.That(weaponOnly, Does.Contain(weapon));
+                Assert.That(unitOnly, Does.Not.Contain(weapon), $"'{weapon}' is weapon-scoped.");
+            }
+            // Unit-scoped rules appear only in the unit list.
+            foreach (string unit in new[] { "Stealth", "Furious", "Scout", "Impact", "Tough" })
+            {
+                Assert.That(unitOnly, Does.Contain(unit));
+                Assert.That(weaponOnly, Does.Not.Contain(unit), $"'{unit}' is unit-scoped.");
+            }
+            // The two scopes partition the catalog (no rule in both, every rule in one).
+            Assert.That(weaponOnly.Overlaps(unitOnly), Is.False);
+            Assert.That(weaponOnly.Count + unitOnly.Count, Is.EqualTo(CoreRuleCatalog.All.Count));
+        }
+
+        [Test]
         public void Picker_IncludesEmbeddedRules_TaggedAndOverridingCoreByName()
         {
             // A brand-new embedded rule that reads an argument (numeric).

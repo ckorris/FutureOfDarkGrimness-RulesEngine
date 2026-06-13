@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Foundation;
 
 namespace FDG.SaveLoad
 {
@@ -21,8 +22,13 @@ namespace FDG.SaveLoad
     /// </summary>
     public static class SpecialRuleRegistry
     {
-        /// <summary> One offerable rule: its canonical name and whether it requires a numeric value. </summary>
-        public readonly record struct PickerEntry(string Name, bool IsNumeric);
+        /// <summary>
+        /// One offerable rule: its canonical name, whether it requires a numeric value, and the
+        /// <see cref="ERuleScope"/> it attaches at. The scope lets the builder offer a rule only where
+        /// it can legally attach — weapon-scoped rules on weapons, unit-scoped rules on units — so a
+        /// mis-scoped placement (which load-time resolution silently skips) becomes impossible to author.
+        /// </summary>
+        public readonly record struct PickerEntry(string Name, bool IsNumeric, ERuleScope Scope);
 
         /// <summary> A rule needs a numeric value iff some effect of its definition reads an argument. </summary>
         public static bool DefinitionIsNumeric(SpecialRuleDefinition definition) =>
@@ -30,28 +36,32 @@ namespace FDG.SaveLoad
 
         /// <summary>
         /// Every <see cref="CoreRuleCatalog"/> rule plus the supplied embedded definitions (which
-        /// override core by name), each tagged numeric-or-not, sorted by name for stable display.
+        /// override core by name), each tagged numeric-or-not and with its <see cref="ERuleScope"/>,
+        /// sorted by name for stable display. Pass <paramref name="scope"/> to get only the rules that
+        /// attach at that scope (the builder's weapon list vs unit list); omit it for all rules.
         /// </summary>
         public static IReadOnlyList<PickerEntry> GetPickerEntries(
-            IEnumerable<SpecialRuleDefinition>? embeddedDefinitions = null)
+            IEnumerable<SpecialRuleDefinition>? embeddedDefinitions = null, ERuleScope? scope = null)
         {
-            Dictionary<string, bool> numericByName = new Dictionary<string, bool>(StringComparer.Ordinal);
+            Dictionary<string, SpecialRuleDefinition> byName = new Dictionary<string, SpecialRuleDefinition>(
+                StringComparer.Ordinal);
 
             foreach (SpecialRuleDefinition definition in CoreRuleCatalog.All)
             {
-                numericByName[definition.Name] = DefinitionIsNumeric(definition);
+                byName[definition.Name] = definition;
             }
 
             if (embeddedDefinitions != null)
             {
                 foreach (SpecialRuleDefinition definition in embeddedDefinitions)
                 {
-                    numericByName[definition.Name] = DefinitionIsNumeric(definition);
+                    byName[definition.Name] = definition;
                 }
             }
 
-            return numericByName
-                .Select(kv => new PickerEntry(kv.Key, kv.Value))
+            return byName.Values
+                .Where(d => scope == null || d.Scope == scope.Value)
+                .Select(d => new PickerEntry(d.Name, DefinitionIsNumeric(d), d.Scope))
                 .OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }

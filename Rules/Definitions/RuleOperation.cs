@@ -413,6 +413,15 @@ public abstract record RuleOperation
     public sealed record IgnoreTerrainEffects : RuleOperation;
 
     /// <summary>
+    /// The bearer may move through enemy units — its path is not blocked by enemy bases — though it still
+    /// may not END a move stacked on an enemy. The "Flying-only facet (moving through units as well)"
+    /// anticipated by <see cref="Effect.IgnoreTerrainEffects"/>'s doc. Read by movement validation
+    /// (<see cref="Rules.Dispatch.MovementRuleQueries.CanMoveThroughEnemies"/>). Resolution of
+    /// <see cref="Effect.IgnoreEnemyMovementBlock"/> (Strafing; a future Flying rule can emit the same op).
+    /// </summary>
+    public sealed record IgnoreEnemyMovementBlock : RuleOperation;
+
+    /// <summary>
     /// Remove the bearer from the normal deployment pool for later placement, governed by
     /// <see cref="Timing"/>. <see cref="PlacementRangeInches"/> is interpreted per timing:
     /// for <see cref="EDeferTiming.AfterNormalDeployment"/> (Scout) it's how far the deployment

@@ -99,7 +99,14 @@ namespace FDG.Stages
         {
             List<ITerrain> relevantTerrain = new List<ITerrain>(gameContext.TableState.Terrain.Objects);
 
-            if (!MovementUtilities.ValidatePaths(paths, maxInches, relevantTerrain, out errors))
+            // #090: an out-of-band move (e.g. Vanguard) is enemy-aware like a normal move — it may not pass
+            // through or end stacked on an enemy unless the unit may move through enemies (Strafing fly-over).
+            List<EnemyModelFootprint> enemyFootprints = MovementUtilities.GetEnemyModelFootprints(unit, gameContext);
+            bool canMoveThroughEnemies = Rules.Dispatch.MovementRuleQueries.CanMoveThroughEnemies(
+                unit.GetValue(), gameContext.RuleEvaluator);
+
+            if (!MovementUtilities.ValidatePaths(paths, maxInches, enemyFootprints, canMoveThroughEnemies,
+                    relevantTerrain, out errors))
             {
                 return false;
             }

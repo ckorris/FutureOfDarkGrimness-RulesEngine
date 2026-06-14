@@ -17,9 +17,17 @@ namespace FDG.StageResolution.Requests
 
         public EConsolidationReason Reason { get; }
 
+        /// <summary>
+        /// Whether the consolidating unit may path through enemy bases (Strafing's fly-over). Derived from
+        /// the unit's #042 rules where the request is built, and read by the resolvers so their move-preview
+        /// validation agrees with the authoritative <see cref="Stages.ConsolidateStage"/> check.
+        /// </summary>
+        public bool CanMoveThroughEnemies { get; }
+
         [JsonConstructor]
         public ConsolidationMoveRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
-            DataBinding<UnitData> unitDataBinding, float maxDistanceInches, EConsolidationReason reason)
+            DataBinding<UnitData> unitDataBinding, float maxDistanceInches, EConsolidationReason reason,
+            bool canMoveThroughEnemies = false)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -27,10 +35,12 @@ namespace FDG.StageResolution.Requests
             UnitDataBinding = unitDataBinding;
             MaxDistanceInches = maxDistanceInches;
             Reason = reason;
+            CanMoveThroughEnemies = canMoveThroughEnemies;
         }
 
         public ConsolidationMoveRequest(PlayerID targetPlayerID, string taskName,
-            DataBinding<UnitData> unitDataBinding, float maxDistanceInches, EConsolidationReason reason)
+            DataBinding<UnitData> unitDataBinding, float maxDistanceInches, EConsolidationReason reason,
+            bool canMoveThroughEnemies = false)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = new TaskID(Guid.NewGuid());
@@ -38,6 +48,7 @@ namespace FDG.StageResolution.Requests
             UnitDataBinding = unitDataBinding;
             MaxDistanceInches = maxDistanceInches;
             Reason = reason;
+            CanMoveThroughEnemies = canMoveThroughEnemies;
         }
 
         public Task<List<ModelMoveEntry>> Resolve(List<ModelMoveEntry> resolution)

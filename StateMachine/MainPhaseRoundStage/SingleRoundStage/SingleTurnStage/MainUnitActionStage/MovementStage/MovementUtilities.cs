@@ -26,20 +26,19 @@ namespace FDG.Stages
             ValidateMovingThroughDifficultTerrain(moves, terrain, ref errors);
             //No enemy footprints supplied (this overload predates enemy-aware validation): the move-through /
             //standoff check is a no-op here, preserving these callers' existing behavior.
-            ValidateMovingThroughEnemyUnits(moves, Array.Empty<EnemyModelFootprint>(), ref errors);
+            ValidateMovingThroughEnemyUnits(moves, Array.Empty<EnemyModelFootprint>(), canMoveThroughEnemies: false, ref errors);
             ValidateCoherency(moves, ref errors);
 
             return errors.Count == 0;
         }
 
         /// <summary>
-        /// Full Move-action validation: paths must stay within the hard cap (Charge distance),
-        /// and any path that exceeds the Rush distance requires at least one model to end within
-        /// melee range of an enemy model.
+        /// Enemy-aware validation WITHOUT charge semantics: terrain + move-through / standoff (honoring
+        /// <paramref name="canMoveThroughEnemies"/>) + coherency, but no charge-reach requirement. For
+        /// consolidation and out-of-band executor moves — they have their own distance cap and never charge.
         /// </summary>
-        public static bool ValidatePaths(List<ModelMoveEntry> moves,
-            float maxRushDistance, float maxDistanceInches,
-            IEnumerable<EnemyModelFootprint> enemyFootprints,
+        public static bool ValidatePaths(List<ModelMoveEntry> moves, float maxDistanceInches,
+            IEnumerable<EnemyModelFootprint> enemyFootprints, bool canMoveThroughEnemies,
             IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors)
         {
             errors = new List<ReasonForInvalidMove>();
@@ -51,7 +50,45 @@ namespace FDG.Stages
             ValidateOutOfMoveRange(moves, maxDistanceInches, ref errors);
             ValidateMovingThroughImpassibleTerrain(moves, terrain, ref errors);
             ValidateMovingThroughDifficultTerrain(moves, terrain, ref errors);
-            ValidateMovingThroughEnemyUnits(moves, enemies, ref errors);
+            ValidateMovingThroughEnemyUnits(moves, enemies, canMoveThroughEnemies, ref errors);
+            ValidateCoherency(moves, ref errors);
+
+            return errors.Count == 0;
+        }
+
+        /// <summary>
+        /// Back-compat charge overload that assumes the mover may not move through enemies
+        /// (<c>canMoveThroughEnemies: false</c>). Kept so callers/tests that never need the fly-over
+        /// flag don't have to thread it (mirrors the no-enemy convenience overloads above).
+        /// </summary>
+        public static bool ValidatePaths(List<ModelMoveEntry> moves,
+            float maxRushDistance, float maxDistanceInches,
+            IEnumerable<EnemyModelFootprint> enemyFootprints,
+            IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors)
+            => ValidatePaths(moves, maxRushDistance, maxDistanceInches, enemyFootprints,
+                canMoveThroughEnemies: false, terrain, out errors);
+
+        /// <summary>
+        /// Full Move-action validation: paths must stay within the hard cap (Charge distance),
+        /// and any path that exceeds the Rush distance requires at least one model to end within
+        /// melee range of an enemy model. <paramref name="canMoveThroughEnemies"/> waives the
+        /// pass-through block for fly-over units (Strafing).
+        /// </summary>
+        public static bool ValidatePaths(List<ModelMoveEntry> moves,
+            float maxRushDistance, float maxDistanceInches,
+            IEnumerable<EnemyModelFootprint> enemyFootprints, bool canMoveThroughEnemies,
+            IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors)
+        {
+            errors = new List<ReasonForInvalidMove>();
+
+            IReadOnlyList<EnemyModelFootprint> enemies =
+                enemyFootprints as IReadOnlyList<EnemyModelFootprint> ?? enemyFootprints?.ToList()
+                ?? (IReadOnlyList<EnemyModelFootprint>)Array.Empty<EnemyModelFootprint>();
+
+            ValidateOutOfMoveRange(moves, maxDistanceInches, ref errors);
+            ValidateMovingThroughImpassibleTerrain(moves, terrain, ref errors);
+            ValidateMovingThroughDifficultTerrain(moves, terrain, ref errors);
+            ValidateMovingThroughEnemyUnits(moves, enemies, canMoveThroughEnemies, ref errors);
             ValidateCoherency(moves, ref errors);
             ValidateChargeReach(moves, maxRushDistance, enemies, ref errors);
 
@@ -391,7 +428,7 @@ namespace FDG.Stages
         /// being trapped into an impossible-to-satisfy state.
         /// </summary>
         private static void ValidateMovingThroughEnemyUnits(List<ModelMoveEntry> moves,
-            IReadOnlyList<EnemyModelFootprint> enemyFootprints,
+            IReadOnlyList<EnemyModelFootprint> enemyFootprints, bool canMoveThroughEnemies,
             ref List<ReasonForInvalidMove> reasonsForInvalidMove)
         {
             if (enemyFootprints == null || enemyFootprints.Count == 0) return;
@@ -434,8 +471,10 @@ namespace FDG.Stages
 
                     //Pass-through: the swept base crosses this enemy's base at an interior point of the path
                     //(not at the model's own start, and not where it ends in legal contact). A clean charge's
-                    //closest approach is its destination, so it isn't caught here.
-                    if (!flaggedThrough)
+                    //closest approach is its destination, so it isn't caught here. A fly-over unit
+                    //(canMoveThroughEnemies, e.g. Strafing) is exempt from this block — it may path through an
+                    //enemy base — but it is still caught by the ending-stacked check below.
+                    if (!canMoveThroughEnemies && !flaggedThrough)
                     {
                         Position segStart = start;
                         foreach (Position step in move.Positions)

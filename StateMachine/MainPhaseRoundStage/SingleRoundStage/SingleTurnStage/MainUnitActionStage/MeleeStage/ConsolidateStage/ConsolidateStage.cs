@@ -37,17 +37,26 @@ namespace FDG.Stages
             GameContext.Log($"Consolidation: {reason} (up to {maxDist}\").");
 
             PlayerID playerID = context.AttackingUnit.GetValue().PlayerID;
+
+            // #090: enemy-check the consolidation move (no charge semantics). The fly-over flag lets a
+            // Strafing unit consolidate through an enemy; it still may not end stacked on one.
+            bool canMoveThroughEnemies = Rules.Dispatch.MovementRuleQueries.CanMoveThroughEnemies(
+                context.AttackingUnit.GetValue(), context.GameContext.RuleEvaluator);
+            List<EnemyModelFootprint> enemyFootprints =
+                MovementUtilities.GetEnemyModelFootprints(context.AttackingUnit, context.GameContext);
+
             var request = new ConsolidationMoveRequest(playerID, $"Consolidate Move ({reason})",
-                context.AttackingUnit, maxDist, reason);
+                context.AttackingUnit, maxDist, reason, canMoveThroughEnemies);
 
             List<ModelMoveEntry> movements = await context.PlayerRequester()
                 .RequestDecision<ConsolidationMoveRequest, List<ModelMoveEntry>>(request);
 
-            // Validate against the cap and terrain. Cohesion is preserved trivially when the unit moves
-            // as a single delta (resolver convention) so we still run the standard validator to catch
-            // any per-model paths a future resolver might submit.
+            // Validate against the cap, terrain, and enemy footprints. Cohesion is preserved trivially when
+            // the unit moves as a single delta (resolver convention) so we still run the standard validator
+            // to catch any per-model paths a future resolver might submit.
             IEnumerable<ITerrain>? terrain = context.GameContext.TableState.Terrain.Objects;
-            if (!MovementUtilities.ValidatePaths(movements, maxDist, terrain, out List<ReasonForInvalidMove> errors))
+            if (!MovementUtilities.ValidatePaths(movements, maxDist, enemyFootprints, canMoveThroughEnemies,
+                    terrain, out List<ReasonForInvalidMove> errors))
             {
                 StringBuilder sb = new StringBuilder(errors[0].ToString());
                 for (int i = 1; i < errors.Count; i++) sb.Append(", ").Append(errors[i].ToString());

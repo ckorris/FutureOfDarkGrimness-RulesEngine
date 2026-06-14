@@ -25,7 +25,7 @@ namespace FDG.Stages
             if (PlaceTerrainStage.ShouldSkipTerrainPhase(context.GameContext.Settings))
             {
                 context.Log("  Terrain count is 0 in Alternating mode; skipping terrain roll-off.");
-                OnRollComplete.Activate(context);
+                await OnRollComplete.Activate(context);
                 return;
             }
 
@@ -42,7 +42,7 @@ namespace FDG.Stages
             context.Log($"Team {winner.TeamNumber} won the roll-off and will place terrain first.");
 
             context.SetTerrainPlacementTeamOrder(order);
-            OnRollComplete.Activate(context);
+            await OnRollComplete.Activate(context);
         }
     }
 }

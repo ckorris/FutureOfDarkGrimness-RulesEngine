@@ -36,7 +36,7 @@ namespace FDG.Stages
                     throw new ArgumentOutOfRangeException();
             }
 
-            ToRollForMorale.Activate(context);
+            await ToRollForMorale.Activate(context);
         }
     }
 

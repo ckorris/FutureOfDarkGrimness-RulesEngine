@@ -26,7 +26,7 @@ namespace FDG.Stages
             if (!attackerAlive)
             {
                 GameContext.Log("Consolidation: attacker has no living models — skipping.");
-                OnConsolidated.Activate(context);
+                await OnConsolidated.Activate(context);
                 return;
             }
 
@@ -56,7 +56,7 @@ namespace FDG.Stages
             }
 
             ApplyMovements(movements);
-            OnConsolidated.Activate(context);
+            await OnConsolidated.Activate(context);
         }
 
         private static bool AnyAlive(UnitData unit)

@@ -44,7 +44,7 @@ namespace FDG.Tests
             parent.Log.Clear();
 
             parent.ChildA.Go.Bind(parent.ChildB.Name);
-            parent.ChildA.Go.Activate(new SimpleContext(_gameCtx));
+            await parent.ChildA.Go.Activate(new SimpleContext(_gameCtx));
 
             Assert.That(parent.CurrentChild, Is.EqualTo(parent.ChildB));
             Assert.That(parent.Log, Is.EqualTo(
@@ -65,7 +65,7 @@ namespace FDG.Tests
             parent.Log.Clear();
 
             parent.ChildA.Go.Bind("to-sibling");
-            parent.ChildA.Go.Activate(new SimpleContext(_gameCtx));
+            await parent.ChildA.Go.Activate(new SimpleContext(_gameCtx));
 
             // Reconcile runs after the leaving child exits and before the parent's sibling binding
             // fires up to its own parent layer.
@@ -78,6 +78,25 @@ namespace FDG.Tests
                     "execTransition:parent-done",
                 }));
             Assert.That(top.Log, Is.SameAs(parent.Log));
+        }
+
+        // #083 — the headline guarantee of the await-through refactor: a fault thrown inside a child
+        // stage's Enter, reached via a transition, propagates out of the awaited Activate chain.
+        // Under the old async-void Transition delegate this exception was unobservable (it escaped to
+        // the synchronization context rather than faulting the awaited Task), so this test would have
+        // failed to surface anything to await.
+        [Test]
+        public async Task ChildToChildTransition_WhenEnteredChildThrows_FaultPropagatesThroughActivate()
+        {
+            var (parent, _) = BuildParent();
+            await parent.Enter(new SimpleContext(_gameCtx));
+            parent.ChildB.ThrowOnEnter = true;
+
+            parent.ChildA.Go.Bind(parent.ChildB.Name);
+
+            InvalidOperationException ex = Assert.ThrowsAsync<InvalidOperationException>(
+                async () => await parent.ChildA.Go.Activate(new SimpleContext(_gameCtx)));
+            Assert.That(ex!.Message, Is.EqualTo("boom from ChildBStage"));
         }
 
         [Test]
@@ -152,6 +171,7 @@ namespace FDG.Tests
     {
         private readonly List<string> _log;
         public StageBinding Go; // bound by tests to drive a transition out of this child
+        public bool ThrowOnEnter = false; // #083 — fault-propagation guard
 
         protected RecordingChildStage(IGameContext gameContext,
             IStateMachineLayer<SimpleContext> parent, List<string> log) : base(gameContext, parent)
@@ -163,6 +183,10 @@ namespace FDG.Tests
         public override Task Enter(SimpleContext context)
         {
             _log.Add($"enter:{Name}");
+            if (ThrowOnEnter)
+            {
+                throw new InvalidOperationException($"boom from {Name}");
+            }
             return Task.CompletedTask;
         }
 

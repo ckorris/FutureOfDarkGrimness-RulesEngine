@@ -57,7 +57,7 @@ namespace FDG.Stages
             context.CurrentDeployingUnit = chosenUnit;
             context.UndeployedUnits[currentPlayerID].Remove(chosenUnit);
 
-            OnFinish.Activate(context);
+            await OnFinish.Activate(context);
         }
     }
 }

@@ -32,7 +32,7 @@ namespace FDG.Stages
                 GameContext.Log($"Pile in: {moves.Count} defender model(s) moved toward the charging unit.");
             }
 
-            OnPiledIn.Activate(context);
+            await OnPiledIn.Activate(context);
         }
     }
 }

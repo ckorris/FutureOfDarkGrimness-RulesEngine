@@ -47,7 +47,7 @@ namespace FDG.Stages
                 context.SwapCombatRoles();
             }
 
-            OnStrikeOrderDetermined.Activate(context);
+            await OnStrikeOrderDetermined.Activate(context);
         }
 
         /// <summary>

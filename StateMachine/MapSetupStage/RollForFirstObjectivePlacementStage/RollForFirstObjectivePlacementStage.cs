@@ -34,7 +34,7 @@ namespace FDG.Stages
             context.Log($"Team {winner.TeamNumber} won the roll-off and will place objectives first.");
 
             context.SetObjectivePlacementTeamOrder(order);
-            OnRollComplete.Activate(context);
+            await OnRollComplete.Activate(context);
         }
     }
 }

@@ -19,7 +19,7 @@ namespace FDG.Stages
         {
         }
 
-        protected override async Task RunStage(ICombatMetadata metaData, Action<RollToHitResults> onFinished)
+        protected override async Task RunStage(ICombatMetadata metaData, Func<RollToHitResults, Task> onFinished)
         {
             // Show the attack — tracers (ranged) or a clash (melee) — before the dice resolve it.
             // Fire from the actual weapon-carrying models so a mixed unit shows the right source.
@@ -115,7 +115,7 @@ namespace FDG.Stages
             saveModifiers.ApplyFrom(operations);
             results.SaveModifier = saveModifiers.Net(ERollKind.Save);
 
-            onFinished(results);
+            await onFinished(results);
         }
 
         private static float TotalHits(RollToHitResults results)

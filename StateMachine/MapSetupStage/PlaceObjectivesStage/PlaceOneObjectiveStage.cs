@@ -29,7 +29,7 @@ namespace FDG.Stages
                 {
                     context.Log($"  Debug auto-placer could not find a legal spot for objective {markerNumber}; skipping.");
                     context.MarkersPlaced = context.TotalMarkers; // stop the loop rather than spin forever
-                    OnObjectivePlaced.Activate(context);
+                    await OnObjectivePlaced.Activate(context);
                     return;
                 }
             }
@@ -43,7 +43,7 @@ namespace FDG.Stages
             context.MarkersPlaced++;
 
             context.Log($"  Placed objective {markerNumber} at ({placement.x:F1}, {placement.z:F1}).");
-            OnObjectivePlaced.Activate(context);
+            await OnObjectivePlaced.Activate(context);
         }
 
         private async Task<Position> RequestPlacementFromPlayer(IObjectivePlacementTurnContext context, int markerNumber)

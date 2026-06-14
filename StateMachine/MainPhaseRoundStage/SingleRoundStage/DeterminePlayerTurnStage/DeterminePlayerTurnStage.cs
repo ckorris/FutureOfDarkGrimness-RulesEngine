@@ -39,7 +39,7 @@ namespace FDG.Stages
             if(context.TryAdvanceToNextPlayer(out ITeam? nextTeam, out PlayerID? nextPlayerID) == false)
             {
                 context.Log("No players left to activate. Ending round.");
-                OnNoPlayersLeft.Activate(context);
+                await OnNoPlayersLeft.Activate(context);
                 return;
             }
 
@@ -48,7 +48,7 @@ namespace FDG.Stages
             // unit to the round's unactivated pool so it appears as a choice in ChooseUnitToActivateStage.
             await OfferReactivations(context, nextPlayerID!.Value);
 
-            OnDeterminedPlayerTurn.Activate(context);
+            await OnDeterminedPlayerTurn.Activate(context);
         }
 
         /// <summary>

@@ -22,7 +22,7 @@ namespace FDG.Stages
             if (context.HasStarted == false)
             {
                 context.HasStarted = true;
-                OnFinish.Activate(context);
+                await OnFinish.Activate(context);
                 return;
             }
 
@@ -34,11 +34,11 @@ namespace FDG.Stages
             if (!advanced)
             {
                 context.Log("All players have deployed.");
-                OnFinishedDeployingAllUnits.Activate(context);
+                await OnFinishedDeployingAllUnits.Activate(context);
                 return;
             }
 
-            OnFinish.Activate(context);
+            await OnFinish.Activate(context);
         }
     }
 }

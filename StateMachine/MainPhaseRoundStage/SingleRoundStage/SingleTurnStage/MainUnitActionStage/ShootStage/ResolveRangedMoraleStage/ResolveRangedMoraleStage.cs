@@ -17,7 +17,7 @@ namespace FDG.Stages
         public override async Task Enter(ICombatActionContext context)
         {
             GameContext.Log("Resolving ranged morale.");
-            ToFinished.Activate(context);
+            await ToFinished.Activate(context);
         }
     }
 }

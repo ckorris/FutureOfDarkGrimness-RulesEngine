@@ -58,7 +58,7 @@ namespace FDG.Stages
 
             context.Log($"Activating: {chosenUnit.GetValue().Name}.");
             context.ChooseUnitToActivate(chosenUnit);
-            ToMainUnitAction.Activate(context);
+            await ToMainUnitAction.Activate(context);
         }
     }
 }

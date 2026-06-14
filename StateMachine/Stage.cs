@@ -28,9 +28,9 @@ namespace FDG.Stages
             Parent = parent;
         }
 
-        public void SignalEvent(string eventName, TContext context)
+        public Task SignalEvent(string eventName, TContext context)
         {
-            Parent.ExecuteTransition(eventName, this, context);
+            return Parent.ExecuteTransition(eventName, this, context);
         }
 
         public abstract Task Enter(TContext context);

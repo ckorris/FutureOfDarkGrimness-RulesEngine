@@ -30,7 +30,7 @@ namespace FDG.Stages
                 new TokenClearService().ClearForHook(EHookID.Activation_OnEndOfActivation, containers);
             }
 
-            OnFinished.Activate(context);
+            await OnFinished.Activate(context);
         }
     }
 }

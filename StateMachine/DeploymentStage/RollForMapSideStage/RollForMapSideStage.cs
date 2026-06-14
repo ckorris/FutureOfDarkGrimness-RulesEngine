@@ -27,7 +27,7 @@ namespace FDG.Stages
 
             context.SetMapSideRollWinner(rollOrder);
 
-            OnFinish.Activate(context);
+            await OnFinish.Activate(context);
         }
     }
 }

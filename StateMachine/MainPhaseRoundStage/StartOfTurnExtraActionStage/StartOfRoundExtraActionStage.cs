@@ -28,7 +28,7 @@ namespace FDG.Stages
                 await BringOnReserves();
             }
 
-            OnFinished.Activate(context);
+            await OnFinished.Activate(context);
         }
 
         /// <summary>

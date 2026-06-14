@@ -25,7 +25,7 @@ namespace FDG.Stages
             context.Log($"Rolled {roll} - {objectiveCount} objectives will be placed.");
 
             context.SetObjectiveCount(objectiveCount);
-            OnRollComplete.Activate(context);
+            await OnRollComplete.Activate(context);
         }
     }
 }

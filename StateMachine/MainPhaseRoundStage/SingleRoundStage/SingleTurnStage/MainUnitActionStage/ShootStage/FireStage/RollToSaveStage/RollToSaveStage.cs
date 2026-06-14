@@ -14,7 +14,7 @@ namespace FDG.Stages
         {
         }
 
-        protected override async Task RunStage(ICombatMetadata metaData, Action<RollToSaveResults> onFinished)
+        protected override async Task RunStage(ICombatMetadata metaData, Func<RollToSaveResults, Task> onFinished)
         {
             List<SuccessfulSaveInfo> successfulSaves = new List<SuccessfulSaveInfo>();
             List<FailedSaveInfo> failedSaves = new List<FailedSaveInfo>();
@@ -57,7 +57,7 @@ namespace FDG.Stages
                     await GameContext.Presenter.Present(new SaveBeat(defenders, savedCount));
             }
 
-            onFinished(results);
+            await onFinished(results);
         }
     }
 }

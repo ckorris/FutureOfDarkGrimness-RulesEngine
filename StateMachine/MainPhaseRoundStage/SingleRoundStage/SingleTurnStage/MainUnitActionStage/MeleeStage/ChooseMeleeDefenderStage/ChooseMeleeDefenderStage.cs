@@ -65,24 +65,24 @@ namespace FDG.Stages
                 }
             }
 
-            void ChooseDefender(DataBinding<UnitData> defender)
+            async Task ChooseDefender(DataBinding<UnitData> defender)
             {
                 //Set the defender on the context.
                 GameContext.Log($"Chose {defender.GetValue().Name} as defender.");
                 context.SetDefender(defender);
-                OnDefenderChosen.Activate(context);
+                await OnDefenderChosen.Activate(context);
             }
 
             if (validDefenders.Count == 0)
             {
                 GameContext.Log("No potential melee units found.");
-                BackToChooseAction.Activate(context);
+                await BackToChooseAction.Activate(context);
                 return;
             }
             else if(validDefenders.Count == 1)
             {
                 //No need to pose the request, just attack.
-                ChooseDefender(validDefenders.First().Option);
+                await ChooseDefender(validDefenders.First().Option);
                 return;
             }
 
@@ -96,11 +96,11 @@ namespace FDG.Stages
 
             if (defenderResult is Cancelled<DataBinding<UnitData>>)
             {
-                BackToChooseAction.Activate(context);
+                await BackToChooseAction.Activate(context);
                 return;
             }
 
-            ChooseDefender(((Selected<DataBinding<UnitData>>)defenderResult).Value);
+            await ChooseDefender(((Selected<DataBinding<UnitData>>)defenderResult).Value);
         }
     }
 }

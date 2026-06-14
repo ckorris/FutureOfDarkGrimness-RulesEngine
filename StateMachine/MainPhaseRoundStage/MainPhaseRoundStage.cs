@@ -32,7 +32,7 @@ namespace FDG.Stages
         {
             GameContext.TextOutput.Log($"Main Phase stage entering child: Reconcile New Turn.");
 
-            base.Enter(context);
+            await base.Enter(context);
         }
 
         protected override IMainPhaseContext GetNewChildContext(IGameContext contextSelf)

@@ -49,6 +49,16 @@ namespace FDG.Stages
 
             GameContext.Log($"Base hit roll required is {results.HitRollNeeded} based on attacker's quality.");
 
+            // #020 Fatigue: a unit that has already charged or struck back this round — or that is Shaken
+            // (#089) — hits only on unmodified 6s in melee. Override the computed threshold rather than
+            // stacking a modifier, since the rule ignores all modifiers; the d6 comparison in
+            // RollToHitStage then admits only natural 6s.
+            if (metaData.IsMelee && FatigueUtilities.CountsAsFatiguedInMelee(attacker))
+            {
+                results.HitRollNeeded = 6;
+                GameContext.Log($"{attacker.Name} is fatigued — hits only on unmodified 6s in melee.");
+            }
+
             onFinished(results);
         }
     }

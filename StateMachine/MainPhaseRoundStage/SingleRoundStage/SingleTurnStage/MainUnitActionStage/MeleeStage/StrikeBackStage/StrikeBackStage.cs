@@ -14,6 +14,14 @@ namespace FDG.Stages
 
         }
 
+        public override async Task Enter(ICombatActionContext context)
+        {
+            // #020: reaching this stage means the defender is actually striking back — record it so
+            // ApplyFatigueStage fatigues the striker. (The charger's own fatigue is handled there too.)
+            context.RegisterDefenderStruckBack();
+            base.Enter(context);
+        }
+
         protected override ICombatActionContext GetNewChildContext(ICombatActionContext contextSelf)
         {
             CombatActionContext meleeContext = new CombatActionContext(contextSelf.GameContext, 

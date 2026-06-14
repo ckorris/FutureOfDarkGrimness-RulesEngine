@@ -11,6 +11,22 @@ namespace FDG.Stages
 
         public DataBinding<UnitData> DefendingUnit { get; }
 
+        /// <summary>
+        /// The unit that charged into this melee, captured at context creation and never reassigned by
+        /// <see cref="SwapCombatRoles"/>. Null for non-charging contexts (shooting, strike-back). #020:
+        /// the charger is Fatigued for charging even when a Counter unit denies it a swing.
+        /// </summary>
+        public DataBinding<UnitData>? ChargingUnit { get; }
+
+        /// <summary>
+        /// True once the defender has actually struck back in this melee. #020: a unit that strikes back
+        /// becomes Fatigued, so <c>ApplyFatigueStage</c> reads this to decide whether to fatigue it.
+        /// </summary>
+        public bool DefenderStruckBack { get; }
+
+        /// <summary>Record that the defender struck back this melee. Idempotent.</summary>
+        public void RegisterDefenderStruckBack();
+
         public IReadOnlyDictionary<Weapon, int> AvailableWeapons { get; }
         public IReadOnlyDictionary<Weapon, int> AlreadyUsedWeapons { get; }
 
@@ -60,6 +76,15 @@ namespace FDG.Stages
         public DataBinding<UnitData> AttackingUnit { get; private set; }
 
         public DataBinding<UnitData> DefendingUnit { get; private set; }
+
+        // Immutable capture of the charging unit (#020). Set once at construction from the initial
+        // attacker when isCharging; SwapCombatRoles (Counter) deliberately leaves it alone so the
+        // charger is recoverable even after the roles flip.
+        public DataBinding<UnitData>? ChargingUnit { get; }
+
+        public bool DefenderStruckBack { get; private set; }
+
+        public void RegisterDefenderStruckBack() => DefenderStruckBack = true;
 
         public IModel InRangeAttackingModels { get; private set; }
 
@@ -116,6 +141,7 @@ namespace FDG.Stages
         {
             GameContext = gameContext;
             AttackingUnit = attackingUnit;
+            ChargingUnit = isCharging ? attackingUnit : null;
             _attackerMoved = attackerMoved;
             _isMelee = isMelee;
             _isCharging = isCharging;

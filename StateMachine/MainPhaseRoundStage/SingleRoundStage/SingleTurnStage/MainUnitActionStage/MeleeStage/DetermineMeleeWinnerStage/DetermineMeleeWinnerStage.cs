@@ -1,4 +1,7 @@
 ﻿
+using FDG.Rules.Definitions;
+using FDG.Rules.Dispatch.Contexts;
+using FDG.Rules.Foundation;
 using FDG.Utilities;
 
 namespace FDG.Stages
@@ -19,12 +22,25 @@ namespace FDG.Stages
 
         public override async Task Enter(ICombatActionContext context)
         {
+            IUnit attacker = context.AttackingUnit.GetValue();
+            IUnit defender = context.DefendingUnit.GetValue();
+
             //Get wounds dealt by each side.
             float attackerWoundsDealt = context.DefenderRemainingWoundsAtStart - context.DefendingUnit.RemainingWounds();
             float defenderWoundsDealt = context.AttackerRemainingWoundsAtStart - context.AttackingUnit.RemainingWounds();
 
-            //TODO: This needs to have effects somehow so things like fear or fearless can apply.
-            //Right now, it's a problem that this isn't a combat stage.
+            // #021 Fear(X): a unit counts as dealing +X extra wounds for the who-won-melee check only (no
+            // real wounds). Fire Melee_OnMeleeResolution for each side as the Actor and fold its own
+            // ExtraMeleeWoundCount into its dealt total, so the loser — and thus who must test morale — can flip.
+            MeleeResolutionContext resolution = new MeleeResolutionContext(attacker, defender);
+            float attackerBonus = SumExtraMeleeWounds(resolution, attacker);
+            float defenderBonus = SumExtraMeleeWounds(resolution, defender);
+            if (attackerBonus > 0f)
+                GameContext.Log($"{attacker.Name} counts as +{attackerBonus} wounds in melee (Fear).");
+            if (defenderBonus > 0f)
+                GameContext.Log($"{defender.Name} counts as +{defenderBonus} wounds in melee (Fear).");
+            attackerWoundsDealt += attackerBonus;
+            defenderWoundsDealt += defenderBonus;
 
             if (attackerWoundsDealt == defenderWoundsDealt)
             {
@@ -44,6 +60,22 @@ namespace FDG.Stages
                 context.AddResult(new DetermineMeleeWinnerResults(DetermineMeleeWinnerResults.EMeleeWinnerResult.DefenderWon));
                 OnNeedsRollToDecide.Activate(context);
             }
+        }
+
+        // Sum the extra melee wounds (Fear) the actor contributes to its own who-won total. The actor
+        // sits in the Actor seat (Fear's default), so only its rules fire; the opponent's Fear is summed
+        // by the symmetric call. ExtraMeleeWoundCount arrives already resolved to an int.
+        private float SumExtraMeleeWounds(MeleeResolutionContext resolution, IUnit actor)
+        {
+            IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
+                resolution, (actor, ERuleSeat.Actor, null));
+
+            float extra = 0f;
+            foreach (RuleOperation operation in operations)
+            {
+                if (operation is RuleOperation.ExtraMeleeWoundCount fear) extra += fear.Amount;
+            }
+            return extra;
         }
     }
 

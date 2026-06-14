@@ -43,7 +43,7 @@ namespace FDG.Tests
         {
             HashSet<string> offered = CoreEntries().Select(e => e.Name).ToHashSet();
             // The old hand-list offered these, but the engine has no definition — picking them did nothing.
-            foreach (string phantom in new[] { "Sniper", "Flying", "Aircraft", "Caster", "Fear", "Transport" })
+            foreach (string phantom in new[] { "Sniper", "Flying", "Aircraft", "Caster", "Transport" })
             {
                 Assert.That(offered, Does.Not.Contain(phantom),
                     $"picker must not offer unimplemented rule '{phantom}'.");
@@ -56,7 +56,7 @@ namespace FDG.Tests
             Dictionary<string, bool> numericByName =
                 CoreEntries().ToDictionary(e => e.Name, e => e.IsNumeric);
 
-            foreach (string numeric in new[] { "Tough", "Deadly", "Blast", "Impact" })
+            foreach (string numeric in new[] { "Tough", "Deadly", "Blast", "Impact", "Fear" })
             {
                 Assert.That(numericByName[numeric], Is.True, $"'{numeric}' reads an arg → numeric.");
             }

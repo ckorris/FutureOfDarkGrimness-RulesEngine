@@ -24,7 +24,7 @@ public static class CoreRuleCatalog
     {
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
         Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Vanguard, Scout, Ambush, Thrust,
-        Blast, Takedown, Impact, Counter, MartialProwess, Strafing,
+        Blast, Takedown, Impact, Counter, MartialProwess, Strafing, Fear,
     };
 
     /// <summary>
@@ -319,6 +319,25 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>(),
         ERuleScope.Weapon);
+
+    // Melee-resolution (DetermineMeleeWinnerStage) -------------------------------
+
+    /// <summary>
+    /// Fear(X): this unit counts as dealing +X extra wounds when deciding who won a melee — it does NOT
+    /// deal real wounds. A passive rule at <see cref="EHookID.Melee_OnMeleeResolution"/> that emits
+    /// <see cref="RuleOperation.ExtraMeleeWoundCount"/> (X from the rule's argument); DetermineMeleeWinnerStage
+    /// folds each side's total into its wounds-dealt before the winner comparison, so the loser — and thus
+    /// which unit must test morale — can flip.
+    /// </summary>
+    public static SpecialRuleDefinition Fear { get; } = new SpecialRuleDefinition("Fear",
+        new[]
+        {
+            new HookEntry(EHookID.Melee_OnMeleeResolution,
+                new Condition.Always(),
+                new Effect.ExtraMeleeWoundCount(new ValueSource.Arg(0)),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>());
 
     // Wound-modifier sink (AssignWoundsStage) ------------------------------------
 

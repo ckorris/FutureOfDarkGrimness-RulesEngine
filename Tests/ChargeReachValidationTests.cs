@@ -28,7 +28,7 @@ namespace FDG.Tests
                 new List<ModelMoveEntry> { move },
                 maxRushDistance: 12f,
                 maxDistanceInches: 18f,
-                enemyModelPositions: new List<Position>(),
+                enemyFootprints: new List<EnemyModelFootprint>(),
                 terrain: null,
                 out List<ReasonForInvalidMove> errors);
 
@@ -43,13 +43,13 @@ namespace FDG.Tests
             DataBinding<ModelData> model = MakeModel(new Position(0, 0));
             ModelMoveEntry move = new ModelMoveEntry(model, new List<Position> { new Position(15, 0) });
 
-            List<Position> enemies = new List<Position> { new Position(16.5f, 0) };
+            List<EnemyModelFootprint> enemies = new List<EnemyModelFootprint> { new EnemyModelFootprint(new Position(16.5f, 0), 0.75f, 0) };
 
             bool ok = MovementUtilities.ValidatePaths(
                 new List<ModelMoveEntry> { move },
                 maxRushDistance: 12f,
                 maxDistanceInches: 18f,
-                enemyModelPositions: enemies,
+                enemyFootprints: enemies,
                 terrain: null,
                 out List<ReasonForInvalidMove> errors);
 
@@ -64,13 +64,13 @@ namespace FDG.Tests
             DataBinding<ModelData> model = MakeModel(new Position(0, 0));
             ModelMoveEntry move = new ModelMoveEntry(model, new List<Position> { new Position(15, 0) });
 
-            List<Position> enemies = new List<Position> { new Position(20, 0) };
+            List<EnemyModelFootprint> enemies = new List<EnemyModelFootprint> { new EnemyModelFootprint(new Position(20, 0), 0.75f, 0) };
 
             bool ok = MovementUtilities.ValidatePaths(
                 new List<ModelMoveEntry> { move },
                 maxRushDistance: 12f,
                 maxDistanceInches: 18f,
-                enemyModelPositions: enemies,
+                enemyFootprints: enemies,
                 terrain: null,
                 out List<ReasonForInvalidMove> errors);
 
@@ -86,20 +86,22 @@ namespace FDG.Tests
             DataBinding<ModelData> overshooter = MakeModel(new Position(0, 0));
             DataBinding<ModelData> closer      = MakeModel(new Position(10, 0));
 
+            //Overshooter goes 13" (beyond Rush) but stops clear of the enemy — NOT in melee and not stacked
+            //on it (ending on top of an enemy base is now its own MovingThroughEnemyUnit error).
             ModelMoveEntry overshooterMove = new ModelMoveEntry(overshooter,
-                new List<Position> { new Position(15, 0) }); //15" - beyond Rush
+                new List<Position> { new Position(13, 0) });
 
-            //Closer model moves to within 1" of an enemy.
+            //A different (slower) model ends within melee range, satisfying the reach rule for the unit.
             ModelMoveEntry closerMove = new ModelMoveEntry(closer,
                 new List<Position> { new Position(14, 0) });
 
-            List<Position> enemies = new List<Position> { new Position(15, 0) };
+            List<EnemyModelFootprint> enemies = new List<EnemyModelFootprint> { new EnemyModelFootprint(new Position(16, 0), 0.75f, 0) };
 
             bool ok = MovementUtilities.ValidatePaths(
                 new List<ModelMoveEntry> { overshooterMove, closerMove },
                 maxRushDistance: 12f,
                 maxDistanceInches: 18f,
-                enemyModelPositions: enemies,
+                enemyFootprints: enemies,
                 terrain: null,
                 out List<ReasonForInvalidMove> errors);
 
@@ -119,7 +121,7 @@ namespace FDG.Tests
                 new List<ModelMoveEntry> { move },
                 maxRushDistance: 12f,
                 maxDistanceInches: 12f,
-                enemyModelPositions: new List<Position>(),
+                enemyFootprints: new List<EnemyModelFootprint>(),
                 terrain: null,
                 out List<ReasonForInvalidMove> errors);
 

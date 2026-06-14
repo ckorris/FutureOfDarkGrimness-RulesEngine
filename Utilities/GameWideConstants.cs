@@ -33,6 +33,13 @@ namespace FDG
 
         public const float DIFFICULT_TERRAIN_MOVE_CAP_INCHES = 6f;
 
+        /// <summary>
+        /// Models that aren't charging must keep at least this far (base-to-base) from enemy models.
+        /// A move may end either at or beyond this standoff, or in base contact (a charge) — but not in
+        /// the band between, and never overlapping or passing through an enemy base.
+        /// </summary>
+        public const float ENEMY_STANDOFF_DISTANCE_INCHES = 1f;
+
         public const float DEPLOYMENT_DISTANCE_INCHES = 9;
 
         public const float DEFAULT_TABLE_WIDTH_INCHES = 72;

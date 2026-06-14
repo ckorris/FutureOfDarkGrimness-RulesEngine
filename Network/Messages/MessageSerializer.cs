@@ -1,7 +1,6 @@
 ﻿using FDG.Data;
 using Newtonsoft.Json;
 using System.Buffers;
-using System.Diagnostics;
 using System.Text;
 
 
@@ -23,6 +22,11 @@ namespace FDG.Network.Messages
     {
         private readonly Dictionary<string, Type> _messageTypeRegistry = new Dictionary<string, Type>();
 
+        //Unknown wire types we've already warned about, so version skew logs once per type instead of per message.
+        private readonly HashSet<string> _warnedUnknownTypes = new HashSet<string>();
+
+        private readonly ITextOutput _textOutput;
+
         private JsonSerializerSettings _settings;
 
         /*
@@ -32,9 +36,10 @@ namespace FDG.Network.Messages
         };
         */
 
-        public MessageSerializer(IReadableGameDataStore gameDataStore)
+        public MessageSerializer(IReadableGameDataStore gameDataStore, ITextOutput? textOutput = null)
         {
             _settings = gameDataStore.GetJsonSettings();
+            _textOutput = textOutput ?? new ConsoleTextOutput();
         }
 
         public void RegisterMessageType<T>()
@@ -88,10 +93,14 @@ namespace FDG.Network.Messages
 
             if(_messageTypeRegistry.ContainsKey(typeString) == false)
             {
-                //This should be okay, not everyone cares about every message.
-                Debug.WriteLine($"Received unregistered message type {typeString}. Discarding.");
+                //Tolerating types this endpoint doesn't handle is intentional (not everyone cares about every
+                //message), but an *unknown* type usually means version skew — surface it visibly, once per type,
+                //rather than vanishing into Debug output that's compiled out of Release builds.
+                if (_warnedUnknownTypes.Add(typeString))
+                {
+                    _textOutput.Log($"Received unregistered message type {typeString}. Discarding (possible version mismatch). Further instances suppressed.");
+                }
                 return null;
-                //throw new InvalidOperationException($"Tried to deserialize unregistered type: {typeString}");
             }
 
             Type messageType = _messageTypeRegistry[typeString];

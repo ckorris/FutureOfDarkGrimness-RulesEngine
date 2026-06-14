@@ -100,6 +100,11 @@ namespace FDG.Stages
                 // models so it counts toward neither (the marker is cleared at this round's end below).
                 if (unit.Tokens.HasToken(TokenType.ArrivedFromReserve)) continue;
 
+                // A Shaken unit can neither seize nor contest objectives (#008). Units that activated
+                // and recovered this round have already had the token cleared, so only those still
+                // Shaken at end of round are excluded here.
+                if (unit.Tokens.HasToken(TokenType.Shaken)) continue;
+
                 float dx = model.Position.x - objPos.x;
                 float dz = model.Position.z - objPos.z;
                 float centerDist = MathF.Sqrt(dx * dx + dz * dz);

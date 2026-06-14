@@ -24,12 +24,15 @@ namespace FDG.Stages
 
             GameContext.Log($"Determine In Range Attackers: {inRange.Count} of {attackerModels.Count} models in melee range.");
 
-            // Defense-in-depth: with the dead-model fix to the charge/defender gates this shouldn't happen in
-            // normal play, but if no attacking model is in range (e.g. a future vertical or charge-move gap)
-            // the melee resolves with no attacks rather than feeding an empty pool into ChooseMeleeWeaponStage.
-            if (inRange.Count == 0)
+            // No attacker can actually strike when the swing pool is empty — either no model is in melee
+            // range, OR the in-range models carry no melee weapon (e.g. the melee-armed models died and only
+            // ranged-only survivors remain in range). Either way, resolve the melee with no attacks rather
+            // than feeding an empty pool into ChooseMeleeWeaponStage, which throws. SetInRangeAttackers has
+            // already rebuilt AvailableWeapons from exactly the in-range living models, so it is the precise
+            // precondition ChooseMeleeWeaponStage requires.
+            if (context.AvailableWeapons.Count == 0)
             {
-                GameContext.Log("No attacking models in melee range; melee resolves with no attacks.");
+                GameContext.Log("No in-range attacking model has a melee weapon; melee resolves with no attacks.");
                 await OnNoAttackersInRange.Activate(context);
                 return;
             }

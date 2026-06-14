@@ -106,6 +106,40 @@ namespace FDG.Tests
         }
 
         [Test]
+        public async Task InRangeButOnlyRangedWeapon_FizzlesWithoutEmptyPoolCrash()
+        {
+            // The attacking model is in base contact (positionally in melee range) but carries only a ranged
+            // weapon — the dead-units case: the melee-armed models died and a ranged-only survivor remains in
+            // range. inRange.Count > 0, but the swing pool is empty, so the guard must route to the fizzle path
+            // rather than entering ChooseMeleeWeaponStage with an empty pool.
+            DataBinding<UnitData> attacker = MakeRangedUnit(new Position(1f, 0f));
+            DataBinding<UnitData> defender = MakeUnit(new Position(0f, 0f));
+
+            bool noneInRangeFired = false;
+            bool proceededToDefenders = false;
+
+            CombatActionContext context = new CombatActionContext(_ctx, attacker, isMelee: true, isCharging: true);
+            context.SetDefender(defender);
+
+            DetermineInRangeAttackersStage stage =
+                new DetermineInRangeAttackersStage(_ctx, new NoOpLayer<ICombatActionContext>());
+            stage.ToDetermineDefenders.Bind("done");
+            stage.OnNoAttackersInRange.Bind("done");
+            stage.ToDetermineDefenders.OnWillActivate += _ => proceededToDefenders = true;
+            stage.OnNoAttackersInRange.OnWillActivate += _ => noneInRangeFired = true;
+
+            await stage.Enter(context);
+
+            Assert.That(context.InRangeAttackingModels, Has.Count.EqualTo(1),
+                "The model is within melee range positionally.");
+            Assert.That(context.AvailableWeapons, Is.Empty,
+                "Its only weapon is ranged, so the melee swing pool is empty.");
+            Assert.That(noneInRangeFired, Is.True,
+                "An in-range but melee-weaponless attacker fizzles instead of crashing ChooseMeleeWeaponStage.");
+            Assert.That(proceededToDefenders, Is.False);
+        }
+
+        [Test]
         public void MinDistanceBetweenUnits_IgnoresDeadModels()
         {
             // A corpse sits at base contact; the only living model is 20" away. Distance must reflect the
@@ -152,14 +186,19 @@ namespace FDG.Tests
 
         // Each model carries a single melee weapon (RangeInches 0) so the pool size equals the in-range model count.
         private DataBinding<UnitData> MakeUnit(params Position[] modelPositions)
+            => MakeUnit(() => new Weapon("Blade", rangeInches: 0f, attacks: 1, armorPenetration: 0), modelPositions);
+
+        // Each model carries a single ranged weapon (RangeInches > 0) and no melee weapon, so it never
+        // contributes to the melee swing pool even when positionally in range.
+        private DataBinding<UnitData> MakeRangedUnit(params Position[] modelPositions)
+            => MakeUnit(() => new Weapon("Rifle", rangeInches: 24f, attacks: 1, armorPenetration: 0), modelPositions);
+
+        private DataBinding<UnitData> MakeUnit(System.Func<Weapon> weaponFactory, params Position[] modelPositions)
         {
             List<DataBinding<ModelData>> modelBindings = new List<DataBinding<ModelData>>(modelPositions.Length);
             foreach (Position position in modelPositions)
             {
-                List<Weapon> weapons = new List<Weapon>
-                {
-                    new Weapon("Blade", rangeInches: 0f, attacks: 1, armorPenetration: 0)
-                };
+                List<Weapon> weapons = new List<Weapon> { weaponFactory() };
                 ModelData model = new ModelData(
                     baseRadiusInches: 0.75f,
                     weapons: weapons,

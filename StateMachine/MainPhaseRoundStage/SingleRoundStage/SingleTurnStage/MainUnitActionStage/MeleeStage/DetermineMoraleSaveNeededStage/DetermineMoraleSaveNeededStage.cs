@@ -1,4 +1,5 @@
-﻿using FDG.Utilities;
+﻿using FDG.Data;
+using FDG.Utilities;
 using System;
 
 namespace FDG.Stages
@@ -24,10 +25,10 @@ namespace FDG.Stages
             switch (meleeWinnerResult.Winner)
             {
                 case DetermineMeleeWinnerResults.EMeleeWinnerResult.AttackerWon:
-                    context.AddResult(new DetermineMoraleSaveNeededResult(context.DefendingUnit.Quality()));
+                    context.AddResult(new DetermineMoraleSaveNeededResult(context.DefendingUnit.Quality(), context.DefendingUnit));
                     break;
                 case DetermineMeleeWinnerResults.EMeleeWinnerResult.DefenderWon:
-                    context.AddResult(new DetermineMoraleSaveNeededResult(context.AttackingUnit.Quality()));
+                    context.AddResult(new DetermineMoraleSaveNeededResult(context.AttackingUnit.Quality(), context.AttackingUnit));
                     break;
                 case DetermineMeleeWinnerResults.EMeleeWinnerResult.Tie:
                     throw new InvalidOperationException($"Somehow reached the {nameof(DetermineMoraleSaveNeededStage)} stage " +
@@ -44,9 +45,17 @@ namespace FDG.Stages
     {
         public readonly int RollNeeded;
 
-        public DetermineMoraleSaveNeededResult(int rollNeeded)
+        /// <summary>
+        /// The unit that lost the melee and must take the morale test — the one a failed
+        /// roll makes Shaken or Routs. Carried here so the outcome stage doesn't have to
+        /// re-derive the loser from the winner result.
+        /// </summary>
+        public readonly DataBinding<UnitData> LosingUnit;
+
+        public DetermineMoraleSaveNeededResult(int rollNeeded, DataBinding<UnitData> losingUnit)
         {
             RollNeeded = rollNeeded;
+            LosingUnit = losingUnit;
         }
     }
 }

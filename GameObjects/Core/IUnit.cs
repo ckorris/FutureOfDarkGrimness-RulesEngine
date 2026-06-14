@@ -72,6 +72,32 @@ namespace FDG
         }
 
         /// <summary>
+        /// Whether the unit is at half strength or less, the threshold the morale rules use to
+        /// decide Rout vs. Shaken (and the wound-driven morale trigger). The measure is
+        /// shape-dependent, matching the GDF rulebook:
+        /// <list type="bullet">
+        /// <item>Multi-model units: by model count — half or more of the *starting* models are dead.
+        /// Dead models are retained in <see cref="IUnit.Models"/>, so the starting count is the list
+        /// size and the living count is the alive subset.</item>
+        /// <item>Single-model units: by wounds — remaining wounds are at or below half of
+        /// <see cref="IUnit.MaxWounds"/> (which is Tough-aware, set at unit creation).</item>
+        /// </list>
+        /// A plain wound-sum would misjudge multi-model units whose models have Tough &gt; 1, hence
+        /// the branch on model count.
+        /// </summary>
+        public static bool GetIsAtHalfStrength(this IUnit unit)
+        {
+            if (unit.Models.Count == 1)
+            {
+                return unit.RemainingWounds * 2f <= unit.MaxWounds;
+            }
+
+            int startingModels = unit.Models.Count;
+            int livingModels = unit.Models.Count(model => model.GetIsAlive());
+            return livingModels * 2 <= startingModels;
+        }
+
+        /// <summary>
         /// Whether any living model of this unit is on the table (a non-origin position). A unit kept in
         /// reserve (Ambush) has never been placed, so all its models sit at the default origin (0,0,0);
         /// such a unit is alive but not yet on the battlefield, and must be excluded from activation,

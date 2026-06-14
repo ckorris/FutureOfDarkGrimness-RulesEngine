@@ -1,6 +1,25 @@
-﻿
+﻿using FDG.Data;
+using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
+using FDG.Utilities;
+using System;
+
 namespace FDG.Stages
 {
+    /// <summary>
+    /// Applies the consequence of a *failed* melee morale test. Only reached on
+    /// <see cref="RollForMoraleStage.OnMoraleFailed"/>. Per the GDF rules a unit that fails
+    /// its morale test becomes Shaken — or, if it is already at half strength or less, it is
+    /// Routed (removed from play) instead.
+    ///
+    /// Routing has no dedicated removal primitive in the engine; a destroyed unit is
+    /// represented as "all models dead" (such units are filtered out of activation, turn
+    /// order, and objective scoring everywhere via <c>GetIsAlive</c>). So a Rout is applied
+    /// by dealing lethal wounds to every living model. Shaken is applied as a
+    /// <see cref="TokenClearTrigger.ManualOnly"/> token; its idle-activation behavior and
+    /// clearing are owned by the Shaken-activation work (#008), because a unit can become
+    /// Shaken on its own activation and must persist Shaken into its next one.
+    /// </summary>
     public class AssignMeleeMoralePenaltyStage : StageBase<ICombatActionContext>
     {
         public StageBinding OnAssignedPenalty;
@@ -12,9 +31,45 @@ namespace FDG.Stages
 
         public override async Task Enter(ICombatActionContext context)
         {
-            //TODO: Finish once we have a way to fatigue a unit.
-            GameContext.Log("Assigning melee morale penalty. (Not actually for now)");
+            if (context.QueryForResult(out DetermineMoraleSaveNeededResult moraleSaveNeeded) == false)
+            {
+                throw new InvalidOperationException($"{nameof(AssignMeleeMoralePenaltyStage)} reached but there was no " +
+                    $"{nameof(DetermineMoraleSaveNeededResult)} in the context metadata.");
+            }
+
+            DataBinding<UnitData> losingUnit = moraleSaveNeeded.LosingUnit;
+
+            if (losingUnit.GetValue().GetIsAtHalfStrength())
+            {
+                Rout(losingUnit);
+                GameContext.Log($"{losingUnit.Name()} failed its morale test at half strength and is Routed.");
+            }
+            else
+            {
+                ApplyShaken(losingUnit);
+                GameContext.Log($"{losingUnit.Name()} failed its morale test and is now Shaken.");
+            }
+
             OnAssignedPenalty.Activate(context);
+        }
+
+        private static void ApplyShaken(DataBinding<UnitData> unitBinding)
+        {
+            IUnit unit = unitBinding.GetValue();
+            if (unit.Tokens.HasToken(TokenType.Shaken)) return;
+
+            unit.Tokens.AddToken(new Token(TokenType.Shaken, 1, new TokenClearTrigger.ManualOnly()));
+        }
+
+        private static void Rout(DataBinding<UnitData> unitBinding)
+        {
+            foreach (IModel model in unitBinding.GetValue().Models)
+            {
+                if (!model.GetIsAlive()) continue;
+
+                float remaining = model.TotalWounds - model.WoundsDealt;
+                if (remaining > 0f) model.DealWounds(remaining);
+            }
         }
     }
 }

@@ -38,18 +38,44 @@ namespace FDG.Tests
                 "it recovers — the Shaken token clears at the end of its idle activation.");
         }
 
+        // The recover-or-keep decision reads the activation-start snapshot, NOT the action flags. This
+        // is the robustness guarantee: a unit that becomes Shaken after its activation began keeps the
+        // token even with no move/attack recorded — the snapshot is frozen at Reset and not re-read.
+        // (Tested directly on the context to avoid driving ChooseActionStage into a player request.)
         [Test]
-        public async Task BecameShakenMidActivation_KeepsTokenForNextActivation()
+        public void StartedActivationShaken_IsSnapshotAtReset_AndIsFlagIndependent()
         {
             var unit = MakeUnit(new Position(0, 0));
-            var unitCtx = NewActivation(unit);
-            unitCtx.RegisterAttackedFinished();   // it charged/struck before becoming Shaken
-            MakeShaken(unit);                     // then lost the melee
+
+            var notShakenCtx = NewActivation(unit);
+            Assert.That(notShakenCtx.StartedActivationShaken, Is.False,
+                "a unit not Shaken when its activation began snapshots false.");
+
+            MakeShaken(unit); // becomes Shaken mid-activation, no move/attack recorded
+            Assert.That(notShakenCtx.StartedActivationShaken, Is.False,
+                "the snapshot is frozen at activation start — applying Shaken afterward does not flip it, so the unit keeps the token for next time.");
+
+            var shakenCtx = NewActivation(unit); // a fresh activation that begins Shaken
+            Assert.That(shakenCtx.StartedActivationShaken, Is.True,
+                "a unit Shaken when its activation begins snapshots true and will recover.");
+        }
+
+        // A unit that became Shaken before its activation but has already acted (e.g. it was Shaken as a
+        // defender, then on its activation it... here simulated with the attacked flag) still recovers
+        // via the snapshot — and a unit Shaken only mid-activation does not. Drives the real stage on the
+        // no-actions path (HasAttacked gates every action off, so no player request is made).
+        [Test]
+        public async Task ShakenMidActivation_DrivenThroughStage_KeepsToken()
+        {
+            var unit = MakeUnit(new Position(0, 0));
+            var unitCtx = NewActivation(unit);    // snapshot: not Shaken
+            unitCtx.RegisterAttackedFinished();   // it acted...
+            MakeShaken(unit);                     // ...then became Shaken
 
             await RunChooseAction(unitCtx);
 
             Assert.That(unit.GetValue().Tokens.HasToken(TokenType.Shaken), Is.True,
-                "a unit Shaken after it has acted keeps the token — it idles on its *next* activation, not this one.");
+                "Shaken applied after activation start keeps the token — it idles on its *next* activation.");
         }
 
         // --- Objectives: a Shaken unit can neither seize nor contest ---

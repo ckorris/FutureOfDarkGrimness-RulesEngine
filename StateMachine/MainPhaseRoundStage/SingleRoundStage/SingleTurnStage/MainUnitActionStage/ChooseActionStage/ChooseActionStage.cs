@@ -33,16 +33,16 @@ namespace FDG.Stages
 
             GameContext.Log("Entered Choose Action.");
 
-            // A unit that begins its activation Shaken must stay idle for the whole activation and
-            // recovers (the token clears) at the end of it. It can only have been Shaken *before* this
-            // activation if it hasn't yet moved or attacked — a unit that becomes Shaken mid-activation
-            // (charge then lose the melee) keeps the token for its next activation, so guard on the
-            // still-untouched action flags. Clearing here is observably the same as clearing at end of
-            // activation: nothing reads Shaken between now and end-of-turn, and objectives reconcile at
-            // end of round. (#008)
-            IUnit activatingUnit = context.ActivatingUnit.GetValue();
-            if (activatingUnit.Tokens.HasToken(TokenType.Shaken) && !context.HasMoved && !context.HasAttacked)
+            // A unit that began its activation Shaken must stay idle for the whole activation and
+            // recovers (the token clears) at the end of it. The decision turns on whether it was
+            // Shaken when the activation *started* (snapshotted in UnitActionContext.Reset), not on
+            // what it's done since: a unit that becomes Shaken mid-activation (charge then lose the
+            // melee) keeps the token for its next activation. Clearing here is observably the same as
+            // clearing at end of activation — nothing reads Shaken between now and end-of-turn, and
+            // objectives reconcile at end of round. (#008)
+            if (context.StartedActivationShaken)
             {
+                IUnit activatingUnit = context.ActivatingUnit.GetValue();
                 activatingUnit.Tokens.RemoveTokens(TokenType.Shaken);
                 GameContext.Log($"{activatingUnit.Name} is Shaken — staying idle this activation and recovering.");
                 ToReconcileEndOfActivation.Activate(context);

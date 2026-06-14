@@ -37,7 +37,8 @@ namespace FDG.Stages
 
                 if (!MovementUtilities.DoesPathCrossDangerousTerrain(move, dangerous)) continue;
 
-                IDiceResults roll = gameContext.DiceRoller.Roll(6, 1);
+                // Decisive per-model die — one concrete face even under the probabilistic roller (#090).
+                IDiceResults roll = gameContext.DiceRoller.RollDecisive(6);
 
                 // Die faces start at SideMin (1), not 0 — find which face came up.
                 int rollValue = roll.SideMin;

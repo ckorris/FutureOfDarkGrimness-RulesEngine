@@ -16,8 +16,9 @@ namespace FDG.Stages
         {
             context.Log($"Entered {nameof(RollForObjectiveCountStage)}.");
 
-            // D3+2 gives 3–5 objectives. Roll a d6; sides are 1-indexed.
-            IDiceResults rollResult = context.GameContext.DiceRoller.Roll(1);
+            // D3+2 gives 3–5 objectives. Roll a decisive d6 — one concrete face even under the
+            // probabilistic roller (a plain Roll(1) would spread to an expected value); 1-indexed. #090.
+            IDiceResults rollResult = context.GameContext.DiceRoller.RollDecisive();
             int roll = rollResult.SideMin;
             for (int v = rollResult.SideMin; v <= rollResult.SideMax; v++)
                 if (rollResult.At(v) > 0f) { roll = v; break; }

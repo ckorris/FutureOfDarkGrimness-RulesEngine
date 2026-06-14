@@ -26,11 +26,13 @@ namespace FDG.Stages
                     $"{typeof(DetermineMoraleSaveNeededResult)} in the context metadata.");
             }
 
-            IDiceResults moraleRoll = GameContext.GameContext.DiceRoller.Roll(1);
+            // A morale test is a single decisive die: RollDecisive yields one concrete face even under
+            // the probabilistic roller (where a plain Roll(1) would spread to an expected value and make
+            // every meaningful test auto-fail). #090.
+            IDiceResults moraleRoll = GameContext.GameContext.DiceRoller.RollDecisive();
 
             int rollNeeded = determineMoraleSaveNeededResult.RollNeeded; //Shorthand.
 
-            //TODO: Below, we can't really fragment passes and fails with the probabilistic dice roller. Figure out something for that.
             if (moraleRoll.AtOrAbove(rollNeeded) >= 1f)
             {
                 GameContext.Log($"Morale test passed (needed {rollNeeded}).");

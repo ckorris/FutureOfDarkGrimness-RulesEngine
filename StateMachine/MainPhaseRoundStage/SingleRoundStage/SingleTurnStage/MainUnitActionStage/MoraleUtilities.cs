@@ -12,13 +12,14 @@ namespace FDG.Stages
     public static class MoraleUtilities
     {
         /// <summary>
-        /// Roll a single morale die against <paramref name="rollNeeded"/> (the unit's Quality). Returns
-        /// true if the test is passed. Mirrors <see cref="RollForMoraleStage"/>: with the probabilistic
-        /// roller, <c>AtOrAbove</c> is a probability, so only a certain pass counts as a pass.
+        /// Roll a single decisive morale die against <paramref name="rollNeeded"/> (the unit's Quality).
+        /// Returns true if the test is passed. Mirrors <see cref="RollForMoraleStage"/>: uses
+        /// <c>RollDecisive</c> so the test resolves to a real binary outcome under either roller (#090).
         /// </summary>
         public static bool TakeMoraleTest(IGameContext gameContext, int rollNeeded)
         {
-            IDiceResults roll = gameContext.DiceRoller.Roll(1);
+            // Decisive single die — one concrete face even under the probabilistic roller (#090).
+            IDiceResults roll = gameContext.DiceRoller.RollDecisive();
             return roll.AtOrAbove(rollNeeded) >= 1f;
         }
 

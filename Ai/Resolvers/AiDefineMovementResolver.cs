@@ -110,7 +110,7 @@ namespace FDG.Ai.Resolvers
             // the engine will reject.
             List<ModelMoveEntry> candidate = BuildCandidate(living, cx, cz, ndx, ndz, step, request);
             bool valid = MovementUtilities.ValidatePaths(candidate, request.MaxRushDistance,
-                request.MaxDistanceInches, enemyFootprints, allTerrain, out _);
+                request.MaxDistanceInches, enemyFootprints, request.CanMoveThroughEnemies, allTerrain, out _);
 
             int attempts = 0;
             while (!valid && attempts < MaxBackoffAttempts)
@@ -120,7 +120,7 @@ namespace FDG.Ai.Resolvers
                     ? StayInPlace(request)
                     : BuildCandidate(living, cx, cz, ndx, ndz, step, request);
                 valid = MovementUtilities.ValidatePaths(candidate, request.MaxRushDistance,
-                    request.MaxDistanceInches, enemyFootprints, allTerrain, out _);
+                    request.MaxDistanceInches, enemyFootprints, request.CanMoveThroughEnemies, allTerrain, out _);
                 attempts++;
             }
 
@@ -129,7 +129,7 @@ namespace FDG.Ai.Resolvers
                 // Reform in place to close any casualty gaps...
                 candidate = StayInPlace(request);
                 valid = MovementUtilities.ValidatePaths(candidate, request.MaxRushDistance,
-                    request.MaxDistanceInches, enemyFootprints, allTerrain, out _);
+                    request.MaxDistanceInches, enemyFootprints, request.CanMoveThroughEnemies, allTerrain, out _);
 
                 // ...but if even that is rejected (a unit intermingled with enemies can't re-pack without
                 // a model crossing an enemy base), hold exact positions — zero-length paths can't move

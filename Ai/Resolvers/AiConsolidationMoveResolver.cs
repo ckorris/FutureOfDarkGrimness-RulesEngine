@@ -1,6 +1,7 @@
 using FDG.Data;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
+using FDG.Stages;
 
 namespace FDG.Ai.Resolvers
 {
@@ -41,22 +42,65 @@ namespace FDG.Ai.Resolvers
             if (dist < 0.01f)
                 return Task.FromResult(StayInPlace(aliveModels));
 
-            float step = MathF.Min(request.MaxDistanceInches - 0.001f, dist);
-            float ndx = target.Value.dx / dist * step;
-            float ndz = target.Value.dz / dist * step;
+            float dirX = target.Value.dx / dist;
+            float dirZ = target.Value.dz / dist;
+            float maxStep = MathF.Min(request.MaxDistanceInches - 0.001f, dist);
 
-            // Scale the unit-wide delta so no model leaves the table — preserves cohesion.
+            // Back the step off until the same validator ConsolidateStage runs accepts the move, standing
+            // still as a last resort — so the AI never submits a consolidation the stage will reject (e.g. one
+            // that passes through or ends stacked on a different enemy unit). #090.
+            List<EnemyModelFootprint> footprints = GetLiveEnemyFootprints();
+            IEnumerable<ITerrain> terrain = _tableState.Terrain.Objects;
+
+            for (float step = maxStep; step >= 0.01f; step *= 0.5f)
+            {
+                List<ModelMoveEntry> candidate = BuildDeltaMove(aliveModels, dirX, dirZ, step);
+                if (MovementUtilities.ValidatePaths(candidate, request.MaxDistanceInches, footprints,
+                        request.CanMoveThroughEnemies, terrain, out _))
+                    return Task.FromResult(candidate);
+            }
+            return Task.FromResult(StayInPlace(aliveModels));
+        }
+
+        // Build a unit-wide delta move of `step` inches along (dirX,dirZ), scaled in to keep every base on
+        // the table. All models share the delta, so cohesion is preserved.
+        private static List<ModelMoveEntry> BuildDeltaMove(List<DataBinding<ModelData>> aliveModels,
+            float dirX, float dirZ, float step)
+        {
+            float ndx = dirX * step;
+            float ndz = dirZ * step;
             float scale = MaxInBoundsScale(aliveModels, ndx, ndz);
             ndx *= scale;
             ndz *= scale;
-
-            var entries = aliveModels.Select(mb =>
+            return aliveModels.Select(mb =>
             {
                 var m = mb.GetValue();
                 return new ModelMoveEntry(mb,
                     new List<Position> { new Position(m.Position.x + ndx, m.Position.z + ndz) });
             }).ToList();
-            return Task.FromResult(entries);
+        }
+
+        // Living enemy model footprints, tagged per-unit. Mirrors MovementUtilities.GetEnemyModelFootprints
+        // but reads from ITableState (the AI resolver's view).
+        private List<EnemyModelFootprint> GetLiveEnemyFootprints()
+        {
+            var footprints = new List<EnemyModelFootprint>();
+            int unitKey = 0;
+            foreach (var unit in _tableState.Units.Objects)
+            {
+                if (unit.PlayerID == _playerID) continue;
+                bool anyLiving = false;
+                foreach (var model in unit.Models)
+                {
+                    if (model is ModelData md && md.GetIsAlive() && (md.Position.x != 0f || md.Position.z != 0f))
+                    {
+                        footprints.Add(new EnemyModelFootprint(md.Position, md.BaseRadiusInches, unitKey));
+                        anyLiving = true;
+                    }
+                }
+                if (anyLiving) unitKey++;
+            }
+            return footprints;
         }
 
         private (float dx, float dz)? GetWipeoutDelta(float cx, float cz)

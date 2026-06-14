@@ -24,11 +24,15 @@ namespace FDG.Stages
         {
             DataBinding<UnitData> unitBinding = ResolveUnitBinding(unit);
 
+            bool canMoveThroughEnemies = Rules.Dispatch.MovementRuleQueries.CanMoveThroughEnemies(
+                unitBinding.GetValue(), _gameContext.RuleEvaluator);
+
             // A triggered move has a single budget; offer it in every slot so the resolver
             // renders one ring rather than the Advance/Rush/Charge tiers.
             var pathRequest = new DefineMovementPathRequest(unit.PlayerID, "Triggered Move",
                 unitBinding, maxInches, maxInches, maxInches,
-                WeaponSightProfileBuilder.For(unitBinding.GetValue(), _gameContext.RuleEvaluator));
+                WeaponSightProfileBuilder.For(unitBinding.GetValue(), _gameContext.RuleEvaluator),
+                canMoveThroughEnemies);
 
             List<ModelMoveEntry> movements = await _gameContext.PlayerRequester
                 .RequestDecision<DefineMovementPathRequest, List<ModelMoveEntry>>(pathRequest);

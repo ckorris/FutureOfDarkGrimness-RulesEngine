@@ -50,6 +50,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(RestrictActions), "restrictActions")]
 [JsonDerivedType(typeof(RangeModifier), "rangeModifier")]
 [JsonDerivedType(typeof(IgnoreTerrainEffects), "ignoreTerrainEffects")]
+[JsonDerivedType(typeof(IgnoreEnemyMovementBlock), "ignoreEnemyMovementBlock")]
 [JsonDerivedType(typeof(IgnoreCover), "ignoreCover")]
 [JsonDerivedType(typeof(IgnoreLineOfSight), "ignoreLineOfSight")]
 [JsonDerivedType(typeof(DeferDeployment), "deferDeployment")]
@@ -484,6 +485,19 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.IgnoreTerrainEffects());
+        }
+    }
+
+    /// <summary>
+    /// The bearer may move through enemy units (its path isn't blocked by enemy bases), though it still
+    /// may not end a move stacked on an enemy. The "Flying-only facet" foreshadowed by
+    /// <see cref="IgnoreTerrainEffects"/> — granted by Strafing today (a future Flying rule can reuse it).
+    /// </summary>
+    public sealed record IgnoreEnemyMovementBlock : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.IgnoreEnemyMovementBlock());
         }
     }
 

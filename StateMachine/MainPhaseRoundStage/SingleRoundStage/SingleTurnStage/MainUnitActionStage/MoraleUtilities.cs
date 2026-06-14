@@ -1,26 +1,74 @@
 using FDG.Data;
+using FDG.Rules.Definitions;
+using FDG.Rules.Dispatch;
+using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
 
 namespace FDG.Stages
 {
     /// <summary>
-    /// Shared morale resolution used by both the melee morale path (<see cref="AssignMeleeMoralePenaltyStage"/>)
-    /// and the ranged half-strength path (<see cref="ResolveRangedMoraleStage"/>): the d6-vs-Quality test
-    /// and the two failure outcomes — Shaken, or Rout when the unit is at half strength or less.
+    /// Shared morale resolution used by every morale path — the melee loss (<see cref="RollForMoraleStage"/>
+    /// → <see cref="AssignMeleeMoralePenaltyStage"/>) and the wound-driven half-strength path (shooting via
+    /// <see cref="ResolveRangedMoraleStage"/>, dangerous terrain): the rule-aware morale test and the two
+    /// failure outcomes — Shaken, or Rout when the unit is at half strength or less.
     /// </summary>
     public static class MoraleUtilities
     {
-        /// <summary>
-        /// Roll a single decisive morale die against <paramref name="rollNeeded"/> (the unit's Quality).
-        /// Returns true if the test is passed. Mirrors <see cref="RollForMoraleStage"/>: uses
-        /// <c>RollDecisive</c> so the test resolves to a real binary outcome under either roller (#090).
-        /// </summary>
-        public static bool TakeMoraleTest(IGameContext gameContext, int rollNeeded)
+        // Fearless's second-chance die passes on a 4+ regardless of Quality (rulebook fixed threshold).
+        private const int FEARLESS_REROLL_PASSES_ON = 4;
+
+        /// <summary>The result of a morale test: whether it passed, the (post-modifier, clamped) roll it
+        /// needed, and whether it only passed via a granted re-roll (Fearless) — the last two for logging.</summary>
+        public readonly struct MoraleTestOutcome
         {
+            public readonly bool Passed;
+            public readonly int RollNeeded;
+            public readonly bool PassedViaReroll;
+
+            public MoraleTestOutcome(bool passed, int rollNeeded, bool passedViaReroll)
+            {
+                Passed = passed;
+                RollNeeded = rollNeeded;
+                PassedViaReroll = passedViaReroll;
+            }
+        }
+
+        /// <summary>
+        /// Take a morale test for <paramref name="testingUnit"/> against <paramref name="baseRollNeeded"/>
+        /// (its Quality), applying morale special rules. Fires <see cref="EHookID.Morale_OnPreMoraleTest"/>
+        /// and folds any <c>ApplyRollModifier(Morale)</c> into the threshold (a +N makes the test easier, so
+        /// it lowers the roll needed; clamped so a 1 always fails and a 6 always passes). The test is a
+        /// single decisive die (#090). On a failure it fires <see cref="EHookID.Morale_OnMoraleTestComplete"/>
+        /// and, if a morale re-roll is granted (Fearless), rolls one more decisive die that passes on a 4+
+        /// regardless of Quality.
+        /// </summary>
+        public static MoraleTestOutcome TakeMoraleTest(IGameContext gameContext, IUnit testingUnit, int baseRollNeeded)
+        {
+            IReadOnlyList<RuleOperation> preTestOps = gameContext.RuleEvaluator.EvaluateAll(
+                new PreMoraleTestContext(testingUnit), (testingUnit, ERuleSeat.Actor, null));
+            RollModifierSink modifiers = new RollModifierSink();
+            modifiers.ApplyFrom(preTestOps);
+            int rollNeeded = DiceUtilities.ClampSuccessRollNeeded(baseRollNeeded - modifiers.Net(ERollKind.Morale));
+
             // Decisive single die — one concrete face even under the probabilistic roller (#090).
-            IDiceResults roll = gameContext.DiceRoller.RollDecisive();
-            return roll.AtOrAbove(rollNeeded) >= 1f;
+            if (gameContext.DiceRoller.RollDecisive().AtOrAbove(rollNeeded) >= 1f)
+            {
+                return new MoraleTestOutcome(passed: true, rollNeeded, passedViaReroll: false);
+            }
+
+            // Failed — offer morale rules a second chance (Fearless: a fresh decisive die, 4+ passes).
+            IReadOnlyList<RuleOperation> completeOps = gameContext.RuleEvaluator.EvaluateAll(
+                new MoraleTestContext(testingUnit), (testingUnit, ERuleSeat.Actor, null));
+            RerollSink rerollSink = new RerollSink();
+            rerollSink.ApplyFrom(completeOps);
+            if (rerollSink.RerollMoraleOnFailure
+                && gameContext.DiceRoller.RollDecisive().AtOrAbove(FEARLESS_REROLL_PASSES_ON) >= 1f)
+            {
+                return new MoraleTestOutcome(passed: true, rollNeeded, passedViaReroll: true);
+            }
+
+            return new MoraleTestOutcome(passed: false, rollNeeded, passedViaReroll: false);
         }
 
         /// <summary>
@@ -49,7 +97,7 @@ namespace FDG.Stages
             if (!unit.GetIsAlive()) return null;                              // wiped out outright — no test
             if (!CrossedIntoHalfStrength(remainingWoundsBefore, unit)) return null;
 
-            if (TakeMoraleTest(gameContext, unit.Quality)) return true;
+            if (TakeMoraleTest(gameContext, unit, unit.Quality).Passed) return true;
 
             Rout(unitBinding);
             return false;

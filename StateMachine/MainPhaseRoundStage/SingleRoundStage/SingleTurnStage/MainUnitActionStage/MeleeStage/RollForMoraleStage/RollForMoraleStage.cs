@@ -18,29 +18,29 @@ namespace FDG.Stages
 
         public override async Task Enter(ICombatActionContext context)
         {
-            //TODO: Modifiers need to be able to affect this roll. Can we make these combat stages?
-
             if (context.QueryForResult(out DetermineMoraleSaveNeededResult determineMoraleSaveNeededResult) == false)
             {
                 throw new InvalidOperationException($"{nameof(RollForMoraleStage)} reached but there was no " +
                     $"{typeof(DetermineMoraleSaveNeededResult)} in the context metadata.");
             }
 
-            // A morale test is a single decisive die: RollDecisive yields one concrete face even under
-            // the probabilistic roller (where a plain Roll(1) would spread to an expected value and make
-            // every meaningful test auto-fail). #090.
-            IDiceResults moraleRoll = GameContext.GameContext.DiceRoller.RollDecisive();
+            // Morale roll modifiers (#021) and the Fearless re-roll are applied by the shared, rule-aware
+            // morale test, which also resolves the decisive die (#090). This stage just routes the outcome.
+            IUnit testingUnit = determineMoraleSaveNeededResult.LosingUnit.GetValue();
+            MoraleUtilities.MoraleTestOutcome outcome = MoraleUtilities.TakeMoraleTest(
+                GameContext, testingUnit, determineMoraleSaveNeededResult.RollNeeded);
 
-            int rollNeeded = determineMoraleSaveNeededResult.RollNeeded; //Shorthand.
-
-            if (moraleRoll.AtOrAbove(rollNeeded) >= 1f)
+            if (outcome.Passed)
             {
-                GameContext.Log($"Morale test passed (needed {rollNeeded}).");
+                if (outcome.PassedViaReroll)
+                    GameContext.Log("Morale test failed but passed the Fearless re-roll (4+).");
+                else
+                    GameContext.Log($"Morale test passed (needed {outcome.RollNeeded}).");
                 OnMoralePassed.Activate(context);
             }
             else
             {
-                GameContext.Log($"Morale test failed (needed {rollNeeded}).");
+                GameContext.Log($"Morale test failed (needed {outcome.RollNeeded}).");
                 OnMoraleFailed.Activate(context);
             }
         }

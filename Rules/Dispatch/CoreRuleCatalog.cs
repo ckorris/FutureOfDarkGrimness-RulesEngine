@@ -24,7 +24,7 @@ public static class CoreRuleCatalog
     {
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
         Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Vanguard, Scout, Ambush, Thrust,
-        Blast, Takedown, Impact, Counter, MartialProwess, Strafing, Fear,
+        Blast, Takedown, Impact, Counter, MartialProwess, Strafing, Fear, Fearless,
     };
 
     /// <summary>
@@ -336,6 +336,25 @@ public static class CoreRuleCatalog
                 new Condition.Always(),
                 new Effect.ExtraMeleeWoundCount(new ValueSource.Arg(0)),
                 ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    // Morale (RollForMoraleStage) ------------------------------------------------
+
+    /// <summary>
+    /// Fearless: when this unit fails a morale test, it rolls a fresh die and passes on a 4+ regardless
+    /// of Quality. A passive rule at <see cref="EHookID.Morale_OnMoraleTestComplete"/> that requests a
+    /// morale re-roll on all failures; RollForMoraleStage executes the second chance with the rulebook's
+    /// fixed 4+ threshold. (Modifier-style morale rules — e.g. a future Courage — ride the separate
+    /// <see cref="EHookID.Morale_OnPreMoraleTest"/> hook instead.)
+    /// </summary>
+    public static SpecialRuleDefinition Fearless { get; } = new SpecialRuleDefinition("Fearless",
+        new[]
+        {
+            new HookEntry(EHookID.Morale_OnMoraleTestComplete,
+                new Condition.Always(),
+                new Effect.Reroll(ERollKind.Morale, new RerollCondition.AllFailures()),
+                ELifetime.ThisActivation),
         },
         Array.Empty<ActivatedAbility>());
 

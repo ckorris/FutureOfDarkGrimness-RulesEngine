@@ -1,6 +1,4 @@
 ﻿using FDG.Data;
-using FDG.Rules.Foundation;
-using FDG.Rules.Tokens;
 using FDG.Utilities;
 using System;
 
@@ -41,35 +39,16 @@ namespace FDG.Stages
 
             if (losingUnit.GetValue().GetIsAtHalfStrength())
             {
-                Rout(losingUnit);
+                MoraleUtilities.Rout(losingUnit);
                 GameContext.Log($"{losingUnit.Name()} failed its morale test at half strength and is Routed.");
             }
             else
             {
-                ApplyShaken(losingUnit);
+                MoraleUtilities.ApplyShaken(losingUnit);
                 GameContext.Log($"{losingUnit.Name()} failed its morale test and is now Shaken.");
             }
 
             OnAssignedPenalty.Activate(context);
-        }
-
-        private static void ApplyShaken(DataBinding<UnitData> unitBinding)
-        {
-            IUnit unit = unitBinding.GetValue();
-            if (unit.Tokens.HasToken(TokenType.Shaken)) return;
-
-            unit.Tokens.AddToken(new Token(TokenType.Shaken, 1, new TokenClearTrigger.ManualOnly()));
-        }
-
-        private static void Rout(DataBinding<UnitData> unitBinding)
-        {
-            foreach (IModel model in unitBinding.GetValue().Models)
-            {
-                if (!model.GetIsAlive()) continue;
-
-                float remaining = model.TotalWounds - model.WoundsDealt;
-                if (remaining > 0f) model.DealWounds(remaining);
-            }
         }
     }
 }

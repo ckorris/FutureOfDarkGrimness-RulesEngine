@@ -223,6 +223,42 @@ namespace FDG.Tests
             Assert.That(advanced, Is.True, "shooter should still close toward the enemy");
         }
 
+        [Test]
+        public async Task Resolve_MeleeUnitAlreadyInBaseContact_ProducesValidMove()
+        {
+            // A unit touching an enemy must not deadlock the resolver into emitting a move the (throwing)
+            // DefinePathStage rejects — it should hold / reform validly.
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var selfPlayer = new PlayerID(System.Guid.NewGuid());
+            var enemyPlayer = new PlayerID(System.Guid.NewGuid());
+
+            var enemyPos = new Position(5f, 0f);
+            // Mover sits in base contact (1.5" centre-to-centre) with the enemy.
+            var mover = new ModelData(0.75f, new List<Weapon>(), new Position(3.5f, 0f), store);
+            var moverBinding = store.GetDataBinding<ModelData>(store.Create(mover));
+            var moverUnit = new UnitData(selfPlayer, "Melee", 4, 4,
+                new List<DataBinding<ModelData>> { moverBinding });
+            var moverUnitBinding = store.GetDataBinding<UnitData>(store.Create(moverUnit));
+
+            var enemy = new ModelData(0.75f, new List<Weapon>(), enemyPos, store);
+            var enemyBinding = store.GetDataBinding<ModelData>(store.Create(enemy));
+            store.Create(new UnitData(enemyPlayer, "Enemies", 4, 4,
+                new List<DataBinding<ModelData>> { enemyBinding }));
+
+            var tableState = new TableState(store);
+            var resolver = new AiDefineMovementResolver(tableState, selfPlayer);
+            var request = new DefineMovementPathRequest(selfPlayer, "Move", moverUnitBinding,
+                maxAdvanceDistance: 6f, maxRushDistance: 12f, maxDistanceInches: 12f);
+
+            List<ModelMoveEntry> result = await resolver.Resolve(request);
+
+            var footprints = new List<EnemyModelFootprint> { new EnemyModelFootprint(enemyPos, 0.75f, 0) };
+            bool valid = MovementUtilities.ValidatePaths(result, request.MaxRushDistance,
+                request.MaxDistanceInches, footprints, new List<ITerrain>(), out var errors);
+            Assert.That(valid, Is.True,
+                "A unit already in contact must still get a valid move: " + string.Join(", ", errors.Select(e => e.ToString())));
+        }
+
         // Smallest base-to-base gap between any moved model's end position and the enemy (both radius 0.75").
         private static float MinGap(List<ModelMoveEntry> moves, Position enemy)
         {

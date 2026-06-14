@@ -130,6 +130,70 @@ namespace FDG.Tests
             Assert.That(ok, Is.True, Why(errors));
         }
 
+        // --- "Already in base contact" edge cases (float robustness). A model touching an enemy must not
+        // be reported as having no legal move: it can always retreat, slide along, or hold. Contact is at
+        // 1.5" centre-to-centre for two 0.75" bases; a charge may legally land up to 0.1" overlapped. ---
+
+        [Test]
+        public void StartsInBaseContact_MovesStraightAway_Accepted()
+        {
+            DataBinding<ModelData> model = MakeModel(new Position(3.5f, 0)); // touching the enemy at (5,0)
+            ModelMoveEntry move = new ModelMoveEntry(model, new List<Position> { new Position(1f, 0) });
+
+            bool ok = Validate(move, Enemy(new Position(5, 0)), out var errors);
+
+            Assert.That(ok, Is.True, Why(errors));
+        }
+
+        [Test]
+        public void StartsInBaseContact_HoldsPosition_Accepted()
+        {
+            DataBinding<ModelData> model = MakeModel(new Position(3.5f, 0));
+            ModelMoveEntry move = new ModelMoveEntry(model, new List<Position> { new Position(3.5f, 0) });
+
+            bool ok = Validate(move, Enemy(new Position(5, 0)), out var errors);
+
+            Assert.That(ok, Is.True, Why(errors));
+        }
+
+        [Test]
+        public void StartsInBaseContact_SlidesAlongStayingInContact_Accepted()
+        {
+            //Repositions sideways while still touching the enemy (pile-in-style shuffle).
+            DataBinding<ModelData> model = MakeModel(new Position(3.5f, 0));
+            ModelMoveEntry move = new ModelMoveEntry(model, new List<Position> { new Position(3.5f, 0.5f) });
+
+            bool ok = Validate(move, Enemy(new Position(5, 0)), out var errors);
+
+            Assert.That(ok, Is.True, Why(errors));
+        }
+
+        [Test]
+        public void StartsSlightlyOverlapping_MovesAway_Accepted()
+        {
+            //Worst legal post-charge state: 0.1" of base overlap (gap = -0.1). Retreating must still be legal
+            //despite the start point sitting on the wrong side of the contact threshold.
+            DataBinding<ModelData> model = MakeModel(new Position(3.6f, 0)); // 1.4" centre-to-centre = -0.1" gap
+            ModelMoveEntry move = new ModelMoveEntry(model, new List<Position> { new Position(1f, 0) });
+
+            bool ok = Validate(move, Enemy(new Position(5, 0)), out var errors);
+
+            Assert.That(ok, Is.True, Why(errors));
+        }
+
+        [Test]
+        public void StartsInBaseContact_PushesDeeperIntoEnemy_Rejected()
+        {
+            //Negative control: a model in contact may not bulldoze further INTO the enemy base.
+            DataBinding<ModelData> model = MakeModel(new Position(3.5f, 0));
+            ModelMoveEntry move = new ModelMoveEntry(model, new List<Position> { new Position(4.2f, 0) });
+
+            bool ok = Validate(move, Enemy(new Position(5, 0)), out var errors);
+
+            Assert.That(ok, Is.False);
+            Assert.That(errors.Any(e => e.ErrorReasonType == EErrorReasonType.MovingThroughEnemyUnit), Is.True);
+        }
+
         private static List<EnemyModelFootprint> Enemy(Position center)
             => new List<EnemyModelFootprint> { new EnemyModelFootprint(center, 0.75f, unitKey: 0) };
 

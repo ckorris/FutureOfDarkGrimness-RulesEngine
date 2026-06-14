@@ -90,9 +90,13 @@ namespace FDG.Stages
                     {
                         foreach (DataBinding<UnitData> unitBinding in army.UnitBindings)
                         {
-                            // Rules like Scout pull the unit out of the normal pool here (the
-                            // Deployment_OnPreDeploymentSelect "when") to be placed by a later pass.
-                            if (TryGetDefer(unitBinding, out RuleOperation.DeferDeployment defer))
+                            // Scout-style rules (AfterNormalDeployment) pull the unit out of the normal
+                            // pool here (the Deployment_OnPreDeploymentSelect "when") to be placed by a
+                            // later pass. Ambush-style rules (LaterRound) stay in the normal pool: the
+                            // player decides per-unit at selection time whether to hold it in reserve
+                            // (see ChooseUnitToDeployStage), so the unit still appears in the deploy list.
+                            if (TryGetDefer(unitBinding, out RuleOperation.DeferDeployment defer)
+                                && defer.Timing == EDeferTiming.AfterNormalDeployment)
                             {
                                 _deferredUnits.Add(new DeferredUnitEntry(unitBinding, defer));
                             }

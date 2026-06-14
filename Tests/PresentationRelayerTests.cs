@@ -72,6 +72,32 @@ namespace FDG.Tests
             Assert.That(clock.Waits, Is.EqualTo(new[] { TimeSpan.FromMilliseconds(120) }));
         }
 
+        [Test]
+        public async Task Present_TwoLocalPlayersShareOneSink_BeatDeliveredOnce()
+        {
+            // Two local players on the same machine resolve to the SAME on-screen sink (one
+            // PresentationPlayer). The relayer must deliver each beat to that sink ONCE, not once per
+            // slot — otherwise every banner/dice beat renders and sounds twice.
+            GameDataStore store = NewStore();
+            var sharedSink = new RecordingPresentationSink();
+
+            var slots = new[]
+            {
+                NewSlot(store, 0, new TestPlayerController("Local A", sharedSink)),
+                NewSlot(store, 1, new TestPlayerController("Local B", sharedSink)),
+            };
+            var psm = new PlayerSlotManager(slots);
+            var clock = new FakePresentationClock();
+            var relayer = new PresentationRelayer(psm, clock);
+
+            var beat = new TestBeat(TimeSpan.FromMilliseconds(200));
+            await relayer.Present(beat);
+
+            Assert.That(sharedSink.Beats, Is.EqualTo(new[] { beat }),
+                "a shared sink receives each beat exactly once, not once per local player");
+            Assert.That(clock.Waits, Is.EqualTo(new[] { TimeSpan.FromMilliseconds(200) }));
+        }
+
         /// <summary>Minimal IPlayerController whose only meaningful member is its presentation sink.</summary>
         private sealed class TestPlayerController : IPlayerController
         {

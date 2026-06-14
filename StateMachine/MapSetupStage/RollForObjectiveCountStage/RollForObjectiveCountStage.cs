@@ -1,3 +1,5 @@
+using FDG.Presentation.Beats;
+
 namespace FDG.Stages
 {
     public class RollForObjectiveCountStage : StageBase<IMapSetupContext>
@@ -23,6 +25,11 @@ namespace FDG.Stages
             int objectiveCount = d3 + 2;
 
             context.Log($"Rolled {roll} - {objectiveCount} objectives will be placed.");
+
+            // Show the d6 (the rolled face lights up), then a big banner with the resulting count.
+            await context.GameContext.Presenter.Present(
+                DiceRolledBeat.From(rollResult, roll, GameContext.Settings.RandomnessType, "Objective Count"));
+            await context.Announce($"{objectiveCount} Objectives", new TextColor(255, 210, 80, 255));
 
             context.SetObjectiveCount(objectiveCount);
             OnRollComplete.Activate(context);

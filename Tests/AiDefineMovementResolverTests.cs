@@ -100,5 +100,47 @@ namespace FDG.Tests
             bool advanced = result.Any(e => e.Positions.Count > 0 && e.Positions[e.Positions.Count - 1].x > 0.5f);
             Assert.That(advanced, Is.True, "AI should advance toward the enemy when the lane is clear.");
         }
+
+        [Test]
+        public async Task Resolve_CasualtyThinnedUnit_NoEnemies_ReformsToCohesionInsteadOfCrashing()
+        {
+            // A 5-model unit deployed in a row loses its middle 3 to casualties, leaving two survivors far
+            // apart. With no enemies the AI "stays put" — but a literal stay submits those two survivors
+            // >1" apart, which DefinePathStage rejects (and crashes). Staying must reform them to cohesion.
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var selfPlayer = new PlayerID(System.Guid.NewGuid());
+
+            const float r = 0.551f;
+            const float spacing = 2f * r + 0.1f; // matches CohesiveFormation grid spacing
+            var bindings = new List<DataBinding<ModelData>>();
+            for (int i = 0; i < 5; i++)
+            {
+                var m = new ModelData(r, new List<Weapon>(), new Position(i * spacing, 20f), store);
+                bindings.Add(store.GetDataBinding<ModelData>(store.Create(m)));
+            }
+            // Kill the middle three, leaving survivors at the two ends (~4.4" apart, far out of cohesion).
+            foreach (int dead in new[] { 1, 2, 3 })
+                bindings[dead].GetValue().DealWounds(bindings[dead].GetValue().TotalWounds);
+
+            var unit = new UnitData(selfPlayer, "Survivors", 4, 4, bindings);
+            var unitBinding = store.GetDataBinding<UnitData>(store.Create(unit));
+            store.Create(new ArmyData(selfPlayer, new List<DataBinding<UnitData>> { unitBinding }));
+
+            // No enemy units on the table → the AI takes the "stay in place" path.
+            var tableState = new TableState(store);
+            var resolver = new AiDefineMovementResolver(tableState, selfPlayer);
+
+            var request = new DefineMovementPathRequest(selfPlayer, "Move", unitBinding,
+                maxAdvanceDistance: 6f, maxRushDistance: 12f, maxDistanceInches: 12f);
+
+            List<ModelMoveEntry> result = await resolver.Resolve(request);
+
+            bool valid = MovementUtilities.ValidatePaths(result, request.MaxRushDistance,
+                request.MaxDistanceInches, new List<Position>(), new List<ITerrain>(), out var errors);
+            Assert.That(valid, Is.True,
+                "Staying put with casualty survivors must still be an engine-valid (cohesive) move: "
+                + string.Join(", ", errors.Select(e => e.ToString())));
+            Assert.That(errors.Any(e => e.ErrorReasonType == EErrorReasonType.TooFarFromAnyUnitModel), Is.False);
+        }
     }
 }

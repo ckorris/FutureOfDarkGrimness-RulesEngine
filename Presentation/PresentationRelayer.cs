@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using FDG.Players;
@@ -25,10 +26,18 @@ namespace FDG.Presentation
 
         public Task Present(PresentationBeat beat, CancellationToken ct = default)
         {
+            // Deliver to each DISTINCT sink once. Two local players on one machine share a single
+            // on-screen sink (both LocalPlayerControllers resolve to the same PresentationPlayer), so
+            // fanning per-slot would render — and sound — every beat twice. Remote players each have
+            // their own NetworkedPresentationSink, so they're unaffected.
+            HashSet<IPresentationSink> delivered = new HashSet<IPresentationSink>();
             for (int i = 0; i < _playerSlotManager._playerSlots.Length; i++)
             {
-                IPlayerController? controller = _playerSlotManager._playerSlots[i].Controller;
-                controller?.PresentationSink?.OnBeat(beat);
+                IPresentationSink? sink = _playerSlotManager._playerSlots[i].Controller?.PresentationSink;
+                if (sink != null && delivered.Add(sink))
+                {
+                    sink.OnBeat(beat);
+                }
             }
 
             return _clock.Wait(beat.NominalDuration, ct);

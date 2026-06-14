@@ -1,10 +1,13 @@
 
 
 using FDG;
+using FDG.Presentation;
+using FDG.Presentation.Beats;
 using FDG.Stages;
 using NUnit.Framework.Internal;
 using System;
 using System.Text;
+using System.Threading.Tasks;
 
 public static class DiceUtilities
 {
@@ -24,7 +27,8 @@ public static class DiceUtilities
         return Math.Clamp(unclampedRoll, MINIMUM_SUCCESS_ROLL, MAXIMUM_SUCCESS_ROLL);
     }
 
-    public static T RollOff_SingleWinner<T>(List<T> competitors, List<string> competitorNames, ITextOutput logger)
+    public static async Task<T> RollOff_SingleWinner<T>(List<T> competitors, List<string> competitorNames,
+        ITextOutput logger, IPresenter? presenter = null, string rollLabel = "Roll-Off")
     {
         if (competitors.Count != competitorNames.Count)
         {
@@ -62,6 +66,8 @@ public static class DiceUtilities
                 highest = Math.Max(highest, roll);
             }
 
+            await PresentRollOffDice(presenter, rolls, highest, rollLabel);
+
             //Not the most optimized to keep allocating lists but it's rare and not critical, so I prefer readability.
             List<T> winners = new List<T>();
             List<string> winnerNames = new List<string>();
@@ -74,8 +80,6 @@ public static class DiceUtilities
                     winnerNames.Add(competitorNames[i]);
                 }
             }
-
-            //TODO: Show visuals.
 
             if (winners.Count > 1)
             {
@@ -108,7 +112,8 @@ public static class DiceUtilities
     /// <returns>Ordered list of winners.</returns>
     /// <exception cref="InvalidOperationException">If <paramref name="competitors"/> and <paramref name="competitorNames"/> don't match in length.</exception>
     /// <exception cref="InvalidOperationException">If <paramref name="competitors"/> doesn't have at least two values.</exception>
-    public static List<T> RollOff_Ordered<T>(List<T> competitors, List<string> competitorNames, ITextOutput logger)
+    public static async Task<List<T>> RollOff_Ordered<T>(List<T> competitors, List<string> competitorNames,
+        ITextOutput logger, IPresenter? presenter = null, string rollLabel = "Roll-Off")
     {
         if (competitors.Count != competitorNames.Count)
         {
@@ -118,13 +123,14 @@ public static class DiceUtilities
         Random random = new Random();
 
 
-        return RankGroup<T>(competitors, competitorNames, logger, random);
+        return await RankGroup<T>(competitors, competitorNames, logger, random, presenter, rollLabel);
     }
 
 
     /// <summary>
-    /// Recursive helper for <see cref="RollOff_Ordered{T}(List{T}, List{string}, ITextOutput)"/>
-    private static List<T> RankGroup<T>(List<T> group, List<string> groupNames, ITextOutput logger, Random random)
+    /// Recursive helper for <see cref="RollOff_Ordered{T}(List{T}, List{string}, ITextOutput, IPresenter, string)"/>
+    private static async Task<List<T>> RankGroup<T>(List<T> group, List<string> groupNames, ITextOutput logger,
+        Random random, IPresenter? presenter, string rollLabel)
     {
         if (group.Count == 1)
         {
@@ -145,6 +151,8 @@ public static class DiceUtilities
             logger.Log($"{groupNames[i]} rolled {roll}.");
             highest = Math.Max(highest, roll);
         }
+
+        await PresentRollOffDice(presenter, rolls, highest, rollLabel);
 
         //Bucket competitors by their roll.
         Dictionary<int, List<T>> rollBuckets = new Dictionary<int, List<T>>();
@@ -189,7 +197,7 @@ public static class DiceUtilities
                 sb.Append('.');
                 logger.Log(sb.ToString());
 
-                ranked.AddRange(RankGroup(bucket, names, logger, random));
+                ranked.AddRange(await RankGroup(bucket, names, logger, random, presenter, rollLabel));
 
             }
         }
@@ -197,7 +205,28 @@ public static class DiceUtilities
         return ranked;
     }
 
+    /// <summary>
+    /// Presents one roll-off round's dice (each competitor's d6) so the player can watch the result, with
+    /// the winning face(s) highlighted as "successes". No-op when no presenter is supplied (e.g. tests).
+    /// </summary>
+    private static async Task PresentRollOffDice(IPresenter? presenter, int[] rolls, int highest, string rollLabel)
+    {
+        if (presenter == null)
+        {
+            return;
+        }
 
+        // A roll-off is always real dice (random.Next, not the context roller), so it's REALISTIC mode.
+        // The histogram is per-face counts over a d6; the highest roll is the "success" so it lights up.
+        float[] faceCounts = new float[6];
+        foreach (int roll in rolls)
+        {
+            faceCounts[roll - 1] += 1f;
+        }
+
+        await presenter.Present(new DiceRolledBeat(faceCounts, sideMin: 1, successThreshold: highest,
+            ERandomnessType.Realistic, rollLabel));
+    }
 }
 
 

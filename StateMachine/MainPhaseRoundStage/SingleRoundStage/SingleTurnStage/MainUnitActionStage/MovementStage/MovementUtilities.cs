@@ -351,25 +351,36 @@ namespace FDG.Stages
             //TODO: Implement.
         }
 
+        // Float slack on the cohesion limits so a move that lands a model exactly on the 1"/9" boundary
+        // isn't rejected by sub-thousandth rounding in the 3D base-to-base distance.
+        private const float COHESION_EPSILON_INCHES = 0.001f;
+
         private static void ValidateCoherency(List<ModelMoveEntry> moves,
             ref List<ReasonForInvalidMove> reasonsForInvalidMove)
         {
-            //If there's just one model, there's nothing to compare.
-            if (moves.Count <= 1)
-            {
-                return;
-            }
-
             List<DataBinding<ModelData>> models = new List<DataBinding<ModelData>>();
             List<Position> positions = new List<Position>();
 
-            //Figure out where all the models will be after moving.
+            //Figure out where all the models will be after moving. Dead models are out of play — they
+            //leave a hole in the formation rather than anchoring it, so a casualty's last position must
+            //not count toward cohesion (it would wrongly fail the survivors for being "too far" from a corpse).
             foreach (ModelMoveEntry moveEntry in moves)
             {
+                if (moveEntry.Model.GetValue().GetIsAlive() == false)
+                {
+                    continue;
+                }
+
                 models.Add(moveEntry.Model);
-                positions.Add(moveEntry.Positions.Count > 0 
-                    ? moveEntry.Positions.Last() 
+                positions.Add(moveEntry.Positions.Count > 0
+                    ? moveEntry.Positions.Last()
                     : moveEntry.Model.GetValue().PositionBinding.GetValue());
+            }
+
+            //If there's just one living model, there's nothing to compare.
+            if (models.Count <= 1)
+            {
+                return;
             }
 
             //Check each model's distance against all the others, for both kinds of coherency.
@@ -401,12 +412,12 @@ namespace FDG.Stages
 
             for (int i = 0; i < models.Count; i++)
             {
-                if (nearestDistances[i] > GameWideConstants.MAX_MODEL_DISTANCE_FROM_ANY_OTHER_MODEL_INCHES)
+                if (nearestDistances[i] > GameWideConstants.MAX_MODEL_DISTANCE_FROM_ANY_OTHER_MODEL_INCHES + COHESION_EPSILON_INCHES)
                 {
                     reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.TooFarFromAnyUnitModel, models[i]));
                 }
 
-                if (farthestDistances[i] > GameWideConstants.MAX_MODEL_DISTANCE_FROM_ALL_OTHER_MODELS_INCHES)
+                if (farthestDistances[i] > GameWideConstants.MAX_MODEL_DISTANCE_FROM_ALL_OTHER_MODELS_INCHES + COHESION_EPSILON_INCHES)
                 {
                     reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.TooFarFromAllUnitModels, models[i]));
                 }

@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FDG.Data;
@@ -57,6 +58,35 @@ namespace FDG
         public static IPlayerRequestByID PlayerRequester(this IGameContextAccessor contextAccessor)
         {
             return contextAccessor.GameContext.PlayerRequester;
+        }
+
+        /// <summary>Human-readable name for a player (from the lobby/slot info), or a sensible fallback.</summary>
+        public static string GetPlayerName(this IGameContextAccessor contextAccessor, PlayerID playerID)
+        {
+            IPlayerSlotInfo? slot = contextAccessor.GameContext.TableState.Players.Objects
+                .FirstOrDefault(p => p.PlayerID == playerID);
+            if (slot != null && slot.IsFilled && !string.IsNullOrWhiteSpace(slot.Name))
+            {
+                return slot.Name;
+            }
+            // Unfilled slots carry the "[Empty]" placeholder name (e.g. headless play with no lobby);
+            // fall back to the team number rather than leaking that placeholder into a banner.
+            return slot != null ? $"Team {slot.TeamNumber}" : "A player";
+        }
+
+        /// <summary>Name to represent a team in announcements — its first player's name, falling back to "Team N".</summary>
+        public static string GetTeamLeadName(this IGameContextAccessor contextAccessor, ITeam team)
+        {
+            if (team.Players.Count > 0)
+            {
+                IPlayerSlotInfo? slot = contextAccessor.GameContext.TableState.Players.Objects
+                    .FirstOrDefault(p => p.PlayerID == team.Players[0]);
+                if (slot != null && slot.IsFilled && !string.IsNullOrWhiteSpace(slot.Name))
+                {
+                    return slot.Name;
+                }
+            }
+            return $"Team {team.TeamNumber}";
         }
     }
 

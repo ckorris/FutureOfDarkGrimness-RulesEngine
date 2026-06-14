@@ -316,7 +316,7 @@ namespace FDG.Tests
             public IPlayerRequestByID PlayerRequester => null!;
             public TableState TableState { get; }
             public IReadWriteableGameDataStore GameDataStore { get; }
-            public IPresenter Presenter => null!;
+            public IPresenter Presenter { get; } = new LocalPresenter(null, new InstantPresentationClock());
             public GameSettings Settings { get; } = GameSettings.GetDefault();
             public List<ITeam>? FirstDeploymentRollOrder => null;
             IGameContext IGameContextAccessor.GameContext => this;

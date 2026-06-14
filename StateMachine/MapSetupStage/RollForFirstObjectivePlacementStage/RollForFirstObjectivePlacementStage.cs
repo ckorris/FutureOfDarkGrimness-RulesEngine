@@ -23,7 +23,8 @@ namespace FDG.Stages
             List<ITeam> teams = context.GameContext.TableState.Teams.Objects.ToList();
             List<string> teamNames = teams.Select(t => $"Team {t.TeamNumber}").ToList();
 
-            ITeam winner = DiceUtilities.RollOff_SingleWinner(teams, teamNames, context.GameContext.TextOutput);
+            ITeam winner = await DiceUtilities.RollOff_SingleWinner(teams, teamNames,
+                context.GameContext.TextOutput, context.GameContext.Presenter, "Objective Roll-Off");
 
             // Build the alternation order: winner first, then the rest in their existing order.
             var order = new List<ITeam> { winner };
@@ -32,6 +33,8 @@ namespace FDG.Stages
                     order.Add(t);
 
             context.Log($"Team {winner.TeamNumber} won the roll-off and will place objectives first.");
+            await context.Announce($"{context.GetTeamLeadName(winner)} places objectives first",
+                new TextColor(120, 200, 255, 255));
 
             context.SetObjectivePlacementTeamOrder(order);
             OnRollComplete.Activate(context);

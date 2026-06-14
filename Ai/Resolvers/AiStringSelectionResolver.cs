@@ -23,6 +23,12 @@ namespace FDG.Ai.Resolvers
             if (request.Instructions == "Choose Action")
                 return Task.FromResult(ChooseAction(request.ValidOptions));
 
+            // Ambush hold-or-deploy: the AI's reserve placement isn't tactical (it drops the unit at the
+            // first legal row from a table edge, ignoring objectives and the enemy), so holding only
+            // strands the unit. Always deploy normally instead until reserve placement is smarter.
+            if (request.ValidOptions.Contains(ChooseUnitToDeployStage.DEPLOY_NORMALLY_CHOICE))
+                return Task.FromResult(ChooseUnitToDeployStage.DEPLOY_NORMALLY_CHOICE);
+
             // Fall back to first valid option for any other string selection.
             return Task.FromResult(request.ValidOptions[0]);
         }

@@ -156,9 +156,26 @@ namespace FDG.Ai.Resolvers
             return MathF.Sqrt(dx * dx + dz * dz);
         }
 
-        private static List<ModelMoveEntry> StayInPlace(DefineMovementPathRequest request) =>
-            request.UnitDataBinding.GetValue().ModelBindings
-                .Select(mb => new ModelMoveEntry(mb, new List<Position> { mb.GetValue().Position }))
-                .ToList();
+        // "Stay put", but reform the living models into a cohesive grid at their current centroid rather
+        // than literally standing still. After casualties the survivors can be >1" apart (the dead left
+        // gaps between them), so a literal stay would submit a cohesion-breaking move that DefinePathStage
+        // rejects with no retry — crashing the game. Reforming in place keeps this fallback always valid.
+        // 0–1 living models can't break cohesion, so they keep their exact positions.
+        private static List<ModelMoveEntry> StayInPlace(DefineMovementPathRequest request)
+        {
+            List<DataBinding<ModelData>> living = request.UnitDataBinding.GetValue().ModelBindings
+                .Where(mb => mb.GetValue().GetIsAlive()).ToList();
+
+            if (living.Count <= 1)
+            {
+                return request.UnitDataBinding.GetValue().ModelBindings
+                    .Select(mb => new ModelMoveEntry(mb, new List<Position> { mb.GetValue().Position }))
+                    .ToList();
+            }
+
+            float cx = living.Average(mb => mb.GetValue().Position.x);
+            float cz = living.Average(mb => mb.GetValue().Position.z);
+            return CohesiveFormation.PackGrid(living, cx, cz);
+        }
     }
 }

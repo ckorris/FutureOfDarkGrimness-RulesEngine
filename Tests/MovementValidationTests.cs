@@ -409,6 +409,89 @@ namespace FDG.Tests
             Assert.That(MovementUtilities.DoesPathCrossDangerousTerrain(move, terrain), Is.True);
         }
 
+        [Test]
+        public void ValidatePaths_DeadModel_DoesNotAnchorCohesion()
+        {
+            // A casualty's body must not count toward cohesion: a dead model 1.5" base-to-base from the
+            // lone survivor used to fail the survivor for being "too far from the closest model" and crash
+            // DefinePathStage. With the dead model ignored, the single living model has nothing to compare to.
+            DataBinding<ModelData> living = MakeModel(new Position(0, 0));
+            DataBinding<ModelData> dead = MakeModel(new Position(3, 0)); // center 3" → 1.5" base-to-base
+            dead.GetValue().DealWounds(dead.GetValue().TotalWounds);
+
+            bool ok = MovementUtilities.ValidatePaths(
+                StayInPlace(living, dead),
+                maxDistanceInches: 12f,
+                terrain: null,
+                out List<ReasonForInvalidMove> errors);
+
+            Assert.That(errors.Any(e => e.ErrorReasonType == EErrorReasonType.TooFarFromAnyUnitModel), Is.False,
+                "a dead model must not break the survivor's cohesion.");
+            Assert.That(ok, Is.True);
+        }
+
+        [Test]
+        public void ValidatePaths_TwoLivingModelsTooFarApart_RejectedForCohesion()
+        {
+            // Control for the dead-model case: two LIVING models 1.5" base-to-base apart still fail cohesion.
+            DataBinding<ModelData> a = MakeModel(new Position(0, 0));
+            DataBinding<ModelData> b = MakeModel(new Position(3, 0)); // 1.5" base-to-base
+
+            bool ok = MovementUtilities.ValidatePaths(
+                StayInPlace(a, b),
+                maxDistanceInches: 12f,
+                terrain: null,
+                out List<ReasonForInvalidMove> errors);
+
+            Assert.That(ok, Is.False);
+            Assert.That(errors.Any(e => e.ErrorReasonType == EErrorReasonType.TooFarFromAnyUnitModel), Is.True,
+                "two living models beyond 1\" must still break cohesion.");
+        }
+
+        [Test]
+        public void ValidatePaths_LivingModelsJustWithinFloatSlack_Accepted()
+        {
+            // Base-to-base 1.0005" — over the 1" limit by less than the epsilon, so float rounding at the
+            // exact boundary doesn't wrongly reject the move (0.75 + 0.75 radii + 1.0005 gap = 2.5005 centre).
+            DataBinding<ModelData> a = MakeModel(new Position(0, 0));
+            DataBinding<ModelData> b = MakeModel(new Position(2.5005f, 0));
+
+            bool ok = MovementUtilities.ValidatePaths(
+                StayInPlace(a, b),
+                maxDistanceInches: 12f,
+                terrain: null,
+                out List<ReasonForInvalidMove> errors);
+
+            Assert.That(errors.Any(e => e.ErrorReasonType == EErrorReasonType.TooFarFromAnyUnitModel), Is.False,
+                "a hair over the limit is absorbed by the cohesion epsilon.");
+            Assert.That(ok, Is.True);
+        }
+
+        [Test]
+        public void ValidatePaths_LivingModelsClearlyBeyondSlack_Rejected()
+        {
+            // Base-to-base 1.01" — comfortably past the epsilon, so cohesion still fails.
+            DataBinding<ModelData> a = MakeModel(new Position(0, 0));
+            DataBinding<ModelData> b = MakeModel(new Position(2.51f, 0));
+
+            bool ok = MovementUtilities.ValidatePaths(
+                StayInPlace(a, b),
+                maxDistanceInches: 12f,
+                terrain: null,
+                out List<ReasonForInvalidMove> errors);
+
+            Assert.That(ok, Is.False);
+            Assert.That(errors.Any(e => e.ErrorReasonType == EErrorReasonType.TooFarFromAnyUnitModel), Is.True);
+        }
+
+        // Move entries that leave every model at its current position — isolates the cohesion check.
+        private static List<ModelMoveEntry> StayInPlace(params DataBinding<ModelData>[] models)
+        {
+            return models
+                .Select(m => new ModelMoveEntry(m, new List<Position> { m.GetValue().PositionBinding.GetValue() }))
+                .ToList();
+        }
+
         private DataBinding<ModelData> MakeModel(Position initialPosition)
         {
             ModelData modelData = new ModelData(

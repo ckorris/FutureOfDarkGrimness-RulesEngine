@@ -44,6 +44,9 @@ namespace FDG.Stages
             // Normal deployment done → place the units a rule set aside (Scout), then exit to main.
             determineNextDeployPlayer.OnFinishedDeployingAllUnits.Bind(placeDeferredUnits);
             chooseUnitToDeploy.OnFinish.Bind(chooseDeployAction);
+            // Holding a unit in Ambush counts as that player's deployment for the turn — no placement,
+            // straight back to pick the next player.
+            chooseUnitToDeploy.OnDeferred.Bind(determineNextDeployPlayer);
             chooseDeployAction.OnFinish.Bind(deployUnitStage);
             deployUnitStage.OnFinish.Bind(determineNextDeployPlayer);
             placeDeferredUnits.OnFinish.Bind(toMainEvent);

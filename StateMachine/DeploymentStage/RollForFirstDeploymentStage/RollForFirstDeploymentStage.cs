@@ -16,15 +16,16 @@ namespace FDG.Stages
         {
             context.Log("Entered Roll for First Deployment stage.");
 
-            Random random = new Random();
-
             List<ITeam> teams = context.TableState().Teams.Objects.ToList();
             List<string> teamNames = teams.Select(team => $"Team {team.TeamNumber}").ToList();
 
-            //TODO: Show visuals of dice, but we also need to add that below.
-            List<ITeam> rollOrder = DiceUtilities.RollOff_Ordered(teams, teamNames, context.GameContext.TextOutput);
+            List<ITeam> rollOrder = await DiceUtilities.RollOff_Ordered(teams, teamNames,
+                context.GameContext.TextOutput, context.GameContext.Presenter, "Deployment Roll-Off");
 
-            context.Log($"Team {rollOrder.First().TeamNumber} won the roll-off and will deploy first.");
+            ITeam winner = rollOrder.First();
+            context.Log($"Team {winner.TeamNumber} won the roll-off and will deploy first.");
+            await context.Announce($"{context.GetTeamLeadName(winner)} deploys first",
+                new TextColor(120, 200, 255, 255));
 
             context.SetFirstDeploymentRollOrder(rollOrder);
 

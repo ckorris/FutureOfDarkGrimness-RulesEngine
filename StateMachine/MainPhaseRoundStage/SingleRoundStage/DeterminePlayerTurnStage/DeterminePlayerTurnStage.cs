@@ -12,6 +12,11 @@ namespace FDG.Stages
         public StageBinding OnDeterminedPlayerTurn;
         public StageBinding OnNoPlayersLeft;
 
+        // The player whose "<name>'s Activation" banner we last showed, so we don't repeat it when the
+        // same player activates twice in a row (e.g. a Martial Prowess reactivation, or an opponent with
+        // nothing left to activate).
+        private PlayerID? _lastAnnouncedPlayer;
+
         public DeterminePlayerTurnStage(IGameContext gameContext, IStateMachineLayer<ISingleRoundContext> parent) : base(gameContext, parent)
         {
             OnDeterminedPlayerTurn = new StageBinding(this);
@@ -41,6 +46,13 @@ namespace FDG.Stages
                 context.Log("No players left to activate. Ending round.");
                 OnNoPlayersLeft.Activate(context);
                 return;
+            }
+
+            if (_lastAnnouncedPlayer != nextPlayerID.Value)
+            {
+                _lastAnnouncedPlayer = nextPlayerID.Value;
+                await context.Announce($"{context.GetPlayerName(nextPlayerID.Value)}'s Activation",
+                    new TextColor(130, 220, 130, 255));
             }
 
             // #042 Martial Prowess: before the active player picks their next unit, offer a second

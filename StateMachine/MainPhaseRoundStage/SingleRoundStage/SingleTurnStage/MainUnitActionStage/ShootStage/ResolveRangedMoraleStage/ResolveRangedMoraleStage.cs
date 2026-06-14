@@ -25,32 +25,26 @@ namespace FDG.Stages
             ToFinished.Activate(context);
         }
 
-        // A unit that is reduced to half strength or less by shooting must take a morale test; because
-        // the trigger condition is being at half strength, a failed test always Routs it. The test fires
-        // only on the fire that *crosses* into half strength: DefenderRemainingWoundsAtStart is
-        // re-snapshotted by ChooseRangedAttackStage before each weapon, so once a unit is below half a
-        // later weapon at the same target sees a sub-half start and won't re-test (no double jeopardy).
+        // A unit reduced to half strength or less by shooting must take a morale test; because the
+        // trigger condition is being at half strength, a failed test always Routs it. The test fires only
+        // on the fire that *crosses* into half strength: DefenderRemainingWoundsAtStart is re-snapshotted
+        // by ChooseRangedAttackStage before each weapon, so once a unit is below half a later weapon at
+        // the same target sees a sub-half start and won't re-test (no double jeopardy).
         private void ResolveForDefender(ICombatActionContext context)
         {
             DataBinding<UnitData> defenderBinding = context.DefendingUnit;
             if (defenderBinding == null) return; // nothing was fired at (e.g. occluded before a target was set)
 
-            IUnit defender = defenderBinding.GetValue();
+            bool? result = MoraleUtilities.ResolveWoundDrivenMorale(
+                GameContext, defenderBinding, context.DefenderRemainingWoundsAtStart);
 
-            // Wiped out outright by the shooting — no morale test, it is already gone.
-            if (defender.GetIsDead()) return;
-
-            bool wasAboveHalf = context.DefenderRemainingWoundsAtStart * 2f > defender.MaxWounds;
-            if (!wasAboveHalf || !defender.GetIsAtHalfStrength()) return;
-
-            if (MoraleUtilities.TakeMoraleTest(GameContext.GameContext, defender.Quality))
+            if (result == true)
             {
-                GameContext.Log($"{defenderBinding.Name()} was reduced to half strength but passed its morale test (needed {defender.Quality}).");
+                GameContext.Log($"{defenderBinding.Name()} was reduced to half strength but passed its morale test (needed {defenderBinding.Quality()}).");
             }
-            else
+            else if (result == false)
             {
-                MoraleUtilities.Rout(defenderBinding);
-                GameContext.Log($"{defenderBinding.Name()} was reduced to half strength, failed its morale test (needed {defender.Quality}), and is Routed.");
+                GameContext.Log($"{defenderBinding.Name()} was reduced to half strength, failed its morale test, and is Routed.");
             }
         }
     }

@@ -23,6 +23,38 @@ namespace FDG.Stages
         }
 
         /// <summary>
+        /// Whether a unit just crossed into half strength: it was above half before taking wounds
+        /// (<paramref name="remainingWoundsBefore"/>) and is at half strength or less now. Used so a
+        /// wound-driven morale test fires only on the blow that reduces the unit to half, not on every
+        /// later hit while it is already there.
+        /// </summary>
+        public static bool CrossedIntoHalfStrength(float remainingWoundsBefore, IUnit unitAfter)
+        {
+            bool wasAboveHalf = remainingWoundsBefore * 2f > unitAfter.MaxWounds;
+            return wasAboveHalf && unitAfter.GetIsAtHalfStrength();
+        }
+
+        /// <summary>
+        /// Resolve a wound-driven morale test (shooting, dangerous terrain): if the unit was just
+        /// reduced to half strength or less, it tests, and a failure Routs it (it is at half strength by
+        /// construction). Returns null if no test was taken (still above half, or destroyed outright),
+        /// true if passed, false if failed and Routed. Logging is left to the caller, which knows the
+        /// wound source.
+        /// </summary>
+        public static bool? ResolveWoundDrivenMorale(IGameContext gameContext, DataBinding<UnitData> unitBinding,
+            float remainingWoundsBefore)
+        {
+            IUnit unit = unitBinding.GetValue();
+            if (!unit.GetIsAlive()) return null;                              // wiped out outright — no test
+            if (!CrossedIntoHalfStrength(remainingWoundsBefore, unit)) return null;
+
+            if (TakeMoraleTest(gameContext, unit.Quality)) return true;
+
+            Rout(unitBinding);
+            return false;
+        }
+
+        /// <summary>
         /// Apply a failed morale test's consequence: the unit is Routed if it is at half strength or
         /// less, otherwise it becomes Shaken.
         /// </summary>

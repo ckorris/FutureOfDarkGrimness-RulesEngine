@@ -14,7 +14,7 @@ namespace FDG.Stages
         {
             //TODO: Finish once we have a way to fatigue a unit.
             GameContext.Log("Assigning melee morale penalty. (Not actually for now)");
-            OnAssignedPenalty.Activate(context);
+            await OnAssignedPenalty.Activate(context);
         }
     }
 }

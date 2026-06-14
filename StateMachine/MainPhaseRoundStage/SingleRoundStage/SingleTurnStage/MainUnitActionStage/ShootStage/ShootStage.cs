@@ -20,7 +20,7 @@ namespace FDG.Stages
         {
             GameContext.Log($"Shoot stage entered.");
 
-            base.Enter(context);
+            await base.Enter(context);
         }
 
         protected override ICombatActionContext GetNewChildContext(IUnitActionContext contextSelf)

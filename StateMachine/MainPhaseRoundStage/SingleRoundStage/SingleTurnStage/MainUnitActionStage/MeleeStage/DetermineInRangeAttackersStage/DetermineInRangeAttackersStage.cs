@@ -16,7 +16,7 @@ namespace FDG.Stages
         public override async Task Enter(ICombatActionContext context)
         {
             GameContext.Log("Entering Determine In Range Attackers. Skipping, for now we let everyone fight.");
-            ToDetermineDefenders.Activate(context);
+            await ToDetermineDefenders.Activate(context);
         }
     }
 }

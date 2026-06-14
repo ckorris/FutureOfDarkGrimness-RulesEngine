@@ -44,7 +44,7 @@ namespace FDG.Stages
             if (ShouldSkipTerrainPhase(context.GameContext.Settings))
             {
                 context.Log("  Terrain count is 0; skipping terrain placement.");
-                OnTerrainPlaced.Activate(context);
+                await OnTerrainPlaced.Activate(context);
                 return;
             }
 
@@ -67,7 +67,7 @@ namespace FDG.Stages
                         $"Unhandled {nameof(ETerrainPlacementMode)}: {context.GameContext.Settings.TerrainPlacementMode}.");
             }
 
-            OnTerrainPlaced.Activate(context);
+            await OnTerrainPlaced.Activate(context);
         }
 
         private static void PlacePiecesVerbatim(IMapSetupContext context, TerrainLayoutFile layout)

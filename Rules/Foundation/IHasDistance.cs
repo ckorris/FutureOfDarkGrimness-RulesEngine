@@ -1,3 +1,5 @@
+using FDG.Rules.Dispatch;
+
 namespace FDG.Rules.Foundation;
 
 /// <summary>

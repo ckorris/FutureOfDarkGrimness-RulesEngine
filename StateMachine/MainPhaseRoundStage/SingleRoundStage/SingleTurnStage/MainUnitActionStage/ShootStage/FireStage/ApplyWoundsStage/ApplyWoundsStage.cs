@@ -13,7 +13,7 @@ namespace FDG.Stages
         {
         }
 
-        protected override async Task RunStage(ICombatMetadata metaData, Action<ApplyWoundsResults> onFinished)
+        protected override async Task RunStage(ICombatMetadata metaData, Func<ApplyWoundsResults, Task> onFinished)
         {
             AssignWoundsResults assignWoundsResults = QueryForResultOrThrowException<AssignWoundsResults>(metaData);
 
@@ -62,7 +62,7 @@ namespace FDG.Stages
                 GameContext.Log($"Applying {totalWoundsApplied} wounds killed {modelsKilled} models, killing the unit.");
             }
 
-            onFinished(new ApplyWoundsResults(modelsKilled));
+            await onFinished(new ApplyWoundsResults(modelsKilled));
         }
     }
 }

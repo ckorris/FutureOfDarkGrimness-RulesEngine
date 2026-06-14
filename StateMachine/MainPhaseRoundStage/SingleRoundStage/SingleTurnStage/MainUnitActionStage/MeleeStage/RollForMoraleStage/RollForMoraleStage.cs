@@ -34,12 +34,12 @@ namespace FDG.Stages
             if (moraleRoll.AtOrAbove(rollNeeded) >= 1f)
             {
                 GameContext.Log($"Morale test passed (needed {rollNeeded}).");
-                OnMoralePassed.Activate(context);
+                await OnMoralePassed.Activate(context);
             }
             else
             {
                 GameContext.Log($"Morale test failed (needed {rollNeeded}).");
-                OnMoraleFailed.Activate(context);
+                await OnMoraleFailed.Activate(context);
             }
         }
     }

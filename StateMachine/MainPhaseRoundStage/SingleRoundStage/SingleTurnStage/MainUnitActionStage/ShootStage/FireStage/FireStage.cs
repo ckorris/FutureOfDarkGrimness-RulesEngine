@@ -17,7 +17,7 @@ namespace FDG.Stages
         {
             GameContext.Log("Firing.");
 
-            base.Enter(context);
+            await base.Enter(context);
         }
 
         protected override ICombatMetadata GetNewChildContext(ICombatActionContext contextSelf)

@@ -20,7 +20,7 @@ namespace FDG.Stages
         {
             GameContext.Log("Main Unit Action stage entered.");
 
-            base.Enter(context);
+            await base.Enter(context);
         }
 
         protected override IUnitActionContext GetNewChildContext(ISingleTurnContext contextSelf)

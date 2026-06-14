@@ -15,7 +15,7 @@ namespace FDG.Stages
         public override async Task Enter(ICombatActionContext context)
         {
             GameContext.Log("Applying fatigue (not really for now)");
-            OnFatigueApplied.Activate(context);
+            await OnFatigueApplied.Activate(context);
         }
     }
 }

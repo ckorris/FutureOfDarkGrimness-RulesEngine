@@ -17,7 +17,7 @@ namespace FDG.Stages
         {
             if (!context.TryGetPaths(out IReadOnlyList<ModelMoveEntry> paths))
             {
-                OnAppliedNonMovementTerrainEffects.Activate(context);
+                await OnAppliedNonMovementTerrainEffects.Activate(context);
                 return;
             }
 
@@ -25,7 +25,7 @@ namespace FDG.Stages
 
             MovementExecutor.ApplyDangerousTerrainEffects(GameContext, paths, context.RelevantTerrain, unitName);
 
-            OnAppliedNonMovementTerrainEffects.Activate(context);
+            await OnAppliedNonMovementTerrainEffects.Activate(context);
         }
     }
 }

@@ -18,7 +18,7 @@ namespace FDG.Stages
         {
         }
 
-        protected override async Task RunStage(ICombatMetadata metaData, Action<AssignWoundsResults> onFinished)
+        protected override async Task RunStage(ICombatMetadata metaData, Func<AssignWoundsResults, Task> onFinished)
         {
             metaData.QueryForResult(out RollToSaveResults rollToSaveResults);
 
@@ -101,7 +101,7 @@ namespace FDG.Stages
                 {
                     GameContext.Log($"Takedown assigned {confined} wound(s) to the single targeted model.");
                 }
-                onFinished(takedownResults);
+                await onFinished(takedownResults);
                 return;
             }
 
@@ -150,7 +150,7 @@ namespace FDG.Stages
                 //GameContext.GetHandler<IAssignWoundsHandler>().Handle(metaData.DefendingUnit, assignWoundsResults, () => OnHandled(assignWoundsResults, onFinished));
             }
 
-            onFinished(assignWoundsResults);
+            await onFinished(assignWoundsResults);
         }
 
         // Deadly's no-carry-over confinement. The attack landed <paramref name="clumpCount"/> failed

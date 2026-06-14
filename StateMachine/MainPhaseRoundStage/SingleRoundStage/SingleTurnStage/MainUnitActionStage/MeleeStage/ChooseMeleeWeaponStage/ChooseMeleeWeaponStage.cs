@@ -51,7 +51,7 @@ namespace FDG.Stages
             context.SetAttackWeapon(chosenWeapon, out int weaponCount);
             GameContext.Log($"Chose weapon: {chosenWeapon.Name}. Count: {weaponCount}.");
 
-            OnChosen.Activate(context);
+            await OnChosen.Activate(context);
         }
     }
 }

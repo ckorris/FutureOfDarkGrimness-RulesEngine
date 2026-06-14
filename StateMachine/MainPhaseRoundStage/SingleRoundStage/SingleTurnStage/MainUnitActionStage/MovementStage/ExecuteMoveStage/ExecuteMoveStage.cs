@@ -65,7 +65,7 @@ namespace FDG.Stages
                     PresentationDurations.ForMoveDistance(longestPath)));
             }
 
-            OnMoveExecuted.Activate(context);
+            await OnMoveExecuted.Activate(context);
         }
     }
 

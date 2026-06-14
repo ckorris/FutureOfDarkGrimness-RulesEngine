@@ -17,7 +17,7 @@ namespace FDG.Stages
         {
             GameContext.Log($"Melee stage entered.");
 
-            base.Enter(context);
+            await base.Enter(context);
         }
 
         protected override ICombatActionContext GetNewChildContext(IUnitActionContext contextSelf)

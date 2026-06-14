@@ -27,14 +27,14 @@ namespace FDG.Stages
             if (remainingWeaponCount == 0)
             {
                 GameContext.Log("Has swung with all melee weapons.");
-                OnOutOfWeapons.Activate(context);
+                await OnOutOfWeapons.Activate(context);
                 return;
             }
 
             if (context.DefendingUnit.RemainingWounds() <= 0)
             {
                 GameContext.Log("Has killed all target units.");
-                OnDefenderKilled.Activate(context);
+                await OnDefenderKilled.Activate(context);
                 return;
             }
 
@@ -48,7 +48,7 @@ namespace FDG.Stages
                 GameContext.Log($"Has {remainingWeaponCount} more weapons left to swing.");
             }
 
-            ReturnToChooseWeapon.Activate(context);
+            await ReturnToChooseWeapon.Activate(context);
         }
     }
 }

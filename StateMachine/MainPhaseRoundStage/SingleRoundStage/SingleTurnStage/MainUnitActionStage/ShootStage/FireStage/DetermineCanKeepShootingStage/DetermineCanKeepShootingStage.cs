@@ -21,7 +21,7 @@ namespace FDG.Stages
             if (context.AvailableWeapons.Count == 0)
             {
                 GameContext.Log("Has fired all weapons.");
-                ToFinishShooting.Activate(context);
+                await ToFinishShooting.Activate(context);
                 return;
             }
 
@@ -34,13 +34,13 @@ namespace FDG.Stages
             if (context.DefendingUnit.RemainingWounds() <= 0)
             {
                 GameContext.Log("Has killed all target units.");
-                ToFinishShooting.Activate(context);
+                await ToFinishShooting.Activate(context);
                 return;
             }
             */
 
             //We've still got weapons to shoot, and baddies to shoot at. 
-            ReturnToChooseWeapon.Activate(context);
+            await ReturnToChooseWeapon.Activate(context);
         }
     }
 }

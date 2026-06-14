@@ -23,7 +23,7 @@ namespace FDG.Stages
             if (context.DefendingUnit.GetValue().GetMeleeWeapons().Count == 0)
             {
                 GameContext.Log("Defender has no melee weapons; skipping strikeback.");
-                SkipStrikingBack(context);
+                await SkipStrikingBack(context);
                 return;
             }
 
@@ -39,24 +39,24 @@ namespace FDG.Stages
 
             if(task.Result)
             {
-                MoveToStrikingBack(context);
+                await MoveToStrikingBack(context);
             }
             else
             {
-                SkipStrikingBack(context);
+                await SkipStrikingBack(context);
             }
         }
 
-        private void MoveToStrikingBack(ICombatActionContext context)
+        private Task MoveToStrikingBack(ICombatActionContext context)
         {
             GameContext.Log("Defenders striking back.");
-            OnOfferAccepted.Activate(context);
+            return OnOfferAccepted.Activate(context);
         }
 
-        private void SkipStrikingBack(ICombatActionContext context)
+        private Task SkipStrikingBack(ICombatActionContext context)
         {
             GameContext.Log("Defenders not striking back.");
-            OnOfferRejected.Activate(context);
+            return OnOfferRejected.Activate(context);
         }
     }
 }

@@ -18,7 +18,7 @@ namespace FDG.Stages
         {
         }
 
-        protected override async Task RunStage(ICombatMetadata metaData, Action<DetermineHitRollNeededResults> onFinished)
+        protected override async Task RunStage(ICombatMetadata metaData, Func<DetermineHitRollNeededResults, Task> onFinished)
         {
             IUnit attacker = metaData.AttackingUnit.GetValue();
             IUnit defender = metaData.DefendingUnit.GetValue();
@@ -49,7 +49,7 @@ namespace FDG.Stages
 
             GameContext.Log($"Base hit roll required is {results.HitRollNeeded} based on attacker's quality.");
 
-            onFinished(results);
+            await onFinished(results);
         }
     }
 }

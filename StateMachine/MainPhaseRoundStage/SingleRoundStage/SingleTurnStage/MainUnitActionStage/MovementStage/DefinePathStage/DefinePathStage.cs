@@ -47,7 +47,7 @@ namespace FDG.Stages
 
             context.SubmitValidPathTemplate(movements);
 
-            OnPathDefined.Activate(context);
+            await OnPathDefined.Activate(context);
         }
 
     }

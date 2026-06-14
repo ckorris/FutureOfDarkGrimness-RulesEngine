@@ -51,7 +51,7 @@ namespace FDG.Stages
                 context.Log($"{unit.Name} deployed via Scout.");
             }
 
-            OnFinish.Activate(context);
+            await OnFinish.Activate(context);
         }
 
         /// <summary>

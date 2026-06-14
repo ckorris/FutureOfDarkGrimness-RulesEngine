@@ -20,7 +20,7 @@ namespace FDG.Stages
             if (!context.HasRemainingMarkers())
             {
                 context.Log($"All {context.TotalMarkers} objective markers placed.");
-                OnAllMarkersPlaced.Activate(context);
+                await OnAllMarkersPlaced.Activate(context);
                 return;
             }
 
@@ -31,7 +31,7 @@ namespace FDG.Stages
                 var team = context.Cursor.GetCurrentTeam();
                 var player = context.Cursor.GetCurrentPlayerID();
                 context.Log($"Team {team.TeamNumber} (player {player.ID}) will place objective {context.MarkersPlaced + 1} of {context.TotalMarkers}.");
-                OnPlacerDetermined.Activate(context);
+                await OnPlacerDetermined.Activate(context);
                 return;
             }
 
@@ -50,7 +50,7 @@ namespace FDG.Stages
             }
 
             context.Log($"Team {nextTeam.TeamNumber} (player {nextPlayerID.Value.ID}) will place objective {context.MarkersPlaced + 1} of {context.TotalMarkers}.");
-            OnPlacerDetermined.Activate(context);
+            await OnPlacerDetermined.Activate(context);
         }
     }
 }

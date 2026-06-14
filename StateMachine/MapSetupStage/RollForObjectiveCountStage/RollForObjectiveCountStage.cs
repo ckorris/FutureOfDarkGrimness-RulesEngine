@@ -32,7 +32,7 @@ namespace FDG.Stages
             await context.Announce($"{objectiveCount} Objectives", new TextColor(255, 210, 80, 255));
 
             context.SetObjectiveCount(objectiveCount);
-            OnRollComplete.Activate(context);
+            await OnRollComplete.Activate(context);
         }
     }
 }

@@ -68,7 +68,7 @@ namespace FDG.Stages
             return RunStage(context, (result) => RunPostExecuteEffects(context, result));
         }
 
-        private void RunPostExecuteEffects(TMetadata context, TResult result)
+        private async Task RunPostExecuteEffects(TMetadata context, TResult result)
         {
             //For post-execute effects, use the original, as it may have been purposefully modified in pre-execute.
             foreach (ICombatEffect<TResult> effect in _effects)
@@ -78,12 +78,12 @@ namespace FDG.Stages
 
             context.AddResult(result);
 
-            Finish(context);
+            await Finish(context);
         }
 
-        private void Finish(TMetadata context)
+        private Task Finish(TMetadata context)
         {
-            NextStage.Activate(context);
+            return NextStage.Activate(context);
         }
 
         protected TQueryResult QueryForResultOrThrowException<TQueryResult>(ICombatMetadata metaData)
@@ -100,6 +100,6 @@ namespace FDG.Stages
             return result;
         }
 
-        protected abstract Task RunStage(ICombatMetadata metaData, Action<TResult> onFinished);
+        protected abstract Task RunStage(ICombatMetadata metaData, Func<TResult, Task> onFinished);
     }
 }

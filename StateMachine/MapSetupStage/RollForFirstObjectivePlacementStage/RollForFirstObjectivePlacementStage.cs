@@ -37,7 +37,7 @@ namespace FDG.Stages
                 new TextColor(120, 200, 255, 255));
 
             context.SetObjectivePlacementTeamOrder(order);
-            OnRollComplete.Activate(context);
+            await OnRollComplete.Activate(context);
         }
     }
 }

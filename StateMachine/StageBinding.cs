@@ -36,7 +36,7 @@ namespace FDG.Stages
                 return Bind(transitionStage.Name);
             }
 
-            public void Activate(TContext context)
+            public Task Activate(TContext context)
             {
                 if(_eventName == null)
                 {
@@ -45,7 +45,7 @@ namespace FDG.Stages
 
                 OnWillActivate?.Invoke(context);
 
-                _sourceStage.SignalEvent(_eventName, context);
+                return _sourceStage.SignalEvent(_eventName, context);
             }
         }
     }

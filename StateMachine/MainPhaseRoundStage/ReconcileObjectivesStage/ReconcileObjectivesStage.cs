@@ -73,12 +73,12 @@ namespace FDG.Stages
 
             if (_timesEntered < 4)
             {
-                ToReconcileEndOfTurn.Activate(context);
+                await ToReconcileEndOfTurn.Activate(context);
             }
             else
             {
                 GameContext.Log("Four rounds complete. Proceeding to victory calculation.");
-                ToVictoryCalculation.Activate(context);
+                await ToVictoryCalculation.Activate(context);
             }
         }
 

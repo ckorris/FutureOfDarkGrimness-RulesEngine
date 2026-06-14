@@ -54,7 +54,7 @@ namespace FDG.Stages
             {
                 // No Impact rule on the charger, or a Counter defender reduced the dice to zero — skip
                 // straight to the normal melee flow.
-                OnImpactResolved.Activate(context);
+                await OnImpactResolved.Activate(context);
                 return;
             }
 
@@ -65,7 +65,7 @@ namespace FDG.Stages
 
             if (_impactHitCount <= 0f)
             {
-                OnImpactResolved.Activate(context);
+                await OnImpactResolved.Activate(context);
                 return;
             }
 

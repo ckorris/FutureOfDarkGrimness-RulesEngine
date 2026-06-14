@@ -40,7 +40,7 @@ namespace FDG.Stages
             //Maybe in the future we can validate that it's correct, but I don't want to focus on that now.
             //So just assume all the armies have been uploaded correctly and continue.
             //Probably in the future we want to send the saveable army list object and then convert it to an army. 
-            ToMapSetup.Activate(context);
+            await ToMapSetup.Activate(context);
 
         }
         /* //Commenting out because this isn't used BUT it could be used to convert an IArmyTemplate in the form of a
@@ -71,7 +71,7 @@ namespace FDG.Stages
                 gameContext.GameDataStore.Create(armyData);   
             }
 
-            ToMapSetup.Activate(gameContext);
+            await ToMapSetup.Activate(gameContext);
         }
         */
     }

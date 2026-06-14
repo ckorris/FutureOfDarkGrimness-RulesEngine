@@ -50,7 +50,7 @@ namespace FDG.Tests
             List<ModelMoveEntry> result = await resolver.Resolve(request);
 
             bool valid = MovementUtilities.ValidatePaths(result, request.MaxRushDistance,
-                request.MaxDistanceInches, new List<Position> { enemyPos },
+                request.MaxDistanceInches, new List<EnemyModelFootprint> { new EnemyModelFootprint(enemyPos, 0.75f, 0) },
                 new List<ITerrain> { wall }, out var errors);
 
             Assert.That(valid, Is.True,
@@ -91,7 +91,7 @@ namespace FDG.Tests
             List<ModelMoveEntry> result = await resolver.Resolve(request);
 
             bool valid = MovementUtilities.ValidatePaths(result, request.MaxRushDistance,
-                request.MaxDistanceInches, new List<Position> { enemyPos },
+                request.MaxDistanceInches, new List<EnemyModelFootprint> { new EnemyModelFootprint(enemyPos, 0.75f, 0) },
                 new List<ITerrain>(), out var errors);
             Assert.That(valid, Is.True,
                 "Clear-lane advance must be valid: " + string.Join(", ", errors.Select(e => e.ToString())));
@@ -136,7 +136,7 @@ namespace FDG.Tests
             List<ModelMoveEntry> result = await resolver.Resolve(request);
 
             bool valid = MovementUtilities.ValidatePaths(result, request.MaxRushDistance,
-                request.MaxDistanceInches, new List<Position>(), new List<ITerrain>(), out var errors);
+                request.MaxDistanceInches, new List<EnemyModelFootprint>(), new List<ITerrain>(), out var errors);
             Assert.That(valid, Is.True,
                 "Staying put with casualty survivors must still be an engine-valid (cohesive) move: "
                 + string.Join(", ", errors.Select(e => e.ToString())));

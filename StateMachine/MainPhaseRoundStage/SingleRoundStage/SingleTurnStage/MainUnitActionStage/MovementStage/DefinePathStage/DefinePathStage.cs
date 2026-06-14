@@ -29,10 +29,10 @@ namespace FDG.Stages
             List<ModelMoveEntry> movements = await context.PlayerRequester()
                 .RequestDecision<DefineMovementPathRequest, List<ModelMoveEntry>>(pathRequest);
 
-            List<Position> enemyPositions = MovementUtilities.GetEnemyModelPositions(context.MovingUnit, context.GameContext);
+            List<EnemyModelFootprint> enemyFootprints = MovementUtilities.GetEnemyModelFootprints(context.MovingUnit, context.GameContext);
 
             if(MovementUtilities.ValidatePaths(movements, context.MaxRushDistance, hardCap,
-                enemyPositions,
+                enemyFootprints,
                 context.RelevantTerrain, out List<ReasonForInvalidMove> invalidReasons) == false)
             {
                 StringBuilder sb = new StringBuilder(invalidReasons[0].ToString());

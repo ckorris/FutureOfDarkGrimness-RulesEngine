@@ -32,7 +32,8 @@ namespace FDG.Ai.Resolvers
                 ? request.MaxAdvanceDistance - 0.001f
                 : request.MaxDistanceInches - 0.001f;
 
-            var enemyPositions = GetLiveEnemyPositions();
+            var enemyFootprints = GetLiveEnemyFootprints();
+            var enemyPositions = enemyFootprints.Select(f => f.Center).ToList();
             if (enemyPositions.Count == 0)
                 return Task.FromResult(StayInPlace(request));
 
@@ -91,7 +92,7 @@ namespace FDG.Ai.Resolvers
             // the engine will reject.
             List<ModelMoveEntry> candidate = BuildCandidate(living, cx, cz, ndx, ndz, step, request);
             bool valid = MovementUtilities.ValidatePaths(candidate, request.MaxRushDistance,
-                request.MaxDistanceInches, enemyPositions, allTerrain, out _);
+                request.MaxDistanceInches, enemyFootprints, allTerrain, out _);
 
             int attempts = 0;
             while (!valid && attempts < MaxBackoffAttempts)
@@ -101,7 +102,7 @@ namespace FDG.Ai.Resolvers
                     ? StayInPlace(request)
                     : BuildCandidate(living, cx, cz, ndx, ndz, step, request);
                 valid = MovementUtilities.ValidatePaths(candidate, request.MaxRushDistance,
-                    request.MaxDistanceInches, enemyPositions, allTerrain, out _);
+                    request.MaxDistanceInches, enemyFootprints, allTerrain, out _);
                 attempts++;
             }
 
@@ -135,19 +136,27 @@ namespace FDG.Ai.Resolvers
             return CohesiveFormation.PackGrid(living, cx + ndx * clamped, cz + ndz * clamped);
         }
 
-        private List<Position> GetLiveEnemyPositions()
+        // Living enemy model footprints, tagged with a per-unit key (so the validator can tell which models
+        // share an enemy unit). Mirrors MovementUtilities.GetEnemyModelFootprints but reads from ITableState.
+        private List<EnemyModelFootprint> GetLiveEnemyFootprints()
         {
-            var positions = new List<Position>();
+            var footprints = new List<EnemyModelFootprint>();
+            int unitKey = 0;
             foreach (var unit in _tableState.Units.Objects)
             {
                 if (unit.PlayerID == _playerID) continue;
+                bool anyLiving = false;
                 foreach (var model in unit.Models)
                 {
                     if (model is ModelData md && md.GetIsAlive() && (md.Position.x != 0f || md.Position.z != 0f))
-                        positions.Add(md.Position);
+                    {
+                        footprints.Add(new EnemyModelFootprint(md.Position, md.BaseRadiusInches, unitKey));
+                        anyLiving = true;
+                    }
                 }
+                if (anyLiving) unitKey++;
             }
-            return positions;
+            return footprints;
         }
 
         private static float Dist(float ax, float az, float bx, float bz)

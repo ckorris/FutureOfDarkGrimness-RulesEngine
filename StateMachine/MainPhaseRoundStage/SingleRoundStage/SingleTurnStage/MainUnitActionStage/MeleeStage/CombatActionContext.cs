@@ -30,9 +30,22 @@ namespace FDG.Stages
         public IReadOnlyDictionary<Weapon, int> AvailableWeapons { get; }
         public IReadOnlyDictionary<Weapon, int> AlreadyUsedWeapons { get; }
 
-        public IModel InRangeAttackingModels { get; }
+        public IReadOnlyList<DataBinding<ModelData>> InRangeAttackingModels { get; }
 
-        public IModel InRangeDefendingModels { get; }
+        public IReadOnlyList<DataBinding<ModelData>> InRangeDefendingModels { get; }
+
+        /// <summary>
+        /// Restricts the attacking models that may strike to <paramref name="models"/> and rebuilds the
+        /// available melee-weapon pool from only their weapons (#017). Called by
+        /// <see cref="DetermineInRangeAttackersStage"/> after pile-in settles positions.
+        /// </summary>
+        public void SetInRangeAttackers(IReadOnlyList<DataBinding<ModelData>> models);
+
+        /// <summary>
+        /// Records the defending models that may strike back (#017). Called by
+        /// <see cref="DetermineInRangeDefendersStage"/>; consumed when the roles swap on strike-back.
+        /// </summary>
+        public void SetInRangeDefenders(IReadOnlyList<DataBinding<ModelData>> models);
 
         public Weapon? ShootingWeaponType { get; }
 
@@ -86,9 +99,11 @@ namespace FDG.Stages
 
         public void RegisterDefenderStruckBack() => DefenderStruckBack = true;
 
-        public IModel InRangeAttackingModels { get; private set; }
+        public IReadOnlyList<DataBinding<ModelData>> InRangeAttackingModels { get; private set; }
+            = new List<DataBinding<ModelData>>();
 
-        public IModel InRangeDefendingModels { get; private set; }
+        public IReadOnlyList<DataBinding<ModelData>> InRangeDefendingModels { get; private set; }
+            = new List<DataBinding<ModelData>>();
 
         public IReadOnlyDictionary<Weapon, int> AvailableWeapons => _availableWeapons;
 
@@ -192,6 +207,18 @@ namespace FDG.Stages
             DefenderRemainingWoundsAtStart = DefendingUnit.GetValue().RemainingWounds;
         }
 
+        public void SetInRangeAttackers(IReadOnlyList<DataBinding<ModelData>> models)
+        {
+            InRangeAttackingModels = models;
+            // Only models in melee range contribute weapons to the swing pool.
+            _availableWeapons = GetTypeSortedWeapons(MeleeRangeUtilities.GetMeleeWeaponsFromModels(models));
+        }
+
+        public void SetInRangeDefenders(IReadOnlyList<DataBinding<ModelData>> models)
+        {
+            InRangeDefendingModels = models;
+        }
+
         public void SwapCombatRoles()
         {
             (AttackingUnit, DefendingUnit) = (DefendingUnit, AttackingUnit);
@@ -201,8 +228,11 @@ namespace FDG.Stages
             // The new attacker (the Counter unit) is striking back into the charge, not charging.
             _isCharging = false;
 
-            // Rebuild the melee-weapon pool from the new attacker; nothing has been used yet this swing.
-            _availableWeapons = GetTypeSortedWeapons(AttackingUnit.GetValue().GetMeleeWeapons());
+            // The in-range sets swap with the roles: the former defenders are now the attackers (#017).
+            (InRangeAttackingModels, InRangeDefendingModels) = (InRangeDefendingModels, InRangeAttackingModels);
+
+            // Rebuild the melee-weapon pool from the new attacker's in-range models; nothing used yet this swing.
+            _availableWeapons = GetTypeSortedWeapons(MeleeRangeUtilities.GetMeleeWeaponsFromModels(InRangeAttackingModels));
             _alreadyUsedWeapons.Clear();
         }
 

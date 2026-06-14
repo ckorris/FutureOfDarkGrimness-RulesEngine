@@ -1,5 +1,5 @@
 ﻿using FDG.Network.Connection;
-using System.Diagnostics;
+using System.Reflection;
 
 namespace FDG.Network.Messages
 {
@@ -17,6 +17,13 @@ namespace FDG.Network.Messages
         private readonly Dictionary<string, Type> _messageTypeRegistry = new Dictionary<string, Type>();
 
         private readonly Dictionary<Type, List<Delegate>> _messageHandlers = new Dictionary<Type, List<Delegate>>();
+
+        private readonly ITextOutput _textOutput;
+
+        public MessageRegistrar(ITextOutput? textOutput = null)
+        {
+            _textOutput = textOutput ?? new ConsoleTextOutput();
+        }
 
         public void RegisterForMessageEvent<T>(Action<T> onMessageReceived)
         {
@@ -45,9 +52,20 @@ namespace FDG.Network.Messages
             
             if (_messageHandlers.TryGetValue(actualType, out List<Delegate>? handlers))
             {
-                foreach (Delegate del in handlers)
+                //Snapshot so a handler that (de)registers during dispatch doesn't mutate the list we're iterating.
+                foreach (Delegate del in handlers.ToArray())
                 {
-                    del.DynamicInvoke(messageObject);
+                    try
+                    {
+                        del.DynamicInvoke(messageObject);
+                    }
+                    catch (Exception exception)
+                    {
+                        //Isolate handlers: one throwing handler must not abort the others or bubble into the
+                        //read loop's catch-all (which would disconnect the client). Log and carry on.
+                        Exception actual = (exception as TargetInvocationException)?.InnerException ?? exception;
+                        _textOutput.Log($"Message handler for {actualType.Name} threw {actual.GetType().Name}: {actual.Message}");
+                    }
                 }
             }
         }

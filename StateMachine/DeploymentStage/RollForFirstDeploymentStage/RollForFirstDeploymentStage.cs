@@ -29,7 +29,7 @@ namespace FDG.Stages
 
             context.SetFirstDeploymentRollOrder(rollOrder);
 
-            ToDeployAllUnits.Activate(context);
+            await ToDeployAllUnits.Activate(context);
         }
     }
 }

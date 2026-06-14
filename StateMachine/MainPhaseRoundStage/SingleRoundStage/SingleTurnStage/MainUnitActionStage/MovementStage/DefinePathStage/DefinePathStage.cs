@@ -22,17 +22,21 @@ namespace FDG.Stages
 
             float hardCap = System.Math.Max(context.MaxRushDistance, context.MaxChargeDistance);
 
+            bool canMoveThroughEnemies = Rules.Dispatch.MovementRuleQueries.CanMoveThroughEnemies(
+                context.MovingUnit.GetValue(), context.GameContext.RuleEvaluator);
+
             var pathRequest = new DefineMovementPathRequest(playerID, "Move Unit", context.MovingUnit,
                 context.MaxAdvanceDistance, context.MaxRushDistance, hardCap,
-                WeaponSightProfileBuilder.For(context.MovingUnit.GetValue(), context.GameContext.RuleEvaluator));
+                WeaponSightProfileBuilder.For(context.MovingUnit.GetValue(), context.GameContext.RuleEvaluator),
+                canMoveThroughEnemies);
 
             List<ModelMoveEntry> movements = await context.PlayerRequester()
                 .RequestDecision<DefineMovementPathRequest, List<ModelMoveEntry>>(pathRequest);
 
-            List<Position> enemyPositions = MovementUtilities.GetEnemyModelPositions(context.MovingUnit, context.GameContext);
+            List<EnemyModelFootprint> enemyFootprints = MovementUtilities.GetEnemyModelFootprints(context.MovingUnit, context.GameContext);
 
             if(MovementUtilities.ValidatePaths(movements, context.MaxRushDistance, hardCap,
-                enemyPositions,
+                enemyFootprints, canMoveThroughEnemies,
                 context.RelevantTerrain, out List<ReasonForInvalidMove> invalidReasons) == false)
             {
                 StringBuilder sb = new StringBuilder(invalidReasons[0].ToString());
@@ -47,7 +51,7 @@ namespace FDG.Stages
 
             context.SubmitValidPathTemplate(movements);
 
-            OnPathDefined.Activate(context);
+            await OnPathDefined.Activate(context);
         }
 
     }

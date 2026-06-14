@@ -17,7 +17,7 @@ namespace FDG.Stages
         {
             if (!context.TryGetPaths(out IReadOnlyList<ModelMoveEntry> paths))
             {
-                OnAppliedNonMovementTerrainEffects.Activate(context);
+                await OnAppliedNonMovementTerrainEffects.Activate(context);
                 return;
             }
 
@@ -39,7 +39,7 @@ namespace FDG.Stages
                 GameContext.Log($"{unitName} was reduced to half strength by dangerous terrain, failed its morale test, and is Routed.");
             }
 
-            OnAppliedNonMovementTerrainEffects.Activate(context);
+            await OnAppliedNonMovementTerrainEffects.Activate(context);
         }
     }
 }

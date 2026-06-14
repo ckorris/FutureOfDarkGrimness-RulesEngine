@@ -549,7 +549,16 @@ public static class CoreRuleCatalog
     /// service call that would return before the AssignWounds request is answered.
     /// </summary>
     public static SpecialRuleDefinition Strafing { get; } = new SpecialRuleDefinition("Strafing",
-        Array.Empty<HookEntry>(),
+        new[]
+        {
+            // The fly-over permission: a Strafing unit may path through enemy bases (it still may not end on
+            // one). Read by MovementRuleQueries.CanMoveThroughEnemies; without it #011's validator would block
+            // the very move-through that triggers the ability below.
+            new HookEntry(EHookID.Movement_OnMoveThroughEnemy,
+                new Condition.Always(),
+                new Effect.IgnoreEnemyMovementBlock(),
+                ELifetime.ThisActivation),
+        },
         new[]
         {
             new ActivatedAbility(EHookID.Movement_OnMoveThroughEnemy, new Cost.OncePerActivation(),

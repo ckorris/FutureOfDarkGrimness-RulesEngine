@@ -19,7 +19,7 @@ namespace FDG.Stages
         {
         }
 
-        protected override async Task RunStage(ICombatMetadata metaData, Action<BuildTargetListResults> onFinished)
+        protected override async Task RunStage(ICombatMetadata metaData, Func<BuildTargetListResults, Task> onFinished)
         {
             List<DataBinding<ModelData>> targets = new List<DataBinding<ModelData>>();
 
@@ -41,7 +41,7 @@ namespace FDG.Stages
                 await MaybePickIndividualTarget(metaData);
             }
 
-            onFinished(results);
+            await onFinished(results);
         }
 
         private async Task MaybePickIndividualTarget(ICombatMetadata metaData)

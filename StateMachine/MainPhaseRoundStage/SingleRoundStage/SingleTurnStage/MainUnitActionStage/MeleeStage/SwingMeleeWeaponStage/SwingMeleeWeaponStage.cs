@@ -18,7 +18,7 @@ namespace FDG.Stages
         {
             GameContext.Log("Swinging.");
 
-            base.Enter(context);
+            await base.Enter(context);
         }
 
         protected override ICombatMetadata GetNewChildContext(ICombatActionContext contextSelf)

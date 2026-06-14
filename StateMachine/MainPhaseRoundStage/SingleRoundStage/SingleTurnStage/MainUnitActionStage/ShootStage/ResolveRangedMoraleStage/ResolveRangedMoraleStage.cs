@@ -22,7 +22,7 @@ namespace FDG.Stages
 
             ResolveForDefender(context);
 
-            ToFinished.Activate(context);
+            await ToFinished.Activate(context);
         }
 
         // A unit reduced to half strength or less by shooting must take a morale test; because the

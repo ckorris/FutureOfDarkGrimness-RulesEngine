@@ -108,7 +108,7 @@ namespace FDG.Stages
                         context.Log($"{chosenUnit.GetValue().Name} held in {ruleName}.");
                         await context.Announce($"{chosenUnit.GetValue().Name} held in {ruleName}.",
                             new TextColor(255, 170, 60, 255));
-                        OnDeferred.Activate(context);
+                        await OnDeferred.Activate(context);
                         return;
                     }
 
@@ -120,7 +120,7 @@ namespace FDG.Stages
                 context.CurrentDeployingUnit = chosenUnit;
                 context.UndeployedUnits[currentPlayerID].Remove(chosenUnit);
 
-                OnFinish.Activate(context);
+                await OnFinish.Activate(context);
                 return;
             }
         }

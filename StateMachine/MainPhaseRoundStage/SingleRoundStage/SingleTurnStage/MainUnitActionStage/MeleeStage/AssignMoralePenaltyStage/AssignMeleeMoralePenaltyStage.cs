@@ -48,7 +48,7 @@ namespace FDG.Stages
                 GameContext.Log($"{losingUnit.Name()} failed its morale test and is now Shaken.");
             }
 
-            OnAssignedPenalty.Activate(context);
+            await OnAssignedPenalty.Activate(context);
         }
     }
 }

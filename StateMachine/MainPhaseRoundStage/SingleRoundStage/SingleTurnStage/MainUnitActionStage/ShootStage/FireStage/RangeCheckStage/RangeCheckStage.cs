@@ -10,9 +10,9 @@ namespace FDG.Stages
         {
         }
 
-        protected override async Task RunStage(ICombatMetadata metaData, Action<RangeCheckResults> onFinished)
+        protected override async Task RunStage(ICombatMetadata metaData, Func<RangeCheckResults, Task> onFinished)
         {
-            onFinished(new RangeCheckResults());
+            await onFinished(new RangeCheckResults());
         }
     }
 

@@ -50,7 +50,7 @@ namespace FDG.Tests
             List<ModelMoveEntry> result = await resolver.Resolve(request);
 
             bool valid = MovementUtilities.ValidatePaths(result, request.MaxRushDistance,
-                request.MaxDistanceInches, new List<Position> { enemyPos },
+                request.MaxDistanceInches, new List<EnemyModelFootprint> { new EnemyModelFootprint(enemyPos, 0.75f, 0) },
                 new List<ITerrain> { wall }, out var errors);
 
             Assert.That(valid, Is.True,
@@ -91,7 +91,7 @@ namespace FDG.Tests
             List<ModelMoveEntry> result = await resolver.Resolve(request);
 
             bool valid = MovementUtilities.ValidatePaths(result, request.MaxRushDistance,
-                request.MaxDistanceInches, new List<Position> { enemyPos },
+                request.MaxDistanceInches, new List<EnemyModelFootprint> { new EnemyModelFootprint(enemyPos, 0.75f, 0) },
                 new List<ITerrain>(), out var errors);
             Assert.That(valid, Is.True,
                 "Clear-lane advance must be valid: " + string.Join(", ", errors.Select(e => e.ToString())));
@@ -136,11 +136,140 @@ namespace FDG.Tests
             List<ModelMoveEntry> result = await resolver.Resolve(request);
 
             bool valid = MovementUtilities.ValidatePaths(result, request.MaxRushDistance,
-                request.MaxDistanceInches, new List<Position>(), new List<ITerrain>(), out var errors);
+                request.MaxDistanceInches, new List<EnemyModelFootprint>(), new List<ITerrain>(), out var errors);
             Assert.That(valid, Is.True,
                 "Staying put with casualty survivors must still be an engine-valid (cohesive) move: "
                 + string.Join(", ", errors.Select(e => e.ToString())));
             Assert.That(errors.Any(e => e.ErrorReasonType == EErrorReasonType.TooFarFromAnyUnitModel), Is.False);
+        }
+
+        [Test]
+        public async Task Resolve_MeleeUnitInReach_ChargesIntoBaseContact()
+        {
+            // #089: a melee unit that can reach should close to base contact, not stall ~1" out.
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var selfPlayer = new PlayerID(System.Guid.NewGuid());
+            var enemyPlayer = new PlayerID(System.Guid.NewGuid());
+
+            // Weaponless mover → classified Melee.
+            var mover = new ModelData(0.75f, new List<Weapon>(), new Position(0f, 0f), store);
+            var moverBinding = store.GetDataBinding<ModelData>(store.Create(mover));
+            var moverUnit = new UnitData(selfPlayer, "Melee", 4, 4,
+                new List<DataBinding<ModelData>> { moverBinding });
+            var moverUnitBinding = store.GetDataBinding<UnitData>(store.Create(moverUnit));
+
+            // Enemy 8" away — comfortably inside the 12" charge.
+            var enemyPos = new Position(8f, 0f);
+            var enemy = new ModelData(0.75f, new List<Weapon>(), enemyPos, store);
+            var enemyBinding = store.GetDataBinding<ModelData>(store.Create(enemy));
+            store.Create(new UnitData(enemyPlayer, "Enemies", 4, 4,
+                new List<DataBinding<ModelData>> { enemyBinding }));
+
+            var tableState = new TableState(store);
+            var resolver = new AiDefineMovementResolver(tableState, selfPlayer);
+            var request = new DefineMovementPathRequest(selfPlayer, "Move", moverUnitBinding,
+                maxAdvanceDistance: 6f, maxRushDistance: 12f, maxDistanceInches: 12f);
+
+            List<ModelMoveEntry> result = await resolver.Resolve(request);
+
+            var footprints = new List<EnemyModelFootprint> { new EnemyModelFootprint(enemyPos, 0.75f, 0) };
+            bool valid = MovementUtilities.ValidatePaths(result, request.MaxRushDistance,
+                request.MaxDistanceInches, footprints, new List<ITerrain>(), out var errors);
+            Assert.That(valid, Is.True, "Charge must be engine-valid: " + string.Join(", ", errors.Select(e => e.ToString())));
+
+            float gap = MinGap(result, enemyPos);
+            Assert.That(gap, Is.LessThanOrEqualTo(0.25f), "melee unit should end in base contact, not stall short");
+            Assert.That(gap, Is.GreaterThanOrEqualTo(-0.11f), "but must not overlap the enemy base");
+        }
+
+        [Test]
+        public async Task Resolve_ShootingUnitInReach_StopsAtStandoffWithoutOverlapping()
+        {
+            // #089: a shooting unit advances toward the enemy but holds at the 1" standoff, not on top of it.
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var selfPlayer = new PlayerID(System.Guid.NewGuid());
+            var enemyPlayer = new PlayerID(System.Guid.NewGuid());
+
+            // A ranged-only weapon → classified Shooting.
+            var rifle = new Weapon("Rifle", rangeInches: 24f, attacks: 1, armorPenetration: 0);
+            var mover = new ModelData(0.75f, new List<Weapon> { rifle }, new Position(0f, 0f), store);
+            var moverBinding = store.GetDataBinding<ModelData>(store.Create(mover));
+            var moverUnit = new UnitData(selfPlayer, "Shooters", 4, 4,
+                new List<DataBinding<ModelData>> { moverBinding });
+            var moverUnitBinding = store.GetDataBinding<UnitData>(store.Create(moverUnit));
+
+            var enemyPos = new Position(8f, 0f);
+            var enemy = new ModelData(0.75f, new List<Weapon>(), enemyPos, store);
+            var enemyBinding = store.GetDataBinding<ModelData>(store.Create(enemy));
+            store.Create(new UnitData(enemyPlayer, "Enemies", 4, 4,
+                new List<DataBinding<ModelData>> { enemyBinding }));
+
+            var tableState = new TableState(store);
+            var resolver = new AiDefineMovementResolver(tableState, selfPlayer);
+            var request = new DefineMovementPathRequest(selfPlayer, "Move", moverUnitBinding,
+                maxAdvanceDistance: 6f, maxRushDistance: 12f, maxDistanceInches: 12f);
+
+            List<ModelMoveEntry> result = await resolver.Resolve(request);
+
+            var footprints = new List<EnemyModelFootprint> { new EnemyModelFootprint(enemyPos, 0.75f, 0) };
+            bool valid = MovementUtilities.ValidatePaths(result, request.MaxRushDistance,
+                request.MaxDistanceInches, footprints, new List<ITerrain>(), out var errors);
+            Assert.That(valid, Is.True, "Advance must be engine-valid: " + string.Join(", ", errors.Select(e => e.ToString())));
+
+            float gap = MinGap(result, enemyPos);
+            Assert.That(gap, Is.GreaterThanOrEqualTo(GameWideConstants.ENEMY_STANDOFF_DISTANCE_INCHES - 0.01f),
+                "shooter must hold at the standoff line, not overlap");
+            bool advanced = result.Any(e => e.Positions.Count > 0 && e.Positions[e.Positions.Count - 1].x > 0.5f);
+            Assert.That(advanced, Is.True, "shooter should still close toward the enemy");
+        }
+
+        [Test]
+        public async Task Resolve_MeleeUnitAlreadyInBaseContact_ProducesValidMove()
+        {
+            // A unit touching an enemy must not deadlock the resolver into emitting a move the (throwing)
+            // DefinePathStage rejects — it should hold / reform validly.
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var selfPlayer = new PlayerID(System.Guid.NewGuid());
+            var enemyPlayer = new PlayerID(System.Guid.NewGuid());
+
+            var enemyPos = new Position(5f, 0f);
+            // Mover sits in base contact (1.5" centre-to-centre) with the enemy.
+            var mover = new ModelData(0.75f, new List<Weapon>(), new Position(3.5f, 0f), store);
+            var moverBinding = store.GetDataBinding<ModelData>(store.Create(mover));
+            var moverUnit = new UnitData(selfPlayer, "Melee", 4, 4,
+                new List<DataBinding<ModelData>> { moverBinding });
+            var moverUnitBinding = store.GetDataBinding<UnitData>(store.Create(moverUnit));
+
+            var enemy = new ModelData(0.75f, new List<Weapon>(), enemyPos, store);
+            var enemyBinding = store.GetDataBinding<ModelData>(store.Create(enemy));
+            store.Create(new UnitData(enemyPlayer, "Enemies", 4, 4,
+                new List<DataBinding<ModelData>> { enemyBinding }));
+
+            var tableState = new TableState(store);
+            var resolver = new AiDefineMovementResolver(tableState, selfPlayer);
+            var request = new DefineMovementPathRequest(selfPlayer, "Move", moverUnitBinding,
+                maxAdvanceDistance: 6f, maxRushDistance: 12f, maxDistanceInches: 12f);
+
+            List<ModelMoveEntry> result = await resolver.Resolve(request);
+
+            var footprints = new List<EnemyModelFootprint> { new EnemyModelFootprint(enemyPos, 0.75f, 0) };
+            bool valid = MovementUtilities.ValidatePaths(result, request.MaxRushDistance,
+                request.MaxDistanceInches, footprints, new List<ITerrain>(), out var errors);
+            Assert.That(valid, Is.True,
+                "A unit already in contact must still get a valid move: " + string.Join(", ", errors.Select(e => e.ToString())));
+        }
+
+        // Smallest base-to-base gap between any moved model's end position and the enemy (both radius 0.75").
+        private static float MinGap(List<ModelMoveEntry> moves, Position enemy)
+        {
+            float min = float.PositiveInfinity;
+            foreach (var m in moves)
+                if (m.Positions.Count > 0)
+                {
+                    float g = Position.GetDistance2D(m.Positions[m.Positions.Count - 1], enemy) - 0.75f - 0.75f;
+                    if (g < min) min = g;
+                }
+            return min;
         }
     }
 }

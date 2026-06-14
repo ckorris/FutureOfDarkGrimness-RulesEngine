@@ -83,7 +83,7 @@ namespace FDG.Stages
 
             context.SetDeploymentZones(choices);
 
-            ToRollForFirstDeployment.Activate(context);
+            await ToRollForFirstDeployment.Activate(context);
         }
 
         // RETIRED (work item 071, formerly numbered 052): dead debug probe — never called — that proved a stage could push

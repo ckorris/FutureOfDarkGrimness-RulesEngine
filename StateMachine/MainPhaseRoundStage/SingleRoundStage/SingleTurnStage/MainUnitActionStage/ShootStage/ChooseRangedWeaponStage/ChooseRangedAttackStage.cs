@@ -44,12 +44,12 @@ namespace FDG.Stages
                 if (context.AlreadyUsedWeapons.Count > 0)
                 {
                     GameContext.Log("No remaining weapon has a valid target - ending shoot action.");
-                    OnNoValidShots.Activate(context);
+                    await OnNoValidShots.Activate(context);
                 }
                 else
                 {
                     GameContext.Log("No weapon has a valid target - returning to Choose Action.");
-                    BackToChooseAction.Activate(context);
+                    await BackToChooseAction.Activate(context);
                 }
                 return;
             }
@@ -62,7 +62,7 @@ namespace FDG.Stages
 
             if (attackResult is Cancelled<RangedAttackChoice>)
             {
-                BackToChooseAction.Activate(context);
+                await BackToChooseAction.Activate(context);
                 return;
             }
 
@@ -76,7 +76,7 @@ namespace FDG.Stages
             context.RegisterAttackedDefender(rangedAttackChoice.TargetUnit);
             GameContext.Log($"Chose weapon: {chosenWeapon.Name}. Count: {weaponCount}.");
 
-            OnChoseWeapon.Activate(context);
+            await OnChoseWeapon.Activate(context);
         }
 
         private static bool HasAnyFireableOption(List<WeaponOption> weaponOptions)

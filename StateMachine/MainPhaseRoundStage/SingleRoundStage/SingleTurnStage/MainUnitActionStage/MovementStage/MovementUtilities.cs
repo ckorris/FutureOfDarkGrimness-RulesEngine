@@ -24,35 +24,84 @@ namespace FDG.Stages
             ValidateOutOfMoveRange(moves, maxDistanceInches, ref errors);
             ValidateMovingThroughImpassibleTerrain(moves, terrain, ref errors);
             ValidateMovingThroughDifficultTerrain(moves, terrain, ref errors);
-            ValidateMovingThroughEnemyUnits(moves, ref errors);
+            //No enemy footprints supplied (this overload predates enemy-aware validation): the move-through /
+            //standoff check is a no-op here, preserving these callers' existing behavior.
+            ValidateMovingThroughEnemyUnits(moves, Array.Empty<EnemyModelFootprint>(), canMoveThroughEnemies: false, ref errors);
             ValidateCoherency(moves, ref errors);
 
             return errors.Count == 0;
         }
 
         /// <summary>
-        /// Full Move-action validation: paths must stay within the hard cap (Charge distance),
-        /// and any path that exceeds the Rush distance requires at least one model to end within
-        /// melee range of an enemy model.
+        /// Enemy-aware validation WITHOUT charge semantics: terrain + move-through / standoff (honoring
+        /// <paramref name="canMoveThroughEnemies"/>) + coherency, but no charge-reach requirement. For
+        /// consolidation and out-of-band executor moves — they have their own distance cap and never charge.
         /// </summary>
-        public static bool ValidatePaths(List<ModelMoveEntry> moves,
-            float maxRushDistance, float maxDistanceInches,
-            IEnumerable<Position> enemyModelPositions,
+        public static bool ValidatePaths(List<ModelMoveEntry> moves, float maxDistanceInches,
+            IEnumerable<EnemyModelFootprint> enemyFootprints, bool canMoveThroughEnemies,
             IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors)
         {
             errors = new List<ReasonForInvalidMove>();
 
+            IReadOnlyList<EnemyModelFootprint> enemies =
+                enemyFootprints as IReadOnlyList<EnemyModelFootprint> ?? enemyFootprints?.ToList()
+                ?? (IReadOnlyList<EnemyModelFootprint>)Array.Empty<EnemyModelFootprint>();
+
             ValidateOutOfMoveRange(moves, maxDistanceInches, ref errors);
             ValidateMovingThroughImpassibleTerrain(moves, terrain, ref errors);
             ValidateMovingThroughDifficultTerrain(moves, terrain, ref errors);
-            ValidateMovingThroughEnemyUnits(moves, ref errors);
+            ValidateMovingThroughEnemyUnits(moves, enemies, canMoveThroughEnemies, ref errors);
             ValidateCoherency(moves, ref errors);
-            ValidateChargeReach(moves, maxRushDistance, enemyModelPositions, ref errors);
 
             return errors.Count == 0;
         }
 
-        public static List<Position> GetEnemyModelPositions(DataBinding<UnitData> movingUnit, IGameContext gameContext)
+        /// <summary>
+        /// Back-compat charge overload that assumes the mover may not move through enemies
+        /// (<c>canMoveThroughEnemies: false</c>). Kept so callers/tests that never need the fly-over
+        /// flag don't have to thread it (mirrors the no-enemy convenience overloads above).
+        /// </summary>
+        public static bool ValidatePaths(List<ModelMoveEntry> moves,
+            float maxRushDistance, float maxDistanceInches,
+            IEnumerable<EnemyModelFootprint> enemyFootprints,
+            IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors)
+            => ValidatePaths(moves, maxRushDistance, maxDistanceInches, enemyFootprints,
+                canMoveThroughEnemies: false, terrain, out errors);
+
+        /// <summary>
+        /// Full Move-action validation: paths must stay within the hard cap (Charge distance),
+        /// and any path that exceeds the Rush distance requires at least one model to end within
+        /// melee range of an enemy model. <paramref name="canMoveThroughEnemies"/> waives the
+        /// pass-through block for fly-over units (Strafing).
+        /// </summary>
+        public static bool ValidatePaths(List<ModelMoveEntry> moves,
+            float maxRushDistance, float maxDistanceInches,
+            IEnumerable<EnemyModelFootprint> enemyFootprints, bool canMoveThroughEnemies,
+            IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors)
+        {
+            errors = new List<ReasonForInvalidMove>();
+
+            IReadOnlyList<EnemyModelFootprint> enemies =
+                enemyFootprints as IReadOnlyList<EnemyModelFootprint> ?? enemyFootprints?.ToList()
+                ?? (IReadOnlyList<EnemyModelFootprint>)Array.Empty<EnemyModelFootprint>();
+
+            ValidateOutOfMoveRange(moves, maxDistanceInches, ref errors);
+            ValidateMovingThroughImpassibleTerrain(moves, terrain, ref errors);
+            ValidateMovingThroughDifficultTerrain(moves, terrain, ref errors);
+            ValidateMovingThroughEnemyUnits(moves, enemies, canMoveThroughEnemies, ref errors);
+            ValidateCoherency(moves, ref errors);
+            ValidateChargeReach(moves, maxRushDistance, enemies, ref errors);
+
+            return errors.Count == 0;
+        }
+
+        /// <summary>
+        /// Every living enemy model's base footprint (centre + radius), tagged with a per-unit key so the
+        /// move-through / standoff check can tell which models belong to the same enemy unit (a charge into
+        /// one model of a unit legitimately ends within the 1" standoff of that whole unit). The key is only
+        /// stable within the returned list. Enemies are everyone not on the moving unit's team.
+        /// </summary>
+        public static List<EnemyModelFootprint> GetEnemyModelFootprints(DataBinding<UnitData> movingUnit, IGameContext gameContext)
         {
             PlayerID owner = movingUnit.GetValue().PlayerID;
 
@@ -62,21 +111,26 @@ namespace FDG.Stages
                 ? ownerTeam.Players
                 : new List<PlayerID> { owner };
 
-            List<Position> positions = new List<Position>();
+            List<EnemyModelFootprint> footprints = new List<EnemyModelFootprint>();
+            int unitKey = 0;
             foreach (ArmyData enemyArmy in gameContext.GameDataStore().GetAllValues<ArmyData>()
                 .Where(a => !alliedPlayers.Contains(a.PlayerID)))
             {
                 foreach (DataBinding<UnitData> enemyUnit in enemyArmy.UnitBindings)
                 {
+                    bool anyLiving = false;
                     foreach (DataBinding<ModelData> enemyModel in enemyUnit.ModelBindings()
                         .Where(m => m.GetIsAlive()))
                     {
-                        positions.Add(enemyModel.GetValue().PositionBinding.GetValue());
+                        ModelData md = enemyModel.GetValue();
+                        footprints.Add(new EnemyModelFootprint(md.PositionBinding.GetValue(), md.BaseRadiusInches, unitKey));
+                        anyLiving = true;
                     }
+                    if (anyLiving) unitKey++;
                 }
             }
 
-            return positions;
+            return footprints;
         }
 
         /// <summary>
@@ -146,6 +200,11 @@ namespace FDG.Stages
 
         // Shortest 2D (x,z) distance from point p to the segment a->b.
         private static float DistancePointToSegment2D(Position p, Position a, Position b)
+            => DistancePointToSegment2D(p, a, b, out _);
+
+        // As above, also reporting the closest point on the segment (so callers can tell an interior
+        // crossing from a touch at an endpoint).
+        private static float DistancePointToSegment2D(Position p, Position a, Position b, out Float2 closest)
         {
             float abx = b.x - a.x;
             float abz = b.z - a.z;
@@ -156,6 +215,7 @@ namespace FDG.Stages
 
             float closestX = a.x + t * abx;
             float closestZ = a.z + t * abz;
+            closest = new Float2(closestX, closestZ);
             float dx = p.x - closestX;
             float dz = p.z - closestZ;
 
@@ -163,7 +223,7 @@ namespace FDG.Stages
         }
 
         public static void ValidateChargeReach(List<ModelMoveEntry> moves, float maxRushDistance,
-            IEnumerable<Position> enemyModelPositions, ref List<ReasonForInvalidMove> errors)
+            IEnumerable<EnemyModelFootprint> enemyFootprints, ref List<ReasonForInvalidMove> errors)
         {
             Dictionary<ModelMoveEntry, float> totalDistances = GetTotalMoveDistances(moves);
 
@@ -172,7 +232,7 @@ namespace FDG.Stages
             if (!anyBeyondRush) return;
 
             //At least one model in the unit must end within melee range of an enemy model (horizontal).
-            List<Position> enemies = enemyModelPositions?.ToList() ?? new List<Position>();
+            List<Position> enemies = enemyFootprints?.Select(f => f.Center).ToList() ?? new List<Position>();
             float meleeRange = GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL;
 
             bool anyInMelee = moves.Any(move =>
@@ -345,10 +405,119 @@ namespace FDG.Stages
             }
         }
 
+        // Float slack so a charge that lands exactly base-to-base isn't rejected by sub-thousandth rounding.
+        private const float ENEMY_PROXIMITY_EPSILON_INCHES = 0.001f;
+
+        // A move ending within this base-to-base gap of an enemy counts as "in base contact" (a charge),
+        // which is legal; the forbidden standoff band is (this, ENEMY_STANDOFF_DISTANCE_INCHES). Generous
+        // enough to absorb click/float imprecision when a player drags a charger up to touch an enemy.
+        private const float ENEMY_CONTACT_TOLERANCE_INCHES = 0.1f;
+
+        /// <summary>
+        /// Two related rules (GF movement):
+        /// <list type="bullet">
+        /// <item>A model may not move <i>through</i> an enemy base — its swept base may not overlap an enemy
+        /// base mid-path, nor end stacked on one.</item>
+        /// <item>A model that isn't charging must end at least <see cref="GameWideConstants.ENEMY_STANDOFF_DISTANCE_INCHES"/>
+        /// (base-to-base) from every enemy. "Charging" is detected geometrically: a move that ends in base
+        /// contact with an enemy unit waives the standoff for that whole unit (so reaching one model of a
+        /// multi-model unit doesn't fail you for being within 1" of its other models).</item>
+        /// </list>
+        /// Only moves that actually close the distance are penalised, so a model already inside an enemy's
+        /// reach (e.g. left there by a pile-in/consolidation move) can still move away or hold without
+        /// being trapped into an impossible-to-satisfy state.
+        /// </summary>
         private static void ValidateMovingThroughEnemyUnits(List<ModelMoveEntry> moves,
+            IReadOnlyList<EnemyModelFootprint> enemyFootprints, bool canMoveThroughEnemies,
             ref List<ReasonForInvalidMove> reasonsForInvalidMove)
         {
-            //TODO: Implement.
+            if (enemyFootprints == null || enemyFootprints.Count == 0) return;
+
+            //First pass: which enemy units does this move charge into? A unit is engaged if any moving model
+            //ends within melee range of one of its models — the same completed-charge test ValidateChargeReach
+            //uses. Charging a unit waives the standoff for that whole unit (you legitimately end within 1" of
+            //all its models, not just the one you reached).
+            HashSet<int> engagedUnitKeys = new HashSet<int>();
+            foreach (ModelMoveEntry move in moves)
+            {
+                if (move.Positions.Count == 0) continue;
+                Position end = move.Positions[move.Positions.Count - 1];
+
+                foreach (EnemyModelFootprint enemy in enemyFootprints)
+                {
+                    if (Position.GetDistance2D(end, enemy.Center)
+                        <= GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL + ENEMY_PROXIMITY_EPSILON_INCHES)
+                        engagedUnitKeys.Add(enemy.UnitKey);
+                }
+            }
+
+            foreach (ModelMoveEntry move in moves)
+            {
+                if (move.Positions.Count == 0) continue;
+
+                float movingRadius = move.Model.GetValue().BaseRadiusInches;
+                Position start = move.Model.GetValue().PositionBinding.GetValue();
+                Position end = move.Positions[move.Positions.Count - 1];
+
+                bool flaggedThrough = false;
+                bool flaggedStandoff = false;
+
+                foreach (EnemyModelFootprint enemy in enemyFootprints)
+                {
+                    float contactDistance = movingRadius + enemy.BaseRadiusInches;
+                    float startGap = Position.GetDistance2D(start, enemy.Center) - contactDistance;
+                    float endGap = Position.GetDistance2D(end, enemy.Center) - contactDistance;
+                    bool movedCloser = endGap < startGap - ENEMY_PROXIMITY_EPSILON_INCHES;
+
+                    //Pass-through: the swept base crosses this enemy's base at an interior point of the path
+                    //(not at the model's own start, and not where it ends in legal contact). A clean charge's
+                    //closest approach is its destination, so it isn't caught here. A fly-over unit
+                    //(canMoveThroughEnemies, e.g. Strafing) is exempt from this block — it may path through an
+                    //enemy base — but it is still caught by the ending-stacked check below.
+                    if (!canMoveThroughEnemies && !flaggedThrough)
+                    {
+                        Position segStart = start;
+                        foreach (Position step in move.Positions)
+                        {
+                            float gap = DistancePointToSegment2D(enemy.Center, segStart, step, out Float2 closest) - contactDistance;
+                            bool atPathStart = Distance2D(closest, start) <= ENEMY_CONTACT_TOLERANCE_INCHES;
+                            bool atPathEnd = Distance2D(closest, end) <= ENEMY_CONTACT_TOLERANCE_INCHES;
+                            if (gap < -ENEMY_CONTACT_TOLERANCE_INCHES && !atPathStart && !atPathEnd)
+                            {
+                                reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.MovingThroughEnemyUnit, move.Model));
+                                flaggedThrough = true;
+                                break;
+                            }
+                            segStart = step;
+                        }
+                    }
+
+                    //Ending stacked on an enemy is never allowed, even charging.
+                    if (!flaggedThrough && endGap < -ENEMY_CONTACT_TOLERANCE_INCHES && movedCloser)
+                    {
+                        reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.MovingThroughEnemyUnit, move.Model));
+                        flaggedThrough = true;
+                    }
+
+                    //Standoff: ending in the (contact, standoff) band is illegal unless this unit is being charged.
+                    if (!flaggedStandoff && movedCloser && !engagedUnitKeys.Contains(enemy.UnitKey)
+                        && endGap > ENEMY_CONTACT_TOLERANCE_INCHES
+                        && endGap < GameWideConstants.ENEMY_STANDOFF_DISTANCE_INCHES - ENEMY_PROXIMITY_EPSILON_INCHES)
+                    {
+                        reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.EndedTooCloseToEnemy, move.Model));
+                        flaggedStandoff = true;
+                    }
+
+                    if (flaggedThrough && flaggedStandoff) break;
+                }
+            }
+        }
+
+        private static float Distance2D(Float2 a, Position b)
+        {
+            float dx = a.X - b.x;
+            float dz = a.Y - b.z;
+            return MathF.Sqrt(dx * dx + dz * dz);
         }
 
         // Float slack on the cohesion limits so a move that lands a model exactly on the 1"/9" boundary
@@ -447,6 +616,8 @@ namespace FDG.Stages
                     return "Unit moving too far";
                 case EErrorReasonType.MovingThroughEnemyUnit:
                     return "Moves through an enemy unit";
+                case EErrorReasonType.EndedTooCloseToEnemy:
+                    return $"Ends within {GameWideConstants.ENEMY_STANDOFF_DISTANCE_INCHES}\" of an enemy without charging it";
                 case EErrorReasonType.MovingThroughImpassibleTerrain:
                     return "Moves through impassible terrain";
                 case EErrorReasonType.ExceededDifficultTerrainMoveLimit:
@@ -489,6 +660,26 @@ namespace FDG.Stages
         MovingThroughEnemyUnit,
         TooFarFromAnyUnitModel,
         TooFarFromAllUnitModels,
-        ChargeRangeRequiresMeleeReach
+        ChargeRangeRequiresMeleeReach,
+        EndedTooCloseToEnemy
+    }
+
+    /// <summary>
+    /// A living enemy model's base footprint for movement validation: where it is, how big its base is, and
+    /// a key identifying which enemy unit it belongs to (shared by all models of that unit within one
+    /// footprint list). See <see cref="MovementUtilities.GetEnemyModelFootprints"/>.
+    /// </summary>
+    public readonly struct EnemyModelFootprint
+    {
+        public readonly Position Center;
+        public readonly float BaseRadiusInches;
+        public readonly int UnitKey;
+
+        public EnemyModelFootprint(Position center, float baseRadiusInches, int unitKey)
+        {
+            Center = center;
+            BaseRadiusInches = baseRadiusInches;
+            UnitKey = unitKey;
+        }
     }
 }

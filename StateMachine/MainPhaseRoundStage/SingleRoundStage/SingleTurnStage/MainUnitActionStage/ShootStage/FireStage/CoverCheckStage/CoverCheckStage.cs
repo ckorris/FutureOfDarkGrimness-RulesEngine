@@ -10,7 +10,7 @@ namespace FDG.Stages
         {
         }
 
-        protected override async Task RunStage(ICombatMetadata metaData, Action<CoverCheckResults> onFinished)
+        protected override async Task RunStage(ICombatMetadata metaData, Func<CoverCheckResults, Task> onFinished)
         {
             var modelBlockers = LineOfSightUtilities.BuildModelBlockers(
                 GameContext.TableState, metaData.AttackingUnit, metaData.DefendingUnit);
@@ -53,7 +53,7 @@ namespace FDG.Stages
             else
                 GameContext.Log($"Cover: {modelsInCover}/{defenders.Count} defending models in cover. No bonus.");
 
-            onFinished(new CoverCheckResults(bonus));
+            await onFinished(new CoverCheckResults(bonus));
         }
     }
 }

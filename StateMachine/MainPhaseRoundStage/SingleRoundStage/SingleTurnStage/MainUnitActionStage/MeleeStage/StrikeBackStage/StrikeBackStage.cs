@@ -19,14 +19,19 @@ namespace FDG.Stages
             // #020: reaching this stage means the defender is actually striking back — record it so
             // ApplyFatigueStage fatigues the striker. (The charger's own fatigue is handled there too.)
             context.RegisterDefenderStruckBack();
-            base.Enter(context);
+            await base.Enter(context);
         }
 
         protected override ICombatActionContext GetNewChildContext(ICombatActionContext contextSelf)
         {
-            CombatActionContext meleeContext = new CombatActionContext(contextSelf.GameContext, 
+            CombatActionContext meleeContext = new CombatActionContext(contextSelf.GameContext,
                 contextSelf.DefendingUnit, isMelee: true);
             meleeContext.SetDefender(contextSelf.AttackingUnit); //Purposefully reversed.
+
+            // #017: only the defending models within melee range may strike back. The roles are reversed
+            // here, so the parent's in-range defenders are this context's in-range attackers (and vice versa).
+            meleeContext.SetInRangeAttackers(contextSelf.InRangeDefendingModels);
+            meleeContext.SetInRangeDefenders(contextSelf.InRangeAttackingModels);
             return meleeContext;
         }
 

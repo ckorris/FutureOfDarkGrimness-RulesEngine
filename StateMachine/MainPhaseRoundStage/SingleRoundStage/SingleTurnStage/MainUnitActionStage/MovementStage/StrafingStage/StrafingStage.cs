@@ -45,7 +45,7 @@ namespace FDG.Stages
 
             if (!context.TryGetPaths(out IReadOnlyList<ModelMoveEntry> paths) || paths.Count == 0)
             {
-                OnStrafeResolved.Activate(context);
+                await OnStrafeResolved.Activate(context);
                 return;
             }
 
@@ -53,7 +53,7 @@ namespace FDG.Stages
                 paths, context.MovingUnit, GameContext);
             if (crossed.Count == 0)
             {
-                OnStrafeResolved.Activate(context);
+                await OnStrafeResolved.Activate(context);
                 return;
             }
 
@@ -62,7 +62,7 @@ namespace FDG.Stages
                 .GatherOffers(new MoveThroughEnemyContext(mover));
             if (offers.Count == 0)
             {
-                OnStrafeResolved.Activate(context);
+                await OnStrafeResolved.Activate(context);
                 return;
             }
 
@@ -99,7 +99,7 @@ namespace FDG.Stages
                 }
             }
 
-            OnStrafeResolved.Activate(context);
+            await OnStrafeResolved.Activate(context);
         }
 
         protected override ICombatMetadata GetNewChildContext(IMovementActionContext contextSelf)

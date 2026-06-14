@@ -38,7 +38,7 @@ namespace FDG.Stages
                 GameContext.Log($"{striker.Name} struck back and is Fatigued.");
             }
 
-            OnFatigueApplied.Activate(context);
+            await OnFatigueApplied.Activate(context);
         }
     }
 }

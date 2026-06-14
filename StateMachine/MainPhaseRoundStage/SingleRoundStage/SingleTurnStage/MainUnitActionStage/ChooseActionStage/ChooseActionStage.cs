@@ -45,7 +45,7 @@ namespace FDG.Stages
                 IUnit activatingUnit = context.ActivatingUnit.GetValue();
                 activatingUnit.Tokens.RemoveTokens(TokenType.Shaken);
                 GameContext.Log($"{activatingUnit.Name} is Shaken — staying idle this activation and recovering.");
-                ToReconcileEndOfActivation.Activate(context);
+                await ToReconcileEndOfActivation.Activate(context);
                 return;
             }
 
@@ -61,14 +61,14 @@ namespace FDG.Stages
             if ((canMove || canCharge || canShoot || hasCustomActionsAvailable) == false)
             {
                 GameContext.Log($"No more available actions left in {nameof(ChooseActionStage)}. Passing.");
-                ToReconcileEndOfActivation.Activate(context);
+                await ToReconcileEndOfActivation.Activate(context);
                 return;
             }
 
             List<string> validOptions = new List<string>();
             List<StringSelectionRequest.InvalidOption> invalidOptions = new List<StringSelectionRequest.InvalidOption>();
 
-            Dictionary<string, Action> outcomes = new Dictionary<string, Action>();
+            Dictionary<string, Func<Task>> outcomes = new Dictionary<string, Func<Task>>();
 
             if(canMove)
             {
@@ -122,7 +122,7 @@ namespace FDG.Stages
                 throw new ArgumentException($"Request option was {choice}, but that wasn't an option.");
             }
 
-            outcomes[choice].Invoke();
+            await outcomes[choice].Invoke();
         }
 
 

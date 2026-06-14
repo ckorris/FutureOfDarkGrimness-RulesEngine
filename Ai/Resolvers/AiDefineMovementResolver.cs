@@ -32,8 +32,8 @@ namespace FDG.Ai.Resolvers
                 ? request.MaxAdvanceDistance - 0.001f
                 : request.MaxDistanceInches - 0.001f;
 
-            var enemyPositions = GetLiveEnemyPositions();
-            if (enemyPositions.Count == 0)
+            var enemyFootprints = GetLiveEnemyFootprints();
+            if (enemyFootprints.Count == 0)
                 return Task.FromResult(StayInPlace(request));
 
             // Move (and re-form) only the living models. Dead ones leave holes in the formation and stay
@@ -45,22 +45,41 @@ namespace FDG.Ai.Resolvers
             float cx = living.Average(mb => mb.GetValue().Position.x);
             float cz = living.Average(mb => mb.GetValue().Position.z);
 
-            Position nearest = enemyPositions
-                .OrderBy(p => Dist(p.x, p.z, cx, cz))
+            EnemyModelFootprint nearest = enemyFootprints
+                .OrderBy(f => Dist(f.Center.x, f.Center.z, cx, cz))
                 .First();
 
-            float dx = nearest.x - cx;
-            float dz = nearest.z - cz;
+            float dx = nearest.Center.x - cx;
+            float dz = nearest.Center.z - cz;
             float dist = MathF.Sqrt(dx * dx + dz * dz);
 
             if (dist < 0.01f)
                 return Task.FromResult(StayInPlace(request));
 
-            // Don't overshoot — stop 1" base-to-base short to avoid illegal overlap.
-            float step = Math.Min(moveDistance, Math.Max(0f, dist - 1f));
-
             float ndx = dx / dist;
             float ndz = dz / dist;
+
+            // Aim for an explicit end gap rather than a blind "1" short of centre" (which is actually base
+            // overlap). A melee/hybrid unit that can reach charges into base contact; everyone else advances
+            // to the standoff line. Because PackGrid translates the whole formation, the nearest model's gap
+            // responds ~1:1 to the centroid step, so a couple of measure-and-correct passes land it on target.
+            float leadRadius = living.Max(mb => mb.GetValue().BaseRadiusInches);
+            float contactDistance = leadRadius + nearest.BaseRadiusInches;
+            bool wantsCharge = archetype != AiUnitArchetype.Shooting
+                && (dist - contactDistance) <= moveDistance + 0.05f;
+            float targetGap = wantsCharge
+                ? ChargeContactTargetGapInches
+                : GameWideConstants.ENEMY_STANDOFF_DISTANCE_INCHES + StandoffTargetMarginInches;
+
+            float step = Math.Clamp(dist - contactDistance - targetGap, 0f, moveDistance);
+            for (int i = 0; i < TargetRefineIterations; i++)
+            {
+                var probe = BuildCandidate(living, cx, cz, ndx, ndz, step, request);
+                float achievedGap = MinEnemyGap(probe, enemyFootprints);
+                float error = achievedGap - targetGap;
+                if (Math.Abs(error) <= TargetGapToleranceInches) break;
+                step = Math.Clamp(step + error, 0f, moveDistance);
+            }
 
             // (A) Cheap centroid pre-filter. Inflate terrain footprints by the unit's base radius (the
             // largest living model) so this matches the base-radius-aware path validator (#050) — the
@@ -91,7 +110,7 @@ namespace FDG.Ai.Resolvers
             // the engine will reject.
             List<ModelMoveEntry> candidate = BuildCandidate(living, cx, cz, ndx, ndz, step, request);
             bool valid = MovementUtilities.ValidatePaths(candidate, request.MaxRushDistance,
-                request.MaxDistanceInches, enemyPositions, allTerrain, out _);
+                request.MaxDistanceInches, enemyFootprints, request.CanMoveThroughEnemies, allTerrain, out _);
 
             int attempts = 0;
             while (!valid && attempts < MaxBackoffAttempts)
@@ -101,19 +120,60 @@ namespace FDG.Ai.Resolvers
                     ? StayInPlace(request)
                     : BuildCandidate(living, cx, cz, ndx, ndz, step, request);
                 valid = MovementUtilities.ValidatePaths(candidate, request.MaxRushDistance,
-                    request.MaxDistanceInches, enemyPositions, allTerrain, out _);
+                    request.MaxDistanceInches, enemyFootprints, request.CanMoveThroughEnemies, allTerrain, out _);
                 attempts++;
             }
 
             if (!valid)
+            {
+                // Reform in place to close any casualty gaps...
                 candidate = StayInPlace(request);
+                valid = MovementUtilities.ValidatePaths(candidate, request.MaxRushDistance,
+                    request.MaxDistanceInches, enemyFootprints, request.CanMoveThroughEnemies, allTerrain, out _);
+
+                // ...but if even that is rejected (a unit intermingled with enemies can't re-pack without
+                // a model crossing an enemy base), hold exact positions — zero-length paths can't move
+                // through anything, so this is always move-through-valid.
+                if (!valid)
+                    candidate = HoldExactPositions(living);
+            }
 
             return Task.FromResult(candidate);
         }
 
+        private static List<ModelMoveEntry> HoldExactPositions(List<DataBinding<ModelData>> living)
+            => living.Select(mb => new ModelMoveEntry(mb, new List<Position> { mb.GetValue().Position })).ToList();
+
         //Backoff bounds for (B): halve the step up to this many times before giving up and standing still.
         private const int MaxBackoffAttempts = 6;
         private const float MinBackoffStepInches = 0.05f;
+
+        //Aim tuning. A charge targets just inside base contact (still < the validator's contact tolerance,
+        //so it reads as engaged, not as standoff-band loitering); an advance targets just past the standoff
+        //line. A few measure-and-correct passes converge thanks to the ~1:1 step↔gap response.
+        private const float ChargeContactTargetGapInches = 0.05f;
+        private const float StandoffTargetMarginInches = 0.05f;
+        private const float TargetGapToleranceInches = 0.05f;
+        private const int TargetRefineIterations = 3;
+
+        // Smallest base-to-base gap between any moving model's end position and any enemy model — i.e. how
+        // close the move actually gets, the quantity the move-through / standoff validator keys on.
+        private static float MinEnemyGap(List<ModelMoveEntry> moves, List<EnemyModelFootprint> enemies)
+        {
+            float min = float.PositiveInfinity;
+            foreach (var move in moves)
+            {
+                if (move.Positions.Count == 0) continue;
+                Position end = move.Positions[move.Positions.Count - 1];
+                float r = move.Model.GetValue().BaseRadiusInches;
+                foreach (var enemy in enemies)
+                {
+                    float gap = Position.GetDistance2D(end, enemy.Center) - r - enemy.BaseRadiusInches;
+                    if (gap < min) min = gap;
+                }
+            }
+            return min;
+        }
 
         // Builds the move the AI wants for a given step: a single living model steps straight toward the
         // enemy; multiple models re-pack into a tight cohesive grid at the destination (a rigid translate
@@ -135,19 +195,27 @@ namespace FDG.Ai.Resolvers
             return CohesiveFormation.PackGrid(living, cx + ndx * clamped, cz + ndz * clamped);
         }
 
-        private List<Position> GetLiveEnemyPositions()
+        // Living enemy model footprints, tagged with a per-unit key (so the validator can tell which models
+        // share an enemy unit). Mirrors MovementUtilities.GetEnemyModelFootprints but reads from ITableState.
+        private List<EnemyModelFootprint> GetLiveEnemyFootprints()
         {
-            var positions = new List<Position>();
+            var footprints = new List<EnemyModelFootprint>();
+            int unitKey = 0;
             foreach (var unit in _tableState.Units.Objects)
             {
                 if (unit.PlayerID == _playerID) continue;
+                bool anyLiving = false;
                 foreach (var model in unit.Models)
                 {
                     if (model is ModelData md && md.GetIsAlive() && (md.Position.x != 0f || md.Position.z != 0f))
-                        positions.Add(md.Position);
+                    {
+                        footprints.Add(new EnemyModelFootprint(md.Position, md.BaseRadiusInches, unitKey));
+                        anyLiving = true;
+                    }
                 }
+                if (anyLiving) unitKey++;
             }
-            return positions;
+            return footprints;
         }
 
         private static float Dist(float ax, float az, float bx, float bz)

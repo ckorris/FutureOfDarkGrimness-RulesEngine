@@ -46,19 +46,19 @@ namespace FDG.Stages
             {
                 GameContext.Log($"Attackers and defenders tied: {attackerWoundsDealt} vs. {defenderWoundsDealt}.");
                 context.AddResult(new DetermineMeleeWinnerResults(DetermineMeleeWinnerResults.EMeleeWinnerResult.Tie));
-                OnDoesntNeedRollToDecide.Activate(context);
+                await OnDoesntNeedRollToDecide.Activate(context);
             }
             else if (attackerWoundsDealt > defenderWoundsDealt)
             {
                 GameContext.Log($"Attackers won melee {attackerWoundsDealt} vs. {defenderWoundsDealt}.");
                 context.AddResult(new DetermineMeleeWinnerResults(DetermineMeleeWinnerResults.EMeleeWinnerResult.AttackerWon));
-                OnNeedsRollToDecide.Activate(context);
+                await OnNeedsRollToDecide.Activate(context);
             }
             else
             {
                 GameContext.Log($"Defenders won melee {defenderWoundsDealt} vs. {attackerWoundsDealt}.");
                 context.AddResult(new DetermineMeleeWinnerResults(DetermineMeleeWinnerResults.EMeleeWinnerResult.DefenderWon));
-                OnNeedsRollToDecide.Activate(context);
+                await OnNeedsRollToDecide.Activate(context);
             }
         }
 

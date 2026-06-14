@@ -36,12 +36,12 @@ namespace FDG.Stages
                     GameContext.Log("Morale test failed but passed the Fearless re-roll (4+).");
                 else
                     GameContext.Log($"Morale test passed (needed {outcome.RollNeeded}).");
-                OnMoralePassed.Activate(context);
+                await OnMoralePassed.Activate(context);
             }
             else
             {
                 GameContext.Log($"Morale test failed (needed {outcome.RollNeeded}).");
-                OnMoraleFailed.Activate(context);
+                await OnMoraleFailed.Activate(context);
             }
         }
     }

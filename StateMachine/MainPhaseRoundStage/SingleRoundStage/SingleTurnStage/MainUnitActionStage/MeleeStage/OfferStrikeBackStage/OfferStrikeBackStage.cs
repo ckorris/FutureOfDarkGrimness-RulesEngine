@@ -19,11 +19,11 @@ namespace FDG.Stages
 
         public override async Task Enter(ICombatActionContext context)
         {
-            // Skip if the defender has no melee weapons to fight back with.
-            if (context.DefendingUnit.GetValue().GetMeleeWeapons().Count == 0)
+            // Skip if no in-range defending model has a melee weapon to fight back with (#017).
+            if (MeleeRangeUtilities.GetMeleeWeaponsFromModels(context.InRangeDefendingModels).Count == 0)
             {
-                GameContext.Log("Defender has no melee weapons; skipping strikeback.");
-                SkipStrikingBack(context);
+                GameContext.Log("No in-range defender with a melee weapon; skipping strikeback.");
+                await SkipStrikingBack(context);
                 return;
             }
 
@@ -39,24 +39,24 @@ namespace FDG.Stages
 
             if(task.Result)
             {
-                MoveToStrikingBack(context);
+                await MoveToStrikingBack(context);
             }
             else
             {
-                SkipStrikingBack(context);
+                await SkipStrikingBack(context);
             }
         }
 
-        private void MoveToStrikingBack(ICombatActionContext context)
+        private Task MoveToStrikingBack(ICombatActionContext context)
         {
             GameContext.Log("Defenders striking back.");
-            OnOfferAccepted.Activate(context);
+            return OnOfferAccepted.Activate(context);
         }
 
-        private void SkipStrikingBack(ICombatActionContext context)
+        private Task SkipStrikingBack(ICombatActionContext context)
         {
             GameContext.Log("Defenders not striking back.");
-            OnOfferRejected.Activate(context);
+            return OnOfferRejected.Activate(context);
         }
     }
 }

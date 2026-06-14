@@ -25,10 +25,17 @@ namespace FDG.StageResolution.Requests
         /// </summary>
         public IReadOnlyList<WeaponSightProfile> WeaponSightProfiles { get; }
 
+        /// <summary>
+        /// Whether the moving unit may path through enemy bases (Strafing's fly-over). Derived from the
+        /// unit's #042 rules where the request is built, and read by the resolvers so their move-preview
+        /// validation agrees with the authoritative stage check. It still may not END on an enemy.
+        /// </summary>
+        public bool CanMoveThroughEnemies { get; }
+
         [JsonConstructor]
         public DefineMovementPathRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
             DataBinding<UnitData> unitDataBinding, float maxAdvanceDistance, float maxRushDistance, float maxDistanceInches,
-            IReadOnlyList<WeaponSightProfile>? weaponSightProfiles = null)
+            IReadOnlyList<WeaponSightProfile>? weaponSightProfiles = null, bool canMoveThroughEnemies = false)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -38,11 +45,12 @@ namespace FDG.StageResolution.Requests
             MaxRushDistance = maxRushDistance;
             MaxDistanceInches = maxDistanceInches;
             WeaponSightProfiles = weaponSightProfiles ?? new List<WeaponSightProfile>();
+            CanMoveThroughEnemies = canMoveThroughEnemies;
         }
 
         public DefineMovementPathRequest(PlayerID targetPlayerID,  string taskName,
             DataBinding<UnitData> unitDataBinding, float maxAdvanceDistance, float maxRushDistance, float maxDistanceInches,
-            IReadOnlyList<WeaponSightProfile>? weaponSightProfiles = null)
+            IReadOnlyList<WeaponSightProfile>? weaponSightProfiles = null, bool canMoveThroughEnemies = false)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = new TaskID(Guid.NewGuid());
@@ -52,6 +60,7 @@ namespace FDG.StageResolution.Requests
             MaxRushDistance = maxRushDistance;
             MaxDistanceInches = maxDistanceInches;
             WeaponSightProfiles = weaponSightProfiles ?? new List<WeaponSightProfile>();
+            CanMoveThroughEnemies = canMoveThroughEnemies;
         }
 
         public Task<List<ModelMoveEntry>> Resolve(List<ModelMoveEntry> resolution)

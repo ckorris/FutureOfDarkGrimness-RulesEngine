@@ -12,7 +12,7 @@ namespace FDG.Stages
             OnOccluded = new StageBinding(this);
         }
 
-        protected override async Task RunStage(ICombatMetadata metaData, Action<OcclusionCheckResults> onFinished)
+        protected override async Task RunStage(ICombatMetadata metaData, Func<OcclusionCheckResults, Task> onFinished)
         {
             // #042 Indirect/Takedown: a weapon that ignores intervening terrain for LoS may fire at a
             // target out of line of sight, so the occlusion gate must not cancel the shot. Same shared
@@ -20,7 +20,7 @@ namespace FDG.Stages
             if (Rules.Dispatch.SightRuleQueries.IgnoresTerrain(
                     metaData.AttackingUnit.GetValue(), metaData.WeaponType, GameContext.RuleEvaluator))
             {
-                onFinished(new OcclusionCheckResults(isOccluded: false));
+                await onFinished(new OcclusionCheckResults(isOccluded: false));
                 return;
             }
 
@@ -50,11 +50,11 @@ namespace FDG.Stages
             {
                 GameContext.Log($"ERROR: No line of sight from {metaData.AttackingUnit.GetValue().Name} " +
                     $"to {metaData.DefendingUnit.GetValue().Name}. Shot cancelled.");
-                OnOccluded.Activate(metaData);
+                await OnOccluded.Activate(metaData);
                 return;
             }
 
-            onFinished(new OcclusionCheckResults(isOccluded: false));
+            await onFinished(new OcclusionCheckResults(isOccluded: false));
         }
     }
 }

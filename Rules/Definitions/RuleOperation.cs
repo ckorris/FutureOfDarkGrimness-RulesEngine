@@ -113,7 +113,7 @@ public abstract record RuleOperation
     /// <summary>
     /// Add <see cref="Count"/> extra wounds to the current attack's wound
     /// total. Resolution of <see cref="Effect.AddExtraWound"/>. Count is a float
-    /// for the same reason as <see cref="InsertExtraHits"/> — the matching-die
+    /// for the same reason as <see cref="RuleOperation.InsertExtraHits"/> — the matching-die
     /// count is fractional under the probabilistic roller.
     /// </summary>
     public sealed record InsertExtraWounds(float Count) : RuleOperation;
@@ -273,7 +273,7 @@ public abstract record RuleOperation
     /// Ignore each wound on an unmodified roll of <see cref="MinRoll"/>+. Resolution
     /// of <see cref="Effect.IgnoreWoundOnRoll"/> (Regeneration). Folded by
     /// <c>WoundIgnoreSink</c> at wound-assignment time. Suppressible by
-    /// <see cref="SuppressRule"/> from Bane / Rending / Unstoppable (the suppression
+    /// <see cref="RuleOperation.SuppressRule"/> from Bane / Rending / Unstoppable (the suppression
     /// first-pass drops this op before the sink ever sees it).
     /// </summary>
     public sealed record IgnoreWound(int MinRoll) : SinkOperation<IWoundIgnoreSink>
@@ -413,6 +413,15 @@ public abstract record RuleOperation
     public sealed record IgnoreTerrainEffects : RuleOperation;
 
     /// <summary>
+    /// The bearer may move through enemy units — its path is not blocked by enemy bases — though it still
+    /// may not END a move stacked on an enemy. The "Flying-only facet (moving through units as well)"
+    /// anticipated by <see cref="Effect.IgnoreTerrainEffects"/>'s doc. Read by movement validation
+    /// (<see cref="Rules.Dispatch.MovementRuleQueries.CanMoveThroughEnemies"/>). Resolution of
+    /// <see cref="Effect.IgnoreEnemyMovementBlock"/> (Strafing; a future Flying rule can emit the same op).
+    /// </summary>
+    public sealed record IgnoreEnemyMovementBlock : RuleOperation;
+
+    /// <summary>
     /// Remove the bearer from the normal deployment pool for later placement, governed by
     /// <see cref="Timing"/>. <see cref="PlacementRangeInches"/> is interpreted per timing:
     /// for <see cref="EDeferTiming.AfterNormalDeployment"/> (Scout) it's how far the deployment
@@ -420,7 +429,7 @@ public abstract record RuleOperation
     /// distance from enemy units the unit must arrive. Resolution of <see cref="Effect.DeferDeployment"/>.
     ///
     /// Stays a plain <see cref="RuleOperation"/> — NOT an <see cref="ExecutableOperation"/>: it is a
-    /// marker the deployment subsystem <em>reads</em> (a query, like <see cref="SuppressRule"/>) to decide
+    /// marker the deployment subsystem <em>reads</em> (a query, like <see cref="RuleOperation.SuppressRule"/>) to decide
     /// set-aside, and it mutates deployment-turn-scoped reserve state that isn't reachable from the
     /// <c>IOperationServices</c> seam (which only sees <c>IGameContext</c>).
     /// </summary>

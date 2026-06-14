@@ -63,6 +63,10 @@ namespace FDG.Stages
             determineStrikeOrder.OnStrikeOrderDetermined.Bind(pileIn); // #042 Counter: charged unit may strike first.
             pileIn.OnPiledIn.Bind(determineInRangeAttackers);
             determineInRangeAttackers.ToDetermineDefenders.Bind(determineInRangeDefenders);
+            // #017: no in-range attacker (e.g. the defender was wiped by Impact hits before the swing) →
+            // skip the swing but follow the same applyFatigue → consolidate → finish path as a defender
+            // killed mid-swing, so the charger still consolidates.
+            determineInRangeAttackers.OnNoAttackersInRange.Bind(applyFatigueStage);
             determineInRangeDefenders.ToChooseMeleeWeapons.Bind(chooseMeleeWeapon);
             chooseMeleeWeapon.OnChosen.Bind(swingMeleeWeaponStage);
             swingMeleeWeaponStage.FinishedSwinging.Bind(determineCanKeepSwinging);

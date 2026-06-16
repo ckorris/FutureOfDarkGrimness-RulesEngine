@@ -139,15 +139,23 @@ namespace FDG.Stages
             }
             else
             {
-                //TODO: Add nuance of applying wounds to existing models with tough before others.
-                //I'm also putting this TODO in the results class.
-                //assignWoundsResults = new AssignWoundsResults(metaData.DefendingUnit, totalWoundsDealt);
-                AssignWoundsRequest request = new AssignWoundsRequest(metaData.DefendingUnit.PlayerID(), "Assign Wounds", 
-                    metaData.DefendingUnit, totalWoundsDealt);
-                assignWoundsResults = await metaData.GameContext.PlayerRequester()
-                    .RequestDecision<AssignWoundsRequest, AssignWoundsResults>(request);
-                //throw new NotImplementedException();
-                //GameContext.GetHandler<IAssignWoundsHandler>().Handle(metaData.DefendingUnit, assignWoundsResults, () => OnHandled(assignWoundsResults, onFinished));
+                // Construct the results up front so the mandatory Tough pre-assignment (already-wounded
+                // models filled first, non-cancellable) is applied before we decide whether the player
+                // still has anything to choose. If the pre-assignment consumed the pool — or left only a
+                // single eligible model — there's no decision to make, so resolve without prompting.
+                AssignWoundsResults trial = new AssignWoundsResults(metaData.DefendingUnit, totalWoundsDealt);
+                if (trial.HasRemainingChoice)
+                {
+                    AssignWoundsRequest request = new AssignWoundsRequest(metaData.DefendingUnit.PlayerID(),
+                        "Assign Wounds", metaData.DefendingUnit, totalWoundsDealt);
+                    assignWoundsResults = await metaData.GameContext.PlayerRequester()
+                        .RequestDecision<AssignWoundsRequest, AssignWoundsResults>(request);
+                }
+                else
+                {
+                    trial.AutoFill();
+                    assignWoundsResults = trial;
+                }
             }
 
             await onFinished(assignWoundsResults);

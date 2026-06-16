@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using FDG.Presentation;
+using FDG.Presentation.Beats;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
@@ -62,6 +64,10 @@ namespace FDG.Stages
             _impactHitCount = rolled.AtOrAbove(2); // each 2+ is a hit (float under the probabilistic roller)
 
             GameContext.Log($"{attacker.Name}'s Impact rolled {impact.TotalDice} dice → {_impactHitCount} hit(s) on the charge.");
+
+            await GameContext.Presenter.Present(
+                DiceRolledBeat.From(rolled, 2, GameContext.Settings.RandomnessType, "Impact Hits",
+                    $"{_impactHitCount:0.##} impact hits"));
 
             if (_impactHitCount <= 0f)
             {

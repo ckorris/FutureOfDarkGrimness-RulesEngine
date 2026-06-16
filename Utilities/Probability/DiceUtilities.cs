@@ -152,7 +152,14 @@ public static class DiceUtilities
             highest = Math.Max(highest, roll);
         }
 
-        await PresentRollOffDice(presenter, rolls, highest, rollLabel);
+        // "What it means" for this round: the top roller(s) — a single name wins, a shared high is a tie
+        // (which recurses into a re-roll below).
+        List<string> topNames = new List<string>();
+        for (int i = 0; i < count; i++)
+            if (rolls[i] == highest) topNames.Add(groupNames[i]);
+        string summary = topNames.Count == 1 ? $"{topNames[0]} wins" : $"Tie: {string.Join(", ", topNames)}";
+
+        await PresentRollOffDice(presenter, rolls, highest, rollLabel, summary);
 
         //Bucket competitors by their roll.
         Dictionary<int, List<T>> rollBuckets = new Dictionary<int, List<T>>();
@@ -209,7 +216,8 @@ public static class DiceUtilities
     /// Presents one roll-off round's dice (each competitor's d6) so the player can watch the result, with
     /// the winning face(s) highlighted as "successes". No-op when no presenter is supplied (e.g. tests).
     /// </summary>
-    private static async Task PresentRollOffDice(IPresenter? presenter, int[] rolls, int highest, string rollLabel)
+    private static async Task PresentRollOffDice(IPresenter? presenter, int[] rolls, int highest, string rollLabel,
+        string? resultSummary = null)
     {
         if (presenter == null)
         {
@@ -225,7 +233,7 @@ public static class DiceUtilities
         }
 
         await presenter.Present(new DiceRolledBeat(faceCounts, sideMin: 1, successThreshold: highest,
-            ERandomnessType.Realistic, rollLabel));
+            ERandomnessType.Realistic, rollLabel, resultSummary));
     }
 }
 

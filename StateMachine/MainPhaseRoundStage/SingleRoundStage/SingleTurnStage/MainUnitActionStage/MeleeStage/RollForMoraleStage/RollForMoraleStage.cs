@@ -27,7 +27,7 @@ namespace FDG.Stages
             // Morale roll modifiers (#021) and the Fearless re-roll are applied by the shared, rule-aware
             // morale test, which also resolves the decisive die (#090). This stage just routes the outcome.
             IUnit testingUnit = determineMoraleSaveNeededResult.LosingUnit.GetValue();
-            MoraleUtilities.MoraleTestOutcome outcome = MoraleUtilities.TakeMoraleTest(
+            MoraleUtilities.MoraleTestOutcome outcome = await MoraleUtilities.TakeMoraleTest(
                 GameContext, testingUnit, determineMoraleSaveNeededResult.RollNeeded);
 
             if (outcome.Passed)

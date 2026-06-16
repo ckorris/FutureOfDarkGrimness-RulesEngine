@@ -137,7 +137,7 @@ namespace FDG.Tests
         public void DiceRolledBeat_Realistic_SurvivesWireRoundTrip()
         {
             var original = new DiceRolledBeat(new List<float> { 0f, 1f, 0f, 2f, 0f, 1f },
-                sideMin: 1, successThreshold: 4, ERandomnessType.Realistic, "To Hit");
+                sideMin: 1, successThreshold: 4, ERandomnessType.Realistic, "Roll to Hit", "3 hits");
 
             PresentationBeat result = RoundTrip(original);
 
@@ -147,7 +147,8 @@ namespace FDG.Tests
             Assert.That(dice.SideMin, Is.EqualTo(1));
             Assert.That(dice.SuccessThreshold, Is.EqualTo(4));
             Assert.That(dice.Mode, Is.EqualTo(ERandomnessType.Realistic));
-            Assert.That(dice.Label, Is.EqualTo("To Hit"));
+            Assert.That(dice.Label, Is.EqualTo("Roll to Hit"));
+            Assert.That(dice.ResultSummary, Is.EqualTo("3 hits"), "the settled-result summary must ride the wire");
         }
 
         [Test]

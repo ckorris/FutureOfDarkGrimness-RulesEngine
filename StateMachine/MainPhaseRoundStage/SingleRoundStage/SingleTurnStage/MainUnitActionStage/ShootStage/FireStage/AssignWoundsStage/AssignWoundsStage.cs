@@ -1,3 +1,5 @@
+using FDG.Presentation;
+using FDG.Presentation.Beats;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
@@ -52,7 +54,11 @@ namespace FDG.Stages
                     float naturalMax = saved.Rolls.At(saved.Rolls.SideMax);
                     if (naturalMax <= 0f) continue;
                     int saveNeeded = DiceUtilities.ClampSuccessRollNeeded(saved.RollNeededInfo.SaveNeeded);
-                    totalWoundsDealt += GameContext.DiceRoller.Roll(naturalMax).Below(saveNeeded);
+                    IDiceResults rerollResult = GameContext.DiceRoller.Roll(naturalMax);
+                    float newWounds = rerollResult.Below(saveNeeded);
+                    totalWoundsDealt += newWounds;
+                    await GameContext.Presenter.Present(DiceRolledBeat.From(rerollResult, saveNeeded,
+                        GameContext.Settings.RandomnessType, "Bane Re-roll", $"{newWounds:0.##} new wounds"));
                 }
             }
 
@@ -83,8 +89,11 @@ namespace FDG.Stages
             woundIgnore.ApplyFrom(saveCompleteOperations);
             if (woundIgnore.HasIgnore && totalWoundsDealt > 0f)
             {
-                float ignored = GameContext.DiceRoller.Roll(totalWoundsDealt).AtOrAbove(woundIgnore.Threshold);
+                IDiceResults regenRoll = GameContext.DiceRoller.Roll(totalWoundsDealt);
+                float ignored = regenRoll.AtOrAbove(woundIgnore.Threshold);
                 totalWoundsDealt -= ignored;
+                await GameContext.Presenter.Present(DiceRolledBeat.From(regenRoll, woundIgnore.Threshold,
+                    GameContext.Settings.RandomnessType, "Regeneration", $"{ignored:0.##} ignored"));
             }
 
             // #042 Takedown: if the attack was re-scoped to a single model (IndividualTargetResult,

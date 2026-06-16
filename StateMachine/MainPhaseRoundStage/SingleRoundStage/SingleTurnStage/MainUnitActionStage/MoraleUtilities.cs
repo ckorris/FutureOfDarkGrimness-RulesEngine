@@ -1,4 +1,7 @@
+using System.Threading.Tasks;
 using FDG.Data;
+using FDG.Presentation;
+using FDG.Presentation.Beats;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
@@ -43,7 +46,7 @@ namespace FDG.Stages
         /// and, if a morale re-roll is granted (Fearless), rolls one more decisive die that passes on a 4+
         /// regardless of Quality.
         /// </summary>
-        public static MoraleTestOutcome TakeMoraleTest(IGameContext gameContext, IUnit testingUnit, int baseRollNeeded)
+        public static async Task<MoraleTestOutcome> TakeMoraleTest(IGameContext gameContext, IUnit testingUnit, int baseRollNeeded)
         {
             IReadOnlyList<RuleOperation> preTestOps = gameContext.RuleEvaluator.EvaluateAll(
                 new PreMoraleTestContext(testingUnit), (testingUnit, ERuleSeat.Actor, null));
@@ -52,7 +55,11 @@ namespace FDG.Stages
             int rollNeeded = DiceUtilities.ClampSuccessRollNeeded(baseRollNeeded - modifiers.Net(ERollKind.Morale));
 
             // Decisive single die — one concrete face even under the probabilistic roller (#090).
-            if (gameContext.DiceRoller.RollDecisive().AtOrAbove(rollNeeded) >= 1f)
+            IDiceResults initialRoll = gameContext.DiceRoller.RollDecisive();
+            bool passedInitial = initialRoll.AtOrAbove(rollNeeded) >= 1f;
+            await gameContext.Presenter.Present(DiceRolledBeat.From(initialRoll, rollNeeded,
+                gameContext.Settings.RandomnessType, "Morale Test", passedInitial ? "Passed" : "Failed"));
+            if (passedInitial)
             {
                 return new MoraleTestOutcome(passed: true, rollNeeded, passedViaReroll: false);
             }
@@ -62,10 +69,16 @@ namespace FDG.Stages
                 new MoraleTestContext(testingUnit), (testingUnit, ERuleSeat.Actor, null));
             RerollSink rerollSink = new RerollSink();
             rerollSink.ApplyFrom(completeOps);
-            if (rerollSink.RerollMoraleOnFailure
-                && gameContext.DiceRoller.RollDecisive().AtOrAbove(FEARLESS_REROLL_PASSES_ON) >= 1f)
+            if (rerollSink.RerollMoraleOnFailure)
             {
-                return new MoraleTestOutcome(passed: true, rollNeeded, passedViaReroll: true);
+                IDiceResults reroll = gameContext.DiceRoller.RollDecisive();
+                bool passedReroll = reroll.AtOrAbove(FEARLESS_REROLL_PASSES_ON) >= 1f;
+                await gameContext.Presenter.Present(DiceRolledBeat.From(reroll, FEARLESS_REROLL_PASSES_ON,
+                    gameContext.Settings.RandomnessType, "Fearless Re-roll", passedReroll ? "Passed" : "Failed"));
+                if (passedReroll)
+                {
+                    return new MoraleTestOutcome(passed: true, rollNeeded, passedViaReroll: true);
+                }
             }
 
             return new MoraleTestOutcome(passed: false, rollNeeded, passedViaReroll: false);
@@ -90,14 +103,14 @@ namespace FDG.Stages
         /// true if passed, false if failed and Routed. Logging is left to the caller, which knows the
         /// wound source.
         /// </summary>
-        public static bool? ResolveWoundDrivenMorale(IGameContext gameContext, DataBinding<UnitData> unitBinding,
+        public static async Task<bool?> ResolveWoundDrivenMorale(IGameContext gameContext, DataBinding<UnitData> unitBinding,
             float remainingWoundsBefore)
         {
             IUnit unit = unitBinding.GetValue();
             if (!unit.GetIsAlive()) return null;                              // wiped out outright — no test
             if (!CrossedIntoHalfStrength(remainingWoundsBefore, unit)) return null;
 
-            if (TakeMoraleTest(gameContext, unit, unit.Quality).Passed) return true;
+            if ((await TakeMoraleTest(gameContext, unit, unit.Quality)).Passed) return true;
 
             Rout(unitBinding);
             return false;

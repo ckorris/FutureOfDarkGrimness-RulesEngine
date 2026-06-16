@@ -65,8 +65,21 @@ public static class HeroStatRules
     /// </summary>
     public static int GetAttackQuality(UnitData unit, IWeapon weaponType)
     {
-        // TODO #006 slice E: if the living owners of weaponType are exactly the hero model, return
-        // HeroAttachment.Quality (resolve owners via WeaponComparer, the AttackBeatPositions pattern).
+        if (unit.HeroAttachment != null)
+        {
+            WeaponComparer comparer = new WeaponComparer();
+            List<IModel> owners = unit.Models
+                .Where(model => model.GetIsAlive() && model.Weapons.Any(weapon => comparer.Equals(weapon, weaponType)))
+                .ToList();
+
+            // Hero's own Quality only when this batch is owned by the hero alone. If a rank-and-file model
+            // also carries a matching weapon (the deferred same-weapon-pooling case), it stays unit Quality.
+            if (owners.Count > 0 && owners.All(model => model.ID == unit.HeroAttachment.HeroModelId))
+            {
+                return unit.HeroAttachment.Quality;
+            }
+        }
+
         return unit.Quality;
     }
 }

@@ -70,7 +70,6 @@ namespace FDG.Tests
         }
 
         [Test]
-        [Ignore("#006 slice E (per-model attack Quality) — not yet implemented")]
         public void GetAttackQuality_UsesHerosQuality_ForAHeroOnlyWeaponBatch()
         {
             (UnitData host, ModelData hero, _) = MakeMergedUnit(gruntCount: 3);
@@ -79,6 +78,19 @@ namespace FDG.Tests
 
             Assert.That(HeroStatRules.GetAttackQuality(host, heroWeapon), Is.EqualTo(2),
                 "a weapon batch owned only by the hero fires at the hero's Quality.");
+        }
+
+        [Test]
+        public void GetAttackQuality_StaysUnitQuality_WhenARankAndFileShareTheWeapon()
+        {
+            (UnitData host, ModelData hero, List<ModelData> grunts) = MakeMergedUnit(gruntCount: 3);
+            // Same stats AND no rules => WeaponComparer pools them, so the batch isn't hero-only (the
+            // deferred same-weapon-collision case): it must fall back to the unit's Quality.
+            hero.Weapons.Add(new Weapon("Rifle", 24f, 1, 0));
+            grunts[0].Weapons.Add(new Weapon("Rifle", 24f, 1, 0));
+
+            Assert.That(HeroStatRules.GetAttackQuality(host, hero.Weapons.Last()), Is.EqualTo(4),
+                "a weapon the rank and file also carry is not a hero-only batch — unit Quality stands.");
         }
 
         // --- helpers ---

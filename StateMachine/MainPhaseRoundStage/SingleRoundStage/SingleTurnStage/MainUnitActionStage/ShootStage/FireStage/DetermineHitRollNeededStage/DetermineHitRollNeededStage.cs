@@ -32,7 +32,8 @@ namespace FDG.Stages
             // #042 quality-floor rules (Reliable) set the BASE quality before per-roll modifiers:
             // "treated as 2+, still modifiable". Fold the floor sink and improve the base, then let
             // the roll-modifier sink (Stealth/Artillery/Indirect) stack on top. Stage interprets no op.
-            int baseQuality = metaData.AttackingUnit.Quality();
+            // #006: a weapon batch owned only by a joined hero fires at the hero's Quality (per-model).
+            int baseQuality = HeroStatRules.GetAttackQuality(metaData.AttackingUnit.GetValue(), metaData.WeaponType);
             QualityFloorSink qualityFloor = new QualityFloorSink();
             qualityFloor.ApplyFrom(operations);
             if (qualityFloor.HasFloor)

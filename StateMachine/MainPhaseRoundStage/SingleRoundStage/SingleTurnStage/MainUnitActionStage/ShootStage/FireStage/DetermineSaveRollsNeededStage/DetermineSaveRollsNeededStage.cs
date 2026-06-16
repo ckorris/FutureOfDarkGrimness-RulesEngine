@@ -1,4 +1,5 @@
 
+using FDG.Rules.Dispatch;
 using FDG.Utilities;
 using System;
 using System.Collections.Generic;
@@ -19,7 +20,8 @@ namespace FDG.Stages
         {
             List<PendingSaveRolls> pendingSaveRollsList = new List<PendingSaveRolls>();
 
-            int baseDefense = metaData.DefendingUnit.Defense();
+            // #006: a joined hero saves at the unit's Defense until it is the sole survivor, then its own.
+            int baseDefense = HeroStatRules.GetSaveDefense(metaData.DefendingUnit.GetValue());
             int ap = metaData.WeaponType.ArmorPenetration; //Shorthand.
             CoverCheckResults coverResults = QueryForResultOrThrowException<CoverCheckResults>(metaData);
 

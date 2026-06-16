@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 
 namespace FDG.Rules.Dispatch;
@@ -45,7 +46,15 @@ public static class HeroStatRules
     /// </summary>
     public static int GetSaveDefense(UnitData unit)
     {
-        // TODO #006 slice D: if the only living model is the hero, return HeroAttachment.Defense.
+        if (unit.HeroAttachment != null)
+        {
+            List<IModel> living = unit.Models.Where(model => model.GetIsAlive()).ToList();
+            if (living.Count == 1 && living[0].ID == unit.HeroAttachment.HeroModelId)
+            {
+                return unit.HeroAttachment.Defense;
+            }
+        }
+
         return unit.Defense;
     }
 

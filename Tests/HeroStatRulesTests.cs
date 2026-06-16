@@ -49,7 +49,6 @@ namespace FDG.Tests
         }
 
         [Test]
-        [Ignore("#006 slice D (last-model Defense) — not yet implemented")]
         public void GetSaveDefense_UsesHerosDefense_WhenHeroIsSoleSurvivor()
         {
             (UnitData host, _, List<ModelData> grunts) = MakeMergedUnit(gruntCount: 2); // host Defense 4, hero Defense 2
@@ -62,7 +61,6 @@ namespace FDG.Tests
         }
 
         [Test]
-        [Ignore("#006 slice D (last-model Defense) — not yet implemented")]
         public void GetSaveDefense_UsesUnitDefense_WhileRankAndFileLive()
         {
             (UnitData host, _, _) = MakeMergedUnit(gruntCount: 2);

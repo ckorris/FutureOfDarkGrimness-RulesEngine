@@ -5,6 +5,7 @@ using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
 using FDG.SaveLoad;
+using Newtonsoft.Json;
 using NUnit.Framework;
 
 namespace FDG.Tests
@@ -162,6 +163,36 @@ namespace FDG.Tests
 
             Assert.That(survivors, Is.EquivalentTo(new[] { host, hero }));
             Assert.That(host.HasHero, Is.False);
+        }
+
+        [Test]
+        public void GetHeroModel_SurvivesRankAndFileDeath()
+        {
+            UnitData host = MakeUnit(modelCount: 3, quality: 4, defense: 4);
+            UnitData hero = MakeUnit(modelCount: 1, quality: 2, defense: 2);
+            AttachHero(hero);
+            ModelID heroId = hero.ModelBindings[0].GetValue().ID;
+
+            HeroJoinResolver.Apply(Pairs(("host", null, host), (null, "host", hero)));
+
+            host.Models.First(model => model.ID != heroId).DealWounds(1f); // kill a grunt
+
+            Assert.That(host.GetHeroModel()!.ID, Is.EqualTo(heroId),
+                "dead models are retained, so the hero stays identifiable by id after a grunt falls.");
+        }
+
+        [Test]
+        public void HeroAttachment_RoundTripsThroughJson()
+        {
+            var original = new HeroAttachment(new ModelID(System.Guid.NewGuid()), quality: 3, defense: 2, heroWounds: 4);
+
+            string json = JsonConvert.SerializeObject(original);
+            HeroAttachment restored = JsonConvert.DeserializeObject<HeroAttachment>(json)!;
+
+            Assert.That(restored.HeroModelId, Is.EqualTo(original.HeroModelId));
+            Assert.That(restored.Quality, Is.EqualTo(3));
+            Assert.That(restored.Defense, Is.EqualTo(2));
+            Assert.That(restored.HeroWounds, Is.EqualTo(4));
         }
 
         // --- helpers ---

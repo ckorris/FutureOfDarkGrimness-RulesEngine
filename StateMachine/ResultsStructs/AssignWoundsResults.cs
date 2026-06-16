@@ -14,6 +14,11 @@ namespace FDG
 
         public List<PendingWounds> PendingWounds;
 
+        // #006: the joined hero's model (if any). The hero is wounded last — ordered last in PendingWounds
+        // (so AutoFill spares it) and rejected by TryAddWounds while any rank-and-file model has room.
+        // Serialized so the guard survives a mid-assignment save/network round-trip; null for non-hero units.
+        [JsonProperty] private ModelID? _heroModelId;
+
         [JsonConstructor]
         public AssignWoundsResults(float totalWoundsToAssign, float totalAssignedWounds, List<PendingWounds> pendingWounds)
         {
@@ -25,9 +30,19 @@ namespace FDG
         public AssignWoundsResults(DataBinding<UnitData> defendingUnit, float totalWoundsToAssign)
         {
             //TODO: Add nuance of applying wounds to existing models with tough before others.
+            _heroModelId = defendingUnit.GetValue().HeroAttachment?.HeroModelId;
+
+            // #006: order the hero last so AutoFill (and any in-order fill) spares it until the rank and
+            // file are full — the rule's "heroes are assigned wounds last, even if already wounded".
+            List<DataBinding<ModelData>> alive = defendingUnit.ModelBindings()
+                .Where(model => model.GetIsAlive()).ToList();
+
             PendingWounds = new List<PendingWounds>();
-            foreach (DataBinding<ModelData> model in defendingUnit.ModelBindings()
-                .Where(model => model.GetIsAlive()))
+            foreach (DataBinding<ModelData> model in alive.Where(model => !IsHero(model)))
+            {
+                PendingWounds.Add(new PendingWounds(model));
+            }
+            foreach (DataBinding<ModelData> model in alive.Where(IsHero))
             {
                 PendingWounds.Add(new PendingWounds(model));
             }
@@ -57,6 +72,14 @@ namespace FDG
             {
                 throw new ArgumentOutOfRangeException($"Tried to add model to {nameof(AssignWoundsResults)} " +
                     "that was already dead or does not belong to the defending unit.");
+            }
+
+            // #006: a joined hero is assigned wounds last — reject it while any rank-and-file model still
+            // has room. AutoFill reaches the hero (ordered last) only once the others are full, so this
+            // also makes the auto path spare the hero; it gates the player-choice path against picking it.
+            if (IsHero(model) && AnyNonHeroHasRoom())
+            {
+                return false;
             }
 
             //TODO: You could split wounds in an unallowed way by assigning when there's less than its total left,
@@ -104,6 +127,23 @@ namespace FDG
             if (!IsFinishedAssigning)
                 throw new Exception($"{nameof(AutoFill)} could not assign all wounds. " +
                     $"Required: {TotalWoundsToAssign}, assigned: {TotalAssignedWounds}.");
+        }
+
+        // #006 ---------------------------------------------------------------------------------------
+
+        private bool IsHero(DataBinding<ModelData> model) =>
+            _heroModelId != null && model.GetValue().ID == _heroModelId.Value;
+
+        /// <summary> True while any non-hero pending entry can still take more wounds (capacity remaining). </summary>
+        private bool AnyNonHeroHasRoom()
+        {
+            foreach (PendingWounds entry in PendingWounds)
+            {
+                if (IsHero(entry.Model)) continue;
+                float remaining = entry.Model.TotalWounds() - entry.Model.WoundsDealt();
+                if (entry.Wounds < remaining) return true;
+            }
+            return false;
         }
     }
 

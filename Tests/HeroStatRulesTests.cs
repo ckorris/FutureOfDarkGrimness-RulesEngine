@@ -21,13 +21,31 @@ namespace FDG.Tests
         public void SetUp() => _store = GameDataStore.GameDataStoreBuilder.GetDefault();
 
         [Test]
-        [Ignore("#006 slice C (morale on behalf) — not yet implemented")]
         public void GetMoraleQuality_UsesHerosQuality_WhileHeroLives()
         {
             (UnitData host, _, _) = MakeMergedUnit(gruntCount: 3); // host Quality 4, hero Quality 2
 
             Assert.That(HeroStatRules.GetMoraleQuality(host), Is.EqualTo(2),
                 "a unit with a living hero tests morale at the hero's Quality.");
+        }
+
+        [Test]
+        public void GetMoraleQuality_RevertsToUnitQuality_WhenHeroIsDead()
+        {
+            (UnitData host, ModelData hero, _) = MakeMergedUnit(gruntCount: 3);
+            hero.DealWounds(hero.TotalWounds); // the hero falls
+
+            Assert.That(HeroStatRules.GetMoraleQuality(host), Is.EqualTo(4),
+                "with the hero dead, the unit tests morale at its own Quality again.");
+        }
+
+        [Test]
+        public void GetMoraleQuality_UsesUnitQuality_WithNoHero()
+        {
+            UnitData plain = MakeUnit(modelCount: 3, quality: 4, defense: 4);
+
+            Assert.That(HeroStatRules.GetMoraleQuality(plain), Is.EqualTo(4),
+                "a unit with no hero is unaffected.");
         }
 
         [Test]

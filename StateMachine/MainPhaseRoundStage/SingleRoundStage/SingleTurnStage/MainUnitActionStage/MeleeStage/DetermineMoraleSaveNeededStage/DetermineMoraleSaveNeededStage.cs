@@ -1,4 +1,5 @@
 ﻿using FDG.Data;
+using FDG.Rules.Dispatch;
 using FDG.Utilities;
 using System;
 
@@ -24,11 +25,14 @@ namespace FDG.Stages
 
             switch (meleeWinnerResult.Winner)
             {
+                // #006: the losing unit tests morale at a living joined hero's Quality, if present.
                 case DetermineMeleeWinnerResults.EMeleeWinnerResult.AttackerWon:
-                    context.AddResult(new DetermineMoraleSaveNeededResult(context.DefendingUnit.Quality(), context.DefendingUnit));
+                    context.AddResult(new DetermineMoraleSaveNeededResult(
+                        HeroStatRules.GetMoraleQuality(context.DefendingUnit.GetValue()), context.DefendingUnit));
                     break;
                 case DetermineMeleeWinnerResults.EMeleeWinnerResult.DefenderWon:
-                    context.AddResult(new DetermineMoraleSaveNeededResult(context.AttackingUnit.Quality(), context.AttackingUnit));
+                    context.AddResult(new DetermineMoraleSaveNeededResult(
+                        HeroStatRules.GetMoraleQuality(context.AttackingUnit.GetValue()), context.AttackingUnit));
                     break;
                 case DetermineMeleeWinnerResults.EMeleeWinnerResult.Tie:
                     throw new InvalidOperationException($"Somehow reached the {nameof(DetermineMoraleSaveNeededStage)} stage " +

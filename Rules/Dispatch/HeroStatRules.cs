@@ -27,7 +27,15 @@ public static class HeroStatRules
     /// </summary>
     public static int GetMoraleQuality(UnitData unit)
     {
-        // TODO #006 slice C: if the unit has a living hero, return HeroAttachment.Quality.
+        if (unit.HeroAttachment != null)
+        {
+            IModel? hero = unit.GetHeroModel();
+            if (hero != null && hero.GetIsAlive())
+            {
+                return unit.HeroAttachment.Quality;
+            }
+        }
+
         return unit.Quality;
     }
 

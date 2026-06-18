@@ -143,6 +143,29 @@ namespace FDG.Tests
             Assert.That(failed, Is.False);
         }
 
+        [Test]
+        public async Task RollForMoraleStage_DestroyedLoser_SkipsTestAndPasses()
+        {
+            var ctx = Ctx(die: 1); // a die that WOULD fail any test, to prove none is rolled
+            var loser = MakeUnit(quality: 4, modelCount: 3);
+            KillModels(loser, 3); // wiped out in the melee
+            var combat = new CombatActionContext(ctx, MakeUnit(quality: 4), isMelee: true);
+            combat.SetDefender(loser);
+            combat.AddResult(new DetermineMoraleSaveNeededResult(loser.GetValue().Quality, loser));
+
+            var stage = new RollForMoraleStage(ctx, new NoOpLayer<ICombatActionContext>());
+            bool passed = false, failed = false;
+            stage.OnMoralePassed.Bind(RollForMoraleStage.ROLL_FOR_MORALE_PASSED_TRANSITION);
+            stage.OnMoraleFailed.Bind(RollForMoraleStage.ROLL_FOR_MORALE_FAILED_TRANSITION);
+            stage.OnMoralePassed.OnWillActivate += _ => passed = true;
+            stage.OnMoraleFailed.OnWillActivate += _ => failed = true;
+
+            await stage.Enter(combat);
+
+            Assert.That(passed, Is.True, "a destroyed unit skips morale and continues with no penalty.");
+            Assert.That(failed, Is.False, "even with a die that would fail, no test is rolled for a dead unit.");
+        }
+
         // Helpers
 
         private TestGameContext Ctx(int die) => new TestGameContext(_store, new FixedDiceRoller(die));

@@ -145,6 +145,27 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void RollOffBeat_SurvivesWireRoundTrip_PreservingPerCompetitorRollsAndResults()
+        {
+            var original = new RollOffBeat("Map Side Roll-Off", new List<RollOffEntry>
+            {
+                new RollOffEntry("Team 1", 5, ERollOffResult.Won),
+                new RollOffEntry("Team 2", 3, ERollOffResult.Lost),
+            });
+
+            PresentationBeat result = RoundTrip(original);
+
+            Assert.That(result, Is.TypeOf<RollOffBeat>());
+            var rollOff = (RollOffBeat)result;
+            Assert.That(rollOff.Label, Is.EqualTo("Map Side Roll-Off"));
+            Assert.That(rollOff.Entries, Has.Count.EqualTo(2));
+            Assert.That(rollOff.Entries[0].Name, Is.EqualTo("Team 1"));
+            Assert.That(rollOff.Entries[0].Roll, Is.EqualTo(5));
+            Assert.That(rollOff.Entries[0].Result, Is.EqualTo(ERollOffResult.Won));
+            Assert.That(rollOff.Entries[1].Result, Is.EqualTo(ERollOffResult.Lost));
+        }
+
+        [Test]
         public void DiceRolledBeat_From_CapturesHistogramAndComputesSuccesses()
         {
             // d6: one 2, two 4s, one 6  →  4 dice, 3 of them at-or-above 4.

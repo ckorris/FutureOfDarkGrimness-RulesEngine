@@ -112,7 +112,7 @@ namespace FDG.Stages
 
             if ((await TakeMoraleTest(gameContext, unit, unit.Quality)).Passed) return true;
 
-            Rout(unitBinding);
+            await RoutWithPresentation(gameContext, unitBinding);
             return false;
         }
 
@@ -147,17 +147,43 @@ namespace FDG.Stages
         /// <summary>
         /// Remove a unit from play by dealing lethal wounds to all its living models. The engine has no
         /// whole-unit removal primitive; an all-models-dead unit is already filtered out of activation,
-        /// turn order, and objective scoring everywhere via <c>GetIsAlive</c>.
+        /// turn order, and objective scoring everywhere via <c>GetIsAlive</c>. Returns the models that
+        /// were killed (those that had been alive) so a caller on the presentation path can animate them.
         /// </summary>
-        public static void Rout(DataBinding<UnitData> unitBinding)
+        public static IReadOnlyList<IModel> Rout(DataBinding<UnitData> unitBinding)
         {
+            List<IModel> killed = new List<IModel>();
             foreach (IModel model in unitBinding.GetValue().Models)
             {
                 if (!model.GetIsAlive()) continue;
 
                 float remaining = model.TotalWounds - model.WoundsDealt;
-                if (remaining > 0f) model.DealWounds(remaining);
+                if (remaining > 0f)
+                {
+                    model.DealWounds(remaining);
+                    killed.Add(model);
+                }
             }
+            return killed;
+        }
+
+        /// <summary>
+        /// <see cref="Rout"/> plus presentation: deals the lethal wounds, then emits one
+        /// <see cref="UnitRoutedBeat"/> so the front-end plays every routed model's death animation at
+        /// once (rather than the one-at-a-time sequence individual death beats would produce). No beat is
+        /// emitted if nothing was alive to kill.
+        /// </summary>
+        public static async Task RoutWithPresentation(IGameContext gameContext, DataBinding<UnitData> unitBinding)
+        {
+            IReadOnlyList<IModel> killed = Rout(unitBinding);
+            if (killed.Count == 0) return;
+
+            UnitData unit = unitBinding.GetValue();
+            List<RoutedModel> deaths = new List<RoutedModel>(killed.Count);
+            foreach (IModel model in killed)
+                deaths.Add(new RoutedModel(model.ID, model.Position));
+
+            await gameContext.Presenter.Present(new UnitRoutedBeat(unit.ID, unit.Name, deaths));
         }
     }
 }

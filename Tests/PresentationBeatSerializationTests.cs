@@ -119,6 +119,32 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void UnitRoutedBeat_SurvivesWireRoundTrip_PreservingAllModelDeaths()
+        {
+            var m0 = new ModelID(Guid.NewGuid());
+            var m1 = new ModelID(Guid.NewGuid());
+            var unitId = new UnitID(Guid.NewGuid());
+            var original = new UnitRoutedBeat(unitId, "Warriors", new List<RoutedModel>
+            {
+                new RoutedModel(m0, new Position(1f, 2f)),
+                new RoutedModel(m1, new Position(3f, 4f)),
+            });
+
+            PresentationBeat result = RoundTrip(original);
+
+            Assert.That(result, Is.TypeOf<UnitRoutedBeat>());
+            var routed = (UnitRoutedBeat)result;
+            Assert.That(routed.Unit, Is.EqualTo(unitId));
+            Assert.That(routed.UnitName, Is.EqualTo("Warriors"));
+            Assert.That(routed.NominalDuration, Is.EqualTo(PresentationDurations.ModelDeath));
+            Assert.That(routed.Models, Has.Count.EqualTo(2), "every routed model must ride the wire");
+            Assert.That(routed.Models[0].Model, Is.EqualTo(m0));
+            Assert.That(routed.Models[1].Model, Is.EqualTo(m1));
+            Assert.That(routed.Models[1].Position.x, Is.EqualTo(3f).Within(0.0001f));
+            Assert.That(routed.Models[1].Position.z, Is.EqualTo(4f).Within(0.0001f));
+        }
+
+        [Test]
         public void DiceRolledBeat_From_CapturesHistogramAndComputesSuccesses()
         {
             // d6: one 2, two 4s, one 6  →  4 dice, 3 of them at-or-above 4.

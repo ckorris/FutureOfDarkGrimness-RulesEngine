@@ -39,7 +39,7 @@ namespace FDG.Stages
 
             if (losingUnit.GetValue().GetIsAtHalfStrength())
             {
-                MoraleUtilities.Rout(losingUnit);
+                await MoraleUtilities.RoutWithPresentation(GameContext, losingUnit);
                 GameContext.Log($"{losingUnit.Name()} failed its morale test at half strength and is Routed.");
             }
             else

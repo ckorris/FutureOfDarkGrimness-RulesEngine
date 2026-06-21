@@ -46,6 +46,7 @@ namespace FDG.Stages
                 .AddChild(new ShootStage(GameContext, this), out var shoot)
                 .AddChild(new CustomActionStage(GameContext, this), out var customAction)
                 .AddChild(new DisembarkStage(GameContext, this), out var disembark)
+                .AddChild(new EmbarkStage(GameContext, this), out var embark)
                 .AddSibling(nameof(ToReconcileEndOfActivation), ToReconcileEndOfActivation, out string toReconcileActivationEvent)
                 .Build();
 
@@ -56,6 +57,7 @@ namespace FDG.Stages
             chooseAction.ToShoot.Bind(shoot);
             chooseAction.ToCustomAction.Bind(customAction);
             chooseAction.ToDisembark.Bind(disembark);
+            chooseAction.ToEmbark.Bind(embark);
             chooseAction.ToReconcileEndOfActivation.Bind(toReconcileActivationEvent);
             movement.OnFinishedMovement.Bind(chooseAction);
             melee.OnFinishedMelee.Bind(chooseAction);
@@ -65,6 +67,10 @@ namespace FDG.Stages
             customAction.OnFinished.Bind(chooseAction);
             // #035 — after disembarking (Advance-equivalent), loop back so the unit may still Shoot.
             disembark.OnFinished.Bind(chooseAction);
+            // #035 slice D — boarding a transport ends the activation (the unit is now inside); cancelling
+            // the transport choice returns to the action menu.
+            embark.OnEmbarked.Bind(toReconcileActivationEvent);
+            embark.OnBackToChooseAction.Bind(chooseAction);
 
             return dictionary;
         }

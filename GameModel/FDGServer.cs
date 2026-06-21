@@ -226,10 +226,12 @@ namespace FDG.GameModel
                 }
             }
 
-            // #035: every unit carries the engine-internal Disembark ability, gated (AvailableWhen =
-            // TokenPresent(EmbarkedIn)) to surface only while embarked. Attached here (not on embark) so it
-            // rides the normal army-load rule lifecycle and is restored by the #094 resume rehydration.
+            // #035: every unit carries the engine-internal Disembark + Embark abilities (slice C/D), each
+            // gated before it surfaces (Disembark by the EmbarkedIn token, Embark by an engine
+            // transport-in-range check in ChooseActionStage). Attached here so they ride the normal
+            // army-load rule lifecycle and are restored by the #094 resume rehydration.
             unitData.AttachRuleDefinition(new ResolvedRule(CoreRuleCatalog.DisembarkRuleName, CoreRuleCatalog.Disembark));
+            unitData.AttachRuleDefinition(new ResolvedRule(CoreRuleCatalog.EmbarkRuleName, CoreRuleCatalog.Embark));
         }
 
 

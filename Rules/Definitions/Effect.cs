@@ -55,6 +55,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(IgnoreLineOfSight), "ignoreLineOfSight")]
 [JsonDerivedType(typeof(DeferDeployment), "deferDeployment")]
 [JsonDerivedType(typeof(Disembark), "disembark")]
+[JsonDerivedType(typeof(Embark), "embark")]
 
 public abstract record Effect
 {
@@ -557,6 +558,20 @@ public abstract record Effect
     /// deliberate no-op so a stray generic resolution can't crash mid-activation.
     /// </summary>
     public sealed record Disembark : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+        }
+    }
+
+    /// <summary>
+    /// #035 — marker for the Embark activated ability (a unit boarding a friendly transport on its
+    /// activation). Like <see cref="Disembark"/>, it carries no resolvable operation: the embark — setting
+    /// the unit aside off-table into the transport — is enacted by <c>EmbarkStage</c>, to which
+    /// <c>ChooseActionStage</c> routes this offer specially (after an engine "transport in range" gate,
+    /// since the availability is spatial and can't be a data condition). <see cref="Apply"/> is a no-op.
+    /// </summary>
+    public sealed record Embark : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {

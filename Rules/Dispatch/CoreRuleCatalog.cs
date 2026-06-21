@@ -514,6 +514,29 @@ public static class CoreRuleCatalog
                 new Condition.TokenPresent(TokenType.EmbarkedIn)),
         });
 
+    /// <summary> Canonical name of the engine-internal Embark ability (#035 slice D). </summary>
+    public const string EmbarkRuleName = "Embark";
+
+    /// <summary>
+    /// Embark (#035 slice D): the mid-game counterpart of <see cref="Disembark"/> — an engine-internal
+    /// activated ability attached to every unit at army-load, surfacing "Embark into &lt;transport&gt;" so a
+    /// unit can board a friendly transport on its activation. Unlike Disembark's clean token gate, embark's
+    /// availability is *spatial* ("a friendly transport with room within move-range"), which the
+    /// architecture has no data condition for — so <c>AvailableWhen</c> is <c>Always</c> and
+    /// <c>ChooseActionStage</c> applies the spatial gate in engine code (the same way Charge is gated by
+    /// enemy-in-range) before surfacing it, then routes it by name to <c>EmbarkStage</c>. Not in
+    /// <see cref="All"/> — not a player-picked rule. Effect is the no-op <see cref="Effect.Embark"/> marker.
+    /// </summary>
+    public static SpecialRuleDefinition Embark { get; } = new SpecialRuleDefinition(EmbarkRuleName,
+        Array.Empty<HookEntry>(),
+        new[]
+        {
+            new ActivatedAbility(EHookID.Activation_OnActionChoice, new Cost.OncePerActivation(),
+                new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
+                new Effect.Embark(),
+                new Condition.Always()),
+        });
+
     // Triggered-move primitive (DeployUnitStage offer -> MovementExecutor) --------
 
     /// <summary>

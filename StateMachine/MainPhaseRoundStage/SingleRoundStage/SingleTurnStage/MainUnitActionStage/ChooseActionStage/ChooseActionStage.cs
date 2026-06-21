@@ -17,6 +17,7 @@ namespace FDG.Stages
         public StageBinding ToShoot;
         public StageBinding ToCustomAction;
         public StageBinding ToDisembark;
+        public StageBinding ToEmbark;
         public StageBinding ToReconcileEndOfActivation;
 
         public const string MOVEMENT_CHOICE_NAME = "Move";
@@ -31,6 +32,7 @@ namespace FDG.Stages
             ToShoot = new StageBinding(this);
             ToCustomAction = new StageBinding(this);
             ToDisembark = new StageBinding(this);
+            ToEmbark = new StageBinding(this);
             ToReconcileEndOfActivation = new StageBinding(this);
         }
 
@@ -130,6 +132,22 @@ namespace FDG.Stages
                     {
                         validOptions.Add(offer.RuleName);
                         outcomes.Add(offer.RuleName, () => ToDisembark.Activate(context));
+                    }
+                    continue;
+                }
+
+                // #035 slice D — Embark is offered only when it's still a move action (the unit hasn't moved
+                // or attacked) AND an engine spatial check finds a friendly transport with room within
+                // move-range (the availability gate can't be a data condition). Routed to EmbarkStage.
+                if (offer.RuleName == CoreRuleCatalog.EmbarkRuleName)
+                {
+                    bool canEmbark = !context.HasMoved && !context.HasAttacked
+                        && EmbarkStage.GetEmbarkableTransports(GameContext, context.ActivatingUnit.GetValue()).Count > 0;
+
+                    if (canEmbark && !outcomes.ContainsKey(offer.RuleName))
+                    {
+                        validOptions.Add(offer.RuleName);
+                        outcomes.Add(offer.RuleName, () => ToEmbark.Activate(context));
                     }
                     continue;
                 }

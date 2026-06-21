@@ -24,7 +24,7 @@ public static class CoreRuleCatalog
     {
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
         Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Vanguard, Scout, Ambush, Thrust,
-        Blast, Takedown, Impact, Counter, MartialProwess, Strafing, Fear, Fearless, Hero,
+        Blast, Takedown, Impact, Counter, MartialProwess, Strafing, Fear, Fearless, Hero, Caster,
     };
 
     /// <summary>
@@ -466,6 +466,29 @@ public static class CoreRuleCatalog
     /// </summary>
     public static SpecialRuleDefinition Hero { get; } = new SpecialRuleDefinition("Hero",
         Array.Empty<HookEntry>(),
+        Array.Empty<ActivatedAbility>());
+
+    // Spell-token economy (round-start grant -> StartOfRoundExtraActionStage) ------
+
+    /// <summary>
+    /// Caster(X): at the start of every round the unit gains X spell tokens, used to cast spells from
+    /// its army's spell list (the "Cast" action, #033). A passive rule at
+    /// <see cref="EHookID.Round_OnRoundStart"/> that grants <c>Arg(0)</c> <see cref="TokenType.SpellTokens"/>;
+    /// the grant is fired and applied per round by <see cref="Stages.StartOfRoundExtraActionStage"/>.
+    /// Tokens carry over between rounds, so the clear trigger is <see cref="TokenClearTrigger.ManualOnly"/>
+    /// (not RoundEnd) and the 6-token cap (<see cref="GameWideConstants.MAX_SPELL_TOKENS"/>) is clamped at
+    /// grant time, not by clearing. Casting itself (spell selection, target, the 4+ roll, the ±1 friendly
+    /// assist) is the Cast stage, not this definition — this just seeds the per-round token pool.
+    /// </summary>
+    public static SpecialRuleDefinition Caster { get; } = new SpecialRuleDefinition("Caster",
+        new[]
+        {
+            new HookEntry(EHookID.Round_OnRoundStart,
+                new Condition.Always(),
+                new Effect.GrantToken(TokenType.SpellTokens, new ValueSource.Arg(0),
+                    new TokenClearTrigger.ManualOnly()),
+                ELifetime.UntilEndOfGame),
+        },
         Array.Empty<ActivatedAbility>());
 
     // Triggered-move primitive (DeployUnitStage offer -> MovementExecutor) --------

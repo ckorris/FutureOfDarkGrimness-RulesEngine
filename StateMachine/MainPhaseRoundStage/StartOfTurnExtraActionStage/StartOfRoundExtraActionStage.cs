@@ -1,5 +1,6 @@
 using FDG.Data;
 using FDG.Rules.Definitions;
+using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
@@ -22,6 +23,9 @@ namespace FDG.Stages
 
             await context.Announce($"Round {context.RoundCount}", new TextColor(120, 200, 255, 255));
 
+            // Caster units replenish their spell tokens at the top of every round (#033), including round 1.
+            GrantSpellTokens();
+
             // Ambush reserves may arrive from round 2 onward.
             if (context.RoundCount >= 2)
             {
@@ -29,6 +33,38 @@ namespace FDG.Stages
             }
 
             await OnFinished.Activate(context);
+        }
+
+        /// <summary>
+        /// Fires <see cref="EHookID.Round_OnRoundStart"/> for every living unit so Caster(X) grants its X
+        /// <see cref="TokenType.SpellTokens"/> (#033), then clamps each unit's pool to
+        /// <see cref="GameWideConstants.MAX_SPELL_TOKENS"/>. Non-Caster units produce no operations, so they
+        /// gain nothing. Tokens carry over between rounds (ManualOnly clear), which is why the cap is
+        /// enforced here at grant time rather than by a clear trigger. Runs every round (the round loop
+        /// re-enters this stage each round); the resume path skips this stage, so a resumed game does not
+        /// re-grant the round's tokens.
+        /// </summary>
+        private void GrantSpellTokens()
+        {
+            foreach (ArmyData army in GameContext.GameDataStore.GetAllValues<ArmyData>().ToList())
+            {
+                foreach (DataBinding<UnitData> unitBinding in army.UnitBindings.ToList())
+                {
+                    UnitData unit = unitBinding.GetValue();
+                    if (!unit.GetIsAlive()) continue;
+
+                    IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator.Evaluate(
+                        unit, ERuleSeat.Actor, new RoundStartContext(unit));
+                    OperationApplier.ApplyTokenOperations(ops);
+
+                    int excess = unit.Tokens.GetTokenCount(TokenType.SpellTokens)
+                        - GameWideConstants.MAX_SPELL_TOKENS;
+                    if (excess > 0)
+                    {
+                        unit.Tokens.RemoveTokens(TokenType.SpellTokens, excess);
+                    }
+                }
+            }
         }
 
         /// <summary>

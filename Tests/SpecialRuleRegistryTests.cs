@@ -43,7 +43,8 @@ namespace FDG.Tests
         {
             HashSet<string> offered = CoreEntries().Select(e => e.Name).ToHashSet();
             // The old hand-list offered these, but the engine has no definition — picking them did nothing.
-            foreach (string phantom in new[] { "Sniper", "Flying", "Aircraft", "Caster", "Transport" })
+            // (Caster was here until #033 implemented it; it's now asserted as offered above.)
+            foreach (string phantom in new[] { "Sniper", "Flying", "Aircraft", "Transport" })
             {
                 Assert.That(offered, Does.Not.Contain(phantom),
                     $"picker must not offer unimplemented rule '{phantom}'.");

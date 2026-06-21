@@ -50,5 +50,12 @@ namespace FDG
         /// Maximum number of distinct enemy units a single unit may target during one shoot action.
         /// </summary>
         public const int MAX_TARGETED_UNITS_PER_SHOOT_ACTION = 2;
+
+        /// <summary>
+        /// A Caster(X) can never hold more than this many spell tokens at once. Caster grants X tokens
+        /// at the start of each round and unspent tokens carry over, so the round-start grant clamps the
+        /// running total to this cap (#033).
+        /// </summary>
+        public const int MAX_SPELL_TOKENS = 6;
     }
 }

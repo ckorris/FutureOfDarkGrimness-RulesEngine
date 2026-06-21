@@ -54,6 +54,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(IgnoreCover), "ignoreCover")]
 [JsonDerivedType(typeof(IgnoreLineOfSight), "ignoreLineOfSight")]
 [JsonDerivedType(typeof(DeferDeployment), "deferDeployment")]
+[JsonDerivedType(typeof(Disembark), "disembark")]
 
 public abstract record Effect
 {
@@ -545,6 +546,20 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.DeferDeployment(Timing, PlacementRangeInches));
+        }
+    }
+
+    /// <summary>
+    /// #035 — marker for the Disembark activated ability (a unit leaving a transport on its activation).
+    /// Carries no resolvable operation: the disembark itself — placing the unit within 6" of the transport
+    /// and un-embarking it — is enacted by <c>DisembarkStage</c>, to which <c>ChooseActionStage</c> routes
+    /// this offer specially (the generic custom-action resolver is token-ops only). <see cref="Apply"/> is a
+    /// deliberate no-op so a stray generic resolution can't crash mid-activation.
+    /// </summary>
+    public sealed record Disembark : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
         }
     }
 }

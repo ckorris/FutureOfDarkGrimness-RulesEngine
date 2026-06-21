@@ -45,6 +45,7 @@ namespace FDG.Stages
                 .AddChild(new MeleeStage(GameContext, this), out var melee)
                 .AddChild(new ShootStage(GameContext, this), out var shoot)
                 .AddChild(new CustomActionStage(GameContext, this), out var customAction)
+                .AddChild(new DisembarkStage(GameContext, this), out var disembark)
                 .AddSibling(nameof(ToReconcileEndOfActivation), ToReconcileEndOfActivation, out string toReconcileActivationEvent)
                 .Build();
 
@@ -54,6 +55,7 @@ namespace FDG.Stages
             chooseAction.ToCharge.Bind(melee);
             chooseAction.ToShoot.Bind(shoot);
             chooseAction.ToCustomAction.Bind(customAction);
+            chooseAction.ToDisembark.Bind(disembark);
             chooseAction.ToReconcileEndOfActivation.Bind(toReconcileActivationEvent);
             movement.OnFinishedMovement.Bind(chooseAction);
             melee.OnFinishedMelee.Bind(chooseAction);
@@ -61,6 +63,8 @@ namespace FDG.Stages
             shoot.BackToChooseAction.Bind(chooseAction);
             // #010 — a resolved custom action loops back to Choose Action (layered, doesn't end the turn).
             customAction.OnFinished.Bind(chooseAction);
+            // #035 — after disembarking (Advance-equivalent), loop back so the unit may still Shoot.
+            disembark.OnFinished.Bind(chooseAction);
 
             return dictionary;
         }

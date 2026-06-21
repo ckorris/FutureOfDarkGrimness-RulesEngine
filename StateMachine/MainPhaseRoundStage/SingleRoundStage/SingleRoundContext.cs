@@ -1,6 +1,7 @@
 
 
 using FDG.Data;
+using FDG.Rules.Dispatch;
 using FDG.Utilities;
 
 namespace FDG.Stages
@@ -205,9 +206,12 @@ namespace FDG.Stages
                     foreach (ArmyData army in armies.Where(a => a.IsOwnedBy(playerID)))
                     {
                         // Reserve units (Ambush) that haven't arrived are alive but off-table — they
-                        // don't activate until they're placed (from a later round's start).
+                        // don't activate until they're placed (from a later round's start). Embarked units
+                        // (#035) are also off-table, but they DO activate — to disembark on their own turn —
+                        // so they're admitted to the pool even though GetIsOnBattlefield is false.
                         playerUnits.AddRange(army.UnitBindings.Where(unit =>
-                            unit.GetValue().GetIsAlive() && unit.GetValue().GetIsOnBattlefield()));
+                            unit.GetValue().GetIsAlive()
+                            && (unit.GetValue().GetIsOnBattlefield() || TransportUtilities.IsEmbarked(unit.GetValue()))));
                     }
                     _unactivatedUnits[playerID] = playerUnits;
                 }

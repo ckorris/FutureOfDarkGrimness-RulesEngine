@@ -488,6 +488,30 @@ public static class CoreRuleCatalog
         Array.Empty<HookEntry>(),
         Array.Empty<ActivatedAbility>());
 
+    /// <summary> Canonical name of the engine-internal Disembark ability (#035). </summary>
+    public const string DisembarkRuleName = "Disembark";
+
+    /// <summary>
+    /// Disembark (#035): an engine-internal activated ability attached to every unit at army-load (in
+    /// <c>FDGServer</c>), gated to surface only while the unit is embarked (an
+    /// <see cref="Foundation.TokenType.EmbarkedIn"/> token present). Offered at
+    /// <see cref="EHookID.Activation_OnActionChoice"/> so it appears as a "Disembark" action; because its
+    /// effect is movement (place within 6" of the transport + un-embark), <c>ChooseActionStage</c> routes
+    /// it by name to <c>DisembarkStage</c> rather than the generic token-op resolver. Not in
+    /// <see cref="All"/> — it isn't an army-list rule; the engine attaches it universally. Being a durable
+    /// rule gated by the *serialized* token (not a transient attach), it is restored by the #094 resume
+    /// rule-rehydration fix.
+    /// </summary>
+    public static SpecialRuleDefinition Disembark { get; } = new SpecialRuleDefinition(DisembarkRuleName,
+        Array.Empty<HookEntry>(),
+        new[]
+        {
+            new ActivatedAbility(EHookID.Activation_OnActionChoice, new Cost.OncePerActivation(),
+                new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
+                new Effect.Disembark(),
+                new Condition.TokenPresent(TokenType.EmbarkedIn)),
+        });
+
     // Triggered-move primitive (DeployUnitStage offer -> MovementExecutor) --------
 
     /// <summary>

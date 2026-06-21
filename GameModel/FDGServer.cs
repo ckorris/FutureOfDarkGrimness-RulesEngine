@@ -225,6 +225,11 @@ namespace FDG.GameModel
                     unitData.AttachRuleDefinition(resolved);
                 }
             }
+
+            // #035: every unit carries the engine-internal Disembark ability, gated (AvailableWhen =
+            // TokenPresent(EmbarkedIn)) to surface only while embarked. Attached here (not on embark) so it
+            // rides the normal army-load rule lifecycle and is restored by the #094 resume rehydration.
+            unitData.AttachRuleDefinition(new ResolvedRule(CoreRuleCatalog.DisembarkRuleName, CoreRuleCatalog.Disembark));
         }
 
 

@@ -16,6 +16,7 @@ namespace FDG.Stages
         public StageBinding ToCharge;
         public StageBinding ToShoot;
         public StageBinding ToCustomAction;
+        public StageBinding ToDisembark;
         public StageBinding ToReconcileEndOfActivation;
 
         public const string MOVEMENT_CHOICE_NAME = "Move";
@@ -29,6 +30,7 @@ namespace FDG.Stages
             ToCharge = new StageBinding(this);
             ToShoot = new StageBinding(this);
             ToCustomAction = new StageBinding(this);
+            ToDisembark = new StageBinding(this);
             ToReconcileEndOfActivation = new StageBinding(this);
         }
 
@@ -118,6 +120,20 @@ namespace FDG.Stages
             // rather than overwriting the outcome map.
             foreach (AbilityOffer offer in customActionOffers)
             {
+                // #035 — Disembark is a custom action whose effect is movement (place within 6" of the
+                // transport + un-embark), not a token-op, so it routes to DisembarkStage rather than the
+                // generic CustomActionStage. Its name is engine-controlled (never collides) and it needs no
+                // pending-offer stash — DisembarkStage reads the embarked token directly.
+                if (offer.RuleName == CoreRuleCatalog.DisembarkRuleName)
+                {
+                    if (!outcomes.ContainsKey(offer.RuleName))
+                    {
+                        validOptions.Add(offer.RuleName);
+                        outcomes.Add(offer.RuleName, () => ToDisembark.Activate(context));
+                    }
+                    continue;
+                }
+
                 bool collides = offer.RuleName == MOVEMENT_CHOICE_NAME
                     || offer.RuleName == CHARGE_CHOICE_NAME
                     || offer.RuleName == SHOOT_CHOICE_NAME
@@ -166,6 +182,12 @@ namespace FDG.Stages
 
         private bool GetCanMove(IUnitActionContext context, out string reasonIfCant)
         {
+            if (TransportUtilities.IsEmbarked(context.ActivatingUnit.GetValue()))
+            {
+                reasonIfCant = $"{context.ActivatingUnit.GetValue().Name} is embarked — must disembark first.";
+                return false;
+            }
+
             if (context.HasMoved == true)
             {
                 reasonIfCant = $"{context.ActivatingUnit.GetValue().Name} has already moved.";
@@ -193,6 +215,12 @@ namespace FDG.Stages
 
         private bool GetCanCharge(IUnitActionContext context, out string reasonIfCant)
         {
+            if (TransportUtilities.IsEmbarked(context.ActivatingUnit.GetValue()))
+            {
+                reasonIfCant = $"{context.ActivatingUnit.GetValue().Name} is embarked — must disembark first.";
+                return false;
+            }
+
             if (context.HasAttacked)
             {
                 reasonIfCant = "Has already attacked.";
@@ -248,6 +276,12 @@ namespace FDG.Stages
 
         private bool GetCanShoot(IUnitActionContext context, out string reasonIfCant)
         {
+            if (TransportUtilities.IsEmbarked(context.ActivatingUnit.GetValue()))
+            {
+                reasonIfCant = $"{context.ActivatingUnit.GetValue().Name} is embarked — must disembark first.";
+                return false;
+            }
+
             if (context.HasAttacked)
             {
                 reasonIfCant = "Has already attacked.";

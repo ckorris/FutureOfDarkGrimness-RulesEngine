@@ -1,5 +1,8 @@
 
 using FDG.Data;
+using FDG.Rules.Definitions;
+using FDG.Rules.Dispatch.Contexts;
+using FDG.Rules.Foundation;
 using FDG.StageResolution.Requests;
 
 namespace FDG.Stages
@@ -40,7 +43,7 @@ namespace FDG.Stages
                     else
                     {
                         invalidOptions.Add(new SelectionRequest<UnitData>.InvalidOption(potentialUnit, potentialUnit.GetValue().Name,
-                            "This unit has already activated."));
+                            GetUnavailableReason(potentialUnit.GetValue())));
                     }
                 }
             }
@@ -59,6 +62,44 @@ namespace FDG.Stages
             context.Log($"Activating: {chosenUnit.GetValue().Name}.");
             context.ChooseUnitToActivate(chosenUnit);
             await ToMainUnitAction.Activate(context);
+        }
+
+        // Why a unit can't be activated right now. An unplaced Ambush reserve (off-table, deferred to a
+        // later round) is not "already activated" — surface its real status, including the round-1 rule
+        // that reserves can't arrive until round 2. (StartOfRoundExtraActionStage uses the same two
+        // checks to decide who it offers to bring on.)
+        private string GetUnavailableReason(UnitData unit)
+        {
+            if (IsUnplaced(unit) && TryGetLaterRoundDefer(unit, out _))
+            {
+                int round = GameProgressUtilities.TryGetProgress(GameContext.GameDataStore)?.RoundCount ?? 1;
+                return round < 2
+                    ? "Ambush reserves can't arrive until round 2."
+                    : "In Ambush reserve (not yet deployed).";
+            }
+
+            return "This unit has already activated.";
+        }
+
+        // A unit that has never been placed has all models at the default origin (0,0,0).
+        private static bool IsUnplaced(UnitData unit)
+        {
+            foreach (DataBinding<ModelData> model in unit.ModelBindings)
+            {
+                Position pos = model.GetValue().PositionBinding.GetValue();
+                if (pos.x != 0f || pos.z != 0f) return false;
+            }
+            return true;
+        }
+
+        private bool TryGetLaterRoundDefer(IUnit unit, out RuleOperation.DeferDeployment defer)
+        {
+            IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator.Evaluate(
+                unit, ERuleSeat.Actor, new PreDeploymentSelectContext(unit));
+
+            defer = ops.OfType<RuleOperation.DeferDeployment>()
+                .FirstOrDefault(d => d.Timing == EDeferTiming.LaterRound);
+            return defer != null;
         }
     }
 }

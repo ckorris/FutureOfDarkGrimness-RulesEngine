@@ -432,7 +432,7 @@ namespace FDG.Network.Connection.Lobby
             // presentation beats play at a presentable tempo (without it the beats run instantly).
             FDGServer server = new FDGServer(_gameDataStore, _messageBus, playerSlots,
                 new RealtimePresentationClock());
-            server.OnGameEnded += result => OnGameEnded?.Invoke(result);
+            server.OnGameEnded += HandleServerGameEnded;
 
             if (gameModel != null)
             {
@@ -440,6 +440,16 @@ namespace FDG.Network.Connection.Lobby
             }
 
             await _messageBus.SendCommandToAllAsync(new LaunchGameMessage());
+        }
+
+        // Fired by FDGServer when the game finishes (engine thread). Forward to this host's own front
+        // end, and mirror the result to remote clients so they can return to the menu too — clients have
+        // no FDGServer, so the wire message is their only clean game-end signal. Fire-and-forget: a send
+        // failure (e.g. a client already gone) shouldn't disrupt the host's own end-of-game handling.
+        private void HandleServerGameEnded(string result)
+        {
+            OnGameEnded?.Invoke(result);
+            _ = _messageBus.SendCommandToAllAsync(new GameEndedMessage(result));
         }
 
         private string? ValidateLaunchSettings()
@@ -539,7 +549,7 @@ namespace FDG.Network.Connection.Lobby
             // goes through CliApp, which leaves FDGServer's default instant clock.)
             FDGServer server = new FDGServer(_gameDataStore, _messageBus, _gameSettings, playerSlots,
                 new RealtimePresentationClock());
-            server.OnGameEnded += result => OnGameEnded?.Invoke(result);
+            server.OnGameEnded += HandleServerGameEnded;
 
             if (gameModel != null) //Dedicated server really doesn't need to do this.
             {

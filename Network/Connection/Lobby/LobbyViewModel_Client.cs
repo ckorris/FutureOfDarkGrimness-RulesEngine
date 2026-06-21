@@ -90,9 +90,9 @@ namespace FDG.Network.Connection.Lobby
 
         public event Action<IFDGGame>? OnLaunched;
 
-        // Deferred (work item #040 client follow-up): a non-host client has no clean game-end signal
-        // today — it only sees the replicated "wins!" banner beat, not FDGServer.OnGameEnded. Declared
-        // to satisfy ILobbyViewModel; never raised until a game-ended network message is added.
+        // Raised when the host broadcasts a GameEndedMessage (work item #040). A non-host client has no
+        // FDGServer, so this wire message is its game-end signal — it drives the same return-to-menu flow
+        // as the host. Fires on the network read-loop thread.
         public event Action<string>? OnGameEnded;
 
         public LobbyViewModel_Client(string thisPlayerName, INetworkClient networkclient)
@@ -122,6 +122,7 @@ namespace FDG.Network.Connection.Lobby
             _messageBusClient.RegisterForMessageEvent<LobbyPlayerListUpdate>(OnPlayerListUpdateReceived);
             _messageBusClient.RegisterForMessageEvent<LaunchGameMessage>(OnLaunchGameMessageReceived);
             _messageBusClient.RegisterForMessageEvent<LobbyGameSettingsUpdate>(OnGameSettingsUpdateReceived);
+            _messageBusClient.RegisterForMessageEvent<GameEndedMessage>(OnGameEndedMessageReceived);
 
             //Send greeting. 
             NewLobbyClientGreeting greeting = new NewLobbyClientGreeting(thisPlayerName);
@@ -229,6 +230,11 @@ namespace FDG.Network.Connection.Lobby
             FDGGame_AsClient fdgGame = new FDGGame_AsClient(_gameDataStore, _messageBusClient, _thisPlayerID.Value);
 
             OnLaunched?.Invoke(fdgGame);
+        }
+
+        private void OnGameEndedMessageReceived(GameEndedMessage gameEndedMessage)
+        {
+            OnGameEnded?.Invoke(gameEndedMessage.Result);
         }
 
         public void SetArmyPoints(int armyPoints)

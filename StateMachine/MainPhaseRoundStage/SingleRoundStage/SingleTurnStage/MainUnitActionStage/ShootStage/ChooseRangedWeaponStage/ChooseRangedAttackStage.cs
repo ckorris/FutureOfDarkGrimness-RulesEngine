@@ -1,4 +1,5 @@
 using FDG.Data;
+using FDG.Rules.Dispatch;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 using FDG.Utilities;
@@ -29,12 +30,15 @@ namespace FDG.Stages
                 throw new Exception($"Available weapon dictionary was empty when entering {nameof(ChooseRangedAttackStage)}.");
             }
 
-            //TODO: Handle situations like Deadly, where you have to use a specific weapon first.
-
             List<ITerrain> terrainSnapshot = context.GameContext.TableState.Terrain.Objects.ToList();
 
             List<WeaponOption> weaponOptions = BuildWeaponOptions(context.AttackingUnit, context.AvailableWeapons,
                 context.GameContext, terrainSnapshot, context.AttackedDefenderRefs);
+
+            // #028: Deadly (wound-multiplier) weapons must be fired before the unit's other weapons, so a
+            // clump removes whole models before normal wounds spread across the unit. Run after option-
+            // building so a Deadly weapon with no valid target this action doesn't lock out the rest.
+            ApplyDeadlyFirstGating(weaponOptions, context.AttackingUnit, context.GameContext);
 
             if (!HasAnyFireableOption(weaponOptions))
             {
@@ -77,6 +81,46 @@ namespace FDG.Stages
             GameContext.Log($"Chose weapon: {chosenWeapon.Name}. Count: {weaponCount}.");
 
             await OnChoseWeapon.Activate(context);
+        }
+
+        /// <summary>
+        /// #028: while the unit still has an un-fired Deadly (wound-multiplier) weapon with a valid target,
+        /// mark every non-Deadly weapon's targets unselectable so the player must resolve Deadly first.
+        /// Each fired weapon leaves <see cref="ICombatActionContext.AvailableWeapons"/> once used, so once
+        /// the last Deadly weapon is spent this gate no longer fires and the rest become selectable.
+        /// </summary>
+        private static void ApplyDeadlyFirstGating(List<WeaponOption> weaponOptions,
+            DataBinding<UnitData> attackingUnit, IGameContext gameContext)
+        {
+            UnitData attacker = attackingUnit.GetValue();
+
+            HashSet<string> priorityWeaponNames = weaponOptions
+                .Where(option => WoundPriorityQueries.MustResolveFirst(attacker, option.Weapon, gameContext.RuleEvaluator))
+                .Select(option => option.Weapon.Name)
+                .ToHashSet();
+
+            if (priorityWeaponNames.Count == 0) return;
+
+            // Only gate when a priority weapon actually has a fireable target this action; a Deadly weapon
+            // with nothing in range / line of sight must not lock out the unit's other weapons.
+            bool anyPriorityFireable = weaponOptions
+                .Where(option => priorityWeaponNames.Contains(option.Weapon.Name))
+                .SelectMany(option => option.WeaponTargetStats)
+                .Any(stats => stats.UnselectableReason == null && stats.modelsThatCanShoot.Count > 0);
+
+            if (!anyPriorityFireable) return;
+
+            foreach (WeaponOption option in weaponOptions)
+            {
+                if (priorityWeaponNames.Contains(option.Weapon.Name)) continue;
+
+                for (int i = 0; i < option.WeaponTargetStats.Count; i++)
+                {
+                    WeaponTargetStats stats = option.WeaponTargetStats[i];
+                    if (stats.UnselectableReason != null) continue; // keep a more specific reason (target limit, etc.)
+                    option.WeaponTargetStats[i] = stats with { UnselectableReason = "Must fire Deadly weapons first." };
+                }
+            }
         }
 
         private static bool HasAnyFireableOption(List<WeaponOption> weaponOptions)

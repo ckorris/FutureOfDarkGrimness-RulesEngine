@@ -7,6 +7,7 @@ using FDG.Presentation;
 using Newtonsoft.Json;
 using NUnit.Framework;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Foundation;
 using static FDG.StageResolution.Requests.ChooseRangedAttackRequest;
 
 namespace FDG.Tests
@@ -153,6 +154,62 @@ namespace FDG.Tests
             Assert.That(reasonForEnemy2, Does.Contain("Already targeting"));
         }
 
+        // #028: while the unit holds an un-fired Deadly (wound-multiplier) weapon that can reach a target,
+        // every non-Deadly weapon's targets are gated so the player must resolve Deadly first.
+        [Test]
+        public async Task Enter_DeadlyWeaponFireable_MarksNonDeadlyWeaponsUnselectable()
+        {
+            var requester = new CapturingRangedRequester(); // default reply: Cancelled, so Enter returns after capture
+            var heavy = DeadlyWeapon("Heavy Rifle", range: 24f, x: 3);
+            var rifle = Rifle();
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(5, 0, 0) }, // both weapons (24") can reach
+                rifleRange: 24f,
+                attackerWeapons: new[] { heavy, rifle },
+                playerRequester: requester);
+
+            var combatCtx = new CombatActionContext(ctx, attackerBinding, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+            await stage.Enter(combatCtx);
+
+            Assert.That(requester.Captured, Is.Not.Null);
+            var heavyOption = requester.Captured!.WeaponOptions.Single(o => o.Weapon.Name == "Heavy Rifle");
+            var rifleOption = requester.Captured!.WeaponOptions.Single(o => o.Weapon.Name == "Rifle");
+
+            Assert.That(heavyOption.WeaponTargetStats.All(t => t.UnselectableReason == null), Is.True,
+                "The Deadly weapon itself must stay selectable.");
+            Assert.That(rifleOption.WeaponTargetStats.All(t => t.UnselectableReason != null), Is.True,
+                "The non-Deadly weapon's targets must be gated while a Deadly weapon is fireable.");
+            Assert.That(rifleOption.WeaponTargetStats.First().UnselectableReason, Does.Contain("Deadly"));
+        }
+
+        // #028 edge: a Deadly weapon that can't reach anyone must NOT lock out the unit's other weapons.
+        [Test]
+        public async Task Enter_DeadlyWeaponOutOfRange_DoesNotGateOtherWeapons()
+        {
+            var requester = new CapturingRangedRequester();
+            var heavy = DeadlyWeapon("Heavy Rifle", range: 6f, x: 3); // short range
+            var rifle = Rifle(24f);
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(10, 0, 0) }, // 9" base-to-base: rifle reaches, heavy (6") doesn't
+                rifleRange: 24f,
+                attackerWeapons: new[] { heavy, rifle },
+                playerRequester: requester);
+
+            var combatCtx = new CombatActionContext(ctx, attackerBinding, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+            await stage.Enter(combatCtx);
+
+            Assert.That(requester.Captured, Is.Not.Null);
+            var rifleOption = requester.Captured!.WeaponOptions.Single(o => o.Weapon.Name == "Rifle");
+            Assert.That(rifleOption.WeaponTargetStats.All(t => t.UnselectableReason == null), Is.True,
+                "An unreachable Deadly weapon must not gate the unit's other weapons.");
+        }
+
         [Test]
         public async Task Enter_NoFireableTargets_NoPriorFire_ActivatesBackToChooseAction()
         {
@@ -229,6 +286,14 @@ namespace FDG.Tests
 
         private static Weapon Rifle(float range = 24f) =>
             new Weapon("Rifle", range, 1, 0);
+
+        private static Weapon DeadlyWeapon(string name, float range, int x)
+        {
+            var weapon = new Weapon(name, range, 1, 0);
+            weapon.AttachRuleDefinition(new ResolvedRule("Deadly", CoreRuleCatalog.Deadly,
+                new RuleArgument[] { new RuleArgument.Int(x) }));
+            return weapon;
+        }
 
         private static DataBinding<ModelData> MakeModel(GameDataStore store, Position position, params Weapon[] weapons)
         {

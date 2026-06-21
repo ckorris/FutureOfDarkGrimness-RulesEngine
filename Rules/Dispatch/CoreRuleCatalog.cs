@@ -468,6 +468,26 @@ public static class CoreRuleCatalog
         Array.Empty<HookEntry>(),
         Array.Empty<ActivatedAbility>());
 
+    /// <summary>
+    /// Transport(X) (#035): a marker rule, like <see cref="Hero"/>. A transport carries friendly units
+    /// inside it; the capacity X (in "spaces") is the rule's <c>Arg(0)</c>, read off the attachment by
+    /// <see cref="TransportUtilities.GetCapacity"/>. The behavior — occupancy (a cross-unit
+    /// <see cref="Foundation.TokenType.EmbarkedIn"/> token), deploy-time loading, embark/disembark move
+    /// actions, the inside↔outside targeting scope (free, via off-battlefield occupants), and mid-combat
+    /// destruction spillout — is a first-class engine subsystem, not a composed hook Effect: it needs
+    /// cross-unit relationships and new action/combat-flow verbs that no single-unit hook can express
+    /// (the same reason <see cref="Hero"/>'s join is engine code). This definition exists so the rule has
+    /// a stable identity to attach and test against.
+    ///
+    /// Deliberately NOT yet in <see cref="All"/>: army-load resolution / registry / numeric-arity / the
+    /// army-builder picker are wired in a later slice (deploy-time loading). Until then it is referenced
+    /// directly. When it joins <see cref="All"/> it must declare Unit scope and have its <c>Arg(0)</c>
+    /// arity accepted at attach (it carries an argument no hook Effect references — a marker-with-arg).
+    /// </summary>
+    public static SpecialRuleDefinition Transport { get; } = new SpecialRuleDefinition("Transport",
+        Array.Empty<HookEntry>(),
+        Array.Empty<ActivatedAbility>());
+
     // Triggered-move primitive (DeployUnitStage offer -> MovementExecutor) --------
 
     /// <summary>

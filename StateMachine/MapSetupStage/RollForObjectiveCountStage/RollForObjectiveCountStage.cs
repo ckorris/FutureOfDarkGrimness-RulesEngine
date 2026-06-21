@@ -16,20 +16,22 @@ namespace FDG.Stages
         {
             context.Log($"Entered {nameof(RollForObjectiveCountStage)}.");
 
-            // D3+2 gives 3–5 objectives. Roll a decisive d6 — one concrete face even under the
-            // probabilistic roller (a plain Roll(1) would spread to an expected value); 1-indexed. #090.
-            IDiceResults rollResult = context.GameContext.DiceRoller.RollDecisive();
+            // D3+2 gives 3–5 objectives. Roll a real, decisive D3 (RollDecisive resolves one concrete
+            // face even under the probabilistic roller; a plain Roll would spread to an expected value).
+            // Rolling a genuine 3-sided die — rather than a d6 then halving — lets the front-end show a
+            // D3 and keeps the "+2" legible. #090.
+            IDiceResults rollResult = context.GameContext.DiceRoller.RollDecisive(3);
             int roll = rollResult.SideMin;
             for (int v = rollResult.SideMin; v <= rollResult.SideMax; v++)
                 if (rollResult.At(v) > 0f) { roll = v; break; }
-            int d3 = (roll + 1) / 2; // 1→1, 2–3→2, 4–6→3
-            int objectiveCount = d3 + 2;
+            int objectiveCount = roll + 2;
 
-            context.Log($"Rolled {roll} - {objectiveCount} objectives will be placed.");
+            context.Log($"Rolled D3={roll} (+2) - {objectiveCount} objectives will be placed.");
 
-            // Show the d6 (the rolled face lights up), then a big banner with the resulting count.
+            // Show the D3 (the rolled face lights up), then a big banner with the resulting count. The
+            // label carries the formula so the +2 between the rolled face and the count is understood.
             await context.GameContext.Presenter.Present(
-                DiceRolledBeat.From(rollResult, roll, GameContext.Settings.RandomnessType, "Roll for Objectives",
+                DiceRolledBeat.From(rollResult, roll, GameContext.Settings.RandomnessType, "Roll for Objectives (D3 + 2)",
                     $"{objectiveCount} objectives"));
             await context.Announce($"{objectiveCount} Objectives", new TextColor(255, 210, 80, 255));
 

@@ -29,11 +29,12 @@ namespace FDG
 
         public AssignWoundsResults(DataBinding<UnitData> defendingUnit, float totalWoundsToAssign)
         {
-            //TODO: Add nuance of applying wounds to existing models with tough before others.
             _heroModelId = defendingUnit.GetValue().HeroAttachment?.HeroModelId;
 
             // #006: order the hero last so AutoFill (and any in-order fill) spares it until the rank and
             // file are full — the rule's "heroes are assigned wounds last, even if already wounded".
+            // #023's PreAssignToAlreadyWoundedModels then walks this same order, and the TryAddWounds hero
+            // guard defers the hero even if it is already wounded — so the two orderings compose correctly.
             List<DataBinding<ModelData>> alive = defendingUnit.ModelBindings()
                 .Where(model => model.GetIsAlive()).ToList();
 
@@ -48,6 +49,51 @@ namespace FDG
             }
 
             TotalWoundsToAssign = totalWoundsToAssign;
+
+            PreAssignToAlreadyWoundedModels();
+        }
+
+        /// <summary>
+        /// Tough ordering (GDF/OPR): wounds MUST be assigned to an already-wounded (but still alive)
+        /// model before any fresh one, and a wounded model must be finished before moving on. The
+        /// mandatory part of that rule is enforced here, once, at construction: pour wounds into each
+        /// model that already carries damage from a prior activation (<see cref="ModelData.WoundsDealt"/>
+        /// &gt; 0 — nothing has been assigned yet, so each entry's pending count is still 0) in turn
+        /// until it would die or the pool runs dry. These pre-assignments are not cancellable by the
+        /// player; if they consume the whole pool there is nothing left to decide and the caller can
+        /// resolve without prompting.
+        ///
+        /// NOTE: when several models are already wounded and the pool can't finish them all, they fill
+        /// in unit-list order — the defender doesn't get to choose which wounded model absorbs the
+        /// shortfall. That sub-choice is deferred.
+        /// </summary>
+        private void PreAssignToAlreadyWoundedModels()
+        {
+            foreach (PendingWounds entry in PendingWounds)
+            {
+                if (IsFinishedAssigning) break;
+                if (entry.Model.GetValue().WoundsDealt > 0f)
+                    TryAddWounds(entry.Model);
+            }
+        }
+
+        /// <summary>
+        /// Living models that can still accept at least one more wound (capacity beyond what is already
+        /// pending on them). With 0 or 1 such models there is no allocation for the player to decide.
+        /// </summary>
+        public int RemainingAssignableModelCount => PendingWounds.Count(CanTakeMoreWounds);
+
+        /// <summary>
+        /// True when wounds remain to assign AND more than one model could still receive them — i.e. the
+        /// player has a genuine choice. When false the caller should <see cref="AutoFill"/> the rest and
+        /// skip prompting (e.g. the mandatory pre-assignment already placed every wound).
+        /// </summary>
+        public bool HasRemainingChoice => !IsFinishedAssigning && RemainingAssignableModelCount > 1;
+
+        private static bool CanTakeMoreWounds(PendingWounds entry)
+        {
+            ModelData model = entry.Model.GetValue();
+            return model.TotalWounds - model.WoundsDealt - entry.Wounds > 0f;
         }
 
         /// <summary>

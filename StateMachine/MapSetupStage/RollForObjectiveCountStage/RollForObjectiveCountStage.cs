@@ -29,7 +29,8 @@ namespace FDG.Stages
 
             // Show the d6 (the rolled face lights up), then a big banner with the resulting count.
             await context.GameContext.Presenter.Present(
-                DiceRolledBeat.From(rollResult, roll, GameContext.Settings.RandomnessType, "Objective Count"));
+                DiceRolledBeat.From(rollResult, roll, GameContext.Settings.RandomnessType, "Roll for Objectives",
+                    $"{objectiveCount} objectives"));
             await context.Announce($"{objectiveCount} Objectives", new TextColor(255, 210, 80, 255));
 
             context.SetObjectiveCount(objectiveCount);

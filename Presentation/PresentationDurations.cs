@@ -14,8 +14,9 @@ namespace FDG.Presentation
         public static readonly TimeSpan ModelWounded = TimeSpan.FromMilliseconds(300);
         public static readonly TimeSpan Saves        = TimeSpan.FromMilliseconds(350);
         // Long enough that the result lingers after the faces lock (the front-end spends only the
-        // first fraction "rolling", the rest settled), so players can read the dice.
-        public static readonly TimeSpan DiceRoll     = TimeSpan.FromMilliseconds(1200);
+        // first fraction "rolling", the rest settled), so players can read the dice — and now the
+        // settled "what it means" summary line too, so a touch longer.
+        public static readonly TimeSpan DiceRoll     = TimeSpan.FromMilliseconds(1800);
         public static readonly TimeSpan Banner      = TimeSpan.FromMilliseconds(1300);
         // A volley = a weapon group's weapons all firing once, simultaneously; a weapon's Attacks
         // value is how many volleys it fires, played one after another. Total time scales with the

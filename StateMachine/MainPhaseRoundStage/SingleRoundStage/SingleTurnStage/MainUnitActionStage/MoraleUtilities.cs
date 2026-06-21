@@ -1,4 +1,7 @@
+using System.Threading.Tasks;
 using FDG.Data;
+using FDG.Presentation;
+using FDG.Presentation.Beats;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
@@ -43,7 +46,7 @@ namespace FDG.Stages
         /// and, if a morale re-roll is granted (Fearless), rolls one more decisive die that passes on a 4+
         /// regardless of Quality.
         /// </summary>
-        public static MoraleTestOutcome TakeMoraleTest(IGameContext gameContext, IUnit testingUnit, int baseRollNeeded)
+        public static async Task<MoraleTestOutcome> TakeMoraleTest(IGameContext gameContext, IUnit testingUnit, int baseRollNeeded)
         {
             IReadOnlyList<RuleOperation> preTestOps = gameContext.RuleEvaluator.EvaluateAll(
                 new PreMoraleTestContext(testingUnit), (testingUnit, ERuleSeat.Actor, null));
@@ -52,7 +55,11 @@ namespace FDG.Stages
             int rollNeeded = DiceUtilities.ClampSuccessRollNeeded(baseRollNeeded - modifiers.Net(ERollKind.Morale));
 
             // Decisive single die — one concrete face even under the probabilistic roller (#090).
-            if (gameContext.DiceRoller.RollDecisive().AtOrAbove(rollNeeded) >= 1f)
+            IDiceResults initialRoll = gameContext.DiceRoller.RollDecisive();
+            bool passedInitial = initialRoll.AtOrAbove(rollNeeded) >= 1f;
+            await gameContext.Presenter.Present(DiceRolledBeat.From(initialRoll, rollNeeded,
+                gameContext.Settings.RandomnessType, "Morale Test", passedInitial ? "Passed" : "Failed"));
+            if (passedInitial)
             {
                 return new MoraleTestOutcome(passed: true, rollNeeded, passedViaReroll: false);
             }
@@ -62,10 +69,16 @@ namespace FDG.Stages
                 new MoraleTestContext(testingUnit), (testingUnit, ERuleSeat.Actor, null));
             RerollSink rerollSink = new RerollSink();
             rerollSink.ApplyFrom(completeOps);
-            if (rerollSink.RerollMoraleOnFailure
-                && gameContext.DiceRoller.RollDecisive().AtOrAbove(FEARLESS_REROLL_PASSES_ON) >= 1f)
+            if (rerollSink.RerollMoraleOnFailure)
             {
-                return new MoraleTestOutcome(passed: true, rollNeeded, passedViaReroll: true);
+                IDiceResults reroll = gameContext.DiceRoller.RollDecisive();
+                bool passedReroll = reroll.AtOrAbove(FEARLESS_REROLL_PASSES_ON) >= 1f;
+                await gameContext.Presenter.Present(DiceRolledBeat.From(reroll, FEARLESS_REROLL_PASSES_ON,
+                    gameContext.Settings.RandomnessType, "Fearless Re-roll", passedReroll ? "Passed" : "Failed"));
+                if (passedReroll)
+                {
+                    return new MoraleTestOutcome(passed: true, rollNeeded, passedViaReroll: true);
+                }
             }
 
             return new MoraleTestOutcome(passed: false, rollNeeded, passedViaReroll: false);
@@ -90,7 +103,7 @@ namespace FDG.Stages
         /// true if passed, false if failed and Routed. Logging is left to the caller, which knows the
         /// wound source.
         /// </summary>
-        public static bool? ResolveWoundDrivenMorale(IGameContext gameContext, DataBinding<UnitData> unitBinding,
+        public static async Task<bool?> ResolveWoundDrivenMorale(IGameContext gameContext, DataBinding<UnitData> unitBinding,
             float remainingWoundsBefore)
         {
             IUnit unit = unitBinding.GetValue();
@@ -98,9 +111,9 @@ namespace FDG.Stages
             if (!CrossedIntoHalfStrength(remainingWoundsBefore, unit)) return null;
 
             // #006: a living joined hero takes morale on behalf of the unit (its Quality).
-            if (TakeMoraleTest(gameContext, unit, HeroStatRules.GetMoraleQuality(unitBinding.GetValue())).Passed) return true;
+            if ((await TakeMoraleTest(gameContext, unit, HeroStatRules.GetMoraleQuality(unitBinding.GetValue()))).Passed) return true;
 
-            Rout(unitBinding);
+            await RoutWithPresentation(gameContext, unitBinding);
             return false;
         }
 
@@ -135,17 +148,43 @@ namespace FDG.Stages
         /// <summary>
         /// Remove a unit from play by dealing lethal wounds to all its living models. The engine has no
         /// whole-unit removal primitive; an all-models-dead unit is already filtered out of activation,
-        /// turn order, and objective scoring everywhere via <c>GetIsAlive</c>.
+        /// turn order, and objective scoring everywhere via <c>GetIsAlive</c>. Returns the models that
+        /// were killed (those that had been alive) so a caller on the presentation path can animate them.
         /// </summary>
-        public static void Rout(DataBinding<UnitData> unitBinding)
+        public static IReadOnlyList<IModel> Rout(DataBinding<UnitData> unitBinding)
         {
+            List<IModel> killed = new List<IModel>();
             foreach (IModel model in unitBinding.GetValue().Models)
             {
                 if (!model.GetIsAlive()) continue;
 
                 float remaining = model.TotalWounds - model.WoundsDealt;
-                if (remaining > 0f) model.DealWounds(remaining);
+                if (remaining > 0f)
+                {
+                    model.DealWounds(remaining);
+                    killed.Add(model);
+                }
             }
+            return killed;
+        }
+
+        /// <summary>
+        /// <see cref="Rout"/> plus presentation: deals the lethal wounds, then emits one
+        /// <see cref="UnitRoutedBeat"/> so the front-end plays every routed model's death animation at
+        /// once (rather than the one-at-a-time sequence individual death beats would produce). No beat is
+        /// emitted if nothing was alive to kill.
+        /// </summary>
+        public static async Task RoutWithPresentation(IGameContext gameContext, DataBinding<UnitData> unitBinding)
+        {
+            IReadOnlyList<IModel> killed = Rout(unitBinding);
+            if (killed.Count == 0) return;
+
+            UnitData unit = unitBinding.GetValue();
+            List<RoutedModel> deaths = new List<RoutedModel>(killed.Count);
+            foreach (IModel model in killed)
+                deaths.Add(new RoutedModel(model.ID, model.Position));
+
+            await gameContext.Presenter.Present(new UnitRoutedBeat(unit.ID, unit.Name, deaths));
         }
     }
 }

@@ -66,7 +66,7 @@ public static class DiceUtilities
                 highest = Math.Max(highest, roll);
             }
 
-            await PresentRollOffDice(presenter, rolls, highest, rollLabel);
+            await PresentRollOff(presenter, competitorNames, rolls, highest, rollLabel);
 
             //Not the most optimized to keep allocating lists but it's rare and not critical, so I prefer readability.
             List<T> winners = new List<T>();
@@ -152,7 +152,7 @@ public static class DiceUtilities
             highest = Math.Max(highest, roll);
         }
 
-        await PresentRollOffDice(presenter, rolls, highest, rollLabel);
+        await PresentRollOff(presenter, groupNames, rolls, highest, rollLabel);
 
         //Bucket competitors by their roll.
         Dictionary<int, List<T>> rollBuckets = new Dictionary<int, List<T>>();
@@ -206,26 +206,34 @@ public static class DiceUtilities
     }
 
     /// <summary>
-    /// Presents one roll-off round's dice (each competitor's d6) so the player can watch the result, with
-    /// the winning face(s) highlighted as "successes". No-op when no presenter is supplied (e.g. tests).
+    /// Presents one roll-off round so the player can see who rolled what: a labelled stack of
+    /// competitor → die, with the sole highest roller marked Won (green) and a shared highest marked
+    /// TiedForWin (yellow). A tie re-rolls in <see cref="RankGroup{T}"/>, which presents a fresh beat for
+    /// just the tied competitors. No-op when no presenter is supplied (e.g. tests).
     /// </summary>
-    private static async Task PresentRollOffDice(IPresenter? presenter, int[] rolls, int highest, string rollLabel)
+    private static async Task PresentRollOff(IPresenter? presenter, List<string> names, int[] rolls,
+        int highest, string rollLabel)
     {
         if (presenter == null)
         {
             return;
         }
 
-        // A roll-off is always real dice (random.Next, not the context roller), so it's REALISTIC mode.
-        // The histogram is per-face counts over a d6; the highest roll is the "success" so it lights up.
-        float[] faceCounts = new float[6];
+        int topCount = 0;
         foreach (int roll in rolls)
+            if (roll == highest) topCount++;
+        bool soleWinner = topCount == 1;
+
+        List<RollOffEntry> entries = new List<RollOffEntry>(rolls.Length);
+        for (int i = 0; i < rolls.Length; i++)
         {
-            faceCounts[roll - 1] += 1f;
+            ERollOffResult result = rolls[i] == highest
+                ? (soleWinner ? ERollOffResult.Won : ERollOffResult.TiedForWin)
+                : ERollOffResult.Lost;
+            entries.Add(new RollOffEntry(names[i], rolls[i], result));
         }
 
-        await presenter.Present(new DiceRolledBeat(faceCounts, sideMin: 1, successThreshold: highest,
-            ERandomnessType.Realistic, rollLabel));
+        await presenter.Present(new RollOffBeat(rollLabel, entries));
     }
 }
 

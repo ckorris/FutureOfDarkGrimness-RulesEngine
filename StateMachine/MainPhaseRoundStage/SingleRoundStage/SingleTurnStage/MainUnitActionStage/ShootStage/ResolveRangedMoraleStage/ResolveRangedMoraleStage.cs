@@ -20,7 +20,7 @@ namespace FDG.Stages
         {
             GameContext.Log("Resolving ranged morale.");
 
-            ResolveForDefender(context);
+            await ResolveForDefender(context);
 
             await ToFinished.Activate(context);
         }
@@ -30,12 +30,12 @@ namespace FDG.Stages
         // on the fire that *crosses* into half strength: DefenderRemainingWoundsAtStart is re-snapshotted
         // by ChooseRangedAttackStage before each weapon, so once a unit is below half a later weapon at
         // the same target sees a sub-half start and won't re-test (no double jeopardy).
-        private void ResolveForDefender(ICombatActionContext context)
+        private async Task ResolveForDefender(ICombatActionContext context)
         {
             DataBinding<UnitData> defenderBinding = context.DefendingUnit;
             if (defenderBinding == null) return; // nothing was fired at (e.g. occluded before a target was set)
 
-            bool? result = MoraleUtilities.ResolveWoundDrivenMorale(
+            bool? result = await MoraleUtilities.ResolveWoundDrivenMorale(
                 GameContext, defenderBinding, context.DefenderRemainingWoundsAtStart);
 
             if (result == true)

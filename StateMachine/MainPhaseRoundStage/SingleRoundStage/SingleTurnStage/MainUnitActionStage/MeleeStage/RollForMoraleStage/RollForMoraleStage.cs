@@ -27,7 +27,17 @@ namespace FDG.Stages
             // Morale roll modifiers (#021) and the Fearless re-roll are applied by the shared, rule-aware
             // morale test, which also resolves the decisive die (#090). This stage just routes the outcome.
             IUnit testingUnit = determineMoraleSaveNeededResult.LosingUnit.GetValue();
-            MoraleUtilities.MoraleTestOutcome outcome = MoraleUtilities.TakeMoraleTest(
+
+            // A unit wiped out in the melee (e.g. destroyed outright by the charge) has nothing left to
+            // test — skip the roll and continue with no penalty rather than making a dead unit roll.
+            if (!testingUnit.GetIsAlive())
+            {
+                GameContext.Log($"{testingUnit.Name} was destroyed in melee - no morale test.");
+                await OnMoralePassed.Activate(context);
+                return;
+            }
+
+            MoraleUtilities.MoraleTestOutcome outcome = await MoraleUtilities.TakeMoraleTest(
                 GameContext, testingUnit, determineMoraleSaveNeededResult.RollNeeded);
 
             if (outcome.Passed)

@@ -40,7 +40,8 @@ namespace FDG.Stages
                 totalFailures += failedResults.TotalRolls;
 
                 await GameContext.Presenter.Present(
-                    DiceRolledBeat.From(rollToSaveResults, saveNeeded, GameContext.Settings.RandomnessType, "To Save"));
+                    DiceRolledBeat.From(rollToSaveResults, saveNeeded, GameContext.Settings.RandomnessType, "Roll to Save",
+                        $"{successfulResults.TotalRolls:0.##} saved, {failedResults.TotalRolls:0.##} wounds"));
             }
 
             RollToSaveResults results = new RollToSaveResults(successfulSaves, failedSaves);

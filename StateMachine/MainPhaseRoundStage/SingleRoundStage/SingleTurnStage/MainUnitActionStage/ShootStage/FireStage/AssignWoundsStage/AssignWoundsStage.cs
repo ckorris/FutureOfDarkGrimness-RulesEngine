@@ -1,3 +1,5 @@
+using FDG.Presentation;
+using FDG.Presentation.Beats;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
@@ -52,7 +54,11 @@ namespace FDG.Stages
                     float naturalMax = saved.Rolls.At(saved.Rolls.SideMax);
                     if (naturalMax <= 0f) continue;
                     int saveNeeded = DiceUtilities.ClampSuccessRollNeeded(saved.RollNeededInfo.SaveNeeded);
-                    totalWoundsDealt += GameContext.DiceRoller.Roll(naturalMax).Below(saveNeeded);
+                    IDiceResults rerollResult = GameContext.DiceRoller.Roll(naturalMax);
+                    float newWounds = rerollResult.Below(saveNeeded);
+                    totalWoundsDealt += newWounds;
+                    await GameContext.Presenter.Present(DiceRolledBeat.From(rerollResult, saveNeeded,
+                        GameContext.Settings.RandomnessType, "Bane Re-roll", $"{newWounds:0.##} new wounds"));
                 }
             }
 
@@ -83,8 +89,11 @@ namespace FDG.Stages
             woundIgnore.ApplyFrom(saveCompleteOperations);
             if (woundIgnore.HasIgnore && totalWoundsDealt > 0f)
             {
-                float ignored = GameContext.DiceRoller.Roll(totalWoundsDealt).AtOrAbove(woundIgnore.Threshold);
+                IDiceResults regenRoll = GameContext.DiceRoller.Roll(totalWoundsDealt);
+                float ignored = regenRoll.AtOrAbove(woundIgnore.Threshold);
                 totalWoundsDealt -= ignored;
+                await GameContext.Presenter.Present(DiceRolledBeat.From(regenRoll, woundIgnore.Threshold,
+                    GameContext.Settings.RandomnessType, "Regeneration", $"{ignored:0.##} ignored"));
             }
 
             // #042 Takedown: if the attack was re-scoped to a single model (IndividualTargetResult,
@@ -139,15 +148,23 @@ namespace FDG.Stages
             }
             else
             {
-                //TODO: Add nuance of applying wounds to existing models with tough before others.
-                //I'm also putting this TODO in the results class.
-                //assignWoundsResults = new AssignWoundsResults(metaData.DefendingUnit, totalWoundsDealt);
-                AssignWoundsRequest request = new AssignWoundsRequest(metaData.DefendingUnit.PlayerID(), "Assign Wounds", 
-                    metaData.DefendingUnit, totalWoundsDealt);
-                assignWoundsResults = await metaData.GameContext.PlayerRequester()
-                    .RequestDecision<AssignWoundsRequest, AssignWoundsResults>(request);
-                //throw new NotImplementedException();
-                //GameContext.GetHandler<IAssignWoundsHandler>().Handle(metaData.DefendingUnit, assignWoundsResults, () => OnHandled(assignWoundsResults, onFinished));
+                // Construct the results up front so the mandatory Tough pre-assignment (already-wounded
+                // models filled first, non-cancellable) is applied before we decide whether the player
+                // still has anything to choose. If the pre-assignment consumed the pool — or left only a
+                // single eligible model — there's no decision to make, so resolve without prompting.
+                AssignWoundsResults trial = new AssignWoundsResults(metaData.DefendingUnit, totalWoundsDealt);
+                if (trial.HasRemainingChoice)
+                {
+                    AssignWoundsRequest request = new AssignWoundsRequest(metaData.DefendingUnit.PlayerID(),
+                        "Assign Wounds", metaData.DefendingUnit, totalWoundsDealt);
+                    assignWoundsResults = await metaData.GameContext.PlayerRequester()
+                        .RequestDecision<AssignWoundsRequest, AssignWoundsResults>(request);
+                }
+                else
+                {
+                    trial.AutoFill();
+                    assignWoundsResults = trial;
+                }
             }
 
             await onFinished(assignWoundsResults);

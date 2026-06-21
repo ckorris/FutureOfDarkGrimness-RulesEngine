@@ -24,52 +24,52 @@ namespace FDG.Tests
         // --- MoraleUtilities.TakeMoraleTest (the shared engine) ---
 
         [Test]
-        public void Fearless_FailedTest_PassesOnRerollOfFourPlus()
+        public async Task Fearless_FailedTest_PassesOnRerollOfFourPlus()
         {
             var unit = MakeUnit(quality: 5);
             AttachFearless(unit);
 
-            var outcome = MoraleUtilities.TakeMoraleTest(Ctx(die: 4), unit.GetValue(), baseRollNeeded: 5);
+            var outcome = await MoraleUtilities.TakeMoraleTest(Ctx(die: 4), unit.GetValue(), baseRollNeeded: 5);
 
             Assert.That(outcome.Passed, Is.True);
             Assert.That(outcome.PassedViaReroll, Is.True, "4 fails the Quality-5 test but clears the Fearless 4+ re-roll.");
         }
 
         [Test]
-        public void Fearless_FailedTest_FailsWhenRerollBelowFour()
+        public async Task Fearless_FailedTest_FailsWhenRerollBelowFour()
         {
             var unit = MakeUnit(quality: 5);
             AttachFearless(unit);
 
-            var outcome = MoraleUtilities.TakeMoraleTest(Ctx(die: 3), unit.GetValue(), baseRollNeeded: 5);
+            var outcome = await MoraleUtilities.TakeMoraleTest(Ctx(die: 3), unit.GetValue(), baseRollNeeded: 5);
 
             Assert.That(outcome.Passed, Is.False, "3 fails both the Quality-5 test and the 4+ re-roll.");
         }
 
         [Test]
-        public void Fearless_PassedInitialTest_DoesNotReroll()
+        public async Task Fearless_PassedInitialTest_DoesNotReroll()
         {
             var unit = MakeUnit(quality: 4);
             AttachFearless(unit);
 
-            var outcome = MoraleUtilities.TakeMoraleTest(Ctx(die: 4), unit.GetValue(), baseRollNeeded: 4);
+            var outcome = await MoraleUtilities.TakeMoraleTest(Ctx(die: 4), unit.GetValue(), baseRollNeeded: 4);
 
             Assert.That(outcome.Passed, Is.True);
             Assert.That(outcome.PassedViaReroll, Is.False, "the initial test already passed — no second chance needed.");
         }
 
         [Test]
-        public void WithoutFearless_FailedTest_StaysFailed()
+        public async Task WithoutFearless_FailedTest_StaysFailed()
         {
             var unit = MakeUnit(quality: 5);
 
-            var outcome = MoraleUtilities.TakeMoraleTest(Ctx(die: 4), unit.GetValue(), baseRollNeeded: 5);
+            var outcome = await MoraleUtilities.TakeMoraleTest(Ctx(die: 4), unit.GetValue(), baseRollNeeded: 5);
 
             Assert.That(outcome.Passed, Is.False, "no morale rule → a failed test has no second chance.");
         }
 
         [Test]
-        public void MoraleModifier_LowersTheThreshold()
+        public async Task MoraleModifier_LowersTheThreshold()
         {
             // An inline +1 morale rule (the shape a future Courage would take) riding Morale_OnPreMoraleTest.
             var brave = new SpecialRuleDefinition("Brave",
@@ -84,7 +84,7 @@ namespace FDG.Tests
             var unit = MakeUnit(quality: 5);
             unit.GetValue().AttachRuleDefinition(new ResolvedRule("Brave", brave));
 
-            var outcome = MoraleUtilities.TakeMoraleTest(Ctx(die: 4), unit.GetValue(), baseRollNeeded: 5);
+            var outcome = await MoraleUtilities.TakeMoraleTest(Ctx(die: 4), unit.GetValue(), baseRollNeeded: 5);
 
             Assert.That(outcome.RollNeeded, Is.EqualTo(4), "+1 morale lowers the Quality-5 threshold to 4.");
             Assert.That(outcome.Passed, Is.True);
@@ -94,25 +94,25 @@ namespace FDG.Tests
         // --- Fearless reaches the wound-driven path too (shooting / dangerous terrain), not just melee ---
 
         [Test]
-        public void Fearless_PreventsAWoundDrivenRout()
+        public async Task Fearless_PreventsAWoundDrivenRout()
         {
             var unit = MakeUnit(quality: 5, modelCount: 4);
             AttachFearless(unit);
             KillModels(unit, 2); // reduced to half strength (2 of 4 living)
 
-            bool? result = MoraleUtilities.ResolveWoundDrivenMorale(Ctx(die: 4), unit, remainingWoundsBefore: 4f);
+            bool? result = await MoraleUtilities.ResolveWoundDrivenMorale(Ctx(die: 4), unit, remainingWoundsBefore: 4f);
 
             Assert.That(result, Is.True, "Fearless re-roll (4+) passes, so the half-strength unit is not Routed.");
             Assert.That(unit.GetValue().GetIsAlive(), Is.True);
         }
 
         [Test]
-        public void WithoutFearless_WoundDrivenTestFails_Routs()
+        public async Task WithoutFearless_WoundDrivenTestFails_Routs()
         {
             var unit = MakeUnit(quality: 5, modelCount: 4);
             KillModels(unit, 2);
 
-            bool? result = MoraleUtilities.ResolveWoundDrivenMorale(Ctx(die: 4), unit, remainingWoundsBefore: 4f);
+            bool? result = await MoraleUtilities.ResolveWoundDrivenMorale(Ctx(die: 4), unit, remainingWoundsBefore: 4f);
 
             Assert.That(result, Is.False);
             Assert.That(unit.GetValue().GetIsDead(), Is.True, "no Fearless → the failed half-strength test Routs it.");
@@ -141,6 +141,29 @@ namespace FDG.Tests
 
             Assert.That(passed, Is.True, "Fearless turns the failed melee morale test into a pass.");
             Assert.That(failed, Is.False);
+        }
+
+        [Test]
+        public async Task RollForMoraleStage_DestroyedLoser_SkipsTestAndPasses()
+        {
+            var ctx = Ctx(die: 1); // a die that WOULD fail any test, to prove none is rolled
+            var loser = MakeUnit(quality: 4, modelCount: 3);
+            KillModels(loser, 3); // wiped out in the melee
+            var combat = new CombatActionContext(ctx, MakeUnit(quality: 4), isMelee: true);
+            combat.SetDefender(loser);
+            combat.AddResult(new DetermineMoraleSaveNeededResult(loser.GetValue().Quality, loser));
+
+            var stage = new RollForMoraleStage(ctx, new NoOpLayer<ICombatActionContext>());
+            bool passed = false, failed = false;
+            stage.OnMoralePassed.Bind(RollForMoraleStage.ROLL_FOR_MORALE_PASSED_TRANSITION);
+            stage.OnMoraleFailed.Bind(RollForMoraleStage.ROLL_FOR_MORALE_FAILED_TRANSITION);
+            stage.OnMoralePassed.OnWillActivate += _ => passed = true;
+            stage.OnMoraleFailed.OnWillActivate += _ => failed = true;
+
+            await stage.Enter(combat);
+
+            Assert.That(passed, Is.True, "a destroyed unit skips morale and continues with no penalty.");
+            Assert.That(failed, Is.False, "even with a die that would fail, no test is rolled for a dead unit.");
         }
 
         // Helpers

@@ -18,18 +18,31 @@ namespace FDG.Stages
     /// </summary>
     public static class MovementExecutor
     {
+        /// <summary>One model's dangerous-terrain check: the face it rolled and whether it took a wound
+        /// (a 1). Returned so a caller on the presentation path can show each die; the logic itself
+        /// (rolling + dealing the wound) happens here regardless.</summary>
+        public readonly struct DangerousTerrainRoll
+        {
+            public readonly int Roll;
+            public readonly bool Wounded;
+            public DangerousTerrainRoll(int roll, bool wounded) { Roll = roll; Wounded = wounded; }
+        }
+
         /// <summary>
-        /// Roll for each model whose path crosses dangerous terrain, dealing a wound on a 1.
-        /// Body lifted verbatim from <c>ApplyNonMovementTerrainEffectsStage</c>.
+        /// Roll for each model whose path crosses dangerous terrain, dealing a wound on a 1. Returns the
+        /// per-model rolls so the (async) caller can present a dice beat for each; out-of-band callers
+        /// that don't present simply ignore the return.
         /// </summary>
-        public static void ApplyDangerousTerrainEffects(IGameContext gameContext,
+        public static IReadOnlyList<DangerousTerrainRoll> ApplyDangerousTerrainEffects(IGameContext gameContext,
             IReadOnlyList<ModelMoveEntry> paths, IEnumerable<ITerrain> relevantTerrain, string unitName)
         {
+            List<DangerousTerrainRoll> results = new List<DangerousTerrainRoll>();
+
             List<ITerrain> dangerous = relevantTerrain
                 .Where(t => t.TerrainType.HasFlag(ETerrainType.Dangerous))
                 .ToList();
 
-            if (dangerous.Count == 0) return;
+            if (dangerous.Count == 0) return results;
 
             foreach (ModelMoveEntry move in paths)
             {
@@ -45,7 +58,8 @@ namespace FDG.Stages
                 for (int v = roll.SideMin; v <= roll.SideMax; v++)
                     if (roll.At(v) > 0f) { rollValue = v; break; }
 
-                if (roll.At(1) > 0)
+                bool wounded = roll.At(1) > 0;
+                if (wounded)
                 {
                     move.Model.GetValue().DealWounds(1);
                     gameContext.Log($"{unitName}: model crossed dangerous terrain, rolled {rollValue} - 1 wound dealt.");
@@ -54,7 +68,11 @@ namespace FDG.Stages
                 {
                     gameContext.Log($"{unitName}: model crossed dangerous terrain, rolled {rollValue} - safe.");
                 }
+
+                results.Add(new DangerousTerrainRoll(rollValue, wounded));
             }
+
+            return results;
         }
 
         /// <summary>

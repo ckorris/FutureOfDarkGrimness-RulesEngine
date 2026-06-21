@@ -66,7 +66,8 @@ namespace FDG.Stages
 
             // Show the natural to-hit roll (the synthetic extra-hits below aren't dice).
             await GameContext.Presenter.Present(
-                DiceRolledBeat.From(rollToHitResults, hitRollNeeded, GameContext.Settings.RandomnessType, "To Hit"));
+                DiceRolledBeat.From(rollToHitResults, hitRollNeeded, GameContext.Settings.RandomnessType, "Roll to Hit",
+                    $"{successfulResults.TotalRolls:0.##} hits"));
 
             // #042 extra-hit rules (Surge / Furious / Relentless) fire at hit-roll-complete: an
             // unmodified 6 spawns extra hits. Evaluate the attacker's rules against the UNMODIFIED

@@ -29,17 +29,26 @@ namespace FDG.Presentation.Beats
 
         public ERandomnessType Mode { get; }
 
-        /// <summary>Short context for display, e.g. "To Hit", "To Save".</summary>
+        /// <summary>Short context for display, e.g. "Roll to Hit", "Roll to Save" — the "what for"
+        /// shown while the dice tumble.</summary>
         public string Label { get; }
 
+        /// <summary>
+        /// Optional plain-language outcome shown once the dice settle — the "what it means", e.g.
+        /// "2 saved, 3 wounds" or "Passed". Null falls back to a generic "{successes} / {total}".
+        /// Set by the rolling stage, which alone knows the roll's semantics.
+        /// </summary>
+        public string? ResultSummary { get; }
+
         public DiceRolledBeat(IReadOnlyList<float> faceCounts, int sideMin, int successThreshold,
-            ERandomnessType mode, string label)
+            ERandomnessType mode, string label, string? resultSummary = null)
         {
             FaceCounts = faceCounts;
             SideMin = sideMin;
             SuccessThreshold = successThreshold;
             Mode = mode;
             Label = label;
+            ResultSummary = resultSummary;
         }
 
         public int SideMax => SideMin + FaceCounts.Count - 1;
@@ -67,14 +76,15 @@ namespace FDG.Presentation.Beats
         /// <summary>
         /// Build a beat from an engine roll result, capturing the per-face histogram.
         /// </summary>
-        public static DiceRolledBeat From(IDiceResults results, int successThreshold, ERandomnessType mode, string label)
+        public static DiceRolledBeat From(IDiceResults results, int successThreshold, ERandomnessType mode,
+            string label, string? resultSummary = null)
         {
             int min = results.SideMin, max = results.SideMax;
             float[] faceCounts = new float[max - min + 1];
             for (int f = min; f <= max; f++)
                 faceCounts[f - min] = results.At(f);
 
-            return new DiceRolledBeat(faceCounts, min, successThreshold, mode, label);
+            return new DiceRolledBeat(faceCounts, min, successThreshold, mode, label, resultSummary);
         }
     }
 }

@@ -43,7 +43,7 @@ public sealed class RuleEvaluator
         IWeapon? weapon = null)
     {
         var tagged = new List<TaggedOperation>();
-        CollectTagged(unit, seat, weapon, context, tagged, new DedupState());
+        CollectTagged(unit, seat, weapon, models: null, context, tagged, new DedupState());
 
         // Per-unit Evaluate does NOT run the suppression first-pass — cross-unit suppression
         // (an attacker's Unstoppable cancelling a defender's Regeneration) only exists once the
@@ -73,6 +73,19 @@ public sealed class RuleEvaluator
     public IReadOnlyList<RuleOperation> EvaluateAll(IHookContext context,
         params (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon)[] participants)
     {
+        return CollectSurviving(context, log: true, WithModels(participants)).Select(t => t.Op).ToList();
+    }
+
+    /// <summary>
+    /// Model-aware participant form (#006 slice F): a participant may also name the specific model(s) the
+    /// hook involves, and those models' own rules (<see cref="IModel.RuleDefinitions"/>) are evaluated
+    /// alongside the unit's and weapon's. Opt-in — only stages that pass models (currently the hit stages,
+    /// for a weapon batch's sole owner) see per-model rules; every other call site is unaffected. This is
+    /// how a joined hero's own rules fire for the hero alone rather than the whole host unit.
+    /// </summary>
+    public IReadOnlyList<RuleOperation> EvaluateAll(IHookContext context,
+        params (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon, IReadOnlyList<IModel>? Models)[] participants)
+    {
         return CollectSurviving(context, log: true, participants).Select(t => t.Op).ToList();
     }
 
@@ -92,7 +105,7 @@ public sealed class RuleEvaluator
     public IReadOnlyList<(RuleOperation Op, string RuleName)> EvaluateAllNamed(IHookContext context,
         params (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon)[] participants)
     {
-        return CollectSurviving(context, log: false, participants)
+        return CollectSurviving(context, log: false, WithModels(participants))
             .Select(t => (t.Op, t.Origin.RequestedName)).ToList();
     }
 
@@ -106,6 +119,19 @@ public sealed class RuleEvaluator
         return expanded;
     }
 
+    /// <summary> Widens weaponed participants to the model-aware tuple with no per-model rules (the
+    /// non-slice-F default), so the original call sites keep their exact behavior. </summary>
+    private static (IUnit, ERuleSeat, IWeapon?, IReadOnlyList<IModel>?)[] WithModels(
+        (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon)[] participants)
+    {
+        var expanded = new (IUnit, ERuleSeat, IWeapon?, IReadOnlyList<IModel>?)[participants.Length];
+        for (int i = 0; i < participants.Length; i++)
+        {
+            expanded[i] = (participants[i].Unit, participants[i].Seat, participants[i].Weapon, null);
+        }
+        return expanded;
+    }
+
     /// <summary>
     /// Collects every participant's matching operations, runs the suppression first-pass (a queued
     /// <see cref="RuleOperation.SuppressRule"/>("X") removes every op whose origin rule's canonical name
@@ -114,7 +140,7 @@ public sealed class RuleEvaluator
     /// when <paramref name="log"/> is true.
     /// </summary>
     private List<TaggedOperation> CollectSurviving(IHookContext context, bool log,
-        params (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon)[] participants)
+        params (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon, IReadOnlyList<IModel>? Models)[] participants)
     {
         var tagged = new List<TaggedOperation>();
 
@@ -123,9 +149,9 @@ public sealed class RuleEvaluator
         // participant) fires once per bearer.
         var seen = new DedupState();
 
-        foreach ((IUnit unit, ERuleSeat seat, IWeapon? weapon) in participants)
+        foreach ((IUnit unit, ERuleSeat seat, IWeapon? weapon, IReadOnlyList<IModel>? models) in participants)
         {
-            CollectTagged(unit, seat, weapon, context, tagged, seen);
+            CollectTagged(unit, seat, weapon, models, context, tagged, seen);
         }
 
         var suppressedRuleNames = tagged
@@ -169,14 +195,24 @@ public sealed class RuleEvaluator
     /// it is a rule with (X) in its name"). Does not log — callers log after deciding which
     /// operations survive.
     /// </summary>
-    private void CollectTagged(IUnit unit, ERuleSeat seat, IWeapon? weapon, IHookContext context,
-        List<TaggedOperation> sink, DedupState seen)
+    private void CollectTagged(IUnit unit, ERuleSeat seat, IWeapon? weapon, IReadOnlyList<IModel>? models,
+        IHookContext context, List<TaggedOperation> sink, DedupState seen)
     {
         CollectFromRules(unit.RuleDefinitions, unit, carryingWeapon: null, seat, context, sink, seen);
 
         if (weapon != null)
         {
             CollectFromRules(weapon.RuleDefinitions, unit, weapon, seat, context, sink, seen);
+        }
+
+        // #006 slice F: per-model rules for the model(s) this hook actually involves (e.g. a weapon
+        // batch's sole owner on the hit hooks). Bearer stays the unit, so dedup + logging are unchanged.
+        if (models != null)
+        {
+            foreach (IModel model in models)
+            {
+                CollectFromRules(model.RuleDefinitions, unit, carryingWeapon: null, seat, context, sink, seen);
+            }
         }
     }
 

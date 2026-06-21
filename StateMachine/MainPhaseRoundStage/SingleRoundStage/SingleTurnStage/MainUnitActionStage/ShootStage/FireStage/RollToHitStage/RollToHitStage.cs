@@ -80,7 +80,10 @@ namespace FDG.Stages
             IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
                 new HitRollCompleteContext(attacker, defender, rollToHitResults, distance, metaData.IsMelee,
                     metaData.IsCharging),
-                (attacker, ERuleSeat.Actor, metaData.WeaponType));
+                // #006 slice F: the attacker batch's sole-owner model contributes its own per-model rules,
+                // so a joined hero's Furious/Relentless fire for the hero's batch only (not the whole unit).
+                (attacker, ERuleSeat.Actor, metaData.WeaponType,
+                    HeroStatRules.WeaponBatchRuleOwners(metaData.AttackingUnit.GetValue(), metaData.WeaponType)));
             HitInjectionSink hitInjection = new HitInjectionSink();
             hitInjection.ApplyFrom(operations);
 

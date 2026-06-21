@@ -67,10 +67,7 @@ public static class HeroStatRules
     {
         if (unit.HeroAttachment != null)
         {
-            WeaponComparer comparer = new WeaponComparer();
-            List<IModel> owners = unit.Models
-                .Where(model => model.GetIsAlive() && model.Weapons.Any(weapon => comparer.Equals(weapon, weaponType)))
-                .ToList();
+            List<IModel> owners = LivingWeaponOwners(unit, weaponType);
 
             // Hero's own Quality only when this batch is owned by the hero alone. If a rank-and-file model
             // also carries a matching weapon (the deferred same-weapon-pooling case), it stays unit Quality.
@@ -81,5 +78,30 @@ public static class HeroStatRules
         }
 
         return unit.Quality;
+    }
+
+    /// <summary>
+    /// The model(s) whose per-model rules (#006 slice F) apply to a weapon batch: the batch's sole living
+    /// owner, or empty when more than one model carries the weapon. The "sole owner" gate mirrors
+    /// <see cref="GetAttackQuality"/>'s conservative collision handling — a weapon the rank and file also
+    /// carry is not a hero-only batch, so the hero's per-model rules don't leak onto their shots either.
+    /// Generic: returns whichever model is the sole owner (only the hero carries rules today, so a
+    /// grunt-only batch returns the grunt and contributes its empty rule list — a no-op).
+    /// </summary>
+    public static IReadOnlyList<IModel> WeaponBatchRuleOwners(UnitData unit, IWeapon weaponType)
+    {
+        List<IModel> owners = LivingWeaponOwners(unit, weaponType);
+        return owners.Count == 1 ? owners : System.Array.Empty<IModel>();
+    }
+
+    /// <summary> The living models in <paramref name="unit"/> carrying a weapon matching
+    /// <paramref name="weaponType"/> (by <see cref="WeaponComparer"/>). Shared by the attack-Quality
+    /// seam (slice E) and the per-model rule-owner resolution (slice F). </summary>
+    private static List<IModel> LivingWeaponOwners(UnitData unit, IWeapon weaponType)
+    {
+        WeaponComparer comparer = new WeaponComparer();
+        return unit.Models
+            .Where(model => model.GetIsAlive() && model.Weapons.Any(weapon => comparer.Equals(weapon, weaponType)))
+            .ToList();
     }
 }

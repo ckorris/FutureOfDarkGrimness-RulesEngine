@@ -1,5 +1,6 @@
 ﻿using FDG.BuiltInAssets;
 using FDG.Data;
+using FDG.Rules.Dispatch;
 using FDG.Rules.Tokens;
 using FDG.SerializableVisuals;
 using FDG.SerializableVisuals.Materials;
@@ -18,6 +19,18 @@ namespace FDG
         [JsonProperty] private TokenContainer _tokens = new TokenContainer();
 
         [JsonIgnore] public ITokenContainer Tokens => _tokens;
+
+        // #006 slice F: per-model rules. Like UnitData/Weapon rule lists, deliberately [JsonIgnore] —
+        // re-attached at army-load (the hero merge moves the hero's unit rules onto its model).
+        private readonly List<ResolvedRule> _ruleDefinitions = new();
+
+        [JsonIgnore] public IReadOnlyList<ResolvedRule> RuleDefinitions => _ruleDefinitions;
+
+        /// <summary>
+        /// Attaches a resolved special-rule definition to this model. Post-construction (army-load / the
+        /// hero merge / harness), mirroring <see cref="UnitData.AttachRuleDefinition"/>.
+        /// </summary>
+        public void AttachRuleDefinition(ResolvedRule rule) => _ruleDefinitions.Add(rule);
 
         // Serialized: max wounds is set imperatively after creation (e.g. Tough via UnitCreationRules),
         // so it can't be recomputed on load — it must round-trip, or a loaded/networked Tough model

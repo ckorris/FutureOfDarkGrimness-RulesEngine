@@ -98,9 +98,24 @@ public static class HeroJoinResolver
                 continue;
             }
 
-            ModelID heroModelId = hero.ModelBindings[0].GetValue().ID;
+            ModelData heroModel = hero.ModelBindings[0].GetValue();
+            ModelID heroModelId = heroModel.ID;
             int heroWounds = hasTough ? tough : IModel.DEFAULT_WOUND_COUNT;
             host.AttachHero(new HeroAttachment(heroModelId, hero.Quality, hero.Defense, heroWounds), hero.ModelBindings);
+
+            // #006 slice F: carry the hero's own unit-scoped rules onto the hero MODEL, so they fire for the
+            // hero alone (Furious/Relentless/Thrust) rather than the whole host unit. The Hero marker stays
+            // structural (no hooks); weapon-scoped rules already ride the hero's weapon and need no move.
+            foreach (ResolvedRule rule in hero.RuleDefinitions)
+            {
+                if (rule.Definition == CoreRuleCatalog.Hero)
+                {
+                    continue;
+                }
+
+                heroModel.AttachRuleDefinition(rule);
+            }
+
             merged.Add(hero);
         }
 

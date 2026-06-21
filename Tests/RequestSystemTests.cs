@@ -221,6 +221,16 @@ namespace FDG.Tests
                 _messageHandlers.Remove(typeof(T));
             }
 
+            public void RegisterForConnectionMessageEvent<T>(Action<T, ConnectionID> handler)
+            {
+                _messageHandlers[typeof(T)] = (message) => handler((T)message, ConnectionID.Host);
+            }
+
+            public void DeregisterForConnectionMessageEvent<T>(Action<T, ConnectionID> handler)
+            {
+                _messageHandlers.Remove(typeof(T));
+            }
+
             public Task SendCommandToAllAsync<TMessage>(TMessage command)
             {
                 if (command is StageTaskRequestMessage requestMessage)
@@ -250,11 +260,6 @@ namespace FDG.Tests
             }
 
             public void Dispose() { }
-
-            public ConnectionID GetCurrentMessageConnectionID()
-            {
-                throw new NotImplementedException();
-            }
 
             public Task SendCommandToHostAsync<TMessage>(TMessage message)
             {

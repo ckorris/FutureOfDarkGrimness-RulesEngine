@@ -120,7 +120,7 @@ namespace FDG.Network.Connection.Lobby
 
             _messageBus.RegisterForMessageEvent<LobbyChatMessage>(OnLocalChatMessageReceived);
             _messageBus.RegisterForMessageEvent<LobbyChatMessage_FromClient>(OnChatMessageReceived);
-            _messageBus.RegisterForMessageEvent<NewLobbyClientGreeting>(OnReceiveNewClientGreeting);
+            _messageBus.RegisterForConnectionMessageEvent<NewLobbyClientGreeting>(OnReceiveNewClientGreeting);
             _messageBus.RegisterForMessageEvent<ArmyListUpdateMessage>(OnArmyListFileUpdateReceived);
 
             //Show init message in chatbox.
@@ -172,7 +172,7 @@ namespace FDG.Network.Connection.Lobby
 
             _messageBus.RegisterForMessageEvent<LobbyChatMessage>(OnLocalChatMessageReceived);
             _messageBus.RegisterForMessageEvent<LobbyChatMessage_FromClient>(OnChatMessageReceived);
-            _messageBus.RegisterForMessageEvent<NewLobbyClientGreeting>(OnReceiveNewClientGreeting);
+            _messageBus.RegisterForConnectionMessageEvent<NewLobbyClientGreeting>(OnReceiveNewClientGreeting);
             _messageBus.RegisterForMessageEvent<ArmyListUpdateMessage>(OnArmyListFileUpdateReceived);
 
             AddMessageToLocalList(new LobbyChatMessage("System", "Loaded saved game. Assign players to slots, then Resume."));
@@ -221,13 +221,13 @@ namespace FDG.Network.Connection.Lobby
             //Maybe do nothing?
         }
 
-        private void OnReceiveNewClientGreeting(NewLobbyClientGreeting greeting)
+        private void OnReceiveNewClientGreeting(NewLobbyClientGreeting greeting, ConnectionID connectionID)
         {
             // Resume games have a fixed saved roster — route joining clients to saved slots instead of
             // creating new ones. Strictly isolated so the new-game path below is unchanged.
             if (_isResume)
             {
-                OnResumeClientGreeting(greeting);
+                OnResumeClientGreeting(greeting, connectionID);
                 return;
             }
 
@@ -247,8 +247,6 @@ namespace FDG.Network.Connection.Lobby
 
             //ArmyListSummary tempSummary = new ArmyListSummary("Knifeybois", "Alien Hives", 2000);
 
-            ConnectionID connectionID = _messageBus.GetCurrentMessageConnectionID();
-
             LobbyPlayerInfoFull newLobbyPlayerInfo = new LobbyPlayerInfoFull(greeting.PlayerName, null, (ETeamOption)tempTeamNumber,
                 EPlayerType.Network, connectionID, newClientPlayerID);
             _playerInfosFull.Add(newClientPlayerID, newLobbyPlayerInfo);
@@ -263,11 +261,9 @@ namespace FDG.Network.Connection.Lobby
         // PlayerID — no remap. NOT yet live-tested: correct-by-design for 1v1 (one remote client);
         // multi-client relies on the same broadcast LobbyPlayerIDAssignment as the new-game flow.
         // Host-chosen connection→slot assignment (vs this auto-fill) is a future refinement.
-        private void OnResumeClientGreeting(NewLobbyClientGreeting greeting)
+        private void OnResumeClientGreeting(NewLobbyClientGreeting greeting, ConnectionID connectionID)
         {
             Debug.WriteLine($"[#052] Resume: greeting from {greeting.PlayerName}.");
-
-            ConnectionID connectionID = _messageBus.GetCurrentMessageConnectionID();
 
             LobbyPlayerInfoFull? openSlot = _playerInfosFull.Values.FirstOrDefault(p => p.PlayerType == EPlayerType.AI);
             if (openSlot == null)

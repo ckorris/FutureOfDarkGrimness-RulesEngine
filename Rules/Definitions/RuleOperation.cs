@@ -217,11 +217,12 @@ public abstract record RuleOperation
 
     /// <summary>
     /// Invoke the wound-application flow on <see cref="Target"/> as if from a
-    /// weapon with <see cref="Count"/> hits carrying the rules named in
-    /// <see cref="WithRules"/>. Resolution of <see cref="Effect.DealHits"/>;
+    /// weapon with <see cref="Count"/> hits at <see cref="ArmorPenetration"/>, carrying the
+    /// rules named in <see cref="WithRules"/>. Resolution of <see cref="Effect.DealHits"/>;
     /// the universal offensive-spell delivery mechanism.
     /// </summary>
-    public sealed record InvokeDealHits(IUnit Target, int Count, IReadOnlyList<string> WithRules) : RuleOperation;
+    public sealed record InvokeDealHits(IUnit Target, int Count, IReadOnlyList<string> WithRules,
+        int ArmorPenetration = 0) : RuleOperation;
 
     /// <summary>
     /// Restore <see cref="Amount"/> wounds on <see cref="Target"/>. Resolution

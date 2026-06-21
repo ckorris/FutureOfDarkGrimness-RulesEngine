@@ -203,6 +203,10 @@ namespace FDG.GameModel
             }
 
             ArmyData armyData = new ArmyData(playerID, unitBindings);
+            // #033: resolve the army's embedded spell list (any Caster(X) unit can cast these). Done here
+            // where the rule resolver is live, so a damage spell's weapon rules are pre-resolved for the
+            // cast stage.
+            armyData.SetSpells(ArmyListSpellResolution.ResolveSpells(armyListFile, ruleResolver));
 
             DataReference armyDataReference = gameDataStore.Create(armyData);
         }

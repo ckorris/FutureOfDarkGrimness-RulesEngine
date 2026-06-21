@@ -202,20 +202,21 @@ public abstract record Effect
     }
 
     /// <summary>
-    /// Inflicts <see cref="Count"/> hits on the target unit, with each hit
-    /// carrying the additional rules named in <see cref="WithRules"/>
-    /// (e.g. <c>AP</c>, <c>Blast</c>, <c>Lacerate</c>, <c>Deadly</c>).
-    /// The universal offensive-spell shape: Cerebral Trauma
-    /// (1 hit with Blast and Lacerate), Lightning Fog (4 hits), Psychic Terror
-    /// (9 hits with Bane). <see cref="Count"/> is a fixed authored value
-    /// because every offensive-spell hit-count we've seen in the corpus is
-    /// fixed — no rule-data randomness on the count itself.
+    /// Inflicts <see cref="Count"/> hits on the target unit at the given <see cref="ArmorPenetration"/>,
+    /// with each hit carrying the additional weapon rules named in <see cref="WithRules"/> (e.g.
+    /// <c>Blast(3)</c>, <c>Bane</c>, <c>Lacerate</c>). The universal offensive-spell shape: Cerebral Trauma
+    /// (1 hit with Blast and Lacerate), Lightning Fog (4 hits), Psychic Terror (9 hits with Bane), Total
+    /// Seizure (4 hits with AP(1)). <see cref="ArmorPenetration"/> is a separate field rather than a
+    /// <see cref="WithRules"/> entry because AP is a weapon stat, not a #042 rule — it sets the synthetic
+    /// spell weapon's AP directly. <see cref="Count"/> is a fixed authored value because every
+    /// offensive-spell hit-count in the corpus is fixed — no rule-data randomness on the count itself.
     /// </summary>
-    public sealed record DealHits(int Count, IReadOnlyList<string> WithRules) : Effect
+    public sealed record DealHits(int Count, IReadOnlyList<string> WithRules, int ArmorPenetration = 0) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.InvokeDealHits(ruleInvocation.EffectiveTarget, Count, WithRules));
+            operations.Add(new RuleOperation.InvokeDealHits(
+                ruleInvocation.EffectiveTarget, Count, WithRules, ArmorPenetration));
         }
     }
 

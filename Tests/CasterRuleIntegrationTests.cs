@@ -1,7 +1,10 @@
+using System.Linq;
 using FDG.Data;
 using FDG.Players;
+using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
+using FDG.SaveLoad;
 using FDG.Stages;
 using FDG.StageResolution;
 using NUnit.Framework;
@@ -62,6 +65,52 @@ namespace FDG.Tests
 
             Assert.That(plain.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(0),
                 "a unit without the Caster rule gains no spell tokens");
+        }
+
+        // #033 Slice 1 — a damage spell's WithRules are pre-resolved to weapon-scoped ResolvedRules at army
+        // load (where the resolver is live), so the cast stage can attach them without a resolver. A plain
+        // (arg-less) weapon rule resolves directly.
+        [Test]
+        public void ResolveSpells_DamageSpell_PreResolvesPlainWeaponRule()
+        {
+            RuleResolver resolver = CoreRuleCatalog.CreateResolver();
+            var armyFile = new ArmyListFile
+            {
+                Spells = new()
+                {
+                    new SpellDefinition("Hex", 2,
+                        new TargetSelector(18f, 1, 1, ETargetAffinity.Foe, RequireLineOfSight: true),
+                        new Effect.DealHits(2, new[] { "Bane" }, ArmorPenetration: 1)),
+                },
+            };
+
+            IReadOnlyList<RuntimeSpell> spells = ArmyListSpellResolution.ResolveSpells(armyFile, resolver);
+
+            Assert.That(spells, Has.Count.EqualTo(1));
+            Assert.That(spells[0].Threshold, Is.EqualTo(2));
+            Assert.That(spells[0].WeaponRules.Select(r => r.Definition.Name), Does.Contain("Bane"),
+                "a damage spell's WithRules resolve to weapon-scoped ResolvedRules at load");
+        }
+
+        // A numeric weapon rule ("Blast(3)") parses its argument so the resolved rule carries Arg(0)=3.
+        [Test]
+        public void ResolveSpells_NumericWeaponRule_ParsesArgument()
+        {
+            RuleResolver resolver = CoreRuleCatalog.CreateResolver();
+            var armyFile = new ArmyListFile
+            {
+                Spells = new()
+                {
+                    new SpellDefinition("Boom", 1,
+                        new TargetSelector(18f, 1, 1, ETargetAffinity.Foe, RequireLineOfSight: true),
+                        new Effect.DealHits(1, new[] { "Blast(3)" })),
+                },
+            };
+
+            ResolvedRule blast = ArmyListSpellResolution.ResolveSpells(armyFile, resolver).Single().WeaponRules.Single();
+
+            Assert.That(blast.Definition.Name, Is.EqualTo("Blast"));
+            Assert.That(((RuleArgument.Int)blast.Arguments[0]).Value, Is.EqualTo(3));
         }
 
         private async Task RunRoundStart(int roundCount)

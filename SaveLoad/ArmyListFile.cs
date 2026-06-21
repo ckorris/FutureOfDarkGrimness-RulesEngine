@@ -29,6 +29,13 @@ namespace FDG.SaveLoad
         /// </summary>
         public List<SpecialRuleDefinition> RuleDefinitions { get; set; } = new List<SpecialRuleDefinition>();
 
+        /// <summary>
+        /// The army's spell list (#033): castable by any unit carrying Caster(X). Embedded in the army
+        /// file and serialized with the same STJ kind-schema as <see cref="RuleDefinitions"/> (each spell's
+        /// <c>Effect</c> graph is polymorphic). Resolved into runtime spells at army load.
+        /// </summary>
+        public List<SpellDefinition> Spells { get; set; } = new List<SpellDefinition>();
+
         [JsonIgnore]
         public int TotalPoints
         {

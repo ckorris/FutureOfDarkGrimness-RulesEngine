@@ -1,5 +1,7 @@
 using System.Text.Json;
+using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Foundation;
 using FDG.Rules.Serialization;
 using FDG.SaveLoad;
 using NUnit.Framework;
@@ -59,6 +61,44 @@ namespace FDG.Tests
             Assert.That(back.Units[0].Weapons[0].SpecialRules[0], Is.EqualTo(new SpecialRuleEntry_CoreNumeric("Blast", 3)));
             Assert.That(back.RuleDefinitions, Has.Count.EqualTo(1));
             Assert.That(back.RuleDefinitions[0].Name, Is.EqualTo("Stealth"));
+        }
+
+        // #033: the army's spell list rides the same STJ kind-schema (each spell's Effect graph is
+        // polymorphic, TargetSelector is plain), embedded in the army file alongside RuleDefinitions.
+        [Test]
+        public void ArmyWithSpells_RoundTripsStructurally()
+        {
+            ArmyListFile army = MakeArmy();
+            army.Spells = new()
+            {
+                // Damage spell: AP on its own field, a numeric weapon rule in WithRules.
+                new SpellDefinition("Psy-Bolt", 2,
+                    new TargetSelector(18f, 1, 1, ETargetAffinity.Foe, RequireLineOfSight: true),
+                    new Effect.DealHits(1, new[] { "Blast(3)" }, ArmorPenetration: 2)),
+                // Buff spell: grants a rule to up to two friendly units "once".
+                new SpellDefinition("Blessing", 1,
+                    new TargetSelector(12f, 1, 2, ETargetAffinity.Friend, RequireLineOfSight: false),
+                    new Effect.AddRule("Furious", ELifetime.NextTrigger)),
+            };
+
+            string first = JsonSerializer.Serialize(army, RuleJson.Options);
+            ArmyListFile back = JsonSerializer.Deserialize<ArmyListFile>(first, RuleJson.Options)!;
+            string second = JsonSerializer.Serialize(back, RuleJson.Options);
+
+            Assert.That(second, Is.EqualTo(first), "army with spells did not round-trip structurally.");
+            Assert.That(back.Spells, Has.Count.EqualTo(2));
+
+            Assert.That(back.Spells[0].Name, Is.EqualTo("Psy-Bolt"));
+            Assert.That(back.Spells[0].Threshold, Is.EqualTo(2));
+            Assert.That(back.Spells[0].Target.RangeInches, Is.EqualTo(18f));
+            Assert.That(back.Spells[0].Target.TargetAffinity, Is.EqualTo(ETargetAffinity.Foe));
+            Assert.That(back.Spells[0].Target.RequireLineOfSight, Is.True);
+            Effect.DealHits dealHits = (Effect.DealHits)back.Spells[0].Effect;
+            Assert.That(dealHits.Count, Is.EqualTo(1));
+            Assert.That(dealHits.ArmorPenetration, Is.EqualTo(2));
+            Assert.That(dealHits.WithRules, Does.Contain("Blast(3)"));
+
+            Assert.That(((Effect.AddRule)back.Spells[1].Effect).RuleName, Is.EqualTo("Furious"));
         }
 
         // Runtime-only members (StableID counter, computed TotalPoints) must not be persisted.

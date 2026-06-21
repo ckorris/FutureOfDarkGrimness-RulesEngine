@@ -11,8 +11,6 @@ namespace FDG.Data
 
         private Dictionary<TypeID, IComponentStore> _componentStores = new Dictionary<TypeID, IComponentStore>();
 
-        private Dictionary<Type, Action<object, DataReference, object>> _setValueCache = new();
-
         public event Action<DataReference, string>? OnDataAddedAsJson;
         public event Action<DataReference, string>? OnDataUpdatedAsJson;
         public event Action<DataReference>? OnDataRemoved;
@@ -51,11 +49,6 @@ namespace FDG.Data
         public static GameDataStore CreateFromTypeMap(List<TypeAndCapacity> typeMap)
         {
             return new GameDataStore(typeMap);
-        }
-
-        private GameDataStore()
-        {
-            //TODO: Initialize converters?
         }
 
         private GameDataStore(List<TypeAndCapacity> typeMap)

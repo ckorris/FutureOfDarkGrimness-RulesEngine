@@ -50,6 +50,11 @@ namespace FDG.Data
             _bindings = new Dictionary<int, DataBinding<T>>();
         }
 
+        // Upper bound on a single grow request. Local Create only ever needs +1, so this only bites
+        // CreateFromReference when a foreign (save/network) reference carries a corrupt index — we'd
+        // rather throw a typed exception than try to allocate a multi-gigabyte array.
+        private const int MAX_CAPACITY = 1 << 24; // ~16.7M entries
+
         public DataReference Create(T initialValue)
         {
             for (int i = 0; i < _capacity; i++)
@@ -73,16 +78,66 @@ namespace FDG.Data
                 }
             }
 
-            throw new ExceededDataTypeCapacityException(_capacity);
+            // No free slot — grow rather than throw. DataReferences are {TypeID, Index, Generation}
+            // value identities, so reallocating the backing arrays keeps every existing reference
+            // valid; the first newly-added slot (at the old capacity) is the one we hand out.
+            int freeIndex = _capacity;
+            EnsureCapacity(_capacity + 1);
+
+            _used[freeIndex] = true;
+            _generations[freeIndex]++;
+            _data[freeIndex] = initialValue;
+
+            DataReference grownReference = new DataReference()
+            {
+                TypeID = _typeID,
+                Index = freeIndex,
+                Generation = _generations[freeIndex]
+            };
+
+            OnComponentAdded?.Invoke(grownReference, initialValue);
+
+            return grownReference;
+        }
+
+        // Grows the backing arrays so index <paramref name="requiredLength"/> - 1 is addressable.
+        // Doubles to amortize repeated growth. No-op when already large enough.
+        private void EnsureCapacity(int requiredLength)
+        {
+            if (requiredLength <= _capacity)
+            {
+                return;
+            }
+
+            if (requiredLength > MAX_CAPACITY)
+            {
+                throw new ExceededDataTypeCapacityException(requiredLength);
+            }
+
+            int newCapacity = _capacity <= 0 ? 4 : _capacity;
+            while (newCapacity < requiredLength)
+            {
+                newCapacity *= 2;
+            }
+            newCapacity = Math.Min(newCapacity, MAX_CAPACITY);
+
+            Array.Resize(ref _data, newCapacity);
+            Array.Resize(ref _used, newCapacity);
+            Array.Resize(ref _generations, newCapacity);
+            _capacity = newCapacity;
         }
 
         public void CreateFromReference(DataReference existingReference, object initialValue)
         {
-            //Make sure that the given reference fits within the current state.
-            if(existingReference.Index < 0 || existingReference.Index >= _capacity)
+            //A negative index can never be valid. A high index is fine — this path replays foreign
+            //references (save load / network sync) whose source store may have grown past ours, so
+            //grow to fit rather than reject. EnsureCapacity throws if the index is implausibly large.
+            if(existingReference.Index < 0)
             {
                 throw new InvalidDataReferenceAssignmentException(existingReference, EInvalidReason.IndexExceedsCapacity);
             }
+
+            EnsureCapacity(existingReference.Index + 1);
 
             if(existingReference.TypeID != _typeID)
             {

@@ -177,12 +177,26 @@ namespace FDG.GameModel
 
         private void CreateArmyDataFromArmyFile(PlayerID playerID, ArmyListFile armyListFile, IReadWriteableGameDataStore gameDataStore, IRuleResolver ruleResolver)
         {
-            List<DataBinding<UnitData>> unitBindings = new List<DataBinding<UnitData>>(armyListFile.Units.Count);
-
+            // Build every unit (with rules attached) first, paired with its army-list entry, so #006 Hero
+            // joins can be resolved within this army before anything is registered. Models are created in
+            // the store by the UnitData constructor; only the UnitData registration is deferred.
+            List<(UnitFileEntry Entry, UnitData Unit)> built = new(armyListFile.Units.Count);
             foreach (UnitFileEntry unitEntry in armyListFile.Units)
             {
                 UnitData unitData = new UnitData(playerID, unitEntry, gameDataStore, ruleResolver);
                 AttachRulesFromArmyList(unitData, unitEntry, ruleResolver);
+                built.Add((unitEntry, unitData));
+            }
+
+            // Merge heroes into their declared host units; survivors are the units that deploy on their own
+            // (hosts + non-joining units). A merged hero is absorbed into its host and never registered.
+            // The per-army call naturally enforces the rule's "part of one multi-model unit" being from the
+            // same army. Tough still lands per-unit later in the creation-rules loop, hero-aware.
+            IReadOnlyList<UnitData> survivors = HeroJoinResolver.Apply(built, message => Debug.WriteLine(message));
+
+            List<DataBinding<UnitData>> unitBindings = new List<DataBinding<UnitData>>(survivors.Count);
+            foreach (UnitData unitData in survivors)
+            {
                 DataReference unitDataReference = gameDataStore.Create(unitData);
                 DataBinding<UnitData> unitBinding = gameDataStore.GetDataBinding<UnitData>(unitDataReference);
                 unitBindings.Add(unitBinding);

@@ -24,7 +24,7 @@ public static class CoreRuleCatalog
     {
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
         Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Vanguard, Scout, Ambush, Thrust,
-        Blast, Takedown, Impact, Counter, MartialProwess, Strafing, Fear, Fearless,
+        Blast, Takedown, Impact, Counter, MartialProwess, Strafing, Fear, Fearless, Hero,
     };
 
     /// <summary>
@@ -453,6 +453,19 @@ public static class CoreRuleCatalog
                 new Effect.SetMaxWounds(new ValueSource.Arg(0)),
                 ELifetime.UntilEndOfGame),
         },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary>
+    /// Hero (#006): a marker rule. The hero's structural facets (joining a host unit at army setup, and
+    /// the stat-divergence seams — wounds-last, morale at the hero's Quality, last-model Defense, firing
+    /// at the hero's Quality) are not expressible as a single-unit hook Effect: the join needs cross-unit
+    /// information (the host) that <see cref="EHookID.Lifecycle_OnUnitCreated"/> can't see, so it runs as
+    /// explicit setup code in <see cref="HeroJoinResolver"/>. This definition exists so the army-list rule
+    /// name "Hero" resolves (rather than skip+log) and so the host/hero eligibility checks have a stable
+    /// <see cref="SpecialRuleDefinition"/> identity to test against.
+    /// </summary>
+    public static SpecialRuleDefinition Hero { get; } = new SpecialRuleDefinition("Hero",
+        Array.Empty<HookEntry>(),
         Array.Empty<ActivatedAbility>());
 
     // Triggered-move primitive (DeployUnitStage offer -> MovementExecutor) --------

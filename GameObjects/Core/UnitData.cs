@@ -26,6 +26,13 @@ namespace FDG
 
         [JsonIgnore] public IReadOnlyList<ResolvedRule> RuleDefinitions => _ruleDefinitions;
 
+        // #006: set when a Hero has joined this unit. The hero's model is merged into ModelBindings;
+        // this carries the divergent facts (which model, the hero's own Quality/Defense). Serialized so
+        // the merge survives save/network round-trips alongside the merged ModelBindings.
+        [JsonProperty] private HeroAttachment? _heroAttachment;
+
+        [JsonIgnore] public HeroAttachment? HeroAttachment => _heroAttachment;
+
         public List<DataBinding<ModelData>> ModelBindings;
 
         [JsonIgnore]
@@ -225,6 +232,43 @@ namespace FDG
         /// the existing constructors stay untouched.
         /// </summary>
         public void AttachRuleDefinition(ResolvedRule rule) => _ruleDefinitions.Add(rule);
+
+        /// <summary>
+        /// Merges a Hero into this unit (#006): adds the hero's model binding(s) to this unit's model
+        /// list (wiring wound aggregation), and records the <see cref="HeroAttachment"/>. After this the
+        /// combined unit is one <see cref="IUnit"/> for all per-unit machinery; only the stat-divergence
+        /// seams read <see cref="HeroAttachment"/>. The hero's standalone unit is discarded by the caller.
+        /// </summary>
+        public void AttachHero(HeroAttachment heroAttachment, IReadOnlyList<DataBinding<ModelData>> heroModelBindings)
+        {
+            // Add only — deliberately no OnWoundsDealt subscription here. Fresh-game units don't subscribe
+            // their rank and file at construction (only the save/load path wires them, via
+            // RewireModelWoundSubscriptions, which now sees the merged hero binding too); subscribing only
+            // the hero here would make the unit's wound aggregation fire asymmetrically.
+            foreach (DataBinding<ModelData> modelBinding in heroModelBindings)
+            {
+                ModelBindings.Add(modelBinding);
+            }
+
+            _heroAttachment = heroAttachment;
+        }
+
+        /// <summary> True if a Hero has joined this unit. </summary>
+        [JsonIgnore] public bool HasHero => _heroAttachment != null;
+
+        /// <summary>
+        /// The joined hero's model, or null if no hero has joined (or its model is gone). Identity is by
+        /// <see cref="HeroAttachment.HeroModelId"/>, stable across the model list as models die.
+        /// </summary>
+        public IModel? GetHeroModel()
+        {
+            if (_heroAttachment == null)
+            {
+                return null;
+            }
+
+            return Models.FirstOrDefault(model => model.ID == _heroAttachment.HeroModelId);
+        }
 
         public bool GetMobility(out float moveShootDistanceInches, out float chargeDistanceInches)
         {

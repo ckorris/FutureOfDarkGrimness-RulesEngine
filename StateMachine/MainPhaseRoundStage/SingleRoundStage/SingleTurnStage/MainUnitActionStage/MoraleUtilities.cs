@@ -110,7 +110,8 @@ namespace FDG.Stages
             if (!unit.GetIsAlive()) return null;                              // wiped out outright — no test
             if (!CrossedIntoHalfStrength(remainingWoundsBefore, unit)) return null;
 
-            if ((await TakeMoraleTest(gameContext, unit, unit.Quality)).Passed) return true;
+            // #006: a living joined hero takes morale on behalf of the unit (its Quality).
+            if ((await TakeMoraleTest(gameContext, unit, HeroStatRules.GetMoraleQuality(unitBinding.GetValue()))).Passed) return true;
 
             await RoutWithPresentation(gameContext, unitBinding);
             return false;

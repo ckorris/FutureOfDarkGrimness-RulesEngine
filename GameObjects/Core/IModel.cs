@@ -1,4 +1,5 @@
 using FDG.Data;
+using FDG.Rules.Dispatch;
 using FDG.Rules.Tokens;
 using FDG.SerializableVisuals;
 
@@ -7,6 +8,16 @@ namespace FDG
     public interface IModel
     {
         public const int DEFAULT_WOUND_COUNT = 1;
+
+        /// <summary>
+        /// Per-model special rules (#006 slice F). Mirrors <see cref="IUnit.RuleDefinitions"/> /
+        /// <see cref="IWeapon.RuleDefinitions"/> but scoped to one model: the rule-dispatcher unions these
+        /// into an event only for the model(s) actually involved (e.g. a weapon batch's sole owner on the
+        /// hit hooks), so a joined hero's own rules (Furious/Relentless/Thrust) fire for the hero alone.
+        /// Like the unit/weapon lists, not serialized — re-attached at army-load (the hero merge moves the
+        /// hero's unit-scoped rules here), so it inherits the same save/load lifecycle as unit rules.
+        /// </summary>
+        public IReadOnlyList<ResolvedRule> RuleDefinitions { get; }
 
         /// <summary>
         /// Stable per-model identifier, used to name a specific model across JSON /

@@ -24,14 +24,29 @@ public static class UnitCreationRules
 
         MaxWoundsSink maxWounds = new MaxWoundsSink();
         maxWounds.ApplyFrom(operations);
-        if (!maxWounds.HasMax)
+
+        // #006: a joined hero keeps its OWN max wounds (its Tough), not the host unit's. The hero's
+        // standalone unit is never registered, so the creation-rules pass never runs for it directly —
+        // its wound count rides on the host's HeroAttachment and is applied to the hero model here.
+        HeroAttachment? hero = (unit as UnitData)?.HeroAttachment;
+
+        if (!maxWounds.HasMax && hero == null)
         {
             return;
         }
 
         foreach (IModel model in unit.Models)
         {
-            model.SetMaxWounds(maxWounds.MaxWounds);
+            if (hero != null && model.ID == hero.HeroModelId)
+            {
+                model.SetMaxWounds(hero.HeroWounds);
+                continue;
+            }
+
+            if (maxWounds.HasMax)
+            {
+                model.SetMaxWounds(maxWounds.MaxWounds);
+            }
         }
     }
 }

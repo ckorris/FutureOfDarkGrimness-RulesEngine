@@ -27,12 +27,17 @@ namespace FDG.Stages
             IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
                 new HitRollModifierContext(attacker, defender, distance, AttackerMoved: metaData.AttackerMoved,
                     IsMelee: metaData.IsMelee, IsCharging: metaData.IsCharging),
-                (attacker, ERuleSeat.Actor, metaData.WeaponType), (defender, ERuleSeat.Subject, null));
+                // #006 slice F: the attacker batch's sole-owner model contributes its own per-model rules
+                // (a joined hero's Furious/Relentless/Thrust fire for the hero's batch only, not the unit).
+                (attacker, ERuleSeat.Actor, metaData.WeaponType,
+                    HeroStatRules.WeaponBatchRuleOwners(metaData.AttackingUnit.GetValue(), metaData.WeaponType)),
+                (defender, ERuleSeat.Subject, (IWeapon?)null, (IReadOnlyList<IModel>?)null));
 
             // #042 quality-floor rules (Reliable) set the BASE quality before per-roll modifiers:
             // "treated as 2+, still modifiable". Fold the floor sink and improve the base, then let
             // the roll-modifier sink (Stealth/Artillery/Indirect) stack on top. Stage interprets no op.
-            int baseQuality = metaData.AttackingUnit.Quality();
+            // #006: a weapon batch owned only by a joined hero fires at the hero's Quality (per-model).
+            int baseQuality = HeroStatRules.GetAttackQuality(metaData.AttackingUnit.GetValue(), metaData.WeaponType);
             QualityFloorSink qualityFloor = new QualityFloorSink();
             qualityFloor.ApplyFrom(operations);
             if (qualityFloor.HasFloor)

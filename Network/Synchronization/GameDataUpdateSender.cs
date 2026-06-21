@@ -22,7 +22,7 @@ namespace FDG.Network.Synchronization
             _gameDataStore.OnDataUpdatedAsJson += SendDataUpdatedMessageToAll;
             _gameDataStore.OnDataRemoved += SendDataRemovedMessageToAll;
 
-            _messageBusHost.RegisterForMessageEvent<RequestAllDataMessage>(OnReceivedRequestAllDataMessage);
+            _messageBusHost.RegisterForConnectionMessageEvent<RequestAllDataMessage>(OnReceivedRequestAllDataMessage);
         }
 
         private void SendDataAddedMessageToAll(DataReference data, string newObjectJson)
@@ -43,12 +43,11 @@ namespace FDG.Network.Synchronization
             _messageBusHost.SendCommandToAllAsync(removeMessage);
         }
 
-        private void OnReceivedRequestAllDataMessage(RequestAllDataMessage _)
+        private void OnReceivedRequestAllDataMessage(RequestAllDataMessage _, ConnectionID connectionID)
         {
             List<ReferenceJsonValuePair> allData = _gameDataStore.GetAllDataReferencesAsJson();
             AddAllDataMessage allDataMessage = new AddAllDataMessage(allData);
 
-            ConnectionID connectionID = _messageBusHost.GetCurrentMessageConnectionID();
             _messageBusHost.SendCommandToSingleAsync(allDataMessage, connectionID);
         }
 

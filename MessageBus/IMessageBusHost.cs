@@ -5,12 +5,14 @@ namespace FDG.MessageBus
     public interface IMessageBusHost : IMessageReceiver
     {
         /// <summary>
-        /// This can only be called during the invocation of a method called as a result of 
-        /// subscribing to <see cref="IMessageReceiver.RegisterForMessageEvent{T}(Action{T})"/>.
-        /// It will return the Connection ID of the message, if there is one, for cases where you need to manage
-        /// the network connectivity. There should be very few places to actually use this, it's slightly hacky.
+        /// Register a handler that also receives the <see cref="ConnectionID"/> the message arrived on.
+        /// Use this instead of an ambient lookup when a handler must reply to the specific sender
+        /// (e.g. full-data sync, lobby greeting), so concurrent client read loops can't cross-talk and
+        /// hand a handler the wrong connection.
         /// </summary>
-        public ConnectionID GetCurrentMessageConnectionID();
+        public void RegisterForConnectionMessageEvent<T>(Action<T, ConnectionID> onMessageReceived);
+
+        public void DeregisterForConnectionMessageEvent<T>(Action<T, ConnectionID> messageToUnsubscribe);
 
         public Task SendCommandToAllAsync<TMessage>(TMessage message);
 

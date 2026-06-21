@@ -9,7 +9,15 @@ namespace FDG.Network.Messages
         public void RegisterForMessageEvent<T>(Action<T> onMessageReceived);
 
         public void DeregisterForMessageEvent<T>(Action<T> messageToUnsubscribe);
-        public void DispatchToHandlers(object messageObject);
+
+        // Connection-aware variant: the handler also receives the ConnectionID the message arrived on,
+        // threaded through dispatch instead of read from ambient state (which races across the
+        // per-client read loops). Used by handlers that must reply to the specific sender.
+        public void RegisterForConnectionMessageEvent<T>(Action<T, ConnectionID> onMessageReceived);
+
+        public void DeregisterForConnectionMessageEvent<T>(Action<T, ConnectionID> messageToUnsubscribe);
+
+        public void DispatchToHandlers(object messageObject, ConnectionID? connectionID = null);
 
     }
     internal class MessageRegistrar : IMessageRegistrar
@@ -46,10 +54,31 @@ namespace FDG.Network.Messages
             }
         }
 
-        public void DispatchToHandlers(object messageObject)
+        public void RegisterForConnectionMessageEvent<T>(Action<T, ConnectionID> onMessageReceived)
+        {
+            Type typeKey = typeof(T);
+            if (_messageHandlers.TryGetValue(typeKey, out List<Delegate>? handlers) == false)
+            {
+                handlers = new List<Delegate>();
+                _messageHandlers[typeKey] = handlers;
+            }
+
+            handlers.Add(onMessageReceived);
+        }
+
+        public void DeregisterForConnectionMessageEvent<T>(Action<T, ConnectionID> messageToUnsubscribe)
+        {
+            Type typeKey = typeof(T);
+            if (_messageHandlers.TryGetValue(typeKey, out List<Delegate>? handlers))
+            {
+                handlers.Remove(messageToUnsubscribe);
+            }
+        }
+
+        public void DispatchToHandlers(object messageObject, ConnectionID? connectionID = null)
         {
             Type actualType = messageObject.GetType();
-            
+
             if (_messageHandlers.TryGetValue(actualType, out List<Delegate>? handlers))
             {
                 //Snapshot so a handler that (de)registers during dispatch doesn't mutate the list we're iterating.
@@ -57,7 +86,17 @@ namespace FDG.Network.Messages
                 {
                     try
                     {
-                        del.DynamicInvoke(messageObject);
+                        //Connection-aware handlers (2 params) get the source connection passed alongside the
+                        //message. A locally-originated dispatch has no connection, so those handlers are skipped.
+                        if (del.Method.GetParameters().Length == 2)
+                        {
+                            if (connectionID.HasValue == false) continue;
+                            del.DynamicInvoke(messageObject, connectionID.Value);
+                        }
+                        else
+                        {
+                            del.DynamicInvoke(messageObject);
+                        }
                     }
                     catch (Exception exception)
                     {

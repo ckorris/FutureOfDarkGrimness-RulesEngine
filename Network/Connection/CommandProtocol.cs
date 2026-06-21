@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Buffers;
-using System.Net.Sockets;
+using System.IO;
 
 namespace FDG.Network
 {
@@ -10,9 +10,14 @@ namespace FDG.Network
         public const int MAGIC_NUMBERS_BYTE_SIZE = 4;
         public const int HEADER_LENGTH_BYTE_SIZE = 4;
 
+        // Upper bound on an inbound payload. The length prefix is attacker/corruption-controlled, so
+        // without a cap one bad frame could make us rent a near-int.MaxValue buffer. Real frames
+        // (full-state sync being the largest) stay well under this.
+        public const int MAX_PAYLOAD_BYTES = 16 * 1024 * 1024; // 16 MB
+
         public const int TEMP_PORT = 6389; //TODO Make this specifyable.
 
-        public static async Task WriteCommandAsync(NetworkStream stream, ArraySegment<byte> dataBuffer,
+        public static async Task WriteCommandAsync(Stream stream, ArraySegment<byte> dataBuffer,
             CancellationToken cancellationToken = default)
         {
             //Write the magic numbers.
@@ -29,7 +34,7 @@ namespace FDG.Network
                 .ConfigureAwait(false);
         }
 
-        public static async Task<ArraySegment<byte>> ReadCommandAsync(NetworkStream stream, 
+        public static async Task<ArraySegment<byte>> ReadCommandAsync(Stream stream,
             CancellationToken cancellationToken = default)
         {
             //Confirm magic numbers. Not strictly necessary, but early on, this will identify alignment issues immediately.
@@ -51,13 +56,14 @@ namespace FDG.Network
 
             int payloadLength = BitConverter.ToInt32(lengthBuffer);
 
-            if (payloadLength < 0)
+            if (payloadLength < 0 || payloadLength > MAX_PAYLOAD_BYTES)
             {
-                throw new IOException("Received invalid payload length: " + payloadLength);
+                throw new IOException($"Received invalid payload length: {payloadLength} (must be 0..{MAX_PAYLOAD_BYTES}).");
             }
 
             byte[] payloadArray = ArrayPool<byte>.Shared.Rent(payloadLength); //Array may be too large.
-            await stream.ReadExactlyAsync(payloadArray, 0, payloadLength, cancellationToken);
+            await stream.ReadExactlyAsync(payloadArray, 0, payloadLength, cancellationToken)
+                .ConfigureAwait(false);
 
             ArraySegment<byte> payloadSegment = new ArraySegment<byte>(payloadArray, 0, payloadLength);
 

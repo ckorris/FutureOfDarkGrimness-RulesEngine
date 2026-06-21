@@ -35,9 +35,11 @@ namespace FDG.Stages
 
             foreach (SuccessfulHitInfo hits in rollToHitResults.SuccessfulHitList)
             {
-                //TODO: Provide a way for effects on the hits to affect the wound rolls.
-                PendingSaveRolls pendingSaveRolls = new PendingSaveRolls(hits.Rolls, baseDefenseWithAP);
-
+                // #016 Per-hit-group effects: a save modifier tagged on this specific hit group shifts
+                // its threshold, stacking on top of the unit-wide modifiers already folded into
+                // baseDefenseWithAP (same sign convention — a negative raises the threshold).
+                int saveNeeded = baseDefenseWithAP - hits.SaveModifier;
+                PendingSaveRolls pendingSaveRolls = new PendingSaveRolls(hits.Rolls, saveNeeded);
 
                 pendingSaveRollsList.Add(pendingSaveRolls);
             }

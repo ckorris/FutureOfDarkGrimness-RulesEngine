@@ -34,7 +34,7 @@ namespace FDG.Stages
                 .AddChild(new RangeCheckStage(GameContext, this), out var rangeCheck)
                 .AddChild(new OcclusionCheckStage(GameContext, this), out var occlusionCheck)
                 .AddChild(new CoverCheckStage(GameContext, this), out var coverCheck)
-                .AddChild(new DetermineHitRollNeededStage<ICombatMetadata>(GameContext, this), out var determineHitRollNeeded)
+                .AddChild(new DetermineHitRollStage<ICombatMetadata>(GameContext, this), out var determineHitRollNeeded)
                 .AddChild(new RollToHitStage<ICombatMetadata>(GameContext, this), out var rollToHit)
                 .AddChild(new DetermineSaveRollsNeededStage<ICombatMetadata>(GameContext, this), out var determineSaveRollNeeded)
                 .AddChild(new RollToSaveStage<ICombatMetadata>(GameContext, this), out var rollToSave)

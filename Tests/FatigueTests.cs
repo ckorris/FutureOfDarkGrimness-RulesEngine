@@ -8,7 +8,7 @@ namespace FDG.Tests
 {
     // #020 — Fatigue. A unit that charges or strikes back in melee becomes Fatigued for the rest of the
     // round; while Fatigued (or Shaken, #089) it hits only on unmodified 6s in melee. Two halves:
-    //   - the EFFECT: DetermineHitRollNeededStage forces the melee threshold to 6 for a fatigued attacker;
+    //   - the EFFECT: DetermineHitRollStage forces the melee threshold to 6 for a fatigued attacker;
     //   - the APPLICATION: ApplyFatigueStage tokens the units that actually fought, after the swings.
     [TestFixture]
     public class FatigueTests
@@ -157,10 +157,10 @@ namespace FDG.Tests
             await stage.Enter(combat);
         }
 
-        private async Task<DetermineHitRollNeededResults> RunHitStage(
+        private async Task<DetermineHitRollResults> RunHitStage(
             DataBinding<UnitData> attacker, DataBinding<UnitData> defender, bool isMelee)
         {
-            var stage = new DetermineHitRollNeededStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>());
+            var stage = new DetermineHitRollStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>());
             stage.NextStage.Bind("done");
 
             var weapon = new Weapon("Test", rangeInches: 48f, attacks: 1, armorPenetration: 0);
@@ -168,8 +168,8 @@ namespace FDG.Tests
                 attackerMoved: false, isMelee: isMelee, isCharging: false);
             await stage.Enter(metadata);
 
-            Assert.That(metadata.QueryForResult(out DetermineHitRollNeededResults result), Is.True,
-                "stage must store a DetermineHitRollNeededResults in metadata.");
+            Assert.That(metadata.QueryForResult(out DetermineHitRollResults result), Is.True,
+                "stage must store a DetermineHitRollResults in metadata.");
             return result;
         }
 

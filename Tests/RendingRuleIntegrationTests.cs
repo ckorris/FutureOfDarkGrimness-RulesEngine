@@ -67,7 +67,7 @@ namespace FDG.Tests
             stage.NextStage.Bind("done");
 
             var metadata = NewMetadata(attacker, defender);
-            metadata.AddResult(new DetermineHitRollNeededResults(4)); // a 6 clears 4+
+            metadata.AddResult(new DetermineHitRollResults(4, attackCount: 1)); // a 6 clears 4+
             await stage.Enter(metadata);
 
             Assert.That(metadata.QueryForResult(out RollToHitResults result), Is.True);

@@ -67,7 +67,7 @@ namespace FDG.Tests
 
             var weapon = new Weapon("Test", rangeInches: 48f, attacks: 1, armorPenetration: 0);
             var metadata = new CombatMetadata(_ctx, attacker, defender, weapon, weaponCount: 1);
-            metadata.AddResult(new DetermineHitRollNeededResults(4)); // a 6 clears a 4+ threshold
+            metadata.AddResult(new DetermineHitRollResults(4, attackCount: 1)); // a 6 clears a 4+ threshold
 
             await stage.Enter(metadata);
 

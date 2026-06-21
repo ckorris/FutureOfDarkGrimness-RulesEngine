@@ -37,7 +37,7 @@ namespace FDG.Stages
 
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
                 .AddChild(new BuildTargetListStage<ICombatMetadata>(GameContext, this), out var buildTargetList)
-                .AddChild(new DetermineHitRollNeededStage<ICombatMetadata>(GameContext, this), out var determineHitRollNeeded)
+                .AddChild(new DetermineHitRollStage<ICombatMetadata>(GameContext, this), out var determineHitRollNeeded)
                 .AddChild(new RollToHitStage<ICombatMetadata>(GameContext, this), out var rollToHit)
                 .AddChild(new DetermineSaveRollsNeededStage<ICombatMetadata>(GameContext, this), out var determineSaveRollsNeeded)
                 .AddChild(new RollToSaveStage<ICombatMetadata>(GameContext, this), out var rollToSave)

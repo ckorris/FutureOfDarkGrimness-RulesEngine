@@ -41,7 +41,7 @@ public static class CoreRuleCatalog
         return resolver;
     }
 
-    // Hit-roll-modifier sink (DetermineHitRollNeededStage) -----------------------
+    // Hit-roll-modifier sink (DetermineHitRollStage) -----------------------
 
     /// <summary> Defensive: enemies shooting this unit from &gt;9" take -1 to hit. </summary>
     public static SpecialRuleDefinition Stealth { get; } = new SpecialRuleDefinition("Stealth",

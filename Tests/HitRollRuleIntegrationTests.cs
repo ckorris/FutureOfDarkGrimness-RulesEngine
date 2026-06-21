@@ -8,7 +8,7 @@ using NUnit.Framework;
 namespace FDG.Tests
 {
     // Vertical-slice integration test for #042: proves Stealth's -1-to-hit flows through the
-    // REAL DetermineHitRollNeededStage. The stage fires the OnHitRollModifier "when", the
+    // REAL DetermineHitRollStage. The stage fires the OnHitRollModifier "when", the
     // RuleEvaluator evaluates both seats, and the RollModifierSink folds the result into the
     // hit threshold — none of it interpreted by the stage. Stealth is a Subject-seat rule
     // gated on distance > 9". Units are quality 4, so the base hit roll needed is 4.
@@ -36,7 +36,7 @@ namespace FDG.Tests
             DataBinding<UnitData> defender = MakeUnit(FarPos);
             AttachStealth(defender);
 
-            DetermineHitRollNeededResults result = await RunStage(attacker, defender);
+            DetermineHitRollResults result = await RunStage(attacker, defender);
 
             Assert.That(result.HitRollNeeded, Is.EqualTo(5),
                 "base 4, raised by 1 because Stealth applies -1 to hit from beyond 9\".");
@@ -49,7 +49,7 @@ namespace FDG.Tests
             DataBinding<UnitData> defender = MakeUnit(NearPos);
             AttachStealth(defender);
 
-            DetermineHitRollNeededResults result = await RunStage(attacker, defender);
+            DetermineHitRollResults result = await RunStage(attacker, defender);
 
             Assert.That(result.HitRollNeeded, Is.EqualTo(4),
                 "Stealth's distance condition fails within 9\", so no modifier is applied.");
@@ -62,7 +62,7 @@ namespace FDG.Tests
             DataBinding<UnitData> defender = MakeUnit(FarPos);
             AttachStealth(attacker); // wrong seat: Stealth is Subject-only
 
-            DetermineHitRollNeededResults result = await RunStage(attacker, defender);
+            DetermineHitRollResults result = await RunStage(attacker, defender);
 
             Assert.That(result.HitRollNeeded, Is.EqualTo(4),
                 "Stealth is a Subject-seat rule; it must not fire when its bearer is the attacker.");
@@ -74,7 +74,7 @@ namespace FDG.Tests
             DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
             DataBinding<UnitData> defender = MakeUnit(FarPos);
 
-            DetermineHitRollNeededResults result = await RunStage(attacker, defender);
+            DetermineHitRollResults result = await RunStage(attacker, defender);
 
             Assert.That(result.HitRollNeeded, Is.EqualTo(4), "no rules → just the attacker's quality.");
         }
@@ -89,7 +89,7 @@ namespace FDG.Tests
             DataBinding<UnitData> defender = MakeUnit(FarPos);
             AttachArtillery(attacker);
 
-            DetermineHitRollNeededResults result = await RunStage(attacker, defender);
+            DetermineHitRollResults result = await RunStage(attacker, defender);
 
             Assert.That(result.HitRollNeeded, Is.EqualTo(3),
                 "base 4, lowered by 1 because Artillery gives +1 to hit beyond 9\".");
@@ -102,7 +102,7 @@ namespace FDG.Tests
             DataBinding<UnitData> defender = MakeUnit(NearPos);
             AttachArtillery(attacker);
 
-            DetermineHitRollNeededResults result = await RunStage(attacker, defender);
+            DetermineHitRollResults result = await RunStage(attacker, defender);
 
             Assert.That(result.HitRollNeeded, Is.EqualTo(4),
                 "Artillery's distance condition fails within 9\", so no modifier is applied.");
@@ -118,7 +118,7 @@ namespace FDG.Tests
             DataBinding<UnitData> defender = MakeUnit(FarPos);
             AttachArtillery(defender);
 
-            DetermineHitRollNeededResults result = await RunStage(attacker, defender);
+            DetermineHitRollResults result = await RunStage(attacker, defender);
 
             Assert.That(result.HitRollNeeded, Is.EqualTo(6),
                 "base 4, raised by 2 because Artillery gives enemies -2 to hit it from beyond 9\".");
@@ -131,7 +131,7 @@ namespace FDG.Tests
             DataBinding<UnitData> defender = MakeUnit(NearPos);
             AttachArtillery(defender);
 
-            DetermineHitRollNeededResults result = await RunStage(attacker, defender);
+            DetermineHitRollResults result = await RunStage(attacker, defender);
 
             Assert.That(result.HitRollNeeded, Is.EqualTo(4),
                 "Artillery's distance condition fails within 9\", so the -2 defensive modifier is not applied.");
@@ -147,7 +147,7 @@ namespace FDG.Tests
             AttachArtillery(attacker);
             AttachArtillery(defender);
 
-            DetermineHitRollNeededResults result = await RunStage(attacker, defender);
+            DetermineHitRollResults result = await RunStage(attacker, defender);
 
             Assert.That(result.HitRollNeeded, Is.EqualTo(5),
                 "Artillery attacker +1 (−1 threshold) and Artillery defender −2 (+2 threshold) stack: 4 − 1 + 2 = 5.");
@@ -163,7 +163,7 @@ namespace FDG.Tests
             DataBinding<UnitData> defender = MakeUnit(FarPos);
             AttachIndirect(attacker);
 
-            DetermineHitRollNeededResults result = await RunStage(attacker, defender, attackerMoved: true);
+            DetermineHitRollResults result = await RunStage(attacker, defender, attackerMoved: true);
 
             Assert.That(result.HitRollNeeded, Is.EqualTo(5),
                 "base 4, raised by 1 because Indirect applies -1 to hit after the attacker moved.");
@@ -176,7 +176,7 @@ namespace FDG.Tests
             DataBinding<UnitData> defender = MakeUnit(FarPos);
             AttachIndirect(attacker);
 
-            DetermineHitRollNeededResults result = await RunStage(attacker, defender, attackerMoved: false);
+            DetermineHitRollResults result = await RunStage(attacker, defender, attackerMoved: false);
 
             Assert.That(result.HitRollNeeded, Is.EqualTo(4),
                 "Indirect's AfterMoving condition fails when the attacker held, so no modifier is applied.");
@@ -192,7 +192,7 @@ namespace FDG.Tests
             DataBinding<UnitData> defender = MakeUnit(FarPos);
             AttachIndirect(attacker);
 
-            DetermineHitRollNeededResults result = await RunStage(attacker, defender, attackerMoved: true, isMelee: true);
+            DetermineHitRollResults result = await RunStage(attacker, defender, attackerMoved: true, isMelee: true);
 
             Assert.That(result.HitRollNeeded, Is.EqualTo(4),
                 "Indirect is a shooting rule; its -1-after-moving must not apply to a melee (charge) swing.");
@@ -208,7 +208,7 @@ namespace FDG.Tests
             DataBinding<UnitData> defender = MakeUnit(FarPos);
             AttachReliable(attacker);
 
-            DetermineHitRollNeededResults result = await RunStage(attacker, defender);
+            DetermineHitRollResults result = await RunStage(attacker, defender);
 
             Assert.That(result.HitRollNeeded, Is.EqualTo(2),
                 "Reliable floors the attacker's base quality 4 to 2+.");
@@ -225,18 +225,39 @@ namespace FDG.Tests
             AttachReliable(attacker);
             AttachStealth(defender);
 
-            DetermineHitRollNeededResults result = await RunStage(attacker, defender);
+            DetermineHitRollResults result = await RunStage(attacker, defender);
 
             Assert.That(result.HitRollNeeded, Is.EqualTo(3),
                 "base floored to 2 by Reliable, then +1 harder from Stealth's -1 to hit.");
         }
 
-        private async Task<DetermineHitRollNeededResults> RunStage(
+        // #015: the stage also determines the attack-dice count (weapon Attacks × weapons firing),
+        // which RollToHitStage then rolls. Here a 2-attack weapon fired by 3 weapons → 6 dice.
+        [Test]
+        public async Task AttackCount_IsWeaponAttacksTimesWeaponCount()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(FarPos);
+
+            var layer = new NoOpLayer<ICombatMetadata>();
+            var stage = new DetermineHitRollStage<ICombatMetadata>(_ctx, layer);
+            stage.NextStage.Bind("done");
+
+            var weapon = new Weapon("Test", rangeInches: 48f, attacks: 2, armorPenetration: 0);
+            var metadata = new CombatMetadata(_ctx, attacker, defender, weapon, weaponCount: 3);
+            await stage.Enter(metadata);
+
+            Assert.That(metadata.QueryForResult(out DetermineHitRollResults result), Is.True);
+            Assert.That(result.AttackCount, Is.EqualTo(6f),
+                "attack count is weapon Attacks (2) × weapon count (3).");
+        }
+
+        private async Task<DetermineHitRollResults> RunStage(
             DataBinding<UnitData> attacker, DataBinding<UnitData> defender, bool attackerMoved = false,
             bool isMelee = false)
         {
             var layer = new NoOpLayer<ICombatMetadata>();
-            var stage = new DetermineHitRollNeededStage<ICombatMetadata>(_ctx, layer);
+            var stage = new DetermineHitRollStage<ICombatMetadata>(_ctx, layer);
             stage.NextStage.Bind("done");
 
             var weapon = new Weapon("Test", rangeInches: 48f, attacks: 1, armorPenetration: 0);
@@ -244,8 +265,8 @@ namespace FDG.Tests
 
             await stage.Enter(metadata);
 
-            Assert.That(metadata.QueryForResult(out DetermineHitRollNeededResults result), Is.True,
-                "Stage must store a DetermineHitRollNeededResults in metadata.");
+            Assert.That(metadata.QueryForResult(out DetermineHitRollResults result), Is.True,
+                "Stage must store a DetermineHitRollResults in metadata.");
             return result;
         }
 

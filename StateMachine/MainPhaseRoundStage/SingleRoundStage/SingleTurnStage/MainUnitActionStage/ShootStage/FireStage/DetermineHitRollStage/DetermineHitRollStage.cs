@@ -9,16 +9,16 @@ using FDG.Rules.Foundation;
 namespace FDG.Stages
 {
 
-    public class DetermineHitRollNeededStage<TMetadata>
-        : CombatStage<DetermineHitRollNeededResults, DetermineHitRollNeededStage<TMetadata>, TMetadata>
+    public class DetermineHitRollStage<TMetadata>
+        : CombatStage<DetermineHitRollResults, DetermineHitRollStage<TMetadata>, TMetadata>
         where TMetadata : ICombatMetadata
     {
-        public DetermineHitRollNeededStage(IGameContext gameContext, IStateMachineLayer<TMetadata> parent)
+        public DetermineHitRollStage(IGameContext gameContext, IStateMachineLayer<TMetadata> parent)
             : base(gameContext, parent)
         {
         }
 
-        protected override async Task RunStage(ICombatMetadata metaData, Func<DetermineHitRollNeededResults, Task> onFinished)
+        protected override async Task RunStage(ICombatMetadata metaData, Func<DetermineHitRollResults, Task> onFinished)
         {
             IUnit attacker = metaData.AttackingUnit.GetValue();
             IUnit defender = metaData.DefendingUnit.GetValue();
@@ -40,7 +40,13 @@ namespace FDG.Stages
                 baseQuality = Math.Min(baseQuality, qualityFloor.Quality);
             }
 
-            DetermineHitRollNeededResults results = new DetermineHitRollNeededResults(baseQuality);
+            // #015 Attack count: how many attack dice this volley rolls (weapon Attacks × weapons
+            // firing). Computed here, beside the hit threshold, so attack-count modifiers fold at this
+            // point with the same accumulate-before-use discipline as the hit-roll modifiers above (no
+            // such rule exists yet — the producer side is deferred). RollToHitStage reads the result.
+            float attackCount = metaData.WeaponType.Attacks * metaData.WeaponCount;
+
+            DetermineHitRollResults results = new DetermineHitRollResults(baseQuality, attackCount);
 
             RollModifierSink rollModifiers = new RollModifierSink();
             rollModifiers.ApplyFrom(operations);

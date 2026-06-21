@@ -40,17 +40,18 @@ namespace FDG.Stages
                     armorPenetration: metaData.WeaponType.ArmorPenetration));
             }
 
-            //TODO: Calculate attack count in separate stage, it may need its own mods.
-            float attacks = metaData.WeaponType.Attacks * metaData.WeaponCount;
+            // Attack count and hit threshold are both determined in DetermineHitRollStage (#015).
+            // Read them here and roll the determined AttackCount — not a local product — so any
+            // attack-count modifier that stage folds in is honoured.
+            DetermineHitRollResults hitRollResults = QueryForResultOrThrowException<DetermineHitRollResults>(metaData);
 
+            float attacks = hitRollResults.AttackCount;
             IDiceResults rollToHitResults = GameContext.DiceRoller.Roll(attacks);
 
             //We do this here because modifiers shouldn't do it, or else they can't add up in opposite
             //directions. For example, if your Quality is 6, and something gives you +1 to hit, and something
             //else gives you -1 to hit. They should cancel each other out and you'd need a 6. But if you processed
-            //the +1 first, and clamped it, it would still be 6, and the -1 would move it to 5. 
-
-            DetermineHitRollNeededResults hitRollResults = QueryForResultOrThrowException<DetermineHitRollNeededResults>(metaData);
+            //the +1 first, and clamped it, it would still be 6, and the -1 would move it to 5.
 
             int hitRollNeeded = DiceUtilities.ClampSuccessRollNeeded(hitRollResults.HitRollNeeded);
 

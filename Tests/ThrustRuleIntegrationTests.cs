@@ -9,7 +9,7 @@ namespace FDG.Tests
 {
     // Vertical-slice integration test for #042: proves Thrust flows through the REAL hit and save
     // stages when (and only when) the attacker is charging in melee. Both facets ride existing
-    // sinks gated on melee + charging: +1 to hit folds at DetermineHitRollNeededStage (lowering the
+    // sinks gated on melee + charging: +1 to hit folds at DetermineHitRollStage (lowering the
     // threshold), and AP(+1) — modelled as a -1 save modifier — folds at RollToHitStage and is
     // carried to the save stage via RollToHitResults.SaveModifier (same machinery as Rending).
     // Melee is only ever entered via Charge, so the charger's swing is charging and a strike-back
@@ -30,7 +30,7 @@ namespace FDG.Tests
             _ctx = new TestGameContext(_store, new FixedDiceRoller(4));
         }
 
-        // --- +1 to hit (DetermineHitRollNeededStage) ---
+        // --- +1 to hit (DetermineHitRollStage) ---
 
         [Test]
         public async Task ThrustCharging_LowersHitThreshold()
@@ -38,7 +38,7 @@ namespace FDG.Tests
             DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
             AttachThrust(attacker);
 
-            DetermineHitRollNeededResults result = await RunHitStage(attacker, MakeUnit(DefenderPos),
+            DetermineHitRollResults result = await RunHitStage(attacker, MakeUnit(DefenderPos),
                 isMelee: true, isCharging: true);
 
             Assert.That(result.HitRollNeeded, Is.EqualTo(3),
@@ -51,7 +51,7 @@ namespace FDG.Tests
             DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
             AttachThrust(attacker);
 
-            DetermineHitRollNeededResults result = await RunHitStage(attacker, MakeUnit(DefenderPos),
+            DetermineHitRollResults result = await RunHitStage(attacker, MakeUnit(DefenderPos),
                 isMelee: true, isCharging: false);
 
             Assert.That(result.HitRollNeeded, Is.EqualTo(4),
@@ -64,7 +64,7 @@ namespace FDG.Tests
             DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
             AttachThrust(attacker);
 
-            DetermineHitRollNeededResults result = await RunHitStage(attacker, MakeUnit(DefenderPos),
+            DetermineHitRollResults result = await RunHitStage(attacker, MakeUnit(DefenderPos),
                 isMelee: false, isCharging: false);
 
             Assert.That(result.HitRollNeeded, Is.EqualTo(4),
@@ -99,18 +99,18 @@ namespace FDG.Tests
                 "a strike-back is not charging, so Thrust's AP modifier does not apply.");
         }
 
-        private async Task<DetermineHitRollNeededResults> RunHitStage(
+        private async Task<DetermineHitRollResults> RunHitStage(
             DataBinding<UnitData> attacker, DataBinding<UnitData> defender, bool isMelee, bool isCharging)
         {
             var layer = new NoOpLayer<ICombatMetadata>();
-            var stage = new DetermineHitRollNeededStage<ICombatMetadata>(_ctx, layer);
+            var stage = new DetermineHitRollStage<ICombatMetadata>(_ctx, layer);
             stage.NextStage.Bind("done");
 
             var metadata = MakeMetadata(attacker, defender, isMelee, isCharging);
             await stage.Enter(metadata);
 
-            Assert.That(metadata.QueryForResult(out DetermineHitRollNeededResults result), Is.True,
-                "Stage must store a DetermineHitRollNeededResults in metadata.");
+            Assert.That(metadata.QueryForResult(out DetermineHitRollResults result), Is.True,
+                "Stage must store a DetermineHitRollResults in metadata.");
             return result;
         }
 
@@ -122,7 +122,7 @@ namespace FDG.Tests
             stage.NextStage.Bind("done");
 
             var metadata = MakeMetadata(attacker, defender, isMelee, isCharging);
-            metadata.AddResult(new DetermineHitRollNeededResults(4));
+            metadata.AddResult(new DetermineHitRollResults(4, attackCount: 1));
 
             await stage.Enter(metadata);
 

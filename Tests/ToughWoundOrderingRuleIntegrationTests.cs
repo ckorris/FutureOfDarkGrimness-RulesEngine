@@ -96,6 +96,61 @@ namespace FDG.Tests
                 "...exhausting the pool before the second wounded model — list order, no choice offered.");
         }
 
+        // --- #024: wound-split validation (finish a wounded model before starting a fresh one) ---
+
+        // The reachable invariant: TryAddWounds pours a model's full remaining capacity (capped by the
+        // pool), so touching a fresh model with pool to spare fills it outright — it is never left alive and
+        // partial while wounds remain to place elsewhere. A partial only occurs once, when the pool runs dry.
+        [Test]
+        public void TryAddWounds_FillsTouchedModelBeforeAnyOther()
+        {
+            DataBinding<UnitData> unit = MakeUnit(modelCount: 3, woundsPerModel: 3);
+            var results = new AssignWoundsResults(unit, totalWoundsToAssign: 5);
+
+            Assert.That(results.TryAddWounds(results.PendingWounds[0].Model), Is.True);
+
+            Assert.That(results.PendingWounds[0].Wounds, Is.EqualTo(3f), "the touched model is filled to death...");
+            Assert.That(results.PendingWounds[1].Wounds, Is.EqualTo(0f), "...before any other model is touched.");
+            Assert.That(results.TotalAssignedWounds, Is.EqualTo(3f));
+        }
+
+        // A full sequence of greedy adds never leaves two models alive-and-partial: at most one model ends
+        // partially wounded (the last one, absorbing the pool's remainder).
+        [Test]
+        public void TryAddWounds_PureAddSequence_NeverLeavesTwoAlivePartials()
+        {
+            DataBinding<UnitData> unit = MakeUnit(modelCount: 3, woundsPerModel: 3);
+            var results = new AssignWoundsResults(unit, totalWoundsToAssign: 4); // 1 model dies, 1 left at 1/3
+
+            results.TryAddWounds(results.PendingWounds[0].Model); // fills model0 (3)
+            results.TryAddWounds(results.PendingWounds[1].Model); // model1 absorbs the leftover 1
+
+            Assert.That(results.IsFinishedAssigning, Is.True);
+            Assert.That(AlivePartialCount(results), Is.LessThanOrEqualTo(1),
+                "the GDF/OPR rule forbids spreading wounds to keep several Tough models alive.");
+        }
+
+        // The guard itself, exercised directly: stand up a state where one model is alive and mid-fill (as a
+        // future un-assign affordance or buggy caller might), then prove a fresh model is rejected as a
+        // recipient while the in-progress model is still a legal one. This is the illegal split #024 closes.
+        [Test]
+        public void TryAddWounds_RejectsFreshModelWhileAnotherIsMidFill()
+        {
+            DataBinding<UnitData> unit = MakeUnit(modelCount: 3, woundsPerModel: 3);
+            var results = new AssignWoundsResults(unit, totalWoundsToAssign: 6);
+
+            // model0 left alive and partially wounded (2 of 3) with the pool not yet exhausted.
+            results.PendingWounds[0].Wounds = 2f;
+
+            Assert.That(results.CanAssignWoundTo(results.PendingWounds[1]), Is.False,
+                "can't START a fresh model while model0 is alive and mid-fill.");
+            Assert.That(results.TryAddWounds(results.PendingWounds[1].Model), Is.False,
+                "the mutator agrees with the predicate.");
+
+            Assert.That(results.CanAssignWoundTo(results.PendingWounds[0]), Is.True,
+                "the in-progress model is still a legal recipient — finish it first.");
+        }
+
         // --- Through the stage: prompt suppression / emission ---
 
         [Test]
@@ -148,6 +203,19 @@ namespace FDG.Tests
 
         private static void PreWound(DataBinding<UnitData> unit, int modelIndex, int wounds) =>
             ((ModelData)unit.GetValue().Models[modelIndex]).DealWounds(wounds);
+
+        // Models carrying pending wounds this assignment yet still alive (capacity remaining beyond pending).
+        private static int AlivePartialCount(AssignWoundsResults results)
+        {
+            int count = 0;
+            foreach (PendingWounds pw in results.PendingWounds)
+            {
+                ModelData m = pw.Model.GetValue();
+                bool alive = m.TotalWounds - m.WoundsDealt - pw.Wounds > 0f;
+                if (pw.Wounds > 0f && alive) count++;
+            }
+            return count;
+        }
 
         private DataBinding<UnitData> MakeUnit(int modelCount, int woundsPerModel = 1)
         {

@@ -23,9 +23,6 @@ namespace FDG.Rules.Dispatch;
 ///
 /// Methods take an explicit <c>allUnits</c> enumerable rather than an <c>ITableState</c> so the logic
 /// is decoupled and unit-testable; the stage callers pass the live unit set.
-///
-/// NOTE (#035 slice A): bodies are intentionally unimplemented — this is the TDD scaffold that lets
-/// <c>TransportUtilitiesTests</c> compile and run RED ahead of the implementation pass.
 /// </summary>
 public static class TransportUtilities
 {
@@ -47,21 +44,32 @@ public static class TransportUtilities
     // --- Identity & capacity ---------------------------------------------------------------------
 
     /// <summary> True if <paramref name="unit"/> carries the Transport rule. </summary>
-    public static bool IsTransport(IUnit unit) => throw new NotImplementedException();
+    public static bool IsTransport(IUnit unit) =>
+        unit.RuleDefinitions.Any(rule => rule.Definition == CoreRuleCatalog.Transport);
 
     /// <summary>
     /// The transport's capacity in spaces — the Transport rule's <c>Arg(0)</c>. Returns 0 for a unit
     /// that is not a transport.
     /// </summary>
-    public static int GetCapacity(IUnit transport) => throw new NotImplementedException();
+    public static int GetCapacity(IUnit transport)
+    {
+        ResolvedRule? rule = transport.RuleDefinitions.FirstOrDefault(r => r.Definition == CoreRuleCatalog.Transport);
+        if (rule != null && rule.Arguments.Count > 0 && rule.Arguments[0] is RuleArgument.Int capacity)
+        {
+            return capacity.Value;
+        }
+        return 0;
+    }
 
     // --- Space cost ------------------------------------------------------------------------------
 
     /// <summary> Spaces a single model occupies: 1 if Tough ≤ 1, otherwise 3. </summary>
-    public static int GetModelSpaceCost(IModel model) => throw new NotImplementedException();
+    public static int GetModelSpaceCost(IModel model) =>
+        model.TotalWounds <= 1f ? StandardModelSpaceCost : LargeModelSpaceCost;
 
     /// <summary> Total spaces a unit occupies — the sum over its living models' space costs. </summary>
-    public static int GetUnitSpaceCost(IUnit unit) => throw new NotImplementedException();
+    public static int GetUnitSpaceCost(IUnit unit) =>
+        unit.Models.Where(model => model.GetIsAlive()).Sum(GetModelSpaceCost);
 
     // --- Ride eligibility ------------------------------------------------------------------------
 
@@ -69,7 +77,8 @@ public static class TransportUtilities
     /// Whether a single model is within the Tough cap to ride: Heroes up to <see cref="HeroToughCap"/>,
     /// non-Heroes up to <see cref="NonHeroToughCap"/>. Models above their cap can't be transported.
     /// </summary>
-    public static bool CanModelRide(IModel model, bool isHero) => throw new NotImplementedException();
+    public static bool CanModelRide(IModel model, bool isHero) =>
+        model.TotalWounds <= (isHero ? HeroToughCap : NonHeroToughCap);
 
     /// <summary>
     /// Full eligibility check for loading <paramref name="candidate"/> into <paramref name="transport"/>:
@@ -79,27 +88,67 @@ public static class TransportUtilities
     /// failure when the result is false; empty on success.
     /// </summary>
     public static bool CanUnitEmbark(IUnit candidate, IUnit transport, IEnumerable<IUnit> allUnits, out string reason)
-        => throw new NotImplementedException();
+    {
+        if (!IsTransport(transport))
+        {
+            reason = $"{transport.Name} is not a transport.";
+            return false;
+        }
+
+        if (candidate.PlayerID != transport.PlayerID)
+        {
+            reason = $"{candidate.Name} cannot embark an enemy transport.";
+            return false;
+        }
+
+        if (IsEmbarked(candidate))
+        {
+            reason = $"{candidate.Name} is already embarked.";
+            return false;
+        }
+
+        foreach (IModel model in candidate.Models)
+        {
+            if (!model.GetIsAlive()) continue;
+            if (!CanModelRide(model, IsHeroModel(model, candidate)))
+            {
+                reason = $"{candidate.Name} has a model too tough to be transported.";
+                return false;
+            }
+        }
+
+        int cost = GetUnitSpaceCost(candidate);
+        int remaining = GetRemainingCapacity(transport, allUnits);
+        if (cost > remaining)
+        {
+            reason = $"{candidate.Name} needs {cost} space(s) but only {remaining} remain.";
+            return false;
+        }
+
+        reason = string.Empty;
+        return true;
+    }
 
     // --- Occupancy (token-derived) ---------------------------------------------------------------
 
     /// <summary> True if <paramref name="unit"/> is currently embarked (carries an <see cref="TokenType.EmbarkedIn"/> token). </summary>
-    public static bool IsEmbarked(IUnit unit) => throw new NotImplementedException();
+    public static bool IsEmbarked(IUnit unit) => unit.Tokens.HasToken(TokenType.EmbarkedIn);
 
     /// <summary> The id of the transport <paramref name="unit"/> is embarked in, or null if it is not embarked. </summary>
-    public static UnitID? GetTransportId(IUnit unit) => throw new NotImplementedException();
+    public static UnitID? GetTransportId(IUnit unit) =>
+        unit.Tokens.GetAllTokens(TokenType.EmbarkedIn).FirstOrDefault()?.OwnerUnitID;
 
     /// <summary> The units currently embarked in <paramref name="transport"/> (those whose <see cref="TokenType.EmbarkedIn"/> token is owned by it). </summary>
-    public static IEnumerable<IUnit> GetOccupants(IUnit transport, IEnumerable<IUnit> allUnits)
-        => throw new NotImplementedException();
+    public static IEnumerable<IUnit> GetOccupants(IUnit transport, IEnumerable<IUnit> allUnits) =>
+        allUnits.Where(unit => GetTransportId(unit) is UnitID id && id == transport.ID);
 
     /// <summary> Total spaces consumed by everything currently aboard <paramref name="transport"/>. </summary>
-    public static int GetOccupiedSpaces(IUnit transport, IEnumerable<IUnit> allUnits)
-        => throw new NotImplementedException();
+    public static int GetOccupiedSpaces(IUnit transport, IEnumerable<IUnit> allUnits) =>
+        GetOccupants(transport, allUnits).Sum(GetUnitSpaceCost);
 
     /// <summary> Spaces still free on <paramref name="transport"/> = capacity − occupied. </summary>
-    public static int GetRemainingCapacity(IUnit transport, IEnumerable<IUnit> allUnits)
-        => throw new NotImplementedException();
+    public static int GetRemainingCapacity(IUnit transport, IEnumerable<IUnit> allUnits) =>
+        GetCapacity(transport) - GetOccupiedSpaces(transport, allUnits);
 
     // --- State transitions (token writes) --------------------------------------------------------
 
@@ -108,10 +157,12 @@ public static class TransportUtilities
     /// <see cref="TokenType.EmbarkedIn"/> token (owner = the transport). Does not move models — embarked
     /// units stay off-table; the caller sets aside / leaves them at origin.
     /// </summary>
-    public static void Embark(IUnit unit, IUnit transport) => throw new NotImplementedException();
+    public static void Embark(IUnit unit, IUnit transport) =>
+        unit.Tokens.AddToken(new Token(TokenType.EmbarkedIn, 1,
+            new TokenClearTrigger.ManualOnly(), OwnerUnitID: transport.ID));
 
     /// <summary> Removes <paramref name="unit"/>'s <see cref="TokenType.EmbarkedIn"/> token (disembark / spillout). </summary>
-    public static void Disembark(IUnit unit) => throw new NotImplementedException();
+    public static void Disembark(IUnit unit) => unit.Tokens.RemoveTokens(TokenType.EmbarkedIn);
 
     // --- Destruction spillout & placement range --------------------------------------------------
 
@@ -126,8 +177,8 @@ public static class TransportUtilities
     /// the "fully within 6\"" constraint shared by disembark exits and destruction-spillout placement. Pure
     /// geometry; the interactive placement request itself is stage-side.
     /// </summary>
-    public static bool IsWithinTransportRange(Position modelPosition, Position transportPosition)
-        => throw new NotImplementedException();
+    public static bool IsWithinTransportRange(Position modelPosition, Position transportPosition) =>
+        Position.GetDistance2D(modelPosition, transportPosition) <= MaxTransportRangeInches;
 
     /// <summary>
     /// The deterministic consequences a transport's destruction inflicts on one occupant once it has been
@@ -139,18 +190,69 @@ public static class TransportUtilities
     /// mid-combat orchestration.
     /// </summary>
     public static void ApplySpilloutEffects(IUnit occupant, IDiceRoller diceRoller)
-        => throw new NotImplementedException();
+    {
+        Disembark(occupant);
 
-    // --- Effective position (opt-in seam; implementation deferred to first consumer) --------------
+        // Mirrors MoraleUtilities.ApplyShaken (which takes a DataBinding<UnitData> in the stage layer) —
+        // inlined to avoid a Rules→Stages dependency.
+        occupant.Tokens.AddToken(new Token(TokenType.Shaken, 1, new TokenClearTrigger.ManualOnly()));
+
+        foreach (IModel model in occupant.Models)
+        {
+            if (!model.GetIsAlive()) continue;
+
+            // Decisive per-model die — one concrete face even under the probabilistic roller (cf. #090).
+            IDiceResults roll = diceRoller.RollDecisive(6);
+            if (roll.At(1) > 0f)
+            {
+                model.DealWounds(1f);
+            }
+        }
+    }
+
+    // --- Effective position (opt-in seam) --------------------------------------------------------
 
     /// <summary>
     /// The position a rule that cares about an embarked unit's location should use: the transport's
     /// position when <paramref name="unit"/> is embarked, otherwise the unit's own. Null when it can't be
     /// resolved (no living model, or an embarked unit whose transport isn't in <paramref name="allUnits"/>).
     /// The default position reads (targeting, LoS, melee, objectives) do NOT use this — they read raw
-    /// positions and see origin for embarked units, which is the intended exclusion. Build is deferred
-    /// until the first consumer (Caster, #033); the token already stores the link.
+    /// positions and see origin for embarked units, which is the intended exclusion. This is the opt-in
+    /// seam for the first rule that needs it (Caster, #033); the token already stores the link.
     /// </summary>
     public static Position? GetEffectivePosition(IUnit unit, IEnumerable<IUnit> allUnits)
-        => throw new NotImplementedException();
+    {
+        if (GetTransportId(unit) is UnitID transportId)
+        {
+            IUnit? transport = allUnits.FirstOrDefault(u => u.ID == transportId);
+            return transport == null ? null : RepresentativePosition(transport);
+        }
+
+        return RepresentativePosition(unit);
+    }
+
+    /// <summary> A single point standing in for a unit's location: its first living model's position. Null if none. </summary>
+    private static Position? RepresentativePosition(IUnit unit)
+    {
+        foreach (IModel model in unit.Models)
+        {
+            if (model.GetIsAlive()) return model.Position;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="model"/> is the hero of <paramref name="unit"/> — either the joined hero of
+    /// a host unit (#006), or the lone model of a solo Hero unit. Drives the per-model ride cap
+    /// (<see cref="HeroToughCap"/> vs <see cref="NonHeroToughCap"/>).
+    /// </summary>
+    private static bool IsHeroModel(IModel model, IUnit unit)
+    {
+        if (unit is UnitData host && host.HeroAttachment != null)
+        {
+            return model.ID == host.HeroAttachment.HeroModelId;
+        }
+
+        return unit.Models.Count == 1 && unit.RuleDefinitions.Any(rule => rule.Definition == CoreRuleCatalog.Hero);
+    }
 }

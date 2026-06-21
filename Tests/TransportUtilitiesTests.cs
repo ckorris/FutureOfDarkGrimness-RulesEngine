@@ -19,7 +19,6 @@ namespace FDG.Tests
     //     targeting/activation exclusions fall out of the existing GetIsOnBattlefield() filter;
     //   - GetEffectivePosition resolves an embarked unit's location to its transport's (the opt-in seam).
     [TestFixture]
-    [Ignore("#035 slice A: TDD baseline authored ahead of implementation; un-ignored in the implementation commit. See WorkItems/035-transport.md.")]
     public class TransportUtilitiesTests
     {
         private GameDataStore _store = null!;

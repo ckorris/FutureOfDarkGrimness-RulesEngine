@@ -86,6 +86,8 @@ namespace FDG.Network.Connection.Lobby
 
         public event Action<IFDGGame>? OnLaunched;
 
+        public event Action<string>? OnGameEnded;
+
         private GameSettings _gameSettings = GameSettings.GetDefault();
 
         IReadWriteableGameDataStore _gameDataStore;
@@ -430,6 +432,7 @@ namespace FDG.Network.Connection.Lobby
             // presentation beats play at a presentable tempo (without it the beats run instantly).
             FDGServer server = new FDGServer(_gameDataStore, _messageBus, playerSlots,
                 new RealtimePresentationClock());
+            server.OnGameEnded += result => OnGameEnded?.Invoke(result);
 
             if (gameModel != null)
             {
@@ -536,6 +539,7 @@ namespace FDG.Network.Connection.Lobby
             // goes through CliApp, which leaves FDGServer's default instant clock.)
             FDGServer server = new FDGServer(_gameDataStore, _messageBus, _gameSettings, playerSlots,
                 new RealtimePresentationClock());
+            server.OnGameEnded += result => OnGameEnded?.Invoke(result);
 
             if (gameModel != null) //Dedicated server really doesn't need to do this.
             {

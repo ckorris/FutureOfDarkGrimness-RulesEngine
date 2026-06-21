@@ -29,6 +29,17 @@ namespace FDG.Network.Connection.Lobby
         /// </summary>
         event Action<IFDGGame>? OnLaunched; //Need arguments?
 
+        /// <summary>
+        /// Raised when the game finishes, carrying the result string (e.g. "Player X wins!" / "It's a
+        /// tie!"). Forwarded from <see cref="GameModel.FDGServer.OnGameEnded"/> on the host so the front
+        /// end can offer a return-to-menu. Fires on the engine thread.
+        ///
+        /// Only the host raises this today — the host owns the authoritative game state and its
+        /// FDGServer. A non-host networked client has no clean game-end signal yet (it only sees the
+        /// replicated "wins!" banner beat); wiring that is deferred to work item #040's client follow-up.
+        /// </summary>
+        event Action<string>? OnGameEnded;
+
         IObservable<string> ServerNameObservable { get; }
 
         IObservable<LobbyChatMessage> ChatMessagesObservable { get; }

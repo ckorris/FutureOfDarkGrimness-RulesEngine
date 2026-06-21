@@ -90,6 +90,11 @@ namespace FDG.Network.Connection.Lobby
 
         public event Action<IFDGGame>? OnLaunched;
 
+        // Deferred (work item #040 client follow-up): a non-host client has no clean game-end signal
+        // today — it only sees the replicated "wins!" banner beat, not FDGServer.OnGameEnded. Declared
+        // to satisfy ILobbyViewModel; never raised until a game-ended network message is added.
+        public event Action<string>? OnGameEnded;
+
         public LobbyViewModel_Client(string thisPlayerName, INetworkClient networkclient)
         {
              _gameDataStore = GameDataStore.GameDataStoreBuilder.GetDefault();

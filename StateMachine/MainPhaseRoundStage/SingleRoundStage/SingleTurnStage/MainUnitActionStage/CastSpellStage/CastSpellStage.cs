@@ -1,7 +1,10 @@
+using System.Collections.Generic;
 using FDG.Data;
+using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
 using FDG.StageResolution.Requests;
+using FDG.Utilities;
 
 namespace FDG.Stages
 {
@@ -14,39 +17,69 @@ namespace FDG.Stages
     /// **layered** like a custom action (it never sets HasMoved/HasAttacked), so the unit may still
     /// Move/Shoot and may cast again while it can afford another spell.
     ///
-    /// The ±1 friendly-Caster assist (a tracked #033 follow-up) slots in between target selection and the
-    /// roll. Spell-effect application (<see cref="ApplySpellEffect"/>) is wired in the next slice; this stage
-    /// owns the casting control flow.
+    /// Two effect archetypes:
+    /// <list type="bullet">
+    ///   <item><b>Buff/debuff</b> (<see cref="Effect.AddRule"/> &amp; other token effects): the effect is
+    ///         applied to each target via the polymorphic <see cref="Effect.Apply"/> and the resulting token
+    ///         operations are committed — the "gets RULE once (next time)" shape.</item>
+    ///   <item><b>Damage</b> (<see cref="Effect.DealHits"/>): the hits run through the shared
+    ///         save→wound→assign→apply child pipeline against the target, seeded as a synthetic AP-carrying
+    ///         attack — the same mechanism <see cref="StrafingStage"/>/ResolveImpactHitsStage use. AP rides
+    ///         the synthetic weapon; the spell's pre-resolved weapon rules (Bane, Deadly, …) are attached so
+    ///         they fire in that pipeline.</item>
+    /// </list>
+    ///
+    /// DEFERRED (recorded in #033): the ±1 friendly-Caster assist (slots in before the roll); multi-target
+    /// damage (only the first target is hit — the synthetic pipeline runs once per cast, as Strafing's does);
+    /// single-model targeting ("a unit of [1]"); and pre-save weapon rules on spell hits (Blast's hit
+    /// multiply, Surge) — the synthetic pipeline starts at the save stage, so only save/wound-phase rules
+    /// (AP, Bane, Deadly, Regeneration) fire.
     /// </summary>
-    public class CastSpellStage : StageBase<IUnitActionContext>
+    public class CastSpellStage : ParentStage<IUnitActionContext, ICombatMetadata>
     {
         public StageBinding OnFinished;
 
         private const string CANCEL_OPTION = "Cancel";
         private const int CAST_SUCCESS_THRESHOLD = 4;
 
+        // Damage-spell pipeline parameters: set in Enter when a successful damage cast routes into the
+        // save→wound children, read by GetNewChildContext when the child pipeline builds its metadata.
+        private DataBinding<UnitData> _damageTarget;
+        private int _damageHits;
+        private int _damageArmorPenetration;
+        private string _damageSpellName = "Spell";
+        private IReadOnlyList<ResolvedRule> _damageWeaponRules = System.Array.Empty<ResolvedRule>();
+
         public CastSpellStage(IGameContext gameContext, IStateMachineLayer<IUnitActionContext> parent)
             : base(gameContext, parent)
         {
-            OnFinished = new StageBinding(this);
         }
 
         public override async Task Enter(IUnitActionContext context)
         {
+            _damageTarget = default;
+            _damageHits = 0;
+            _damageArmorPenetration = 0;
+            _damageWeaponRules = System.Array.Empty<ResolvedRule>();
+
             IUnit caster = context.ActivatingUnit.GetValue();
             PlayerID player = context.ActivatingPlayer();
 
-            IReadOnlyList<RuntimeSpell> affordable = GetAffordableSpells(player,
+            // Only castable spells are offered: affordable AND with at least one legal target. Filtering by
+            // target here (and gating the Cast action the same way in ChooseActionStage.GetCanCast) is what
+            // keeps a no-target cast from looping forever under a deterministic resolver — the same reason
+            // ChooseRangedAttackStage filters weapons to those with a fireable target.
+            IReadOnlyList<RuntimeSpell> castable = GetCastableSpells(context.ActivatingUnit, player,
                 caster.Tokens.GetTokenCount(TokenType.SpellTokens));
-            if (affordable.Count == 0)
+            if (castable.Count == 0)
             {
-                GameContext.Log($"{caster.Name} has no affordable spell to cast.");
+                GameContext.Log($"{caster.Name} has no castable spell (none affordable with a legal target).");
                 await OnFinished.Activate(context);
                 return;
             }
 
             // 1. Pick a spell (or cancel back to Choose Action).
-            RuntimeSpell? chosen = await PickSpell(player, affordable);
+            RuntimeSpell? chosen = await PickSpell(player, castable);
             if (chosen == null)
             {
                 await OnFinished.Activate(context);
@@ -54,7 +87,8 @@ namespace FDG.Stages
             }
 
             // 2. Build the eligible targets and let the player pick (up to the spell's MaxCount).
-            List<DataBinding<UnitData>> candidates = GetEligibleTargets(context.ActivatingUnit, player, chosen.Target);
+            List<DataBinding<UnitData>> candidates = SpellTargeting.GetEligibleTargets(
+                GameContext, context.ActivatingUnit, player, chosen.Target);
             if (candidates.Count == 0)
             {
                 GameContext.Log($"{chosen.Name} has no valid target in range or line of sight.");
@@ -76,30 +110,112 @@ namespace FDG.Stages
             // 4. Cast roll: one die, 4+ succeeds. RollDecisive so it's a real outcome under the
             //    probabilistic roller. (±1 friendly-Caster assist — a #033 follow-up — would adjust here.)
             bool success = GameContext.DiceRoller.RollDecisive().AtOrAbove(CAST_SUCCESS_THRESHOLD) >= 1f;
-            if (success)
-            {
-                GameContext.Log($"{caster.Name} cast {chosen.Name} (spent {chosen.Threshold} tokens).");
-                ApplySpellEffect(context.ActivatingUnit, chosen, targets);
-            }
-            else
+            if (!success)
             {
                 GameContext.Log($"{caster.Name} failed to cast {chosen.Name} (spent {chosen.Threshold} tokens).");
+                await OnFinished.Activate(context);
+                return;
             }
 
-            // 5. Layered: back to Choose Action. Move/Shoot are untouched; another cast is offered if the
-            //    caster can still afford one.
+            GameContext.Log($"{caster.Name} cast {chosen.Name} (spent {chosen.Threshold} tokens).");
+
+            // 5a. Damage spell → run the synthetic-hit save→wound child pipeline against the target.
+            if (chosen.Effect is Effect.DealHits dealHits)
+            {
+                if (targets.Count > 1)
+                {
+                    GameContext.Log($"{chosen.Name} chose multiple targets, but spell damage is single-target " +
+                        $"for now — only {targets[0].GetValue().Name} is hit (#034).");
+                }
+                _damageTarget = targets[0];
+                _damageHits = dealHits.Count;
+                _damageArmorPenetration = dealHits.ArmorPenetration;
+                _damageWeaponRules = chosen.WeaponRules;
+                _damageSpellName = chosen.Name;
+                await base.Enter(context); // child pipeline resolves the hits, then transitions to OnFinished
+                return;
+            }
+
+            // 5b. Buff/debuff spell → apply the effect's token operations to each target.
+            ApplyTokenEffect(caster, chosen, targets);
             await OnFinished.Activate(context);
         }
 
-        private IReadOnlyList<RuntimeSpell> GetAffordableSpells(PlayerID player, int tokens)
+        // Applies a non-damage spell effect (e.g. AddRule "gets RULE once") to each target by running the
+        // effect's polymorphic Apply against a per-target invocation, then committing the token operations.
+        private void ApplyTokenEffect(IUnit caster, RuntimeSpell spell, IReadOnlyList<DataBinding<UnitData>> targets)
         {
-            ArmyData? army = GameContext.GameDataStore().GetAllValues<ArmyData>()
+            foreach (DataBinding<UnitData> target in targets)
+            {
+                RuleInvocation invocation = new RuleInvocation(
+                    Hook: null, Bearer: caster, Arguments: System.Array.Empty<RuleArgument>(),
+                    Target: target.GetValue(), DiceRoller: GameContext.DiceRoller);
+
+                List<RuleOperation> operations = new List<RuleOperation>();
+                spell.Effect.Apply(invocation, operations);
+                OperationApplier.ApplyTokenOperations(operations);
+            }
+            GameContext.Log($"{spell.Name} affected {targets.Count} unit(s).");
+        }
+
+        protected override ICombatMetadata GetNewChildContext(IUnitActionContext contextSelf)
+        {
+            // The spell's hits ride a synthetic attack carrying the spell's AP, so the shared save/wound
+            // stages resolve them; the spell's pre-resolved weapon rules (Bane, Deadly, …) are attached so
+            // they fire in that pipeline. (Pre-save rules like Blast don't fire — see the class remarks.)
+            Weapon spellWeapon = new Weapon(_damageSpellName, rangeInches: 0f, attacks: 0,
+                armorPenetration: _damageArmorPenetration);
+            foreach (ResolvedRule rule in _damageWeaponRules)
+            {
+                spellWeapon.AttachRuleDefinition(rule);
+            }
+
+            CombatMetadata metadata = new CombatMetadata(GameContext, contextSelf.ActivatingUnit,
+                _damageTarget, spellWeapon, weaponCount: 1, isMelee: false);
+
+            metadata.AddResult(new RollToHitResults(
+                new List<SuccessfulHitInfo>() { new SuccessfulHitInfo(SyntheticHits(_damageHits)) },
+                new List<FailedHitInfo>()));
+            // No cover check runs for a synthetic spell hit; seed a zero bonus so the save stage won't throw.
+            metadata.AddResult(new CoverCheckResults(0));
+
+            return metadata;
+        }
+
+        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<ICombatMetadata> startingChild)
+        {
+            OnFinished = new StageBinding(this);
+
+            Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
+                .AddChild(new DetermineSaveRollsNeededStage<ICombatMetadata>(GameContext, this), out var determineSaveRollsNeeded)
+                .AddChild(new RollToSaveStage<ICombatMetadata>(GameContext, this), out var rollToSave)
+                .AddChild(new AssignWoundsStage<ICombatMetadata>(GameContext, this), out var assignWounds)
+                .AddChild(new ApplyWoundsStage<ICombatMetadata>(GameContext, this), out var applyWounds)
+                .AddSibling(nameof(OnFinished), OnFinished, out string finishedEvent)
+                .Build();
+
+            startingChild = determineSaveRollsNeeded;
+
+            determineSaveRollsNeeded.BindNextStage(rollToSave)
+                .BindNextStage(assignWounds)
+                .BindNextStage(applyWounds)
+                .BindToEvent(finishedEvent);
+
+            return dictionary;
+        }
+
+        private IReadOnlyList<RuntimeSpell> GetCastableSpells(DataBinding<UnitData> caster, PlayerID player, int tokens)
+        {
+            ArmyData army = GameContext.GameDataStore().GetAllValues<ArmyData>()
                 .FirstOrDefault(a => a.PlayerID == player);
             if (army == null)
             {
                 return System.Array.Empty<RuntimeSpell>();
             }
-            return army.Spells.Where(s => s.Threshold > 0 && s.Threshold <= tokens).ToList();
+            return army.Spells
+                .Where(s => s.Threshold > 0 && s.Threshold <= tokens
+                    && SpellTargeting.HasAnyEligibleTarget(GameContext, caster, player, s.Target))
+                .ToList();
         }
 
         private async Task<RuntimeSpell?> PickSpell(PlayerID player, IReadOnlyList<RuntimeSpell> spells)
@@ -154,81 +270,13 @@ namespace FDG.Stages
             return chosen.Count >= spell.Target.MinCount ? chosen : new List<DataBinding<UnitData>>();
         }
 
-        /// <summary>
-        /// The target units a spell may legally pick: filtered by affinity (friend/foe/any), then by whether
-        /// any living caster model is within the spell's range of any living target model (base-to-base, 3D)
-        /// and — when the spell requires line of sight — has line of sight to it. Mirrors the per-model
-        /// range/LoS test <see cref="ChooseRangedAttackStage"/> uses for shooting.
-        /// </summary>
-        private List<DataBinding<UnitData>> GetEligibleTargets(DataBinding<UnitData> caster, PlayerID casterPlayer,
-            TargetSelector selector)
+        // Bridges a scalar hit count into the IDiceResults the save flow consumes (mirrors
+        // StrafingStage.SyntheticHits / ResolveImpactHitsStage). The face is cosmetic — saves count by total.
+        private static IDiceResults SyntheticHits(float count)
         {
-            TeamData? team = GameContext.GameDataStore().GetAllValues<TeamData>()
-                .FirstOrDefault(t => t.IsPlayerOnTeam(casterPlayer));
-            bool IsFriendly(PlayerID p) => team != null ? team.IsPlayerOnTeam(p) : p == casterPlayer;
-
-            List<ITerrain> terrain = GameContext.TableState.Terrain.Objects.ToList();
-            List<DataBinding<UnitData>> candidates = new List<DataBinding<UnitData>>();
-
-            IEnumerable<DataBinding<UnitData>> allUnits = GameContext.GameDataStore().GetAllValues<ArmyData>()
-                .SelectMany(a => a.UnitBindings)
-                .Where(u => u.GetValue().GetIsAlive() && u.GetValue().GetIsOnBattlefield());
-
-            foreach (DataBinding<UnitData> unit in allUnits)
-            {
-                if (!MatchesAffinity(selector.TargetAffinity, caster, unit, IsFriendly)) continue;
-                if (!WithinRangeAndSight(caster, unit, selector, terrain)) continue;
-                candidates.Add(unit);
-            }
-            return candidates;
-        }
-
-        private static bool MatchesAffinity(ETargetAffinity affinity, DataBinding<UnitData> caster,
-            DataBinding<UnitData> candidate, System.Func<PlayerID, bool> isFriendly)
-        {
-            bool friendly = isFriendly(candidate.GetValue().PlayerID);
-            bool self = candidate.Reference.Equals(caster.Reference);
-            return affinity switch
-            {
-                ETargetAffinity.Self => self,
-                ETargetAffinity.Friend => friendly,
-                ETargetAffinity.Foe => !friendly,
-                ETargetAffinity.Any => true,
-                _ => false,
-            };
-        }
-
-        private bool WithinRangeAndSight(DataBinding<UnitData> caster, DataBinding<UnitData> target,
-            TargetSelector selector, IReadOnlyList<ITerrain> terrain)
-        {
-            IReadOnlyList<ITerrain> blockers = selector.RequireLineOfSight
-                ? terrain.Concat(LineOfSightUtilities.BuildModelBlockers(GameContext.TableState, caster, target)).ToList()
-                : terrain;
-
-            foreach (DataBinding<ModelData> casterModel in caster.GetValue().ModelBindings.Where(m => m.GetValue().GetIsAlive()))
-            {
-                ModelData cm = casterModel.GetValue();
-                Position casterPos = cm.PositionBinding.GetValue();
-                foreach (DataBinding<ModelData> targetModel in target.GetValue().ModelBindings.Where(m => m.GetValue().GetIsAlive()))
-                {
-                    ModelData tm = targetModel.GetValue();
-                    Position targetPos = tm.PositionBinding.GetValue();
-                    float distance = DistanceUtilities.GetBaseToBaseDistanceInches_3D(
-                        casterPos, targetPos, cm.BaseRadiusInches, tm.BaseRadiusInches);
-                    if (distance > selector.RangeInches) continue;
-                    if (!selector.RequireLineOfSight) return true;
-                    if (LineOfSightUtilities.HasLineOfSight(casterPos, targetPos, blockers)) return true;
-                }
-            }
-            return false;
-        }
-
-        // Spell-effect application (buff token / damage pipeline) is wired in the next slice; this stage
-        // owns the casting control flow up to and including the 4+ roll.
-        private void ApplySpellEffect(DataBinding<UnitData> caster, RuntimeSpell spell,
-            IReadOnlyList<DataBinding<UnitData>> targets)
-        {
-            GameContext.Log($"(spell effect for {spell.Name} on {targets.Count} target(s) — applied in slice 3)");
+            float[] perSide = new float[IDiceRollerExtensions.DEFAULT_SIDE_COUNT];
+            perSide[perSide.Length - 1] = count;
+            return new DiceResults(perSide);
         }
 
         private static string SpellOptionLabel(RuntimeSpell spell) => $"{spell.Name} ({spell.Threshold})";

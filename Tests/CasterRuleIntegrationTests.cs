@@ -121,8 +121,9 @@ namespace FDG.Tests
         public async Task ChooseAction_CasterWithAffordableSpell_OffersCastAndRoutes()
         {
             var ctx = new TriggeredMoveTestContext(_store, new CannedStringChoiceRequester("Cast"));
+            // Friend-affinity spell so the caster is its own valid target — Cast requires a legal target.
             DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 3,
-                new[] { Spell("Zap", threshold: 1, ETargetAffinity.Foe) }, new Position(10f, 10f));
+                new[] { Spell("Zap", threshold: 1, ETargetAffinity.Friend) }, new Position(10f, 10f));
             UnitActionContext unitCtx = NewActivation(ctx, caster);
 
             bool routed = false;
@@ -131,7 +132,7 @@ namespace FDG.Tests
             stage.ToCast.OnWillActivate += _ => routed = true;
             await stage.Enter(unitCtx);
 
-            Assert.That(routed, Is.True, "a caster with an affordable spell is offered Cast and routes to the cast stage");
+            Assert.That(routed, Is.True, "a caster with a castable spell is offered Cast and routes to the cast stage");
         }
 
         // #033 Slice 2 — casting spends the spell's token cost (on the attempt) and loops back to Choose
@@ -158,6 +159,64 @@ namespace FDG.Tests
             Assert.That(unitCtx.HasMoved, Is.False, "casting is layered — it does not consume the move");
             Assert.That(unitCtx.HasAttacked, Is.False, "casting is layered — it does not consume the attack");
         }
+
+        // #033 Slice 3 — a buff spell applies its effect (here AddRule) to the target as a RuleGrant token.
+        // The caster is its own (sole) friendly target.
+        [Test]
+        public async Task CastSpellStage_BuffSpell_GrantsRuleTokenToTarget()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester());
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
+                new[] { BuffSpell("Bless", threshold: 1, grantedRule: "Furious") }, new Position(10f, 10f));
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Token granted = caster.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant).FirstOrDefault();
+            Assert.That(granted, Is.Not.Null, "a buff spell grants the target a RuleGrant token");
+            Assert.That(((TokenPayload.RuleGrant)granted!.Payload!).RuleName, Is.EqualTo("Furious"),
+                "the RuleGrant token carries the spell's granted rule");
+        }
+
+        // #033 Slice 3 — a damage spell runs the synthetic-hit save→wound pipeline against the target. AP(3)
+        // pushes the save above 6, so the hit auto-fails and kills the 1-wound enemy; the cast then loops back.
+        [Test]
+        public async Task CastSpellStage_DamageSpell_AppliesWoundsThroughPipeline()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester());
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
+                new[] { DamageSpell("Bolt", threshold: 2, hits: 1, armorPenetration: 3) }, new Position(10f, 10f));
+            DataBinding<UnitData> enemy = MakeEnemyUnit(new PlayerID(System.Guid.NewGuid()), new Position(12f, 10f));
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            bool finished = false;
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            stage.OnFinished.OnWillActivate += _ => finished = true;
+            await stage.Enter(unitCtx);
+
+            Assert.That(enemy.GetValue().GetIsAlive(), Is.False,
+                "an AP(3) spell hit auto-fails the 1-wound enemy's save and kills it through the real pipeline");
+            Assert.That(finished, Is.True, "the damage pipeline returns to Choose Action");
+            Assert.That(caster.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(0),
+                "casting spent the spell's 2-token cost");
+        }
+
+        private static RuntimeSpell DamageSpell(string name, int threshold, int hits, int armorPenetration) =>
+            new RuntimeSpell(
+                new SpellDefinition(name, threshold,
+                    new TargetSelector(18f, 1, 1, ETargetAffinity.Foe, RequireLineOfSight: false),
+                    new Effect.DealHits(hits, System.Array.Empty<string>(), armorPenetration)),
+                System.Array.Empty<ResolvedRule>());
+
+        private static RuntimeSpell BuffSpell(string name, int threshold, string grantedRule) =>
+            new RuntimeSpell(
+                new SpellDefinition(name, threshold,
+                    new TargetSelector(18f, 1, 1, ETargetAffinity.Friend, RequireLineOfSight: false),
+                    new Effect.AddRule(grantedRule, ELifetime.NextTrigger)),
+                System.Array.Empty<ResolvedRule>());
 
         private static UnitActionContext NewActivation(IGameContext ctx, DataBinding<UnitData> unit)
         {

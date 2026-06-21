@@ -46,6 +46,35 @@ namespace FDG.Tests
                 "precondition: 'Frenzied' is army-specific, not in the core catalog.");
         }
 
+        // #033: the canonical caster example (armies/example-caster.fdgarmy) — a Caster(3) unit plus an
+        // army spell list (a damage spell + a buff spell). Pins the spell JSON shape and the load→resolve
+        // path the same way the rules example above does.
+        [Test]
+        public void CasterExampleArmy_LoadsAndResolvesItsSpells()
+        {
+            string path = Path.GetFullPath(Path.Combine(TestContext.CurrentContext.TestDirectory,
+                "..", "..", "..", "armies", "example-caster.fdgarmy"));
+            Assert.That(File.Exists(path), Is.True, $"missing caster example army at {path}");
+
+            ArmyListFile army = JsonSerializer.Deserialize<ArmyListFile>(File.ReadAllText(path), RuleJson.Options)!;
+
+            // The Caster unit names Caster(3) as a numeric core rule.
+            UnitFileEntry magus = army.Units.Single(u => u.Name == "Magus");
+            Assert.That(magus.SpecialRules.OfType<SpecialRuleEntry_CoreNumeric>()
+                .Any(r => r.Name == "Caster" && r.NumericValue == 3), Is.True);
+
+            // Two spells: a damage spell (DealHits with AP) and a buff (AddRule).
+            RuleResolver resolver = CoreRuleCatalog.CreateResolver();
+            System.Collections.Generic.IReadOnlyList<RuntimeSpell> spells =
+                ArmyListSpellResolution.ResolveSpells(army, resolver);
+
+            Assert.That(spells.Select(s => s.Name), Is.EquivalentTo(new[] { "Fire Bolt", "Haste" }));
+            RuntimeSpell fireBolt = spells.Single(s => s.Name == "Fire Bolt");
+            Assert.That(((Effect.DealHits)fireBolt.Effect).ArmorPenetration, Is.EqualTo(1));
+            RuntimeSpell haste = spells.Single(s => s.Name == "Haste");
+            Assert.That(((Effect.AddRule)haste.Effect).RuleName, Is.EqualTo("Furious"));
+        }
+
         [Test]
         public void ExampleArmyFile_RegistersAndResolvesEndToEnd()
         {

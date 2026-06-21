@@ -279,16 +279,18 @@ namespace FDG.Stages
         private static bool IsCaster(IUnit unit) =>
             unit.RuleDefinitions.Any(rule => rule.Definition == CoreRuleCatalog.Caster);
 
-        // #033 — true when the caster's army has at least one spell it can currently afford. Casting is
-        // gated only on token affordability here; whether a chosen spell actually has a legal target is
-        // resolved in CastSpellStage (which returns to Choose Action if none).
+        // #033 — true when the caster's army has at least one spell it can currently CAST: affordable AND
+        // with a legal target (range/LoS/affinity). The target check matters — offering Cast for a spell
+        // with no target would loop forever under a deterministic resolver (pick Cast -> no target -> back),
+        // the same reason GetCanShoot gates on HasAnyFireableTarget.
         private bool GetCanCast(IUnitActionContext context, out string reasonIfCant)
         {
             IUnit unit = context.ActivatingUnit.GetValue();
             int tokens = unit.Tokens.GetTokenCount(TokenType.SpellTokens);
+            PlayerID player = context.ActivatingPlayer();
 
             ArmyData army = GameContext.GameDataStore().GetAllValues<ArmyData>()
-                .FirstOrDefault(a => a.PlayerID == context.ActivatingPlayer());
+                .FirstOrDefault(a => a.PlayerID == player);
 
             if (army == null || army.Spells.Count == 0)
             {
@@ -296,9 +298,18 @@ namespace FDG.Stages
                 return false;
             }
 
-            if (!army.Spells.Any(spell => spell.Threshold > 0 && spell.Threshold <= tokens))
+            bool anyAffordable = army.Spells.Any(spell => spell.Threshold > 0 && spell.Threshold <= tokens);
+            if (!anyAffordable)
             {
                 reasonIfCant = $"Not enough spell tokens ({tokens}).";
+                return false;
+            }
+
+            bool anyCastable = army.Spells.Any(spell => spell.Threshold > 0 && spell.Threshold <= tokens
+                && SpellTargeting.HasAnyEligibleTarget(GameContext, context.ActivatingUnit, player, spell.Target));
+            if (!anyCastable)
+            {
+                reasonIfCant = "No spell has a target in range.";
                 return false;
             }
 

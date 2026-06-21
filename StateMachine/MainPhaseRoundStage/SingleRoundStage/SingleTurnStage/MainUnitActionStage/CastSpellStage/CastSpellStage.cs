@@ -232,7 +232,7 @@ namespace FDG.Stages
             }
 
             string instructions =
-                $"Choose a spell to cast — {casterName} has {tokens} spell token{(tokens == 1 ? "" : "s")}";
+                $"Choose a spell to cast - {casterName} has {tokens} spell token{(tokens == 1 ? "" : "s")}";
 
             StringSelectionRequest request = new StringSelectionRequest(player, instructions,
                 options, System.Array.Empty<StringSelectionRequest.InvalidOption>(), descriptions);

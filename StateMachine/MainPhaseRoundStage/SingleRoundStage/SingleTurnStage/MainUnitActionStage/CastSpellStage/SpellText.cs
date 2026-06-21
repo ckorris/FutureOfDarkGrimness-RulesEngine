@@ -12,7 +12,12 @@ namespace FDG.Stages
     public static class SpellText
     {
         public static string Describe(SpellDefinition spell)
-            => $"{DescribeEffect(spell.Effect)} — {DescribeTarget(spell.Target)}";
+        {
+            // ASCII-only (the default ImGui font has no em-dash) and sentence-cased so "grants ..." reads
+            // as "Grants ...".
+            string text = $"{DescribeEffect(spell.Effect)} - {DescribeTarget(spell.Target)}";
+            return text.Length > 0 ? char.ToUpper(text[0]) + text.Substring(1) : text;
+        }
 
         private static string DescribeEffect(Effect effect)
         {

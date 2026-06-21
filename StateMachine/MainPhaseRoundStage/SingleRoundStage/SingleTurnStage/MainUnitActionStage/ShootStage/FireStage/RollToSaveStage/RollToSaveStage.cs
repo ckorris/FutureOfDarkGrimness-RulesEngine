@@ -39,9 +39,15 @@ namespace FDG.Stages
                 totalSuccesses += successfulResults.TotalRolls;
                 totalFailures += failedResults.TotalRolls;
 
-                await GameContext.Presenter.Present(
-                    DiceRolledBeat.From(rollToSaveResults, saveNeeded, GameContext.Settings.RandomnessType, "Roll to Save",
-                        $"{successfulResults.TotalRolls:0.##} saved, {failedResults.TotalRolls:0.##} wounds"));
+                // RollToHitStage emits one hit group per volley even when it whiffs (0 hits), so a missed
+                // volley reaches here as a group with no save dice. Don't narrate a hollow "0 saved,
+                // 0 wounds" roll-to-save animation for it.
+                if (saveRolls.HitCount > 0)
+                {
+                    await GameContext.Presenter.Present(
+                        DiceRolledBeat.From(rollToSaveResults, saveNeeded, GameContext.Settings.RandomnessType, "Roll to Save",
+                            $"{successfulResults.TotalRolls:0.##} saved, {failedResults.TotalRolls:0.##} wounds"));
+                }
             }
 
             RollToSaveResults results = new RollToSaveResults(successfulSaves, failedSaves);

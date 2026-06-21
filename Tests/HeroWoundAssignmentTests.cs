@@ -64,10 +64,53 @@ namespace FDG.Tests
             Assert.That(results.TryAddWounds(hero), Is.True, "with every grunt full, the hero is now a legal target.");
         }
 
+        // CanAssignWoundTo is the non-mutating predicate the wound dialog uses to gray a model; it must
+        // agree with TryAddWounds so the hero is shown un-assignable until the rest of the unit is dead.
+
+        [Test]
+        public void CanAssignWoundTo_RejectsHero_WhileRankAndFileHaveRoom()
+        {
+            var (host, hero, grunts) = MakeMergedUnit(gruntCount: 2);
+            var results = new AssignWoundsResults(host, totalWoundsToAssign: 1);
+
+            Assert.That(results.CanAssignWoundTo(EntryFor(results, hero)), Is.False,
+                "the hero is not a valid target while grunts have room — the dialog grays it.");
+            Assert.That(results.CanAssignWoundTo(EntryFor(results, grunts[0])), Is.True,
+                "a rank-and-file model with room is a valid target.");
+        }
+
+        [Test]
+        public void CanAssignWoundTo_AllowsHero_OnceGruntsAreFull()
+        {
+            var (host, hero, grunts) = MakeMergedUnit(gruntCount: 2);
+            var results = new AssignWoundsResults(host, totalWoundsToAssign: 3);
+
+            results.TryAddWounds(grunts[0]);
+            results.TryAddWounds(grunts[1]);
+
+            Assert.That(results.CanAssignWoundTo(EntryFor(results, hero)), Is.True,
+                "with every grunt full, the hero becomes a valid target.");
+        }
+
+        [Test]
+        public void CanAssignWoundTo_RejectsModelAlreadyFull()
+        {
+            var (host, _, grunts) = MakeMergedUnit(gruntCount: 2);
+            var results = new AssignWoundsResults(host, totalWoundsToAssign: 3);
+
+            results.TryAddWounds(grunts[0]); // 1-wound model, now full in this assignment
+
+            Assert.That(results.CanAssignWoundTo(EntryFor(results, grunts[0])), Is.False,
+                "a model already full in this assignment is no longer a valid target.");
+        }
+
         // --- helpers ---
 
         private static float WoundsOn(AssignWoundsResults results, DataBinding<ModelData> model) =>
             results.PendingWounds.First(entry => entry.Model.GetValue().ID == model.GetValue().ID).Wounds;
+
+        private static PendingWounds EntryFor(AssignWoundsResults results, DataBinding<ModelData> model) =>
+            results.PendingWounds.First(entry => entry.Model.GetValue().ID == model.GetValue().ID);
 
         private (DataBinding<UnitData> Host, DataBinding<ModelData> Hero, List<DataBinding<ModelData>> Grunts)
             MakeMergedUnit(int gruntCount)

@@ -97,6 +97,16 @@ namespace FDG
         }
 
         /// <summary>
+        /// Whether a wound can be assigned to <paramref name="entry"/>'s model right now: it must have spare
+        /// capacity AND be a legal next recipient under the assignment-ordering rules — a joined hero is not
+        /// assignable while any rank-and-file model can still take a wound (#006, "heroes are assigned wounds
+        /// last"). The non-mutating predicate the UI uses to enable/gray a model; it answers the same
+        /// question <see cref="TryAddWounds"/> decides before mutating, so the dialog and the engine agree.
+        /// </summary>
+        public bool CanAssignWoundTo(PendingWounds entry) =>
+            CanTakeMoreWounds(entry) && !(IsHero(entry.Model) && AnyNonHeroHasRoom());
+
+        /// <summary>
         /// Single-model assignment (Takedown's "resolve as a unit of [1]"): the only recipient is
         /// <paramref name="singleModel"/>, so all assigned wounds funnel to it with no carry-over to
         /// the rest of the unit. Callers must cap <paramref name="totalWoundsToAssign"/> at the model's

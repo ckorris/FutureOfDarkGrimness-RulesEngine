@@ -1,5 +1,6 @@
 
 using FDG.Data;
+using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
 
 namespace FDG.Stages
@@ -14,6 +15,17 @@ namespace FDG.Stages
         public float MoveDistance { get;}
 
         public bool HasAttacked { get; }
+
+        /// <summary>
+        /// The custom action (#010) the player chose in <see cref="ChooseActionStage"/>, handed to
+        /// <see cref="CustomActionStage"/> to resolve. Null when no custom action is pending. Set by the
+        /// chooser, cleared once the custom-action stage has resolved it (and at activation start).
+        /// </summary>
+        public AbilityOffer? PendingCustomAction { get; }
+
+        public void SetPendingCustomAction(AbilityOffer offer);
+
+        public void ClearPendingCustomAction();
 
         /// <summary>
         /// Whether the unit was Shaken at the instant this activation began (snapshotted in
@@ -45,11 +57,23 @@ namespace FDG.Stages
 
         public bool StartedActivationShaken { get; private set; }
 
+        public AbilityOffer? PendingCustomAction { get; private set; }
+
 
         public UnitActionContext(IGameContext gameContext, DataBinding<UnitData> activatingUnit)
         {
             GameContext = gameContext;
             ActivatingUnit = activatingUnit;
+        }
+
+        public void SetPendingCustomAction(AbilityOffer offer)
+        {
+            PendingCustomAction = offer;
+        }
+
+        public void ClearPendingCustomAction()
+        {
+            PendingCustomAction = null;
         }
 
         public void RegisterMoveFinished(float distance)
@@ -70,6 +94,7 @@ namespace FDG.Stages
             HasMoved = false;
             MoveDistance = 0f;
             HasAttacked = false;
+            PendingCustomAction = null;
             StartedActivationShaken = activatingUnit.GetValue().Tokens.HasToken(TokenType.Shaken);
         }
     }

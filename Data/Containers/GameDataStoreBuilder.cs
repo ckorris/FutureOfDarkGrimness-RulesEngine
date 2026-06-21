@@ -27,13 +27,6 @@ namespace FDG.Data
 
                 _registeredTypes.Add(new TypeAndCapacity(type, capacity));
 
-                TypeID typeID = new TypeID(_registeredTypes.Count - 1);
-
-                if (capacity <= 0)
-                {
-                    capacity = DEFAULT_COMPONENT_STORE_CAPACITY;
-                }
-
                 return this;
             }
 

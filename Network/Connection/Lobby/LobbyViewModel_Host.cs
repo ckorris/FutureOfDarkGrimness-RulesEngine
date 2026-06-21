@@ -86,6 +86,8 @@ namespace FDG.Network.Connection.Lobby
 
         public event Action<IFDGGame>? OnLaunched;
 
+        public event Action<string>? OnGameEnded;
+
         private GameSettings _gameSettings = GameSettings.GetDefault();
 
         IReadWriteableGameDataStore _gameDataStore;
@@ -120,7 +122,7 @@ namespace FDG.Network.Connection.Lobby
 
             _messageBus.RegisterForMessageEvent<LobbyChatMessage>(OnLocalChatMessageReceived);
             _messageBus.RegisterForMessageEvent<LobbyChatMessage_FromClient>(OnChatMessageReceived);
-            _messageBus.RegisterForMessageEvent<NewLobbyClientGreeting>(OnReceiveNewClientGreeting);
+            _messageBus.RegisterForConnectionMessageEvent<NewLobbyClientGreeting>(OnReceiveNewClientGreeting);
             _messageBus.RegisterForMessageEvent<ArmyListUpdateMessage>(OnArmyListFileUpdateReceived);
 
             //Show init message in chatbox.
@@ -172,7 +174,7 @@ namespace FDG.Network.Connection.Lobby
 
             _messageBus.RegisterForMessageEvent<LobbyChatMessage>(OnLocalChatMessageReceived);
             _messageBus.RegisterForMessageEvent<LobbyChatMessage_FromClient>(OnChatMessageReceived);
-            _messageBus.RegisterForMessageEvent<NewLobbyClientGreeting>(OnReceiveNewClientGreeting);
+            _messageBus.RegisterForConnectionMessageEvent<NewLobbyClientGreeting>(OnReceiveNewClientGreeting);
             _messageBus.RegisterForMessageEvent<ArmyListUpdateMessage>(OnArmyListFileUpdateReceived);
 
             AddMessageToLocalList(new LobbyChatMessage("System", "Loaded saved game. Assign players to slots, then Resume."));
@@ -221,13 +223,13 @@ namespace FDG.Network.Connection.Lobby
             //Maybe do nothing?
         }
 
-        private void OnReceiveNewClientGreeting(NewLobbyClientGreeting greeting)
+        private void OnReceiveNewClientGreeting(NewLobbyClientGreeting greeting, ConnectionID connectionID)
         {
             // Resume games have a fixed saved roster — route joining clients to saved slots instead of
             // creating new ones. Strictly isolated so the new-game path below is unchanged.
             if (_isResume)
             {
-                OnResumeClientGreeting(greeting);
+                OnResumeClientGreeting(greeting, connectionID);
                 return;
             }
 
@@ -247,8 +249,6 @@ namespace FDG.Network.Connection.Lobby
 
             //ArmyListSummary tempSummary = new ArmyListSummary("Knifeybois", "Alien Hives", 2000);
 
-            ConnectionID connectionID = _messageBus.GetCurrentMessageConnectionID();
-
             LobbyPlayerInfoFull newLobbyPlayerInfo = new LobbyPlayerInfoFull(greeting.PlayerName, null, (ETeamOption)tempTeamNumber,
                 EPlayerType.Network, connectionID, newClientPlayerID);
             _playerInfosFull.Add(newClientPlayerID, newLobbyPlayerInfo);
@@ -263,11 +263,9 @@ namespace FDG.Network.Connection.Lobby
         // PlayerID — no remap. NOT yet live-tested: correct-by-design for 1v1 (one remote client);
         // multi-client relies on the same broadcast LobbyPlayerIDAssignment as the new-game flow.
         // Host-chosen connection→slot assignment (vs this auto-fill) is a future refinement.
-        private void OnResumeClientGreeting(NewLobbyClientGreeting greeting)
+        private void OnResumeClientGreeting(NewLobbyClientGreeting greeting, ConnectionID connectionID)
         {
             Debug.WriteLine($"[#052] Resume: greeting from {greeting.PlayerName}.");
-
-            ConnectionID connectionID = _messageBus.GetCurrentMessageConnectionID();
 
             LobbyPlayerInfoFull? openSlot = _playerInfosFull.Values.FirstOrDefault(p => p.PlayerType == EPlayerType.AI);
             if (openSlot == null)
@@ -430,6 +428,7 @@ namespace FDG.Network.Connection.Lobby
             // presentation beats play at a presentable tempo (without it the beats run instantly).
             FDGServer server = new FDGServer(_gameDataStore, _messageBus, playerSlots,
                 new RealtimePresentationClock());
+            server.OnGameEnded += HandleServerGameEnded;
 
             if (gameModel != null)
             {
@@ -437,6 +436,16 @@ namespace FDG.Network.Connection.Lobby
             }
 
             await _messageBus.SendCommandToAllAsync(new LaunchGameMessage());
+        }
+
+        // Fired by FDGServer when the game finishes (engine thread). Forward to this host's own front
+        // end, and mirror the result to remote clients so they can return to the menu too — clients have
+        // no FDGServer, so the wire message is their only clean game-end signal. Fire-and-forget: a send
+        // failure (e.g. a client already gone) shouldn't disrupt the host's own end-of-game handling.
+        private void HandleServerGameEnded(string result)
+        {
+            OnGameEnded?.Invoke(result);
+            _ = _messageBus.SendCommandToAllAsync(new GameEndedMessage(result));
         }
 
         private string? ValidateLaunchSettings()
@@ -536,6 +545,7 @@ namespace FDG.Network.Connection.Lobby
             // goes through CliApp, which leaves FDGServer's default instant clock.)
             FDGServer server = new FDGServer(_gameDataStore, _messageBus, _gameSettings, playerSlots,
                 new RealtimePresentationClock());
+            server.OnGameEnded += HandleServerGameEnded;
 
             if (gameModel != null) //Dedicated server really doesn't need to do this.
             {

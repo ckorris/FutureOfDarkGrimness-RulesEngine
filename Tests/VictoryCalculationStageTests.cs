@@ -1,4 +1,5 @@
 using FDG.Data;
+using FDG.Players;
 using FDG.Stages;
 using NUnit.Framework;
 
@@ -45,13 +46,28 @@ namespace FDG.Tests
         {
             var winner = new PlayerID(Guid.NewGuid());
             var loser = new PlayerID(Guid.NewGuid());
+            CreatePlayer(winner, "Crimson Fists");
             CreateObjective(owner: winner);
             CreateObjective(owner: winner);
             CreateObjective(owner: loser);
 
             await RunVictory();
 
-            Assert.That(_ctx.EndResult, Is.EqualTo($"Player {winner.ID} wins!"));
+            // The result string uses the player's display name (matching the on-screen banner), not the
+            // raw PlayerID GUID — see work item #040.
+            Assert.That(_ctx.EndResult, Is.EqualTo("Crimson Fists wins!"));
+        }
+
+        [Test]
+        public async Task WinnerNotInPlayerList_FallsBackToGenericName()
+        {
+            var winner = new PlayerID(Guid.NewGuid());
+            CreateObjective(owner: winner);
+
+            await RunVictory();
+
+            Assert.That(_ctx.EndResult, Is.EqualTo("A player wins!"),
+                "with no matching player slot, the name resolves to the 'A player' fallback, never a GUID.");
         }
 
         [Test]
@@ -82,6 +98,11 @@ namespace FDG.Tests
             _store.Create(obj);
             if (owner.HasValue)
                 obj.SetOwner(owner.Value);
+        }
+
+        private void CreatePlayer(PlayerID playerID, string name)
+        {
+            _store.Create(new PlayerSlotInfo(playerID, slotID: 0, teamNumber: 0, name: name, isFilled: true));
         }
     }
 

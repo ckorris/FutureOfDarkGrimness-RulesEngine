@@ -44,6 +44,7 @@ namespace FDG.Stages
                 .AddChild(new MovementStage(GameContext, this), out var movement)
                 .AddChild(new MeleeStage(GameContext, this), out var melee)
                 .AddChild(new ShootStage(GameContext, this), out var shoot)
+                .AddChild(new CustomActionStage(GameContext, this), out var customAction)
                 .AddSibling(nameof(ToReconcileEndOfActivation), ToReconcileEndOfActivation, out string toReconcileActivationEvent)
                 .Build();
 
@@ -52,11 +53,14 @@ namespace FDG.Stages
             chooseAction.ToMovement.Bind(movement);
             chooseAction.ToCharge.Bind(melee);
             chooseAction.ToShoot.Bind(shoot);
+            chooseAction.ToCustomAction.Bind(customAction);
             chooseAction.ToReconcileEndOfActivation.Bind(toReconcileActivationEvent);
             movement.OnFinishedMovement.Bind(chooseAction);
             melee.OnFinishedMelee.Bind(chooseAction);
             shoot.OnFinishedShooting.Bind(chooseAction);
             shoot.BackToChooseAction.Bind(chooseAction);
+            // #010 — a resolved custom action loops back to Choose Action (layered, doesn't end the turn).
+            customAction.OnFinished.Bind(chooseAction);
 
             return dictionary;
         }

@@ -1,3 +1,5 @@
+using FDG.Rules.Dispatch;
+using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
 using FDG.StageResolution.Requests;
 using FDG.Utilities;
@@ -13,6 +15,7 @@ namespace FDG.Stages
         public StageBinding ToMovement;
         public StageBinding ToCharge;
         public StageBinding ToShoot;
+        public StageBinding ToCustomAction;
         public StageBinding ToReconcileEndOfActivation;
 
         public const string MOVEMENT_CHOICE_NAME = "Move";
@@ -25,6 +28,7 @@ namespace FDG.Stages
             ToMovement = new StageBinding(this);
             ToCharge = new StageBinding(this);
             ToShoot = new StageBinding(this);
+            ToCustomAction = new StageBinding(this);
             ToReconcileEndOfActivation = new StageBinding(this);
         }
 
@@ -55,7 +59,13 @@ namespace FDG.Stages
             bool canCharge = GetCanCharge(context, out string cantChargeReason);
             bool canShoot = GetCanShoot(context, out string cantShootReason);
             bool canPass = GetCanPass(GameContext, context, out string cantPassReason);
-            bool hasCustomActionsAvailable = false; //TODO: Implement.
+
+            // #010 — special rules contribute custom actions (e.g. a Caster's spell) by carrying an
+            // ActivatedAbility that triggers at this hook. GatherOffers returns one offer per affordable,
+            // available such ability; each surfaces below as its own action.
+            IReadOnlyList<AbilityOffer> customActionOffers = GameContext.RuleEvaluator
+                .GatherOffers(new ActionChoiceContext(context.ActivatingUnit.GetValue()));
+            bool hasCustomActionsAvailable = customActionOffers.Count > 0;
 
             //If we have no available actions 
             if ((canMove || canCharge || canShoot || hasCustomActionsAvailable) == false)
@@ -100,7 +110,35 @@ namespace FDG.Stages
                 invalidOptions.Add(new StringSelectionRequest.InvalidOption(SHOOT_CHOICE_NAME, cantShootReason));
             }
 
-            //Add any others here somehow.
+            // #010 custom actions: one option per offer, labelled by the rule. Choosing it stashes the
+            // offer on the context and routes to CustomActionStage, which resolves it and loops back here
+            // WITHOUT setting HasMoved/HasAttacked — casting is a layered overlay, not an action that ends
+            // the turn. A once-per-activation cost keeps it from being re-offered after use. A custom action
+            // whose name collides with a built-in choice (or another custom action) is skipped and logged
+            // rather than overwriting the outcome map.
+            foreach (AbilityOffer offer in customActionOffers)
+            {
+                bool collides = offer.RuleName == MOVEMENT_CHOICE_NAME
+                    || offer.RuleName == CHARGE_CHOICE_NAME
+                    || offer.RuleName == SHOOT_CHOICE_NAME
+                    || offer.RuleName == PASS_CHOICE_NAME
+                    || outcomes.ContainsKey(offer.RuleName);
+
+                if (collides)
+                {
+                    GameContext.Log($"Custom action '{offer.RuleName}' collides with an existing action " +
+                        $"name and was skipped.");
+                    continue;
+                }
+
+                AbilityOffer capturedOffer = offer;
+                validOptions.Add(offer.RuleName);
+                outcomes.Add(offer.RuleName, () =>
+                {
+                    context.SetPendingCustomAction(capturedOffer);
+                    return ToCustomAction.Activate(context);
+                });
+            }
 
             //Add pass option.
             if(canPass)

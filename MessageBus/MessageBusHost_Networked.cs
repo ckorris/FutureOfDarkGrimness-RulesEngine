@@ -13,8 +13,6 @@ namespace FDG.MessageBus
         private IMessageRegistrar _messageRegistrar;
         private IMessageSerializer _messageSerializer;
 
-        private ConnectionID? _lastMessageConnectionID = null;
-
         internal MessageBusHost_Networked(INetworkHost networkHost, IReadableGameDataStore gameDataStore)
         {
             _networkHost = networkHost;
@@ -32,6 +30,17 @@ namespace FDG.MessageBus
         public void DeregisterForMessageEvent<T>(Action<T> messageToUnsubscribe)
         {
             _messageRegistrar.DeregisterForMessageEvent(messageToUnsubscribe);
+        }
+
+        public void RegisterForConnectionMessageEvent<T>(Action<T, ConnectionID> onMessageReceived)
+        {
+            _messageRegistrar.RegisterForConnectionMessageEvent(onMessageReceived);
+            _messageSerializer.RegisterMessageType<T>();
+        }
+
+        public void DeregisterForConnectionMessageEvent<T>(Action<T, ConnectionID> messageToUnsubscribe)
+        {
+            _messageRegistrar.DeregisterForConnectionMessageEvent(messageToUnsubscribe);
         }
 
         public Task SendCommandToAllAsync<TMessage>(TMessage message)
@@ -63,21 +72,10 @@ namespace FDG.MessageBus
             if (message != null)
             {
                 System.Diagnostics.Debug.WriteLine($"Client received message: {message.GetType()}");
-            }
 
-            //Cache connection ID in case it's needed during invocation.
-            _lastMessageConnectionID = connectionID;
-
-            try
-            {
-                if (message != null)
-                {
-                    _messageRegistrar.DispatchToHandlers(message);
-                }
-            }
-            finally
-            {
-                _lastMessageConnectionID = null;
+                //Thread the source connection through dispatch so connection-aware handlers reply to the
+                //right sender even when multiple client read loops dispatch concurrently.
+                _messageRegistrar.DispatchToHandlers(message, connectionID);
             }
         }
 
@@ -87,17 +85,6 @@ namespace FDG.MessageBus
             {
                 _networkHost.OnMessageReceived -= OnMessageBytesReceived;
             }
-        }
-
-        public ConnectionID GetCurrentMessageConnectionID()
-        {
-            if(_lastMessageConnectionID.HasValue == false)
-            {
-                throw new InvalidOperationException($"{nameof(GetCurrentMessageConnectionID)} was called when no {nameof(ConnectionID)} was registered " + 
-                    "for a message. It's likely this was called outside the invocation of an event when a message was received.");
-            }
-
-            return _lastMessageConnectionID.Value;
         }
     }
 }

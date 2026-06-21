@@ -54,7 +54,7 @@ namespace FDG.Stages
                 string winnerName = GameContext.TableState.Players.Objects
                     .FirstOrDefault(p => p.PlayerID == winner)?.Name ?? "A player";
                 await context.Announce($"{winnerName} wins!", new TextColor(255, 215, 0, 255));
-                GameContext.NotifyGameEnded($"Player {winner.ID} wins!");
+                GameContext.NotifyGameEnded($"{winnerName} wins!");
             }
         }
 

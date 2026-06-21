@@ -491,5 +491,68 @@ namespace FDG.Tests
 
         #endregion
 
+        #region PlaceObjectsRequest zone round-trip (#035 genericized IBoundedZone)
+
+        // The placement zone is carried inline (polymorphic IBoundedZone), not as a store reference, so it
+        // must survive the wire as its concrete shape. A circular disembark zone is the new case.
+        [Test]
+        public void PlaceObjectsRequest_CircularZone_RoundTrips_CrossStore()
+        {
+            var hostStore   = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var clientStore = GameDataStore.GameDataStoreBuilder.GetDefault();
+            hostStore.OnDataAddedAsJson   += (reference, json) => clientStore.CreateFromReferenceAndJson(reference, json);
+            hostStore.OnDataUpdatedAsJson += (reference, json) => clientStore.SetValueWithJson(reference, json);
+
+            var playerID = new PlayerID(Guid.NewGuid());
+            var model = new ModelData(0.75f, new List<Weapon>(), new Position(), hostStore);
+            var modelBinding = hostStore.GetDataBinding<ModelData>(hostStore.Create(model));
+
+            var request = new PlaceObjectsRequest<ModelData>(playerID, "Disembark",
+                new CircularZone(new Float2(10f, 5f), 6f),
+                new List<DataBinding<ModelData>> { modelBinding });
+
+            string json = JsonConvert.SerializeObject(request, hostStore.GetJsonSettings());
+            var deserialized = JsonConvert.DeserializeObject<PlaceObjectsRequest<ModelData>>(json, clientStore.GetJsonSettings());
+
+            Assert.That(deserialized, Is.Not.Null);
+            Assert.That(deserialized!.DeploymentZone, Is.TypeOf<CircularZone>(),
+                "the polymorphic zone survives the wire as its concrete circular type.");
+            var zone = (CircularZone)deserialized.DeploymentZone;
+            Assert.That(zone.Radius, Is.EqualTo(6f).Within(0.001f));
+            Assert.That(zone.Center.X, Is.EqualTo(10f).Within(0.001f));
+            Assert.That(zone.Center.Y, Is.EqualTo(5f).Within(0.001f));
+            Assert.That(deserialized.DeploymentZone.IsPointWithinZone(new Float2(13f, 5f)), Is.True,  "3\" from centre is inside.");
+            Assert.That(deserialized.DeploymentZone.IsPointWithinZone(new Float2(20f, 5f)), Is.False, "10\" from centre is outside.");
+            Assert.That(deserialized.ModelsToPlace.Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void PlaceObjectsRequest_RectangularZone_RoundTrips_CrossStore()
+        {
+            var hostStore   = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var clientStore = GameDataStore.GameDataStoreBuilder.GetDefault();
+            hostStore.OnDataAddedAsJson   += (reference, json) => clientStore.CreateFromReferenceAndJson(reference, json);
+            hostStore.OnDataUpdatedAsJson += (reference, json) => clientStore.SetValueWithJson(reference, json);
+
+            var playerID = new PlayerID(Guid.NewGuid());
+            var model = new ModelData(0.75f, new List<Weapon>(), new Position(), hostStore);
+            var modelBinding = hostStore.GetDataBinding<ModelData>(hostStore.Create(model));
+
+            var request = new PlaceObjectsRequest<ModelData>(playerID, "Place Unit Models",
+                new RectangularZone(0f, 24f, 0f, 12f),
+                new List<DataBinding<ModelData>> { modelBinding });
+
+            string json = JsonConvert.SerializeObject(request, hostStore.GetJsonSettings());
+            var deserialized = JsonConvert.DeserializeObject<PlaceObjectsRequest<ModelData>>(json, clientStore.GetJsonSettings());
+
+            Assert.That(deserialized!.DeploymentZone, Is.TypeOf<RectangularZone>());
+            ZoneBounds b = deserialized.DeploymentZone.Bounds;
+            Assert.That(b.Left, Is.EqualTo(0f).Within(0.001f));
+            Assert.That(b.Right, Is.EqualTo(24f).Within(0.001f));
+            Assert.That(b.Top, Is.EqualTo(12f).Within(0.001f));
+        }
+
+        #endregion
+
     }
 }

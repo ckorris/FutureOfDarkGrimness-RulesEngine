@@ -11,7 +11,14 @@ namespace FDG.StageResolution.Requests
 
         public string TaskName { get; }
 
-        public DataBinding<RectangularZone> DeploymentZone { get; }
+        /// <summary>
+        /// The region models must be placed within — any <see cref="IBoundedZone"/> (a rectangular
+        /// deployment zone, or a circular disembark zone, …). Carried by value (serialized polymorphically
+        /// via the message layer's <c>TypeNameHandling.Auto</c>) rather than as a store reference, so the
+        /// request fully describes its own placement shape. Resolvers scan <see cref="IBoundedZone.Bounds"/>
+        /// and reject points outside the true shape via <see cref="IZone.IsPointWithinZone"/>.
+        /// </summary>
+        public IBoundedZone DeploymentZone { get; }
 
         public IReadOnlyList<DataBinding<T>> ModelsToPlace { get; }
 
@@ -24,7 +31,7 @@ namespace FDG.StageResolution.Requests
 
         [JsonConstructor]
         public PlaceObjectsRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
-            DataBinding<RectangularZone> deploymentZone, IReadOnlyList<DataBinding<T>> modelsToPlace,
+            IBoundedZone deploymentZone, IReadOnlyList<DataBinding<T>> modelsToPlace,
             float minDistanceFromEnemiesInches = 0f)
         {
             TargetPlayerID = targetPlayerID;
@@ -36,7 +43,7 @@ namespace FDG.StageResolution.Requests
         }
 
         public PlaceObjectsRequest(PlayerID targetPlayerID, string taskName,
-            DataBinding<RectangularZone> deploymentZone, IReadOnlyList<DataBinding<T>> modelsToPlace,
+            IBoundedZone deploymentZone, IReadOnlyList<DataBinding<T>> modelsToPlace,
             float minDistanceFromEnemiesInches = 0f)
         {
             TargetPlayerID = targetPlayerID;

@@ -69,11 +69,9 @@ namespace FDG.Stages
         {
             var wholeTable = new RectangularZone(0f, GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES,
                 0f, GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES);
-            DataBinding<RectangularZone> zoneBinding = GameContext.GameDataStore
-                .GetDataBinding<RectangularZone>(GameContext.GameDataStore.Create(wholeTable));
 
             var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID, "Ambush Deploy",
-                zoneBinding, unit.ModelBindings, minDistanceFromEnemiesInches: minDistanceFromEnemies);
+                wholeTable, unit.ModelBindings, minDistanceFromEnemiesInches: minDistanceFromEnemies);
 
             List<PlacedObjectEntry<ModelData>> placements = await GameContext.PlayerRequester
                 .RequestDecision<PlaceObjectsRequest<ModelData>, List<PlacedObjectEntry<ModelData>>>(request);

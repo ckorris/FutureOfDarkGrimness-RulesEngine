@@ -42,18 +42,13 @@ namespace FDG.Stages
 
             Position transportPosition = RepresentativePosition(transport);
 
-            // A square placement window centred on the transport — a loose stand-in for the "fully within
-            // 6\"" circle (exact-radius clamping via TransportUtilities.IsWithinTransportRange is a deferred
-            // refinement); the place resolvers clamp to the table and avoid impassible terrain.
-            float reach = TransportUtilities.MaxTransportRangeInches;
-            RectangularZone zone = new RectangularZone(
-                transportPosition.x - reach, transportPosition.x + reach,
-                transportPosition.z - reach, transportPosition.z + reach);
-            DataBinding<RectangularZone> zoneBinding = GameContext.GameDataStore
-                .GetDataBinding<RectangularZone>(GameContext.GameDataStore.Create(zone));
+            // The exact "fully within 6\"" circle around the transport. The place resolvers scan its
+            // bounding box and reject points outside the true circle (IsPointWithinZone), and clamp to the
+            // table / avoid impassible terrain.
+            CircularZone zone = new CircularZone(transportPosition.Position2D, TransportUtilities.MaxTransportRangeInches);
 
             var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID, $"Disembark {unit.Name}",
-                zoneBinding, unit.ModelBindings);
+                zone, unit.ModelBindings);
 
             List<PlacedObjectEntry<ModelData>> placements = await GameContext.PlayerRequester
                 .RequestDecision<PlaceObjectsRequest<ModelData>, List<PlacedObjectEntry<ModelData>>>(request);

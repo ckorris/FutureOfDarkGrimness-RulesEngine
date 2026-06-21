@@ -77,7 +77,7 @@ namespace FDG.Tests
             float expectedTop = System.Math.Min(GameWideConstants.DEPLOYMENT_DISTANCE_INCHES + 12f, center);
 
             Assert.That(requester.PlacementCount, Is.EqualTo(2), "every reserved Scout is placed");
-            Assert.That(requester.LastZone!.Top, Is.EqualTo(expectedTop).Within(0.001f),
+            Assert.That(requester.LastZone!.Bounds.Top, Is.EqualTo(expectedTop).Within(0.001f),
                 "Scout's zone is extended 12\" forward (toward table center), clamped at center.");
 
             foreach (DataBinding<UnitData> scout in new[] { scoutA, scoutB })
@@ -127,7 +127,7 @@ namespace FDG.Tests
     internal sealed class CannedPlaceObjectsRequester : IPlayerRequestByID
     {
         public int PlacementCount { get; private set; }
-        public RectangularZone? LastZone { get; private set; }
+        public IBoundedZone? LastZone { get; private set; }
 
         public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
             where TRequest : IStageTaskRequest<TReply>
@@ -135,9 +135,9 @@ namespace FDG.Tests
             if (request is PlaceObjectsRequest<ModelData> placeRequest)
             {
                 PlacementCount++;
-                RectangularZone zone = placeRequest.DeploymentZone.GetValue();
+                IBoundedZone zone = placeRequest.DeploymentZone;
                 LastZone = zone;
-                var dest = new Position((zone.Left + zone.Right) / 2f, (zone.Bottom + zone.Top) / 2f);
+                var dest = new Position(zone.Bounds.CenterX, zone.Bounds.CenterZ);
 
                 var entries = placeRequest.ModelsToPlace
                     .Select(m => new PlacedObjectEntry<ModelData>(m, dest))

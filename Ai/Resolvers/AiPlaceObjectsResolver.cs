@@ -27,7 +27,8 @@ namespace FDG.Ai.Resolvers
 
         public Task<List<PlacedObjectEntry<T>>> Resolve(PlaceObjectsRequest<T> request)
         {
-            var zone = request.DeploymentZone.GetValue();
+            var zone = request.DeploymentZone;
+            ZoneBounds bounds = zone.Bounds;
             _impassibleTerrain = _tableState.Terrain.Objects
                 .Where(t => t.TerrainType.HasFlag(ETerrainType.Impassible))
                 .ToList();
@@ -51,7 +52,7 @@ namespace FDG.Ai.Resolvers
             // Enemy-constrained (Ambush): scan rows across the zone for one where the whole unit fits.
             if (minEnemyDist > 0f)
             {
-                for (float cz = zone.Bottom + maxRadius; cz <= zone.Top - maxRadius; cz += spacing)
+                for (float cz = bounds.Bottom + maxRadius; cz <= bounds.Top - maxRadius; cz += spacing)
                 {
                     var rowPlacement = TryPlaceRow(request, zone, cz, spacing, xStagger, existing, enemies, minEnemyDist);
                     if (rowPlacement != null)
@@ -60,8 +61,8 @@ namespace FDG.Ai.Resolvers
                 // No legal row found — fall through to best-effort below (rare on a real table).
             }
 
-            float zoneCz = (zone.Bottom + zone.Top) / 2f;
-            float defaultCz = Math.Clamp(zoneCz + deployIndex * ZRowOffset, zone.Bottom + maxRadius, zone.Top - maxRadius);
+            float zoneCz = bounds.CenterZ;
+            float defaultCz = Math.Clamp(zoneCz + deployIndex * ZRowOffset, bounds.Bottom + maxRadius, bounds.Top - maxRadius);
 
             var placed = new List<PlacedObjectEntry<T>>();
             foreach (var binding in request.ModelsToPlace)
@@ -75,7 +76,7 @@ namespace FDG.Ai.Resolvers
         }
 
         // Tries to place every model in a single row at Z=cz; returns null if any model can't fit legally.
-        private List<PlacedObjectEntry<T>>? TryPlaceRow(PlaceObjectsRequest<T> request, RectangularZone zone,
+        private List<PlacedObjectEntry<T>>? TryPlaceRow(PlaceObjectsRequest<T> request, IBoundedZone zone,
             float cz, float spacing, float xStagger, List<(Position pos, float radius)> existing,
             List<Position> enemies, float minEnemyDist)
         {
@@ -91,13 +92,15 @@ namespace FDG.Ai.Resolvers
         }
 
         // Strict search: returns null rather than a fallback when nothing in the row is legal.
-        private Position? FindValidPosition(float r, float step, RectangularZone zone, float cz,
+        private Position? FindValidPosition(float r, float step, IBoundedZone zone, float cz,
             float xStagger, List<PlacedObjectEntry<T>> placedSoFar, List<(Position pos, float radius)> existing,
             List<Position> enemies, float minEnemyDist)
         {
-            for (float x = zone.Left + r + xStagger; x <= zone.Right - r; x += step)
+            ZoneBounds b = zone.Bounds;
+            for (float x = b.Left + r + xStagger; x <= b.Right - r; x += step)
             {
                 var candidate = new Position(x, cz);
+                if (!zone.IsPointWithinZone(candidate)) continue; // reject points outside the true shape (e.g. a circle's corners)
                 if (OverlapsAny(candidate, r, placedSoFar)) continue;
                 if (OverlapsExisting(candidate, r, existing)) continue;
                 if (PlacementUtilities.OverlapsImpassibleTerrain(candidate, r, _impassibleTerrain)) continue;
@@ -108,13 +111,14 @@ namespace FDG.Ai.Resolvers
             return null;
         }
 
-        private Position FindPosition(float r, float step, RectangularZone zone, float cz,
+        private Position FindPosition(float r, float step, IBoundedZone zone, float cz,
             float xStagger, List<PlacedObjectEntry<T>> placedSoFar,
             List<(Position pos, float radius)> existing, List<Position> enemies, float minEnemyDist)
         {
             Position? valid = FindValidPosition(r, step, zone, cz, xStagger, placedSoFar, existing, enemies, minEnemyDist);
             if (valid != null) return valid.Value;
-            return new Position(Math.Clamp((zone.Left + zone.Right) / 2f, zone.Left + r, zone.Right - r), cz);
+            ZoneBounds b = zone.Bounds;
+            return new Position(Math.Clamp(b.CenterX, b.Left + r, b.Right - r), cz);
         }
 
         private List<Position> GetEnemyPositions(PlayerID self)

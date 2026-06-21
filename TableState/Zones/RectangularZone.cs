@@ -4,12 +4,14 @@ namespace FDG
     /// <summary>
     /// Represents a 2D rectangular area on the map.
     /// </summary>
-    public class RectangularZone : IZone
+    public class RectangularZone : IBoundedZone
     {
         public readonly float Left;
         public readonly float Right;
         public readonly float Bottom;
         public readonly float Top;
+
+        public ZoneBounds Bounds => new ZoneBounds(Left, Right, Bottom, Top);
 
         public RectangularZone(float left, float right, float bottom, float top)
         {

@@ -34,11 +34,9 @@ namespace FDG.Stages
 
                 UnitData unit = entry.Unit.GetValue();
                 RectangularZone forwardZone = BuildForwardZone(context, unit, entry.Defer.PlacementRangeInches);
-                DataBinding<RectangularZone> zoneBinding = GameContext.GameDataStore
-                    .GetDataBinding<RectangularZone>(GameContext.GameDataStore.Create(forwardZone));
 
                 var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID, "Place Scout Unit",
-                    zoneBinding, unit.ModelBindings);
+                    forwardZone, unit.ModelBindings);
 
                 List<PlacedObjectEntry<ModelData>> placements = await GameContext.PlayerRequester
                     .RequestDecision<PlaceObjectsRequest<ModelData>, List<PlacedObjectEntry<ModelData>>>(request);

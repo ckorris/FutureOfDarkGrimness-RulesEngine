@@ -69,8 +69,8 @@ namespace FDG.Stages
             // target here (and gating the Cast action the same way in ChooseActionStage.GetCanCast) is what
             // keeps a no-target cast from looping forever under a deterministic resolver — the same reason
             // ChooseRangedAttackStage filters weapons to those with a fireable target.
-            IReadOnlyList<RuntimeSpell> castable = GetCastableSpells(context.ActivatingUnit, player,
-                caster.Tokens.GetTokenCount(TokenType.SpellTokens));
+            int tokens = caster.Tokens.GetTokenCount(TokenType.SpellTokens);
+            IReadOnlyList<RuntimeSpell> castable = GetCastableSpells(context.ActivatingUnit, player, tokens);
             if (castable.Count == 0)
             {
                 GameContext.Log($"{caster.Name} has no castable spell (none affordable with a legal target).");
@@ -79,7 +79,7 @@ namespace FDG.Stages
             }
 
             // 1. Pick a spell (or cancel back to Choose Action).
-            RuntimeSpell? chosen = await PickSpell(player, castable);
+            RuntimeSpell? chosen = await PickSpell(player, castable, tokens, caster.Name);
             if (chosen == null)
             {
                 await OnFinished.Activate(context);
@@ -218,13 +218,24 @@ namespace FDG.Stages
                 .ToList();
         }
 
-        private async Task<RuntimeSpell?> PickSpell(PlayerID player, IReadOnlyList<RuntimeSpell> spells)
+        private async Task<RuntimeSpell?> PickSpell(PlayerID player, IReadOnlyList<RuntimeSpell> spells,
+            int tokens, string casterName)
         {
             List<string> options = spells.Select(SpellOptionLabel).ToList();
             options.Add(CANCEL_OPTION);
 
-            StringSelectionRequest request = new StringSelectionRequest(player, "Choose a spell to cast",
-                options, System.Array.Empty<StringSelectionRequest.InvalidOption>());
+            // Subtext under each spell: what it does. The Cancel option carries none.
+            Dictionary<string, string> descriptions = new Dictionary<string, string>();
+            foreach (RuntimeSpell spell in spells)
+            {
+                descriptions[SpellOptionLabel(spell)] = SpellText.Describe(spell.Definition);
+            }
+
+            string instructions =
+                $"Choose a spell to cast — {casterName} has {tokens} spell token{(tokens == 1 ? "" : "s")}";
+
+            StringSelectionRequest request = new StringSelectionRequest(player, instructions,
+                options, System.Array.Empty<StringSelectionRequest.InvalidOption>(), descriptions);
 
             string choice = await GameContext.PlayerRequester
                 .RequestDecision<StringSelectionRequest, string>(request);

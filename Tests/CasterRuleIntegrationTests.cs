@@ -218,6 +218,22 @@ namespace FDG.Tests
                     new Effect.AddRule(grantedRule, ELifetime.NextTrigger)),
                 System.Array.Empty<ResolvedRule>());
 
+        // #033 Slice 4 — the spell-menu subtext summarizes a spell's effect and target.
+        [Test]
+        public void SpellText_Describe_SummarizesEffectAndTarget()
+        {
+            string damage = SpellText.Describe(new SpellDefinition("Bolt", 2,
+                new TargetSelector(18f, 1, 1, ETargetAffinity.Foe, RequireLineOfSight: false),
+                new Effect.DealHits(2, new[] { "Bane" }, ArmorPenetration: 1)));
+            Assert.That(damage, Does.Contain("2 hits").And.Contain("AP(1)").And.Contain("Bane")
+                .And.Contain("enemy").And.Contain("18"));
+
+            string buff = SpellText.Describe(new SpellDefinition("Bless", 1,
+                new TargetSelector(12f, 1, 2, ETargetAffinity.Friend, RequireLineOfSight: false),
+                new Effect.AddRule("Furious", ELifetime.NextTrigger)));
+            Assert.That(buff, Does.Contain("Furious").And.Contain("up to 2").And.Contain("friendly"));
+        }
+
         private static UnitActionContext NewActivation(IGameContext ctx, DataBinding<UnitData> unit)
         {
             UnitActionContext unitCtx = new UnitActionContext(ctx, unit);

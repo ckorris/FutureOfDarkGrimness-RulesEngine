@@ -48,6 +48,9 @@ namespace FDG.Stages
             // straight back to pick the next player.
             chooseUnitToDeploy.OnDeferred.Bind(determineNextDeployPlayer);
             chooseDeployAction.OnFinish.Bind(deployUnitStage);
+            // Loading a unit into a transport (#035) likewise counts as the turn with no placement —
+            // skip DeployUnit and go back to pick the next player.
+            chooseDeployAction.OnEmbarked.Bind(determineNextDeployPlayer);
             deployUnitStage.OnFinish.Bind(determineNextDeployPlayer);
             placeDeferredUnits.OnFinish.Bind(toMainEvent);
 

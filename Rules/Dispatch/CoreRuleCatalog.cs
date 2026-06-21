@@ -24,7 +24,7 @@ public static class CoreRuleCatalog
     {
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
         Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Vanguard, Scout, Ambush, Thrust,
-        Blast, Takedown, Impact, Counter, MartialProwess, Strafing, Fear, Fearless, Hero,
+        Blast, Takedown, Impact, Counter, MartialProwess, Strafing, Fear, Fearless, Hero, Transport,
     };
 
     /// <summary>
@@ -479,14 +479,16 @@ public static class CoreRuleCatalog
     /// (the same reason <see cref="Hero"/>'s join is engine code). This definition exists so the rule has
     /// a stable identity to attach and test against.
     ///
-    /// Deliberately NOT yet in <see cref="All"/>: army-load resolution / registry / numeric-arity / the
-    /// army-builder picker are wired in a later slice (deploy-time loading). Until then it is referenced
-    /// directly. When it joins <see cref="All"/> it must declare Unit scope and have its <c>Arg(0)</c>
-    /// arity accepted at attach (it carries an argument no hook Effect references — a marker-with-arg).
+    /// In <see cref="All"/> so the army-builder picker offers it and army-load resolves "Transport" by name.
+    /// It is a <em>marker-with-arg</em>: the capacity is its <c>Arg(0)</c>, but no hook Effect references it
+    /// (engine code reads it), so it declares <c>EngineArgumentCount: 1</c> — without that
+    /// <see cref="RuleArgumentArity"/> would infer 0 args and the picker would treat it as non-numeric.
+    /// Unit-scoped (the default).
     /// </summary>
     public static SpecialRuleDefinition Transport { get; } = new SpecialRuleDefinition("Transport",
         Array.Empty<HookEntry>(),
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        EngineArgumentCount: 1);
 
     /// <summary> Canonical name of the engine-internal Disembark ability (#035). </summary>
     public const string DisembarkRuleName = "Disembark";
@@ -498,9 +500,9 @@ public static class CoreRuleCatalog
     /// <see cref="EHookID.Activation_OnActionChoice"/> so it appears as a "Disembark" action; because its
     /// effect is movement (place within 6" of the transport + un-embark), <c>ChooseActionStage</c> routes
     /// it by name to <c>DisembarkStage</c> rather than the generic token-op resolver. Not in
-    /// <see cref="All"/> — it isn't an army-list rule; the engine attaches it universally. Being a durable
-    /// rule gated by the *serialized* token (not a transient attach), it is restored by the #094 resume
-    /// rule-rehydration fix.
+    /// <see cref="All"/> — it isn't an army-list rule players pick; the engine attaches it universally.
+    /// Being a durable rule gated by the *serialized* token (not a transient attach), it is restored by the
+    /// #094 resume rule-rehydration fix.
     /// </summary>
     public static SpecialRuleDefinition Disembark { get; } = new SpecialRuleDefinition(DisembarkRuleName,
         Array.Empty<HookEntry>(),

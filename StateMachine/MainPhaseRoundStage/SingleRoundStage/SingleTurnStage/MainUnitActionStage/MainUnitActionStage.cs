@@ -45,6 +45,7 @@ namespace FDG.Stages
                 .AddChild(new MeleeStage(GameContext, this), out var melee)
                 .AddChild(new ShootStage(GameContext, this), out var shoot)
                 .AddChild(new CustomActionStage(GameContext, this), out var customAction)
+                .AddChild(new CastSpellStage(GameContext, this), out var castSpell)
                 .AddSibling(nameof(ToReconcileEndOfActivation), ToReconcileEndOfActivation, out string toReconcileActivationEvent)
                 .Build();
 
@@ -54,6 +55,7 @@ namespace FDG.Stages
             chooseAction.ToCharge.Bind(melee);
             chooseAction.ToShoot.Bind(shoot);
             chooseAction.ToCustomAction.Bind(customAction);
+            chooseAction.ToCast.Bind(castSpell);
             chooseAction.ToReconcileEndOfActivation.Bind(toReconcileActivationEvent);
             movement.OnFinishedMovement.Bind(chooseAction);
             melee.OnFinishedMelee.Bind(chooseAction);
@@ -61,6 +63,8 @@ namespace FDG.Stages
             shoot.BackToChooseAction.Bind(chooseAction);
             // #010 — a resolved custom action loops back to Choose Action (layered, doesn't end the turn).
             customAction.OnFinished.Bind(chooseAction);
+            // #033 — casting also loops back to Choose Action, layered (doesn't set HasMoved/HasAttacked).
+            castSpell.OnFinished.Bind(chooseAction);
 
             return dictionary;
         }

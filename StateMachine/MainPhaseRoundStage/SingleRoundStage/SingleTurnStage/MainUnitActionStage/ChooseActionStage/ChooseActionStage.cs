@@ -15,12 +15,14 @@ namespace FDG.Stages
         public StageBinding ToMovement;
         public StageBinding ToCharge;
         public StageBinding ToShoot;
+        public StageBinding ToCast;
         public StageBinding ToCustomAction;
         public StageBinding ToReconcileEndOfActivation;
 
         public const string MOVEMENT_CHOICE_NAME = "Move";
         public const string CHARGE_CHOICE_NAME = "Charge";
         public const string SHOOT_CHOICE_NAME = "Shoot";
+        public const string CAST_CHOICE_NAME = "Cast";
         public const string PASS_CHOICE_NAME = "Pass";
 
         public ChooseActionStage(IGameContext gameContext, IStateMachineLayer<IUnitActionContext> parent) : base(gameContext, parent)
@@ -28,6 +30,7 @@ namespace FDG.Stages
             ToMovement = new StageBinding(this);
             ToCharge = new StageBinding(this);
             ToShoot = new StageBinding(this);
+            ToCast = new StageBinding(this);
             ToCustomAction = new StageBinding(this);
             ToReconcileEndOfActivation = new StageBinding(this);
         }
@@ -60,6 +63,14 @@ namespace FDG.Stages
             bool canShoot = GetCanShoot(context, out string cantShootReason);
             bool canPass = GetCanPass(GameContext, context, out string cantPassReason);
 
+            // #033 — a unit with Caster(X) gets a "Cast" action whenever its army has an affordable spell.
+            // Like custom actions, casting is layered (it doesn't end the turn), so it's offered regardless
+            // of whether the unit has moved/attacked. Only shown for casters (no point graying it out for
+            // every non-caster).
+            bool isCaster = IsCaster(context.ActivatingUnit.GetValue());
+            string cantCastReason = null;
+            bool canCast = isCaster && GetCanCast(context, out cantCastReason);
+
             // #010 — special rules contribute custom actions (e.g. a Caster's spell) by carrying an
             // ActivatedAbility that triggers at this hook. GatherOffers returns one offer per affordable,
             // available such ability; each surfaces below as its own action.
@@ -67,8 +78,8 @@ namespace FDG.Stages
                 .GatherOffers(new ActionChoiceContext(context.ActivatingUnit.GetValue()));
             bool hasCustomActionsAvailable = customActionOffers.Count > 0;
 
-            //If we have no available actions 
-            if ((canMove || canCharge || canShoot || hasCustomActionsAvailable) == false)
+            //If we have no available actions
+            if ((canMove || canCharge || canShoot || canCast || hasCustomActionsAvailable) == false)
             {
                 GameContext.Log($"No more available actions left in {nameof(ChooseActionStage)}. Passing.");
                 await ToReconcileEndOfActivation.Activate(context);
@@ -110,6 +121,21 @@ namespace FDG.Stages
                 invalidOptions.Add(new StringSelectionRequest.InvalidOption(SHOOT_CHOICE_NAME, cantShootReason));
             }
 
+            // #033 — Cast is only listed for casters (valid when an affordable spell exists, invalid with a
+            // reason otherwise). Routes to CastSpellStage, which loops back here without ending the turn.
+            if(isCaster)
+            {
+                if(canCast)
+                {
+                    validOptions.Add(CAST_CHOICE_NAME);
+                    outcomes.Add(CAST_CHOICE_NAME, () => ToCast.Activate(context));
+                }
+                else
+                {
+                    invalidOptions.Add(new StringSelectionRequest.InvalidOption(CAST_CHOICE_NAME, cantCastReason));
+                }
+            }
+
             // #010 custom actions: one option per offer, labelled by the rule. Choosing it stashes the
             // offer on the context and routes to CustomActionStage, which resolves it and loops back here
             // WITHOUT setting HasMoved/HasAttacked — casting is a layered overlay, not an action that ends
@@ -118,9 +144,13 @@ namespace FDG.Stages
             // rather than overwriting the outcome map.
             foreach (AbilityOffer offer in customActionOffers)
             {
+                // "Cast" is only a reserved menu entry for casters (it isn't shown for anyone else), so a
+                // non-caster custom action may still legitimately use that name; for a caster the first-class
+                // Cast wins (it's already in outcomes, caught below).
                 bool collides = offer.RuleName == MOVEMENT_CHOICE_NAME
                     || offer.RuleName == CHARGE_CHOICE_NAME
                     || offer.RuleName == SHOOT_CHOICE_NAME
+                    || (isCaster && offer.RuleName == CAST_CHOICE_NAME)
                     || offer.RuleName == PASS_CHOICE_NAME
                     || outcomes.ContainsKey(offer.RuleName);
 
@@ -239,6 +269,36 @@ namespace FDG.Stages
             if(context.MoveDistance > precursor.MaxRushDistance + 0.0001f)
             {
                 reasonIfCant = $"Moved {context.MoveDistance:F2}\" — beyond Rush range; must engage in melee.";
+                return false;
+            }
+
+            reasonIfCant = null;
+            return true;
+        }
+
+        private static bool IsCaster(IUnit unit) =>
+            unit.RuleDefinitions.Any(rule => rule.Definition == CoreRuleCatalog.Caster);
+
+        // #033 — true when the caster's army has at least one spell it can currently afford. Casting is
+        // gated only on token affordability here; whether a chosen spell actually has a legal target is
+        // resolved in CastSpellStage (which returns to Choose Action if none).
+        private bool GetCanCast(IUnitActionContext context, out string reasonIfCant)
+        {
+            IUnit unit = context.ActivatingUnit.GetValue();
+            int tokens = unit.Tokens.GetTokenCount(TokenType.SpellTokens);
+
+            ArmyData army = GameContext.GameDataStore().GetAllValues<ArmyData>()
+                .FirstOrDefault(a => a.PlayerID == context.ActivatingPlayer());
+
+            if (army == null || army.Spells.Count == 0)
+            {
+                reasonIfCant = "No spells available.";
+                return false;
+            }
+
+            if (!army.Spells.Any(spell => spell.Threshold > 0 && spell.Threshold <= tokens))
+            {
+                reasonIfCant = $"Not enough spell tokens ({tokens}).";
                 return false;
             }
 

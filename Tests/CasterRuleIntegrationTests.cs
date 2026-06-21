@@ -4,9 +4,11 @@ using FDG.Players;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 using FDG.SaveLoad;
 using FDG.Stages;
 using FDG.StageResolution;
+using FDG.StageResolution.Requests;
 using NUnit.Framework;
 
 namespace FDG.Tests
@@ -113,6 +115,97 @@ namespace FDG.Tests
             Assert.That(((RuleArgument.Int)blast.Arguments[0]).Value, Is.EqualTo(3));
         }
 
+        // #033 Slice 2 — Choose Action offers "Cast" to a caster with an affordable spell and routes it to
+        // the cast stage.
+        [Test]
+        public async Task ChooseAction_CasterWithAffordableSpell_OffersCastAndRoutes()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CannedStringChoiceRequester("Cast"));
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 3,
+                new[] { Spell("Zap", threshold: 1, ETargetAffinity.Foe) }, new Position(10f, 10f));
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+
+            bool routed = false;
+            var stage = new ChooseActionStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.ToCast.Bind("ToCast");
+            stage.ToCast.OnWillActivate += _ => routed = true;
+            await stage.Enter(unitCtx);
+
+            Assert.That(routed, Is.True, "a caster with an affordable spell is offered Cast and routes to the cast stage");
+        }
+
+        // #033 Slice 2 — casting spends the spell's token cost (on the attempt) and loops back to Choose
+        // Action without consuming the move/attack (layered). TriggeredMoveTestContext's FixedDiceRoller(4)
+        // means the 4+ roll passes; the token spend is identical on a failed cast.
+        [Test]
+        public async Task CastSpellStage_SpendsTokens_AndLoopsBackLayered()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester());
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 3,
+                new[] { Spell("Zap", threshold: 2, ETargetAffinity.Foe) }, new Position(10f, 10f));
+            MakeEnemyUnit(new PlayerID(System.Guid.NewGuid()), new Position(12f, 10f));
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+
+            bool finished = false;
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            stage.OnFinished.OnWillActivate += _ => finished = true;
+            await stage.Enter(unitCtx);
+
+            Assert.That(caster.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(1),
+                "casting spends the spell's threshold in tokens (3 - 2)");
+            Assert.That(finished, Is.True, "casting loops back to Choose Action");
+            Assert.That(unitCtx.HasMoved, Is.False, "casting is layered — it does not consume the move");
+            Assert.That(unitCtx.HasAttacked, Is.False, "casting is layered — it does not consume the attack");
+        }
+
+        private static UnitActionContext NewActivation(IGameContext ctx, DataBinding<UnitData> unit)
+        {
+            UnitActionContext unitCtx = new UnitActionContext(ctx, unit);
+            unitCtx.Reset(unit);
+            return unitCtx;
+        }
+
+        private static RuntimeSpell Spell(string name, int threshold, ETargetAffinity affinity) =>
+            new RuntimeSpell(
+                new SpellDefinition(name, threshold,
+                    new TargetSelector(18f, 1, 1, affinity, RequireLineOfSight: false),
+                    new Effect.DealHits(1, System.Array.Empty<string>())),
+                System.Array.Empty<ResolvedRule>());
+
+        private DataBinding<UnitData> MakeCasterUnit(int casterRating, int tokens,
+            IReadOnlyList<RuntimeSpell> spells, Position pos)
+        {
+            var model = new ModelData(0.5f, new List<Weapon>(), pos, _store);
+            var modelBindings = new List<DataBinding<ModelData>> { _store.GetDataBinding<ModelData>(_store.Create(model)) };
+
+            var unit = new UnitData(_player, "Wizards", quality: 4, defense: 4, modelBindings: modelBindings);
+            DataBinding<UnitData> binding = _store.GetDataBinding<UnitData>(_store.Create(unit));
+            binding.GetValue().AttachRuleDefinition(new ResolvedRule("Caster", CoreRuleCatalog.Caster,
+                new RuleArgument[] { new RuleArgument.Int(casterRating) }));
+            if (tokens > 0)
+            {
+                binding.GetValue().Tokens.AddToken(
+                    new Token(TokenType.SpellTokens, tokens, new TokenClearTrigger.ManualOnly()));
+            }
+
+            var army = new ArmyData(_player, new List<DataBinding<UnitData>> { binding });
+            army.SetSpells(spells);
+            _store.Create(army);
+            return binding;
+        }
+
+        private DataBinding<UnitData> MakeEnemyUnit(PlayerID enemyPlayer, Position pos)
+        {
+            var model = new ModelData(0.5f, new List<Weapon>(), pos, _store);
+            var modelBindings = new List<DataBinding<ModelData>> { _store.GetDataBinding<ModelData>(_store.Create(model)) };
+
+            var unit = new UnitData(enemyPlayer, "Grunts", quality: 4, defense: 4, modelBindings: modelBindings);
+            DataBinding<UnitData> binding = _store.GetDataBinding<UnitData>(_store.Create(unit));
+            _store.Create(new ArmyData(enemyPlayer, new List<DataBinding<UnitData>> { binding }));
+            return binding;
+        }
+
         private async Task RunRoundStart(int roundCount)
         {
             var ctx = new TriggeredMoveTestContext(_store, new NoRequestsRequester());
@@ -152,5 +245,23 @@ namespace FDG.Tests
             where TRequest : IStageTaskRequest<TReply>
             => throw new System.InvalidOperationException(
                 "No player request expected during the round-start spell-token grant; got " + request.GetType());
+    }
+
+    // Drives CastSpellStage by picking the first offered spell and the first eligible target.
+    internal sealed class CannedCastRequester : IPlayerRequestByID
+    {
+        public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
+            where TRequest : IStageTaskRequest<TReply>
+        {
+            switch (request)
+            {
+                case StringSelectionRequest spellPick:
+                    return Task.FromResult((TReply)(object)spellPick.ValidOptions[0]);
+                case SelectionRequest<UnitData> targetPick:
+                    return Task.FromResult((TReply)(object)targetPick.ValidOptions[0].Option);
+                default:
+                    throw new System.InvalidOperationException("Unexpected request: " + request.GetType());
+            }
+        }
     }
 }

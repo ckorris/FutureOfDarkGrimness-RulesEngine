@@ -1,5 +1,4 @@
 using FDG.Rules.Definitions;
-using FDG.Rules.Foundation;
 
 namespace FDG.Rules.Dispatch;
 
@@ -34,9 +33,6 @@ public static class OperationApplier
                     break;
                 case RuleOperation.ConsumeTokensFromModel consume:
                     consume.Model.Tokens.RemoveTokens(consume.TType, consume.Count);
-                    break;
-                case RuleOperation.ConsumeRuleGrant consumeGrant:
-                    consumeGrant.Unit.Tokens.RemoveTokensWithPayload(TokenType.RuleGrant, consumeGrant.Payload, 1);
                     break;
                 case RuleOperation.InvokeHeal heal:
                     // #100 #2e — Mend's heal. Self-contained (mutates the model directly, no services), so it

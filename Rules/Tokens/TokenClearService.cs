@@ -41,14 +41,11 @@ public sealed class TokenClearService
 
             foreach (Token token in expired)
             {
-                if (token.OwnerUnitID.HasValue)
-                {
-                    container.RemoveTokensWithOwner(token.Type, token.OwnerUnitID.Value, token.Count);
-                }
-                else
-                {
-                    container.RemoveTokens(token.Type, token.Count);
-                }
+                // Payload-precise (#101): with several distinct payload-bearing tokens sharing a type+owner
+                // (e.g. two different granted rules on one unit, differing lifetimes), clear only the expired
+                // entry, not whichever same-type token comes first. No-payload tokens match under
+                // Equals(null, null), so owner-scoped marks and cost markers clear exactly as before.
+                container.RemoveTokensWithPayload(token.Type, token.OwnerUnitID, token.Payload, token.Count);
             }
         }
     }

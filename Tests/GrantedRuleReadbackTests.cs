@@ -168,8 +168,9 @@ namespace FDG.Tests
             ops.HasOperation<RuleOperation.ApplyRollModifier>(op => op.Roll == ERollKind.Save && op.Delta == 1);
         }
 
-        // A "next time it would apply" grant (FirstTrigger clear) fires once: the evaluator emits a
-        // ConsumeRuleGrant for it, and after that op is applied the grant is gone and no longer fires.
+        // A "next time it would apply" grant (FirstTrigger clear) fires once: the live EvaluateAll consumes
+        // it DIRECTLY (#101), so it no longer fires — without the caller applying any returned op, which is
+        // what makes it work at the combat hooks whose ops run through sinks rather than OperationApplier.
         [Test]
         public void FirstTriggerGrant_FiresOnce_ThenIsConsumed()
         {
@@ -180,19 +181,15 @@ namespace FDG.Tests
             IUnit attacker = harness.BuildUnit("P2", modelCount: 3);
             harness.GrantRule(defender, "Regeneration", ELifetime.NextTrigger, clear: new TokenClearTrigger.FirstTrigger());
 
-            // EvaluateAll is the live apply path that runs the consume-on-fire pass.
+            // EvaluateAll is the live apply path; it spends the one-shot grant on this occurrence.
             var ops = harness.EvaluateAll(SaveContext(attacker, defender), (defender, ERuleSeat.Subject));
             ops.HasOperation<RuleOperation.IgnoreWound>(op => op.MinRoll == 5);
-            ops.HasOperation<RuleOperation.ConsumeRuleGrant>(op =>
-                op.Payload is TokenPayload.RuleGrant rg && rg.RuleName == "Regeneration");
-
-            OperationApplier.ApplyTokenOperations(ops);
 
             var after = harness.EvaluateAll(SaveContext(attacker, defender), (defender, ERuleSeat.Subject));
             Assert.That(after.OfType<RuleOperation.IgnoreWound>(), Is.Empty, "spent grant no longer fires");
         }
 
-        // An aura grant (ManualOnly clear) is NOT consumed — it persists while the bearer lives.
+        // An aura grant (ManualOnly clear) is NOT consumed — it persists and fires every time.
         [Test]
         public void AuraGrant_IsNotConsumedOnFire()
         {
@@ -203,10 +200,10 @@ namespace FDG.Tests
             IUnit attacker = harness.BuildUnit("P2", modelCount: 3);
             harness.GrantRule(defender, "Regeneration"); // default: Aura / ManualOnly
 
-            var ops = harness.EvaluateAll(SaveContext(attacker, defender), (defender, ERuleSeat.Subject));
+            harness.EvaluateAll(SaveContext(attacker, defender), (defender, ERuleSeat.Subject));
+            var after = harness.EvaluateAll(SaveContext(attacker, defender), (defender, ERuleSeat.Subject));
 
-            ops.HasOperation<RuleOperation.IgnoreWound>(op => op.MinRoll == 5);
-            Assert.That(ops.OfType<RuleOperation.ConsumeRuleGrant>(), Is.Empty, "auras are permanent, not spent");
+            after.HasOperation<RuleOperation.IgnoreWound>(op => op.MinRoll == 5);
         }
     }
 }

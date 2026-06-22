@@ -47,8 +47,9 @@ public class TokenContainer : ITokenContainer
     public int RemoveTokensWithOwner(TokenType tokenType, UnitID owner, int count = 1)
         => RemoveMatching(entry => entry.Type == tokenType && entry.OwnerUnitID == owner, count);
 
-    public int RemoveTokensWithPayload(TokenType tokenType, TokenPayload? payload, int count = 1)
-        => RemoveMatching(entry => entry.Type == tokenType && Equals(entry.Payload, payload), count);
+    public int RemoveTokensWithPayload(TokenType tokenType, UnitID? owner, TokenPayload? payload, int count = 1)
+        => RemoveMatching(entry => entry.Type == tokenType && entry.OwnerUnitID == owner
+            && Equals(entry.Payload, payload), count);
 
     /// <summary>
     /// Drains up to <paramref name="count"/> tokens from entries satisfying

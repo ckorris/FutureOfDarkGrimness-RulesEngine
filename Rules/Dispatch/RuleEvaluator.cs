@@ -55,8 +55,8 @@ public sealed class RuleEvaluator
     {
         var tagged = new List<TaggedOperation>();
         // Single-participant Evaluate is the deployment/activation-query path (no combat buffs fire here),
-        // so it doesn't run the consume-on-fire pass — firstTriggerGrants stays null.
-        CollectTagged(unit, seat, weapon, models: null, context, tagged, new DedupState(), firstTriggerGrants: null);
+        // so it doesn't run the consume-on-fire pass — grantsToConsume stays null.
+        CollectTagged(unit, seat, weapon, models: null, context, tagged, new DedupState(), grantsToConsume: null);
 
         // Per-unit Evaluate does NOT run the suppression first-pass — cross-unit suppression
         // (an attacker's Unstoppable cancelling a defender's Regeneration) only exists once the
@@ -162,14 +162,15 @@ public sealed class RuleEvaluator
         // participant) fires once per bearer.
         var seen = new DedupState();
 
-        // #100 #2c — only the live apply path (log == true) records FirstTrigger grants and emits their
-        // consume ops; the read-only named query (log == false) must not mutate token state.
-        Dictionary<ResolvedRule, (IUnit Bearer, TokenPayload Payload)>? firstTriggerGrants =
-            log ? new Dictionary<ResolvedRule, (IUnit, TokenPayload)>() : null;
+        // #101 — only the live apply path (log == true) consumes one-shot grants; the read-only named
+        // query (log == false) must not mutate token state. Collects the FirstTrigger grant TOKENS whose
+        // rule has an entry for this hook+seat — the "next time it would apply" occurrence — to spend after
+        // the walk, regardless of whether the rule's condition passed or its op survived suppression.
+        List<(IUnit Unit, Token Grant)>? grantsToConsume = log ? new List<(IUnit, Token)>() : null;
 
         foreach ((IUnit unit, ERuleSeat seat, IWeapon? weapon, IReadOnlyList<IModel>? models) in participants)
         {
-            CollectTagged(unit, seat, weapon, models, context, tagged, seen, firstTriggerGrants);
+            CollectTagged(unit, seat, weapon, models, context, tagged, seen, grantsToConsume);
         }
 
         var suppressedRuleNames = tagged
@@ -200,24 +201,27 @@ public sealed class RuleEvaluator
             result.Add(t);
         }
 
-        // #100 #2c consume-on-fire: for each granted FirstTrigger rule that produced a SURVIVING op, spend
-        // one of its tokens — deduped per (bearer, payload) so several surviving ops from one grant consume
-        // just one. Appended after the loop (so we iterate the finished `result`, not a list we're growing).
-        if (firstTriggerGrants != null && firstTriggerGrants.Count > 0)
+        // #101 consume-on-occurrence: spend each one-shot grant whose hook+seat fired this event, removing
+        // its token DIRECTLY (not via a returned op). This is robust — the hit/save/melee pipeline runs
+        // sinks, not OperationApplier, so a returned consume op would be silently dropped exactly where
+        // most combat buffs apply. Deduped per (bearer, payload) so one occurrence spends one charge even
+        // when a grant fired through several entries.
+        if (grantsToConsume != null)
         {
-            var spent = new HashSet<(UnitID, TokenPayload)>();
-            var consumeOps = new List<TaggedOperation>();
-            foreach (TaggedOperation t in result)
+            var spent = new HashSet<(UnitID, TokenPayload?)>();
+            foreach ((IUnit unit, Token grant) in grantsToConsume)
             {
-                if (firstTriggerGrants.TryGetValue(t.Origin, out (IUnit Bearer, TokenPayload Payload) src)
-                    && spent.Add((src.Bearer.ID, src.Payload)))
+                if (!spent.Add((unit.ID, grant.Payload)))
                 {
-                    consumeOps.Add(new TaggedOperation(
-                        new RuleOperation.ConsumeRuleGrant(src.Bearer, src.Payload), t.Origin, src.Bearer));
+                    continue;
+                }
+
+                unit.Tokens.RemoveTokensWithPayload(grant.Type, grant.OwnerUnitID, grant.Payload, count: 1);
+                if (grant.Payload is TokenPayload.RuleGrant spentGrant)
+                {
+                    _log?.Log($"{unit.Name}'s {spentGrant.RuleName} grant is spent.");
                 }
             }
-
-            result.AddRange(consumeOps);
         }
 
         return result;
@@ -235,7 +239,7 @@ public sealed class RuleEvaluator
     /// </summary>
     private void CollectTagged(IUnit unit, ERuleSeat seat, IWeapon? weapon, IReadOnlyList<IModel>? models,
         IHookContext context, List<TaggedOperation> sink, DedupState seen,
-        Dictionary<ResolvedRule, (IUnit Bearer, TokenPayload Payload)>? firstTriggerGrants)
+        List<(IUnit Unit, Token Grant)>? grantsToConsume)
     {
         CollectFromRules(unit.RuleDefinitions, unit, carryingWeapon: null, seat, context, sink, seen);
 
@@ -244,7 +248,7 @@ public sealed class RuleEvaluator
         // they honour the firing seat/condition and share the dedup (an argument-less rule granted on
         // top of a static copy fires once) and suppression first-pass. Bearer stays the unit, never a
         // weapon — grants live on unit token containers.
-        CollectGrantedRules(unit, seat, context, sink, seen, firstTriggerGrants);
+        CollectGrantedRules(unit, seat, context, sink, seen, grantsToConsume);
 
         if (weapon != null)
         {
@@ -308,7 +312,7 @@ public sealed class RuleEvaluator
     /// </summary>
     private void CollectGrantedRules(IUnit unit, ERuleSeat seat, IHookContext context,
         List<TaggedOperation> sink, DedupState seen,
-        Dictionary<ResolvedRule, (IUnit Bearer, TokenPayload Payload)>? firstTriggerGrants)
+        List<(IUnit Unit, Token Grant)>? grantsToConsume)
     {
         if (_ruleResolver == null)
         {
@@ -330,12 +334,14 @@ public sealed class RuleEvaluator
 
             (granted ??= new List<ResolvedRule>()).Add(resolved);
 
-            // #100 #2c — a "next time it would apply" grant (FirstTrigger clear) is spent the moment its
-            // effect actually applies. Remember which synthesized rule maps to which token payload so
-            // CollectSurviving can emit the consume for the ones whose op survives suppression.
-            if (firstTriggerGrants != null && token.ClearTrigger is TokenClearTrigger.FirstTrigger)
+            // #101 — record this one-shot ("next time") grant for consumption iff THIS hook+seat is one its
+            // rule actually listens on (the occurrence). It's then spent in CollectSurviving regardless of
+            // whether the condition passed or the op survived suppression — forcing a unit to waste a buff
+            // by entering a situation it can't benefit from is a legitimate tactic.
+            if (grantsToConsume != null && token.ClearTrigger is TokenClearTrigger.FirstTrigger
+                && RuleHasEntryForHook(resolved.Definition, context.Hook, seat))
             {
-                firstTriggerGrants[resolved] = (unit, grant);
+                grantsToConsume.Add((unit, token));
             }
         }
 
@@ -343,6 +349,24 @@ public sealed class RuleEvaluator
         {
             CollectFromRules(granted, unit, carryingWeapon: null, seat, context, sink, seen);
         }
+    }
+
+    /// <summary>
+    /// Whether <paramref name="definition"/> has any passive entry for the firing <paramref name="hook"/>
+    /// in the <paramref name="seat"/> the bearer is playing — i.e. this event is an occurrence the rule
+    /// listens on. Used to decide when a one-shot ("next time") grant is spent (#101), independent of the
+    /// entry's <see cref="Condition"/> or whether its op survives.
+    /// </summary>
+    private static bool RuleHasEntryForHook(SpecialRuleDefinition definition, EHookID hook, ERuleSeat seat)
+    {
+        foreach (HookEntry entry in definition.Passive)
+        {
+            if (entry.HookID == hook && entry.Seat == seat)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void Log(TaggedOperation t)

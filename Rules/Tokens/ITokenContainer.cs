@@ -19,13 +19,13 @@ public interface ITokenContainer
     public int RemoveTokensWithOwner(TokenType tokenType, UnitID owner, int count = 1);
 
     /// <summary>
-    /// Removes up to <paramref name="count"/> tokens of <paramref name="tokenType"/> whose <c>Payload</c>
-    /// equals <paramref name="payload"/> (value equality), leaving same-type tokens with a different payload
-    /// untouched. The payload-scoped counterpart to <see cref="RemoveTokens"/> — used to consume one specific
-    /// granted rule (a <c>RuleGrant</c> token) without disturbing the unit's other grants. Returns the number
-    /// actually removed.
+    /// Removes up to <paramref name="count"/> tokens matching <paramref name="tokenType"/>,
+    /// <paramref name="owner"/> (nullable — matches the no-owner pile) AND <paramref name="payload"/>
+    /// (value equality), leaving same-type tokens with a different owner or payload untouched. The
+    /// fully-precise counterpart used to consume one specific granted rule (a <c>RuleGrant</c> token) or
+    /// clear one expired entry without disturbing the unit's other grants. Returns the number removed.
     /// </summary>
-    public int RemoveTokensWithPayload(TokenType tokenType, TokenPayload? payload, int count = 1);
+    public int RemoveTokensWithPayload(TokenType tokenType, UnitID? owner, TokenPayload? payload, int count = 1);
 
     public bool HasToken(TokenType tokenType);
 

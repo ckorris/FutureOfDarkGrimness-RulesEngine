@@ -298,6 +298,11 @@ namespace FDG.Tests
                 new TargetSelector(12f, 1, 2, ETargetAffinity.Friend, RequireLineOfSight: false),
                 new Effect.AddRule("Furious", ELifetime.NextTrigger)));
             Assert.That(buff, Does.Contain("Furious").And.Contain("up to 2").And.Contain("friendly"));
+
+            string statMod = SpellText.Describe(new SpellDefinition("Guidance", 1,
+                new TargetSelector(12f, 1, 1, ETargetAffinity.Friend, RequireLineOfSight: false),
+                new Effect.StatModifier(ERollKind.Hit, 1, ELifetime.NextTrigger)));
+            Assert.That(statMod, Does.Contain("+1 to hit rolls").And.Contain("friendly"));
         }
 
         private static UnitActionContext NewActivation(IGameContext ctx, DataBinding<UnitData> unit)

@@ -34,6 +34,11 @@ namespace FDG.Stages
                 }
                 case Effect.AddRule addRule:
                     return $"grants {addRule.RuleName} ({DescribeLifetime(addRule.Scope)})";
+                case Effect.StatModifier statMod:
+                {
+                    string sign = statMod.Delta >= 0 ? "+" : "";
+                    return $"{sign}{statMod.Delta} to {RollName(statMod.Roll)} ({DescribeLifetime(statMod.LifetimeScope)})";
+                }
                 default:
                     return "applies an effect";
             }
@@ -61,6 +66,14 @@ namespace FDG.Stages
             ELifetime.ThisRound => "this round",
             ELifetime.UntilEndOfGame => "rest of game",
             _ => lifetime.ToString(),
+        };
+
+        private static string RollName(ERollKind roll) => roll switch
+        {
+            ERollKind.Hit => "hit rolls",
+            ERollKind.Save => "defense rolls",
+            ERollKind.Morale => "morale",
+            _ => "rolls",
         };
 
         private static string Plural(int count) => count == 1 ? "" : "s";

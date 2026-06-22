@@ -7,7 +7,11 @@ namespace FDG.Stages
 {
     public abstract partial class StageBase<TContext> : IStage
     {
-        public string Name => GetType().Name;
+        // The transition key for this stage within its parent. Defaults to the type name (one instance
+        // per stage type per parent — the common case). Virtual so a stage used as MULTIPLE sibling
+        // instances under one parent (e.g. PreAttackStage on both the shoot and melee edges) can give each
+        // instance a distinct name and avoid a transition-key collision.
+        public virtual string Name => GetType().Name;
 
         /// <summary>
         /// The context associated with this state.

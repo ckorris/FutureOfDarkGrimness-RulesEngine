@@ -193,6 +193,18 @@ public abstract record RuleOperation
     public sealed record ConsumeTokensFromUnit(IUnit Unit, TokenType TType, int Count) : RuleOperation;
 
     /// <summary>
+    /// Removes one <see cref="Foundation.TokenType.RuleGrant"/> token from <see cref="Unit"/> whose payload
+    /// equals <see cref="Payload"/> — the consume-on-fire of a "next time it would apply" buff (#100 #2c).
+    /// Distinct from <see cref="ConsumeTokensFromUnit"/> because that removes by type alone, which would
+    /// drop an arbitrary one of the unit's grants; this targets the specific granted rule that just fired.
+    /// </summary>
+    public sealed record ConsumeRuleGrant(IUnit Unit, TokenPayload Payload) : RuleOperation
+    {
+        public override string Describe() =>
+            $"consumed the {(Payload as TokenPayload.RuleGrant)?.RuleName ?? "rule"} grant";
+    }
+
+    /// <summary>
     /// Remove up to <see cref="Count"/> tokens of <see cref="TType"/> from
     /// <see cref="Model"/>'s container. Resolution of
     /// <see cref="Effect.ConsumeToken"/> targeting a model.

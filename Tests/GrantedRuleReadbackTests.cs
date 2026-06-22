@@ -141,5 +141,72 @@ namespace FDG.Tests
 
             ops.HasOperation<RuleOperation.IgnoreWound>(op => op.MinRoll == 5);
         }
+
+        // Two distinct grants on one unit are stored as separate tokens and BOTH fire — the payload-aware
+        // merge fix (#2c). Before it, the second grant's token collapsed into the first's count, dropping it.
+        [Test]
+        public void TwoDistinctGrants_AreStoredSeparately_AndBothFire()
+        {
+            var harness = new TestRuleHarness();
+            harness.Register(CoreRuleCatalog.Regeneration);
+            harness.Register(new SpecialRuleDefinition("Tough Skin",
+                new[]
+                {
+                    new HookEntry(EHookID.Shooting_OnSaveRollComplete, new Condition.Always(),
+                        new Effect.RollModifier(ERollKind.Save, 1), ELifetime.ThisAttack, ERuleSeat.Subject),
+                },
+                System.Array.Empty<ActivatedAbility>()));
+
+            IUnit defender = harness.BuildUnit("P1", modelCount: 3);
+            IUnit attacker = harness.BuildUnit("P2", modelCount: 3);
+            harness.GrantRule(defender, "Regeneration");
+            harness.GrantRule(defender, "Tough Skin");
+
+            var ops = harness.Evaluate(defender, ERuleSeat.Subject, SaveContext(attacker, defender));
+
+            ops.HasOperation<RuleOperation.IgnoreWound>(op => op.MinRoll == 5);
+            ops.HasOperation<RuleOperation.ApplyRollModifier>(op => op.Roll == ERollKind.Save && op.Delta == 1);
+        }
+
+        // A "next time it would apply" grant (FirstTrigger clear) fires once: the evaluator emits a
+        // ConsumeRuleGrant for it, and after that op is applied the grant is gone and no longer fires.
+        [Test]
+        public void FirstTriggerGrant_FiresOnce_ThenIsConsumed()
+        {
+            var harness = new TestRuleHarness();
+            harness.Register(CoreRuleCatalog.Regeneration);
+
+            IUnit defender = harness.BuildUnit("P1", modelCount: 3);
+            IUnit attacker = harness.BuildUnit("P2", modelCount: 3);
+            harness.GrantRule(defender, "Regeneration", ELifetime.NextTrigger, clear: new TokenClearTrigger.FirstTrigger());
+
+            // EvaluateAll is the live apply path that runs the consume-on-fire pass.
+            var ops = harness.EvaluateAll(SaveContext(attacker, defender), (defender, ERuleSeat.Subject));
+            ops.HasOperation<RuleOperation.IgnoreWound>(op => op.MinRoll == 5);
+            ops.HasOperation<RuleOperation.ConsumeRuleGrant>(op =>
+                op.Payload is TokenPayload.RuleGrant rg && rg.RuleName == "Regeneration");
+
+            OperationApplier.ApplyTokenOperations(ops);
+
+            var after = harness.EvaluateAll(SaveContext(attacker, defender), (defender, ERuleSeat.Subject));
+            Assert.That(after.OfType<RuleOperation.IgnoreWound>(), Is.Empty, "spent grant no longer fires");
+        }
+
+        // An aura grant (ManualOnly clear) is NOT consumed — it persists while the bearer lives.
+        [Test]
+        public void AuraGrant_IsNotConsumedOnFire()
+        {
+            var harness = new TestRuleHarness();
+            harness.Register(CoreRuleCatalog.Regeneration);
+
+            IUnit defender = harness.BuildUnit("P1", modelCount: 3);
+            IUnit attacker = harness.BuildUnit("P2", modelCount: 3);
+            harness.GrantRule(defender, "Regeneration"); // default: Aura / ManualOnly
+
+            var ops = harness.EvaluateAll(SaveContext(attacker, defender), (defender, ERuleSeat.Subject));
+
+            ops.HasOperation<RuleOperation.IgnoreWound>(op => op.MinRoll == 5);
+            Assert.That(ops.OfType<RuleOperation.ConsumeRuleGrant>(), Is.Empty, "auras are permanent, not spent");
+        }
     }
 }

@@ -20,9 +20,13 @@ public class TokenContainer : ITokenContainer
             return;
         }
         
-        //If we already have tokens of the same type and owner, just add to that pile.
-        //Note this assumes that there is nothing else different about the input tokens.
-        int existingIndex = _tokens.FindIndex(t => t.Type == token.Type && t.OwnerUnitID == token.OwnerUnitID);
+        //If we already have tokens of the same type, owner, AND payload, just add to that pile. The payload
+        //must match too: distinct RuleGrant payloads (different granted rules) on the same owner are
+        //semantically different tokens and must stay separate entries — without this they would collapse
+        //into one count, silently dropping every granted rule but the first. Payload-less tokens (Payload
+        //null) merge by type+owner exactly as before (Equals(null, null) is true).
+        int existingIndex = _tokens.FindIndex(t => t.Type == token.Type && t.OwnerUnitID == token.OwnerUnitID
+            && Equals(t.Payload, token.Payload));
         if (existingIndex < 0)
         {
             _tokens.Add(token);
@@ -42,6 +46,9 @@ public class TokenContainer : ITokenContainer
 
     public int RemoveTokensWithOwner(TokenType tokenType, UnitID owner, int count = 1)
         => RemoveMatching(entry => entry.Type == tokenType && entry.OwnerUnitID == owner, count);
+
+    public int RemoveTokensWithPayload(TokenType tokenType, TokenPayload? payload, int count = 1)
+        => RemoveMatching(entry => entry.Type == tokenType && Equals(entry.Payload, payload), count);
 
     /// <summary>
     /// Drains up to <paramref name="count"/> tokens from entries satisfying

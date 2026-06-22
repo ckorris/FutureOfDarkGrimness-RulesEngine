@@ -54,7 +54,9 @@ public sealed class RuleEvaluator
         IWeapon? weapon = null)
     {
         var tagged = new List<TaggedOperation>();
-        CollectTagged(unit, seat, weapon, models: null, context, tagged, new DedupState());
+        // Single-participant Evaluate is the deployment/activation-query path (no combat buffs fire here),
+        // so it doesn't run the consume-on-fire pass — firstTriggerGrants stays null.
+        CollectTagged(unit, seat, weapon, models: null, context, tagged, new DedupState(), firstTriggerGrants: null);
 
         // Per-unit Evaluate does NOT run the suppression first-pass — cross-unit suppression
         // (an attacker's Unstoppable cancelling a defender's Regeneration) only exists once the
@@ -160,9 +162,14 @@ public sealed class RuleEvaluator
         // participant) fires once per bearer.
         var seen = new DedupState();
 
+        // #100 #2c — only the live apply path (log == true) records FirstTrigger grants and emits their
+        // consume ops; the read-only named query (log == false) must not mutate token state.
+        Dictionary<ResolvedRule, (IUnit Bearer, TokenPayload Payload)>? firstTriggerGrants =
+            log ? new Dictionary<ResolvedRule, (IUnit, TokenPayload)>() : null;
+
         foreach ((IUnit unit, ERuleSeat seat, IWeapon? weapon, IReadOnlyList<IModel>? models) in participants)
         {
-            CollectTagged(unit, seat, weapon, models, context, tagged, seen);
+            CollectTagged(unit, seat, weapon, models, context, tagged, seen, firstTriggerGrants);
         }
 
         var suppressedRuleNames = tagged
@@ -193,6 +200,26 @@ public sealed class RuleEvaluator
             result.Add(t);
         }
 
+        // #100 #2c consume-on-fire: for each granted FirstTrigger rule that produced a SURVIVING op, spend
+        // one of its tokens — deduped per (bearer, payload) so several surviving ops from one grant consume
+        // just one. Appended after the loop (so we iterate the finished `result`, not a list we're growing).
+        if (firstTriggerGrants != null && firstTriggerGrants.Count > 0)
+        {
+            var spent = new HashSet<(UnitID, TokenPayload)>();
+            var consumeOps = new List<TaggedOperation>();
+            foreach (TaggedOperation t in result)
+            {
+                if (firstTriggerGrants.TryGetValue(t.Origin, out (IUnit Bearer, TokenPayload Payload) src)
+                    && spent.Add((src.Bearer.ID, src.Payload)))
+                {
+                    consumeOps.Add(new TaggedOperation(
+                        new RuleOperation.ConsumeRuleGrant(src.Bearer, src.Payload), t.Origin, src.Bearer));
+                }
+            }
+
+            result.AddRange(consumeOps);
+        }
+
         return result;
     }
 
@@ -207,7 +234,8 @@ public sealed class RuleEvaluator
     /// operations survive.
     /// </summary>
     private void CollectTagged(IUnit unit, ERuleSeat seat, IWeapon? weapon, IReadOnlyList<IModel>? models,
-        IHookContext context, List<TaggedOperation> sink, DedupState seen)
+        IHookContext context, List<TaggedOperation> sink, DedupState seen,
+        Dictionary<ResolvedRule, (IUnit Bearer, TokenPayload Payload)>? firstTriggerGrants)
     {
         CollectFromRules(unit.RuleDefinitions, unit, carryingWeapon: null, seat, context, sink, seen);
 
@@ -216,7 +244,7 @@ public sealed class RuleEvaluator
         // they honour the firing seat/condition and share the dedup (an argument-less rule granted on
         // top of a static copy fires once) and suppression first-pass. Bearer stays the unit, never a
         // weapon — grants live on unit token containers.
-        CollectGrantedRules(unit, seat, context, sink, seen);
+        CollectGrantedRules(unit, seat, context, sink, seen, firstTriggerGrants);
 
         if (weapon != null)
         {
@@ -279,7 +307,8 @@ public sealed class RuleEvaluator
     /// army-load's skip-and-warn for unimplemented rule names.
     /// </summary>
     private void CollectGrantedRules(IUnit unit, ERuleSeat seat, IHookContext context,
-        List<TaggedOperation> sink, DedupState seen)
+        List<TaggedOperation> sink, DedupState seen,
+        Dictionary<ResolvedRule, (IUnit Bearer, TokenPayload Payload)>? firstTriggerGrants)
     {
         if (_ruleResolver == null)
         {
@@ -294,9 +323,19 @@ public sealed class RuleEvaluator
                 continue;
             }
 
-            if (_ruleResolver.TryResolve(grant.RuleName, out ResolvedRule resolved))
+            if (!_ruleResolver.TryResolve(grant.RuleName, out ResolvedRule resolved))
             {
-                (granted ??= new List<ResolvedRule>()).Add(resolved);
+                continue;
+            }
+
+            (granted ??= new List<ResolvedRule>()).Add(resolved);
+
+            // #100 #2c — a "next time it would apply" grant (FirstTrigger clear) is spent the moment its
+            // effect actually applies. Remember which synthesized rule maps to which token payload so
+            // CollectSurviving can emit the consume for the ones whose op survives suppression.
+            if (firstTriggerGrants != null && token.ClearTrigger is TokenClearTrigger.FirstTrigger)
+            {
+                firstTriggerGrants[resolved] = (unit, grant);
             }
         }
 

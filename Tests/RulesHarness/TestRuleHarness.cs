@@ -35,7 +35,9 @@ namespace FDG.Tests.RulesHarness
         {
             _store = GameDataStore.GameDataStoreBuilder.GetDefault();
             GameContext = new TestGameContext(_store, diceRoller ?? new FixedDiceRoller(4));
-            Evaluator = new RuleEvaluator(GameContext.DiceRoller);
+            // Hand the evaluator the same Resolver this harness attaches rules through, so token-granted
+            // rules (auras / "gains rule X" buffs) read back to their definitions exactly as in production.
+            Evaluator = new RuleEvaluator(GameContext.DiceRoller, ruleResolver: Resolver);
         }
 
         /// <summary> Registers a rule definition under its canonical name. </summary>
@@ -184,6 +186,20 @@ namespace FDG.Tests.RulesHarness
             {
                 unit.Tokens.AddToken(new Token(type, 1, trigger, OwnerUnitID: owner));
             }
+        }
+
+        /// <summary>
+        /// Seeds a <see cref="TokenType.RuleGrant"/> token naming <paramref name="ruleName"/> onto a unit —
+        /// the state an <c>Effect.Aura</c>/<c>Effect.AddRule</c> grant leaves behind. Mirrors the aura case
+        /// (ManualOnly clear, <see cref="ELifetime.Aura"/>) by default; pass <paramref name="lifetime"/> for
+        /// a "next time" buff. Lets a test stand the unit up as if a grant had already been applied, so the
+        /// evaluator's read-back of granted rules can be exercised directly.
+        /// </summary>
+        public void GrantRule(IUnit unit, string ruleName, ELifetime lifetime = ELifetime.Aura,
+            UnitID? owner = null, TokenClearTrigger? clear = null)
+        {
+            unit.Tokens.AddToken(new Token(TokenType.RuleGrant, 1, clear ?? new TokenClearTrigger.ManualOnly(),
+                new TokenPayload.RuleGrant(ruleName, lifetime), OwnerUnitID: owner));
         }
 
         private PlayerID GetOrCreatePlayer(string playerName)

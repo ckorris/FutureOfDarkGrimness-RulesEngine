@@ -23,12 +23,23 @@ namespace FDG.Rules.Dispatch;
 public sealed class RuleEvaluator
 {
     private readonly IDiceRoller _diceRoller;
-    private readonly ITextOutput? _log; 
-    
-    public RuleEvaluator(IDiceRoller diceRoller, ITextOutput? log = null)
+    private readonly ITextOutput? _log;
+
+    /// <summary>
+    /// Resolves the rule NAME carried by a <see cref="TokenType.RuleGrant"/> token back to its
+    /// <see cref="SpecialRuleDefinition"/> so granted rules (auras, "gains rule X" buffs) actually
+    /// fire — the read-back half of <c>Effect.Aura</c>/<c>Effect.AddRule</c>, which only write the
+    /// token. The same shared army-load resolver registered the unit's static rules, so aliases
+    /// resolve identically. Optional: null (resume before #095 rehydration, or bare-evaluator tests)
+    /// simply skips granted-rule read-back — granted tokens contribute nothing rather than throwing.
+    /// </summary>
+    private readonly IRuleResolver? _ruleResolver;
+
+    public RuleEvaluator(IDiceRoller diceRoller, ITextOutput? log = null, IRuleResolver? ruleResolver = null)
     {
         _diceRoller = diceRoller;
         _log = log;
+        _ruleResolver = ruleResolver;
     }
 
     /// <summary>
@@ -200,6 +211,13 @@ public sealed class RuleEvaluator
     {
         CollectFromRules(unit.RuleDefinitions, unit, carryingWeapon: null, seat, context, sink, seen);
 
+        // Token-granted rules (auras, "gains rule X" buffs): the unit behaves as if it has each rule
+        // named by a RuleGrant token. Walked through the same per-rule path as static attachments, so
+        // they honour the firing seat/condition and share the dedup (an argument-less rule granted on
+        // top of a static copy fires once) and suppression first-pass. Bearer stays the unit, never a
+        // weapon — grants live on unit token containers.
+        CollectGrantedRules(unit, seat, context, sink, seen);
+
         if (weapon != null)
         {
             CollectFromRules(weapon.RuleDefinitions, unit, weapon, seat, context, sink, seen);
@@ -249,6 +267,42 @@ public sealed class RuleEvaluator
                     sink.Add(new TaggedOperation(op, rule, unit, carryingWeapon));
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// Resolves each of <paramref name="unit"/>'s <see cref="TokenType.RuleGrant"/> tokens back to a
+    /// <see cref="ResolvedRule"/> and walks them like static attachments (same seat/condition/dedup).
+    /// This is the read side of <c>Effect.Aura</c>/<c>Effect.AddRule</c>. No resolver (resume before
+    /// #095 rehydration, or a bare-evaluator test) ⇒ no granted rules contribute. An unknown grant name
+    /// is skipped, not thrown — a granted rule the registry doesn't carry just does nothing, matching
+    /// army-load's skip-and-warn for unimplemented rule names.
+    /// </summary>
+    private void CollectGrantedRules(IUnit unit, ERuleSeat seat, IHookContext context,
+        List<TaggedOperation> sink, DedupState seen)
+    {
+        if (_ruleResolver == null)
+        {
+            return;
+        }
+
+        List<ResolvedRule>? granted = null;
+        foreach (Token token in unit.Tokens.GetAllTokens(TokenType.RuleGrant))
+        {
+            if (token.Payload is not TokenPayload.RuleGrant grant)
+            {
+                continue;
+            }
+
+            if (_ruleResolver.TryResolve(grant.RuleName, out ResolvedRule resolved))
+            {
+                (granted ??= new List<ResolvedRule>()).Add(resolved);
+            }
+        }
+
+        if (granted != null)
+        {
+            CollectFromRules(granted, unit, carryingWeapon: null, seat, context, sink, seen);
         }
     }
 

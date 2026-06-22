@@ -84,11 +84,15 @@ namespace FDG
                 IReadWriteableGameDataStore gameDataStore,
                 IPresenter presenter,
                 GameSettings settings,
-                GameProgressData? resumeProgress = null)
+                GameProgressData? resumeProgress = null,
+                IRuleResolver? ruleResolver = null)
         {
             TextOutput = textOutput;
             DiceRoller = diceRoller;
-            RuleEvaluator = new RuleEvaluator(diceRoller, textOutput);
+            // ruleResolver lets the evaluator read token-granted rules (auras / "gains rule X" buffs)
+            // back to their definitions. Optional so the Samples' bare-context construction and the
+            // resume path (no fresh army-load resolver; see #095) still compile and run.
+            RuleEvaluator = new RuleEvaluator(diceRoller, textOutput, ruleResolver);
             PlayerRequester = playerRequester;
             TableState = tableState;
             GameDataStore = gameDataStore;

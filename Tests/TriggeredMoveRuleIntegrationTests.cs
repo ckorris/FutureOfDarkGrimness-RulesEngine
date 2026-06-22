@@ -182,12 +182,13 @@ namespace FDG.Tests
         public List<ITeam>? FirstDeploymentRollOrder => null;
         IGameContext IGameContextAccessor.GameContext => this;
 
-        public TriggeredMoveTestContext(GameDataStore store, IPlayerRequestByID requester)
+        public TriggeredMoveTestContext(GameDataStore store, IPlayerRequestByID requester,
+            IDiceRoller? diceRoller = null)
         {
             GameDataStore = store;
             TableState = new TableState(store);
             PlayerRequester = requester;
-            DiceRoller = new FixedDiceRoller(4);
+            DiceRoller = diceRoller ?? new FixedDiceRoller(4);
             RuleEvaluator = new RuleEvaluator(DiceRoller);
         }
 

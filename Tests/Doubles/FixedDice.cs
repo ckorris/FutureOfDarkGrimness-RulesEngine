@@ -8,6 +8,22 @@ namespace FDG.Tests
         public IDiceResults Roll(int sideCount, float rollCount) => new FixedDiceResults(_value);
     }
 
+    // Like FixedDiceRoller, but every die lands on the same fixed face AND it honors rollCount, so
+    // Roll(n) reports TotalRolls == n. Needed for multi-hit/multi-save paths that FixedDiceRoller (whose
+    // TotalRolls is always 1) collapses to a single roll — e.g. a Blast-multiplied spell's save rolls.
+    internal sealed class FixedFaceDiceRoller : IDiceRoller
+    {
+        private readonly int _face;
+        public FixedFaceDiceRoller(int face) => _face = face;
+
+        public IDiceResults Roll(int sideCount, float rollCount)
+        {
+            float[] perSide = new float[sideCount];
+            perSide[_face - 1] = rollCount;
+            return new DiceResults(perSide, 1);
+        }
+    }
+
     internal class FixedDiceResults : IDiceResults
     {
         private readonly int _value;

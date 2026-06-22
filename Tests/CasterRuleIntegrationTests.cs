@@ -204,6 +204,33 @@ namespace FDG.Tests
                 "casting spent the spell's 2-token cost");
         }
 
+        // #033 Slice A — pre-save hit rules now fire on spell damage. A Blast(3) spell multiplies its 2 base
+        // hits to 6 (capped at the 6-model target), and AP(6) auto-fails every save, so the unit is wiped —
+        // without the hit-complete fold only the 2 base hits would land (killing 2). Uses FixedFaceDiceRoller
+        // so the multi-hit save rolls aren't collapsed to one (FixedDiceRoller's TotalRolls is always 1).
+        [Test]
+        public async Task CastSpellStage_DamageSpell_BlastMultipliesHits()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester(), new FixedFaceDiceRoller(4));
+            RuntimeSpell nova = new RuntimeSpell(
+                new SpellDefinition("Nova", 2,
+                    new TargetSelector(18f, 1, 1, ETargetAffinity.Foe, RequireLineOfSight: false),
+                    new Effect.DealHits(2, new[] { "Blast" }, ArmorPenetration: 6)),
+                new[] { new ResolvedRule("Blast", CoreRuleCatalog.Blast, new RuleArgument[] { new RuleArgument.Int(3) }) });
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 3, new[] { nova }, new Position(10f, 10f));
+            DataBinding<UnitData> enemy = MakeMultiModelEnemy(new PlayerID(System.Guid.NewGuid()),
+                new Position(12f, 10f), modelCount: 6);
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            int living = enemy.GetValue().Models.Count(m => m.GetIsAlive());
+            Assert.That(living, Is.EqualTo(0),
+                "Blast multiplied 2 hits to 6 (capped at model count); AP(6) auto-failed every save, wiping the unit");
+        }
+
         private static RuntimeSpell DamageSpell(string name, int threshold, int hits, int armorPenetration) =>
             new RuntimeSpell(
                 new SpellDefinition(name, threshold,
@@ -274,6 +301,21 @@ namespace FDG.Tests
         {
             var model = new ModelData(0.5f, new List<Weapon>(), pos, _store);
             var modelBindings = new List<DataBinding<ModelData>> { _store.GetDataBinding<ModelData>(_store.Create(model)) };
+
+            var unit = new UnitData(enemyPlayer, "Grunts", quality: 4, defense: 4, modelBindings: modelBindings);
+            DataBinding<UnitData> binding = _store.GetDataBinding<UnitData>(_store.Create(unit));
+            _store.Create(new ArmyData(enemyPlayer, new List<DataBinding<UnitData>> { binding }));
+            return binding;
+        }
+
+        private DataBinding<UnitData> MakeMultiModelEnemy(PlayerID enemyPlayer, Position pos, int modelCount)
+        {
+            var modelBindings = new List<DataBinding<ModelData>>();
+            for (int i = 0; i < modelCount; i++)
+            {
+                var model = new ModelData(0.5f, new List<Weapon>(), new Position(pos.x + i * 0.6f, pos.z), _store);
+                modelBindings.Add(_store.GetDataBinding<ModelData>(_store.Create(model)));
+            }
 
             var unit = new UnitData(enemyPlayer, "Grunts", quality: 4, defense: 4, modelBindings: modelBindings);
             DataBinding<UnitData> binding = _store.GetDataBinding<UnitData>(_store.Create(unit));

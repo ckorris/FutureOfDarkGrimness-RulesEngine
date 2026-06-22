@@ -2,8 +2,10 @@ using System.Collections.Generic;
 using FDG.Data;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
 using FDG.StageResolution.Requests;
+using FDG.Utilities;
 using FDG.Utilities;
 
 namespace FDG.Stages
@@ -22,18 +24,16 @@ namespace FDG.Stages
     ///   <item><b>Buff/debuff</b> (<see cref="Effect.AddRule"/> &amp; other token effects): the effect is
     ///         applied to each target via the polymorphic <see cref="Effect.Apply"/> and the resulting token
     ///         operations are committed — the "gets RULE once (next time)" shape.</item>
-    ///   <item><b>Damage</b> (<see cref="Effect.DealHits"/>): the hits run through the shared
-    ///         save→wound→assign→apply child pipeline against the target, seeded as a synthetic AP-carrying
-    ///         attack — the same mechanism <see cref="StrafingStage"/>/ResolveImpactHitsStage use. AP rides
-    ///         the synthetic weapon; the spell's pre-resolved weapon rules (Bane, Deadly, …) are attached so
-    ///         they fire in that pipeline.</item>
+    ///   <item><b>Damage</b> (<see cref="Effect.DealHits"/>): <see cref="ResolveSpellHits"/> rolls the hits
+    ///         as real dice and runs the hit-complete fold (Blast multiply, on-6 extra hits, Rending AP),
+    ///         then the hits run through the shared save→wound→assign→apply child pipeline against the
+    ///         target — the same machinery <see cref="StrafingStage"/>/ResolveImpactHitsStage and
+    ///         RollToHitStage use. AP + the spell's pre-resolved weapon rules ride the synthetic weapon.</item>
     /// </list>
     ///
-    /// DEFERRED (recorded in #033): the ±1 friendly-Caster assist (slots in before the roll); multi-target
-    /// damage (only the first target is hit — the synthetic pipeline runs once per cast, as Strafing's does);
-    /// single-model targeting ("a unit of [1]"); and pre-save weapon rules on spell hits (Blast's hit
-    /// multiply, Surge) — the synthetic pipeline starts at the save stage, so only save/wound-phase rules
-    /// (AP, Bane, Deadly, Regeneration) fire.
+    /// DEFERRED (recorded in #033): the ±1 friendly-Caster assist (#094, slots in before the roll);
+    /// multi-target damage (only the first target is hit — the synthetic pipeline runs once per cast, as
+    /// Strafing's does); single-model targeting ("a unit of [1]").
     /// </summary>
     public class CastSpellStage : ParentStage<IUnitActionContext, ICombatMetadata>
     {
@@ -44,11 +44,12 @@ namespace FDG.Stages
 
         // Damage-spell pipeline parameters: set in Enter when a successful damage cast routes into the
         // save→wound children, read by GetNewChildContext when the child pipeline builds its metadata.
+        // The hit-complete fold (Blast / on-6 rules) runs in Enter, so what's stored here is the FINAL
+        // post-fold hit count plus the synthetic weapon and any carried save modifier (Rending).
         private DataBinding<UnitData> _damageTarget;
-        private int _damageHits;
-        private int _damageArmorPenetration;
-        private string _damageSpellName = "Spell";
-        private IReadOnlyList<ResolvedRule> _damageWeaponRules = System.Array.Empty<ResolvedRule>();
+        private Weapon _damageWeapon = null!;
+        private float _damageFinalHits;
+        private int _damageSaveModifier;
 
         public CastSpellStage(IGameContext gameContext, IStateMachineLayer<IUnitActionContext> parent)
             : base(gameContext, parent)
@@ -58,9 +59,8 @@ namespace FDG.Stages
         public override async Task Enter(IUnitActionContext context)
         {
             _damageTarget = default;
-            _damageHits = 0;
-            _damageArmorPenetration = 0;
-            _damageWeaponRules = System.Array.Empty<ResolvedRule>();
+            _damageFinalHits = 0f;
+            _damageSaveModifier = 0;
 
             IUnit caster = context.ActivatingUnit.GetValue();
             PlayerID player = context.ActivatingPlayer();
@@ -128,10 +128,20 @@ namespace FDG.Stages
                         $"for now — only {targets[0].GetValue().Name} is hit (#034).");
                 }
                 _damageTarget = targets[0];
-                _damageHits = dealHits.Count;
-                _damageArmorPenetration = dealHits.ArmorPenetration;
-                _damageWeaponRules = chosen.WeaponRules;
-                _damageSpellName = chosen.Name;
+
+                // Synthetic spell weapon: the spell's AP + its pre-resolved weapon rules.
+                _damageWeapon = new Weapon(chosen.Name, rangeInches: 0f, attacks: 0,
+                    armorPenetration: dealHits.ArmorPenetration);
+                foreach (ResolvedRule rule in chosen.WeaponRules)
+                {
+                    _damageWeapon.AttachRuleDefinition(rule);
+                }
+
+                // Run the hit-complete fold (Blast multiply, on-6 extra hits, Rending AP) over real rolled
+                // dice before the save pipeline, so pre-save weapon rules actually fire on spell hits.
+                (_damageFinalHits, _damageSaveModifier) =
+                    ResolveSpellHits(caster, _damageTarget.GetValue(), dealHits.Count, _damageWeapon);
+
                 await base.Enter(context); // child pipeline resolves the hits, then transitions to OnFinished
                 return;
             }
@@ -160,26 +170,63 @@ namespace FDG.Stages
 
         protected override ICombatMetadata GetNewChildContext(IUnitActionContext contextSelf)
         {
-            // The spell's hits ride a synthetic attack carrying the spell's AP, so the shared save/wound
-            // stages resolve them; the spell's pre-resolved weapon rules (Bane, Deadly, …) are attached so
-            // they fire in that pipeline. (Pre-save rules like Blast don't fire — see the class remarks.)
-            Weapon spellWeapon = new Weapon(_damageSpellName, rangeInches: 0f, attacks: 0,
-                armorPenetration: _damageArmorPenetration);
-            foreach (ResolvedRule rule in _damageWeaponRules)
-            {
-                spellWeapon.AttachRuleDefinition(rule);
-            }
-
+            // The pre-folded synthetic weapon (AP + save/wound-phase rules like Bane/Deadly) and the
+            // post-fold hit count are computed in Enter; here we just seed them for the save pipeline. The
+            // hit faces no longer matter past this point (the hit-complete fold already ran), so the count
+            // rides a cosmetic top-face seed; SaveModifier carries any AP promotion (Rending).
             CombatMetadata metadata = new CombatMetadata(GameContext, contextSelf.ActivatingUnit,
-                _damageTarget, spellWeapon, weaponCount: 1, isMelee: false);
+                _damageTarget, _damageWeapon, weaponCount: 1, isMelee: false);
 
-            metadata.AddResult(new RollToHitResults(
-                new List<SuccessfulHitInfo>() { new SuccessfulHitInfo(SyntheticHits(_damageHits)) },
-                new List<FailedHitInfo>()));
+            RollToHitResults hitResults = new RollToHitResults(
+                new List<SuccessfulHitInfo>() { new SuccessfulHitInfo(SyntheticHits(_damageFinalHits)) },
+                new List<FailedHitInfo>());
+            hitResults.SaveModifier = _damageSaveModifier;
+            metadata.AddResult(hitResults);
             // No cover check runs for a synthetic spell hit; seed a zero bonus so the save stage won't throw.
             metadata.AddResult(new CoverCheckResults(0));
 
             return metadata;
+        }
+
+        // Rolls the spell's hits as real dice and runs the hit-complete fold (the same machinery
+        // RollToHitStage uses): Blast multiplies (capped at the target's living-model count), "on an
+        // unmodified 6" rules add hits, and Rending promotes AP into a carried save modifier. The dice
+        // faces don't gate the hits — every die is an automatic hit — they only feed the on-6 rules.
+        // Returns the final hit count + the save modifier to seed into the save pipeline.
+        private (float hits, int saveModifier) ResolveSpellHits(IUnit caster, IUnit target, int baseHits, Weapon spellWeapon)
+        {
+            IDiceResults rolled = GameContext.DiceRoller.Roll(baseHits);
+            float distance = UnitCompareUtilities.MinDistanceBetweenUnits(caster, target, out _, out _,
+                includeVertical: false);
+
+            IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator.EvaluateAll(
+                new HitRollCompleteContext(caster, target, rolled, distance, false, false),
+                (caster, ERuleSeat.Actor, spellWeapon, (IReadOnlyList<IModel>?)null));
+
+            HitInjectionSink injection = new HitInjectionSink();
+            injection.ApplyFrom(ops);
+            float hits = rolled.TotalRolls + injection.TotalExtraHits;
+
+            HitMultiplierSink multiplier = new HitMultiplierSink();
+            multiplier.ApplyFrom(ops);
+            if (multiplier.NetMultiplier > 1)
+            {
+                hits = System.Math.Min(hits * multiplier.NetMultiplier, CountLivingModels(target));
+            }
+
+            RollModifierSink saveModifiers = new RollModifierSink();
+            saveModifiers.ApplyFrom(ops);
+            return (hits, saveModifiers.Net(ERollKind.Save));
+        }
+
+        private static int CountLivingModels(IUnit unit)
+        {
+            int count = 0;
+            foreach (IModel model in unit.Models)
+            {
+                if (model.GetIsAlive()) count++;
+            }
+            return count;
         }
 
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<ICombatMetadata> startingChild)

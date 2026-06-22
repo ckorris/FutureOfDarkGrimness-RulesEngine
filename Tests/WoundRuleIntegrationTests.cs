@@ -92,6 +92,34 @@ namespace FDG.Tests
                 "two clumps kill the first Tough(5) model (5 wounds); the overkill doesn't carry to the second.");
         }
 
+        // #100 Shred: each unmodified 1 to block adds a wound. The harness rolls every failed save as an
+        // unmodified 1, so two failed saves → +2 Shred wounds on top of the 2 they already dealt = 4.
+        // The 5-model defender survives, routing to the player branch where the count is captured.
+        [Test]
+        public async Task ShredAttacker_AddsAWoundPerUnmodifiedBlockOf1()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            AttachShred(attacker);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 5);
+
+            await RunStage(attacker, defender, failedSaves: 2);
+
+            Assert.That(_requester.Captured!.TotalWoundsToAssign, Is.EqualTo(4f),
+                "2 failed saves (each an unmodified 1 to block) → +2 Shred wounds → 4 total.");
+        }
+
+        // Control: no Shred → the two failed saves stay two wounds.
+        [Test]
+        public async Task NoShred_WoundCountUnchanged()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 5);
+
+            await RunStage(attacker, defender, failedSaves: 2);
+
+            Assert.That(_requester.Captured!.TotalWoundsToAssign, Is.EqualTo(2f));
+        }
+
         private async Task RunStage(DataBinding<UnitData> attacker, DataBinding<UnitData> defender, int failedSaves)
         {
             var layer = new NoOpLayer<ICombatMetadata>();
@@ -116,6 +144,11 @@ namespace FDG.Tests
         {
             unit.GetValue().AttachRuleDefinition(
                 new ResolvedRule("Deadly", CoreRuleCatalog.Deadly, new RuleArgument[] { new RuleArgument.Int(x) }));
+        }
+
+        private static void AttachShred(DataBinding<UnitData> unit)
+        {
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Shred", CoreRuleCatalog.Shred));
         }
 
         private DataBinding<UnitData> MakeUnit(int modelCount, int woundsPerModel = 1)

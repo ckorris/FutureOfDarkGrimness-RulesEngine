@@ -80,6 +80,19 @@ namespace FDG.Stages
                 totalWoundsDealt = ConfineToClumps(totalWoundsDealt, woundModifier.NetMultiplier, defender);
             }
 
+            // #100 Shred (wound injection): "for each unmodified 1 to block, +1 wound" fires at
+            // save-complete, so it rides the same saveCompleteOperations queue. Fold the wound-injection
+            // sink and add the extra wounds flat — AFTER Deadly's clump confinement (Shred + Deadly on one
+            // weapon isn't in the corpus, so the flat add stays out of the clump model) and BEFORE
+            // Regeneration, so the defender may still ignore the Shred wounds like any others.
+            WoundInjectionSink woundInjection = new WoundInjectionSink();
+            woundInjection.ApplyFrom(saveCompleteOperations);
+            if (woundInjection.TotalExtraWounds > 0f)
+            {
+                totalWoundsDealt += woundInjection.TotalExtraWounds;
+                GameContext.Log($"Shred added {woundInjection.TotalExtraWounds:0.##} extra wound(s).");
+            }
+
             // #042 wound-ignore rules (Regeneration) from the same save-complete queue: the defender
             // ignores each wound on a roll of X+. Fold the ignore sink, then roll one d6 per wound at the
             // best threshold and drop the ignored count. The stage interprets no operation.

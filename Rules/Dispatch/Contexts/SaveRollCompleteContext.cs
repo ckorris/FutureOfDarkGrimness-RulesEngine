@@ -12,7 +12,8 @@ namespace FDG.Rules.Dispatch.Contexts
     /// the attack; Defender holds the saves.
     /// </summary>
     public sealed record SaveRollCompleteContext(
-        IUnit Attacker, IUnit Defender, IDiceResults UnmodifiedSaveRolls) : IHookContext, IHasTarget
+        IUnit Attacker, IUnit Defender, IDiceResults UnmodifiedSaveRolls)
+        : IHookContext, IHasTarget, IHasUnmodifiedSaveRolls
     {
         public EHookID Hook => EHookID.Shooting_OnSaveRollComplete;
 

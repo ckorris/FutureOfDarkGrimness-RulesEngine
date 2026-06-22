@@ -23,7 +23,7 @@ public static class CoreRuleCatalog
     public static IReadOnlyList<SpecialRuleDefinition> All => new[]
     {
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
-        Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Vanguard, Scout, Ambush, Thrust,
+        Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Shred, Vanguard, Scout, Ambush, Thrust,
         Blast, Takedown, Impact, Counter, MartialProwess, Strafing, Fear, Fearless, Hero, Transport,
     };
 
@@ -437,6 +437,27 @@ public static class CoreRuleCatalog
             new HookEntry(EHookID.Shooting_OnSaveRollComplete,
                 new Condition.Always(),
                 new Effect.IgnoreRule("Regeneration"),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>(),
+        ERuleScope.Weapon);
+
+    // Wound-injection sink (AssignWoundsStage) -----------------------------------
+
+    /// <summary>
+    /// Shred (weapon rule): for each of the defender's unmodified save rolls of 1 ("1 to block"), the
+    /// attack deals 1 extra wound. Reads the save-roll histogram at
+    /// <see cref="EHookID.Shooting_OnSaveRollComplete"/> via <see cref="Effect.AddExtraWound"/>, which
+    /// queues <see cref="RuleOperation.InsertExtraWounds"/>; AssignWoundsStage folds it through the
+    /// <see cref="WoundInjectionSink"/> and adds the wounds (after Deadly's clump confinement, before
+    /// Regeneration so the defender may still ignore them). The wound-side mirror of Surge.
+    /// </summary>
+    public static SpecialRuleDefinition Shred { get; } = new SpecialRuleDefinition("Shred",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnSaveRollComplete,
+                new Condition.Always(),
+                new Effect.AddExtraWound(OnRollValue: 1),
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>(),

@@ -116,10 +116,19 @@ public abstract record Effect
     }
 
     /// <summary>
-    /// Same shape as <see cref="Effect.AddExtraHit"/> but for wound generation.
-    /// Covers Shred (+1 wound on unmodified 1 to block).
+    /// Same shape as <see cref="Effect.AddExtraHit"/> but for wound generation, reading the SAVE-roll
+    /// histogram instead of the hit-roll one. Each of the defender's unmodified <see cref="OnRollValue"/>
+    /// save rolls generates <see cref="Count"/> extra wounds. Covers Shred (+1 wound on an unmodified 1
+    /// to block) — the wound-side mirror of Surge.
     /// </summary>
-    public sealed record AddExtraWound(int OnRollValue, int Count = 1) : Effect;
+    public sealed record AddExtraWound(int OnRollValue, int Count = 1)
+        : CapabilityEffect<IHasUnmodifiedSaveRolls>
+    {
+        protected override void ApplyCore(IHasUnmodifiedSaveRolls context, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.InsertExtraWounds(context.UnmodifiedSaveRolls.At(OnRollValue) * Count));
+        }
+    }
 
     /// <summary>
     /// Adjusts the bearer's movement distance by <see cref="DistanceInches"/>

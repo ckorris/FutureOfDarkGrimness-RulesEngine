@@ -111,12 +111,23 @@ public abstract record RuleOperation
     }
 
     /// <summary>
-    /// Add <see cref="Count"/> extra wounds to the current attack's wound
-    /// total. Resolution of <see cref="Effect.AddExtraWound"/>. Count is a float
-    /// for the same reason as <see cref="RuleOperation.InsertExtraHits"/> — the matching-die
-    /// count is fractional under the probabilistic roller.
+    /// Add <see cref="Count"/> extra wounds to the current attack's wound total. Resolution of
+    /// <see cref="Effect.AddExtraWound"/> (Shred), folded by <see cref="IWoundInjectionSink"/> in
+    /// AssignWoundsStage — the wound-side mirror of <see cref="RuleOperation.InsertExtraHits"/>. Count is
+    /// a float for the same reason: the matching-die count is fractional under the probabilistic roller.
     /// </summary>
-    public sealed record InsertExtraWounds(float Count) : RuleOperation;
+    public sealed record InsertExtraWounds(float Count) : SinkOperation<IWoundInjectionSink>
+    {
+        public override void ApplyTo(IWoundInjectionSink sink)
+        {
+            sink.AddWounds(Count);
+        }
+
+        public override string Describe()
+        {
+            return $"added {Count} extra wounds";
+        }
+    }
 
     /// <summary>
     /// Apply a persistent stat modifier of <see cref="Delta"/> to

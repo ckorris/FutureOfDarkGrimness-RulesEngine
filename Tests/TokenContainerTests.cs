@@ -289,6 +289,63 @@ namespace FDG.Tests
         }
 
         // ----------------------------------------------------------------------
+        // Payload identity (#101) — payload is part of an entry's identity
+        // ----------------------------------------------------------------------
+
+        [Test]
+        public void AddToken_SameTypeOwnerDifferentPayload_KeepsSeparateEntries()
+        {
+            var c = new TokenContainer();
+            c.AddToken(MakeGrant("Furious"));
+            c.AddToken(MakeGrant("Stealth"));
+
+            Assert.That(c.GetAllTokens(TokenType.RuleGrant).Count(), Is.EqualTo(2),
+                "different granted rules must not collapse into one pile");
+            Assert.That(c.GetTokenCount(TokenType.RuleGrant), Is.EqualTo(2));
+        }
+
+        [Test]
+        public void AddToken_SameTypeOwnerSamePayload_StacksCount()
+        {
+            var c = new TokenContainer();
+            c.AddToken(MakeGrant("Furious"));
+            c.AddToken(MakeGrant("Furious"));
+
+            Assert.That(c.GetAllTokens(TokenType.RuleGrant).Count(), Is.EqualTo(1),
+                "an identical grant stacks onto the existing entry");
+            Assert.That(c.GetTokenCount(TokenType.RuleGrant), Is.EqualTo(2));
+        }
+
+        [Test]
+        public void RemoveTokensWithPayload_OnlyRemovesMatchingPayload()
+        {
+            var c = new TokenContainer();
+            c.AddToken(MakeGrant("Furious"));
+            c.AddToken(MakeGrant("Stealth"));
+
+            int removed = c.RemoveTokensWithPayload(TokenType.RuleGrant, owner: null,
+                new TokenPayload.RuleGrant("Furious", ELifetime.NextTrigger), count: 1);
+
+            Assert.That(removed, Is.EqualTo(1));
+            List<Token> remaining = c.GetAllTokens(TokenType.RuleGrant).ToList();
+            Assert.That(remaining, Has.Count.EqualTo(1));
+            Assert.That(((TokenPayload.RuleGrant)remaining[0].Payload!).RuleName, Is.EqualTo("Stealth"),
+                "the non-matching granted rule must be left untouched");
+        }
+
+        [Test]
+        public void RemoveTokensWithPayload_NullPayload_MatchesNoPayloadToken()
+        {
+            var c = new TokenContainer();
+            c.AddToken(MakeToken(TokenType.Shaken, count: 1));
+
+            int removed = c.RemoveTokensWithPayload(TokenType.Shaken, owner: null, payload: null, count: 1);
+
+            Assert.That(removed, Is.EqualTo(1));
+            Assert.That(c.HasToken(TokenType.Shaken), Is.False);
+        }
+
+        // ----------------------------------------------------------------------
         // Helpers
         // ----------------------------------------------------------------------
 
@@ -304,5 +361,15 @@ namespace FDG.Tests
                 Payload: null,
                 OwnerUnitID: owner,
                 CreatedAtHook: null);
+
+        /// <summary> A RuleGrant token carrying a rule-name payload (#101 keyword-buff grants). </summary>
+        private static Token MakeGrant(string ruleName, UnitID? owner = null,
+            ELifetime lifetime = ELifetime.NextTrigger) =>
+            new Token(
+                Type: TokenType.RuleGrant,
+                Count: 1,
+                ClearTrigger: new TokenClearTrigger.ManualOnly(),
+                Payload: new TokenPayload.RuleGrant(ruleName, lifetime),
+                OwnerUnitID: owner);
     }
 }

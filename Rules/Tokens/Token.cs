@@ -14,9 +14,10 @@ namespace FDG.Rules.Tokens;
 /// tokens whose <see cref="ClearTrigger"/> matches the firing hook.
 ///
 /// Stacking semantics live in the container: tokens with the same
-/// <see cref="Type"/> + <see cref="OwnerUnitID"/> increment <see cref="Count"/>;
-/// different owners are kept as separate entries (so two players' marks on the
-/// same enemy don't merge).
+/// <see cref="Type"/> + <see cref="OwnerUnitID"/> + <see cref="Payload"/> increment
+/// <see cref="Count"/>; a different owner OR payload is kept as a separate entry (so
+/// two players' marks on the same enemy don't merge, and two different granted rules
+/// on one unit stay distinct).
 /// </summary>
 /// <param name="Type">
 /// What kind of token this is. Drives equality, stacking, and lookup. Engine-known

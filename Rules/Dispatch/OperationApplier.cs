@@ -38,6 +38,16 @@ public static class OperationApplier
                 case RuleOperation.ConsumeRuleGrant consumeGrant:
                     consumeGrant.Unit.Tokens.RemoveTokensWithPayload(TokenType.RuleGrant, consumeGrant.Payload, 1);
                     break;
+                case RuleOperation.InvokeHeal heal:
+                    // #100 #2e — Mend's heal. Self-contained (mutates the model directly, no services), so it
+                    // belongs with the token ops rather than the executable/service ops. Clamp to the wounds
+                    // actually taken so a heal never pushes a model above its max.
+                    float healable = System.Math.Min(heal.Amount, heal.Target.WoundsDealt);
+                    if (healable > 0f)
+                    {
+                        heal.Target.DealWounds(-healable);
+                    }
+                    break;
             }
         }
     }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using FDG.Data;
 using FDG.Players;
@@ -161,6 +162,48 @@ namespace FDG.Tests
             Assert.That(bearer.GetValue().Tokens.HasToken(new TokenType("AbilityUsed:" + FriendRuleName)), Is.False,
                 "and pays no cost");
             Assert.That(finished, Is.True, "but the stage still proceeds to the attack");
+        }
+
+        // --- Slice 2e: representative catalog rules end-to-end ---
+
+        // Furious Buff (real catalog rule): used before attacking, it grants the chosen ally a one-shot
+        // Furious — a RuleGrant token with a FirstTrigger clear, which the read-back fires and 2c consumes.
+        [Test]
+        public async Task FuriousBuff_GrantsAOneShotFuriousToTheChosenAlly()
+        {
+            DataBinding<UnitData> bearer = MakeUnitAt(new Position(1f, 0f), CoreRuleCatalog.FuriousBuff);
+            DataBinding<UnitData> ally = MakeUnitAt(new Position(3f, 0f), null);
+
+            var ctx = new TriggeredMoveTestContext(_store, new CannedPreAttackRequester("Furious Buff", ally));
+            UnitActionContext unitCtx = NewActivation(ctx, bearer);
+            var stage = new PreAttackStage(ctx, new NoOpLayer<IUnitActionContext>(), EActionType.Charge);
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            bool oneShotFurious = ally.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant).Any(t =>
+                t.Payload is TokenPayload.RuleGrant rg && rg.RuleName == "Furious"
+                && t.ClearTrigger is TokenClearTrigger.FirstTrigger);
+            Assert.That(oneShotFurious, Is.True, "the ally gained a consumable Furious grant");
+        }
+
+        // Mend (real catalog rule): heals the chosen wounded friendly model — exercising the Heal consumer
+        // wired in OperationApplier. Under the fixed roller the D3 resolves to 4, clamped to the 2 wounds taken.
+        [Test]
+        public async Task Mend_HealsTheChosenWoundedFriendlyModel()
+        {
+            DataBinding<UnitData> bearer = MakeUnitAt(new Position(1f, 0f), CoreRuleCatalog.Mend);
+            DataBinding<UnitData> ally = MakeUnitAt(new Position(2f, 0f), null);
+            ally.GetValue().Models[0].SetMaxWounds(3); // Tough(3)
+            ally.GetValue().Models[0].DealWounds(2);   // 2 of 3 taken
+            Assert.That(ally.GetValue().Models[0].WoundsDealt, Is.EqualTo(2f), "precondition: 2 wounds taken");
+
+            var ctx = new TriggeredMoveTestContext(_store, new CannedPreAttackRequester("Mend", ally));
+            UnitActionContext unitCtx = NewActivation(ctx, bearer);
+            var stage = new PreAttackStage(ctx, new NoOpLayer<IUnitActionContext>(), EActionType.Hold);
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Assert.That(ally.GetValue().Models[0].WoundsDealt, Is.EqualTo(0f), "Mend healed the wounded ally");
         }
 
         // --- Helpers ---

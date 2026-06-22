@@ -25,6 +25,7 @@ public static class CoreRuleCatalog
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
         Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Shred, Vanguard, Scout, Ambush, Thrust,
         Blast, Takedown, Impact, Counter, MartialProwess, Strafing, Fear, Fearless, Hero, Transport,
+        FuriousBuff, Mend,
     };
 
     /// <summary>
@@ -667,6 +668,40 @@ public static class CoreRuleCatalog
             new ActivatedAbility(EHookID.Movement_OnMoveThroughEnemy, new Cost.OncePerActivation(),
                 new TargetSelector(1f, 1, 1, ETargetAffinity.Foe, false),
                 new Effect.DealHits(Count: 3, WithRules: Array.Empty<string>()),
+                new Condition.Always()),
+        });
+
+    // Pre-attack activated abilities (PreAttackStage offers them at Activation_OnPreAttack) -------------
+
+    /// <summary>
+    /// Furious Buff (#100 #2e): once per activation, before attacking, the bearer picks one friendly unit
+    /// within 12" which gains Furious once (next time it would apply). The grant rides
+    /// <see cref="Effect.AddRule"/> with <see cref="ELifetime.NextTrigger"/>, so the granted Furious is read
+    /// back by the evaluator and consumed the moment it fires (slices 1 + 2c). A representative "X Buff" rule.
+    /// </summary>
+    public static SpecialRuleDefinition FuriousBuff { get; } = new SpecialRuleDefinition("Furious Buff",
+        Array.Empty<HookEntry>(),
+        new[]
+        {
+            new ActivatedAbility(EHookID.Activation_OnPreAttack, new Cost.OncePerActivation(),
+                new TargetSelector(12f, 1, 1, ETargetAffinity.Friend, false),
+                new Effect.AddRule("Furious", ELifetime.NextTrigger),
+                new Condition.Always()),
+        });
+
+    /// <summary>
+    /// Mend (#100 #2e): once per activation, before attacking, the bearer picks one friendly unit within 3"
+    /// and removes D3 wounds from it (applied to that unit's first model — the per-model "with Tough"
+    /// selection is approximated at unit scope for now). Exercises the previously-dead <see cref="Effect.Heal"/>
+    /// consumer wired in <see cref="OperationApplier"/>.
+    /// </summary>
+    public static SpecialRuleDefinition Mend { get; } = new SpecialRuleDefinition("Mend",
+        Array.Empty<HookEntry>(),
+        new[]
+        {
+            new ActivatedAbility(EHookID.Activation_OnPreAttack, new Cost.OncePerActivation(),
+                new TargetSelector(3f, 1, 1, ETargetAffinity.Friend, false),
+                new Effect.Heal(new DiceExpression.D3()),
                 new Condition.Always()),
         });
 }

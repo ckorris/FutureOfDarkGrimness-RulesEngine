@@ -1,9 +1,11 @@
 using System.Collections.Generic;
 using System.Linq;
+using FDG.Data;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
+using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 
 namespace FDG.Stages
@@ -24,8 +26,9 @@ namespace FDG.Stages
     /// gates on it. If one ever needs to distinguish shoot from melee here, give PreAttackContext a
     /// combat-kind rather than overloading the action type.
     ///
-    /// Slice 2a: only SELF-targeted abilities resolve (target = bearer). Cross-unit targeting (Friend/Foe
-    /// via the ability's <c>TargetSelector</c> + a <see cref="SelectionRequest{T}"/>) is slice 2b.
+    /// Self abilities resolve against the bearer; Friend/Foe/Any abilities resolve their
+    /// <c>TargetSelector</c> through <see cref="PreAttackTargeting"/> and a
+    /// <see cref="CancellableSelectionRequest{T}"/> so the player picks the unit(s) (slice 2b).
     /// </summary>
     public class PreAttackStage : StageBase<IUnitActionContext>
     {
@@ -57,18 +60,22 @@ namespace FDG.Stages
 
             while (true)
             {
-                List<AbilityOffer> selfOffers = GameContext.RuleEvaluator
+                // Offer only abilities that (a) haven't been used this attack and (b) actually have enough
+                // valid targets to fire — so a "pick an enemy" ability with no enemy in range isn't shown.
+                List<AbilityOffer> usable = GameContext.RuleEvaluator
                     .GatherOffers(new PreAttackContext(unit, _actionType))
-                    .Where(o => o.Ability.TargetSelector.TargetAffinity == ETargetAffinity.Self
-                                && !usedThisEntry.Contains(o.RuleName))
+                    .Where(o => !usedThisEntry.Contains(o.RuleName)
+                                && PreAttackTargeting.EligibleTargets(context.ActivatingUnit,
+                                       o.Ability.TargetSelector, GameContext).Count
+                                   >= o.Ability.TargetSelector.MinCount)
                     .ToList();
 
-                if (selfOffers.Count == 0)
+                if (usable.Count == 0)
                 {
                     break;
                 }
 
-                List<string> options = selfOffers.Select(o => o.RuleName).ToList();
+                List<string> options = usable.Select(o => o.RuleName).ToList();
                 options.Add(DONE_CHOICE);
 
                 StringSelectionRequest request = new StringSelectionRequest(context.ActivatingPlayer(),
@@ -81,15 +88,68 @@ namespace FDG.Stages
                     break;
                 }
 
-                AbilityOffer chosen = selfOffers.First(o => o.RuleName == choice);
+                AbilityOffer chosen = usable.First(o => o.RuleName == choice);
+                // Picked → not re-offered this attack even if the player then backs out of target selection.
                 usedThisEntry.Add(chosen.RuleName);
 
-                IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator.ResolveAbility(chosen, new[] { unit });
+                IReadOnlyList<IUnit>? targets = await SelectTargets(context, chosen.Ability.TargetSelector);
+                if (targets == null)
+                {
+                    // Backed out of (or couldn't complete) target selection — nothing applied, no cost paid.
+                    continue;
+                }
+
+                IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator.ResolveAbility(chosen, targets);
                 OperationApplier.ApplyTokenOperations(ops);
                 GameContext.Log($"{unit.Name} used {chosen.RuleName} before attacking.");
             }
 
             await OnFinished.Activate(context);
+        }
+
+        /// <summary>
+        /// Resolves the ability's <see cref="TargetSelector"/> into the chosen target unit(s): the bearer
+        /// for Self; otherwise the player picks between MinCount and MaxCount eligible units one at a time
+        /// (each removed from the pool as it's taken). Returns null if the player backed out before meeting
+        /// the minimum — the caller treats that as "ability not used."
+        /// </summary>
+        private async Task<IReadOnlyList<IUnit>?> SelectTargets(IUnitActionContext context, TargetSelector selector)
+        {
+            if (selector.TargetAffinity == ETargetAffinity.Self)
+            {
+                return new[] { context.ActivatingUnit.GetValue() };
+            }
+
+            List<DataBinding<UnitData>> remaining = PreAttackTargeting.EligibleTargets(
+                context.ActivatingUnit, selector, GameContext);
+            List<IUnit> chosen = new List<IUnit>();
+
+            while (chosen.Count < selector.MaxCount && remaining.Count > 0)
+            {
+                List<CancellableSelectionRequest<UnitData>.ValidOption> valid = remaining
+                    .Select(b => new CancellableSelectionRequest<UnitData>.ValidOption(b, b.GetValue().Name))
+                    .ToList();
+
+                CancellableSelectionRequest<UnitData> request = new CancellableSelectionRequest<UnitData>(
+                    context.ActivatingPlayer(),
+                    $"Choose target ({chosen.Count + 1} of up to {selector.MaxCount})",
+                    valid, new List<CancellableSelectionRequest<UnitData>.InvalidOption>());
+
+                CancellableResult<DataBinding<UnitData>> result = await GameContext.PlayerRequester
+                    .RequestDecision<CancellableSelectionRequest<UnitData>, CancellableResult<DataBinding<UnitData>>>(request);
+
+                if (result is Cancelled<DataBinding<UnitData>>)
+                {
+                    // Cancelling past the minimum just stops adding extras; before it, it aborts the ability.
+                    return chosen.Count >= selector.MinCount ? chosen : null;
+                }
+
+                DataBinding<UnitData> picked = ((Selected<DataBinding<UnitData>>)result).Value;
+                chosen.Add(picked.GetValue());
+                remaining.Remove(picked);
+            }
+
+            return chosen.Count >= selector.MinCount ? chosen : null;
         }
     }
 }

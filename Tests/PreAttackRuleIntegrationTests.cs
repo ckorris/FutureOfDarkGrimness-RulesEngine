@@ -8,6 +8,8 @@ using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
 using FDG.Stages;
+using FDG.StageResolution;
+using FDG.StageResolution.Requests;
 using NUnit.Framework;
 
 namespace FDG.Tests
@@ -21,6 +23,8 @@ namespace FDG.Tests
     public class PreAttackRuleIntegrationTests
     {
         private const string RuleName = "Self Buff";
+        private const string FriendRuleName = "Friend Buff";
+        private const string FoeRuleName = "Foe Mark";
 
         private GameDataStore _store = null!;
         private PlayerID _player;
@@ -91,6 +95,74 @@ namespace FDG.Tests
             Assert.That(finished, Is.True, "no offers → straight to the attack");
         }
 
+        // --- Slice 2b: cross-unit targeting ---
+
+        [Test]
+        public async Task PreAttackStage_FriendAbility_AppliesToTheChosenAlly_NotTheBearer()
+        {
+            (SpecialRuleDefinition friendDef, TokenType marker) = MakeFriendBuffRule();
+            DataBinding<UnitData> bearer = MakeUnitAt(new Position(1f, 0f), friendDef);
+            DataBinding<UnitData> ally = MakeUnitAt(new Position(5f, 0f), null); // friendly (same player), within 12"
+
+            var ctx = new TriggeredMoveTestContext(_store, new CannedPreAttackRequester(FriendRuleName, ally));
+            UnitActionContext unitCtx = NewActivation(ctx, bearer);
+
+            bool finished = false;
+            var stage = new PreAttackStage(ctx, new NoOpLayer<IUnitActionContext>(), EActionType.Hold);
+            stage.OnFinished.Bind("OnFinished");
+            stage.OnFinished.OnWillActivate += _ => finished = true;
+            await stage.Enter(unitCtx);
+
+            Assert.That(ally.GetValue().Tokens.HasToken(marker), Is.True, "the buff landed on the chosen ally");
+            Assert.That(bearer.GetValue().Tokens.HasToken(marker), Is.False, "and not on the bearer");
+            Assert.That(bearer.GetValue().Tokens.HasToken(new TokenType("AbilityUsed:" + FriendRuleName)), Is.True,
+                "the bearer paid the cost");
+            Assert.That(finished, Is.True);
+        }
+
+        [Test]
+        public async Task PreAttackStage_FoeAbilityWithNoEnemiesInRange_NotOffered()
+        {
+            // A "pick an enemy" ability with no enemy on the table has no eligible target, so it is filtered
+            // out of the menu and no request is issued (NullPlayerRequester would throw if one were).
+            (SpecialRuleDefinition foeDef, _) = MakeFoeMarkRule();
+            DataBinding<UnitData> bearer = MakeUnitAt(new Position(1f, 0f), foeDef);
+
+            var ctx = new TriggeredMoveTestContext(_store, new NullPlayerRequester());
+            UnitActionContext unitCtx = NewActivation(ctx, bearer);
+
+            bool finished = false;
+            var stage = new PreAttackStage(ctx, new NoOpLayer<IUnitActionContext>(), EActionType.Charge);
+            stage.OnFinished.Bind("OnFinished");
+            stage.OnFinished.OnWillActivate += _ => finished = true;
+            await stage.Enter(unitCtx);
+
+            Assert.That(finished, Is.True, "no valid targets → not offered → straight to the attack");
+        }
+
+        [Test]
+        public async Task PreAttackStage_CancelTargetSelection_NothingApplied_StillProceeds()
+        {
+            (SpecialRuleDefinition friendDef, TokenType marker) = MakeFriendBuffRule();
+            DataBinding<UnitData> bearer = MakeUnitAt(new Position(1f, 0f), friendDef);
+            DataBinding<UnitData> ally = MakeUnitAt(new Position(5f, 0f), null);
+
+            // Picks the ability, then cancels the target selection (target = null → Cancelled).
+            var ctx = new TriggeredMoveTestContext(_store, new CannedPreAttackRequester(FriendRuleName, target: null));
+            UnitActionContext unitCtx = NewActivation(ctx, bearer);
+
+            bool finished = false;
+            var stage = new PreAttackStage(ctx, new NoOpLayer<IUnitActionContext>(), EActionType.Hold);
+            stage.OnFinished.Bind("OnFinished");
+            stage.OnFinished.OnWillActivate += _ => finished = true;
+            await stage.Enter(unitCtx);
+
+            Assert.That(ally.GetValue().Tokens.HasToken(marker), Is.False, "cancelling applies nothing");
+            Assert.That(bearer.GetValue().Tokens.HasToken(new TokenType("AbilityUsed:" + FriendRuleName)), Is.False,
+                "and pays no cost");
+            Assert.That(finished, Is.True, "but the stage still proceeds to the attack");
+        }
+
         // --- Helpers ---
 
         // A self-targeted pre-attack ability, once per activation, granting the bearer a marker token.
@@ -103,6 +175,32 @@ namespace FDG.Tests
                 new Effect.GrantToken(marker, new ValueSource.Literal(1), new TokenClearTrigger.ManualOnly()),
                 new Condition.Always());
             var def = new SpecialRuleDefinition(RuleName, Array.Empty<HookEntry>(), new[] { ability });
+            return (def, marker);
+        }
+
+        // A Friend-targeted pre-attack ability: pick one friendly unit within 12" and grant it a marker.
+        private static (SpecialRuleDefinition def, TokenType marker) MakeFriendBuffRule()
+        {
+            var marker = new TokenType("FriendBuffFired");
+            var ability = new ActivatedAbility(
+                EHookID.Activation_OnPreAttack, new Cost.OncePerActivation(),
+                new TargetSelector(12f, 1, 1, ETargetAffinity.Friend, false),
+                new Effect.GrantToken(marker, new ValueSource.Literal(1), new TokenClearTrigger.ManualOnly()),
+                new Condition.Always());
+            var def = new SpecialRuleDefinition(FriendRuleName, Array.Empty<HookEntry>(), new[] { ability });
+            return (def, marker);
+        }
+
+        // A Foe-targeted pre-attack ability: pick one enemy unit within 18" and mark it.
+        private static (SpecialRuleDefinition def, TokenType marker) MakeFoeMarkRule()
+        {
+            var marker = new TokenType("FoeMarkFired");
+            var ability = new ActivatedAbility(
+                EHookID.Activation_OnPreAttack, new Cost.OncePerActivation(),
+                new TargetSelector(18f, 1, 1, ETargetAffinity.Foe, false),
+                new Effect.GrantToken(marker, new ValueSource.Literal(1), new TokenClearTrigger.ManualOnly()),
+                new Condition.Always());
+            var def = new SpecialRuleDefinition(FoeRuleName, Array.Empty<HookEntry>(), new[] { ability });
             return (def, marker);
         }
 
@@ -131,6 +229,61 @@ namespace FDG.Tests
 
             _store.Create(new ArmyData(_player, new List<DataBinding<UnitData>> { binding }));
             return binding;
+        }
+
+        // Builds a unit at a specific position (so GetIsOnBattlefield sees it as placed), optionally with a
+        // rule attached. All units share _player, so they're mutually friendly.
+        private DataBinding<UnitData> MakeUnitAt(Position position, SpecialRuleDefinition? rule)
+        {
+            var model = new ModelData(0.5f, new List<Weapon>(), position, _store);
+            var modelBindings = new List<DataBinding<ModelData>>
+            {
+                _store.GetDataBinding<ModelData>(_store.Create(model)),
+            };
+            var unit = new UnitData(_player, "Test Unit", quality: 4, defense: 4, modelBindings: modelBindings);
+            DataBinding<UnitData> binding = _store.GetDataBinding<UnitData>(_store.Create(unit));
+
+            if (rule != null)
+            {
+                binding.GetValue().AttachRuleDefinition(new ResolvedRule(rule.Name, rule));
+            }
+
+            _store.Create(new ArmyData(_player, new List<DataBinding<UnitData>> { binding }));
+            return binding;
+        }
+    }
+
+    // Answers the two requests a pre-attack ability resolution issues: the StringSelectionRequest menu
+    // (returns the ability name) and the CancellableSelectionRequest for the target (returns the given
+    // target as Selected, or Cancelled when target is null).
+    internal sealed class CannedPreAttackRequester : IPlayerRequestByID
+    {
+        private readonly string _abilityChoice;
+        private readonly DataBinding<UnitData>? _target;
+
+        public CannedPreAttackRequester(string abilityChoice, DataBinding<UnitData>? target)
+        {
+            _abilityChoice = abilityChoice;
+            _target = target;
+        }
+
+        public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
+            where TRequest : IStageTaskRequest<TReply>
+        {
+            if (request is StringSelectionRequest)
+            {
+                return Task.FromResult((TReply)(object)_abilityChoice);
+            }
+
+            if (request is CancellableSelectionRequest<UnitData>)
+            {
+                CancellableResult<DataBinding<UnitData>> result = _target != null
+                    ? new Selected<DataBinding<UnitData>>(_target)
+                    : new Cancelled<DataBinding<UnitData>>();
+                return Task.FromResult((TReply)(object)result);
+            }
+
+            throw new InvalidOperationException("Unexpected request type: " + request.GetType());
         }
     }
 }

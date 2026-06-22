@@ -1,3 +1,4 @@
+using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
@@ -6,6 +7,7 @@ using FDG.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 
 namespace FDG.Stages
 {
@@ -63,6 +65,26 @@ namespace FDG.Stages
             bool canCharge = GetCanCharge(context, out string cantChargeReason);
             bool canShoot = GetCanShoot(context, out string cantShootReason);
             bool canPass = GetCanPass(GameContext, context, out string cantPassReason);
+
+            // #100 — RestrictActions (Immobile, Artillery's Hold-only facet): a passive rule at this hook may
+            // limit which action types the unit can declare. The Move menu option covers Advance/Rush, Charge
+            // covers Charge; shooting is a sub-step of Hold and isn't gated here. A unit restricted to [Hold]
+            // (Immobile) thus loses Move and Charge but may still Hold-and-shoot.
+            IReadOnlySet<EActionType>? allowedActions = CollectAllowedActions(context);
+            if (allowedActions != null)
+            {
+                if (canMove && !allowedActions.Contains(EActionType.Advance) && !allowedActions.Contains(EActionType.Rush))
+                {
+                    canMove = false;
+                    cantMoveReason = "Immobile.";
+                }
+
+                if (canCharge && !allowedActions.Contains(EActionType.Charge))
+                {
+                    canCharge = false;
+                    cantChargeReason = "Immobile.";
+                }
+            }
 
             // #010 — special rules contribute custom actions (e.g. a Caster's spell) by carrying an
             // ActivatedAbility that triggers at this hook. GatherOffers returns one offer per affordable,
@@ -333,6 +355,28 @@ namespace FDG.Stages
             return true;
         }
 
+        // The action types the unit may declare, per its RestrictActions rules firing at
+        // Activation_OnActionChoice — intersected across rules (two restrictions both bind). Null when no
+        // rule restricts (the common case), so the menu is unchanged.
+        private IReadOnlySet<EActionType>? CollectAllowedActions(IUnitActionContext context)
+        {
+            IUnit unit = context.ActivatingUnit.GetValue();
+            IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator.EvaluateAll(
+                new ActionChoiceContext(unit), (unit, ERuleSeat.Actor));
 
+            HashSet<EActionType>? allowed = null;
+            foreach (RuleOperation op in ops)
+            {
+                if (op is RuleOperation.RestrictActions restrict)
+                {
+                    HashSet<EActionType> these = new HashSet<EActionType>(restrict.Allowed);
+                    allowed = allowed == null
+                        ? these
+                        : new HashSet<EActionType>(allowed.Where(these.Contains));
+                }
+            }
+
+            return allowed;
+        }
     }
 }

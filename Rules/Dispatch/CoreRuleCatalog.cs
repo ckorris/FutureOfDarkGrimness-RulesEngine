@@ -25,7 +25,7 @@ public static class CoreRuleCatalog
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
         Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Shred, Vanguard, Scout, Ambush, Thrust,
         Blast, Takedown, Impact, Counter, MartialProwess, Strafing, Fear, Fearless, Hero, Transport,
-        FuriousBuff, Mend,
+        FuriousBuff, Mend, Immobile,
     };
 
     /// <summary>
@@ -704,4 +704,23 @@ public static class CoreRuleCatalog
                 new Effect.Heal(new DiceExpression.D3()),
                 new Condition.Always()),
         });
+
+    // Action-restriction (ChooseActionStage drops the disallowed menu options) -------------------------
+
+    /// <summary>
+    /// Immobile (#100): the unit can't move — it may only Hold (and shoot). A passive rule at
+    /// <see cref="EHookID.Activation_OnActionChoice"/> that queues
+    /// <see cref="RuleOperation.RestrictActions"/> with the allowed set [Hold]; ChooseActionStage reads it
+    /// and grays out Move and Charge. The general action-restriction primitive (also Artillery's deferred
+    /// Hold-only facet).
+    /// </summary>
+    public static SpecialRuleDefinition Immobile { get; } = new SpecialRuleDefinition("Immobile",
+        new[]
+        {
+            new HookEntry(EHookID.Activation_OnActionChoice,
+                new Condition.Always(),
+                new Effect.RestrictActions(new[] { EActionType.Hold }),
+                ELifetime.ThisActivation),
+        },
+        Array.Empty<ActivatedAbility>());
 }

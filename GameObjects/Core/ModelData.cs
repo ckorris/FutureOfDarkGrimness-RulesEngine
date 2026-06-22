@@ -1,6 +1,7 @@
 ﻿using FDG.BuiltInAssets;
 using FDG.Data;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Serialization;
 using FDG.Rules.Tokens;
 using FDG.SerializableVisuals;
 using FDG.SerializableVisuals.Materials;
@@ -26,11 +27,30 @@ namespace FDG
 
         [JsonIgnore] public IReadOnlyList<ResolvedRule> RuleDefinitions => _ruleDefinitions;
 
+        // #095: persisted form of RuleDefinitions (which is [JsonIgnore]). See RuleAttachmentPersistence.
+        [JsonProperty] private string? _ruleDefinitionsJson;
+
         /// <summary>
         /// Attaches a resolved special-rule definition to this model. Post-construction (army-load / the
         /// hero merge / harness), mirroring <see cref="UnitData.AttachRuleDefinition"/>.
         /// </summary>
-        public void AttachRuleDefinition(ResolvedRule rule) => _ruleDefinitions.Add(rule);
+        public void AttachRuleDefinition(ResolvedRule rule)
+        {
+            _ruleDefinitions.Add(rule);
+            _ruleDefinitionsJson = RuleAttachmentPersistence.Serialize(_ruleDefinitions);
+        }
+
+        /// <summary>
+        /// #095: replays the persisted rule blob back onto <see cref="RuleDefinitions"/> after a load,
+        /// mirroring <see cref="UnitData.RehydrateRules"/>. Idempotent; no-op unless the live list is empty.
+        /// </summary>
+        public void RehydrateRules()
+        {
+            if (_ruleDefinitions.Count == 0 && !string.IsNullOrEmpty(_ruleDefinitionsJson))
+            {
+                _ruleDefinitions.AddRange(RuleAttachmentPersistence.Deserialize(_ruleDefinitionsJson));
+            }
+        }
 
         // Serialized: max wounds is set imperatively after creation (e.g. Tough via UnitCreationRules),
         // so it can't be recomputed on load — it must round-trip, or a loaded/networked Tough model

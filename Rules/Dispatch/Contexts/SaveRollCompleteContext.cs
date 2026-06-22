@@ -1,3 +1,4 @@
+using FDG.Rules.Definitions;
 using FDG.Rules.Foundation;
 
 namespace FDG.Rules.Dispatch.Contexts
@@ -11,8 +12,11 @@ namespace FDG.Rules.Dispatch.Contexts
     /// the attack; Defender holds the saves.
     /// </summary>
     public sealed record SaveRollCompleteContext(
-        IUnit Attacker, IUnit Defender, IDiceResults UnmodifiedSaveRolls) : IHookContext
+        IUnit Attacker, IUnit Defender, IDiceResults UnmodifiedSaveRolls) : IHookContext, IHasTarget
     {
         public EHookID Hook => EHookID.Shooting_OnSaveRollComplete;
+
+        // The defender IS the target for target-keyed conditions (TargetMajorityHasTough etc.).
+        IUnit IHasTarget.Target => Defender;
     }
 }

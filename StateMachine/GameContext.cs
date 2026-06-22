@@ -89,9 +89,9 @@ namespace FDG
         {
             TextOutput = textOutput;
             DiceRoller = diceRoller;
-            // #101: the army resolver lets the evaluator project granted rules (RuleGrant tokens). Null on
-            // the resume path (the resolver is rebuilt only on the fresh-game army-creation flow), so
-            // granted-rule projection is inert on resumed games until that path also supplies one.
+            // ruleResolver lets the evaluator read token-granted rules (auras / "gains rule X" buffs)
+            // back to their definitions. Optional so the Samples' bare-context construction and the
+            // resume path (no fresh army-load resolver; see #095) still compile and run.
             RuleEvaluator = new RuleEvaluator(diceRoller, textOutput, ruleResolver);
             PlayerRequester = playerRequester;
             TableState = tableState;

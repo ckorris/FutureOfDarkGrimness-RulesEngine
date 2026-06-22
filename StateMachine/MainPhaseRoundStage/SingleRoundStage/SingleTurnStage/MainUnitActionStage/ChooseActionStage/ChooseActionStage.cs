@@ -1,3 +1,4 @@
+using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
@@ -6,6 +7,7 @@ using FDG.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 
 namespace FDG.Stages
 {
@@ -17,6 +19,8 @@ namespace FDG.Stages
         public StageBinding ToShoot;
         public StageBinding ToCast;
         public StageBinding ToCustomAction;
+        public StageBinding ToDisembark;
+        public StageBinding ToEmbark;
         public StageBinding ToReconcileEndOfActivation;
 
         public const string MOVEMENT_CHOICE_NAME = "Move";
@@ -32,6 +36,8 @@ namespace FDG.Stages
             ToShoot = new StageBinding(this);
             ToCast = new StageBinding(this);
             ToCustomAction = new StageBinding(this);
+            ToDisembark = new StageBinding(this);
+            ToEmbark = new StageBinding(this);
             ToReconcileEndOfActivation = new StageBinding(this);
         }
 
@@ -71,20 +77,31 @@ namespace FDG.Stages
             string cantCastReason = null;
             bool canCast = isCaster && GetCanCast(context, out cantCastReason);
 
+            // #100 — RestrictActions (Immobile, Artillery's Hold-only facet): a passive rule at this hook may
+            // limit which action types the unit can declare. The Move menu option covers Advance/Rush, Charge
+            // covers Charge; shooting is a sub-step of Hold and isn't gated here. A unit restricted to [Hold]
+            // (Immobile) thus loses Move and Charge but may still Hold-and-shoot.
+            IReadOnlySet<EActionType>? allowedActions = CollectAllowedActions(context);
+            if (allowedActions != null)
+            {
+                if (canMove && !allowedActions.Contains(EActionType.Advance) && !allowedActions.Contains(EActionType.Rush))
+                {
+                    canMove = false;
+                    cantMoveReason = "Immobile.";
+                }
+
+                if (canCharge && !allowedActions.Contains(EActionType.Charge))
+                {
+                    canCharge = false;
+                    cantChargeReason = "Immobile.";
+                }
+            }
+
             // #010 — special rules contribute custom actions (e.g. a Caster's spell) by carrying an
             // ActivatedAbility that triggers at this hook. GatherOffers returns one offer per affordable,
             // available such ability; each surfaces below as its own action.
             IReadOnlyList<AbilityOffer> customActionOffers = GameContext.RuleEvaluator
                 .GatherOffers(new ActionChoiceContext(context.ActivatingUnit.GetValue()));
-            bool hasCustomActionsAvailable = customActionOffers.Count > 0;
-
-            //If we have no available actions
-            if ((canMove || canCharge || canShoot || canCast || hasCustomActionsAvailable) == false)
-            {
-                GameContext.Log($"No more available actions left in {nameof(ChooseActionStage)}. Passing.");
-                await ToReconcileEndOfActivation.Activate(context);
-                return;
-            }
 
             List<string> validOptions = new List<string>();
             List<StringSelectionRequest.InvalidOption> invalidOptions = new List<StringSelectionRequest.InvalidOption>();
@@ -147,6 +164,37 @@ namespace FDG.Stages
                 // "Cast" is only a reserved menu entry for casters (it isn't shown for anyone else), so a
                 // non-caster custom action may still legitimately use that name; for a caster the first-class
                 // Cast wins (it's already in outcomes, caught below).
+
+                // #035 — Disembark is a custom action whose effect is movement (place within 6" of the
+                // transport + un-embark), not a token-op, so it routes to DisembarkStage rather than the
+                // generic CustomActionStage. Its name is engine-controlled (never collides) and it needs no
+                // pending-offer stash — DisembarkStage reads the embarked token directly.
+                if (offer.RuleName == CoreRuleCatalog.DisembarkRuleName)
+                {
+                    if (!outcomes.ContainsKey(offer.RuleName))
+                    {
+                        validOptions.Add(offer.RuleName);
+                        outcomes.Add(offer.RuleName, () => ToDisembark.Activate(context));
+                    }
+                    continue;
+                }
+
+                // #035 slice D — Embark is offered only when it's still a move action (the unit hasn't moved
+                // or attacked) AND an engine spatial check finds a friendly transport with room within
+                // move-range (the availability gate can't be a data condition). Routed to EmbarkStage.
+                if (offer.RuleName == CoreRuleCatalog.EmbarkRuleName)
+                {
+                    bool canEmbark = !context.HasMoved && !context.HasAttacked
+                        && EmbarkStage.GetEmbarkableTransports(GameContext, context.ActivatingUnit.GetValue()).Count > 0;
+
+                    if (canEmbark && !outcomes.ContainsKey(offer.RuleName))
+                    {
+                        validOptions.Add(offer.RuleName);
+                        outcomes.Add(offer.RuleName, () => ToEmbark.Activate(context));
+                    }
+                    continue;
+                }
+
                 bool collides = offer.RuleName == MOVEMENT_CHOICE_NAME
                     || offer.RuleName == CHARGE_CHOICE_NAME
                     || offer.RuleName == SHOOT_CHOICE_NAME
@@ -168,6 +216,17 @@ namespace FDG.Stages
                     context.SetPendingCustomAction(capturedOffer);
                     return ToCustomAction.Activate(context);
                 });
+            }
+
+            // If no real action survived the gating above, the only thing left would be Pass — there's no
+            // decision to make, so end the activation instead of prompting with a lone Pass option. (Custom
+            // actions like Embark are gathered with AvailableWhen=Always but gated above, so this can't be
+            // decided up front from the raw offer count.)
+            if (validOptions.Count == 0)
+            {
+                GameContext.Log($"No actions available for {context.ActivatingUnit.GetValue().Name} — passing.");
+                await ToReconcileEndOfActivation.Activate(context);
+                return;
             }
 
             //Add pass option.
@@ -196,6 +255,12 @@ namespace FDG.Stages
 
         private bool GetCanMove(IUnitActionContext context, out string reasonIfCant)
         {
+            if (TransportUtilities.IsEmbarked(context.ActivatingUnit.GetValue()))
+            {
+                reasonIfCant = "Embarked; disembark first.";
+                return false;
+            }
+
             if (context.HasMoved == true)
             {
                 reasonIfCant = $"{context.ActivatingUnit.GetValue().Name} has already moved.";
@@ -223,6 +288,12 @@ namespace FDG.Stages
 
         private bool GetCanCharge(IUnitActionContext context, out string reasonIfCant)
         {
+            if (TransportUtilities.IsEmbarked(context.ActivatingUnit.GetValue()))
+            {
+                reasonIfCant = "Embarked; disembark first.";
+                return false;
+            }
+
             if (context.HasAttacked)
             {
                 reasonIfCant = "Has already attacked.";
@@ -319,6 +390,12 @@ namespace FDG.Stages
 
         private bool GetCanShoot(IUnitActionContext context, out string reasonIfCant)
         {
+            if (TransportUtilities.IsEmbarked(context.ActivatingUnit.GetValue()))
+            {
+                reasonIfCant = "Embarked; disembark first.";
+                return false;
+            }
+
             if (context.HasAttacked)
             {
                 reasonIfCant = "Has already attacked.";
@@ -350,6 +427,28 @@ namespace FDG.Stages
             return true;
         }
 
+        // The action types the unit may declare, per its RestrictActions rules firing at
+        // Activation_OnActionChoice — intersected across rules (two restrictions both bind). Null when no
+        // rule restricts (the common case), so the menu is unchanged.
+        private IReadOnlySet<EActionType>? CollectAllowedActions(IUnitActionContext context)
+        {
+            IUnit unit = context.ActivatingUnit.GetValue();
+            IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator.EvaluateAll(
+                new ActionChoiceContext(unit), (unit, ERuleSeat.Actor));
 
+            HashSet<EActionType>? allowed = null;
+            foreach (RuleOperation op in ops)
+            {
+                if (op is RuleOperation.RestrictActions restrict)
+                {
+                    HashSet<EActionType> these = new HashSet<EActionType>(restrict.Allowed);
+                    allowed = allowed == null
+                        ? these
+                        : new HashSet<EActionType>(allowed.Where(these.Contains));
+                }
+            }
+
+            return allowed;
+        }
     }
 }

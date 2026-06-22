@@ -1,4 +1,5 @@
 using FDG.Rules.Dispatch;
+using FDG.Rules.Serialization;
 using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.Linq;
@@ -130,6 +131,10 @@ namespace FDG
         /// </summary>
         [JsonIgnore] public IReadOnlyList<ResolvedRule> RuleDefinitions => _ruleDefinitions;
 
+        // #095: persisted form of RuleDefinitions (which is [JsonIgnore]), so weapon rules survive a
+        // save/load resume even though army files are vestigial there. See RuleAttachmentPersistence.
+        [JsonProperty] private string? _ruleDefinitionsJson;
+
         public Weapon(string name, float rangeInches, int attacks, int armorPenetration)
         {
             Name = name;
@@ -142,6 +147,22 @@ namespace FDG
         /// Attaches a resolved special-rule definition to this weapon. Post-construction
         /// (army-load / harness), mirroring <see cref="UnitData.AttachRuleDefinition"/>.
         /// </summary>
-        public void AttachRuleDefinition(ResolvedRule rule) => _ruleDefinitions.Add(rule);
+        public void AttachRuleDefinition(ResolvedRule rule)
+        {
+            _ruleDefinitions.Add(rule);
+            _ruleDefinitionsJson = RuleAttachmentPersistence.Serialize(_ruleDefinitions);
+        }
+
+        /// <summary>
+        /// #095: replays the persisted rule blob back onto <see cref="RuleDefinitions"/> after a load,
+        /// mirroring <see cref="UnitData.RehydrateRules"/>. Idempotent; no-op unless the live list is empty.
+        /// </summary>
+        public void RehydrateRules()
+        {
+            if (_ruleDefinitions.Count == 0 && !string.IsNullOrEmpty(_ruleDefinitionsJson))
+            {
+                _ruleDefinitions.AddRange(RuleAttachmentPersistence.Deserialize(_ruleDefinitionsJson));
+            }
+        }
     }
 }

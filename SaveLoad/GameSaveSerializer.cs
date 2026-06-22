@@ -54,6 +54,7 @@ namespace FDG.SaveLoad
 
             ReplayEntries(store, file.Entries);
             RewireSubscriptions(store);
+            RehydrateRuleDefinitions(store);
 
             return store;
         }
@@ -101,6 +102,34 @@ namespace FDG.SaveLoad
                 foreach (UnitData unit in store.GetAllValues<UnitData>())
                 {
                     unit.RewireModelWoundSubscriptions();
+                }
+            }
+        }
+
+        // #095: RuleDefinitions is [JsonIgnore] on every carrier; each persists its attached rules as an
+        // STJ blob (RuleAttachmentPersistence) which we replay back onto the live lists here, so a resumed
+        // game carries the same unit/model/weapon rules it was saved with. Restores rule OBJECTS only —
+        // creation-time effects (e.g. Tough's max-wounds) are NOT re-applied; those stay gated to
+        // fresh-game creation in FDGServer, so a resume neither loses the rule nor doubles its effect.
+        private static void RehydrateRuleDefinitions(GameDataStore store)
+        {
+            if (store.IsTypeAssigned<UnitData>())
+            {
+                foreach (UnitData unit in store.GetAllValues<UnitData>())
+                {
+                    unit.RehydrateRules();
+                }
+            }
+
+            if (store.IsTypeAssigned<ModelData>())
+            {
+                foreach (ModelData model in store.GetAllValues<ModelData>())
+                {
+                    model.RehydrateRules();
+                    foreach (Weapon weapon in model.Weapons)
+                    {
+                        weapon.RehydrateRules();
+                    }
                 }
             }
         }

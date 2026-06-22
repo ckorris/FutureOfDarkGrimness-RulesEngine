@@ -100,11 +100,15 @@ namespace FDG
         /// Whether a wound can be assigned to <paramref name="entry"/>'s model right now: it must have spare
         /// capacity AND be a legal next recipient under the assignment-ordering rules — a joined hero is not
         /// assignable while any rank-and-file model can still take a wound (#006, "heroes are assigned wounds
-        /// last"). The non-mutating predicate the UI uses to enable/gray a model; it answers the same
-        /// question <see cref="TryAddWounds"/> decides before mutating, so the dialog and the engine agree.
+        /// last"), and a fresh model may not be started while another model is still mid-fill (#024,
+        /// "finish a wounded model before moving on"). The non-mutating predicate the UI uses to enable/gray a
+        /// model; it answers the same question <see cref="TryAddWounds"/> decides before mutating, so the
+        /// dialog and the engine agree.
         /// </summary>
         public bool CanAssignWoundTo(PendingWounds entry) =>
-            CanTakeMoreWounds(entry) && !(IsHero(entry.Model) && AnyNonHeroHasRoom());
+            CanTakeMoreWounds(entry)
+            && !(IsHero(entry.Model) && AnyNonHeroHasRoom())
+            && !(entry.Wounds == 0f && AnyOtherModelMidFill(entry));
 
         /// <summary>
         /// Single-model assignment (Takedown's "resolve as a unit of [1]"): the only recipient is
@@ -138,8 +142,19 @@ namespace FDG
                 return false;
             }
 
-            //TODO: You could split wounds in an unallowed way by assigning when there's less than its total left,
-            //Then unassigning from a different model, then assigning to another tough model. Fix.
+            // #024: "finish a wounded model before moving on" (GDF/OPR). Refuse to START assigning to a model
+            // (nothing pending on it yet) while another model is already mid-fill — alive with wounds pending
+            // this assignment. On the pure-add path this never triggers: TryAddWounds always pours the full
+            // remaining capacity (capped by the pool), so a partial assignment only happens when the pool is
+            // exhausted and the loop ends. The guard makes the invariant hold for ANY caller, so no future
+            // un-assign affordance, AI path, or network replay can leave two models alive and partially
+            // wounded — the illegal "wound split" this item closes. (TryRemoveWounds, the lever the old TODO
+            // described, has been removed.)
+            if (pendingWoundsEntry.Wounds == 0f && AnyOtherModelMidFill(pendingWoundsEntry))
+            {
+                return false;
+            }
+
             float woundsToAdd = Math.Min(pendingWoundsEntry.Model.GetValue().RemainingWoundsBinding.GetValue(),
                 TotalWoundsToAssign - TotalAssignedWounds);
 
@@ -152,20 +167,6 @@ namespace FDG
             TotalAssignedWounds += woundsToAdd;
 
             return true;
-        }
-
-        public void TryRemoveWounds(DataBinding<ModelData> model)
-        {
-            PendingWounds? pendingWoundsEntry = PendingWounds.FirstOrDefault(entry => entry.Model == model);
-            if ((pendingWoundsEntry == null))
-            {
-                throw new ArgumentOutOfRangeException($"Tried to add model to {nameof(AssignWoundsResults)} " +
-                    "that was already dead or does not belong to the defending unit.");
-            }
-
-            float assignedWounds = pendingWoundsEntry.Wounds;
-            pendingWoundsEntry.Wounds = 0;
-            TotalAssignedWounds -= assignedWounds;
         }
 
         /// <summary>
@@ -198,6 +199,22 @@ namespace FDG
                 if (IsHero(entry.Model)) continue;
                 float remaining = entry.Model.TotalWounds() - entry.Model.WoundsDealt();
                 if (entry.Wounds < remaining) return true;
+            }
+            return false;
+        }
+
+        // #024 ---------------------------------------------------------------------------------------
+
+        /// <summary> True if any model OTHER than <paramref name="entry"/> is mid-fill — alive (capacity beyond
+        /// its pending wounds) yet already carrying wounds assigned this activation. While such a model exists
+        /// you must finish it before starting a fresh one (GDF/OPR), so a not-yet-started model is not a legal
+        /// recipient. </summary>
+        private bool AnyOtherModelMidFill(PendingWounds entry)
+        {
+            foreach (PendingWounds other in PendingWounds)
+            {
+                if (other == entry) continue;
+                if (other.Wounds > 0f && CanTakeMoreWounds(other)) return true;
             }
             return false;
         }

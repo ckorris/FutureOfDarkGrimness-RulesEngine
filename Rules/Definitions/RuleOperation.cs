@@ -111,12 +111,23 @@ public abstract record RuleOperation
     }
 
     /// <summary>
-    /// Add <see cref="Count"/> extra wounds to the current attack's wound
-    /// total. Resolution of <see cref="Effect.AddExtraWound"/>. Count is a float
-    /// for the same reason as <see cref="RuleOperation.InsertExtraHits"/> — the matching-die
-    /// count is fractional under the probabilistic roller.
+    /// Add <see cref="Count"/> extra wounds to the current attack's wound total. Resolution of
+    /// <see cref="Effect.AddExtraWound"/> (Shred), folded by <see cref="IWoundInjectionSink"/> in
+    /// AssignWoundsStage — the wound-side mirror of <see cref="RuleOperation.InsertExtraHits"/>. Count is
+    /// a float for the same reason: the matching-die count is fractional under the probabilistic roller.
     /// </summary>
-    public sealed record InsertExtraWounds(float Count) : RuleOperation;
+    public sealed record InsertExtraWounds(float Count) : SinkOperation<IWoundInjectionSink>
+    {
+        public override void ApplyTo(IWoundInjectionSink sink)
+        {
+            sink.AddWounds(Count);
+        }
+
+        public override string Describe()
+        {
+            return $"added {Count} extra wounds";
+        }
+    }
 
     /// <summary>
     /// Adjust the in-flight movement budget by <see cref="DistanceInches"/>
@@ -173,6 +184,18 @@ public abstract record RuleOperation
     /// <see cref="Cost.ConsumesToken"/> at activated-ability cost-resolution.
     /// </summary>
     public sealed record ConsumeTokensFromUnit(IUnit Unit, TokenType TType, int Count) : RuleOperation;
+
+    /// <summary>
+    /// Removes one <see cref="Foundation.TokenType.RuleGrant"/> token from <see cref="Unit"/> whose payload
+    /// equals <see cref="Payload"/> — the consume-on-fire of a "next time it would apply" buff (#100 #2c).
+    /// Distinct from <see cref="ConsumeTokensFromUnit"/> because that removes by type alone, which would
+    /// drop an arbitrary one of the unit's grants; this targets the specific granted rule that just fired.
+    /// </summary>
+    public sealed record ConsumeRuleGrant(IUnit Unit, TokenPayload Payload) : RuleOperation
+    {
+        public override string Describe() =>
+            $"consumed the {(Payload as TokenPayload.RuleGrant)?.RuleName ?? "rule"} grant";
+    }
 
     /// <summary>
     /// Remove up to <see cref="Count"/> tokens of <see cref="TType"/> from

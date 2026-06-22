@@ -23,8 +23,9 @@ public static class CoreRuleCatalog
     public static IReadOnlyList<SpecialRuleDefinition> All => new[]
     {
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
-        Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Vanguard, Scout, Ambush, Thrust,
-        Blast, Takedown, Impact, Counter, MartialProwess, Strafing, Fear, Fearless, Hero, Caster,
+        Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Shred, Vanguard, Scout, Ambush, Thrust,
+        Blast, Takedown, Impact, Counter, MartialProwess, Strafing, Fear, Fearless, Hero, Transport,
+        FuriousBuff, Mend, Immobile, Caster,
     };
 
     /// <summary>
@@ -442,6 +443,27 @@ public static class CoreRuleCatalog
         Array.Empty<ActivatedAbility>(),
         ERuleScope.Weapon);
 
+    // Wound-injection sink (AssignWoundsStage) -----------------------------------
+
+    /// <summary>
+    /// Shred (weapon rule): for each of the defender's unmodified save rolls of 1 ("1 to block"), the
+    /// attack deals 1 extra wound. Reads the save-roll histogram at
+    /// <see cref="EHookID.Shooting_OnSaveRollComplete"/> via <see cref="Effect.AddExtraWound"/>, which
+    /// queues <see cref="RuleOperation.InsertExtraWounds"/>; AssignWoundsStage folds it through the
+    /// <see cref="WoundInjectionSink"/> and adds the wounds (after Deadly's clump confinement, before
+    /// Regeneration so the defender may still ignore them). The wound-side mirror of Surge.
+    /// </summary>
+    public static SpecialRuleDefinition Shred { get; } = new SpecialRuleDefinition("Shred",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnSaveRollComplete,
+                new Condition.Always(),
+                new Effect.AddExtraWound(OnRollValue: 1),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>(),
+        ERuleScope.Weapon);
+
     // Max-wounds sink (UnitCreationRules, at army-load) ---------------------------
 
     /// <summary> Tough(X): each model in the unit has X wounds instead of 1. </summary>
@@ -490,6 +512,75 @@ public static class CoreRuleCatalog
                 ELifetime.UntilEndOfGame),
         },
         Array.Empty<ActivatedAbility>());
+
+    /// <summary>
+    /// Transport(X) (#035): a marker rule, like <see cref="Hero"/>. A transport carries friendly units
+    /// inside it; the capacity X (in "spaces") is the rule's <c>Arg(0)</c>, read off the attachment by
+    /// <see cref="TransportUtilities.GetCapacity"/>. The behavior — occupancy (a cross-unit
+    /// <see cref="Foundation.TokenType.EmbarkedIn"/> token), deploy-time loading, embark/disembark move
+    /// actions, the inside↔outside targeting scope (free, via off-battlefield occupants), and mid-combat
+    /// destruction spillout — is a first-class engine subsystem, not a composed hook Effect: it needs
+    /// cross-unit relationships and new action/combat-flow verbs that no single-unit hook can express
+    /// (the same reason <see cref="Hero"/>'s join is engine code). This definition exists so the rule has
+    /// a stable identity to attach and test against.
+    ///
+    /// In <see cref="All"/> so the army-builder picker offers it and army-load resolves "Transport" by name.
+    /// It is a <em>marker-with-arg</em>: the capacity is its <c>Arg(0)</c>, but no hook Effect references it
+    /// (engine code reads it), so it declares <c>EngineArgumentCount: 1</c> — without that
+    /// <see cref="RuleArgumentArity"/> would infer 0 args and the picker would treat it as non-numeric.
+    /// Unit-scoped (the default).
+    /// </summary>
+    public static SpecialRuleDefinition Transport { get; } = new SpecialRuleDefinition("Transport",
+        Array.Empty<HookEntry>(),
+        Array.Empty<ActivatedAbility>(),
+        EngineArgumentCount: 1);
+
+    /// <summary> Canonical name of the engine-internal Disembark ability (#035). </summary>
+    public const string DisembarkRuleName = "Disembark";
+
+    /// <summary>
+    /// Disembark (#035): an engine-internal activated ability attached to every unit at army-load (in
+    /// <c>FDGServer</c>), gated to surface only while the unit is embarked (an
+    /// <see cref="Foundation.TokenType.EmbarkedIn"/> token present). Offered at
+    /// <see cref="EHookID.Activation_OnActionChoice"/> so it appears as a "Disembark" action; because its
+    /// effect is movement (place within 6" of the transport + un-embark), <c>ChooseActionStage</c> routes
+    /// it by name to <c>DisembarkStage</c> rather than the generic token-op resolver. Not in
+    /// <see cref="All"/> — it isn't an army-list rule players pick; the engine attaches it universally.
+    /// Being a durable rule gated by the *serialized* token (not a transient attach), it is restored by the
+    /// #094 resume rule-rehydration fix.
+    /// </summary>
+    public static SpecialRuleDefinition Disembark { get; } = new SpecialRuleDefinition(DisembarkRuleName,
+        Array.Empty<HookEntry>(),
+        new[]
+        {
+            new ActivatedAbility(EHookID.Activation_OnActionChoice, new Cost.OncePerActivation(),
+                new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
+                new Effect.Disembark(),
+                new Condition.TokenPresent(TokenType.EmbarkedIn)),
+        });
+
+    /// <summary> Canonical name of the engine-internal Embark ability (#035 slice D). </summary>
+    public const string EmbarkRuleName = "Embark";
+
+    /// <summary>
+    /// Embark (#035 slice D): the mid-game counterpart of <see cref="Disembark"/> — an engine-internal
+    /// activated ability attached to every unit at army-load, surfacing "Embark into &lt;transport&gt;" so a
+    /// unit can board a friendly transport on its activation. Unlike Disembark's clean token gate, embark's
+    /// availability is *spatial* ("a friendly transport with room within move-range"), which the
+    /// architecture has no data condition for — so <c>AvailableWhen</c> is <c>Always</c> and
+    /// <c>ChooseActionStage</c> applies the spatial gate in engine code (the same way Charge is gated by
+    /// enemy-in-range) before surfacing it, then routes it by name to <c>EmbarkStage</c>. Not in
+    /// <see cref="All"/> — not a player-picked rule. Effect is the no-op <see cref="Effect.Embark"/> marker.
+    /// </summary>
+    public static SpecialRuleDefinition Embark { get; } = new SpecialRuleDefinition(EmbarkRuleName,
+        Array.Empty<HookEntry>(),
+        new[]
+        {
+            new ActivatedAbility(EHookID.Activation_OnActionChoice, new Cost.OncePerActivation(),
+                new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
+                new Effect.Embark(),
+                new Condition.Always()),
+        });
 
     // Triggered-move primitive (DeployUnitStage offer -> MovementExecutor) --------
 
@@ -602,4 +693,57 @@ public static class CoreRuleCatalog
                 new Effect.DealHits(Count: 3, WithRules: Array.Empty<string>()),
                 new Condition.Always()),
         });
+
+    // Pre-attack activated abilities (PreAttackStage offers them at Activation_OnPreAttack) -------------
+
+    /// <summary>
+    /// Furious Buff (#100 #2e): once per activation, before attacking, the bearer picks one friendly unit
+    /// within 12" which gains Furious once (next time it would apply). The grant rides
+    /// <see cref="Effect.AddRule"/> with <see cref="ELifetime.NextTrigger"/>, so the granted Furious is read
+    /// back by the evaluator and consumed the moment it fires (slices 1 + 2c). A representative "X Buff" rule.
+    /// </summary>
+    public static SpecialRuleDefinition FuriousBuff { get; } = new SpecialRuleDefinition("Furious Buff",
+        Array.Empty<HookEntry>(),
+        new[]
+        {
+            new ActivatedAbility(EHookID.Activation_OnPreAttack, new Cost.OncePerActivation(),
+                new TargetSelector(12f, 1, 1, ETargetAffinity.Friend, false),
+                new Effect.AddRule("Furious", ELifetime.NextTrigger),
+                new Condition.Always()),
+        });
+
+    /// <summary>
+    /// Mend (#100 #2e): once per activation, before attacking, the bearer picks one friendly unit within 3"
+    /// and removes D3 wounds from it (applied to that unit's first model — the per-model "with Tough"
+    /// selection is approximated at unit scope for now). Exercises the previously-dead <see cref="Effect.Heal"/>
+    /// consumer wired in <see cref="OperationApplier"/>.
+    /// </summary>
+    public static SpecialRuleDefinition Mend { get; } = new SpecialRuleDefinition("Mend",
+        Array.Empty<HookEntry>(),
+        new[]
+        {
+            new ActivatedAbility(EHookID.Activation_OnPreAttack, new Cost.OncePerActivation(),
+                new TargetSelector(3f, 1, 1, ETargetAffinity.Friend, false),
+                new Effect.Heal(new DiceExpression.D3()),
+                new Condition.Always()),
+        });
+
+    // Action-restriction (ChooseActionStage drops the disallowed menu options) -------------------------
+
+    /// <summary>
+    /// Immobile (#100): the unit can't move — it may only Hold (and shoot). A passive rule at
+    /// <see cref="EHookID.Activation_OnActionChoice"/> that queues
+    /// <see cref="RuleOperation.RestrictActions"/> with the allowed set [Hold]; ChooseActionStage reads it
+    /// and grays out Move and Charge. The general action-restriction primitive (also Artillery's deferred
+    /// Hold-only facet).
+    /// </summary>
+    public static SpecialRuleDefinition Immobile { get; } = new SpecialRuleDefinition("Immobile",
+        new[]
+        {
+            new HookEntry(EHookID.Activation_OnActionChoice,
+                new Condition.Always(),
+                new Effect.RestrictActions(new[] { EActionType.Hold }),
+                ELifetime.ThisActivation),
+        },
+        Array.Empty<ActivatedAbility>());
 }

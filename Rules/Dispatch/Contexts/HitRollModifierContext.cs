@@ -1,3 +1,4 @@
+using FDG.Rules.Definitions;
 using FDG.Rules.Foundation;
 
 namespace FDG.Rules.Dispatch.Contexts
@@ -12,7 +13,7 @@ namespace FDG.Rules.Dispatch.Contexts
     public sealed record HitRollModifierContext(
         IUnit Attacker, IUnit Target, float DistanceInches, bool AttackerMoved = false,
         bool IsMelee = false, bool IsCharging = false)
-        : IHookContext, IHasDistance, IHasAttackerMoved, IHasCombatKind, IHasCharging
+        : IHookContext, IHasDistance, IHasAttackerMoved, IHasCombatKind, IHasCharging, IHasTarget
     {
         public EHookID Hook => EHookID.Shooting_OnHitRollModifier;
     }

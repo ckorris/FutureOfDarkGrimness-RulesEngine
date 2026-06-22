@@ -43,8 +43,8 @@ namespace FDG.Tests
         {
             HashSet<string> offered = CoreEntries().Select(e => e.Name).ToHashSet();
             // The old hand-list offered these, but the engine has no definition — picking them did nothing.
-            // (Caster was here until #033 implemented it; it's now asserted as offered above.)
-            foreach (string phantom in new[] { "Sniper", "Flying", "Aircraft", "Transport" })
+            // (Caster — #033 — and Transport — #035 — were both here until implemented; both are now offered.)
+            foreach (string phantom in new[] { "Sniper", "Flying", "Aircraft" })
             {
                 Assert.That(offered, Does.Not.Contain(phantom),
                     $"picker must not offer unimplemented rule '{phantom}'.");
@@ -57,7 +57,7 @@ namespace FDG.Tests
             Dictionary<string, bool> numericByName =
                 CoreEntries().ToDictionary(e => e.Name, e => e.IsNumeric);
 
-            foreach (string numeric in new[] { "Tough", "Deadly", "Blast", "Impact", "Fear" })
+            foreach (string numeric in new[] { "Tough", "Deadly", "Blast", "Impact", "Fear", "Transport" })
             {
                 Assert.That(numericByName[numeric], Is.True, $"'{numeric}' reads an arg → numeric.");
             }
@@ -65,6 +65,28 @@ namespace FDG.Tests
             {
                 Assert.That(numericByName[plain], Is.False, $"'{plain}' reads no arg → plain.");
             }
+        }
+
+        // #035: Transport is a marker-with-arg core rule. Army-load must resolve "Transport(6)" to a rule
+        // carrying its capacity as Arg(0), and must reject "Transport" with no value (the EngineArgumentCount
+        // declared arity) rather than silently attaching a 0-capacity transport.
+        [Test]
+        public void ArmyLoad_ResolvesTransportWithCapacity_AndRejectsMissingValue()
+        {
+            RuleResolver resolver = CoreRuleCatalog.CreateResolver();
+
+            ResolvedRule? withValue = ArmyListRuleResolution.ResolveForScope(
+                resolver, new SpecialRuleEntry_CoreNumeric("Transport", 6), ERuleScope.Unit, "unit 'Rhino'");
+            Assert.That(withValue, Is.Not.Null);
+            Assert.That(withValue!.Definition, Is.SameAs(CoreRuleCatalog.Transport));
+            Assert.That(withValue.Arguments, Has.Count.EqualTo(1));
+            Assert.That(((RuleArgument.Int)withValue.Arguments[0]).Value, Is.EqualTo(6),
+                "the capacity rides as Arg(0), which TransportUtilities.GetCapacity reads.");
+
+            ResolvedRule? noValue = ArmyListRuleResolution.ResolveForScope(
+                resolver, new SpecialRuleEntry_Core("Transport"), ERuleScope.Unit, "unit 'Rhino'");
+            Assert.That(noValue, Is.Null,
+                "Transport without a capacity value is rejected by the arity check, not attached as 0-capacity.");
         }
 
         [Test]

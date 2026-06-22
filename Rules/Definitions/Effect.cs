@@ -54,6 +54,8 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(IgnoreCover), "ignoreCover")]
 [JsonDerivedType(typeof(IgnoreLineOfSight), "ignoreLineOfSight")]
 [JsonDerivedType(typeof(DeferDeployment), "deferDeployment")]
+[JsonDerivedType(typeof(Disembark), "disembark")]
+[JsonDerivedType(typeof(Embark), "embark")]
 
 public abstract record Effect
 {
@@ -127,10 +129,19 @@ public abstract record Effect
     }
 
     /// <summary>
-    /// Same shape as <see cref="Effect.AddExtraHit"/> but for wound generation.
-    /// Covers Shred (+1 wound on unmodified 1 to block).
+    /// Same shape as <see cref="Effect.AddExtraHit"/> but for wound generation, reading the SAVE-roll
+    /// histogram instead of the hit-roll one. Each of the defender's unmodified <see cref="OnRollValue"/>
+    /// save rolls generates <see cref="Count"/> extra wounds. Covers Shred (+1 wound on an unmodified 1
+    /// to block) — the wound-side mirror of Surge.
     /// </summary>
-    public sealed record AddExtraWound(int OnRollValue, int Count = 1) : Effect;
+    public sealed record AddExtraWound(int OnRollValue, int Count = 1)
+        : CapabilityEffect<IHasUnmodifiedSaveRolls>
+    {
+        protected override void ApplyCore(IHasUnmodifiedSaveRolls context, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.InsertExtraWounds(context.UnmodifiedSaveRolls.At(OnRollValue) * Count));
+        }
+    }
 
     /// <summary>
     /// Adjusts the bearer's movement distance by <see cref="DistanceInches"/>
@@ -559,6 +570,34 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.DeferDeployment(Timing, PlacementRangeInches));
+        }
+    }
+
+    /// <summary>
+    /// #035 — marker for the Disembark activated ability (a unit leaving a transport on its activation).
+    /// Carries no resolvable operation: the disembark itself — placing the unit within 6" of the transport
+    /// and un-embarking it — is enacted by <c>DisembarkStage</c>, to which <c>ChooseActionStage</c> routes
+    /// this offer specially (the generic custom-action resolver is token-ops only). <see cref="Apply"/> is a
+    /// deliberate no-op so a stray generic resolution can't crash mid-activation.
+    /// </summary>
+    public sealed record Disembark : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+        }
+    }
+
+    /// <summary>
+    /// #035 — marker for the Embark activated ability (a unit boarding a friendly transport on its
+    /// activation). Like <see cref="Disembark"/>, it carries no resolvable operation: the embark — setting
+    /// the unit aside off-table into the transport — is enacted by <c>EmbarkStage</c>, to which
+    /// <c>ChooseActionStage</c> routes this offer specially (after an engine "transport in range" gate,
+    /// since the availability is spatial and can't be a data condition). <see cref="Apply"/> is a no-op.
+    /// </summary>
+    public sealed record Embark : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
         }
     }
 }

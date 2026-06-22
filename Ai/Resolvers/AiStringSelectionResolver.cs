@@ -23,6 +23,13 @@ namespace FDG.Ai.Resolvers
             if (request.Instructions == "Choose Action")
                 return Task.FromResult(ChooseAction(request.ValidOptions));
 
+            // Pre-attack abilities (#100 #2): the AI doesn't yet reason about when a buff / mark / debuff is
+            // worth spending, so it skips them (picks Done) rather than firing one blindly on an arbitrary
+            // target. Same conservative stance as the Ambush "always deploy normally" default below; a real
+            // policy (buff self / nearest, mark nearest enemy) is a future refinement.
+            if (request.ValidOptions.Contains(PreAttackStage.DONE_CHOICE))
+                return Task.FromResult(PreAttackStage.DONE_CHOICE);
+
             // Ambush hold-or-deploy: the AI's reserve placement isn't tactical (it drops the unit at the
             // first legal row from a table edge, ignoring objectives and the enemy), so holding only
             // strands the unit. Always deploy normally instead until reserve placement is smarter.

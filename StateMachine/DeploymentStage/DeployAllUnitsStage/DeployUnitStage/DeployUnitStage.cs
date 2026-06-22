@@ -41,7 +41,7 @@ namespace FDG.Stages
             DataBinding<RectangularZone> deploymentZone = context.PlayerDeploymentZones[deployingTeam];
 
             var placeObjectsRequest = new PlaceObjectsRequest<ModelData>(currentPlayerID, "Place Unit Models",
-                deploymentZone, deployingUnit.ModelBindings);
+                deploymentZone.GetValue(), deployingUnit.ModelBindings);
 
             List<PlacedObjectEntry<ModelData>> modelPositions = await GameContext.PlayerRequester.RequestDecision
                 <PlaceObjectsRequest<ModelData>, List<PlacedObjectEntry<ModelData>>>(placeObjectsRequest);

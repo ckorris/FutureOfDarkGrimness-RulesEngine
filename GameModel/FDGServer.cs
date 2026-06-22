@@ -33,9 +33,10 @@ namespace FDG.GameModel
         // Stored so the extracted BuildContextAndLaunch can reach it on both new-game and resume paths.
         private IPresentationClock? _presentationClock;
 
-        // The shared rule resolver built during army creation (#059); held so BuildContextAndLaunch can
-        // hand it to the GameContext/RuleEvaluator for granted-rule projection (#101). Null on resume (the
-        // fresh-game path is the only one that currently builds it).
+        // The shared army-load rule registry (core catalog + every army's embedded rules), built in
+        // CreateArmies. Threaded into GameContext → RuleEvaluator so token-granted rules (auras /
+        // "gains rule X" buffs) resolve their names back to definitions. Null on the resume path,
+        // which doesn't rebuild armies (rule rehydration on resume is #095); read-back no-ops there.
         private IRuleResolver? _ruleResolver;
 
         private static bool TEST_SINGLE_TURN = false; //Turn on to skip most of the game and just do one run of a model's activation.
@@ -167,6 +168,11 @@ namespace FDG.GameModel
             RuleResolver ruleResolver = CoreRuleCatalog.CreateResolver();
             _ruleResolver = ruleResolver; // #101: shared in-game for granted-rule projection
 
+            // Hold the shared resolver so BuildContextAndLaunch can hand it to the RuleEvaluator for
+            // token-granted-rule read-back (auras / buffs). Captures the instance the embedded-rule
+            // registration below mutates in place, so by game time it carries every army's flavored rules.
+            _ruleResolver = ruleResolver;
+
             // #059: register every army's embedded rule definitions before any unit resolves its rule
             // names. Core rules are registered above; these override by name, so a template can retune a
             // core rule from data. Done for all armies up front since the resolver is shared in-game.
@@ -235,6 +241,13 @@ namespace FDG.GameModel
                     unitData.AttachRuleDefinition(resolved);
                 }
             }
+
+            // #035: every unit carries the engine-internal Disembark + Embark abilities (slice C/D), each
+            // gated before it surfaces (Disembark by the EmbarkedIn token, Embark by an engine
+            // transport-in-range check in ChooseActionStage). Attached here so they ride the normal
+            // army-load rule lifecycle and are restored by the #094 resume rehydration.
+            unitData.AttachRuleDefinition(new ResolvedRule(CoreRuleCatalog.DisembarkRuleName, CoreRuleCatalog.Disembark));
+            unitData.AttachRuleDefinition(new ResolvedRule(CoreRuleCatalog.EmbarkRuleName, CoreRuleCatalog.Embark));
         }
 
 

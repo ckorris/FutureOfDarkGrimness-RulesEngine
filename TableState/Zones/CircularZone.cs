@@ -3,11 +3,14 @@ using Newtonsoft.Json;
 
 namespace FDG
 {
-    public class CircularZone : IZone
+    public class CircularZone : IBoundedZone
     {
         public readonly Float2 Center;
 
         public readonly float Radius;
+
+        public ZoneBounds Bounds =>
+            new ZoneBounds(Center.X - Radius, Center.X + Radius, Center.Y - Radius, Center.Y + Radius);
 
         [JsonConstructor]
         public CircularZone(Float2 center, float radius)

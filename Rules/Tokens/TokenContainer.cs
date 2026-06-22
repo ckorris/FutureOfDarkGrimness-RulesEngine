@@ -20,11 +20,11 @@ public class TokenContainer : ITokenContainer
             return;
         }
         
-        // Merge into an existing pile only when type, owner AND payload all match. Payload is part of the
-        // identity (#101): two RuleGrant tokens naming different rules — or two StatModifier grants with
-        // different deltas — from the same owner must stay distinct entries, not collapse into one pile that
-        // silently keeps only the first's payload. Tokens with no payload (the common case) compare equal
-        // under Equals(null, null) and merge exactly as before.
+        //If we already have tokens of the same type, owner, AND payload, just add to that pile. The payload
+        //must match too: distinct RuleGrant payloads (different granted rules) on the same owner are
+        //semantically different tokens and must stay separate entries — without this they would collapse
+        //into one count, silently dropping every granted rule but the first. Payload-less tokens (Payload
+        //null) merge by type+owner exactly as before (Equals(null, null) is true).
         int existingIndex = _tokens.FindIndex(t => t.Type == token.Type && t.OwnerUnitID == token.OwnerUnitID
             && Equals(t.Payload, token.Payload));
         if (existingIndex < 0)
@@ -47,9 +47,8 @@ public class TokenContainer : ITokenContainer
     public int RemoveTokensWithOwner(TokenType tokenType, UnitID owner, int count = 1)
         => RemoveMatching(entry => entry.Type == tokenType && entry.OwnerUnitID == owner, count);
 
-    public int RemoveTokensWithPayload(TokenType tokenType, UnitID? owner, TokenPayload? payload, int count = 1)
-        => RemoveMatching(entry => entry.Type == tokenType && entry.OwnerUnitID == owner
-            && Equals(entry.Payload, payload), count);
+    public int RemoveTokensWithPayload(TokenType tokenType, TokenPayload? payload, int count = 1)
+        => RemoveMatching(entry => entry.Type == tokenType && Equals(entry.Payload, payload), count);
 
     /// <summary>
     /// Drains up to <paramref name="count"/> tokens from entries satisfying

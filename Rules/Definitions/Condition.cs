@@ -68,13 +68,23 @@ public abstract record Condition
     /// Used for unit-composition gates like Harassing Boost ("if this unit has
     /// Harassing, apply X").
     /// </summary>
-    public sealed record UnitHasRule(string RuleName) : Condition;
+    public sealed record UnitHasRule(string RuleName) : Condition
+    {
+        public override bool Evaluate(RuleInvocation invocation) =>
+            invocation.Bearer.RuleDefinitions.Any(
+                r => r.Definition.Name == RuleName || r.RequestedName == RuleName);
+    }
 
     /// <summary>
     /// True if the target (defender, charged unit, spell target, etc.) has the
     /// named rule. Used for "vs. units with rule X" effects.
     /// </summary>
-    public sealed record TargetHasRule(string RuleName) : Condition;
+    public sealed record TargetHasRule(string RuleName) : CapabilityCondition<IHasTarget>
+    {
+        protected override bool EvaluateCore(IHasTarget context) =>
+            context.Target.RuleDefinitions.Any(
+                r => r.Definition.Name == RuleName || r.RequestedName == RuleName);
+    }
 
     /// <summary>
     /// True if the action the bearer just declared matches the given type.
@@ -117,7 +127,30 @@ public abstract record Condition
     /// and <i>the threshold</i> vary per rule — e.g. Melee Slayer keys on
     /// <see cref="EStatKind.Tough"/> &gt;= 3.
     /// </summary>
-    public sealed record StatGreaterOrEqualTo(EStatKind Stat, int StatValue) : Condition;
+    public sealed record StatGreaterOrEqualTo(EStatKind Stat, int StatValue) : CapabilityCondition<IHasTarget>
+    {
+        protected override bool EvaluateCore(IHasTarget context) => Stat switch
+        {
+            EStatKind.Quality => context.Target.Quality >= StatValue,
+            EStatKind.Defense => context.Target.Defense >= StatValue,
+            // Tough is per-model and uniform across a unit in the corpus, so read it as
+            // "most living models have Tough >= value" — the same majority TargetMajorityHasTough uses.
+            EStatKind.Tough => MajorityToughAtLeast(context.Target, StatValue),
+            _ => false,
+        };
+    }
+
+    /// <summary>
+    /// True when more than half of the target's living models have Tough (max wounds) at least
+    /// <paramref name="min"/>. Shared by <see cref="TargetMajorityHasTough"/> and the Tough arm of
+    /// <see cref="StatGreaterOrEqualTo"/>. Dead models are excluded — a unit reduced to a single Tough
+    /// survivor still counts as a Tough target.
+    /// </summary>
+    private static bool MajorityToughAtLeast(IUnit target, int min)
+    {
+        var living = target.Models.Where(m => m.GetIsAlive()).ToList();
+        return living.Count > 0 && living.Count(m => m.TotalWounds >= min) * 2 > living.Count;
+    }
 
     /// <summary>
     /// True if a majority of models in the target have Tough at least
@@ -125,7 +158,11 @@ public abstract record Condition
     /// computation isn't expressible as a simple stat comparison —
     /// it's a per-target structural query.
     /// </summary>
-    public sealed record TargetMajorityHasTough(int MinToughValue) : Condition;
+    public sealed record TargetMajorityHasTough(int MinToughValue) : CapabilityCondition<IHasTarget>
+    {
+        protected override bool EvaluateCore(IHasTarget context) =>
+            MajorityToughAtLeast(context.Target, MinToughValue);
+    }
 
     /// <summary>
     /// True if the bearer's token container holds at least <see cref="MinCount"/>
@@ -156,7 +193,14 @@ public abstract record Condition
     /// <summary>
     /// Logical OR of two conditions. Either matching is sufficient.
     /// </summary>
-    public sealed record Or(Condition Left, Condition Right) : Condition;
+    public sealed record Or(Condition Left, Condition Right) : Condition
+    {
+        public override bool Evaluate(RuleInvocation invocation) =>
+            Left.Evaluate(invocation) || Right.Evaluate(invocation);
+
+        public override IReadOnlyCollection<Type> RequiredCapabilities =>
+            Left.RequiredCapabilities.Concat(Right.RequiredCapabilities).Distinct().ToArray();
+    }
 
     /// <summary>
     /// Logical NOT — true when the inner condition is false. Used for

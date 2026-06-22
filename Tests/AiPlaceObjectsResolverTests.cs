@@ -41,10 +41,8 @@ namespace FDG.Tests
 
             var wholeTable = new RectangularZone(0f, GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES,
                 0f, GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES);
-            var zoneBinding = store.GetDataBinding<RectangularZone>(store.Create(wholeTable));
-
             const float minDist = 9f;
-            var request = new PlaceObjectsRequest<ModelData>(selfPlayer, "Ambush Deploy", zoneBinding,
+            var request = new PlaceObjectsRequest<ModelData>(selfPlayer, "Ambush Deploy", wholeTable,
                 placing, minDistanceFromEnemiesInches: minDist);
 
             List<PlacedObjectEntry<ModelData>> result = await resolver.Resolve(request);
@@ -68,7 +66,6 @@ namespace FDG.Tests
 
             // A deployment strip with an impassible wall splitting it at x=8..12 (full height). #048.
             var zone = new RectangularZone(0f, 20f, 0f, 12f);
-            var zoneBinding = store.GetDataBinding<RectangularZone>(store.Create(zone));
             var wall = new TerrainData(ETerrainType.Impassible, new RectangularZone(8f, 12f, 0f, 12f));
             store.Create(wall);
 
@@ -84,7 +81,7 @@ namespace FDG.Tests
 
             var tableState = new TableState(store);
             var resolver = new AiPlaceObjectsResolver<ModelData>(tableState);
-            var request = new PlaceObjectsRequest<ModelData>(selfPlayer, "Place Unit Models", zoneBinding, placing);
+            var request = new PlaceObjectsRequest<ModelData>(selfPlayer, "Place Unit Models", zone, placing);
 
             List<PlacedObjectEntry<ModelData>> result = await resolver.Resolve(request);
 

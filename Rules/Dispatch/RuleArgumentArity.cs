@@ -39,6 +39,10 @@ public static class RuleArgumentArity
             max = Max(max, MaxIndexInEffect(ability.Effect));
         }
 
+        // Marker-with-arg core rules (Transport(X)) read their argument in engine code rather than via an
+        // effect, so it isn't reachable above — fold the declared count in so arity/numeric detection sees it.
+        max = Max(max, definition.EngineArgumentCount - 1);
+
         return max;
     }
 

@@ -65,12 +65,25 @@ public abstract record Effect
     public virtual IReadOnlyCollection<Type> RequiredCapabilities => Array.Empty<Type>();
     
     /// <summary>
-    /// Modifies a base stat (Quality / Defense / Tough) by <see cref="Delta"/>
-    /// for the duration given by <see cref="LifetimeScope"/>. Unlike
-    /// <see cref="Effect.RollModifier"/>, this persists across multiple rolls — e.g.
-    /// "+1 Defense until end of round" rather than "+1 to this one save roll."
+    /// Grants the target a numeric modifier of <see cref="Delta"/> to a specific roll
+    /// (<see cref="Roll"/>) for the duration given by <see cref="LifetimeScope"/> — the spell/ability
+    /// "+1 to hit" / "-1 to defense rolls" / "-1 to morale" buff or debuff (#033). Unlike
+    /// <see cref="Effect.RollModifier"/> (a passive, bearer-side modifier on one roll the bearer is
+    /// currently making), this is GRANTED to the target as a token the relevant roll stage reads later,
+    /// persisting until its lifetime expires (NextTrigger → consumed on the next such roll; ThisRound →
+    /// swept at round end). The roll lives in the token type, so different rolls' grants never merge.
     /// </summary>
-    public sealed record StatModifier(EStatKind Stat, int Delta, ELifetime LifetimeScope) : Effect;
+    public sealed record StatModifier(ERollKind Roll, int Delta, ELifetime LifetimeScope) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.GrantTokenToUnit(
+                ruleInvocation.EffectiveTarget,
+                new Token(RollModifierTokens.TypeFor(Roll), 1, ClearTriggerFor(LifetimeScope),
+                    Payload: new TokenPayload.StatModifier(Delta),
+                    OwnerUnitID: ruleInvocation.OwnerForEffectiveTarget)));
+        }
+    }
 
     /// <summary>
     /// Adds or subtracts <see cref="Delta"/> to a single dice roll of the given

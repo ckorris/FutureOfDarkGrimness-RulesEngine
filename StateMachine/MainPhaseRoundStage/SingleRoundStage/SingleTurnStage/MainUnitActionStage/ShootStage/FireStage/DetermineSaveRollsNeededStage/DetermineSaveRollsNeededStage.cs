@@ -1,4 +1,5 @@
 
+using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Utilities;
 using System;
@@ -30,7 +31,12 @@ namespace FDG.Stages
             // #042 save-modifier rules (Rending) folded their net modifier at hit-roll-complete and
             // carried it here; a negative delta to the save roll raises the threshold. Subtract it,
             // mirroring the hit stage's `HitRollNeeded -= Net(Hit)` convention.
-            int baseDefenseWithAP = baseDefense + ap - coverResults.DefenseRollBonus - rollToHitResults.SaveModifier;
+            // #033 granted "+X to defense" buffs on the defender (one-shot / duration) lower the threshold,
+            // same sign as cover; one-shot ("next time") grants are consumed by this attack's saves.
+            int grantedDefense = GrantedRollModifiers.ConsumeNet(metaData.DefendingUnit.GetValue(), ERollKind.Save);
+
+            int baseDefenseWithAP = baseDefense + ap - coverResults.DefenseRollBonus - rollToHitResults.SaveModifier
+                - grantedDefense;
 
             GameContext.Log($"Base roll to save is {baseDefense}, AP {ap}, cover -{coverResults.DefenseRollBonus}, " +
                 $"Rending/save mods {rollToHitResults.SaveModifier}, effective threshold {baseDefenseWithAP} (not yet clamped).");

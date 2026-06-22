@@ -58,6 +58,10 @@ namespace FDG.Stages
 
             results.HitRollNeeded -= rollModifiers.Net(ERollKind.Hit);
 
+            // #033 granted "+X to hit" buffs on the attacker (one-shot / duration) fold in with the same
+            // sign convention; one-shot ("next time") grants are consumed by this roll.
+            results.HitRollNeeded -= GrantedRollModifiers.ConsumeNet(metaData.AttackingUnit.GetValue(), ERollKind.Hit);
+
             GameContext.Log($"Base hit roll required is {results.HitRollNeeded} based on attacker's quality.");
 
             // #020 Fatigue: a unit that has already charged or struck back this round — or that is Shaken

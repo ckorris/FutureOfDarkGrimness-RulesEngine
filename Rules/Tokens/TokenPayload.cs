@@ -40,4 +40,13 @@ public abstract record TokenPayload
     /// carrying this payload rather than a bespoke token type per grantable rule.
     /// </summary>
     public sealed record RuleGrant(string RuleName, ELifetime Lifetime) : TokenPayload;
+
+    /// <summary>
+    /// Records a one-shot/duration numeric roll modifier granted to the bearer (#033 stat-modifier
+    /// primitive) — a "+1 to hit / -1 to defense / -1 to morale" buff or debuff. The roll it applies to is
+    /// the carrying token's <see cref="Foundation.TokenType"/> (HitRollModifier / SaveRollModifier /
+    /// MoraleRollModifier), so this payload carries only the signed <see cref="Delta"/> — keeping
+    /// <c>Tokens</c> independent of <c>ERollKind</c> (which lives in <c>Definitions</c>).
+    /// </summary>
+    public sealed record StatModifier(int Delta) : TokenPayload;
 }

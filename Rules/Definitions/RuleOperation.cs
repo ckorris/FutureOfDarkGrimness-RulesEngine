@@ -119,13 +119,6 @@ public abstract record RuleOperation
     public sealed record InsertExtraWounds(float Count) : RuleOperation;
 
     /// <summary>
-    /// Apply a persistent stat modifier of <see cref="Delta"/> to
-    /// <see cref="Stat"/> for the duration of <see cref="LifetimeScope"/>.
-    /// Resolution of <see cref="Effect.StatModifier"/>.
-    /// </summary>
-    public sealed record ApplyStatModifier(EStatKind Stat, int Delta, ELifetime LifetimeScope) : RuleOperation;
-
-    /// <summary>
     /// Adjust the in-flight movement budget by <see cref="DistanceInches"/>
     /// when the declared action is <see cref="ActionType"/>. Resolution of
     /// <see cref="Effect.MovementBonus"/>.

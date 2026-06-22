@@ -52,7 +52,10 @@ namespace FDG.Stages
                 new PreMoraleTestContext(testingUnit), (testingUnit, ERuleSeat.Actor, null));
             RollModifierSink modifiers = new RollModifierSink();
             modifiers.ApplyFrom(preTestOps);
-            int rollNeeded = DiceUtilities.ClampSuccessRollNeeded(baseRollNeeded - modifiers.Net(ERollKind.Morale));
+            // #033 granted morale modifiers (e.g. a spell's "-1 to morale" debuff) fold in with the same
+            // sign; one-shot ("next time") grants are consumed by this test.
+            int rollNeeded = DiceUtilities.ClampSuccessRollNeeded(baseRollNeeded - modifiers.Net(ERollKind.Morale)
+                - GrantedRollModifiers.ConsumeNet(testingUnit, ERollKind.Morale));
 
             // Decisive single die — one concrete face even under the probabilistic roller (#090).
             IDiceResults initialRoll = gameContext.DiceRoller.RollDecisive();

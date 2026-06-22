@@ -231,6 +231,45 @@ namespace FDG.Tests
                 "Blast multiplied 2 hits to 6 (capped at model count); AP(6) auto-failed every save, wiping the unit");
         }
 
+        // #033 Slice B — a stat-modifier buff spell grants the target a numeric roll modifier; reading it for
+        // the matching roll yields the delta and (for a "next time" grant) consumes it.
+        [Test]
+        public async Task CastSpellStage_StatModifierSpell_GrantsAndConsumesHitBuff()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester());
+            RuntimeSpell guidance = new RuntimeSpell(
+                new SpellDefinition("Guidance", 1,
+                    new TargetSelector(18f, 1, 1, ETargetAffinity.Friend, RequireLineOfSight: false),
+                    new Effect.StatModifier(ERollKind.Hit, 1, ELifetime.NextTrigger)),
+                System.Array.Empty<ResolvedRule>());
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 3,
+                new[] { guidance }, new Position(10f, 10f));
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx); // caster is its own (sole) friendly target
+
+            int firstRead = GrantedRollModifiers.ConsumeNet(caster.GetValue(), ERollKind.Hit);
+            Assert.That(firstRead, Is.EqualTo(1), "the granted +1 to-hit applies to the next hit roll");
+            int secondRead = GrantedRollModifiers.ConsumeNet(caster.GetValue(), ERollKind.Hit);
+            Assert.That(secondRead, Is.EqualTo(0), "a 'next time' grant is consumed after one use");
+        }
+
+        // A duration (ThisRound) grant persists across reads — it's swept at round end, not consumed on use.
+        [Test]
+        public void GrantedRollModifiers_DurationGrant_NotConsumedOnUse()
+        {
+            DataBinding<UnitData> unit = MakeCasterUnit(casterRating: 1, tokens: 0,
+                System.Array.Empty<RuntimeSpell>(), new Position(5f, 5f));
+            unit.GetValue().Tokens.AddToken(new Token(TokenType.SaveRollModifier, 1,
+                new TokenClearTrigger.RoundEnd(), Payload: new TokenPayload.StatModifier(1)));
+
+            Assert.That(GrantedRollModifiers.ConsumeNet(unit.GetValue(), ERollKind.Save), Is.EqualTo(1));
+            Assert.That(GrantedRollModifiers.ConsumeNet(unit.GetValue(), ERollKind.Save), Is.EqualTo(1),
+                "a duration grant persists across reads");
+        }
+
         private static RuntimeSpell DamageSpell(string name, int threshold, int hits, int armorPenetration) =>
             new RuntimeSpell(
                 new SpellDefinition(name, threshold,

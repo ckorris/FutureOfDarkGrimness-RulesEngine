@@ -69,15 +69,6 @@ namespace FDG.Stages
             // available such ability; each surfaces below as its own action.
             IReadOnlyList<AbilityOffer> customActionOffers = GameContext.RuleEvaluator
                 .GatherOffers(new ActionChoiceContext(context.ActivatingUnit.GetValue()));
-            bool hasCustomActionsAvailable = customActionOffers.Count > 0;
-
-            //If we have no available actions 
-            if ((canMove || canCharge || canShoot || hasCustomActionsAvailable) == false)
-            {
-                GameContext.Log($"No more available actions left in {nameof(ChooseActionStage)}. Passing.");
-                await ToReconcileEndOfActivation.Activate(context);
-                return;
-            }
 
             List<string> validOptions = new List<string>();
             List<StringSelectionRequest.InvalidOption> invalidOptions = new List<StringSelectionRequest.InvalidOption>();
@@ -174,6 +165,17 @@ namespace FDG.Stages
                 });
             }
 
+            // If no real action survived the gating above, the only thing left would be Pass — there's no
+            // decision to make, so end the activation instead of prompting with a lone Pass option. (Custom
+            // actions like Embark are gathered with AvailableWhen=Always but gated above, so this can't be
+            // decided up front from the raw offer count.)
+            if (validOptions.Count == 0)
+            {
+                GameContext.Log($"No actions available for {context.ActivatingUnit.GetValue().Name} — passing.");
+                await ToReconcileEndOfActivation.Activate(context);
+                return;
+            }
+
             //Add pass option.
             if(canPass)
             {
@@ -202,7 +204,7 @@ namespace FDG.Stages
         {
             if (TransportUtilities.IsEmbarked(context.ActivatingUnit.GetValue()))
             {
-                reasonIfCant = $"{context.ActivatingUnit.GetValue().Name} is embarked — must disembark first.";
+                reasonIfCant = "Embarked; disembark first.";
                 return false;
             }
 
@@ -235,7 +237,7 @@ namespace FDG.Stages
         {
             if (TransportUtilities.IsEmbarked(context.ActivatingUnit.GetValue()))
             {
-                reasonIfCant = $"{context.ActivatingUnit.GetValue().Name} is embarked — must disembark first.";
+                reasonIfCant = "Embarked; disembark first.";
                 return false;
             }
 
@@ -296,7 +298,7 @@ namespace FDG.Stages
         {
             if (TransportUtilities.IsEmbarked(context.ActivatingUnit.GetValue()))
             {
-                reasonIfCant = $"{context.ActivatingUnit.GetValue().Name} is embarked — must disembark first.";
+                reasonIfCant = "Embarked; disembark first.";
                 return false;
             }
 

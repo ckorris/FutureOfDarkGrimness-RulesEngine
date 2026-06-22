@@ -56,7 +56,7 @@ namespace FDG.Stages
             Position wreck = RepresentativePosition(transport);
             CircularZone zone = new CircularZone(wreck.Position2D, TransportUtilities.MaxTransportRangeInches);
 
-            GameContext.Log($"{transport.Name} destroyed — {occupants.Count} embarked unit(s) spill out.");
+            GameContext.Log($"{transport.Name} destroyed: {occupants.Count} embarked unit(s) spill out.");
 
             foreach (IUnit occupant in occupants)
             {

@@ -141,6 +141,30 @@ namespace FDG.Tests
             Assert.That(squad.GetValue().GetIsOnBattlefield(), Is.True, "the unit stays on the table.");
         }
 
+        // Regression: the universal Embark ability (AvailableWhen=Always) is in GatherOffers for every unit,
+        // but it's gated out in ChooseActionStage. A unit that has moved + attacked has no real action left,
+        // so Choose Action must auto-pass (end the activation) instead of prompting with a lone Pass option.
+        [Test]
+        public async Task ChooseAction_NoRealActions_AutoPassesWithoutPrompting()
+        {
+            var requester = new RecordingActionRequester(ChooseActionStage.PASS_CHOICE_NAME); // must not be consulted
+            var ctx = new TriggeredMoveTestContext(_store, requester);
+            DataBinding<UnitData> squad = MakeSquad("Grunts", modelCount: 2, x: 10f, z: 10f); // no transport in range
+
+            var unitCtx = NewActivation(ctx, squad);
+            unitCtx.RegisterMoveFinished(0f);   // already moved
+            unitCtx.RegisterAttackedFinished(); // already attacked
+
+            bool ended = false;
+            var stage = new ChooseActionStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.ToReconcileEndOfActivation.Bind("end");
+            stage.ToReconcileEndOfActivation.OnWillActivate += _ => ended = true;
+            await stage.Enter(unitCtx);
+
+            Assert.That(ended, Is.True, "with no action but Pass, the activation ends without prompting.");
+            Assert.That(requester.OfferedOptions, Is.Empty, "no Choose Action prompt is shown when only Pass remains.");
+        }
+
         // --- helpers ---
 
         private static UnitActionContext NewActivation(IGameContext ctx, DataBinding<UnitData> unit)

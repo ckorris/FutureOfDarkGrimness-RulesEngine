@@ -1,6 +1,7 @@
 ﻿using FDG.Data;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
+using FDG.Rules.Serialization;
 using FDG.Rules.Tokens;
 using FDG.SaveLoad;
 using Newtonsoft.Json;
@@ -25,6 +26,11 @@ namespace FDG
         private readonly List<ResolvedRule> _ruleDefinitions = new();
 
         [JsonIgnore] public IReadOnlyList<ResolvedRule> RuleDefinitions => _ruleDefinitions;
+
+        // #095: RuleDefinitions is [JsonIgnore] (the resolved rule graph can't round-trip through the
+        // Newtonsoft store/save layer), so its persisted form is this STJ blob, kept current in
+        // AttachRuleDefinition and replayed by RehydrateRules on load. See RuleAttachmentPersistence.
+        [JsonProperty] private string? _ruleDefinitionsJson;
 
         // #006: set when a Hero has joined this unit. The hero's model is merged into ModelBindings;
         // this carries the divergent facts (which model, the hero's own Quality/Defense). Serialized so
@@ -231,7 +237,24 @@ namespace FDG
         /// post-construction (army-load / harness) rather than a constructor param so
         /// the existing constructors stay untouched.
         /// </summary>
-        public void AttachRuleDefinition(ResolvedRule rule) => _ruleDefinitions.Add(rule);
+        public void AttachRuleDefinition(ResolvedRule rule)
+        {
+            _ruleDefinitions.Add(rule);
+            _ruleDefinitionsJson = RuleAttachmentPersistence.Serialize(_ruleDefinitions);
+        }
+
+        /// <summary>
+        /// #095: replays the persisted rule blob back onto <see cref="RuleDefinitions"/> after a load,
+        /// so a resumed game carries the same rules it was saved with. Idempotent and a no-op unless the
+        /// live list is empty (a freshly deserialized carrier), so it never double-attaches.
+        /// </summary>
+        public void RehydrateRules()
+        {
+            if (_ruleDefinitions.Count == 0 && !string.IsNullOrEmpty(_ruleDefinitionsJson))
+            {
+                _ruleDefinitions.AddRange(RuleAttachmentPersistence.Deserialize(_ruleDefinitionsJson));
+            }
+        }
 
         /// <summary>
         /// Merges a Hero into this unit (#006): adds the hero's model binding(s) to this unit's model

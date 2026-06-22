@@ -33,6 +33,11 @@ namespace FDG.GameModel
         // Stored so the extracted BuildContextAndLaunch can reach it on both new-game and resume paths.
         private IPresentationClock? _presentationClock;
 
+        // The shared rule resolver built during army creation (#059); held so BuildContextAndLaunch can
+        // hand it to the GameContext/RuleEvaluator for granted-rule projection (#101). Null on resume (the
+        // fresh-game path is the only one that currently builds it).
+        private IRuleResolver? _ruleResolver;
+
         private static bool TEST_SINGLE_TURN = false; //Turn on to skip most of the game and just do one run of a model's activation.
 
         public FDGServer(IReadWriteableGameDataStore gameDataStore, IMessageBusHost messageBusHost,
@@ -103,7 +108,7 @@ namespace FDG.GameModel
                 _playerSlotManager, textOutput);
 
             _gameContext = new GameContext(textOutput, GetDiceRoller(gameSettings), requestMessageSender,
-                tableState, _gameDataStore, presentationRelayer, gameSettings, resumeProgress);
+                tableState, _gameDataStore, presentationRelayer, gameSettings, resumeProgress, _ruleResolver);
             _gameContext.OnGameEnded += result => OnGameEnded?.Invoke(result);
 
             // #042 creation-time rules (Tough): set each model's max wounds now that the evaluator
@@ -160,6 +165,7 @@ namespace FDG.GameModel
         private void CreateArmies(PlayerSlot[] playerSlots, IReadWriteableGameDataStore gameDataStore)
         {
             RuleResolver ruleResolver = CoreRuleCatalog.CreateResolver();
+            _ruleResolver = ruleResolver; // #101: shared in-game for granted-rule projection
 
             // #059: register every army's embedded rule definitions before any unit resolves its rule
             // names. Core rules are registered above; these override by name, so a template can retune a

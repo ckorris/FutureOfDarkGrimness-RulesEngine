@@ -84,11 +84,15 @@ namespace FDG
                 IReadWriteableGameDataStore gameDataStore,
                 IPresenter presenter,
                 GameSettings settings,
-                GameProgressData? resumeProgress = null)
+                GameProgressData? resumeProgress = null,
+                IRuleResolver? ruleResolver = null)
         {
             TextOutput = textOutput;
             DiceRoller = diceRoller;
-            RuleEvaluator = new RuleEvaluator(diceRoller, textOutput);
+            // #101: the army resolver lets the evaluator project granted rules (RuleGrant tokens). Null on
+            // the resume path (the resolver is rebuilt only on the fresh-game army-creation flow), so
+            // granted-rule projection is inert on resumed games until that path also supplies one.
+            RuleEvaluator = new RuleEvaluator(diceRoller, textOutput, ruleResolver);
             PlayerRequester = playerRequester;
             TableState = tableState;
             GameDataStore = gameDataStore;

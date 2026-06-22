@@ -23,12 +23,18 @@ namespace FDG.Rules.Dispatch;
 public sealed class RuleEvaluator
 {
     private readonly IDiceRoller _diceRoller;
-    private readonly ITextOutput? _log; 
-    
-    public RuleEvaluator(IDiceRoller diceRoller, ITextOutput? log = null)
+    private readonly ITextOutput? _log;
+    private readonly IRuleResolver? _ruleResolver;
+
+    // Optional resolver (#101): when supplied, the evaluator projects a unit's granted rules — the
+    // RuleGrant tokens left by Effect.AddRule — into evaluation, resolving each by name so a "gets Furious
+    // once" buff actually fires Furious. Null in unit tests that grant no rules; the in-game evaluator
+    // (GameContext) receives the army resolver.
+    public RuleEvaluator(IDiceRoller diceRoller, ITextOutput? log = null, IRuleResolver? ruleResolver = null)
     {
         _diceRoller = diceRoller;
         _log = log;
+        _ruleResolver = ruleResolver;
     }
 
     /// <summary>
@@ -43,7 +49,10 @@ public sealed class RuleEvaluator
         IWeapon? weapon = null)
     {
         var tagged = new List<TaggedOperation>();
-        CollectTagged(unit, seat, weapon, models: null, context, tagged, new DedupState());
+        // Single-unit passive evaluation projects granted rules but does NOT consume "next time" grants
+        // here: these niche hooks (activation/deployment selection) aren't the canonical "the buff fired"
+        // moment, and some callers may re-run them. Consumption happens on EvaluateAll (#101).
+        CollectTagged(unit, seat, weapon, models: null, context, tagged, new DedupState(), consumeGrants: false);
 
         // Per-unit Evaluate does NOT run the suppression first-pass — cross-unit suppression
         // (an attacker's Unstoppable cancelling a defender's Regeneration) only exists once the
@@ -73,7 +82,8 @@ public sealed class RuleEvaluator
     public IReadOnlyList<RuleOperation> EvaluateAll(IHookContext context,
         params (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon)[] participants)
     {
-        return CollectSurviving(context, log: true, WithModels(participants)).Select(t => t.Op).ToList();
+        return CollectSurviving(context, log: true, consumeGrants: true, WithModels(participants))
+            .Select(t => t.Op).ToList();
     }
 
     /// <summary>
@@ -86,7 +96,8 @@ public sealed class RuleEvaluator
     public IReadOnlyList<RuleOperation> EvaluateAll(IHookContext context,
         params (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon, IReadOnlyList<IModel>? Models)[] participants)
     {
-        return CollectSurviving(context, log: true, participants).Select(t => t.Op).ToList();
+        return CollectSurviving(context, log: true, consumeGrants: true, participants)
+            .Select(t => t.Op).ToList();
     }
 
     /// <summary>
@@ -105,7 +116,9 @@ public sealed class RuleEvaluator
     public IReadOnlyList<(RuleOperation Op, string RuleName)> EvaluateAllNamed(IHookContext context,
         params (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon)[] participants)
     {
-        return CollectSurviving(context, log: false, WithModels(participants))
+        // Read-only query path (UI / per-frame): project granted rules so the display reflects them, but
+        // never consume — hovering a tooltip must not burn a "next time" buff (#101).
+        return CollectSurviving(context, log: false, consumeGrants: false, WithModels(participants))
             .Select(t => (t.Op, t.Origin.RequestedName)).ToList();
     }
 
@@ -139,7 +152,7 @@ public sealed class RuleEvaluator
     /// surviving tagged operations in order. Logs each kept op (and each suppressor's "X ignored Y") only
     /// when <paramref name="log"/> is true.
     /// </summary>
-    private List<TaggedOperation> CollectSurviving(IHookContext context, bool log,
+    private List<TaggedOperation> CollectSurviving(IHookContext context, bool log, bool consumeGrants,
         params (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon, IReadOnlyList<IModel>? Models)[] participants)
     {
         var tagged = new List<TaggedOperation>();
@@ -151,7 +164,7 @@ public sealed class RuleEvaluator
 
         foreach ((IUnit unit, ERuleSeat seat, IWeapon? weapon, IReadOnlyList<IModel>? models) in participants)
         {
-            CollectTagged(unit, seat, weapon, models, context, tagged, seen);
+            CollectTagged(unit, seat, weapon, models, context, tagged, seen, consumeGrants);
         }
 
         var suppressedRuleNames = tagged
@@ -196,7 +209,7 @@ public sealed class RuleEvaluator
     /// operations survive.
     /// </summary>
     private void CollectTagged(IUnit unit, ERuleSeat seat, IWeapon? weapon, IReadOnlyList<IModel>? models,
-        IHookContext context, List<TaggedOperation> sink, DedupState seen)
+        IHookContext context, List<TaggedOperation> sink, DedupState seen, bool consumeGrants)
     {
         CollectFromRules(unit.RuleDefinitions, unit, carryingWeapon: null, seat, context, sink, seen);
 
@@ -214,6 +227,74 @@ public sealed class RuleEvaluator
                 CollectFromRules(model.RuleDefinitions, unit, carryingWeapon: null, seat, context, sink, seen);
             }
         }
+
+        // #101: rules granted to the unit via RuleGrant tokens (Effect.AddRule) fire here too, resolved by
+        // name through the optional resolver. Bearer is the unit, so dedup against innate rules of the same
+        // definition is automatic. Runs after innate rules so an innate copy wins the argument-less dedup.
+        if (_ruleResolver != null)
+        {
+            CollectFromGrantedRules(unit, seat, context, sink, seen, consumeGrants);
+        }
+    }
+
+    /// <summary>
+    /// Projects the unit's granted rules (RuleGrant tokens from <see cref="Effect.AddRule"/>) into this
+    /// event: each token's rule name is resolved via the injected resolver and fired exactly like an innate
+    /// rule (condition-gated, deduped). A <see cref="ELifetime.NextTrigger"/> ("once / next time") grant is
+    /// consumed when its rule has a passive entry for the firing hook+seat — the "next time it would apply"
+    /// occurrence — whether or not the condition passed or the effect changed anything (a deliberate rule:
+    /// forcing a unit to waste a one-shot buff is a valid tactic). <paramref name="consumeGrants"/> is false
+    /// on read-only query paths so they never burn a buff. Unresolved names (valid-but-unimplemented rules)
+    /// are skipped, matching army-load's skip-and-warn.
+    /// </summary>
+    private void CollectFromGrantedRules(IUnit unit, ERuleSeat seat, IHookContext context,
+        List<TaggedOperation> sink, DedupState seen, bool consumeGrants)
+    {
+        List<Token> grants = unit.Tokens.GetAllTokens(TokenType.RuleGrant).ToList();
+        List<Token>? consumed = null;
+
+        foreach (Token grant in grants)
+        {
+            if (grant.Payload is not TokenPayload.RuleGrant payload)
+            {
+                continue;
+            }
+
+            if (!_ruleResolver!.TryResolve(payload.RuleName, out ResolvedRule resolved))
+            {
+                continue;
+            }
+
+            if (consumeGrants && payload.Lifetime == ELifetime.NextTrigger
+                && RuleHasEntryForHook(resolved.Definition, context.Hook, seat))
+            {
+                (consumed ??= new List<Token>()).Add(grant);
+            }
+
+            CollectFromRules(new[] { resolved }, unit, carryingWeapon: null, seat, context, sink, seen);
+        }
+
+        if (consumed != null)
+        {
+            foreach (Token grant in consumed)
+            {
+                // Remove one stack of exactly this grant (type + owner + payload), so a different granted
+                // rule on the same unit — or a stacked identical grant meant for a later trigger — survives.
+                unit.Tokens.RemoveTokensWithPayload(grant.Type, grant.OwnerUnitID, grant.Payload, count: 1);
+            }
+        }
+    }
+
+    private static bool RuleHasEntryForHook(SpecialRuleDefinition definition, EHookID hook, ERuleSeat seat)
+    {
+        foreach (HookEntry entry in definition.Passive)
+        {
+            if (entry.HookID == hook && entry.Seat == seat)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void CollectFromRules(IReadOnlyList<ResolvedRule> rules, IUnit unit, IWeapon? carryingWeapon,

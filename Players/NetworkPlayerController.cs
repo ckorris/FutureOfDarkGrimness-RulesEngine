@@ -35,18 +35,23 @@ namespace FDG.Players
             _messageBusHost = messageBusHost;
 
             _messageBusHost.RegisterForMessageEvent<PostLaunchPlayerReadyMessage>(OnPlayerReadyMessageReceived);
-
-            //_messageBusHost.RegisterForMessageEvent<NetworkPlayerSubmitChatMessage>(OnPlayerChatMessageReceived);
+            _messageBusHost.RegisterForMessageEvent<NetworkPlayerSubmitChatMessage>(OnPlayerChatMessageReceived);
 
             PresentationSink = new NetworkedPresentationSink(_messageBusHost, connectionID);
         }
 
-        /*
         private void OnPlayerChatMessageReceived(NetworkPlayerSubmitChatMessage message)
         {
+            // Every network player's controller is registered for this message, so filter to the one
+            // representing the sender. Without this each controller would re-raise OnMessageSentByPlayer
+            // (and the relayer re-broadcast the chat) once per network player, misattributed (#077).
+            if (message.PlayerID != ID)
+            {
+                return;
+            }
+
             OnMessageSentByPlayer?.Invoke(ID, message.MessageType, message.Message);
         }
-        */
 
         public Task WaitUntilReadyAsync()
         {

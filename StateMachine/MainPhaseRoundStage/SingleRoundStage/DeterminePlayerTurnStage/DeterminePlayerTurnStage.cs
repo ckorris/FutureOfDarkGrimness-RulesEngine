@@ -92,7 +92,8 @@ namespace FDG.Stages
                 foreach (AbilityOffer offer in GameContext.RuleEvaluator.GatherOffers(hookContext))
                 {
                     var question = new YesNoRequest(playerID,
-                        $"Reactivate {unit.GetValue().Name} with {offer.RuleName}?");
+                        $"Reactivate {unit.GetValue().Name} with {offer.RuleName}?",
+                        aiPrefersYes: true);
                     bool accepted = await GameContext.PlayerRequester
                         .RequestDecision<YesNoRequest, bool>(question);
 

@@ -85,7 +85,7 @@ namespace FDG.Stages
                     if (!TryGetLaterRoundDefer(unit, out RuleOperation.DeferDeployment defer)) continue;
 
                     bool bringOn = await GameContext.PlayerRequester.RequestDecision<YesNoRequest, bool>(
-                        new YesNoRequest(unit.PlayerID, $"Deploy {unit.Name} from Ambush this round?"));
+                        new YesNoRequest(unit.PlayerID, $"Deploy {unit.Name} from Ambush this round?", aiPrefersYes: true));
 
                     if (!bringOn) continue;
 

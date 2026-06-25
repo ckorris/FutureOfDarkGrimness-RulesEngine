@@ -74,7 +74,9 @@ namespace FDG.Players
 
         private void OnPlayerReadyMessageReceived(PostLaunchPlayerReadyMessage message)
         {
-            if (message.ReadyPlayerID == ID)
+            // Guard against duplicate ready messages: once ready, a repeat must not re-fire OnReadyStateChanged
+            // (the bus can deliver the same PostLaunchPlayerReadyMessage more than once).
+            if (message.ReadyPlayerID == ID && IsReady == false)
             {
                 IsReady = true;
                 OnReadyStateChanged?.Invoke(true);

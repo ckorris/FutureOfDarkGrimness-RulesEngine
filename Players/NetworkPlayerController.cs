@@ -13,6 +13,10 @@ namespace FDG.Players
 
         public PlayerID ID { get; }
 
+        // The connection this networked player is on. Exposed so the disconnect lifecycle (#076) can map a
+        // dropped ConnectionID back to its PlayerID and fail that player's pending decision requests.
+        public ConnectionID ConnectionID { get; }
+
         public bool IsReady { get; private set; } = false; //May need to change.
 
         public IPresentationSink? PresentationSink { get; }
@@ -27,6 +31,7 @@ namespace FDG.Players
         {
             Name = name;
             ID = playerID;
+            ConnectionID = connectionID;
             _messageBusHost = messageBusHost;
 
             _messageBusHost.RegisterForMessageEvent<PostLaunchPlayerReadyMessage>(OnPlayerReadyMessageReceived);

@@ -211,6 +211,10 @@ namespace FDG.Tests
             private readonly Dictionary<Type, Action<object>> _messageHandlers = new();
             public StageTaskRequestMessage? LastRequestMessage { get; private set; }
 
+            public event Action<ConnectionID>? OnClientDisconnected;
+
+            public void SimulateClientDisconnected(ConnectionID connectionID) => OnClientDisconnected?.Invoke(connectionID);
+
             public void RegisterForMessageEvent<T>(Action<T> handler)
             {
                 _messageHandlers[typeof(T)] = (message) => handler((T)message);

@@ -51,6 +51,11 @@ namespace FDG.Stages
         private float _damageFinalHits;
         private int _damageSaveModifier;
 
+        // #034 single-model targeting: when the cast spell targets one model ("a unit of [1]"), the chosen
+        // model is picked in Enter and seeded as an IndividualTargetResult in GetNewChildContext, so the
+        // child AssignWoundsStage confines all wounds to it (no carry-over). Null when whole-unit.
+        private DataBinding<ModelData>? _damageIndividualModel;
+
         public CastSpellStage(IGameContext gameContext, IStateMachineLayer<IUnitActionContext> parent)
             : base(gameContext, parent)
         {
@@ -61,6 +66,7 @@ namespace FDG.Stages
             _damageTarget = default;
             _damageFinalHits = 0f;
             _damageSaveModifier = 0;
+            _damageIndividualModel = null;
 
             IUnit caster = context.ActivatingUnit.GetValue();
             PlayerID player = context.ActivatingPlayer();
@@ -125,9 +131,17 @@ namespace FDG.Stages
                 if (targets.Count > 1)
                 {
                     GameContext.Log($"{chosen.Name} chose multiple targets, but spell damage is single-target " +
-                        $"for now — only {targets[0].GetValue().Name} is hit (#034).");
+                        $"for now — only {targets[0].GetValue().Name} is hit (#034 multi-unit damage).");
                 }
                 _damageTarget = targets[0];
+
+                // #034 single-model targeting: resolve "as a unit of [1]" — pick one model in the target unit
+                // now (the cast has succeeded and is committed, so the pick is mandatory) and confine all
+                // wounds to it via the IndividualTargetResult seeded in GetNewChildContext.
+                if (chosen.Target.SingleModel)
+                {
+                    _damageIndividualModel = await PickIndividualModel(player, chosen.Name, _damageTarget);
+                }
 
                 // Synthetic spell weapon: the spell's AP + its pre-resolved weapon rules.
                 _damageWeapon = new Weapon(chosen.Name, rangeInches: 0f, attacks: 0,
@@ -185,7 +199,45 @@ namespace FDG.Stages
             // No cover check runs for a synthetic spell hit; seed a zero bonus so the save stage won't throw.
             metadata.AddResult(new CoverCheckResults(0));
 
+            // #034 single-model targeting: confine all wounds to the one chosen model (the same result
+            // Takedown's BuildTargetListStage produces); AssignWoundsStage caps at its wounds, no carry-over.
+            if (_damageIndividualModel != null)
+            {
+                metadata.AddResult(new IndividualTargetResult(_damageIndividualModel));
+            }
+
             return metadata;
+        }
+
+        // #034 single-model targeting: pick one living model in the target unit ("a unit of [1]"). The cast
+        // has already succeeded and its tokens are spent, so the pick is mandatory (no cancel) — mirroring
+        // Takedown's BuildTargetListStage.MaybePickIndividualTarget.
+        private async Task<DataBinding<ModelData>?> PickIndividualModel(PlayerID player, string spellName,
+            DataBinding<UnitData> targetUnit)
+        {
+            List<DataBinding<ModelData>> living = targetUnit.ModelBindings()
+                .Where(model => model.GetIsAlive())
+                .ToList();
+
+            // A legal damage target always has at least one living model; guard anyway so a degenerate
+            // case falls back to whole-unit allocation rather than raising an option-less request.
+            if (living.Count == 0)
+            {
+                return null;
+            }
+
+            List<SelectionRequest<ModelData>.ValidOption> validOptions = new();
+            for (int i = 0; i < living.Count; i++)
+            {
+                validOptions.Add(new SelectionRequest<ModelData>.ValidOption(living[i], $"Model {i + 1}"));
+            }
+
+            SelectionRequest<ModelData> request = new SelectionRequest<ModelData>(player,
+                $"{spellName}: choose the target model",
+                validOptions, System.Array.Empty<SelectionRequest<ModelData>.InvalidOption>(), allowCancel: false);
+
+            return await GameContext.PlayerRequester
+                .RequestDecision<SelectionRequest<ModelData>, DataBinding<ModelData>>(request);
         }
 
         // Rolls the spell's hits as real dice and runs the hit-complete fold (the same machinery

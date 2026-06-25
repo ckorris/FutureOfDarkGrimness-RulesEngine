@@ -42,5 +42,13 @@ namespace FDG.Rules.Foundation;
 /// Used by abilities that only work against tagged targets (e.g. only re-targets units
 /// previously marked by <i>Unstoppable Mark</i>). Null = no token filter (the common case).
 /// </param>
+/// <param name="SingleModel">
+/// #034 single-model targeting. When true, a damage spell resolves against ONE chosen model in the
+/// picked unit ("as if the target was a unit of [1]" — Total Seizure, Psy-Destruction): after the unit
+/// is selected the caster picks a model, and all wounds funnel to it with no carry-over to the rest of
+/// the unit (the same confinement Takedown uses, via <c>IndividualTargetResult</c>). Pair with
+/// <see cref="MaxCount"/> = 1. Default false → the normal whole-unit allocation. Only meaningful for
+/// damage (<c>Effect.DealHits</c>) spells; ignored by buff/debuff effects.
+/// </param>
 public record TargetSelector(float RangeInches, int MinCount, int MaxCount, ETargetAffinity TargetAffinity,
-    bool RequireLineOfSight, TokenType? RequiredToken = null);
+    bool RequireLineOfSight, TokenType? RequiredToken = null, bool SingleModel = false);

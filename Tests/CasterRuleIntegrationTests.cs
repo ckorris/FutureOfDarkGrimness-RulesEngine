@@ -231,6 +231,33 @@ namespace FDG.Tests
                 "Blast multiplied 2 hits to 6 (capped at model count); AP(6) auto-failed every save, wiping the unit");
         }
 
+        // #034 single-model targeting — a damage spell flagged SingleModel resolves "as a unit of [1]": all
+        // wounds funnel to one chosen model with no carry-over. 3 hits at AP(6) would wipe the 3-model unit
+        // (cf. the Blast test above), but confinement kills only the picked model — the other two survive.
+        // FixedFaceDiceRoller so the 3 hits actually roll (FixedDiceRoller collapses TotalRolls to 1).
+        [Test]
+        public async Task CastSpellStage_SingleModelDamageSpell_ConfinesWoundsToOneModel()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester(), new FixedFaceDiceRoller(4));
+            RuntimeSpell smite = new RuntimeSpell(
+                new SpellDefinition("Smite", 2,
+                    new TargetSelector(18f, 1, 1, ETargetAffinity.Foe, RequireLineOfSight: false, SingleModel: true),
+                    new Effect.DealHits(3, System.Array.Empty<string>(), ArmorPenetration: 6)),
+                System.Array.Empty<ResolvedRule>());
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 3, new[] { smite }, new Position(10f, 10f));
+            DataBinding<UnitData> enemy = MakeMultiModelEnemy(new PlayerID(System.Guid.NewGuid()),
+                new Position(12f, 10f), modelCount: 3);
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            int living = enemy.GetValue().Models.Count(m => m.GetIsAlive());
+            Assert.That(living, Is.EqualTo(2),
+                "single-model targeting confined all 3 lethal hits to one model; the other two survive (no carry-over)");
+        }
+
         // #033 Slice B — a stat-modifier buff spell grants the target a numeric roll modifier; reading it for
         // the matching roll yields the delta and (for a "next time" grant) consumes it.
         [Test]
@@ -420,6 +447,8 @@ namespace FDG.Tests
                     return Task.FromResult((TReply)(object)spellPick.ValidOptions[0]);
                 case SelectionRequest<UnitData> targetPick:
                     return Task.FromResult((TReply)(object)targetPick.ValidOptions[0].Option);
+                case SelectionRequest<ModelData> modelPick:
+                    return Task.FromResult((TReply)(object)modelPick.ValidOptions[0].Option);
                 default:
                     throw new System.InvalidOperationException("Unexpected request: " + request.GetType());
             }

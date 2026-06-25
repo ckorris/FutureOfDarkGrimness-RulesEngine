@@ -1,4 +1,5 @@
 ﻿using FDG.Data;
+using FDG.Network.Connection;
 using FDG.StageResolution;
 using System.Runtime.CompilerServices;
 
@@ -101,6 +102,27 @@ namespace FDG.Players
             }
 
             return playerSlot.Controller;
+        }
+
+        /// <summary>
+        /// Maps a network <see cref="ConnectionID"/> back to the <see cref="PlayerID"/> playing on it, if any
+        /// slot is filled by a <see cref="NetworkPlayerController"/> on that connection. Used by the
+        /// disconnect lifecycle (#076) to fail a dropped player's pending requests.
+        /// </summary>
+        public bool TryGetPlayerIDByConnection(ConnectionID connectionID, out PlayerID playerID)
+        {
+            foreach (PlayerSlot slot in _playerSlots)
+            {
+                if (slot.Controller is NetworkPlayerController networkController
+                    && networkController.ConnectionID == connectionID)
+                {
+                    playerID = slot.PlayerID;
+                    return true;
+                }
+            }
+
+            playerID = default;
+            return false;
         }
 
         internal PlayerSlot GetSlotByID(PlayerID playerID)

@@ -33,10 +33,11 @@ namespace FDG.GameModel
         // Stored so the extracted BuildContextAndLaunch can reach it on both new-game and resume paths.
         private IPresentationClock? _presentationClock;
 
-        // The shared army-load rule registry (core catalog + every army's embedded rules), built in
-        // CreateArmies. Threaded into GameContext → RuleEvaluator so token-granted rules (auras /
-        // "gains rule X" buffs) resolve their names back to definitions. Null on the resume path,
-        // which doesn't rebuild armies (rule rehydration on resume is #095); read-back no-ops there.
+        // The shared army-load rule registry (core catalog + every army's embedded rules), built by
+        // BuildRuleResolver on BOTH the new-game and resume paths. Threaded into GameContext →
+        // RuleEvaluator so token-granted rules (auras / "gains rule X" buffs) resolve their names back to
+        // definitions — including grants restored from a save (#101). Nullable only for the brief window
+        // before either constructor builds it.
         private IRuleResolver? _ruleResolver;
 
         private static bool TEST_SINGLE_TURN = false; //Turn on to skip most of the game and just do one run of a model's activation.
@@ -87,6 +88,13 @@ namespace FDG.GameModel
                 throw new InvalidOperationException(
                     "Tried to resume a game from a store that has no GameProgressData.");
             }
+
+            // #101: rebuild the shared rule resolver on resume too. Granted-rule tokens (auras / buffs)
+            // round-trip in the save, but the evaluator can't read them back to their definitions without a
+            // resolver — and CreateArmies, which builds it for a new game, doesn't run on the resume path.
+            // No re-grant is needed: the tokens themselves survive (re-applying creation rules would both
+            // double the grants and reset Tough wounds, which is why the resume path skips that pass).
+            BuildRuleResolver(playerSlots);
 
             BuildContextAndLaunch(progress.Settings, applyCreationRules: false, resumeProgress: progress);
         }
@@ -165,26 +173,36 @@ namespace FDG.GameModel
 
         private void CreateArmies(PlayerSlot[] playerSlots, IReadWriteableGameDataStore gameDataStore)
         {
-            RuleResolver ruleResolver = CoreRuleCatalog.CreateResolver();
-            _ruleResolver = ruleResolver; // #101: shared in-game for granted-rule projection
-
-            // Hold the shared resolver so BuildContextAndLaunch can hand it to the RuleEvaluator for
-            // token-granted-rule read-back (auras / buffs). Captures the instance the embedded-rule
-            // registration below mutates in place, so by game time it carries every army's flavored rules.
-            _ruleResolver = ruleResolver;
-
-            // #059: register every army's embedded rule definitions before any unit resolves its rule
-            // names. Core rules are registered above; these override by name, so a template can retune a
-            // core rule from data. Done for all armies up front since the resolver is shared in-game.
-            for (int i = 0; i < playerSlots.Length; i++)
-            {
-                ArmyListRuleResolution.RegisterEmbeddedDefinitions(ruleResolver, playerSlots[i].ArmyListFile);
-            }
+            RuleResolver ruleResolver = BuildRuleResolver(playerSlots);
 
             for (int i = 0; i < playerSlots.Length; i++)
             {
                 CreateArmyDataFromArmyFile(playerSlots[i].PlayerID, playerSlots[i].ArmyListFile, gameDataStore, ruleResolver);
             }
+        }
+
+        /// <summary>
+        /// Builds the shared in-game rule resolver — the core catalog plus every army's embedded (#059)
+        /// rule definitions (registered after core so a data template can override a core rule by name) —
+        /// and holds it on <see cref="_ruleResolver"/> for <see cref="BuildContextAndLaunch"/> to hand to
+        /// the <see cref="RuleEvaluator"/>. The evaluator needs it to read granted-rule tokens back to
+        /// their definitions (auras / "gains rule X" buffs). Called by BOTH paths: on resume the surviving
+        /// RuleGrant tokens are inert without a resolver, and <see cref="CreateArmies"/> (which built it for
+        /// a new game) doesn't run. On resume the army files may be vestigial (armies already live in the
+        /// loaded store), so embedded custom rules only re-resolve when the file survived — core-rule grants
+        /// always do.
+        /// </summary>
+        private RuleResolver BuildRuleResolver(PlayerSlot[] playerSlots)
+        {
+            RuleResolver ruleResolver = CoreRuleCatalog.CreateResolver();
+            _ruleResolver = ruleResolver; // #101: shared in-game for granted-rule projection (auras / buffs)
+
+            for (int i = 0; i < playerSlots.Length; i++)
+            {
+                ArmyListRuleResolution.RegisterEmbeddedDefinitions(ruleResolver, playerSlots[i].ArmyListFile);
+            }
+
+            return ruleResolver;
         }
 
         private void CreateArmyDataFromArmyFile(PlayerID playerID, ArmyListFile armyListFile, IReadWriteableGameDataStore gameDataStore, IRuleResolver ruleResolver)

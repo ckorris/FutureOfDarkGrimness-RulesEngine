@@ -30,6 +30,7 @@ namespace FDG.StageResolution
 
             _messageBusHost.RegisterForMessageEvent<StageTaskReplyMessage>(OnReceivedReplyMessage);
             _messageBusHost.RegisterForMessageEvent<StageTaskRequestErrorMessage>(OnReceivedErrorMessage);
+            _messageBusHost.OnClientDisconnected += OnClientDisconnected;
         }
 
         public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request) 
@@ -69,8 +70,11 @@ namespace FDG.StageResolution
             Action<string> onSuccess = (replyJson) => DeserializeAndReturnReply(replyJson, taskCompletionSource);
             Action<string> onFailed = (replyJson) => ReturnFailure(targetPlayerID, requestFullTypeName,
                 replyJson, taskCompletionSource);
+            // Used by the disconnect path to fault the awaiting task directly with a typed exception.
+            // TrySet* because a reply could race the disconnect; the TryRemove claim already makes one win.
+            Action<Exception> failWithException = (exception) => taskCompletionSource.TrySetException(exception);
 
-            SuccessAndFailActions actions = new SuccessAndFailActions(onSuccess, onFailed);
+            SuccessAndFailActions actions = new SuccessAndFailActions(targetPlayerID, onSuccess, onFailed, failWithException);
 
             _pendingTaskAndResolvers.TryAdd(taskID, actions);
 
@@ -138,6 +142,54 @@ namespace FDG.StageResolution
             actions.OnFailed.Invoke(errorMessage.ErrorMessage);
         }
 
+        private void OnClientDisconnected(ConnectionID connectionID)
+        {
+            // Map the dropped connection back to the player on it. A connection with no game slot (a
+            // spectator, or one already torn down) has nothing pending to fail.
+            if (_playerSlotManager.TryGetPlayerIDByConnection(connectionID, out PlayerID playerID) == false)
+            {
+                return;
+            }
+
+            FailPendingRequestsForPlayer(playerID, "Player disconnected.");
+        }
+
+        /// <summary>
+        /// Fails every decision request still awaiting a reply from <paramref name="playerID"/> with a
+        /// <see cref="PlayerDisconnectedException"/>, so the awaiting stage code stops hanging forever when a
+        /// player drops (#076). Each task is atomically claimed via <c>TryRemove</c> (as the reply/error
+        /// handlers do), so a reply that races the disconnect still resolves the task exactly once, and the
+        /// task is cleared from every client's outstanding-task UI just like a normal resolve.
+        /// </summary>
+        public void FailPendingRequestsForPlayer(PlayerID playerID, string reason)
+        {
+            int failedCount = 0;
+
+            foreach (KeyValuePair<TaskID, SuccessAndFailActions> pending in _pendingTaskAndResolvers.ToArray())
+            {
+                if (pending.Value.TargetPlayerID != playerID)
+                {
+                    continue;
+                }
+
+                if (_pendingTaskAndResolvers.TryRemove(pending.Key, out SuccessAndFailActions? actions) == false)
+                {
+                    continue; //A racing reply already claimed this task.
+                }
+
+                //Clear it from every client's outstanding-task UI, same as a normal resolve.
+                _messageBusHost.SendCommandToAllAsync(new StageTaskNotifyResolvedMessage(pending.Key));
+
+                actions!.FailWithException.Invoke(new PlayerDisconnectedException(playerID, reason));
+                failedCount++;
+            }
+
+            if (failedCount > 0)
+            {
+                _textOutput.Log($"Player {playerID} disconnected — failed {failedCount} pending request(s): {reason}");
+            }
+        }
+
         private void DeserializeAndReturnReply<TReply>(string replyJson, TaskCompletionSource<TReply> replyTask)
         {
             TReply? reply = JsonConvert.DeserializeObject<TReply>(replyJson, _gameDataStore.GetJsonSettings());
@@ -158,19 +210,25 @@ namespace FDG.StageResolution
         {
             _messageBusHost.DeregisterForMessageEvent<StageTaskReplyMessage>(OnReceivedReplyMessage);
             _messageBusHost.DeregisterForMessageEvent<StageTaskRequestErrorMessage>(OnReceivedErrorMessage);
+            _messageBusHost.OnClientDisconnected -= OnClientDisconnected;
         }
 
 
 
         private class SuccessAndFailActions
         {
+            public readonly PlayerID TargetPlayerID; //Whose reply this task awaits — used to fail on disconnect.
             public readonly Action<string> OnSuccessful; //Call with Json
             public readonly Action<string> OnFailed; //Call with error message.
+            public readonly Action<Exception> FailWithException; //Fault the awaiting task directly.
 
-            public SuccessAndFailActions(Action<string> onSuccessful, Action<string> onFailed)
+            public SuccessAndFailActions(PlayerID targetPlayerID, Action<string> onSuccessful,
+                Action<string> onFailed, Action<Exception> failWithException)
             {
+                TargetPlayerID = targetPlayerID;
                 OnSuccessful = onSuccessful;
                 OnFailed = onFailed;
+                FailWithException = failWithException;
             }
         }
 
@@ -180,6 +238,19 @@ namespace FDG.StageResolution
                 : base($"Remote client returned an error after receiving request of type {requestType}: {errorMessage}. " +
                       $"Player ID: {playerID}.")
             { }
+        }
+
+        // Thrown into a stage awaiting a decision from a player who disconnected, so the awaiting code stops
+        // hanging and the fault carries the departed player's identity (#076).
+        public class PlayerDisconnectedException : Exception
+        {
+            public PlayerID PlayerID { get; }
+
+            public PlayerDisconnectedException(PlayerID playerID, string reason)
+                : base($"Player {playerID} disconnected before answering a pending request: {reason}")
+            {
+                PlayerID = playerID;
+            }
         }
     }
 }

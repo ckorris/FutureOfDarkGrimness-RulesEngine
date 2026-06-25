@@ -12,7 +12,8 @@ namespace FDG.Tests
     // Foundation unit tests for the Transport(X) core rule (#035 slice A). These are authored TDD-first,
     // against a deliberately-stubbed TransportUtilities, so they run RED until the implementation pass.
     // They pin the decisions recorded in WorkItems/035-transport.md:
-    //   - capacity is the Transport rule's Arg(0); space cost is 1 per standard model, 3 per Tough model;
+    //   - capacity is the Transport rule's Arg(0); space cost is 1 per standard model, 1 per Hero (within
+    //     the Tough(6) cap), 3 per non-Hero Tough model;
     //   - ride eligibility caps Heroes at Tough(6), non-Heroes at Tough(3);
     //   - occupancy is TOKEN-derived (a cross-unit EmbarkedIn token owned by the transport) — the
     //     transport stores no list, and embarked units stay OFF the table (models at origin) so the
@@ -64,19 +65,33 @@ namespace FDG.Tests
         [Test]
         public void GetModelSpaceCost_StandardModel_IsOne()
         {
-            Assert.That(TransportUtilities.GetModelSpaceCost(MakeModel(tough: 1)), Is.EqualTo(1));
+            Assert.That(TransportUtilities.GetModelSpaceCost(MakeModel(tough: 1), isHero: false), Is.EqualTo(1));
         }
 
         [Test]
-        public void GetModelSpaceCost_ToughTwoModel_IsThree()
+        public void GetModelSpaceCost_NonHeroToughTwoModel_IsThree()
         {
-            Assert.That(TransportUtilities.GetModelSpaceCost(MakeModel(tough: 2)), Is.EqualTo(3));
+            Assert.That(TransportUtilities.GetModelSpaceCost(MakeModel(tough: 2), isHero: false), Is.EqualTo(3));
         }
 
         [Test]
-        public void GetModelSpaceCost_ToughThreeModel_IsThree()
+        public void GetModelSpaceCost_NonHeroToughThreeModel_IsThree()
         {
-            Assert.That(TransportUtilities.GetModelSpaceCost(MakeModel(tough: 3)), Is.EqualTo(3));
+            Assert.That(TransportUtilities.GetModelSpaceCost(MakeModel(tough: 3), isHero: false), Is.EqualTo(3));
+        }
+
+        // Per the Transport(X) rule's worked example, a Hero within its Tough(6) ride cap occupies 1 space
+        // regardless of Tough — a Tough(3) or Tough(6) Hero is 1, not 3.
+        [Test]
+        public void GetModelSpaceCost_HeroToughThree_IsOne()
+        {
+            Assert.That(TransportUtilities.GetModelSpaceCost(MakeModel(tough: 3), isHero: true), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void GetModelSpaceCost_HeroToughSix_IsOne()
+        {
+            Assert.That(TransportUtilities.GetModelSpaceCost(MakeModel(tough: 6), isHero: true), Is.EqualTo(1));
         }
 
         [Test]
@@ -232,9 +247,9 @@ namespace FDG.Tests
         {
             PlayerID player = NewPlayer();
             UnitData transport = MakeTransport(player, capacity: 9);
-            // Hero Tough(6) (3 spaces) + two grunts Tough(3) (3 spaces each) = 9 spaces. The hero rides
-            // only because it's detected as the Hero and gets the cap-6 allowance — a non-Hero Tough(6)
-            // model would be rejected at the cap-3 limit.
+            // Hero Tough(6) (1 space, the Hero rate) + two grunts Tough(3) (3 spaces each) = 7 spaces. The
+            // hero rides only because it's detected as the Hero and gets the cap-6 allowance — a non-Hero
+            // Tough(6) model would be rejected at the cap-3 limit.
             UnitData squad = MakeHeroJoinedUnit(player, heroTough: 6, gruntToughs: new[] { 3, 3 });
 
             bool ok = TransportUtilities.CanUnitEmbark(squad, transport, All(transport, squad), out string reason);
@@ -305,10 +320,10 @@ namespace FDG.Tests
         public void GetUnitSpaceCost_MixedUnit_SumsPerModelCosts()
         {
             PlayerID player = NewPlayer();
-            // Hero Tough(6) → 3 spaces, plus two standard Tough(1) grunts → 1 each = 5 total.
+            // Hero Tough(6) → 1 space (the Hero rate), plus two standard Tough(1) grunts → 1 each = 3 total.
             UnitData squad = MakeHeroJoinedUnit(player, heroTough: 6, gruntToughs: new[] { 1, 1 });
 
-            Assert.That(TransportUtilities.GetUnitSpaceCost(squad), Is.EqualTo(5));
+            Assert.That(TransportUtilities.GetUnitSpaceCost(squad), Is.EqualTo(3));
         }
 
         // --- Occupancy (token-derived) -----------------------------------------------------------

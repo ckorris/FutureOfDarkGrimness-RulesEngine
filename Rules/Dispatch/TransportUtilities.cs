@@ -63,13 +63,24 @@ public static class TransportUtilities
 
     // --- Space cost ------------------------------------------------------------------------------
 
-    /// <summary> Spaces a single model occupies: 1 if Tough ≤ 1, otherwise 3. </summary>
-    public static int GetModelSpaceCost(IModel model) =>
-        model.TotalWounds <= 1f ? StandardModelSpaceCost : LargeModelSpaceCost;
+    /// <summary>
+    /// Spaces a single model occupies. A Hero (within its Tough(6) ride cap) always occupies 1 — per the
+    /// Transport(X) rule's worked example, "Regular models and Heroes with Tough(3) or Tough(6) occupy 1
+    /// space" (a unit of 10 regular models with a Tough(3) Hero occupies 11 spaces, not 13). A non-Hero
+    /// occupies 1 if Tough ≤ 1, otherwise 3. <paramref name="isHero"/> is the caller's per-model hero
+    /// determination; <see cref="GetUnitSpaceCost"/> derives it from the unit via <see cref="IsHeroModel"/>.
+    /// </summary>
+    public static int GetModelSpaceCost(IModel model, bool isHero) =>
+        isHero ? StandardModelSpaceCost
+               : (model.TotalWounds <= 1f ? StandardModelSpaceCost : LargeModelSpaceCost);
 
-    /// <summary> Total spaces a unit occupies — the sum over its living models' space costs. </summary>
+    /// <summary>
+    /// Total spaces a unit occupies — the sum over its living models' space costs, with the unit's hero
+    /// (if any) charged the 1-space Hero rate.
+    /// </summary>
     public static int GetUnitSpaceCost(IUnit unit) =>
-        unit.Models.Where(model => model.GetIsAlive()).Sum(GetModelSpaceCost);
+        unit.Models.Where(model => model.GetIsAlive())
+            .Sum(model => GetModelSpaceCost(model, IsHeroModel(model, unit)));
 
     // --- Ride eligibility ------------------------------------------------------------------------
 

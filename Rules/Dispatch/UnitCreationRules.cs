@@ -22,6 +22,13 @@ public static class UnitCreationRules
         IReadOnlyList<RuleOperation> operations = evaluator.EvaluateAll(
             new UnitCreatedContext(unit), (unit, ERuleSeat.Actor));
 
+        // Auras (and any other creation-time grants): an Effect.Aura at Lifecycle_OnUnitCreated emits a
+        // GrantTokenToUnit; apply it here so the granted rule projects unit-wide for the rest of the game
+        // (read back by RuleEvaluator.CollectGrantedRules). ApplyTokenOperations only touches token ops,
+        // so the SetMaxWounds ops the MaxWoundsSink folds below are untouched — applying both over the one
+        // queue is safe. Without this the grant op was produced and dropped, leaving auras inert in-game.
+        OperationApplier.ApplyTokenOperations(operations);
+
         MaxWoundsSink maxWounds = new MaxWoundsSink();
         maxWounds.ApplyFrom(operations);
 

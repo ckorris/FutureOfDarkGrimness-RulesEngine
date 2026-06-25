@@ -151,11 +151,12 @@ namespace FDG
                 }
             }
 
+            // The unit's base shape (#149), authored per-unit in the army file; all its models share it.
+            // Immutable, so one instance is safely shared. Null (e.g. "base": null) → the default circle.
+            IBaseShape baseShape = (unitFileEntry.Base ?? new SaveLoad.BaseFileEntry()).ToBaseShape();
+
             for (int i = 0; i < unitFileEntry.ModelCount; i++)
             {
-                //TEMP get default base size.
-                float tempBaseDiameterInches = 1.1023622f; //28mm.
-
                 List<Weapon> modelWeapons = new List<Weapon>();
 
                 for (int w = i; w < unitWeapons.Count; w += unitFileEntry.ModelCount)
@@ -163,7 +164,7 @@ namespace FDG
                     modelWeapons.Add(unitWeapons[w]);
                 }
 
-                ModelData modelData = new ModelData(tempBaseDiameterInches / 2f, modelWeapons, new Position(), gameDataStore);
+                ModelData modelData = new ModelData(baseShape, modelWeapons, new Position(), gameDataStore);
 
                 DataReference modelReference = gameDataStore.Create(modelData);
                 DataBinding<ModelData> modelBinding = gameDataStore.GetDataBinding<ModelData>(modelReference);

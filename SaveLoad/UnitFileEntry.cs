@@ -25,6 +25,12 @@ namespace FDG.SaveLoad
 
         public int ModelCount { get; set; }
 
+        /// <summary>
+        /// The base footprint shared by all this unit's models (#149). Defaults to a 28mm circle, so a
+        /// pre-#149 army file (no <c>base</c> property) is unchanged.
+        /// </summary>
+        public BaseFileEntry Base { get; set; } = new BaseFileEntry();
+
         public int Quality { get; set; }
 
         public int Defense { get; set; }

@@ -569,7 +569,7 @@ namespace FDG.Stages
                 for (int j = i + 1; j < models.Count; j++)
                 {
                     float distance = DistanceUtilities.GetBaseToBaseDistanceInches_3D(positions[i], positions[j],
-                        models[i].GetValue().BaseRadiusInches, models[j].GetValue().BaseRadiusInches);
+                        models[i].GetValue().BaseShape, models[j].GetValue().BaseShape);
 
                     nearestDistances[i] = Math.Min(distance, nearestDistances[i]);
                     farthestDistances[i] = Math.Max(distance, farthestDistances[i]);

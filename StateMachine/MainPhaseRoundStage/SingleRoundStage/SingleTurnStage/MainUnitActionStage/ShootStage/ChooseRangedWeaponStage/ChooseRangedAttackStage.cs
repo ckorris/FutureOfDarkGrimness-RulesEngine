@@ -330,7 +330,7 @@ namespace FDG.Stages
         private static bool IsTargetWithinRange(ModelData attacker, ModelData target, Weapon weapon)
         {
             float distance = DistanceUtilities.GetBaseToBaseDistanceInches_3D(attacker.PositionBinding.GetValue(),
-                target.PositionBinding.GetValue(), attacker.BaseRadiusInches, target.BaseRadiusInches);
+                target.PositionBinding.GetValue(), attacker.BaseShape, target.BaseShape);
             return distance <= weapon.RangeInches;
         }
 

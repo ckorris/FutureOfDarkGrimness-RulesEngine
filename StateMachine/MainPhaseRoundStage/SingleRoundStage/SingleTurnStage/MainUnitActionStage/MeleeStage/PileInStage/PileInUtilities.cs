@@ -225,7 +225,7 @@ namespace FDG.Stages
                     if (i == j) continue;
                     DataBinding<ModelData> dj = defenders[j];
                     float d = DistanceUtilities.GetBaseToBaseDistanceInches_3D(
-                        pi, positions[dj], mi.BaseRadiusInches, dj.GetValue().BaseRadiusInches);
+                        pi, positions[dj], mi.BaseShape, dj.GetValue().BaseShape);
                     if (d < nearest) { nearest = d; nearestIdx = j; }
                 }
                 float excess = nearest - GameWideConstants.MAX_MODEL_DISTANCE_FROM_ANY_OTHER_MODEL_INCHES;
@@ -250,7 +250,7 @@ namespace FDG.Stages
                     DataBinding<ModelData> dj = defenders[j];
                     float d = DistanceUtilities.GetBaseToBaseDistanceInches_3D(
                         positions[di], positions[dj],
-                        di.GetValue().BaseRadiusInches, dj.GetValue().BaseRadiusInches);
+                        di.GetValue().BaseShape, dj.GetValue().BaseShape);
                     float excess = d - GameWideConstants.MAX_MODEL_DISTANCE_FROM_ALL_OTHER_MODELS_INCHES;
                     if (excess > 0f)
                     {

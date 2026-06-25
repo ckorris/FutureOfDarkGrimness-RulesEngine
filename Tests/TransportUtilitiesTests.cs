@@ -222,6 +222,95 @@ namespace FDG.Tests
                 Is.True, "3 spaces fit exactly in the 3 remaining.");
         }
 
+        // --- Mixed-Tough units (#098) ------------------------------------------------------------
+        // The cases above test CanModelRide with an explicit isHero flag. These exercise CanUnitEmbark's
+        // internal per-model hero detection (IsHeroModel) on a unit that MIXES ride caps — a joined
+        // Hero (cap 6) alongside non-Hero grunts (cap 3) — plus the summed 3-space accounting.
+
+        [Test]
+        public void CanUnitEmbark_MixedUnit_HeroWithinSix_GruntsWithinThree_Embarks()
+        {
+            PlayerID player = NewPlayer();
+            UnitData transport = MakeTransport(player, capacity: 9);
+            // Hero Tough(6) (3 spaces) + two grunts Tough(3) (3 spaces each) = 9 spaces. The hero rides
+            // only because it's detected as the Hero and gets the cap-6 allowance — a non-Hero Tough(6)
+            // model would be rejected at the cap-3 limit.
+            UnitData squad = MakeHeroJoinedUnit(player, heroTough: 6, gruntToughs: new[] { 3, 3 });
+
+            bool ok = TransportUtilities.CanUnitEmbark(squad, transport, All(transport, squad), out string reason);
+
+            Assert.That(ok, Is.True, reason);
+            Assert.That(reason, Is.Empty);
+        }
+
+        [Test]
+        public void CanUnitEmbark_MixedUnit_HeroOverSix_Rejected()
+        {
+            PlayerID player = NewPlayer();
+            UnitData transport = MakeTransport(player, capacity: 12);
+            // Hero Tough(7) is over the Hero cap even though there's plenty of room.
+            UnitData squad = MakeHeroJoinedUnit(player, heroTough: 7, gruntToughs: new[] { 3 });
+
+            bool ok = TransportUtilities.CanUnitEmbark(squad, transport, All(transport, squad), out string reason);
+
+            Assert.That(ok, Is.False);
+            Assert.That(reason, Is.Not.Empty);
+        }
+
+        [Test]
+        public void CanUnitEmbark_MixedUnit_GruntOverThree_Rejected()
+        {
+            PlayerID player = NewPlayer();
+            UnitData transport = MakeTransport(player, capacity: 12);
+            // The Hero (Tough 6) is fine, but a grunt at Tough(4) exceeds the non-Hero cap of 3.
+            UnitData squad = MakeHeroJoinedUnit(player, heroTough: 6, gruntToughs: new[] { 4 });
+
+            bool ok = TransportUtilities.CanUnitEmbark(squad, transport, All(transport, squad), out string reason);
+
+            Assert.That(ok, Is.False, "a single over-cap grunt blocks the whole unit, even with the hero within cap.");
+            Assert.That(reason, Is.Not.Empty);
+        }
+
+        [Test]
+        public void CanUnitEmbark_NonHeroToughSix_InPlainUnit_Rejected()
+        {
+            PlayerID player = NewPlayer();
+            UnitData transport = MakeTransport(player, capacity: 12);
+            // A multi-model unit with a Tough(6) model but no joined Hero: nobody gets the cap-6 allowance,
+            // so the Tough(6) model is over the non-Hero cap of 3.
+            UnitData squad = MakeUnit(player, modelCount: 1, tough: 6);
+            squad.ModelBindings.Add(MakeModelBinding(tough: 1)); // make it multi-model (no solo-hero path)
+
+            bool ok = TransportUtilities.CanUnitEmbark(squad, transport, All(transport, squad), out string reason);
+
+            Assert.That(ok, Is.False, "a Tough(6) non-Hero must not borrow the Hero ride cap.");
+            Assert.That(reason, Is.Not.Empty);
+        }
+
+        [Test]
+        public void CanUnitEmbark_SoloHeroToughSix_Embarks()
+        {
+            PlayerID player = NewPlayer();
+            UnitData transport = MakeTransport(player, capacity: 3);
+            // A lone Hero unit (one model + the Hero rule, no HeroAttachment) takes the cap-6 allowance via
+            // the single-model branch of IsHeroModel.
+            UnitData heroUnit = MakeSoloHeroUnit(player, tough: 6);
+
+            bool ok = TransportUtilities.CanUnitEmbark(heroUnit, transport, All(transport, heroUnit), out string reason);
+
+            Assert.That(ok, Is.True, reason);
+        }
+
+        [Test]
+        public void GetUnitSpaceCost_MixedUnit_SumsPerModelCosts()
+        {
+            PlayerID player = NewPlayer();
+            // Hero Tough(6) → 3 spaces, plus two standard Tough(1) grunts → 1 each = 5 total.
+            UnitData squad = MakeHeroJoinedUnit(player, heroTough: 6, gruntToughs: new[] { 1, 1 });
+
+            Assert.That(TransportUtilities.GetUnitSpaceCost(squad), Is.EqualTo(5));
+        }
+
         // --- Occupancy (token-derived) -----------------------------------------------------------
 
         [Test]
@@ -544,6 +633,27 @@ namespace FDG.Tests
                 TransportUtilities.TransportRuleName, CoreRuleCatalog.Transport,
                 new RuleArgument[] { new RuleArgument.Int(capacity) }));
             return transport;
+        }
+
+        // A unit of non-Hero grunts with a Hero model joined in (#006 AttachHero), mirroring the real
+        // mixed-Tough composition: the joined hero rides under the cap-6 allowance, the grunts under cap-3.
+        private UnitData MakeHeroJoinedUnit(PlayerID player, int heroTough, int[] gruntToughs)
+        {
+            List<DataBinding<ModelData>> grunts = gruntToughs.Select(MakeModelBinding).ToList();
+            UnitData unit = new UnitData(player, "squad", quality: 4, defense: 4, modelBindings: grunts);
+
+            DataBinding<ModelData> hero = MakeModelBinding(heroTough);
+            HeroAttachment attachment = new HeroAttachment(hero.GetValue().ID, quality: 3, defense: 3, heroWounds: heroTough);
+            unit.AttachHero(attachment, new List<DataBinding<ModelData>> { hero });
+            return unit;
+        }
+
+        // A lone Hero: one model carrying the Hero rule, no HeroAttachment (the single-model IsHeroModel branch).
+        private UnitData MakeSoloHeroUnit(PlayerID player, int tough)
+        {
+            UnitData unit = MakeUnit(player, modelCount: 1, tough: tough);
+            unit.AttachRuleDefinition(new ResolvedRule("Hero", CoreRuleCatalog.Hero, Array.Empty<RuleArgument>()));
+            return unit;
         }
 
         private ModelData MakeModel(int tough)

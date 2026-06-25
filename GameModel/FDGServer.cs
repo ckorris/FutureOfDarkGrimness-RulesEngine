@@ -33,10 +33,11 @@ namespace FDG.GameModel
         // Stored so the extracted BuildContextAndLaunch can reach it on both new-game and resume paths.
         private IPresentationClock? _presentationClock;
 
-        // The shared army-load rule registry (core catalog + every army's embedded rules), built in
-        // CreateArmies. Threaded into GameContext → RuleEvaluator so token-granted rules (auras /
-        // "gains rule X" buffs) resolve their names back to definitions. Null on the resume path,
-        // which doesn't rebuild armies (rule rehydration on resume is #095); read-back no-ops there.
+        // The shared army-load rule registry (core catalog + every army's embedded rules), built by
+        // BuildRuleResolver on BOTH the new-game and resume paths. Threaded into GameContext →
+        // RuleEvaluator so token-granted rules (auras / "gains rule X" buffs) resolve their names back to
+        // definitions — including grants restored from a save (#101). Nullable only for the brief window
+        // before either constructor builds it.
         private IRuleResolver? _ruleResolver;
 
         private static bool TEST_SINGLE_TURN = false; //Turn on to skip most of the game and just do one run of a model's activation.

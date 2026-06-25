@@ -19,34 +19,34 @@ namespace FDG.Tests
         // so a future question whose correct AI answer is "no" is honored instead of silently accepted.
         [TestCase(true)]
         [TestCase(false)]
-        public async Task AiYesNoResolver_HonorsAiPrefersYes(bool aiPrefersYes)
+        public async Task AiYesNoResolver_HonorsDefaultAnswer(bool defaultAnswer)
         {
             var resolver = new AiYesNoResolver();
-            var request = new YesNoRequest(new PlayerID(Guid.NewGuid()), "Do the thing?", aiPrefersYes: aiPrefersYes);
+            var request = new YesNoRequest(new PlayerID(Guid.NewGuid()), "Do the thing?", defaultAnswer: defaultAnswer);
 
             bool answer = await resolver.Resolve(request);
 
-            Assert.That(answer, Is.EqualTo(aiPrefersYes),
-                "the AI resolver returns the per-question AI default carried on the request.");
+            Assert.That(answer, Is.EqualTo(defaultAnswer),
+                "the AI resolver returns the per-question default carried on the request.");
         }
 
-        // The AI default rides the request, so it must survive the wire to the host's AI resolver.
+        // The default rides the request, so it must survive the wire to whatever resolver answers it.
         [Test]
-        public void YesNoRequest_AiPrefersYes_RoundTripsJson()
+        public void YesNoRequest_DefaultAnswer_RoundTripsJson()
         {
-            var request = new YesNoRequest(new PlayerID(Guid.NewGuid()), "Decline this?", aiPrefersYes: false);
+            var request = new YesNoRequest(new PlayerID(Guid.NewGuid()), "Decline this?", defaultAnswer: false);
 
             string json = JsonConvert.SerializeObject(request);
             var deserialized = JsonConvert.DeserializeObject<YesNoRequest>(json);
 
             Assert.That(deserialized, Is.Not.Null);
-            Assert.That(deserialized!.AiPrefersYes, Is.False);
+            Assert.That(deserialized!.DefaultAnswer, Is.False);
             Assert.That(deserialized.QuestionText, Is.EqualTo("Decline this?"));
         }
 
-        // Older serialized requests (or any constructed without the flag) default to the opt-in answer.
+        // Older serialized requests (or any constructed without the flag) fall back to the opt-in answer.
         [Test]
-        public void YesNoRequest_MissingAiPreference_DefaultsToYes()
+        public void YesNoRequest_MissingDefaultAnswer_DefaultsToYes()
         {
             string json = "{\"TargetPlayerID\":{\"ID\":\"" + Guid.NewGuid() + "\"}," +
                           "\"TaskID\":{\"ID\":\"" + Guid.NewGuid() + "\"},\"QuestionText\":\"Legacy?\"}";
@@ -54,7 +54,7 @@ namespace FDG.Tests
             var deserialized = JsonConvert.DeserializeObject<YesNoRequest>(json);
 
             Assert.That(deserialized, Is.Not.Null);
-            Assert.That(deserialized!.AiPrefersYes, Is.True, "a request with no declared AI preference opts in.");
+            Assert.That(deserialized!.DefaultAnswer, Is.True, "a request with no declared default opts in.");
         }
 
         // A duplicate PostLaunchPlayerReadyMessage must not re-fire OnReadyStateChanged: the bus can deliver

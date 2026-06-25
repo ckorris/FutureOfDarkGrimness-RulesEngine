@@ -93,7 +93,7 @@ namespace FDG.Stages
                 {
                     var question = new YesNoRequest(playerID,
                         $"Reactivate {unit.GetValue().Name} with {offer.RuleName}?",
-                        aiPrefersYes: true);
+                        defaultAnswer: true);
                     bool accepted = await GameContext.PlayerRequester
                         .RequestDecision<YesNoRequest, bool>(question);
 

@@ -2,10 +2,12 @@ using FDG.Data;
 using FDG.Players;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
 using FDG.SaveLoad;
 using FDG.Stages;
+using FDG.Tests.RulesHarness;
 using NUnit.Framework;
 
 namespace FDG.Tests
@@ -201,6 +203,70 @@ namespace FDG.Tests
             Assert.That(metadata.QueryForResult(out DetermineHitRollResults result), Is.True);
             Assert.That(result.HitRollNeeded, Is.EqualTo(5),
                 "base 4, +1 because the rehydrated Stealth applies -1 to hit from beyond 9\".");
+        }
+
+        // ──────────────────────────────────────────────────────────────────────
+        // Granted-rule tokens (auras / buffs, #101) survive the resume AND project
+        // again. The token round-trips on the [JsonProperty] container, but the
+        // evaluator only reads it back once FDGServer.BuildRuleResolver rebuilds the
+        // resolver on resume (CreateArmies, which builds it for a new game, is skipped).
+        // ──────────────────────────────────────────────────────────────────────
+
+        [Test]
+        public void GrantedRuleToken_SurvivesResume_AndProjectsWithResolver()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            DataBinding<UnitData> defender = MakeUnit(store, "Aura'd Squad",
+                new[] { MakeModel(store, new Position(1, 1)) });
+            DataBinding<UnitData> attacker = MakeUnit(store, "Attacker",
+                new[] { MakeModel(store, new Position(2, 1)) });
+
+            // The state an Effect.Aura leaves behind: a RuleGrant token naming Regeneration (Aura/ManualOnly).
+            defender.GetValue().Tokens.AddToken(new Token(TokenType.RuleGrant, 1,
+                new TokenClearTrigger.ManualOnly(), new TokenPayload.RuleGrant("Regeneration", ELifetime.Aura)));
+
+            GameDataStore loaded = SaveAndLoad(store);
+            UnitData loadedDefender = loaded.GetValue<UnitData>(defender.Reference);
+            UnitData loadedAttacker = loaded.GetValue<UnitData>(attacker.Reference);
+
+            // The granted-rule token AND its polymorphic payload round-trip on the [JsonProperty] container.
+            Token grant = loadedDefender.Tokens.GetAllTokens(TokenType.RuleGrant).Single();
+            Assert.That(grant.Payload, Is.EqualTo(new TokenPayload.RuleGrant("Regeneration", ELifetime.Aura)),
+                "the RuleGrant token's polymorphic payload must survive save/load.");
+
+            // The resume path rebuilds exactly this resolver (FDGServer.BuildRuleResolver); with it the
+            // surviving token projects Regeneration again at save-roll-complete.
+            var evaluator = new RuleEvaluator(new FixedDiceRoller(4), ruleResolver: CoreRuleCatalog.CreateResolver());
+            var ops = evaluator.Evaluate(loadedDefender, ERuleSeat.Subject,
+                new SaveRollCompleteContext(loadedAttacker, loadedDefender, TestDice.Faces(4, 4, 4)));
+
+            Assert.That(ops.OfType<RuleOperation.IgnoreWound>().Any(op => op.MinRoll == 5), Is.True,
+                "a granted (aura) rule must fire again after a resume, once the resolver is rebuilt.");
+        }
+
+        [Test]
+        public void GrantedRuleToken_WithoutResolver_IsInertAfterResume()
+        {
+            // The pre-#101 resume state: the token survives, but a resolver-less evaluator (what the resume
+            // path built before this fix) can't read it back, so the granted rule silently does nothing.
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            DataBinding<UnitData> defender = MakeUnit(store, "Aura'd Squad",
+                new[] { MakeModel(store, new Position(1, 1)) });
+            DataBinding<UnitData> attacker = MakeUnit(store, "Attacker",
+                new[] { MakeModel(store, new Position(2, 1)) });
+            defender.GetValue().Tokens.AddToken(new Token(TokenType.RuleGrant, 1,
+                new TokenClearTrigger.ManualOnly(), new TokenPayload.RuleGrant("Regeneration", ELifetime.Aura)));
+
+            GameDataStore loaded = SaveAndLoad(store);
+            UnitData loadedDefender = loaded.GetValue<UnitData>(defender.Reference);
+            UnitData loadedAttacker = loaded.GetValue<UnitData>(attacker.Reference);
+
+            var evaluator = new RuleEvaluator(new FixedDiceRoller(4)); // no resolver
+            var ops = evaluator.Evaluate(loadedDefender, ERuleSeat.Subject,
+                new SaveRollCompleteContext(loadedAttacker, loadedDefender, TestDice.Faces(4, 4, 4)));
+
+            Assert.That(ops.OfType<RuleOperation.IgnoreWound>(), Is.Empty,
+                "without a rebuilt resolver the surviving grant token is inert — the gap this fix closes.");
         }
 
         // ──────────────────────────────────────────────────────────────────────

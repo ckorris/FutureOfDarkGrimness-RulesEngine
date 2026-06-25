@@ -70,7 +70,11 @@ namespace FDG
 
         public Position Position => PositionBinding.GetValue();
 
-        public float BaseRadiusInches { get; }
+        // The base footprint (#149). Serialized (Newtonsoft TypeNameHandling.Auto records the concrete
+        // shape via $type); legacy saves with no base fall back to the default circle in the ctor.
+        public IBaseShape BaseShape { get; }
+
+        [JsonIgnore] public float BaseRadiusInches => BaseShape.BoundingRadiusInches;
 
 
         IReadOnlyList<Weapon> IModel.Weapons => Weapons;
@@ -135,24 +139,30 @@ namespace FDG
         #endregion
 
         [JsonConstructor]
-        public ModelData(float baseRadiusInches, float totalWounds, DataBinding<float> remainingWoundsBinding, DataBinding<Position> positionBinding,
+        public ModelData(IBaseShape baseShape, float totalWounds, DataBinding<float> remainingWoundsBinding, DataBinding<Position> positionBinding,
             List<Weapon> weapons, ModelID? id = null)
         {
             ID = id ?? new ModelID(System.Guid.NewGuid());
 
-            BaseRadiusInches = baseRadiusInches;
+            // A legacy save predating #149 has no base → default circle (28mm), the value it used anyway.
+            BaseShape = baseShape ?? BaseShapeDefaults.Default();
             RemainingWoundsBinding = remainingWoundsBinding;
             PositionBinding = positionBinding;
             Weapons = weapons;
             TotalWounds = totalWounds;
         }
 
+        // Convenience overload: a circular base of the given radius (keeps existing callers/tests working).
         public ModelData(float baseRadiusInches, List<Weapon> weapons, Position initialPosition,
+            IReadWriteableGameDataStore gameDataStore)
+            : this(new CircleBase(baseRadiusInches), weapons, initialPosition, gameDataStore) { }
+
+        public ModelData(IBaseShape baseShape, List<Weapon> weapons, Position initialPosition,
             IReadWriteableGameDataStore gameDataStore)
         {
             ID = new ModelID(System.Guid.NewGuid());
 
-            BaseRadiusInches = baseRadiusInches;
+            BaseShape = baseShape;
             TotalWounds = CalculateTotalWounds();
 
             Weapons = weapons;
@@ -168,7 +178,7 @@ namespace FDG
         {
             ID = new ModelID(System.Guid.NewGuid());
 
-            BaseRadiusInches = modelToCopy.BaseRadiusInches;
+            BaseShape = modelToCopy.BaseShape;
             TotalWounds = CalculateTotalWounds();
 
             Weapons = new List<Weapon>(modelToCopy.Weapons);
@@ -201,14 +211,14 @@ namespace FDG
 
         public static float BaseDistanceToOtherModel_2D(this ModelData thisModel, ModelData otherModel)
         {
-            return DistanceUtilities.GetBaseToBaseDistanceInches_2D(thisModel.PositionBinding.GetValue(), 
-                otherModel.PositionBinding.GetValue(),thisModel.BaseRadiusInches, otherModel.BaseRadiusInches);
+            return DistanceUtilities.GetBaseToBaseDistanceInches_2D(thisModel.PositionBinding.GetValue(),
+                otherModel.PositionBinding.GetValue(), thisModel.BaseShape, otherModel.BaseShape);
         }
 
         public static float BaseDistanceToOtherModel_3D(this ModelData thisModel, ModelData otherModel)
         {
-            return DistanceUtilities.GetBaseToBaseDistanceInches_3D(thisModel.PositionBinding.GetValue(), 
-                otherModel.PositionBinding.GetValue(),thisModel.BaseRadiusInches, otherModel.BaseRadiusInches);
+            return DistanceUtilities.GetBaseToBaseDistanceInches_3D(thisModel.PositionBinding.GetValue(),
+                otherModel.PositionBinding.GetValue(), thisModel.BaseShape, otherModel.BaseShape);
         }
     }
 }

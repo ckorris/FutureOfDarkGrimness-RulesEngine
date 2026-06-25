@@ -37,7 +37,7 @@ namespace FDG.Tests
             DataReference positionRef = store.Create(new Position());
 
             var model = new ModelData(
-                baseRadiusInches: 0.75f,
+                baseShape: new CircleBase(0.75f),
                 totalWounds: 1,
                 remainingWoundsBinding: store.GetDataBinding<float>(woundsRef),
                 positionBinding: store.GetDataBinding<Position>(positionRef),

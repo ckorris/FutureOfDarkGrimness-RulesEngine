@@ -40,7 +40,18 @@ namespace FDG
 
         public Position Position { get; }
 
-        public float BaseRadiusInches { get; }
+        /// <summary>
+        /// This model's base footprint (#149) — circle, rectangle, or a future shape. The source of truth
+        /// for the base; <see cref="BaseRadiusInches"/> is its circumscribing circle.
+        /// </summary>
+        public IBaseShape BaseShape { get; }
+
+        /// <summary>
+        /// Circumscribing-circle radius of <see cref="BaseShape"/>. Retained so radius-based geometry
+        /// (terrain swept-paths, LoS blockers, objective seizure — the bounding-circle paths in #150) and
+        /// rendering fallbacks keep working unchanged. Shape-aware geometry reads <see cref="BaseShape"/>.
+        /// </summary>
+        public float BaseRadiusInches => BaseShape.BoundingRadiusInches;
 
         public IReadOnlyList<Weapon> Weapons { get; }
 
@@ -126,13 +137,13 @@ namespace FDG
         public static float BaseDistanceToOtherModel_2D(this IModel thisModel, IModel otherModel)
         {
             return DistanceUtilities.GetBaseToBaseDistanceInches_2D(thisModel.Position, otherModel.Position,
-                thisModel.BaseRadiusInches, otherModel.BaseRadiusInches);
+                thisModel.BaseShape, otherModel.BaseShape);
         }
 
         public static float BaseDistanceToOtherModel_3D(this IModel thisModel, IModel otherModel)
         {
             return DistanceUtilities.GetBaseToBaseDistanceInches_3D(thisModel.Position, otherModel.Position,
-                thisModel.BaseRadiusInches, otherModel.BaseRadiusInches);
+                thisModel.BaseShape, otherModel.BaseShape);
         }
     }
 

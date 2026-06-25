@@ -1,4 +1,4 @@
-﻿using FDG.Data;
+using FDG.Data;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,21 +9,27 @@ namespace FDG
 {
     public interface IModelTemplate
     {
-        float BaseRadiusInches { get; }
+        IBaseShape BaseShape { get; }
+
+        float BaseRadiusInches => BaseShape.BoundingRadiusInches;
 
         List<Weapon> Weapons { get; }
     }
 
     public class ModelTemplate : IModelTemplate
     {
-        public float BaseRadiusInches { get; private set; }
+        public IBaseShape BaseShape { get; private set; }
 
         public List<Weapon> Weapons { get; private set; }
 
-        public ModelTemplate(float baseRadiusInches, List<Weapon> weapons)
+        public ModelTemplate(IBaseShape baseShape, List<Weapon> weapons)
         {
-            BaseRadiusInches = baseRadiusInches;
+            BaseShape = baseShape;
             Weapons = weapons;
         }
+
+        // Convenience overload: a circular base of the given radius.
+        public ModelTemplate(float baseRadiusInches, List<Weapon> weapons)
+            : this(new CircleBase(baseRadiusInches), weapons) { }
     }
 }

@@ -225,6 +225,16 @@ namespace FDG.Network.Connection.Lobby
 
         private void OnReceiveNewClientGreeting(NewLobbyClientGreeting greeting, ConnectionID connectionID)
         {
+            // Refuse a build-mismatched client before it joins the roster (#075): a drifted store type map
+            // would silently corrupt replicated data (positional TypeIDs), and a wire-format change would
+            // garble messages. The rejection goes only to the offending connection.
+            if (!NetworkProtocol.TryValidateJoin(greeting.ProtocolVersion, greeting.TypeMapHash, out string rejectReason))
+            {
+                Debug.WriteLine($"Rejecting client '{greeting.PlayerName}': {rejectReason}");
+                _messageBus.SendCommandToSingleAsync(new LobbyJoinRejectedMessage(rejectReason), connectionID);
+                return;
+            }
+
             // Resume games have a fixed saved roster — route joining clients to saved slots instead of
             // creating new ones. Strictly isolated so the new-game path below is unchanged.
             if (_isResume)

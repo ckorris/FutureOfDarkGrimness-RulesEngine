@@ -13,12 +13,17 @@ namespace FDG.MessageBus
         private IMessageRegistrar _messageRegistrar;
         private IMessageSerializer _messageSerializer;
 
+        // Forwarded straight from the network host so host-side consumers can react to a dropped client
+        // without depending on INetworkHost directly (#076).
+        public event Action<ConnectionID>? OnClientDisconnected;
+
         internal MessageBusHost_Networked(INetworkHost networkHost, IReadableGameDataStore gameDataStore)
         {
             _networkHost = networkHost;
             _messageRegistrar = new MessageRegistrar();
             _messageSerializer = new MessageSerializer(gameDataStore);
             _networkHost.OnMessageReceived += OnMessageBytesReceived;
+            _networkHost.OnClientDisconnected += connectionID => OnClientDisconnected?.Invoke(connectionID);
         }
 
         public void RegisterForMessageEvent<T>(Action<T> onMessageReceived)

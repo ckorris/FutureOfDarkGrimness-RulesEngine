@@ -50,11 +50,11 @@ namespace FDG.Stages
             {
                 foreach(DataBinding<UnitData> potentialDefender in army.UnitBindings)
                 {
-                    float minDistanceToUnit = UnitCompareUtilities.MinDistanceBetweenUnits(context.AttackingUnit.GetValue(), potentialDefender.GetValue(),
-                        out _, out _, includeVertical: false);
-                    if(minDistanceToUnit <= GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL)
+                    // #022: a unit is engageable only if some model pair is within the melee cylinder
+                    // (2" horizontal AND 4" vertical) — the same gate the post-pile-in strike check uses,
+                    // so we never offer a defender no model could actually strike.
+                    if(MeleeRangeUtilities.AreUnitsInMeleeRange(context.AttackingUnit.GetValue(), potentialDefender.GetValue()))
                     {
-                        //TODO: Deal with vertical, but we might leave that for pile-in.
                         validDefenders.Add(new CancellableSelectionRequest<UnitData>.ValidOption(potentialDefender, potentialDefender.GetValue().Name));
                     }
                     else

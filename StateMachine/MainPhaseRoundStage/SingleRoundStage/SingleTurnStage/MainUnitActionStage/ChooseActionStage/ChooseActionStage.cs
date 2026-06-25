@@ -313,13 +313,14 @@ namespace FDG.Stages
                 ? playerTeam.Players
                 : new List<PlayerID> { attackingPlayer };
 
+            // #022: melee range is the 2"-horizontal AND 4"-vertical cylinder (MeleeRangeUtilities),
+            // not the horizontal half alone — so Charge grays out exactly when no enemy unit could be
+            // selected as a defender, keeping this gate consistent with ChooseMeleeDefenderStage.
             bool anyInRange = GameContext.GameDataStore().GetAllValues<ArmyData>()
                 .Where(a => !alliedPlayers.Contains(a.PlayerID))
                 .SelectMany(a => a.UnitBindings)
-                .Any(enemyUnit => UnitCompareUtilities.MinDistanceBetweenUnits(
-                    context.ActivatingUnit.GetValue(), enemyUnit.GetValue(),
-                    out _, out _, includeVertical: false)
-                    <= GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL);
+                .Any(enemyUnit => MeleeRangeUtilities.AreUnitsInMeleeRange(
+                    context.ActivatingUnit.GetValue(), enemyUnit.GetValue()));
 
             if (!anyInRange)
             {

@@ -11,6 +11,43 @@ namespace FDG.Stages
     /// </summary>
     public static class MeleeRangeUtilities
     {
+        /// <summary>The single definition of the melee-engagement cylinder: true if both models are alive
+        /// and within <see cref="GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL"/> (2") base-to-base
+        /// horizontally AND within <see cref="GameWideConstants.MELEE_RANGE_INCHES_VERTICAL"/> (4")
+        /// vertically. Every melee-range gate (charge availability, defender eligibility, strike range)
+        /// flows through here so they can't disagree.</summary>
+        public static bool AreModelsInMeleeRange(IModel model, IModel enemy)
+        {
+            if (!model.GetIsAlive() || !enemy.GetIsAlive()) return false;
+
+            float horizontal = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
+                model.Position, enemy.Position, model.BaseRadiusInches, enemy.BaseRadiusInches);
+            if (horizontal > GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL) return false;
+
+            float vertical = Position.GetVerticalDistance(model.Position, enemy.Position);
+            if (vertical > GameWideConstants.MELEE_RANGE_INCHES_VERTICAL) return false;
+
+            return true;
+        }
+
+        /// <summary>True if any living model in <paramref name="unit"/> is within melee range of any living
+        /// model in <paramref name="enemyUnit"/>. The unit-level gate shared by the Charge-availability
+        /// check (<c>ChooseActionStage.GetCanCharge</c>) and defender eligibility
+        /// (<c>ChooseMeleeDefenderStage</c>) — both formerly applied only the horizontal half (#022).</summary>
+        public static bool AreUnitsInMeleeRange(IUnit unit, IUnit enemyUnit)
+        {
+            foreach (IModel model in unit.Models)
+            {
+                if (!model.GetIsAlive()) continue;
+
+                foreach (IModel enemy in enemyUnit.Models)
+                {
+                    if (AreModelsInMeleeRange(model, enemy)) return true;
+                }
+            }
+            return false;
+        }
+
         /// <summary>True if <paramref name="model"/> is alive and within melee range of any live model in
         /// <paramref name="enemyModels"/>.</summary>
         public static bool IsModelInMeleeRange(ModelData model, IReadOnlyList<DataBinding<ModelData>> enemyModels)
@@ -19,17 +56,7 @@ namespace FDG.Stages
 
             foreach (DataBinding<ModelData> enemyBinding in enemyModels)
             {
-                ModelData enemy = enemyBinding.GetValue();
-                if (!((IModel)enemy).GetIsAlive()) continue;
-
-                float horizontal = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
-                    model.Position, enemy.Position, model.BaseRadiusInches, enemy.BaseRadiusInches);
-                if (horizontal > GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL) continue;
-
-                float vertical = Position.GetVerticalDistance(model.Position, enemy.Position);
-                if (vertical > GameWideConstants.MELEE_RANGE_INCHES_VERTICAL) continue;
-
-                return true;
+                if (AreModelsInMeleeRange(model, enemyBinding.GetValue())) return true;
             }
             return false;
         }

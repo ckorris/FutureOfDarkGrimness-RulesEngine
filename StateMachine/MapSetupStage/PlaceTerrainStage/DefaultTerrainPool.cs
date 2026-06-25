@@ -73,6 +73,69 @@ namespace FDG.Stages
                     Shape = new RectangularZone(58, 66, 12, 18),
                     HeightInches = 0f,
                 },
+
+                // --- Compound impassible obstacles (small/medium, scattered in the open quadrants) ---
+                // Totally impassible: Blocking | Impassible, so they block both movement AND line of sight
+                // (like the center building) — you can't shoot over them. Hand-placed so they don't overlap
+                // the pieces above; each is a CompositeZone of a few rectangles for an irregular shape.
+
+                // Rocky outcrop, top-left — L-shape.
+                new TerrainPieceEntry
+                {
+                    TerrainType = ETerrainType.Blocking | ETerrainType.Impassible,
+                    Shape = new CompositeZone(new List<IZone>
+                    {
+                        new RectangularZone(6, 13, 6, 8),    // horizontal arm
+                        new RectangularZone(6, 8, 8, 13),    // vertical arm
+                    }),
+                    HeightInches = 3f,
+                },
+                // Wreckage, top-center — T-shape.
+                new TerrainPieceEntry
+                {
+                    TerrainType = ETerrainType.Blocking | ETerrainType.Impassible,
+                    Shape = new CompositeZone(new List<IZone>
+                    {
+                        new RectangularZone(42, 50, 6, 8),   // cross bar
+                        new RectangularZone(45, 47, 8, 13),  // stem
+                    }),
+                    HeightInches = 2.5f,
+                },
+                // Crater rim, top-right — U-shape opening upward.
+                new TerrainPieceEntry
+                {
+                    TerrainType = ETerrainType.Blocking | ETerrainType.Impassible,
+                    Shape = new CompositeZone(new List<IZone>
+                    {
+                        new RectangularZone(58, 60, 5, 11),  // left arm
+                        new RectangularZone(58, 67, 5, 7),   // base
+                        new RectangularZone(65, 67, 5, 11),  // right arm
+                    }),
+                    HeightInches = 0f,
+                },
+                // Tank traps, bottom-left — plus/cross.
+                new TerrainPieceEntry
+                {
+                    TerrainType = ETerrainType.Blocking | ETerrainType.Impassible,
+                    Shape = new CompositeZone(new List<IZone>
+                    {
+                        new RectangularZone(8, 14, 40, 42),  // horizontal
+                        new RectangularZone(10, 12, 38, 44), // vertical
+                    }),
+                    HeightInches = 2f,
+                },
+                // Collapsed wall, bottom-right — stepped Z.
+                new TerrainPieceEntry
+                {
+                    TerrainType = ETerrainType.Blocking | ETerrainType.Impassible,
+                    Shape = new CompositeZone(new List<IZone>
+                    {
+                        new RectangularZone(56, 61, 38, 40), // top step
+                        new RectangularZone(59, 64, 40, 42), // mid step
+                        new RectangularZone(62, 67, 42, 44), // bottom step
+                    }),
+                    HeightInches = 3f,
+                },
             }
         };
     }

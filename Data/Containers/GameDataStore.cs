@@ -1,7 +1,10 @@
 ﻿using FDG.Data.Containers;
 using FDG.Data.Serialization;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace FDG.Data
 {
@@ -71,10 +74,17 @@ namespace FDG.Data
                 _jsonConverters[i - 1] = (JsonConverter)converterInstance;
             }
 
+             // Enums ride the wire (and store-value blobs) as their member names, not ordinals, so that
+             // reordering an enum's members stops being a silent wire/save format change (#075). The
+             // StringEnumConverter reads both string and integer tokens, so older int-encoded payloads
+             // still load.
+             List<JsonConverter> converters = _jsonConverters.ToList();
+             converters.Add(new StringEnumConverter());
+
              _jsonConvertSettings = new JsonSerializerSettings()
              {
                  TypeNameHandling = TypeNameHandling.Auto,
-                 Converters = _jsonConverters.ToList()
+                 Converters = converters
              };
 
         }
@@ -87,6 +97,29 @@ namespace FDG.Data
         public List<Type> GetTypeMap()
         {
             return new List<Type>(_registeredTypes);
+        }
+
+        /// <summary>
+        /// A stable hash of the registered type map (each type's <see cref="Type.FullName"/>, in TypeID
+        /// order). Two stores built from the same registration order produce the same fingerprint; adding,
+        /// removing, renaming, or reordering a registered type changes it. Used by the network join
+        /// handshake (#075) to detect that a connecting client was built against a different store shape —
+        /// since the TypeID is positional and baked into every serialized <see cref="DataReference"/>, a
+        /// drifted type map would silently corrupt replicated data. Uses SHA-256 (not
+        /// <see cref="object.GetHashCode"/>, which is per-process randomized for strings) so the value is
+        /// stable across processes and machines.
+        /// </summary>
+        public string GetTypeMapFingerprint()
+        {
+            StringBuilder builder = new StringBuilder();
+            foreach (Type type in _registeredTypes)
+            {
+                builder.Append(type.FullName ?? type.Name);
+                builder.Append('\n');
+            }
+
+            byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString()));
+            return Convert.ToHexString(hash);
         }
 
         /// <summary>

@@ -13,6 +13,10 @@ namespace FDG.Players
 
         public PlayerID ID { get; }
 
+        // The connection this networked player is on. Exposed so the disconnect lifecycle (#076) can map a
+        // dropped ConnectionID back to its PlayerID and fail that player's pending decision requests.
+        public ConnectionID ConnectionID { get; }
+
         public bool IsReady { get; private set; } = false; //May need to change.
 
         public IPresentationSink? PresentationSink { get; }
@@ -27,21 +31,27 @@ namespace FDG.Players
         {
             Name = name;
             ID = playerID;
+            ConnectionID = connectionID;
             _messageBusHost = messageBusHost;
 
             _messageBusHost.RegisterForMessageEvent<PostLaunchPlayerReadyMessage>(OnPlayerReadyMessageReceived);
-
-            //_messageBusHost.RegisterForMessageEvent<NetworkPlayerSubmitChatMessage>(OnPlayerChatMessageReceived);
+            _messageBusHost.RegisterForMessageEvent<NetworkPlayerSubmitChatMessage>(OnPlayerChatMessageReceived);
 
             PresentationSink = new NetworkedPresentationSink(_messageBusHost, connectionID);
         }
 
-        /*
         private void OnPlayerChatMessageReceived(NetworkPlayerSubmitChatMessage message)
         {
+            // Every network player's controller is registered for this message, so filter to the one
+            // representing the sender. Without this each controller would re-raise OnMessageSentByPlayer
+            // (and the relayer re-broadcast the chat) once per network player, misattributed (#077).
+            if (message.PlayerID != ID)
+            {
+                return;
+            }
+
             OnMessageSentByPlayer?.Invoke(ID, message.MessageType, message.Message);
         }
-        */
 
         public Task WaitUntilReadyAsync()
         {
@@ -74,7 +84,9 @@ namespace FDG.Players
 
         private void OnPlayerReadyMessageReceived(PostLaunchPlayerReadyMessage message)
         {
-            if (message.ReadyPlayerID == ID)
+            // Guard against duplicate ready messages: once ready, a repeat must not re-fire OnReadyStateChanged
+            // (the bus can deliver the same PostLaunchPlayerReadyMessage more than once).
+            if (message.ReadyPlayerID == ID && IsReady == false)
             {
                 IsReady = true;
                 OnReadyStateChanged?.Invoke(true);

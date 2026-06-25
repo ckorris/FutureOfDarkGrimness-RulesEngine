@@ -5,6 +5,13 @@ namespace FDG.MessageBus
     public interface IMessageBusHost : IMessageReceiver
     {
         /// <summary>
+        /// Raised when a connected client drops. Lets host-side consumers (e.g. the stage-request sender)
+        /// react to a departure — failing that player's pending decision requests instead of hanging
+        /// forever (#076). Fires on the network read-loop thread; in-process buses never raise it.
+        /// </summary>
+        public event Action<ConnectionID>? OnClientDisconnected;
+
+        /// <summary>
         /// Register a handler that also receives the <see cref="ConnectionID"/> the message arrived on.
         /// Use this instead of an ambient lookup when a handler must reply to the specific sender
         /// (e.g. full-data sync, lobby greeting), so concurrent client read loops can't cross-talk and

@@ -72,7 +72,8 @@ namespace FDG.Stages
             foreach (AbilityOffer offer in offers)
             {
                 var question = new YesNoRequest(mover.PlayerID,
-                    $"Use {offer.RuleName}: {mover.Name} attacks {enemy.GetValue().Name} while moving through?");
+                    $"Use {offer.RuleName}: {mover.Name} attacks {enemy.GetValue().Name} while moving through?",
+                    aiPrefersYes: true);
                 bool accepted = await GameContext.PlayerRequester
                     .RequestDecision<YesNoRequest, bool>(question);
 

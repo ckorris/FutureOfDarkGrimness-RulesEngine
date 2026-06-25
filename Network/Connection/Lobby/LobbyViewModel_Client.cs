@@ -10,6 +10,7 @@ using FDG.Players;
 using FDG.SaveLoad;
 using System.Diagnostics;
 using System.Reactive.Subjects;
+using System.Threading.Tasks;
 
 namespace FDG.Network.Connection.Lobby
 {
@@ -85,6 +86,14 @@ namespace FDG.Network.Connection.Lobby
 
         private IMessageBusClient _messageBusClient;
 
+        // Completes once the host accepts (result null) or rejects (result = readable reason) the join (#075).
+        // ClientModal awaits this before navigating to the lobby, so a build-mismatch rejection shows in the
+        // connect modal instead of half-joining.
+        private readonly TaskCompletionSource<string?> _joinResult =
+            new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task<string?> JoinResultTask => _joinResult.Task;
+
 
         private const string SERVER_JOIN_MESSAGE = "Welcome to the server.";
 
@@ -123,9 +132,12 @@ namespace FDG.Network.Connection.Lobby
             _messageBusClient.RegisterForMessageEvent<LaunchGameMessage>(OnLaunchGameMessageReceived);
             _messageBusClient.RegisterForMessageEvent<LobbyGameSettingsUpdate>(OnGameSettingsUpdateReceived);
             _messageBusClient.RegisterForMessageEvent<GameEndedMessage>(OnGameEndedMessageReceived);
+            _messageBusClient.RegisterForMessageEvent<LobbyJoinRejectedMessage>(OnJoinRejectedReceived);
 
-            //Send greeting. 
-            NewLobbyClientGreeting greeting = new NewLobbyClientGreeting(thisPlayerName);
+            //Send greeting — includes this build's protocol version + type-map fingerprint so the host can
+            //refuse an incompatible build before we join the roster (#075).
+            NewLobbyClientGreeting greeting = new NewLobbyClientGreeting(
+                thisPlayerName, NetworkProtocol.Version, NetworkProtocol.LocalTypeMapHash);
             _messageBusClient.SendCommandToHostAsync(greeting);
 
             //Show init message in chatbox.
@@ -171,6 +183,13 @@ namespace FDG.Network.Connection.Lobby
         private void OnPlayerIDAssignmentReceived(LobbyPlayerIDAssignment assignment)
         {
             _thisPlayerID = assignment.playerID;
+            _joinResult.TrySetResult(null); //Host accepted: a PlayerID assignment is the success signal (#075).
+        }
+
+        private void OnJoinRejectedReceived(LobbyJoinRejectedMessage message)
+        {
+            Debug.WriteLine($"Join rejected by host: {message.Reason}");
+            _joinResult.TrySetResult(message.Reason); //Build mismatch — surface the reason, don't join (#075).
         }
 
         private void OnChatMessageReceived(LobbyChatMessage message)

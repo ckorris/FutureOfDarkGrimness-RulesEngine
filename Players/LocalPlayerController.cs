@@ -1,5 +1,6 @@
 ﻿using FDG.GameModel;
 using FDG.Presentation;
+using FDG.TextInterface;
 using System.Diagnostics;
 
 namespace FDG.Players
@@ -25,16 +26,24 @@ namespace FDG.Players
             ID = id;
             _localPlayer = localPlayer;
 
-            //Subscribe to the player messages once they're assigned.
-            if(_localPlayer.PlayerMessageUI != null)
+            // Subscribe to the player messages once they're assigned. EnsureMessageSubscription is idempotent
+            // (it removes before adding) and runs both now and on every resolver assignment, so there's no
+            // window where the UI is null when we check yet non-null when the deferred handler runs, and no
+            // chance of double-subscribing if assignment fires more than once.
+            EnsureMessageSubscription();
+            _localPlayer.OnStageResolverAssigned += EnsureMessageSubscription;
+        }
+
+        private void EnsureMessageSubscription()
+        {
+            IPlayerMessageUI playerMessageUI = _localPlayer.PlayerMessageUI;
+            if (playerMessageUI == null)
             {
-                localPlayer.PlayerMessageUI.OnMessageSentByPlayer += OnPlayerSentMessage;
+                return;
             }
-            else
-            {
-                _localPlayer.OnStageResolverAssigned += () =>
-                    localPlayer.PlayerMessageUI.OnMessageSentByPlayer += OnPlayerSentMessage;
-            }
+
+            playerMessageUI.OnMessageSentByPlayer -= OnPlayerSentMessage;
+            playerMessageUI.OnMessageSentByPlayer += OnPlayerSentMessage;
         }
 
         private void OnPlayerSentMessage(string message, EChatMessageType messageType)

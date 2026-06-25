@@ -258,6 +258,33 @@ namespace FDG.Tests
                 "single-model targeting confined all 3 lethal hits to one model; the other two survive (no carry-over)");
         }
 
+        // #034 multi-unit damage — a damage spell with MaxCount > 1 runs the save→wound pipeline once per
+        // chosen target (via the looped ResolveSpellDamageStage), so EVERY selected unit is hit, not just the
+        // first. Two single-model enemies, 1 hit at AP(3) each → both die.
+        [Test]
+        public async Task CastSpellStage_MultiUnitDamageSpell_HitsEveryTarget()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester());
+            RuntimeSpell chainBolt = new RuntimeSpell(
+                new SpellDefinition("Chain Bolt", 2,
+                    new TargetSelector(18f, 1, 2, ETargetAffinity.Foe, RequireLineOfSight: false),
+                    new Effect.DealHits(1, System.Array.Empty<string>(), ArmorPenetration: 3)),
+                System.Array.Empty<ResolvedRule>());
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 3, new[] { chainBolt }, new Position(10f, 10f));
+            var enemyPlayer = new PlayerID(System.Guid.NewGuid());
+            (DataBinding<UnitData> enemyA, DataBinding<UnitData> enemyB) =
+                MakeTwoEnemyUnits(enemyPlayer, new Position(12f, 10f), new Position(12f, 12f));
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Assert.That(enemyA.GetValue().GetIsAlive(), Is.False, "the first chosen target took the spell's hit");
+            Assert.That(enemyB.GetValue().GetIsAlive(), Is.False,
+                "the second chosen target ALSO took the spell's hit — the pipeline runs per target, not just target[0]");
+        }
+
         // #033 Slice B — a stat-modifier buff spell grants the target a numeric roll modifier; reading it for
         // the matching roll yields the delta and (for a "next time" grant) consumes it.
         [Test]
@@ -377,6 +404,24 @@ namespace FDG.Tests
             DataBinding<UnitData> binding = _store.GetDataBinding<UnitData>(_store.Create(unit));
             _store.Create(new ArmyData(enemyPlayer, new List<DataBinding<UnitData>> { binding }));
             return binding;
+        }
+
+        // Two single-model enemy units owned by one enemy player, in one army — for multi-unit targeting.
+        private (DataBinding<UnitData> a, DataBinding<UnitData> b) MakeTwoEnemyUnits(
+            PlayerID enemyPlayer, Position posA, Position posB)
+        {
+            DataBinding<UnitData> a = MakeEnemyUnitBinding(enemyPlayer, "GruntsA", posA);
+            DataBinding<UnitData> b = MakeEnemyUnitBinding(enemyPlayer, "GruntsB", posB);
+            _store.Create(new ArmyData(enemyPlayer, new List<DataBinding<UnitData>> { a, b }));
+            return (a, b);
+        }
+
+        private DataBinding<UnitData> MakeEnemyUnitBinding(PlayerID enemyPlayer, string name, Position pos)
+        {
+            var model = new ModelData(0.5f, new List<Weapon>(), pos, _store);
+            var modelBindings = new List<DataBinding<ModelData>> { _store.GetDataBinding<ModelData>(_store.Create(model)) };
+            var unit = new UnitData(enemyPlayer, name, quality: 4, defense: 4, modelBindings: modelBindings);
+            return _store.GetDataBinding<UnitData>(_store.Create(unit));
         }
 
         private DataBinding<UnitData> MakeMultiModelEnemy(PlayerID enemyPlayer, Position pos, int modelCount)

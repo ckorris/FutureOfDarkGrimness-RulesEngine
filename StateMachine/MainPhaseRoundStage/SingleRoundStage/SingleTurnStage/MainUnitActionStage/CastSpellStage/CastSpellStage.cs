@@ -6,7 +6,6 @@ using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
 using FDG.StageResolution.Requests;
 using FDG.Utilities;
-using FDG.Utilities;
 
 namespace FDG.Stages
 {
@@ -23,38 +22,28 @@ namespace FDG.Stages
     /// <list type="bullet">
     ///   <item><b>Buff/debuff</b> (<see cref="Effect.AddRule"/> &amp; other token effects): the effect is
     ///         applied to each target via the polymorphic <see cref="Effect.Apply"/> and the resulting token
-    ///         operations are committed — the "gets RULE once (next time)" shape.</item>
-    ///   <item><b>Damage</b> (<see cref="Effect.DealHits"/>): <see cref="ResolveSpellHits"/> rolls the hits
-    ///         as real dice and runs the hit-complete fold (Blast multiply, on-6 extra hits, Rending AP),
-    ///         then the hits run through the shared save→wound→assign→apply child pipeline against the
-    ///         target — the same machinery <see cref="StrafingStage"/>/ResolveImpactHitsStage and
-    ///         RollToHitStage use. AP + the spell's pre-resolved weapon rules ride the synthetic weapon.</item>
+    ///         operations are committed — the "gets RULE once (next time)" shape. No child pipeline.</item>
+    ///   <item><b>Damage</b> (<see cref="Effect.DealHits"/>): resolved through the looped child
+    ///         <see cref="ResolveSpellDamageStage"/> — once per chosen target, each with its own fresh
+    ///         <see cref="CombatMetadata"/> (the <see cref="ShootStage"/>/<see cref="FireStage"/> pattern).
+    ///         Each target's hits run the hit-complete fold (Blast multiply, on-6 extra hits, Rending AP)
+    ///         then the shared save→wound→assign→apply pipeline. AP + the spell's pre-resolved weapon rules
+    ///         ride the synthetic weapon; #034 single-model spells confine wounds to one chosen model.</item>
     /// </list>
     ///
-    /// DEFERRED (recorded in #033): the ±1 friendly-Caster assist (#094, slots in before the roll);
-    /// multi-target damage (only the first target is hit — the synthetic pipeline runs once per cast, as
-    /// Strafing's does); single-model targeting ("a unit of [1]").
+    /// DEFERRED (recorded in #033/#034): the ±1 friendly-Caster assist (#103, slots in before the roll).
     /// </summary>
-    public class CastSpellStage : ParentStage<IUnitActionContext, ICombatMetadata>
+    public class CastSpellStage : ParentStage<IUnitActionContext, SpellDamageRunContext>
     {
         public StageBinding OnFinished;
 
         private const string CANCEL_OPTION = "Cancel";
         private const int CAST_SUCCESS_THRESHOLD = 4;
 
-        // Damage-spell pipeline parameters: set in Enter when a successful damage cast routes into the
-        // save→wound children, read by GetNewChildContext when the child pipeline builds its metadata.
-        // The hit-complete fold (Blast / on-6 rules) runs in Enter, so what's stored here is the FINAL
-        // post-fold hit count plus the synthetic weapon and any carried save modifier (Rending).
-        private DataBinding<UnitData> _damageTarget;
-        private Weapon _damageWeapon = null!;
-        private float _damageFinalHits;
-        private int _damageSaveModifier;
-
-        // #034 single-model targeting: when the cast spell targets one model ("a unit of [1]"), the chosen
-        // model is picked in Enter and seeded as an IndividualTargetResult in GetNewChildContext, so the
-        // child AssignWoundsStage confines all wounds to it (no carry-over). Null when whole-unit.
-        private DataBinding<ModelData>? _damageIndividualModel;
+        // The damage run set up in Enter (synthetic weapon + chosen targets + base hits + any single-model
+        // pick) and handed to the looped child pipeline by GetNewChildContext. Null on the buff path, which
+        // applies its effect inline and never enters the children.
+        private SpellDamageRunContext _pendingRun;
 
         public CastSpellStage(IGameContext gameContext, IStateMachineLayer<IUnitActionContext> parent)
             : base(gameContext, parent)
@@ -63,10 +52,7 @@ namespace FDG.Stages
 
         public override async Task Enter(IUnitActionContext context)
         {
-            _damageTarget = default;
-            _damageFinalHits = 0f;
-            _damageSaveModifier = 0;
-            _damageIndividualModel = null;
+            _pendingRun = null;
 
             IUnit caster = context.ActivatingUnit.GetValue();
             PlayerID player = context.ActivatingPlayer();
@@ -114,7 +100,7 @@ namespace FDG.Stages
             caster.Tokens.RemoveTokens(TokenType.SpellTokens, chosen.Threshold);
 
             // 4. Cast roll: one die, 4+ succeeds. RollDecisive so it's a real outcome under the
-            //    probabilistic roller. (±1 friendly-Caster assist — a #033 follow-up — would adjust here.)
+            //    probabilistic roller. (±1 friendly-Caster assist — #103 — would adjust here.)
             bool success = GameContext.DiceRoller.RollDecisive().AtOrAbove(CAST_SUCCESS_THRESHOLD) >= 1f;
             if (!success)
             {
@@ -125,44 +111,41 @@ namespace FDG.Stages
 
             GameContext.Log($"{caster.Name} cast {chosen.Name} (spent {chosen.Threshold} tokens).");
 
-            // 5a. Damage spell → run the synthetic-hit save→wound child pipeline against the target.
+            // 5a. Damage spell → resolve each chosen target through the looped child pipeline.
             if (chosen.Effect is Effect.DealHits dealHits)
             {
-                if (targets.Count > 1)
-                {
-                    GameContext.Log($"{chosen.Name} chose multiple targets, but spell damage is single-target " +
-                        $"for now — only {targets[0].GetValue().Name} is hit (#034 multi-unit damage).");
-                }
-                _damageTarget = targets[0];
-
-                // #034 single-model targeting: resolve "as a unit of [1]" — pick one model in the target unit
-                // now (the cast has succeeded and is committed, so the pick is mandatory) and confine all
-                // wounds to it via the IndividualTargetResult seeded in GetNewChildContext.
-                if (chosen.Target.SingleModel)
-                {
-                    _damageIndividualModel = await PickIndividualModel(player, chosen.Name, _damageTarget);
-                }
-
-                // Synthetic spell weapon: the spell's AP + its pre-resolved weapon rules.
-                _damageWeapon = new Weapon(chosen.Name, rangeInches: 0f, attacks: 0,
+                // Synthetic spell weapon: the spell's AP + its pre-resolved weapon rules (shared across targets).
+                Weapon spellWeapon = new Weapon(chosen.Name, rangeInches: 0f, attacks: 0,
                     armorPenetration: dealHits.ArmorPenetration);
                 foreach (ResolvedRule rule in chosen.WeaponRules)
                 {
-                    _damageWeapon.AttachRuleDefinition(rule);
+                    spellWeapon.AttachRuleDefinition(rule);
                 }
 
-                // Run the hit-complete fold (Blast multiply, on-6 extra hits, Rending AP) over real rolled
-                // dice before the save pipeline, so pre-save weapon rules actually fire on spell hits.
-                (_damageFinalHits, _damageSaveModifier) =
-                    ResolveSpellHits(caster, _damageTarget.GetValue(), dealHits.Count, _damageWeapon);
+                // #034 single-model targeting: pick the one model now (the cast is committed, so it's
+                // mandatory). Single-model spells use MaxCount = 1, so there is exactly one target.
+                DataBinding<ModelData> individualModel = null;
+                if (chosen.Target.SingleModel)
+                {
+                    individualModel = await PickIndividualModel(player, chosen.Name, targets[0]);
+                }
 
-                await base.Enter(context); // child pipeline resolves the hits, then transitions to OnFinished
+                _pendingRun = new SpellDamageRunContext(context.ActivatingUnit, spellWeapon, dealHits.Count,
+                    targets, individualModel);
+
+                await base.Enter(context); // loops ResolveSpellDamageStage per target, then OnFinished
                 return;
             }
 
-            // 5b. Buff/debuff spell → apply the effect's token operations to each target.
+            // 5b. Buff/debuff spell → apply the effect's token operations to each target (no child pipeline).
             ApplyTokenEffect(caster, chosen, targets);
             await OnFinished.Activate(context);
+        }
+
+        protected override SpellDamageRunContext GetNewChildContext(IUnitActionContext contextSelf)
+        {
+            // Only the damage path enters children, and it set _pendingRun before base.Enter.
+            return _pendingRun;
         }
 
         // Applies a non-damage spell effect (e.g. AddRule "gets RULE once") to each target by running the
@@ -182,123 +165,22 @@ namespace FDG.Stages
             GameContext.Log($"{spell.Name} affected {targets.Count} unit(s).");
         }
 
-        protected override ICombatMetadata GetNewChildContext(IUnitActionContext contextSelf)
-        {
-            // The pre-folded synthetic weapon (AP + save/wound-phase rules like Bane/Deadly) and the
-            // post-fold hit count are computed in Enter; here we just seed them for the save pipeline. The
-            // hit faces no longer matter past this point (the hit-complete fold already ran), so the count
-            // rides a cosmetic top-face seed; SaveModifier carries any AP promotion (Rending).
-            CombatMetadata metadata = new CombatMetadata(GameContext, contextSelf.ActivatingUnit,
-                _damageTarget, _damageWeapon, weaponCount: 1, isMelee: false);
-
-            RollToHitResults hitResults = new RollToHitResults(
-                new List<SuccessfulHitInfo>() { new SuccessfulHitInfo(SyntheticHits(_damageFinalHits)) },
-                new List<FailedHitInfo>());
-            hitResults.SaveModifier = _damageSaveModifier;
-            metadata.AddResult(hitResults);
-            // No cover check runs for a synthetic spell hit; seed a zero bonus so the save stage won't throw.
-            metadata.AddResult(new CoverCheckResults(0));
-
-            // #034 single-model targeting: confine all wounds to the one chosen model (the same result
-            // Takedown's BuildTargetListStage produces); AssignWoundsStage caps at its wounds, no carry-over.
-            if (_damageIndividualModel != null)
-            {
-                metadata.AddResult(new IndividualTargetResult(_damageIndividualModel));
-            }
-
-            return metadata;
-        }
-
-        // #034 single-model targeting: pick one living model in the target unit ("a unit of [1]"). The cast
-        // has already succeeded and its tokens are spent, so the pick is mandatory (no cancel) — mirroring
-        // Takedown's BuildTargetListStage.MaybePickIndividualTarget.
-        private async Task<DataBinding<ModelData>?> PickIndividualModel(PlayerID player, string spellName,
-            DataBinding<UnitData> targetUnit)
-        {
-            List<DataBinding<ModelData>> living = targetUnit.ModelBindings()
-                .Where(model => model.GetIsAlive())
-                .ToList();
-
-            // A legal damage target always has at least one living model; guard anyway so a degenerate
-            // case falls back to whole-unit allocation rather than raising an option-less request.
-            if (living.Count == 0)
-            {
-                return null;
-            }
-
-            List<SelectionRequest<ModelData>.ValidOption> validOptions = new();
-            for (int i = 0; i < living.Count; i++)
-            {
-                validOptions.Add(new SelectionRequest<ModelData>.ValidOption(living[i], $"Model {i + 1}"));
-            }
-
-            SelectionRequest<ModelData> request = new SelectionRequest<ModelData>(player,
-                $"{spellName}: choose the target model",
-                validOptions, System.Array.Empty<SelectionRequest<ModelData>.InvalidOption>(), allowCancel: false);
-
-            return await GameContext.PlayerRequester
-                .RequestDecision<SelectionRequest<ModelData>, DataBinding<ModelData>>(request);
-        }
-
-        // Rolls the spell's hits as real dice and runs the hit-complete fold (the same machinery
-        // RollToHitStage uses): Blast multiplies (capped at the target's living-model count), "on an
-        // unmodified 6" rules add hits, and Rending promotes AP into a carried save modifier. The dice
-        // faces don't gate the hits — every die is an automatic hit — they only feed the on-6 rules.
-        // Returns the final hit count + the save modifier to seed into the save pipeline.
-        private (float hits, int saveModifier) ResolveSpellHits(IUnit caster, IUnit target, int baseHits, Weapon spellWeapon)
-        {
-            IDiceResults rolled = GameContext.DiceRoller.Roll(baseHits);
-            float distance = UnitCompareUtilities.MinDistanceBetweenUnits(caster, target, out _, out _,
-                includeVertical: false);
-
-            IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator.EvaluateAll(
-                new HitRollCompleteContext(caster, target, rolled, distance, false, false),
-                (caster, ERuleSeat.Actor, spellWeapon, (IReadOnlyList<IModel>?)null));
-
-            HitInjectionSink injection = new HitInjectionSink();
-            injection.ApplyFrom(ops);
-            float hits = rolled.TotalRolls + injection.TotalExtraHits;
-
-            HitMultiplierSink multiplier = new HitMultiplierSink();
-            multiplier.ApplyFrom(ops);
-            if (multiplier.NetMultiplier > 1)
-            {
-                hits = System.Math.Min(hits * multiplier.NetMultiplier, CountLivingModels(target));
-            }
-
-            RollModifierSink saveModifiers = new RollModifierSink();
-            saveModifiers.ApplyFrom(ops);
-            return (hits, saveModifiers.Net(ERollKind.Save));
-        }
-
-        private static int CountLivingModels(IUnit unit)
-        {
-            int count = 0;
-            foreach (IModel model in unit.Models)
-            {
-                if (model.GetIsAlive()) count++;
-            }
-            return count;
-        }
-
-        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<ICombatMetadata> startingChild)
+        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<SpellDamageRunContext> startingChild)
         {
             OnFinished = new StageBinding(this);
 
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
-                .AddChild(new DetermineSaveRollsNeededStage<ICombatMetadata>(GameContext, this), out var determineSaveRollsNeeded)
-                .AddChild(new RollToSaveStage<ICombatMetadata>(GameContext, this), out var rollToSave)
-                .AddChild(new AssignWoundsStage<ICombatMetadata>(GameContext, this), out var assignWounds)
-                .AddChild(new ApplyWoundsStage<ICombatMetadata>(GameContext, this), out var applyWounds)
+                .AddChild(new ResolveSpellDamageStage(GameContext, this), out var resolveSpellDamage)
+                .AddChild(new DetermineMoreSpellTargetsStage(GameContext, this), out var determineMoreTargets)
                 .AddSibling(nameof(OnFinished), OnFinished, out string finishedEvent)
                 .Build();
 
-            startingChild = determineSaveRollsNeeded;
+            startingChild = resolveSpellDamage;
 
-            determineSaveRollsNeeded.BindNextStage(rollToSave)
-                .BindNextStage(assignWounds)
-                .BindNextStage(applyWounds)
-                .BindToEvent(finishedEvent);
+            // resolve one target → ask whether more remain → loop back to resolve the next, or finish.
+            resolveSpellDamage.OnFinished.Bind(determineMoreTargets);
+            determineMoreTargets.ResolveNextTarget.Bind(resolveSpellDamage);
+            determineMoreTargets.ToFinished.Bind(finishedEvent);
 
             return dictionary;
         }
@@ -380,13 +262,35 @@ namespace FDG.Stages
             return chosen.Count >= spell.Target.MinCount ? chosen : new List<DataBinding<UnitData>>();
         }
 
-        // Bridges a scalar hit count into the IDiceResults the save flow consumes (mirrors
-        // StrafingStage.SyntheticHits / ResolveImpactHitsStage). The face is cosmetic — saves count by total.
-        private static IDiceResults SyntheticHits(float count)
+        // #034 single-model targeting: pick one living model in the target unit ("a unit of [1]"). The cast
+        // has already succeeded and its tokens are spent, so the pick is mandatory (no cancel) — mirroring
+        // Takedown's BuildTargetListStage.MaybePickIndividualTarget.
+        private async Task<DataBinding<ModelData>> PickIndividualModel(PlayerID player, string spellName,
+            DataBinding<UnitData> targetUnit)
         {
-            float[] perSide = new float[IDiceRollerExtensions.DEFAULT_SIDE_COUNT];
-            perSide[perSide.Length - 1] = count;
-            return new DiceResults(perSide);
+            List<DataBinding<ModelData>> living = targetUnit.ModelBindings()
+                .Where(model => model.GetIsAlive())
+                .ToList();
+
+            // A legal damage target always has at least one living model; guard anyway so a degenerate
+            // case falls back to whole-unit allocation rather than raising an option-less request.
+            if (living.Count == 0)
+            {
+                return null;
+            }
+
+            List<SelectionRequest<ModelData>.ValidOption> validOptions = new List<SelectionRequest<ModelData>.ValidOption>();
+            for (int i = 0; i < living.Count; i++)
+            {
+                validOptions.Add(new SelectionRequest<ModelData>.ValidOption(living[i], $"Model {i + 1}"));
+            }
+
+            SelectionRequest<ModelData> request = new SelectionRequest<ModelData>(player,
+                $"{spellName}: choose the target model",
+                validOptions, System.Array.Empty<SelectionRequest<ModelData>.InvalidOption>(), allowCancel: false);
+
+            return await GameContext.PlayerRequester
+                .RequestDecision<SelectionRequest<ModelData>, DataBinding<ModelData>>(request);
         }
 
         private static string SpellOptionLabel(RuntimeSpell spell) => $"{spell.Name} ({spell.Threshold})";

@@ -73,7 +73,7 @@ namespace FDG.Stages
             {
                 var question = new YesNoRequest(mover.PlayerID,
                     $"Use {offer.RuleName}: {mover.Name} attacks {enemy.GetValue().Name} while moving through?",
-                    aiPrefersYes: true);
+                    defaultAnswer: true);
                 bool accepted = await GameContext.PlayerRequester
                     .RequestDecision<YesNoRequest, bool>(question);
 

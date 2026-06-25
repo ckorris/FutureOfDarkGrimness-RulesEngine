@@ -14,20 +14,21 @@ namespace FDG.StageResolution.Requests
         public string QuestionText { get; }
 
         /// <summary>
-        /// The answer an AI controller should give to this specific question. Each question states its own
-        /// AI default explicitly so the AI's choice is deliberate per question rather than a blanket "always
-        /// yes" (see <see cref="FDG.Ai.Resolvers.AiYesNoResolver"/>). Defaults to <c>true</c> because every
-        /// current question is an opt-in to a beneficial ability.
+        /// The default answer to this question, used by any resolver that must answer it without a live
+        /// player choice — an AI controller (<see cref="FDG.Ai.Resolvers.AiYesNoResolver"/>), a CLI EOF
+        /// fallback, a future timeout, or a pre-selected GUI button. Each question states its own default so
+        /// the choice is deliberate per question rather than a blanket assumption. Defaults to <c>true</c>
+        /// because every current question is an opt-in to a beneficial ability.
         /// <para>
         /// Kept out of the <see cref="JsonConstructor"/> and given a private setter on purpose: Newtonsoft
         /// passes a missing constructor parameter as the type default (<c>false</c>), which would silently
-        /// flip the AI to "no" for any request whose JSON omits the flag. As a settable property with a
+        /// flip the default to "no" for any request whose JSON omits the flag. As a settable property with a
         /// field initializer, an absent member leaves it at the safe <c>true</c> default while a present
         /// member round-trips its value.
         /// </para>
         /// </summary>
         [JsonProperty]
-        public bool AiPrefersYes { get; private set; } = true;
+        public bool DefaultAnswer { get; private set; } = true;
 
         [JsonConstructor]
         public YesNoRequest(PlayerID targetPlayerID, TaskID taskID, string questionText)
@@ -38,12 +39,12 @@ namespace FDG.StageResolution.Requests
             TaskName = "Yes/No Question";
         }
 
-        public YesNoRequest(PlayerID targetPlayerID, string questionText, bool aiPrefersYes = true)
+        public YesNoRequest(PlayerID targetPlayerID, string questionText, bool defaultAnswer = true)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = new TaskID(Guid.NewGuid());
             QuestionText = questionText;
-            AiPrefersYes = aiPrefersYes;
+            DefaultAnswer = defaultAnswer;
             TaskName = "Yes/No Question";
         }
 

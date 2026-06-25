@@ -54,8 +54,11 @@ public sealed class RuleEvaluator
         IWeapon? weapon = null)
     {
         var tagged = new List<TaggedOperation>();
-        // Single-participant Evaluate is the deployment/activation-query path (no combat buffs fire here),
-        // so it doesn't run the consume-on-fire pass — grantsToConsume stays null.
+        // Single-participant Evaluate does NOT run the consume-on-fire pass — grantsToConsume stays null —
+        // so a one-shot (NextTrigger) granted rule firing here is projected but never spent. Correct today:
+        // 3 of its 4 call sites are read-only queries (TryGet*Defer) that MUST NOT consume, and no corpus
+        // rule grants a one-shot buff firing only at a round-start/deployment/activation hook. If one ever
+        // does, add a `consumeGrants` opt-in and set it on the apply site (GrantSpellTokens) only — see #104.
         CollectTagged(unit, seat, weapon, models: null, context, tagged, new DedupState(), grantsToConsume: null);
 
         // Per-unit Evaluate does NOT run the suppression first-pass — cross-unit suppression

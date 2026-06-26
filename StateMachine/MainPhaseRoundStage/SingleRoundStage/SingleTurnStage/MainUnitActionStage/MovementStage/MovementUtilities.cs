@@ -319,6 +319,11 @@ namespace FDG.Stages
                     Position stepPos = move.Positions[i];
                     Float2 segmentEnd = new Float2(stepPos.x, stepPos.z);
 
+                    // A stationary (zero-length) step isn't moving THROUGH terrain — skip it. Otherwise a model
+                    // already sitting within its base radius of impassable terrain self-flags even on a hold,
+                    // which defeats the AI's hold-in-place fallback and crashes DefinePathStage (no valid move).
+                    if (IsZeroLengthSegment(segmentStart, segmentEnd)) continue;
+
                     foreach (ITerrain piece in impassable)
                     {
                         //Inflate the footprint by the model's base radius so base overlap (not just
@@ -337,6 +342,15 @@ namespace FDG.Stages
             }
         }
 
+        // True when a path segment has effectively no length (a held / stationary step). Such a step can't
+        // move a model "through" terrain, so the terrain validators skip it (see the impassible-terrain note).
+        private const float ZERO_MOVE_EPSILON_SQ = 1e-8f;
+        private static bool IsZeroLengthSegment(Float2 a, Float2 b)
+        {
+            float dx = b.X - a.X, dz = b.Y - a.Y;
+            return dx * dx + dz * dz < ZERO_MOVE_EPSILON_SQ;
+        }
+
         public static bool DoesPathCrossDangerousTerrain(ModelMoveEntry move, IEnumerable<ITerrain> terrain)
         {
             List<ITerrain> dangerous = terrain
@@ -351,6 +365,7 @@ namespace FDG.Stages
             for (int i = 0; i < move.Positions.Count; i++)
             {
                 Float2 segmentEnd = new Float2(move.Positions[i].x, move.Positions[i].z);
+                if (IsZeroLengthSegment(segmentStart, segmentEnd)) continue; // a hold doesn't cross terrain
                 foreach (ITerrain piece in dangerous)
                 {
                     if (piece.DoesPathIntersectZone(segmentStart, segmentEnd, baseRadius))
@@ -386,6 +401,7 @@ namespace FDG.Stages
                 for (int i = 0; i < move.Positions.Count && !crossesDifficult; i++)
                 {
                     Float2 segmentEnd = new Float2(move.Positions[i].x, move.Positions[i].z);
+                    if (IsZeroLengthSegment(segmentStart, segmentEnd)) continue; // a hold doesn't cross terrain
                     foreach (ITerrain piece in difficult)
                     {
                         if (piece.DoesPathIntersectZone(segmentStart, segmentEnd, baseRadius))

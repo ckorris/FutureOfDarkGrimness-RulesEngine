@@ -484,6 +484,46 @@ namespace FDG.Tests
             Assert.That(errors.Any(e => e.ErrorReasonType == EErrorReasonType.TooFarFromAnyUnitModel), Is.True);
         }
 
+        [Test]
+        public void ValidatePaths_HoldOverlappingImpassible_NotFlaggedAsMovingThrough()
+        {
+            // A stationary model whose base overlaps impassible terrain must still be allowed to HOLD: a
+            // zero-length step isn't "moving through" anything. Previously its inflated footprint self-flagged,
+            // defeating the AI's hold-in-place fallback and crashing DefinePathStage (no valid move existed).
+            DataBinding<ModelData> model = MakeModel(new Position(5, 0)); // centre inside the rect
+
+            List<ITerrain> terrain = new List<ITerrain>
+            {
+                new TerrainData(ETerrainType.Impassible, new RectangularZone(4, 6, -2, 2))
+            };
+
+            bool ok = MovementUtilities.ValidatePaths(
+                StayInPlace(model),
+                maxDistanceInches: 12f,
+                terrain: terrain,
+                out List<ReasonForInvalidMove> errors);
+
+            Assert.That(errors.Any(e => e.ErrorReasonType == EErrorReasonType.MovingThroughImpassibleTerrain), Is.False,
+                "a held (zero-length) step must not be flagged as moving through terrain.");
+            Assert.That(ok, Is.True);
+        }
+
+        [Test]
+        public void DoesPathCrossDangerousTerrain_HoldInPlaceInsideTerrain_ReturnsFalse()
+        {
+            // Likewise, a held step doesn't "cross" dangerous terrain even sitting in it.
+            DataBinding<ModelData> model = MakeModel(new Position(4, 0)); // inside the rect
+            ModelMoveEntry hold = new ModelMoveEntry(model,
+                new List<Position> { model.GetValue().PositionBinding.GetValue() });
+
+            List<ITerrain> terrain = new List<ITerrain>
+            {
+                new TerrainData(ETerrainType.Dangerous, new RectangularZone(3, 5, -2, 2))
+            };
+
+            Assert.That(MovementUtilities.DoesPathCrossDangerousTerrain(hold, terrain), Is.False);
+        }
+
         // Move entries that leave every model at its current position — isolates the cohesion check.
         private static List<ModelMoveEntry> StayInPlace(params DataBinding<ModelData>[] models)
         {

@@ -17,6 +17,12 @@ namespace FDG.Ai.Resolvers
         private readonly Dictionary<PlayerID, int> _deployCountPerPlayer = new();
         private const float ZRowOffset = 2f;
 
+        // Fan-out spacing: successive units march across the zone in lanes this far apart, then wrap into Z
+        // bands this far apart (alternating north/south of centre), so the AI spreads its army across the
+        // deployment zone instead of stacking every unit in a row near the centre.
+        private const float FanOutLaneSpacingInches = 9f;
+        private const float FanOutBandSpacingInches = 4.5f;
+
         //Snapshot of impassible terrain for the current Resolve call; models can't be placed overlapping it.
         private IReadOnlyList<ITerrain> _impassibleTerrain = System.Array.Empty<ITerrain>();
 
@@ -61,14 +67,27 @@ namespace FDG.Ai.Resolvers
                 // No legal row found — fall through to best-effort below (rare on a real table).
             }
 
+            // Fan out: give each successive unit its own lane marching across the zone width, wrapping into
+            // Z bands (alternating north/south of centre) once a row of lanes is full. The unit's models then
+            // pack rightward from the lane's start as before.
             float zoneCz = bounds.CenterZ;
-            float defaultCz = Math.Clamp(zoneCz + deployIndex * ZRowOffset, bounds.Bottom + maxRadius, bounds.Top - maxRadius);
+            float usableLeft = bounds.Left + maxRadius;
+            float usableWidth = MathF.Max(0f, (bounds.Right - maxRadius) - usableLeft);
+            float laneStep = MathF.Max(spacing, FanOutLaneSpacingInches);
+            int lanes = Math.Max(1, (int)(usableWidth / laneStep));
+            int lane = deployIndex % lanes;
+            int band = deployIndex / lanes;
+            int signedBand = (band % 2 == 0) ? band / 2 : -((band + 1) / 2); // 0, +1, -1, +2, -2, ...
+
+            float laneXStagger = lane * laneStep;
+            float defaultCz = Math.Clamp(zoneCz + signedBand * FanOutBandSpacingInches,
+                bounds.Bottom + maxRadius, bounds.Top - maxRadius);
 
             var placed = new List<PlacedObjectEntry<T>>();
             foreach (var binding in request.ModelsToPlace)
             {
                 float r = GetBaseRadius(binding.GetValue());
-                var pos = FindPosition(r, spacing, zone, defaultCz, xStagger, placed, existing, enemies, minEnemyDist);
+                var pos = FindPosition(r, spacing, zone, defaultCz, laneXStagger, placed, existing, enemies, minEnemyDist);
                 placed.Add(new PlacedObjectEntry<T>(binding, pos));
             }
 

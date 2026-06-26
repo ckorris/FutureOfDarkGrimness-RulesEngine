@@ -58,6 +58,48 @@ namespace FDG.Tests
         }
 
         [Test]
+        public async Task Resolve_StraightPathBlockedByImpassible_SkirtsInsteadOfFreezing()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var selfPlayer = new PlayerID(System.Guid.NewGuid());
+            var enemyPlayer = new PlayerID(System.Guid.NewGuid());
+
+            // Mover at (0,24); enemy straight east at (40,24).
+            Position start = new Position(0f, 24f);
+            var mover = new ModelData(0.75f, new List<Weapon>(), start, store);
+            var moverBinding = store.GetDataBinding<ModelData>(store.Create(mover));
+            var moverUnit = new UnitData(selfPlayer, "Movers", 4, 4,
+                new List<DataBinding<ModelData>> { moverBinding });
+            var moverUnitBinding = store.GetDataBinding<UnitData>(store.Create(moverUnit));
+
+            var enemyPos = new Position(40f, 24f);
+            var enemy = new ModelData(0.75f, new List<Weapon>(), enemyPos, store);
+            store.Create(new UnitData(enemyPlayer, "Enemies", 4, 4,
+                new List<DataBinding<ModelData>> { store.GetDataBinding<ModelData>(store.Create(enemy)) }));
+
+            // Impassible wall blocking the straight lane (x=8..10, z=20..28), clear above/below to skirt.
+            var wall = new TerrainData(ETerrainType.Impassible, new RectangularZone(8f, 10f, 20f, 28f));
+            store.Create(wall);
+
+            var tableState = new TableState(store);
+            var resolver = new AiDefineMovementResolver(tableState, selfPlayer);
+            var request = new DefineMovementPathRequest(selfPlayer, "Move", moverUnitBinding,
+                maxAdvanceDistance: 12f, maxRushDistance: 12f, maxDistanceInches: 12f);
+
+            List<ModelMoveEntry> result = await resolver.Resolve(request);
+
+            Position finalPos = result[0].Positions[result[0].Positions.Count - 1];
+            Assert.That(Position.GetDistance2D(finalPos, start), Is.GreaterThan(2f),
+                "a unit blocked straight ahead must skirt the terrain and advance, not freeze in place.");
+
+            bool valid = MovementUtilities.ValidatePaths(result, request.MaxRushDistance,
+                request.MaxDistanceInches, new List<EnemyModelFootprint> { new EnemyModelFootprint(enemyPos, 0.75f, 0) },
+                new List<ITerrain> { wall }, out var errors);
+            Assert.That(valid, Is.True,
+                "the skirting move must still be engine-valid: " + string.Join(", ", errors.Select(e => e.ToString())));
+        }
+
+        [Test]
         public async Task Resolve_ClearLane_AdvancesTowardEnemy()
         {
             var store = GameDataStore.GameDataStoreBuilder.GetDefault();

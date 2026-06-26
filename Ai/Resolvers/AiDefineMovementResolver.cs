@@ -81,26 +81,25 @@ namespace FDG.Ai.Resolvers
                 step = Math.Clamp(step + error, 0f, moveDistance);
             }
 
-            // (A) Cheap centroid pre-filter. Inflate terrain footprints by the unit's base radius (the
-            // largest living model) so this matches the base-radius-aware path validator (#050) — the
-            // zero-width line used to let the centroid skirt terrain a model's base would actually clip.
+            // (A) Terrain-aware centroid steering. Inflate terrain footprints by the unit's base radius (the
+            // largest living model) so this matches the base-radius-aware path validator (#050).
             var allTerrain = _tableState.Terrain.Objects.ToList();
             float baseRadius = living.Max(mb => mb.GetValue().BaseRadiusInches);
-            var unitCentroidStart = new Float2(cx, cz);
-            var unitCentroidEnd = new Float2(cx + ndx * step, cz + ndz * step);
 
-            bool crossesImpassible = allTerrain
-                .Any(t => t.TerrainType.HasFlag(ETerrainType.Impassible)
-                          && t.Shape.DoesPathIntersectZone(unitCentroidStart, unitCentroidEnd, baseRadius));
+            // If the straight line to the target crosses impassible terrain, the unit used to give up and
+            // stand still every turn — so a unit deployed behind a building never advanced. Instead try
+            // angling left/right to skirt it (a cheap "go around", not full pathfinding) and take the clear
+            // direction that lands closest to the target. If nothing skirts at full step, fall through to the
+            // per-model backoff below, which shortens the move so the unit at least advances part-way.
+            if (CentroidCrossesTerrain(allTerrain, ETerrainType.Impassible, cx, cz, ndx, ndz, step, baseRadius)
+                && TryFindSkirtingDirection(allTerrain, cx, cz, ndx, ndz, step, baseRadius,
+                    nearest.Center, out float skirtDx, out float skirtDz))
+            {
+                ndx = skirtDx;
+                ndz = skirtDz;
+            }
 
-            if (crossesImpassible)
-                return Task.FromResult(StayInPlace(request));
-
-            bool crossesDifficult = allTerrain
-                .Any(t => t.TerrainType.HasFlag(ETerrainType.Difficult)
-                          && t.Shape.DoesPathIntersectZone(unitCentroidStart, unitCentroidEnd, baseRadius));
-
-            if (crossesDifficult)
+            if (CentroidCrossesTerrain(allTerrain, ETerrainType.Difficult, cx, cz, ndx, ndz, step, baseRadius))
                 step = Math.Min(step, GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES - 0.001f);
 
             // (B) The centroid pre-filter can't see per-model paths, cohesion, enemy-unit crossings, or
@@ -222,6 +221,51 @@ namespace FDG.Ai.Resolvers
         {
             float dx = ax - bx, dz = az - bz;
             return MathF.Sqrt(dx * dx + dz * dz);
+        }
+
+        // Angle offsets (degrees, both sides) tried when the straight path is blocked, widening outward.
+        private static readonly float[] SkirtAngleOffsetsDegrees =
+            { 20f, -20f, 40f, -40f, 60f, -60f, 80f, -80f, 100f, -100f };
+
+        // True if the unit's centroid path (inflated by its base radius) crosses terrain of the given type.
+        private static bool CentroidCrossesTerrain(List<ITerrain> terrain, ETerrainType type,
+            float cx, float cz, float ndx, float ndz, float step, float baseRadius)
+        {
+            var start = new Float2(cx, cz);
+            var end = new Float2(cx + ndx * step, cz + ndz * step);
+            return terrain.Any(t => t.TerrainType.HasFlag(type)
+                && t.Shape.DoesPathIntersectZone(start, end, baseRadius));
+        }
+
+        // Tries fixed angle offsets either side of the straight direction; returns the impassible-clear one
+        // whose full-step end-point lands closest to the target. False when none of the tried angles is clear.
+        private static bool TryFindSkirtingDirection(List<ITerrain> terrain, float cx, float cz,
+            float ndx, float ndz, float step, float baseRadius, Position target, out float outDx, out float outDz)
+        {
+            outDx = ndx;
+            outDz = ndz;
+            float baseAngle = MathF.Atan2(ndz, ndx);
+            float bestDist = float.PositiveInfinity;
+            bool found = false;
+
+            foreach (float deg in SkirtAngleOffsetsDegrees)
+            {
+                float a = baseAngle + deg * (MathF.PI / 180f);
+                float dx = MathF.Cos(a), dz = MathF.Sin(a);
+                if (CentroidCrossesTerrain(terrain, ETerrainType.Impassible, cx, cz, dx, dz, step, baseRadius))
+                    continue;
+
+                float endDist = Dist(cx + dx * step, cz + dz * step, target.x, target.z);
+                if (endDist < bestDist)
+                {
+                    bestDist = endDist;
+                    outDx = dx;
+                    outDz = dz;
+                    found = true;
+                }
+            }
+
+            return found;
         }
 
         // "Stay put", but reform the living models into a cohesive grid at their current centroid rather

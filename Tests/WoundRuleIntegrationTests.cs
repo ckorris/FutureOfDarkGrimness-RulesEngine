@@ -120,7 +120,29 @@ namespace FDG.Tests
             Assert.That(_requester.Captured!.TotalWoundsToAssign, Is.EqualTo(2f));
         }
 
-        private async Task RunStage(DataBinding<UnitData> attacker, DataBinding<UnitData> defender, int failedSaves)
+        // Regression for the single-living-model auto-resolve branch: a lone multi-wound model (Tough) taking
+        // a sub-lethal hit must be assigned the wounds actually DEALT, not its full remaining health. The
+        // branch used to assign defenderRemainingWounds, instantly killing any Tough monster that took even
+        // one wound (a user shot a Tough(12) Carnivo-Rex for 3 wounds and "applying 12 wounds" killed it).
+        [Test]
+        public async Task SingleToughModel_SubLethalHit_AssignsOnlyWoundsDealt()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 1, woundsPerModel: 12); // Tough(12), lone model
+
+            CombatMetadata metadata = await RunStage(attacker, defender, failedSaves: 3);
+
+            Assert.That(metadata.QueryForResult(out AssignWoundsResults result), Is.True);
+            Assert.That(result.TotalWoundsToAssign, Is.EqualTo(3f),
+                "3 failed saves → 3 wounds assigned, not the model's full 12 remaining.");
+            Assert.That(result.PendingWounds, Has.Count.EqualTo(1));
+            Assert.That(result.PendingWounds[0].Wounds, Is.EqualTo(3f));
+            Assert.That(result.PendingWounds[0].Wounds,
+                Is.LessThan(((ModelData)defender.GetValue().Models[0]).TotalWounds),
+                "the lone Tough model survives a sub-lethal hit.");
+        }
+
+        private async Task<CombatMetadata> RunStage(DataBinding<UnitData> attacker, DataBinding<UnitData> defender, int failedSaves)
         {
             var layer = new NoOpLayer<ICombatMetadata>();
             var stage = new AssignWoundsStage<ICombatMetadata>(_ctx, layer);
@@ -138,6 +160,7 @@ namespace FDG.Tests
             metadata.AddResult(new RollToSaveResults(new List<SuccessfulSaveInfo>(), failedList));
 
             await stage.Enter(metadata);
+            return metadata;
         }
 
         private static void AttachDeadly(DataBinding<UnitData> unit, int x)

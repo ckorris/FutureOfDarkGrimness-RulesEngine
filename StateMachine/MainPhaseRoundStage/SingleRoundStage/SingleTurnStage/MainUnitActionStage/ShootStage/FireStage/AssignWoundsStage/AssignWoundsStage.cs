@@ -155,8 +155,11 @@ namespace FDG.Stages
                 .Where(model => model.GetIsAlive())
                 .Count() == 1)
             {
-                //If we only have one living model, just autoresolve it.
-                assignWoundsResults = new AssignWoundsResults(metaData.DefendingUnit, defenderRemainingWounds);
+                //If we only have one living model there's no allocation choice, so auto-resolve it — but
+                //assign the wounds actually DEALT, not the model's full remaining health. (A single
+                //multi-wound model, e.g. Tough, otherwise got auto-killed by a sub-lethal hit. We're past
+                //the totalWoundsDealt >= remaining branch, so totalWoundsDealt < remaining and AutoFill fits.)
+                assignWoundsResults = new AssignWoundsResults(metaData.DefendingUnit, totalWoundsDealt);
                 assignWoundsResults.AutoFill();
             }
             else

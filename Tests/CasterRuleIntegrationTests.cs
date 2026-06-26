@@ -43,6 +43,34 @@ namespace FDG.Tests
         }
 
         [Test]
+        public async Task RoundStart_JoinedCasterHero_FundsHostUnitPool()
+        {
+            // A Caster hero that joined a unit carries its Caster rule on its MODEL (the #006 hero-merge),
+            // not the host unit. The round-start grant must still fund the host unit's spell pool so the
+            // joined caster can actually cast (#093 joined-Caster corner).
+            var modelBindings = new List<DataBinding<ModelData>>();
+            for (int i = 0; i < 3; i++)
+            {
+                var m = new ModelData(0.5f, new List<Weapon>(), new Position(10f + i, 10f), _store);
+                modelBindings.Add(_store.GetDataBinding<ModelData>(_store.Create(m)));
+            }
+
+            var unit = new UnitData(_player, "Squad+Wizard", quality: 4, defense: 4, modelBindings: modelBindings);
+            DataBinding<UnitData> binding = _store.GetDataBinding<UnitData>(_store.Create(unit));
+
+            // Caster(3) lives on ONE model (the joined hero), not on the unit.
+            modelBindings[0].GetValue().AttachRuleDefinition(new ResolvedRule("Caster", CoreRuleCatalog.Caster,
+                new RuleArgument[] { new RuleArgument.Int(3) }));
+
+            _store.Create(new ArmyData(_player, new List<DataBinding<UnitData>> { binding }));
+
+            await RunRoundStart(roundCount: 1);
+
+            Assert.That(binding.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(3),
+                "a joined Caster(3) hero must fund its host unit's spell pool at round start.");
+        }
+
+        [Test]
         public async Task SpellTokens_CarryOver_ClampedAtMax()
         {
             DataBinding<UnitData> caster = MakeUnit("Wizards", casterRating: 2);

@@ -348,8 +348,12 @@ namespace FDG.Stages
             return true;
         }
 
+        // A unit can cast if it carries Caster — either directly, or on a joined hero's MODEL after the #006
+        // hero-merge moves the hero's own rules there (the #093 joined-Caster corner). The round-start token
+        // grant (StartOfRoundExtraActionStage) is model-aware to match, so the unit's pool is funded.
         private static bool IsCaster(IUnit unit) =>
-            unit.RuleDefinitions.Any(rule => rule.Definition == CoreRuleCatalog.Caster);
+            unit.RuleDefinitions.Any(rule => rule.Definition == CoreRuleCatalog.Caster)
+            || unit.Models.Any(model => model.RuleDefinitions.Any(rule => rule.Definition == CoreRuleCatalog.Caster));
 
         // #033 — true when the caster's army has at least one spell it can currently CAST: affordable AND
         // with a legal target (range/LoS/affinity). The target check matters — offering Cast for a spell

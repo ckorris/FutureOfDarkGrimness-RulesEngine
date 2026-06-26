@@ -53,8 +53,12 @@ namespace FDG.Stages
                     UnitData unit = unitBinding.GetValue();
                     if (!unit.GetIsAlive()) continue;
 
+                    // Pass the unit's models so a joined Caster hero — whose Caster rule lives on its MODEL
+                    // after the #006 hero-merge, not the host unit — still grants the unit its spell tokens
+                    // at round start (#093 joined-Caster corner). A solo caster keeps Caster on the unit and
+                    // is unaffected.
                     IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator.Evaluate(
-                        unit, ERuleSeat.Actor, new RoundStartContext(unit));
+                        unit, ERuleSeat.Actor, new RoundStartContext(unit), weapon: null, models: unit.Models);
                     OperationApplier.ApplyTokenOperations(ops);
 
                     int excess = unit.Tokens.GetTokenCount(TokenType.SpellTokens)

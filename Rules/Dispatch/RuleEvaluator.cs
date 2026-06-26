@@ -51,7 +51,7 @@ public sealed class RuleEvaluator
     /// a Blast cannon's rules apply to its shots and not its bearer's other weapons.
     /// </summary>
     public IReadOnlyList<RuleOperation> Evaluate(IUnit unit, ERuleSeat seat, IHookContext context,
-        IWeapon? weapon = null)
+        IWeapon? weapon = null, IReadOnlyList<IModel>? models = null)
     {
         var tagged = new List<TaggedOperation>();
         // Single-participant Evaluate does NOT run the consume-on-fire pass — grantsToConsume stays null —
@@ -59,7 +59,7 @@ public sealed class RuleEvaluator
         // 3 of its 4 call sites are read-only queries (TryGet*Defer) that MUST NOT consume, and no corpus
         // rule grants a one-shot buff firing only at a round-start/deployment/activation hook. If one ever
         // does, add a `consumeGrants` opt-in and set it on the apply site (GrantSpellTokens) only — see #104.
-        CollectTagged(unit, seat, weapon, models: null, context, tagged, new DedupState(), grantsToConsume: null);
+        CollectTagged(unit, seat, weapon, models, context, tagged, new DedupState(), grantsToConsume: null);
 
         // Per-unit Evaluate does NOT run the suppression first-pass — cross-unit suppression
         // (an attacker's Unstoppable cancelling a defender's Regeneration) only exists once the

@@ -22,7 +22,14 @@ namespace FDG
     /// </summary>
     public interface IBaseShape
     {
-        /// <summary> Radius of the smallest circle (centred on the base) that fully contains the shape. </summary>
+        /// <summary>
+        /// The single-radius approximation of this base used by collision paths that are not yet shape-aware
+        /// (terrain swept-paths, LoS blockers, placement spacing — see <c>WorkItems/150</c>) and by
+        /// render/geometry fallbacks. A circle reports its radius. A rectangle reports the INSCRIBED circle
+        /// (half its lesser side) rather than the circumscribing one — the circumscribing (half-diagonal)
+        /// radius over-blocked movement near terrain, so #149 (with the user) uses the lesser dimension,
+        /// trading that for a slight under-block at the long ends until #150 brings true swept-shape geometry.
+        /// </summary>
         float BoundingRadiusInches { get; }
 
         /// <summary>
@@ -64,9 +71,10 @@ namespace FDG
             HeightInches = heightInches;
         }
 
-        // Half-diagonal of the rectangle = radius of the circumscribing circle.
-        public float BoundingRadiusInches =>
-            0.5f * MathF.Sqrt(WidthInches * WidthInches + HeightInches * HeightInches);
+        // Inscribed circle: half the lesser side (#149, with the user). NOT the circumscribing half-diagonal
+        // — that over-blocked movement near terrain. The exact rectangle footprint is used for model-to-model
+        // measurement (BaseShapeGeometry); this radius is only the approximation for the #150 collision paths.
+        public float BoundingRadiusInches => 0.5f * MathF.Min(WidthInches, HeightInches);
 
         public bool ContainsLocalPoint(float dxInches, float dzInches) =>
             MathF.Abs(dxInches) <= WidthInches * 0.5f && MathF.Abs(dzInches) <= HeightInches * 0.5f;

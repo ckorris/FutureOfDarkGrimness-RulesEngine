@@ -32,10 +32,11 @@ namespace FDG.Tests
         // --- RectangleBase ---------------------------------------------------------------------------
 
         [Test]
-        public void RectangleBase_BoundingRadius_IsHalfDiagonal()
+        public void RectangleBase_BoundingRadius_IsHalfTheLesserSide()
         {
-            // 3 wide × 4 tall → diagonal 5 → bounding radius 2.5.
-            Assert.That(new RectangleBase(3f, 4f).BoundingRadiusInches, Is.EqualTo(2.5f).Within(Tol));
+            // #149: the collision radius is the inscribed circle (half the lesser side), not the
+            // circumscribing half-diagonal. 3 wide × 4 tall → lesser side 3 → radius 1.5.
+            Assert.That(new RectangleBase(3f, 4f).BoundingRadiusInches, Is.EqualTo(1.5f).Within(Tol));
         }
 
         [Test]

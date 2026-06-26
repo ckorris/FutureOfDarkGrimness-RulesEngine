@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using FDG.Data;
 using FDG.Stages;
@@ -25,12 +26,13 @@ namespace FDG.Tests
             Assert.That(MeleeRangeUtilities.AreModelsInMeleeRange(rectA, rectB), Is.False,
                 "narrow rectangles 4\" edge-to-edge are not in 2\" melee range.");
 
-            // Same centres, but circular bases of the rectangle's bounding radius → would be in range.
-            float boundingR = rectA.BaseShape.BoundingRadiusInches;
-            IModel circA = ModelAt(store, new CircleBase(boundingR), new Position(0f, 0f));
-            IModel circB = ModelAt(store, new CircleBase(boundingR), new Position(5f, 0f));
+            // Same centres, but circular bases of the rectangle's CIRCUMSCRIBING radius (half-diagonal ≈ 2.06")
+            // → would be in range. That's the over-reach the exact rectangle geometry avoids.
+            float halfDiagonal = 0.5f * MathF.Sqrt(1f * 1f + 4f * 4f);
+            IModel circA = ModelAt(store, new CircleBase(halfDiagonal), new Position(0f, 0f));
+            IModel circB = ModelAt(store, new CircleBase(halfDiagonal), new Position(5f, 0f));
             Assert.That(MeleeRangeUtilities.AreModelsInMeleeRange(circA, circB), Is.True,
-                "the bounding-circle approximation would have called them engaged — the bug shape-awareness fixes.");
+                "a circumscribing-circle approximation would have called them engaged — the bug shape-awareness fixes.");
         }
 
         private static IModel ModelAt(GameDataStore store, IBaseShape shape, Position pos)

@@ -1,3 +1,4 @@
+using System.Linq;
 using FDG.SaveLoad;
 using FDG.StageResolution.Requests;
 using FDG.Utilities;
@@ -51,7 +52,7 @@ namespace FDG.Stages
             switch (context.GameContext.Settings.TerrainPlacementMode)
             {
                 case ETerrainPlacementMode.AutoFromLayout:
-                    PlacePiecesVerbatim(context, DefaultTerrainPool.Get());
+                    PlaceAutoLayout(context, DefaultTerrainPool.Get());
                     break;
 
                 case ETerrainPlacementMode.LoadFromFile:
@@ -78,6 +79,54 @@ namespace FDG.Stages
                 context.GameContext.GameDataStore.Create(
                     new TerrainData(entry.TerrainType, entry.Shape, entry.HeightInches));
             }
+        }
+
+        /// <summary> Probability that a default-layout piece sitting in a deployment zone is actually placed. </summary>
+        private const float DeploymentZonePlacementChance = 0.4f;
+
+        /// <summary>
+        /// Like <see cref="PlacePiecesVerbatim"/>, but a piece whose centre falls inside a deployment zone is
+        /// only placed <see cref="DeploymentZonePlacementChance"/> of the time — so there's still some terrain
+        /// in the deployment zones, just less often, and the layout varies per game. Pieces outside the
+        /// deployment zones are always placed. Only the built-in auto layout is thinned this way; a user's
+        /// LoadFromFile layout is placed verbatim.
+        /// </summary>
+        private static void PlaceAutoLayout(IMapSetupContext context, TerrainLayoutFile layout)
+        {
+            System.Random rng = new System.Random();
+            float tableH = GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES;
+            float deploy = GameWideConstants.DEPLOYMENT_DISTANCE_INCHES;
+
+            foreach (TerrainPieceEntry entry in layout.Pieces)
+            {
+                if (entry.Shape == null) continue;
+
+                if (IsInDeploymentZone(entry.Shape, tableH, deploy)
+                    && rng.NextDouble() > DeploymentZonePlacementChance)
+                {
+                    context.Log($"  Auto layout: skipping a deployment-zone piece ({entry.TerrainType}).");
+                    continue;
+                }
+
+                context.GameContext.GameDataStore.Create(
+                    new TerrainData(entry.TerrainType, entry.Shape, entry.HeightInches));
+            }
+        }
+
+        // A piece counts as "in a deployment zone" when its representative centre Z lands within the deploy
+        // band of the top (z < deploy) or bottom (z > tableH - deploy) table edge.
+        private static bool IsInDeploymentZone(IZone shape, float tableH, float deploy)
+        {
+            float cz = RepresentativeCenterZ(shape);
+            return cz < deploy || cz > tableH - deploy;
+        }
+
+        private static float RepresentativeCenterZ(IZone shape)
+        {
+            if (shape is IBoundedZone bounded) return bounded.Bounds.CenterZ;
+            if (shape is CompositeZone composite && composite.Parts.Count > 0)
+                return composite.Parts.Average(RepresentativeCenterZ);
+            return 0f;
         }
 
         private static void PlaceFromUserFile(IMapSetupContext context)

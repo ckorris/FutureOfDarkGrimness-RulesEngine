@@ -252,6 +252,102 @@ namespace FDG.Tests
                 "attack count is weapon Attacks (2) × weapon count (3).");
         }
 
+        // Evasive (Subject): -1 to hit against the bearer with no gate, so it raises the threshold in
+        // BOTH shooting and melee — the defensive mirror of Precise.
+        [Test]
+        public async Task DefenderWithEvasive_RaisesHitThreshold_Shooting()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(FarPos);
+            AttachEvasive(defender);
+
+            DetermineHitRollResults result = await RunStage(attacker, defender);
+
+            Assert.That(result.HitRollNeeded, Is.EqualTo(5),
+                "Evasive gives enemies -1 to hit → +1 threshold (shooting).");
+        }
+
+        [Test]
+        public async Task DefenderWithEvasive_RaisesHitThreshold_Melee()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(NearPos);
+            AttachEvasive(defender);
+
+            DetermineHitRollResults result = await RunStage(attacker, defender, isMelee: true);
+
+            Assert.That(result.HitRollNeeded, Is.EqualTo(5),
+                "Evasive is un-gated, so the -1 to hit also applies to melee swings.");
+        }
+
+        // Melee Evasion (Subject): the same -1 but gated to melee — fires in melee, not shooting.
+        [Test]
+        public async Task DefenderWithMeleeEvasion_Melee_RaisesThreshold()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(NearPos);
+            AttachMeleeEvasion(defender);
+
+            DetermineHitRollResults result = await RunStage(attacker, defender, isMelee: true);
+
+            Assert.That(result.HitRollNeeded, Is.EqualTo(5),
+                "Melee Evasion gives -1 to hit in melee → +1 threshold.");
+        }
+
+        [Test]
+        public async Task DefenderWithMeleeEvasion_Shooting_NoChange()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(FarPos);
+            AttachMeleeEvasion(defender);
+
+            DetermineHitRollResults result = await RunStage(attacker, defender); // shooting
+
+            Assert.That(result.HitRollNeeded, Is.EqualTo(4),
+                "Melee Evasion is melee-only (IsMelee gate); a shooting attack is unaffected.");
+        }
+
+        // Precise (Actor): +1 to hit, any attack → lowers the threshold.
+        [Test]
+        public async Task AttackerWithPrecise_LowersHitThreshold()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(FarPos);
+            AttachPrecise(attacker);
+
+            DetermineHitRollResults result = await RunStage(attacker, defender);
+
+            Assert.That(result.HitRollNeeded, Is.EqualTo(3),
+                "Precise gives +1 to hit → -1 threshold.");
+        }
+
+        // Good Shot (Actor): +1 to hit when shooting only — Not(IsMelee) gate.
+        [Test]
+        public async Task AttackerWithGoodShot_Shooting_LowersThreshold()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(FarPos);
+            AttachGoodShot(attacker);
+
+            DetermineHitRollResults result = await RunStage(attacker, defender);
+
+            Assert.That(result.HitRollNeeded, Is.EqualTo(3),
+                "Good Shot gives +1 to hit when shooting → -1 threshold.");
+        }
+
+        [Test]
+        public async Task AttackerWithGoodShot_Melee_NoChange()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(NearPos);
+            AttachGoodShot(attacker);
+
+            DetermineHitRollResults result = await RunStage(attacker, defender, isMelee: true);
+
+            Assert.That(result.HitRollNeeded, Is.EqualTo(4),
+                "Good Shot is shooting-only; a melee swing gets no bonus.");
+        }
+
         private async Task<DetermineHitRollResults> RunStage(
             DataBinding<UnitData> attacker, DataBinding<UnitData> defender, bool attackerMoved = false,
             bool isMelee = false)
@@ -281,6 +377,18 @@ namespace FDG.Tests
 
         private static void AttachReliable(DataBinding<UnitData> unit) =>
             unit.GetValue().AttachRuleDefinition(new ResolvedRule("Reliable", CoreRuleCatalog.Reliable));
+
+        private static void AttachEvasive(DataBinding<UnitData> unit) =>
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Evasive", CoreRuleCatalog.Evasive));
+
+        private static void AttachMeleeEvasion(DataBinding<UnitData> unit) =>
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Melee Evasion", CoreRuleCatalog.MeleeEvasion));
+
+        private static void AttachPrecise(DataBinding<UnitData> unit) =>
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Precise", CoreRuleCatalog.Precise));
+
+        private static void AttachGoodShot(DataBinding<UnitData> unit) =>
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Good Shot", CoreRuleCatalog.GoodShot));
 
         private DataBinding<UnitData> MakeUnit(Position position)
         {

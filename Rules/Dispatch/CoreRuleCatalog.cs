@@ -26,6 +26,7 @@ public static class CoreRuleCatalog
         Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Shred, Vanguard, Scout, Ambush, Thrust,
         Blast, Takedown, Impact, Counter, MartialProwess, Strafing, Fear, Fearless, Hero, Transport,
         FuriousBuff, Mend, Immobile, Caster,
+        Evasive, MeleeEvasion, Precise, GoodShot,
     };
 
     /// <summary>
@@ -117,6 +118,66 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>(),
         ERuleScope.Weapon);
+
+    /// <summary>
+    /// Defensive: enemies take -1 to hit when attacking this unit, in melee or shooting. The Subject-seat
+    /// mirror of <see cref="Precise"/>; no distance/combat-kind gate, so it raises the threshold on every
+    /// attack against the bearer (the same <c>OnHitRollModifier</c> sink Stealth/Artillery use).
+    /// </summary>
+    public static SpecialRuleDefinition Evasive { get; } = new SpecialRuleDefinition("Evasive",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnHitRollModifier,
+                new Condition.Always(),
+                new Effect.RollModifier(ERollKind.Hit, Delta: -1),
+                ELifetime.ThisAttack,
+                ERuleSeat.Subject),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary>
+    /// Defensive: enemies take -1 to hit in melee when attacking this unit. As <see cref="Evasive"/> but
+    /// gated to melee via <c>IsMelee</c> (the same combat-kind condition Thrust/Indirect read), so the
+    /// penalty applies only to melee swings against the bearer, not to shooting.
+    /// </summary>
+    public static SpecialRuleDefinition MeleeEvasion { get; } = new SpecialRuleDefinition("Melee Evasion",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnHitRollModifier,
+                new Condition.IsMelee(),
+                new Effect.RollModifier(ERollKind.Hit, Delta: -1),
+                ELifetime.ThisAttack,
+                ERuleSeat.Subject),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary>
+    /// Attacker: +1 to hit when attacking (melee or shooting) — lowers the bearer's hit threshold. The
+    /// Actor-seat counterpart to <see cref="Evasive"/>, no gate.
+    /// </summary>
+    public static SpecialRuleDefinition Precise { get; } = new SpecialRuleDefinition("Precise",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnHitRollModifier,
+                new Condition.Always(),
+                new Effect.RollModifier(ERollKind.Hit, Delta: +1),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary>
+    /// Attacker: +1 to hit when shooting only — gated to non-melee via <c>Not(IsMelee)</c> (the gate
+    /// Indirect uses), so the bonus rides shooting attacks but not melee swings.
+    /// </summary>
+    public static SpecialRuleDefinition GoodShot { get; } = new SpecialRuleDefinition("Good Shot",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnHitRollModifier,
+                new Condition.Not(new Condition.IsMelee()),
+                new Effect.RollModifier(ERollKind.Hit, Delta: +1),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>());
 
     // Movement-modifier sink (MovementActionContext) -----------------------------
 

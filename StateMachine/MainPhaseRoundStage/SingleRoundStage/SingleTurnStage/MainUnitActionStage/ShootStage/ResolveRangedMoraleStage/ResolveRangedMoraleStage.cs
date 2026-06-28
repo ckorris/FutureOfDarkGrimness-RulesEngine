@@ -25,11 +25,11 @@ namespace FDG.Stages
             await ToFinished.Activate(context);
         }
 
-        // A unit reduced to half strength or less by shooting must take a morale test; because the
-        // trigger condition is being at half strength, a failed test always Routs it. The test fires only
-        // on the fire that *crosses* into half strength: DefenderRemainingWoundsAtStart is re-snapshotted
-        // by ChooseRangedAttackStage before each weapon, so once a unit is below half a later weapon at
-        // the same target sees a sub-half start and won't re-test (no double jeopardy).
+        // A unit reduced to half strength or less by shooting must take a morale test; a failed test makes
+        // it Shaken (a non-melee morale failure never Routs — Rout is a melee-only result, GF v3.5.1). The
+        // test fires only on the fire that *crosses* into half strength: DefenderRemainingWoundsAtStart is
+        // re-snapshotted by ChooseRangedAttackStage before each weapon, so once a unit is below half a
+        // later weapon at the same target sees a sub-half start and won't re-test (no double jeopardy).
         private async Task ResolveForDefender(ICombatActionContext context)
         {
             DataBinding<UnitData> defenderBinding = context.DefendingUnit;
@@ -44,7 +44,7 @@ namespace FDG.Stages
             }
             else if (result == false)
             {
-                GameContext.Log($"{defenderBinding.Name()} was reduced to half strength, failed its morale test, and is Routed.");
+                GameContext.Log($"{defenderBinding.Name()} was reduced to half strength, failed its morale test, and is now Shaken.");
             }
         }
     }

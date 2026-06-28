@@ -94,7 +94,7 @@ namespace FDG.Tests
         // --- Fearless reaches the wound-driven path too (shooting / dangerous terrain), not just melee ---
 
         [Test]
-        public async Task Fearless_PreventsAWoundDrivenRout()
+        public async Task Fearless_PreventsAWoundDrivenMoraleFailure()
         {
             var unit = MakeUnit(quality: 5, modelCount: 4);
             AttachFearless(unit);
@@ -102,12 +102,14 @@ namespace FDG.Tests
 
             bool? result = await MoraleUtilities.ResolveWoundDrivenMorale(Ctx(die: 4), unit, remainingWoundsBefore: 4f);
 
-            Assert.That(result, Is.True, "Fearless re-roll (4+) passes, so the half-strength unit is not Routed.");
+            Assert.That(result, Is.True, "Fearless re-roll (4+) passes, so the half-strength unit is unaffected.");
             Assert.That(unit.GetValue().GetIsAlive(), Is.True);
+            Assert.That(unit.GetValue().Tokens.HasToken(Rules.Foundation.TokenType.Shaken), Is.False,
+                "a passed test (via Fearless) leaves the unit un-Shaken.");
         }
 
         [Test]
-        public async Task WithoutFearless_WoundDrivenTestFails_Routs()
+        public async Task WithoutFearless_WoundDrivenTestFails_IsShaken()
         {
             var unit = MakeUnit(quality: 5, modelCount: 4);
             KillModels(unit, 2);
@@ -115,7 +117,9 @@ namespace FDG.Tests
             bool? result = await MoraleUtilities.ResolveWoundDrivenMorale(Ctx(die: 4), unit, remainingWoundsBefore: 4f);
 
             Assert.That(result, Is.False);
-            Assert.That(unit.GetValue().GetIsDead(), Is.True, "no Fearless → the failed half-strength test Routs it.");
+            Assert.That(unit.GetValue().GetIsAlive(), Is.True,
+                "no Fearless → the failed half-strength test makes it Shaken, not Routed (shooting/terrain never Routs).");
+            Assert.That(unit.GetValue().Tokens.HasToken(Rules.Foundation.TokenType.Shaken), Is.True);
         }
 
         // --- RollForMoraleStage wiring (the melee loss path) ---

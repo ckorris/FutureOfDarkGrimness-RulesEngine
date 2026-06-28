@@ -38,8 +38,9 @@ namespace FDG.Stages
                     GameContext.Settings.RandomnessType, "Dangerous Terrain", dt.Wounded ? "1 wound!" : "Safe"));
             }
 
-            // A unit reduced to half strength or less by dangerous terrain takes a morale test; being at
-            // half strength, a failed test Routs it. Same wound-driven path as shooting (#009).
+            // A unit reduced to half strength or less by dangerous terrain takes a morale test; a failed
+            // test makes it Shaken (a non-melee morale failure never Routs — Rout is melee-only, GF
+            // v3.5.1). Same wound-driven path as shooting (#009).
             bool? moraleResult = await MoraleUtilities.ResolveWoundDrivenMorale(GameContext, movingUnit, woundsBefore);
             if (moraleResult == true)
             {
@@ -47,7 +48,7 @@ namespace FDG.Stages
             }
             else if (moraleResult == false)
             {
-                GameContext.Log($"{unitName} was reduced to half strength by dangerous terrain, failed its morale test, and is Routed.");
+                GameContext.Log($"{unitName} was reduced to half strength by dangerous terrain, failed its morale test, and is now Shaken.");
             }
 
             await OnAppliedNonMovementTerrainEffects.Activate(context);

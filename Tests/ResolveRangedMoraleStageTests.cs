@@ -5,16 +5,16 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #009 — A unit reduced to half strength or less by shooting takes a morale test; because the
-    // trigger is being at half strength, a failed test Routs it. The test fires only on the weapon that
-    // *crosses* the unit into half strength (DefenderRemainingWoundsAtStart is snapshotted before each
-    // fire), so a later weapon at an already-sub-half target doesn't re-test. Quality is 4 throughout, so
-    // FixedDiceRoller(>=4) passes and FixedDiceRoller(<4) fails.
+    // #009 — A unit reduced to half strength or less by shooting takes a morale test; a failed test makes
+    // it Shaken (a non-melee morale failure never Routs — Rout is a melee-only result, GF v3.5.1). The
+    // test fires only on the weapon that *crosses* the unit into half strength (DefenderRemainingWoundsAtStart
+    // is snapshotted before each fire), so a later weapon at an already-sub-half target doesn't re-test.
+    // Quality is 4 throughout, so FixedDiceRoller(>=4) passes and FixedDiceRoller(<4) fails.
     [TestFixture]
     public class ResolveRangedMoraleStageTests
     {
         [Test]
-        public async Task ReducedToHalfStrength_FailsTest_IsRouted()
+        public async Task ReducedToHalfStrength_FailsTest_IsShaken()
         {
             var (combat, defender) = BuildShoot(defenderModels: 4, dieValue: 1);
             combat.SetDefender(defender);          // snapshot at full strength (above half)
@@ -23,7 +23,10 @@ namespace FDG.Tests
             bool finished = await RunResolve(combat);
 
             Assert.That(finished, Is.True);
-            Assert.That(defender.GetValue().GetIsDead(), Is.True, "a failed half-strength morale test Routs the unit.");
+            Assert.That(defender.GetValue().GetIsAlive(), Is.True,
+                "a failed non-melee morale test makes the unit Shaken, not destroyed — shooting never Routs.");
+            Assert.That(defender.GetValue().Tokens.HasToken(Rules.Foundation.TokenType.Shaken), Is.True,
+                "the surviving-but-failed unit carries the Shaken token.");
         }
 
         [Test]
@@ -37,7 +40,7 @@ namespace FDG.Tests
 
             Assert.That(defender.GetValue().GetIsAlive(), Is.True, "a passed test leaves the unit on the table.");
             Assert.That(defender.GetValue().Tokens.HasToken(Rules.Foundation.TokenType.Shaken), Is.False,
-                "shooting morale never applies Shaken — it Routs on a fail or does nothing.");
+                "a passed morale test applies nothing — only a failed test makes the unit Shaken.");
         }
 
         [Test]

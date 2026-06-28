@@ -59,6 +59,91 @@ namespace FDG.Tests
                 "Slow subtracts 4\" from Charge.");
         }
 
+        [Test]
+        public void AgileUnit_AddsOneToAdvance_TwoToRushAndCharge()
+        {
+            var baseline = new MovementActionContext(_ctx, MakeUnit());
+
+            DataBinding<UnitData> agile = MakeUnit();
+            agile.GetValue().AttachRuleDefinition(new ResolvedRule("Agile", CoreRuleCatalog.Agile));
+            var context = new MovementActionContext(_ctx, agile);
+
+            Assert.That(context.MaxAdvanceDistance, Is.EqualTo(baseline.MaxAdvanceDistance + 1f).Within(0.001f),
+                "Agile adds +1\" to Advance.");
+            Assert.That(context.MaxRushDistance, Is.EqualTo(baseline.MaxRushDistance + 2f).Within(0.001f),
+                "Agile adds +2\" to Rush.");
+            Assert.That(context.MaxChargeDistance, Is.EqualTo(baseline.MaxChargeDistance + 2f).Within(0.001f),
+                "Agile adds +2\" to Charge.");
+        }
+
+        [Test]
+        public void QuickUnit_AddsTwoToAllThreeBudgets()
+        {
+            var baseline = new MovementActionContext(_ctx, MakeUnit());
+
+            DataBinding<UnitData> quick = MakeUnit();
+            quick.GetValue().AttachRuleDefinition(new ResolvedRule("Quick", CoreRuleCatalog.Quick));
+            var context = new MovementActionContext(_ctx, quick);
+
+            Assert.That(context.MaxAdvanceDistance, Is.EqualTo(baseline.MaxAdvanceDistance + 2f).Within(0.001f),
+                "Quick adds +2\" to Advance.");
+            Assert.That(context.MaxRushDistance, Is.EqualTo(baseline.MaxRushDistance + 2f).Within(0.001f),
+                "Quick adds +2\" to Rush.");
+            Assert.That(context.MaxChargeDistance, Is.EqualTo(baseline.MaxChargeDistance + 2f).Within(0.001f),
+                "Quick adds +2\" to Charge.");
+        }
+
+        [Test]
+        public void RapidAdvance_AddsFourToAdvanceOnly()
+        {
+            var baseline = new MovementActionContext(_ctx, MakeUnit());
+
+            DataBinding<UnitData> unit = MakeUnit();
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Rapid Advance", CoreRuleCatalog.RapidAdvance));
+            var context = new MovementActionContext(_ctx, unit);
+
+            Assert.That(context.MaxAdvanceDistance, Is.EqualTo(baseline.MaxAdvanceDistance + 4f).Within(0.001f),
+                "Rapid Advance adds +4\" to Advance.");
+            Assert.That(context.MaxRushDistance, Is.EqualTo(baseline.MaxRushDistance).Within(0.001f),
+                "Rapid Advance is Advance-only; Rush untouched.");
+            Assert.That(context.MaxChargeDistance, Is.EqualTo(baseline.MaxChargeDistance).Within(0.001f),
+                "Rapid Advance is Advance-only; Charge untouched.");
+        }
+
+        [Test]
+        public void RapidRush_AddsSixToRushOnly()
+        {
+            var baseline = new MovementActionContext(_ctx, MakeUnit());
+
+            DataBinding<UnitData> unit = MakeUnit();
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Rapid Rush", CoreRuleCatalog.RapidRush));
+            var context = new MovementActionContext(_ctx, unit);
+
+            Assert.That(context.MaxRushDistance, Is.EqualTo(baseline.MaxRushDistance + 6f).Within(0.001f),
+                "Rapid Rush adds +6\" to Rush.");
+            Assert.That(context.MaxAdvanceDistance, Is.EqualTo(baseline.MaxAdvanceDistance).Within(0.001f),
+                "Rapid Rush is Rush-only; Advance untouched.");
+            Assert.That(context.MaxChargeDistance, Is.EqualTo(baseline.MaxChargeDistance).Within(0.001f),
+                "Rapid Rush is Rush-only; Charge untouched.");
+        }
+
+        [Test]
+        public void RapidCharge_AddsFourToChargeOnly()
+        {
+            var baseline = new MovementActionContext(_ctx, MakeUnit());
+
+            DataBinding<UnitData> unit = MakeUnit();
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Rapid Charge", CoreRuleCatalog.RapidCharge));
+            var context = new MovementActionContext(_ctx, unit);
+
+            Assert.That(context.MaxChargeDistance, Is.EqualTo(baseline.MaxChargeDistance + 4f).Within(0.001f),
+                "Rapid Charge adds +4\" to Charge.");
+            Assert.That(context.MaxAdvanceDistance, Is.EqualTo(baseline.MaxAdvanceDistance).Within(0.001f),
+                "Rapid Charge is Charge-only; Advance untouched.");
+            Assert.That(context.MaxRushDistance, Is.EqualTo(baseline.MaxRushDistance).Within(0.001f),
+                "Rapid Charge is Charge-only; Rush untouched.");
+        }
+
         private static void AttachFast(DataBinding<UnitData> unit) =>
             unit.GetValue().AttachRuleDefinition(new ResolvedRule("Fast", CoreRuleCatalog.Fast));
 

@@ -27,6 +27,7 @@ public static class CoreRuleCatalog
         Blast, Takedown, Impact, Counter, MartialProwess, Strafing, Fear, Fearless, Hero, Transport,
         FuriousBuff, Mend, Immobile, Caster,
         Evasive, MeleeEvasion, Precise, GoodShot,
+        Agile, Quick, RapidAdvance, RapidRush, RapidCharge,
     };
 
     /// <summary>
@@ -218,6 +219,77 @@ public static class CoreRuleCatalog
             new HookEntry(EHookID.Movement_OnMoveActionDeclared,
                 new Condition.ActionTypeIs(EActionType.Charge),
                 new Effect.MovementBonus(EActionType.Charge, DistanceInches: -4f),
+                ELifetime.ThisActivation),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary> Advance +1", Rush/Charge +2" (a smaller Fast). </summary>
+    public static SpecialRuleDefinition Agile { get; } = new SpecialRuleDefinition("Agile",
+        new[]
+        {
+            new HookEntry(EHookID.Movement_OnMoveActionDeclared,
+                new Condition.ActionTypeIs(EActionType.Advance),
+                new Effect.MovementBonus(EActionType.Advance, DistanceInches: 1f),
+                ELifetime.ThisActivation),
+            new HookEntry(EHookID.Movement_OnMoveActionDeclared,
+                new Condition.ActionTypeIs(EActionType.Rush),
+                new Effect.MovementBonus(EActionType.Rush, DistanceInches: 2f),
+                ELifetime.ThisActivation),
+            new HookEntry(EHookID.Movement_OnMoveActionDeclared,
+                new Condition.ActionTypeIs(EActionType.Charge),
+                new Effect.MovementBonus(EActionType.Charge, DistanceInches: 2f),
+                ELifetime.ThisActivation),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary> Advance +2", Rush/Charge +2". </summary>
+    public static SpecialRuleDefinition Quick { get; } = new SpecialRuleDefinition("Quick",
+        new[]
+        {
+            new HookEntry(EHookID.Movement_OnMoveActionDeclared,
+                new Condition.ActionTypeIs(EActionType.Advance),
+                new Effect.MovementBonus(EActionType.Advance, DistanceInches: 2f),
+                ELifetime.ThisActivation),
+            new HookEntry(EHookID.Movement_OnMoveActionDeclared,
+                new Condition.ActionTypeIs(EActionType.Rush),
+                new Effect.MovementBonus(EActionType.Rush, DistanceInches: 2f),
+                ELifetime.ThisActivation),
+            new HookEntry(EHookID.Movement_OnMoveActionDeclared,
+                new Condition.ActionTypeIs(EActionType.Charge),
+                new Effect.MovementBonus(EActionType.Charge, DistanceInches: 2f),
+                ELifetime.ThisActivation),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary> Advance +4" (action-specific rapid mover). </summary>
+    public static SpecialRuleDefinition RapidAdvance { get; } = new SpecialRuleDefinition("Rapid Advance",
+        new[]
+        {
+            new HookEntry(EHookID.Movement_OnMoveActionDeclared,
+                new Condition.ActionTypeIs(EActionType.Advance),
+                new Effect.MovementBonus(EActionType.Advance, DistanceInches: 4f),
+                ELifetime.ThisActivation),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary> Rush +6". </summary>
+    public static SpecialRuleDefinition RapidRush { get; } = new SpecialRuleDefinition("Rapid Rush",
+        new[]
+        {
+            new HookEntry(EHookID.Movement_OnMoveActionDeclared,
+                new Condition.ActionTypeIs(EActionType.Rush),
+                new Effect.MovementBonus(EActionType.Rush, DistanceInches: 6f),
+                ELifetime.ThisActivation),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary> Charge +4". </summary>
+    public static SpecialRuleDefinition RapidCharge { get; } = new SpecialRuleDefinition("Rapid Charge",
+        new[]
+        {
+            new HookEntry(EHookID.Movement_OnMoveActionDeclared,
+                new Condition.ActionTypeIs(EActionType.Charge),
+                new Effect.MovementBonus(EActionType.Charge, DistanceInches: 4f),
                 ELifetime.ThisActivation),
         },
         Array.Empty<ActivatedAbility>());

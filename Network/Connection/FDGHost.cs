@@ -1,5 +1,6 @@
 ﻿using FDG.Network.Messages;
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
@@ -26,8 +27,10 @@ namespace FDG.Network.Connection
 
     public class FDGHost : INetworkHost //ICommandDispatcher
     {
-        private readonly Dictionary<ConnectionID, ClientConnection> _connectedClients
-            = new Dictionary<ConnectionID, ClientConnection>();
+        // Accessed concurrently from the accept loop, every per-client read loop, and broadcast sends,
+        // so it's a concurrent collection rather than a plain Dictionary behind manual locks (#037).
+        private readonly ConcurrentDictionary<ConnectionID, ClientConnection> _connectedClients
+            = new ConcurrentDictionary<ConnectionID, ClientConnection>();
 
         private TcpListener? _listener;
         private CancellationTokenSource? _cancelTokenSource;
@@ -72,13 +75,9 @@ namespace FDG.Network.Connection
                     Guid guid = Guid.NewGuid();
                     ConnectionID connectionID = new ConnectionID(guid);
 
-                    lock (_connectedClients) //TODO: Change to concurrent collection.
-                    {
-                        //TODO: Is this the best place to create a new player ID? 
-
-                        _connectedClients.Add(connectionID, new ClientConnection(client));
-                        Debug.WriteLine($"Accepted client. Count: {_connectedClients.Count}");
-                    }
+                    //TODO: Is this the best place to create a new player ID?
+                    _connectedClients.TryAdd(connectionID, new ClientConnection(client));
+                    Debug.WriteLine($"Accepted client. Count: {_connectedClients.Count}");
 
                     _ = HandleClientAsync(connectionID, client, _cancelTokenSource.Token);
 
@@ -127,10 +126,7 @@ namespace FDG.Network.Connection
                 finally
                 {
                     Debug.WriteLine("Removing client.");
-                    lock (_connectedClients) //TODO: Change to concurrent collection.
-                    {
-                        _connectedClients.Remove(connectionID);
-                    }
+                    _connectedClients.TryRemove(connectionID, out _);
                     client.Close();
 
                     OnClientDisconnected?.Invoke(connectionID);
@@ -147,13 +143,11 @@ namespace FDG.Network.Connection
 
             try
             {
-                ClientConnection connection;
-                lock (_connectedClients)
+                if (_connectedClients.TryGetValue(clientID, out ClientConnection? connection))
                 {
-                    connection = _connectedClients[clientID];
+                    await WriteLockedAsync(connection, messageBytes)
+                        .ConfigureAwait(false);
                 }
-                await WriteLockedAsync(connection, messageBytes)
-                    .ConfigureAwait(false);
             }
             catch (Exception exception)
             {
@@ -170,12 +164,9 @@ namespace FDG.Network.Connection
 
         public async Task SendCommandToAllAsync(ArraySegment<Byte> messageBytes, bool isPooled)
         {
-            List<ClientConnection> clientsCopy;
-
-            lock (_connectedClients)
-            {
-                clientsCopy = new List<ClientConnection>(_connectedClients.Values);
-            }
+            // ConcurrentDictionary.Values is a moment-in-time snapshot, so iterating it can't throw
+            // even if a client connects or disconnects mid-broadcast (#037).
+            List<ClientConnection> clientsCopy = new List<ClientConnection>(_connectedClients.Values);
 
             foreach (ClientConnection connection in clientsCopy)
             {
@@ -229,14 +220,11 @@ namespace FDG.Network.Connection
                 _cancelTokenSource.Cancel();
             }
 
-            lock (_connectedClients)
+            foreach (ClientConnection connection in _connectedClients.Values)
             {
-                foreach (ClientConnection connection in _connectedClients.Values)
-                {
-                    connection.Client.Close();
-                }
-                _connectedClients.Clear();
+                connection.Client.Close();
             }
+            _connectedClients.Clear();
 
             Debug.WriteLine("Host stopped.");
         }

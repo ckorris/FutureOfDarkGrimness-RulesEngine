@@ -290,10 +290,13 @@ namespace FDG.GameModel
             // construction returns first and the game runs on a continuation.
             await Task.Yield();
 
-            //TODO: Wait for all clients to indicate that they are connected and ready.
-            //Await something.
+            // Block until every assigned slot's controller reports ready (#036): a network player's
+            // controller completes when its client sends PostLaunchPlayerReadyMessage (after the client
+            // builds its resolvers in AssignInterfaces); a local player when its resolver registry is
+            // assigned; an AI player immediately. Without this the host could enter the state machine and
+            // request a decision before a client is wired up to answer it.
             Debug.WriteLine("Awaiting players to be ready.");
-            await _playerSlotManager.WaitUntilAllSlotsReady(); //Half a second. At least lets us test before implementing this.
+            await _playerSlotManager.WaitUntilAllSlotsReady();
             Debug.WriteLine("All players are ready. Launching stage machine.");
 
             try
@@ -360,8 +363,9 @@ namespace FDG.GameModel
 
             SingleRoundContext context = new SingleRoundContext(gameContext, teamOrder);
 
+            // See LaunchStateMachineOnceReady: wait for every slot's controller to report ready (#036).
             Debug.WriteLine("Awaiting players to be ready.");
-            await _playerSlotManager.WaitUntilAllSlotsReady(); //Half a second. At least lets us test before implementing this.
+            await _playerSlotManager.WaitUntilAllSlotsReady();
             Debug.WriteLine("All players are ready. Launching stage machine.");
 
             _ = stateMachine.Enter(context);

@@ -633,44 +633,6 @@ namespace FDG.Network.Connection.Lobby
             return unitFileEntry;
         }
 
-        /*
-        private PlayerSlot[] GetPlayerSlots(IStageResolverRegistry stageResolverRegister, IReadableGameDataStore gameDataStore)
-        {
-            PlayerSlot[] playerSlots = new PlayerSlot[_playerInfos.Value.Count];
-
-            //Local players will need to have registries assigned locally, so cache them specifically for this.
-            List<LocalPlayerController> localPlayerControllers = new List<LocalPlayerController>();
-
-            for (int i = 0; i < playerSlots.Length; i++)
-            {
-                LobbyPlayerInfoSummary lobbyPlayerInfo = _playerInfos.Value[i];
-
-                PlayerSlot playerSlot = new PlayerSlot(i, (int)lobbyPlayerInfo.TeamNumber);
-                playerSlots[i] = playerSlot;
-
-                switch (lobbyPlayerInfo.PlayerType)
-                {
-                    case EPlayerType.Local:
-                        LocalPlayerController localPlayerController = new LocalPlayerController(lobbyPlayerInfo.PlayerName, 
-                            playerSlot.PlayerID, stageResolverRegister);
-                        localPlayerControllers.Add(localPlayerController);
-                        playerSlot.AssignPlayerController(localPlayerController);
-                        break;
-                    case EPlayerType.Network:
-                        NetworkPlayerController networkPlayerController = new NetworkPlayerController(lobbyPlayerInfo.PlayerName, playerSlot.PlayerID,
-                            lobbyPlayerInfo.connectionID, _commandDispatcher, gameDataStore);
-                            break;
-                    case EPlayerType.AI:
-                        throw new NotImplementedException();
-                    default:
-                        throw new ArgumentOutOfRangeException();
-                }
-            }
-
-            return playerSlots;
-        }
-        */
-
         public void SetArmyPoints(int armyPoints)
         {
             if (armyPoints > 0)

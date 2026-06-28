@@ -313,6 +313,41 @@ namespace FDG.Tests
                 "the second chosen target ALSO took the spell's hit — the pipeline runs per target, not just target[0]");
         }
 
+        // #034 forced enemy movement (primitive #6) — a TriggeredMove spell repositions an ENEMY unit through
+        // the cast path's non-damage seam (OperationExecutor runs the imperative InvokeTriggeredMove), and the
+        // CASTER directs the displacement: the move-path request routes to the caster's player, not the victim.
+        [Test]
+        public async Task CastSpellStage_ForcedMoveSpell_CasterDirectsEnemyMove()
+        {
+            var enemyPlayer = new PlayerID(System.Guid.NewGuid());
+            var requester = new CannedForcedMoveRequester(dx: 3f, dz: 0f);
+            var ctx = new TriggeredMoveTestContext(_store, requester);
+
+            RuntimeSpell shove = new RuntimeSpell(
+                new SpellDefinition("Telekinetic Shove", 1,
+                    new TargetSelector(18f, 1, 1, ETargetAffinity.Foe, RequireLineOfSight: false),
+                    new Effect.TriggeredMove(MaxInches: 6f, IsOptional: false)),
+                System.Array.Empty<ResolvedRule>());
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
+                new[] { shove }, new Position(10f, 10f));
+            DataBinding<UnitData> enemy = MakeEnemyUnit(enemyPlayer, new Position(12f, 10f));
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Assert.That(requester.Captured, Is.Not.Null,
+                "the cast path issued a movement-path request for the forced move");
+            Assert.That(requester.Captured!.TargetPlayerID, Is.EqualTo(_player),
+                "the CASTER directs the forced move, not the enemy whose unit is displaced");
+            Position moved = enemy.GetValue().ModelBindings[0].GetValue().PositionBinding.GetValue();
+            Assert.That(moved.x, Is.EqualTo(15f).Within(0.001f), "the enemy model was displaced +3\" by the caster");
+            Assert.That(moved.z, Is.EqualTo(10f).Within(0.001f));
+            Assert.That(caster.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(1),
+                "casting spent the spell's 1-token cost");
+        }
+
         // #033 Slice B — a stat-modifier buff spell grants the target a numeric roll modifier; reading it for
         // the matching roll yields the delta and (for a "next time" grant) consumes it.
         [Test]
@@ -522,6 +557,48 @@ namespace FDG.Tests
                     return Task.FromResult((TReply)(object)targetPick.ValidOptions[0].Option);
                 case SelectionRequest<ModelData> modelPick:
                     return Task.FromResult((TReply)(object)modelPick.ValidOptions[0].Option);
+                default:
+                    throw new System.InvalidOperationException("Unexpected request: " + request.GetType());
+            }
+        }
+    }
+
+    // Drives a forced-move spell cast: picks the first spell and first target, then answers the resulting
+    // movement-path request by translating the moved unit by a fixed delta — capturing the request so the
+    // test can assert who was asked to direct the move.
+    internal sealed class CannedForcedMoveRequester : IPlayerRequestByID
+    {
+        private readonly float _dx;
+        private readonly float _dz;
+        public DefineMovementPathRequest? Captured { get; private set; }
+
+        public CannedForcedMoveRequester(float dx, float dz)
+        {
+            _dx = dx;
+            _dz = dz;
+        }
+
+        public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
+            where TRequest : IStageTaskRequest<TReply>
+        {
+            switch (request)
+            {
+                case StringSelectionRequest spellPick:
+                    return Task.FromResult((TReply)(object)spellPick.ValidOptions[0]);
+                case SelectionRequest<UnitData> targetPick:
+                    return Task.FromResult((TReply)(object)targetPick.ValidOptions[0].Option);
+                case DefineMovementPathRequest moveRequest:
+                {
+                    Captured = moveRequest;
+                    var entries = new List<ModelMoveEntry>();
+                    foreach (DataBinding<ModelData> model in moveRequest.UnitDataBinding.GetValue().ModelBindings)
+                    {
+                        Position start = model.GetValue().PositionBinding.GetValue();
+                        entries.Add(new ModelMoveEntry(model,
+                            new List<Position> { new Position(start.x + _dx, start.z + _dz) }));
+                    }
+                    return Task.FromResult((TReply)(object)entries);
+                }
                 default:
                     throw new System.InvalidOperationException("Unexpected request: " + request.GetType());
             }

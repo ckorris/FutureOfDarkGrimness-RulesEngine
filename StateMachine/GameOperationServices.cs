@@ -20,16 +20,20 @@ namespace FDG.Stages
             _gameContext = gameContext;
         }
 
-        public async Task MoveUnit(IUnit unit, float maxInches, bool isOptional)
+        public async Task MoveUnit(IUnit unit, float maxInches, bool isOptional, PlayerID? controller = null)
         {
             DataBinding<UnitData> unitBinding = ResolveUnitBinding(unit);
 
             bool canMoveThroughEnemies = Rules.Dispatch.MovementRuleQueries.CanMoveThroughEnemies(
                 unitBinding.GetValue(), _gameContext.RuleEvaluator);
 
+            // The move is directed by the controller (a forced enemy move routes to the caster),
+            // falling back to the unit's own owner for the self-move case.
+            PlayerID mover = controller ?? unit.PlayerID;
+
             // A triggered move has a single budget; offer it in every slot so the resolver
             // renders one ring rather than the Advance/Rush/Charge tiers.
-            var pathRequest = new DefineMovementPathRequest(unit.PlayerID, "Triggered Move",
+            var pathRequest = new DefineMovementPathRequest(mover, "Triggered Move",
                 unitBinding, maxInches, maxInches, maxInches,
                 WeaponSightProfileBuilder.For(unitBinding.GetValue(), _gameContext.RuleEvaluator),
                 canMoveThroughEnemies);

@@ -299,18 +299,26 @@ public abstract record Effect
     public sealed record ConsumeToken(TokenType TType, int Count) : Effect;
 
     /// <summary>
-    /// Invokes the movement subsystem inline — the bearer moves up to
+    /// Invokes the movement subsystem inline — the effect's target moves up to
     /// <see cref="MaxInches"/>. If <see cref="IsOptional"/>, the player may
     /// decline the move. Engine primitive (Phase 7h / item #042 engine refactor)
     /// that rules invoke without re-implementing movement logic. Covers
     /// Harassing (3" after shooting/melee, optional), Re-Position Artillery,
-    /// Vanguard reposition.
+    /// Vanguard reposition — and #034's "reposition an enemy unit" spell, where
+    /// the target is an enemy and the bearer is the caster.
+    ///
+    /// The move is directed by the rule's BEARER's controller (passed as the
+    /// operation's <c>Controller</c>): for a self-move the bearer is the moving
+    /// unit, so it's that unit's own owner (unchanged behaviour); for a cross-unit
+    /// forced move the bearer is the caster, so the caster directs where the
+    /// enemy is displaced rather than the victim choosing for itself.
     /// </summary>
     public sealed record TriggeredMove(float MaxInches, bool IsOptional) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.InvokeTriggeredMove(ruleInvocation.EffectiveTarget, MaxInches, IsOptional));
+            operations.Add(new RuleOperation.InvokeTriggeredMove(
+                ruleInvocation.EffectiveTarget, MaxInches, IsOptional, ruleInvocation.Bearer.PlayerID));
         }
     }
 

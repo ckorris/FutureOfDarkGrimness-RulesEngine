@@ -20,9 +20,12 @@ namespace FDG.Stages
     ///
     /// Two effect archetypes:
     /// <list type="bullet">
-    ///   <item><b>Buff/debuff</b> (<see cref="Effect.AddRule"/> &amp; other token effects): the effect is
-    ///         applied to each target via the polymorphic <see cref="Effect.Apply"/> and the resulting token
-    ///         operations are committed — the "gets RULE once (next time)" shape. No child pipeline.</item>
+    ///   <item><b>Non-damage</b> (<see cref="Effect.AddRule"/> &amp; other token effects, plus the imperative
+    ///         <see cref="Effect.TriggeredMove"/>): the effect is applied to each target via the polymorphic
+    ///         <see cref="Effect.Apply"/>; the resulting token operations are committed (the "gets RULE once
+    ///         (next time)" buff/debuff shape) and any <see cref="ExecutableOperation"/> is run through the
+    ///         <c>IOperationServices</c> seam — #034's "reposition an enemy unit" spell moves the target with
+    ///         the caster directing. No child pipeline.</item>
     ///   <item><b>Damage</b> (<see cref="Effect.DealHits"/>): resolved through the looped child
     ///         <see cref="ResolveSpellDamageStage"/> — once per chosen target, each with its own fresh
     ///         <see cref="CombatMetadata"/> (the <see cref="ShootStage"/>/<see cref="FireStage"/> pattern).
@@ -137,8 +140,9 @@ namespace FDG.Stages
                 return;
             }
 
-            // 5b. Buff/debuff spell → apply the effect's token operations to each target (no child pipeline).
-            ApplyTokenEffect(caster, chosen, targets);
+            // 5b. Non-damage spell → apply the effect to each target (no child pipeline): token grants
+            //     (buff/debuff) and inline engine operations (forced enemy move, #034) both flow through here.
+            await ApplyNonDamageEffect(caster, chosen, targets);
             await OnFinished.Activate(context);
         }
 
@@ -148,9 +152,14 @@ namespace FDG.Stages
             return _pendingRun;
         }
 
-        // Applies a non-damage spell effect (e.g. AddRule "gets RULE once") to each target by running the
-        // effect's polymorphic Apply against a per-target invocation, then committing the token operations.
-        private void ApplyTokenEffect(IUnit caster, RuntimeSpell spell, IReadOnlyList<DataBinding<UnitData>> targets)
+        // Applies a non-damage spell effect to each target by running the effect's polymorphic Apply against
+        // a per-target invocation, then enacting the resulting operations. Two disjoint operation kinds come
+        // out: token grants (AddRule "gets RULE once", StatModifier buffs) committed by ApplyTokenOperations,
+        // and imperative ExecutableOperations (TriggeredMove — #034's forced enemy move) run by
+        // OperationExecutor. The two filters don't overlap, so applying both is safe for any effect. The
+        // caster is the bearer, so a TriggeredMove targeting an enemy routes the move request to the caster.
+        private async Task ApplyNonDamageEffect(IUnit caster, RuntimeSpell spell,
+            IReadOnlyList<DataBinding<UnitData>> targets)
         {
             foreach (DataBinding<UnitData> target in targets)
             {
@@ -161,6 +170,7 @@ namespace FDG.Stages
                 List<RuleOperation> operations = new List<RuleOperation>();
                 spell.Effect.Apply(invocation, operations);
                 OperationApplier.ApplyTokenOperations(operations);
+                await OperationExecutor.Execute(operations, new GameOperationServices(GameContext));
             }
             GameContext.Log($"{spell.Name} affected {targets.Count} unit(s).");
         }

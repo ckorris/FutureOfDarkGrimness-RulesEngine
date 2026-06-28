@@ -39,6 +39,8 @@ namespace FDG.Stages
                     string sign = statMod.Delta >= 0 ? "+" : "";
                     return $"{sign}{statMod.Delta} to {RollName(statMod.Roll)} ({DescribeLifetime(statMod.LifetimeScope)})";
                 }
+                case Effect.TriggeredMove move:
+                    return $"moves the target up to {Inches(move.MaxInches)}\"";
                 default:
                     return "applies an effect";
             }

@@ -195,15 +195,19 @@ public abstract record RuleOperation
     /// <summary>
     /// Invoke the engine's movement subsystem for <see cref="Unit"/> with a
     /// budget of <see cref="MaxInches"/>, optionally declinable by the player
-    /// if <see cref="IsOptional"/>. Resolution of
-    /// <see cref="Effect.TriggeredMove"/>. Depends on the engine refactor that
+    /// if <see cref="IsOptional"/>. <see cref="Controller"/> is the player who
+    /// directs the move — null for a self-move (the unit's owner decides), the
+    /// rule's bearer for a cross-unit forced move (a "reposition an enemy unit"
+    /// spell, so the caster directs the displacement, not the victim). Resolution
+    /// of <see cref="Effect.TriggeredMove"/>. Depends on the engine refactor that
     /// exposes movement as a callable subsystem (item #042 engine work).
     /// </summary>
-    public sealed record InvokeTriggeredMove(IUnit Unit, float MaxInches, bool IsOptional) : ExecutableOperation
+    public sealed record InvokeTriggeredMove(IUnit Unit, float MaxInches, bool IsOptional,
+        PlayerID? Controller = null) : ExecutableOperation
     {
         public override Task Execute(IOperationServices services)
         {
-            return services.MoveUnit(Unit, MaxInches, IsOptional);
+            return services.MoveUnit(Unit, MaxInches, IsOptional, Controller);
         }
 
         public override string Describe()

@@ -44,7 +44,7 @@ namespace FDG.Stages
             }
             else
             {
-                MoraleUtilities.ApplyShaken(losingUnit);
+                await MoraleUtilities.ApplyShakenWithPresentation(GameContext, losingUnit);
                 GameContext.Log($"{losingUnit.Name()} failed its morale test and is now Shaken.");
             }
 

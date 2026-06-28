@@ -7,9 +7,10 @@ using NUnit.Framework;
 namespace FDG.Tests
 {
     // #009 — dangerous terrain that reduces a unit to half strength or less triggers a morale test, the
-    // same wound-driven path as shooting (Rout on fail, since the unit is at half strength). Models are
-    // 1 wound each; FixedDiceRoller(1) both wounds each model that crosses the dangerous zone (a roll of
-    // 1) and fails the Quality-4 morale test (1 < 4), so one fixed die drives the whole reduce-and-rout.
+    // same wound-driven path as shooting (a failed test makes the unit Shaken, not Routed — Rout is a
+    // melee-only result, GF v3.5.1). Models are 1 wound each; FixedDiceRoller(1) both wounds each model
+    // that crosses the dangerous zone (a roll of 1) and fails the Quality-4 morale test (1 < 4), so one
+    // fixed die drives the whole reduce-and-Shaken.
     [TestFixture]
     public class DangerousTerrainMoraleTests
     {
@@ -20,7 +21,7 @@ namespace FDG.Tests
         public void SetUp() => _store = GameDataStore.GameDataStoreBuilder.GetDefault();
 
         [Test]
-        public async Task ReducedToHalfByDangerousTerrain_FailsMorale_IsRouted()
+        public async Task ReducedToHalfByDangerousTerrain_FailsMorale_IsShaken()
         {
             // 4 models: 2 cross the dangerous zone (and die to it), 2 move clear — leaving the unit at
             // half strength before the morale test.
@@ -40,9 +41,12 @@ namespace FDG.Tests
 
             await RunStage(unit, paths, dieValue: 1);
 
-            Assert.That(unit.GetValue().GetIsDead(), Is.True, "reduced to half by terrain, then failed morale → Routed.");
-            Assert.That(clear1.GetValue().GetIsAlive(), Is.False,
-                "a model that never crossed dangerous terrain is dead → it was killed by the Rout, not the terrain.");
+            Assert.That(unit.GetValue().GetIsAlive(), Is.True,
+                "reduced to half by terrain, then failed morale → Shaken, not Routed (terrain morale never Routs).");
+            Assert.That(unit.GetValue().Tokens.HasToken(Rules.Foundation.TokenType.Shaken), Is.True,
+                "the unit that failed its terrain-driven morale test is Shaken.");
+            Assert.That(clear1.GetValue().GetIsAlive(), Is.True,
+                "a model that never crossed dangerous terrain stays alive — nothing Routs the unit.");
         }
 
         [Test]

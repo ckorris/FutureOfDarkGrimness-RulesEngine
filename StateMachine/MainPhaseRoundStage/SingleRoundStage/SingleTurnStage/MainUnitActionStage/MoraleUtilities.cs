@@ -21,6 +21,11 @@ namespace FDG.Stages
         // Fearless's second-chance die passes on a 4+ regardless of Quality (rulebook fixed threshold).
         private const int FEARLESS_REROLL_PASSES_ON = 4;
 
+        // On-screen banner colours for the two failed-morale outcomes: amber for Shaken (a warning, like
+        // the Ambush-arrival / objective banners), red for a Rout (a death).
+        private static readonly TextColor ShakenBannerColor = new TextColor(255, 170, 60, 255);
+        private static readonly TextColor RoutBannerColor = new TextColor(220, 40, 40, 255);
+
         /// <summary>The result of a morale test: whether it passed, the (post-modifier, clamped) roll it
         /// needed, and whether it only passed via a granted re-roll (Fearless) — the last two for logging.</summary>
         public readonly struct MoraleTestOutcome
@@ -48,6 +53,15 @@ namespace FDG.Stages
         /// </summary>
         public static async Task<MoraleTestOutcome> TakeMoraleTest(IGameContext gameContext, IUnit testingUnit, int baseRollNeeded)
         {
+            // A Shaken unit always fails its morale tests (GF v3.5.1) — no die is rolled. This is what
+            // escalates a Shaken unit that loses a later melee at half strength into a Rout, and keeps an
+            // already-Shaken unit Shaken on any other failed test. Checked before the roll so a lucky die
+            // can't rescue it.
+            if (testingUnit.Tokens.HasToken(TokenType.Shaken))
+            {
+                return new MoraleTestOutcome(passed: false, baseRollNeeded, passedViaReroll: false);
+            }
+
             IReadOnlyList<RuleOperation> preTestOps = gameContext.RuleEvaluator.EvaluateAll(
                 new PreMoraleTestContext(testingUnit), (testingUnit, ERuleSeat.Actor, null));
             RollModifierSink modifiers = new RollModifierSink();
@@ -101,10 +115,11 @@ namespace FDG.Stages
 
         /// <summary>
         /// Resolve a wound-driven morale test (shooting, dangerous terrain): if the unit was just
-        /// reduced to half strength or less, it tests, and a failure Routs it (it is at half strength by
-        /// construction). Returns null if no test was taken (still above half, or destroyed outright),
-        /// true if passed, false if failed and Routed. Logging is left to the caller, which knows the
-        /// wound source.
+        /// reduced to half strength or less, it tests, and a failure makes it Shaken. A failed non-melee
+        /// morale test never Routs — Rout is a melee-only result (GF v3.5.1: the general morale rule says
+        /// a failed test makes a unit Shaken; only the melee-results rule routs a loser at half strength).
+        /// Returns null if no test was taken (still above half, or destroyed outright), true if passed,
+        /// false if failed and Shaken. Logging is left to the caller, which knows the wound source.
         /// </summary>
         public static async Task<bool?> ResolveWoundDrivenMorale(IGameContext gameContext, DataBinding<UnitData> unitBinding,
             float remainingWoundsBefore)
@@ -116,24 +131,21 @@ namespace FDG.Stages
             // #006: a living joined hero takes morale on behalf of the unit (its Quality).
             if ((await TakeMoraleTest(gameContext, unit, HeroStatRules.GetMoraleQuality(unitBinding.GetValue()))).Passed) return true;
 
-            await RoutWithPresentation(gameContext, unitBinding);
+            await ApplyShakenWithPresentation(gameContext, unitBinding);
             return false;
         }
 
         /// <summary>
-        /// Apply a failed morale test's consequence: the unit is Routed if it is at half strength or
-        /// less, otherwise it becomes Shaken.
+        /// Mark a unit Shaken as the consequence of a failed morale test, and announce it on-screen with
+        /// a <see cref="BannerBeat"/>. Used by every failed-morale path except a melee loser at half
+        /// strength (which Routs instead — see <see cref="RoutWithPresentation"/>). Idempotent on the
+        /// token; the banner still fires so a repeat failure is visible.
         /// </summary>
-        public static void ApplyFailedMoraleOutcome(DataBinding<UnitData> unitBinding)
+        public static async Task ApplyShakenWithPresentation(IGameContext gameContext, DataBinding<UnitData> unitBinding)
         {
-            if (unitBinding.GetValue().GetIsAtHalfStrength())
-            {
-                Rout(unitBinding);
-            }
-            else
-            {
-                ApplyShaken(unitBinding);
-            }
+            ApplyShaken(unitBinding);
+            await gameContext.Presenter.Present(
+                new BannerBeat($"{unitBinding.GetValue().Name} fails morale — Shaken!", ShakenBannerColor));
         }
 
         /// <summary>
@@ -172,17 +184,25 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// <see cref="Rout"/> plus presentation: deals the lethal wounds, then emits one
+        /// <see cref="Rout"/> plus presentation: announces the rout on-screen with a <see cref="BannerBeat"/>
+        /// while the models are still standing, then deals the lethal wounds and emits one
         /// <see cref="UnitRoutedBeat"/> so the front-end plays every routed model's death animation at
-        /// once (rather than the one-at-a-time sequence individual death beats would produce). No beat is
-        /// emitted if nothing was alive to kill.
+        /// once (rather than the one-at-a-time sequence individual death beats would produce). Returns
+        /// early (no banner, no beat) if the unit has nothing alive to rout.
         /// </summary>
         public static async Task RoutWithPresentation(IGameContext gameContext, DataBinding<UnitData> unitBinding)
         {
+            UnitData unit = unitBinding.GetValue();
+            if (!unit.GetIsAlive()) return;   // nothing to rout — don't announce a phantom rout
+
+            // Banner first, before Rout deals the lethal wounds, so the announcement plays over the
+            // still-living unit and the death animation follows it rather than firing on empty bases.
+            await gameContext.Presenter.Present(
+                new BannerBeat($"{unit.Name} fails morale — Routed!", RoutBannerColor));
+
             IReadOnlyList<IModel> killed = Rout(unitBinding);
             if (killed.Count == 0) return;
 
-            UnitData unit = unitBinding.GetValue();
             List<RoutedModel> deaths = new List<RoutedModel>(killed.Count);
             foreach (IModel model in killed)
                 deaths.Add(new RoutedModel(model.ID, model.Position));

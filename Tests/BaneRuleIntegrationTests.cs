@@ -55,6 +55,21 @@ namespace FDG.Tests
                 "without Bane the saved 6s stand; only the original failed save lands.");
         }
 
+        // Lacerate is Bane's save-reroll facet without the Regeneration-ignore, so it produces the same
+        // reroll-saved-6s-into-wounds outcome on this Regeneration-free defender.
+        [Test]
+        public async Task LacerateAttacker_RerollsSavedSixesIntoExtraWounds()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            attacker.GetValue().AttachRuleDefinition(new ResolvedRule("Lacerate", CoreRuleCatalog.Lacerate));
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 5);
+
+            await RunStage(attacker, defender);
+
+            Assert.That(_requester.Captured!.TotalWoundsToAssign, Is.EqualTo(2f).Within(0.0001f),
+                "Lacerate re-rolls the two saved 6s, adding one expected failure to the original wound.");
+        }
+
         private async Task RunStage(DataBinding<UnitData> attacker, DataBinding<UnitData> defender)
         {
             var stage = new AssignWoundsStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>());

@@ -28,6 +28,7 @@ public static class CoreRuleCatalog
         FuriousBuff, Mend, Immobile, Caster,
         Evasive, MeleeEvasion, Precise, GoodShot,
         Agile, Quick, RapidAdvance, RapidRush, RapidCharge,
+        Lacerate, Crack, CounterAttack,
     };
 
     /// <summary>
@@ -454,6 +455,23 @@ public static class CoreRuleCatalog
         Array.Empty<ActivatedAbility>(),
         ERuleScope.Weapon);
 
+    /// <summary>
+    /// Counter-Attack: this unit strikes first when charged — Counter's strikes-first facet alone, without
+    /// the impact-dice reduction. Fires <see cref="Effect.StrikeFirst"/> at
+    /// <see cref="EHookID.Melee_OnCounterTrigger"/> on the Subject (the charged unit), so
+    /// DetermineStrikeOrderStage swaps it to swing first. Unit-scoped (no per-weapon facet).
+    /// </summary>
+    public static SpecialRuleDefinition CounterAttack { get; } = new SpecialRuleDefinition("Counter-Attack",
+        new[]
+        {
+            new HookEntry(EHookID.Melee_OnCounterTrigger,
+                new Condition.Always(),
+                new Effect.StrikeFirst(),
+                ELifetime.ThisActivation,
+                ERuleSeat.Subject),
+        },
+        Array.Empty<ActivatedAbility>());
+
     // Melee-resolution (DetermineMeleeWinnerStage) -------------------------------
 
     /// <summary>
@@ -558,6 +576,22 @@ public static class CoreRuleCatalog
         ERuleScope.Weapon);
 
     /// <summary>
+    /// Crack: an unmodified 6 to hit gives the attack AP(+2) — modelled as -2 to the defender's save,
+    /// carried hit-roll-complete → save stage by the same machinery as <see cref="Rending"/>, at half the
+    /// AP and without Rending's Regeneration-ignore.
+    /// </summary>
+    public static SpecialRuleDefinition Crack { get; } = new SpecialRuleDefinition("Crack",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnHitRollComplete,
+                new Condition.UnmodifiedRollEquals(6),
+                new Effect.RollModifier(ERollKind.Save, Delta: -2),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>(),
+        ERuleScope.Weapon);
+
+    /// <summary>
     /// Attacker: the defender must re-roll unmodified Defense 6s (turning saved 6s into possible
     /// failures), and the attack ignores Regeneration. Both facets ride the save-complete evaluation.
     /// </summary>
@@ -571,6 +605,21 @@ public static class CoreRuleCatalog
             new HookEntry(EHookID.Shooting_OnSaveRollComplete,
                 new Condition.Always(),
                 new Effect.IgnoreRule("Regeneration"),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>(),
+        ERuleScope.Weapon);
+
+    /// <summary>
+    /// Lacerate: when attacking, the defender must re-roll unmodified Defense 6s — <see cref="Bane"/>'s
+    /// save-reroll facet without the Regeneration-ignore. Rides the save-complete evaluation.
+    /// </summary>
+    public static SpecialRuleDefinition Lacerate { get; } = new SpecialRuleDefinition("Lacerate",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnSaveRollComplete,
+                new Condition.Always(),
+                new Effect.Reroll(ERollKind.Save, new RerollCondition.OnUnmodifiedValue()),
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>(),

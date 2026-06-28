@@ -67,6 +67,23 @@ namespace FDG.Tests
             Assert.That(context.DefendingUnit.GetValue(), Is.SameAs(defender.GetValue()));
         }
 
+        // Counter-Attack is Counter's strikes-first facet alone (no impact-dice reduction), so a charged
+        // Counter-Attack unit gets the same role swap — it swings first.
+        [Test]
+        public async Task ChargedCounterAttackUnit_StrikesFirst_RolesSwapped()
+        {
+            DataBinding<UnitData> charger = MakeUnit(modelCount: 3);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 5);
+            defender.GetValue().AttachRuleDefinition(new ResolvedRule("Counter-Attack", CoreRuleCatalog.CounterAttack));
+
+            var context = await RunStage(charger, defender);
+
+            Assert.That(context.AttackingUnit.GetValue(), Is.SameAs(defender.GetValue()),
+                "Counter-Attack: the charged unit strikes first via the same role swap as Counter.");
+            Assert.That(context.DefendingUnit.GetValue(), Is.SameAs(charger.GetValue()),
+                "the charger becomes the defender, offered the strike-back.");
+        }
+
         private async Task<CombatActionContext> RunStage(DataBinding<UnitData> charger, DataBinding<UnitData> defender)
         {
             var stage = new DetermineStrikeOrderStage(_ctx, new NoOpLayer<ICombatActionContext>());

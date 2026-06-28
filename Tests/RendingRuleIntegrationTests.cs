@@ -61,6 +61,26 @@ namespace FDG.Tests
             }
         }
 
+        // Crack is Rending's AP-on-6 facet at half strength (AP(+2) = -2 to save) and without the
+        // Regeneration-ignore: a natural 6 to hit raises the save threshold by 2 (4 → 6).
+        [Test]
+        public async Task CrackAttacker_OnNatural6_RaisesSaveThresholdByTwo()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(DefenderPos);
+            attacker.GetValue().AttachRuleDefinition(new ResolvedRule("Crack", CoreRuleCatalog.Crack));
+
+            RollToHitResults hits = await RunHitStage(attacker, defender);
+            Assert.That(hits.SaveModifier, Is.EqualTo(-2), "Crack queues a -2 save modifier (AP+2) on a natural 6 to hit.");
+
+            DetermineSaveRollNeededResults saves = await RunSaveNeededStage(attacker, defender, hits);
+            foreach (PendingSaveRolls pending in saves.PendingSaveRollsList)
+            {
+                Assert.That(pending.SaveNeeded, Is.EqualTo(6),
+                    "base defense 4 + 2 from Crack's AP = save threshold 6.");
+            }
+        }
+
         private async Task<RollToHitResults> RunHitStage(DataBinding<UnitData> attacker, DataBinding<UnitData> defender)
         {
             var stage = new RollToHitStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>());

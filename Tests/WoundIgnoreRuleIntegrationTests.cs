@@ -63,18 +63,52 @@ namespace FDG.Tests
                 "Unstoppable suppresses Regeneration end-to-end; the full wound count is assigned.");
         }
 
+        // #093 combat-kind threaded into the save context: "Unstoppable when shooting" suppresses
+        // Regeneration on a shooting attack (Not(IsMelee) holds), so all wounds land.
+        [Test]
+        public async Task UnstoppableWhenShootingAttacker_Shooting_SuppressesRegeneration()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            AttachRule(attacker, "Unstoppable when shooting", CoreRuleCatalog.UnstoppableWhenShooting);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 5);
+            AttachRule(defender, "Regeneration", CoreRuleCatalog.Regeneration);
+
+            await RunStage(attacker, defender, failedSaves: 3); // shooting
+
+            Assert.That(_requester.Captured!.TotalWoundsToAssign, Is.EqualTo(3f).Within(0.0001f),
+                "shooting: the gate holds, Regeneration is suppressed, all three wounds land.");
+        }
+
+        // In melee the gate (Not(IsMelee)) fails, so the suppression does NOT fire and Regeneration ignores
+        // a third — proving IsMelee now reaches the save-complete evaluation.
+        [Test]
+        public async Task UnstoppableWhenShootingAttacker_Melee_DoesNotSuppress()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            AttachRule(attacker, "Unstoppable when shooting", CoreRuleCatalog.UnstoppableWhenShooting);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 5);
+            AttachRule(defender, "Regeneration", CoreRuleCatalog.Regeneration);
+
+            await RunStage(attacker, defender, failedSaves: 3, isMelee: true);
+
+            Assert.That(_requester.Captured!.TotalWoundsToAssign, Is.EqualTo(2f).Within(0.0001f),
+                "melee: the gate fails, Regeneration is not suppressed and ignores a third (3 → 2).");
+        }
+
         private static void AttachRule(DataBinding<UnitData> unit, string name, SpecialRuleDefinition definition)
             => unit.GetValue().AttachRuleDefinition(
                 new ResolvedRule(name, definition, System.Array.Empty<RuleArgument>()));
 
-        private async Task RunStage(DataBinding<UnitData> attacker, DataBinding<UnitData> defender, int failedSaves)
+        private async Task RunStage(DataBinding<UnitData> attacker, DataBinding<UnitData> defender,
+            int failedSaves, bool isMelee = false)
         {
             var layer = new NoOpLayer<ICombatMetadata>();
             var stage = new AssignWoundsStage<ICombatMetadata>(_ctx, layer);
             stage.NextStage.Bind("done");
 
             var weapon = new Weapon("Test", rangeInches: 48f, attacks: 1, armorPenetration: 0);
-            var metadata = new CombatMetadata(_ctx, attacker, defender, weapon, weaponCount: 1);
+            var metadata = new CombatMetadata(_ctx, attacker, defender, weapon, weaponCount: 1,
+                attackerMoved: false, isMelee: isMelee);
 
             // One FailedSaveInfo per wound (SaveCount == its dice TotalRolls == 1).
             var failedList = new List<FailedSaveInfo>();

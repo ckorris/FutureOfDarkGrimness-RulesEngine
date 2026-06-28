@@ -120,6 +120,37 @@ namespace FDG.Tests
             Assert.That(_requester.Captured!.TotalWoundsToAssign, Is.EqualTo(2f));
         }
 
+        // #093: "Shred when shooting" adds its wounds on a shooting attack (the Not(IsMelee) gate holds) —
+        // 2 unmodified-1 blocks → +2 → 4, like Shred.
+        [Test]
+        public async Task ShredWhenShootingAttacker_Shooting_AddsWounds()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            attacker.GetValue().AttachRuleDefinition(
+                new ResolvedRule("Shred when shooting", CoreRuleCatalog.ShredWhenShooting));
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 5);
+
+            await RunStage(attacker, defender, failedSaves: 2); // shooting
+
+            Assert.That(_requester.Captured!.TotalWoundsToAssign, Is.EqualTo(4f),
+                "shooting: the gate holds, Shred adds +2 → 4 total.");
+        }
+
+        // In melee the gate fails, so no extra wounds are injected — the two failed saves stay two wounds.
+        [Test]
+        public async Task ShredWhenShootingAttacker_Melee_NoExtraWounds()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            attacker.GetValue().AttachRuleDefinition(
+                new ResolvedRule("Shred when shooting", CoreRuleCatalog.ShredWhenShooting));
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 5);
+
+            await RunStage(attacker, defender, failedSaves: 2, isMelee: true);
+
+            Assert.That(_requester.Captured!.TotalWoundsToAssign, Is.EqualTo(2f),
+                "melee: the gate fails, no Shred wounds are added.");
+        }
+
         // Regression for the single-living-model auto-resolve branch: a lone multi-wound model (Tough) taking
         // a sub-lethal hit must be assigned the wounds actually DEALT, not its full remaining health. The
         // branch used to assign defenderRemainingWounds, instantly killing any Tough monster that took even
@@ -142,14 +173,16 @@ namespace FDG.Tests
                 "the lone Tough model survives a sub-lethal hit.");
         }
 
-        private async Task<CombatMetadata> RunStage(DataBinding<UnitData> attacker, DataBinding<UnitData> defender, int failedSaves)
+        private async Task<CombatMetadata> RunStage(DataBinding<UnitData> attacker, DataBinding<UnitData> defender,
+            int failedSaves, bool isMelee = false)
         {
             var layer = new NoOpLayer<ICombatMetadata>();
             var stage = new AssignWoundsStage<ICombatMetadata>(_ctx, layer);
             stage.NextStage.Bind("done");
 
             var weapon = new Weapon("Test", rangeInches: 48f, attacks: 1, armorPenetration: 0);
-            var metadata = new CombatMetadata(_ctx, attacker, defender, weapon, weaponCount: 1);
+            var metadata = new CombatMetadata(_ctx, attacker, defender, weapon, weaponCount: 1,
+                attackerMoved: false, isMelee: isMelee);
 
             // One FailedSaveInfo per wound (SaveCount == its dice TotalRolls == 1).
             var failedList = new List<FailedSaveInfo>();

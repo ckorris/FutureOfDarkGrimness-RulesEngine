@@ -38,7 +38,7 @@ namespace FDG.Stages
             // evaluator's suppression first-pass can cancel Regeneration before its op is folded. The
             // resulting queue feeds the reroll (below, before Deadly) and the wound-ignore (after Deadly).
             IReadOnlyList<RuleOperation> saveCompleteOperations = GameContext.RuleEvaluator.EvaluateAll(
-                new SaveRollCompleteContext(attacker, defender, CombineSaveRolls(rollToSaveResults)),
+                new SaveRollCompleteContext(attacker, defender, CombineSaveRolls(rollToSaveResults), metaData.IsMelee),
                 (attacker, ERuleSeat.Actor, metaData.WeaponType),
                 (defender, ERuleSeat.Subject, null));
 

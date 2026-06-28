@@ -10,10 +10,15 @@ namespace FDG.Rules.Dispatch.Contexts
     /// e.g. Bane re-rolling unmodified Defense 6s, read <c>UnmodifiedSaveRolls.At(6)</c>
     /// and stay correct under the probabilistic roller). Attacker is the source of
     /// the attack; Defender holds the saves.
+    ///
+    /// <see cref="IsMelee"/> distinguishes the shooting and melee uses of this hook
+    /// (the save flow is shared) so combat-kind-gated save-side rules (e.g. a
+    /// "when shooting" Shred/Bane/Unstoppable variant) can read <c>Not(IsMelee)</c>
+    /// — the same threading <see cref="HitRollCompleteContext"/> has on the hit side.
     /// </summary>
     public sealed record SaveRollCompleteContext(
-        IUnit Attacker, IUnit Defender, IDiceResults UnmodifiedSaveRolls)
-        : IHookContext, IHasTarget, IHasUnmodifiedSaveRolls
+        IUnit Attacker, IUnit Defender, IDiceResults UnmodifiedSaveRolls, bool IsMelee = false)
+        : IHookContext, IHasTarget, IHasUnmodifiedSaveRolls, IHasCombatKind
     {
         public EHookID Hook => EHookID.Shooting_OnSaveRollComplete;
 

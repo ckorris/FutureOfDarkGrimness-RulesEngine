@@ -29,6 +29,7 @@ public static class CoreRuleCatalog
         Evasive, MeleeEvasion, Precise, GoodShot,
         Agile, Quick, RapidAdvance, RapidRush, RapidCharge,
         Lacerate, Crack, CounterAttack,
+        UnstoppableWhenShooting, ShredWhenShooting, BaneWhenShooting,
     };
 
     /// <summary>
@@ -624,6 +625,54 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>(),
         ERuleScope.Weapon);
+
+    // Combat-kind-scoped variants (#093) -----------------------------------------
+    // A base save-side rule gated to shooting via Not(IsMelee), now that IsMelee is threaded into
+    // SaveRollCompleteContext. These are the named rules the "X when shooting" spell grants (and units)
+    // resolve to. The "in melee" mirror is the same with Condition.IsMelee().
+
+    /// <summary> Unstoppable on shooting attacks only: ignores Regeneration when shooting (Not melee). </summary>
+    public static SpecialRuleDefinition UnstoppableWhenShooting { get; } =
+        new SpecialRuleDefinition("Unstoppable when shooting",
+            new[]
+            {
+                new HookEntry(EHookID.Shooting_OnSaveRollComplete,
+                    new Condition.Not(new Condition.IsMelee()),
+                    new Effect.IgnoreRule("Regeneration"),
+                    ELifetime.ThisAttack),
+            },
+            Array.Empty<ActivatedAbility>(),
+            ERuleScope.Weapon);
+
+    /// <summary> Shred on shooting attacks only: +1 wound per unmodified save of 1 when shooting. </summary>
+    public static SpecialRuleDefinition ShredWhenShooting { get; } =
+        new SpecialRuleDefinition("Shred when shooting",
+            new[]
+            {
+                new HookEntry(EHookID.Shooting_OnSaveRollComplete,
+                    new Condition.Not(new Condition.IsMelee()),
+                    new Effect.AddExtraWound(OnRollValue: 1),
+                    ELifetime.ThisAttack),
+            },
+            Array.Empty<ActivatedAbility>(),
+            ERuleScope.Weapon);
+
+    /// <summary> Bane on shooting attacks only: defender re-rolls unmodified Defense 6s + ignore Regeneration, when shooting. </summary>
+    public static SpecialRuleDefinition BaneWhenShooting { get; } =
+        new SpecialRuleDefinition("Bane when shooting",
+            new[]
+            {
+                new HookEntry(EHookID.Shooting_OnSaveRollComplete,
+                    new Condition.Not(new Condition.IsMelee()),
+                    new Effect.Reroll(ERollKind.Save, new RerollCondition.OnUnmodifiedValue()),
+                    ELifetime.ThisAttack),
+                new HookEntry(EHookID.Shooting_OnSaveRollComplete,
+                    new Condition.Not(new Condition.IsMelee()),
+                    new Effect.IgnoreRule("Regeneration"),
+                    ELifetime.ThisAttack),
+            },
+            Array.Empty<ActivatedAbility>(),
+            ERuleScope.Weapon);
 
     // Wound-injection sink (AssignWoundsStage) -----------------------------------
 

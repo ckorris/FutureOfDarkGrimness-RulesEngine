@@ -41,6 +41,10 @@ namespace FDG.Stages
                 }
                 case Effect.TriggeredMove move:
                     return $"moves the target up to {Inches(move.MaxInches)}\"";
+                case Effect.MoraleTestThen conditional:
+                    return $"morale test; on a fail, {DescribeEffect(conditional.OnFailure)}";
+                case Effect.ApplyFatigue:
+                    return "becomes fatigued";
                 default:
                     return "applies an effect";
             }

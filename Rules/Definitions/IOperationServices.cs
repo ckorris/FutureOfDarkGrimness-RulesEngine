@@ -7,9 +7,10 @@ namespace FDG.Rules.Definitions;
 /// (movement, and later reactivation / deal-hits) without the Definitions layer depending on the
 /// engine assembly; the concrete implementation lives engine-side.
 /// <para>
-/// Members are added one at a time as imperative operations are wired. Only
-/// <see cref="MoveUnit"/> exists so far (<see cref="RuleOperation.InvokeTriggeredMove"/>);
-/// reactivation and deal-hits add their members when those slices land.
+/// Members are added one at a time as imperative operations are wired. <see cref="MoveUnit"/>
+/// (<see cref="RuleOperation.InvokeTriggeredMove"/>) and <see cref="ApplyFatigue"/>
+/// (<see cref="RuleOperation.InvokeApplyFatigue"/>) exist so far; reactivation and deal-hits add
+/// their members when those slices land.
 /// </para>
 /// </summary>
 public interface IOperationServices
@@ -24,4 +25,11 @@ public interface IOperationServices
     /// <see cref="RuleOperation.InvokeTriggeredMove"/>.
     /// </summary>
     Task MoveUnit(IUnit unit, float maxInches, bool isOptional, PlayerID? controller = null);
+
+    /// <summary>
+    /// Fatigue <paramref name="unit"/> for the rest of the round (the #020 melee penalty). Resolution of
+    /// <see cref="RuleOperation.InvokeApplyFatigue"/>; delegates to the engine's fatigue authority so the
+    /// round-end clear and idempotency live in one place.
+    /// </summary>
+    Task ApplyFatigue(IUnit unit);
 }

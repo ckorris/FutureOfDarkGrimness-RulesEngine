@@ -348,6 +348,90 @@ namespace FDG.Tests
                 "casting spent the spell's 1-token cost");
         }
 
+        // #034 conditional/triggered (primitive #5) — Deep Hypnosis shape: the target takes a morale test and,
+        // on a FAIL, the caster moves it. A Quality-6 target + a fixed face of 4 makes the cast succeed
+        // (4 >= 4) while the morale test fails (4 < 6), so the on-fail TriggeredMove fires, caster-directed.
+        [Test]
+        public async Task CastSpellStage_ConditionalSpell_FailedMorale_CasterMovesEnemy()
+        {
+            var enemyPlayer = new PlayerID(System.Guid.NewGuid());
+            var requester = new CannedForcedMoveRequester(dx: 3f, dz: 0f);
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedFaceDiceRoller(4));
+
+            RuntimeSpell hypnosis = new RuntimeSpell(
+                new SpellDefinition("Deep Hypnosis", 2,
+                    new TargetSelector(18f, 1, 1, ETargetAffinity.Foe, RequireLineOfSight: false),
+                    new Effect.MoraleTestThen(new Effect.TriggeredMove(MaxInches: 6f, IsOptional: false))),
+                System.Array.Empty<ResolvedRule>());
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
+                new[] { hypnosis }, new Position(10f, 10f));
+            DataBinding<UnitData> enemy = MakeEnemyUnit(enemyPlayer, new Position(12f, 10f), quality: 6);
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Assert.That(requester.Captured, Is.Not.Null,
+                "the failed morale test triggered the on-fail forced move");
+            Assert.That(requester.Captured!.TargetPlayerID, Is.EqualTo(_player),
+                "the caster directs the on-fail move, not the displaced enemy");
+            Position moved = enemy.GetValue().ModelBindings[0].GetValue().PositionBinding.GetValue();
+            Assert.That(moved.x, Is.EqualTo(15f).Within(0.001f), "the enemy was displaced +3\" on a failed test");
+        }
+
+        // #034 conditional/triggered — Terrifying Fury shape: morale test; on a FAIL the target becomes
+        // Fatigued (hits only on 6s in melee for the round). Same dice rig: cast passes, morale fails.
+        [Test]
+        public async Task CastSpellStage_ConditionalSpell_FailedMorale_AppliesFatigue()
+        {
+            var enemyPlayer = new PlayerID(System.Guid.NewGuid());
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester(), new FixedFaceDiceRoller(4));
+
+            RuntimeSpell fury = new RuntimeSpell(
+                new SpellDefinition("Terrifying Fury", 1,
+                    new TargetSelector(18f, 1, 1, ETargetAffinity.Foe, RequireLineOfSight: false),
+                    new Effect.MoraleTestThen(new Effect.ApplyFatigue())),
+                System.Array.Empty<ResolvedRule>());
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
+                new[] { fury }, new Position(10f, 10f));
+            DataBinding<UnitData> enemy = MakeEnemyUnit(enemyPlayer, new Position(12f, 10f), quality: 6);
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Assert.That(enemy.GetValue().Tokens.HasToken(TokenType.Fatigued), Is.True,
+                "a failed morale test fatigues the target");
+        }
+
+        // The on-fail effect lands ONLY on a failure: with a fixed face of 6 the Quality-6 target passes its
+        // morale test (cast also passes), so Terrifying Fury leaves it un-fatigued.
+        [Test]
+        public async Task CastSpellStage_ConditionalSpell_PassedMorale_NoEffect()
+        {
+            var enemyPlayer = new PlayerID(System.Guid.NewGuid());
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester(), new FixedFaceDiceRoller(6));
+
+            RuntimeSpell fury = new RuntimeSpell(
+                new SpellDefinition("Terrifying Fury", 1,
+                    new TargetSelector(18f, 1, 1, ETargetAffinity.Foe, RequireLineOfSight: false),
+                    new Effect.MoraleTestThen(new Effect.ApplyFatigue())),
+                System.Array.Empty<ResolvedRule>());
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
+                new[] { fury }, new Position(10f, 10f));
+            DataBinding<UnitData> enemy = MakeEnemyUnit(enemyPlayer, new Position(12f, 10f), quality: 6);
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Assert.That(enemy.GetValue().Tokens.HasToken(TokenType.Fatigued), Is.False,
+                "a passed morale test applies no on-fail effect");
+        }
+
         // #033 Slice B — a stat-modifier buff spell grants the target a numeric roll modifier; reading it for
         // the matching roll yields the delta and (for a "next time" grant) consumes it.
         [Test]
@@ -458,12 +542,12 @@ namespace FDG.Tests
             return binding;
         }
 
-        private DataBinding<UnitData> MakeEnemyUnit(PlayerID enemyPlayer, Position pos)
+        private DataBinding<UnitData> MakeEnemyUnit(PlayerID enemyPlayer, Position pos, int quality = 4)
         {
             var model = new ModelData(0.5f, new List<Weapon>(), pos, _store);
             var modelBindings = new List<DataBinding<ModelData>> { _store.GetDataBinding<ModelData>(_store.Create(model)) };
 
-            var unit = new UnitData(enemyPlayer, "Grunts", quality: 4, defense: 4, modelBindings: modelBindings);
+            var unit = new UnitData(enemyPlayer, "Grunts", quality: quality, defense: 4, modelBindings: modelBindings);
             DataBinding<UnitData> binding = _store.GetDataBinding<UnitData>(_store.Create(unit));
             _store.Create(new ArmyData(enemyPlayer, new List<DataBinding<UnitData>> { binding }));
             return binding;

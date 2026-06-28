@@ -50,6 +50,12 @@ namespace FDG.Stages
             }
         }
 
+        public Task ApplyFatigue(IUnit unit)
+        {
+            FatigueUtilities.ApplyFatigued(unit);
+            return Task.CompletedTask;
+        }
+
         private DataBinding<UnitData> ResolveUnitBinding(IUnit unit)
         {
             foreach (ArmyData army in _gameContext.GameDataStore.GetAllValues<ArmyData>())

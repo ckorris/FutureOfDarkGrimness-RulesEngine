@@ -56,6 +56,8 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(DeferDeployment), "deferDeployment")]
 [JsonDerivedType(typeof(Disembark), "disembark")]
 [JsonDerivedType(typeof(Embark), "embark")]
+[JsonDerivedType(typeof(MoraleTestThen), "moraleTestThen")]
+[JsonDerivedType(typeof(ApplyFatigue), "applyFatigue")]
 
 public abstract record Effect
 {
@@ -606,6 +608,43 @@ public abstract record Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
+        }
+    }
+
+    /// <summary>
+    /// #034 conditional/triggered spell (primitive #5): the target takes a morale test and, only on a
+    /// FAILURE, suffers <see cref="OnFailure"/>. Covers Terrifying Fury ("morale test; if failed, becomes
+    /// fatigued" → <see cref="ApplyFatigue"/>) and Deep Hypnosis ("morale test; if failed, you may move it
+    /// up to 6&quot;" → <see cref="TriggeredMove"/>).
+    ///
+    /// <para>Unlike the flat effects above, the test is an async, presentation-emitting roll against live
+    /// state, so it cannot be expressed as queued operations from a synchronous <see cref="Apply"/>. Like
+    /// <see cref="DealHits"/> (a child pipeline) and <see cref="Disembark"/>/<see cref="Embark"/> (their own
+    /// stages), it is enacted stage-side — <c>CastSpellStage</c> runs <c>MoraleUtilities.TakeMoraleTest</c>
+    /// per target and applies <see cref="OnFailure"/> on a fail. <see cref="Apply"/> is therefore an
+    /// unreachable no-op marker. <see cref="OnFailure"/> is a flat (token/executable) effect; a damage
+    /// on-fail would need the child pipeline, which no corpus conditional spell requires.</para>
+    /// </summary>
+    public sealed record MoraleTestThen(Effect OnFailure) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+        }
+    }
+
+    /// <summary>
+    /// Fatigues the target for the rest of the round — it then hits only on unmodified 6s in melee (the
+    /// #020 fatigue penalty). The wound-side mirror has no analogue; this is the conferred-debuff face of
+    /// the same state melee charging/striking-back already inflicts. Enacted through the
+    /// <c>IOperationServices</c> seam so it routes to the one authority on fatigue
+    /// (<c>FatigueUtilities.ApplyFatigued</c>: round-end clear, idempotent, owner-cleanup-free) rather than
+    /// re-deriving the token here. Covers Terrifying Fury's on-fail branch (#034 #5).
+    /// </summary>
+    public sealed record ApplyFatigue : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.InvokeApplyFatigue(ruleInvocation.EffectiveTarget));
         }
     }
 }

@@ -224,6 +224,24 @@ public abstract record RuleOperation
     public sealed record InvokeReactivate(IUnit Unit) : RuleOperation;
 
     /// <summary>
+    /// Fatigue <see cref="Unit"/> for the rest of the round (the #020 melee penalty: hits only on
+    /// unmodified 6s). Resolution of <see cref="Effect.ApplyFatigue"/>; runs through the engine's fatigue
+    /// authority (<c>FatigueUtilities.ApplyFatigued</c>) via the <see cref="IOperationServices"/> seam.
+    /// </summary>
+    public sealed record InvokeApplyFatigue(IUnit Unit) : ExecutableOperation
+    {
+        public override Task Execute(IOperationServices services)
+        {
+            return services.ApplyFatigue(Unit);
+        }
+
+        public override string Describe()
+        {
+            return "became fatigued";
+        }
+    }
+
+    /// <summary>
     /// Invoke the wound-application flow on <see cref="Target"/> as if from a
     /// weapon with <see cref="Count"/> hits at <see cref="ArmorPenetration"/>, carrying the
     /// rules named in <see cref="WithRules"/>. Resolution of <see cref="Effect.DealHits"/>;

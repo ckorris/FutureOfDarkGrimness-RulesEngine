@@ -242,6 +242,71 @@ namespace FDG.Tests
                 "declining the optional move (zero distance) keeps the round's budget");
         }
 
+        // Boost: with the base rule present, the post-combat move upgrades from 3" to 6". The gate
+        // coalesces the base 3" op and the boost 6" op into a SINGLE 6" move — a 4" submission is legal
+        // (would exceed a 3" budget) and the unit moves exactly once.
+        [Test]
+        public async Task HarassingBoost_UpgradesMoveTo6_WhenUnitHasHarassing()
+        {
+            var requester = new CannedMovePathRequester(dx: 4f, dz: 0f);
+            var ctx = new TriggeredMoveTestContext(_store, requester);
+            DataBinding<UnitData> unit = MakeUnit(new Position(0f, 0f));
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Harassing", CoreRuleCatalog.Harassing));
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Harassing Boost", CoreRuleCatalog.HarassingBoost));
+            IUnit u = unit.GetValue();
+
+            IReadOnlyList<RuleOperation> ops = ctx.RuleEvaluator.EvaluateAll(
+                new PostShootActionContext(u), (u, ERuleSeat.Actor));
+            await PostCombatMoveGate.OfferIfAvailable(ctx, u, ops);
+
+            Assert.That(requester.Captured!.MaxDistanceInches, Is.EqualTo(6f).Within(0.001f),
+                "Harassing Boost coalesces with Harassing into a single 6\" move");
+            AssertModelAt(unit, 0, 4f, 0f); // moved ONCE (not 3"+6")
+        }
+
+        // Boost is inert without the base rule: UnitHasRule(Harassing) fails, so no 6" move — and with no
+        // Harassing there's no 3" move either, so nothing is produced.
+        [Test]
+        public void HarassingBoost_NoMove_WithoutHarassing()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new NullPlayerRequester());
+            DataBinding<UnitData> unit = MakeUnit(new Position(0f, 0f));
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Harassing Boost", CoreRuleCatalog.HarassingBoost));
+            IUnit u = unit.GetValue();
+
+            IReadOnlyList<RuleOperation> ops = ctx.RuleEvaluator.EvaluateAll(
+                new PostShootActionContext(u), (u, ERuleSeat.Actor));
+
+            Assert.That(ops, Is.Empty,
+                "Harassing Boost's UnitHasRule(Harassing) gate fails when the unit lacks Harassing");
+        }
+
+        // Aura: "this model and its unit get X" grants the named family rule unit-wide at creation, and
+        // the granted rule then fires at its hook via the read-back (needs a resolver to resolve the name).
+        [Test]
+        public void HitAndRunShooterAura_GrantsRuleUnitWide_FiresAtPostShootOnly()
+        {
+            var evaluator = new RuleEvaluator(new FixedDiceRoller(4), ruleResolver: CoreRuleCatalog.CreateResolver());
+            DataBinding<UnitData> unit = MakeUnit(new Position(0f, 0f));
+            unit.GetValue().AttachRuleDefinition(
+                new ResolvedRule("Hit & Run Shooter Aura", CoreRuleCatalog.HitAndRunShooterAura));
+            IUnit u = unit.GetValue();
+
+            // The aura grants its rule to the unit at creation.
+            UnitCreationRules.Apply(u, evaluator);
+            Assert.That(u.Tokens.HasToken(TokenType.RuleGrant), Is.True, "aura granted a rule to the unit");
+
+            // The granted Hit & Run Shooter projects via read-back and fires at post-shoot, not melee.
+            IReadOnlyList<RuleOperation> shootOps = evaluator.EvaluateAll(
+                new PostShootActionContext(u), (u, ERuleSeat.Actor));
+            IReadOnlyList<RuleOperation> meleeOps = evaluator.EvaluateAll(
+                new PostMeleeActionContext(u), (u, ERuleSeat.Actor));
+
+            Assert.That(shootOps.Count, Is.EqualTo(1), "granted Hit & Run Shooter fires at post-shoot");
+            Assert.That(shootOps[0], Is.InstanceOf<RuleOperation.InvokeTriggeredMove>());
+            Assert.That(meleeOps, Is.Empty, "Hit & Run Shooter is shooting-only — nothing at post-melee");
+        }
+
         private static List<ModelMoveEntry> TranslatePaths(DataBinding<UnitData> unit, float dx, float dz)
         {
             var entries = new List<ModelMoveEntry>();

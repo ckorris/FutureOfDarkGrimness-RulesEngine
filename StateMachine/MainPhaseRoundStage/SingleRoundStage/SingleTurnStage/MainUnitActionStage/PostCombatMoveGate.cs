@@ -29,9 +29,17 @@ namespace FDG.Stages
         public static async Task OfferIfAvailable(IGameContext gameContext, IUnit unit,
             IReadOnlyList<RuleOperation> operations)
         {
-            // No post-combat-move rule on this unit → nothing produced → nothing to gate.
-            if (operations.Count == 0)
+            // Coalesce the family's move ops into ONE move at the largest budget. A unit that produces
+            // several post-combat moves at this hook — its base rule's 3" plus a Boost's 6", or two stacked
+            // family rules — moves ONCE, at the max; "Boost moves 6" instead of 3"" falls out of the max().
+            // Without this each op would raise its own movement request.
+            List<RuleOperation.InvokeTriggeredMove> moves =
+                operations.OfType<RuleOperation.InvokeTriggeredMove>().ToList();
+
+            // No post-combat move produced (no family rule, or only token ops) → apply any token ops, stop.
+            if (moves.Count == 0)
             {
+                OperationApplier.ApplyTokenOperations(operations);
                 return;
             }
 
@@ -41,12 +49,15 @@ namespace FDG.Stages
                 return;
             }
 
+            RuleOperation.InvokeTriggeredMove bestMove = moves
+                .OrderByDescending(move => move.MaxInches).First();
+
             List<Position> before = SnapshotPositions(unit);
 
-            // Any token ops a future post-combat rule emits are applied separately; OperationExecutor
-            // runs the imperative move (which raises the optional movement request to the unit's owner).
+            // Any token ops a future post-combat rule emits are applied separately; OperationExecutor runs
+            // the single chosen move (which raises the optional movement request to the unit's owner).
             OperationApplier.ApplyTokenOperations(operations);
-            await OperationExecutor.Execute(operations, new GameOperationServices(gameContext));
+            await OperationExecutor.Execute(new RuleOperation[] { bestMove }, new GameOperationServices(gameContext));
 
             if (Moved(unit, before))
             {

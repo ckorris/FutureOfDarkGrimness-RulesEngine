@@ -31,6 +31,8 @@ public static class CoreRuleCatalog
         Lacerate, Crack, CounterAttack,
         UnstoppableWhenShooting, ShredWhenShooting, BaneWhenShooting,
         Harassing, HitAndRunShooter, HitAndRunFighter, HitAndRun, Guerrilla,
+        HarassingBoost, GuerrillaBoost,
+        HitAndRunShooterAura, HitAndRunFighterAura, HarassingBoostAura, GuerrillaBoostAura,
     };
 
     /// <summary>
@@ -925,6 +927,96 @@ public static class CoreRuleCatalog
                 new Condition.Always(),
                 new Effect.TriggeredMove(MaxInches: 3f, IsOptional: true),
                 ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    // Boost variants: "if the unit has the base rule, move 6\" instead of 3\"". Authored as a separate
+    // post-combat-move rule emitting a 6" move gated on UnitHasRule(base); PostCombatMoveGate coalesces it
+    // with the base rule's own 3" move into a SINGLE 6" move (the max budget), so "6 instead of 3" falls
+    // out of the gate's max(). NB UnitHasRule is the unit-level gate the architecture provides — the
+    // corpus wording "if most MODELS have X" is a per-model majority (#093) not distinguished here, in
+    // keeping with the catalog treating "units where all models have this rule" rules as unit-level.
+
+    /// <summary>
+    /// Harassing Boost: if the unit has <see cref="Harassing"/>, its post-combat move is 6" instead of 3".
+    /// </summary>
+    public static SpecialRuleDefinition HarassingBoost { get; } = new SpecialRuleDefinition("Harassing Boost",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnPostShoot,
+                new Condition.UnitHasRule("Harassing"),
+                new Effect.TriggeredMove(MaxInches: 6f, IsOptional: true),
+                ELifetime.ThisAttack),
+            new HookEntry(EHookID.Melee_OnPostMelee,
+                new Condition.UnitHasRule("Harassing"),
+                new Effect.TriggeredMove(MaxInches: 6f, IsOptional: true),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary>
+    /// Guerrilla Boost: if the unit has <see cref="Guerrilla"/>, its post-combat move is 6" instead of 3".
+    /// </summary>
+    public static SpecialRuleDefinition GuerrillaBoost { get; } = new SpecialRuleDefinition("Guerrilla Boost",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnPostShoot,
+                new Condition.UnitHasRule("Guerrilla"),
+                new Effect.TriggeredMove(MaxInches: 6f, IsOptional: true),
+                ELifetime.ThisAttack),
+            new HookEntry(EHookID.Melee_OnPostMelee,
+                new Condition.UnitHasRule("Guerrilla"),
+                new Effect.TriggeredMove(MaxInches: 6f, IsOptional: true),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    // Aura variants: "this model and its unit get X". Authored as Effect.Aura(X) at unit creation — the
+    // grant projects unit-wide via the read-back (RuleEvaluator.CollectGrantedRules), so the granted family
+    // rule fires at the post-combat hooks for the whole unit. Each granted rule is itself cataloged above,
+    // so the resolver can resolve it by name. (First production uses of Effect.Aura.)
+
+    /// <summary> Hit &amp; Run Shooter Aura: this model and its unit gain <see cref="HitAndRunShooter"/>. </summary>
+    public static SpecialRuleDefinition HitAndRunShooterAura { get; } = new SpecialRuleDefinition("Hit & Run Shooter Aura",
+        new[]
+        {
+            new HookEntry(EHookID.Lifecycle_OnUnitCreated,
+                new Condition.Always(),
+                new Effect.Aura("Hit & Run Shooter"),
+                ELifetime.UntilEndOfGame),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary> Hit &amp; Run Fighter Aura: this model and its unit gain <see cref="HitAndRunFighter"/>. </summary>
+    public static SpecialRuleDefinition HitAndRunFighterAura { get; } = new SpecialRuleDefinition("Hit & Run Fighter Aura",
+        new[]
+        {
+            new HookEntry(EHookID.Lifecycle_OnUnitCreated,
+                new Condition.Always(),
+                new Effect.Aura("Hit & Run Fighter"),
+                ELifetime.UntilEndOfGame),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary> Harassing Boost Aura: this model and its unit gain <see cref="HarassingBoost"/>. </summary>
+    public static SpecialRuleDefinition HarassingBoostAura { get; } = new SpecialRuleDefinition("Harassing Boost Aura",
+        new[]
+        {
+            new HookEntry(EHookID.Lifecycle_OnUnitCreated,
+                new Condition.Always(),
+                new Effect.Aura("Harassing Boost"),
+                ELifetime.UntilEndOfGame),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary> Guerrilla Boost Aura: this model and its unit gain <see cref="GuerrillaBoost"/>. </summary>
+    public static SpecialRuleDefinition GuerrillaBoostAura { get; } = new SpecialRuleDefinition("Guerrilla Boost Aura",
+        new[]
+        {
+            new HookEntry(EHookID.Lifecycle_OnUnitCreated,
+                new Condition.Always(),
+                new Effect.Aura("Guerrilla Boost"),
+                ELifetime.UntilEndOfGame),
         },
         Array.Empty<ActivatedAbility>());
 

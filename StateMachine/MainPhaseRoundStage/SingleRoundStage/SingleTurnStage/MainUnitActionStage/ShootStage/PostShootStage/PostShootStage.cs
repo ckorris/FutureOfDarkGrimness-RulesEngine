@@ -37,10 +37,9 @@ namespace FDG.Stages
             IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
                 new PostShootActionContext(unit), (unit, ERuleSeat.Actor));
 
-            // OperationExecutor runs only the imperative ExecutableOperations (the triggered move);
-            // any token ops a future post-shoot rule emits are applied separately, mirroring DeployUnitStage.
-            OperationApplier.ApplyTokenOperations(operations);
-            await OperationExecutor.Execute(operations, new GameOperationServices(GameContext));
+            // The gate enacts the triggered move (if the unit has a post-shoot rule and hasn't already
+            // moved this round) and enforces the family's once-per-round budget — see PostCombatMoveGate.
+            await PostCombatMoveGate.OfferIfAvailable(GameContext, unit, operations);
 
             await ToFinished.Activate(context);
         }

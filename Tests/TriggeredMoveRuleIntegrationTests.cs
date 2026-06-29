@@ -199,6 +199,49 @@ namespace FDG.Tests
             Assert.That(requester.Captured, Is.Null, "no movement-path request is issued");
         }
 
+        // The once-per-round gate: a unit's post-combat move is spent for the round when it actually
+        // repositions, and the budget is SHARED across the shooting and melee triggers (Hit & Run is
+        // "once per round after shooting OR melee"). Drives PostCombatMoveGate directly.
+        [Test]
+        public async Task PostCombatMove_OncePerRound_SharedAcrossShootAndMelee()
+        {
+            var requester = new CannedMovePathRequester(dx: 2f, dz: 0f);
+            var ctx = new TriggeredMoveTestContext(_store, requester);
+            DataBinding<UnitData> unit = MakeUnit(new Position(0f, 0f));
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Hit & Run", CoreRuleCatalog.HitAndRun));
+            IUnit u = unit.GetValue();
+
+            // First trigger (after shooting): moves and spends the round's budget.
+            await PostCombatMoveGate.OfferIfAvailable(ctx, u, ctx.RuleEvaluator.EvaluateAll(
+                new PostShootActionContext(u), (u, ERuleSeat.Actor)));
+            AssertModelAt(unit, 0, 2f, 0f);
+            Assert.That(u.Tokens.HasToken(TokenType.PostCombatMoveUsed), Is.True,
+                "moving after shooting spends the once-per-round post-combat move");
+
+            // Second trigger same round (after melee): gated — the unit does NOT move again.
+            await PostCombatMoveGate.OfferIfAvailable(ctx, u, ctx.RuleEvaluator.EvaluateAll(
+                new PostMeleeActionContext(u), (u, ERuleSeat.Actor)));
+            AssertModelAt(unit, 0, 2f, 0f);
+        }
+
+        // Declining the optional move (a zero-distance submission) must NOT burn the round's budget —
+        // the unit can still move after a later combat that round.
+        [Test]
+        public async Task PostCombatMove_DeclinedMove_KeepsBudget()
+        {
+            var requester = new CannedMovePathRequester(dx: 0f, dz: 0f); // zero move = decline
+            var ctx = new TriggeredMoveTestContext(_store, requester);
+            DataBinding<UnitData> unit = MakeUnit(new Position(0f, 0f));
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Hit & Run", CoreRuleCatalog.HitAndRun));
+            IUnit u = unit.GetValue();
+
+            await PostCombatMoveGate.OfferIfAvailable(ctx, u, ctx.RuleEvaluator.EvaluateAll(
+                new PostShootActionContext(u), (u, ERuleSeat.Actor)));
+
+            Assert.That(u.Tokens.HasToken(TokenType.PostCombatMoveUsed), Is.False,
+                "declining the optional move (zero distance) keeps the round's budget");
+        }
+
         private static List<ModelMoveEntry> TranslatePaths(DataBinding<UnitData> unit, float dx, float dz)
         {
             var entries = new List<ModelMoveEntry>();

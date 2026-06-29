@@ -40,8 +40,9 @@ namespace FDG.Stages
                 IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
                     new PostMeleeActionContext(attacked), (attacked, ERuleSeat.Actor));
 
-                OperationApplier.ApplyTokenOperations(operations);
-                await OperationExecutor.Execute(operations, new GameOperationServices(GameContext));
+                // Gate enacts the move (if the unit has a post-melee rule and hasn't already moved this
+                // round) and enforces the family's once-per-round budget — shared with the shooting seam.
+                await PostCombatMoveGate.OfferIfAvailable(GameContext, attacked, operations);
             }
 
             await ToFinished.Activate(context);

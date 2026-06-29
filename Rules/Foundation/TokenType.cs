@@ -9,6 +9,7 @@ public readonly record struct TokenType(string Id)
     public const string ARRIVED_FROM_RESERVE_ID = "ArrivedFromReserve";
     public const string EMBARKED_IN_ID = "EmbarkedIn";
     public const string MARK_ID = "Mark";
+    public const string POST_COMBAT_MOVE_USED_ID = "PostCombatMoveUsed";
 
     // Granted numeric roll modifiers (#033 stat-modifier primitive): a spell/ability grants the bearer a
     // signed delta to a specific roll for a duration. The roll kind is the token TYPE (so different rolls
@@ -46,6 +47,16 @@ public readonly record struct TokenType(string Id)
     /// than racing an automatic <c>OwnerDestroyed</c> sweep.
     /// </summary>
     public static readonly TokenType EmbarkedIn = new(EMBARKED_IN_ID);
+
+    /// <summary>
+    /// Per-round marker that a unit has already made its post-combat move (Harassing / Hit & Run /
+    /// Guerrilla family) this round. The post-combat-move rules are "once per round" but fire on every
+    /// shoot action and every resolved melee, so <c>PostCombatMoveGate</c> sets this token when a unit
+    /// actually repositions and skips the offer while it is present. Carried with a <c>RoundEnd</c> clear
+    /// trigger, swept by the round-end token pass (the same lifecycle as <see cref="Fatigued"/>). One
+    /// shared budget across shooting and melee — a unit moves at most once after combat per round.
+    /// </summary>
+    public static readonly TokenType PostCombatMoveUsed = new(POST_COMBAT_MOVE_USED_ID);
 
     /// <summary>
     /// A cross-unit "mark" placed on an enemy unit by a mark spell/ability (#100 #14). Carries a

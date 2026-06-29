@@ -2,6 +2,7 @@ using FDG.Data;
 using FDG.Players;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
 using FDG.Stages;
 using FDG.StageResolution;
@@ -85,6 +86,47 @@ namespace FDG.Tests
                 "the 9\" triggered-move budget reaches the resolver");
             AssertModelAt(unit, 0, 5f, 0f);
             AssertModelAt(unit, 1, 5f, 1f);
+        }
+
+        // Harassing is a PASSIVE rule (a HookEntry, not an activated ability) that fires at the
+        // post-shoot hook PostShootStage now drives. Proves the same TriggeredMove seam reached from a
+        // static rule at Shooting_OnPostShoot: EvaluateAll -> OperationExecutor -> movement subsystem.
+        [Test]
+        public async Task Harassing_AtPostShootHook_RepositionsTheUnit()
+        {
+            var requester = new CannedMovePathRequester(dx: 2f, dz: 0f);
+            var ctx = new TriggeredMoveTestContext(_store, requester);
+
+            DataBinding<UnitData> unit = MakeUnit(new Position(0f, 0f), new Position(0f, 1f));
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Harassing", CoreRuleCatalog.Harassing));
+
+            IReadOnlyList<RuleOperation> ops = ctx.RuleEvaluator.EvaluateAll(
+                new PostShootActionContext(unit.GetValue()), (unit.GetValue(), ERuleSeat.Actor));
+
+            await OperationExecutor.Execute(ops, new GameOperationServices(ctx));
+
+            Assert.That(requester.Captured, Is.Not.Null, "the post-shoot hook issued a movement-path request");
+            Assert.That(requester.Captured!.MaxDistanceInches, Is.EqualTo(3f).Within(0.001f),
+                "Harassing's 3\" post-shoot budget reaches the resolver");
+            AssertModelAt(unit, 0, 2f, 0f);
+            AssertModelAt(unit, 1, 2f, 1f);
+        }
+
+        // A unit without a post-shoot rule produces no operation at the hook — PostShootStage is a
+        // no-op for it (no spurious move request).
+        [Test]
+        public void NoPostShootRule_AtPostShootHook_ProducesNoOperation()
+        {
+            var requester = new CannedMovePathRequester(dx: 2f, dz: 0f);
+            var ctx = new TriggeredMoveTestContext(_store, requester);
+
+            DataBinding<UnitData> unit = MakeUnit(new Position(0f, 0f));
+
+            IReadOnlyList<RuleOperation> ops = ctx.RuleEvaluator.EvaluateAll(
+                new PostShootActionContext(unit.GetValue()), (unit.GetValue(), ERuleSeat.Actor));
+
+            Assert.That(ops, Is.Empty, "a unit without a post-shoot rule yields no triggered move");
+            Assert.That(requester.Captured, Is.Null, "no movement-path request is issued");
         }
 
         private static List<ModelMoveEntry> TranslatePaths(DataBinding<UnitData> unit, float dx, float dz)

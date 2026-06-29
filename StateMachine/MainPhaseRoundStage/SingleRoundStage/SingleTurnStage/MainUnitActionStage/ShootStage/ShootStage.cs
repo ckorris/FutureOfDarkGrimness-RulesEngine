@@ -41,6 +41,7 @@ namespace FDG.Stages
                 .AddChild(new FireStage(GameContext, this), out var fire)
                 .AddChild(new ResolveRangedMoraleStage(GameContext, this), out var resolveRangedMorale)
                 .AddChild(new DetermineCanKeepShootingStage(GameContext, this), out var determineCanKeepShooting)
+                .AddChild(new PostShootStage(GameContext, this), out var postShoot)
                 .AddSibling(nameof(OnFinishedShooting), OnFinishedShooting, out string onFinishedShootingEvent)
                 .AddSibling(nameof(BackToChooseAction), BackToChooseAction, out string backToChooseEvent)
                 .Build();
@@ -49,12 +50,15 @@ namespace FDG.Stages
 
             chooseRangedWeapon.OnChoseWeapon.Bind(fire);
             chooseRangedWeapon.BackToChooseAction.Bind(backToChooseEvent);
-            chooseRangedWeapon.OnNoValidShots.Bind(onFinishedShootingEvent);
-            
+            // Both shoot exits — "fired all weapons" and "no further valid shots" — converge on
+            // PostShootStage so the post-shoot move (Hit & Run / Harassing) is offered once per action.
+            chooseRangedWeapon.OnNoValidShots.Bind(postShoot);
+
             fire.OnFinishedFiring.Bind(resolveRangedMorale);
             resolveRangedMorale.ToFinished.Bind(determineCanKeepShooting);
             determineCanKeepShooting.ReturnToChooseWeapon.Bind(chooseRangedWeapon);
-            determineCanKeepShooting.ToFinishShooting.Bind(onFinishedShootingEvent);
+            determineCanKeepShooting.ToFinishShooting.Bind(postShoot);
+            postShoot.ToFinished.Bind(onFinishedShootingEvent);
 
             return dictionary;
         }

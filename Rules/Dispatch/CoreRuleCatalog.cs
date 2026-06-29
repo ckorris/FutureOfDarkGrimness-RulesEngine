@@ -30,7 +30,7 @@ public static class CoreRuleCatalog
         Agile, Quick, RapidAdvance, RapidRush, RapidCharge,
         Lacerate, Crack, CounterAttack,
         UnstoppableWhenShooting, ShredWhenShooting, BaneWhenShooting,
-        Harassing,
+        Harassing, HitAndRunShooter, HitAndRunFighter, HitAndRun, Guerrilla,
     };
 
     /// <summary>
@@ -843,6 +843,78 @@ public static class CoreRuleCatalog
     /// melee case).
     /// </summary>
     public static SpecialRuleDefinition Harassing { get; } = new SpecialRuleDefinition("Harassing",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnPostShoot,
+                new Condition.Always(),
+                new Effect.TriggeredMove(MaxInches: 3f, IsOptional: true),
+                ELifetime.ThisAttack),
+            new HookEntry(EHookID.Melee_OnPostMelee,
+                new Condition.Always(),
+                new Effect.TriggeredMove(MaxInches: 3f, IsOptional: true),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    // Post-combat-move family (same TriggeredMove seam as Harassing) --------------
+    // The corpus splits the "may move 3\" after combat" rule into shooting-only, melee-only, and both
+    // variants under several faction names. All share Harassing's shape; they differ only in which of the
+    // two post-combat hooks they carry. NB the corpus wording is "ONCE PER ROUND" — these (like Harassing)
+    // currently fire once per shoot ACTION and once per resolved melee, with no per-round gate; see the
+    // #100 ledger's deferred-facet note (a unit charged multiple times can move after each melee).
+
+    /// <summary>
+    /// Hit &amp; Run Shooter: after this unit shoots, it may move up to 3" (optional). The shooting-only
+    /// member of the post-combat-move family — identical to <see cref="Harassing"/>'s shooting half.
+    /// </summary>
+    public static SpecialRuleDefinition HitAndRunShooter { get; } = new SpecialRuleDefinition("Hit & Run Shooter",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnPostShoot,
+                new Condition.Always(),
+                new Effect.TriggeredMove(MaxInches: 3f, IsOptional: true),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary>
+    /// Hit &amp; Run Fighter: after this unit is in melee, the charged unit may move up to 3" (optional).
+    /// The melee-only member of the family — identical to <see cref="Harassing"/>'s melee half.
+    /// </summary>
+    public static SpecialRuleDefinition HitAndRunFighter { get; } = new SpecialRuleDefinition("Hit & Run Fighter",
+        new[]
+        {
+            new HookEntry(EHookID.Melee_OnPostMelee,
+                new Condition.Always(),
+                new Effect.TriggeredMove(MaxInches: 3f, IsOptional: true),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary>
+    /// Hit &amp; Run: after this unit shoots OR is in melee, it may move up to 3" (optional). Both
+    /// post-combat hooks — mechanically identical to <see cref="Harassing"/> and <see cref="Guerrilla"/>
+    /// (the corpus uses different names per faction).
+    /// </summary>
+    public static SpecialRuleDefinition HitAndRun { get; } = new SpecialRuleDefinition("Hit & Run",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnPostShoot,
+                new Condition.Always(),
+                new Effect.TriggeredMove(MaxInches: 3f, IsOptional: true),
+                ELifetime.ThisAttack),
+            new HookEntry(EHookID.Melee_OnPostMelee,
+                new Condition.Always(),
+                new Effect.TriggeredMove(MaxInches: 3f, IsOptional: true),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary>
+    /// Guerrilla: the Rebel Guerrillas' name for <see cref="HitAndRun"/> — move up to 3" after shooting
+    /// or melee (optional, both hooks). Same mechanics, faction-specific name.
+    /// </summary>
+    public static SpecialRuleDefinition Guerrilla { get; } = new SpecialRuleDefinition("Guerrilla",
         new[]
         {
             new HookEntry(EHookID.Shooting_OnPostShoot,

@@ -135,6 +135,53 @@ namespace FDG.Tests
             AssertModelAt(unit, 1, 1f, 2f);
         }
 
+        // The post-combat-move family clones Harassing's shape but differs in WHICH hook each carries.
+        // These guard the catalog wiring so a copy-paste hook mistake (e.g. a "Shooter" rule firing in
+        // melee) is caught: each rule must yield a move at its hook and nothing at the other.
+        [Test]
+        public void HitAndRunShooter_FiresOnShootHookOnly()
+        {
+            AssertFiresAt(CoreRuleCatalog.HitAndRunShooter, "Hit & Run Shooter", shoot: true, melee: false);
+        }
+
+        [Test]
+        public void HitAndRunFighter_FiresOnMeleeHookOnly()
+        {
+            AssertFiresAt(CoreRuleCatalog.HitAndRunFighter, "Hit & Run Fighter", shoot: false, melee: true);
+        }
+
+        [Test]
+        public void HitAndRun_FiresOnBothHooks()
+        {
+            AssertFiresAt(CoreRuleCatalog.HitAndRun, "Hit & Run", shoot: true, melee: true);
+        }
+
+        [Test]
+        public void Guerrilla_FiresOnBothHooks()
+        {
+            AssertFiresAt(CoreRuleCatalog.Guerrilla, "Guerrilla", shoot: true, melee: true);
+        }
+
+        // Attaches the rule to a unit and checks it produces exactly one triggered move at each hook it's
+        // expected at, and none at the hooks it isn't — purely at the evaluator level (no move enacted).
+        private void AssertFiresAt(SpecialRuleDefinition rule, string name, bool shoot, bool melee)
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new NullPlayerRequester());
+            DataBinding<UnitData> unit = MakeUnit(new Position(0f, 0f));
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule(name, rule));
+            IUnit u = unit.GetValue();
+
+            IReadOnlyList<RuleOperation> shootOps = ctx.RuleEvaluator.EvaluateAll(
+                new PostShootActionContext(u), (u, ERuleSeat.Actor));
+            IReadOnlyList<RuleOperation> meleeOps = ctx.RuleEvaluator.EvaluateAll(
+                new PostMeleeActionContext(u), (u, ERuleSeat.Actor));
+
+            Assert.That(shootOps.Count, Is.EqualTo(shoot ? 1 : 0), $"{name} post-shoot op count");
+            Assert.That(meleeOps.Count, Is.EqualTo(melee ? 1 : 0), $"{name} post-melee op count");
+            if (shoot) Assert.That(shootOps[0], Is.InstanceOf<RuleOperation.InvokeTriggeredMove>());
+            if (melee) Assert.That(meleeOps[0], Is.InstanceOf<RuleOperation.InvokeTriggeredMove>());
+        }
+
         // A unit without a post-shoot rule produces no operation at the hook — PostShootStage is a
         // no-op for it (no spurious move request).
         [Test]

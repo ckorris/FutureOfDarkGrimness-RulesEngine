@@ -437,11 +437,12 @@ public abstract record RuleOperation
     /// <summary>
     /// Adjust a weapon's effective shooting range by <see cref="Delta"/> inches — the attacker's own range
     /// (Increased Shooting Range, Actor seat) or the range of enemies shooting the bearer (Ranged Shrouding /
-    /// Aircraft, Subject seat). Summed by <see cref="Rules.Dispatch.RangeRuleQueries.EffectiveRangeDelta"/>
-    /// and read by <c>ChooseRangedAttackStage</c>'s target-eligibility check (#102). Resolution of
+    /// Aircraft, Subject seat). <see cref="MinResultInches"/> floors the reduced range (0 = no floor). Folded
+    /// by <see cref="Rules.Dispatch.RangeRuleQueries.EffectiveRange"/> and read by
+    /// <c>ChooseRangedAttackStage</c>'s target-eligibility check (#102). Resolution of
     /// <see cref="Effect.RangeModifier"/>.
     /// </summary>
-    public sealed record ApplyRangeModifier(int Delta) : RuleOperation;
+    public sealed record ApplyRangeModifier(int Delta, int MinResultInches = 0) : RuleOperation;
 
     /// <summary>
     /// Suppress terrain effects for the bearer's current move. Resolution of

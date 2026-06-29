@@ -13,24 +13,31 @@ namespace FDG.Rules.Dispatch
     public static class RangeRuleQueries
     {
         /// <summary>
-        /// The net range delta (inches) for <paramref name="attacker"/> firing <paramref name="weapon"/> at
-        /// <paramref name="defender"/>, summing every <see cref="RuleOperation.ApplyRangeModifier"/>:
-        /// the attacker's own buffs (Increased Shooting Range, Actor seat, +) and the defender's debuffs
-        /// (Ranged Shrouding, Subject seat, −). Add it to <c>weapon.RangeInches</c> (the caller floors the
-        /// result at 0). Per-weapon (#027): the firing weapon's own rules are evaluated alongside the
+        /// The effective shooting range (inches) for <paramref name="attacker"/> firing
+        /// <paramref name="weapon"/> at <paramref name="defender"/>: the weapon's base range plus every
+        /// <see cref="RuleOperation.ApplyRangeModifier"/> delta — the attacker's own buffs (Increased Shooting
+        /// Range, Actor seat, +) and the defender's debuffs (Ranged Shrouding, Subject seat, −) — then floored.
+        /// The floor is the largest <c>MinResultInches</c> among the active modifiers (e.g. Ranged Shrouding's
+        /// "−6\" to a min. of 6\""), and never below 0, so a reduction can't push range below the rule's
+        /// minimum (nor negative). Per-weapon (#027): the firing weapon's own rules are evaluated alongside the
         /// attacker's unit rules. Non-logging — safe to call per-frame while building UI.
         /// </summary>
-        public static int EffectiveRangeDelta(IUnit attacker, IWeapon weapon, IUnit defender, RuleEvaluator evaluator)
+        public static float EffectiveRange(IUnit attacker, IWeapon weapon, IUnit defender, RuleEvaluator evaluator)
         {
             int delta = 0;
+            int floor = 0;
             foreach ((RuleOperation op, string _) in evaluator.EvaluateAllNamed(
                          new RangeModifierContext(attacker),
                          (attacker, ERuleSeat.Actor, weapon),
                          (defender, ERuleSeat.Subject, (IWeapon?)null)))
             {
-                if (op is RuleOperation.ApplyRangeModifier rangeModifier) delta += rangeModifier.Delta;
+                if (op is RuleOperation.ApplyRangeModifier rangeModifier)
+                {
+                    delta += rangeModifier.Delta;
+                    if (rangeModifier.MinResultInches > floor) floor = rangeModifier.MinResultInches;
+                }
             }
-            return delta;
+            return System.Math.Max(floor, weapon.RangeInches + delta);
         }
     }
 }

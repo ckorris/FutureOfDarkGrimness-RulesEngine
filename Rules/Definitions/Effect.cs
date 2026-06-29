@@ -515,15 +515,16 @@ public abstract record Effect
     /// Adjusts a weapon's effective shooting range by <see cref="Delta"/> inches. The seat decides whose
     /// range: at the Actor seat it widens the bearer's OWN weapons (Increased Shooting Range, +6); at the
     /// Subject seat it shrinks the range of enemies shooting the bearer (Ranged Shrouding, −6; Aircraft,
-    /// "units targeting it get −12\""). Folded by <see cref="Dispatch.RangeRuleQueries.EffectiveRangeDelta"/>
-    /// into the range check (#102). Distinct from <see cref="Effect.RollModifier"/>, which adjusts the roll
-    /// itself rather than the range threshold.
+    /// "units targeting it get −12\""). Folded by <see cref="Dispatch.RangeRuleQueries.EffectiveRange"/>
+    /// into the range check (#102). <see cref="MinResultInches"/> floors the resulting effective range —
+    /// a reduction can't drop it below this (e.g. "−6\" to a min. of 6\""); 0 means no floor. Distinct from
+    /// <see cref="Effect.RollModifier"/>, which adjusts the roll itself rather than the range threshold.
     /// </summary>
-    public sealed record RangeModifier(int Delta) : Effect
+    public sealed record RangeModifier(int Delta, int MinResultInches = 0) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.ApplyRangeModifier(Delta));
+            operations.Add(new RuleOperation.ApplyRangeModifier(Delta, MinResultInches));
         }
     }
 

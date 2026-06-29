@@ -9,7 +9,7 @@ namespace FDG.Tests
 {
     // #102 — the RangeModifier family. Increased Shooting Range (+6" to the bearer's own weapons, Actor seat)
     // and Ranged Shrouding (enemies get -6" range shooting this unit, Subject seat) fold via
-    // RangeRuleQueries.EffectiveRangeDelta into ChooseRangedAttackStage's target-eligibility check. Models are
+    // RangeRuleQueries.EffectiveRange into ChooseRangedAttackStage's target-eligibility check. Models are
     // base radius 0.5", so base-to-base distance = centre distance - 1.0"; a 12" rifle reaches 13" of centre.
     [TestFixture]
     public class RangeModifierRuleIntegrationTests
@@ -63,23 +63,68 @@ namespace FDG.Tests
         }
 
         [Test]
-        public void EffectiveRangeDelta_FoldsAttackerBuffAndDefenderDebuff()
+        public void EffectiveRange_FoldsAttackerBuffAndDefenderDebuff()
         {
             var weapon = new Weapon("Rifle", rangeInches: 12f, attacks: 1, armorPenetration: 0);
             DataBinding<UnitData> attacker = MakeArmyUnit(_attackerPlayer, new Position(0, 0, 0), Rifle(12f));
             DataBinding<UnitData> defender = MakeArmyUnit(_enemyPlayer, new Position(8, 0, 0));
             RuleEvaluator ev = _ctx.RuleEvaluator;
 
-            Assert.That(RangeRuleQueries.EffectiveRangeDelta(attacker.GetValue(), weapon, defender.GetValue(), ev),
-                Is.EqualTo(0), "no rules → no delta.");
+            Assert.That(RangeRuleQueries.EffectiveRange(attacker.GetValue(), weapon, defender.GetValue(), ev),
+                Is.EqualTo(12f), "no rules → base range.");
 
             Attach(attacker, "Increased Shooting Range", CoreRuleCatalog.IncreasedShootingRange);
-            Assert.That(RangeRuleQueries.EffectiveRangeDelta(attacker.GetValue(), weapon, defender.GetValue(), ev),
-                Is.EqualTo(6), "attacker's +6 buff applies at the Actor seat.");
+            Assert.That(RangeRuleQueries.EffectiveRange(attacker.GetValue(), weapon, defender.GetValue(), ev),
+                Is.EqualTo(18f), "attacker's +6 buff applies at the Actor seat.");
 
             Attach(defender, "Ranged Shrouding", CoreRuleCatalog.RangedShrouding);
-            Assert.That(RangeRuleQueries.EffectiveRangeDelta(attacker.GetValue(), weapon, defender.GetValue(), ev),
-                Is.EqualTo(0), "defender's -6 debuff (Subject seat) nets against the +6 buff.");
+            Assert.That(RangeRuleQueries.EffectiveRange(attacker.GetValue(), weapon, defender.GetValue(), ev),
+                Is.EqualTo(12f), "defender's -6 debuff (Subject seat) nets against the +6 buff.");
+        }
+
+        [Test]
+        public void RangedShrouding_Floor_StopsTheReductionAtSixInches()
+        {
+            DataBinding<UnitData> attacker = MakeArmyUnit(_attackerPlayer, new Position(0, 0, 0));
+            DataBinding<UnitData> defender = MakeArmyUnit(_enemyPlayer, new Position(8, 0, 0));
+            Attach(defender, "Ranged Shrouding", CoreRuleCatalog.RangedShrouding);
+            RuleEvaluator ev = _ctx.RuleEvaluator;
+
+            // 9" weapon: 9 - 6 = 3, but the rule floors the result at 6".
+            Assert.That(RangeRuleQueries.EffectiveRange(attacker.GetValue(), Rifle(9f), defender.GetValue(), ev),
+                Is.EqualTo(6f), "the -6 reduction is floored at the rule's 6\" minimum.");
+
+            // 24" weapon: 24 - 6 = 18, comfortably above the floor.
+            Assert.That(RangeRuleQueries.EffectiveRange(attacker.GetValue(), Rifle(24f), defender.GetValue(), ev),
+                Is.EqualTo(18f), "the floor doesn't apply when the reduced range is already above it.");
+        }
+
+        [Test]
+        public void Darkborn_AddsThreeToShootingRange()
+        {
+            DataBinding<UnitData> attacker = MakeArmyUnit(_attackerPlayer, new Position(0, 0, 0));
+            DataBinding<UnitData> defender = MakeArmyUnit(_enemyPlayer, new Position(8, 0, 0));
+            Attach(attacker, "Darkborn", CoreRuleCatalog.Darkborn);
+
+            Assert.That(RangeRuleQueries.EffectiveRange(attacker.GetValue(), Rifle(12f), defender.GetValue(), _ctx.RuleEvaluator),
+                Is.EqualTo(15f), "Darkborn's +3\" range applies at the Actor seat.");
+        }
+
+        [Test]
+        public void Darkborn_AddsThreeToChargeMoveOnly()
+        {
+            var baseline = new MovementActionContext(_ctx, MakeMovementUnit());
+
+            DataBinding<UnitData> unit = MakeMovementUnit();
+            Attach(unit, "Darkborn", CoreRuleCatalog.Darkborn);
+            var context = new MovementActionContext(_ctx, unit);
+
+            Assert.That(context.MaxChargeDistance, Is.EqualTo(baseline.MaxChargeDistance + 3f).Within(0.001f),
+                "Darkborn adds +3\" to the Charge budget (the live MovementBonus seam).");
+            Assert.That(context.MaxAdvanceDistance, Is.EqualTo(baseline.MaxAdvanceDistance).Within(0.001f),
+                "Darkborn's move bonus is Charge-only; Advance untouched.");
+            Assert.That(context.MaxRushDistance, Is.EqualTo(baseline.MaxRushDistance).Within(0.001f),
+                "Darkborn's move bonus is Charge-only; Rush untouched.");
         }
 
         // The Army-Creator picker derives from CoreRuleCatalog.All; an uncatalogued rule is unpickable and a
@@ -88,7 +133,7 @@ namespace FDG.Tests
         public void RangeRules_AreCatalogued_AndResolvable()
         {
             RuleResolver resolver = CoreRuleCatalog.CreateResolver();
-            foreach (string name in new[] { "Increased Shooting Range", "Ranged Shrouding",
+            foreach (string name in new[] { "Increased Shooting Range", "Ranged Shrouding", "Darkborn",
                                             "Increased Shooting Range Aura", "Ranged Shrouding Aura" })
             {
                 Assert.That(CoreRuleCatalog.All.Any(r => r.Name == name), Is.True, $"{name} must be in All.");
@@ -100,6 +145,17 @@ namespace FDG.Tests
             unit.GetValue().AttachRuleDefinition(new ResolvedRule(name, def));
 
         private static Weapon Rifle(float range) => new Weapon("Rifle", range, attacks: 1, armorPenetration: 0);
+
+        // A plain unit (no army) for the MovementActionContext charge-distance test.
+        private DataBinding<UnitData> MakeMovementUnit()
+        {
+            var model = new ModelData(baseRadiusInches: 0.75f, weapons: new List<Weapon>(),
+                initialPosition: new Position(0, 0), gameDataStore: _store);
+            DataBinding<ModelData> modelBinding = _store.GetDataBinding<ModelData>(_store.Create(model));
+            var unit = new UnitData(new PlayerID(Guid.NewGuid()), "MoveUnit", quality: 4, defense: 4,
+                modelBindings: new List<DataBinding<ModelData>> { modelBinding });
+            return _store.GetDataBinding<UnitData>(_store.Create(unit));
+        }
 
         private DataBinding<UnitData> MakeArmyUnit(PlayerID player, Position pos, params Weapon[] weapons)
         {

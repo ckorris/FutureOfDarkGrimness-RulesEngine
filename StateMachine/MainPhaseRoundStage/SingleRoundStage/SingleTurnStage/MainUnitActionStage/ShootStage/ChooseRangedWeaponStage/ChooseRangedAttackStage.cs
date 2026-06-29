@@ -279,10 +279,8 @@ namespace FDG.Stages
 
                     if (!effectiveRangeByWeapon.TryGetValue(weapon.Name, out float effectiveRange))
                     {
-                        int rangeDelta = Rules.Dispatch.RangeRuleQueries.EffectiveRangeDelta(
+                        effectiveRange = Rules.Dispatch.RangeRuleQueries.EffectiveRange(
                             attackingUnit.GetValue(), weapon, enemyUnit.GetValue(), gameContext.RuleEvaluator);
-                        // Floor at 0 so a debuff can't make the range negative.
-                        effectiveRange = System.Math.Max(0f, weapon.RangeInches + rangeDelta);
                         effectiveRangeByWeapon[weapon.Name] = effectiveRange;
                     }
 

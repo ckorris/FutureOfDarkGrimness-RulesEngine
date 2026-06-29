@@ -42,7 +42,7 @@ public static class CoreRuleCatalog
         Resistance, Protected, PiercingAssault, PiercingHunter, Shielded, Fortified,
         ResistanceAura, ProtectedAura, PiercingAssaultAura, PiercingHunterAura, ShieldedAura, FortifiedAura,
         Strider,
-        IncreasedShootingRange, RangedShrouding,
+        IncreasedShootingRange, RangedShrouding, Darkborn,
         IncreasedShootingRangeAura, RangedShroudingAura,
     };
 
@@ -1376,9 +1376,8 @@ public static class CoreRuleCatalog
     /// <summary>
     /// Increased Shooting Range (#102): the bearer's own ranged weapons get +6" range. An Actor-seat passive
     /// at <see cref="EHookID.Shooting_OnRangeCheck"/> emitting <see cref="Effect.RangeModifier"/>(+6), folded
-    /// by <see cref="MovementRuleQueries"/>' sibling <see cref="RangeRuleQueries.EffectiveRangeDelta"/> and
-    /// read by ChooseRangedAttackStage's target-eligibility check (engine-authoritative; the ChooseRangedAttack
-    /// resolvers display it via the in-range model set).
+    /// by <see cref="RangeRuleQueries.EffectiveRange"/> and read by ChooseRangedAttackStage's target-eligibility
+    /// check (engine-authoritative; the ChooseRangedAttack resolvers display it via the in-range model set).
     /// </summary>
     public static SpecialRuleDefinition IncreasedShootingRange { get; } = new SpecialRuleDefinition("Increased Shooting Range",
         new[]
@@ -1391,21 +1390,45 @@ public static class CoreRuleCatalog
         Array.Empty<ActivatedAbility>());
 
     /// <summary>
-    /// Ranged Shrouding (#102): enemies get −6" range when shooting this unit. A Subject-seat passive at
-    /// <see cref="EHookID.Shooting_OnRangeCheck"/> emitting <see cref="Effect.RangeModifier"/>(−6) — the
-    /// defender contributes the debuff, mirroring how <see cref="Shielded"/> contributes a Subject-seat save
-    /// bonus. The range check floors effective range at 0. Scope: the corpus's "where ALL MODELS have this
-    /// rule" is approximated as unit-level (per-model gating is #093), and the army-specific "to a min. of 6\""
-    /// floor variant is not modelled here (the canonical rule is a flat −6).
+    /// Ranged Shrouding (#102): enemies get −6" range when shooting this unit, to a minimum effective range of
+    /// 6". A Subject-seat passive at <see cref="EHookID.Shooting_OnRangeCheck"/> emitting
+    /// <see cref="Effect.RangeModifier"/>(−6, floor 6) — the defender contributes the debuff, mirroring how
+    /// <see cref="Shielded"/> contributes a Subject-seat save bonus. Scope: the corpus's "where ALL MODELS have
+    /// this rule" is approximated as unit-level (per-model gating is #093). The floor adopts the "to a min. of
+    /// 6\"" reading; some armies print Ranged Shrouding without it, but the two differ only for a weapon whose
+    /// post-reduction range would fall below 6" (i.e. base range &lt; 12") — negligible for normal weapons.
     /// </summary>
     public static SpecialRuleDefinition RangedShrouding { get; } = new SpecialRuleDefinition("Ranged Shrouding",
         new[]
         {
             new HookEntry(EHookID.Shooting_OnRangeCheck,
                 new Condition.Always(),
-                new Effect.RangeModifier(Delta: -6),
+                new Effect.RangeModifier(Delta: -6, MinResultInches: 6),
                 ELifetime.ThisActivation,
                 ERuleSeat.Subject),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary>
+    /// Darkborn (#102): the bearer gets +3" range when shooting AND moves +3" when charging. Two Actor-seat
+    /// passives — a <see cref="Effect.RangeModifier"/>(+3) at <see cref="EHookID.Shooting_OnRangeCheck"/>, and a
+    /// <see cref="Effect.MovementBonus"/>(Charge, +3) at <see cref="EHookID.Movement_OnMoveActionDeclared"/>
+    /// gated to the Charge action (the same live move-distance seam Fast/Agile/RapidCharge use). This is the
+    /// offensive (own-buff) Darkborn; the defensive army variant ("enemies get −range/−charge vs this unit") is
+    /// deferred — its charge debuff needs the charge TARGET's rules folded into the charger's distance, a
+    /// per-target charge-distance mechanic the engine doesn't have yet (see WorkItems/102).
+    /// </summary>
+    public static SpecialRuleDefinition Darkborn { get; } = new SpecialRuleDefinition("Darkborn",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnRangeCheck,
+                new Condition.Always(),
+                new Effect.RangeModifier(Delta: +3),
+                ELifetime.ThisActivation),
+            new HookEntry(EHookID.Movement_OnMoveActionDeclared,
+                new Condition.ActionTypeIs(EActionType.Charge),
+                new Effect.MovementBonus(EActionType.Charge, DistanceInches: 3f),
+                ELifetime.ThisActivation),
         },
         Array.Empty<ActivatedAbility>());
 

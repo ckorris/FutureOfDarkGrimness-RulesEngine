@@ -39,8 +39,8 @@ public static class CoreRuleCatalog
         BaneWhenShootingAura, ShredWhenShootingAura, UnstoppableWhenShootingAura,
         Courage, UnstoppableInMelee, ShredInMelee, BaneInMelee, RendingInMelee,
         CourageAura, BaneInMeleeAura, RendingInMeleeAura, ShredInMeleeAura, UnstoppableInMeleeAura,
-        Resistance, Protected, PiercingAssault, PiercingHunter,
-        ResistanceAura, ProtectedAura, PiercingAssaultAura, PiercingHunterAura,
+        Resistance, Protected, PiercingAssault, PiercingHunter, Shielded,
+        ResistanceAura, ProtectedAura, PiercingAssaultAura, PiercingHunterAura, ShieldedAura,
     };
 
     /// <summary>
@@ -846,6 +846,25 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>());
 
+    /// <summary>
+    /// Shielded: +1 to this unit's defense rolls — a defensive save bonus. A Subject-seat
+    /// <see cref="Effect.RollModifier"/>(Save, +1) at <see cref="EHookID.Shooting_OnHitRollComplete"/>,
+    /// the seam where <c>RollToHitStage</c> now evaluates the defender; its modifier folds into the save
+    /// threshold alongside the attacker's AP (a +1 defense and an attacker's -N net). Applies to both
+    /// shooting and melee (the hit stages are shared). The corpus's "against hits that are NOT from spells"
+    /// facet is approximated: spell damage injects hits past this hook, so it isn't modified here anyway.
+    /// </summary>
+    public static SpecialRuleDefinition Shielded { get; } = new SpecialRuleDefinition("Shielded",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnHitRollComplete,
+                new Condition.Always(),
+                new Effect.RollModifier(ERollKind.Save, Delta: +1),
+                ELifetime.ThisAttack,
+                ERuleSeat.Subject),
+        },
+        Array.Empty<ActivatedAbility>());
+
     // Wound-injection sink (AssignWoundsStage) -----------------------------------
 
     /// <summary>
@@ -1209,6 +1228,8 @@ public static class CoreRuleCatalog
     public static SpecialRuleDefinition PiercingAssaultAura { get; } = UnitAura("Piercing Assault Aura", "Piercing Assault");
     /// <summary> Piercing Hunter Aura: grants <see cref="PiercingHunter"/> unit-wide. </summary>
     public static SpecialRuleDefinition PiercingHunterAura { get; } = UnitAura("Piercing Hunter Aura", "Piercing Hunter");
+    /// <summary> Shielded Aura: grants <see cref="Shielded"/> unit-wide. </summary>
+    public static SpecialRuleDefinition ShieldedAura { get; } = UnitAura("Shielded Aura", "Shielded");
 
     // Deferred-deployment primitive (PlaceDeferredUnitsStage) ---------------------
 

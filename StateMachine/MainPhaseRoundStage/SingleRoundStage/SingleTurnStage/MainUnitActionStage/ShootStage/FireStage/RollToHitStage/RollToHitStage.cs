@@ -84,7 +84,12 @@ namespace FDG.Stages
                 // #006 slice F: the attacker batch's sole-owner model contributes its own per-model rules,
                 // so a joined hero's Furious/Relentless fire for the hero's batch only (not the whole unit).
                 (attacker, ERuleSeat.Actor, metaData.WeaponType,
-                    HeroStatRules.WeaponBatchRuleOwners(metaData.AttackingUnit.GetValue(), metaData.WeaponType)));
+                    HeroStatRules.WeaponBatchRuleOwners(metaData.AttackingUnit.GetValue(), metaData.WeaponType)),
+                // The defender contributes its DEFENSIVE save modifiers here (Shielded's +1 to defense) —
+                // the mirror of how DetermineHitRollStage evaluates the defender as Subject for hit
+                // modifiers. Its Net(Save) folds into RollToHitResults.SaveModifier below alongside the
+                // attacker's AP, so a defensive +1 and an attacker's -N net correctly.
+                (defender, ERuleSeat.Subject, (IWeapon?)null, (IReadOnlyList<IModel>?)null));
             HitInjectionSink hitInjection = new HitInjectionSink();
             hitInjection.ApplyFrom(operations);
 

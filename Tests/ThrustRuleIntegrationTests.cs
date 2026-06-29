@@ -157,6 +157,34 @@ namespace FDG.Tests
             Assert.That(result.SaveModifier, Is.EqualTo(0), "within 9\" the distance gate fails.");
         }
 
+        // --- Shielded: a DEFENDER (Subject) save bonus, folded at the new hit-complete seam ---
+
+        [Test]
+        public async Task ShieldedDefender_Shooting_AppliesPositiveSaveModifier()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(DefenderPos);
+            defender.GetValue().AttachRuleDefinition(new ResolvedRule("Shielded", CoreRuleCatalog.Shielded));
+
+            RollToHitResults result = await RunRollToHit(attacker, defender, isMelee: false, isCharging: false);
+
+            Assert.That(result.SaveModifier, Is.EqualTo(1),
+                "Shielded gives the defender +1 to defense (a +1 save modifier) — the defender is now a Subject participant at hit-complete.");
+        }
+
+        [Test]
+        public async Task ShieldedDefender_Melee_AppliesPositiveSaveModifier()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(DefenderPos);
+            defender.GetValue().AttachRuleDefinition(new ResolvedRule("Shielded", CoreRuleCatalog.Shielded));
+
+            RollToHitResults result = await RunRollToHit(attacker, defender, isMelee: true, isCharging: false);
+
+            Assert.That(result.SaveModifier, Is.EqualTo(1),
+                "Shielded applies in melee too — RollToHitStage is shared between shooting and the melee swing.");
+        }
+
         private async Task<DetermineHitRollResults> RunHitStage(
             DataBinding<UnitData> attacker, DataBinding<UnitData> defender, bool isMelee, bool isCharging)
         {

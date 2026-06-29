@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using FDG.Data;
 using FDG.Presentation;
 using FDG.Presentation.Beats;
@@ -124,6 +125,11 @@ namespace FDG.Stages
             RollModifierSink saveModifiers = new RollModifierSink();
             saveModifiers.ApplyFrom(operations);
             results.SaveModifier = saveModifiers.Net(ERollKind.Save);
+
+            // Fortified (defender) reduces the incoming WEAPON AP, floored at the save stage. Sum any
+            // reduction ops here and carry the total alongside the save modifier.
+            results.ArmorPenetrationReduction = operations
+                .OfType<RuleOperation.ReduceArmorPenetration>().Sum(op => op.Amount);
 
             await onFinished(results);
         }

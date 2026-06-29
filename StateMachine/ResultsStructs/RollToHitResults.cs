@@ -14,11 +14,16 @@ namespace FDG
         // the defender's save threshold. 0 when no such rule fired.
         public int SaveModifier;
 
+        // Total weapon-AP reduction from defender (Subject) rules (Fortified), summed at hit-roll-complete
+        // and carried here; the save stage clamps the weapon's AP by this, floored at 0. 0 when none fired.
+        public int ArmorPenetrationReduction;
+
         public RollToHitResults(List<SuccessfulHitInfo> successfulHits, List<FailedHitInfo> failedHitList)
         {
             SuccessfulHitList = successfulHits;
             FailedHitList = failedHitList;
             SaveModifier = 0;
+            ArmorPenetrationReduction = 0;
         }
     }
 }

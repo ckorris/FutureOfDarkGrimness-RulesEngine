@@ -39,8 +39,8 @@ public static class CoreRuleCatalog
         BaneWhenShootingAura, ShredWhenShootingAura, UnstoppableWhenShootingAura,
         Courage, UnstoppableInMelee, ShredInMelee, BaneInMelee, RendingInMelee,
         CourageAura, BaneInMeleeAura, RendingInMeleeAura, ShredInMeleeAura, UnstoppableInMeleeAura,
-        Resistance, Protected, PiercingAssault, PiercingHunter, Shielded,
-        ResistanceAura, ProtectedAura, PiercingAssaultAura, PiercingHunterAura, ShieldedAura,
+        Resistance, Protected, PiercingAssault, PiercingHunter, Shielded, Fortified,
+        ResistanceAura, ProtectedAura, PiercingAssaultAura, PiercingHunterAura, ShieldedAura, FortifiedAura,
     };
 
     /// <summary>
@@ -865,6 +865,25 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>());
 
+    /// <summary>
+    /// Fortified: incoming hits count as having AP reduced by 1, to a minimum of AP(0). Unlike
+    /// <see cref="Shielded"/>'s flat +1 defense, it only cancels existing armor penetration — it does
+    /// nothing against an AP(0) hit. A defender (Subject) <see cref="Effect.ReduceArmorPenetration"/>(1)
+    /// at <see cref="EHookID.Shooting_OnHitRollComplete"/>; <c>DetermineSaveRollsNeededStage</c> clamps the
+    /// weapon's AP by it (floored at 0). Rule-granted AP (Rending/Thrust) is folded into the save modifier
+    /// and not reduced here — a noted approximation of "the hit's AP".
+    /// </summary>
+    public static SpecialRuleDefinition Fortified { get; } = new SpecialRuleDefinition("Fortified",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnHitRollComplete,
+                new Condition.Always(),
+                new Effect.ReduceArmorPenetration(1),
+                ELifetime.ThisAttack,
+                ERuleSeat.Subject),
+        },
+        Array.Empty<ActivatedAbility>());
+
     // Wound-injection sink (AssignWoundsStage) -----------------------------------
 
     /// <summary>
@@ -1230,6 +1249,8 @@ public static class CoreRuleCatalog
     public static SpecialRuleDefinition PiercingHunterAura { get; } = UnitAura("Piercing Hunter Aura", "Piercing Hunter");
     /// <summary> Shielded Aura: grants <see cref="Shielded"/> unit-wide. </summary>
     public static SpecialRuleDefinition ShieldedAura { get; } = UnitAura("Shielded Aura", "Shielded");
+    /// <summary> Fortified Aura: grants <see cref="Fortified"/> unit-wide. </summary>
+    public static SpecialRuleDefinition FortifiedAura { get; } = UnitAura("Fortified Aura", "Fortified");
 
     // Deferred-deployment primitive (PlaceDeferredUnitsStage) ---------------------
 

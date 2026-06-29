@@ -23,10 +23,14 @@ namespace FDG.Stages
 
             // #006: a joined hero saves at the unit's Defense until it is the sole survivor, then its own.
             int baseDefense = HeroStatRules.GetSaveDefense(metaData.DefendingUnit.GetValue());
-            int ap = metaData.WeaponType.ArmorPenetration; //Shorthand.
             CoverCheckResults coverResults = QueryForResultOrThrowException<CoverCheckResults>(metaData);
 
             RollToHitResults rollToHitResults = QueryForResultOrThrowException<RollToHitResults>(metaData);
+
+            // Fortified (defender) reduces the WEAPON's AP, floored at 0 — so it does nothing against an
+            // AP(0) hit, unlike a flat +1 save. Rule-granted AP (Rending/Thrust) rides SaveModifier below
+            // and is not reduced here.
+            int ap = Math.Max(0, metaData.WeaponType.ArmorPenetration - rollToHitResults.ArmorPenetrationReduction);
 
             // #042 save-modifier rules (Rending) folded their net modifier at hit-roll-complete and
             // carried it here; a negative delta to the save roll raises the threshold. Subtract it,

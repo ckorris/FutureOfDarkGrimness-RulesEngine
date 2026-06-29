@@ -59,6 +59,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(MoraleTestThen), "moraleTestThen")]
 [JsonDerivedType(typeof(ApplyFatigue), "applyFatigue")]
 [JsonDerivedType(typeof(MarkTarget), "markTarget")]
+[JsonDerivedType(typeof(ReduceArmorPenetration), "reduceArmorPenetration")]
 
 public abstract record Effect
 {
@@ -350,6 +351,20 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.MultiplyWounds(Multiplier.Resolve(ruleInvocation.Arguments)));
+        }
+    }
+
+    /// <summary>
+    /// Reduces the incoming attack's WEAPON armor penetration by <see cref="Amount"/>, floored at AP(0)
+    /// by the save stage — so it does nothing against an AP(0) hit, unlike a flat save bonus. A defender
+    /// (Subject) effect read at <c>DetermineSaveRollsNeededStage</c> against the weapon's own AP only;
+    /// rule-granted AP (Rending/Thrust) rides the save modifier and isn't reduced here. Covers Fortified.
+    /// </summary>
+    public sealed record ReduceArmorPenetration(int Amount) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.ReduceArmorPenetration(Amount));
         }
     }
 

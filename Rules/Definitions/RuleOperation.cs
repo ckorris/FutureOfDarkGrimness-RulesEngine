@@ -224,6 +224,13 @@ public abstract record RuleOperation
     public sealed record InvokeReactivate(IUnit Unit) : RuleOperation;
 
     /// <summary>
+    /// Reduce the incoming attack's weapon armor penetration by <see cref="Amount"/> (floored at 0 by
+    /// the save stage). Resolution of <see cref="Effect.ReduceArmorPenetration"/>; <c>RollToHitStage</c>
+    /// sums these and carries the total to <c>DetermineSaveRollsNeededStage</c>, which clamps the weapon AP.
+    /// </summary>
+    public sealed record ReduceArmorPenetration(int Amount) : RuleOperation;
+
+    /// <summary>
     /// Fatigue <see cref="Unit"/> for the rest of the round (the #020 melee penalty: hits only on
     /// unmodified 6s). Resolution of <see cref="Effect.ApplyFatigue"/>; runs through the engine's fatigue
     /// authority (<c>FatigueUtilities.ApplyFatigued</c>) via the <see cref="IOperationServices"/> seam.

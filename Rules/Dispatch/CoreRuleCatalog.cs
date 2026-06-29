@@ -37,6 +37,8 @@ public static class CoreRuleCatalog
         CounterAttackAura, EvasiveAura, FastAura, FearlessAura, MeleeEvasionAura,
         RapidAdvanceAura, RapidChargeAura, RapidRushAura,
         BaneWhenShootingAura, ShredWhenShootingAura, UnstoppableWhenShootingAura,
+        Courage, UnstoppableInMelee, ShredInMelee, BaneInMelee, RendingInMelee,
+        CourageAura, BaneInMeleeAura, RendingInMeleeAura, ShredInMeleeAura, UnstoppableInMeleeAura,
     };
 
     /// <summary>
@@ -537,6 +539,23 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>());
 
+    /// <summary>
+    /// Courage: +1 to this unit's morale test rolls. The modifier-style morale rule the Fearless doc
+    /// above anticipates — a passive <see cref="HookEntry"/> at <see cref="EHookID.Morale_OnPreMoraleTest"/>
+    /// whose <see cref="Effect.RollModifier"/>(Morale, +1) MoraleUtilities.TakeMoraleTest folds into the
+    /// threshold (a +N lowers the roll needed, so the test is easier). The base rule behind Courage Aura /
+    /// Courage Buff (the corpus names only the aura/buff, which inline "+1 to morale test rolls").
+    /// </summary>
+    public static SpecialRuleDefinition Courage { get; } = new SpecialRuleDefinition("Courage",
+        new[]
+        {
+            new HookEntry(EHookID.Morale_OnPreMoraleTest,
+                new Condition.Always(),
+                new Effect.RollModifier(ERollKind.Morale, Delta: +1),
+                ELifetime.ThisActivation),
+        },
+        Array.Empty<ActivatedAbility>());
+
     // Wound-modifier sink (AssignWoundsStage) ------------------------------------
 
     /// <summary> Deadly(X), weapon rule: the attack's wounds are multiplied by X (the rule's argument). </summary>
@@ -694,6 +713,71 @@ public static class CoreRuleCatalog
                     ELifetime.ThisAttack),
                 new HookEntry(EHookID.Shooting_OnSaveRollComplete,
                     new Condition.Not(new Condition.IsMelee()),
+                    new Effect.IgnoreRule("Regeneration"),
+                    ELifetime.ThisAttack),
+            },
+            Array.Empty<ActivatedAbility>(),
+            ERuleScope.Weapon);
+
+    // "in melee" mirrors of the when-shooting variants: the SAME base effect at the shared hit/save
+    // hooks, gated to melee via Condition.IsMelee() (the flip of Not(IsMelee)). Weapon-scoped like their
+    // shooting twins. These are the base rules behind the "... in Melee Aura" grants. Rending has no
+    // when-shooting twin, so it mirrors the base Rending (AP-on-6 + Regen-ignore) with an added melee gate.
+
+    /// <summary> Unstoppable in melee only: ignores Regeneration when in melee. </summary>
+    public static SpecialRuleDefinition UnstoppableInMelee { get; } =
+        new SpecialRuleDefinition("Unstoppable in melee",
+            new[]
+            {
+                new HookEntry(EHookID.Shooting_OnSaveRollComplete,
+                    new Condition.IsMelee(),
+                    new Effect.IgnoreRule("Regeneration"),
+                    ELifetime.ThisAttack),
+            },
+            Array.Empty<ActivatedAbility>(),
+            ERuleScope.Weapon);
+
+    /// <summary> Shred in melee only: +1 wound per unmodified save of 1 when in melee. </summary>
+    public static SpecialRuleDefinition ShredInMelee { get; } =
+        new SpecialRuleDefinition("Shred in melee",
+            new[]
+            {
+                new HookEntry(EHookID.Shooting_OnSaveRollComplete,
+                    new Condition.IsMelee(),
+                    new Effect.AddExtraWound(OnRollValue: 1),
+                    ELifetime.ThisAttack),
+            },
+            Array.Empty<ActivatedAbility>(),
+            ERuleScope.Weapon);
+
+    /// <summary> Bane in melee only: defender re-rolls unmodified Defense 6s + ignore Regeneration, in melee. </summary>
+    public static SpecialRuleDefinition BaneInMelee { get; } =
+        new SpecialRuleDefinition("Bane in melee",
+            new[]
+            {
+                new HookEntry(EHookID.Shooting_OnSaveRollComplete,
+                    new Condition.IsMelee(),
+                    new Effect.Reroll(ERollKind.Save, new RerollCondition.OnUnmodifiedValue()),
+                    ELifetime.ThisAttack),
+                new HookEntry(EHookID.Shooting_OnSaveRollComplete,
+                    new Condition.IsMelee(),
+                    new Effect.IgnoreRule("Regeneration"),
+                    ELifetime.ThisAttack),
+            },
+            Array.Empty<ActivatedAbility>(),
+            ERuleScope.Weapon);
+
+    /// <summary> Rending in melee only: AP-4 on an unmodified 6 + ignore Regeneration, when in melee. </summary>
+    public static SpecialRuleDefinition RendingInMelee { get; } =
+        new SpecialRuleDefinition("Rending in melee",
+            new[]
+            {
+                new HookEntry(EHookID.Shooting_OnHitRollComplete,
+                    new Condition.And(new Condition.IsMelee(), new Condition.UnmodifiedRollEquals(6)),
+                    new Effect.RollModifier(ERollKind.Save, Delta: -4),
+                    ELifetime.ThisAttack),
+                new HookEntry(EHookID.Shooting_OnSaveRollComplete,
+                    new Condition.IsMelee(),
                     new Effect.IgnoreRule("Regeneration"),
                     ELifetime.ThisAttack),
             },
@@ -1045,6 +1129,16 @@ public static class CoreRuleCatalog
     public static SpecialRuleDefinition ShredWhenShootingAura { get; } = UnitAura("Shred when Shooting Aura", "Shred when shooting");
     /// <summary> Unstoppable when Shooting Aura: grants <see cref="UnstoppableWhenShooting"/> ("Unstoppable when shooting") unit-wide. </summary>
     public static SpecialRuleDefinition UnstoppableWhenShootingAura { get; } = UnitAura("Unstoppable when Shooting Aura", "Unstoppable when shooting");
+    /// <summary> Courage Aura: grants <see cref="Courage"/> (+1 to morale tests) unit-wide. </summary>
+    public static SpecialRuleDefinition CourageAura { get; } = UnitAura("Courage Aura", "Courage");
+    /// <summary> Bane in Melee Aura: grants <see cref="BaneInMelee"/> unit-wide. </summary>
+    public static SpecialRuleDefinition BaneInMeleeAura { get; } = UnitAura("Bane in Melee Aura", "Bane in melee");
+    /// <summary> Rending in Melee Aura: grants <see cref="RendingInMelee"/> unit-wide. </summary>
+    public static SpecialRuleDefinition RendingInMeleeAura { get; } = UnitAura("Rending in Melee Aura", "Rending in melee");
+    /// <summary> Shred in Melee Aura: grants <see cref="ShredInMelee"/> unit-wide. </summary>
+    public static SpecialRuleDefinition ShredInMeleeAura { get; } = UnitAura("Shred in Melee Aura", "Shred in melee");
+    /// <summary> Unstoppable in Melee Aura: grants <see cref="UnstoppableInMelee"/> unit-wide. </summary>
+    public static SpecialRuleDefinition UnstoppableInMeleeAura { get; } = UnitAura("Unstoppable in Melee Aura", "Unstoppable in melee");
 
     // Deferred-deployment primitive (PlaceDeferredUnitsStage) ---------------------
 

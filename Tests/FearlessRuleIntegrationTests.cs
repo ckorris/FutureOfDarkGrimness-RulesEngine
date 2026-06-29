@@ -91,6 +91,19 @@ namespace FDG.Tests
             Assert.That(outcome.PassedViaReroll, Is.False, "it passed the (eased) initial test, not a re-roll.");
         }
 
+        // The catalog Courage rule is exactly that +1-morale shape — lock it in against the real definition.
+        [Test]
+        public async Task Courage_LowersTheMoraleThreshold()
+        {
+            var unit = MakeUnit(quality: 5);
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Courage", CoreRuleCatalog.Courage));
+
+            var outcome = await MoraleUtilities.TakeMoraleTest(Ctx(die: 4), unit.GetValue(), baseRollNeeded: 5);
+
+            Assert.That(outcome.RollNeeded, Is.EqualTo(4), "Courage's +1 lowers the Quality-5 threshold to 4.");
+            Assert.That(outcome.Passed, Is.True, "the eased test passes on a 4.");
+        }
+
         // --- Fearless reaches the wound-driven path too (shooting / dangerous terrain), not just melee ---
 
         [Test]

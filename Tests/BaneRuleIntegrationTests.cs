@@ -100,6 +100,36 @@ namespace FDG.Tests
                 "melee: the gate fails, the saved 6s stand and only the original wound lands.");
         }
 
+        // The "in melee" mirror: same effect, opposite gate. Representative of the in-melee variant cluster
+        // (Bane/Rending/Shred/Unstoppable in melee share the IsMelee() gate). Fires in melee, not shooting.
+        [Test]
+        public async Task BaneInMeleeAttacker_Melee_RerollsSavedSixes()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            attacker.GetValue().AttachRuleDefinition(
+                new ResolvedRule("Bane in melee", CoreRuleCatalog.BaneInMelee));
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 5);
+
+            await RunStage(attacker, defender, isMelee: true);
+
+            Assert.That(_requester.Captured!.TotalWoundsToAssign, Is.EqualTo(2f).Within(0.0001f),
+                "melee: the IsMelee gate holds, the two saved 6s are re-rolled into one expected failure.");
+        }
+
+        [Test]
+        public async Task BaneInMeleeAttacker_Shooting_DoesNotReroll()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            attacker.GetValue().AttachRuleDefinition(
+                new ResolvedRule("Bane in melee", CoreRuleCatalog.BaneInMelee));
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 5);
+
+            await RunStage(attacker, defender); // shooting
+
+            Assert.That(_requester.Captured!.TotalWoundsToAssign, Is.EqualTo(1f).Within(0.0001f),
+                "shooting: the IsMelee gate fails, the saved 6s stand.");
+        }
+
         private async Task RunStage(DataBinding<UnitData> attacker, DataBinding<UnitData> defender,
             bool isMelee = false)
         {

@@ -50,6 +50,29 @@ public sealed class TokenClearService
         }
     }
 
+    /// <summary>
+    /// Removes the <see cref="TokenClearTrigger.AttackEnd"/>-lifetime tokens from each container — the
+    /// "this attack only" grants (e.g. a rule transferred to the attacker when it claims an enemy's #100
+    /// mark). Invoked lazily at the START of the attacker's next attack (<c>DetermineHitRollStage</c>) to
+    /// retire the prior attack's grant. Separate from <see cref="ClearForHook"/> because an attack's end
+    /// isn't a fired <see cref="EHookID"/>; before this, AttackEnd was an unexercised lifetime nothing swept.
+    /// </summary>
+    public void ClearAttackEndTokens(IEnumerable<ITokenContainer> containers)
+    {
+        foreach (ITokenContainer container in containers)
+        {
+            // Snapshot first — removal mutates the container we're reading.
+            List<Token> expired = container.GetAllTokens()
+                .Where(token => token.ClearTrigger is TokenClearTrigger.AttackEnd)
+                .ToList();
+
+            foreach (Token token in expired)
+            {
+                container.RemoveTokensWithPayload(token.Type, token.OwnerUnitID, token.Payload, token.Count);
+            }
+        }
+    }
+
     private static bool ClearsAtHook(TokenClearTrigger trigger, EHookID firedHook) => trigger switch
     {
         TokenClearTrigger.ActivationEnd => firedHook == EHookID.Activation_OnEndOfActivation,

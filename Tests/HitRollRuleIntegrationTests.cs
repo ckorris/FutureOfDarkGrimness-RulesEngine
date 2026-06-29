@@ -2,6 +2,7 @@ using FDG.Data;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 using FDG.Stages;
 using NUnit.Framework;
 
@@ -26,7 +27,9 @@ namespace FDG.Tests
         public void SetUp()
         {
             _store = GameDataStore.GameDataStoreBuilder.GetDefault();
-            _ctx = new TestGameContext(_store, new FixedDiceRoller(4));
+            // Resolver-equipped so granted-rule read-back resolves a claimed mark's rule by name.
+            _ctx = new TestGameContext(_store, new FixedDiceRoller(4),
+                ruleResolver: CoreRuleCatalog.CreateResolver());
         }
 
         [Test]
@@ -347,6 +350,43 @@ namespace FDG.Tests
             Assert.That(result.HitRollNeeded, Is.EqualTo(4),
                 "Good Shot is shooting-only; a melee swing gets no bonus.");
         }
+
+        // #100 #14 Mark/Tag: a mark on the defender (here naming "Precise") is CLAIMED by the first attack —
+        // the marked rule transfers to the attacker for that attack (Precise = +1 to hit → threshold 4-1=3)
+        // and the mark is removed, so a second attack into the now-unmarked enemy gets nothing.
+        [Test]
+        public async Task MarkedDefender_FirstAttack_ClaimsRule_ThenMarkConsumed()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(FarPos);
+            MarkDefender(defender, "Precise");
+
+            DetermineHitRollResults first = await RunStage(attacker, defender);
+            Assert.That(first.HitRollNeeded, Is.EqualTo(3),
+                "the first attack claims the Precise mark — the granted +1 to hit lowers the threshold to 3.");
+            Assert.That(defender.GetValue().Tokens.HasToken(TokenType.Mark), Is.False,
+                "the mark is spent by the attack that claimed it.");
+
+            DetermineHitRollResults second = await RunStage(attacker, defender);
+            Assert.That(second.HitRollNeeded, Is.EqualTo(4),
+                "the mark was consumed; a later attack into the same enemy gets no bonus.");
+        }
+
+        // Control: no mark → no claimed rule, base threshold.
+        [Test]
+        public async Task UnmarkedDefender_NoClaim_BaselineThreshold()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(FarPos);
+
+            DetermineHitRollResults result = await RunStage(attacker, defender);
+
+            Assert.That(result.HitRollNeeded, Is.EqualTo(4), "no mark on the defender → nothing claimed.");
+        }
+
+        private static void MarkDefender(DataBinding<UnitData> unit, string ruleName) =>
+            unit.GetValue().Tokens.AddToken(new Token(TokenType.Mark, 1, new TokenClearTrigger.ManualOnly(),
+                Payload: new TokenPayload.RuleGrant(ruleName, ELifetime.ThisAttack)));
 
         private async Task<DetermineHitRollResults> RunStage(
             DataBinding<UnitData> attacker, DataBinding<UnitData> defender, bool attackerMoved = false,

@@ -45,6 +45,8 @@ namespace FDG.Stages
                     return $"morale test; on a fail, {DescribeEffect(conditional.OnFailure)}";
                 case Effect.ApplyFatigue:
                     return "becomes fatigued";
+                case Effect.MarkTarget mark:
+                    return $"marks it — the next friendly to attack it gets {mark.RuleName}";
                 default:
                     return "applies an effect";
             }

@@ -58,6 +58,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(Embark), "embark")]
 [JsonDerivedType(typeof(MoraleTestThen), "moraleTestThen")]
 [JsonDerivedType(typeof(ApplyFatigue), "applyFatigue")]
+[JsonDerivedType(typeof(MarkTarget), "markTarget")]
 
 public abstract record Effect
 {
@@ -645,6 +646,26 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.InvokeApplyFatigue(ruleInvocation.EffectiveTarget));
+        }
+    }
+
+    /// <summary>
+    /// #100 #14 mark/tag: places a <see cref="TokenType.Mark"/> on the target enemy carrying the rule named
+    /// <see cref="RuleName"/>. The mark sits inert on the enemy until a friendly unit attacks it: the
+    /// attacker-side claim (in <c>DetermineHitRollStage</c>) transfers <see cref="RuleName"/> to that
+    /// attacker as a one-attack grant and removes the mark — so the FIRST friendly attack into the marked
+    /// enemy gains the rule, dice-independent, and no later attack benefits. Covers the "pick an enemy,
+    /// friendly units get X against it once" spell family (#034). Applied to the picked enemy by the cast
+    /// path, exactly like any other token-granting effect.
+    /// </summary>
+    public sealed record MarkTarget(string RuleName) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.GrantTokenToUnit(
+                ruleInvocation.EffectiveTarget,
+                new Token(TokenType.Mark, 1, new TokenClearTrigger.ManualOnly(),
+                    Payload: new TokenPayload.RuleGrant(RuleName, ELifetime.ThisAttack))));
         }
     }
 }

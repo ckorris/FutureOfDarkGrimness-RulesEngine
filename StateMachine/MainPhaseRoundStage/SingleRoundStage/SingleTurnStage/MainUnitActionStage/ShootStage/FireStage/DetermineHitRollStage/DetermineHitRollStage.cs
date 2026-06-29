@@ -1,10 +1,12 @@
 
 using FDG.Utilities;
 using System;
+using System.Linq;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 
 namespace FDG.Stages
 {
@@ -22,6 +24,14 @@ namespace FDG.Stages
         {
             IUnit attacker = metaData.AttackingUnit.GetValue();
             IUnit defender = metaData.DefendingUnit.GetValue();
+
+            // #100 #14: this is the first rule-evaluation point of any attack (shooting or melee), so claim
+            // the defender's marks here — transfer each marked rule onto the attacker for this attack and
+            // remove the mark. Done before the evaluation below so a hit-side marked rule (+1 to hit) applies
+            // immediately; later hooks pick it up as a normal grant; the grant is retired at the attacker's
+            // next claim.
+            ClaimTargetMarks(attacker, defender);
+
             float distance = UnitCompareUtilities.MinDistanceBetweenUnits(attacker, defender, out _, out _, includeVertical:true);
 
             IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
@@ -75,6 +85,35 @@ namespace FDG.Stages
             }
 
             await onFinished(results);
+        }
+
+        // #100 #14 mark claim: if the defender carries any Mark tokens (placed by a "mark an enemy →
+        // friendlies get X against it once" spell), the FIRST attack into it claims them — transfer each
+        // marked rule onto the attacker as a one-attack (AttackEnd) grant the read-back then applies across
+        // every hook of this attack, and remove the mark so no later attack benefits. The spend is the
+        // attack itself, not the dice.
+        //
+        // The one-attack (AttackEnd) grant is retired here, at the START of the attacker's NEXT attack,
+        // rather than at the previous attack's terminus: an attack has several exit paths and AttackEnd has
+        // no fired hook, so lazy retirement at the next claim is simpler and robust. Between attacks the
+        // spent grant lies inert (its rule only fires at combat hooks, all of which come after this point),
+        // so retiring it just-in-time is behaviourally identical to an attack-end sweep.
+        private static void ClaimTargetMarks(IUnit attacker, IUnit defender)
+        {
+            new TokenClearService().ClearAttackEndTokens(new[] { attacker.Tokens });
+
+            List<Token> marks = defender.Tokens.GetAllTokens(TokenType.Mark).ToList(); // snapshot before mutating
+            foreach (Token mark in marks)
+            {
+                if (mark.Payload is TokenPayload.RuleGrant grant)
+                {
+                    attacker.Tokens.AddToken(new Token(TokenType.RuleGrant, 1,
+                        new TokenClearTrigger.AttackEnd(),
+                        Payload: new TokenPayload.RuleGrant(grant.RuleName, ELifetime.ThisAttack)));
+                }
+
+                defender.Tokens.RemoveTokensWithPayload(mark.Type, mark.OwnerUnitID, mark.Payload, mark.Count);
+            }
         }
     }
 }

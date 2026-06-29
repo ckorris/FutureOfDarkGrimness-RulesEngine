@@ -8,6 +8,7 @@ public readonly record struct TokenType(string Id)
     public const string RULE_GRANT_ID = "RuleGrant";
     public const string ARRIVED_FROM_RESERVE_ID = "ArrivedFromReserve";
     public const string EMBARKED_IN_ID = "EmbarkedIn";
+    public const string MARK_ID = "Mark";
 
     // Granted numeric roll modifiers (#033 stat-modifier primitive): a spell/ability grants the bearer a
     // signed delta to a specific roll for a duration. The roll kind is the token TYPE (so different rolls
@@ -45,4 +46,14 @@ public readonly record struct TokenType(string Id)
     /// than racing an automatic <c>OwnerDestroyed</c> sweep.
     /// </summary>
     public static readonly TokenType EmbarkedIn = new(EMBARKED_IN_ID);
+
+    /// <summary>
+    /// A cross-unit "mark" placed on an enemy unit by a mark spell/ability (#100 #14). Carries a
+    /// <c>TokenPayload.RuleGrant</c> naming the rule a friendly attacker gains against the marked enemy.
+    /// Distinct from <see cref="RuleGrant"/> so the enemy doesn't read it as a buff on itself: it's read
+    /// only at the attacker-side claim (<c>DetermineHitRollStage</c>), which transfers the named rule to the
+    /// attacker as a one-attack grant and removes the mark — spent by the first attack into the enemy,
+    /// regardless of the dice. Carried with a <c>ManualOnly</c> clear (removed explicitly on claim).
+    /// </summary>
+    public static readonly TokenType Mark = new(MARK_ID);
 }

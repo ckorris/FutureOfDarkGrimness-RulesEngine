@@ -833,20 +833,23 @@ public static class CoreRuleCatalog
         });
 
     /// <summary>
-    /// Harassing: after this unit shoots, it may immediately move up to 3" (optional). A passive
-    /// <see cref="HookEntry"/> at <see cref="EHookID.Shooting_OnPostShoot"/> — fired once per shoot
-    /// action by <c>PostShootStage</c> — that queues an optional <see cref="Effect.TriggeredMove"/> the
-    /// engine enacts through the movement subsystem. The bearer is the shooter, so the move is a
-    /// self-move directed by its own owner.
-    ///
-    /// The rulebook's Harassing also grants the move "after being attacked in melee"
-    /// (<see cref="EHookID.Melee_OnPostMelee"/>); that half lands with the melee post-combat seam and is
-    /// deferred here — this rule currently fires on the shooting seam only.
+    /// Harassing: after this unit shoots — or after it is attacked in melee — it may immediately move up
+    /// to 3" (optional). Two passive <see cref="HookEntry"/>s: one at
+    /// <see cref="EHookID.Shooting_OnPostShoot"/> (fired once per shoot action by <c>PostShootStage</c>)
+    /// and one at <see cref="EHookID.Melee_OnPostMelee"/> (fired for the charged unit by
+    /// <c>PostMeleeStage</c> once the melee fully resolves). Each queues an optional
+    /// <see cref="Effect.TriggeredMove"/> the engine enacts through the movement subsystem; the bearer is
+    /// the moving unit, so the move is a self-move directed by its own owner (a reactive disengage in the
+    /// melee case).
     /// </summary>
     public static SpecialRuleDefinition Harassing { get; } = new SpecialRuleDefinition("Harassing",
         new[]
         {
             new HookEntry(EHookID.Shooting_OnPostShoot,
+                new Condition.Always(),
+                new Effect.TriggeredMove(MaxInches: 3f, IsOptional: true),
+                ELifetime.ThisAttack),
+            new HookEntry(EHookID.Melee_OnPostMelee,
                 new Condition.Always(),
                 new Effect.TriggeredMove(MaxInches: 3f, IsOptional: true),
                 ELifetime.ThisAttack),

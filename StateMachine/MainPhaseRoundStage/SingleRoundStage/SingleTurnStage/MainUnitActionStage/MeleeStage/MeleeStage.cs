@@ -52,6 +52,7 @@ namespace FDG.Stages
                 .AddChild(new AssignMeleeMoralePenaltyStage(GameContext, this), out var assignMeleeMoralePenalty)
                 .AddChild(new ApplyFatigueStage(GameContext, this), out var applyFatigueStage)
                 .AddChild(new ConsolidateStage(GameContext, this), out var consolidate)
+                .AddChild(new PostMeleeStage(GameContext, this), out var postMelee)
                 .AddSibling(nameof(OnFinishedMelee), OnFinishedMelee, out string meleeFinishedEvent)
                 .Build();
 
@@ -84,7 +85,11 @@ namespace FDG.Stages
             rollForMorale.OnMoraleFailed.Bind(assignMeleeMoralePenalty);
             assignMeleeMoralePenalty.OnAssignedPenalty.Bind(applyFatigueStage);
             applyFatigueStage.OnFatigueApplied.Bind(consolidate);
-            consolidate.OnConsolidated.Bind(meleeFinishedEvent);
+            // After the melee fully resolves, the charged unit may make its post-melee move (Harassing);
+            // PostMeleeStage fires the Melee_OnPostMelee hook then finishes. The BackToChooseAction exit
+            // (no melee occurred) still goes straight to meleeFinishedEvent, bypassing the move.
+            consolidate.OnConsolidated.Bind(postMelee);
+            postMelee.ToFinished.Bind(meleeFinishedEvent);
 
             return dictionary;
         }

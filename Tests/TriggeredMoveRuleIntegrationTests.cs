@@ -112,6 +112,29 @@ namespace FDG.Tests
             AssertModelAt(unit, 1, 2f, 1f);
         }
 
+        // The melee twin: Harassing also fires at the post-melee hook PostMeleeStage drives, giving the
+        // charged unit an optional 3" disengage. Same TriggeredMove seam, reached from Melee_OnPostMelee.
+        [Test]
+        public async Task Harassing_AtPostMeleeHook_RepositionsTheUnit()
+        {
+            var requester = new CannedMovePathRequester(dx: 0f, dz: 2f);
+            var ctx = new TriggeredMoveTestContext(_store, requester);
+
+            DataBinding<UnitData> unit = MakeUnit(new Position(0f, 0f), new Position(1f, 0f));
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Harassing", CoreRuleCatalog.Harassing));
+
+            IReadOnlyList<RuleOperation> ops = ctx.RuleEvaluator.EvaluateAll(
+                new PostMeleeActionContext(unit.GetValue()), (unit.GetValue(), ERuleSeat.Actor));
+
+            await OperationExecutor.Execute(ops, new GameOperationServices(ctx));
+
+            Assert.That(requester.Captured, Is.Not.Null, "the post-melee hook issued a movement-path request");
+            Assert.That(requester.Captured!.MaxDistanceInches, Is.EqualTo(3f).Within(0.001f),
+                "Harassing's 3\" post-melee budget reaches the resolver");
+            AssertModelAt(unit, 0, 0f, 2f);
+            AssertModelAt(unit, 1, 1f, 2f);
+        }
+
         // A unit without a post-shoot rule produces no operation at the hook — PostShootStage is a
         // no-op for it (no spurious move request).
         [Test]

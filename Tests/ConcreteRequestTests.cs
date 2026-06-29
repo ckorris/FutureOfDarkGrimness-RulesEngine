@@ -318,6 +318,36 @@ namespace FDG.Tests
             Assert.That(deserialized.Instructions, Is.EqualTo("Select your army"));
         }
 
+        // #102: the per-(weapon, enemy) range overrides ride DefineMovementPathRequest, which is JSON-
+        // serialized for network play — guard that the new list (a record carrying a UnitID) round-trips.
+        [Test]
+        public void DefineMovementPathRequest_WeaponRangeOverrides_RoundTrips()
+        {
+            var store    = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var playerID = new PlayerID(Guid.NewGuid());
+
+            var model        = new ModelData(0.75f, new List<Weapon> { new Weapon("Rifle", 24f, 1, 0) },
+                new Position(), store);
+            var modelBinding = store.GetDataBinding<ModelData>(store.Create(model));
+            var unit         = new UnitData(playerID, "Mover", 3, 3, new List<DataBinding<ModelData>> { modelBinding });
+            var unitBinding  = store.GetDataBinding<UnitData>(store.Create(unit));
+
+            var enemyId   = new UnitID(Guid.NewGuid());
+            var overrides = new List<WeaponRangeOverride> { new WeaponRangeOverride("Rifle", enemyId, 30f) };
+            var request   = new DefineMovementPathRequest(playerID, "Move Unit", unitBinding,
+                6f, 12f, 12f, weaponSightProfiles: null, canMoveThroughEnemies: false,
+                ignoresDifficultTerrain: false, weaponRangeOverrides: overrides);
+
+            string json         = JsonConvert.SerializeObject(request, store.GetJsonSettings());
+            var    deserialized = JsonConvert.DeserializeObject<DefineMovementPathRequest>(json, store.GetJsonSettings());
+
+            Assert.That(deserialized, Is.Not.Null);
+            Assert.That(deserialized!.WeaponRangeOverrides.Count, Is.EqualTo(1));
+            Assert.That(deserialized.WeaponRangeOverrides[0].WeaponName, Is.EqualTo("Rifle"));
+            Assert.That(deserialized.WeaponRangeOverrides[0].EnemyUnitId, Is.EqualTo(enemyId));
+            Assert.That(deserialized.WeaponRangeOverrides[0].EffectiveRangeInches, Is.EqualTo(30f));
+        }
+
         [Test]
         public void ChooseRangedAttackRequest_SerializesAndDeserializesCorrectly_SameStore()
         {

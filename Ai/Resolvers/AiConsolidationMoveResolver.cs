@@ -56,7 +56,7 @@ namespace FDG.Ai.Resolvers
             {
                 List<ModelMoveEntry> candidate = BuildDeltaMove(aliveModels, dirX, dirZ, step);
                 if (MovementUtilities.ValidatePaths(candidate, request.MaxDistanceInches, footprints,
-                        request.CanMoveThroughEnemies, terrain, out _))
+                        request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, terrain, out _))
                     return Task.FromResult(candidate);
             }
             return Task.FromResult(StayInPlace(aliveModels));

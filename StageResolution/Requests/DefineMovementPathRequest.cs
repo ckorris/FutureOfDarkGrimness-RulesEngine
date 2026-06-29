@@ -32,10 +32,19 @@ namespace FDG.StageResolution.Requests
         /// </summary>
         public bool CanMoveThroughEnemies { get; }
 
+        /// <summary>
+        /// Whether the moving unit ignores the difficult-terrain move cap (Strider). Derived from the unit's
+        /// #042 rules where the request is built, and read by the resolvers so their move-preview validation
+        /// agrees with the authoritative stage check (a Strider unit may move full distance across Difficult
+        /// terrain without being limited to the difficult-terrain cap).
+        /// </summary>
+        public bool IgnoresDifficultTerrain { get; }
+
         [JsonConstructor]
         public DefineMovementPathRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
             DataBinding<UnitData> unitDataBinding, float maxAdvanceDistance, float maxRushDistance, float maxDistanceInches,
-            IReadOnlyList<WeaponSightProfile>? weaponSightProfiles = null, bool canMoveThroughEnemies = false)
+            IReadOnlyList<WeaponSightProfile>? weaponSightProfiles = null, bool canMoveThroughEnemies = false,
+            bool ignoresDifficultTerrain = false)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -46,11 +55,13 @@ namespace FDG.StageResolution.Requests
             MaxDistanceInches = maxDistanceInches;
             WeaponSightProfiles = weaponSightProfiles ?? new List<WeaponSightProfile>();
             CanMoveThroughEnemies = canMoveThroughEnemies;
+            IgnoresDifficultTerrain = ignoresDifficultTerrain;
         }
 
         public DefineMovementPathRequest(PlayerID targetPlayerID,  string taskName,
             DataBinding<UnitData> unitDataBinding, float maxAdvanceDistance, float maxRushDistance, float maxDistanceInches,
-            IReadOnlyList<WeaponSightProfile>? weaponSightProfiles = null, bool canMoveThroughEnemies = false)
+            IReadOnlyList<WeaponSightProfile>? weaponSightProfiles = null, bool canMoveThroughEnemies = false,
+            bool ignoresDifficultTerrain = false)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = new TaskID(Guid.NewGuid());
@@ -61,6 +72,7 @@ namespace FDG.StageResolution.Requests
             MaxDistanceInches = maxDistanceInches;
             WeaponSightProfiles = weaponSightProfiles ?? new List<WeaponSightProfile>();
             CanMoveThroughEnemies = canMoveThroughEnemies;
+            IgnoresDifficultTerrain = ignoresDifficultTerrain;
         }
 
         public Task<List<ModelMoveEntry>> Resolve(List<ModelMoveEntry> resolution)

@@ -27,5 +27,25 @@ namespace FDG.Rules.Dispatch
             }
             return false;
         }
+
+        /// <summary>
+        /// Whether <paramref name="unit"/> ignores the difficult-terrain movement cap (Strider; a future
+        /// Flying rule reuses the same <see cref="RuleOperation.IgnoreTerrainEffects"/>). Drives the
+        /// <c>ignoresDifficultTerrain</c> flag threaded into
+        /// <see cref="Stages.MovementUtilities.ValidateMovingThroughDifficultTerrain"/>: when set, a move
+        /// crossing Difficult terrain is no longer capped at <see cref="Utilities.GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES"/>.
+        /// Non-logging — safe to call per-frame while a resolver builds its preview. Note this waives only the
+        /// difficult-terrain cap; Dangerous-terrain tests and the enemy move-through block are unaffected (the
+        /// "ignore all terrain" Flying facet is #029).
+        /// </summary>
+        public static bool IgnoresDifficultTerrain(IUnit unit, RuleEvaluator evaluator)
+        {
+            foreach ((RuleOperation op, string _) in evaluator.EvaluateAllNamed(
+                         new MoveThroughTerrainContext(unit), (unit, ERuleSeat.Actor)))
+            {
+                if (op is RuleOperation.IgnoreTerrainEffects) return true;
+            }
+            return false;
+        }
     }
 }

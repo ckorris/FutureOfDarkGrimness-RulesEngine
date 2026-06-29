@@ -123,9 +123,11 @@ namespace FDG.Stages
             List<EnemyModelFootprint> enemyFootprints = MovementUtilities.GetEnemyModelFootprints(unit, gameContext);
             bool canMoveThroughEnemies = Rules.Dispatch.MovementRuleQueries.CanMoveThroughEnemies(
                 unit.GetValue(), gameContext.RuleEvaluator);
+            bool ignoresDifficultTerrain = Rules.Dispatch.MovementRuleQueries.IgnoresDifficultTerrain(
+                unit.GetValue(), gameContext.RuleEvaluator);
 
             if (!MovementUtilities.ValidatePaths(paths, maxInches, enemyFootprints, canMoveThroughEnemies,
-                    relevantTerrain, out errors))
+                    ignoresDifficultTerrain, relevantTerrain, out errors))
             {
                 return false;
             }

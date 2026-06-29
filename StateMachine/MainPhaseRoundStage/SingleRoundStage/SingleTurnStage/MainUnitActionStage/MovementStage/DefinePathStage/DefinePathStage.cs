@@ -24,11 +24,13 @@ namespace FDG.Stages
 
             bool canMoveThroughEnemies = Rules.Dispatch.MovementRuleQueries.CanMoveThroughEnemies(
                 context.MovingUnit.GetValue(), context.GameContext.RuleEvaluator);
+            bool ignoresDifficultTerrain = Rules.Dispatch.MovementRuleQueries.IgnoresDifficultTerrain(
+                context.MovingUnit.GetValue(), context.GameContext.RuleEvaluator);
 
             var pathRequest = new DefineMovementPathRequest(playerID, "Move Unit", context.MovingUnit,
                 context.MaxAdvanceDistance, context.MaxRushDistance, hardCap,
                 WeaponSightProfileBuilder.For(context.MovingUnit.GetValue(), context.GameContext.RuleEvaluator),
-                canMoveThroughEnemies);
+                canMoveThroughEnemies, ignoresDifficultTerrain);
 
             List<ModelMoveEntry> movements = await context.PlayerRequester()
                 .RequestDecision<DefineMovementPathRequest, List<ModelMoveEntry>>(pathRequest);
@@ -36,7 +38,7 @@ namespace FDG.Stages
             List<EnemyModelFootprint> enemyFootprints = MovementUtilities.GetEnemyModelFootprints(context.MovingUnit, context.GameContext);
 
             if(MovementUtilities.ValidatePaths(movements, context.MaxRushDistance, hardCap,
-                enemyFootprints, canMoveThroughEnemies,
+                enemyFootprints, canMoveThroughEnemies, ignoresDifficultTerrain,
                 context.RelevantTerrain, out List<ReasonForInvalidMove> invalidReasons) == false)
             {
                 StringBuilder sb = new StringBuilder(invalidReasons[0].ToString());

@@ -24,10 +24,17 @@ namespace FDG.StageResolution.Requests
         /// </summary>
         public bool CanMoveThroughEnemies { get; }
 
+        /// <summary>
+        /// Whether the consolidating unit ignores the difficult-terrain move cap (Strider). Derived from the
+        /// unit's #042 rules where the request is built, and read by the resolvers so their move-preview
+        /// validation agrees with the authoritative <see cref="Stages.ConsolidateStage"/> check.
+        /// </summary>
+        public bool IgnoresDifficultTerrain { get; }
+
         [JsonConstructor]
         public ConsolidationMoveRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
             DataBinding<UnitData> unitDataBinding, float maxDistanceInches, EConsolidationReason reason,
-            bool canMoveThroughEnemies = false)
+            bool canMoveThroughEnemies = false, bool ignoresDifficultTerrain = false)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -36,11 +43,12 @@ namespace FDG.StageResolution.Requests
             MaxDistanceInches = maxDistanceInches;
             Reason = reason;
             CanMoveThroughEnemies = canMoveThroughEnemies;
+            IgnoresDifficultTerrain = ignoresDifficultTerrain;
         }
 
         public ConsolidationMoveRequest(PlayerID targetPlayerID, string taskName,
             DataBinding<UnitData> unitDataBinding, float maxDistanceInches, EConsolidationReason reason,
-            bool canMoveThroughEnemies = false)
+            bool canMoveThroughEnemies = false, bool ignoresDifficultTerrain = false)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = new TaskID(Guid.NewGuid());
@@ -49,6 +57,7 @@ namespace FDG.StageResolution.Requests
             MaxDistanceInches = maxDistanceInches;
             Reason = reason;
             CanMoveThroughEnemies = canMoveThroughEnemies;
+            IgnoresDifficultTerrain = ignoresDifficultTerrain;
         }
 
         public Task<List<ModelMoveEntry>> Resolve(List<ModelMoveEntry> resolution)

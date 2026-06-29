@@ -99,7 +99,10 @@ namespace FDG.Ai.Resolvers
                 ndz = skirtDz;
             }
 
-            if (CentroidCrossesTerrain(allTerrain, ETerrainType.Difficult, cx, cz, ndx, ndz, step, baseRadius))
+            // Strider waives the difficult-terrain cap, so don't pre-clamp the AI's step to it (the path
+            // validator below also skips the cap for this unit, so a clamp here would only under-move).
+            if (!request.IgnoresDifficultTerrain
+                && CentroidCrossesTerrain(allTerrain, ETerrainType.Difficult, cx, cz, ndx, ndz, step, baseRadius))
                 step = Math.Min(step, GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES - 0.001f);
 
             // (B) The centroid pre-filter can't see per-model paths, cohesion, enemy-unit crossings, or
@@ -109,7 +112,7 @@ namespace FDG.Ai.Resolvers
             // the engine will reject.
             List<ModelMoveEntry> candidate = BuildCandidate(living, cx, cz, ndx, ndz, step, request);
             bool valid = MovementUtilities.ValidatePaths(candidate, request.MaxRushDistance,
-                request.MaxDistanceInches, enemyFootprints, request.CanMoveThroughEnemies, allTerrain, out _);
+                request.MaxDistanceInches, enemyFootprints, request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, allTerrain, out _);
 
             int attempts = 0;
             while (!valid && attempts < MaxBackoffAttempts)
@@ -119,7 +122,7 @@ namespace FDG.Ai.Resolvers
                     ? StayInPlace(request)
                     : BuildCandidate(living, cx, cz, ndx, ndz, step, request);
                 valid = MovementUtilities.ValidatePaths(candidate, request.MaxRushDistance,
-                    request.MaxDistanceInches, enemyFootprints, request.CanMoveThroughEnemies, allTerrain, out _);
+                    request.MaxDistanceInches, enemyFootprints, request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, allTerrain, out _);
                 attempts++;
             }
 
@@ -128,7 +131,7 @@ namespace FDG.Ai.Resolvers
                 // Reform in place to close any casualty gaps...
                 candidate = StayInPlace(request);
                 valid = MovementUtilities.ValidatePaths(candidate, request.MaxRushDistance,
-                    request.MaxDistanceInches, enemyFootprints, request.CanMoveThroughEnemies, allTerrain, out _);
+                    request.MaxDistanceInches, enemyFootprints, request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, allTerrain, out _);
 
                 // ...but if even that is rejected (a unit intermingled with enemies can't re-pack without
                 // a model crossing an enemy base), hold exact positions — zero-length paths can't move

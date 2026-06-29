@@ -41,6 +41,7 @@ public static class CoreRuleCatalog
         CourageAura, BaneInMeleeAura, RendingInMeleeAura, ShredInMeleeAura, UnstoppableInMeleeAura,
         Resistance, Protected, PiercingAssault, PiercingHunter, Shielded, Fortified,
         ResistanceAura, ProtectedAura, PiercingAssaultAura, PiercingHunterAura, ShieldedAura, FortifiedAura,
+        Strider,
     };
 
     /// <summary>
@@ -1345,6 +1346,26 @@ public static class CoreRuleCatalog
                 new Effect.DealHits(Count: 3, WithRules: Array.Empty<string>()),
                 new Condition.Always()),
         });
+
+    /// <summary>
+    /// Strider (#102): the unit ignores the difficult-terrain movement cap — it may cross Difficult terrain
+    /// without being limited to <see cref="Utilities.GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES"/>.
+    /// A passive at <see cref="EHookID.Movement_OnMoveThroughTerrain"/> emitting
+    /// <see cref="Effect.IgnoreTerrainEffects"/>, read by <see cref="MovementRuleQueries.IgnoresDifficultTerrain"/>
+    /// and threaded into the movement validators (engine + every move resolver). Mirrors Strafing's fly-over
+    /// passive above. Scope note: this waives only the Difficult cap; Dangerous-terrain tests and the enemy
+    /// move-through block are unaffected (Flying's "ignore all terrain + move through units" facet is #029,
+    /// which can reuse the same effect once those consumers also honour it).
+    /// </summary>
+    public static SpecialRuleDefinition Strider { get; } = new SpecialRuleDefinition("Strider",
+        new[]
+        {
+            new HookEntry(EHookID.Movement_OnMoveThroughTerrain,
+                new Condition.Always(),
+                new Effect.IgnoreTerrainEffects(),
+                ELifetime.ThisActivation),
+        },
+        Array.Empty<ActivatedAbility>());
 
     // Pre-attack activated abilities (PreAttackStage offers them at Activation_OnPreAttack) -------------
 

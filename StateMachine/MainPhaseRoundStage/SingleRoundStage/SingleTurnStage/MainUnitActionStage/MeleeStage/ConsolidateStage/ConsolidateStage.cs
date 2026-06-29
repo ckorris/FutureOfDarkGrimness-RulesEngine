@@ -42,11 +42,13 @@ namespace FDG.Stages
             // Strafing unit consolidate through an enemy; it still may not end stacked on one.
             bool canMoveThroughEnemies = Rules.Dispatch.MovementRuleQueries.CanMoveThroughEnemies(
                 context.AttackingUnit.GetValue(), context.GameContext.RuleEvaluator);
+            bool ignoresDifficultTerrain = Rules.Dispatch.MovementRuleQueries.IgnoresDifficultTerrain(
+                context.AttackingUnit.GetValue(), context.GameContext.RuleEvaluator);
             List<EnemyModelFootprint> enemyFootprints =
                 MovementUtilities.GetEnemyModelFootprints(context.AttackingUnit, context.GameContext);
 
             var request = new ConsolidationMoveRequest(playerID, $"Consolidate Move ({reason})",
-                context.AttackingUnit, maxDist, reason, canMoveThroughEnemies);
+                context.AttackingUnit, maxDist, reason, canMoveThroughEnemies, ignoresDifficultTerrain);
 
             List<ModelMoveEntry> movements = await context.PlayerRequester()
                 .RequestDecision<ConsolidationMoveRequest, List<ModelMoveEntry>>(request);
@@ -56,7 +58,7 @@ namespace FDG.Stages
             // to catch any per-model paths a future resolver might submit.
             IEnumerable<ITerrain>? terrain = context.GameContext.TableState.Terrain.Objects;
             if (!MovementUtilities.ValidatePaths(movements, maxDist, enemyFootprints, canMoveThroughEnemies,
-                    terrain, out List<ReasonForInvalidMove> errors))
+                    ignoresDifficultTerrain, terrain, out List<ReasonForInvalidMove> errors))
             {
                 StringBuilder sb = new StringBuilder(errors[0].ToString());
                 for (int i = 1; i < errors.Count; i++) sb.Append(", ").Append(errors[i].ToString());

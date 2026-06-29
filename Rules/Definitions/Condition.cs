@@ -70,9 +70,12 @@ public abstract record Condition
     /// </summary>
     public sealed record UnitHasRule(string RuleName) : Condition
     {
+        // Case-insensitive, matching the resolver: "has Bane when Shooting" is true for a unit carrying
+        // the rule registered as "Bane when shooting".
         public override bool Evaluate(RuleInvocation invocation) =>
             invocation.Bearer.RuleDefinitions.Any(
-                r => r.Definition.Name == RuleName || r.RequestedName == RuleName);
+                r => string.Equals(r.Definition.Name, RuleName, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(r.RequestedName, RuleName, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
@@ -81,9 +84,11 @@ public abstract record Condition
     /// </summary>
     public sealed record TargetHasRule(string RuleName) : CapabilityCondition<IHasTarget>
     {
+        // Case-insensitive, matching the resolver (see UnitHasRule).
         protected override bool EvaluateCore(IHasTarget context) =>
             context.Target.RuleDefinitions.Any(
-                r => r.Definition.Name == RuleName || r.RequestedName == RuleName);
+                r => string.Equals(r.Definition.Name, RuleName, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(r.RequestedName, RuleName, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

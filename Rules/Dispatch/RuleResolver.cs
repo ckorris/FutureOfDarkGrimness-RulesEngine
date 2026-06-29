@@ -20,7 +20,12 @@ namespace FDG.Rules.Dispatch;
 /// </summary>
 public sealed class RuleResolver : IRuleResolver
 {
-    private readonly Dictionary<string, SpecialRuleDefinition> _rules = new();
+    // Case-insensitive: rule names match without regard to casing, so a corpus reference like
+    // "Bane when Shooting" resolves to a rule registered as "Bane when shooting" (and vice versa). The
+    // same comparer governs Register/RegisterAlias/Resolve, so registration also rejects names that
+    // differ only by case — keeping registration and resolution semantics aligned.
+    private readonly Dictionary<string, SpecialRuleDefinition> _rules =
+        new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Registers <paramref name="definition"/> under its canonical

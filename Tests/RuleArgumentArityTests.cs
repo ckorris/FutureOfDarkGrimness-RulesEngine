@@ -28,6 +28,23 @@ namespace FDG.Tests
                 },
                 NoAbilities);
 
+        // The resolver matches rule names case-insensitively, so a corpus reference written "Bane when
+        // Shooting" resolves to the catalog rule registered "Bane when shooting" (and any casing in
+        // between). Guards the fix for the case-sensitive-resolution gap.
+        [Test]
+        public void Resolver_IsCaseInsensitive_CorpusCasingResolvesToCatalogRule()
+        {
+            RuleResolver resolver = CoreRuleCatalog.CreateResolver();
+
+            Assert.That(resolver.TryResolve("Bane when Shooting", out ResolvedRule corpusCased), Is.True,
+                "corpus casing 'Bane when Shooting' must resolve");
+            Assert.That(resolver.TryResolve("bane when shooting", out ResolvedRule allLower), Is.True);
+
+            Assert.That(corpusCased.Definition, Is.SameAs(CoreRuleCatalog.BaneWhenShooting),
+                "resolves to the registered definition regardless of casing");
+            Assert.That(allLower.Definition, Is.SameAs(corpusCased.Definition));
+        }
+
         [Test]
         public void MaxReferencedArgIndex_NoArgs_IsNegativeOne()
         {

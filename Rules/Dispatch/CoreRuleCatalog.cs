@@ -33,6 +33,10 @@ public static class CoreRuleCatalog
         Harassing, HitAndRunShooter, HitAndRunFighter, HitAndRun, Guerrilla,
         HarassingBoost, GuerrillaBoost,
         HitAndRunShooterAura, HitAndRunFighterAura, HarassingBoostAura, GuerrillaBoostAura,
+        RegenerationAura, FuriousAura, StealthAura, ScoutAura, RelentlessAura, AmbushAura,
+        CounterAttackAura, EvasiveAura, FastAura, FearlessAura, MeleeEvasionAura,
+        RapidAdvanceAura, RapidChargeAura, RapidRushAura,
+        BaneWhenShootingAura, ShredWhenShootingAura, UnstoppableWhenShootingAura,
     };
 
     /// <summary>
@@ -48,6 +52,25 @@ public static class CoreRuleCatalog
         }
         return resolver;
     }
+
+    /// <summary>
+    /// Factory for the corpus's uniform "<c>X Aura</c>: this model and its unit get X" rules — an
+    /// <see cref="Effect.Aura"/> at <see cref="EHookID.Lifecycle_OnUnitCreated"/> that grants an
+    /// already-cataloged rule unit-wide (read back by <c>RuleEvaluator.CollectGrantedRules</c>).
+    /// <paramref name="grantedRuleName"/> must EXACTLY match a registered rule name — the resolver is
+    /// case-sensitive, so e.g. the base is "Bane when shooting" even though the aura is "Bane when Shooting
+    /// Aura". Every aura in <see cref="All"/> is checked against the resolver by a catalog-integrity test.
+    /// </summary>
+    private static SpecialRuleDefinition UnitAura(string name, string grantedRuleName) =>
+        new SpecialRuleDefinition(name,
+            new[]
+            {
+                new HookEntry(EHookID.Lifecycle_OnUnitCreated,
+                    new Condition.Always(),
+                    new Effect.Aura(grantedRuleName),
+                    ELifetime.UntilEndOfGame),
+            },
+            Array.Empty<ActivatedAbility>());
 
     // Hit-roll-modifier sink (DetermineHitRollStage) -----------------------
 
@@ -971,54 +994,57 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>());
 
-    // Aura variants: "this model and its unit get X". Authored as Effect.Aura(X) at unit creation — the
-    // grant projects unit-wide via the read-back (RuleEvaluator.CollectGrantedRules), so the granted family
-    // rule fires at the post-combat hooks for the whole unit. Each granted rule is itself cataloged above,
-    // so the resolver can resolve it by name. (First production uses of Effect.Aura.)
-
+    // Aura variants: "this model and its unit get X" — Effect.Aura(X) at unit creation via the UnitAura
+    // factory; the grant projects unit-wide via the read-back (RuleEvaluator.CollectGrantedRules), so the
+    // granted rule fires for the whole unit at whatever hook it carries. The post-combat-move auras:
     /// <summary> Hit &amp; Run Shooter Aura: this model and its unit gain <see cref="HitAndRunShooter"/>. </summary>
-    public static SpecialRuleDefinition HitAndRunShooterAura { get; } = new SpecialRuleDefinition("Hit & Run Shooter Aura",
-        new[]
-        {
-            new HookEntry(EHookID.Lifecycle_OnUnitCreated,
-                new Condition.Always(),
-                new Effect.Aura("Hit & Run Shooter"),
-                ELifetime.UntilEndOfGame),
-        },
-        Array.Empty<ActivatedAbility>());
-
+    public static SpecialRuleDefinition HitAndRunShooterAura { get; } = UnitAura("Hit & Run Shooter Aura", "Hit & Run Shooter");
     /// <summary> Hit &amp; Run Fighter Aura: this model and its unit gain <see cref="HitAndRunFighter"/>. </summary>
-    public static SpecialRuleDefinition HitAndRunFighterAura { get; } = new SpecialRuleDefinition("Hit & Run Fighter Aura",
-        new[]
-        {
-            new HookEntry(EHookID.Lifecycle_OnUnitCreated,
-                new Condition.Always(),
-                new Effect.Aura("Hit & Run Fighter"),
-                ELifetime.UntilEndOfGame),
-        },
-        Array.Empty<ActivatedAbility>());
-
+    public static SpecialRuleDefinition HitAndRunFighterAura { get; } = UnitAura("Hit & Run Fighter Aura", "Hit & Run Fighter");
     /// <summary> Harassing Boost Aura: this model and its unit gain <see cref="HarassingBoost"/>. </summary>
-    public static SpecialRuleDefinition HarassingBoostAura { get; } = new SpecialRuleDefinition("Harassing Boost Aura",
-        new[]
-        {
-            new HookEntry(EHookID.Lifecycle_OnUnitCreated,
-                new Condition.Always(),
-                new Effect.Aura("Harassing Boost"),
-                ELifetime.UntilEndOfGame),
-        },
-        Array.Empty<ActivatedAbility>());
-
+    public static SpecialRuleDefinition HarassingBoostAura { get; } = UnitAura("Harassing Boost Aura", "Harassing Boost");
     /// <summary> Guerrilla Boost Aura: this model and its unit gain <see cref="GuerrillaBoost"/>. </summary>
-    public static SpecialRuleDefinition GuerrillaBoostAura { get; } = new SpecialRuleDefinition("Guerrilla Boost Aura",
-        new[]
-        {
-            new HookEntry(EHookID.Lifecycle_OnUnitCreated,
-                new Condition.Always(),
-                new Effect.Aura("Guerrilla Boost"),
-                ELifetime.UntilEndOfGame),
-        },
-        Array.Empty<ActivatedAbility>());
+    public static SpecialRuleDefinition GuerrillaBoostAura { get; } = UnitAura("Guerrilla Boost Aura", "Guerrilla Boost");
+
+    // General aura cluster: "this model and its unit get <rule>" for rules already in the catalog. Pure
+    // data — each grants an existing base by its EXACT registered name (the resolver is case-sensitive,
+    // hence the lowercase "...when shooting" grants under capitalized aura names). Auras whose base is NOT
+    // yet cataloged (Courage, Melee Shrouding, Resistance, the "in melee" combat-kind mirrors, …) wait on
+    // their base rule and are deliberately omitted here.
+    /// <summary> Regeneration Aura: grants <see cref="Regeneration"/> unit-wide. </summary>
+    public static SpecialRuleDefinition RegenerationAura { get; } = UnitAura("Regeneration Aura", "Regeneration");
+    /// <summary> Furious Aura: grants <see cref="Furious"/> unit-wide. </summary>
+    public static SpecialRuleDefinition FuriousAura { get; } = UnitAura("Furious Aura", "Furious");
+    /// <summary> Stealth Aura: grants <see cref="Stealth"/> unit-wide. </summary>
+    public static SpecialRuleDefinition StealthAura { get; } = UnitAura("Stealth Aura", "Stealth");
+    /// <summary> Scout Aura: grants <see cref="Scout"/> unit-wide. </summary>
+    public static SpecialRuleDefinition ScoutAura { get; } = UnitAura("Scout Aura", "Scout");
+    /// <summary> Relentless Aura: grants <see cref="Relentless"/> unit-wide. </summary>
+    public static SpecialRuleDefinition RelentlessAura { get; } = UnitAura("Relentless Aura", "Relentless");
+    /// <summary> Ambush Aura: grants <see cref="Ambush"/> unit-wide. </summary>
+    public static SpecialRuleDefinition AmbushAura { get; } = UnitAura("Ambush Aura", "Ambush");
+    /// <summary> Counter-Attack Aura: grants <see cref="CounterAttack"/> unit-wide. </summary>
+    public static SpecialRuleDefinition CounterAttackAura { get; } = UnitAura("Counter-Attack Aura", "Counter-Attack");
+    /// <summary> Evasive Aura: grants <see cref="Evasive"/> unit-wide. </summary>
+    public static SpecialRuleDefinition EvasiveAura { get; } = UnitAura("Evasive Aura", "Evasive");
+    /// <summary> Fast Aura: grants <see cref="Fast"/> unit-wide. </summary>
+    public static SpecialRuleDefinition FastAura { get; } = UnitAura("Fast Aura", "Fast");
+    /// <summary> Fearless Aura: grants <see cref="Fearless"/> unit-wide. </summary>
+    public static SpecialRuleDefinition FearlessAura { get; } = UnitAura("Fearless Aura", "Fearless");
+    /// <summary> Melee Evasion Aura: grants <see cref="MeleeEvasion"/> unit-wide. </summary>
+    public static SpecialRuleDefinition MeleeEvasionAura { get; } = UnitAura("Melee Evasion Aura", "Melee Evasion");
+    /// <summary> Rapid Advance Aura: grants <see cref="RapidAdvance"/> unit-wide. </summary>
+    public static SpecialRuleDefinition RapidAdvanceAura { get; } = UnitAura("Rapid Advance Aura", "Rapid Advance");
+    /// <summary> Rapid Charge Aura: grants <see cref="RapidCharge"/> unit-wide. </summary>
+    public static SpecialRuleDefinition RapidChargeAura { get; } = UnitAura("Rapid Charge Aura", "Rapid Charge");
+    /// <summary> Rapid Rush Aura: grants <see cref="RapidRush"/> unit-wide. </summary>
+    public static SpecialRuleDefinition RapidRushAura { get; } = UnitAura("Rapid Rush Aura", "Rapid Rush");
+    /// <summary> Bane when Shooting Aura: grants <see cref="BaneWhenShooting"/> ("Bane when shooting") unit-wide. </summary>
+    public static SpecialRuleDefinition BaneWhenShootingAura { get; } = UnitAura("Bane when Shooting Aura", "Bane when shooting");
+    /// <summary> Shred when Shooting Aura: grants <see cref="ShredWhenShooting"/> ("Shred when shooting") unit-wide. </summary>
+    public static SpecialRuleDefinition ShredWhenShootingAura { get; } = UnitAura("Shred when Shooting Aura", "Shred when shooting");
+    /// <summary> Unstoppable when Shooting Aura: grants <see cref="UnstoppableWhenShooting"/> ("Unstoppable when shooting") unit-wide. </summary>
+    public static SpecialRuleDefinition UnstoppableWhenShootingAura { get; } = UnitAura("Unstoppable when Shooting Aura", "Unstoppable when shooting");
 
     // Deferred-deployment primitive (PlaceDeferredUnitsStage) ---------------------
 

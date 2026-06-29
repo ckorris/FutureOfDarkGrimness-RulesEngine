@@ -307,6 +307,27 @@ namespace FDG.Tests
             Assert.That(meleeOps, Is.Empty, "Hit & Run Shooter is shooting-only — nothing at post-melee");
         }
 
+        // Catalog integrity: every Effect.Aura in the catalog must grant a rule the resolver actually
+        // knows — guards against a typo or case mismatch in a grant name (the resolver is case-sensitive,
+        // e.g. "Bane when Shooting Aura" must grant the registered "Bane when shooting"). Covers all auras
+        // at once, including any added later.
+        [Test]
+        public void EveryCatalogAura_GrantsAResolvableRule()
+        {
+            RuleResolver resolver = CoreRuleCatalog.CreateResolver();
+            foreach (SpecialRuleDefinition rule in CoreRuleCatalog.All)
+            {
+                foreach (HookEntry entry in rule.Passive)
+                {
+                    if (entry.Effect is Effect.Aura aura)
+                    {
+                        Assert.That(resolver.TryResolve(aura.RuleName, out _), Is.True,
+                            $"'{rule.Name}' grants '{aura.RuleName}', which is not a registered rule");
+                    }
+                }
+            }
+        }
+
         private static List<ModelMoveEntry> TranslatePaths(DataBinding<UnitData> unit, float dx, float dz)
         {
             var entries = new List<ModelMoveEntry>();

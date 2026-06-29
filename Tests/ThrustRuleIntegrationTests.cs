@@ -99,6 +99,64 @@ namespace FDG.Tests
                 "a strike-back is not charging, so Thrust's AP modifier does not apply.");
         }
 
+        // --- Piercing Assault: Thrust's AP facet alone (same charge gate, no +1 to hit) ---
+
+        [Test]
+        public async Task PiercingAssaultCharging_AppliesSaveModifier()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            attacker.GetValue().AttachRuleDefinition(
+                new ResolvedRule("Piercing Assault", CoreRuleCatalog.PiercingAssault));
+
+            RollToHitResults result = await RunRollToHit(attacker, MakeUnit(DefenderPos),
+                isMelee: true, isCharging: true);
+
+            Assert.That(result.SaveModifier, Is.EqualTo(-1),
+                "Piercing Assault gives AP(+1) (a -1 save modifier) when charging in melee.");
+        }
+
+        [Test]
+        public async Task PiercingAssaultStrikeBack_NoSaveModifier()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            attacker.GetValue().AttachRuleDefinition(
+                new ResolvedRule("Piercing Assault", CoreRuleCatalog.PiercingAssault));
+
+            RollToHitResults result = await RunRollToHit(attacker, MakeUnit(DefenderPos),
+                isMelee: true, isCharging: false);
+
+            Assert.That(result.SaveModifier, Is.EqualTo(0), "not charging → no AP.");
+        }
+
+        // --- Piercing Hunter: AP(+1) when shooting beyond 9" (distance gate instead of charge) ---
+
+        [Test]
+        public async Task PiercingHunter_BeyondNine_AppliesSaveModifier()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            attacker.GetValue().AttachRuleDefinition(
+                new ResolvedRule("Piercing Hunter", CoreRuleCatalog.PiercingHunter));
+
+            RollToHitResults result = await RunRollToHit(attacker, MakeUnit(new Position(20, 5)),
+                isMelee: false, isCharging: false);
+
+            Assert.That(result.SaveModifier, Is.EqualTo(-1),
+                "Piercing Hunter gives AP(+1) when shooting beyond 9\".");
+        }
+
+        [Test]
+        public async Task PiercingHunter_WithinNine_NoSaveModifier()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            attacker.GetValue().AttachRuleDefinition(
+                new ResolvedRule("Piercing Hunter", CoreRuleCatalog.PiercingHunter));
+
+            RollToHitResults result = await RunRollToHit(attacker, MakeUnit(DefenderPos),
+                isMelee: false, isCharging: false);
+
+            Assert.That(result.SaveModifier, Is.EqualTo(0), "within 9\" the distance gate fails.");
+        }
+
         private async Task<DetermineHitRollResults> RunHitStage(
             DataBinding<UnitData> attacker, DataBinding<UnitData> defender, bool isMelee, bool isCharging)
         {

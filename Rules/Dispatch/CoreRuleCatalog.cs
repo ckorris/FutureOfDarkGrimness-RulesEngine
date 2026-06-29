@@ -39,6 +39,8 @@ public static class CoreRuleCatalog
         BaneWhenShootingAura, ShredWhenShootingAura, UnstoppableWhenShootingAura,
         Courage, UnstoppableInMelee, ShredInMelee, BaneInMelee, RendingInMelee,
         CourageAura, BaneInMeleeAura, RendingInMeleeAura, ShredInMeleeAura, UnstoppableInMeleeAura,
+        Resistance, Protected, PiercingAssault, PiercingHunter,
+        ResistanceAura, ProtectedAura, PiercingAssaultAura, PiercingHunterAura,
     };
 
     /// <summary>
@@ -784,6 +786,66 @@ public static class CoreRuleCatalog
             Array.Empty<ActivatedAbility>(),
             ERuleScope.Weapon);
 
+    // Defensive wound-ignore + AP corpus rules (reuse IgnoreWoundOnRoll / save-modifier primitives) ------
+
+    /// <summary>
+    /// Resistance: when this unit takes wounds, each is ignored on a die roll of 6+. Regeneration's
+    /// wound-ignore at a higher threshold — <see cref="Effect.IgnoreWoundOnRoll"/>(6) on the defender
+    /// (Subject) at <see cref="EHookID.Shooting_OnSaveRollComplete"/>.
+    /// </summary>
+    public static SpecialRuleDefinition Resistance { get; } = new SpecialRuleDefinition("Resistance",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnSaveRollComplete,
+                new Condition.Always(),
+                new Effect.IgnoreWoundOnRoll(MinRoll: 6),
+                ELifetime.ThisAttack,
+                ERuleSeat.Subject),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary> Protected: mechanically identical to <see cref="Resistance"/> — each wound ignored on a 6+. </summary>
+    public static SpecialRuleDefinition Protected { get; } = new SpecialRuleDefinition("Protected",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnSaveRollComplete,
+                new Condition.Always(),
+                new Effect.IgnoreWoundOnRoll(MinRoll: 6),
+                ELifetime.ThisAttack,
+                ERuleSeat.Subject),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary>
+    /// Piercing Assault: this model gets AP(+1) when charging — the AP facet of <see cref="Thrust"/> alone
+    /// (no +1 to hit). A save-roll modifier on the attacker (Actor) at
+    /// <see cref="EHookID.Shooting_OnHitRollComplete"/>, gated to a charging melee swing.
+    /// </summary>
+    public static SpecialRuleDefinition PiercingAssault { get; } = new SpecialRuleDefinition("Piercing Assault",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnHitRollComplete,
+                new Condition.And(new Condition.IsMelee(), new Condition.IsCharging()),
+                new Effect.RollModifier(ERollKind.Save, Delta: -1),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary>
+    /// Piercing Hunter: this model's weapons get AP(+1) when shooting at enemies over 9" away. The same
+    /// save-roll-modifier AP shape as <see cref="PiercingAssault"/>, gated by distance instead of charge
+    /// (the <c>DistanceGreaterThan(9)</c> condition naturally excludes melee, like Artillery).
+    /// </summary>
+    public static SpecialRuleDefinition PiercingHunter { get; } = new SpecialRuleDefinition("Piercing Hunter",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnHitRollComplete,
+                new Condition.DistanceGreaterThan(9f),
+                new Effect.RollModifier(ERollKind.Save, Delta: -1),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>());
+
     // Wound-injection sink (AssignWoundsStage) -----------------------------------
 
     /// <summary>
@@ -1139,6 +1201,14 @@ public static class CoreRuleCatalog
     public static SpecialRuleDefinition ShredInMeleeAura { get; } = UnitAura("Shred in Melee Aura", "Shred in melee");
     /// <summary> Unstoppable in Melee Aura: grants <see cref="UnstoppableInMelee"/> unit-wide. </summary>
     public static SpecialRuleDefinition UnstoppableInMeleeAura { get; } = UnitAura("Unstoppable in Melee Aura", "Unstoppable in melee");
+    /// <summary> Resistance Aura: grants <see cref="Resistance"/> unit-wide. </summary>
+    public static SpecialRuleDefinition ResistanceAura { get; } = UnitAura("Resistance Aura", "Resistance");
+    /// <summary> Protected Aura: grants <see cref="Protected"/> unit-wide. </summary>
+    public static SpecialRuleDefinition ProtectedAura { get; } = UnitAura("Protected Aura", "Protected");
+    /// <summary> Piercing Assault Aura: grants <see cref="PiercingAssault"/> unit-wide. </summary>
+    public static SpecialRuleDefinition PiercingAssaultAura { get; } = UnitAura("Piercing Assault Aura", "Piercing Assault");
+    /// <summary> Piercing Hunter Aura: grants <see cref="PiercingHunter"/> unit-wide. </summary>
+    public static SpecialRuleDefinition PiercingHunterAura { get; } = UnitAura("Piercing Hunter Aura", "Piercing Hunter");
 
     // Deferred-deployment primitive (PlaceDeferredUnitsStage) ---------------------
 

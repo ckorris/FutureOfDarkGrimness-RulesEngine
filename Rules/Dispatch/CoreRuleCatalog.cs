@@ -42,6 +42,8 @@ public static class CoreRuleCatalog
         Resistance, Protected, PiercingAssault, PiercingHunter, Shielded, Fortified,
         ResistanceAura, ProtectedAura, PiercingAssaultAura, PiercingHunterAura, ShieldedAura, FortifiedAura,
         Strider,
+        IncreasedShootingRange, RangedShrouding,
+        IncreasedShootingRangeAura, RangedShroudingAura,
     };
 
     /// <summary>
@@ -1252,6 +1254,10 @@ public static class CoreRuleCatalog
     public static SpecialRuleDefinition ShieldedAura { get; } = UnitAura("Shielded Aura", "Shielded");
     /// <summary> Fortified Aura: grants <see cref="Fortified"/> unit-wide. </summary>
     public static SpecialRuleDefinition FortifiedAura { get; } = UnitAura("Fortified Aura", "Fortified");
+    /// <summary> Increased Shooting Range Aura (#102): grants <see cref="IncreasedShootingRange"/> unit-wide. </summary>
+    public static SpecialRuleDefinition IncreasedShootingRangeAura { get; } = UnitAura("Increased Shooting Range Aura", "Increased Shooting Range");
+    /// <summary> Ranged Shrouding Aura (#102): grants <see cref="RangedShrouding"/> unit-wide. </summary>
+    public static SpecialRuleDefinition RangedShroudingAura { get; } = UnitAura("Ranged Shrouding Aura", "Ranged Shrouding");
 
     // Deferred-deployment primitive (PlaceDeferredUnitsStage) ---------------------
 
@@ -1364,6 +1370,42 @@ public static class CoreRuleCatalog
                 new Condition.Always(),
                 new Effect.IgnoreTerrainEffects(),
                 ELifetime.ThisActivation),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary>
+    /// Increased Shooting Range (#102): the bearer's own ranged weapons get +6" range. An Actor-seat passive
+    /// at <see cref="EHookID.Shooting_OnRangeCheck"/> emitting <see cref="Effect.RangeModifier"/>(+6), folded
+    /// by <see cref="MovementRuleQueries"/>' sibling <see cref="RangeRuleQueries.EffectiveRangeDelta"/> and
+    /// read by ChooseRangedAttackStage's target-eligibility check (engine-authoritative; the ChooseRangedAttack
+    /// resolvers display it via the in-range model set).
+    /// </summary>
+    public static SpecialRuleDefinition IncreasedShootingRange { get; } = new SpecialRuleDefinition("Increased Shooting Range",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnRangeCheck,
+                new Condition.Always(),
+                new Effect.RangeModifier(Delta: +6),
+                ELifetime.ThisActivation),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary>
+    /// Ranged Shrouding (#102): enemies get −6" range when shooting this unit. A Subject-seat passive at
+    /// <see cref="EHookID.Shooting_OnRangeCheck"/> emitting <see cref="Effect.RangeModifier"/>(−6) — the
+    /// defender contributes the debuff, mirroring how <see cref="Shielded"/> contributes a Subject-seat save
+    /// bonus. The range check floors effective range at 0. Scope: the corpus's "where ALL MODELS have this
+    /// rule" is approximated as unit-level (per-model gating is #093), and the army-specific "to a min. of 6\""
+    /// floor variant is not modelled here (the canonical rule is a flat −6).
+    /// </summary>
+    public static SpecialRuleDefinition RangedShrouding { get; } = new SpecialRuleDefinition("Ranged Shrouding",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnRangeCheck,
+                new Condition.Always(),
+                new Effect.RangeModifier(Delta: -6),
+                ELifetime.ThisActivation,
+                ERuleSeat.Subject),
         },
         Array.Empty<ActivatedAbility>());
 

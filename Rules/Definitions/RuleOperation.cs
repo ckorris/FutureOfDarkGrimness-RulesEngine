@@ -435,8 +435,11 @@ public abstract record RuleOperation
     public sealed record RestrictActions(IReadOnlyList<EActionType> Allowed) : RuleOperation;
 
     /// <summary>
-    /// Adjust the effective range of attacks against the bearer by <see cref="Delta"/>
-    /// inches. Resolution of <see cref="Effect.RangeModifier"/> (Aircraft).
+    /// Adjust a weapon's effective shooting range by <see cref="Delta"/> inches — the attacker's own range
+    /// (Increased Shooting Range, Actor seat) or the range of enemies shooting the bearer (Ranged Shrouding /
+    /// Aircraft, Subject seat). Summed by <see cref="Rules.Dispatch.RangeRuleQueries.EffectiveRangeDelta"/>
+    /// and read by <c>ChooseRangedAttackStage</c>'s target-eligibility check (#102). Resolution of
+    /// <see cref="Effect.RangeModifier"/>.
     /// </summary>
     public sealed record ApplyRangeModifier(int Delta) : RuleOperation;
 

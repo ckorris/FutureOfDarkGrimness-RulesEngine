@@ -250,6 +250,12 @@ namespace FDG.Stages
 
             //TODO: Cache line of sight lookups.
 
+            // #102: a weapon's effective range against THIS enemy unit folds the attacker's own range buffs
+            // (Increased Shooting Range) and this defender's range debuffs (Ranged Shrouding). The delta is the
+            // same for every model of the attacking unit (a unit+weapon+defender property), so compute it once
+            // per weapon name and reuse it across the model loop.
+            Dictionary<string, float> effectiveRangeByWeapon = new Dictionary<string, float>();
+
             //Go through each of our models that have weapons.
             foreach (DataBinding<ModelData> attackingModel in attackingUnit.ModelBindings()
                 .Where(model => model.GetIsAlive()))
@@ -270,7 +276,17 @@ namespace FDG.Stages
 
                     WeaponTargetStats weaponTargetStats = weaponToStats[weapon.Name];
                     bool ignoresLoS = weaponIgnoresLineOfSight.TryGetValue(weapon.Name, out bool ig) && ig;
-                    if(CanWeaponShootAtUnit(attackingModel, enemyUnit, weapon,
+
+                    if (!effectiveRangeByWeapon.TryGetValue(weapon.Name, out float effectiveRange))
+                    {
+                        int rangeDelta = Rules.Dispatch.RangeRuleQueries.EffectiveRangeDelta(
+                            attackingUnit.GetValue(), weapon, enemyUnit.GetValue(), gameContext.RuleEvaluator);
+                        // Floor at 0 so a debuff can't make the range negative.
+                        effectiveRange = System.Math.Max(0f, weapon.RangeInches + rangeDelta);
+                        effectiveRangeByWeapon[weapon.Name] = effectiveRange;
+                    }
+
+                    if(CanWeaponShootAtUnit(attackingModel, enemyUnit, effectiveRange,
                         ref lineOfSightCache, allTerrain, ignoresLoS))
                     {
                         weaponTargetStats.modelsThatCanShoot.Add(attackingModel);
@@ -286,7 +302,7 @@ namespace FDG.Stages
         }
 
         private static bool CanWeaponShootAtUnit(DataBinding<ModelData> attackingModel,
-            DataBinding<UnitData> enemyUnit, Weapon weapon,
+            DataBinding<UnitData> enemyUnit, float effectiveRangeInches,
             ref Dictionary<DataBinding<ModelData>, bool> cachedLineOfSights,
             IReadOnlyList<ITerrain> terrain, bool ignoresLineOfSight)
         {
@@ -306,7 +322,7 @@ namespace FDG.Stages
                     cachedLineOfSights[defendingModel] = hasLineOfSight;
                 }
 
-                if (hasLineOfSight && IsTargetWithinRange(attackingModel, defendingModel, weapon))
+                if (hasLineOfSight && IsTargetWithinRange(attackingModel.GetValue(), defendingModel.GetValue(), effectiveRangeInches))
                 {
                     return true;
                 }
@@ -327,11 +343,11 @@ namespace FDG.Stages
                 terrain);
         }
 
-        private static bool IsTargetWithinRange(ModelData attacker, ModelData target, Weapon weapon)
+        private static bool IsTargetWithinRange(ModelData attacker, ModelData target, float effectiveRangeInches)
         {
             float distance = DistanceUtilities.GetBaseToBaseDistanceInches_3D(attacker.PositionBinding.GetValue(),
                 target.PositionBinding.GetValue(), attacker.BaseShape, target.BaseShape);
-            return distance <= weapon.RangeInches;
+            return distance <= effectiveRangeInches;
         }
 
         private static bool ComputeHasCover(DataBinding<UnitData> attackingUnit,

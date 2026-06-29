@@ -197,6 +197,15 @@ public enum EHookID
     Shooting_OnPostShoot = 80,
 
     /// <summary>
+    /// Deciding whether a target is within range of a weapon. A capability read: rules emit
+    /// <see cref="Definitions.RuleOperation.ApplyRangeModifier"/> to widen the attacker's own weapon range
+    /// (Increased Shooting Range) or shrink the range of enemies shooting the bearer (Ranged Shrouding),
+    /// folded by <see cref="Dispatch.RangeRuleQueries.EffectiveRangeDelta"/>.
+    /// Context: attacker (acting unit); the firing weapon and the defending unit ride as participants.
+    /// </summary>
+    Shooting_OnRangeCheck = 81,
+
+    /// <summary>
     /// The charging unit completes its move into combat, before any strikes. Trigger
     /// for Furious, Thrust, Impact bonuses and Counter resolution.
     /// Context: attacker, defender, who-charged.

@@ -328,8 +328,10 @@ namespace FDG.Stages
             {
                 if (move.Positions.Count == 0) continue;
 
-                float baseRadius = move.Model.GetValue().BaseRadiusInches;
-                Position startPos = move.Model.GetValue().PositionBinding.GetValue();
+                var model = move.Model.GetValue();
+                IBaseShape baseShape = model.BaseShape;
+                Float2 facing = model.Facing;
+                Position startPos = model.PositionBinding.GetValue();
                 Float2 segmentStart = new Float2(startPos.x, startPos.z);
 
                 bool blocked = false;
@@ -345,9 +347,9 @@ namespace FDG.Stages
 
                     foreach (ITerrain piece in impassable)
                     {
-                        //Inflate the footprint by the model's base radius so base overlap (not just
-                        //the center crossing) counts as moving through impassable terrain.
-                        if (piece.DoesPathIntersectZone(segmentStart, segmentEnd, baseRadius))
+                        //Sweep the model's true base footprint (shape + facing) along the segment so base
+                        //overlap — not just the centre crossing — counts as moving through impassable terrain (#150).
+                        if (SweptBaseGeometry.DoesSweptBaseIntersectZone(piece.Shape, segmentStart, segmentEnd, baseShape, facing))
                         {
                             reasonsForInvalidMove.Add(
                                 new ReasonForInvalidMove(EErrorReasonType.MovingThroughImpassibleTerrain, move.Model));
@@ -377,8 +379,10 @@ namespace FDG.Stages
                 .ToList();
             if (dangerous.Count == 0 || move.Positions.Count == 0) return false;
 
-            float baseRadius = move.Model.GetValue().BaseRadiusInches;
-            Position startPos = move.Model.GetValue().PositionBinding.GetValue();
+            var model = move.Model.GetValue();
+            IBaseShape baseShape = model.BaseShape;
+            Float2 facing = model.Facing;
+            Position startPos = model.PositionBinding.GetValue();
             Float2 segmentStart = new Float2(startPos.x, startPos.z);
 
             for (int i = 0; i < move.Positions.Count; i++)
@@ -387,7 +391,7 @@ namespace FDG.Stages
                 if (IsZeroLengthSegment(segmentStart, segmentEnd)) continue; // a hold doesn't cross terrain
                 foreach (ITerrain piece in dangerous)
                 {
-                    if (piece.DoesPathIntersectZone(segmentStart, segmentEnd, baseRadius))
+                    if (SweptBaseGeometry.DoesSweptBaseIntersectZone(piece.Shape, segmentStart, segmentEnd, baseShape, facing))
                         return true;
                 }
                 segmentStart = segmentEnd;
@@ -415,8 +419,10 @@ namespace FDG.Stages
             {
                 if (move.Positions.Count == 0) continue;
 
-                float baseRadius = move.Model.GetValue().BaseRadiusInches;
-                Position startPos = move.Model.GetValue().PositionBinding.GetValue();
+                var model = move.Model.GetValue();
+                IBaseShape baseShape = model.BaseShape;
+                Float2 facing = model.Facing;
+                Position startPos = model.PositionBinding.GetValue();
                 Float2 segmentStart = new Float2(startPos.x, startPos.z);
 
                 bool crossesDifficult = false;
@@ -426,7 +432,7 @@ namespace FDG.Stages
                     if (IsZeroLengthSegment(segmentStart, segmentEnd)) continue; // a hold doesn't cross terrain
                     foreach (ITerrain piece in difficult)
                     {
-                        if (piece.DoesPathIntersectZone(segmentStart, segmentEnd, baseRadius))
+                        if (SweptBaseGeometry.DoesSweptBaseIntersectZone(piece.Shape, segmentStart, segmentEnd, baseShape, facing))
                         {
                             crossesDifficult = true;
                             break;

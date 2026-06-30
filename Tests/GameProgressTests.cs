@@ -92,6 +92,7 @@ namespace FDG.Tests
             // Serialize the whole dependency chain and replay it into a fresh store, in order.
             string woundsJson = from.GetValueAsJson<float>(model.GetValue().RemainingWoundsBinding.Reference);
             string posJson = from.GetValueAsJson<Position>(model.GetValue().PositionBinding.Reference);
+            string posJsonFacing = from.GetValueAsJson<Float2>(model.GetValue().FacingBinding.Reference);
             string modelJson = from.GetValueAsJson<ModelData>(model.Reference);
             string unitJson = from.GetValueAsJson<UnitData>(unit.Reference);
             string progressJson = from.GetValueAsJson<GameProgressData>(progressRef);
@@ -99,6 +100,7 @@ namespace FDG.Tests
             var to = GameDataStore.GameDataStoreBuilder.GetDefault();
             to.CreateFromReferenceAndJson(model.GetValue().RemainingWoundsBinding.Reference, woundsJson);
             to.CreateFromReferenceAndJson(model.GetValue().PositionBinding.Reference, posJson);
+            to.CreateFromReferenceAndJson(model.GetValue().FacingBinding.Reference, posJsonFacing);
             to.CreateFromReferenceAndJson(model.Reference, modelJson);
             to.CreateFromReferenceAndJson(unit.Reference, unitJson);
             to.CreateFromReferenceAndJson(progressRef, progressJson);

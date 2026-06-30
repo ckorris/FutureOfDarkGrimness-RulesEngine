@@ -29,6 +29,7 @@ namespace FDG.Tests
                 .RegisterType<float>(1)
                 .RegisterType<Position>(1)
                 .RegisterType<ModelData>(1)
+                .RegisterType<Float2>(1)
                 .Build();
 
             var model = new ModelData(
@@ -45,18 +46,22 @@ namespace FDG.Tests
 
             DataReference woundsRef   = model.RemainingWoundsBinding.Reference;
             DataReference positionRef = model.PositionBinding.Reference;
+            DataReference facingRef = model.FacingBinding.Reference;
             string sWounds   = fromStore.GetValueAsJson<float>(woundsRef);
             string sPosition = fromStore.GetValueAsJson<Position>(positionRef);
+            string sPositionFacing = fromStore.GetValueAsJson<Float2>(facingRef);
             string sModel    = fromStore.GetValueAsJson<ModelData>(modelRef);
 
             GameDataStore toStore = new GameDataStore.GameDataStoreBuilder()
                 .RegisterType<float>(1)
                 .RegisterType<Position>(1)
                 .RegisterType<ModelData>(1)
+                .RegisterType<Float2>(1)
                 .Build();
 
             toStore.CreateFromReferenceAndJson(woundsRef, sWounds);
             toStore.CreateFromReferenceAndJson(positionRef, sPosition);
+            toStore.CreateFromReferenceAndJson(facingRef, sPositionFacing);
             toStore.CreateFromReferenceAndJson(modelRef, sModel);
 
             ModelData rehydrated = toStore.GetValue<ModelData>(modelRef);
@@ -78,6 +83,7 @@ namespace FDG.Tests
                 .RegisterType<Position>(1)
                 .RegisterType<ModelData>(1)
                 .RegisterType<UnitData>(1)
+                .RegisterType<Float2>(1)
                 .Build();
 
             // Build a minimal model so the unit has something in its ModelBindings.
@@ -116,6 +122,7 @@ namespace FDG.Tests
             // Serialise the whole chain a network message would carry.
             string sWounds   = fromStore.GetValueAsJson<float>(modelData.RemainingWoundsBinding.Reference);
             string sPosition = fromStore.GetValueAsJson<Position>(modelData.PositionBinding.Reference);
+            string sPositionFacing = fromStore.GetValueAsJson<Float2>(modelData.FacingBinding.Reference);
             string sModel    = fromStore.GetValueAsJson<ModelData>(modelRef);
             string sUnit     = fromStore.GetValueAsJson<UnitData>(unitRef);
 
@@ -125,10 +132,12 @@ namespace FDG.Tests
                 .RegisterType<Position>(1)
                 .RegisterType<ModelData>(1)
                 .RegisterType<UnitData>(1)
+                .RegisterType<Float2>(1)
                 .Build();
 
             toStore.CreateFromReferenceAndJson(modelData.RemainingWoundsBinding.Reference, sWounds);
             toStore.CreateFromReferenceAndJson(modelData.PositionBinding.Reference, sPosition);
+            toStore.CreateFromReferenceAndJson(modelData.FacingBinding.Reference, sPositionFacing);
             toStore.CreateFromReferenceAndJson(modelRef, sModel);
             toStore.CreateFromReferenceAndJson(unitRef, sUnit);
 
@@ -165,6 +174,7 @@ namespace FDG.Tests
                 .RegisterType<Position>(1)
                 .RegisterType<ModelData>(1)
                 .RegisterType<UnitData>(1)
+                .RegisterType<Float2>(1)
                 .Build();
 
             var modelData = new ModelData(0.75f, new List<Weapon>(),
@@ -182,6 +192,7 @@ namespace FDG.Tests
 
             string sWounds   = fromStore.GetValueAsJson<float>(modelData.RemainingWoundsBinding.Reference);
             string sPosition = fromStore.GetValueAsJson<Position>(modelData.PositionBinding.Reference);
+            string sPositionFacing = fromStore.GetValueAsJson<Float2>(modelData.FacingBinding.Reference);
             string sModel    = fromStore.GetValueAsJson<ModelData>(modelRef);
             string sUnit     = fromStore.GetValueAsJson<UnitData>(unitRef);
 
@@ -190,9 +201,11 @@ namespace FDG.Tests
                 .RegisterType<Position>(1)
                 .RegisterType<ModelData>(1)
                 .RegisterType<UnitData>(1)
+                .RegisterType<Float2>(1)
                 .Build();
             toStore.CreateFromReferenceAndJson(modelData.RemainingWoundsBinding.Reference, sWounds);
             toStore.CreateFromReferenceAndJson(modelData.PositionBinding.Reference, sPosition);
+            toStore.CreateFromReferenceAndJson(modelData.FacingBinding.Reference, sPositionFacing);
             toStore.CreateFromReferenceAndJson(modelRef, sModel);
             toStore.CreateFromReferenceAndJson(unitRef, sUnit);
 

@@ -153,11 +153,13 @@ namespace FDG.Tests
 
             string woundsJson   = fromStore.GetValueAsJson<float>(model.RemainingWoundsBinding.Reference);
             string positionJson = fromStore.GetValueAsJson<Position>(model.PositionBinding.Reference);
+            string positionJsonFacing = fromStore.GetValueAsJson<Float2>(model.FacingBinding.Reference);
             string modelJson    = fromStore.GetValueAsJson<ModelData>(modelRef);
 
             GameDataStore toStore = NewStore();
             toStore.CreateFromReferenceAndJson(model.RemainingWoundsBinding.Reference, woundsJson);
             toStore.CreateFromReferenceAndJson(model.PositionBinding.Reference, positionJson);
+            toStore.CreateFromReferenceAndJson(model.FacingBinding.Reference, positionJsonFacing);
             toStore.CreateFromReferenceAndJson(modelRef, modelJson);
 
             ModelData restored = toStore.GetValue<ModelData>(modelRef);
@@ -168,11 +170,51 @@ namespace FDG.Tests
             Assert.That(rect.HeightInches, Is.EqualTo(1.9685040f).Within(Tol));
         }
 
+        [Test]
+        public void Facing_DefaultsToForward_UpdatesAndSurvivesRoundTrip()
+        {
+            // #150: every model carries a yaw facing (a unit normal). Default is +Z (0,1) — the pre-facing
+            // axis-aligned convention — and like Position it is store-backed, so it must round-trip.
+            GameDataStore fromStore = NewStore();
+            ModelData model = new ModelData(new CircleBase(0.5f), new List<Weapon>(), new Position(), fromStore);
+
+            Assert.That(model.Facing.X, Is.EqualTo(0f).Within(Tol), "default facing is +Z.");
+            Assert.That(model.Facing.Y, Is.EqualTo(1f).Within(Tol), "default facing is +Z.");
+
+            // SetFacing updates the value and raises the change event.
+            bool fired = false;
+            Float2 observed = default;
+            ((IModel)model).OnFacingChanged += (oldValue, newValue) => { fired = true; observed = newValue; };
+            model.SetFacing(new Float2(1f, 0f));
+            Assert.That(fired, Is.True, "SetFacing raises OnFacingChanged.");
+            Assert.That(observed.X, Is.EqualTo(1f).Within(Tol));
+            Assert.That(model.Facing.X, Is.EqualTo(1f).Within(Tol));
+            Assert.That(model.Facing.Y, Is.EqualTo(0f).Within(Tol));
+
+            // The (non-default) facing must survive a serialization round-trip.
+            DataReference modelRef = fromStore.Create(model);
+            string woundsJson   = fromStore.GetValueAsJson<float>(model.RemainingWoundsBinding.Reference);
+            string positionJson = fromStore.GetValueAsJson<Position>(model.PositionBinding.Reference);
+            string facingJson   = fromStore.GetValueAsJson<Float2>(model.FacingBinding.Reference);
+            string modelJson    = fromStore.GetValueAsJson<ModelData>(modelRef);
+
+            GameDataStore toStore = NewStore();
+            toStore.CreateFromReferenceAndJson(model.RemainingWoundsBinding.Reference, woundsJson);
+            toStore.CreateFromReferenceAndJson(model.PositionBinding.Reference, positionJson);
+            toStore.CreateFromReferenceAndJson(model.FacingBinding.Reference, facingJson);
+            toStore.CreateFromReferenceAndJson(modelRef, modelJson);
+
+            ModelData restored = toStore.GetValue<ModelData>(modelRef);
+            Assert.That(restored.Facing.X, Is.EqualTo(1f).Within(Tol), "facing X must survive round-trip.");
+            Assert.That(restored.Facing.Y, Is.EqualTo(0f).Within(Tol), "facing Y must survive round-trip.");
+        }
+
         private static GameDataStore NewStore() =>
             new GameDataStore.GameDataStoreBuilder()
                 .RegisterType<float>(8)
                 .RegisterType<Position>(8)
                 .RegisterType<ModelData>(8)
+                .RegisterType<Float2>(8)
                 .Build();
     }
 }

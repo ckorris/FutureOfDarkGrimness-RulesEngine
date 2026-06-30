@@ -44,6 +44,40 @@ namespace FDG
             }
         }
 
+        /// <summary>
+        /// Horizontal (X/Z) distance from <paramref name="point"/> to the nearest point on the surface of base
+        /// <paramref name="shape"/> centred at <paramref name="center"/> and oriented by <paramref name="facing"/>
+        /// (a yaw unit normal along the base's local +Z axis; a zero vector means forward/+Z). Zero when the point
+        /// is on or inside the base, positive outside (#150). The shape-to-point form of <see cref="SurfaceGap2D"/>
+        /// — used e.g. for objective seizure (objective centre to a model's base edge).
+        /// </summary>
+        public static float SurfaceDistanceToPoint2D(IBaseShape shape, Position center, Float2 facing, Position point)
+        {
+            float dx = point.x - center.x;
+            float dz = point.z - center.z;
+
+            switch (shape)
+            {
+                case CircleBase c:
+                    return MathF.Max(0f, MathF.Sqrt(dx * dx + dz * dz) - c.RadiusInches);
+
+                case RectangleBase r:
+                {
+                    // Rotate the offset into the base's local frame (local +Z = facing, local +X ⟂ facing), then
+                    // it's a point-vs-axis-aligned-rectangle distance.
+                    Float2 f = facing.X == 0f && facing.Y == 0f ? new Float2(0f, 1f) : facing;
+                    float localZ = dx * f.X + dz * f.Y;   // along facing (height axis)
+                    float localX = dx * f.Y - dz * f.X;   // along the perpendicular (width axis)
+                    float qx = MathF.Max(0f, MathF.Abs(localX) - r.WidthInches * 0.5f);
+                    float qz = MathF.Max(0f, MathF.Abs(localZ) - r.HeightInches * 0.5f);
+                    return MathF.Sqrt(qx * qx + qz * qz);
+                }
+
+                default:
+                    return MathF.Max(0f, MathF.Sqrt(dx * dx + dz * dz) - shape.BoundingRadiusInches);
+            }
+        }
+
         // Gap between two axis-aligned rectangles whose centres differ by (dx, dz).
         private static float RectRectGap(RectangleBase ra, RectangleBase rb, float dx, float dz)
         {

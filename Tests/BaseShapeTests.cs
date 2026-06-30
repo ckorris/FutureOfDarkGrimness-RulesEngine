@@ -128,6 +128,40 @@ namespace FDG.Tests
             Assert.That(gap, Is.EqualTo(4.12310f).Within(Tol));
         }
 
+        // --- Shape-to-point distance (#150: objective seizure etc.) ----------------------------------
+
+        [Test]
+        public void SurfaceDistanceToPoint2D_Circle_SubtractsRadius()
+        {
+            float d = BaseShapeGeometry.SurfaceDistanceToPoint2D(
+                new CircleBase(1f), new Position(0f, 0f), new Float2(0f, 1f), new Position(4f, 0f));
+            Assert.That(d, Is.EqualTo(3f).Within(Tol)); // 4" centre distance − 1" radius
+        }
+
+        [Test]
+        public void SurfaceDistanceToPoint2D_Rectangle_OrientationChangesDistance()
+        {
+            // 1" wide × 6" tall base at the origin; query point 4" away along +Z.
+            var rect = new RectangleBase(1f, 6f);
+            var point = new Position(0f, 4f);
+
+            // Facing +Z → the 6" (height) axis points at the query: nearest edge 3" out, so a 1" gap.
+            float lengthwise = BaseShapeGeometry.SurfaceDistanceToPoint2D(rect, new Position(0f, 0f), new Float2(0f, 1f), point);
+            Assert.That(lengthwise, Is.EqualTo(1f).Within(Tol));
+
+            // Facing +X → only the 1" (width) axis points at the query: nearest edge 0.5" out, so a 3.5" gap.
+            float crosswise = BaseShapeGeometry.SurfaceDistanceToPoint2D(rect, new Position(0f, 0f), new Float2(1f, 0f), point);
+            Assert.That(crosswise, Is.EqualTo(3.5f).Within(Tol));
+        }
+
+        [Test]
+        public void SurfaceDistanceToPoint2D_PointInsideBase_IsZero()
+        {
+            float d = BaseShapeGeometry.SurfaceDistanceToPoint2D(
+                new RectangleBase(2f, 2f), new Position(0f, 0f), new Float2(0f, 1f), new Position(0.5f, 0.5f));
+            Assert.That(d, Is.EqualTo(0f).Within(Tol));
+        }
+
         // --- Defaults --------------------------------------------------------------------------------
 
         [Test]

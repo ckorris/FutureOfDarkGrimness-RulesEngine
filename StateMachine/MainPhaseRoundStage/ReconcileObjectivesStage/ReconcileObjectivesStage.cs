@@ -109,10 +109,10 @@ namespace FDG.Stages
                 // #029 Aircraft can't seize or contest objectives — skip its models so it counts toward neither.
                 if (AircraftRules.IsAircraft(unit)) continue;
 
-                float dx = model.Position.x - objPos.x;
-                float dz = model.Position.z - objPos.z;
-                float centerDist = MathF.Sqrt(dx * dx + dz * dz);
-                float baseEdgeDist = centerDist - model.BaseRadiusInches;
+                // Objective-centre-to-base-edge distance using the model's true footprint + facing (#150),
+                // not the circumscribing circle.
+                float baseEdgeDist = BaseShapeGeometry.SurfaceDistanceToPoint2D(
+                    model.BaseShape, model.Position, model.Facing, objPos);
 
                 if (baseEdgeDist <= SeizureRadiusInches)
                     result.Add(unit.PlayerID);

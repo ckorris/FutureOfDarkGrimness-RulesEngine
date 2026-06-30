@@ -24,7 +24,7 @@ public static class CoreRuleCatalog
     {
         Stealth, Artillery, Indirect, Reliable, Fast, VeryFast, Slow, Surge, Relentless, Furious,
         Deadly, Regeneration, Unstoppable, Tough, Rending, Bane, Shred, Vanguard, Scout, Ambush, Thrust,
-        Blast, Takedown, Impact, Counter, MartialProwess, Strafing, Fear, Fearless, Hero, Transport,
+        Blast, Takedown, Limited, Impact, Counter, MartialProwess, Strafing, Fear, Fearless, Hero, Transport,
         FuriousBuff, Mend, Immobile, Caster,
         Evasive, MeleeEvasion, Precise, GoodShot,
         Agile, Quick, RapidAdvance, RapidRush, RapidCharge,
@@ -420,6 +420,20 @@ public static class CoreRuleCatalog
                 new Effect.IgnoreCover(),
                 ELifetime.ThisAttack),
         },
+        Array.Empty<ActivatedAbility>(),
+        ERuleScope.Weapon);
+
+    /// <summary>
+    /// Limited (#032): "may only be used once per game." A weapon-scoped MARKER rule — no hooks; the behaviour
+    /// lives in engine gates that read it via <see cref="LimitedRules"/> (the Aircraft/Transport marker shape),
+    /// because there's no per-weapon-fired rule context to hang an effect on. The spent-state is a per-MODEL
+    /// <see cref="Foundation.TokenType.LimitedSpent"/> token (weapons have no token container, models do), so a
+    /// unit's copies — which by the rules all fire together — each record their own fired-state and casualties
+    /// drop it with the model. The shooting flow excludes a Limited weapon once every living model carrying it
+    /// has fired it (<c>ChooseRangedAttackStage</c>).
+    /// </summary>
+    public static SpecialRuleDefinition Limited { get; } = new SpecialRuleDefinition("Limited",
+        Array.Empty<HookEntry>(),
         Array.Empty<ActivatedAbility>(),
         ERuleScope.Weapon);
 

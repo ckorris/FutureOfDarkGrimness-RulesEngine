@@ -40,6 +40,10 @@ namespace FDG.Stages
             // building so a Deadly weapon with no valid target this action doesn't lock out the rest.
             ApplyDeadlyFirstGating(weaponOptions, context.AttackingUnit, context.GameContext);
 
+            // #032 Limited: a weapon may only be fired once per game. Exclude any Limited weapon whose every
+            // living carrier has already fired it (tracked by a per-model token), so it's no longer offered.
+            ApplyLimitedSpentGating(weaponOptions, context.AttackingUnit);
+
             if (!HasAnyFireableOption(weaponOptions))
             {
                 // No weapon has any selectable target with shooters in range. If the unit has already fired at least
@@ -79,6 +83,10 @@ namespace FDG.Stages
             context.SetDefender(rangedAttackChoice.TargetUnit);
             context.RegisterAttackedDefender(rangedAttackChoice.TargetUnit);
             GameContext.Log($"Chose weapon: {chosenWeapon.Name}. Count: {weaponCount}.");
+
+            // #032 Limited: choosing the weapon commits it to fire (there's no cancel before FireStage), so mark
+            // it spent now — every living carrier records it as fired this game (it's excluded from here on).
+            LimitedRules.MarkFired(context.AttackingUnit.GetValue(), chosenWeapon);
 
             await OnChoseWeapon.Activate(context);
         }
@@ -123,6 +131,30 @@ namespace FDG.Stages
             }
         }
 
+        /// <summary>
+        /// #032 Limited: a Limited weapon may only be fired once per game. Once every living model carrying it
+        /// has fired it (per-model token, via <see cref="LimitedRules.IsSpent"/>), mark its targets unselectable
+        /// so the spent weapon is no longer offered. (Same-name weapons fire together, so a unit's copies spend
+        /// in one firing — but the per-model check stays correct under casualties and for Limited(X).)
+        /// </summary>
+        private static void ApplyLimitedSpentGating(List<WeaponOption> weaponOptions,
+            DataBinding<UnitData> attackingUnit)
+        {
+            UnitData attacker = attackingUnit.GetValue();
+
+            foreach (WeaponOption option in weaponOptions)
+            {
+                if (!LimitedRules.IsSpent(attacker, option.Weapon)) continue;
+
+                for (int i = 0; i < option.WeaponTargetStats.Count; i++)
+                {
+                    WeaponTargetStats stats = option.WeaponTargetStats[i];
+                    if (stats.UnselectableReason != null) continue;
+                    option.WeaponTargetStats[i] = stats with { UnselectableReason = "Already fired (Limited)." };
+                }
+            }
+        }
+
         private static bool HasAnyFireableOption(List<WeaponOption> weaponOptions)
         {
             foreach (WeaponOption wo in weaponOptions)
@@ -157,9 +189,13 @@ namespace FDG.Stages
                 terrainSnapshot, Array.Empty<DataReference>());
 
             foreach (WeaponOption wo in options)
+            {
+                // #032 Limited: a fully-spent Limited weapon can't fire, so it must not keep Shoot available.
+                if (LimitedRules.IsSpent(unitValue, wo.Weapon)) continue;
                 foreach (WeaponTargetStats ts in wo.WeaponTargetStats)
                     if (ts.UnselectableReason == null && ts.modelsThatCanShoot.Count > 0)
                         return true;
+            }
             return false;
         }
 

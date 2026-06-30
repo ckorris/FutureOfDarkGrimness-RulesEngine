@@ -49,4 +49,11 @@ public abstract record TokenPayload
     /// <c>Tokens</c> independent of <c>ERollKind</c> (which lives in <c>Definitions</c>).
     /// </summary>
     public sealed record StatModifier(int Delta) : TokenPayload;
+
+    /// <summary>
+    /// #032 Limited: names the once-per-game weapon a <see cref="Foundation.TokenType.LimitedSpent"/> token
+    /// records as fired. Lets a single model track two different Limited weapons independently (the spent-state
+    /// lives on the model, keyed by weapon name since <c>Weapon</c> has no ID).
+    /// </summary>
+    public sealed record WeaponName(string Name) : TokenPayload;
 }

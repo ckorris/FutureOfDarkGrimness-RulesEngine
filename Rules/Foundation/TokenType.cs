@@ -11,6 +11,7 @@ public readonly record struct TokenType(string Id)
     public const string MARK_ID = "Mark";
     public const string POST_COMBAT_MOVE_USED_ID = "PostCombatMoveUsed";
     public const string OFF_TABLE_FROM_FORCED_MOVE_ID = "OffTableFromForcedMove";
+    public const string LIMITED_SPENT_ID = "LimitedSpent";
 
     // Granted numeric roll modifiers (#033 stat-modifier primitive): a spell/ability grants the bearer a
     // signed delta to a specific roll for a duration. The roll kind is the token TYPE (so different rolls
@@ -44,6 +45,15 @@ public readonly record struct TokenType(string Id)
     /// on redeploy), not the round-end sweep.
     /// </summary>
     public static readonly TokenType OffTableFromForcedMove = new(OFF_TABLE_FROM_FORCED_MOVE_ID);
+
+    /// <summary>
+    /// #032 Limited: marks that a model has fired a once-per-game weapon. Lives on the MODEL (not the unit or
+    /// weapon — weapons have no token container), with a <see cref="Tokens.TokenPayload.WeaponName"/> payload
+    /// naming the spent weapon, so a model carrying two different Limited weapons tracks them independently and
+    /// casualties drop the spent-state with the model. Carried with a <c>ManualOnly</c> clear (it must survive
+    /// the round-end sweep and last the whole game). Count = times fired (1 for plain Limited; X-ready).
+    /// </summary>
+    public static readonly TokenType LimitedSpent = new(LIMITED_SPENT_ID);
 
     /// <summary>
     /// Marks a unit that is currently embarked inside a Transport (#035). A <b>cross-unit</b> token:

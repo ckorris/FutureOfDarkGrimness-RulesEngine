@@ -210,6 +210,70 @@ namespace FDG.Tests
                 "An unreachable Deadly weapon must not gate the unit's other weapons.");
         }
 
+        // #032 Limited: a weapon already fired this game (per-model spent token) is no longer offered — its
+        // targets are gated, while the unit's non-Limited weapons stay selectable.
+        [Test]
+        public async Task Enter_SpentLimitedWeapon_MarksItsTargetsUnselectable()
+        {
+            var requester = new CapturingRangedRequester();
+            var rocket = LimitedWeapon("Rocket");
+            var rifle = Rifle();
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(5, 0, 0) },
+                rifleRange: 24f,
+                attackerWeapons: new[] { rocket, rifle },
+                playerRequester: requester);
+
+            LimitedRules.MarkFired(attackerBinding.GetValue(), rocket); // simulate a prior firing this game
+
+            var combatCtx = new CombatActionContext(ctx, attackerBinding, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+            await stage.Enter(combatCtx);
+
+            Assert.That(requester.Captured, Is.Not.Null);
+            var rocketOption = requester.Captured!.WeaponOptions.Single(o => o.Weapon.Name == "Rocket");
+            var rifleOption = requester.Captured!.WeaponOptions.Single(o => o.Weapon.Name == "Rifle");
+            Assert.That(rocketOption.WeaponTargetStats.All(t => t.UnselectableReason != null), Is.True,
+                "a spent Limited weapon must be unselectable.");
+            Assert.That(rocketOption.WeaponTargetStats.First().UnselectableReason, Does.Contain("Limited"));
+            Assert.That(rifleOption.WeaponTargetStats.All(t => t.UnselectableReason == null), Is.True,
+                "the non-Limited weapon stays selectable.");
+        }
+
+        // #032 Limited: choosing a Limited weapon commits it to fire, so it's marked spent for the game.
+        [Test]
+        public async Task Enter_ChoosingLimitedWeapon_MarksItSpentForTheGame()
+        {
+            var rocket = LimitedWeapon("Rocket");
+            var requester = new CapturingRangedRequester
+            {
+                Reply = req =>
+                {
+                    var opt = req.WeaponOptions.Single(o => o.Weapon.Name == "Rocket");
+                    var target = opt.WeaponTargetStats.First(t => t.UnselectableReason == null);
+                    return new Selected<RangedAttackChoice>(new RangedAttackChoice(opt.Weapon, target.TargetUnit));
+                }
+            };
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(5, 0, 0) },
+                rifleRange: 24f,
+                attackerWeapons: new[] { rocket },
+                playerRequester: requester);
+
+            Assert.That(LimitedRules.IsSpent(attackerBinding.GetValue(), rocket), Is.False, "available beforehand.");
+
+            var combatCtx = new CombatActionContext(ctx, attackerBinding, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+            await stage.Enter(combatCtx);
+
+            Assert.That(LimitedRules.IsSpent(attackerBinding.GetValue(), rocket), Is.True,
+                "firing the Limited weapon marks it spent for the rest of the game.");
+        }
+
         [Test]
         public async Task Enter_NoFireableTargets_NoPriorFire_ActivatesBackToChooseAction()
         {
@@ -292,6 +356,13 @@ namespace FDG.Tests
             var weapon = new Weapon(name, range, 1, 0);
             weapon.AttachRuleDefinition(new ResolvedRule("Deadly", CoreRuleCatalog.Deadly,
                 new RuleArgument[] { new RuleArgument.Int(x) }));
+            return weapon;
+        }
+
+        private static Weapon LimitedWeapon(string name, float range = 24f)
+        {
+            var weapon = new Weapon(name, range, 1, 0);
+            weapon.AttachRuleDefinition(new ResolvedRule("Limited", CoreRuleCatalog.Limited));
             return weapon;
         }
 

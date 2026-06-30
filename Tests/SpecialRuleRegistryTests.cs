@@ -43,8 +43,9 @@ namespace FDG.Tests
         {
             HashSet<string> offered = CoreEntries().Select(e => e.Name).ToHashSet();
             // The old hand-list offered these, but the engine has no definition — picking them did nothing.
-            // (Caster — #033 — and Transport — #035 — were both here until implemented; both are now offered.)
-            foreach (string phantom in new[] { "Sniper", "Flying", "Aircraft" })
+            // (Caster — #033 —, Transport — #035 —, Flying and Aircraft — #029 — were all here until
+            // implemented; all are now offered. Aircraft is partial but its dispatching facets are real.)
+            foreach (string phantom in new[] { "Sniper" })
             {
                 Assert.That(offered, Does.Not.Contain(phantom),
                     $"picker must not offer unimplemented rule '{phantom}'.");

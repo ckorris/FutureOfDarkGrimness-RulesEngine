@@ -34,9 +34,13 @@ namespace FDG.Stages
         /// that don't present simply ignore the return.
         /// </summary>
         public static IReadOnlyList<DangerousTerrainRoll> ApplyDangerousTerrainEffects(IGameContext gameContext,
-            IReadOnlyList<ModelMoveEntry> paths, IEnumerable<ITerrain> relevantTerrain, string unitName)
+            IReadOnlyList<ModelMoveEntry> paths, IEnumerable<ITerrain> relevantTerrain, string unitName,
+            bool ignoresDangerousTerrain = false)
         {
             List<DangerousTerrainRoll> results = new List<DangerousTerrainRoll>();
+
+            // Flying (AllTerrain scope) ignores Dangerous-terrain effects entirely — no roll, no wounds.
+            if (ignoresDangerousTerrain) return results;
 
             List<ITerrain> dangerous = relevantTerrain
                 .Where(t => t.TerrainType.HasFlag(ETerrainType.Dangerous))
@@ -101,9 +105,9 @@ namespace FDG.Stages
         /// <c>ApplyNonMovementTerrainEffectsStage</c> → <c>ExecuteMoveStage</c> order.
         /// </summary>
         public static void Commit(IGameContext gameContext, IReadOnlyList<ModelMoveEntry> paths,
-            IEnumerable<ITerrain> relevantTerrain, string unitName)
+            IEnumerable<ITerrain> relevantTerrain, string unitName, bool ignoresDangerousTerrain = false)
         {
-            ApplyDangerousTerrainEffects(gameContext, paths, relevantTerrain, unitName);
+            ApplyDangerousTerrainEffects(gameContext, paths, relevantTerrain, unitName, ignoresDangerousTerrain);
             CommitPositions(paths);
         }
 
@@ -125,14 +129,17 @@ namespace FDG.Stages
                 unit.GetValue(), gameContext.RuleEvaluator);
             bool ignoresDifficultTerrain = Rules.Dispatch.MovementRuleQueries.IgnoresDifficultTerrain(
                 unit.GetValue(), gameContext.RuleEvaluator);
+            bool ignoresAllTerrain = Rules.Dispatch.MovementRuleQueries.IgnoresAllTerrain(
+                unit.GetValue(), gameContext.RuleEvaluator);
 
             if (!MovementUtilities.ValidatePaths(paths, maxInches, enemyFootprints, canMoveThroughEnemies,
-                    ignoresDifficultTerrain, relevantTerrain, out errors))
+                    ignoresDifficultTerrain, ignoresAllTerrain, relevantTerrain, out errors))
             {
                 return false;
             }
 
-            Commit(gameContext, paths, relevantTerrain, unit.GetValue().Name);
+            // Flying ignores Dangerous terrain too (same AllTerrain scope as the impassible waiver above).
+            Commit(gameContext, paths, relevantTerrain, unit.GetValue().Name, ignoresDangerousTerrain: ignoresAllTerrain);
             return true;
         }
     }

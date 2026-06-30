@@ -63,10 +63,10 @@ namespace FDG.Tests
 
             bool blocked = MovementUtilities.ValidatePaths(new List<ModelMoveEntry> { move },
                 maxDistanceInches: 12f, Enemy(new Position(5, 0)), canMoveThroughEnemies: false,
-                ignoresDifficultTerrain: false, terrain: null, out _);
+                ignoresDifficultTerrain: false, ignoresImpassibleTerrain: false, terrain: null, out _);
             bool allowed = MovementUtilities.ValidatePaths(new List<ModelMoveEntry> { move },
                 maxDistanceInches: 12f, Enemy(new Position(5, 0)), canMoveThroughEnemies: true,
-                ignoresDifficultTerrain: false, terrain: null, out var errors);
+                ignoresDifficultTerrain: false, ignoresImpassibleTerrain: false, terrain: null, out var errors);
 
             Assert.That(blocked, Is.False, "Without fly-over the consolidation move through an enemy is rejected.");
             Assert.That(allowed, Is.True, Why(errors));
@@ -99,7 +99,7 @@ namespace FDG.Tests
         private bool Charge(ModelMoveEntry move, bool canMoveThroughEnemies, out List<ReasonForInvalidMove> errors)
             => MovementUtilities.ValidatePaths(new List<ModelMoveEntry> { move },
                 maxRushDistance: 12f, maxDistanceInches: 12f, Enemy(new Position(5, 0)),
-                canMoveThroughEnemies, ignoresDifficultTerrain: false, terrain: null, out errors);
+                canMoveThroughEnemies, ignoresDifficultTerrain: false, ignoresImpassibleTerrain: false, terrain: null, out errors);
 
         private static string Why(List<ReasonForInvalidMove> errors)
             => "Unexpected errors: " + string.Join(", ", errors.Select(e => e.ErrorReasonType.ToString()));

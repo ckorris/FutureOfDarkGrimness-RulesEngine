@@ -41,6 +41,14 @@ namespace FDG.StageResolution.Requests
         public bool IgnoresDifficultTerrain { get; }
 
         /// <summary>
+        /// Whether the moving unit also ignores impassible terrain — flies over it (Flying's AllTerrain scope,
+        /// on top of <see cref="IgnoresDifficultTerrain"/>). Derived from the unit's rules where the request is
+        /// built; read by the resolvers so their move-preview validation agrees with the authoritative stage
+        /// check. The unit still may not end stacked on an enemy.
+        /// </summary>
+        public bool IgnoresImpassibleTerrain { get; }
+
+        /// <summary>
         /// Per-(weapon, enemy unit) effective shooting range where a range-modifier rule changes it
         /// (Increased Shooting Range widens the mover's reach; Ranged Shrouding narrows it for that enemy) —
         /// precomputed engine-side via <see cref="Rules.Dispatch.RangeRuleQueries.EffectiveRange"/> so the
@@ -55,7 +63,8 @@ namespace FDG.StageResolution.Requests
         public DefineMovementPathRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
             DataBinding<UnitData> unitDataBinding, float maxAdvanceDistance, float maxRushDistance, float maxDistanceInches,
             IReadOnlyList<WeaponSightProfile>? weaponSightProfiles = null, bool canMoveThroughEnemies = false,
-            bool ignoresDifficultTerrain = false, IReadOnlyList<WeaponRangeOverride>? weaponRangeOverrides = null)
+            bool ignoresDifficultTerrain = false, bool ignoresImpassibleTerrain = false,
+            IReadOnlyList<WeaponRangeOverride>? weaponRangeOverrides = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -67,13 +76,15 @@ namespace FDG.StageResolution.Requests
             WeaponSightProfiles = weaponSightProfiles ?? new List<WeaponSightProfile>();
             CanMoveThroughEnemies = canMoveThroughEnemies;
             IgnoresDifficultTerrain = ignoresDifficultTerrain;
+            IgnoresImpassibleTerrain = ignoresImpassibleTerrain;
             WeaponRangeOverrides = weaponRangeOverrides ?? new List<WeaponRangeOverride>();
         }
 
         public DefineMovementPathRequest(PlayerID targetPlayerID,  string taskName,
             DataBinding<UnitData> unitDataBinding, float maxAdvanceDistance, float maxRushDistance, float maxDistanceInches,
             IReadOnlyList<WeaponSightProfile>? weaponSightProfiles = null, bool canMoveThroughEnemies = false,
-            bool ignoresDifficultTerrain = false, IReadOnlyList<WeaponRangeOverride>? weaponRangeOverrides = null)
+            bool ignoresDifficultTerrain = false, bool ignoresImpassibleTerrain = false,
+            IReadOnlyList<WeaponRangeOverride>? weaponRangeOverrides = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = new TaskID(Guid.NewGuid());
@@ -85,6 +96,7 @@ namespace FDG.StageResolution.Requests
             WeaponSightProfiles = weaponSightProfiles ?? new List<WeaponSightProfile>();
             CanMoveThroughEnemies = canMoveThroughEnemies;
             IgnoresDifficultTerrain = ignoresDifficultTerrain;
+            IgnoresImpassibleTerrain = ignoresImpassibleTerrain;
             WeaponRangeOverrides = weaponRangeOverrides ?? new List<WeaponRangeOverride>();
         }
 

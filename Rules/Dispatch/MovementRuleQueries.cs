@@ -49,6 +49,24 @@ namespace FDG.Rules.Dispatch
         }
 
         /// <summary>
+        /// Whether <paramref name="unit"/> ignores ALL terrain movement effects — the Flying scope of
+        /// <see cref="RuleOperation.IgnoreTerrainEffects"/> (<see cref="ETerrainIgnoreScope.AllTerrain"/>),
+        /// which additionally waives Dangerous-terrain wound rolls and Impassible-terrain blocking on top of
+        /// the difficult-terrain cap. Strider (<see cref="ETerrainIgnoreScope.DifficultOnly"/>) returns false
+        /// here. Non-logging — safe to call per-frame while building UI.
+        /// </summary>
+        public static bool IgnoresAllTerrain(IUnit unit, RuleEvaluator evaluator)
+        {
+            foreach ((RuleOperation op, string _) in evaluator.EvaluateAllNamed(
+                         new MoveThroughTerrainContext(unit), (unit, ERuleSeat.Actor)))
+            {
+                if (op is RuleOperation.IgnoreTerrainEffects terrain && terrain.Scope == ETerrainIgnoreScope.AllTerrain)
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>
         /// The effective charge distance <paramref name="charger"/> may move toward <paramref name="target"/>,
         /// given the charger's own (already movement-modified) <paramref name="baseChargeInches"/>: the base
         /// plus every <see cref="RuleOperation.ApplyMovementBonus"/> for the Charge action contributed at

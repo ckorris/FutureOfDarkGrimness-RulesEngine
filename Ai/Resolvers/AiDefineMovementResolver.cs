@@ -91,7 +91,10 @@ namespace FDG.Ai.Resolvers
             // angling left/right to skirt it (a cheap "go around", not full pathfinding) and take the clear
             // direction that lands closest to the target. If nothing skirts at full step, fall through to the
             // per-model backoff below, which shortens the move so the unit at least advances part-way.
-            if (CentroidCrossesTerrain(allTerrain, ETerrainType.Impassible, cx, cz, ndx, ndz, step, baseRadius)
+            // Flying ignores impassible terrain (it flies over), so don't bother skirting — fly straight at
+            // the target (the path validator below also waives the impassible block for this unit).
+            if (!request.IgnoresImpassibleTerrain
+                && CentroidCrossesTerrain(allTerrain, ETerrainType.Impassible, cx, cz, ndx, ndz, step, baseRadius)
                 && TryFindSkirtingDirection(allTerrain, cx, cz, ndx, ndz, step, baseRadius,
                     nearest.Center, out float skirtDx, out float skirtDz))
             {
@@ -112,7 +115,7 @@ namespace FDG.Ai.Resolvers
             // the engine will reject.
             List<ModelMoveEntry> candidate = BuildCandidate(living, cx, cz, ndx, ndz, step, request);
             bool valid = MovementUtilities.ValidatePaths(candidate, request.MaxRushDistance,
-                request.MaxDistanceInches, enemyFootprints, request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, allTerrain, out _);
+                request.MaxDistanceInches, enemyFootprints, request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, request.IgnoresImpassibleTerrain, allTerrain, out _);
 
             int attempts = 0;
             while (!valid && attempts < MaxBackoffAttempts)
@@ -122,7 +125,7 @@ namespace FDG.Ai.Resolvers
                     ? StayInPlace(request)
                     : BuildCandidate(living, cx, cz, ndx, ndz, step, request);
                 valid = MovementUtilities.ValidatePaths(candidate, request.MaxRushDistance,
-                    request.MaxDistanceInches, enemyFootprints, request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, allTerrain, out _);
+                    request.MaxDistanceInches, enemyFootprints, request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, request.IgnoresImpassibleTerrain, allTerrain, out _);
                 attempts++;
             }
 
@@ -131,7 +134,7 @@ namespace FDG.Ai.Resolvers
                 // Reform in place to close any casualty gaps...
                 candidate = StayInPlace(request);
                 valid = MovementUtilities.ValidatePaths(candidate, request.MaxRushDistance,
-                    request.MaxDistanceInches, enemyFootprints, request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, allTerrain, out _);
+                    request.MaxDistanceInches, enemyFootprints, request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, request.IgnoresImpassibleTerrain, allTerrain, out _);
 
                 // ...but if even that is rejected (a unit intermingled with enemies can't re-pack without
                 // a model crossing an enemy base), hold exact positions — zero-length paths can't move

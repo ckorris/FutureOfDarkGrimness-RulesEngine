@@ -41,7 +41,7 @@ public static class CoreRuleCatalog
         CourageAura, BaneInMeleeAura, RendingInMeleeAura, ShredInMeleeAura, UnstoppableInMeleeAura,
         Resistance, Protected, PiercingAssault, PiercingHunter, Shielded, Fortified,
         ResistanceAura, ProtectedAura, PiercingAssaultAura, PiercingHunterAura, ShieldedAura, FortifiedAura,
-        Strider,
+        Strider, Flying, Aircraft,
         IncreasedShootingRange, RangedShrouding, DarkbornOffensive, DarkbornDefensive, MeleeShrouding,
         IncreasedShootingRangeAura, RangedShroudingAura, MeleeShroudingAura,
     };
@@ -1371,6 +1371,67 @@ public static class CoreRuleCatalog
             new HookEntry(EHookID.Movement_OnMoveThroughTerrain,
                 new Condition.Always(),
                 new Effect.IgnoreTerrainEffects(),
+                ELifetime.ThisActivation),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary>
+    /// Flying (#029): the bearer ignores ALL terrain movement effects — the difficult-terrain cap, Dangerous-
+    /// terrain wound rolls, and Impassible-terrain blocking — AND may move through enemy units (it still may
+    /// not END a move stacked on an enemy). Two passives: an <see cref="Effect.IgnoreTerrainEffects"/> with the
+    /// <see cref="ETerrainIgnoreScope.AllTerrain"/> scope at <see cref="EHookID.Movement_OnMoveThroughTerrain"/>
+    /// (read by <see cref="MovementRuleQueries.IgnoresAllTerrain"/> and threaded as the difficult + impassible
+    /// waivers + the Dangerous-stage skip), and an <see cref="Effect.IgnoreEnemyMovementBlock"/> at
+    /// <see cref="EHookID.Movement_OnMoveThroughEnemy"/> (the same move-through-units permission Strafing uses).
+    /// </summary>
+    public static SpecialRuleDefinition Flying { get; } = new SpecialRuleDefinition("Flying",
+        new[]
+        {
+            new HookEntry(EHookID.Movement_OnMoveThroughTerrain,
+                new Condition.Always(),
+                new Effect.IgnoreTerrainEffects(ETerrainIgnoreScope.AllTerrain),
+                ELifetime.ThisActivation),
+            new HookEntry(EHookID.Movement_OnMoveThroughEnemy,
+                new Condition.Always(),
+                new Effect.IgnoreEnemyMovementBlock(),
+                ELifetime.ThisActivation),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary>
+    /// Aircraft (#029): a fast flyer with strong defensive shooting. **PARTIAL** — only the facets below are
+    /// enforced; the rest of the rule is DEFERRED (a unit with Aircraft still moves, deploys, can be charged,
+    /// and seizes objectives like a normal unit until those systems exist).
+    /// <list type="bullet">
+    /// <item>IMPLEMENTED: enemies targeting it get −12" range (Subject <see cref="Effect.RangeModifier"/> at
+    /// <see cref="EHookID.Shooting_OnRangeCheck"/> — effectively immune to ≤12" weapons) and −1 to hit (Subject
+    /// <see cref="Effect.RollModifier"/>(Hit) at <see cref="EHookID.Shooting_OnHitRollModifier"/>, like Stealth
+    /// without the distance gate); and it ignores all terrain + moves through units (Flying's two ops).</item>
+    /// <item>DEFERRED (need new machinery): the forced straight-line 30–36" Advance-only move with no turning +
+    /// off-table redeployment each round; can't be charged ("can't be moved in contact with"); can't seize
+    /// objectives; must deploy before all other units. See WorkItems/029.</item>
+    /// </list>
+    /// </summary>
+    public static SpecialRuleDefinition Aircraft { get; } = new SpecialRuleDefinition("Aircraft",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnRangeCheck,
+                new Condition.Always(),
+                new Effect.RangeModifier(Delta: -12),
+                ELifetime.ThisActivation,
+                ERuleSeat.Subject),
+            new HookEntry(EHookID.Shooting_OnHitRollModifier,
+                new Condition.Always(),
+                new Effect.RollModifier(ERollKind.Hit, Delta: -1),
+                ELifetime.ThisAttack,
+                ERuleSeat.Subject),
+            new HookEntry(EHookID.Movement_OnMoveThroughTerrain,
+                new Condition.Always(),
+                new Effect.IgnoreTerrainEffects(ETerrainIgnoreScope.AllTerrain),
+                ELifetime.ThisActivation),
+            new HookEntry(EHookID.Movement_OnMoveThroughEnemy,
+                new Condition.Always(),
+                new Effect.IgnoreEnemyMovementBlock(),
                 ELifetime.ThisActivation),
         },
         Array.Empty<ActivatedAbility>());

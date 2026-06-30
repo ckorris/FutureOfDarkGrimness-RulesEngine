@@ -533,16 +533,17 @@ public abstract record Effect
     }
 
     /// <summary>
-    /// The bearer ignores terrain effects while moving. Covers Strider (difficult
-    /// terrain only) and Flying (all terrain effects). The Flying-only facet —
-    /// moving through units as well — is a separate movement-permission flag added
-    /// when that distinction is executed (Phase 8).
+    /// The bearer ignores terrain effects while moving. <see cref="Scope"/> selects how much: Strider waives
+    /// only the difficult-terrain move cap (<see cref="ETerrainIgnoreScope.DifficultOnly"/>, the default),
+    /// while Flying waives ALL terrain effects (<see cref="ETerrainIgnoreScope.AllTerrain"/> — difficult cap,
+    /// Dangerous wound rolls, and Impassible blocking). Flying additionally moves through units via the
+    /// separate <see cref="IgnoreEnemyMovementBlock"/>.
     /// </summary>
-    public sealed record IgnoreTerrainEffects : Effect
+    public sealed record IgnoreTerrainEffects(ETerrainIgnoreScope Scope = ETerrainIgnoreScope.DifficultOnly) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.IgnoreTerrainEffects());
+            operations.Add(new RuleOperation.IgnoreTerrainEffects(Scope));
         }
     }
 

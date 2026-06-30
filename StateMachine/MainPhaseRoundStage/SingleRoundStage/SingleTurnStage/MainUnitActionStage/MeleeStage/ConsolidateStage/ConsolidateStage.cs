@@ -44,11 +44,13 @@ namespace FDG.Stages
                 context.AttackingUnit.GetValue(), context.GameContext.RuleEvaluator);
             bool ignoresDifficultTerrain = Rules.Dispatch.MovementRuleQueries.IgnoresDifficultTerrain(
                 context.AttackingUnit.GetValue(), context.GameContext.RuleEvaluator);
+            bool ignoresImpassibleTerrain = Rules.Dispatch.MovementRuleQueries.IgnoresAllTerrain(
+                context.AttackingUnit.GetValue(), context.GameContext.RuleEvaluator);
             List<EnemyModelFootprint> enemyFootprints =
                 MovementUtilities.GetEnemyModelFootprints(context.AttackingUnit, context.GameContext);
 
             var request = new ConsolidationMoveRequest(playerID, $"Consolidate Move ({reason})",
-                context.AttackingUnit, maxDist, reason, canMoveThroughEnemies, ignoresDifficultTerrain);
+                context.AttackingUnit, maxDist, reason, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain);
 
             List<ModelMoveEntry> movements = await context.PlayerRequester()
                 .RequestDecision<ConsolidationMoveRequest, List<ModelMoveEntry>>(request);
@@ -58,7 +60,7 @@ namespace FDG.Stages
             // to catch any per-model paths a future resolver might submit.
             IEnumerable<ITerrain>? terrain = context.GameContext.TableState.Terrain.Objects;
             if (!MovementUtilities.ValidatePaths(movements, maxDist, enemyFootprints, canMoveThroughEnemies,
-                    ignoresDifficultTerrain, terrain, out List<ReasonForInvalidMove> errors))
+                    ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, out List<ReasonForInvalidMove> errors))
             {
                 StringBuilder sb = new StringBuilder(errors[0].ToString());
                 for (int i = 1; i < errors.Count; i++) sb.Append(", ").Append(errors[i].ToString());

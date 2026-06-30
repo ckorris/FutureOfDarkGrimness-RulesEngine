@@ -55,10 +55,10 @@ namespace FDG.Tests
 
             bool capped = MovementUtilities.ValidatePaths(new List<ModelMoveEntry> { move },
                 maxDistanceInches: 12f, NoEnemies(), canMoveThroughEnemies: false,
-                ignoresDifficultTerrain: false, Difficult(), out _);
+                ignoresDifficultTerrain: false, ignoresImpassibleTerrain: false, Difficult(), out _);
             bool waived = MovementUtilities.ValidatePaths(new List<ModelMoveEntry> { move },
                 maxDistanceInches: 12f, NoEnemies(), canMoveThroughEnemies: false,
-                ignoresDifficultTerrain: true, Difficult(), out var errors);
+                ignoresDifficultTerrain: true, ignoresImpassibleTerrain: false, Difficult(), out var errors);
 
             Assert.That(capped, Is.False, "Without Strider the consolidation move over the cap is rejected.");
             Assert.That(waived, Is.True, Why(errors));
@@ -104,7 +104,7 @@ namespace FDG.Tests
         private bool Charge(ModelMoveEntry move, bool ignoresDifficultTerrain, out List<ReasonForInvalidMove> errors)
             => MovementUtilities.ValidatePaths(new List<ModelMoveEntry> { move },
                 maxRushDistance: 12f, maxDistanceInches: 12f, NoEnemies(),
-                canMoveThroughEnemies: false, ignoresDifficultTerrain, Difficult(), out errors);
+                canMoveThroughEnemies: false, ignoresDifficultTerrain, ignoresImpassibleTerrain: false, Difficult(), out errors);
 
         private static string Why(List<ReasonForInvalidMove> errors)
             => "Unexpected errors: " + string.Join(", ", errors.Select(e => e.ErrorReasonType.ToString()));

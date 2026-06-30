@@ -31,10 +31,17 @@ namespace FDG.StageResolution.Requests
         /// </summary>
         public bool IgnoresDifficultTerrain { get; }
 
+        /// <summary>
+        /// Whether the consolidating unit also ignores impassible terrain — flies over it (Flying). Derived
+        /// from the unit's rules where the request is built; read by the resolvers so their preview agrees with
+        /// the authoritative <see cref="Stages.ConsolidateStage"/> check.
+        /// </summary>
+        public bool IgnoresImpassibleTerrain { get; }
+
         [JsonConstructor]
         public ConsolidationMoveRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
             DataBinding<UnitData> unitDataBinding, float maxDistanceInches, EConsolidationReason reason,
-            bool canMoveThroughEnemies = false, bool ignoresDifficultTerrain = false)
+            bool canMoveThroughEnemies = false, bool ignoresDifficultTerrain = false, bool ignoresImpassibleTerrain = false)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -44,11 +51,12 @@ namespace FDG.StageResolution.Requests
             Reason = reason;
             CanMoveThroughEnemies = canMoveThroughEnemies;
             IgnoresDifficultTerrain = ignoresDifficultTerrain;
+            IgnoresImpassibleTerrain = ignoresImpassibleTerrain;
         }
 
         public ConsolidationMoveRequest(PlayerID targetPlayerID, string taskName,
             DataBinding<UnitData> unitDataBinding, float maxDistanceInches, EConsolidationReason reason,
-            bool canMoveThroughEnemies = false, bool ignoresDifficultTerrain = false)
+            bool canMoveThroughEnemies = false, bool ignoresDifficultTerrain = false, bool ignoresImpassibleTerrain = false)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = new TaskID(Guid.NewGuid());
@@ -58,6 +66,7 @@ namespace FDG.StageResolution.Requests
             Reason = reason;
             CanMoveThroughEnemies = canMoveThroughEnemies;
             IgnoresDifficultTerrain = ignoresDifficultTerrain;
+            IgnoresImpassibleTerrain = ignoresImpassibleTerrain;
         }
 
         public Task<List<ModelMoveEntry>> Resolve(List<ModelMoveEntry> resolution)

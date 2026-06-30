@@ -446,10 +446,12 @@ public abstract record RuleOperation
     public sealed record ApplyRangeModifier(int Delta, int MinResultInches = 0) : RuleOperation;
 
     /// <summary>
-    /// Suppress terrain effects for the bearer's current move. Resolution of
-    /// <see cref="Effect.IgnoreTerrainEffects"/> (Strider, Flying).
+    /// Suppress terrain effects for the bearer's current move; <see cref="Scope"/> selects how much (Strider
+    /// = difficult cap only; Flying = all terrain). Resolution of <see cref="Effect.IgnoreTerrainEffects"/>.
+    /// Read by <see cref="Rules.Dispatch.MovementRuleQueries.IgnoresDifficultTerrain"/> (any scope) and
+    /// <see cref="Rules.Dispatch.MovementRuleQueries.IgnoresAllTerrain"/> (AllTerrain only).
     /// </summary>
-    public sealed record IgnoreTerrainEffects : RuleOperation;
+    public sealed record IgnoreTerrainEffects(ETerrainIgnoreScope Scope = ETerrainIgnoreScope.DifficultOnly) : RuleOperation;
 
     /// <summary>
     /// The bearer may move through enemy units — its path is not blocked by enemy bases — though it still

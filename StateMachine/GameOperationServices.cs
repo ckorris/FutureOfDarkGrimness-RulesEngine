@@ -28,6 +28,8 @@ namespace FDG.Stages
                 unitBinding.GetValue(), _gameContext.RuleEvaluator);
             bool ignoresDifficultTerrain = Rules.Dispatch.MovementRuleQueries.IgnoresDifficultTerrain(
                 unitBinding.GetValue(), _gameContext.RuleEvaluator);
+            bool ignoresImpassibleTerrain = Rules.Dispatch.MovementRuleQueries.IgnoresAllTerrain(
+                unitBinding.GetValue(), _gameContext.RuleEvaluator);
 
             // The move is directed by the controller (a forced enemy move routes to the caster),
             // falling back to the unit's own owner for the self-move case.
@@ -38,7 +40,7 @@ namespace FDG.Stages
             var pathRequest = new DefineMovementPathRequest(mover, "Triggered Move",
                 unitBinding, maxInches, maxInches, maxInches,
                 WeaponSightProfileBuilder.For(unitBinding.GetValue(), _gameContext.RuleEvaluator),
-                canMoveThroughEnemies, ignoresDifficultTerrain);
+                canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain);
 
             List<ModelMoveEntry> movements = await _gameContext.PlayerRequester
                 .RequestDecision<DefineMovementPathRequest, List<ModelMoveEntry>>(pathRequest);

@@ -27,8 +27,13 @@ namespace FDG.Stages
             string unitName = movingUnit.GetValue().Name;
             float woundsBefore = movingUnit.GetValue().RemainingWounds;
 
+            // Flying (AllTerrain scope) ignores Dangerous-terrain effects — no rolls, no wounds.
+            bool ignoresDangerousTerrain = Rules.Dispatch.MovementRuleQueries.IgnoresAllTerrain(
+                movingUnit.GetValue(), GameContext.RuleEvaluator);
+
             IReadOnlyList<MovementExecutor.DangerousTerrainRoll> dangerRolls =
-                MovementExecutor.ApplyDangerousTerrainEffects(GameContext, paths, context.RelevantTerrain, unitName);
+                MovementExecutor.ApplyDangerousTerrainEffects(GameContext, paths, context.RelevantTerrain, unitName,
+                    ignoresDangerousTerrain);
             foreach (MovementExecutor.DangerousTerrainRoll dt in dangerRolls)
             {
                 // A single d6: 2+ is safe (green), a 1 is a wound (red).

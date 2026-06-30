@@ -22,9 +22,9 @@ namespace FDG.Stages
             errors = new List<ReasonForInvalidMove>();
 
             ValidateOutOfMoveRange(moves, maxDistanceInches, ref errors);
-            ValidateMovingThroughImpassibleTerrain(moves, terrain, ref errors);
-            //This overload is only reached with terrain: null (the no-terrain convenience form), so the
-            //difficult-terrain check is a no-op regardless — no Strider flag to thread here.
+            //This overload is only reached with terrain: null (the no-terrain convenience form), so the terrain
+            //checks are no-ops regardless — no Strider/Flying flags to thread here.
+            ValidateMovingThroughImpassibleTerrain(moves, terrain, ignoresImpassibleTerrain: false, ref errors);
             ValidateMovingThroughDifficultTerrain(moves, terrain, ignoresDifficultTerrain: false, ref errors);
             //No enemy footprints supplied (this overload predates enemy-aware validation): the move-through /
             //standoff check is a no-op here, preserving these callers' existing behavior.
@@ -38,11 +38,12 @@ namespace FDG.Stages
         /// Enemy-aware validation WITHOUT charge semantics: terrain + move-through / standoff (honoring
         /// <paramref name="canMoveThroughEnemies"/>) + coherency, but no charge-reach requirement. For
         /// consolidation and out-of-band executor moves — they have their own distance cap and never charge.
-        /// <paramref name="ignoresDifficultTerrain"/> waives the difficult-terrain move cap (Strider).
+        /// <paramref name="ignoresDifficultTerrain"/> waives the difficult-terrain move cap (Strider/Flying);
+        /// <paramref name="ignoresImpassibleTerrain"/> waives the impassible-terrain block (Flying).
         /// </summary>
         public static bool ValidatePaths(List<ModelMoveEntry> moves, float maxDistanceInches,
             IEnumerable<EnemyModelFootprint> enemyFootprints, bool canMoveThroughEnemies,
-            bool ignoresDifficultTerrain,
+            bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
             IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors)
         {
             errors = new List<ReasonForInvalidMove>();
@@ -52,7 +53,7 @@ namespace FDG.Stages
                 ?? (IReadOnlyList<EnemyModelFootprint>)Array.Empty<EnemyModelFootprint>();
 
             ValidateOutOfMoveRange(moves, maxDistanceInches, ref errors);
-            ValidateMovingThroughImpassibleTerrain(moves, terrain, ref errors);
+            ValidateMovingThroughImpassibleTerrain(moves, terrain, ignoresImpassibleTerrain, ref errors);
             ValidateMovingThroughDifficultTerrain(moves, terrain, ignoresDifficultTerrain, ref errors);
             ValidateMovingThroughEnemyUnits(moves, enemies, canMoveThroughEnemies, ref errors);
             ValidateCoherency(moves, ref errors);
@@ -62,28 +63,30 @@ namespace FDG.Stages
 
         /// <summary>
         /// Back-compat charge overload that assumes the mover may not move through enemies
-        /// (<c>canMoveThroughEnemies: false</c>) nor ignore difficult terrain
-        /// (<c>ignoresDifficultTerrain: false</c>). Kept so callers/tests that never need either rule-derived
-        /// flag don't have to thread them (mirrors the no-enemy convenience overloads above).
+        /// (<c>canMoveThroughEnemies: false</c>) nor ignore difficult/impassible terrain
+        /// (<c>false</c>). Kept so callers/tests that never need those rule-derived flags don't have to thread
+        /// them (mirrors the no-enemy convenience overloads above).
         /// </summary>
         public static bool ValidatePaths(List<ModelMoveEntry> moves,
             float maxRushDistance, float maxDistanceInches,
             IEnumerable<EnemyModelFootprint> enemyFootprints,
             IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors)
             => ValidatePaths(moves, maxRushDistance, maxDistanceInches, enemyFootprints,
-                canMoveThroughEnemies: false, ignoresDifficultTerrain: false, terrain, out errors);
+                canMoveThroughEnemies: false, ignoresDifficultTerrain: false, ignoresImpassibleTerrain: false,
+                terrain, out errors);
 
         /// <summary>
         /// Full Move-action validation: paths must stay within the hard cap (Charge distance),
         /// and any path that exceeds the Rush distance requires at least one model to end within
         /// melee range of an enemy model. <paramref name="canMoveThroughEnemies"/> waives the
         /// pass-through block for fly-over units (Strafing); <paramref name="ignoresDifficultTerrain"/>
-        /// waives the difficult-terrain move cap (Strider).
+        /// waives the difficult-terrain move cap (Strider/Flying); <paramref name="ignoresImpassibleTerrain"/>
+        /// waives the impassible-terrain block (Flying).
         /// </summary>
         public static bool ValidatePaths(List<ModelMoveEntry> moves,
             float maxRushDistance, float maxDistanceInches,
             IEnumerable<EnemyModelFootprint> enemyFootprints, bool canMoveThroughEnemies,
-            bool ignoresDifficultTerrain,
+            bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
             IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors)
         {
             errors = new List<ReasonForInvalidMove>();
@@ -93,7 +96,7 @@ namespace FDG.Stages
                 ?? (IReadOnlyList<EnemyModelFootprint>)Array.Empty<EnemyModelFootprint>();
 
             ValidateOutOfMoveRange(moves, maxDistanceInches, ref errors);
-            ValidateMovingThroughImpassibleTerrain(moves, terrain, ref errors);
+            ValidateMovingThroughImpassibleTerrain(moves, terrain, ignoresImpassibleTerrain, ref errors);
             ValidateMovingThroughDifficultTerrain(moves, terrain, ignoresDifficultTerrain, ref errors);
             ValidateMovingThroughEnemyUnits(moves, enemies, canMoveThroughEnemies, ref errors);
             ValidateCoherency(moves, ref errors);
@@ -302,9 +305,12 @@ namespace FDG.Stages
         }
 
         private static void ValidateMovingThroughImpassibleTerrain(List<ModelMoveEntry> moves,
-            IEnumerable<ITerrain>? terrain, ref List<ReasonForInvalidMove> reasonsForInvalidMove)
+            IEnumerable<ITerrain>? terrain, bool ignoresImpassibleTerrain, ref List<ReasonForInvalidMove> reasonsForInvalidMove)
         {
             if (terrain == null) return;
+            // Flying (AllTerrain scope) flies over impassible terrain — its path may cross an impassible piece
+            // (it still can't end stacked on enemies; coherency + the standoff checks remain in force).
+            if (ignoresImpassibleTerrain) return;
 
             //Snapshot impassable pieces so each model walk doesn't re-enumerate.
             List<ITerrain> impassable = terrain

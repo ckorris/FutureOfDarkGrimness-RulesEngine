@@ -20,7 +20,11 @@ namespace FDG.Stages
 
             PlayerID playerID = context.MovingUnit.GetValue().PlayerID; //Shorthand.
 
-            float hardCap = System.Math.Max(context.MaxRushDistance, context.MaxChargeDistance);
+            // #029: a defender's Melee-Shrouding-style charge penalty shrinks how far the charger may move to
+            // reach it. A charge's target isn't pinned until the move ends, so apply the worst case among
+            // enemies actually in charge reach — conservative, but never lets an over-long charge through.
+            float effectiveCharge = WorstCaseChargeDistance(context);
+            float hardCap = System.Math.Max(context.MaxRushDistance, effectiveCharge);
 
             bool canMoveThroughEnemies = Rules.Dispatch.MovementRuleQueries.CanMoveThroughEnemies(
                 context.MovingUnit.GetValue(), context.GameContext.RuleEvaluator);
@@ -85,6 +89,49 @@ namespace FDG.Stages
                 }
             }
             return overrides;
+        }
+
+        // #029: the charge budget the charger may actually use, reduced by the strongest Melee-Shrouding-style
+        // charge penalty among enemies within (base) charge reach. Conservative worst case: because a charge's
+        // target isn't known until the move ends, one shrunk budget applies to the whole move — it never permits
+        // an over-long charge into a shrouding unit, at the cost of also shortening charges toward a normal enemy
+        // when a shrouding one is in range too. Returns the base charge when no charge penalty is in play.
+        private static float WorstCaseChargeDistance(IMovementActionContext context)
+        {
+            IUnit charger = context.MovingUnit.GetValue();
+            float baseCharge = context.MaxChargeDistance;
+            var evaluator = context.GameContext.RuleEvaluator;
+
+            float worst = baseCharge;
+            foreach (IUnit enemy in context.GameContext.TableState.Units.Objects)
+            {
+                if (enemy.PlayerID == charger.PlayerID) continue;
+                if (!enemy.GetIsOnBattlefield()) continue;
+                // A shrouding unit beyond base charge reach can't be charged anyway, so it must not shrink the budget.
+                if (MinBaseToBaseDistanceInches(charger, enemy) > baseCharge) continue;
+
+                float effective = Rules.Dispatch.MovementRuleQueries.EffectiveChargeDistanceAgainst(
+                    charger, enemy, baseCharge, evaluator);
+                if (effective < worst) worst = effective;
+            }
+            return worst;
+        }
+
+        private static float MinBaseToBaseDistanceInches(IUnit a, IUnit b)
+        {
+            float min = float.MaxValue;
+            foreach (IModel modelA in a.Models)
+            {
+                if (!modelA.GetIsAlive()) continue;
+                foreach (IModel modelB in b.Models)
+                {
+                    if (!modelB.GetIsAlive()) continue;
+                    float distance = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
+                        modelA.Position, modelB.Position, modelA.BaseRadiusInches, modelB.BaseRadiusInches);
+                    if (distance < min) min = distance;
+                }
+            }
+            return min;
         }
 
     }

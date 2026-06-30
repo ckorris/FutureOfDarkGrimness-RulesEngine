@@ -131,10 +131,11 @@ public abstract record RuleOperation
 
     /// <summary>
     /// Adjust the in-flight movement budget by <see cref="DistanceInches"/>
-    /// when the declared action is <see cref="ActionType"/>. Resolution of
-    /// <see cref="Effect.MovementBonus"/>.
+    /// when the declared action is <see cref="ActionType"/>. <see cref="MinResultInches"/>
+    /// floors the reduced distance (0 = no floor) — used by the charge-penalty query, not the
+    /// Actor-seat sink (which only sums the delta). Resolution of <see cref="Effect.MovementBonus"/>.
     /// </summary>
-    public sealed record ApplyMovementBonus(EActionType ActionType, float DistanceInches)
+    public sealed record ApplyMovementBonus(EActionType ActionType, float DistanceInches, float MinResultInches = 0f)
         : SinkOperation<IMovementModifierSink>
     {
         public override void ApplyTo(IMovementModifierSink sink)

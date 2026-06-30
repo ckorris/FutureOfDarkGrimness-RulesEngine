@@ -42,8 +42,8 @@ public static class CoreRuleCatalog
         Resistance, Protected, PiercingAssault, PiercingHunter, Shielded, Fortified,
         ResistanceAura, ProtectedAura, PiercingAssaultAura, PiercingHunterAura, ShieldedAura, FortifiedAura,
         Strider,
-        IncreasedShootingRange, RangedShrouding, Darkborn,
-        IncreasedShootingRangeAura, RangedShroudingAura,
+        IncreasedShootingRange, RangedShrouding, Darkborn, MeleeShrouding,
+        IncreasedShootingRangeAura, RangedShroudingAura, MeleeShroudingAura,
     };
 
     /// <summary>
@@ -1258,6 +1258,8 @@ public static class CoreRuleCatalog
     public static SpecialRuleDefinition IncreasedShootingRangeAura { get; } = UnitAura("Increased Shooting Range Aura", "Increased Shooting Range");
     /// <summary> Ranged Shrouding Aura (#102): grants <see cref="RangedShrouding"/> unit-wide. </summary>
     public static SpecialRuleDefinition RangedShroudingAura { get; } = UnitAura("Ranged Shrouding Aura", "Ranged Shrouding");
+    /// <summary> Melee Shrouding Aura (#029): grants <see cref="MeleeShrouding"/> unit-wide. </summary>
+    public static SpecialRuleDefinition MeleeShroudingAura { get; } = UnitAura("Melee Shrouding Aura", "Melee Shrouding");
 
     // Deferred-deployment primitive (PlaceDeferredUnitsStage) ---------------------
 
@@ -1429,6 +1431,27 @@ public static class CoreRuleCatalog
                 new Condition.ActionTypeIs(EActionType.Charge),
                 new Effect.MovementBonus(EActionType.Charge, DistanceInches: 3f),
                 ELifetime.ThisActivation),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary>
+    /// Melee Shrouding (#029): enemies get −3" movement when charging this unit, to a minimum charge distance
+    /// of 6" — the charge twin of <see cref="RangedShrouding"/>. A Subject-seat
+    /// <see cref="Effect.MovementBonus"/>(Charge, −3, floor 6) at <see cref="EHookID.Movement_OnChargeDeclared"/>
+    /// (previously a dormant hook), read by <see cref="MovementRuleQueries.EffectiveChargeDistanceAgainst"/> and
+    /// applied as a worst-case reduction to the charger's budget in <c>DefinePathStage</c>. Scope: the corpus's
+    /// "where ALL MODELS have this rule" is approximated as unit-level (per-model gating is #093), and the
+    /// reduction is conservative (worst case among reachable enemies) because a charge's target isn't pinned
+    /// until the move ends. Same mechanism unblocks defensive Darkborn's "−2 charge" and Aircraft-style facets.
+    /// </summary>
+    public static SpecialRuleDefinition MeleeShrouding { get; } = new SpecialRuleDefinition("Melee Shrouding",
+        new[]
+        {
+            new HookEntry(EHookID.Movement_OnChargeDeclared,
+                new Condition.Always(),
+                new Effect.MovementBonus(EActionType.Charge, DistanceInches: -3f, MinResultInches: 6f),
+                ELifetime.ThisActivation,
+                ERuleSeat.Subject),
         },
         Array.Empty<ActivatedAbility>());
 

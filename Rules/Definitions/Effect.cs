@@ -152,13 +152,17 @@ public abstract record Effect
     /// (positive or negative) when the action being taken is
     /// <see cref="ActionType"/>. Covers Fast (+2"/Advance, +4"/Rush+Charge),
     /// Slow, Rapid Rush (+6"/Rush), and target-perspective movement penalties
-    /// like Melee Shrouding (-3" on enemy Charge).
+    /// like Melee Shrouding (-3" on enemy Charge). <see cref="MinResultInches"/>
+    /// floors the resulting distance — a reduction can't drop it below this (Melee
+    /// Shrouding's "to a min. of 6\""); 0 means no floor. Read by the charge-penalty
+    /// query (<see cref="Dispatch.MovementRuleQueries.EffectiveChargeDistanceAgainst"/>);
+    /// the Actor-seat sink path (Fast/Slow) only sums <see cref="DistanceInches"/>.
     /// </summary>
-    public sealed record MovementBonus(EActionType ActionType, float DistanceInches) : Effect
+    public sealed record MovementBonus(EActionType ActionType, float DistanceInches, float MinResultInches = 0f) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.ApplyMovementBonus(ActionType, DistanceInches));
+            operations.Add(new RuleOperation.ApplyMovementBonus(ActionType, DistanceInches, MinResultInches));
         }
     }
 

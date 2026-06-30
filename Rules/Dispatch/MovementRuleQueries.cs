@@ -47,5 +47,35 @@ namespace FDG.Rules.Dispatch
             }
             return false;
         }
+
+        /// <summary>
+        /// The effective charge distance <paramref name="charger"/> may move toward <paramref name="target"/>,
+        /// given the charger's own (already movement-modified) <paramref name="baseChargeInches"/>: the base
+        /// plus every <see cref="RuleOperation.ApplyMovementBonus"/> for the Charge action contributed at
+        /// <see cref="EHookID.Movement_OnChargeDeclared"/> — most importantly the target's Subject-seat charge
+        /// penalty (Melee Shrouding's −3"), but also any charger Actor-seat charge bonus seated at that hook —
+        /// then floored by the largest <c>MinResultInches</c> among them (Melee Shrouding's "to a min. of 6\"").
+        /// Equals <paramref name="baseChargeInches"/> when no such rule is in play. Fires the previously dormant
+        /// <see cref="Contexts.ChargeDeclaredContext"/>. Non-logging — safe to call per-frame while building UI.
+        /// Note this is the per-target value; the engine applies it conservatively (worst case among reachable
+        /// enemies) because a charge's target isn't pinned until the move ends (see #029).
+        /// </summary>
+        public static float EffectiveChargeDistanceAgainst(IUnit charger, IUnit target, float baseChargeInches,
+            RuleEvaluator evaluator)
+        {
+            float delta = 0f;
+            float floor = 0f;
+            foreach ((RuleOperation op, string _) in evaluator.EvaluateAllNamed(
+                         new ChargeDeclaredContext(charger, target, baseChargeInches),
+                         (charger, ERuleSeat.Actor), (target, ERuleSeat.Subject)))
+            {
+                if (op is RuleOperation.ApplyMovementBonus move && move.ActionType == EActionType.Charge)
+                {
+                    delta += move.DistanceInches;
+                    if (move.MinResultInches > floor) floor = move.MinResultInches;
+                }
+            }
+            return System.Math.Max(floor, baseChargeInches + delta);
+        }
     }
 }

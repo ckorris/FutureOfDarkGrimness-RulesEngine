@@ -72,12 +72,12 @@ public static class TokenDefinitionCatalog
         {
             new(TokenType.SHAKEN_ID, "Shaken", EValence.Negative, ETokenProminence.FirstClass,
                 DefaultClearTrigger: new TokenClearTrigger.ManualOnly(),
-                Description: "Shaken — spends its activation idle, cannot seize or contest objectives, and " +
+                Description: "Shaken - spends its activation idle, cannot seize or contest objectives, and " +
                              "always fails morale tests until it recovers."),
 
             new(TokenType.FATIGUED_ID, "Fatigued", EValence.Negative, ETokenProminence.FirstClass,
                 DefaultClearTrigger: new TokenClearTrigger.RoundEnd(),
-                Description: "Fatigued — hits only on unmodified 6s in melee for the rest of the round."),
+                Description: "Fatigued - hits only on unmodified 6s in melee for the rest of the round."),
 
             new(TokenType.SPELL_TOKENS_ID, "Spell Tokens", EValence.Positive, ETokenProminence.FirstClass,
                 ColorOverride: ETokenColor.Blue,
@@ -97,7 +97,7 @@ public static class TokenDefinitionCatalog
 
             new(TokenType.MARK_ID, "Mark", EValence.Negative, ETokenProminence.Normal,
                 DefaultClearTrigger: new TokenClearTrigger.ManualOnly(),
-                Description: "Marked — a friendly attacker gains a rule against this unit until the first attack into it."),
+                Description: "Marked - a friendly attacker gains a rule against this unit until the first attack into it."),
 
             new(TokenType.ARRIVED_FROM_RESERVE_ID, "Arrived from reserve", EValence.Neutral,
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd()),

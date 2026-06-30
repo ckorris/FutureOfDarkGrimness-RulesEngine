@@ -82,13 +82,13 @@ public static class TokenDisplay
         {
             if (token.Type == TokenType.Mark)
             {
-                return $"Marked — a friendly attacker gains {rg.RuleName} against this unit until the first attack into it.";
+                return $"Marked - a friendly attacker gains {rg.RuleName} against this unit until the first attack into it.";
             }
 
             string ruleDesc = RuleDescription(rg.RuleName, rules);
             return ruleDesc.Length == 0
                 ? $"Gains {rg.RuleName}, {lifetime}."
-                : $"Gains {rg.RuleName} — {ruleDesc} ({lifetime}).";
+                : $"Gains {rg.RuleName} - {ruleDesc} ({lifetime}).";
         }
 
         if (token.Type == TokenType.SpellTokens)

@@ -1759,5 +1759,5 @@ public static class CoreRuleCatalog
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Negative,
-        Description: "This unit can't move — it may only Hold (and shoot).");
+        Description: "This unit can't move - it may only Hold (and shoot).");
 }

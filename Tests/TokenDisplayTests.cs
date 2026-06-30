@@ -214,7 +214,7 @@ namespace FDG.Tests
                 Valence: EValence.Positive, Description: "Ignores each wound on a roll of 5+."));
 
             Assert.That(TokenDisplay.DescribeDetail(Grant("Regeneration"), rules),
-                Is.EqualTo("Gains Regeneration — Ignores each wound on a roll of 5+ (next time it applies)."));
+                Is.EqualTo("Gains Regeneration - Ignores each wound on a roll of 5+ (next time it applies)."));
         }
 
         [Test]

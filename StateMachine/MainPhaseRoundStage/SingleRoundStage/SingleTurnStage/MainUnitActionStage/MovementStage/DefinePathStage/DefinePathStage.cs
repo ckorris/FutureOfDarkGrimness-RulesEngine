@@ -86,7 +86,7 @@ namespace FDG.Stages
 
             if (ForcedAircraftMove.WouldLeaveTable(paths))
             {
-                // Flew off the edge: leave play (models to origin), mark for redeploy, and clear the heading so it
+                // Flew off the edge: leave play (models to origin), mark for redeploy, and clear the aimed flag so it
                 // re-aims when re-placed next round. The activation then has nothing more to do off-table.
                 List<ModelMoveEntry> hold = new List<ModelMoveEntry>();
                 foreach (DataBinding<ModelData> model in unit.ModelBindings)
@@ -97,7 +97,7 @@ namespace FDG.Stages
                 }
                 unit.Tokens.AddToken(new Rules.Tokens.Token(Rules.Foundation.TokenType.OffTableFromForcedMove, 1,
                     new Rules.Foundation.TokenClearTrigger.ManualOnly()));
-                unit.AircraftHeading = null;
+                unit.Tokens.RemoveTokens(Rules.Foundation.TokenType.AircraftHeadingSet);
                 context.GameContext.Log($"{unit.Name} (Aircraft) flew off the table edge — it redeploys from an edge next round.");
 
                 context.SubmitValidPathTemplate(hold);

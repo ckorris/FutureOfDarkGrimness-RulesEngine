@@ -3,6 +3,7 @@ using FDG.Data;
 using FDG.Players;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 using FDG.Stages;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
@@ -32,14 +33,18 @@ namespace FDG.Tests
             Assert.That(heading.Y, Is.GreaterThan(0f));
             Assert.That(MathF.Sqrt(heading.X * heading.X + heading.Y * heading.Y), Is.EqualTo(1f).Within(0.001f),
                 "the heading is a unit vector.");
-            Assert.That(unit.GetValue().AircraftHeading, Is.EqualTo(heading), "the heading is stored on the unit.");
+            // #150: the heading lives on the model's facing, and the unit is marked aimed.
+            Assert.That(unit.GetValue().Tokens.HasToken(TokenType.AircraftHeadingSet), Is.True, "the Aircraft is marked aimed.");
+            Assert.That(unit.GetValue().Models[0].Facing, Is.EqualTo(heading), "the heading is stored on the model's facing.");
         }
 
         [Test]
         public void EnsureHeading_RespectsAnAlreadySetHeading_NeverTurns()
         {
             DataBinding<UnitData> unit = MakeUnit(new Position(10, 10));
-            unit.GetValue().AircraftHeading = new Float2(1f, 0f);
+            // Pre-aim it (as EnsureHeading would leave it): heading on the model's facing + the aimed token.
+            unit.GetValue().Models[0].SetFacing(new Float2(1f, 0f));
+            unit.GetValue().Tokens.AddToken(new Token(TokenType.AircraftHeadingSet, 1, new TokenClearTrigger.ManualOnly()));
 
             Float2 heading = ForcedAircraftMove.EnsureHeading(unit.GetValue());
 
@@ -83,7 +88,9 @@ namespace FDG.Tests
 
             DataBinding<UnitData> aircraft = MakeUnit(new Position(10, 40)); // near the top edge (H = 48)
             aircraft.GetValue().AttachRuleDefinition(new ResolvedRule("Aircraft", CoreRuleCatalog.Aircraft));
-            aircraft.GetValue().AircraftHeading = new Float2(0f, 1f); // flying +z, straight off the top edge
+            // Pre-aim it flying +z (straight off the top edge): facing on the model + the aimed token.
+            aircraft.GetValue().Models[0].SetFacing(new Float2(0f, 1f));
+            aircraft.GetValue().Tokens.AddToken(new Token(TokenType.AircraftHeadingSet, 1, new TokenClearTrigger.ManualOnly()));
 
             var moveCtx = new MovementActionContext(ctx, aircraft);
             var stage = new DefinePathStage(ctx, new NoOpLayer<IMovementActionContext>());
@@ -94,7 +101,8 @@ namespace FDG.Tests
             Assert.That(p.x == 0f && p.z == 0f, Is.True, "flew off the table — held off-table (models at origin).");
             Assert.That(aircraft.GetValue().Tokens.HasToken(TokenType.OffTableFromForcedMove), Is.True,
                 "marked for redeployment next round.");
-            Assert.That(aircraft.GetValue().AircraftHeading, Is.Null, "heading cleared so it re-aims when re-placed.");
+            Assert.That(aircraft.GetValue().Tokens.HasToken(TokenType.AircraftHeadingSet), Is.False,
+                "aimed flag cleared so it re-aims when re-placed.");
         }
 
         [Test]

@@ -1,4 +1,5 @@
 using FDG.Data;
+using FDG.Rules.Dispatch;
 using FDG.Stages;
 using NUnit.Framework;
 
@@ -115,6 +116,34 @@ namespace FDG.Tests
             await RunReconcileOnce(); // next round — marker already cleared
             Assert.That(objective.OwnerID, Is.EqualTo(playerID),
                 "the RoundEnd marker was swept after the first check, so the unit seizes the following round.");
+        }
+
+        // #029 — an Aircraft can neither seize nor contest objectives, even sitting alone on one.
+        [Test]
+        public async Task ReconcileObjectivesStage_AircraftAlone_DoesNotSeize()
+        {
+            var objective = CreateObjective(new Position(5, 5));
+            UnitData aircraft = CreateUnit(new PlayerID(Guid.NewGuid()), modelPosition: new Position(5, 5));
+            aircraft.AttachRuleDefinition(new ResolvedRule("Aircraft", CoreRuleCatalog.Aircraft));
+
+            await RunReconcileOnce();
+
+            Assert.That(objective.OwnerID, Is.Null, "an Aircraft can't seize the objective it sits on.");
+        }
+
+        [Test]
+        public async Task ReconcileObjectivesStage_AircraftDoesNotContest_GroundEnemySeizes()
+        {
+            var objective = CreateObjective(new Position(5, 5));
+            var enemy = new PlayerID(Guid.NewGuid());
+            UnitData aircraft = CreateUnit(new PlayerID(Guid.NewGuid()), modelPosition: new Position(5.0f, 5));
+            aircraft.AttachRuleDefinition(new ResolvedRule("Aircraft", CoreRuleCatalog.Aircraft));
+            CreateUnit(enemy, modelPosition: new Position(5.5f, 5));
+
+            await RunReconcileOnce();
+
+            Assert.That(objective.OwnerID, Is.EqualTo(enemy),
+                "the Aircraft can't contest, so the ground enemy seizes uncontested.");
         }
 
         // Helpers

@@ -209,12 +209,13 @@ namespace FDG.Ai.Resolvers
             foreach (var unit in _tableState.Units.Objects)
             {
                 if (unit.PlayerID == _playerID) continue;
+                bool uncontactable = FDG.Rules.Dispatch.AircraftRules.IsAircraft(unit); // #029
                 bool anyLiving = false;
                 foreach (var model in unit.Models)
                 {
                     if (model is ModelData md && md.GetIsAlive() && (md.Position.x != 0f || md.Position.z != 0f))
                     {
-                        footprints.Add(new EnemyModelFootprint(md.Position, md.BaseRadiusInches, unitKey));
+                        footprints.Add(new EnemyModelFootprint(md.Position, md.BaseRadiusInches, unitKey, uncontactable));
                         anyLiving = true;
                     }
                 }

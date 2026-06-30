@@ -128,12 +128,16 @@ namespace FDG.Stages
             {
                 foreach (DataBinding<UnitData> enemyUnit in enemyArmy.UnitBindings)
                 {
+                    // #029: an Aircraft can't be moved into base contact with — tag its footprints so the
+                    // validator never lets a charger end engaged with it.
+                    bool uncontactable = Rules.Dispatch.AircraftRules.IsAircraft(enemyUnit.GetValue());
                     bool anyLiving = false;
                     foreach (DataBinding<ModelData> enemyModel in enemyUnit.ModelBindings()
                         .Where(m => m.GetIsAlive()))
                     {
                         ModelData md = enemyModel.GetValue();
-                        footprints.Add(new EnemyModelFootprint(md.PositionBinding.GetValue(), md.BaseRadiusInches, unitKey));
+                        footprints.Add(new EnemyModelFootprint(md.PositionBinding.GetValue(), md.BaseRadiusInches,
+                            unitKey, uncontactable));
                         anyLiving = true;
                     }
                     if (anyLiving) unitKey++;
@@ -242,7 +246,9 @@ namespace FDG.Stages
             if (!anyBeyondRush) return;
 
             //At least one model in the unit must end within melee range of an enemy model (horizontal).
-            List<Position> enemies = enemyFootprints?.Select(f => f.Center).ToList() ?? new List<Position>();
+            //#029: an Aircraft can't be charged, so reaching it doesn't justify a beyond-Rush charge move.
+            List<Position> enemies = enemyFootprints?.Where(f => !f.Uncontactable).Select(f => f.Center).ToList()
+                ?? new List<Position>();
             float meleeRange = GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL;
 
             bool anyInMelee = moves.Any(move =>
@@ -477,6 +483,9 @@ namespace FDG.Stages
 
                 foreach (EnemyModelFootprint enemy in enemyFootprints)
                 {
+                    // #029: an Aircraft (uncontactable) is never "engaged" — a charger can't end in contact with
+                    // it, so it stays subject to the standoff + ending-stacked rejections below (can't be charged).
+                    if (enemy.Uncontactable) continue;
                     if (Position.GetDistance2D(end, enemy.Center)
                         <= GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL + ENEMY_PROXIMITY_EPSILON_INCHES)
                         engagedUnitKeys.Add(enemy.UnitKey);
@@ -500,6 +509,21 @@ namespace FDG.Stages
                     float startGap = Position.GetDistance2D(start, enemy.Center) - contactDistance;
                     float endGap = Position.GetDistance2D(end, enemy.Center) - contactDistance;
                     bool movedCloser = endGap < startGap - ENEMY_PROXIMITY_EPSILON_INCHES;
+
+                    // #029: an Aircraft can't be moved into base contact with — a move that closes to within the
+                    // standoff distance of it (the base-contact zone OR the standoff band) is rejected, so it can
+                    // never be charged or stacked on. Units may still pass UNDER it (the through-check is skipped),
+                    // and a unit it flew adjacent to isn't trapped (only moves that close the gap are penalised).
+                    if (enemy.Uncontactable)
+                    {
+                        if (!flaggedStandoff && movedCloser
+                            && endGap < GameWideConstants.ENEMY_STANDOFF_DISTANCE_INCHES - ENEMY_PROXIMITY_EPSILON_INCHES)
+                        {
+                            reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.EndedTooCloseToEnemy, move.Model));
+                            flaggedStandoff = true;
+                        }
+                        continue;
+                    }
 
                     //Pass-through: the swept base crosses this enemy's base at an interior point of the path
                     //(not at the model's own start, and not where it ends in legal contact). A clean charge's
@@ -707,11 +731,19 @@ namespace FDG.Stages
         public readonly float BaseRadiusInches;
         public readonly int UnitKey;
 
-        public EnemyModelFootprint(Position center, float baseRadiusInches, int unitKey)
+        /// <summary>
+        /// #029: this footprint belongs to a unit that can't be moved into base contact with (Aircraft). The
+        /// move validator never treats such a unit as "charged" (engaged), so a move may not end stacked on it
+        /// nor within the standoff band — i.e. it can't be charged or contacted. Default false.
+        /// </summary>
+        public readonly bool Uncontactable;
+
+        public EnemyModelFootprint(Position center, float baseRadiusInches, int unitKey, bool uncontactable = false)
         {
             Center = center;
             BaseRadiusInches = baseRadiusInches;
             UnitKey = unitKey;
+            Uncontactable = uncontactable;
         }
     }
 }

@@ -194,8 +194,49 @@ namespace FDG.Tests
             Assert.That(errors.Any(e => e.ErrorReasonType == EErrorReasonType.MovingThroughEnemyUnit), Is.True);
         }
 
+        // #029 — an Aircraft (uncontactable) can't be charged: a move that closes into base contact with it is
+        // rejected, where the same move against a normal enemy is a legal charge.
+        [Test]
+        public void Uncontactable_CannotBeCharged_EndingInContactRejected()
+        {
+            DataBinding<ModelData> model = MakeModel(new Position(0, 0));
+            ModelMoveEntry move = new ModelMoveEntry(model, new List<Position> { new Position(3.5f, 0) }); // ends in contact with (5,0)
+
+            bool ok = Validate(move, Aircraft(new Position(5, 0)), out var errors);
+
+            Assert.That(ok, Is.False, "an Aircraft can't be charged — closing into contact with it is rejected.");
+            Assert.That(errors.Any(e => e.ErrorReasonType == EErrorReasonType.EndedTooCloseToEnemy), Is.True);
+        }
+
+        [Test]
+        public void ContactableEnemy_SameContactMove_IsALegalCharge()
+        {
+            // Control: the identical move against a normal (contactable) enemy is a legal charge.
+            DataBinding<ModelData> model = MakeModel(new Position(0, 0));
+            ModelMoveEntry move = new ModelMoveEntry(model, new List<Position> { new Position(3.5f, 0) });
+
+            bool ok = Validate(move, Enemy(new Position(5, 0)), out var errors);
+
+            Assert.That(ok, Is.True, Why(errors));
+        }
+
+        [Test]
+        public void Uncontactable_MayBePassedUnder_NotEndingNear()
+        {
+            // A unit may move PAST/under an Aircraft (no through-block) as long as it doesn't end within 1" of it.
+            DataBinding<ModelData> model = MakeModel(new Position(0, 0));
+            ModelMoveEntry move = new ModelMoveEntry(model, new List<Position> { new Position(10, 0) }); // passes (5,0), ends far
+
+            bool ok = Validate(move, Aircraft(new Position(5, 0)), out var errors);
+
+            Assert.That(ok, Is.True, Why(errors));
+        }
+
         private static List<EnemyModelFootprint> Enemy(Position center)
             => new List<EnemyModelFootprint> { new EnemyModelFootprint(center, 0.75f, unitKey: 0) };
+
+        private static List<EnemyModelFootprint> Aircraft(Position center)
+            => new List<EnemyModelFootprint> { new EnemyModelFootprint(center, 0.75f, unitKey: 0, uncontactable: true) };
 
         private static bool Validate(ModelMoveEntry move, List<EnemyModelFootprint> enemies,
             out List<ReasonForInvalidMove> errors)

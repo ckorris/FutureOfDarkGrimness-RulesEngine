@@ -316,9 +316,12 @@ namespace FDG.Stages
             // #022: melee range is the 2"-horizontal AND 4"-vertical cylinder (MeleeRangeUtilities),
             // not the horizontal half alone — so Charge grays out exactly when no enemy unit could be
             // selected as a defender, keeping this gate consistent with ChooseMeleeDefenderStage.
+            // #029: an Aircraft can't be charged, so it isn't a valid charge target — exclude it here so Charge
+            // grays out when the only in-range enemies are Aircraft (consistent with ChooseMeleeDefenderStage).
             bool anyInRange = GameContext.GameDataStore().GetAllValues<ArmyData>()
                 .Where(a => !alliedPlayers.Contains(a.PlayerID))
                 .SelectMany(a => a.UnitBindings)
+                .Where(enemyUnit => !Rules.Dispatch.AircraftRules.IsAircraft(enemyUnit.GetValue()))
                 .Any(enemyUnit => MeleeRangeUtilities.AreUnitsInMeleeRange(
                     context.ActivatingUnit.GetValue(), enemyUnit.GetValue()));
 

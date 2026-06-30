@@ -50,6 +50,15 @@ namespace FDG.Stages
             {
                 foreach(DataBinding<UnitData> potentialDefender in army.UnitBindings)
                 {
+                    // #029: an Aircraft can't be charged / moved into base contact with, so it's never a valid
+                    // melee defender even if a model strayed within the melee cylinder.
+                    if (Rules.Dispatch.AircraftRules.IsAircraft(potentialDefender.GetValue()))
+                    {
+                        invalidDefenders.Add(new CancellableSelectionRequest<UnitData>.InvalidOption(potentialDefender,
+                            potentialDefender.GetValue().Name, "Aircraft can't be charged."));
+                        continue;
+                    }
+
                     // #022: a unit is engageable only if some model pair is within the melee cylinder
                     // (2" horizontal AND 4" vertical) — the same gate the post-pile-in strike check uses,
                     // so we never offer a defender no model could actually strike.

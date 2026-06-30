@@ -1,5 +1,6 @@
 
 
+using System.Linq;
 using FDG.Data;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch.Contexts;
@@ -72,6 +73,14 @@ namespace FDG.Stages
 
                 List<SelectionRequest<UnitData>.ValidOption> validOptions = new List<SelectionRequest<UnitData>.ValidOption>();
 
+                // #029: Aircraft must deploy before all other units. While this player still has an undeployed
+                // Aircraft, only its Aircraft are selectable; the rest are grayed out (alongside Scout deferrals)
+                // until every Aircraft is placed.
+                bool hasUndeployedAircraft = context.UndeployedUnits[currentPlayerID]
+                    .Any(u => Rules.Dispatch.AircraftRules.IsAircraft(u.GetValue()));
+                List<SelectionRequest<UnitData>.InvalidOption> invalidOptions =
+                    new List<SelectionRequest<UnitData>.InvalidOption>(deferredOptions);
+
                 foreach (DataBinding<UnitData> potentialUnit in context.UndeployedUnits[currentPlayerID])
                 {
                     // Units that can be held in reserve are shown as "Name (RuleName)" so the player
@@ -82,12 +91,19 @@ namespace FDG.Stages
                         label = $"{label} ({reserveRuleName})";
                     }
 
+                    if (hasUndeployedAircraft && !Rules.Dispatch.AircraftRules.IsAircraft(potentialUnit.GetValue()))
+                    {
+                        invalidOptions.Add(new SelectionRequest<UnitData>.InvalidOption(potentialUnit, label,
+                            "Aircraft deploy first"));
+                        continue;
+                    }
+
                     validOptions.Add(new SelectionRequest<UnitData>.ValidOption(potentialUnit, label));
                 }
 
                 // Choosing which unit to deploy is mandatory — no back-destination, so no cancel.
                 SelectionRequest<UnitData> request = new SelectionRequest<UnitData>(currentPlayerID, "Choose Unit to Deploy",
-                    validOptions, deferredOptions, allowCancel: false);
+                    validOptions, invalidOptions, allowCancel: false);
 
                 DataBinding<UnitData> chosenUnit =
                     await GameContext.PlayerRequester.RequestDecision<SelectionRequest<UnitData>, DataBinding<UnitData>>

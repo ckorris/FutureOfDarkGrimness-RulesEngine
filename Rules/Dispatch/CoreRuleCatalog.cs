@@ -1399,17 +1399,19 @@ public static class CoreRuleCatalog
         Array.Empty<ActivatedAbility>());
 
     /// <summary>
-    /// Aircraft (#029): a fast flyer with strong defensive shooting. **PARTIAL** — only the facets below are
-    /// enforced; the rest of the rule is DEFERRED (a unit with Aircraft still moves, deploys, can be charged,
-    /// and seizes objectives like a normal unit until those systems exist).
+    /// Aircraft (#029): a fast flyer with strong defensive properties. Nearly complete — the one DEFERRED facet
+    /// is its forced movement mode (see below).
     /// <list type="bullet">
-    /// <item>IMPLEMENTED: enemies targeting it get −12" range (Subject <see cref="Effect.RangeModifier"/> at
-    /// <see cref="EHookID.Shooting_OnRangeCheck"/> — effectively immune to ≤12" weapons) and −1 to hit (Subject
+    /// <item>IMPLEMENTED (here): enemies targeting it get −12" range (Subject <see cref="Effect.RangeModifier"/>
+    /// at <see cref="EHookID.Shooting_OnRangeCheck"/> — effectively immune to ≤12" weapons) and −1 to hit (Subject
     /// <see cref="Effect.RollModifier"/>(Hit) at <see cref="EHookID.Shooting_OnHitRollModifier"/>, like Stealth
-    /// without the distance gate); and it ignores all terrain + moves through units (Flying's two ops).</item>
-    /// <item>DEFERRED (need new machinery): the forced straight-line 30–36" Advance-only move with no turning +
-    /// off-table redeployment each round; can't be charged ("can't be moved in contact with"); can't seize
-    /// objectives; must deploy before all other units. See WorkItems/029.</item>
+    /// without the distance gate); ignores all terrain + moves through units (Flying's two ops).</item>
+    /// <item>IMPLEMENTED (stage gates via <see cref="AircraftRules.IsAircraft"/>): can't seize/contest objectives
+    /// (ReconcileObjectivesStage); can't be charged / moved into base contact with (move validation + GetCanCharge
+    /// + ChooseMeleeDefenderStage); must deploy before all other units (ChooseUnitToDeployStage).</item>
+    /// <item>DEFERRED (large new sub-system): the forced straight-line 30–36" Advance-only move with no turning +
+    /// off-table redeployment each round — needs a facing/heading notion + constrained-move resolvers the engine
+    /// doesn't have. Until then an Aircraft moves like a normal unit. See WorkItems/029.</item>
     /// </list>
     /// </summary>
     public static SpecialRuleDefinition Aircraft { get; } = new SpecialRuleDefinition("Aircraft",

@@ -1,3 +1,4 @@
+using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
 
@@ -104,6 +105,9 @@ namespace FDG.Stages
                 // and recovered this round have already had the token cleared, so only those still
                 // Shaken at end of round are excluded here.
                 if (unit.Tokens.HasToken(TokenType.Shaken)) continue;
+
+                // #029 Aircraft can't seize or contest objectives — skip its models so it counts toward neither.
+                if (AircraftRules.IsAircraft(unit)) continue;
 
                 float dx = model.Position.x - objPos.x;
                 float dz = model.Position.z - objPos.z;

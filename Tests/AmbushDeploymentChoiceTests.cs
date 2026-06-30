@@ -163,6 +163,24 @@ namespace FDG.Tests
                 "the deferred unit is labelled with its rule name.");
         }
 
+        // #029 — an Aircraft must deploy before all other units. While it's still undeployed, only the Aircraft
+        // is selectable; the normal unit is grayed out (until the Aircraft is placed).
+        [Test]
+        public async Task ChooseUnit_AircraftDeploysFirst_OnlyAircraftSelectable()
+        {
+            DataBinding<UnitData> aircraft = MakeUnit("Jet", reserveRule: CoreRuleCatalog.Aircraft);
+            DataBinding<UnitData> normal = MakeUnit("Grunts", reserveRule: null);
+            MakeArmy(aircraft, normal);
+
+            var requester = new DeployChoiceRequester(aircraft);
+            await RunChooseUnit(requester);
+
+            Assert.That(requester.UnitPrompts[0].Select(o => o.Name), Is.EqualTo(new[] { "Jet" }),
+                "only the Aircraft is selectable while it's undeployed.");
+            Assert.That(requester.LastInvalidOptions.Any(o => o.Option == normal), Is.True,
+                "the normal unit is grayed out until the Aircraft is placed.");
+        }
+
         // Runs ChooseUnitToDeployStage once against the given requester, returning the context plus which
         // outgoing binding fired.
         private async Task<(DeploymentTurnContext Context, bool Finished, bool Deferred)> RunChooseUnit(

@@ -77,7 +77,8 @@ public static class CoreRuleCatalog
                     new Effect.Aura(grantedRuleName),
                     ELifetime.UntilEndOfGame),
             },
-            Array.Empty<ActivatedAbility>());
+            Array.Empty<ActivatedAbility>(),
+            Description: $"This model and its whole unit gain {grantedRuleName}.");
 
     // Hit-roll-modifier sink (DetermineHitRollStage) -----------------------
 
@@ -91,7 +92,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "Enemies shooting this unit from over 9\" away take -1 to hit.");
 
     /// <summary>
     /// Artillery: as an attacker, +1 to hit beyond 9" (Actor); as a target, enemies shooting it from
@@ -113,7 +116,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "Beyond 9\", this unit gets +1 to hit when shooting, and enemies shooting it take -2 to hit.");
 
     /// <summary>
     /// Indirect: -1 to hit when the unit moved this activation (shooting only — the AfterMoving gate is
@@ -141,7 +146,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>(),
-        ERuleScope.Weapon);
+        ERuleScope.Weapon,
+        Valence: EValence.Positive,
+        Description: "Fires at targets out of line of sight and ignores cover; -1 to hit if the unit moved this activation.");
 
     /// <summary> Weapon rule ("models attacks at Quality 2+ with this weapon"): base Quality is treated as 2+ (still modifiable). </summary>
     public static SpecialRuleDefinition Reliable { get; } = new SpecialRuleDefinition("Reliable",
@@ -153,7 +160,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>(),
-        ERuleScope.Weapon);
+        ERuleScope.Weapon,
+        Valence: EValence.Positive,
+        Description: "Attacks with this weapon hit on a Quality of 2+ (before other modifiers).");
 
     /// <summary>
     /// Defensive: enemies take -1 to hit when attacking this unit, in melee or shooting. The Subject-seat
@@ -169,7 +178,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "Enemies take -1 to hit when attacking this unit, in melee or shooting.");
 
     /// <summary>
     /// Defensive: enemies take -1 to hit in melee when attacking this unit. As <see cref="Evasive"/> but
@@ -185,7 +196,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "Enemies take -1 to hit when attacking this unit in melee.");
 
     /// <summary>
     /// Attacker: +1 to hit when attacking (melee or shooting) — lowers the bearer's hit threshold. The
@@ -199,7 +212,9 @@ public static class CoreRuleCatalog
                 new Effect.RollModifier(ERollKind.Hit, Delta: +1),
                 ELifetime.ThisAttack),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "+1 to hit when this unit attacks, in melee or shooting.");
 
     /// <summary>
     /// Attacker: +1 to hit when shooting only — gated to non-melee via <c>Not(IsMelee)</c> (the gate
@@ -213,7 +228,9 @@ public static class CoreRuleCatalog
                 new Effect.RollModifier(ERollKind.Hit, Delta: +1),
                 ELifetime.ThisAttack),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "+1 to hit when this unit shoots.");
 
     // Movement-modifier sink (MovementActionContext) -----------------------------
 
@@ -226,7 +243,9 @@ public static class CoreRuleCatalog
                 new Effect.MovementBonus(EActionType.Advance, DistanceInches: 2f),
                 ELifetime.ThisActivation),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "Moves +2\" when Advancing.");
 
     /// <summary> Fast, doubled: Advance +4". </summary>
     public static SpecialRuleDefinition VeryFast { get; } = new SpecialRuleDefinition("Very Fast",
@@ -237,7 +256,9 @@ public static class CoreRuleCatalog
                 new Effect.MovementBonus(EActionType.Advance, DistanceInches: 4f),
                 ELifetime.ThisActivation),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "Moves +4\" when Advancing.");
 
     /// <summary> Advance -2", Rush/Charge -4". </summary>
     public static SpecialRuleDefinition Slow { get; } = new SpecialRuleDefinition("Slow",
@@ -256,7 +277,9 @@ public static class CoreRuleCatalog
                 new Effect.MovementBonus(EActionType.Charge, DistanceInches: -4f),
                 ELifetime.ThisActivation),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Negative,
+        Description: "Moves -2\" when Advancing and -4\" when Rushing or Charging.");
 
     /// <summary> Advance +1", Rush/Charge +2" (a smaller Fast). </summary>
     public static SpecialRuleDefinition Agile { get; } = new SpecialRuleDefinition("Agile",
@@ -275,7 +298,9 @@ public static class CoreRuleCatalog
                 new Effect.MovementBonus(EActionType.Charge, DistanceInches: 2f),
                 ELifetime.ThisActivation),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "Moves +1\" when Advancing and +2\" when Rushing or Charging.");
 
     /// <summary> Advance +2", Rush/Charge +2". </summary>
     public static SpecialRuleDefinition Quick { get; } = new SpecialRuleDefinition("Quick",
@@ -294,7 +319,9 @@ public static class CoreRuleCatalog
                 new Effect.MovementBonus(EActionType.Charge, DistanceInches: 2f),
                 ELifetime.ThisActivation),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "Moves +2\" when Advancing, Rushing, or Charging.");
 
     /// <summary> Advance +4" (action-specific rapid mover). </summary>
     public static SpecialRuleDefinition RapidAdvance { get; } = new SpecialRuleDefinition("Rapid Advance",
@@ -305,7 +332,9 @@ public static class CoreRuleCatalog
                 new Effect.MovementBonus(EActionType.Advance, DistanceInches: 4f),
                 ELifetime.ThisActivation),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "Moves +4\" when Advancing.");
 
     /// <summary> Rush +6". </summary>
     public static SpecialRuleDefinition RapidRush { get; } = new SpecialRuleDefinition("Rapid Rush",
@@ -316,7 +345,9 @@ public static class CoreRuleCatalog
                 new Effect.MovementBonus(EActionType.Rush, DistanceInches: 6f),
                 ELifetime.ThisActivation),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "Moves +6\" when Rushing.");
 
     /// <summary> Charge +4". </summary>
     public static SpecialRuleDefinition RapidCharge { get; } = new SpecialRuleDefinition("Rapid Charge",
@@ -327,7 +358,9 @@ public static class CoreRuleCatalog
                 new Effect.MovementBonus(EActionType.Charge, DistanceInches: 4f),
                 ELifetime.ThisActivation),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "Moves +4\" when Charging.");
 
     // Hit-injection sink (RollToHitStage) ----------------------------------------
 
@@ -341,7 +374,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>(),
-        ERuleScope.Weapon);
+        ERuleScope.Weapon,
+        Valence: EValence.Positive,
+        Description: "Each unmodified 6 to hit scores one extra hit.");
 
     /// <summary> Extra hit on an unmodified 6 when beyond 9". </summary>
     public static SpecialRuleDefinition Relentless { get; } = new SpecialRuleDefinition("Relentless",
@@ -353,7 +388,9 @@ public static class CoreRuleCatalog
                 new Effect.AddExtraHit(OnRollValue: 6),
                 ELifetime.ThisAttack),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "Beyond 9\", each unmodified 6 to hit scores an extra hit.");
 
     /// <summary> Extra hit on an unmodified 6 in melee, but only on the charge (not a strike-back). </summary>
     public static SpecialRuleDefinition Furious { get; } = new SpecialRuleDefinition("Furious",
@@ -366,7 +403,9 @@ public static class CoreRuleCatalog
                 new Effect.AddExtraHit(OnRollValue: 6),
                 ELifetime.ThisAttack),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "On a charge, each unmodified 6 to hit in melee scores an extra hit.");
 
     // Hit-multiplier sink (RollToHitStage, after injection) ----------------------
 
@@ -390,7 +429,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>(),
-        ERuleScope.Weapon);
+        ERuleScope.Weapon,
+        Valence: EValence.Positive,
+        Description: "Each hit is multiplied (up to the target unit's model count) and the attack ignores cover.");
 
     // Targets-selected marker (BuildTargetListStage, shooting) -------------------
 
@@ -421,7 +462,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>(),
-        ERuleScope.Weapon);
+        ERuleScope.Weapon,
+        Valence: EValence.Positive,
+        Description: "May fire at a single chosen model in the target unit, ignoring line of sight and cover; all wounds hit that model.");
 
     // Melee charge rules on the shared hit + save sinks --------------------------
 
@@ -444,7 +487,9 @@ public static class CoreRuleCatalog
                 new Effect.RollModifier(ERollKind.Save, Delta: -1),
                 ELifetime.ThisAttack),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "When charging, +1 to hit and AP(+1) in melee.");
 
     /// <summary>
     /// Impact(X): on charge contact, the charger rolls X dice — each 2+ scores an automatic hit on the
@@ -461,7 +506,9 @@ public static class CoreRuleCatalog
                 new Effect.ChargeImpactHits(new ValueSource.Arg(0)),
                 ELifetime.ThisAttack),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "On charging into contact, rolls bonus dice that score automatic hits before melee swings.");
 
     /// <summary>
     /// Counter: when this unit is charged, it strikes FIRST — before the charging unit's strikes — and
@@ -487,7 +534,9 @@ public static class CoreRuleCatalog
                 ERuleSeat.Subject),
         },
         Array.Empty<ActivatedAbility>(),
-        ERuleScope.Weapon);
+        ERuleScope.Weapon,
+        Valence: EValence.Positive,
+        Description: "When charged, this unit strikes first and the charger rolls one fewer Impact die per living model.");
 
     /// <summary>
     /// Counter-Attack: this unit strikes first when charged — Counter's strikes-first facet alone, without
@@ -504,7 +553,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisActivation,
                 ERuleSeat.Subject),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "When charged, this unit strikes first.");
 
     // Melee-resolution (DetermineMeleeWinnerStage) -------------------------------
 
@@ -523,7 +574,9 @@ public static class CoreRuleCatalog
                 new Effect.ExtraMeleeWoundCount(new ValueSource.Arg(0)),
                 ELifetime.ThisAttack),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "Counts as dealing extra wounds when deciding who won a melee (does not deal real wounds).");
 
     // Morale (RollForMoraleStage) ------------------------------------------------
 
@@ -542,7 +595,9 @@ public static class CoreRuleCatalog
                 new Effect.Reroll(ERollKind.Morale, new RerollCondition.AllFailures()),
                 ELifetime.ThisActivation),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "When this unit fails a morale test, it re-rolls and passes on a 4+.");
 
     /// <summary>
     /// Courage: +1 to this unit's morale test rolls. The modifier-style morale rule the Fearless doc
@@ -559,7 +614,9 @@ public static class CoreRuleCatalog
                 new Effect.RollModifier(ERollKind.Morale, Delta: +1),
                 ELifetime.ThisActivation),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "+1 to this unit's morale test rolls.");
 
     // Wound-modifier sink (AssignWoundsStage) ------------------------------------
 
@@ -573,7 +630,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>(),
-        ERuleScope.Weapon);
+        ERuleScope.Weapon,
+        Valence: EValence.Positive,
+        Description: "Each wound from this weapon is multiplied; excess wounds don't carry over to other models.");
 
     // Wound-ignore sink (AssignWoundsStage) --------------------------------------
 
@@ -587,7 +646,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "Ignores each wound on a roll of 5+.");
 
     /// <summary>
     /// Attacker: ignores the target's Regeneration (the suppression facet). The rulebook's second
@@ -603,7 +664,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>(),
-        ERuleScope.Weapon);
+        ERuleScope.Weapon,
+        Valence: EValence.Positive,
+        Description: "This weapon's attacks ignore the target's Regeneration.");
 
     /// <summary>
     /// Attacker: an unmodified 6 to hit promotes the attack's AP (modelled as -4 to the defender's
@@ -624,7 +687,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>(),
-        ERuleScope.Weapon);
+        ERuleScope.Weapon,
+        Valence: EValence.Positive,
+        Description: "An unmodified 6 to hit gives the attack AP(+4), and the attack ignores Regeneration.");
 
     /// <summary>
     /// Crack: an unmodified 6 to hit gives the attack AP(+2) — modelled as -2 to the defender's save,
@@ -640,7 +705,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>(),
-        ERuleScope.Weapon);
+        ERuleScope.Weapon,
+        Valence: EValence.Positive,
+        Description: "An unmodified 6 to hit gives the attack AP(+2).");
 
     /// <summary>
     /// Attacker: the defender must re-roll unmodified Defense 6s (turning saved 6s into possible
@@ -659,7 +726,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>(),
-        ERuleScope.Weapon);
+        ERuleScope.Weapon,
+        Valence: EValence.Positive,
+        Description: "The defender must re-roll unmodified Defense 6s, and the attack ignores Regeneration.");
 
     /// <summary>
     /// Lacerate: when attacking, the defender must re-roll unmodified Defense 6s — <see cref="Bane"/>'s
@@ -674,7 +743,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>(),
-        ERuleScope.Weapon);
+        ERuleScope.Weapon,
+        Valence: EValence.Positive,
+        Description: "The defender must re-roll unmodified Defense 6s.");
 
     // Combat-kind-scoped variants (#093) -----------------------------------------
     // A base save-side rule gated to shooting via Not(IsMelee), now that IsMelee is threaded into
@@ -692,7 +763,9 @@ public static class CoreRuleCatalog
                     ELifetime.ThisAttack),
             },
             Array.Empty<ActivatedAbility>(),
-            ERuleScope.Weapon);
+            ERuleScope.Weapon,
+            Valence: EValence.Positive,
+            Description: "When shooting, this weapon's attacks ignore the target's Regeneration.");
 
     /// <summary> Shred on shooting attacks only: +1 wound per unmodified save of 1 when shooting. </summary>
     public static SpecialRuleDefinition ShredWhenShooting { get; } =
@@ -705,7 +778,9 @@ public static class CoreRuleCatalog
                     ELifetime.ThisAttack),
             },
             Array.Empty<ActivatedAbility>(),
-            ERuleScope.Weapon);
+            ERuleScope.Weapon,
+            Valence: EValence.Positive,
+            Description: "When shooting, each of the defender's unmodified Defense rolls of 1 deals an extra wound.");
 
     /// <summary> Bane on shooting attacks only: defender re-rolls unmodified Defense 6s + ignore Regeneration, when shooting. </summary>
     public static SpecialRuleDefinition BaneWhenShooting { get; } =
@@ -722,7 +797,9 @@ public static class CoreRuleCatalog
                     ELifetime.ThisAttack),
             },
             Array.Empty<ActivatedAbility>(),
-            ERuleScope.Weapon);
+            ERuleScope.Weapon,
+            Valence: EValence.Positive,
+            Description: "When shooting, the defender must re-roll unmodified Defense 6s, and the attack ignores Regeneration.");
 
     // "in melee" mirrors of the when-shooting variants: the SAME base effect at the shared hit/save
     // hooks, gated to melee via Condition.IsMelee() (the flip of Not(IsMelee)). Weapon-scoped like their
@@ -740,7 +817,9 @@ public static class CoreRuleCatalog
                     ELifetime.ThisAttack),
             },
             Array.Empty<ActivatedAbility>(),
-            ERuleScope.Weapon);
+            ERuleScope.Weapon,
+            Valence: EValence.Positive,
+            Description: "In melee, this unit's attacks ignore the target's Regeneration.");
 
     /// <summary> Shred in melee only: +1 wound per unmodified save of 1 when in melee. </summary>
     public static SpecialRuleDefinition ShredInMelee { get; } =
@@ -753,7 +832,9 @@ public static class CoreRuleCatalog
                     ELifetime.ThisAttack),
             },
             Array.Empty<ActivatedAbility>(),
-            ERuleScope.Weapon);
+            ERuleScope.Weapon,
+            Valence: EValence.Positive,
+            Description: "In melee, each of the defender's unmodified Defense rolls of 1 deals an extra wound.");
 
     /// <summary> Bane in melee only: defender re-rolls unmodified Defense 6s + ignore Regeneration, in melee. </summary>
     public static SpecialRuleDefinition BaneInMelee { get; } =
@@ -770,7 +851,9 @@ public static class CoreRuleCatalog
                     ELifetime.ThisAttack),
             },
             Array.Empty<ActivatedAbility>(),
-            ERuleScope.Weapon);
+            ERuleScope.Weapon,
+            Valence: EValence.Positive,
+            Description: "In melee, the defender must re-roll unmodified Defense 6s, and the attack ignores Regeneration.");
 
     /// <summary> Rending in melee only: AP-4 on an unmodified 6 + ignore Regeneration, when in melee. </summary>
     public static SpecialRuleDefinition RendingInMelee { get; } =
@@ -787,7 +870,9 @@ public static class CoreRuleCatalog
                     ELifetime.ThisAttack),
             },
             Array.Empty<ActivatedAbility>(),
-            ERuleScope.Weapon);
+            ERuleScope.Weapon,
+            Valence: EValence.Positive,
+            Description: "In melee, an unmodified 6 to hit gives the attack AP(+4), and the attack ignores Regeneration.");
 
     // Defensive wound-ignore + AP corpus rules (reuse IgnoreWoundOnRoll / save-modifier primitives) ------
 
@@ -805,7 +890,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "Ignores each wound on a roll of 6+.");
 
     /// <summary> Protected: mechanically identical to <see cref="Resistance"/> — each wound ignored on a 6+. </summary>
     public static SpecialRuleDefinition Protected { get; } = new SpecialRuleDefinition("Protected",
@@ -817,7 +904,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "Ignores each wound on a roll of 6+.");
 
     /// <summary>
     /// Piercing Assault: this model gets AP(+1) when charging — the AP facet of <see cref="Thrust"/> alone
@@ -832,7 +921,9 @@ public static class CoreRuleCatalog
                 new Effect.RollModifier(ERollKind.Save, Delta: -1),
                 ELifetime.ThisAttack),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "When charging, this model's melee attacks gain AP(+1).");
 
     /// <summary>
     /// Piercing Hunter: this model's weapons get AP(+1) when shooting at enemies over 9" away. The same
@@ -847,7 +938,9 @@ public static class CoreRuleCatalog
                 new Effect.RollModifier(ERollKind.Save, Delta: -1),
                 ELifetime.ThisAttack),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "When shooting at enemies over 9\" away, this model's weapons gain AP(+1).");
 
     /// <summary>
     /// Shielded: +1 to this unit's defense rolls — a defensive save bonus. A Subject-seat
@@ -866,7 +959,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "+1 to this unit's Defense rolls.");
 
     /// <summary>
     /// Fortified: incoming hits count as having AP reduced by 1, to a minimum of AP(0). Unlike
@@ -885,7 +980,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "Incoming hits have their AP reduced by 1, to a minimum of 0.");
 
     // Wound-injection sink (AssignWoundsStage) -----------------------------------
 
@@ -906,7 +1003,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>(),
-        ERuleScope.Weapon);
+        ERuleScope.Weapon,
+        Valence: EValence.Positive,
+        Description: "Each of the defender's unmodified Defense rolls of 1 deals an extra wound.");
 
     // Max-wounds sink (UnitCreationRules, at army-load) ---------------------------
 
@@ -919,7 +1018,9 @@ public static class CoreRuleCatalog
                 new Effect.SetMaxWounds(new ValueSource.Arg(0)),
                 ELifetime.UntilEndOfGame),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "Each model in the unit has multiple wounds instead of one.");
 
     /// <summary>
     /// Hero (#006): a marker rule. The hero's structural facets (joining a host unit at army setup, and
@@ -932,7 +1033,9 @@ public static class CoreRuleCatalog
     /// </summary>
     public static SpecialRuleDefinition Hero { get; } = new SpecialRuleDefinition("Hero",
         Array.Empty<HookEntry>(),
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "A leader that joins a friendly unit; the unit takes morale at the hero's Quality, and the hero is wounded last.");
 
     // Spell-token economy (round-start grant -> StartOfRoundExtraActionStage) ------
 
@@ -955,7 +1058,9 @@ public static class CoreRuleCatalog
                     new TokenClearTrigger.ManualOnly()),
                 ELifetime.UntilEndOfGame),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "At the start of each round, gains spell tokens to cast spells from its army's spell list.");
 
     /// <summary>
     /// Transport(X) (#035): a marker rule, like <see cref="Hero"/>. A transport carries friendly units
@@ -977,7 +1082,9 @@ public static class CoreRuleCatalog
     public static SpecialRuleDefinition Transport { get; } = new SpecialRuleDefinition("Transport",
         Array.Empty<HookEntry>(),
         Array.Empty<ActivatedAbility>(),
-        EngineArgumentCount: 1);
+        EngineArgumentCount: 1,
+        Valence: EValence.Positive,
+        Description: "Carries friendly units inside it (capacity in spaces); they embark and disembark via move actions.");
 
     /// <summary> Canonical name of the engine-internal Disembark ability (#035). </summary>
     public const string DisembarkRuleName = "Disembark";
@@ -1001,7 +1108,9 @@ public static class CoreRuleCatalog
                 new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
                 new Effect.Disembark(),
                 new Condition.TokenPresent(TokenType.EmbarkedIn)),
-        });
+        },
+        Valence: EValence.Neutral,
+        Description: "Leave the transport this unit is embarked in, placing within 6\" of it.");
 
     /// <summary> Canonical name of the engine-internal Embark ability (#035 slice D). </summary>
     public const string EmbarkRuleName = "Embark";
@@ -1024,7 +1133,9 @@ public static class CoreRuleCatalog
                 new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
                 new Effect.Embark(),
                 new Condition.Always()),
-        });
+        },
+        Valence: EValence.Neutral,
+        Description: "Board a friendly transport that has room, within move range.");
 
     // Triggered-move primitive (DeployUnitStage offer -> MovementExecutor) --------
 
@@ -1042,7 +1153,9 @@ public static class CoreRuleCatalog
                 new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
                 new Effect.TriggeredMove(MaxInches: 9f, IsOptional: true),
                 new Condition.Always()),
-        });
+        },
+        Valence: EValence.Positive,
+        Description: "Once per game, immediately after deploying, this unit may move up to 9\".");
 
     /// <summary>
     /// Harassing: after this unit shoots — or after it is attacked in melee — it may immediately move up
@@ -1066,7 +1179,9 @@ public static class CoreRuleCatalog
                 new Effect.TriggeredMove(MaxInches: 3f, IsOptional: true),
                 ELifetime.ThisAttack),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "After shooting or being in melee, this unit may immediately move up to 3\".");
 
     // Post-combat-move family (same TriggeredMove seam as Harassing) --------------
     // The corpus splits the "may move 3\" after combat" rule into shooting-only, melee-only, and both
@@ -1087,7 +1202,9 @@ public static class CoreRuleCatalog
                 new Effect.TriggeredMove(MaxInches: 3f, IsOptional: true),
                 ELifetime.ThisAttack),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "After shooting, this unit may immediately move up to 3\".");
 
     /// <summary>
     /// Hit &amp; Run Fighter: after this unit is in melee, the charged unit may move up to 3" (optional).
@@ -1101,7 +1218,9 @@ public static class CoreRuleCatalog
                 new Effect.TriggeredMove(MaxInches: 3f, IsOptional: true),
                 ELifetime.ThisAttack),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "After a melee, this unit may immediately move up to 3\".");
 
     /// <summary>
     /// Hit &amp; Run: after this unit shoots OR is in melee, it may move up to 3" (optional). Both
@@ -1120,7 +1239,9 @@ public static class CoreRuleCatalog
                 new Effect.TriggeredMove(MaxInches: 3f, IsOptional: true),
                 ELifetime.ThisAttack),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "After shooting or a melee, this unit may immediately move up to 3\".");
 
     /// <summary>
     /// Guerrilla: the Rebel Guerrillas' name for <see cref="HitAndRun"/> — move up to 3" after shooting
@@ -1138,7 +1259,9 @@ public static class CoreRuleCatalog
                 new Effect.TriggeredMove(MaxInches: 3f, IsOptional: true),
                 ELifetime.ThisAttack),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "After shooting or a melee, this unit may immediately move up to 3\".");
 
     // Boost variants: "if the unit has the base rule, move 6\" instead of 3\"". Authored as a separate
     // post-combat-move rule emitting a 6" move gated on UnitHasRule(base); PostCombatMoveGate coalesces it
@@ -1162,7 +1285,9 @@ public static class CoreRuleCatalog
                 new Effect.TriggeredMove(MaxInches: 6f, IsOptional: true),
                 ELifetime.ThisAttack),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "If the unit has Harassing, its post-combat move is 6\" instead of 3\".");
 
     /// <summary>
     /// Guerrilla Boost: if the unit has <see cref="Guerrilla"/>, its post-combat move is 6" instead of 3".
@@ -1179,7 +1304,9 @@ public static class CoreRuleCatalog
                 new Effect.TriggeredMove(MaxInches: 6f, IsOptional: true),
                 ELifetime.ThisAttack),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "If the unit has Guerrilla, its post-combat move is 6\" instead of 3\".");
 
     // Aura variants: "this model and its unit get X" — Effect.Aura(X) at unit creation via the UnitAura
     // factory; the grant projects unit-wide via the read-back (RuleEvaluator.CollectGrantedRules), so the
@@ -1278,7 +1405,9 @@ public static class CoreRuleCatalog
                 new Effect.DeferDeployment(EDeferTiming.AfterNormalDeployment, PlacementRangeInches: 12f),
                 ELifetime.UntilEndOfGame),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "Deploys after all other units, up to 12\" forward of its deployment zone.");
 
     /// <summary>
     /// Ambush: this unit is kept in reserve instead of deploying normally, and the owner may bring it
@@ -1295,7 +1424,9 @@ public static class CoreRuleCatalog
                 new Effect.DeferDeployment(EDeferTiming.LaterRound, PlacementRangeInches: 9f),
                 ELifetime.UntilEndOfGame),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "Kept in reserve; may arrive from round 2 onward, placed over 9\" from enemy units.");
 
     // Reactivation primitive (DeterminePlayerTurnStage offer -> activation list) ----
 
@@ -1319,7 +1450,9 @@ public static class CoreRuleCatalog
                 new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
                 new Effect.Reactivate(),
                 new Condition.Always()),
-        });
+        },
+        Valence: EValence.Positive,
+        Description: "Once per game, this unit may activate a second time.");
 
     // Mid-move attack primitive (StrafingStage offer -> save+wound sub-pipeline) ---
 
@@ -1353,7 +1486,9 @@ public static class CoreRuleCatalog
                 new TargetSelector(1f, 1, 1, ETargetAffinity.Foe, false),
                 new Effect.DealHits(Count: 3, WithRules: Array.Empty<string>()),
                 new Condition.Always()),
-        });
+        },
+        Valence: EValence.Positive,
+        Description: "Once per activation, when moving through an enemy unit, it may make a mid-move attack (3 hits).");
 
     /// <summary>
     /// Strider (#102): the unit ignores the difficult-terrain movement cap — it may cross Difficult terrain
@@ -1373,7 +1508,9 @@ public static class CoreRuleCatalog
                 new Effect.IgnoreTerrainEffects(),
                 ELifetime.ThisActivation),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "Ignores the movement penalty for Difficult terrain.");
 
     /// <summary>
     /// Flying (#029): the bearer ignores ALL terrain movement effects — the difficult-terrain cap, Dangerous-
@@ -1396,7 +1533,9 @@ public static class CoreRuleCatalog
                 new Effect.IgnoreEnemyMovementBlock(),
                 ELifetime.ThisActivation),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "Ignores all terrain when moving and may move through enemy units (but may not end on them).");
 
     /// <summary>
     /// Aircraft (#029): a fast flyer with strong defensive properties — fully implemented.
@@ -1444,7 +1583,9 @@ public static class CoreRuleCatalog
                 new Effect.RestrictActions(new[] { EActionType.Advance }),
                 ELifetime.ThisActivation),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Neutral,
+        Description: "A fast flyer: enemies get -12\" range and -1 to hit it, and it ignores terrain and units; but it can't seize objectives or be charged, and must fly straight each turn.");
 
     /// <summary>
     /// Increased Shooting Range (#102): the bearer's own ranged weapons get +6" range. An Actor-seat passive
@@ -1460,7 +1601,9 @@ public static class CoreRuleCatalog
                 new Effect.RangeModifier(Delta: +6),
                 ELifetime.ThisActivation),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "This unit's ranged weapons get +6\" range.");
 
     /// <summary>
     /// Ranged Shrouding (#102): enemies get −6" range when shooting this unit, to a minimum effective range of
@@ -1480,7 +1623,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisActivation,
                 ERuleSeat.Subject),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "Enemies get -6\" range when shooting this unit, to a minimum of 6\".");
 
     /// <summary>
     /// Darkborn (Offensive) (#102): the bearer gets +3" range when shooting AND moves +3" when charging. Two
@@ -1502,7 +1647,9 @@ public static class CoreRuleCatalog
                 new Effect.MovementBonus(EActionType.Charge, DistanceInches: 3f),
                 ELifetime.ThisActivation),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "When shooting, +3\" range; when charging, +3\" movement.");
 
     /// <summary>
     /// Darkborn (Defensive) (#102/#029): enemies get −4" range when shooting this unit (to a min. of 6") AND
@@ -1528,7 +1675,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisActivation,
                 ERuleSeat.Subject),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "Enemies get -4\" range when shooting this unit and -2\" movement when charging it (each to a minimum of 6\").");
 
     /// <summary>
     /// Melee Shrouding (#029): enemies get −3" movement when charging this unit, to a minimum charge distance
@@ -1549,7 +1698,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisActivation,
                 ERuleSeat.Subject),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "Enemies get -3\" movement when charging this unit, to a minimum of 6\".");
 
     // Pre-attack activated abilities (PreAttackStage offers them at Activation_OnPreAttack) -------------
 
@@ -1567,7 +1718,9 @@ public static class CoreRuleCatalog
                 new TargetSelector(12f, 1, 1, ETargetAffinity.Friend, false),
                 new Effect.AddRule("Furious", ELifetime.NextTrigger),
                 new Condition.Always()),
-        });
+        },
+        Valence: EValence.Positive,
+        Description: "Once per activation, before attacking, give a friendly unit within 12\" Furious for its next attack.");
 
     /// <summary>
     /// Mend (#100 #2e): once per activation, before attacking, the bearer picks one friendly unit within 3"
@@ -1583,7 +1736,9 @@ public static class CoreRuleCatalog
                 new TargetSelector(3f, 1, 1, ETargetAffinity.Friend, false),
                 new Effect.Heal(new DiceExpression.D3()),
                 new Condition.Always()),
-        });
+        },
+        Valence: EValence.Positive,
+        Description: "Once per activation, before attacking, heal D3 wounds from a friendly unit within 3\".");
 
     // Action-restriction (ChooseActionStage drops the disallowed menu options) -------------------------
 
@@ -1602,5 +1757,7 @@ public static class CoreRuleCatalog
                 new Effect.RestrictActions(new[] { EActionType.Hold }),
                 ELifetime.ThisActivation),
         },
-        Array.Empty<ActivatedAbility>());
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Negative,
+        Description: "This unit can't move — it may only Hold (and shoot).");
 }

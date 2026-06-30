@@ -22,6 +22,8 @@ namespace FDG.Rules.Definitions;
 ///   <item><see cref="Valence"/> — whether this rule reads as good/bad/neutral for the unit that
 ///         has it (#151). Read when a token GRANTS this rule, to color the token by the granted
 ///         rule's effect on its bearer. Defaults to <see cref="EValence.Neutral"/>; authored per rule.</item>
+///   <item><see cref="Description"/> — a concise, player-facing summary of what the rule does
+///         (#151), surfaced in granted-rule token hovers and rule tooltips. Defaults to empty.</item>
 ///   <item><see cref="EngineArgumentCount"/> — how many arguments the rule takes
 ///         that the engine reads <em>directly</em> (not through an effect's
 ///         <see cref="ValueSource.Arg"/>). Almost always 0: arg-driven rules like
@@ -40,4 +42,4 @@ namespace FDG.Rules.Definitions;
 /// </summary>
 public record SpecialRuleDefinition(string Name, IReadOnlyList<HookEntry> Passive,
     IReadOnlyList<ActivatedAbility> Activated, ERuleScope Scope = ERuleScope.Unit,
-    int EngineArgumentCount = 0, EValence Valence = EValence.Neutral);
+    int EngineArgumentCount = 0, EValence Valence = EValence.Neutral, string Description = "");

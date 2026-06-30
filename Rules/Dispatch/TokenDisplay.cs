@@ -69,7 +69,7 @@ public static class TokenDisplay
     }
 
     /// <summary>Full hover line synthesized from the token's type, payload, count, and lifetime.</summary>
-    public static string DescribeDetail(Token token)
+    public static string DescribeDetail(Token token, IRuleResolver? rules = null)
     {
         string lifetime = DescribeLifetime(token.ClearTrigger);
 
@@ -80,9 +80,15 @@ public static class TokenDisplay
 
         if (token.Payload is TokenPayload.RuleGrant rg)
         {
-            return token.Type == TokenType.Mark
-                ? $"Marked — a friendly attacker gains {rg.RuleName} against this unit until the first attack into it."
-                : $"Gains {rg.RuleName}, {lifetime}.";
+            if (token.Type == TokenType.Mark)
+            {
+                return $"Marked — a friendly attacker gains {rg.RuleName} against this unit until the first attack into it.";
+            }
+
+            string ruleDesc = RuleDescription(rg.RuleName, rules);
+            return ruleDesc.Length == 0
+                ? $"Gains {rg.RuleName}, {lifetime}."
+                : $"Gains {rg.RuleName} — {ruleDesc} ({lifetime}).";
         }
 
         if (token.Type == TokenType.SpellTokens)
@@ -115,7 +121,7 @@ public static class TokenDisplay
         return new TokenDisplayInfo(
             DisplayId: ResolveDisplayId(token),
             Name: DescribeName(token),
-            Description: DescribeDetail(token),
+            Description: DescribeDetail(token, rules),
             Valence: ResolveValence(token, rules),
             Prominence: def.Prominence,
             Count: token.Count,
@@ -133,4 +139,9 @@ public static class TokenDisplay
         : type == TokenType.SaveRollModifier ? "Defense"
         : type == TokenType.MoraleRollModifier ? "Morale"
         : "roll";
+
+    private static string RuleDescription(string ruleName, IRuleResolver? rules)
+        => rules != null && rules.TryResolve(ruleName, out ResolvedRule resolved)
+            ? resolved.Definition.Description.TrimEnd('.', ' ')
+            : "";
 }

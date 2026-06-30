@@ -203,6 +203,48 @@ namespace FDG.Tests
             Assert.That(tok.ClearTrigger, Is.InstanceOf<TokenClearTrigger.RoundEnd>());
         }
 
+        // --- Rule description in hover + real-catalog integration -------------------------------------
+
+        [Test]
+        public void DescribeDetail_WithResolver_IncludesGrantedRuleDescription()
+        {
+            var rules = new RuleResolver();
+            rules.Register(new SpecialRuleDefinition("Regeneration",
+                Array.Empty<HookEntry>(), Array.Empty<ActivatedAbility>(),
+                Valence: EValence.Positive, Description: "Ignores each wound on a roll of 5+."));
+
+            Assert.That(TokenDisplay.DescribeDetail(Grant("Regeneration"), rules),
+                Is.EqualTo("Gains Regeneration — Ignores each wound on a roll of 5+ (next time it applies)."));
+        }
+
+        [Test]
+        public void Resolve_GrantedRule_UsesRealCatalogValenceAndDescription()
+        {
+            RuleResolver rules = CoreRuleCatalog.CreateResolver();
+            TokenDisplayInfo info = TokenDisplay.Resolve(Grant("Regeneration"), rules);
+
+            Assert.That(info.Valence, Is.EqualTo(EValence.Positive));
+            Assert.That(info.Description, Does.Contain("ignore").IgnoreCase);
+        }
+
+        [Test]
+        public void CoreCatalog_EveryRule_HasADescription()
+        {
+            foreach (SpecialRuleDefinition rule in CoreRuleCatalog.All)
+            {
+                Assert.That(rule.Description, Is.Not.Empty, $"rule '{rule.Name}' has no description");
+            }
+        }
+
+        [Test]
+        public void CoreCatalog_ValenceSpotChecks()
+        {
+            Assert.That(CoreRuleCatalog.Regeneration.Valence, Is.EqualTo(EValence.Positive));
+            Assert.That(CoreRuleCatalog.Slow.Valence, Is.EqualTo(EValence.Negative));
+            Assert.That(CoreRuleCatalog.Immobile.Valence, Is.EqualTo(EValence.Negative));
+            Assert.That(CoreRuleCatalog.Aircraft.Valence, Is.EqualTo(EValence.Neutral));
+        }
+
         // --- Helpers ----------------------------------------------------------------------------------
 
         private static RuleResolver ResolverWith(params (string name, EValence valence)[] rules)

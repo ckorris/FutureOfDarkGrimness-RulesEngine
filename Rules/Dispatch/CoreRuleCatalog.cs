@@ -42,7 +42,7 @@ public static class CoreRuleCatalog
         Resistance, Protected, PiercingAssault, PiercingHunter, Shielded, Fortified,
         ResistanceAura, ProtectedAura, PiercingAssaultAura, PiercingHunterAura, ShieldedAura, FortifiedAura,
         Strider,
-        IncreasedShootingRange, RangedShrouding, Darkborn, MeleeShrouding,
+        IncreasedShootingRange, RangedShrouding, DarkbornOffensive, DarkbornDefensive, MeleeShrouding,
         IncreasedShootingRangeAura, RangedShroudingAura, MeleeShroudingAura,
     };
 
@@ -1412,15 +1412,14 @@ public static class CoreRuleCatalog
         Array.Empty<ActivatedAbility>());
 
     /// <summary>
-    /// Darkborn (#102): the bearer gets +3" range when shooting AND moves +3" when charging. Two Actor-seat
-    /// passives — a <see cref="Effect.RangeModifier"/>(+3) at <see cref="EHookID.Shooting_OnRangeCheck"/>, and a
-    /// <see cref="Effect.MovementBonus"/>(Charge, +3) at <see cref="EHookID.Movement_OnMoveActionDeclared"/>
-    /// gated to the Charge action (the same live move-distance seam Fast/Agile/RapidCharge use). This is the
-    /// offensive (own-buff) Darkborn; the defensive army variant ("enemies get −range/−charge vs this unit") is
-    /// deferred — its charge debuff needs the charge TARGET's rules folded into the charger's distance, a
-    /// per-target charge-distance mechanic the engine doesn't have yet (see WorkItems/102).
+    /// Darkborn (Offensive) (#102): the bearer gets +3" range when shooting AND moves +3" when charging. Two
+    /// Actor-seat passives — a <see cref="Effect.RangeModifier"/>(+3) at <see cref="EHookID.Shooting_OnRangeCheck"/>,
+    /// and a <see cref="Effect.MovementBonus"/>(Charge, +3) at <see cref="EHookID.Movement_OnMoveActionDeclared"/>
+    /// gated to the Charge action (the same live move-distance seam Fast/Agile/RapidCharge use). The corpus uses
+    /// the bare name "Darkborn" for two different rules across armies; this is the own-buff variant, named
+    /// "Darkborn (Offensive)" to disambiguate from <see cref="DarkbornDefensive"/>.
     /// </summary>
-    public static SpecialRuleDefinition Darkborn { get; } = new SpecialRuleDefinition("Darkborn",
+    public static SpecialRuleDefinition DarkbornOffensive { get; } = new SpecialRuleDefinition("Darkborn (Offensive)",
         new[]
         {
             new HookEntry(EHookID.Shooting_OnRangeCheck,
@@ -1431,6 +1430,32 @@ public static class CoreRuleCatalog
                 new Condition.ActionTypeIs(EActionType.Charge),
                 new Effect.MovementBonus(EActionType.Charge, DistanceInches: 3f),
                 ELifetime.ThisActivation),
+        },
+        Array.Empty<ActivatedAbility>());
+
+    /// <summary>
+    /// Darkborn (Defensive) (#102/#029): enemies get −4" range when shooting this unit (to a min. of 6") AND
+    /// −2" movement when charging it (to a min. of 6"). Two Subject-seat passives mirroring the Shrouding pair —
+    /// a <see cref="Effect.RangeModifier"/>(−4, floor 6) at <see cref="EHookID.Shooting_OnRangeCheck"/> (read by
+    /// <see cref="RangeRuleQueries.EffectiveRange"/>) and a <see cref="Effect.MovementBonus"/>(Charge, −2, floor 6)
+    /// at <see cref="EHookID.Movement_OnChargeDeclared"/> (read by
+    /// <see cref="MovementRuleQueries.EffectiveChargeDistanceAgainst"/> and applied as the worst-case charge-budget
+    /// reduction in DefinePathStage). The corpus's other "Darkborn"; named to disambiguate from
+    /// <see cref="DarkbornOffensive"/>. Scope: "where all models have this rule" is approximated unit-level (#093).
+    /// </summary>
+    public static SpecialRuleDefinition DarkbornDefensive { get; } = new SpecialRuleDefinition("Darkborn (Defensive)",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnRangeCheck,
+                new Condition.Always(),
+                new Effect.RangeModifier(Delta: -4, MinResultInches: 6),
+                ELifetime.ThisActivation,
+                ERuleSeat.Subject),
+            new HookEntry(EHookID.Movement_OnChargeDeclared,
+                new Condition.Always(),
+                new Effect.MovementBonus(EActionType.Charge, DistanceInches: -2f, MinResultInches: 6f),
+                ELifetime.ThisActivation,
+                ERuleSeat.Subject),
         },
         Array.Empty<ActivatedAbility>());
 

@@ -100,31 +100,48 @@ namespace FDG.Tests
         }
 
         [Test]
-        public void Darkborn_AddsThreeToShootingRange()
+        public void DarkbornOffensive_AddsThreeToShootingRange()
         {
             DataBinding<UnitData> attacker = MakeArmyUnit(_attackerPlayer, new Position(0, 0, 0));
             DataBinding<UnitData> defender = MakeArmyUnit(_enemyPlayer, new Position(8, 0, 0));
-            Attach(attacker, "Darkborn", CoreRuleCatalog.Darkborn);
+            Attach(attacker, "Darkborn (Offensive)", CoreRuleCatalog.DarkbornOffensive);
 
             Assert.That(RangeRuleQueries.EffectiveRange(attacker.GetValue(), Rifle(12f), defender.GetValue(), _ctx.RuleEvaluator),
-                Is.EqualTo(15f), "Darkborn's +3\" range applies at the Actor seat.");
+                Is.EqualTo(15f), "Offensive Darkborn's +3\" range applies at the Actor seat.");
         }
 
         [Test]
-        public void Darkborn_AddsThreeToChargeMoveOnly()
+        public void DarkbornOffensive_AddsThreeToChargeMoveOnly()
         {
             var baseline = new MovementActionContext(_ctx, MakeMovementUnit());
 
             DataBinding<UnitData> unit = MakeMovementUnit();
-            Attach(unit, "Darkborn", CoreRuleCatalog.Darkborn);
+            Attach(unit, "Darkborn (Offensive)", CoreRuleCatalog.DarkbornOffensive);
             var context = new MovementActionContext(_ctx, unit);
 
             Assert.That(context.MaxChargeDistance, Is.EqualTo(baseline.MaxChargeDistance + 3f).Within(0.001f),
-                "Darkborn adds +3\" to the Charge budget (the live MovementBonus seam).");
+                "Offensive Darkborn adds +3\" to the Charge budget (the live MovementBonus seam).");
             Assert.That(context.MaxAdvanceDistance, Is.EqualTo(baseline.MaxAdvanceDistance).Within(0.001f),
                 "Darkborn's move bonus is Charge-only; Advance untouched.");
             Assert.That(context.MaxRushDistance, Is.EqualTo(baseline.MaxRushDistance).Within(0.001f),
                 "Darkborn's move bonus is Charge-only; Rush untouched.");
+        }
+
+        [Test]
+        public void DarkbornDefensive_DebuffsEnemyRangeAndCharge()
+        {
+            DataBinding<UnitData> attacker = MakeArmyUnit(_attackerPlayer, new Position(0, 0, 0));
+            DataBinding<UnitData> defender = MakeArmyUnit(_enemyPlayer, new Position(8, 0, 0));
+            Attach(defender, "Darkborn (Defensive)", CoreRuleCatalog.DarkbornDefensive);
+
+            // Range half: enemy shooting the bearer loses 4" (24 -> 20).
+            Assert.That(RangeRuleQueries.EffectiveRange(attacker.GetValue(), Rifle(24f), defender.GetValue(), _ctx.RuleEvaluator),
+                Is.EqualTo(20f), "Defensive Darkborn's -4\" range applies at the Subject seat.");
+
+            // Charge half: enemy charging the bearer loses 2" (12 -> 10).
+            Assert.That(MovementRuleQueries.EffectiveChargeDistanceAgainst(
+                    attacker.GetValue(), defender.GetValue(), baseChargeInches: 12f, _ctx.RuleEvaluator),
+                Is.EqualTo(10f), "Defensive Darkborn's -2\" charge applies at the Subject seat.");
         }
 
         // The Army-Creator picker derives from CoreRuleCatalog.All; an uncatalogued rule is unpickable and a
@@ -133,7 +150,8 @@ namespace FDG.Tests
         public void RangeRules_AreCatalogued_AndResolvable()
         {
             RuleResolver resolver = CoreRuleCatalog.CreateResolver();
-            foreach (string name in new[] { "Increased Shooting Range", "Ranged Shrouding", "Darkborn",
+            foreach (string name in new[] { "Increased Shooting Range", "Ranged Shrouding",
+                                            "Darkborn (Offensive)", "Darkborn (Defensive)",
                                             "Increased Shooting Range Aura", "Ranged Shrouding Aura" })
             {
                 Assert.That(CoreRuleCatalog.All.Any(r => r.Name == name), Is.True, $"{name} must be in All.");

@@ -157,7 +157,7 @@ namespace FDG.Stages
             IUnit unit = unitBinding.GetValue();
             if (unit.Tokens.HasToken(TokenType.Shaken)) return;
 
-            unit.Tokens.AddToken(new Token(TokenType.Shaken, 1, new TokenClearTrigger.ManualOnly()));
+            unit.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.Shaken));
         }
 
         /// <summary>

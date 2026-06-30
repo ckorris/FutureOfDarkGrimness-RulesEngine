@@ -169,8 +169,7 @@ public static class TransportUtilities
     /// units stay off-table; the caller sets aside / leaves them at origin.
     /// </summary>
     public static void Embark(IUnit unit, IUnit transport) =>
-        unit.Tokens.AddToken(new Token(TokenType.EmbarkedIn, 1,
-            new TokenClearTrigger.ManualOnly(), OwnerUnitID: transport.ID));
+        unit.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.EmbarkedIn, owner: transport.ID));
 
     /// <summary> Removes <paramref name="unit"/>'s <see cref="TokenType.EmbarkedIn"/> token (disembark / spillout). </summary>
     public static void Disembark(IUnit unit) => unit.Tokens.RemoveTokens(TokenType.EmbarkedIn);
@@ -206,7 +205,7 @@ public static class TransportUtilities
 
         // Mirrors MoraleUtilities.ApplyShaken (which takes a DataBinding<UnitData> in the stage layer) —
         // inlined to avoid a Rules→Stages dependency.
-        occupant.Tokens.AddToken(new Token(TokenType.Shaken, 1, new TokenClearTrigger.ManualOnly()));
+        occupant.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.Shaken));
 
         foreach (IModel model in occupant.Models)
         {

@@ -23,6 +23,14 @@ namespace FDG
 
         public int Defense { get; set; }
 
+        /// <summary>
+        /// #029: an Aircraft's fixed flight heading (a unit-wide direction unit-vector). Set lazily the first
+        /// time it moves (toward the table centre) and again on redeployment from a board edge; never changed
+        /// while it is on the table ("Aircraft don't turn"). Null for non-Aircraft units (and before an
+        /// Aircraft's first move). Serialized so it survives save / network round-trips.
+        /// </summary>
+        [JsonProperty] public Float2? AircraftHeading { get; set; } = null;
+
         private readonly List<ResolvedRule> _ruleDefinitions = new();
 
         [JsonIgnore] public IReadOnlyList<ResolvedRule> RuleDefinitions => _ruleDefinitions;

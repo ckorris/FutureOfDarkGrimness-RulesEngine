@@ -26,10 +26,11 @@ namespace FDG.Stages
             // Caster units replenish their spell tokens at the top of every round (#033), including round 1.
             GrantSpellTokens();
 
-            // Ambush reserves may arrive from round 2 onward.
+            // Ambush reserves may arrive from round 2 onward; so do Aircraft that flew off the table edge.
             if (context.RoundCount >= 2)
             {
                 await BringOnReserves();
+                await RedeployOffTableAircraft();
             }
 
             await OnFinished.Activate(context);
@@ -101,6 +102,34 @@ namespace FDG.Stages
                         new TokenClearTrigger.RoundEnd()));
 
                     await GameContext.Announce($"{unit.Name} arrives from Ambush!", new TextColor(255, 170, 60, 255));
+                }
+            }
+        }
+
+        /// <summary>
+        /// #029: an Aircraft that flew off the table edge during its forced move (marked
+        /// <see cref="TokenType.OffTableFromForcedMove"/>, models held at origin) flies back on at the start of
+        /// the next round, re-placed from a board edge. Reuses the reserve placement flow; its heading was
+        /// cleared when it left, so it re-aims toward the table centre on its next move. Like a reserve arrival,
+        /// it can't seize/contest objectives the round it returns. (Scope: "any edge" is relaxed to the normal
+        /// placement zone — the player places it; the Aircraft flies across regardless.)
+        /// </summary>
+        private async Task RedeployOffTableAircraft()
+        {
+            foreach (ArmyData army in GameContext.GameDataStore.GetAllValues<ArmyData>().ToList())
+            {
+                foreach (DataBinding<UnitData> unitBinding in army.UnitBindings.ToList())
+                {
+                    UnitData unit = unitBinding.GetValue();
+                    if (!unit.GetIsAlive()) continue;
+                    if (!unit.Tokens.HasToken(TokenType.OffTableFromForcedMove)) continue;
+
+                    await PlaceFromReserve(unit, minDistanceFromEnemies: 0f);
+                    unit.Tokens.RemoveTokens(TokenType.OffTableFromForcedMove);
+                    unit.Tokens.AddToken(new Token(TokenType.ArrivedFromReserve, 1, new TokenClearTrigger.RoundEnd()));
+
+                    await GameContext.Announce($"{unit.Name} (Aircraft) flies back on from the table edge!",
+                        new TextColor(120, 200, 255, 255));
                 }
             }
         }

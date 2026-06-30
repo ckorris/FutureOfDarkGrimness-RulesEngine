@@ -10,6 +10,7 @@ public readonly record struct TokenType(string Id)
     public const string EMBARKED_IN_ID = "EmbarkedIn";
     public const string MARK_ID = "Mark";
     public const string POST_COMBAT_MOVE_USED_ID = "PostCombatMoveUsed";
+    public const string OFF_TABLE_FROM_FORCED_MOVE_ID = "OffTableFromForcedMove";
 
     // Granted numeric roll modifiers (#033 stat-modifier primitive): a spell/ability grants the bearer a
     // signed delta to a specific roll for a duration. The roll kind is the token TYPE (so different rolls
@@ -35,6 +36,14 @@ public readonly record struct TokenType(string Id)
     /// round-end token sweep removes it after that round's objective check.
     /// </summary>
     public static readonly TokenType ArrivedFromReserve = new(ARRIVED_FROM_RESERVE_ID);
+
+    /// <summary>
+    /// #029: marks an Aircraft that flew off the table edge during its forced move. It's held off the table
+    /// (models at origin) until <c>StartOfRoundExtraActionStage</c> redeploys it from a board edge at the next
+    /// round start, which clears this token. Carried with a <c>ManualOnly</c> clear trigger (cleared explicitly
+    /// on redeploy), not the round-end sweep.
+    /// </summary>
+    public static readonly TokenType OffTableFromForcedMove = new(OFF_TABLE_FROM_FORCED_MOVE_ID);
 
     /// <summary>
     /// Marks a unit that is currently embarked inside a Transport (#035). A <b>cross-unit</b> token:

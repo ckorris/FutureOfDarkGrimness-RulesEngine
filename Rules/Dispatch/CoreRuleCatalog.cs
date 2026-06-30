@@ -1399,19 +1399,21 @@ public static class CoreRuleCatalog
         Array.Empty<ActivatedAbility>());
 
     /// <summary>
-    /// Aircraft (#029): a fast flyer with strong defensive properties. Nearly complete — the one DEFERRED facet
-    /// is its forced movement mode (see below).
+    /// Aircraft (#029): a fast flyer with strong defensive properties — fully implemented.
     /// <list type="bullet">
-    /// <item>IMPLEMENTED (here): enemies targeting it get −12" range (Subject <see cref="Effect.RangeModifier"/>
+    /// <item>Defensive shooting: enemies targeting it get −12" range (Subject <see cref="Effect.RangeModifier"/>
     /// at <see cref="EHookID.Shooting_OnRangeCheck"/> — effectively immune to ≤12" weapons) and −1 to hit (Subject
     /// <see cref="Effect.RollModifier"/>(Hit) at <see cref="EHookID.Shooting_OnHitRollModifier"/>, like Stealth
     /// without the distance gate); ignores all terrain + moves through units (Flying's two ops).</item>
-    /// <item>IMPLEMENTED (stage gates via <see cref="AircraftRules.IsAircraft"/>): can't seize/contest objectives
-    /// (ReconcileObjectivesStage); can't be charged / moved into base contact with (move validation + GetCanCharge
-    /// + ChooseMeleeDefenderStage); must deploy before all other units (ChooseUnitToDeployStage).</item>
-    /// <item>DEFERRED (large new sub-system): the forced straight-line 30–36" Advance-only move with no turning +
-    /// off-table redeployment each round — needs a facing/heading notion + constrained-move resolvers the engine
-    /// doesn't have. Until then an Aircraft moves like a normal unit. See WorkItems/029.</item>
+    /// <item>Stage gates (via <see cref="AircraftRules.IsAircraft"/>): can't seize/contest objectives; can't be
+    /// charged / moved into base contact with; must deploy before all other units.</item>
+    /// <item>Forced movement: may only Advance (this <see cref="Effect.RestrictActions"/> at
+    /// <see cref="EHookID.Activation_OnActionChoice"/>), which DefinePathStage turns into a forced straight-line
+    /// 30–36" move along the unit's fixed heading (<c>UnitData.AircraftHeading</c>, set once toward the table
+    /// centre, never turned); if it flies off a table edge it leaves play and redeploys from an edge next round
+    /// (<c>ForcedAircraftMove</c> + StartOfRoundExtraActionStage). Simplifications, see WorkItems/029: the heading
+    /// auto-aims toward centre (no player heading pick) and the redeploy zone is the whole table ("any edge"
+    /// relaxed).</item>
     /// </list>
     /// </summary>
     public static SpecialRuleDefinition Aircraft { get; } = new SpecialRuleDefinition("Aircraft",
@@ -1434,6 +1436,12 @@ public static class CoreRuleCatalog
             new HookEntry(EHookID.Movement_OnMoveThroughEnemy,
                 new Condition.Always(),
                 new Effect.IgnoreEnemyMovementBlock(),
+                ELifetime.ThisActivation),
+            // #029 forced movement: an Aircraft may only Advance (no Rush/Charge/Hold) — DefinePathStage turns
+            // that Advance into a forced straight-line 30-36" move along its heading (see ForcedAircraftMove).
+            new HookEntry(EHookID.Activation_OnActionChoice,
+                new Condition.Always(),
+                new Effect.RestrictActions(new[] { EActionType.Advance }),
                 ELifetime.ThisActivation),
         },
         Array.Empty<ActivatedAbility>());

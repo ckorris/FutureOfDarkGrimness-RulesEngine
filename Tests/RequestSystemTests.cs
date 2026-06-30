@@ -171,15 +171,8 @@ namespace FDG.Tests
         {
             var mockCommandDispatcher = new MockMessageBusHost();
 
-            var gameDataStore = new GameDataStore.GameDataStoreBuilder()
-                .RegisterType<PlayerSlotInfo>(1)
-                .Build();
-
             var playerID = new PlayerID(Guid.NewGuid());
             PlayerSlotInfo slotInfo = new PlayerSlotInfo(playerID, 0, 0, "Bob", true);
-
-            DataReference playerInfoReference = gameDataStore.Create<PlayerSlotInfo>(slotInfo);
-            DataBinding<PlayerSlotInfo> playerBinding = gameDataStore.GetDataBinding<PlayerSlotInfo>(playerInfoReference);
 
             var taskLister = new OutstandingTaskLister(mockCommandDispatcher);
             
@@ -189,11 +182,11 @@ namespace FDG.Tests
             var taskList = new List<IReadOnlyCollection<OutstandingTaskInfo>>();
             taskLister.OutstandingTasks.Subscribe(taskList.Add);
 
-            StageTaskNotifyAwaitingMessage notifyMessage1 = new StageTaskNotifyAwaitingMessage(taskID1, playerBinding, "Task 1");
+            StageTaskNotifyAwaitingMessage notifyMessage1 = new StageTaskNotifyAwaitingMessage(taskID1, slotInfo, "Task 1");
             mockCommandDispatcher.SimulateMessageReceived(notifyMessage1);
 
 
-            StageTaskNotifyAwaitingMessage notifyMessage2 = new StageTaskNotifyAwaitingMessage(taskID2, playerBinding, "Task 2");
+            StageTaskNotifyAwaitingMessage notifyMessage2 = new StageTaskNotifyAwaitingMessage(taskID2, slotInfo, "Task 2");
             mockCommandDispatcher.SimulateMessageReceived(notifyMessage2);
             // Act
             //taskLister.NotifyTaskRequested(playerID, taskID1, "Task 1");
@@ -205,11 +198,71 @@ namespace FDG.Tests
             Assert.That(taskList.Last().Any(t => t.PlayerInfo.PlayerID == playerID && t.TaskName == "Task 2"), Is.True);
         }
 
+        [Test]
+        public void RequestDecision_RemotePlayer_RoutesToThatConnectionOnly()
+        {
+            // A player on a network connection should receive their decision request on that connection
+            // alone — not broadcast to every client (#088).
+            var gameDataStore = new GameDataStore.GameDataStoreBuilder()
+                .RegisterType<PlayerSlotInfo>(1)
+                .Build();
+
+            var mock = new MockMessageBusHost();
+            var playerID = new PlayerID(Guid.NewGuid());
+            var connectionID = new ConnectionID(Guid.NewGuid());
+
+            PlayerSlot slot = new PlayerSlot(0, 0, playerID, null, gameDataStore);
+            NetworkPlayerController controller =
+                new NetworkPlayerController("Remote", playerID, connectionID, mock, gameDataStore);
+            slot.AssignPlayerController(controller);
+
+            PlayerSlotManager playerSlotManager = new PlayerSlotManager(new PlayerSlot[] { slot });
+            var sender = new RequestMessageSender(mock, gameDataStore, playerSlotManager, new EmptyTextOutput());
+
+            _ = sender.RequestDecision<TestRequest, string>(
+                new TestRequest(playerID, new TaskID(Guid.NewGuid()), "Test Task"));
+
+            Assert.That(mock.LastRequestWasBroadcast, Is.False, "Request must not be broadcast to all clients.");
+            Assert.That(mock.LastRequestWasLocal, Is.False, "A remote player's request must route over the network, not local dispatch.");
+            Assert.That(mock.LastRequestSingleConnection, Is.EqualTo(connectionID));
+        }
+
+        [Test]
+        public void RequestDecision_LocalPlayer_RoutesInProcessOnly()
+        {
+            // A local (in-process) player has no connection, so their request should dispatch locally with
+            // no network broadcast (#088).
+            var gameDataStore = new GameDataStore.GameDataStoreBuilder()
+                .RegisterType<PlayerSlotInfo>(1)
+                .Build();
+
+            var mock = new MockMessageBusHost();
+            var playerID = new PlayerID(Guid.NewGuid());
+
+            // No controller assigned → not a NetworkPlayerController → treated as a local player.
+            PlayerSlot slot = new PlayerSlot(0, 0, playerID, null, gameDataStore);
+            PlayerSlotManager playerSlotManager = new PlayerSlotManager(new PlayerSlot[] { slot });
+            var sender = new RequestMessageSender(mock, gameDataStore, playerSlotManager, new EmptyTextOutput());
+
+            _ = sender.RequestDecision<TestRequest, string>(
+                new TestRequest(playerID, new TaskID(Guid.NewGuid()), "Test Task"));
+
+            Assert.That(mock.LastRequestWasBroadcast, Is.False, "Request must not be broadcast to all clients.");
+            Assert.That(mock.LastRequestWasLocal, Is.True);
+            Assert.That(mock.LastRequestSingleConnection, Is.Null);
+        }
+
         // Mock command dispatcher for testing network requests
         public class MockMessageBusHost : IMessageBusHost, IMessageBusClient
         {
             private readonly Dictionary<Type, Action<object>> _messageHandlers = new();
             public StageTaskRequestMessage? LastRequestMessage { get; private set; }
+
+            // How the last request message was routed (#088): the connection a single-send targeted, or
+            // a flag that it went out in-process to a local player. Null until a request is sent.
+            public ConnectionID? LastRequestSingleConnection { get; private set; }
+            public bool LastRequestWasLocal { get; private set; }
+            public bool LastRequestWasBroadcast { get; private set; }
 
             public event Action<ConnectionID>? OnClientDisconnected;
 
@@ -240,6 +293,9 @@ namespace FDG.Tests
                 if (command is StageTaskRequestMessage requestMessage)
                 {
                     LastRequestMessage = requestMessage;
+                    LastRequestSingleConnection = null;
+                    LastRequestWasLocal = false;
+                    LastRequestWasBroadcast = true;
                 }
                 // Do nothing in mock
                 return Task.CompletedTask;
@@ -250,6 +306,22 @@ namespace FDG.Tests
                 if (command is StageTaskRequestMessage requestMessage)
                 {
                     LastRequestMessage = requestMessage;
+                    LastRequestSingleConnection = connectionID;
+                    LastRequestWasLocal = false;
+                    LastRequestWasBroadcast = false;
+                }
+                // Do nothing in mock
+                return Task.CompletedTask;
+            }
+
+            public Task SendCommandToLocalAsync<TMessage>(TMessage command)
+            {
+                if (command is StageTaskRequestMessage requestMessage)
+                {
+                    LastRequestMessage = requestMessage;
+                    LastRequestSingleConnection = null;
+                    LastRequestWasLocal = true;
+                    LastRequestWasBroadcast = false;
                 }
                 // Do nothing in mock
                 return Task.CompletedTask;

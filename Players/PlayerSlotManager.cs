@@ -125,6 +125,27 @@ namespace FDG.Players
             return false;
         }
 
+        /// <summary>
+        /// Maps a <see cref="PlayerID"/> to the network <see cref="ConnectionID"/> it plays on, if the
+        /// slot is filled by a <see cref="NetworkPlayerController"/>. Returns false for a local (in-process)
+        /// or unassigned player — they have no connection. The mirror of
+        /// <see cref="TryGetPlayerIDByConnection"/>; used to route a decision request to just the target
+        /// player instead of broadcasting it to every client (#088).
+        /// </summary>
+        public bool TryGetConnectionByPlayerID(PlayerID playerID, out ConnectionID connectionID)
+        {
+            PlayerSlot? slot = _playerSlots.FirstOrDefault(s => s.PlayerID == playerID);
+
+            if (slot?.Controller is NetworkPlayerController networkController)
+            {
+                connectionID = networkController.ConnectionID;
+                return true;
+            }
+
+            connectionID = default;
+            return false;
+        }
+
         internal PlayerSlot GetSlotByID(PlayerID playerID)
         {
             PlayerSlot? playerSlot = _playerSlots.FirstOrDefault(slot => slot.PlayerID == playerID);

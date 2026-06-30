@@ -27,7 +27,7 @@ namespace FDG.StageResolution
 
         public void NotifyTaskRequested(StageTaskNotifyAwaitingMessage awaitingMessage)
         {
-            OutstandingTaskInfo taskInfo = new OutstandingTaskInfo(awaitingMessage.PlayerInfo.GetValue(), 
+            OutstandingTaskInfo taskInfo = new OutstandingTaskInfo(awaitingMessage.PlayerInfo,
                 awaitingMessage.UserFriendlyTaskName);
             _outstandingTaskInfos.Add(awaitingMessage.TaskID, taskInfo);
             _outstandingTasks.OnNext(_outstandingTaskInfos.Values);

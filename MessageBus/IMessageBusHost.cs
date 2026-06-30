@@ -25,5 +25,13 @@ namespace FDG.MessageBus
 
         public Task SendCommandToSingleAsync<TMessage>(TMessage message, ConnectionID connectionID);
 
+        /// <summary>
+        /// Deliver a message only to in-process handlers on this host (its own local players), with no
+        /// network send. Used to route a decision request to a local player without broadcasting it to
+        /// every connected client (#088) — the mirror of <see cref="SendCommandToSingleAsync"/> for a
+        /// player who has no network connection.
+        /// </summary>
+        public Task SendCommandToLocalAsync<TMessage>(TMessage message);
+
     }
 }

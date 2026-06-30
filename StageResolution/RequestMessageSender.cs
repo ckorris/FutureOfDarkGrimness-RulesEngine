@@ -82,11 +82,26 @@ namespace FDG.StageResolution
             // entries are populated before any synchronous resolver (e.g. AI) can produce a reply
             // and trigger the resolve notification — otherwise the resolve fires against an empty
             // lister dict and the entry that arrives next stays stuck forever.
-            DataBinding<PlayerSlotInfo> playerInfoBinding =  _playerSlotManager.GetSlotByID(request.TargetPlayerID).InfoBinding;
-            StageTaskNotifyAwaitingMessage awaitingMessage = new StageTaskNotifyAwaitingMessage(taskID, playerInfoBinding, request.TaskName);
+            // This notification stays broadcast: every client shows "waiting on Player N" in its
+            // outstanding-task UI. Snapshot the slot info by value (the message no longer carries a
+            // live binding — see StageTaskNotifyAwaitingMessage, #088).
+            PlayerSlotInfo targetSlotInfo = _playerSlotManager.GetSlotByID(request.TargetPlayerID).InfoBinding.GetValue();
+            StageTaskNotifyAwaitingMessage awaitingMessage = new StageTaskNotifyAwaitingMessage(taskID, targetSlotInfo, request.TaskName);
             _messageBusHost.SendCommandToAllAsync(awaitingMessage);
 
-            _messageBusHost.SendCommandToAllAsync(requestMessage);
+            // Route the decision payload to just the target player instead of broadcasting it to everyone
+            // (#088): a remote player receives it on their own connection; a local (in-process) player gets
+            // an in-process dispatch. The receiver-side PlayerID filter still guards the local case (local
+            // players share one registrar), but no client ever receives another player's request payload —
+            // saving bandwidth and not baking in the open-information assumption.
+            if (_playerSlotManager.TryGetConnectionByPlayerID(targetPlayerID, out ConnectionID targetConnection))
+            {
+                _messageBusHost.SendCommandToSingleAsync(requestMessage, targetConnection);
+            }
+            else
+            {
+                _messageBusHost.SendCommandToLocalAsync(requestMessage);
+            }
 
             return taskCompletionSource.Task;
         }

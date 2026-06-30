@@ -70,6 +70,15 @@ namespace FDG.MessageBus
             return Task.CompletedTask;
         }
 
+        public Task SendCommandToLocalAsync<TMessage>(TMessage message)
+        {
+            // In-process only — reaches the host's own local players (same registrar) without touching
+            // the network. The full broadcast path (SendCommandToAllAsync) does this same local dispatch
+            // and then also sends over the wire; routing a request to a local player wants only the former.
+            _messageRegistrar.DispatchToHandlers(message);
+            return Task.CompletedTask;
+        }
+
         private void OnMessageBytesReceived(ArraySegment<Byte> receivedBytes, ConnectionID connectionID)
         {
             object? message = _messageSerializer.DeserializeMessage(receivedBytes);

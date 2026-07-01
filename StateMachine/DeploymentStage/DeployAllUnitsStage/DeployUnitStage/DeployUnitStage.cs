@@ -50,6 +50,7 @@ namespace FDG.Stages
             foreach(PlacedObjectEntry<ModelData> entry in modelPositions)
             {
                 entry.Binding.GetValue().SetPosition(entry.Position);
+                if (entry.Facing.HasValue) entry.Binding.GetValue().SetFacing(entry.Facing.Value);
             }
 
             await OfferPostDeploymentAbilities(deployingUnit, currentPlayerID);

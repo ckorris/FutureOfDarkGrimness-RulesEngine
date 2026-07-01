@@ -94,6 +94,9 @@ namespace FDG.Stages
                     for (int i = 0; i < modelEntry.Positions.Count; i++)
                     {
                         modelEntry.Model.GetValue().SetPosition(modelEntry.Positions[i]);
+                        // Per-waypoint facing (#150), when the resolver supplied it (default: direction of travel).
+                        if (modelEntry.Facings != null && i < modelEntry.Facings.Count)
+                            modelEntry.Model.GetValue().SetFacing(modelEntry.Facings[i]);
                     }
                 }
             }

@@ -59,5 +59,7 @@ namespace FDG.StageResolution.Requests
         }
     }
 
-    public record PlacedObjectEntry<T>(DataBinding<T> Binding, Position Position);
+    // Facing (#150), when present, is the yaw facing (a unit normal) to give the placed model — set by the GUI
+    // deploy resolver's rotation. Null → facing is left unchanged (its default / prior value).
+    public record PlacedObjectEntry<T>(DataBinding<T> Binding, Position Position, Float2? Facing = null);
 }

@@ -118,6 +118,11 @@ namespace FDG.ArmyBuilding
         public int MaxPicks { get; set; } = 1;
 
         public List<UpgradeOption> Options { get; set; } = new();
+
+        /// <summary>Counted sections use a numeric quantity (AddModels, or an "any"-model effect); the rest are
+        /// on/off toggles. Derived — not serialized.</summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public bool IsCounted => Variant == UpgradeVariant.AddModels || Affects == UpgradeAffects.Any;
     }
 
     /// <summary>One selectable choice within a section. <see cref="Cost"/> is per application (see <see cref="UpgradeAffects"/>).</summary>

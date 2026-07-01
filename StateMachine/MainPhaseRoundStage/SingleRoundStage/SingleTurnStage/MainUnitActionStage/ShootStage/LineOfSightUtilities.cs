@@ -1,4 +1,3 @@
-using System;
 using FDG.Data;
 using FDG.Utilities;
 
@@ -47,34 +46,12 @@ namespace FDG.Stages
             {
                 if (model.Position.x == 0f && model.Position.z == 0f) continue;
                 if (excluded.Contains(model)) continue;
-                blockers.Add(new TerrainData(ETerrainType.Blocking, BuildBaseBlockerZone(model)));
+                // A LoS blocker with the model's true (oriented) footprint (#150): a rectangle blocks line of
+                // sight with its real shape, not its inscribed bounding circle. Shared with the move-through trigger.
+                blockers.Add(new TerrainData(ETerrainType.Blocking,
+                    SweptBaseGeometry.BaseAsZone(model.BaseShape, model.Position, model.Facing)));
             }
             return blockers;
-        }
-
-        // A LoS blocker the shape + facing of the model's true base (#150): a rectangle blocks line of sight
-        // with its real (oriented) footprint via a RotatedZoneWrapper, not its inscribed bounding circle. A
-        // circular base stays a CircularZone (rotation-invariant).
-        private static IZone BuildBaseBlockerZone(IModel model)
-        {
-            Position p = model.Position;
-            if (model.BaseShape is RectangleBase r)
-            {
-                var rect = new RectangularZone(
-                    p.x - r.WidthInches * 0.5f, p.x + r.WidthInches * 0.5f,
-                    p.z - r.HeightInches * 0.5f, p.z + r.HeightInches * 0.5f);
-
-                // Rotate the axis-aligned rect so its local +Z (height) axis points along the facing. No screen
-                // Y-flip here (table X/Z space), so the angle is atan2(-facing.X, facing.Y).
-                Float2 f = model.Facing;
-                if (f.X == 0f && f.Y == 0f) f = new Float2(0f, 1f);
-                float deg = MathF.Atan2(-f.X, f.Y) * (180f / MathF.PI);
-                return MathF.Abs(deg) < 1e-4f
-                    ? rect
-                    : new RotatedZoneWrapper(rect, deg, new Float2(p.x, p.z));
-            }
-
-            return new CircularZone(p.x, p.z, model.BaseRadiusInches);
         }
         public static ESightLineEffect EvaluateSightLine(Position attacker, Position target,
             IEnumerable<ITerrain>? terrain)

@@ -58,6 +58,26 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void Geometry_TallMoverFootprint_CrossesEnemyOffTheCentreLine()
+        {
+            var ctx = new WoundTestContext(_store, new NullPlayerRequester());
+            // A tall 0.5"×6" strafer moving along z=0: its 3" half-height sweeps over an enemy 2" off the line —
+            // which its inscribed bounding circle (r=0.25) would never reach (#150).
+            DataBinding<UnitData> mover = MakeUnitWithShape(_mover, "Lancers", withStrafing: true,
+                new RectangleBase(0.5f, 6f), new Position(0f, 0f));
+            DataBinding<UnitData> offCentre = MakeUnit(_foe, "Grunts", withStrafing: false, new Position(5f, 2f));
+
+            var paths = new List<ModelMoveEntry>
+            {
+                new ModelMoveEntry(mover.GetValue().ModelBindings[0], new List<Position> { new Position(10f, 0f) })
+            };
+
+            List<DataBinding<UnitData>> crossed = MovementUtilities.GetEnemyUnitsMovedThrough(paths, mover, ctx);
+
+            Assert.That(crossed, Does.Contain(offCentre), "the tall footprint sweeps over an enemy off the centre line.");
+        }
+
+        [Test]
         public void Dispatch_OffersStrafing_AndQueuesDealHitsAndCostMarker()
         {
             var ctx = new WoundTestContext(_store, new NullPlayerRequester());
@@ -172,6 +192,18 @@ namespace FDG.Tests
                 binding.GetValue().AttachRuleDefinition(new ResolvedRule("Strafing", CoreRuleCatalog.Strafing));
             }
 
+            _store.Create(new ArmyData(player, new List<DataBinding<UnitData>> { binding }));
+            return binding;
+        }
+
+        // Single-model unit with an explicit base shape (#150 shape-aware move-through geometry).
+        private DataBinding<UnitData> MakeUnitWithShape(PlayerID player, string name, bool withStrafing, IBaseShape shape, Position pos)
+        {
+            var model = new ModelData(shape, new List<Weapon>(), pos, _store);
+            var modelBindings = new List<DataBinding<ModelData>> { _store.GetDataBinding<ModelData>(_store.Create(model)) };
+            var unit = new UnitData(player, name, quality: 4, defense: 4, modelBindings: modelBindings);
+            DataBinding<UnitData> binding = _store.GetDataBinding<UnitData>(_store.Create(unit));
+            if (withStrafing) binding.GetValue().AttachRuleDefinition(new ResolvedRule("Strafing", CoreRuleCatalog.Strafing));
             _store.Create(new ArmyData(player, new List<DataBinding<UnitData>> { binding }));
             return binding;
         }

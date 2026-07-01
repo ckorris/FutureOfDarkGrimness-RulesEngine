@@ -188,23 +188,29 @@ namespace FDG.Stages
             {
                 if (!enemyModel.GetIsAlive()) continue;
 
-                Position enemyCenter = enemyModel.GetValue().PositionBinding.GetValue();
-                float enemyRadius = enemyModel.GetValue().BaseRadiusInches;
+                ModelData enemy = enemyModel.GetValue();
+                // The enemy's true footprint as a zone; the moving base is swept along each path segment against
+                // it (#150). For circular bases this reduces to the old combined-radius swept-disc, unchanged.
+                IZone enemyZone = SweptBaseGeometry.BaseAsZone(enemy.BaseShape, enemy.PositionBinding.GetValue(), enemy.Facing);
 
                 foreach (ModelMoveEntry move in moves)
                 {
                     if (move.Positions.Count == 0) continue;
 
-                    float contactDistance = enemyRadius + move.Model.GetValue().BaseRadiusInches;
-                    Position segmentStart = move.Model.GetValue().PositionBinding.GetValue();
+                    ModelData movingModel = move.Model.GetValue();
+                    IBaseShape movingShape = movingModel.BaseShape;
+                    Float2 movingFacing = movingModel.Facing;
+                    Position segStartPos = movingModel.PositionBinding.GetValue();
+                    Float2 segmentStart = new Float2(segStartPos.x, segStartPos.z);
 
                     foreach (Position step in move.Positions)
                     {
-                        if (DistancePointToSegment2D(enemyCenter, segmentStart, step) <= contactDistance)
+                        Float2 segmentEnd = new Float2(step.x, step.z);
+                        if (SweptBaseGeometry.DoesSweptBaseIntersectZone(enemyZone, segmentStart, segmentEnd, movingShape, movingFacing))
                         {
                             return true;
                         }
-                        segmentStart = step;
+                        segmentStart = segmentEnd;
                     }
                 }
             }

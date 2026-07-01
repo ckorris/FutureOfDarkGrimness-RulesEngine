@@ -16,6 +16,29 @@ namespace FDG
     /// </summary>
     public static class SweptBaseGeometry
     {
+        /// <summary>
+        /// A model's base footprint as an <see cref="IZone"/> (#150): a rectangle → a facing-oriented
+        /// <see cref="RotatedZoneWrapper"/> over a <see cref="RectangularZone"/> (no screen Y-flip — table X/Z
+        /// space, so the angle is <c>atan2(−facing.X, facing.Y)</c>), a circle → a <see cref="CircularZone"/>.
+        /// Lets base-vs-base tests reuse the zone geometry (LoS blockers, the Strafing move-through trigger).
+        /// </summary>
+        public static IZone BaseAsZone(IBaseShape shape, Position centre, Float2 facing)
+        {
+            if (shape is RectangleBase r)
+            {
+                var rect = new RectangularZone(
+                    centre.x - r.WidthInches * 0.5f, centre.x + r.WidthInches * 0.5f,
+                    centre.z - r.HeightInches * 0.5f, centre.z + r.HeightInches * 0.5f);
+                Float2 f = facing.X == 0f && facing.Y == 0f ? new Float2(0f, 1f) : facing;
+                float deg = MathF.Atan2(-f.X, f.Y) * (180f / MathF.PI);
+                return MathF.Abs(deg) < 1e-4f
+                    ? rect
+                    : new RotatedZoneWrapper(rect, deg, new Float2(centre.x, centre.z));
+            }
+
+            return new CircularZone(centre.x, centre.z, shape.BoundingRadiusInches);
+        }
+
         public static bool DoesSweptBaseIntersectZone(IZone zone, Float2 start, Float2 end, IBaseShape baseShape, Float2 facing)
         {
             // A circular base is exactly the existing scalar swept-disc — reuse it (handles every zone type).

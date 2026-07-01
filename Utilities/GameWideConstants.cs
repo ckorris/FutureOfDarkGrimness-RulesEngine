@@ -57,5 +57,12 @@ namespace FDG
         /// running total to this cap (#033).
         /// </summary>
         public const int MAX_SPELL_TOKENS = 6;
+
+        /// <summary>
+        /// Range within which other Caster units may spend their own spell tokens to modify a cast roll —
+        /// friendly Casters for +1 each, enemy Casters for -1 each (#103). Measured unit-to-unit,
+        /// base-to-base.
+        /// </summary>
+        public const float CASTER_ASSIST_RANGE_INCHES = 18f;
     }
 }

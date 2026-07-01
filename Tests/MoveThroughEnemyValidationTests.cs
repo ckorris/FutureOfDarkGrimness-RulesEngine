@@ -232,6 +232,27 @@ namespace FDG.Tests
             Assert.That(ok, Is.True, Why(errors));
         }
 
+        [Test]
+        public void RectangularMover_WideFootprintEndsInStandoffBand_FlaggedWhereBoundingCircleWouldPass()
+        {
+            // A 6"×1" base ending at (5,0): its 3" half-width reaches X=8, leaving a 0.5" gap to an enemy circle
+            // at (9.25,0) — inside the 1" standoff band. The shape-aware end-state check flags it (#150).
+            DataBinding<ModelData> rectModel = MakeModel(new RectangleBase(6f, 1f), new Position(0, 0));
+            bool rectOk = Validate(new ModelMoveEntry(rectModel, new List<Position> { new Position(5f, 0) }),
+                Enemy(new Position(9.25f, 0)), out var rectErrors);
+
+            Assert.That(rectOk, Is.False, "the wide footprint ends inside the standoff band.");
+            Assert.That(rectErrors.Any(e => e.ErrorReasonType == EErrorReasonType.EndedTooCloseToEnemy), Is.True);
+
+            // Control: a circular base of the rectangle's inscribed bounding radius (0.5) reads a 3" gap and makes
+            // the same move legally — the approximation the shape-aware check replaces.
+            DataBinding<ModelData> circleModel = MakeModel(new CircleBase(0.5f), new Position(0, 0));
+            bool circleOk = Validate(new ModelMoveEntry(circleModel, new List<Position> { new Position(5f, 0) }),
+                Enemy(new Position(9.25f, 0)), out _);
+
+            Assert.That(circleOk, Is.True, "a bounding-circle approximation would let this move pass.");
+        }
+
         private static List<EnemyModelFootprint> Enemy(Position center)
             => new List<EnemyModelFootprint> { new EnemyModelFootprint(center, 0.75f, unitKey: 0) };
 
@@ -245,6 +266,13 @@ namespace FDG.Tests
 
         private static string Why(List<ReasonForInvalidMove> errors)
             => "Unexpected errors: " + string.Join(", ", errors.Select(e => e.ErrorReasonType.ToString()));
+
+        private DataBinding<ModelData> MakeModel(IBaseShape shape, Position initialPosition)
+        {
+            ModelData modelData = new ModelData(shape, new List<Weapon>(), initialPosition, _store);
+            DataReference reference = _store.Create(modelData);
+            return _store.GetDataBinding<ModelData>(reference);
+        }
 
         private DataBinding<ModelData> MakeModel(Position initialPosition)
         {

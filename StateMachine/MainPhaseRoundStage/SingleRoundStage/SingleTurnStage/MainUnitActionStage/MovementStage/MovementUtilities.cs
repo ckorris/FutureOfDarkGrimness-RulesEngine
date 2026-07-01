@@ -137,7 +137,7 @@ namespace FDG.Stages
                     {
                         ModelData md = enemyModel.GetValue();
                         footprints.Add(new EnemyModelFootprint(md.PositionBinding.GetValue(), md.BaseRadiusInches,
-                            unitKey, uncontactable));
+                            unitKey, uncontactable, md.BaseShape));
                         anyLiving = true;
                     }
                     if (anyLiving) unitKey++;
@@ -502,8 +502,10 @@ namespace FDG.Stages
             {
                 if (move.Positions.Count == 0) continue;
 
-                float movingRadius = move.Model.GetValue().BaseRadiusInches;
-                Position start = move.Model.GetValue().PositionBinding.GetValue();
+                var movingModel = move.Model.GetValue();
+                IBaseShape movingShape = movingModel.BaseShape;
+                float movingRadius = movingModel.BaseRadiusInches;
+                Position start = movingModel.PositionBinding.GetValue();
                 Position end = move.Positions[move.Positions.Count - 1];
 
                 bool flaggedThrough = false;
@@ -511,9 +513,13 @@ namespace FDG.Stages
 
                 foreach (EnemyModelFootprint enemy in enemyFootprints)
                 {
+                    // Start/end base-to-base gaps use the true footprints (#150); for circular bases this is
+                    // exactly the old `distance − (rMoving + rEnemy)`, so circle behaviour is unchanged. (Gaps are
+                    // axis-aligned — the only models with non-default facing are Aircraft, which can't be charged
+                    // and move through nothing.) contactDistance is retained for the swept pass-through (4c).
                     float contactDistance = movingRadius + enemy.BaseRadiusInches;
-                    float startGap = Position.GetDistance2D(start, enemy.Center) - contactDistance;
-                    float endGap = Position.GetDistance2D(end, enemy.Center) - contactDistance;
+                    float startGap = BaseShapeGeometry.SurfaceGap2D(movingShape, start, enemy.BaseShape, enemy.Center);
+                    float endGap = BaseShapeGeometry.SurfaceGap2D(movingShape, end, enemy.BaseShape, enemy.Center);
                     bool movedCloser = endGap < startGap - ENEMY_PROXIMITY_EPSILON_INCHES;
 
                     // #029: an Aircraft can't be moved into base contact with — a move that closes to within the
@@ -735,6 +741,9 @@ namespace FDG.Stages
     {
         public readonly Position Center;
         public readonly float BaseRadiusInches;
+        // The enemy's true base footprint (#150), used by the shape-aware end-state gap checks. The mid-path
+        // swept pass-through still uses BaseRadiusInches (its tolerance-sensitive swept test is deferred to 4c).
+        public readonly IBaseShape BaseShape;
         public readonly int UnitKey;
 
         /// <summary>
@@ -744,10 +753,13 @@ namespace FDG.Stages
         /// </summary>
         public readonly bool Uncontactable;
 
-        public EnemyModelFootprint(Position center, float baseRadiusInches, int unitKey, bool uncontactable = false)
+        public EnemyModelFootprint(Position center, float baseRadiusInches, int unitKey, bool uncontactable = false,
+            IBaseShape? baseShape = null)
         {
             Center = center;
             BaseRadiusInches = baseRadiusInches;
+            // No explicit shape (radius-only callers / tests) → a circle of that radius, i.e. the prior behaviour.
+            BaseShape = baseShape ?? new CircleBase(baseRadiusInches);
             UnitKey = unitKey;
             Uncontactable = uncontactable;
         }

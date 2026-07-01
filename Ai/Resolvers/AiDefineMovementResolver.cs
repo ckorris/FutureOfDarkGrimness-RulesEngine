@@ -215,7 +215,7 @@ namespace FDG.Ai.Resolvers
                 {
                     if (model is ModelData md && md.GetIsAlive() && (md.Position.x != 0f || md.Position.z != 0f))
                     {
-                        footprints.Add(new EnemyModelFootprint(md.Position, md.BaseRadiusInches, unitKey, uncontactable));
+                        footprints.Add(new EnemyModelFootprint(md.Position, md.BaseRadiusInches, unitKey, uncontactable, md.BaseShape));
                         anyLiving = true;
                     }
                 }

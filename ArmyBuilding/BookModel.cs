@@ -27,6 +27,13 @@ namespace FDG.ArmyBuilding
         /// <summary>Author-set version string (e.g. "1.0.0"). Frozen into a saved army for provenance.</summary>
         public string Version { get; set; } = string.Empty;
 
+        /// <summary>Provenance for imported books — who the game-data came from (e.g. an OnePageRules
+        /// Army Forge snapshot). Empty for hand-authored books.</summary>
+        public string Source { get; set; } = string.Empty;
+
+        /// <summary>License the imported data is used under (e.g. CC-BY-SA 4.0). Empty for hand-authored books.</summary>
+        public string License { get; set; } = string.Empty;
+
         public List<RosterUnit> Units { get; set; } = new();
 
         /// <summary>Rule definitions the roster's units/upgrades reference. Copied onto a compiled army so

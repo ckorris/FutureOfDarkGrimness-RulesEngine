@@ -49,6 +49,29 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void RectangularDefender_PilesInToTrueEdgeContact_NotBoundingCircle()
+        {
+            // A 4"×1" defender at (5,0) piling toward a charger circle (r=0.5) at (0,0). Its 2" half-width leaves
+            // a true 2.5" gap (< the 3" cap), so it advances 2.5" to real edge contact. An inscribed bounding
+            // circle (r=0.5) would read a 4" gap, cap at 3", and overshoot into overlap (#150).
+            var defender = MakeModel(new RectangleBase(4f, 1f), new Position(5f, 0f));
+            var charger = MakeModel(new Position(0f, 0f), radius: 0.5f);
+
+            var moves = PileInUtilities.ComputePileInMoves(
+                chargingModels: new[] { charger },
+                defendingModels: new[] { defender },
+                terrain: null);
+
+            Assert.That(moves, Has.Count.EqualTo(1));
+            Position newPos = moves[0].NewPosition;
+            float trueB2B = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
+                newPos, charger.GetValue().Position, defender.GetValue().BaseShape, charger.GetValue().BaseShape);
+            Assert.That(trueB2B, Is.EqualTo(0f).Within(0.05f), "the rectangular base ends at true edge contact, not overlapping.");
+            Assert.That(5f - newPos.x, Is.EqualTo(2.5f).Within(0.05f),
+                "it advances only to true contact (~2.5\"), not the full 3\" a bounding circle would allow.");
+        }
+
+        [Test]
         public void DefenderBeyondPileInRange_MovesExactlyThreeInches()
         {
             // Defender at (5, 0), Charger at (0, 0). b2b = 4". Cap at 3" → ends 1" b2b.
@@ -153,6 +176,13 @@ namespace FDG.Tests
             float b2b = DistanceUtilities.GetBaseToBaseDistanceInches_3D(d1Final, d2Final, 0.5f, 0.5f);
             Assert.That(b2b, Is.LessThanOrEqualTo(GameWideConstants.MAX_MODEL_DISTANCE_FROM_ANY_OTHER_MODEL_INCHES + 0.01f),
                 "Defenders must remain within 1\" b2b after pile-in.");
+        }
+
+        private DataBinding<ModelData> MakeModel(IBaseShape shape, Position initialPosition)
+        {
+            var modelData = new ModelData(shape, new List<Weapon>(), initialPosition, _store);
+            DataReference reference = _store.Create(modelData);
+            return _store.GetDataBinding<ModelData>(reference);
         }
 
         private DataBinding<ModelData> MakeModel(Position initialPosition, float radius)

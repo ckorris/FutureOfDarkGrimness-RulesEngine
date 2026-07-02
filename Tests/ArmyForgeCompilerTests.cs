@@ -101,4 +101,67 @@ public class ArmyForgeCompilerTests
         Assert.That(asArmy.Units, Has.Count.EqualTo(2));
         Assert.That(asArmy.Units.Sum(u => u.PointCost), Is.EqualTo(271));
     }
+
+    // ── Replace semantics (target-aware) ────────────────────────────────────────────────────────────────
+
+    private static WeaponFileEntry Wpn(string name, int qty = 1) => new() { Name = name, Quantity = qty, Attacks = 1 };
+
+    private static UnitFileEntry CompileOne(RosterUnit unit, params UpgradeChoice[] choices)
+    {
+        var book = new BookFile { Name = "T", Units = { unit } };
+        var bu = new BuilderUnit { RosterUnitId = unit.Id };
+        bu.Choices.AddRange(choices);
+        return ListCompiler.Compile(book, new BuilderList { PointsLimit = 100000, Units = { bu } }).Units.Single();
+    }
+
+    [Test]
+    public void ReplaceOne_WithNoTargetPresent_IsANoOp()
+    {
+        // Unit has no "Sword" — choosing "replace one Sword" must not add the replacement or charge points.
+        var unit = new RosterUnit
+        {
+            Id = "u", Name = "U", Quality = 4, Defense = 4, BaseModelCount = 1, MinModels = 1, MaxModels = 1, BasePointCost = 10,
+            Sections = { new UpgradeSection { Id = "s", Variant = UpgradeVariant.Replace, Affects = UpgradeAffects.One,
+                Targets = { "Sword" }, Options = { new UpgradeOption { Id = "o", Cost = 10, WeaponsGained = { Wpn("Blade") } } } } },
+        };
+        UnitFileEntry compiled = CompileOne(unit, new UpgradeChoice { SectionId = "s", OptionId = "o", Count = 1 });
+
+        Assert.That(compiled.PointCost, Is.EqualTo(10));                       // no cost added
+        Assert.That(compiled.Weapons.Any(w => w.Name == "Blade"), Is.False);  // no replacement added
+    }
+
+    [Test]
+    public void ReplaceAll_WithPluralTarget_SwapsEveryMatch()
+    {
+        // "Replace all Energy Swords" (plural) must match the "Energy Sword" weapon and swap all 5.
+        var unit = new RosterUnit
+        {
+            Id = "u", Name = "U", Quality = 4, Defense = 4, BaseModelCount = 5, MinModels = 5, MaxModels = 5, BasePointCost = 100,
+            Weapons = { Wpn("Energy Sword", 5) },
+            Sections = { new UpgradeSection { Id = "s", Variant = UpgradeVariant.Replace, Affects = UpgradeAffects.All,
+                Targets = { "Energy Swords" }, Options = { new UpgradeOption { Id = "o", Cost = 0, WeaponsGained = { Wpn("Shard Carbine") } } } } },
+        };
+        UnitFileEntry compiled = CompileOne(unit, new UpgradeChoice { SectionId = "s", OptionId = "o", Count = 1 });
+
+        Assert.That(compiled.Weapons.Any(w => w.Name == "Energy Sword"), Is.False);
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Shard Carbine").Quantity, Is.EqualTo(5));
+    }
+
+    [Test]
+    public void ReplaceAny_IsBoundedByMaxApplicationsAndTargets()
+    {
+        // "Replace up to 2 Rifles" — asking for 5 is clamped to 2.
+        var unit = new RosterUnit
+        {
+            Id = "u", Name = "U", Quality = 4, Defense = 4, BaseModelCount = 5, MinModels = 5, MaxModels = 5, BasePointCost = 100,
+            Weapons = { Wpn("Rifle", 5) },
+            Sections = { new UpgradeSection { Id = "s", Variant = UpgradeVariant.Replace, Affects = UpgradeAffects.Any,
+                MaxApplications = 2, Targets = { "Rifle" }, Options = { new UpgradeOption { Id = "o", Cost = 3, WeaponsGained = { Wpn("Heavy") } } } } },
+        };
+        UnitFileEntry compiled = CompileOne(unit, new UpgradeChoice { SectionId = "s", OptionId = "o", Count = 5 });
+
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Rifle").Quantity, Is.EqualTo(3)); // 5 − 2
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Heavy").Quantity, Is.EqualTo(2));
+        Assert.That(compiled.PointCost, Is.EqualTo(106));                                     // 100 + 3×2
+    }
 }

@@ -113,6 +113,11 @@ namespace FDG.ArmyBuilding
         /// <summary>Weapon/rule names removed when an option is applied (Replace only).</summary>
         public List<string> Targets { get; set; } = new();
 
+        /// <summary>For a counted (<see cref="UpgradeAffects.Any"/>) section, the max number of applications
+        /// (0 = unbounded, limited only by how many targets are present). Captures OPR "up to N" / "exactly N".
+        /// Ignored for One (always 1) and All (all matched targets).</summary>
+        public int MaxApplications { get; set; }
+
         /// <summary>Pick bounds for <see cref="UpgradeVariant.PickN"/> (ignored otherwise).</summary>
         public int MinPicks { get; set; } = 0;
         public int MaxPicks { get; set; } = 1;

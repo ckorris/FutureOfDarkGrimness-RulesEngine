@@ -68,7 +68,7 @@ namespace FDG.ArmyBuilding
                 UpgradeOption option = section.Options.FirstOrDefault(o => o.Id == choice.OptionId)
                     ?? throw new InvalidOperationException($"Option '{choice.OptionId}' not found in section '{section.Id}'.");
 
-                int applications = Applications(section, choice, unit.Weapons);
+                int applications = Applications(section, choice, unit);
                 if (applications <= 0) continue;
 
                 unit.PointCost += option.Cost * applications;
@@ -96,19 +96,32 @@ namespace FDG.ArmyBuilding
             return unit;
         }
 
-        /// <summary>How many times an option applies — drives cost scaling (audit finding 5).</summary>
-        private static int Applications(UpgradeSection section, UpgradeChoice choice, List<WeaponFileEntry> weapons)
+        // How many times an option applies — drives cost + gain scaling, and (for Replace) is clamped so you
+        // can never replace more targets than the unit actually has.
+        //   One  → up to 1
+        //   Any  → up to choice.Count, capped by MaxApplications (0 = unbounded) — a stepper
+        //   All  → every matched target (per-model), as an on/off toggle
+        private static int Applications(UpgradeSection section, UpgradeChoice choice, UnitFileEntry unit)
         {
+            int chosen = Math.Max(0, choice.Count);
             if (section.Variant == UpgradeVariant.AddModels)
-                return Math.Max(1, choice.Count);
+                return chosen;
 
-            return section.Affects switch
+            bool isReplace = section.Variant == UpgradeVariant.Replace;
+            int availableSum = AvailableTargets(unit.Weapons, section.Targets);
+            int availableMax = section.Targets.Count == 0 ? 0 : section.Targets.Max(t => MatchedCount(unit.Weapons, t));
+
+            int desired = section.Affects switch
             {
-                UpgradeAffects.One => 1,
-                UpgradeAffects.Any => Math.Max(1, choice.Count),
-                UpgradeAffects.All => Math.Max(1, section.Targets.Sum(t => CountWeapon(weapons, t))),
-                _ => 1,
+                UpgradeAffects.One => chosen > 0 ? 1 : 0,
+                UpgradeAffects.All => chosen > 0 ? (isReplace ? availableMax : unit.ModelCount) : 0,
+                UpgradeAffects.Any => Math.Min(chosen,
+                    section.MaxApplications > 0 ? section.MaxApplications : (isReplace ? int.MaxValue : unit.ModelCount)),
+                _ => chosen > 0 ? 1 : 0,
             };
+
+            if (!isReplace) return desired;
+            return Math.Min(desired, section.Affects == UpgradeAffects.All ? availableMax : availableSum);
         }
 
         private static void AddGains(UnitFileEntry unit, UpgradeOption option, int applications)
@@ -120,15 +133,30 @@ namespace FDG.ArmyBuilding
                     unit.SpecialRules.Add(r);
         }
 
-        private static int CountWeapon(List<WeaponFileEntry> weapons, string name) =>
-            weapons.Where(w => w.Name == name).Sum(w => w.Quantity);
+        /// <summary>Total copies of weapons matching any of <paramref name="targets"/>. Shared with the builder
+        /// UI so it can gray out a "replace X" the unit has no X for.</summary>
+        public static int AvailableTargets(IEnumerable<WeaponFileEntry> weapons, IEnumerable<string> targets) =>
+            targets.Sum(t => MatchedCount(weapons, t));
 
-        private static void RemoveWeapon(List<WeaponFileEntry> weapons, string name, int count)
+        private static int MatchedCount(IEnumerable<WeaponFileEntry> weapons, string target) =>
+            weapons.Where(w => TargetMatches(w.Name, target)).Sum(w => w.Quantity);
+
+        // OPR upgrade targets are pluralised labels ("Energy Swords") that must match a singular weapon name
+        // ("Energy Sword"). Normalise case + a single trailing 's' so they line up.
+        public static bool TargetMatches(string weaponName, string target) => Normalize(weaponName) == Normalize(target);
+
+        private static string Normalize(string s)
+        {
+            s = s.Trim().ToLowerInvariant();
+            return s.EndsWith("s") ? s[..^1] : s;
+        }
+
+        private static void RemoveWeapon(List<WeaponFileEntry> weapons, string target, int count)
         {
             int remaining = count;
             for (int i = 0; i < weapons.Count && remaining > 0; i++)
             {
-                if (weapons[i].Name != name) continue;
+                if (!TargetMatches(weapons[i].Name, target)) continue;
                 int take = Math.Min(weapons[i].Quantity, remaining);
                 weapons[i].Quantity -= take;
                 remaining -= take;

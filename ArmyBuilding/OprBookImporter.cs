@@ -130,21 +130,33 @@ namespace FDG.ArmyBuilding
 
         private static UpgradeSection MapSection(OprSection s)
         {
-            var section = new UpgradeSection
+            // OPR affects: "all" (every matched target), "any" (0..present), "exactly N"/"up to N" (bounded),
+            // or null ("replace one" = up to 1). A bound of 1 collapses to the One toggle; >1 is a capped stepper.
+            string? type = s.Affects?.Type;
+            int value = s.Affects?.Value ?? 0;
+            UpgradeAffects affects;
+            int maxApplications = 0;
+            switch (type)
+            {
+                case "all": affects = UpgradeAffects.All; break;
+                case "any": affects = UpgradeAffects.Any; break;
+                case "exactly" or "up to":
+                    if (value <= 1) affects = UpgradeAffects.One;
+                    else { affects = UpgradeAffects.Any; maxApplications = value; }
+                    break;
+                default: affects = UpgradeAffects.One; break;
+            }
+
+            return new UpgradeSection
             {
                 Id = s.Id ?? s.Uid ?? Guid.NewGuid().ToString("N")[..8],
                 Label = s.Label ?? string.Empty,
                 Variant = s.Variant == "replace" ? UpgradeVariant.Replace : UpgradeVariant.Upgrade,
-                Affects = (s.Affects?.Type) switch
-                {
-                    "all" => UpgradeAffects.All,
-                    "any" or "exactly" or "up to" => UpgradeAffects.Any,
-                    _ => UpgradeAffects.One,
-                },
+                Affects = affects,
+                MaxApplications = maxApplications,
                 Targets = s.Targets ?? new(),
                 Options = (s.Options ?? new()).Select(MapOption).ToList(),
             };
-            return section;
         }
 
         private static UpgradeOption MapOption(OprOption o)

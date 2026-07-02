@@ -59,5 +59,29 @@ namespace FDG
 
             return false;
         }
+
+        /// <summary>
+        /// Shape- and facing-aware overload (#150): true if <paramref name="shape"/> placed at
+        /// <paramref name="center"/> facing <paramref name="facing"/> would overlap any impassible piece,
+        /// measured by its true oriented footprint (a rotated rectangular base isn't over- or under-blocked
+        /// like a circle would be). A zero-length sweep is the static footprint; a circular base reduces to
+        /// the radius overload above.
+        /// </summary>
+        public static bool OverlapsImpassibleTerrain(Position center, IBaseShape shape, Float2 facing, IEnumerable<ITerrain>? terrain)
+        {
+            if (terrain == null) return false;
+
+            Float2 p = new Float2(center.x, center.z);
+            foreach (ITerrain piece in terrain)
+            {
+                if (piece.TerrainType.HasFlag(ETerrainType.Impassible)
+                    && SweptBaseGeometry.DoesSweptBaseIntersectZone(piece.Shape, p, p, shape, facing))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 }

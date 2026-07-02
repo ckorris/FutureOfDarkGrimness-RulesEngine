@@ -3,6 +3,30 @@ using System;
 namespace FDG
 {
     /// <summary>
+    /// A base's footprint as a <b>rounded convex hull</b> in world space (#150): the convex-hull corner
+    /// points plus a <see cref="Rounding"/> radius that inflates them (a Minkowski disc). This is the one
+    /// uniform shape representation the pairwise collision routine (<see cref="BaseShapeGeometry"/>) consumes,
+    /// so a new base shape only implements <see cref="IBaseShape.Footprint"/> — it never touches the collision
+    /// code, and no shape-pair switch grows. A circle is a single point rounded by its radius; a rectangle is
+    /// its four facing-oriented corners with zero rounding; a future hexagon is six corners; a capsule is two
+    /// points with rounding.
+    /// </summary>
+    public readonly struct BaseFootprint
+    {
+        /// <summary> World-space convex-hull corners (at least one). A single point is a valid degenerate hull. </summary>
+        public readonly Float2[] Corners;
+
+        /// <summary> Minkowski inflation radius applied to the hull — a circle's radius; 0 for a straight-edged polygon. </summary>
+        public readonly float Rounding;
+
+        public BaseFootprint(Float2[] corners, float rounding)
+        {
+            Corners = corners;
+            Rounding = rounding;
+        }
+    }
+
+    /// <summary>
     /// A model's physical base footprint on the table (#149). Abstracts the base away from a single
     /// circular radius so non-circular bases (rectangles now; more shapes later) collide, measure, and
     /// render with their real footprint.
@@ -58,6 +82,15 @@ namespace FDG
         /// zone-based systems (LoS blockers, swept move-through tests) treat a base like terrain (#150).
         /// </summary>
         IZone ToZone(Position centre, Float2 facing);
+
+        /// <summary>
+        /// This base's <see cref="BaseFootprint"/> — its rounded convex hull in world space, centred at
+        /// <paramref name="centre"/> and oriented by <paramref name="facing"/> (yaw unit normal along local +Z;
+        /// zero → forward). The single seam every shape provides so that <see cref="BaseShapeGeometry.SurfaceGap2D"/>
+        /// can measure any two bases with no per-shape-pair code — implement this and the shape collides and
+        /// measures against every existing shape for free.
+        /// </summary>
+        BaseFootprint Footprint(Position centre, Float2 facing);
     }
 
     /// <summary> A circular base of a given radius (the classic round wargaming base). </summary>
@@ -82,6 +115,10 @@ namespace FDG
 
         // A circle is rotation-invariant, so facing is irrelevant.
         public IZone ToZone(Position centre, Float2 facing) => new CircularZone(centre.x, centre.z, RadiusInches);
+
+        // A disc: a single hull point (its centre) rounded by the radius. Facing is irrelevant.
+        public BaseFootprint Footprint(Position centre, Float2 facing) =>
+            new BaseFootprint(new[] { new Float2(centre.x, centre.z) }, RadiusInches);
     }
 
     /// <summary>
@@ -130,6 +167,28 @@ namespace FDG
             return MathF.Abs(deg) < 1e-4f
                 ? rect
                 : new RotatedZoneWrapper(rect, deg, new Float2(centre.x, centre.z));
+        }
+
+        // Four facing-oriented corners (local +Z = height runs along facing, +X = width perpendicular),
+        // wound consistently so hull edges connect adjacent corners. Straight edges → zero rounding.
+        public BaseFootprint Footprint(Position centre, Float2 facing)
+        {
+            Float2 f = facing.X == 0f && facing.Y == 0f ? new Float2(0f, 1f) : facing;
+            Float2 hAxis = f;                             // local +Z (height)
+            Float2 wAxis = new Float2(f.Y, -f.X);         // local +X (width), perpendicular
+            float hw = WidthInches * 0.5f, hh = HeightInches * 0.5f;
+            float cx = centre.x, cz = centre.z;
+
+            Float2 Corner(float sx, float sz) => new Float2(
+                cx + sx * hw * wAxis.X + sz * hh * hAxis.X,
+                cz + sx * hw * wAxis.Y + sz * hh * hAxis.Y);
+
+            // CCW-consistent winding: BL, BR, TR, TL.
+            Float2[] corners =
+            {
+                Corner(-1f, -1f), Corner(1f, -1f), Corner(1f, 1f), Corner(-1f, 1f),
+            };
+            return new BaseFootprint(corners, 0f);
         }
     }
 

@@ -65,8 +65,10 @@ namespace FDG.Stages
             return Math.Min(Math.Max(0f, desiredStep), maxStep);
         }
 
+        // Circumscribing radius so a rectangular base can't overlap its neighbour when the block is packed
+        // axis-aligned (the inscribed BaseRadiusInches under-spaces a rectangle). 0.1" base-to-base gap. #150.
         private static float GridSpacing(IReadOnlyList<DataBinding<ModelData>> models)
-            => 2f * models.Max(mb => mb.GetValue().BaseRadiusInches) + 0.1f; // 0.1" base-to-base
+            => 2f * models.Max(mb => mb.GetValue().BaseShape.CircumscribedRadiusInches) + 0.1f;
 
         private static List<ModelMoveEntry> AssignNearest(IReadOnlyList<DataBinding<ModelData>> models, List<Position> slots)
         {

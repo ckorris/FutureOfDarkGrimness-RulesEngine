@@ -92,9 +92,9 @@ namespace FDG.Stages
 
                 Position tentative = new Position(defenderPos.x + dirX * step, defenderPos.z + dirZ * step);
 
-                // Impassable terrain: if the move's straight segment crosses any impassable piece, skip pile-in
-                // for this model. Rule's "as close as possible" caps out at zero in this case.
-                if (PathCrossesImpassable(defenderPos, tentative, impassable)) continue;
+                // Impassable terrain: if the move sweeps the model's base through any impassable piece, skip
+                // pile-in for this model. Rule's "as close as possible" caps out at zero in this case.
+                if (PathCrossesImpassable(defenderPos, tentative, defenderModel.BaseShape, defenderModel.Facing, impassable)) continue;
 
                 workingDefenderPositions[defender] = tentative;
                 movedDefenders.Add(defender);
@@ -211,14 +211,18 @@ namespace FDG.Stages
             return MathF.Max(0f, lo - 0.001f);
         }
 
-        private static bool PathCrossesImpassable(Position from, Position to, List<ITerrain> impassable)
+        // Sweeps the moving base's true footprint (not a point) from `from` to `to` against each impassible
+        // piece (#150) — a rectangular base can no longer clip a corner of terrain undetected. A circular base
+        // reduces to the swept disc.
+        private static bool PathCrossesImpassable(Position from, Position to, IBaseShape movingShape, Float2 movingFacing,
+            List<ITerrain> impassable)
         {
             if (impassable.Count == 0) return false;
             Float2 a = new Float2(from.x, from.z);
             Float2 b = new Float2(to.x, to.z);
             foreach (ITerrain piece in impassable)
             {
-                if (piece.DoesPathIntersectZone(a, b)) return true;
+                if (SweptBaseGeometry.DoesSweptBaseIntersectZone(piece.Shape, a, b, movingShape, movingFacing)) return true;
             }
             return false;
         }
@@ -253,7 +257,7 @@ namespace FDG.Stages
                     if (i == j) continue;
                     DataBinding<ModelData> dj = defenders[j];
                     float d = DistanceUtilities.GetBaseToBaseDistanceInches_3D(
-                        pi, positions[dj], mi.BaseShape, dj.GetValue().BaseShape);
+                        pi, positions[dj], mi.BaseShape, mi.Facing, dj.GetValue().BaseShape, dj.GetValue().Facing);
                     if (d < nearest) { nearest = d; nearestIdx = j; }
                 }
                 float excess = nearest - GameWideConstants.MAX_MODEL_DISTANCE_FROM_ANY_OTHER_MODEL_INCHES;
@@ -278,7 +282,7 @@ namespace FDG.Stages
                     DataBinding<ModelData> dj = defenders[j];
                     float d = DistanceUtilities.GetBaseToBaseDistanceInches_3D(
                         positions[di], positions[dj],
-                        di.GetValue().BaseShape, dj.GetValue().BaseShape);
+                        di.GetValue().BaseShape, di.GetValue().Facing, dj.GetValue().BaseShape, dj.GetValue().Facing);
                     float excess = d - GameWideConstants.MAX_MODEL_DISTANCE_FROM_ALL_OTHER_MODELS_INCHES;
                     if (excess > 0f)
                     {

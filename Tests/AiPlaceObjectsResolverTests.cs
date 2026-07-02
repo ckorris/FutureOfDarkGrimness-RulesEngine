@@ -115,6 +115,48 @@ namespace FDG.Tests
             }
         }
 
+        // #150: rectangular bases must not overlap when the AI auto-packs them. The old inscribed
+        // BaseRadiusInches under-bounded a tall rectangle, so adjacent bases in a grid overlapped; the
+        // resolver now packs by the circumscribing radius. Verified against the true shape-aware collision.
+        [Test]
+        public async Task RectangularBases_PackWithoutOverlapping()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var selfPlayer = new PlayerID(System.Guid.NewGuid());
+
+            var placing = new List<DataBinding<ModelData>>();
+            for (int i = 0; i < 6; i++)
+            {
+                // 1" wide × 3" tall — a rectangle whose inscribed radius (0.5") is far smaller than its
+                // circumscribed one (~1.58"); the packing spacing must use the latter.
+                var m = new ModelData(new RectangleBase(1f, 3f), new List<Weapon>(), new Position(0f, 0f), store);
+                placing.Add(store.GetDataBinding<ModelData>(store.Create(m)));
+            }
+            var unit = new UnitData(selfPlayer, "Wall-Bearers", 4, 4, placing);
+            store.Create(unit);
+
+            var tableState = new TableState(store);
+            var resolver = new AiPlaceObjectsResolver<ModelData>(tableState);
+            var zone = new RectangularZone(0f, 48f, 0f, 24f);
+            var request = new PlaceObjectsRequest<ModelData>(selfPlayer, "Place Unit Models", zone, placing);
+
+            List<PlacedObjectEntry<ModelData>> result = await resolver.Resolve(request);
+
+            Assert.That(result, Has.Count.EqualTo(6));
+            for (int i = 0; i < result.Count; i++)
+                for (int j = i + 1; j < result.Count; j++)
+                {
+                    Float2 fi = result[i].Facing ?? new Float2(0f, 1f);
+                    Float2 fj = result[j].Facing ?? new Float2(0f, 1f);
+                    bool colliding = BaseShapeGeometry.AreColliding(
+                        result[i].Binding.GetValue().BaseShape, result[i].Position, fi,
+                        result[j].Binding.GetValue().BaseShape, result[j].Position, fj);
+                    Assert.That(colliding, Is.False,
+                        $"rectangular bases {i} and {j} overlap at ({result[i].Position.x:F1},{result[i].Position.z:F1}) / " +
+                        $"({result[j].Position.x:F1},{result[j].Position.z:F1})");
+                }
+        }
+
         // The bug a user hit: a 10-model unit deployed with one model stranded far out of cohesion (behind
         // terrain) and the rest in an over-wide line. The resolver must place the whole unit as one block
         // satisfying BOTH cohesion rules — every model within 1" of a neighbour AND within 9" of every other —

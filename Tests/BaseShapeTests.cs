@@ -116,6 +116,54 @@ namespace FDG.Tests
             Assert.That(rectFirst, Is.EqualTo(2f).Within(Tol), "gap is symmetric regardless of argument order.");
         }
 
+        // --- Facing-aware gap (#150: the rounded-convex-hull mechanism) ------------------------------
+
+        [Test]
+        public void Gap_Rectangles_FacingChangesTheFootprint()
+        {
+            var tall = new RectangleBase(1f, 6f); // 1" wide × 6" tall
+            Position pa = new Position(0f, 0f), pb = new Position(0f, 7f);
+            Float2 up = new Float2(0f, 1f), side = new Float2(1f, 0f);
+
+            // Both upright: the 6" lengths face each other → gap 7 − 3 − 3 = 1.
+            Assert.That(BaseShapeGeometry.SurfaceGap2D(tall, pa, up, tall, pb, up),
+                Is.EqualTo(1f).Within(Tol));
+
+            // B turned sideways: only its 1" width spans Z → gap 7 − 3 − 0.5 = 3.5.
+            Assert.That(BaseShapeGeometry.SurfaceGap2D(tall, pa, up, tall, pb, side),
+                Is.EqualTo(3.5f).Within(Tol));
+        }
+
+        [Test]
+        public void AreColliding_RotatedRect_FlipsResult()
+        {
+            var tall = new RectangleBase(1f, 6f);
+            Position pa = new Position(0f, 0f), pb = new Position(0f, 5f);
+            Float2 up = new Float2(0f, 1f), side = new Float2(1f, 0f);
+
+            Assert.That(BaseShapeGeometry.AreColliding(tall, pa, up, tall, pb, up), Is.True,
+                "both upright, their 6\" lengths overlap.");
+            Assert.That(BaseShapeGeometry.AreColliding(tall, pa, up, tall, pb, side), Is.False,
+                "turning one sideways pulls its footprint clear.");
+        }
+
+        [Test]
+        public void Gap_CircleCircle_FacingIrrelevantAndByteIdentical()
+        {
+            var ca = new CircleBase(0.6f);
+            var cb = new CircleBase(0.4f);
+            Position a = new Position(1f, 2f), b = new Position(4f, 6f); // centre distance 5
+            const float expected = 5f - 0.6f - 0.4f;
+
+            float facingAware = BaseShapeGeometry.SurfaceGap2D(ca, a, new Float2(1f, 0f), cb, b, new Float2(0f, -1f));
+            float facingLess = BaseShapeGeometry.SurfaceGap2D(ca, a, cb, b);
+            float radiusPath = DistanceUtilities.GetBaseToBaseDistanceInches_2D(a, b, 0.6f, 0.4f);
+
+            Assert.That(facingAware, Is.EqualTo(expected).Within(Tol), "circles ignore facing.");
+            Assert.That(facingLess, Is.EqualTo(expected).Within(Tol));
+            Assert.That(facingAware, Is.EqualTo(radiusPath).Within(Tol), "still byte-identical to the radius path.");
+        }
+
         // --- 3D (vertical) ---------------------------------------------------------------------------
 
         [Test]

@@ -270,7 +270,12 @@ namespace FDG.Ai.Resolvers
             return MathF.Sqrt(dx * dx + dz * dz);
         }
 
+        // The AI auto-placer lays out an axis-aligned grid using each model's CIRCUMSCRIBING circle — a
+        // conservative bound that never overlaps or leaves the zone for any base shape or facing, and matches
+        // the GUI deploy resolver's convention (#150). The inscribed BaseRadiusInches under-bounds a
+        // rectangular base and let adjacent bases overlap. This is a layout bound only; exact shape-vs-shape
+        // collision (BaseShapeGeometry) is what the movement validators and manual deploy enforce.
         private static float GetBaseRadius(T value) =>
-            value is ModelData m ? m.BaseRadiusInches : 0.75f;
+            value is ModelData m ? m.BaseShape.CircumscribedRadiusInches : 0.75f;
     }
 }

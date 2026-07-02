@@ -187,7 +187,7 @@ namespace FDG.Stages
                 {
                     if (!modelB.GetIsAlive()) continue;
                     float distance = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
-                        modelA.Position, modelB.Position, modelA.BaseRadiusInches, modelB.BaseRadiusInches);
+                        modelA.Position, modelB.Position, modelA.BaseShape, modelA.Facing, modelB.BaseShape, modelB.Facing);
                     if (distance < min) min = distance;
                 }
             }

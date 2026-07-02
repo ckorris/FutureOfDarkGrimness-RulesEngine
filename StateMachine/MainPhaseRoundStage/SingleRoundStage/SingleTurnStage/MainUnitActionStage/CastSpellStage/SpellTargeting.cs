@@ -73,7 +73,7 @@ namespace FDG.Stages
                     ModelData tm = targetModel.GetValue();
                     Position targetPos = tm.PositionBinding.GetValue();
                     float distance = DistanceUtilities.GetBaseToBaseDistanceInches_3D(
-                        casterPos, targetPos, cm.BaseShape, tm.BaseShape);
+                        casterPos, targetPos, cm.BaseShape, cm.Facing, tm.BaseShape, tm.Facing);
                     if (distance > selector.RangeInches) continue;
                     if (!selector.RequireLineOfSight) return true;
                     if (LineOfSightUtilities.HasLineOfSight(casterPos, targetPos, blockers)) return true;

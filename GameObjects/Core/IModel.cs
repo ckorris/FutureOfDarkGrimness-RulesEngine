@@ -152,14 +152,16 @@ namespace FDG
 
         public static float BaseDistanceToOtherModel_2D(this IModel thisModel, IModel otherModel)
         {
+            // Facing-aware: an oriented rectangular base measures by its true footprint, not an axis-aligned
+            // or circular approximation (#150).
             return DistanceUtilities.GetBaseToBaseDistanceInches_2D(thisModel.Position, otherModel.Position,
-                thisModel.BaseShape, otherModel.BaseShape);
+                thisModel.BaseShape, thisModel.Facing, otherModel.BaseShape, otherModel.Facing);
         }
 
         public static float BaseDistanceToOtherModel_3D(this IModel thisModel, IModel otherModel)
         {
             return DistanceUtilities.GetBaseToBaseDistanceInches_3D(thisModel.Position, otherModel.Position,
-                thisModel.BaseShape, otherModel.BaseShape);
+                thisModel.BaseShape, thisModel.Facing, otherModel.BaseShape, otherModel.Facing);
         }
     }
 

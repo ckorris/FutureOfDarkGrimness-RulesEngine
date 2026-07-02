@@ -253,6 +253,30 @@ namespace FDG.Tests
             Assert.That(circleOk, Is.True, "a bounding-circle approximation would let this move pass.");
         }
 
+        [Test]
+        public void RectangularMover_SweptFootprintClipsEnemy_FlaggedWhereBoundingCircleWouldPassThrough()
+        {
+            // A 6"×1" base travels straight up X=0 from (0,0) to (0,10), clearing the enemy at both endpoints
+            // (start and end are far up/down the Z axis). But its 3" half-width sweeps a 6"-wide corridor, so it
+            // clips the enemy circle at (2.5,0)… placed at (2.5,5) mid-path. The shape-aware swept pass-through
+            // catches this (#150 "4c"); the model neither starts nor ends in contact, so only the mid-path
+            // crossing can flag it.
+            DataBinding<ModelData> rectModel = MakeModel(new RectangleBase(6f, 1f), new Position(0, 0));
+            bool rectOk = Validate(new ModelMoveEntry(rectModel, new List<Position> { new Position(0f, 10f) }),
+                Enemy(new Position(2.5f, 5f)), out var rectErrors);
+
+            Assert.That(rectOk, Is.False, "the 6\"-wide swept footprint crosses the enemy mid-path.");
+            Assert.That(rectErrors.Any(e => e.ErrorReasonType == EErrorReasonType.MovingThroughEnemyUnit), Is.True);
+
+            // Control: a circle of the rectangle's inscribed radius (0.5") stays 2.5" off the X=0 line, so the
+            // old bounding-disc pass-through would let this identical move through untouched.
+            DataBinding<ModelData> circleModel = MakeModel(new CircleBase(0.5f), new Position(0, 0));
+            bool circleOk = Validate(new ModelMoveEntry(circleModel, new List<Position> { new Position(0f, 10f) }),
+                Enemy(new Position(2.5f, 5f)), out _);
+
+            Assert.That(circleOk, Is.True, "a bounding-circle approximation misses the enemy entirely.");
+        }
+
         private static List<EnemyModelFootprint> Enemy(Position center)
             => new List<EnemyModelFootprint> { new EnemyModelFootprint(center, 0.75f, unitKey: 0) };
 

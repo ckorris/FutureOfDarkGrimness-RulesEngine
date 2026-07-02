@@ -3,46 +3,47 @@ using System;
 namespace FDG
 {
     /// <summary>
-    /// Exact base-to-base distance between two <see cref="IBaseShape"/>s (#149). This is the shape-aware
-    /// half of the feature: model-to-model measurement (spacing, melee/charge reach, coherency) uses the
-    /// real footprints. Known shape pairs (circle-circle, rect-rect, circle-rect, all axis-aligned) get
-    /// closed-form geometry; any pair not yet handled falls back to the conservative bounding-circle gap
-    /// (the extension seam — new shapes work immediately, then get exact pairs added; see WorkItems/150).
+    /// Exact base-to-base distance and collision between two <see cref="IBaseShape"/>s (#149/#150). This is
+    /// THE shape-aware collision seam: every model-to-model measurement (spacing, melee/charge reach,
+    /// coherency, deploy/movement overlap) routes here. Each base yields a <see cref="BaseFootprint"/> — a
+    /// rounded convex hull — and a single hull-vs-hull routine measures any pair at any facing. There is no
+    /// per-shape-pair switch: a new shape only implements <see cref="IBaseShape.Footprint"/> and collides
+    /// against every existing shape for free. Circle-vs-circle stays byte-identical to <c>dist − rA − rB</c>
+    /// (two single-point hulls), preserving the engine's determinism discipline. Retires the GJK seam #153.
     /// </summary>
     public static class BaseShapeGeometry
     {
         /// <summary>
         /// Horizontal (X/Z) gap between the surfaces of base <paramref name="a"/> at <paramref name="posA"/>
-        /// and base <paramref name="b"/> at <paramref name="posB"/>. Zero when the bases just touch,
-        /// negative when they overlap (a penetration estimate), positive when apart. Vertical (Y) distance
-        /// is ignored — combine via <see cref="DistanceUtilities.GetBaseToBaseDistanceInches_3D"/>.
+        /// facing <paramref name="facingA"/> and base <paramref name="b"/> at <paramref name="posB"/> facing
+        /// <paramref name="facingB"/> (yaw unit normals along local +Z; zero → forward). Zero when the bases
+        /// just touch, negative when they overlap (a penetration estimate), positive when apart. Vertical (Y)
+        /// distance is ignored — combine via <see cref="DistanceUtilities.GetBaseToBaseDistanceInches_3D"/>.
         /// </summary>
-        public static float SurfaceGap2D(IBaseShape a, Position posA, IBaseShape b, Position posB)
+        public static float SurfaceGap2D(IBaseShape a, Position posA, Float2 facingA,
+            IBaseShape b, Position posB, Float2 facingB)
         {
-            float dx = posB.x - posA.x;
-            float dz = posB.z - posA.z;
-
-            switch (a, b)
-            {
-                case (CircleBase ca, CircleBase cb):
-                    return MathF.Sqrt(dx * dx + dz * dz) - ca.RadiusInches - cb.RadiusInches;
-
-                case (RectangleBase ra, RectangleBase rb):
-                    return RectRectGap(ra, rb, dx, dz);
-
-                // (dx,dz) is the offset from a's centre to b's centre. CircleRectGap wants the offset from
-                // the circle's centre to the rectangle's centre.
-                case (CircleBase c, RectangleBase r):
-                    return CircleRectGap(c, r, dx, dz);
-                case (RectangleBase r, CircleBase c):
-                    return CircleRectGap(c, r, -dx, -dz);
-
-                default:
-                    // Future shape pair not yet given exact geometry: conservative bounding-circle gap.
-                    return MathF.Sqrt(dx * dx + dz * dz)
-                        - a.BoundingRadiusInches - b.BoundingRadiusInches;
-            }
+            BaseFootprint fa = a.Footprint(posA, facingA);
+            BaseFootprint fb = b.Footprint(posB, facingB);
+            // Gap between the rounded bodies = gap between their hull cores, less both inflation radii.
+            return ConvexHullGap(fa.Corners, fb.Corners) - fa.Rounding - fb.Rounding;
         }
+
+        /// <summary>
+        /// Facing-less overload: measures both bases as forward (+Z). Circles are rotation-invariant, so this
+        /// is exact for them; for a rectangle it assumes the axis-aligned (width→X, height→Z) default. Kept
+        /// for callers with no orientation to supply.
+        /// </summary>
+        public static float SurfaceGap2D(IBaseShape a, Position posA, IBaseShape b, Position posB) =>
+            SurfaceGap2D(a, posA, new Float2(0f, 1f), b, posB, new Float2(0f, 1f));
+
+        /// <summary>
+        /// True when two bases overlap (their surface gap is negative). The one-call "are these colliding?"
+        /// test — facing-aware, shape-aware, no per-shape branching at the call site.
+        /// </summary>
+        public static bool AreColliding(IBaseShape a, Position posA, Float2 facingA,
+            IBaseShape b, Position posB, Float2 facingB) =>
+            SurfaceGap2D(a, posA, facingA, b, posB, facingB) < 0f;
 
         /// <summary>
         /// Horizontal (X/Z) distance from <paramref name="point"/> to the nearest point on the surface of base
@@ -65,32 +66,116 @@ namespace FDG
             return shape.DistanceToLocalPoint(localX, localZ);
         }
 
-        // Gap between two axis-aligned rectangles whose centres differ by (dx, dz).
-        private static float RectRectGap(RectangleBase ra, RectangleBase rb, float dx, float dz)
+        // --- Rounded-convex-hull core -------------------------------------------------------------------
+        // Signed distance between two convex hulls (each ≥ 1 corner): positive = nearest-feature gap when
+        // disjoint, negative = penetration depth when they interpenetrate. Two single-point hulls never
+        // interpenetrate, so circle-vs-circle falls to the separation branch and returns the exact centre
+        // distance — the rounding subtraction in SurfaceGap2D then reproduces dist − rA − rB byte-for-byte.
+
+        private static float ConvexHullGap(Float2[] a, Float2[] b)
         {
-            float overlapX = MathF.Abs(dx) - (ra.WidthInches + rb.WidthInches) * 0.5f;
-            float overlapZ = MathF.Abs(dz) - (ra.HeightInches + rb.HeightInches) * 0.5f;
-
-            // Apart on at least one axis → Euclidean gap between the nearest edges/corners.
-            if (overlapX > 0f || overlapZ > 0f)
-            {
-                float gx = MathF.Max(0f, overlapX);
-                float gz = MathF.Max(0f, overlapZ);
-                return MathF.Sqrt(gx * gx + gz * gz);
-            }
-
-            // Overlapping on both axes → least penetration depth (negative), mirroring circle-circle's sign.
-            return MathF.Max(overlapX, overlapZ);
+            if (HullsOverlap(a, b, out float penetration))
+                return -penetration;
+            return HullSeparation(a, b);
         }
 
-        // Gap between a circle and an axis-aligned rectangle; (dx, dz) = rectangle centre − circle centre.
-        private static float CircleRectGap(CircleBase circle, RectangleBase rect, float dx, float dz)
+        // Nearest-feature distance between two disjoint convex hulls: the min over every vertex-vs-edge and
+        // vertex-vs-vertex pair. A point hull contributes no edges, so its terms reduce to vertex-vertex.
+        private static float HullSeparation(Float2[] a, Float2[] b)
         {
-            // Distance from the circle centre (origin) to the rectangle (centred at (dx, dz)).
-            float qx = MathF.Max(0f, MathF.Abs(dx) - rect.WidthInches * 0.5f);
-            float qz = MathF.Max(0f, MathF.Abs(dz) - rect.HeightInches * 0.5f);
-            float centreToRect = MathF.Sqrt(qx * qx + qz * qz);
-            return centreToRect - circle.RadiusInches;
+            float best = float.PositiveInfinity;
+
+            foreach (Float2 pa in a)
+                foreach (Float2 pb in b)
+                    best = MathF.Min(best, Distance(pa, pb));
+
+            if (b.Length >= 2)
+                foreach (Float2 pa in a)
+                    for (int i = 0; i < b.Length; i++)
+                        best = MathF.Min(best, PointSegDistance(pa, b[i], b[(i + 1) % b.Length]));
+
+            if (a.Length >= 2)
+                foreach (Float2 pb in b)
+                    for (int i = 0; i < a.Length; i++)
+                        best = MathF.Min(best, PointSegDistance(pb, a[i], a[(i + 1) % a.Length]));
+
+            return best;
+        }
+
+        // Separating Axis Theorem: two convex hulls overlap iff no edge normal of either separates them. A
+        // point hull has no edge normals; point-vs-point (no candidate axes) is treated as disjoint, which is
+        // what keeps circle-vs-circle on the exact separation path above. Axes are unit length, so the least
+        // slab overlap is a real penetration depth.
+        private static bool HullsOverlap(Float2[] a, Float2[] b, out float penetration)
+        {
+            penetration = float.PositiveInfinity;
+            bool anyAxis = false;
+
+            if (SeparatedOnAnyEdgeNormal(a, a, b, ref penetration, ref anyAxis) ||
+                SeparatedOnAnyEdgeNormal(b, a, b, ref penetration, ref anyAxis))
+            {
+                penetration = 0f;
+                return false;
+            }
+
+            if (!anyAxis) { penetration = 0f; return false; } // point vs point — no interpenetration
+            return true;
+        }
+
+        // Projects both hulls onto each unit edge normal of edgeSource. Returns true as soon as one axis
+        // shows a gap (a separating axis); otherwise tracks the minimum overlap as a penetration estimate.
+        private static bool SeparatedOnAnyEdgeNormal(Float2[] edgeSource, Float2[] a, Float2[] b,
+            ref float penetration, ref bool anyAxis)
+        {
+            int n = edgeSource.Length;
+            if (n < 2) return false; // a point contributes no edges
+
+            for (int i = 0; i < n; i++)
+            {
+                Float2 v0 = edgeSource[i], v1 = edgeSource[(i + 1) % n];
+                float ex = v1.X - v0.X, ez = v1.Y - v0.Y;
+                float len = MathF.Sqrt(ex * ex + ez * ez);
+                if (len == 0f) continue;
+
+                Float2 axis = new Float2(-ez / len, ex / len); // unit outward edge normal
+                anyAxis = true;
+
+                (float aMin, float aMax) = Project(a, axis);
+                (float bMin, float bMax) = Project(b, axis);
+                float overlap = MathF.Min(aMax, bMax) - MathF.Max(aMin, bMin);
+                if (overlap <= 0f) return true; // separated on this axis
+                penetration = MathF.Min(penetration, overlap);
+            }
+            return false;
+        }
+
+        private static (float min, float max) Project(Float2[] pts, Float2 axis)
+        {
+            float min = float.PositiveInfinity, max = float.NegativeInfinity;
+            foreach (Float2 p in pts)
+            {
+                float d = p.X * axis.X + p.Y * axis.Y;
+                if (d < min) min = d;
+                if (d > max) max = d;
+            }
+            return (min, max);
+        }
+
+        private static float Distance(Float2 a, Float2 b)
+        {
+            float dx = b.X - a.X, dz = b.Y - a.Y;
+            return MathF.Sqrt(dx * dx + dz * dz);
+        }
+
+        private static float PointSegDistance(Float2 p, Float2 a, Float2 b)
+        {
+            float ex = b.X - a.X, ez = b.Y - a.Y;
+            float lenSq = ex * ex + ez * ez;
+            if (lenSq == 0f) return Distance(p, a);
+
+            float t = ((p.X - a.X) * ex + (p.Y - a.Y) * ez) / lenSq;
+            t = MathF.Max(0f, MathF.Min(1f, t));
+            return Distance(p, new Float2(a.X + t * ex, a.Y + t * ez));
         }
     }
 }

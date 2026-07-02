@@ -288,6 +288,51 @@ public class OprBookImporterTests
             Is.EquivalentTo(new[] { "Shock Speed Effect", "Deceleration Rune Effect", "Corrode Weapons Effect" }));
     }
 
+    // OPR "select" is the pick bound per section ("Upgrade with one/any/up to two:"), distinct from
+    // "affects" (models touched per application). Unconsumed before this test existed, every section
+    // defaulted to one pick — mis-bounding the 118 "any" + 4 "up to two" sections in the corpus.
+    private const string SelectJson = """
+    {
+      "name": "Select", "versionString": "1",
+      "units": [ { "id": "u1", "name": "Squad", "size": 5, "cost": 100, "quality": 4, "defense": 4,
+                   "weapons": [], "rules": [], "upgrades": ["P1"] } ],
+      "upgradePackages": [
+        { "uid": "P1", "sections": [
+          { "id":"any", "label":"Upgrade with any", "variant":"upgrade", "select":{"type":"any"},
+            "options":[
+              { "id":"a1", "label":"A", "cost":5, "gains":[{"type":"ArmyBookRule","name":"Fast"}] },
+              { "id":"a2", "label":"B", "cost":5, "gains":[{"type":"ArmyBookRule","name":"Furious"}] },
+              { "id":"a3", "label":"C", "cost":5, "gains":[{"type":"ArmyBookRule","name":"Stealth"}] }
+            ] },
+          { "id":"upto", "label":"Upgrade with up to two", "variant":"upgrade", "select":{"type":"up to","value":2},
+            "options":[
+              { "id":"b1", "label":"D", "cost":5, "gains":[{"type":"ArmyBookRule","name":"Scout"}] },
+              { "id":"b2", "label":"E", "cost":5, "gains":[{"type":"ArmyBookRule","name":"Strider"}] },
+              { "id":"b3", "label":"F", "cost":5, "gains":[{"type":"ArmyBookRule","name":"Agile"}] }
+            ] },
+          { "id":"one", "label":"Upgrade with one", "variant":"upgrade", "select":{"type":"exactly","value":1},
+            "options":[ { "id":"c1", "label":"G", "cost":5, "gains":[{"type":"ArmyBookRule","name":"Hero"}] } ] },
+          { "id":"none", "label":"No select key", "variant":"upgrade",
+            "options":[ { "id":"d1", "label":"H", "cost":5, "gains":[{"type":"ArmyBookRule","name":"Slow"}] } ] }
+        ] }
+      ]
+    }
+    """;
+
+    [Test]
+    public void Import_MapsSelectToMaxPicks()
+    {
+        BookFile book = OprBookImporter.Import(SelectJson, "TestSource", "CC-BY-SA 4.0");
+        RosterUnit squad = book.Units.Single();
+
+        Assert.That(squad.Sections.Single(s => s.Id == "any").MaxPicks, Is.EqualTo(3),
+            "'any' → every option may be picked");
+        Assert.That(squad.Sections.Single(s => s.Id == "upto").MaxPicks, Is.EqualTo(2));
+        Assert.That(squad.Sections.Single(s => s.Id == "one").MaxPicks, Is.EqualTo(1));
+        Assert.That(squad.Sections.Single(s => s.Id == "none").MaxPicks, Is.EqualTo(1),
+            "absent select keeps the one-pick default");
+    }
+
     [Test]
     public void ImportedBook_Compiles_WithChosenUpgrade()
     {

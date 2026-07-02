@@ -193,13 +193,26 @@ namespace FDG.ArmyBuilding
                 default: affects = UpgradeAffects.One; break;
             }
 
+            // OPR select: the PICK bound — "Upgrade with one:" ({exactly,1}), "up to two", or "any" (every
+            // option may be taken). Distinct from affects (how many MODELS an application touches). Absent →
+            // one pick. Corpus-wide, non-"exactly 1" selects appear on upgrade/attachment sections and on
+            // counted replace sections (where the stepper, not MaxPicks, is the bound — harmless either way).
+            int maxPicks = s.Select?.Type switch
+            {
+                "any" => Math.Max(1, (s.Options ?? new()).Count),
+                "exactly" or "up to" => Math.Max(1, s.Select?.Value ?? 1),
+                _ => 1,
+            };
+
             return new UpgradeSection
             {
                 Id = s.Id ?? s.Uid ?? Guid.NewGuid().ToString("N")[..8],
                 Label = s.Label ?? string.Empty,
+                // "attachment" ("Take one X attachment") is additive like upgrade — only "replace" swaps.
                 Variant = s.Variant == "replace" ? UpgradeVariant.Replace : UpgradeVariant.Upgrade,
                 Affects = affects,
                 MaxApplications = maxApplications,
+                MaxPicks = maxPicks,
                 Targets = s.Targets ?? new(),
                 Options = (s.Options ?? new()).Select(MapOption).ToList(),
             };
@@ -576,6 +589,7 @@ namespace FDG.ArmyBuilding
             public string? Label { get; set; }
             public string? Variant { get; set; }
             public OprAffects? Affects { get; set; }
+            public OprAffects? Select { get; set; } // same {type,value} shape as affects
             public List<string>? Targets { get; set; }
             public List<OprOption>? Options { get; set; }
         }

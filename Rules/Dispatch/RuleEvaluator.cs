@@ -500,7 +500,28 @@ public sealed class RuleEvaluator
 
         IUnit unit = acting.ActingUnit;
 
-        foreach (ResolvedRule rule in unit.RuleDefinitions)
+        // The acting unit's own rules, plus each LIVING model's per-model rules (#093): a joined hero's
+        // activated ability (Vanguard, Martial Prowess) is offered for the host unit even though the merge
+        // relocated it onto the hero model. AnyOwner — any model bringing an ability offers it; the `seen`
+        // set keys each distinct ability (definition + ability) so an ability carried by both the unit and
+        // a model (or by several models) is offered once, not once per carrier.
+        var seen = new HashSet<(SpecialRuleDefinition, ActivatedAbility)>();
+        GatherOffersFromRules(unit.RuleDefinitions, unit, context, offers, seen);
+        foreach (IModel model in unit.Models)
+        {
+            if (model.GetIsAlive())
+            {
+                GatherOffersFromRules(model.RuleDefinitions, unit, context, offers, seen);
+            }
+        }
+
+        return offers;
+    }
+
+    private void GatherOffersFromRules(IReadOnlyList<ResolvedRule> rules, IUnit unit, IHookContext context,
+        List<AbilityOffer> offers, HashSet<(SpecialRuleDefinition, ActivatedAbility)> seen)
+    {
+        foreach (ResolvedRule rule in rules)
         {
             var invocation = new RuleInvocation(context, unit, rule.Arguments, DiceRoller: _diceRoller);
 
@@ -521,11 +542,14 @@ public sealed class RuleEvaluator
                     continue;
                 }
 
+                if (!seen.Add((rule.Definition, ability)))
+                {
+                    continue;
+                }
+
                 offers.Add(new AbilityOffer(unit, rule.RequestedName, ability));
             }
         }
-
-        return offers;
     }
 
     /// <summary>

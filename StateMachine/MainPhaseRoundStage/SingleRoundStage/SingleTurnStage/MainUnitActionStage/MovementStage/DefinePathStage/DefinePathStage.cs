@@ -36,6 +36,20 @@ namespace FDG.Stages
             float effectiveCharge = WorstCaseChargeDistance(context);
             float hardCap = System.Math.Max(context.MaxRushDistance, effectiveCharge);
 
+            // #093: per-model budgets so the resolvers can preview/clamp a joined hero's Fast/Slow against
+            // its own reach. The unit-level charge shrink (Melee Shrouding) applies to every model's charge
+            // equally; a model's hard cap is max(its Rush, its shrunk Charge). A unit with no per-model
+            // movement rules yields the unit scalars for every model.
+            float chargeShrink = context.MaxChargeDistance - effectiveCharge;
+            var perModelBudgets = new List<ModelMoveBudgetInfo>();
+            foreach (IModel model in context.MovingUnit.GetValue().Models)
+            {
+                if (!model.GetIsAlive()) continue;
+                context.TryGetModelMoveBudget(model, out float advance, out float rush, out float charge);
+                perModelBudgets.Add(new ModelMoveBudgetInfo(model.ID, advance, rush,
+                    System.Math.Max(rush, charge - chargeShrink)));
+            }
+
             bool canMoveThroughEnemies = Rules.Dispatch.MovementRuleQueries.CanMoveThroughEnemies(
                 context.MovingUnit.GetValue(), context.GameContext.RuleEvaluator);
             bool ignoresDifficultTerrain = Rules.Dispatch.MovementRuleQueries.IgnoresDifficultTerrain(
@@ -46,25 +60,19 @@ namespace FDG.Stages
             var pathRequest = new DefineMovementPathRequest(playerID, "Move Unit", context.MovingUnit,
                 context.MaxAdvanceDistance, context.MaxRushDistance, hardCap,
                 WeaponSightProfileBuilder.For(context.MovingUnit.GetValue(), context.GameContext.RuleEvaluator),
-                canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, BuildRangeOverrides(context));
+                canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, BuildRangeOverrides(context),
+                perModelBudgets);
 
             List<ModelMoveEntry> movements = await context.PlayerRequester()
                 .RequestDecision<DefineMovementPathRequest, List<ModelMoveEntry>>(pathRequest);
 
             List<EnemyModelFootprint> enemyFootprints = MovementUtilities.GetEnemyModelFootprints(context.MovingUnit, context.GameContext);
 
-            // #093: validate each model against its OWN budget (a joined hero's Fast/Slow). The unit-level
-            // charge shrink (Melee Shrouding) applies to every model's charge equally; a model's hard cap is
-            // max(its Rush, its shrunk Charge). A unit with no per-model movement rules yields the same
-            // (MaxRushDistance, hardCap) for every model — identical to the previous unit-wide validation.
-            float chargeShrink = context.MaxChargeDistance - effectiveCharge;
-            ModelMoveBudget BudgetFor(ModelMoveEntry entry)
-            {
-                context.TryGetModelMoveBudget(entry.Model.GetValue(), out _, out float rush, out float charge);
-                return new ModelMoveBudget(rush, System.Math.Max(rush, charge - chargeShrink));
-            }
-
-            if(MovementUtilities.ValidatePaths(movements, BudgetFor,
+            // #093: validate each model against its OWN budget — the same per-model budgets the request
+            // carried to the resolver, so the move preview and the authoritative check agree exactly.
+            if(MovementUtilities.ValidatePaths(movements,
+                entry => { var (_, rush, maxDist) = pathRequest.BudgetFor(entry.Model.GetValue().ID);
+                           return new ModelMoveBudget(rush, maxDist); },
                 enemyFootprints, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain,
                 context.RelevantTerrain, out List<ReasonForInvalidMove> invalidReasons) == false)
             {

@@ -32,6 +32,16 @@ namespace FDG.Ai.Resolvers
                 ? request.MaxAdvanceDistance - 0.001f
                 : request.MaxDistanceInches - 0.001f;
 
+            // #093: validate each model against its OWN budget (a joined hero's Fast/Slow), matching the
+            // authoritative stage check. The AI moves the whole unit as a grid, so this mainly backs the step
+            // off when a tighter (Slow) model would exceed its budget; a unit with no per-model rules gets the
+            // unit scalars for every model.
+            Func<ModelMoveEntry, ModelMoveBudget> budgetFor = entry =>
+            {
+                var (_, rush, maxDist) = request.BudgetFor(entry.Model.GetValue().ID);
+                return new ModelMoveBudget(rush, maxDist);
+            };
+
             var enemyFootprints = GetLiveEnemyFootprints();
             if (enemyFootprints.Count == 0)
                 return Task.FromResult(StayInPlace(request));
@@ -114,8 +124,8 @@ namespace FDG.Ai.Resolvers
             // step off until it passes (and standing still as a last resort). The AI never submits a move
             // the engine will reject.
             List<ModelMoveEntry> candidate = BuildCandidate(living, cx, cz, ndx, ndz, step, request);
-            bool valid = MovementUtilities.ValidatePaths(candidate, request.MaxRushDistance,
-                request.MaxDistanceInches, enemyFootprints, request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, request.IgnoresImpassibleTerrain, allTerrain, out _);
+            bool valid = MovementUtilities.ValidatePaths(candidate, budgetFor,
+                enemyFootprints, request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, request.IgnoresImpassibleTerrain, allTerrain, out _);
 
             int attempts = 0;
             while (!valid && attempts < MaxBackoffAttempts)

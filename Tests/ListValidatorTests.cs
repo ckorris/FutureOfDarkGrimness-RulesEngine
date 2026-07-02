@@ -58,6 +58,50 @@ public class ListValidatorTests
         Assert.That(issues.Any(i => i.Severity == ListIssueSeverity.Warning && i.Message.Contains("copies")), Is.True);
     }
 
+    // ── Unique (one copy per army) ──────────────────────────────────────────────────────────────────────
+
+    private static BookFile UniqueBook() => new()
+    {
+        Name = "U",
+        Units =
+        {
+            new RosterUnit
+            {
+                Id = "named-hero", Name = "Named Hero", Quality = 3, Defense = 4,
+                BaseModelCount = 1, MinModels = 1, MaxModels = 1, BasePointCost = 50,
+                Rules = { new SpecialRuleEntry_Core("Hero"), new SpecialRuleEntry_Core("Unique") },
+            },
+            new RosterUnit
+            {
+                Id = "squad", Name = "Squad", Quality = 4, Defense = 4,
+                BaseModelCount = 5, MinModels = 5, MaxModels = 5, BasePointCost = 100,
+            },
+        },
+    };
+
+    [Test]
+    public void TwoCopiesOfUniqueUnit_IsAnError()
+    {
+        var issues = Check(UniqueBook(), List(100000, U("named-hero"), U("named-hero")));
+        Assert.That(issues.Count(i => i.Severity == ListIssueSeverity.Error && i.Message.Contains("Unique")),
+            Is.EqualTo(1), "exactly one error, on the second copy");
+        Assert.That(issues.Single(i => i.Message.Contains("Unique")).UnitIndex, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void OneCopyOfUniqueUnit_NoUniqueIssue()
+    {
+        var issues = Check(UniqueBook(), List(100000, U("named-hero"), U("squad")));
+        Assert.That(issues.Any(i => i.Message.Contains("Unique")), Is.False);
+    }
+
+    [Test]
+    public void DuplicatesOfNonUniqueUnit_NoUniqueIssue()
+    {
+        var issues = Check(UniqueBook(), List(100000, U("squad"), U("squad")));
+        Assert.That(issues.Any(i => i.Message.Contains("Unique")), Is.False);
+    }
+
     // ── #006 hero-join checks ───────────────────────────────────────────────────────────────────────────
 
     private static BookFile JoinBook(int heroTough = 3) => new()

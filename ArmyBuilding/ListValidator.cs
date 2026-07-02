@@ -41,6 +41,15 @@ namespace FDG.ArmyBuilding
                         $"{roster.Name}: {models} models (allowed {roster.MinModels}–{roster.MaxModels}).",
                         ListIssueSeverity.Error, i));
 
+                // Unique — "This unit may only be taken once per army." An absolute list-building rule
+                // (unlike the size-dependent force-org copy caps below, which stay Warnings), so each
+                // copy beyond the first is an Error.
+                if (HasRule(roster.Rules, "Unique")
+                    && list.Units.Take(i).Any(prev => prev.RosterUnitId == bu.RosterUnitId))
+                    issues.Add(new ListIssue(
+                        $"{roster.Name}: Unique — the army may only include one copy.",
+                        ListIssueSeverity.Error, i));
+
                 foreach (UpgradeSection section in roster.Sections)
                 {
                     if (section.IsCounted) continue; // counted sections are bounded by their stepper, not pick count
@@ -98,6 +107,20 @@ namespace FDG.ArmyBuilding
                         ListIssueSeverity.Warning, i));
             }
         }
+
+        /// <summary>Whether any entry carries the named rule (alias-aware: matches the alias's own name
+        /// and recurses into the aliased rule). Case-insensitive, like the rule resolver.</summary>
+        private static bool HasRule(IEnumerable<SpecialRuleEntry> rules, string name) =>
+            rules.Any(entry => EntryMatches(entry, name));
+
+        private static bool EntryMatches(SpecialRuleEntry entry, string name) => entry switch
+        {
+            SpecialRuleEntry_Core core => string.Equals(core.Name, name, System.StringComparison.OrdinalIgnoreCase),
+            SpecialRuleEntry_CoreNumeric num => string.Equals(num.Name, name, System.StringComparison.OrdinalIgnoreCase),
+            SpecialRuleEntry_Alias alias => string.Equals(alias.Name, name, System.StringComparison.OrdinalIgnoreCase)
+                || EntryMatches(alias.AliasedRule, name),
+            _ => false,
+        };
 
         /// <summary>Reads a unit's Tough(X) value from its special rules (alias-aware). Shared with the
         /// builder UI. False when the unit has no Tough rule.</summary>

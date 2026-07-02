@@ -87,7 +87,7 @@ public static class CoreRuleCatalog
         new[]
         {
             new HookEntry(EHookID.Shooting_OnHitRollModifier,
-                new Condition.DistanceGreaterThan(9f),
+                new Condition.And(new Condition.DistanceGreaterThan(9f), new Condition.AllModelsHaveThisRule()),
                 new Effect.RollModifier(ERollKind.Hit, Delta: -1),
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject),
@@ -607,7 +607,7 @@ public static class CoreRuleCatalog
         new[]
         {
             new HookEntry(EHookID.Morale_OnMoraleTestComplete,
-                new Condition.Always(),
+                new Condition.AllModelsHaveThisRule(),
                 new Effect.Reroll(ERollKind.Morale, new RerollCondition.AllFailures()),
                 ELifetime.ThisActivation),
         },
@@ -657,7 +657,7 @@ public static class CoreRuleCatalog
         new[]
         {
             new HookEntry(EHookID.Shooting_OnSaveRollComplete,
-                new Condition.Always(),
+                new Condition.AllModelsHaveThisRule(),
                 new Effect.IgnoreWoundOnRoll(MinRoll: 5),
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject),

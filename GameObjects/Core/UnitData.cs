@@ -47,6 +47,8 @@ namespace FDG
 
         [JsonIgnore] public HeroAttachment? HeroAttachment => _heroAttachment;
 
+        [JsonIgnore] public ModelID? JoinedHeroModelId => _heroAttachment?.HeroModelId;
+
         public List<DataBinding<ModelData>> ModelBindings;
 
         [JsonIgnore]

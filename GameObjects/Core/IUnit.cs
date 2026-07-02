@@ -53,6 +53,14 @@ namespace FDG
         /// </summary>
         public IReadOnlyList<ResolvedRule> RuleDefinitions { get; }
 
+        /// <summary>
+        /// The model ID of a joined Hero (#006) fighting as part of this unit, or null for a plain unit.
+        /// A joined hero carries its OWN special rules (relocated onto that model at merge) and does NOT
+        /// inherit the host unit's rules, so per-model rule checks (#093) use this to distinguish a native
+        /// model — which shares the unit's rules — from the joined hero.
+        /// </summary>
+        public ModelID? JoinedHeroModelId { get; }
+
         public bool GetMobility(out float moveShootDistanceInches, out float chargeDistanceInches);
 
         public event DataValueChangedHandler<float> OnWoundsDealt;

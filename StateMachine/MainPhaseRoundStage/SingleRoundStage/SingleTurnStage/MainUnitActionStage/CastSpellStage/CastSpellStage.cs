@@ -49,10 +49,14 @@ namespace FDG.Stages
         private const string CANCEL_OPTION = "Cancel";
         private const int CAST_SUCCESS_THRESHOLD = 4;
 
-        // #103 assist text-beat colors — match the GUI highlight: blue for a friendly boost (+), orange for
+        // #103 assist text-beat colors - match the GUI highlight: blue for a friendly boost (+), orange for
         // an enemy disruption (-).
         private static readonly TextColor AssistBannerColor = new TextColor(77, 153, 255, 255);
         private static readonly TextColor HinderBannerColor = new TextColor(255, 153, 38, 255);
+
+        // Cast-result text-beat colors: blue on a successful cast, red on a failure.
+        private static readonly TextColor CastSuccessColor = new TextColor(77, 153, 255, 255);
+        private static readonly TextColor CastFailColor = new TextColor(220, 40, 40, 255);
 
         // The damage run set up in Enter (synthetic weapon + chosen targets + base hits + any single-model
         // pick) and handed to the looped child pipeline by GetNewChildContext. Null on the buff path, which
@@ -127,7 +131,9 @@ namespace FDG.Stages
             bool success = castRoll.AtOrAbove(threshold) >= 1f;
 
             // Spell out the roll so the assist is visible: what came up, what it needed, and (when assisted)
-            // how the net ±1 shifted the base 4+. Assisters' own contributions were logged as they spent.
+            // how the net +/-1 shifted the base 4+. Assisters' own contributions were announced as they spent.
+            // The result rides an on-screen text beat: blue on success, red on failure. ASCII only (the log
+            // font has no em-dash glyph, #151).
             string breakdown = assist != 0
                 ? $" (base {CAST_SUCCESS_THRESHOLD}+, net {(assist > 0 ? "+" : "")}{assist} assist)"
                 : "";
@@ -135,12 +141,12 @@ namespace FDG.Stages
 
             if (!success)
             {
-                GameContext.Log($"{caster.Name} failed to cast {chosen.Name} — {rollDesc}.");
+                await GameContext.Announce($"{caster.Name} failed to cast {chosen.Name}: {rollDesc}.", CastFailColor);
                 await OnFinished.Activate(context);
                 return;
             }
 
-            GameContext.Log($"{caster.Name} cast {chosen.Name} — {rollDesc}.");
+            await GameContext.Announce($"{caster.Name} cast {chosen.Name}: {rollDesc}.", CastSuccessColor);
 
             // 6a. Damage spell → resolve each chosen target through the looped child pipeline.
             if (chosen.Effect is Effect.DealHits dealHits)
@@ -207,7 +213,7 @@ namespace FDG.Stages
 
                 if (outcome.Passed)
                 {
-                    GameContext.Log($"{targetUnit.Name} passed {spell.Name}'s morale test — no effect.");
+                    GameContext.Log($"{targetUnit.Name} passed {spell.Name}'s morale test - no effect.");
                     continue;
                 }
 

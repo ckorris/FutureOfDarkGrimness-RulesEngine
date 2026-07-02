@@ -412,9 +412,12 @@ namespace FDG.Stages
 
             context.ActivatingUnit.GetValue().GetMobility(out float moveShootDistanceInches, out _);
 
-            if (context.MoveDistance.LessThanOrAlmostEqual(moveShootDistanceInches) == false)
+            // Aircraft only ever Advance — a forced 30-36" straight-line move — and may shoot after it, so the
+            // normal advance-and-shoot distance cap (which distinguishes Advance from Rush) doesn't apply (#029).
+            bool isAircraft = Rules.Dispatch.AircraftRules.IsAircraft(context.ActivatingUnit.GetValue());
+            if (!isAircraft && context.MoveDistance.LessThanOrAlmostEqual(moveShootDistanceInches) == false)
             {
-                reasonIfCant = $"Moved {context.MoveDistance} inches, when max to move and shoot for {context.ActivatingUnit.GetValue().Name} " + 
+                reasonIfCant = $"Moved {context.MoveDistance} inches, when max to move and shoot for {context.ActivatingUnit.GetValue().Name} " +
                     $" is {moveShootDistanceInches}.";
                 return false;
             }

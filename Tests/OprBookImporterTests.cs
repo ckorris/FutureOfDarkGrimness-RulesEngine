@@ -215,6 +215,79 @@ public class OprBookImporterTests
         Assert.That(grant.Scope, Is.EqualTo(ELifetime.NextTrigger));
     }
 
+    // The five remaining corpus shapes verbatim (Dwarf Guilds / HDF / Machine Cults / War Disciples /
+    // Soul-Snatcher Cults / Plague Disciples v3.5.3): movement-modifier + AP-loss (synthesized rules),
+    // morale-test-then (fatigue / move), and the still-unparseable counts-as-terrain family.
+    private const string ExtendedSpellsJson = """
+    {
+      "name": "Spells2", "versionString": "1", "units": [], "upgradePackages": [],
+      "spells": [
+        { "name": "Shock Speed", "threshold": 1,
+          "effect": "Pick up to three friendly units within 12\", which moves +2\" when using Advance actions and +4\" when using Rush/Charge actions once (next time the effect would apply)." },
+        { "name": "Deceleration Rune ", "threshold": 2,
+          "effect": "Pick up to three enemy units within 18\", which moves -2\" when using Advance actions and -4\" when using Rush/Charge actions once (next time the effect would apply)." },
+        { "name": "Corrode Weapons", "threshold": 2,
+          "effect": "Pick up to three enemy units within 18\", which loses AP(1) when shooting once (next time the effect would apply)." },
+        { "name": "Terrifying Fury", "threshold": 2,
+          "effect": "Pick one enemy unit within 18\", which must take a morale test. If failed, it becomes fatigued." },
+        { "name": "Deep Hypnosis", "threshold": 3,
+          "effect": "Pick up to two enemy units within 18\", which must take a morale test. If failed you may move it by up to 6\" in a straight line in any direction." },
+        { "name": "Aura of Pestilence", "threshold": 1,
+          "effect": "Pick one enemy unit within 18\", which counts as being in Difficult Terrain once (next time the effect would apply)." }
+      ]
+    }
+    """;
+
+    [Test]
+    public void Import_ParsesMovementApLossAndMoraleTestSpells_SynthesizingRules()
+    {
+        var warnings = new List<string>();
+        BookFile book = OprBookImporter.Import(ExtendedSpellsJson, "TestSource", "CC-BY-SA 4.0", warnings.Add);
+
+        Assert.That(book.Spells, Has.Count.EqualTo(5));
+        Assert.That(warnings, Has.One.Contains("Aura of Pestilence"), "counts-as-terrain still skips honestly");
+
+        // Movement grant: spell grants a synthesized "<Spell> Effect" rule once; the rule carries the
+        // three signed MovementBonus entries and is embedded in the book.
+        SpellDefinition shock = book.Spells.Single(s => s.Name == "Shock Speed");
+        Assert.That(((Effect.AddRule)shock.Effect).RuleName, Is.EqualTo("Shock Speed Effect"));
+        Assert.That(((Effect.AddRule)shock.Effect).Scope, Is.EqualTo(ELifetime.NextTrigger));
+        SpecialRuleDefinition shockRule = book.RuleDefinitions.Single(d => d.Name == "Shock Speed Effect");
+        Assert.That(shockRule.Passive, Has.Count.EqualTo(3));
+        Assert.That(shockRule.Valence, Is.EqualTo(EValence.Positive));
+        var advance = (Effect.MovementBonus)shockRule.Passive[0].Effect;
+        Assert.That((advance.ActionType, advance.DistanceInches), Is.EqualTo((EActionType.Advance, 2f)));
+        var charge = (Effect.MovementBonus)shockRule.Passive[2].Effect;
+        Assert.That((charge.ActionType, charge.DistanceInches), Is.EqualTo((EActionType.Charge, 4f)));
+
+        // Negative variant: trailing-space name trimmed, negative bonuses, Negative valence, enemy target.
+        SpellDefinition rune = book.Spells.Single(s => s.Name == "Deceleration Rune");
+        Assert.That(rune.Target.TargetAffinity, Is.EqualTo(ETargetAffinity.Foe));
+        Assert.That(rune.Target.MaxCount, Is.EqualTo(3));
+        SpecialRuleDefinition runeRule = book.RuleDefinitions.Single(d => d.Name == "Deceleration Rune Effect");
+        Assert.That(runeRule.Valence, Is.EqualTo(EValence.Negative));
+        Assert.That(((Effect.MovementBonus)runeRule.Passive[1].Effect).DistanceInches, Is.EqualTo(-4f));
+
+        // AP loss: synthesized attacker-side ReduceArmorPenetration, shooting-only.
+        SpellDefinition corrode = book.Spells.Single(s => s.Name == "Corrode Weapons");
+        Assert.That(((Effect.AddRule)corrode.Effect).RuleName, Is.EqualTo("Corrode Weapons Effect"));
+        SpecialRuleDefinition corrodeRule = book.RuleDefinitions.Single(d => d.Name == "Corrode Weapons Effect");
+        Assert.That(((Effect.ReduceArmorPenetration)corrodeRule.Passive[0].Effect).Amount, Is.EqualTo(1));
+        Assert.That(corrodeRule.Passive[0].Condition, Is.InstanceOf<Condition.Not>());
+
+        // Morale-test-then: the #034 conditional family, both corpus consequences.
+        SpellDefinition fury = book.Spells.Single(s => s.Name == "Terrifying Fury");
+        Assert.That(((Effect.MoraleTestThen)fury.Effect).OnFailure, Is.InstanceOf<Effect.ApplyFatigue>());
+        SpellDefinition hypnosis = book.Spells.Single(s => s.Name == "Deep Hypnosis");
+        var hypnosisMove = (Effect.TriggeredMove)((Effect.MoraleTestThen)hypnosis.Effect).OnFailure;
+        Assert.That((hypnosisMove.MaxInches, hypnosisMove.IsOptional), Is.EqualTo((6f, true)));
+        Assert.That(hypnosis.Target.MaxCount, Is.EqualTo(2));
+
+        // Only the three synthesized rules land in the book; parse-only spells embed nothing.
+        Assert.That(book.RuleDefinitions.Select(d => d.Name),
+            Is.EquivalentTo(new[] { "Shock Speed Effect", "Deceleration Rune Effect", "Corrode Weapons Effect" }));
+    }
+
     [Test]
     public void ImportedBook_Compiles_WithChosenUpgrade()
     {

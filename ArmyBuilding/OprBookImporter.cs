@@ -14,15 +14,15 @@ namespace FDG.ArmyBuilding
     // Captures FUNCTIONAL game data only (unit stats, weapons, point costs, upgrade options, rule names). It
     // never reads the book's background/lore prose. Imported data is OPR's, used under CC-BY-SA — Import stamps
     // Source + License on the book. Special rules import as name references; the engine already skips rules it
-    // doesn't implement (so unimplemented OPR rules are inert, not errors, and no RuleDefinitions are emitted →
-    // the RuleValidator gate is trivially satisfied).
+    // doesn't implement (so unimplemented OPR rules are inert, not errors). The importer emits RuleDefinitions
+    // only for spell-synthesized effects (see the Spells section); curated definitions for faction rules come
+    // from a rule-supplement file merged by BookRuleSupplement (Apply here via the optional import argument).
     //
     // Fidelity notes (v1 — recorded, not silently dropped):
     //   • affects "exactly N" / "up to N" → mapped to Any (user picks the count); the exact/max bound is not
     //     yet enforced (P4 validation).
     //   • Model-count upgrades (combined units / "+N models") are not synthesized as AddModels — units import
     //     at their base size.
-    //   • Caster spell lists (book.spells) are not imported (our spells need engine Effect graphs).
     public static class OprBookImporter
     {
         // OPR's JSON types numeric fields loosely — a rating/count can arrive as a number OR a string (and a
@@ -101,9 +101,19 @@ namespace FDG.ArmyBuilding
 
             foreach (OprSpell spell in opr.Spells ?? new())
             {
-                SpellDefinition? parsed = TryParseSpell(spell);
-                if (parsed is not null) book.Spells.Add(parsed);
-                else warn?.Invoke($"Spell '{spell.Name}' skipped: unrecognized effect text \"{spell.Effect}\".");
+                SpellDefinition? parsed = TryParseSpell(spell, out SpecialRuleDefinition? synthesized);
+                if (parsed is null)
+                {
+                    warn?.Invoke($"Spell '{spell.Name}' skipped: unrecognized effect text \"{spell.Effect}\".");
+                    continue;
+                }
+
+                book.Spells.Add(parsed);
+                if (synthesized is not null && !book.RuleDefinitions.Any(d =>
+                        string.Equals(d.Name, synthesized.Name, StringComparison.OrdinalIgnoreCase)))
+                {
+                    book.RuleDefinitions.Add(synthesized);
+                }
             }
 
             return book;
@@ -238,14 +248,24 @@ namespace FDG.ArmyBuilding
         }
 
         // ── Spells ───────────────────────────────────────────────────────────────────────────────────────
-        // OPR spell effects are formulaic prose; the two corpus shapes map directly onto the #033 vocabulary:
-        //   "Pick one enemy unit within 12\", which takes 4 hits with AP(2)."      → Effect.DealHits
-        //   "Pick up to two friendly units within 12\", which get X once (next     → Effect.AddRule with
-        //    time the effect would apply)."                                          ELifetime.NextTrigger
+        // OPR spell effects are formulaic prose; the corpus shapes map onto the #033/#034 vocabulary:
+        //   "…which takes 4 hits with AP(2)."                                      → Effect.DealHits
+        //   "…which get X once (next time the effect would apply)."                → Effect.AddRule (NextTrigger)
+        //   "…which friendly units get X against once…"                            → Effect.MarkTarget
+        //   "…which must take a morale test. If failed, it becomes fatigued."      → Effect.MoraleTestThen(ApplyFatigue)
+        //   "…must take a morale test. If failed you may move it by up to 6\"…"    → Effect.MoraleTestThen(TriggeredMove)
+        //   "…which moves +2\" when using Advance actions and +4\" when using      → AddRule of a SYNTHESIZED
+        //    Rush/Charge actions once…" / "…which loses AP(1) when shooting once…"   book-embedded rule (below)
         // A "model" target maps to TargetSelector.SingleModel (the "unit of [1]" wording). AP folds into
         // DealHits.ArmorPenetration like weapon import; other rule names ride WithRules and resolve at army
         // load with the usual skip-unknown tolerance. Anything that doesn't match is SKIPPED with a warning —
         // never silently, and never imported half-wrong.
+        //
+        // Synthesized rules: the movement/AP shapes have no core rule to grant, so the importer emits a
+        // "<Spell Name> Effect" SpecialRuleDefinition into book.RuleDefinitions (the #059 embedded channel —
+        // regenerated with the book, so nothing to hand-maintain) and the spell grants it by name with
+        // NextTrigger, exactly like the grant family. Each synthesized definition is RuleValidator-checked
+        // here; a violation skips the spell rather than shipping a book that fails the load gate.
 
         private static readonly Regex SpellShape = new(
             "^pick (?<count>one|two|three|up to two|up to three) (?<aff>enemy|friendly) (?<kind>units?|models?) within (?<range>\\d+)\"",
@@ -265,8 +285,36 @@ namespace FDG.ArmyBuilding
             "which friendly units gets? (?<rule>.+?) against",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        private static SpellDefinition? TryParseSpell(OprSpell spell)
+        // "...which moves +2\" when using Advance actions and +4\" when using Rush/Charge actions once" —
+        // Shock Speed / Deceleration Rune. No core rule carries arbitrary signed bonuses, so this synthesizes one.
+        private static readonly Regex MoveShape = new(
+            "which moves? (?<adv>[+-]?\\d+)\" when using Advance actions and (?<rc>[+-]?\\d+)\" when using Rush/Charge actions once",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        // "...which loses AP(1) when shooting once" — Corrode Weapons. Synthesizes an attacker-side
+        // ReduceArmorPenetration rule (same floored-at-AP(0) primitive Fortified uses defender-side).
+        private static readonly Regex ApLossShape = new(
+            "which loses AP\\((?<ap>\\d+)\\) when shooting once",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        // "...which must take a morale test. If failed <consequence>" — the #034 conditional family
+        // (Effect.MoraleTestThen). Two corpus consequences: fatigue and a caster-directed move.
+        private static readonly Regex MoraleTestShape = new(
+            "which must take a morale test\\. If failed(?<tail>[^.]*)",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex MoraleFatigueTail = new(
+            "^,? it becomes fatigued", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex MoraleMoveTail = new(
+            "^,? you may move it by up to (?<inches>\\d+)\"", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static SpellDefinition? TryParseSpell(OprSpell spell, out SpecialRuleDefinition? synthesized)
         {
+            synthesized = null;
+            // Trimmed — the corpus has a spell name with a trailing space ("Deceleration Rune "), and the
+            // synthesized-rule name derives from it.
+            string spellName = (spell.Name ?? "Spell").Trim();
             string text = (spell.Effect ?? string.Empty).Trim();
             Match shape = SpellShape.Match(text);
             if (!shape.Success) return null;
@@ -301,7 +349,7 @@ namespace FDG.ArmyBuilding
                             withRules.Add(raw);
                     }
                 }
-                return new SpellDefinition(spell.Name ?? "Spell", spell.Threshold ?? 1,
+                return new SpellDefinition(spellName, spell.Threshold ?? 1,
                     new TargetSelector(range, 1, maxCount, affinity, RequireLineOfSight: true, SingleModel: singleModel),
                     new Effect.DealHits(hits, withRules, ap));
             }
@@ -311,20 +359,109 @@ namespace FDG.ArmyBuilding
             Match mark = MarkShape.Match(text);
             if (mark.Success)
             {
-                return new SpellDefinition(spell.Name ?? "Spell", spell.Threshold ?? 1,
+                return new SpellDefinition(spellName, spell.Threshold ?? 1,
                     new TargetSelector(range, 1, maxCount, affinity, RequireLineOfSight: false),
                     new Effect.MarkTarget(mark.Groups["rule"].Value.Trim()));
+            }
+
+            Match move = MoveShape.Match(text);
+            if (move.Success)
+            {
+                int advance = int.Parse(move.Groups["adv"].Value);
+                int rushCharge = int.Parse(move.Groups["rc"].Value);
+                synthesized = SynthesizeMovementRule(spellName, advance, rushCharge);
+                return SynthesizedGrantOrSkip(spell, spellName, range, maxCount, affinity, ref synthesized);
+            }
+
+            Match apLoss = ApLossShape.Match(text);
+            if (apLoss.Success)
+            {
+                synthesized = SynthesizeApLossRule(spellName, int.Parse(apLoss.Groups["ap"].Value));
+                return SynthesizedGrantOrSkip(spell, spellName, range, maxCount, affinity, ref synthesized);
+            }
+
+            Match moraleTest = MoraleTestShape.Match(text);
+            if (moraleTest.Success)
+            {
+                string tail = moraleTest.Groups["tail"].Value;
+                Effect? onFailure =
+                    MoraleFatigueTail.IsMatch(tail) ? new Effect.ApplyFatigue()
+                    : MoraleMoveTail.Match(tail) is { Success: true } moveTail
+                        ? new Effect.TriggeredMove(int.Parse(moveTail.Groups["inches"].Value), IsOptional: true)
+                        : null;
+                if (onFailure is null) return null; // unknown consequence — skip whole spell, never half-wrong
+
+                return new SpellDefinition(spellName, spell.Threshold ?? 1,
+                    new TargetSelector(range, 1, maxCount, affinity, RequireLineOfSight: false),
+                    new Effect.MoraleTestThen(onFailure));
             }
 
             Match grant = GrantShape.Match(text);
             if (grant.Success)
             {
-                return new SpellDefinition(spell.Name ?? "Spell", spell.Threshold ?? 1,
+                return new SpellDefinition(spellName, spell.Threshold ?? 1,
                     new TargetSelector(range, 1, maxCount, affinity, RequireLineOfSight: false),
                     new Effect.AddRule(grant.Groups["rule"].Value.Trim(), ELifetime.NextTrigger));
             }
 
             return null;
+        }
+
+        /// <summary>The grant-family spell wrapper for a synthesized rule: the spell grants
+        /// "&lt;Spell&gt; Effect" once (NextTrigger), like any other grant spell. If the synthesized
+        /// definition fails validation, the whole spell is skipped (null) — never shipped half-wrong.</summary>
+        private static SpellDefinition? SynthesizedGrantOrSkip(OprSpell spell, string spellName, int range,
+            int maxCount, ETargetAffinity affinity, ref SpecialRuleDefinition? synthesized)
+        {
+            if (synthesized is null || new Rules.Dispatch.RuleValidator().Validate(synthesized).Count > 0)
+            {
+                synthesized = null;
+                return null;
+            }
+
+            return new SpellDefinition(spellName, spell.Threshold ?? 1,
+                new TargetSelector(range, 1, maxCount, affinity, RequireLineOfSight: false),
+                new Effect.AddRule(synthesized.Name, ELifetime.NextTrigger));
+        }
+
+        private static string Signed(int value) => value >= 0 ? $"+{value}" : value.ToString();
+
+        private static SpecialRuleDefinition SynthesizeMovementRule(string spellName, int advance, int rushCharge)
+        {
+            HookEntry Entry(EActionType action, int inches) => new(
+                EHookID.Movement_OnMoveActionDeclared,
+                new Condition.ActionTypeIs(action),
+                new Effect.MovementBonus(action, inches),
+                ELifetime.ThisActivation);
+
+            return new SpecialRuleDefinition($"{spellName} Effect",
+                new[]
+                {
+                    Entry(EActionType.Advance, advance),
+                    Entry(EActionType.Rush, rushCharge),
+                    Entry(EActionType.Charge, rushCharge),
+                },
+                Array.Empty<ActivatedAbility>(),
+                Valence: advance >= 0 ? EValence.Positive : EValence.Negative,
+                Description: $"Moves {Signed(advance)}\" when using Advance, and {Signed(rushCharge)}\" when using Rush/Charge (from {spellName}).");
+        }
+
+        private static SpecialRuleDefinition SynthesizeApLossRule(string spellName, int apLoss)
+        {
+            return new SpecialRuleDefinition($"{spellName} Effect",
+                new[]
+                {
+                    // Attacker-side AP reduction on the shooter's own weapon, floored at AP(0) by the save
+                    // stage (the same primitive Fortified applies defender-side). Not(IsMelee) keeps it to
+                    // shooting, per the spell text.
+                    new HookEntry(EHookID.Shooting_OnHitRollComplete,
+                        new Condition.Not(new Condition.IsMelee()),
+                        new Effect.ReduceArmorPenetration(apLoss),
+                        ELifetime.ThisAttack),
+                },
+                Array.Empty<ActivatedAbility>(),
+                Valence: EValence.Negative,
+                Description: $"This unit's shooting has its AP reduced by {apLoss}, to a minimum of AP(0) (from {spellName}).");
         }
 
         private const float MmPerInch = 25.4f;

@@ -12,7 +12,6 @@ public readonly record struct TokenType(string Id)
     public const string POST_COMBAT_MOVE_USED_ID = "PostCombatMoveUsed";
     public const string OFF_TABLE_FROM_FORCED_MOVE_ID = "OffTableFromForcedMove";
     public const string LIMITED_SPENT_ID = "LimitedSpent";
-    public const string AIRCRAFT_HEADING_SET_ID = "AircraftHeadingSet";
 
     // Granted numeric roll modifiers (#033 stat-modifier primitive): a spell/ability grants the bearer a
     // signed delta to a specific roll for a duration. The roll kind is the token TYPE (so different rolls
@@ -46,16 +45,6 @@ public readonly record struct TokenType(string Id)
     /// on redeploy), not the round-end sweep.
     /// </summary>
     public static readonly TokenType OffTableFromForcedMove = new(OFF_TABLE_FROM_FORCED_MOVE_ID);
-
-    /// <summary>
-    /// #029/#150: marks that an Aircraft has aimed its flight heading (set once, toward the table centre, on its
-    /// first forced move) and stored it on every living model's <see cref="IModel.Facing"/>. While present,
-    /// <c>ForcedAircraftMove.EnsureHeading</c> reads the heading back from the models instead of re-aiming —
-    /// an Aircraft never turns. Cleared (<c>ManualOnly</c>) when the Aircraft flies off the table so it re-aims
-    /// when it redeploys. Replaces the old nullable <c>UnitData.AircraftHeading</c>: the heading value now lives
-    /// on the models, this token is just the "already aimed" signal.
-    /// </summary>
-    public static readonly TokenType AircraftHeadingSet = new(AIRCRAFT_HEADING_SET_ID);
 
     /// <summary>
     /// #032 Limited: marks that a model has fired a once-per-game weapon. Lives on the MODEL (not the unit or

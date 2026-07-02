@@ -294,6 +294,13 @@ namespace FDG.Stages
                 return false;
             }
 
+            // #029: an Aircraft that flew off the table this activation is out of play — no charging from limbo.
+            if (context.ActivatingUnit.GetValue().Tokens.HasToken(Rules.Foundation.TokenType.OffTableFromForcedMove))
+            {
+                reasonIfCant = "Flew off the table — it redeploys from an edge next round.";
+                return false;
+            }
+
             if (context.HasAttacked)
             {
                 reasonIfCant = "Has already attacked.";
@@ -401,6 +408,14 @@ namespace FDG.Stages
             if (TransportUtilities.IsEmbarked(context.ActivatingUnit.GetValue()))
             {
                 reasonIfCant = "Embarked; disembark first.";
+                return false;
+            }
+
+            // #029: an Aircraft that flew off the table this activation is out of play — flying off skips
+            // its shooting (its models sit at origin until the edge redeploy next round).
+            if (context.ActivatingUnit.GetValue().Tokens.HasToken(Rules.Foundation.TokenType.OffTableFromForcedMove))
+            {
+                reasonIfCant = "Flew off the table — it redeploys from an edge next round.";
                 return false;
             }
 

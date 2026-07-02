@@ -72,22 +72,33 @@ namespace FDG.Stages
             await OnPathDefined.Activate(context);
         }
 
-        // #029: turn an Aircraft's Advance into a forced straight-line move along its fixed heading. The player
-        // picks the distance (30–36"); the direction can't change while it's on the table. If the move carries it
-        // off the table edge it leaves play (held off-table) and redeploys from an edge next round; otherwise the
-        // straight move is committed. Aircraft ignore terrain + units, so there's nothing to validate against.
+        // #029: turn an Aircraft's Advance into a forced straight-line move along its fixed heading (the facing
+        // set at deployment). The player picks a point on the 30–36" segment ahead; the direction can't change
+        // while it's on the table. If the chosen spot carries a base off the table edge it leaves play (held
+        // off-table) and redeploys from an edge next round; otherwise the straight move is committed. Aircraft
+        // ignore terrain + units, so there's nothing to validate against.
         private async Task ResolveForcedAircraftMove(IMovementActionContext context, PlayerID playerID)
         {
             UnitData unit = context.MovingUnit.GetValue();
-            Float2 heading = ForcedAircraftMove.EnsureHeading(unit);
+            Float2 heading = ForcedAircraftMove.GetHeading(unit);
 
-            float distance = await ChooseForcedDistance(context, playerID, unit.Name);
+            var request = new AircraftAdvanceRequest(playerID, $"{unit.Name} (Aircraft) — forced move",
+                context.MovingUnit, heading,
+                ForcedAircraftMove.MinDistanceInches, ForcedAircraftMove.MaxDistanceInches);
+            AircraftAdvanceResult choice = await context.PlayerRequester()
+                .RequestDecision<AircraftAdvanceRequest, AircraftAdvanceResult>(request);
+
+            float distance = Math.Clamp(choice.DistanceInches,
+                ForcedAircraftMove.MinDistanceInches, ForcedAircraftMove.MaxDistanceInches);
             List<ModelMoveEntry> paths = ForcedAircraftMove.BuildPaths(context.MovingUnit, heading, distance);
 
-            if (ForcedAircraftMove.WouldLeaveTable(paths))
+            // The resolver's fly-off flag is advisory; the end-position geometry is authoritative (a stay-on
+            // answer whose bases still cross the bounds flies off regardless — the rule offers no third option).
+            if (choice.FliesOffTable || ForcedAircraftMove.WouldLeaveTable(paths))
             {
-                // Flew off the edge: leave play (models to origin), mark for redeploy, and clear the aimed flag so it
-                // re-aims when re-placed next round. The activation then has nothing more to do off-table.
+                // Flew off the edge: leave play (models to origin) and mark for redeploy — the player re-aims it by
+                // how they place it next round (heading = facing as placed). Off-table it can't shoot or charge
+                // (ChooseActionStage gates on the token).
                 List<ModelMoveEntry> hold = new List<ModelMoveEntry>();
                 foreach (DataBinding<ModelData> model in unit.ModelBindings)
                 {
@@ -97,7 +108,6 @@ namespace FDG.Stages
                 }
                 unit.Tokens.AddToken(new Rules.Tokens.Token(Rules.Foundation.TokenType.OffTableFromForcedMove, 1,
                     new Rules.Foundation.TokenClearTrigger.ManualOnly()));
-                unit.Tokens.RemoveTokens(Rules.Foundation.TokenType.AircraftHeadingSet);
                 context.GameContext.Log($"{unit.Name} (Aircraft) flew off the table edge — it redeploys from an edge next round.");
 
                 context.SubmitValidPathTemplate(hold);
@@ -108,21 +118,6 @@ namespace FDG.Stages
             context.GameContext.Log($"{unit.Name} (Aircraft) advances {distance}\" in a straight line along its heading.");
             context.SubmitValidPathTemplate(paths);
             await OnPathDefined.Activate(context);
-        }
-
-        // Offers the Aircraft's forced-move distance (30/33/36"). The AI / EOF default picks the first (30").
-        private async Task<float> ChooseForcedDistance(IMovementActionContext context, PlayerID playerID, string unitName)
-        {
-            List<string> options = ForcedAircraftMove.DistancesInches.Select(d => $"{d:0.#}\"").ToList();
-
-            var request = new StringSelectionRequest(playerID,
-                $"How far does {unitName} (Aircraft) fly straight ahead?",
-                options, new List<StringSelectionRequest.InvalidOption>());
-            string chosen = await context.PlayerRequester().RequestDecision<StringSelectionRequest, string>(request);
-
-            for (int i = 0; i < ForcedAircraftMove.DistancesInches.Length; i++)
-                if (options[i] == chosen) return ForcedAircraftMove.DistancesInches[i];
-            return ForcedAircraftMove.DistancesInches[0];
         }
 
         // #102: precompute, per (mover's ranged weapon × on-table enemy unit), the effective shooting range

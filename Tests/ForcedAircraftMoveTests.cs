@@ -22,34 +22,29 @@ namespace FDG.Tests
         public void SetUp() => _store = GameDataStore.GameDataStoreBuilder.GetDefault();
 
         [Test]
-        public void EnsureHeading_PointsTowardTableCentre_AndIsStoredAsAUnitVector()
+        public void GetHeading_ReadsTheSharedDeployFacing_NoAutoAim()
         {
             DataBinding<UnitData> unit = MakeUnit(new Position(10, 10));
 
-            Float2 heading = ForcedAircraftMove.EnsureHeading(unit.GetValue());
+            // The heading IS the facing the player deployed with (#150): default +Z until rotated…
+            Assert.That(ForcedAircraftMove.GetHeading(unit.GetValue()), Is.EqualTo(new Float2(0f, 1f)),
+                "un-rotated deploy facing (+Z) is the heading — nothing auto-aims it elsewhere.");
 
-            // Table centre is (36, 24); from (10,10) the direction is +x,+z.
-            Assert.That(heading.X, Is.GreaterThan(0f));
-            Assert.That(heading.Y, Is.GreaterThan(0f));
-            Assert.That(MathF.Sqrt(heading.X * heading.X + heading.Y * heading.Y), Is.EqualTo(1f).Within(0.001f),
-                "the heading is a unit vector.");
-            // #150: the heading lives on the model's facing, and the unit is marked aimed.
-            Assert.That(unit.GetValue().Tokens.HasToken(TokenType.AircraftHeadingSet), Is.True, "the Aircraft is marked aimed.");
-            Assert.That(unit.GetValue().Models[0].Facing, Is.EqualTo(heading), "the heading is stored on the model's facing.");
+            // …and exactly whatever the player set, thereafter.
+            unit.GetValue().Models[0].SetFacing(new Float2(1f, 0f));
+            Assert.That(ForcedAircraftMove.GetHeading(unit.GetValue()), Is.EqualTo(new Float2(1f, 0f)),
+                "the heading follows the placed facing.");
         }
 
         [Test]
-        public void EnsureHeading_RespectsAnAlreadySetHeading_NeverTurns()
+        public void GetHeading_DivergentModelFacings_Throws()
         {
-            DataBinding<UnitData> unit = MakeUnit(new Position(10, 10));
-            // Pre-aim it (as EnsureHeading would leave it): heading on the model's facing + the aimed token.
-            unit.GetValue().Models[0].SetFacing(new Float2(1f, 0f));
-            unit.GetValue().Tokens.AddToken(new Token(TokenType.AircraftHeadingSet, 1, new TokenClearTrigger.ManualOnly()));
+            DataBinding<UnitData> unit = MakeUnit(new Position(10, 10), new Position(12, 10));
+            unit.GetValue().Models[0].SetFacing(new Float2(0f, 1f));
+            unit.GetValue().Models[1].SetFacing(new Float2(1f, 0f));
 
-            Float2 heading = ForcedAircraftMove.EnsureHeading(unit.GetValue());
-
-            Assert.That(heading, Is.EqualTo(new Float2(1f, 0f)),
-                "an Aircraft never turns — an already-set heading is not recomputed.");
+            Assert.Throws<InvalidOperationException>(() => ForcedAircraftMove.GetHeading(unit.GetValue()),
+                "an Aircraft's models must share one heading — divergence is a bug, not a choice.");
         }
 
         [Test]
@@ -88,9 +83,8 @@ namespace FDG.Tests
 
             DataBinding<UnitData> aircraft = MakeUnit(new Position(10, 40)); // near the top edge (H = 48)
             aircraft.GetValue().AttachRuleDefinition(new ResolvedRule("Aircraft", CoreRuleCatalog.Aircraft));
-            // Pre-aim it flying +z (straight off the top edge): facing on the model + the aimed token.
+            // Facing +z (straight off the top edge) — the deploy facing IS the heading.
             aircraft.GetValue().Models[0].SetFacing(new Float2(0f, 1f));
-            aircraft.GetValue().Tokens.AddToken(new Token(TokenType.AircraftHeadingSet, 1, new TokenClearTrigger.ManualOnly()));
 
             var moveCtx = new MovementActionContext(ctx, aircraft);
             var stage = new DefinePathStage(ctx, new NoOpLayer<IMovementActionContext>());
@@ -101,8 +95,6 @@ namespace FDG.Tests
             Assert.That(p.x == 0f && p.z == 0f, Is.True, "flew off the table — held off-table (models at origin).");
             Assert.That(aircraft.GetValue().Tokens.HasToken(TokenType.OffTableFromForcedMove), Is.True,
                 "marked for redeployment next round.");
-            Assert.That(aircraft.GetValue().Tokens.HasToken(TokenType.AircraftHeadingSet), Is.False,
-                "aimed flag cleared so it re-aims when re-placed.");
         }
 
         [Test]
@@ -110,7 +102,7 @@ namespace FDG.Tests
         {
             var ctx = new TriggeredMoveTestContext(_store, new FirstStringRequester());
 
-            DataBinding<UnitData> aircraft = MakeUnit(new Position(10, 5)); // heading lazy-inits toward centre; 30" stays on-table
+            DataBinding<UnitData> aircraft = MakeUnit(new Position(10, 5)); // default deploy facing +z; 30" → (10,35), on-table
             aircraft.GetValue().AttachRuleDefinition(new ResolvedRule("Aircraft", CoreRuleCatalog.Aircraft));
 
             var moveCtx = new MovementActionContext(ctx, aircraft);
@@ -125,22 +117,66 @@ namespace FDG.Tests
             Assert.That(dest.x != 10f || dest.z != 5f, Is.True, "a forced straight-line move was submitted.");
         }
 
-        private DataBinding<UnitData> MakeUnit(Position pos)
+        [Test]
+        public async Task AircraftAdvance_UsesTheResolverChosenDistance()
         {
-            var model = new ModelData(0.75f, new List<Weapon>(), pos, _store);
-            DataBinding<ModelData> modelBinding = _store.GetDataBinding<ModelData>(_store.Create(model));
+            // #029: the forced move is a continuous 30–36" band now (not 30/33/36) — the stage must fly exactly
+            // the distance the resolver picked.
+            var ctx = new TriggeredMoveTestContext(_store, new FixedAircraftDistanceRequester(33.7f));
+            DataBinding<UnitData> aircraft = MakeUnit(new Position(10, 5)); // facing +z; 33.7" → (10, 38.7), on-table
+            aircraft.GetValue().AttachRuleDefinition(new ResolvedRule("Aircraft", CoreRuleCatalog.Aircraft));
+
+            var moveCtx = new MovementActionContext(ctx, aircraft);
+            var stage = new DefinePathStage(ctx, new NoOpLayer<IMovementActionContext>());
+            stage.OnPathDefined.Bind("done");
+            await stage.Enter(moveCtx);
+
+            Assert.That(moveCtx.TryGetPaths(out var paths), Is.True);
+            Position dest = paths[0].Positions[0];
+            Assert.That(dest.x, Is.EqualTo(10f).Within(0.001f));
+            Assert.That(dest.z, Is.EqualTo(38.7f).Within(0.001f), "flies exactly the chosen distance along its heading.");
+        }
+
+        private DataBinding<UnitData> MakeUnit(params Position[] positions)
+        {
+            var bindings = new List<DataBinding<ModelData>>();
+            foreach (Position pos in positions)
+            {
+                var model = new ModelData(0.75f, new List<Weapon>(), pos, _store);
+                bindings.Add(_store.GetDataBinding<ModelData>(_store.Create(model)));
+            }
             var unit = new UnitData(new PlayerID(Guid.NewGuid()), "Jet", quality: 4, defense: 4,
-                modelBindings: new List<DataBinding<ModelData>> { modelBinding });
+                modelBindings: bindings);
             return _store.GetDataBinding<UnitData>(_store.Create(unit));
         }
     }
 
-    // Answers any StringSelectionRequest with its first valid option (the Aircraft distance prompt → "30\"").
+    // Answers the Aircraft forced-move with a fixed chosen distance (stay-on intent; the stage's geometry
+    // check is authoritative either way).
+    internal sealed class FixedAircraftDistanceRequester : IPlayerRequestByID
+    {
+        private readonly float _distance;
+        public FixedAircraftDistanceRequester(float distance) => _distance = distance;
+
+        public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
+            where TRequest : IStageTaskRequest<TReply>
+        {
+            if (request is AircraftAdvanceRequest)
+                return Task.FromResult((TReply)(object)new AircraftAdvanceResult(_distance, false));
+            throw new InvalidOperationException("Unexpected request type: " + request.GetType());
+        }
+    }
+
+    // Answers the Aircraft forced-move with its minimum distance (staying on the table where geometry allows;
+    // the stage's WouldLeaveTable check is authoritative either way), and any StringSelectionRequest with its
+    // first valid option.
     internal sealed class FirstStringRequester : IPlayerRequestByID
     {
         public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
             where TRequest : IStageTaskRequest<TReply>
         {
+            if (request is AircraftAdvanceRequest a)
+                return Task.FromResult((TReply)(object)new AircraftAdvanceResult(a.MinDistanceInches, false));
             if (request is StringSelectionRequest s)
                 return Task.FromResult((TReply)(object)s.ValidOptions[0]);
             throw new InvalidOperationException("Unexpected request type: " + request.GetType());

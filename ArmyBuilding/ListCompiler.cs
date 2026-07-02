@@ -39,8 +39,65 @@ namespace FDG.ArmyBuilding
             foreach (BuilderUnit bu in list.Units)
                 army.Units.Add(CompileUnitDetailed(book, bu).Unit);
 
+            MergeCombinedUnits(list, army);
+
             return army;
         }
+
+        // #107 combined squads (decision 8, 2026-07-02): a BuilderUnit with CombinedWithId folds into its
+        // partner copy so play sees one big unit — each copy having bought upgrades under its own normal
+        // bounds. Only a link to another instance of the SAME roster unit merges; anything else (dangling
+        // id, different roster unit) compiles as separate units and is the validator's business to flag.
+        // The BuilderList itself is never mutated — it is the user's editable source of truth, embedded
+        // as-authored in the saved army.
+        private static void MergeCombinedUnits(BuilderList list, BuiltArmyFile army)
+        {
+            // army.Units aligns 1:1 with list.Units here, so resolve the pairs as object references first.
+            var merges = new List<(UnitFileEntry Host, UnitFileEntry Absorbed)>();
+            for (int i = 0; i < list.Units.Count; i++)
+            {
+                BuilderUnit bu = list.Units[i];
+                if (string.IsNullOrEmpty(bu.CombinedWithId) || bu.CombinedWithId == bu.Id) continue;
+
+                int hostIndex = list.Units.FindIndex(other =>
+                    other != bu && other.Id == bu.CombinedWithId && other.RosterUnitId == bu.RosterUnitId);
+                if (hostIndex < 0) continue;
+
+                merges.Add((army.Units[hostIndex], army.Units[i]));
+            }
+
+            // Later list entries merge first, so an (illegal, validator-flagged) A←B←C chain still folds
+            // C into B before B folds into A — nothing is lost even while the shape gets warned about.
+            for (int m = merges.Count - 1; m >= 0; m--)
+            {
+                (UnitFileEntry host, UnitFileEntry absorbed) = merges[m];
+
+                host.ModelCount += absorbed.ModelCount;
+                host.PointCost += absorbed.PointCost;
+                foreach (WeaponFileEntry weapon in absorbed.Weapons)
+                    AddWeapon(host.Weapons, weapon, applications: 1);
+                foreach (SpecialRuleEntry rule in absorbed.SpecialRules)
+                    if (!host.SpecialRules.Contains(rule))
+                        host.SpecialRules.Add(rule);
+                if (!host.Name.EndsWith(" (Combined)", StringComparison.Ordinal))
+                    host.Name += " (Combined)";
+
+                army.Units.Remove(absorbed);
+
+                // A hero joined to the absorbed copy follows it into the merged unit.
+                if (!string.IsNullOrEmpty(absorbed.Id))
+                    foreach (UnitFileEntry other in army.Units)
+                        if (other.JoinsUnitId == absorbed.Id)
+                            other.JoinsUnitId = host.Id;
+            }
+        }
+
+        /// <summary>Per-row compiles in list order, WITHOUT #107 combined-pair merging — the row-aligned
+        /// view the builder UI works from (two combined copies stay two rows). <see cref="Compile"/> is the
+        /// play-time output, where combined pairs are one big unit. Throws on a malformed list, like
+        /// <see cref="Compile"/>.</summary>
+        public static List<UnitFileEntry> CompileRows(BookFile book, BuilderList list) =>
+            list.Units.Select(bu => CompileUnitDetailed(book, bu).Unit).ToList();
 
         /// <summary>Compiles one unit and also returns its final wargear items (post-replaces), which the
         /// builder UI needs for display and target-availability. The item's rules are already flattened into

@@ -37,6 +37,12 @@ namespace FDG.ArmyBuilding
 
         /// <summary>If this instance is a Hero, the <see cref="Id"/> of the unit it joins at setup (#006).</summary>
         public string? JoinsUnitId { get; set; }
+
+        /// <summary>#107 combined squads: the <see cref="Id"/> of the SAME roster unit's other copy this
+        /// instance merges into at compile time. Each copy buys upgrades under its own normal bounds (the
+        /// GDF "pay for both individually" rule); the compiler folds this copy into its partner so play
+        /// sees one big unit. Null = not combined.</summary>
+        public string? CombinedWithId { get; set; }
     }
 
     /// <summary>A selected option within a section. <see cref="Count"/> is the number of applications for

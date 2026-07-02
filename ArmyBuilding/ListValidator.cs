@@ -24,18 +24,28 @@ namespace FDG.ArmyBuilding
                 issues.Add(new ListIssue($"Over points limit: {compiled.TotalPoints} / {list.PointsLimit} pts.",
                     ListIssueSeverity.Error));
 
+            // Per-unit compiles for the catalog checks: `compiled.Units` no longer aligns positionally with
+            // `list.Units` once #107 combined pairs merge, so each list row is compiled individually here
+            // (also what the author sees per row). Rows that fail to compile are flagged as unknown-roster.
+            var perUnit = new List<UnitFileEntry?>(list.Units.Count);
+            foreach (BuilderUnit bu in list.Units)
+            {
+                RosterUnit? roster = book.Units.FirstOrDefault(u => u.Id == bu.RosterUnitId);
+                perUnit.Add(roster is null ? null : ListCompiler.CompileUnitDetailed(book, bu).Unit);
+            }
+
             // Catalog checks that ForceOrgValidator can't do — they need the roster.
-            for (int i = 0; i < list.Units.Count && i < compiled.Units.Count; i++)
+            for (int i = 0; i < list.Units.Count; i++)
             {
                 BuilderUnit bu = list.Units[i];
                 RosterUnit? roster = book.Units.FirstOrDefault(u => u.Id == bu.RosterUnitId);
-                if (roster is null)
+                if (roster is null || perUnit[i] is null)
                 {
                     issues.Add(new ListIssue($"Unknown roster unit '{bu.RosterUnitId}'.", ListIssueSeverity.Error, i));
                     continue;
                 }
 
-                int models = compiled.Units[i].ModelCount;
+                int models = perUnit[i]!.ModelCount;
                 if (models < roster.MinModels || models > roster.MaxModels)
                     issues.Add(new ListIssue(
                         $"{roster.Name}: {models} models (allowed {roster.MinModels}–{roster.MaxModels}).",
@@ -62,15 +72,66 @@ namespace FDG.ArmyBuilding
                 }
             }
 
-            ValidateHeroJoins(compiled, issues);
+            ValidateCombinedLinks(book, list, issues);
+
+            // Hero-join + composition checks run on the UNMERGED per-row units: GDF counts a combined unit
+            // as two copies for composition caps, and join targets are authored against row ids (the
+            // compiler remaps a join into a merged host at compile time).
+            var unmerged = new BuiltArmyFile { PointsLimit = list.PointsLimit };
+            unmerged.Units.AddRange(perUnit.Where(u => u is not null)!);
+
+            ValidateHeroJoins(unmerged, issues);
 
             // Army-composition caps (reuse the engine validator) as Warnings. The points cap is already an Error
             // above, so drop its duplicate from the warning set.
-            foreach (string warning in ForceOrgValidator.Validate(compiled))
+            foreach (string warning in ForceOrgValidator.Validate(unmerged))
                 if (!warning.StartsWith("Over points limit"))
                     issues.Add(new ListIssue(warning, ListIssueSeverity.Warning));
 
             return issues;
+        }
+
+        // #107 combined squads: flag link shapes the compiler deliberately refuses to merge (dangling id,
+        // different roster unit) or that GDF disallows (more than two copies in one combine; single-model
+        // units). Warnings — the list still compiles and plays, just as separate units.
+        private static void ValidateCombinedLinks(BookFile book, BuilderList list, List<ListIssue> issues)
+        {
+            for (int i = 0; i < list.Units.Count; i++)
+            {
+                BuilderUnit bu = list.Units[i];
+                if (string.IsNullOrEmpty(bu.CombinedWithId)) continue;
+
+                RosterUnit? roster = book.Units.FirstOrDefault(u => u.Id == bu.RosterUnitId);
+                string name = roster?.Name ?? bu.RosterUnitId;
+
+                BuilderUnit? host = list.Units.FirstOrDefault(other =>
+                    other != bu && other.Id == bu.CombinedWithId);
+                if (host is null || bu.CombinedWithId == bu.Id)
+                {
+                    issues.Add(new ListIssue($"{name}: combine target no longer exists; it stays a separate unit.",
+                        ListIssueSeverity.Warning, i));
+                    continue;
+                }
+
+                if (host.RosterUnitId != bu.RosterUnitId)
+                {
+                    issues.Add(new ListIssue(
+                        $"{name}: only two copies of the SAME unit may combine; it stays a separate unit.",
+                        ListIssueSeverity.Warning, i));
+                    continue;
+                }
+
+                if (roster is not null && roster.BaseModelCount <= 1)
+                    issues.Add(new ListIssue($"{name}: single-model units can't combine.",
+                        ListIssueSeverity.Warning, i));
+
+                // More than two copies in one combine: the host is itself combined into something, or a
+                // third copy also targets the same host.
+                if (!string.IsNullOrEmpty(host.CombinedWithId)
+                    || list.Units.Any(other => other != bu && other != host && other.CombinedWithId == bu.CombinedWithId))
+                    issues.Add(new ListIssue($"{name}: only two copies may combine into one unit.",
+                        ListIssueSeverity.Warning, i));
+            }
         }
 
         // #006 hero-join eligibility, mirrored so the builder can't author a join that silently deploys solo

@@ -221,6 +221,81 @@ public class ArmyForgeCompilerTests
         Assert.That(compiled.PointCost, Is.EqualTo(125));
     }
 
+    // ── #107 combined squads (decision 8) ──────────────────────────────────────────────────────────────
+
+    [Test]
+    public void CombinedPair_MergesIntoOneUnit_SummingModelsCostAndWeapons()
+    {
+        BookFile book = DemoBook.Build();
+        var list = new BuilderList
+        {
+            Name = "Combined", PointsLimit = 1000,
+            Units =
+            {
+                new BuilderUnit { RosterUnitId = "warriors", ModelCount = 5, Id = "a" },
+                new BuilderUnit
+                {
+                    RosterUnitId = "warriors", ModelCount = 5, Id = "b", CombinedWithId = "a",
+                    // The second copy buys its own upgrade — GDF "pay for both individually".
+                    Choices = { new UpgradeChoice { SectionId = "warriors-special", OptionId = "plasma" } },
+                },
+                new BuilderUnit { RosterUnitId = "gunners", ModelCount = 3, Id = "c" },
+            },
+        };
+
+        BuiltArmyFile army = ListCompiler.Compile(book, list);
+
+        Assert.That(army.Units, Has.Count.EqualTo(2), "the pair merged; gunners untouched");
+        UnitFileEntry combined = army.Units.Single(u => u.Name.Contains("Combined"));
+        Assert.That(combined.ModelCount, Is.EqualTo(10));
+        Assert.That(combined.PointCost, Is.EqualTo(65 + 65 + 5), "both copies' base cost plus B's plasma");
+        Assert.That(Wpn(combined, "Rifle").Quantity, Is.EqualTo(9), "5 + (5 − 1 replaced)");
+        Assert.That(Wpn(combined, "Plasma Rifle").Quantity, Is.EqualTo(1));
+        Assert.That(list.Units, Has.Count.EqualTo(3), "the editable list itself is never mutated");
+        Assert.That(army.TotalPoints, Is.EqualTo(65 + 65 + 5 + 120));
+    }
+
+    [Test]
+    public void CombinedLink_DanglingOrCrossRoster_CompilesAsSeparateUnits()
+    {
+        BookFile book = DemoBook.Build();
+        var list = new BuilderList
+        {
+            Name = "Bad Links", PointsLimit = 1000,
+            Units =
+            {
+                new BuilderUnit { RosterUnitId = "warriors", ModelCount = 5, Id = "a", CombinedWithId = "gone" },
+                new BuilderUnit { RosterUnitId = "gunners", ModelCount = 3, Id = "g" },
+                new BuilderUnit { RosterUnitId = "warriors", ModelCount = 5, Id = "w", CombinedWithId = "g" },
+            },
+        };
+
+        BuiltArmyFile army = ListCompiler.Compile(book, list);
+
+        Assert.That(army.Units, Has.Count.EqualTo(3), "neither link is a valid same-roster pair");
+    }
+
+    [Test]
+    public void HeroJoinedToTheAbsorbedCopy_FollowsIntoTheMergedUnit()
+    {
+        BookFile book = DemoBook.Build();
+        var list = new BuilderList
+        {
+            Name = "Join Follows", PointsLimit = 1000,
+            Units =
+            {
+                new BuilderUnit { RosterUnitId = "warriors", ModelCount = 5, Id = "a" },
+                new BuilderUnit { RosterUnitId = "warriors", ModelCount = 5, Id = "b", CombinedWithId = "a" },
+                new BuilderUnit { RosterUnitId = "gunners", ModelCount = 3, Id = "hero", JoinsUnitId = "b" },
+            },
+        };
+
+        BuiltArmyFile army = ListCompiler.Compile(book, list);
+
+        UnitFileEntry joiner = army.Units.Single(u => u.Id == "hero");
+        Assert.That(joiner.JoinsUnitId, Is.EqualTo("a"), "the join target followed the absorbed copy into the host");
+    }
+
     [Test]
     public void ReplaceAny_IsBoundedByMaxApplicationsAndTargets()
     {

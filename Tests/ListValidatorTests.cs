@@ -102,6 +102,50 @@ public class ListValidatorTests
         Assert.That(issues.Any(i => i.Message.Contains("Unique")), Is.False);
     }
 
+    // ── #107 combined squads ────────────────────────────────────────────────────────────────────────────
+
+    private static BuilderUnit Combined(string id, string withId) =>
+        new() { RosterUnitId = "warriors", Id = id, CombinedWithId = withId };
+
+    private static BuilderUnit Warriors(string id) => new() { RosterUnitId = "warriors", Id = id };
+
+    [Test]
+    public void ValidCombinedPair_NoCombinedIssues_AndCountsAsTwoCopiesForComposition()
+    {
+        // Four warriors squads as two combined pairs: no combined-link issues, but composition still sees
+        // FOUR copies (the merge must not hide copies from the force-org caps).
+        var issues = Check(DemoBook.Build(), List(100000,
+            Warriors("a"), Combined("b", "a"), Warriors("c"), Combined("d", "c")));
+
+        Assert.That(issues.Any(i => i.Message.Contains("combine")), Is.False);
+        Assert.That(issues.Any(i => i.Severity == ListIssueSeverity.Warning && i.Message.Contains("copies")),
+            Is.True, "force-org copy caps run on the unmerged rows");
+    }
+
+    [Test]
+    public void DanglingCombineTarget_IsAWarning()
+    {
+        var issues = Check(DemoBook.Build(), List(100000, Combined("a", "nope")));
+        Assert.That(issues.Any(i => i.Severity == ListIssueSeverity.Warning
+            && i.Message.Contains("combine target no longer exists")), Is.True);
+    }
+
+    [Test]
+    public void CombiningAcrossRosterUnits_IsAWarning()
+    {
+        var gunners = new BuilderUnit { RosterUnitId = "gunners", Id = "g" };
+        var issues = Check(DemoBook.Build(), List(100000, gunners, Combined("w", "g")));
+        Assert.That(issues.Any(i => i.Message.Contains("SAME unit")), Is.True);
+    }
+
+    [Test]
+    public void ThreeCopiesInOneCombine_IsAWarning()
+    {
+        var issues = Check(DemoBook.Build(), List(100000,
+            Warriors("a"), Combined("b", "a"), Combined("c", "a")));
+        Assert.That(issues.Any(i => i.Message.Contains("only two copies may combine")), Is.True);
+    }
+
     // ── #006 hero-join checks ───────────────────────────────────────────────────────────────────────────
 
     private static BookFile JoinBook(int heroTough = 3) => new()

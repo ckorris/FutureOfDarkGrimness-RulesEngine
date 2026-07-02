@@ -799,9 +799,8 @@ namespace FDG.Tests
         }
     }
 
-    // Drives a cast that opens a #103 assist window: picks the first spell + target, and for each assist /
-    // hinder prompt (a StringSelectionRequest whose first option is the decline sentinel) spends a fixed
-    // number of tokens. Option index == token count, so options[n] spends n (clamped to what's offered).
+    // Drives a cast that opens a #103 assist window: picks the first spell + target, and for each
+    // CastAssistRequest spends a fixed number of tokens (clamped to what the assister actually has).
     // Counts the assist prompts so a test can assert who was (and wasn't) offered the choice.
     internal sealed class CannedAssistRequester : IPlayerRequestByID
     {
@@ -818,11 +817,9 @@ namespace FDG.Tests
         {
             switch (request)
             {
-                case StringSelectionRequest assist
-                    when assist.ValidOptions.Contains(CastSpellStage.DECLINE_ASSIST_CHOICE):
+                case CastAssistRequest assist:
                     AssistPromptCount++;
-                    int idx = System.Math.Min(_tokensPerAssister, assist.ValidOptions.Count - 1);
-                    return Task.FromResult((TReply)(object)assist.ValidOptions[idx]);
+                    return Task.FromResult((TReply)(object)System.Math.Min(_tokensPerAssister, assist.AvailableTokens));
                 case StringSelectionRequest spellPick:
                     return Task.FromResult((TReply)(object)spellPick.ValidOptions[0]);
                 case SelectionRequest<UnitData> targetPick:

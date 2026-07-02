@@ -36,12 +36,6 @@ namespace FDG.Ai.Resolvers
             if (request.ValidOptions.Contains(ChooseUnitToDeployStage.DEPLOY_NORMALLY_CHOICE))
                 return Task.FromResult(ChooseUnitToDeployStage.DEPLOY_NORMALLY_CHOICE);
 
-            // Cast assist / hinder (#103): the AI doesn't yet weigh whether spending its own spell tokens to
-            // sway another Caster's roll is worthwhile, so it always declines (spends nothing) rather than
-            // burning tokens on an arbitrary cast. Same conservative stance as the pre-attack skip above.
-            if (request.ValidOptions.Contains(CastSpellStage.DECLINE_ASSIST_CHOICE))
-                return Task.FromResult(CastSpellStage.DECLINE_ASSIST_CHOICE);
-
             // Fall back to first valid option for any other string selection.
             return Task.FromResult(request.ValidOptions[0]);
         }

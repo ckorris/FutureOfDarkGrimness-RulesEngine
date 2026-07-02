@@ -49,12 +49,6 @@ namespace FDG.Stages
         private const string CANCEL_OPTION = "Cancel";
         private const int CAST_SUCCESS_THRESHOLD = 4;
 
-        /// <summary>
-        /// The "spend nothing" option offered to a Caster asked to assist / hinder a cast (#103). Always the
-        /// first option, so its index (0) is the token count; the AI resolver matches on it to decline.
-        /// </summary>
-        public const string DECLINE_ASSIST_CHOICE = "Spend no tokens";
-
         // The damage run set up in Enter (synthetic weapon + chosen targets + base hits + any single-model
         // pick) and handed to the looped child pipeline by GetNewChildContext. Null on the buff path, which
         // applies its effect inline and never enters the children.
@@ -380,7 +374,7 @@ namespace FDG.Stages
                 int available = assister.Tokens.GetTokenCount(TokenType.SpellTokens);
                 if (available <= 0) continue;
 
-                int spent = await AskAssistCount(assister.PlayerID, assister.Name, casterName, spellName, friendly, available);
+                int spent = await AskAssistCount(unitBinding, casterBinding, friendly, available, spellName);
                 if (spent <= 0) continue;
 
                 assister.Tokens.RemoveTokens(TokenType.SpellTokens, spent);
@@ -429,32 +423,20 @@ namespace FDG.Stages
             return friends;
         }
 
-        // Ask one Caster's controller how many tokens to spend on the cast. Options run 0..available; the
-        // option's index in the list IS the token count (index 0 = DECLINE_ASSIST_CHOICE), so the reply maps
-        // back with no parsing. The AI declines via the same sentinel (see AiStringSelectionResolver).
-        private async Task<int> AskAssistCount(PlayerID controller, string assisterName, string casterName,
-            string spellName, bool friendly, int available)
+        // Ask one Caster's controller how many tokens to spend, via a CastAssistRequest that carries both
+        // units so the GUI can highlight the assister and draw a line to the caster (blue friendly / orange
+        // enemy) and show the token count. The reply is clamped to what the assister actually holds. CLI and
+        // AI resolvers default to spending nothing.
+        private async Task<int> AskAssistCount(DataBinding<UnitData> assistingUnit, DataBinding<UnitData> castingUnit,
+            bool friendly, int available, string spellName)
         {
-            List<string> options = new List<string> { DECLINE_ASSIST_CHOICE };
-            for (int i = 1; i <= available; i++)
-            {
-                options.Add($"{i} token{(i == 1 ? "" : "s")} ({(friendly ? "+" : "-")}{i})");
-            }
+            CastAssistRequest request = new CastAssistRequest(
+                assistingUnit.GetValue().PlayerID, assistingUnit, castingUnit, friendly, available, spellName);
 
-            string verb = friendly ? "help" : "disrupt";
-            string sign = friendly ? "+1" : "-1";
-            string instructions =
-                $"{assisterName} ({available} token{(available == 1 ? "" : "s")}): spend spell tokens to " +
-                $"{verb} {casterName}'s cast of {spellName}? ({sign} each)";
+            int spent = await GameContext.PlayerRequester
+                .RequestDecision<CastAssistRequest, int>(request);
 
-            StringSelectionRequest request = new StringSelectionRequest(controller, instructions,
-                options, System.Array.Empty<StringSelectionRequest.InvalidOption>());
-
-            string choice = await GameContext.PlayerRequester
-                .RequestDecision<StringSelectionRequest, string>(request);
-
-            int count = options.IndexOf(choice);
-            return count < 0 ? 0 : count;
+            return System.Math.Clamp(spent, 0, available);
         }
 
         private static string SpellOptionLabel(RuntimeSpell spell) => $"{spell.Name} ({spell.Threshold})";

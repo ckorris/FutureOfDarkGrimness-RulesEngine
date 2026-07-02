@@ -1,5 +1,8 @@
+using System.Collections.Generic;
 using System.Linq;
 using FDG.ArmyBuilding;
+using FDG.Rules.Definitions;
+using FDG.Rules.Foundation;
 using FDG.SaveLoad;
 using NUnit.Framework;
 
@@ -145,6 +148,71 @@ public class OprBookImporterTests
             Assert.That(Base(id).Shape, Is.EqualTo(EBaseShapeKind.Circle));
             Assert.That(Base(id).DiameterInches, Is.EqualTo(BaseShapeDefaults.CircleDiameterInches).Within(0.001f));
         }
+    }
+
+    // The real corpus shapes verbatim (High Elf Fleets / Alien Hives v3.5.3), plus one unparseable.
+    private const string SpellsJson = """
+    {
+      "name": "Spells", "versionString": "1", "units": [], "upgradePackages": [],
+      "spells": [
+        { "name": "Psychic Blast", "threshold": 2,
+          "effect": "Pick one enemy unit within 12\", which takes 4 hits with AP(2)." },
+        { "name": "Elemental Seeker", "threshold": 1,
+          "effect": "Pick one enemy unit within 18\", which takes 1 hit with Blast(3)." },
+        { "name": "Psy-Destruction", "threshold": 2,
+          "effect": "Pick one enemy model within 24\", which takes 2 hits with AP(4). This effect is resolved as if the target was a unit of [1]." },
+        { "name": "Hidden Spirits", "threshold": 2,
+          "effect": "Pick up to two friendly units within 12\", which get Unpredictable Shooter once (next time the effect would apply)." },
+        { "name": "Terror Seeker", "threshold": 2,
+          "effect": "Pick up to three enemy units within 18\", which friendly units gets Unpredictable Fighter against once (next time the effect would apply)." },
+        { "name": "Weirdness", "threshold": 1,
+          "effect": "Something entirely unlike the corpus shapes." }
+      ]
+    }
+    """;
+
+    [Test]
+    public void Import_ParsesSpells_DamageBuffAndSingleModel_SkippingUnparseable()
+    {
+        var warnings = new List<string>();
+        BookFile book = OprBookImporter.Import(SpellsJson, "TestSource", "CC-BY-SA 4.0", warnings.Add);
+
+        Assert.That(book.Spells, Has.Count.EqualTo(5));
+        Assert.That(warnings, Has.One.Contains("Weirdness"));
+
+        // "friendly units get X against" → the mark family: three enemy targets, attackers gain the rule.
+        SpellDefinition terror = book.Spells.Single(s => s.Name == "Terror Seeker");
+        Assert.That(terror.Target.MaxCount, Is.EqualTo(3));
+        Assert.That(terror.Target.TargetAffinity, Is.EqualTo(ETargetAffinity.Foe));
+        Assert.That(((Effect.MarkTarget)terror.Effect).RuleName, Is.EqualTo("Unpredictable Fighter"));
+
+        // Damage: AP folds into ArmorPenetration; targeting is one enemy unit needing LoS.
+        SpellDefinition blast = book.Spells.Single(s => s.Name == "Psychic Blast");
+        Assert.That(blast.Threshold, Is.EqualTo(2));
+        Assert.That(blast.Target.RangeInches, Is.EqualTo(12f));
+        Assert.That(blast.Target.TargetAffinity, Is.EqualTo(ETargetAffinity.Foe));
+        Assert.That(blast.Target.RequireLineOfSight, Is.True);
+        var blastHits = (Effect.DealHits)blast.Effect;
+        Assert.That(blastHits.Count, Is.EqualTo(4));
+        Assert.That(blastHits.ArmorPenetration, Is.EqualTo(2));
+        Assert.That(blastHits.WithRules, Is.Empty);
+
+        // Non-AP weapon rules ride WithRules for load-time resolution.
+        var seekerHits = (Effect.DealHits)book.Spells.Single(s => s.Name == "Elemental Seeker").Effect;
+        Assert.That(seekerHits.WithRules, Is.EqualTo(new[] { "Blast(3)" }));
+
+        // "model" target → SingleModel confinement (the 'unit of [1]' wording).
+        SpellDefinition psy = book.Spells.Single(s => s.Name == "Psy-Destruction");
+        Assert.That(psy.Target.SingleModel, Is.True);
+        Assert.That(((Effect.DealHits)psy.Effect).ArmorPenetration, Is.EqualTo(4));
+
+        // Buff: up-to-two friendly units, granted "once" → NextTrigger, no LoS requirement.
+        SpellDefinition spirits = book.Spells.Single(s => s.Name == "Hidden Spirits");
+        Assert.That(spirits.Target.MaxCount, Is.EqualTo(2));
+        Assert.That(spirits.Target.TargetAffinity, Is.EqualTo(ETargetAffinity.Friend));
+        var grant = (Effect.AddRule)spirits.Effect;
+        Assert.That(grant.RuleName, Is.EqualTo("Unpredictable Shooter"));
+        Assert.That(grant.Scope, Is.EqualTo(ELifetime.NextTrigger));
     }
 
     [Test]

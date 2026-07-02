@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
+using FDG.Rules.Definitions;
+using FDG.Rules.Foundation;
 using FDG.SaveLoad;
 
 namespace FDG.ArmyBuilding
@@ -76,7 +79,7 @@ namespace FDG.ArmyBuilding
             }
         }
 
-        public static BookFile Import(string oprJson, string source, string license)
+        public static BookFile Import(string oprJson, string source, string license, Action<string>? warn = null)
         {
             OprBook opr = JsonSerializer.Deserialize<OprBook>(oprJson, ReadOpts)
                 ?? throw new InvalidOperationException("OPR army-book JSON did not deserialize.");
@@ -95,6 +98,13 @@ namespace FDG.ArmyBuilding
 
             foreach (OprUnit unit in opr.Units ?? new())
                 book.Units.Add(MapUnit(unit, packages));
+
+            foreach (OprSpell spell in opr.Spells ?? new())
+            {
+                SpellDefinition? parsed = TryParseSpell(spell);
+                if (parsed is not null) book.Spells.Add(parsed);
+                else warn?.Invoke($"Spell '{spell.Name}' skipped: unrecognized effect text \"{spell.Effect}\".");
+            }
 
             return book;
         }
@@ -227,6 +237,96 @@ namespace FDG.ArmyBuilding
             }
         }
 
+        // ── Spells ───────────────────────────────────────────────────────────────────────────────────────
+        // OPR spell effects are formulaic prose; the two corpus shapes map directly onto the #033 vocabulary:
+        //   "Pick one enemy unit within 12\", which takes 4 hits with AP(2)."      → Effect.DealHits
+        //   "Pick up to two friendly units within 12\", which get X once (next     → Effect.AddRule with
+        //    time the effect would apply)."                                          ELifetime.NextTrigger
+        // A "model" target maps to TargetSelector.SingleModel (the "unit of [1]" wording). AP folds into
+        // DealHits.ArmorPenetration like weapon import; other rule names ride WithRules and resolve at army
+        // load with the usual skip-unknown tolerance. Anything that doesn't match is SKIPPED with a warning —
+        // never silently, and never imported half-wrong.
+
+        private static readonly Regex SpellShape = new(
+            "^pick (?<count>one|two|three|up to two|up to three) (?<aff>enemy|friendly) (?<kind>units?|models?) within (?<range>\\d+)\"",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex DamageShape = new(
+            "which takes? (?<hits>\\d+) hits?(?: with (?<rules>[^.]+))?",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex GrantShape = new(
+            "which gets? (?<rule>.+?) once",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        // "...which friendly units get X against once" — the mark family (#034): the rule lands on friendlies
+        // ATTACKING the picked target, i.e. Effect.MarkTarget.
+        private static readonly Regex MarkShape = new(
+            "which friendly units gets? (?<rule>.+?) against",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static SpellDefinition? TryParseSpell(OprSpell spell)
+        {
+            string text = (spell.Effect ?? string.Empty).Trim();
+            Match shape = SpellShape.Match(text);
+            if (!shape.Success) return null;
+
+            int range = int.Parse(shape.Groups["range"].Value);
+            int maxCount = shape.Groups["count"].Value.ToLowerInvariant() switch
+            {
+                "two" or "up to two" => 2,
+                "three" or "up to three" => 3,
+                _ => 1,
+            };
+            ETargetAffinity affinity = shape.Groups["aff"].Value.StartsWith("f", StringComparison.OrdinalIgnoreCase)
+                ? ETargetAffinity.Friend
+                : ETargetAffinity.Foe;
+            bool singleModel = shape.Groups["kind"].Value.StartsWith("model", StringComparison.OrdinalIgnoreCase);
+
+            Match damage = DamageShape.Match(text);
+            if (damage.Success)
+            {
+                int hits = int.Parse(damage.Groups["hits"].Value);
+                int ap = 0;
+                var withRules = new List<string>();
+                if (damage.Groups["rules"].Success)
+                {
+                    foreach (string raw in damage.Groups["rules"].Value
+                                 .Split(new[] { ", ", " and " }, StringSplitOptions.RemoveEmptyEntries)
+                                 .Select(r => r.Trim()).Where(r => r.Length > 0))
+                    {
+                        if (SpecialRuleEntryParser.Parse(raw) is SpecialRuleEntry_CoreNumeric { Name: "AP" } apRule)
+                            ap = apRule.NumericValue;
+                        else
+                            withRules.Add(raw);
+                    }
+                }
+                return new SpellDefinition(spell.Name ?? "Spell", spell.Threshold ?? 1,
+                    new TargetSelector(range, 1, maxCount, affinity, RequireLineOfSight: true, SingleModel: singleModel),
+                    new Effect.DealHits(hits, withRules, ap));
+            }
+
+            // Mark before grant: "which friendly units gets X against once" also contains "gets ... once",
+            // but the buff belongs to attackers of the target, not the target itself.
+            Match mark = MarkShape.Match(text);
+            if (mark.Success)
+            {
+                return new SpellDefinition(spell.Name ?? "Spell", spell.Threshold ?? 1,
+                    new TargetSelector(range, 1, maxCount, affinity, RequireLineOfSight: false),
+                    new Effect.MarkTarget(mark.Groups["rule"].Value.Trim()));
+            }
+
+            Match grant = GrantShape.Match(text);
+            if (grant.Success)
+            {
+                return new SpellDefinition(spell.Name ?? "Spell", spell.Threshold ?? 1,
+                    new TargetSelector(range, 1, maxCount, affinity, RequireLineOfSight: false),
+                    new Effect.AddRule(grant.Groups["rule"].Value.Trim(), ELifetime.NextTrigger));
+            }
+
+            return null;
+        }
+
         private const float MmPerInch = 25.4f;
 
         // OPR bases come as {round, square} in millimetres — "25", "120x92" (an oval), "none", or "". Prefer
@@ -280,6 +380,14 @@ namespace FDG.ArmyBuilding
             public string? VersionString { get; set; }
             public List<OprUnit>? Units { get; set; }
             public List<OprPackage>? UpgradePackages { get; set; }
+            public List<OprSpell>? Spells { get; set; }
+        }
+
+        private sealed class OprSpell
+        {
+            public string? Name { get; set; }
+            public int? Threshold { get; set; }
+            public string? Effect { get; set; }
         }
 
         private sealed class OprUnit

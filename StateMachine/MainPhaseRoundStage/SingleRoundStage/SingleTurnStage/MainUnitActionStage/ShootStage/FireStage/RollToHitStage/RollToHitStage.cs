@@ -82,15 +82,19 @@ namespace FDG.Stages
             IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
                 new HitRollCompleteContext(attacker, defender, rollToHitResults, distance, metaData.IsMelee,
                     metaData.IsCharging),
-                // #006 slice F: the attacker batch's sole-owner model contributes its own per-model rules,
-                // so a joined hero's Furious/Relentless fire for the hero's batch only (not the whole unit).
+                // #006 slice F / #093: the attacker batch's living owners contribute their per-model rules
+                // under AllOwners semantics (fires only when every owner shares it), so a joined hero's
+                // Furious/Relentless fire for a hero-only batch and a homogeneous squad's shared per-model
+                // rule fires once — without leaking onto a mixed batch's pooled roll.
                 (attacker, ERuleSeat.Actor, metaData.WeaponType,
-                    HeroStatRules.WeaponBatchRuleOwners(metaData.AttackingUnit.GetValue(), metaData.WeaponType)),
+                    HeroStatRules.LivingWeaponBatchOwners(metaData.AttackingUnit.GetValue(), metaData.WeaponType),
+                    EModelRuleScope.AllOwners),
                 // The defender contributes its DEFENSIVE save modifiers here (Shielded's +1 to defense) —
                 // the mirror of how DetermineHitRollStage evaluates the defender as Subject for hit
                 // modifiers. Its Net(Save) folds into RollToHitResults.SaveModifier below alongside the
                 // attacker's AP, so a defensive +1 and an attacker's -N net correctly.
-                (defender, ERuleSeat.Subject, (IWeapon?)null, (IReadOnlyList<IModel>?)null));
+                (defender, ERuleSeat.Subject, (IWeapon?)null, (IReadOnlyList<IModel>?)null,
+                    EModelRuleScope.AnyOwner));
             HitInjectionSink hitInjection = new HitInjectionSink();
             hitInjection.ApplyFrom(operations);
 

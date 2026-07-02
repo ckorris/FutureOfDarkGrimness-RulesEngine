@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using FDG.ArmyBuilding;
+using FDG.SaveLoad;
 using NUnit.Framework;
 
 namespace FDG.Tests;
@@ -55,6 +56,77 @@ public class ListValidatorTests
     {
         var issues = Check(DemoBook.Build(), List(100000, U("gunners"), U("gunners"), U("gunners"), U("gunners")));
         Assert.That(issues.Any(i => i.Severity == ListIssueSeverity.Warning && i.Message.Contains("copies")), Is.True);
+    }
+
+    // ── #006 hero-join checks ───────────────────────────────────────────────────────────────────────────
+
+    private static BookFile JoinBook(int heroTough = 3) => new()
+    {
+        Name = "J",
+        Units =
+        {
+            new RosterUnit
+            {
+                Id = "captain", Name = "Captain", Quality = 3, Defense = 4,
+                BaseModelCount = 1, MinModels = 1, MaxModels = 1, BasePointCost = 50,
+                Rules = { new SpecialRuleEntry_Core("Hero"), new SpecialRuleEntry_CoreNumeric("Tough", heroTough) },
+            },
+            new RosterUnit
+            {
+                Id = "squad", Name = "Squad", Quality = 4, Defense = 4,
+                BaseModelCount = 5, MinModels = 5, MaxModels = 5, BasePointCost = 100,
+            },
+            new RosterUnit
+            {
+                Id = "solo", Name = "Solo", Quality = 4, Defense = 4,
+                BaseModelCount = 1, MinModels = 1, MaxModels = 1, BasePointCost = 20,
+            },
+        },
+    };
+
+    [Test]
+    public void HeroJoin_Valid_NoIssues_AndIdsCompileThrough()
+    {
+        var list = List(100000,
+            new BuilderUnit { RosterUnitId = "captain", Id = "h1", JoinsUnitId = "s1" },
+            new BuilderUnit { RosterUnitId = "squad", Id = "s1" });
+        BuiltArmyFile compiled = ListCompiler.Compile(JoinBook(), list);
+
+        Assert.That(ListValidator.Validate(JoinBook(), list, compiled), Is.Empty);
+        // The join plumbing the engine reads at setup (#006) survives compilation.
+        Assert.That(compiled.Units[0].JoinsUnitId, Is.EqualTo("s1"));
+        Assert.That(compiled.Units[1].Id, Is.EqualTo("s1"));
+    }
+
+    [Test]
+    public void HeroJoin_ToughOverCap_Warns()
+    {
+        var list = List(100000,
+            new BuilderUnit { RosterUnitId = "captain", Id = "h1", JoinsUnitId = "s1" },
+            new BuilderUnit { RosterUnitId = "squad", Id = "s1" });
+        var issues = Check(JoinBook(heroTough: 9), list);
+
+        Assert.That(issues.Any(i => i.Severity == ListIssueSeverity.Warning && i.Message.Contains("Tough(9)")), Is.True);
+    }
+
+    [Test]
+    public void HeroJoin_MissingTarget_Warns()
+    {
+        var list = List(100000, new BuilderUnit { RosterUnitId = "captain", Id = "h1", JoinsUnitId = "gone" });
+        var issues = Check(JoinBook(), list);
+
+        Assert.That(issues.Any(i => i.Message.Contains("no longer exists")), Is.True);
+    }
+
+    [Test]
+    public void HeroJoin_SingleModelHost_Warns()
+    {
+        var list = List(100000,
+            new BuilderUnit { RosterUnitId = "captain", Id = "h1", JoinsUnitId = "x1" },
+            new BuilderUnit { RosterUnitId = "solo", Id = "x1" });
+        var issues = Check(JoinBook(), list);
+
+        Assert.That(issues.Any(i => i.Message.Contains("ineligible")), Is.True);
     }
 
     [Test]

@@ -53,6 +53,8 @@ namespace FDG.ArmyBuilding
                 }
             }
 
+            ValidateHeroJoins(compiled, issues);
+
             // Army-composition caps (reuse the engine validator) as Warnings. The points cap is already an Error
             // above, so drop its duplicate from the warning set.
             foreach (string warning in ForceOrgValidator.Validate(compiled))
@@ -60,6 +62,65 @@ namespace FDG.ArmyBuilding
                     issues.Add(new ListIssue(warning, ListIssueSeverity.Warning));
 
             return issues;
+        }
+
+        // #006 hero-join eligibility, mirrored so the builder can't author a join that silently deploys solo
+        // at game time. Warnings, not Errors — the engine tolerates all of these (the hero just stays solo).
+        private static void ValidateHeroJoins(BuiltArmyFile compiled, List<ListIssue> issues)
+        {
+            for (int i = 0; i < compiled.Units.Count; i++)
+            {
+                UnitFileEntry unit = compiled.Units[i];
+                if (string.IsNullOrEmpty(unit.JoinsUnitId)) continue;
+
+                if (!ForceOrgValidator.IsHero(unit))
+                {
+                    issues.Add(new ListIssue($"{unit.Name}: has a join target but no Hero rule.",
+                        ListIssueSeverity.Warning, i));
+                    continue;
+                }
+                if (unit.ModelCount != 1)
+                    issues.Add(new ListIssue($"{unit.Name}: a Hero must be a single model to join a unit.",
+                        ListIssueSeverity.Warning, i));
+                if (TryGetToughValue(unit, out int tough) && tough > Rules.Dispatch.HeroJoinResolver.MaxHeroToughForJoin)
+                    issues.Add(new ListIssue(
+                        $"{unit.Name}: Tough({tough}) exceeds the join cap (Tough({Rules.Dispatch.HeroJoinResolver.MaxHeroToughForJoin})); it will deploy solo.",
+                        ListIssueSeverity.Warning, i));
+
+                UnitFileEntry? host = compiled.Units.FirstOrDefault(u =>
+                    !ReferenceEquals(u, unit) && u.Id == unit.JoinsUnitId);
+                if (host is null)
+                    issues.Add(new ListIssue($"{unit.Name}: join target no longer exists; it will deploy solo.",
+                        ListIssueSeverity.Warning, i));
+                else if (host.ModelCount <= 1 || ForceOrgValidator.IsHero(host))
+                    issues.Add(new ListIssue(
+                        $"{unit.Name}: join target \"{host.Name}\" is ineligible (must be a multi-model unit without another Hero).",
+                        ListIssueSeverity.Warning, i));
+            }
+        }
+
+        /// <summary>Reads a unit's Tough(X) value from its special rules (alias-aware). Shared with the
+        /// builder UI. False when the unit has no Tough rule.</summary>
+        public static bool TryGetToughValue(UnitFileEntry unit, out int tough)
+        {
+            foreach (SpecialRuleEntry entry in unit.SpecialRules)
+                if (TryGetTough(entry, out tough))
+                    return true;
+            tough = 0;
+            return false;
+        }
+
+        private static bool TryGetTough(SpecialRuleEntry entry, out int tough)
+        {
+            switch (entry)
+            {
+                case SpecialRuleEntry_CoreNumeric num when num.Name == "Tough":
+                    tough = num.NumericValue; return true;
+                case SpecialRuleEntry_Alias alias:
+                    return TryGetTough(alias.AliasedRule, out tough);
+                default:
+                    tough = 0; return false;
+            }
         }
     }
 }

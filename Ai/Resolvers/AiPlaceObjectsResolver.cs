@@ -100,6 +100,9 @@ namespace FDG.Ai.Resolvers
             {
                 center = FindBlockCenter(zone, maxRadius, cols, spacing, gridWidth, gridHeight,
                     models.Count, preferredCx, preferredCz, cxMin, cxMax, czMin, czMax, existing, enemies, minEnemyDist);
+                // Face toward the table centre (a top-zone unit faces down) — matters for Aircraft, whose
+                // heading IS this facing (#150); a whole-table zone (Ambush) lands on the neutral +Z default.
+                facing = PlacementUtilities.DefaultDeployFacing(bounds, GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES);
             }
 
             var positions = BuildGrid(center, cols, spacing, gridWidth, gridHeight, models.Count);

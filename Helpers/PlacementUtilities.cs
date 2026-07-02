@@ -15,6 +15,15 @@ namespace FDG
         public const float TABLE_EDGE_TOUCH_TOLERANCE_INCHES = 0.5f;
 
         /// <summary>
+        /// The default facing for units placed in a deployment zone: toward the table centre, so they start
+        /// aimed at the enemy — a zone above the centre line faces −Z, at or below it +Z (#150). Rotation
+        /// input then applies relative to this. TODO: side zones (deployment on the left/right flank) would
+        /// face ±X — add the X-axis cases if a map layout ever places zones there.
+        /// </summary>
+        public static Float2 DefaultDeployFacing(ZoneBounds zoneBounds, float tableHeightInches) =>
+            zoneBounds.CenterZ > tableHeightInches * 0.5f ? new Float2(0f, -1f) : new Float2(0f, 1f);
+
+        /// <summary>
         /// True if a base centred at <paramref name="centre"/> touches an edge of <paramref name="bounds"/> —
         /// its circumscribing circle comes within the tolerance of the nearest edge. Rotation-safe (uses the
         /// circumscribed radius, so any facing counts). #029: the Aircraft off-table redeploy must come back

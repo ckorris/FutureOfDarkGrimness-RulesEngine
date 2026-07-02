@@ -58,6 +58,21 @@ namespace FDG.Tests
             }
         }
 
+        // #150: the default deploy facing points toward the table centre — a top-zone unit starts facing
+        // down at the enemy instead of off the table (matters for Aircraft, whose heading IS the facing).
+        [Test]
+        public void DefaultDeployFacing_PointsTowardTableCentre()
+        {
+            float tableH = GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES;
+            var bottomZone = new RectangularZone(0f, 72f, 0f, 12f);
+            var topZone = new RectangularZone(0f, 72f, tableH - 12f, tableH);
+
+            Assert.That(PlacementUtilities.DefaultDeployFacing(bottomZone.Bounds, tableH), Is.EqualTo(new Float2(0f, 1f)),
+                "a bottom zone faces up (+Z) toward the centre.");
+            Assert.That(PlacementUtilities.DefaultDeployFacing(topZone.Bounds, tableH), Is.EqualTo(new Float2(0f, -1f)),
+                "a top zone faces down (−Z) toward the centre.");
+        }
+
         // #029: an edge-constrained placement (the Aircraft off-table redeploy) must come back on touching a
         // table edge, with the models facing inward from that edge (facing = heading, so the aircraft doesn't
         // immediately fly back off).

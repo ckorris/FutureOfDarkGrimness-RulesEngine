@@ -38,7 +38,9 @@ namespace FDG.Stages
     ///         ride the synthetic weapon; #034 single-model spells confine wounds to one chosen model.</item>
     /// </list>
     ///
-    /// DEFERRED (recorded in #033/#034): the ±1 friendly-Caster assist (#103, slots in before the roll).
+    /// #103 — before the roll, other Caster units within 18" may spend their own spell tokens to sway the
+    /// cast: friendly Casters add +1 each, enemy Casters subtract 1 each. The net modifier shifts the 4+
+    /// success threshold (clamped to [1, 6]); assisters' tokens are spent whether or not the cast succeeds.
     /// </summary>
     public class CastSpellStage : ParentStage<IUnitActionContext, SpellDamageRunContext>
     {
@@ -46,6 +48,15 @@ namespace FDG.Stages
 
         private const string CANCEL_OPTION = "Cancel";
         private const int CAST_SUCCESS_THRESHOLD = 4;
+
+        // #103 assist text-beat colors - match the GUI highlight: blue for a friendly boost (+), orange for
+        // an enemy disruption (-).
+        private static readonly TextColor AssistBannerColor = new TextColor(77, 153, 255, 255);
+        private static readonly TextColor HinderBannerColor = new TextColor(255, 153, 38, 255);
+
+        // Cast-result text-beat colors: blue on a successful cast, red on a failure.
+        private static readonly TextColor CastSuccessColor = new TextColor(77, 153, 255, 255);
+        private static readonly TextColor CastFailColor = new TextColor(220, 40, 40, 255);
 
         // The damage run set up in Enter (synthetic weapon + chosen targets + base hits + any single-model
         // pick) and handed to the looped child pipeline by GetNewChildContext. Null on the buff path, which
@@ -106,19 +117,38 @@ namespace FDG.Stages
             // 3. Spend the spell's token cost to attempt (spent whether or not the cast succeeds).
             caster.Tokens.RemoveTokens(TokenType.SpellTokens, chosen.Threshold);
 
-            // 4. Cast roll: one die, 4+ succeeds. RollDecisive so it's a real outcome under the
-            //    probabilistic roller. (±1 friendly-Caster assist — #103 — would adjust here.)
-            bool success = GameContext.DiceRoller.RollDecisive().AtOrAbove(CAST_SUCCESS_THRESHOLD) >= 1f;
+            // 4. #103 — other Caster units within 18" may spend their own tokens to sway the cast: friendly
+            //    Casters add +1 each, enemy Casters subtract 1 each. Their tokens are spent regardless of the
+            //    cast's outcome (like the cast cost above). The net modifier shifts the success threshold.
+            int assist = await CollectCastAssist(context.ActivatingUnit, player, chosen.Name);
+
+            // 5. Cast roll: one die, base 4+ succeeds, shifted by the assist. RollDecisive so it's a real
+            //    outcome under the probabilistic roller; a threshold shift (not a post-roll adjustment) keeps
+            //    it a single decisive comparison. Clamp to [1, 6] so a big swing still leaves a 6 succeeding /
+            //    a 1 failing rather than asking for an impossible face.
+            int threshold = System.Math.Clamp(CAST_SUCCESS_THRESHOLD - assist, 1, IDiceRollerExtensions.DEFAULT_SIDE_COUNT);
+            IDiceResults castRoll = GameContext.DiceRoller.RollDecisive();
+            bool success = castRoll.AtOrAbove(threshold) >= 1f;
+
+            // Spell out the roll so the assist is visible: what came up, what it needed, and (when assisted)
+            // how the net +/-1 shifted the base 4+. Assisters' own contributions were announced as they spent.
+            // The result rides an on-screen text beat: blue on success, red on failure. ASCII only (the log
+            // font has no em-dash glyph, #151).
+            string breakdown = assist != 0
+                ? $" (base {CAST_SUCCESS_THRESHOLD}+, net {(assist > 0 ? "+" : "")}{assist} assist)"
+                : "";
+            string rollDesc = $"rolled {DecisiveFace(castRoll)}, needed {threshold}+{breakdown}; spent {chosen.Threshold} token{(chosen.Threshold == 1 ? "" : "s")}";
+
             if (!success)
             {
-                GameContext.Log($"{caster.Name} failed to cast {chosen.Name} (spent {chosen.Threshold} tokens).");
+                await GameContext.Announce($"{caster.Name} failed to cast {chosen.Name}: {rollDesc}.", CastFailColor);
                 await OnFinished.Activate(context);
                 return;
             }
 
-            GameContext.Log($"{caster.Name} cast {chosen.Name} (spent {chosen.Threshold} tokens).");
+            await GameContext.Announce($"{caster.Name} cast {chosen.Name}: {rollDesc}.", CastSuccessColor);
 
-            // 5a. Damage spell → resolve each chosen target through the looped child pipeline.
+            // 6a. Damage spell → resolve each chosen target through the looped child pipeline.
             if (chosen.Effect is Effect.DealHits dealHits)
             {
                 // Synthetic spell weapon: the spell's AP + its pre-resolved weapon rules (shared across targets).
@@ -144,7 +174,7 @@ namespace FDG.Stages
                 return;
             }
 
-            // 5b. Conditional spell (#034 #5) → each target takes a morale test; the on-fail effect lands
+            // 6b. Conditional spell (#034 #5) → each target takes a morale test; the on-fail effect lands
             //     only on a failure. Stage-side because the test is async and rolls against live state.
             if (chosen.Effect is Effect.MoraleTestThen conditional)
             {
@@ -153,7 +183,7 @@ namespace FDG.Stages
                 return;
             }
 
-            // 5c. Non-damage spell → apply the effect to each target (no child pipeline): token grants
+            // 6c. Non-damage spell → apply the effect to each target (no child pipeline): token grants
             //     (buff/debuff) and inline engine operations (forced enemy move, #034) both flow through here.
             foreach (DataBinding<UnitData> target in targets)
             {
@@ -183,7 +213,7 @@ namespace FDG.Stages
 
                 if (outcome.Passed)
                 {
-                    GameContext.Log($"{targetUnit.Name} passed {spell.Name}'s morale test — no effect.");
+                    GameContext.Log($"{targetUnit.Name} passed {spell.Name}'s morale test - no effect.");
                     continue;
                 }
 
@@ -339,6 +369,104 @@ namespace FDG.Stages
                 .RequestDecision<SelectionRequest<ModelData>, DataBinding<ModelData>>(request);
         }
 
+        // #103 — offer every eligible Caster within 18" the chance to spend tokens on this cast, sum the
+        // result into a net roll modifier (friendly +1/token, enemy -1/token) and spend the tokens. Friendly
+        // helpers declare first — the casting side commits support, then the enemy responds. Tokens are spent
+        // whether or not the cast then succeeds, matching the cast cost. Returns 0 when no one assists, so a
+        // game with no nearby Casters sees no prompts and no behaviour change.
+        private async Task<int> CollectCastAssist(DataBinding<UnitData> casterBinding, PlayerID casterPlayer,
+            string spellName)
+        {
+            string casterName = casterBinding.GetValue().Name;
+            int net = 0;
+            foreach ((DataBinding<UnitData> unitBinding, bool friendly) in FindEligibleAssisters(casterBinding, casterPlayer))
+            {
+                IUnit assister = unitBinding.GetValue();
+                int available = assister.Tokens.GetTokenCount(TokenType.SpellTokens);
+                if (available <= 0) continue;
+
+                int spent = await AskAssistCount(unitBinding, casterBinding, friendly, available, spellName);
+                if (spent <= 0) continue;
+
+                assister.Tokens.RemoveTokens(TokenType.SpellTokens, spent);
+                net += friendly ? spent : -spent;
+
+                // Text beat: announce who assisted/hindered and by how much — an on-screen banner plus the
+                // log line, blue for a friendly boost and orange for an enemy disruption (matches the GUI
+                // highlight). Only fires when a Caster actually spends (declines skip via the guard above).
+                await GameContext.Announce(
+                    $"{assister.Name} {(friendly ? "assists" : "hinders")} {casterName}'s cast of {spellName} " +
+                    $"({(friendly ? "+" : "-")}{spent}).",
+                    friendly ? AssistBannerColor : HinderBannerColor);
+            }
+            return net;
+        }
+
+        // Living, on-battlefield Caster units (other than the caster) that hold at least one spell token and
+        // whose unit is within CASTER_ASSIST_RANGE_INCHES (base-to-base, 3D) of the casting unit. Friendly
+        // Casters (same team, or same player when no team is registered — mirroring SpellTargeting) come
+        // first, then enemy Casters, each group in store order for a deterministic prompt sequence.
+        private List<(DataBinding<UnitData> unit, bool friendly)> FindEligibleAssisters(
+            DataBinding<UnitData> casterBinding, PlayerID casterPlayer)
+        {
+            TeamData team = GameContext.GameDataStore().GetAllValues<TeamData>()
+                .FirstOrDefault(t => t.IsPlayerOnTeam(casterPlayer));
+            bool IsFriendly(PlayerID p) => team != null ? team.IsPlayerOnTeam(p) : p == casterPlayer;
+
+            IUnit castingUnit = casterBinding.GetValue();
+            List<(DataBinding<UnitData>, bool)> friends = new List<(DataBinding<UnitData>, bool)>();
+            List<(DataBinding<UnitData>, bool)> enemies = new List<(DataBinding<UnitData>, bool)>();
+
+            IEnumerable<DataBinding<UnitData>> allUnits = GameContext.GameDataStore().GetAllValues<ArmyData>()
+                .SelectMany(a => a.UnitBindings);
+
+            foreach (DataBinding<UnitData> unitBinding in allUnits)
+            {
+                if (unitBinding.Reference.Equals(casterBinding.Reference)) continue; // not the casting unit
+                UnitData unit = unitBinding.GetValue();
+                if (!unit.GetIsAlive() || !unit.GetIsOnBattlefield()) continue;
+                if (!SpellTargeting.IsCaster(unit)) continue;
+                if (unit.Tokens.GetTokenCount(TokenType.SpellTokens) <= 0) continue;
+
+                float distance = UnitCompareUtilities.MinDistanceBetweenUnits(
+                    castingUnit, unit, out _, out _, includeVertical: true);
+                if (distance > GameWideConstants.CASTER_ASSIST_RANGE_INCHES) continue;
+
+                bool friendly = IsFriendly(unit.PlayerID);
+                (friendly ? friends : enemies).Add((unitBinding, friendly));
+            }
+
+            friends.AddRange(enemies);
+            return friends;
+        }
+
+        // Ask one Caster's controller how many tokens to spend, via a CastAssistRequest that carries both
+        // units so the GUI can highlight the assister and draw a line to the caster (blue friendly / orange
+        // enemy) and show the token count. The reply is clamped to what the assister actually holds. CLI and
+        // AI resolvers default to spending nothing.
+        private async Task<int> AskAssistCount(DataBinding<UnitData> assistingUnit, DataBinding<UnitData> castingUnit,
+            bool friendly, int available, string spellName)
+        {
+            CastAssistRequest request = new CastAssistRequest(
+                assistingUnit.GetValue().PlayerID, assistingUnit, castingUnit, friendly, available, spellName);
+
+            int spent = await GameContext.PlayerRequester
+                .RequestDecision<CastAssistRequest, int>(request);
+
+            return System.Math.Clamp(spent, 0, available);
+        }
+
         private static string SpellOptionLabel(RuntimeSpell spell) => $"{spell.Name} ({spell.Threshold})";
+
+        // The single face that came up on a decisive (one-die) roll, for logging. A decisive roll has exactly
+        // one face with weight, so this returns it; falls back to the minimum face if none is set.
+        private static int DecisiveFace(IDiceResults roll)
+        {
+            for (int face = roll.SideMin; face <= roll.SideMax; face++)
+            {
+                if (roll.At(face) > 0f) return face;
+            }
+            return roll.SideMin;
+        }
     }
 }

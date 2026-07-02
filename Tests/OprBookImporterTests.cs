@@ -23,6 +23,7 @@ public class OprBookImporterTests
             { "name": "Claw", "count": 5, "range": null, "attacks": 2, "specialRules": [] }
           ],
           "rules": [ {"name":"Tough","rating":"3"} ],
+          "items": [ {"name":"Combat Shields","count":5,"content":[{"type":"ArmyBookRule","name":"Shield Wall"}]} ],
           "upgrades": ["P1"] }
       ],
       "upgradePackages": [
@@ -75,7 +76,16 @@ public class OprBookImporterTests
     }
 
     [Test]
-    public void Import_MapsSection_AndFlattensItemGainIntoRule()
+    public void Import_MapsUnitItems_WithNameAndRules()
+    {
+        ItemEntry shields = Import().Units.Single().Items.Single();
+        Assert.That(shields.Name, Is.EqualTo("Combat Shields"));
+        Assert.That(shields.Quantity, Is.EqualTo(5));
+        Assert.That(shields.Rules, Has.One.EqualTo(new SpecialRuleEntry_Core("Shield Wall")));
+    }
+
+    [Test]
+    public void Import_MapsSection_AndKeepsItemGainNamed()
     {
         UpgradeSection section = Import().Units.Single().Sections.Single();
         Assert.That(section.Variant, Is.EqualTo(UpgradeVariant.Replace));
@@ -86,8 +96,10 @@ public class OprBookImporterTests
         Assert.That(option.Cost, Is.EqualTo(10));
         Assert.That(option.WeaponsGained.Single().Name, Is.EqualTo("Heavy Blaster"));
         Assert.That(option.WeaponsGained.Single().ArmorPenetration, Is.EqualTo(2));
-        // The "Targeter" item was flattened into the rule it bundles.
-        Assert.That(option.RulesGained, Has.One.EqualTo(new SpecialRuleEntry_Core("Reliable")));
+        // The "Targeter" item keeps its name (for display + Replace targeting), carrying its rule.
+        ItemEntry targeter = option.ItemsGained.Single();
+        Assert.That(targeter.Name, Is.EqualTo("Targeter"));
+        Assert.That(targeter.Rules, Has.One.EqualTo(new SpecialRuleEntry_Core("Reliable")));
     }
 
     [Test]

@@ -89,6 +89,7 @@ namespace FDG.ArmyBuilding
                 BasePointCost = unit.Cost,
                 Weapons = (unit.Weapons ?? new()).Select(MapWeapon).ToList(),
                 Rules = (unit.Rules ?? new()).Select(MapRule).ToList(),
+                Items = (unit.Items ?? new()).Select(MapItem).ToList(),
             };
 
             // Resolve the unit's referenced upgrade packages → their sections.
@@ -172,7 +173,8 @@ namespace FDG.ArmyBuilding
             return option;
         }
 
-        // A gain is a weapon, a rule, or an item that bundles rules/weapons (flattened into the option).
+        // A gain is a weapon, a rule, or a named item bundling rules (kept as an ItemEntry so the name survives
+        // for display and Replace targeting; any weapon nested in an item's content is routed to WeaponsGained).
         private static void AddGain(UpgradeOption option, OprGain g)
         {
             switch (g.Type)
@@ -192,11 +194,25 @@ namespace FDG.ArmyBuilding
                     option.RulesGained.Add(MapRule(new OprRule { Name = g.Name, Rating = g.Rating }));
                     break;
                 case "ArmyBookItem":
-                    foreach (OprGain inner in g.Content ?? new())
+                    var item = MapItem(g);
+                    foreach (OprGain inner in (g.Content ?? new()).Where(c => c.Type == "ArmyBookWeapon"))
                         AddGain(option, inner);
+                    option.ItemsGained.Add(item);
                     break;
             }
         }
+
+        /// <summary>Maps an OPR item (unit-level or gain) to an <see cref="ItemEntry"/>: name + its rule content.
+        /// Non-rule content (nested weapons) is the caller's job to route.</summary>
+        private static ItemEntry MapItem(OprGain g) => new()
+        {
+            Name = g.Name ?? "Item",
+            Quantity = Math.Max(1, g.Count ?? 1),
+            Rules = (g.Content ?? new())
+                .Where(c => c.Type == "ArmyBookRule")
+                .Select(c => MapRule(new OprRule { Name = c.Name, Rating = c.Rating }))
+                .ToList(),
+        };
 
         // ── OPR JSON DTOs (only the fields we consume; lore/image/meta fields are ignored) ──────────────────
 
@@ -218,6 +234,7 @@ namespace FDG.ArmyBuilding
             public int Defense { get; set; }
             public List<OprWeapon>? Weapons { get; set; }
             public List<OprRule>? Rules { get; set; }
+            public List<OprGain>? Items { get; set; }
             public List<string>? Upgrades { get; set; }
         }
 

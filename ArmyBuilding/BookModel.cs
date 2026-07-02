@@ -74,7 +74,21 @@ namespace FDG.ArmyBuilding
         public List<WeaponFileEntry> Weapons { get; set; } = new();
         public List<SpecialRuleEntry> Rules { get; set; } = new();
 
+        /// <summary>Named wargear the unit carries (e.g. "Combat Shields") — each a bundle of granted rules.
+        /// Items keep their names so Replace sections can target them ("Replace all ... and Combat Shields");
+        /// at compile time their rules flatten into the unit's SpecialRules.</summary>
+        public List<ItemEntry> Items { get; set; } = new();
+
         public List<UpgradeSection> Sections { get; set; } = new();
+    }
+
+    /// <summary>A named piece of wargear: carries rules, no attack profile. Kept distinct from weapons so it
+    /// can be a Replace target and display under its own name.</summary>
+    public class ItemEntry
+    {
+        public string Name { get; set; } = string.Empty;
+        public int Quantity { get; set; } = 1;
+        public List<SpecialRuleEntry> Rules { get; set; } = new();
     }
 
     /// <summary>What an upgrade section does to the unit when an option is chosen.</summary>
@@ -141,6 +155,10 @@ namespace FDG.ArmyBuilding
 
         public List<WeaponFileEntry> WeaponsGained { get; set; } = new();
         public List<SpecialRuleEntry> RulesGained { get; set; } = new();
+
+        /// <summary>Named wargear gained (e.g. "Sgt. Armor"), keeping the item's name for display and for
+        /// later Replace targeting; its rules flatten into the unit at compile time.</summary>
+        public List<ItemEntry> ItemsGained { get; set; } = new();
 
         /// <summary>Models added to the unit (AddModels sections). 0 for weapon/rule upgrades.</summary>
         public int ModelsGained { get; set; }

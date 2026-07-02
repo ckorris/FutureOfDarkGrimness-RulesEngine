@@ -37,12 +37,15 @@ namespace FDG.ArmyBuilding
             };
 
             foreach (BuilderUnit bu in list.Units)
-                army.Units.Add(CompileUnit(book, bu));
+                army.Units.Add(CompileUnitDetailed(book, bu).Unit);
 
             return army;
         }
 
-        private static UnitFileEntry CompileUnit(BookFile book, BuilderUnit bu)
+        /// <summary>Compiles one unit and also returns its final wargear items (post-replaces), which the
+        /// builder UI needs for display and target-availability. The item's rules are already flattened into
+        /// the returned unit's SpecialRules — the item list is presentation/targeting metadata.</summary>
+        public static (UnitFileEntry Unit, List<ItemEntry> Items) CompileUnitDetailed(BookFile book, BuilderUnit bu)
         {
             RosterUnit roster = book.Units.FirstOrDefault(u => u.Id == bu.RosterUnitId)
                 ?? throw new InvalidOperationException($"Roster unit '{bu.RosterUnitId}' not found in book '{book.Name}'.");
@@ -60,15 +63,22 @@ namespace FDG.ArmyBuilding
                 SpecialRules = new List<SpecialRuleEntry>(roster.Rules),
                 Weapons = roster.Weapons.Select(CloneWeapon).ToList(),
             };
+            List<ItemEntry> items = roster.Items.Select(CloneItem).ToList();
 
-            foreach (UpgradeChoice choice in bu.Choices)
+            // Apply in the book's section order, not click order — a later section may target weapons an
+            // earlier one grants (e.g. "Replace one Shard Carbine" after "Replace all ... with Shard Carbines"),
+            // so compilation must not depend on the sequence the user toggled things in.
+            IEnumerable<UpgradeChoice> ordered = bu.Choices
+                .OrderBy(c => Math.Max(0, roster.Sections.FindIndex(s => s.Id == c.SectionId)));
+
+            foreach (UpgradeChoice choice in ordered)
             {
                 UpgradeSection section = roster.Sections.FirstOrDefault(s => s.Id == choice.SectionId)
                     ?? throw new InvalidOperationException($"Section '{choice.SectionId}' not found on unit '{roster.Id}'.");
                 UpgradeOption option = section.Options.FirstOrDefault(o => o.Id == choice.OptionId)
                     ?? throw new InvalidOperationException($"Option '{choice.OptionId}' not found in section '{section.Id}'.");
 
-                int applications = Applications(section, choice, unit);
+                int applications = Applications(section, choice, unit, items);
                 if (applications <= 0) continue;
 
                 unit.PointCost += option.Cost * applications;
@@ -77,23 +87,29 @@ namespace FDG.ArmyBuilding
                 {
                     case UpgradeVariant.Replace:
                         foreach (string target in section.Targets)
-                            RemoveWeapon(unit.Weapons, target, applications);
-                        AddGains(unit, option, applications);
+                            RemoveTarget(unit.Weapons, items, target, applications);
+                        AddGains(unit, items, option, applications);
                         break;
 
                     case UpgradeVariant.AddModels:
                         unit.ModelCount += option.ModelsGained * applications;
-                        AddGains(unit, option, applications);
+                        AddGains(unit, items, option, applications);
                         break;
 
                     case UpgradeVariant.Upgrade:
                     case UpgradeVariant.PickN:
-                        AddGains(unit, option, applications);
+                        AddGains(unit, items, option, applications);
                         break;
                 }
             }
 
-            return unit;
+            // Items are rule-bundles at runtime: fold their rules into the unit (deduped by value).
+            foreach (ItemEntry item in items)
+                foreach (SpecialRuleEntry rule in item.Rules)
+                    if (!unit.SpecialRules.Contains(rule))
+                        unit.SpecialRules.Add(rule);
+
+            return (unit, items);
         }
 
         // How many times an option applies — drives cost + gain scaling, and (for Replace) is clamped so you
@@ -101,15 +117,19 @@ namespace FDG.ArmyBuilding
         //   One  → up to 1
         //   Any  → up to choice.Count, capped by MaxApplications (0 = unbounded) — a stepper
         //   All  → every matched target (per-model), as an on/off toggle
-        private static int Applications(UpgradeSection section, UpgradeChoice choice, UnitFileEntry unit)
+        // A combined target ("Energy Sword AND Combat Shield") consumes one of EACH per application, so the
+        // One/Any cap is the MIN across targets — you can't take the swap without every part present. All
+        // instead strips every match of each target, so its gain count is the MAX across targets.
+        private static int Applications(UpgradeSection section, UpgradeChoice choice, UnitFileEntry unit, List<ItemEntry> items)
         {
             int chosen = Math.Max(0, choice.Count);
             if (section.Variant == UpgradeVariant.AddModels)
                 return chosen;
 
             bool isReplace = section.Variant == UpgradeVariant.Replace;
-            int availableSum = AvailableTargets(unit.Weapons, section.Targets);
-            int availableMax = section.Targets.Count == 0 ? 0 : section.Targets.Max(t => MatchedCount(unit.Weapons, t));
+            int availableMin = AvailableApplications(unit.Weapons, items, section.Targets);
+            int availableMax = section.Targets.Count == 0 ? 0
+                : section.Targets.Max(t => MatchedCount(unit.Weapons, items, t));
 
             int desired = section.Affects switch
             {
@@ -121,29 +141,34 @@ namespace FDG.ArmyBuilding
             };
 
             if (!isReplace) return desired;
-            return Math.Min(desired, section.Affects == UpgradeAffects.All ? availableMax : availableSum);
+            return Math.Min(desired, section.Affects == UpgradeAffects.All ? availableMax : availableMin);
         }
 
-        private static void AddGains(UnitFileEntry unit, UpgradeOption option, int applications)
+        private static void AddGains(UnitFileEntry unit, List<ItemEntry> items, UpgradeOption option, int applications)
         {
             foreach (WeaponFileEntry w in option.WeaponsGained)
                 AddWeapon(unit.Weapons, w, applications);
             foreach (SpecialRuleEntry r in option.RulesGained)
                 if (!unit.SpecialRules.Contains(r))
                     unit.SpecialRules.Add(r);
+            foreach (ItemEntry it in option.ItemsGained)
+                AddItem(items, it, applications);
         }
 
-        /// <summary>Total copies of weapons matching any of <paramref name="targets"/>. Shared with the builder
-        /// UI so it can gray out a "replace X" the unit has no X for.</summary>
-        public static int AvailableTargets(IEnumerable<WeaponFileEntry> weapons, IEnumerable<string> targets) =>
-            targets.Sum(t => MatchedCount(weapons, t));
+        /// <summary>How many times a Replace with these targets can apply — the MIN across targets of matched
+        /// copies (weapons + items), since one application consumes one of each. Shared with the builder UI so
+        /// it can gray out a "replace X" the unit has no X for (0 when no target list).</summary>
+        public static int AvailableApplications(
+            IEnumerable<WeaponFileEntry> weapons, IEnumerable<ItemEntry> items, IReadOnlyCollection<string> targets) =>
+            targets.Count == 0 ? 0 : targets.Min(t => MatchedCount(weapons, items, t));
 
-        private static int MatchedCount(IEnumerable<WeaponFileEntry> weapons, string target) =>
-            weapons.Where(w => TargetMatches(w.Name, target)).Sum(w => w.Quantity);
+        private static int MatchedCount(IEnumerable<WeaponFileEntry> weapons, IEnumerable<ItemEntry> items, string target) =>
+            weapons.Where(w => TargetMatches(w.Name, target)).Sum(w => w.Quantity)
+            + items.Where(i => TargetMatches(i.Name, target)).Sum(i => i.Quantity);
 
-        // OPR upgrade targets are pluralised labels ("Energy Swords") that must match a singular weapon name
-        // ("Energy Sword"). Normalise case + a single trailing 's' so they line up.
-        public static bool TargetMatches(string weaponName, string target) => Normalize(weaponName) == Normalize(target);
+        // OPR upgrade targets are pluralised labels ("Energy Swords") that must match a singular weapon/item
+        // name ("Energy Sword"). Normalise case + a single trailing 's' so they line up.
+        public static bool TargetMatches(string name, string target) => Normalize(name) == Normalize(target);
 
         private static string Normalize(string s)
         {
@@ -151,7 +176,8 @@ namespace FDG.ArmyBuilding
             return s.EndsWith("s") ? s[..^1] : s;
         }
 
-        private static void RemoveWeapon(List<WeaponFileEntry> weapons, string target, int count)
+        // Removes up to `count` copies of the target, consuming matching weapons first, then items.
+        private static void RemoveTarget(List<WeaponFileEntry> weapons, List<ItemEntry> items, string target, int count)
         {
             int remaining = count;
             for (int i = 0; i < weapons.Count && remaining > 0; i++)
@@ -162,7 +188,31 @@ namespace FDG.ArmyBuilding
                 remaining -= take;
             }
             weapons.RemoveAll(w => w.Quantity <= 0);
+
+            for (int i = 0; i < items.Count && remaining > 0; i++)
+            {
+                if (!TargetMatches(items[i].Name, target)) continue;
+                int take = Math.Min(items[i].Quantity, remaining);
+                items[i].Quantity -= take;
+                remaining -= take;
+            }
+            items.RemoveAll(i => i.Quantity <= 0);
         }
+
+        private static void AddItem(List<ItemEntry> items, ItemEntry template, int applications)
+        {
+            int add = Math.Max(1, template.Quantity) * applications;
+            ItemEntry? existing = items.FirstOrDefault(i =>
+                i.Name == template.Name && i.Rules.SequenceEqual(template.Rules));
+            if (existing != null) existing.Quantity += add;
+            else { ItemEntry clone = CloneItem(template); clone.Quantity = add; items.Add(clone); }
+        }
+
+        private static ItemEntry CloneItem(ItemEntry i) => new()
+        {
+            Name = i.Name, Quantity = i.Quantity,
+            Rules = new List<SpecialRuleEntry>(i.Rules),
+        };
 
         private static void AddWeapon(List<WeaponFileEntry> weapons, WeaponFileEntry template, int applications)
         {

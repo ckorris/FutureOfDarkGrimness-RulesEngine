@@ -148,6 +148,80 @@ public class ArmyForgeCompilerTests
     }
 
     [Test]
+    public void Items_FlattenRulesIntoUnit_AndReplaceDeductsThem()
+    {
+        // Retributors-shaped: 5 Energy Swords (weapons) + 5 Combat Shields (item granting Shield Wall).
+        // "Replace all Energy Swords and Combat Shields" must strip BOTH pools (plural targets), add the
+        // replacement per match, and drop the item's granted rule from the unit.
+        var unit = new RosterUnit
+        {
+            Id = "u", Name = "U", Quality = 3, Defense = 4, BaseModelCount = 5, MinModels = 5, MaxModels = 5, BasePointCost = 105,
+            Weapons = { Wpn("Energy Sword", 5) },
+            Items = { new ItemEntry { Name = "Combat Shields", Quantity = 5, Rules = { new SpecialRuleEntry_Core("Shield Wall") } } },
+            Sections = { new UpgradeSection { Id = "s", Variant = UpgradeVariant.Replace, Affects = UpgradeAffects.All,
+                Targets = { "Energy Swords", "Combat Shields" },
+                Options = { new UpgradeOption { Id = "o", Cost = 0, WeaponsGained = { Wpn("Shard Carbine"), Wpn("CCW") } } } } },
+        };
+
+        // Without the choice: item rule is on the unit.
+        UnitFileEntry plain = CompileOne(unit);
+        Assert.That(plain.SpecialRules, Has.One.EqualTo(new SpecialRuleEntry_Core("Shield Wall")));
+
+        // With the choice: swords + shields gone, 5 carbines + 5 CCWs, Shield Wall gone.
+        UnitFileEntry swapped = CompileOne(unit, new UpgradeChoice { SectionId = "s", OptionId = "o", Count = 1 });
+        Assert.That(swapped.Weapons.Any(w => w.Name == "Energy Sword"), Is.False);
+        Assert.That(swapped.Weapons.Single(w => w.Name == "Shard Carbine").Quantity, Is.EqualTo(5));
+        Assert.That(swapped.Weapons.Single(w => w.Name == "CCW").Quantity, Is.EqualTo(5));
+        Assert.That(swapped.SpecialRules.Contains(new SpecialRuleEntry_Core("Shield Wall")), Is.False);
+    }
+
+    [Test]
+    public void ReplaceOne_CombinedTarget_RequiresEveryPart()
+    {
+        // "Replace one Energy Sword and Combat Shield" with shields present but NO swords: min across the
+        // combined targets is 0, so the choice is a no-op (no phantom gain, no cost).
+        var unit = new RosterUnit
+        {
+            Id = "u", Name = "U", Quality = 3, Defense = 4, BaseModelCount = 5, MinModels = 5, MaxModels = 5, BasePointCost = 105,
+            Items = { new ItemEntry { Name = "Combat Shields", Quantity = 5 } },
+            Sections = { new UpgradeSection { Id = "s", Variant = UpgradeVariant.Replace, Affects = UpgradeAffects.One,
+                Targets = { "Energy Sword", "Combat Shield" },
+                Options = { new UpgradeOption { Id = "o", Cost = 5, WeaponsGained = { Wpn("Shard Pistol") } } } } },
+        };
+        UnitFileEntry compiled = CompileOne(unit, new UpgradeChoice { SectionId = "s", OptionId = "o", Count = 1 });
+
+        Assert.That(compiled.PointCost, Is.EqualTo(105));
+        Assert.That(compiled.Weapons.Any(w => w.Name == "Shard Pistol"), Is.False);
+    }
+
+    [Test]
+    public void Choices_ApplyInSectionOrder_NotClickOrder()
+    {
+        // "Replace one Shard Carbine" clicked BEFORE "Replace all Energy Swords with Shard Carbines" must
+        // still work: compilation orders choices by the book's section order, so the carbine exists by the
+        // time the second section is applied.
+        var unit = new RosterUnit
+        {
+            Id = "u", Name = "U", Quality = 3, Defense = 4, BaseModelCount = 5, MinModels = 5, MaxModels = 5, BasePointCost = 105,
+            Weapons = { Wpn("Energy Sword", 5) },
+            Sections =
+            {
+                new UpgradeSection { Id = "all", Variant = UpgradeVariant.Replace, Affects = UpgradeAffects.All,
+                    Targets = { "Energy Swords" }, Options = { new UpgradeOption { Id = "o1", Cost = 0, WeaponsGained = { Wpn("Shard Carbine") } } } },
+                new UpgradeSection { Id = "one", Variant = UpgradeVariant.Replace, Affects = UpgradeAffects.One,
+                    Targets = { "Shard Carbine" }, Options = { new UpgradeOption { Id = "o2", Cost = 20, WeaponsGained = { Wpn("Twin Shard Carbine") } } } },
+            },
+        };
+        UnitFileEntry compiled = CompileOne(unit,
+            new UpgradeChoice { SectionId = "one", OptionId = "o2", Count = 1 },   // clicked first
+            new UpgradeChoice { SectionId = "all", OptionId = "o1", Count = 1 });  // clicked second
+
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Shard Carbine").Quantity, Is.EqualTo(4));
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Twin Shard Carbine").Quantity, Is.EqualTo(1));
+        Assert.That(compiled.PointCost, Is.EqualTo(125));
+    }
+
+    [Test]
     public void ReplaceAny_IsBoundedByMaxApplicationsAndTargets()
     {
         // "Replace up to 2 Rifles" — asking for 5 is clamped to 2.

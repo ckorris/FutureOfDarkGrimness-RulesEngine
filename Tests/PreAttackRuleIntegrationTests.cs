@@ -206,6 +206,27 @@ namespace FDG.Tests
             Assert.That(ally.GetValue().Models[0].WoundsDealt, Is.EqualTo(0f), "Mend healed the wounded ally");
         }
 
+        // --- Targeting filters ---
+
+        // #153 supplement: TargetSelector.RequiredRule restricts candidates to units carrying the named
+        // rule (Re-Position Artillery's "pick one friendly within 6\" with Artillery").
+        [Test]
+        public void EligibleTargets_RequiredRule_FiltersToUnitsCarryingTheRule()
+        {
+            DataBinding<UnitData> bearer = MakeUnitAt(new Position(1f, 0f), null);
+            DataBinding<UnitData> artilleryAlly = MakeUnitAt(new Position(3f, 0f), CoreRuleCatalog.Artillery);
+            DataBinding<UnitData> plainAlly = MakeUnitAt(new Position(4f, 0f), null);
+
+            var ctx = new TriggeredMoveTestContext(_store, new NullPlayerRequester());
+            var selector = new TargetSelector(6f, 1, 1, ETargetAffinity.Friend, false,
+                RequiredRule: "artillery"); // case-insensitive, like Condition.UnitHasRule
+
+            List<DataBinding<UnitData>> eligible = PreAttackTargeting.EligibleTargets(bearer, selector, ctx);
+
+            Assert.That(eligible, Is.EqualTo(new[] { artilleryAlly }),
+                "only the unit carrying the required rule is a candidate");
+        }
+
         // --- Helpers ---
 
         // A self-targeted pre-attack ability, once per activation, granting the bearer a marker token.

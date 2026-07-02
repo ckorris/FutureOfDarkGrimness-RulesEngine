@@ -157,6 +157,81 @@ namespace FDG.Tests
                 }
         }
 
+        // #150 follow-up: no base may be deployed off the table. Deployment zones sit flush with the table
+        // edge, so a rectangular base whose footprint pokes past the zone edge would be off the board — the AI
+        // must keep every base fully within the table.
+        [Test]
+        public async Task NeverDeploysABaseOffTheTable()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var selfPlayer = new PlayerID(System.Guid.NewGuid());
+
+            var placing = new List<DataBinding<ModelData>>();
+            for (int i = 0; i < 8; i++)
+            {
+                var m = new ModelData(new RectangleBase(1f, 3f), new List<Weapon>(), new Position(0f, 0f), store);
+                placing.Add(store.GetDataBinding<ModelData>(store.Create(m)));
+            }
+            store.Create(new UnitData(selfPlayer, "Wall-Bearers", 4, 4, placing));
+
+            var tableState = new TableState(store);
+            var resolver = new AiPlaceObjectsResolver<ModelData>(tableState);
+            float tableW = GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES;
+            float tableH = GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES;
+            // A bottom deployment zone, flush with the table's bottom/left/right edges (as real zones are).
+            var zone = new RectangularZone(0f, tableW, 0f, 12f);
+            var request = new PlaceObjectsRequest<ModelData>(selfPlayer, "Place Unit Models", zone, placing);
+
+            List<PlacedObjectEntry<ModelData>> result = await resolver.Resolve(request);
+
+            Assert.That(result, Has.Count.EqualTo(8));
+            foreach (var e in result)
+            {
+                float r = e.Binding.GetValue().BaseShape.CircumscribedRadiusInches;
+                Assert.That(e.Position.x, Is.GreaterThanOrEqualTo(r - 0.001f).And.LessThanOrEqualTo(tableW - r + 0.001f),
+                    $"base off the left/right table edge at x={e.Position.x:F2}");
+                Assert.That(e.Position.z, Is.GreaterThanOrEqualTo(r - 0.001f).And.LessThanOrEqualTo(tableH - r + 0.001f),
+                    $"base off the bottom/top table edge at z={e.Position.z:F2}");
+            }
+        }
+
+        // Degenerate case: a unit far too big for its zone forces the AI's clamped fallback. The block can't fit,
+        // but the last-resort table clamp must still keep every base on the board (never off the table).
+        [Test]
+        public async Task UnitBiggerThanZone_StillLandsOnTable()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var selfPlayer = new PlayerID(System.Guid.NewGuid());
+
+            var placing = new List<DataBinding<ModelData>>();
+            for (int i = 0; i < 12; i++)
+            {
+                var m = new ModelData(new RectangleBase(2f, 2f), new List<Weapon>(), new Position(0f, 0f), store);
+                placing.Add(store.GetDataBinding<ModelData>(store.Create(m)));
+            }
+            store.Create(new UnitData(selfPlayer, "Big Block", 4, 4, placing));
+
+            var tableState = new TableState(store);
+            var resolver = new AiPlaceObjectsResolver<ModelData>(tableState);
+            float tableW = GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES;
+            float tableH = GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES;
+            // A tiny corner zone the 12-model block cannot possibly fit into.
+            var zone = new RectangularZone(0f, 6f, 0f, 6f);
+            var request = new PlaceObjectsRequest<ModelData>(selfPlayer, "Place Unit Models", zone, placing);
+
+            List<PlacedObjectEntry<ModelData>> result = await resolver.Resolve(request);
+
+            Assert.That(result, Has.Count.EqualTo(12));
+            foreach (var e in result)
+            {
+                float r = e.Binding.GetValue().BaseShape.CircumscribedRadiusInches;
+                Assert.That(e.Position.x, Is.GreaterThanOrEqualTo(r - 0.01f).And.LessThanOrEqualTo(tableW - r + 0.01f),
+                    $"base off the table at x={e.Position.x:F2}");
+                Assert.That(e.Position.z, Is.GreaterThanOrEqualTo(r - 0.01f).And.LessThanOrEqualTo(tableH - r + 0.01f),
+                    $"base off the table at z={e.Position.z:F2}");
+            }
+        }
+
         // The bug a user hit: a 10-model unit deployed with one model stranded far out of cohesion (behind
         // terrain) and the rest in an over-wide line. The resolver must place the whole unit as one block
         // satisfying BOTH cohesion rules — every model within 1" of a neighbour AND within 9" of every other —

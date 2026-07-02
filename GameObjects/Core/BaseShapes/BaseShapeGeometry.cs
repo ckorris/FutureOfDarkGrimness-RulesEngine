@@ -66,6 +66,28 @@ namespace FDG
             return shape.DistanceToLocalPoint(localX, localZ);
         }
 
+        /// <summary>
+        /// AABB half-extents of <paramref name="shape"/>'s footprint along the table X and Z axes at
+        /// <paramref name="facing"/> — how far the base reaches from its centre on each axis. Grid packers use
+        /// this to space columns and rows PER AXIS: a single radius over-spaces the short axis of an elongated
+        /// rectangle (breaking the 1" cohesion rule) or under-spaces the long axis (overlapping). Circle → (r, r);
+        /// an axis-aligned W×H rectangle → (W/2, H/2).
+        /// </summary>
+        public static (float halfX, float halfZ) FootprintHalfExtents(IBaseShape shape, Float2 facing)
+        {
+            BaseFootprint fp = shape.Footprint(new Position(0f, 0f), facing);
+            float minX = float.PositiveInfinity, maxX = float.NegativeInfinity;
+            float minZ = float.PositiveInfinity, maxZ = float.NegativeInfinity;
+            foreach (Float2 c in fp.Corners)
+            {
+                if (c.X < minX) minX = c.X;
+                if (c.X > maxX) maxX = c.X;
+                if (c.Y < minZ) minZ = c.Y;
+                if (c.Y > maxZ) maxZ = c.Y;
+            }
+            return ((maxX - minX) * 0.5f + fp.Rounding, (maxZ - minZ) * 0.5f + fp.Rounding);
+        }
+
         // --- Rounded-convex-hull core -------------------------------------------------------------------
         // Signed distance between two convex hulls (each ≥ 1 corner): positive = nearest-feature gap when
         // disjoint, negative = penetration depth when they interpenetrate. Two single-point hulls never

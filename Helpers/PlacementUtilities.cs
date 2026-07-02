@@ -24,6 +24,41 @@ namespace FDG
             zoneBounds.CenterZ > tableHeightInches * 0.5f ? new Float2(0f, -1f) : new Float2(0f, 1f);
 
         /// <summary>
+        /// True if a base of circumscribing radius <paramref name="circumscribedRadiusInches"/> centred at
+        /// <paramref name="centre"/> lies entirely within <paramref name="zone"/> — its footprint fits inside the
+        /// zone's bounding box (inset by the radius) AND its centre is inside the zone's true shape (so a circular
+        /// zone constrains to the real circle, not its bounding square). Deployment zones sit flush against the
+        /// table edge, so this is also what keeps a deployed base from poking off the table (#150 follow-up). Use
+        /// the CIRCUMSCRIBING radius so the guarantee holds for a rectangular base at any facing.
+        /// </summary>
+        public static bool IsBaseWithinZone(Position centre, float circumscribedRadiusInches, IBoundedZone zone)
+        {
+            ZoneBounds b = zone.Bounds;
+            return centre.x >= b.Left + circumscribedRadiusInches
+                && centre.x <= b.Right - circumscribedRadiusInches
+                && centre.z >= b.Bottom + circumscribedRadiusInches
+                && centre.z <= b.Top - circumscribedRadiusInches
+                && zone.IsPointWithinZone(centre);
+        }
+
+        /// <summary>
+        /// Clamps <paramref name="centre"/> so a base of circumscribing radius
+        /// <paramref name="circumscribedRadiusInches"/> stays entirely on the table (a last-resort net for
+        /// auto-placement when a unit is too big for its zone to hold cleanly — a base is never left off the
+        /// board). The <see cref="MathF.Max"/> guards keep the range valid for a base wider than the table.
+        /// </summary>
+        public static Position ClampBaseWithinTable(Position centre, float circumscribedRadiusInches,
+            float tableWidthInches, float tableHeightInches)
+        {
+            float r = circumscribedRadiusInches;
+            float hiX = MathF.Max(r, tableWidthInches - r);
+            float hiZ = MathF.Max(r, tableHeightInches - r);
+            float x = MathF.Min(MathF.Max(centre.x, r), hiX);
+            float z = MathF.Min(MathF.Max(centre.z, r), hiZ);
+            return new Position(x, z);
+        }
+
+        /// <summary>
         /// True if a base centred at <paramref name="centre"/> touches an edge of <paramref name="bounds"/> —
         /// its circumscribing circle comes within the tolerance of the nearest edge. Rotation-safe (uses the
         /// circumscribed radius, so any facing counts). #029: the Aircraft off-table redeploy must come back

@@ -310,6 +310,12 @@ namespace FDG.ArmyBuilding
             "which loses AP\\((?<ap>\\d+)\\) when shooting once",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+        // "...which counts as being in Dangerous/Difficult Terrain once" — Cursed Stride / Aura of
+        // Pestilence. Synthesizes a counts-as rule (the #153 terrain primitive).
+        private static readonly Regex TerrainShape = new(
+            "which counts as being in (?<kind>Dangerous|Difficult) Terrain once",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
         // "...which must take a morale test. If failed <consequence>" — the #034 conditional family
         // (Effect.MoraleTestThen). Two corpus consequences: fatigue and a caster-directed move.
         private static readonly Regex MoraleTestShape = new(
@@ -393,6 +399,16 @@ namespace FDG.ArmyBuilding
                 return SynthesizedGrantOrSkip(spell, spellName, range, maxCount, affinity, ref synthesized);
             }
 
+            Match terrain = TerrainShape.Match(text);
+            if (terrain.Success)
+            {
+                ECountAsTerrain kind = terrain.Groups["kind"].Value.Equals("Dangerous", StringComparison.OrdinalIgnoreCase)
+                    ? ECountAsTerrain.Dangerous
+                    : ECountAsTerrain.Difficult;
+                synthesized = SynthesizeCountAsTerrainRule(spellName, kind);
+                return SynthesizedGrantOrSkip(spell, spellName, range, maxCount, affinity, ref synthesized);
+            }
+
             Match moraleTest = MoraleTestShape.Match(text);
             if (moraleTest.Success)
             {
@@ -457,6 +473,26 @@ namespace FDG.ArmyBuilding
                 Array.Empty<ActivatedAbility>(),
                 Valence: advance >= 0 ? EValence.Positive : EValence.Negative,
                 Description: $"Moves {Signed(advance)}\" when using Advance, and {Signed(rushCharge)}\" when using Rush/Charge (from {spellName}).");
+        }
+
+        private static SpecialRuleDefinition SynthesizeCountAsTerrainRule(string spellName, ECountAsTerrain kind)
+        {
+            string consequence = kind == ECountAsTerrain.Dangerous
+                ? "each moving model rolls a d6, taking a wound on a 1"
+                : $"its move is capped at {FDG.GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES:0}\"";
+            return new SpecialRuleDefinition($"{spellName} Effect",
+                new[]
+                {
+                    // Read by MovementRuleQueries.CountsAsInTerrain throughout the move; the one-shot grant
+                    // is spent by ExecuteMoveStage when the move resolves.
+                    new HookEntry(EHookID.Movement_OnMoveThroughTerrain,
+                        new Condition.Always(),
+                        new Effect.CountAsInTerrain(kind),
+                        ELifetime.ThisActivation),
+                },
+                Array.Empty<ActivatedAbility>(),
+                Valence: EValence.Negative,
+                Description: $"This unit counts as being in {kind} Terrain on its next move — {consequence} (from {spellName}).");
         }
 
         private static SpecialRuleDefinition SynthesizeApLossRule(string spellName, int apLoss)

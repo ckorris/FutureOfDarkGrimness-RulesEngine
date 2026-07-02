@@ -67,6 +67,24 @@ namespace FDG.Rules.Dispatch
         }
 
         /// <summary>
+        /// Whether <paramref name="unit"/> currently counts as being in the given terrain for its move —
+        /// the "counts as being in Difficult/Dangerous Terrain once" family (#153 spell corpus), granted
+        /// one-shot and read here throughout the move (read-only: the grant is spent by
+        /// <c>ExecuteMoveStage</c> when the move resolves, not by this query). Callers should let
+        /// <see cref="IgnoresDifficultTerrain"/>/<see cref="IgnoresAllTerrain"/> take precedence: a bearer
+        /// that ignores the real terrain effect ignores the counted-as one too.
+        /// </summary>
+        public static bool CountsAsInTerrain(IUnit unit, RuleEvaluator evaluator, ECountAsTerrain kind)
+        {
+            foreach ((RuleOperation op, string _) in evaluator.EvaluateAllNamed(
+                         new MoveThroughTerrainContext(unit), (unit, ERuleSeat.Actor)))
+            {
+                if (op is RuleOperation.CountAsInTerrain counted && counted.Terrain == kind) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
         /// The effective charge distance <paramref name="charger"/> may move toward <paramref name="target"/>,
         /// given the charger's own (already movement-modified) <paramref name="baseChargeInches"/>: the base
         /// plus every <see cref="RuleOperation.ApplyMovementBonus"/> for the Charge action contributed at

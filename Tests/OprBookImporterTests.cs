@@ -233,7 +233,9 @@ public class OprBookImporterTests
         { "name": "Deep Hypnosis", "threshold": 3,
           "effect": "Pick up to two enemy units within 18\", which must take a morale test. If failed you may move it by up to 6\" in a straight line in any direction." },
         { "name": "Aura of Pestilence", "threshold": 1,
-          "effect": "Pick one enemy unit within 18\", which counts as being in Difficult Terrain once (next time the effect would apply)." }
+          "effect": "Pick one enemy unit within 18\", which counts as being in Difficult Terrain once (next time the effect would apply)." },
+        { "name": "Cursed Stride", "threshold": 1,
+          "effect": "Pick one enemy unit within 18\", which counts as being in Dangerous Terrain once (next time the effect would apply)." }
       ]
     }
     """;
@@ -244,8 +246,18 @@ public class OprBookImporterTests
         var warnings = new List<string>();
         BookFile book = OprBookImporter.Import(ExtendedSpellsJson, "TestSource", "CC-BY-SA 4.0", warnings.Add);
 
-        Assert.That(book.Spells, Has.Count.EqualTo(5));
-        Assert.That(warnings, Has.One.Contains("Aura of Pestilence"), "counts-as-terrain still skips honestly");
+        Assert.That(book.Spells, Has.Count.EqualTo(7), "every corpus spell shape now parses");
+        Assert.That(warnings, Is.Empty);
+
+        // Counts-as-terrain (#153 primitive): both kinds synthesize a CountAsInTerrain rule.
+        SpellDefinition pestilence = book.Spells.Single(s => s.Name == "Aura of Pestilence");
+        Assert.That(((Effect.AddRule)pestilence.Effect).RuleName, Is.EqualTo("Aura of Pestilence Effect"));
+        SpecialRuleDefinition pestilenceRule = book.RuleDefinitions.Single(d => d.Name == "Aura of Pestilence Effect");
+        Assert.That(((Effect.CountAsInTerrain)pestilenceRule.Passive[0].Effect).Terrain,
+            Is.EqualTo(ECountAsTerrain.Difficult));
+        SpecialRuleDefinition strideRule = book.RuleDefinitions.Single(d => d.Name == "Cursed Stride Effect");
+        Assert.That(((Effect.CountAsInTerrain)strideRule.Passive[0].Effect).Terrain,
+            Is.EqualTo(ECountAsTerrain.Dangerous));
 
         // Movement grant: spell grants a synthesized "<Spell> Effect" rule once; the rule carries the
         // three signed MovementBonus entries and is embedded in the book.
@@ -283,9 +295,13 @@ public class OprBookImporterTests
         Assert.That((hypnosisMove.MaxInches, hypnosisMove.IsOptional), Is.EqualTo((6f, true)));
         Assert.That(hypnosis.Target.MaxCount, Is.EqualTo(2));
 
-        // Only the three synthesized rules land in the book; parse-only spells embed nothing.
+        // Only the synthesized rules land in the book; parse-only spells embed nothing.
         Assert.That(book.RuleDefinitions.Select(d => d.Name),
-            Is.EquivalentTo(new[] { "Shock Speed Effect", "Deceleration Rune Effect", "Corrode Weapons Effect" }));
+            Is.EquivalentTo(new[]
+            {
+                "Shock Speed Effect", "Deceleration Rune Effect", "Corrode Weapons Effect",
+                "Aura of Pestilence Effect", "Cursed Stride Effect",
+            }));
     }
 
     // OPR "select" is the pick bound per section ("Upgrade with one/any/up to two:"), distinct from

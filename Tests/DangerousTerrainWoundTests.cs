@@ -83,6 +83,63 @@ namespace FDG.Tests
             Assert.That(model.GetValue().WoundsDealt, Is.EqualTo(woundsBefore));
         }
 
+        // ── #153: "counts as being in Dangerous Terrain" ────────────────────────────────────────────────
+
+        // The granted rule forces every moving model to test, even with no dangerous terrain on the table.
+        [Test]
+        public async Task CountsAsDangerous_NoDangerousOnTable_MovingModelStillTests()
+        {
+            DataBinding<ModelData> model = MakeModel(new Position(0, 0));
+            var paths = new List<ModelMoveEntry>
+            {
+                new ModelMoveEntry(model, new List<Position> { new Position(8, 0) }),
+            };
+            var unit = MakeUnit(new List<DataBinding<ModelData>> { model });
+            unit.GetValue().AttachRuleDefinition(new Rules.Dispatch.ResolvedRule("Cursed Ground", CountsAsDangerousRule));
+            float woundsBefore = model.GetValue().WoundsDealt;
+
+            var ctx = new TestGameContext(_store, new FixedDiceRoller(1));
+            var stage = new ApplyNonMovementTerrainEffectsStage(ctx, new NoOpLayer<IMovementActionContext>());
+            stage.OnAppliedNonMovementTerrainEffects.Bind("done");
+            await stage.Enter(new StubMovementContext(ctx, unit, paths, new List<ITerrain>()));
+
+            Assert.That(model.GetValue().WoundsDealt, Is.EqualTo(woundsBefore + 1),
+                "counts-as-dangerous forces the test on a roll of 1, even with no dangerous terrain");
+        }
+
+        // Ignoring all terrain (Flying) waives the counted-as effect like the real one.
+        [Test]
+        public async Task CountsAsDangerous_FlyingIgnoresIt()
+        {
+            DataBinding<ModelData> model = MakeModel(new Position(0, 0));
+            var paths = new List<ModelMoveEntry>
+            {
+                new ModelMoveEntry(model, new List<Position> { new Position(8, 0) }),
+            };
+            var unit = MakeUnit(new List<DataBinding<ModelData>> { model });
+            unit.GetValue().AttachRuleDefinition(new Rules.Dispatch.ResolvedRule("Cursed Ground", CountsAsDangerousRule));
+            unit.GetValue().AttachRuleDefinition(new Rules.Dispatch.ResolvedRule("Flying", Rules.Dispatch.CoreRuleCatalog.Flying));
+            float woundsBefore = model.GetValue().WoundsDealt;
+
+            var ctx = new TestGameContext(_store, new FixedDiceRoller(1));
+            var stage = new ApplyNonMovementTerrainEffectsStage(ctx, new NoOpLayer<IMovementActionContext>());
+            stage.OnAppliedNonMovementTerrainEffects.Bind("done");
+            await stage.Enter(new StubMovementContext(ctx, unit, paths, new List<ITerrain>()));
+
+            Assert.That(model.GetValue().WoundsDealt, Is.EqualTo(woundsBefore));
+        }
+
+        private static readonly Rules.Definitions.SpecialRuleDefinition CountsAsDangerousRule =
+            new("Cursed Ground",
+                new List<Rules.Definitions.HookEntry>
+                {
+                    new Rules.Definitions.HookEntry(Rules.Foundation.EHookID.Movement_OnMoveThroughTerrain,
+                        new Rules.Definitions.Condition.Always(),
+                        new Rules.Definitions.Effect.CountAsInTerrain(Rules.Definitions.ECountAsTerrain.Dangerous),
+                        Rules.Foundation.ELifetime.ThisActivation),
+                },
+                new List<Rules.Definitions.ActivatedAbility>());
+
         // Helpers
 
         private Task RunStage(int diceValue, List<ITerrain> terrain, List<ModelMoveEntry> paths)

@@ -87,7 +87,7 @@ namespace FDG.Stages
             //Movement special rules.
             IUnit unit = movingUnit.GetValue();
             MovementModifierSink movementModifiers = new MovementModifierSink();
-            
+
             AccumulateMovementRules(unit, EActionType.Advance, _maxAdvanceDistance, movementModifiers);
             AccumulateMovementRules(unit, EActionType.Rush, _maxRushDistance, movementModifiers);
             AccumulateMovementRules(unit, EActionType.Charge, _maxChargeDistance, movementModifiers);
@@ -96,16 +96,29 @@ namespace FDG.Stages
             _maxRushDistance += movementModifiers.Net(EActionType.Rush);
             _maxChargeDistance += movementModifiers.Net(EActionType.Charge);
 
+            // "Counts as being in Difficult Terrain" (#153): the whole move is capped at the
+            // difficult-terrain limit, after bonuses (the cap is absolute), unless the unit ignores
+            // difficult terrain outright (Strider/Flying).
+            if (MovementRuleQueries.CountsAsInTerrain(unit, GameContext.RuleEvaluator, ECountAsTerrain.Difficult)
+                && !MovementRuleQueries.IgnoresDifficultTerrain(unit, GameContext.RuleEvaluator))
+            {
+                float cap = GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES;
+                _maxAdvanceDistance = Math.Min(_maxAdvanceDistance, cap);
+                _maxRushDistance = Math.Min(_maxRushDistance, cap);
+                _maxChargeDistance = Math.Min(_maxChargeDistance, cap);
+            }
         }
-        
-        //TODO: Move down.
+
+        // Read-only projection (#153): a one-shot (NextTrigger) granted movement rule must contribute to
+        // ALL THREE action budgets and stay granted for path validation — so nothing here may consume it.
+        // The grant is spent once, by ExecuteMoveStage, when the move actually resolves.
         private void AccumulateMovementRules(IUnit unit, EActionType action, float baseDistance,
             MovementModifierSink sink)
         {
-            IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
-                new MoveActionDeclaredContext(unit, action, baseDistance),
-                (unit, ERuleSeat.Actor));
-            sink.ApplyFrom(operations);
+            IReadOnlyList<(RuleOperation Op, string RuleName)> operations = GameContext.RuleEvaluator
+                .EvaluateAllNamed(new MoveActionDeclaredContext(unit, action, baseDistance),
+                    (unit, ERuleSeat.Actor));
+            sink.ApplyFrom(operations.Select(t => t.Op).ToList());
         }
 
         public void SubmitValidPathTemplate(List<ModelMoveEntry> paths)

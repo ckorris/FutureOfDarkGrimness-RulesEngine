@@ -56,26 +56,13 @@ namespace FDG
             float dx = point.x - center.x;
             float dz = point.z - center.z;
 
-            switch (shape)
-            {
-                case CircleBase c:
-                    return MathF.Max(0f, MathF.Sqrt(dx * dx + dz * dz) - c.RadiusInches);
-
-                case RectangleBase r:
-                {
-                    // Rotate the offset into the base's local frame (local +Z = facing, local +X ⟂ facing), then
-                    // it's a point-vs-axis-aligned-rectangle distance.
-                    Float2 f = facing.X == 0f && facing.Y == 0f ? new Float2(0f, 1f) : facing;
-                    float localZ = dx * f.X + dz * f.Y;   // along facing (height axis)
-                    float localX = dx * f.Y - dz * f.X;   // along the perpendicular (width axis)
-                    float qx = MathF.Max(0f, MathF.Abs(localX) - r.WidthInches * 0.5f);
-                    float qz = MathF.Max(0f, MathF.Abs(localZ) - r.HeightInches * 0.5f);
-                    return MathF.Sqrt(qx * qx + qz * qz);
-                }
-
-                default:
-                    return MathF.Max(0f, MathF.Sqrt(dx * dx + dz * dz) - shape.BoundingRadiusInches);
-            }
+            // Rotate the world offset into the base's local frame (local +Z = facing, local +X ⟂ facing) and let
+            // the shape answer for itself — no shape switch, so a new IBaseShape just implements
+            // DistanceToLocalPoint. A zero facing means forward (+Z), which is the identity transform.
+            Float2 f = facing.X == 0f && facing.Y == 0f ? new Float2(0f, 1f) : facing;
+            float localZ = dx * f.X + dz * f.Y;   // along facing (height axis)
+            float localX = dx * f.Y - dz * f.X;   // along the perpendicular (width axis)
+            return shape.DistanceToLocalPoint(localX, localZ);
         }
 
         // Gap between two axis-aligned rectangles whose centres differ by (dx, dz).

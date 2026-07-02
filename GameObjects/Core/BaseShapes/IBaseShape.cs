@@ -37,6 +37,27 @@ namespace FDG
         /// base centre — in the table's horizontal X/Z plane, inches — is on or inside the base.
         /// </summary>
         bool ContainsLocalPoint(float dxInches, float dzInches);
+
+        /// <summary>
+        /// The CIRCUMSCRIBING-circle radius — the base fits entirely inside this circle at any facing. Use it
+        /// for rotation-safe conservative checks (placement spacing, staying on the table). Contrast with
+        /// <see cref="BoundingRadiusInches"/>, which for a rectangle is the smaller inscribed circle (#149).
+        /// </summary>
+        float CircumscribedRadiusInches { get; }
+
+        /// <summary>
+        /// Distance (inches) from a point at base-local offset (<paramref name="dxInches"/>,
+        /// <paramref name="dzInches"/>) to the nearest point on the base's surface; 0 on or inside. Callers
+        /// rotate world offsets into the base-local frame first (see <see cref="BaseShapeGeometry"/>).
+        /// </summary>
+        float DistanceToLocalPoint(float dxInches, float dzInches);
+
+        /// <summary>
+        /// This base's world footprint as an <see cref="IZone"/>, centred at <paramref name="centre"/> and
+        /// oriented by <paramref name="facing"/> (a yaw unit normal along local +Z; zero → forward). Lets
+        /// zone-based systems (LoS blockers, swept move-through tests) treat a base like terrain (#150).
+        /// </summary>
+        IZone ToZone(Position centre, Float2 facing);
     }
 
     /// <summary> A circular base of a given radius (the classic round wargaming base). </summary>
@@ -51,8 +72,16 @@ namespace FDG
 
         public float BoundingRadiusInches => RadiusInches;
 
+        public float CircumscribedRadiusInches => RadiusInches;
+
         public bool ContainsLocalPoint(float dxInches, float dzInches) =>
             dxInches * dxInches + dzInches * dzInches <= RadiusInches * RadiusInches;
+
+        public float DistanceToLocalPoint(float dxInches, float dzInches) =>
+            MathF.Max(0f, MathF.Sqrt(dxInches * dxInches + dzInches * dzInches) - RadiusInches);
+
+        // A circle is rotation-invariant, so facing is irrelevant.
+        public IZone ToZone(Position centre, Float2 facing) => new CircularZone(centre.x, centre.z, RadiusInches);
     }
 
     /// <summary>
@@ -76,8 +105,32 @@ namespace FDG
         // measurement (BaseShapeGeometry); this radius is only the approximation for the #150 collision paths.
         public float BoundingRadiusInches => 0.5f * MathF.Min(WidthInches, HeightInches);
 
+        public float CircumscribedRadiusInches =>
+            0.5f * MathF.Sqrt(WidthInches * WidthInches + HeightInches * HeightInches);
+
         public bool ContainsLocalPoint(float dxInches, float dzInches) =>
             MathF.Abs(dxInches) <= WidthInches * 0.5f && MathF.Abs(dzInches) <= HeightInches * 0.5f;
+
+        public float DistanceToLocalPoint(float dxInches, float dzInches)
+        {
+            float qx = MathF.Max(0f, MathF.Abs(dxInches) - WidthInches * 0.5f);
+            float qz = MathF.Max(0f, MathF.Abs(dzInches) - HeightInches * 0.5f);
+            return MathF.Sqrt(qx * qx + qz * qz);
+        }
+
+        // The oriented world footprint: an axis-aligned rect rotated so its local +Z (height) axis points along
+        // the facing. Table X/Z space (no screen Y-flip), so the angle is atan2(−facing.X, facing.Y).
+        public IZone ToZone(Position centre, Float2 facing)
+        {
+            var rect = new RectangularZone(
+                centre.x - WidthInches * 0.5f, centre.x + WidthInches * 0.5f,
+                centre.z - HeightInches * 0.5f, centre.z + HeightInches * 0.5f);
+            Float2 f = facing.X == 0f && facing.Y == 0f ? new Float2(0f, 1f) : facing;
+            float deg = MathF.Atan2(-f.X, f.Y) * (180f / MathF.PI);
+            return MathF.Abs(deg) < 1e-4f
+                ? rect
+                : new RotatedZoneWrapper(rect, deg, new Float2(centre.x, centre.z));
+        }
     }
 
     /// <summary>

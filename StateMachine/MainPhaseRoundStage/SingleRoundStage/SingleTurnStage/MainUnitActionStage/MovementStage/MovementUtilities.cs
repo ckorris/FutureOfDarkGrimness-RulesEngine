@@ -191,7 +191,7 @@ namespace FDG.Stages
                 ModelData enemy = enemyModel.GetValue();
                 // The enemy's true footprint as a zone; the moving base is swept along each path segment against
                 // it (#150). For circular bases this reduces to the old combined-radius swept-disc, unchanged.
-                IZone enemyZone = SweptBaseGeometry.BaseAsZone(enemy.BaseShape, enemy.PositionBinding.GetValue(), enemy.Facing);
+                IZone enemyZone = enemy.BaseShape.ToZone(enemy.PositionBinding.GetValue(), enemy.Facing);
 
                 foreach (ModelMoveEntry move in moves)
                 {

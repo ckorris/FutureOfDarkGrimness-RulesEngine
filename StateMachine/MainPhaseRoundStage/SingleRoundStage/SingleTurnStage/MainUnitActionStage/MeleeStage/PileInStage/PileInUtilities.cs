@@ -192,7 +192,7 @@ namespace FDG.Stages
             }
 
             if (upperBound <= 0f) return 0f;
-            IZone obstZone = SweptBaseGeometry.BaseAsZone(obstShape, obstPos, obstFacing);
+            IZone obstZone = obstShape.ToZone(obstPos, obstFacing);
             Float2 origin = new Float2(from.x, from.z);
             // The swept-footprint overlap grows monotonically with travel, so binary-search the transition.
             if (SweptBaseGeometry.DoesSweptBaseIntersectZone(obstZone, origin, origin, movingShape, movingFacing))

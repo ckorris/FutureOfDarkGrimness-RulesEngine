@@ -124,15 +124,24 @@ namespace FDG.Stages
             //    it a single decisive comparison. Clamp to [1, 6] so a big swing still leaves a 6 succeeding /
             //    a 1 failing rather than asking for an impossible face.
             int threshold = System.Math.Clamp(CAST_SUCCESS_THRESHOLD - assist, 1, IDiceRollerExtensions.DEFAULT_SIDE_COUNT);
-            bool success = GameContext.DiceRoller.RollDecisive().AtOrAbove(threshold) >= 1f;
+            IDiceResults castRoll = GameContext.DiceRoller.RollDecisive();
+            bool success = castRoll.AtOrAbove(threshold) >= 1f;
+
+            // Spell out the roll so the assist is visible: what came up, what it needed, and (when assisted)
+            // how the net ±1 shifted the base 4+. Assisters' own contributions were logged as they spent.
+            string breakdown = assist != 0
+                ? $" (base {CAST_SUCCESS_THRESHOLD}+, net {(assist > 0 ? "+" : "")}{assist} assist)"
+                : "";
+            string rollDesc = $"rolled {DecisiveFace(castRoll)}, needed {threshold}+{breakdown}; spent {chosen.Threshold} token{(chosen.Threshold == 1 ? "" : "s")}";
+
             if (!success)
             {
-                GameContext.Log($"{caster.Name} failed to cast {chosen.Name} (spent {chosen.Threshold} tokens).");
+                GameContext.Log($"{caster.Name} failed to cast {chosen.Name} — {rollDesc}.");
                 await OnFinished.Activate(context);
                 return;
             }
 
-            GameContext.Log($"{caster.Name} cast {chosen.Name} (spent {chosen.Threshold} tokens).");
+            GameContext.Log($"{caster.Name} cast {chosen.Name} — {rollDesc}.");
 
             // 6a. Damage spell → resolve each chosen target through the looped child pipeline.
             if (chosen.Effect is Effect.DealHits dealHits)
@@ -435,7 +444,8 @@ namespace FDG.Stages
             string verb = friendly ? "help" : "disrupt";
             string sign = friendly ? "+1" : "-1";
             string instructions =
-                $"{assisterName}: spend spell tokens to {verb} {casterName}'s cast of {spellName}? ({sign} each)";
+                $"{assisterName} ({available} token{(available == 1 ? "" : "s")}): spend spell tokens to " +
+                $"{verb} {casterName}'s cast of {spellName}? ({sign} each)";
 
             StringSelectionRequest request = new StringSelectionRequest(controller, instructions,
                 options, System.Array.Empty<StringSelectionRequest.InvalidOption>());
@@ -448,5 +458,16 @@ namespace FDG.Stages
         }
 
         private static string SpellOptionLabel(RuntimeSpell spell) => $"{spell.Name} ({spell.Threshold})";
+
+        // The single face that came up on a decisive (one-die) roll, for logging. A decisive roll has exactly
+        // one face with weight, so this returns it; falls back to the minimum face if none is set.
+        private static int DecisiveFace(IDiceResults roll)
+        {
+            for (int face = roll.SideMin; face <= roll.SideMax; face++)
+            {
+                if (roll.At(face) > 0f) return face;
+            }
+            return roll.SideMin;
+        }
     }
 }

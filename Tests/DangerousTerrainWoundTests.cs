@@ -137,6 +137,10 @@ namespace FDG.Tests
         public float MaxAdvanceDistance => 12f;
         public float MaxRushDistance => 12f;
         public float MaxChargeDistance => 12f;
+        public bool TryGetModelMoveBudget(IModel model, out float advance, out float rush, out float charge)
+        {
+            advance = MaxAdvanceDistance; rush = MaxRushDistance; charge = MaxChargeDistance; return true;
+        }
         public List<ITerrain> RelevantTerrain => _terrain;
 
         public StubMovementContext(IGameContext ctx, DataBinding<UnitData> unit,

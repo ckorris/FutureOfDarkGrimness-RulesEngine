@@ -109,6 +109,14 @@ namespace FDG.StageResolution.Requests
     public record ModelMoveEntry(DataBinding<ModelData> Model, List<Position> Positions);
 
     /// <summary>
+    /// The per-model move caps a validator enforces: the Rush distance (the charge-reach gate) and the hard
+    /// distance cap (Rush vs effective Charge, collapsed). Per-model so a joined hero's Fast/Slow gives that
+    /// model its own budget while the rest of the unit keeps theirs (#093); a unit with no per-model movement
+    /// rules has the same budget for every model — identical to the pre-#093 unit-wide scalars.
+    /// </summary>
+    public readonly record struct ModelMoveBudget(float MaxRushDistance, float MaxDistanceInches);
+
+    /// <summary>
     /// One of the moving unit's ranged weapons and whether it ignores cover (Blast) / line of sight
     /// (Indirect, Takedown). <see cref="CoverIgnoreRule"/> / <see cref="LineOfSightIgnoreRule"/> carry the
     /// alias-aware display name of the responsible rule (null when none), so the movement overlay can

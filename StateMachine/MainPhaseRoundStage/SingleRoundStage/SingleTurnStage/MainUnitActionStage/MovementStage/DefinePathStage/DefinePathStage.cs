@@ -53,7 +53,18 @@ namespace FDG.Stages
 
             List<EnemyModelFootprint> enemyFootprints = MovementUtilities.GetEnemyModelFootprints(context.MovingUnit, context.GameContext);
 
-            if(MovementUtilities.ValidatePaths(movements, context.MaxRushDistance, hardCap,
+            // #093: validate each model against its OWN budget (a joined hero's Fast/Slow). The unit-level
+            // charge shrink (Melee Shrouding) applies to every model's charge equally; a model's hard cap is
+            // max(its Rush, its shrunk Charge). A unit with no per-model movement rules yields the same
+            // (MaxRushDistance, hardCap) for every model — identical to the previous unit-wide validation.
+            float chargeShrink = context.MaxChargeDistance - effectiveCharge;
+            ModelMoveBudget BudgetFor(ModelMoveEntry entry)
+            {
+                context.TryGetModelMoveBudget(entry.Model.GetValue(), out _, out float rush, out float charge);
+                return new ModelMoveBudget(rush, System.Math.Max(rush, charge - chargeShrink));
+            }
+
+            if(MovementUtilities.ValidatePaths(movements, BudgetFor,
                 enemyFootprints, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain,
                 context.RelevantTerrain, out List<ReasonForInvalidMove> invalidReasons) == false)
             {

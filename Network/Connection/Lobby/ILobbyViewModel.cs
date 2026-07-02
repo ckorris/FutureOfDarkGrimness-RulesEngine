@@ -95,6 +95,13 @@ namespace FDG.Network.Connection.Lobby
 
         bool TryLaunchGame(out string? failReason);
 
+        /// <summary>#153 launch gate (decision 9): hard legality problems in the players' loaded armies —
+        /// over the lobby points limit, plus full catalog validation Errors for Forge-built armies (which
+        /// carry their book + selections). The UI shows these in a "launch anyway?" confirm before
+        /// <see cref="TryLaunchGame"/>; empty means clean. Host-side only — a client returns empty (only
+        /// the host can launch).</summary>
+        IReadOnlyList<string> ValidateArmiesForLaunch();
+
         /// <summary>True when this lobby was created from a saved game and resumes instead of starting fresh.</summary>
         bool IsResumeMode { get; }
 

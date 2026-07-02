@@ -20,13 +20,18 @@ namespace FDG.Network.Messages
     /// </summary>
     public record ArmyListUpdateMessage(PlayerID PlayerID, string ArmyListJson)
     {
-        /// <summary> Encodes <paramref name="armyListFile"/> to a transport-safe STJ string. </summary>
+        /// <summary> Encodes <paramref name="armyListFile"/> to a transport-safe STJ string. Serialized by
+        /// RUNTIME type, so a Forge-built <c>BuiltArmyFile</c> keeps its embedded book + selections on the
+        /// wire (the #153 launch gate validates them host-side). </summary>
         public static ArmyListUpdateMessage FromArmy(PlayerID playerID, ArmyListFile armyListFile) =>
-            new ArmyListUpdateMessage(playerID, JsonSerializer.Serialize(armyListFile, RuleJson.Options));
+            new ArmyListUpdateMessage(playerID,
+                JsonSerializer.Serialize(armyListFile, armyListFile.GetType(), RuleJson.Options));
 
-        /// <summary> Decodes the carried army back into an <see cref="ArmyListFile"/>. </summary>
+        /// <summary> Decodes the carried army. Deserialized as <see cref="ArmyBuilding.BuiltArmyFile"/> so
+        /// an embedded book + selections survive when present; a plain hand-authored army simply leaves
+        /// them null. </summary>
         public ArmyListFile DecodeArmy() =>
-            JsonSerializer.Deserialize<ArmyListFile>(ArmyListJson, RuleJson.Options)
+            JsonSerializer.Deserialize<ArmyBuilding.BuiltArmyFile>(ArmyListJson, RuleJson.Options)
             ?? throw new InvalidOperationException(
                 $"Army list payload for player {PlayerID} deserialized to null.");
     }

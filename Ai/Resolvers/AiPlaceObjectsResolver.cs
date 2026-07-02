@@ -87,13 +87,25 @@ namespace FDG.Ai.Resolvers
             float czMin = (bounds.Bottom + maxRadius) + gridHeight / 2f;
             float czMax = (bounds.Top - maxRadius) - gridHeight / 2f;
 
-            Position center = FindBlockCenter(zone, maxRadius, cols, spacing, gridWidth, gridHeight,
-                models.Count, preferredCx, preferredCz, cxMin, cxMax, czMin, czMax, existing, enemies, minEnemyDist);
+            Position center;
+            Float2? facing = null;
+            if (request.MustTouchTableEdge)
+            {
+                // #029 edge redeploy: the block must come back on touching a table edge.
+                center = FindEdgeBlockCenter(zone, maxRadius, cols, spacing, gridWidth, gridHeight,
+                    models.Count, preferredCx, preferredCz, cxMin, cxMax, czMin, czMax, existing, enemies,
+                    minEnemyDist, out facing);
+            }
+            else
+            {
+                center = FindBlockCenter(zone, maxRadius, cols, spacing, gridWidth, gridHeight,
+                    models.Count, preferredCx, preferredCz, cxMin, cxMax, czMin, czMax, existing, enemies, minEnemyDist);
+            }
 
             var positions = BuildGrid(center, cols, spacing, gridWidth, gridHeight, models.Count);
             var placed = new List<PlacedObjectEntry<T>>(models.Count);
             for (int i = 0; i < models.Count; i++)
-                placed.Add(new PlacedObjectEntry<T>(models[i], positions[i]));
+                placed.Add(new PlacedObjectEntry<T>(models[i], positions[i], facing));
 
             return Task.FromResult(placed);
         }
@@ -152,6 +164,48 @@ namespace FDG.Ai.Resolvers
                 // Stop once we've swept both ends.
                 if (start - ((i + 1) / 2) * step <= min && start + ((i + 1) / 2) * step >= max) break;
             }
+        }
+
+        // #029 edge mode: one axis is pinned to its in-bounds extreme, so the block's outermost bases sit
+        // exactly `radius` from that zone edge — touching it. The other axis sweeps for a clear spot. Edges
+        // are tried nearest-to-preferred first; models face inward from the chosen edge, so a redeployed
+        // Aircraft's new heading (facing = heading, #150) doesn't immediately carry it back off the table.
+        private Position FindEdgeBlockCenter(IBoundedZone zone, float radius, int cols, float spacing,
+            float gridWidth, float gridHeight, int count, float preferredCx, float preferredCz,
+            float cxMin, float cxMax, float czMin, float czMax,
+            List<(Position pos, float radius)> existing, List<Position> enemies, float minEnemyDist,
+            out Float2? inwardFacing)
+        {
+            var edges = new (float dist, float exMin, float exMax, float ezMin, float ezMax, Float2 facing)[]
+            {
+                (MathF.Abs(preferredCz - czMin), cxMin, cxMax, czMin, czMin, new Float2(0f, 1f)),   // bottom → face +Z
+                (MathF.Abs(preferredCz - czMax), cxMin, cxMax, czMax, czMax, new Float2(0f, -1f)),  // top → face −Z
+                (MathF.Abs(preferredCx - cxMin), cxMin, cxMin, czMin, czMax, new Float2(1f, 0f)),   // left → face +X
+                (MathF.Abs(preferredCx - cxMax), cxMax, cxMax, czMin, czMax, new Float2(-1f, 0f)),  // right → face −X
+            };
+
+            foreach (var edge in edges.OrderBy(e => e.dist))
+            {
+                float startCx = Math.Clamp(preferredCx, MathF.Min(edge.exMin, edge.exMax), MathF.Max(edge.exMin, edge.exMax));
+                float startCz = Math.Clamp(preferredCz, MathF.Min(edge.ezMin, edge.ezMax), MathF.Max(edge.ezMin, edge.ezMax));
+                foreach (float cz in CandidateAxis(startCz, edge.ezMin, edge.ezMax, spacing))
+                    foreach (float cx in CandidateAxis(startCx, edge.exMin, edge.exMax, spacing))
+                    {
+                        var centre = new Position(cx, cz);
+                        if (BlockIsValid(centre, zone, radius, cols, spacing, gridWidth, gridHeight, count, existing, enemies, minEnemyDist))
+                        {
+                            inwardFacing = edge.facing;
+                            return centre;
+                        }
+                    }
+            }
+
+            // No clear spot on any edge — intact block on the bottom edge at the clamped preferred lane
+            // (cramped but touching and never scattered, matching the non-edge fallback's philosophy).
+            inwardFacing = new Float2(0f, 1f);
+            return new Position(
+                Math.Clamp(preferredCx, MathF.Min(cxMin, cxMax), MathF.Max(cxMin, cxMax)),
+                czMin);
         }
 
         private bool BlockIsValid(Position center, IBoundedZone zone, float radius, int cols, float spacing,

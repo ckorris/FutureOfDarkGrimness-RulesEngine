@@ -9,6 +9,26 @@ namespace FDG
     public static class PlacementUtilities
     {
         /// <summary>
+        /// How close (inches) a base's edge must be to a zone edge to count as "touching" it — float/click
+        /// slack on the #029 "comes back on touching a table edge" placement rule.
+        /// </summary>
+        public const float TABLE_EDGE_TOUCH_TOLERANCE_INCHES = 0.5f;
+
+        /// <summary>
+        /// True if a base centred at <paramref name="centre"/> touches an edge of <paramref name="bounds"/> —
+        /// its circumscribing circle comes within the tolerance of the nearest edge. Rotation-safe (uses the
+        /// circumscribed radius, so any facing counts). #029: the Aircraft off-table redeploy must come back
+        /// on touching a table edge.
+        /// </summary>
+        public static bool TouchesZoneEdge(Position centre, float circumscribedRadiusInches, ZoneBounds bounds)
+        {
+            float nearestEdge = MathF.Min(
+                MathF.Min(centre.x - bounds.Left, bounds.Right - centre.x),
+                MathF.Min(centre.z - bounds.Bottom, bounds.Top - centre.z));
+            return nearestEdge <= circumscribedRadiusInches + TABLE_EDGE_TOUCH_TOLERANCE_INCHES;
+        }
+
+        /// <summary>
         /// True if a model with base radius <paramref name="radius"/> placed at <paramref name="center"/>
         /// would overlap any <see cref="ETerrainType.Impassible"/> piece in <paramref name="terrain"/>.
         /// </summary>

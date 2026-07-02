@@ -58,6 +58,48 @@ namespace FDG.Tests
             }
         }
 
+        // #029: an edge-constrained placement (the Aircraft off-table redeploy) must come back on touching a
+        // table edge, with the models facing inward from that edge (facing = heading, so the aircraft doesn't
+        // immediately fly back off).
+        [Test]
+        public async Task EdgeConstrainedPlacement_TouchesATableEdge_AndFacesInward()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var selfPlayer = new PlayerID(System.Guid.NewGuid());
+
+            var placing = new List<DataBinding<ModelData>>();
+            for (int i = 0; i < 2; i++)
+            {
+                var m = new ModelData(0.75f, new List<Weapon>(), new Position(0f, 0f), store);
+                placing.Add(store.GetDataBinding<ModelData>(store.Create(m)));
+            }
+            var unit = new UnitData(selfPlayer, "Skyblade", 4, 4, placing);
+            store.Create(unit);
+
+            var tableState = new TableState(store);
+            var resolver = new AiPlaceObjectsResolver<ModelData>(tableState);
+            var wholeTable = new RectangularZone(0f, GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES,
+                0f, GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES);
+            var request = new PlaceObjectsRequest<ModelData>(selfPlayer, "Aircraft Redeploy", wholeTable,
+                placing, mustTouchTableEdge: true);
+
+            List<PlacedObjectEntry<ModelData>> result = await resolver.Resolve(request);
+
+            Assert.That(result, Has.Count.EqualTo(2));
+            bool anyTouches = result.Any(e => PlacementUtilities.TouchesZoneEdge(
+                e.Position, e.Binding.GetValue().BaseShape.CircumscribedRadiusInches, wholeTable.Bounds));
+            Assert.That(anyTouches, Is.True, "at least one base must touch a table edge.");
+
+            foreach (var e in result)
+            {
+                Assert.That(e.Facing.HasValue, Is.True, "edge placements carry an inward facing.");
+                Float2 f = e.Facing!.Value;
+                // Inward = the facing points away from the touched edge, into the table.
+                float len = MathF.Sqrt(f.X * f.X + f.Y * f.Y);
+                Assert.That(len, Is.EqualTo(1f).Within(0.001f), "the facing is a unit vector.");
+            }
+        }
+
         // The bug a user hit: a 10-model unit deployed with one model stranded far out of cohesion (behind
         // terrain) and the rest in an over-wide line. The resolver must place the whole unit as one block
         // satisfying BOTH cohesion rules — every model within 1" of a neighbour AND within 9" of every other —

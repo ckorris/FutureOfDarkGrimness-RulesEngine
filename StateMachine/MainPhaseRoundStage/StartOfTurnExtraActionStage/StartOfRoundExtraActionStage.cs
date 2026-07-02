@@ -109,10 +109,9 @@ namespace FDG.Stages
         /// <summary>
         /// #029: an Aircraft that flew off the table edge during its forced move (marked
         /// <see cref="TokenType.OffTableFromForcedMove"/>, models held at origin) flies back on at the start of
-        /// the next round, re-placed from a board edge. Reuses the reserve placement flow; its heading was
-        /// cleared when it left, so it re-aims toward the table centre on its next move. Like a reserve arrival,
-        /// it can't seize/contest objectives the round it returns. (Scope: "any edge" is relaxed to the normal
-        /// placement zone — the player places it; the Aircraft flies across regardless.)
+        /// the next round, placed touching any table edge (the request's MustTouchTableEdge constraint); how
+        /// the player faces it at that placement IS its new heading (#150). Like a reserve arrival, it can't
+        /// seize/contest objectives the round it returns.
         /// </summary>
         private async Task RedeployOffTableAircraft()
         {
@@ -124,7 +123,8 @@ namespace FDG.Stages
                     if (!unit.GetIsAlive()) continue;
                     if (!unit.Tokens.HasToken(TokenType.OffTableFromForcedMove)) continue;
 
-                    await PlaceFromReserve(unit, minDistanceFromEnemies: 0f);
+                    await PlaceFromReserve(unit, minDistanceFromEnemies: 0f,
+                        mustTouchTableEdge: true, taskName: "Aircraft Redeploy");
                     unit.Tokens.RemoveTokens(TokenType.OffTableFromForcedMove);
                     unit.Tokens.AddToken(new Token(TokenType.ArrivedFromReserve, 1, new TokenClearTrigger.RoundEnd()));
 
@@ -134,13 +134,15 @@ namespace FDG.Stages
             }
         }
 
-        private async Task PlaceFromReserve(UnitData unit, float minDistanceFromEnemies)
+        private async Task PlaceFromReserve(UnitData unit, float minDistanceFromEnemies,
+            bool mustTouchTableEdge = false, string taskName = "Ambush Deploy")
         {
             var wholeTable = new RectangularZone(0f, GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES,
                 0f, GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES);
 
-            var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID, "Ambush Deploy",
-                wholeTable, unit.ModelBindings, minDistanceFromEnemiesInches: minDistanceFromEnemies);
+            var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID, taskName,
+                wholeTable, unit.ModelBindings, minDistanceFromEnemiesInches: minDistanceFromEnemies,
+                mustTouchTableEdge: mustTouchTableEdge);
 
             List<PlacedObjectEntry<ModelData>> placements = await GameContext.PlayerRequester
                 .RequestDecision<PlaceObjectsRequest<ModelData>, List<PlacedObjectEntry<ModelData>>>(request);

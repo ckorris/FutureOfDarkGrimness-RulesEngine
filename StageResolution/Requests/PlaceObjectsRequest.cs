@@ -29,10 +29,17 @@ namespace FDG.StageResolution.Requests
         /// </summary>
         public float MinDistanceFromEnemiesInches { get; }
 
+        /// <summary>
+        /// #029: when set, the unit must come onto the table touching a table edge — at least one placed
+        /// model's base must touch an edge of <see cref="DeploymentZone"/>'s bounds (the whole table, for the
+        /// Aircraft off-table redeploy that uses this). See <see cref="PlacementUtilities.TouchesZoneEdge"/>.
+        /// </summary>
+        public bool MustTouchTableEdge { get; }
+
         [JsonConstructor]
         public PlaceObjectsRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
             IBoundedZone deploymentZone, IReadOnlyList<DataBinding<T>> modelsToPlace,
-            float minDistanceFromEnemiesInches = 0f)
+            float minDistanceFromEnemiesInches = 0f, bool mustTouchTableEdge = false)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -40,17 +47,19 @@ namespace FDG.StageResolution.Requests
             DeploymentZone = deploymentZone;
             ModelsToPlace = modelsToPlace;
             MinDistanceFromEnemiesInches = minDistanceFromEnemiesInches;
+            MustTouchTableEdge = mustTouchTableEdge;
         }
 
         public PlaceObjectsRequest(PlayerID targetPlayerID, string taskName,
             IBoundedZone deploymentZone, IReadOnlyList<DataBinding<T>> modelsToPlace,
-            float minDistanceFromEnemiesInches = 0f)
+            float minDistanceFromEnemiesInches = 0f, bool mustTouchTableEdge = false)
         {
             TargetPlayerID = targetPlayerID;
             TaskName = taskName;
             DeploymentZone = deploymentZone;
             ModelsToPlace = modelsToPlace;
             MinDistanceFromEnemiesInches = minDistanceFromEnemiesInches;
+            MustTouchTableEdge = mustTouchTableEdge;
         }
 
         public Task<List<PlacedObjectEntry<T>>> Resolve(List<PlacedObjectEntry<T>> resolution)

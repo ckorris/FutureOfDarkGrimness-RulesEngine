@@ -49,6 +49,11 @@ namespace FDG.Stages
         private const string CANCEL_OPTION = "Cancel";
         private const int CAST_SUCCESS_THRESHOLD = 4;
 
+        // #103 assist text-beat colors — match the GUI highlight: blue for a friendly boost (+), orange for
+        // an enemy disruption (-).
+        private static readonly TextColor AssistBannerColor = new TextColor(77, 153, 255, 255);
+        private static readonly TextColor HinderBannerColor = new TextColor(255, 153, 38, 255);
+
         // The damage run set up in Enter (synthetic weapon + chosen targets + base hits + any single-model
         // pick) and handed to the looped child pipeline by GetNewChildContext. Null on the buff path, which
         // applies its effect inline and never enters the children.
@@ -379,8 +384,14 @@ namespace FDG.Stages
 
                 assister.Tokens.RemoveTokens(TokenType.SpellTokens, spent);
                 net += friendly ? spent : -spent;
-                GameContext.Log($"{assister.Name} {(friendly ? "assists" : "hinders")} {casterName}'s cast of " +
-                    $"{spellName} ({(friendly ? "+" : "-")}{spent}).");
+
+                // Text beat: announce who assisted/hindered and by how much — an on-screen banner plus the
+                // log line, blue for a friendly boost and orange for an enemy disruption (matches the GUI
+                // highlight). Only fires when a Caster actually spends (declines skip via the guard above).
+                await GameContext.Announce(
+                    $"{assister.Name} {(friendly ? "assists" : "hinders")} {casterName}'s cast of {spellName} " +
+                    $"({(friendly ? "+" : "-")}{spent}).",
+                    friendly ? AssistBannerColor : HinderBannerColor);
             }
             return net;
         }

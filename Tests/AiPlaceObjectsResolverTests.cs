@@ -73,6 +73,31 @@ namespace FDG.Tests
                 "a top zone faces down (−Z) toward the centre.");
         }
 
+        // #150: a rotated/elongated base must be allowed as close to an edge as its TRUE reach in that
+        // direction — the facing-aware containment insets each edge by the real per-axis footprint extent, not
+        // the circumscribing circle (which over-blocks the thin axis, stopping a base short of the side). It
+        // still keeps the whole base on the table.
+        [Test]
+        public void IsBaseWithinZone_FacingAware_HugsTheThinEdgeButStaysOnTable()
+        {
+            var rect = new RectangleBase(1f, 3f); // long axis along Z at +Z facing: 0.5" on X, 1.5" on Z
+            Float2 up = new Float2(0f, 1f);
+            var zone = new RectangularZone(0f, 40f, 0f, 40f);
+
+            // Centre 0.6" from the left edge: the 0.5" X-extent clears it (footprint reaches x=0.1"), so the
+            // facing-aware check accepts it — where the bounding circle (half-diagonal ≈ 1.58") over-blocks.
+            var nearLeft = new Position(0.6f, 20f);
+            Assert.That(PlacementUtilities.IsBaseWithinZone(nearLeft, rect, up, zone), Is.True,
+                "a base thin on X can sit close to the side edge.");
+            Assert.That(PlacementUtilities.IsBaseWithinZone(nearLeft, rect.CircumscribedRadiusInches, zone), Is.False,
+                "the bounding circle wrongly over-blocks the thin axis.");
+
+            // But a base whose footprint actually crosses the edge is still rejected (never off the table).
+            var overLeft = new Position(0.3f, 20f); // 0.5" X-extent reaches x=-0.2" < 0
+            Assert.That(PlacementUtilities.IsBaseWithinZone(overLeft, rect, up, zone), Is.False,
+                "a footprint that crosses the edge is rejected.");
+        }
+
         // #029: an edge-constrained placement (the Aircraft off-table redeploy) must come back on touching a
         // table edge, with the models facing inward from that edge (facing = heading, so the aircraft doesn't
         // immediately fly back off).

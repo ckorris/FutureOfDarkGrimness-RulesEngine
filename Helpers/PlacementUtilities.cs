@@ -42,6 +42,24 @@ namespace FDG
         }
 
         /// <summary>
+        /// Facing-aware overload (#150): insets each zone edge by the base's TRUE per-axis footprint extent at
+        /// <paramref name="facing"/> — its real oriented bounding box — instead of the circumscribing circle.
+        /// Exact (the whole base still stays inside the zone / on the table) without the circle's over-block: a
+        /// rotated rectangle can sit as close to an edge as its actual reach in that direction, so it isn't
+        /// stopped short on the axis it's thin against.
+        /// </summary>
+        public static bool IsBaseWithinZone(Position centre, IBaseShape shape, Float2 facing, IBoundedZone zone)
+        {
+            (float halfX, float halfZ) = BaseShapeGeometry.FootprintHalfExtents(shape, facing);
+            ZoneBounds b = zone.Bounds;
+            return centre.x >= b.Left + halfX
+                && centre.x <= b.Right - halfX
+                && centre.z >= b.Bottom + halfZ
+                && centre.z <= b.Top - halfZ
+                && zone.IsPointWithinZone(centre);
+        }
+
+        /// <summary>
         /// Clamps <paramref name="centre"/> so a base of circumscribing radius
         /// <paramref name="circumscribedRadiusInches"/> stays entirely on the table (a last-resort net for
         /// auto-placement when a unit is too big for its zone to hold cleanly — a base is never left off the

@@ -22,12 +22,13 @@ namespace FDG.ArmyBuilding
     //   • Caster spell lists (book.spells) are not imported (our spells need engine Effect graphs).
     public static class OprBookImporter
     {
-        // OPR's JSON types numeric fields loosely — a rating/count can arrive as a number OR a string. Tolerant
-        // converters keep the import from throwing on that.
+        // OPR's JSON types numeric fields loosely — a rating/count can arrive as a number OR a string (and a
+        // string field like a base size could plausibly arrive as a bare number). Tolerant converters keep the
+        // import from throwing on that.
         private static readonly JsonSerializerOptions ReadOpts = new()
         {
             PropertyNameCaseInsensitive = true,
-            Converters = { new LooseIntConverter(), new LooseNullableIntConverter() },
+            Converters = { new LooseIntConverter(), new LooseNullableIntConverter(), new LooseStringConverter() },
         };
 
         private sealed class LooseIntConverter : JsonConverter<int>
@@ -51,6 +52,29 @@ namespace FDG.ArmyBuilding
             JsonTokenType.String => int.TryParse(r.GetString(), out int v) ? v : null,
             _ => null,
         };
+
+        private sealed class LooseStringConverter : JsonConverter<string?>
+        {
+            public override string? Read(ref Utf8JsonReader r, Type t, JsonSerializerOptions o)
+            {
+                switch (r.TokenType)
+                {
+                    case JsonTokenType.String: return r.GetString();
+                    case JsonTokenType.Number: return r.GetDouble().ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    case JsonTokenType.True: return "true";
+                    case JsonTokenType.False: return "false";
+                    case JsonTokenType.StartObject:
+                    case JsonTokenType.StartArray:
+                        r.Skip(); return null;
+                    default: return null;
+                }
+            }
+
+            public override void Write(Utf8JsonWriter w, string? v, JsonSerializerOptions o)
+            {
+                if (v is null) w.WriteNullValue(); else w.WriteStringValue(v);
+            }
+        }
 
         public static BookFile Import(string oprJson, string source, string license)
         {
@@ -87,6 +111,7 @@ namespace FDG.ArmyBuilding
                 MinModels = Math.Max(1, unit.Size),
                 MaxModels = Math.Max(1, unit.Size),
                 BasePointCost = unit.Cost,
+                Base = MapBase(unit.Bases),
                 Weapons = (unit.Weapons ?? new()).Select(MapWeapon).ToList(),
                 Rules = (unit.Rules ?? new()).Select(MapRule).ToList(),
                 Items = (unit.Items ?? new()).Select(MapItem).ToList(),
@@ -202,6 +227,39 @@ namespace FDG.ArmyBuilding
             }
         }
 
+        private const float MmPerInch = 25.4f;
+
+        // OPR bases come as {round, square} in millimetres — "25", "120x92" (an oval), "none", or "". Prefer
+        // the round basing (GDF standard): a single number → Circle; "WxH" → our Rectangle footprint (the
+        // engine has no oval; #149's rectangle is the dimension-faithful stand-in). Fall back to the square
+        // spec, else keep the default 28mm circle.
+        private static BaseFileEntry MapBase(OprBases? bases) =>
+            TryParseBase(bases?.Round, preferCircle: true)
+            ?? TryParseBase(bases?.Square, preferCircle: false)
+            ?? new BaseFileEntry();
+
+        private static BaseFileEntry? TryParseBase(string? spec, bool preferCircle)
+        {
+            spec = spec?.Trim().ToLowerInvariant();
+            if (string.IsNullOrEmpty(spec) || spec == "none") return null;
+
+            int x = spec.IndexOf('x');
+            if (x < 0)
+            {
+                if (!float.TryParse(spec, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out float mm) || mm <= 0) return null;
+                return preferCircle
+                    ? new BaseFileEntry { Shape = EBaseShapeKind.Circle, DiameterInches = mm / MmPerInch }
+                    : new BaseFileEntry { Shape = EBaseShapeKind.Rectangle, WidthInches = mm / MmPerInch, HeightInches = mm / MmPerInch };
+            }
+
+            if (!float.TryParse(spec[..x], System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out float w) || w <= 0) return null;
+            if (!float.TryParse(spec[(x + 1)..], System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out float h) || h <= 0) return null;
+            return new BaseFileEntry { Shape = EBaseShapeKind.Rectangle, WidthInches = w / MmPerInch, HeightInches = h / MmPerInch };
+        }
+
         /// <summary>Maps an OPR item (unit-level or gain) to an <see cref="ItemEntry"/>: name + its rule content.
         /// Non-rule content (nested weapons) is the caller's job to route.</summary>
         private static ItemEntry MapItem(OprGain g) => new()
@@ -236,6 +294,13 @@ namespace FDG.ArmyBuilding
             public List<OprRule>? Rules { get; set; }
             public List<OprGain>? Items { get; set; }
             public List<string>? Upgrades { get; set; }
+            public OprBases? Bases { get; set; }
+        }
+
+        private sealed class OprBases
+        {
+            public string? Round { get; set; }
+            public string? Square { get; set; }
         }
 
         private sealed class OprWeapon

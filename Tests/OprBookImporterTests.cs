@@ -102,6 +102,51 @@ public class OprBookImporterTests
         Assert.That(targeter.Rules, Has.One.EqualTo(new SpecialRuleEntry_Core("Reliable")));
     }
 
+    // Every bases variant observed in the real books: round number, round oval "WxH", round "none" with a
+    // square fallback, both empty, and the field absent entirely.
+    private const string BasesJson = """
+    {
+      "name": "Bases", "versionString": "1",
+      "units": [
+        { "id":"a", "name":"A", "size":1, "cost":10, "quality":4, "defense":4, "bases":{"round":"32","square":"30"} },
+        { "id":"b", "name":"B", "size":1, "cost":10, "quality":4, "defense":4, "bases":{"round":"120x92","square":"100x60"} },
+        { "id":"c", "name":"C", "size":1, "cost":10, "quality":4, "defense":4, "bases":{"round":"none","square":"175x125"} },
+        { "id":"d", "name":"D", "size":1, "cost":10, "quality":4, "defense":4, "bases":{"round":"","square":""} },
+        { "id":"e", "name":"E", "size":1, "cost":10, "quality":4, "defense":4 }
+      ],
+      "upgradePackages": []
+    }
+    """;
+
+    [Test]
+    public void Import_MapsBaseSizes_RoundOvalSquareFallbackAndDefault()
+    {
+        const float MmPerInch = 25.4f;
+        var units = OprBookImporter.Import(BasesJson, "TestSource", "CC-BY-SA 4.0").Units;
+        BaseFileEntry Base(string id) => units.Single(u => u.Id == id).Base;
+
+        // round "32" → 32mm circle.
+        Assert.That(Base("a").Shape, Is.EqualTo(EBaseShapeKind.Circle));
+        Assert.That(Base("a").DiameterInches, Is.EqualTo(32f / MmPerInch).Within(0.001f));
+
+        // round "120x92" — an oval → our rectangle footprint.
+        Assert.That(Base("b").Shape, Is.EqualTo(EBaseShapeKind.Rectangle));
+        Assert.That(Base("b").WidthInches, Is.EqualTo(120f / MmPerInch).Within(0.001f));
+        Assert.That(Base("b").HeightInches, Is.EqualTo(92f / MmPerInch).Within(0.001f));
+
+        // round "none" → fall back to the square "175x125".
+        Assert.That(Base("c").Shape, Is.EqualTo(EBaseShapeKind.Rectangle));
+        Assert.That(Base("c").WidthInches, Is.EqualTo(175f / MmPerInch).Within(0.001f));
+        Assert.That(Base("c").HeightInches, Is.EqualTo(125f / MmPerInch).Within(0.001f));
+
+        // Both empty, or no bases field at all → the default base (28mm circle).
+        foreach (string id in new[] { "d", "e" })
+        {
+            Assert.That(Base(id).Shape, Is.EqualTo(EBaseShapeKind.Circle));
+            Assert.That(Base(id).DiameterInches, Is.EqualTo(BaseShapeDefaults.CircleDiameterInches).Within(0.001f));
+        }
+    }
+
     [Test]
     public void ImportedBook_Compiles_WithChosenUpgrade()
     {

@@ -27,12 +27,20 @@ namespace FDG.ArmyBuilding
     /// </summary>
     public static class BookRuleSupplement
     {
+        // Supplement files are hand-authored, so unlike the tolerant book/army reader this loader is
+        // strict: a mistyped property name must throw, not silently deserialize the member to its default
+        // (a "hookId"-for-"hookID" typo would otherwise produce an unset hook that never fires).
+        private static readonly JsonSerializerOptions StrictOptions = new(RuleJson.Options)
+        {
+            UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow,
+        };
+
         /// <summary>Deserializes a supplement file's content. Throws <see cref="JsonException"/> on
-        /// malformed JSON or an unknown "kind" tag.</summary>
+        /// malformed JSON, an unknown "kind" tag, or a property name no rule type declares.</summary>
         public static List<SpecialRuleDefinition> LoadDefinitions(string supplementJson)
         {
             List<SpecialRuleDefinition>? definitions =
-                JsonSerializer.Deserialize<List<SpecialRuleDefinition>>(supplementJson, RuleJson.Options);
+                JsonSerializer.Deserialize<List<SpecialRuleDefinition>>(supplementJson, StrictOptions);
             return definitions ?? new List<SpecialRuleDefinition>();
         }
 
@@ -178,8 +186,14 @@ namespace FDG.ArmyBuilding
         /// that must resolve at load for the definition to function.</summary>
         private static IEnumerable<string> GrantedRuleNames(SpecialRuleDefinition definition)
         {
-            return definition.Passive.SelectMany(entry => GrantedNamesIn(entry.Effect))
-                .Concat(definition.Activated.SelectMany(ability => GrantedNamesIn(ability.Effect)));
+            // Null-tolerant: a malformed hand-authored definition can be missing whole members; the
+            // null-shape problems are reported by CollectProblems, so name-chasing just skips them.
+            return (definition.Passive ?? Array.Empty<HookEntry>())
+                .Where(entry => entry.Effect != null)
+                .SelectMany(entry => GrantedNamesIn(entry.Effect))
+                .Concat((definition.Activated ?? Array.Empty<ActivatedAbility>())
+                    .Where(ability => ability.Effect != null)
+                    .SelectMany(ability => GrantedNamesIn(ability.Effect)));
         }
 
         private static IEnumerable<string> GrantedNamesIn(Effect effect)
@@ -242,6 +256,46 @@ namespace FDG.ArmyBuilding
 
             foreach (SpecialRuleDefinition definition in toValidate)
             {
+                // A hand-authored entry can omit a member entirely (STJ binds a missing ctor parameter to
+                // its default, and Disallow only rejects UNKNOWN names) — catch the null-reference shapes
+                // and skip the deeper checks for that definition, which assume a well-formed one.
+                if (string.IsNullOrWhiteSpace(definition.Name))
+                {
+                    problems.Add("A definition is missing its name.");
+                }
+
+                bool malformed = definition.Passive == null || definition.Activated == null;
+                if (malformed)
+                {
+                    problems.Add($"'{definition.Name}' is missing its passive or activated list.");
+                    continue;
+                }
+
+                foreach (HookEntry entry in definition.Passive)
+                {
+                    if (entry.Condition == null || entry.Effect == null)
+                    {
+                        problems.Add($"'{definition.Name}' has a passive entry missing its condition or effect.");
+                        malformed = true;
+                    }
+                }
+
+                foreach (ActivatedAbility ability in definition.Activated)
+                {
+                    if (ability.TargetSelector == null || ability.Effect == null || ability.Cost == null
+                        || ability.AvailableWhen == null)
+                    {
+                        problems.Add($"'{definition.Name}' has an activated ability missing its cost, " +
+                            "target selector, effect, or availability condition.");
+                        malformed = true;
+                    }
+                }
+
+                if (malformed)
+                {
+                    continue;
+                }
+
                 foreach (RuleViolation violation in validator.Validate(definition))
                 {
                     problems.Add($"'{definition.Name}' at {violation.Hook}: {violation.Member} requires " +

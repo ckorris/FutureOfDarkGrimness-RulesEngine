@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using FDG.ArmyBuilding;
 using FDG.Rules.Definitions;
 using FDG.Rules.Foundation;
@@ -209,6 +210,40 @@ namespace FDG.Tests
             IReadOnlyList<string> problems = BookRuleSupplement.ValidateAll(supplement);
 
             Assert.That(problems, Has.Some.Contains("Duplicate"));
+        }
+
+        [Test]
+        public void LoadDefinitions_RejectsMistypedPropertyNames()
+        {
+            // "hookId" instead of "hookID" — tolerant deserialization would silently leave the hook unset;
+            // the strict loader must throw so hand-authoring mistakes surface immediately.
+            string json = @"[{""name"":""Broken"",""passive"":[{""hookId"":""Movement_OnMoveActionDeclared"",
+                ""condition"":{""kind"":""always""},
+                ""effect"":{""kind"":""movementBonus"",""actionType"":""Advance"",""distanceInches"":2},
+                ""lifetime"":""ThisActivation""}],""activated"":[]}]";
+
+            Assert.Throws<JsonException>(() => BookRuleSupplement.LoadDefinitions(json));
+        }
+
+        [Test]
+        public void ValidateAll_ReportsMissingConditionOrEffect()
+        {
+            // A missing ctor parameter binds to null on load; the null shape must be a reported problem,
+            // not a downstream NullReferenceException.
+            var supplement = new List<SpecialRuleDefinition>
+            {
+                new SpecialRuleDefinition("Half Formed",
+                    new List<HookEntry>
+                    {
+                        new HookEntry(EHookID.Movement_OnMoveActionDeclared, null!,
+                            new Effect.MovementBonus(EActionType.Advance, 2f), ELifetime.ThisActivation),
+                    },
+                    NoAbilities),
+            };
+
+            IReadOnlyList<string> problems = BookRuleSupplement.ValidateAll(supplement);
+
+            Assert.That(problems, Has.Some.Contains("missing its condition or effect"));
         }
 
         [Test]

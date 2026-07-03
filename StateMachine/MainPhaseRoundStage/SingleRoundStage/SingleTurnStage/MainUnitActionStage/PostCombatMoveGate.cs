@@ -62,7 +62,7 @@ namespace FDG.Stages
             if (Moved(unit, before))
             {
                 unit.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.PostCombatMoveUsed));
-                gameContext.Log($"{unit.Name} made its post-combat move — spent for this round.");
+                gameContext.Log($"{unit.Name} made its post-combat move - spent for this round.");
             }
         }
 

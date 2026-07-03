@@ -175,6 +175,9 @@ namespace FDG.Network.Connection.Lobby
             return false;
         }
 
+        // Only the host can launch, so the client never has a launch gate to show.
+        public IReadOnlyList<string> ValidateArmiesForLaunch() => Array.Empty<string>();
+
         public void Dispose()
         {
             _messageBusClient.DeregisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);

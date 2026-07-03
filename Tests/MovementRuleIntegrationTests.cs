@@ -3,6 +3,7 @@ using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
 using FDG.Stages;
+using FDG.StageResolution.Requests;
 using NUnit.Framework;
 
 namespace FDG.Tests
@@ -143,6 +144,105 @@ namespace FDG.Tests
             Assert.That(context.MaxRushDistance, Is.EqualTo(baseline.MaxRushDistance).Within(0.001f),
                 "Rapid Charge is Charge-only; Rush untouched.");
         }
+
+        // ── #153: one-shot movement grants + counts-as-terrain ─────────────────────────────────────────
+
+        // A one-shot ("once, next time it would apply") granted movement rule must contribute to ALL
+        // THREE action budgets, and re-projecting must not spend it — context init is read-only; the
+        // grant is spent only when the move resolves (ExecuteMoveStage).
+        [Test]
+        public void OneShotGrantedMovementRule_BoostsAllBudgets_AndProjectionDoesNotSpendIt()
+        {
+            var ctx = new TestGameContext(_store, new FixedDiceRoller(4),
+                ruleResolver: CoreRuleCatalog.CreateResolver());
+            var baseline = new MovementActionContext(ctx, MakeUnit());
+
+            DataBinding<UnitData> unit = MakeUnit();
+            GrantOnce(unit, "Quick"); // +2" to Advance/Rush/Charge, once
+            var first = new MovementActionContext(ctx, unit);
+            var second = new MovementActionContext(ctx, unit);
+
+            foreach ((MovementActionContext context, string label) in
+                     new[] { (first, "first projection"), (second, "second projection") })
+            {
+                Assert.That(context.MaxAdvanceDistance, Is.EqualTo(baseline.MaxAdvanceDistance + 2f).Within(0.001f),
+                    $"{label}: granted Quick boosts Advance");
+                Assert.That(context.MaxRushDistance, Is.EqualTo(baseline.MaxRushDistance + 2f).Within(0.001f),
+                    $"{label}: granted Quick boosts Rush");
+                Assert.That(context.MaxChargeDistance, Is.EqualTo(baseline.MaxChargeDistance + 2f).Within(0.001f),
+                    $"{label}: granted Quick boosts Charge");
+            }
+        }
+
+        [Test]
+        public async Task OneShotGrantedMovementRule_IsSpentWhenTheMoveResolves()
+        {
+            var ctx = new TestGameContext(_store, new FixedDiceRoller(4),
+                ruleResolver: CoreRuleCatalog.CreateResolver());
+            var baseline = new MovementActionContext(ctx, MakeUnit());
+
+            DataBinding<UnitData> unit = MakeUnit();
+            GrantOnce(unit, "Quick");
+            var context = new MovementActionContext(ctx, unit);
+            context.SubmitValidPathTemplate(new List<ModelMoveEntry>
+            {
+                new ModelMoveEntry(unit.GetValue().ModelBindings[0],
+                    new List<Position> { new Position(1f, 0f) }),
+            });
+
+            var stage = new ExecuteMoveStage(ctx, new NoOpLayer<IMovementActionContext>());
+            stage.OnMoveExecuted.Bind("done");
+            await stage.Enter(context);
+
+            Assert.That(unit.GetValue().Tokens.GetTokenCount(Rules.Foundation.TokenType.RuleGrant),
+                Is.EqualTo(0), "the one-shot grant is spent when the move resolves");
+            var after = new MovementActionContext(ctx, unit);
+            Assert.That(after.MaxAdvanceDistance, Is.EqualTo(baseline.MaxAdvanceDistance).Within(0.001f),
+                "the next move projects without the spent grant");
+        }
+
+        // "Counts as being in Difficult Terrain": the whole move is capped at the difficult-terrain
+        // limit, after bonuses — unless the unit ignores difficult terrain (Strider).
+        [Test]
+        public void CountsAsDifficultTerrain_CapsAllThreeBudgets()
+        {
+            DataBinding<UnitData> unit = MakeUnit();
+            AttachFast(unit); // proves the cap applies AFTER bonuses
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Slowing Curse", CountsAsDifficultRule));
+            var context = new MovementActionContext(_ctx, unit);
+
+            float cap = GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES;
+            Assert.That(context.MaxAdvanceDistance, Is.EqualTo(cap).Within(0.001f));
+            Assert.That(context.MaxRushDistance, Is.EqualTo(cap).Within(0.001f));
+            Assert.That(context.MaxChargeDistance, Is.EqualTo(cap).Within(0.001f));
+        }
+
+        [Test]
+        public void CountsAsDifficultTerrain_StriderIgnoresTheCap()
+        {
+            var baseline = new MovementActionContext(_ctx, MakeUnit());
+
+            DataBinding<UnitData> unit = MakeUnit();
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Slowing Curse", CountsAsDifficultRule));
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Strider", CoreRuleCatalog.Strider));
+            var context = new MovementActionContext(_ctx, unit);
+
+            Assert.That(context.MaxAdvanceDistance, Is.EqualTo(baseline.MaxAdvanceDistance).Within(0.001f),
+                "ignoring difficult terrain waives the counted-as cap too");
+        }
+
+        private static readonly SpecialRuleDefinition CountsAsDifficultRule = new("Slowing Curse",
+            new List<HookEntry>
+            {
+                new HookEntry(EHookID.Movement_OnMoveThroughTerrain, new Condition.Always(),
+                    new Effect.CountAsInTerrain(ECountAsTerrain.Difficult), ELifetime.ThisActivation),
+            },
+            new List<ActivatedAbility>());
+
+        private static void GrantOnce(DataBinding<UnitData> unit, string ruleName) =>
+            unit.GetValue().Tokens.AddToken(new Rules.Tokens.Token(Rules.Foundation.TokenType.RuleGrant, 1,
+                new Rules.Foundation.TokenClearTrigger.FirstTrigger(),
+                Payload: new Rules.Tokens.TokenPayload.RuleGrant(ruleName, ELifetime.NextTrigger)));
 
         private static void AttachFast(DataBinding<UnitData> unit) =>
             unit.GetValue().AttachRuleDefinition(new ResolvedRule("Fast", CoreRuleCatalog.Fast));

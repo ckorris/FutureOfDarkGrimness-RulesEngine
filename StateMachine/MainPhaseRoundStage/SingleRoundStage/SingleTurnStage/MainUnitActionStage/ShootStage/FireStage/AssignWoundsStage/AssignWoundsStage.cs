@@ -121,7 +121,7 @@ namespace FDG.Stages
                 takedownResults.AutoFill();
                 if (confined > 0f)
                 {
-                    GameContext.Log($"Takedown assigned {confined} wound(s) to the single targeted model.");
+                    GameContext.Log($"{individualTarget.SourceLabel} assigned {confined} wound(s) to the single targeted model.");
                 }
                 await onFinished(takedownResults);
                 return;

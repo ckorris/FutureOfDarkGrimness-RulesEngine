@@ -28,9 +28,14 @@ namespace FDG.Stages
             bool ignoresDangerousTerrain = Rules.Dispatch.MovementRuleQueries.IgnoresAllTerrain(
                 movingUnit.GetValue(), GameContext.RuleEvaluator);
 
+            // "Counts as being in Dangerous Terrain" (#153): every moving model tests this move. Read-only
+            // query — the one-shot grant is spent later by ExecuteMoveStage, after this stage has read it.
+            bool countsAsInDangerousTerrain = Rules.Dispatch.MovementRuleQueries.CountsAsInTerrain(
+                movingUnit.GetValue(), GameContext.RuleEvaluator, Rules.Definitions.ECountAsTerrain.Dangerous);
+
             IReadOnlyList<MovementExecutor.DangerousTerrainRoll> dangerRolls =
                 MovementExecutor.ApplyDangerousTerrainEffects(GameContext, paths, context.RelevantTerrain, unitName,
-                    ignoresDangerousTerrain);
+                    ignoresDangerousTerrain, countsAsInDangerousTerrain);
 
             // Dangerous terrain deals wounds but is NOT a morale-test source — shooting, melee, transport
             // destruction, etc. trigger morale tests, but crossing dangerous terrain never does. Present the

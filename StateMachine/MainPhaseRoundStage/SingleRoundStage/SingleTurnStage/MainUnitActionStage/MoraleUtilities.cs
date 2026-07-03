@@ -145,7 +145,7 @@ namespace FDG.Stages
         {
             ApplyShaken(unitBinding);
             await gameContext.Presenter.Present(
-                new BannerBeat($"{unitBinding.GetValue().Name} fails morale — Shaken!", ShakenBannerColor));
+                new BannerBeat($"{unitBinding.GetValue().Name} fails morale - Shaken!", ShakenBannerColor));
         }
 
         /// <summary>
@@ -198,7 +198,7 @@ namespace FDG.Stages
             // Banner first, before Rout deals the lethal wounds, so the announcement plays over the
             // still-living unit and the death animation follows it rather than firing on empty bases.
             await gameContext.Presenter.Present(
-                new BannerBeat($"{unit.Name} fails morale — Routed!", RoutBannerColor));
+                new BannerBeat($"{unit.Name} fails morale - Routed!", RoutBannerColor));
 
             IReadOnlyList<IModel> killed = Rout(unitBinding);
             if (killed.Count == 0) return;

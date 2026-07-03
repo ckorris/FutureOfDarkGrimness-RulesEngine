@@ -48,10 +48,11 @@ namespace FDG.Stages
             metadata.AddResult(new CoverCheckResults(0));
 
             // #034 single-model targeting: confine all wounds to the one chosen model (single-model spells
-            // have a single target, so the pre-picked model belongs to it). Same path Takedown uses.
+            // have a single target, so the pre-picked model belongs to it). Same path Takedown uses — the
+            // spell's name (the synthetic weapon is named after it) labels the wound log, not "Takedown".
             if (run.IndividualModel != null)
             {
-                metadata.AddResult(new IndividualTargetResult(run.IndividualModel));
+                metadata.AddResult(new IndividualTargetResult(run.IndividualModel, run.Weapon.Name));
             }
 
             return metadata;

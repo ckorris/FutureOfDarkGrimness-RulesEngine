@@ -98,7 +98,7 @@ namespace FDG.Stages
             //Movement special rules.
             IUnit unit = movingUnit.GetValue();
             MovementModifierSink movementModifiers = new MovementModifierSink();
-            
+
             AccumulateMovementRules(unit, EActionType.Advance, _maxAdvanceDistance, movementModifiers);
             AccumulateMovementRules(unit, EActionType.Rush, _maxRushDistance, movementModifiers);
             AccumulateMovementRules(unit, EActionType.Charge, _maxChargeDistance, movementModifiers);
@@ -106,6 +106,20 @@ namespace FDG.Stages
             _maxAdvanceDistance += movementModifiers.Net(EActionType.Advance);
             _maxRushDistance += movementModifiers.Net(EActionType.Rush);
             _maxChargeDistance += movementModifiers.Net(EActionType.Charge);
+
+            // "Counts as being in Difficult Terrain" (#153): the whole move is capped at the difficult-terrain
+            // limit, after bonuses (the cap is absolute), unless the unit ignores difficult terrain outright
+            // (Strider/Flying). Applied to the unit scalars here and to each per-model budget below.
+            bool countsAsDifficult =
+                MovementRuleQueries.CountsAsInTerrain(unit, GameContext.RuleEvaluator, ECountAsTerrain.Difficult)
+                && !MovementRuleQueries.IgnoresDifficultTerrain(unit, GameContext.RuleEvaluator);
+            float difficultCap = GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES;
+            if (countsAsDifficult)
+            {
+                _maxAdvanceDistance = Math.Min(_maxAdvanceDistance, difficultCap);
+                _maxRushDistance = Math.Min(_maxRushDistance, difficultCap);
+                _maxChargeDistance = Math.Min(_maxChargeDistance, difficultCap);
+            }
 
             // #093: per-model budgets. Each living model's budget folds the unit's movement rules AND that
             // model's own (a joined hero's Fast/Slow), so a Fast hero can range ahead within coherency while
@@ -125,32 +139,42 @@ namespace FDG.Stages
                 AccumulateModelMovementRules(unit, model, EActionType.Advance, baseAdvance, perModel);
                 AccumulateModelMovementRules(unit, model, EActionType.Rush, baseRush, perModel);
                 AccumulateModelMovementRules(unit, model, EActionType.Charge, baseCharge, perModel);
-                _modelBudgets[model.ID] = new ModelBudget(
-                    baseAdvance + perModel.Net(EActionType.Advance),
-                    baseRush + perModel.Net(EActionType.Rush),
-                    baseCharge + perModel.Net(EActionType.Charge));
+                float modelAdvance = baseAdvance + perModel.Net(EActionType.Advance);
+                float modelRush = baseRush + perModel.Net(EActionType.Rush);
+                float modelCharge = baseCharge + perModel.Net(EActionType.Charge);
+                if (countsAsDifficult)
+                {
+                    modelAdvance = Math.Min(modelAdvance, difficultCap);
+                    modelRush = Math.Min(modelRush, difficultCap);
+                    modelCharge = Math.Min(modelCharge, difficultCap);
+                }
+                _modelBudgets[model.ID] = new ModelBudget(modelAdvance, modelRush, modelCharge);
             }
         }
 
-        //TODO: Move down.
+        // Read-only projection (#153): a one-shot (NextTrigger) granted movement rule must contribute to
+        // ALL THREE action budgets and stay granted for path validation — so nothing here may consume it.
+        // The grant is spent once, by ExecuteMoveStage, when the move actually resolves.
         private void AccumulateMovementRules(IUnit unit, EActionType action, float baseDistance,
             MovementModifierSink sink)
         {
-            IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
-                new MoveActionDeclaredContext(unit, action, baseDistance),
-                (unit, ERuleSeat.Actor));
-            sink.ApplyFrom(operations);
+            IReadOnlyList<(RuleOperation Op, string RuleName)> operations = GameContext.RuleEvaluator
+                .EvaluateAllNamed(new MoveActionDeclaredContext(unit, action, baseDistance),
+                    (unit, ERuleSeat.Actor));
+            sink.ApplyFrom(operations.Select(t => t.Op).ToList());
         }
 
-        // Like AccumulateMovementRules but evaluates the unit's rules AND the given model's own rules
-        // (AnyOwner union), so a per-model Fast/Slow folds into that model's budget only.
+        // Like AccumulateMovementRules but folds the given model's own rules (AnyOwner union) so a per-model
+        // Fast/Slow lands in that model's budget only. Read-only (EvaluateAllNamed, #153): the per-model
+        // projection must not consume a one-shot granted movement rule — ExecuteMoveStage spends it on move
+        // resolve, so every model's budget must be able to see it.
         private void AccumulateModelMovementRules(IUnit unit, IModel model, EActionType action,
             float baseDistance, MovementModifierSink sink)
         {
-            IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
-                new MoveActionDeclaredContext(unit, action, baseDistance),
-                (unit, ERuleSeat.Actor, (IWeapon?)null, new[] { model }, EModelRuleScope.AnyOwner));
-            sink.ApplyFrom(operations);
+            IReadOnlyList<(RuleOperation Op, string RuleName)> operations = GameContext.RuleEvaluator
+                .EvaluateAllNamed(new MoveActionDeclaredContext(unit, action, baseDistance),
+                    (unit, ERuleSeat.Actor, (IWeapon?)null, new[] { model }, EModelRuleScope.AnyOwner));
+            sink.ApplyFrom(operations.Select(t => t.Op).ToList());
         }
 
         public bool TryGetModelMoveBudget(IModel model, out float advance, out float rush, out float charge)

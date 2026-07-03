@@ -37,24 +37,29 @@ namespace FDG.Stages
         /// </summary>
         public static IReadOnlyList<DangerousTerrainRoll> ApplyDangerousTerrainEffects(IGameContext gameContext,
             IReadOnlyList<ModelMoveEntry> paths, IEnumerable<ITerrain> relevantTerrain, string unitName,
-            bool ignoresDangerousTerrain = false)
+            bool ignoresDangerousTerrain = false, bool countsAsInDangerousTerrain = false)
         {
             List<DangerousTerrainRoll> results = new List<DangerousTerrainRoll>();
 
-            // Flying (AllTerrain scope) ignores Dangerous-terrain effects entirely — no roll, no wounds.
+            // Flying (AllTerrain scope) ignores Dangerous-terrain effects entirely — no roll, no wounds —
+            // including a "counts as in Dangerous Terrain" grant (ignoring the real effect ignores the
+            // counted-as one).
             if (ignoresDangerousTerrain) return results;
 
             List<ITerrain> dangerous = relevantTerrain
                 .Where(t => t.TerrainType.HasFlag(ETerrainType.Dangerous))
                 .ToList();
 
-            if (dangerous.Count == 0) return results;
+            // "Counts as being in Dangerous Terrain" (#153): every moving model tests, regardless of what
+            // its path actually crosses — so the no-dangerous-on-table early-out doesn't apply.
+            if (dangerous.Count == 0 && !countsAsInDangerousTerrain) return results;
 
             foreach (ModelMoveEntry move in paths)
             {
                 if (move.Positions.Count == 0) continue;
 
-                if (!MovementUtilities.DoesPathCrossDangerousTerrain(move, dangerous)) continue;
+                if (!countsAsInDangerousTerrain
+                    && !MovementUtilities.DoesPathCrossDangerousTerrain(move, dangerous)) continue;
 
                 // Decisive per-model die — one concrete face even under the probabilistic roller (#090).
                 IDiceResults roll = gameContext.DiceRoller.RollDecisive(6);

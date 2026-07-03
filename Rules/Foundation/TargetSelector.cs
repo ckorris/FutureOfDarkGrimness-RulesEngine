@@ -42,6 +42,12 @@ namespace FDG.Rules.Foundation;
 /// Used by abilities that only work against tagged targets (e.g. only re-targets units
 /// previously marked by <i>Unstoppable Mark</i>). Null = no token filter (the common case).
 /// </param>
+/// <param name="RequiredRule">
+/// Optional. If non-null, candidates must carry a rule of this name (matched case-insensitively
+/// against the attached rule's canonical or requested name, like <c>Condition.UnitHasRule</c>).
+/// Used by abilities that only target units with a specific rule (e.g. Re-Position Artillery's
+/// "pick one friendly model within 6&quot; with Artillery"). Null = no rule filter (the common case).
+/// </param>
 /// <param name="SingleModel">
 /// #034 single-model targeting. When true, a damage spell resolves against ONE chosen model in the
 /// picked unit ("as if the target was a unit of [1]" — Total Seizure, Psy-Destruction): after the unit
@@ -51,4 +57,5 @@ namespace FDG.Rules.Foundation;
 /// damage (<c>Effect.DealHits</c>) spells; ignored by buff/debuff effects.
 /// </param>
 public record TargetSelector(float RangeInches, int MinCount, int MaxCount, ETargetAffinity TargetAffinity,
-    bool RequireLineOfSight, TokenType? RequiredToken = null, bool SingleModel = false);
+    bool RequireLineOfSight, TokenType? RequiredToken = null, bool SingleModel = false,
+    string? RequiredRule = null);

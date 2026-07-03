@@ -84,6 +84,17 @@ namespace FDG.Stages
             context.RegisterAttackedDefender(rangedAttackChoice.TargetUnit);
             GameContext.Log($"Chose weapon: {chosenWeapon.Name}. Count: {weaponCount}.");
 
+            // #157: a weapon whose attack re-scopes to a single chosen model (Takedown) fires its copies as
+            // SEPARATE single-shot attacks so each shot picks its own victim (each sniper chooses a model),
+            // instead of one pick funnelling the whole volley. FireStage then loops once per queued shot.
+            if (weaponCount > 1 && Rules.Dispatch.SightRuleQueries.TargetsIndividualModels(
+                    context.AttackingUnit.GetValue(), chosenWeapon, rangedAttackChoice.TargetUnit.GetValue(),
+                    GameContext.RuleEvaluator))
+            {
+                context.SplitPendingAttackIntoSingleShots();
+                GameContext.Log($"{chosenWeapon.Name}: {weaponCount} individually-aimed shots, each picks its own target model.");
+            }
+
             // #032 Limited: choosing the weapon commits it to fire (there's no cancel before FireStage), so mark
             // it spent now — every living carrier records it as fired this game (it's excluded from here on).
             LimitedRules.MarkFired(context.AttackingUnit.GetValue(), chosenWeapon);
@@ -384,11 +395,16 @@ namespace FDG.Stages
             return distance <= effectiveRangeInches;
         }
 
-        private static bool ComputeHasCover(DataBinding<UnitData> attackingUnit,
+        // Internal for tests. Dead models must not sway the cover majority (#158): only living defenders
+        // can benefit from cover, and only living attackers have sight lines — a squad whose casualties
+        // happened to die behind a wall must not grant the survivors standing in the open a cover bonus.
+        internal static bool ComputeHasCover(DataBinding<UnitData> attackingUnit,
             DataBinding<UnitData> defendingUnit, IReadOnlyList<ITerrain> terrain)
         {
-            List<DataBinding<ModelData>> attackers = attackingUnit.ModelBindings().ToList();
-            List<DataBinding<ModelData>> defenders = defendingUnit.ModelBindings().ToList();
+            List<DataBinding<ModelData>> attackers = attackingUnit.ModelBindings()
+                .Where(model => model.GetIsAlive()).ToList();
+            List<DataBinding<ModelData>> defenders = defendingUnit.ModelBindings()
+                .Where(model => model.GetIsAlive()).ToList();
             if (defenders.Count == 0) return false;
 
             int modelsInCover = 0;

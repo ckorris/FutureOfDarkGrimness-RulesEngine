@@ -60,6 +60,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(ApplyFatigue), "applyFatigue")]
 [JsonDerivedType(typeof(MarkTarget), "markTarget")]
 [JsonDerivedType(typeof(ReduceArmorPenetration), "reduceArmorPenetration")]
+[JsonDerivedType(typeof(CountAsInTerrain), "countAsInTerrain")]
 
 public abstract record Effect
 {
@@ -669,6 +670,23 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.InvokeApplyFatigue(ruleInvocation.EffectiveTarget));
+        }
+    }
+
+    /// <summary>
+    /// The bearer's move suffers a terrain effect regardless of the table's actual terrain: the
+    /// difficult-terrain move cap (<see cref="ECountAsTerrain.Difficult"/>) or the dangerous-terrain
+    /// per-model wound roll (<see cref="ECountAsTerrain.Dangerous"/>). Covers the "counts as being in
+    /// X Terrain once" spell family (Cursed Stride, Aura of Pestilence) — granted one-shot via
+    /// <see cref="AddRule"/>, read by <c>MovementRuleQueries.CountsAsInTerrain</c> throughout the move,
+    /// and spent by the move-resolved consumption in <c>ExecuteMoveStage</c>. An
+    /// <see cref="IgnoreTerrainEffects"/> bearer (Strider/Flying, per its scope) still waives the effect.
+    /// </summary>
+    public sealed record CountAsInTerrain(ECountAsTerrain Terrain) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.CountAsInTerrain(Terrain));
         }
     }
 

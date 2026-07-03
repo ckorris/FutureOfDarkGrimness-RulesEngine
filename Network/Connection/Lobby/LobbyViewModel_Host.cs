@@ -362,6 +362,12 @@ namespace FDG.Network.Connection.Lobby
             return true;
         }
 
+        // #153 launch gate (decision 9): hard legality problems across every loaded army, for the UI's
+        // "launch anyway?" confirm. The logic lives in the fixture-free ArmyBuilding.LaunchGate.
+        public IReadOnlyList<string> ValidateArmiesForLaunch() =>
+            ArmyBuilding.LaunchGate.ValidateArmies(
+                _playerInfosFull.Values.Select(info => (info.PlayerName, info.ArmyListFile)), ArmyPoints);
+
         public bool TryResumeGame(out string? failReason)
         {
             if (!_isResume)

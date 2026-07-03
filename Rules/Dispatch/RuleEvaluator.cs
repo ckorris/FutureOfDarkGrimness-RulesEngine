@@ -129,6 +129,21 @@ public sealed class RuleEvaluator
             .Select(t => (t.Op, t.Origin.RequestedName)).ToList();
     }
 
+    /// <summary>
+    /// Model-aware form of <see cref="EvaluateAllNamed"/> (#093 × #153): folds the named model(s)' own rules
+    /// per <see cref="EModelRuleScope"/>, like the model-aware <see cref="EvaluateAll"/>, but as a read-only
+    /// query — <c>log: false</c> means it neither logs nor spends one-shot (NextTrigger) grants. Used by the
+    /// movement context's per-model budget projection, which runs at construction and must not consume a
+    /// granted movement rule (that grant is spent once by <c>ExecuteMoveStage</c> when the move resolves).
+    /// </summary>
+    public IReadOnlyList<(RuleOperation Op, string RuleName)> EvaluateAllNamed(IHookContext context,
+        params (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon, IReadOnlyList<IModel>? Models,
+            EModelRuleScope ModelScope)[] participants)
+    {
+        return CollectSurviving(context, log: false, participants)
+            .Select(t => (t.Op, t.Origin.RequestedName)).ToList();
+    }
+
     private static (IUnit, ERuleSeat, IWeapon?)[] WithoutWeapons((IUnit Unit, ERuleSeat Seat)[] participants)
     {
         var expanded = new (IUnit, ERuleSeat, IWeapon?)[participants.Length];
@@ -215,27 +230,55 @@ public sealed class RuleEvaluator
         // #101 consume-on-occurrence: spend each one-shot grant whose hook+seat fired this event, removing
         // its token DIRECTLY (not via a returned op). This is robust — the hit/save/melee pipeline runs
         // sinks, not OperationApplier, so a returned consume op would be silently dropped exactly where
-        // most combat buffs apply. Deduped per (bearer, payload) so one occurrence spends one charge even
-        // when a grant fired through several entries.
+        // most combat buffs apply.
         if (grantsToConsume != null)
         {
-            var spent = new HashSet<(UnitID, TokenPayload?)>();
-            foreach ((IUnit unit, Token grant) in grantsToConsume)
-            {
-                if (!spent.Add((unit.ID, grant.Payload)))
-                {
-                    continue;
-                }
-
-                unit.Tokens.RemoveTokensWithPayload(grant.Type, grant.OwnerUnitID, grant.Payload, count: 1);
-                if (grant.Payload is TokenPayload.RuleGrant spentGrant)
-                {
-                    _log?.Log($"{unit.Name}'s {spentGrant.RuleName} grant is spent.");
-                }
-            }
+            SpendGrants(grantsToConsume);
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Explicitly spends the one-shot (FirstTrigger) granted rules that key on <paramref name="context"/>'s
+    /// hook + the given seats, without applying or logging any operations. The movement flow uses this
+    /// (#153): declaration-time budget projection and per-frame validation queries are read-only, so a
+    /// granted movement/terrain rule stays visible for the WHOLE move and is spent exactly once here, when
+    /// the move resolves. Mirrors the live-path consume-on-occurrence pass — conditions are ignored; having
+    /// an entry at the hook+seat is the "next time it would apply" occurrence.
+    /// </summary>
+    public void ConsumeOneShotGrants(IHookContext context, params (IUnit Unit, ERuleSeat Seat)[] participants)
+    {
+        var grantsToConsume = new List<(IUnit Unit, Token Grant)>();
+        var tagged = new List<TaggedOperation>();
+        var seen = new DedupState();
+        foreach ((IUnit unit, ERuleSeat seat) in participants)
+        {
+            CollectTagged(unit, seat, weapon: null, models: null, EModelRuleScope.AnyOwner, context, tagged,
+                seen, grantsToConsume);
+        }
+
+        SpendGrants(grantsToConsume);
+    }
+
+    // Deduped per (bearer, payload) so one occurrence spends one charge even when a grant fired through
+    // several entries.
+    private void SpendGrants(List<(IUnit Unit, Token Grant)> grantsToConsume)
+    {
+        var spent = new HashSet<(UnitID, TokenPayload?)>();
+        foreach ((IUnit unit, Token grant) in grantsToConsume)
+        {
+            if (!spent.Add((unit.ID, grant.Payload)))
+            {
+                continue;
+            }
+
+            unit.Tokens.RemoveTokensWithPayload(grant.Type, grant.OwnerUnitID, grant.Payload, count: 1);
+            if (grant.Payload is TokenPayload.RuleGrant spentGrant)
+            {
+                _log?.Log($"{unit.Name}'s {spentGrant.RuleName} grant is spent.");
+            }
+        }
     }
 
     /// <summary>

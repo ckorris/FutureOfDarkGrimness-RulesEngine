@@ -65,6 +65,22 @@ namespace FDG.Stages
                     PresentationDurations.ForMoveDistance(longestPath)));
             }
 
+            // #153: the move is resolved — spend one-shot (NextTrigger) grants that keyed on this move.
+            // Declaration-time budget projection and path-validation queries are read-only, so a granted
+            // movement rule (Shock Speed's +2"/+4") or terrain rule (counts-as Difficult/Dangerous) stays
+            // visible for the whole move and is consumed exactly once, here. The action type in the
+            // declared context is cosmetic — consumption keys on hook+seat, not on conditions.
+            context.TryGetMovementDistance(out float distance);
+            Rules.Definitions.EActionType resolvedAction = distance <= context.MaxAdvanceDistance
+                ? Rules.Definitions.EActionType.Advance
+                : Rules.Definitions.EActionType.Rush;
+            GameContext.RuleEvaluator.ConsumeOneShotGrants(
+                new Rules.Dispatch.Contexts.MoveActionDeclaredContext(movingUnit, resolvedAction, distance),
+                (movingUnit, Rules.Foundation.ERuleSeat.Actor));
+            GameContext.RuleEvaluator.ConsumeOneShotGrants(
+                new Rules.Dispatch.Contexts.MoveThroughTerrainContext(movingUnit),
+                (movingUnit, Rules.Foundation.ERuleSeat.Actor));
+
             await OnMoveExecuted.Activate(context);
         }
     }

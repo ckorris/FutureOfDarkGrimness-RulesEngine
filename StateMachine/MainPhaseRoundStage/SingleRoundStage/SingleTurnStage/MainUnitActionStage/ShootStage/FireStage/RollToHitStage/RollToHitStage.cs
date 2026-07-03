@@ -118,7 +118,7 @@ namespace FDG.Stages
                 {
                     results.SuccessfulHitList.Add(new SuccessfulHitInfo(SyntheticHits(extraHits, rollToHitResults)));
                     GameContext.Log($"Blast multiplied {currentHits} hits x{hitMultiplier.NetMultiplier}, capped at " +
-                        $"{targetModelCount} target models → {cappedHits} total.");
+                        $"{targetModelCount} target models -> {cappedHits} total.");
                 }
             }
 

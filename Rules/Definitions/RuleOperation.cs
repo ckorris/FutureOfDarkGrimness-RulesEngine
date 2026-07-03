@@ -463,6 +463,15 @@ public abstract record RuleOperation
     public sealed record IgnoreEnemyMovementBlock : RuleOperation;
 
     /// <summary>
+    /// The bearer's move suffers the given terrain effect regardless of the table's actual terrain —
+    /// the difficult-terrain move cap or the dangerous-terrain per-model wound roll. Read by
+    /// <see cref="Rules.Dispatch.MovementRuleQueries.CountsAsInTerrain"/> (movement-budget capping in
+    /// <c>MovementActionContext</c>, forced rolls in <c>ApplyNonMovementTerrainEffectsStage</c>).
+    /// Resolution of <see cref="Effect.CountAsInTerrain"/>.
+    /// </summary>
+    public sealed record CountAsInTerrain(ECountAsTerrain Terrain) : RuleOperation;
+
+    /// <summary>
     /// Remove the bearer from the normal deployment pool for later placement, governed by
     /// <see cref="Timing"/>. <see cref="PlacementRangeInches"/> is interpreted per timing:
     /// for <see cref="EDeferTiming.AfterNormalDeployment"/> (Scout) it's how far the deployment

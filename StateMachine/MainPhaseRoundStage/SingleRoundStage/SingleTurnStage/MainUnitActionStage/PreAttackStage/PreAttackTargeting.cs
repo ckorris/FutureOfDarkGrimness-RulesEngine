@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using FDG.Data;
@@ -62,6 +63,14 @@ namespace FDG.Stages
 
                     if (selector.RequiredToken != null
                         && !candidate.Tokens.HasToken(selector.RequiredToken.Value))
+                    {
+                        continue;
+                    }
+
+                    if (selector.RequiredRule != null
+                        && !candidate.RuleDefinitions.Any(r =>
+                            string.Equals(r.Definition.Name, selector.RequiredRule, StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(r.RequestedName, selector.RequiredRule, StringComparison.OrdinalIgnoreCase)))
                     {
                         continue;
                     }

@@ -1,5 +1,6 @@
 ﻿using FDG.Data.Containers;
 using FDG.Data.Serialization;
+using FDG.SaveLoad;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using System.Reflection;
@@ -84,6 +85,11 @@ namespace FDG.Data
              _jsonConvertSettings = new JsonSerializerSettings()
              {
                  TypeNameHandling = TypeNameHandling.Auto,
+                 // Record polymorphic $type payloads (base shapes, token payloads/clear-triggers, terrain
+                 // zones) by stable string ID rather than assembly-qualified name, so renaming one of those
+                 // types doesn't break saves or the full-state sync (#070). Unregistered types fall back to
+                 // the default FullName behavior.
+                 SerializationBinder = new StableTypeSerializationBinder(),
                  Converters = converters
              };
 
@@ -455,6 +461,13 @@ namespace FDG.Data
 
 
 
+
+        /// <summary>
+        /// The type occupying TypeID 0 (see <see cref="UnreferenceableTypeStruct"/>). Exposed so the save
+        /// type-ID registry (#070) can give it a stable ID like every other registered type, without
+        /// leaking the private struct.
+        /// </summary>
+        public static Type PlaceholderType => typeof(UnreferenceableTypeStruct);
 
         /// <summary>
         /// Exists so that the index of any used type is not 0, so that a default TypeID doesn't erroneously

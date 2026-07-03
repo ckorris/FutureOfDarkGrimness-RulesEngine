@@ -16,7 +16,11 @@ namespace FDG.SaveLoad
     /// </summary>
     public static class GameSaveSerializer
     {
-        public const int CurrentVersion = 1;
+        // v2 (#070): the type map records stable IDs (SaveTypeRegistry) rather than raw Type.FullName, and
+        // polymorphic $type payloads inside entries do too (via StableTypeSerializationBinder). Bumped from
+        // v1; nothing is distributed, so there are no v1 saves in the wild to migrate — the FullName
+        // fallback in ResolveType/the binder is cheap insurance rather than a live compatibility path.
+        public const int CurrentVersion = 2;
 
         public static string Save(GameDataStore store)
         {
@@ -24,7 +28,7 @@ namespace FDG.SaveLoad
             {
                 Version = CurrentVersion,
                 TypeMap = store.GetTypeMapWithCapacities()
-                    .Select(tc => new SavedTypeEntry(tc.Type.FullName!, tc.Capacity))
+                    .Select(tc => new SavedTypeEntry(SaveTypeRegistry.GetIdOrFullName(tc.Type), tc.Capacity))
                     .ToList(),
                 Entries = store.GetAllDataReferencesAsJson(),
             };
@@ -47,7 +51,7 @@ namespace FDG.SaveLoad
             }
 
             List<GameDataStore.TypeAndCapacity> typeMap = file.TypeMap
-                .Select(entry => new GameDataStore.TypeAndCapacity(ResolveType(entry.FullName), entry.Capacity))
+                .Select(entry => new GameDataStore.TypeAndCapacity(ResolveType(entry.TypeId), entry.Capacity))
                 .ToList();
 
             GameDataStore store = GameDataStore.CreateFromTypeMap(typeMap);
@@ -134,14 +138,22 @@ namespace FDG.SaveLoad
             }
         }
 
-        private static Type ResolveType(string fullName)
+        // Resolve a saved type-map entry's identity: a stable ID first (#070), then a Type.FullName fallback
+        // for anything unregistered (an unmapped type, or a hypothetical pre-#070 save that stored FullNames).
+        private static Type ResolveType(string typeId)
         {
-            // Registered types live either in the engine assembly or in the runtime (primitives).
-            Type? type = typeof(GameDataStore).Assembly.GetType(fullName) ?? Type.GetType(fullName);
+            if (SaveTypeRegistry.TryGetType(typeId, out Type mapped))
+            {
+                return mapped;
+            }
+
+            // Fallback: treat the string as a Type.FullName. Registered types live either in the engine
+            // assembly or in the runtime (primitives).
+            Type? type = typeof(GameDataStore).Assembly.GetType(typeId) ?? Type.GetType(typeId);
             if (type == null)
             {
                 throw new InvalidOperationException(
-                    $"Save references type '{fullName}', which this build can't resolve.");
+                    $"Save references type '{typeId}', which this build can't resolve.");
             }
 
             return type;

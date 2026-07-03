@@ -376,11 +376,23 @@ namespace FDG.Stages
         }
 
         public static bool DoesPathCrossDangerousTerrain(ModelMoveEntry move, IEnumerable<ITerrain> terrain)
-        {
-            List<ITerrain> dangerous = terrain
+            => DoesPathCrossTerrainPieces(move, terrain
                 .Where(t => t.TerrainType.HasFlag(ETerrainType.Dangerous))
-                .ToList();
-            if (dangerous.Count == 0 || move.Positions.Count == 0) return false;
+                .ToList());
+
+        /// <summary>Public sibling of the Dangerous check (#155): whether the move's swept path touches any
+        /// Difficult-flagged piece. Lets a move-preview resolver know a model's committed waypoints have
+        /// already crossed Difficult terrain, so the rest of its move is subject to
+        /// <see cref="GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES"/> (see
+        /// <see cref="ClampTravelForDifficultTerrain"/>).</summary>
+        public static bool DoesPathCrossDifficultTerrain(ModelMoveEntry move, IEnumerable<ITerrain> terrain)
+            => DoesPathCrossTerrainPieces(move, terrain
+                .Where(t => t.TerrainType.HasFlag(ETerrainType.Difficult))
+                .ToList());
+
+        private static bool DoesPathCrossTerrainPieces(ModelMoveEntry move, List<ITerrain> pieces)
+        {
+            if (pieces.Count == 0 || move.Positions.Count == 0) return false;
 
             var model = move.Model.GetValue();
             IBaseShape baseShape = model.BaseShape;
@@ -392,7 +404,7 @@ namespace FDG.Stages
             {
                 Float2 segmentEnd = new Float2(move.Positions[i].x, move.Positions[i].z);
                 if (IsZeroLengthSegment(segmentStart, segmentEnd)) continue; // a hold doesn't cross terrain
-                foreach (ITerrain piece in dangerous)
+                foreach (ITerrain piece in pieces)
                 {
                     if (SweptBaseGeometry.DoesSweptBaseIntersectZone(piece.Shape, segmentStart, segmentEnd, baseShape, facing))
                         return true;
@@ -401,6 +413,65 @@ namespace FDG.Stages
             }
 
             return false;
+        }
+
+        /// <summary>Safety margin the difficult-terrain preview clamp keeps below the exact limits — both the
+        /// 6" cap and the stop-short-of-the-edge distance — so a clamped endpoint re-validated with exact
+        /// constants can't fail on float drift (#155).</summary>
+        public const float DIFFICULT_TERRAIN_CLAMP_MARGIN_INCHES = 0.01f;
+
+        /// <summary>
+        /// How far a model may actually travel along one straight preview segment, honouring the
+        /// difficult-terrain move cap (#155) — the enforcement mirror of
+        /// <see cref="ValidateMovingThroughDifficultTerrain"/>, for resolvers that clamp a live ghost instead
+        /// of reporting an error after the fact. Semantics:
+        /// <list type="bullet">
+        /// <item>No Difficult terrain in play, a zero-length segment, or
+        /// <paramref name="ignoresDifficultTerrain"/> (Strider/Flying): the full segment is allowed.</item>
+        /// <item>The path so far has already crossed Difficult terrain
+        /// (<paramref name="pathAlreadyCrossedDifficultTerrain"/>, see
+        /// <see cref="DoesPathCrossDifficultTerrain"/>): the whole move is capped at
+        /// <see cref="GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES"/> total, so this segment gets
+        /// whatever remains after <paramref name="traveledBeforeSegmentInches"/> (minus the margin).</item>
+        /// <item>Otherwise, if the segment would enter Difficult terrain: entering caps the total move the
+        /// same way. When the cap still leaves room past the entry point the cap is the limit; when it
+        /// doesn't (the model has already moved too far to afford entering), travel stops just short of the
+        /// terrain edge instead.</item>
+        /// </list>
+        /// Band/charge caps are the caller's job — the returned distance only ever shrinks the segment.
+        /// </summary>
+        public static float ClampTravelForDifficultTerrain(Float2 segmentStart, Float2 segmentEnd,
+            float traveledBeforeSegmentInches, bool pathAlreadyCrossedDifficultTerrain,
+            IBaseShape baseShape, Float2 facing,
+            IEnumerable<ITerrain>? terrain, bool ignoresDifficultTerrain)
+        {
+            float dx = segmentEnd.X - segmentStart.X, dz = segmentEnd.Y - segmentStart.Y;
+            float desired = MathF.Sqrt(dx * dx + dz * dz);
+            if (ignoresDifficultTerrain || desired <= 0f || terrain == null) return desired;
+
+            List<ITerrain> difficult = terrain
+                .Where(t => t.TerrainType.HasFlag(ETerrainType.Difficult))
+                .ToList();
+            if (difficult.Count == 0) return desired;
+
+            float capRemaining = GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES
+                - traveledBeforeSegmentInches - DIFFICULT_TERRAIN_CLAMP_MARGIN_INCHES;
+
+            if (pathAlreadyCrossedDifficultTerrain)
+                return Math.Clamp(capRemaining, 0f, desired);
+
+            // Farthest travel along the segment before the swept base first touches any difficult piece.
+            float entry = desired;
+            foreach (ITerrain piece in difficult)
+            {
+                entry = MathF.Min(entry, SweptBaseGeometry.MaxTravelBeforeZoneIntersection(
+                    piece.Shape, segmentStart, segmentEnd, baseShape, facing));
+                if (entry <= 0f) break;
+            }
+            if (entry >= desired) return desired; // never enters difficult within this segment
+
+            if (capRemaining > entry) return MathF.Min(desired, capRemaining);
+            return Math.Clamp(entry - DIFFICULT_TERRAIN_CLAMP_MARGIN_INCHES, 0f, desired);
         }
 
         private static void ValidateMovingThroughDifficultTerrain(List<ModelMoveEntry> moves,
@@ -420,31 +491,8 @@ namespace FDG.Stages
 
             foreach (ModelMoveEntry move in moves)
             {
-                if (move.Positions.Count == 0) continue;
-
-                var model = move.Model.GetValue();
-                IBaseShape baseShape = model.BaseShape;
-                Float2 facing = model.Facing;
-                Position startPos = model.PositionBinding.GetValue();
-                Float2 segmentStart = new Float2(startPos.x, startPos.z);
-
-                bool crossesDifficult = false;
-                for (int i = 0; i < move.Positions.Count && !crossesDifficult; i++)
-                {
-                    Float2 segmentEnd = new Float2(move.Positions[i].x, move.Positions[i].z);
-                    if (IsZeroLengthSegment(segmentStart, segmentEnd)) continue; // a hold doesn't cross terrain
-                    foreach (ITerrain piece in difficult)
-                    {
-                        if (SweptBaseGeometry.DoesSweptBaseIntersectZone(piece.Shape, segmentStart, segmentEnd, baseShape, facing))
-                        {
-                            crossesDifficult = true;
-                            break;
-                        }
-                    }
-                    segmentStart = segmentEnd;
-                }
-
-                if (crossesDifficult && distances[move] > GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES)
+                if (DoesPathCrossTerrainPieces(move, difficult)
+                    && distances[move] > GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES)
                 {
                     reasonsForInvalidMove.Add(
                         new ReasonForInvalidMove(EErrorReasonType.ExceededDifficultTerrainMoveLimit, move.Model));

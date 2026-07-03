@@ -36,6 +36,39 @@ namespace FDG
             return false;
         }
 
+        /// <summary>
+        /// The farthest a base may travel from <c>start</c> toward <c>end</c> before its swept footprint first
+        /// touches <paramref name="zone"/> (#155) — the distance a move-preview clamp can allow along the segment
+        /// without entering the zone. Returns the full segment length when the sweep never intersects, and 0 when
+        /// the base's static footprint at <c>start</c> already touches. Found by bisection over
+        /// <see cref="DoesSweptBaseIntersectZone"/> (the swept region only grows with travel, so the predicate is
+        /// monotone), which keeps this exactly consistent with the boolean the validators use, for every
+        /// base-shape/zone combination. The result is a known-clear distance (the bisection's low bound), accurate
+        /// to <paramref name="toleranceInches"/>.
+        /// </summary>
+        public static float MaxTravelBeforeZoneIntersection(IZone zone, Float2 start, Float2 end,
+            IBaseShape baseShape, Float2 facing, float toleranceInches = 0.005f)
+        {
+            if (DoesSweptBaseIntersectZone(zone, start, start, baseShape, facing)) return 0f;
+
+            float dx = end.X - start.X, dy = end.Y - start.Y;
+            float length = MathF.Sqrt(dx * dx + dy * dy);
+            if (length <= 0f) return 0f;
+            if (!DoesSweptBaseIntersectZone(zone, start, end, baseShape, facing)) return length;
+
+            float tolerance = MathF.Max(toleranceInches, 1e-4f);
+            float invLength = 1f / length;
+            float lo = 0f, hi = length; // lo: known clear; hi: known intersecting
+            while (hi - lo > tolerance)
+            {
+                float mid = (lo + hi) * 0.5f;
+                Float2 at = new Float2(start.X + dx * mid * invLength, start.Y + dy * mid * invLength);
+                if (DoesSweptBaseIntersectZone(zone, start, at, baseShape, facing)) hi = mid;
+                else lo = mid;
+            }
+            return lo;
+        }
+
         private static bool SweptRectIntersectsPrimitive(IZone prim, Float2 start, Float2 end, RectangleBase rect, Float2 facing)
         {
             switch (prim)

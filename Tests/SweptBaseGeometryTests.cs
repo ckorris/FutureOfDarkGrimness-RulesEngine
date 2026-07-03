@@ -56,6 +56,59 @@ namespace FDG.Tests
                 "a circular base must match the existing scalar swept-disc exactly.");
         }
 
+        // #155: entry-distance bisection used by the difficult-terrain move-preview clamp.
+
+        [Test]
+        public void MaxTravel_StopsWhereDiscTouchesZoneEdge()
+        {
+            // Zone at X 4–6; a 1" disc travelling +X from (0,5) touches the X=4 edge when its centre is at 3.
+            var zone = new RectangularZone(4f, 6f, 3f, 7f);
+            float travel = SweptBaseGeometry.MaxTravelBeforeZoneIntersection(
+                zone, new Float2(0f, 5f), new Float2(10f, 5f), new CircleBase(1f), new Float2(0f, 1f));
+
+            Assert.That(travel, Is.EqualTo(3f).Within(0.02f));
+            // The returned distance must itself be clear — it's the bisection's known-good bound.
+            Assert.That(SweptBaseGeometry.DoesSweptBaseIntersectZone(
+                zone, new Float2(0f, 5f), new Float2(travel, 5f), new CircleBase(1f), new Float2(0f, 1f)), Is.False);
+        }
+
+        [Test]
+        public void MaxTravel_SegmentNeverReachesZone_ReturnsFullLength()
+        {
+            var zone = new RectangularZone(4f, 6f, 3f, 7f);
+            float travel = SweptBaseGeometry.MaxTravelBeforeZoneIntersection(
+                zone, new Float2(0f, 5f), new Float2(2f, 5f), new CircleBase(1f), new Float2(0f, 1f));
+
+            Assert.That(travel, Is.EqualTo(2f));
+        }
+
+        [Test]
+        public void MaxTravel_StartAlreadyTouching_ReturnsZero()
+        {
+            var zone = new RectangularZone(4f, 6f, 3f, 7f);
+            float travel = SweptBaseGeometry.MaxTravelBeforeZoneIntersection(
+                zone, new Float2(5f, 5f), new Float2(20f, 5f), new CircleBase(1f), new Float2(0f, 1f));
+
+            Assert.That(travel, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void MaxTravel_RectangleBase_LongAxisShortensEntry()
+        {
+            // Zone at X 4–6. A 1"x6" base facing +X sweeps its 3" half-height ahead of the centre, so it
+            // touches the zone at travel 1; the same base facing +Z leads with its 0.5" half-width (travel 3.5).
+            var zone = new RectangularZone(4f, 6f, -10f, 10f);
+            var rect = new RectangleBase(1f, 6f);
+
+            float facingTravel = SweptBaseGeometry.MaxTravelBeforeZoneIntersection(
+                zone, new Float2(0f, 0f), new Float2(10f, 0f), rect, new Float2(1f, 0f));
+            float sideTravel = SweptBaseGeometry.MaxTravelBeforeZoneIntersection(
+                zone, new Float2(0f, 0f), new Float2(10f, 0f), rect, new Float2(0f, 1f));
+
+            Assert.That(facingTravel, Is.EqualTo(1f).Within(0.02f));
+            Assert.That(sideTravel, Is.EqualTo(3.5f).Within(0.02f));
+        }
+
         [Test]
         public void Rectangle_AgainstRotatedZone_OBB()
         {

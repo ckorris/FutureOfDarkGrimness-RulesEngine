@@ -78,15 +78,17 @@ namespace FDG.Stages
             DataBinding<ModelData> chosen = await GameContext.PlayerRequester
                 .RequestDecision<SelectionRequest<ModelData>, DataBinding<ModelData>>(request);
 
-            metaData.AddResult(new IndividualTargetResult(chosen));
+            metaData.AddResult(new IndividualTargetResult(chosen, "Takedown"));
             GameContext.Log($"{attacker.Name}'s Takedown targets a single model in {defender.Name}.");
         }
     }
 
     /// <summary>
-    /// Records that Takedown re-scoped the in-flight shooting attack to a single model. Produced by
-    /// <see cref="BuildTargetListStage{TMetadata}"/> and read by AssignWoundsStage, which confines all
-    /// wounds to this model (capped, no carry-over).
+    /// Records that the in-flight attack was re-scoped to a single model. Produced by
+    /// <see cref="BuildTargetListStage{TMetadata}"/> (Takedown) and ResolveSpellDamageStage (single-model
+    /// spells), and read by AssignWoundsStage, which confines all wounds to this model (capped, no
+    /// carry-over). <paramref name="SourceLabel"/> names what did the re-scoping ("Takedown", the spell's
+    /// name) so the wound log credits the right source — a Psy-Destruction kill must not read "Takedown".
     /// </summary>
-    public readonly record struct IndividualTargetResult(DataBinding<ModelData> Model);
+    public readonly record struct IndividualTargetResult(DataBinding<ModelData> Model, string SourceLabel = "Takedown");
 }

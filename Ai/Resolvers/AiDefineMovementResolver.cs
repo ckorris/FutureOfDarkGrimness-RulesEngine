@@ -134,8 +134,8 @@ namespace FDG.Ai.Resolvers
                 candidate = step < MinBackoffStepInches
                     ? StayInPlace(request)
                     : BuildCandidate(living, cx, cz, ndx, ndz, step, request);
-                valid = MovementUtilities.ValidatePaths(candidate, request.MaxRushDistance,
-                    request.MaxDistanceInches, enemyFootprints, request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, request.IgnoresImpassibleTerrain, allTerrain, out _);
+                valid = MovementUtilities.ValidatePaths(candidate, budgetFor,
+                enemyFootprints, request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, request.IgnoresImpassibleTerrain, allTerrain, out _);
                 attempts++;
             }
 
@@ -143,8 +143,8 @@ namespace FDG.Ai.Resolvers
             {
                 // Reform in place to close any casualty gaps...
                 candidate = StayInPlace(request);
-                valid = MovementUtilities.ValidatePaths(candidate, request.MaxRushDistance,
-                    request.MaxDistanceInches, enemyFootprints, request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, request.IgnoresImpassibleTerrain, allTerrain, out _);
+                valid = MovementUtilities.ValidatePaths(candidate, budgetFor,
+                enemyFootprints, request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, request.IgnoresImpassibleTerrain, allTerrain, out _);
 
                 // ...but if even that is rejected (a unit intermingled with enemies can't re-pack without
                 // a model crossing an enemy base), hold exact positions — zero-length paths can't move

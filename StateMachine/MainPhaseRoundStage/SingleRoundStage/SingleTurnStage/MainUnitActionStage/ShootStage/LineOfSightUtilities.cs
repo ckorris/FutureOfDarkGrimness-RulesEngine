@@ -44,6 +44,9 @@ namespace FDG.Stages
             var blockers = new List<ITerrain>();
             foreach (IModel model in tableState.Models.Objects)
             {
+                // #158: casualties are removed from play — a dead model's base must not keep blocking
+                // line of sight from wherever it happened to die.
+                if (!model.GetIsAlive()) continue;
                 if (model.Position.x == 0f && model.Position.z == 0f) continue;
                 if (excluded.Contains(model)) continue;
                 // A LoS blocker with the model's true (oriented) footprint (#150): a rectangle blocks line of

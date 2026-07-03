@@ -395,11 +395,16 @@ namespace FDG.Stages
             return distance <= effectiveRangeInches;
         }
 
-        private static bool ComputeHasCover(DataBinding<UnitData> attackingUnit,
+        // Internal for tests. Dead models must not sway the cover majority (#158): only living defenders
+        // can benefit from cover, and only living attackers have sight lines — a squad whose casualties
+        // happened to die behind a wall must not grant the survivors standing in the open a cover bonus.
+        internal static bool ComputeHasCover(DataBinding<UnitData> attackingUnit,
             DataBinding<UnitData> defendingUnit, IReadOnlyList<ITerrain> terrain)
         {
-            List<DataBinding<ModelData>> attackers = attackingUnit.ModelBindings().ToList();
-            List<DataBinding<ModelData>> defenders = defendingUnit.ModelBindings().ToList();
+            List<DataBinding<ModelData>> attackers = attackingUnit.ModelBindings()
+                .Where(model => model.GetIsAlive()).ToList();
+            List<DataBinding<ModelData>> defenders = defendingUnit.ModelBindings()
+                .Where(model => model.GetIsAlive()).ToList();
             if (defenders.Count == 0) return false;
 
             int modelsInCover = 0;

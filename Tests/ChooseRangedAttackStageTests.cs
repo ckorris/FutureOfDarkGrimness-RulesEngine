@@ -154,6 +154,78 @@ namespace FDG.Tests
             Assert.That(reasonForEnemy2, Does.Contain("Already targeting"));
         }
 
+        // ── #158: dead models must not contaminate targeting ──────────────────
+
+        // Pins TWO dead-model rules at once: (1) a wiped-out unit is not offered as a target (enemy[0]
+        // dies and vanishes from the option list), and (2) a corpse does not block line of sight — the
+        // dead unit at (2,0,0) lies exactly between the attacker (0,0,0) and the living target (4,0,0),
+        // so this test only passes because BuildModelBlockers skips dead models.
+        [Test]
+        public async Task Enter_FullyDeadEnemyUnit_IsNotOffered()
+        {
+            var requester = new CapturingRangedRequester { Reply = _ => new Cancelled<RangedAttackChoice>() };
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(2, 0, 0), new Position(4, 0, 0) },
+                rifleRange: 24f,
+                playerRequester: requester);
+
+            var enemies = ctx.GameDataStore.GetAllDataBindings<ArmyData>()
+                .First(a => a.GetValue().PlayerID != attackerBinding.GetValue().PlayerID)
+                .GetValue().UnitBindings;
+            foreach (var mb in enemies[0].GetValue().ModelBindings)
+            {
+                var m = mb.GetValue();
+                m.DealWounds(m.TotalWounds - m.WoundsDealt);
+            }
+
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+            await stage.Enter(new CombatActionContext(ctx, attackerBinding, isMelee: false));
+
+            Assert.That(requester.Captured, Is.Not.Null, "Resolver should have been called.");
+            var targets = requester.Captured!.WeaponOptions.Single().WeaponTargetStats;
+            Assert.That(targets.Select(t => t.TargetUnit.Reference), Does.Not.Contain(enemies[0].Reference),
+                "a wiped-out unit must not be offered as a target at all");
+            Assert.That(targets.Single().TargetUnit.Reference, Is.EqualTo(enemies[1].Reference));
+        }
+
+        [Test]
+        public void ComputeHasCover_CountsOnlyLivingModels()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var player = new PlayerID(Guid.NewGuid());
+            var enemy  = new PlayerID(Guid.NewGuid());
+
+            // Attacker at (0,5). Defender: TWO dead models behind the cover wall (their sight lines cross
+            // it) and ONE living model on a clear line. Counting corpses would call the unit "in cover"
+            // (2 of 3); only the living model matters, and its line is clear.
+            var attacker = MakeUnit(store, player, "Attacker",
+                new[] { MakeModel(store, new Position(0, 5), Rifle()) });
+            var deadA = MakeModel(store, new Position(20, 5));
+            var deadB = MakeModel(store, new Position(20, 5));
+            var alive = MakeModel(store, new Position(20, 30));
+            var defender = MakeUnit(store, enemy, "Defender", new[] { deadA, deadB, alive });
+            foreach (var mb in new[] { deadA, deadB })
+            {
+                var m = mb.GetValue();
+                m.DealWounds(m.TotalWounds - m.WoundsDealt);
+            }
+
+            List<ITerrain> terrain = new()
+            {
+                new TerrainData(ETerrainType.Cover, new RectangularZone(8, 12, 3, 7))
+            };
+
+            Assert.That(ChooseRangedAttackStage.ComputeHasCover(attacker, defender, terrain), Is.False,
+                "corpses behind the wall must not grant the lone survivor in the open a cover bonus");
+
+            // Converse: when the LIVING model is the one behind the wall, cover applies (1 of 1).
+            var aliveCovered = MakeUnit(store, enemy, "Defender2",
+                new[] { MakeModel(store, new Position(20, 5)) });
+            Assert.That(ChooseRangedAttackStage.ComputeHasCover(attacker, aliveCovered, terrain), Is.True);
+        }
+
         // #028: while the unit holds an un-fired Deadly (wound-multiplier) weapon that can reach a target,
         // every non-Deadly weapon's targets are gated so the player must resolve Deadly first.
         [Test]

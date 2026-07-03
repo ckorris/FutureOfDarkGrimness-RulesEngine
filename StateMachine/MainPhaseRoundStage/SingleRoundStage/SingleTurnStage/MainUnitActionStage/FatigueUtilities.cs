@@ -16,7 +16,7 @@ namespace FDG.Stages
         {
             if (unit.Tokens.HasToken(TokenType.Fatigued)) return;
 
-            unit.Tokens.AddToken(new Token(TokenType.Fatigued, 1, new TokenClearTrigger.RoundEnd()));
+            unit.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.Fatigued));
         }
 
         /// <summary>

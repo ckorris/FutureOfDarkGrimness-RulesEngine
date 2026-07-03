@@ -685,17 +685,17 @@ public static class CoreRuleCatalog
         Description: "This weapon's attacks ignore the target's Regeneration.");
 
     /// <summary>
-    /// Attacker: an unmodified 6 to hit promotes the attack's AP (modelled as -4 to the defender's
-    /// save), and the attack ignores Regeneration. The AP facet is folded at hit-roll-complete and
-    /// carried to the save stage; the suppress facet rides the save-complete evaluation. Simplified:
-    /// the save modifier applies to the whole attack when ANY hit rolled a 6 (true per-hit AP deferred).
+    /// Attacker: each hit that rolled an unmodified 6 promotes to AP(4) — modelled as -4 to the
+    /// defender's save on those hits only — and the attack ignores Regeneration. The per-hit AP facet
+    /// fires at hit-roll-complete; RollToHitStage peels the natural-6 hits into their own save group
+    /// (the rest save at base AP), and the Regeneration-ignore facet rides the save-complete evaluation.
     /// </summary>
     public static SpecialRuleDefinition Rending { get; } = new SpecialRuleDefinition("Rending",
         new[]
         {
             new HookEntry(EHookID.Shooting_OnHitRollComplete,
                 new Condition.UnmodifiedRollEquals(6),
-                new Effect.RollModifier(ERollKind.Save, Delta: -4),
+                new Effect.PerHitSaveModifier(OnRollValue: 6, Delta: -4),
                 ELifetime.ThisAttack),
             new HookEntry(EHookID.Shooting_OnSaveRollComplete,
                 new Condition.Always(),
@@ -708,16 +708,16 @@ public static class CoreRuleCatalog
         Description: "An unmodified 6 to hit gives the attack AP(+4), and the attack ignores Regeneration.");
 
     /// <summary>
-    /// Crack: an unmodified 6 to hit gives the attack AP(+2) — modelled as -2 to the defender's save,
-    /// carried hit-roll-complete → save stage by the same machinery as <see cref="Rending"/>, at half the
-    /// AP and without Rending's Regeneration-ignore.
+    /// Crack: each hit that rolled an unmodified 6 gives that hit AP(+2) — modelled as -2 to the
+    /// defender's save on those hits only — by the same per-hit machinery as <see cref="Rending"/>, at
+    /// half the AP and without Rending's Regeneration-ignore.
     /// </summary>
     public static SpecialRuleDefinition Crack { get; } = new SpecialRuleDefinition("Crack",
         new[]
         {
             new HookEntry(EHookID.Shooting_OnHitRollComplete,
                 new Condition.UnmodifiedRollEquals(6),
-                new Effect.RollModifier(ERollKind.Save, Delta: -2),
+                new Effect.PerHitSaveModifier(OnRollValue: 6, Delta: -2),
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>(),
@@ -871,14 +871,14 @@ public static class CoreRuleCatalog
             Valence: EValence.Positive,
             Description: "In melee, the defender must re-roll unmodified Defense 6s, and the attack ignores Regeneration.");
 
-    /// <summary> Rending in melee only: AP-4 on an unmodified 6 + ignore Regeneration, when in melee. </summary>
+    /// <summary> Rending in melee only: per-hit AP(4) on an unmodified 6 + ignore Regeneration, when in melee. </summary>
     public static SpecialRuleDefinition RendingInMelee { get; } =
         new SpecialRuleDefinition("Rending in melee",
             new[]
             {
                 new HookEntry(EHookID.Shooting_OnHitRollComplete,
                     new Condition.And(new Condition.IsMelee(), new Condition.UnmodifiedRollEquals(6)),
-                    new Effect.RollModifier(ERollKind.Save, Delta: -4),
+                    new Effect.PerHitSaveModifier(OnRollValue: 6, Delta: -4),
                     ELifetime.ThisAttack),
                 new HookEntry(EHookID.Shooting_OnSaveRollComplete,
                     new Condition.IsMelee(),

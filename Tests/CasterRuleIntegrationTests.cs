@@ -259,6 +259,35 @@ namespace FDG.Tests
                 "Blast multiplied 2 hits to 6 (capped at model count); AP(6) auto-failed every save, wiping the unit");
         }
 
+        // #032 — Rending on a DAMAGE SPELL applies AP per-hit, not to the whole attack. Every spell die
+        // auto-hits; the ScriptedRoller makes the 3-hit roll come up {6, 5, 5}, so exactly ONE hit is a
+        // natural 6 (Rending AP4 → save needed 6) and the other two are base AP (save needed 4). Saves all
+        // roll a 5: the two base hits save (5 ≥ 4), the AP hit fails (5 < 6) → one model dies, two survive.
+        // Under the old whole-attack shortcut all three hits would have carried AP4 and the unit would be
+        // wiped, so the surviving count is exactly what distinguishes per-hit from the bug.
+        [Test]
+        public async Task CastSpellStage_DamageSpell_RendingAppliesApPerHit()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester(), new ScriptedRoller());
+            RuntimeSpell shard = new RuntimeSpell(
+                new SpellDefinition("Shard Storm", 2,
+                    new TargetSelector(18f, 1, 1, ETargetAffinity.Foe, RequireLineOfSight: false),
+                    new Effect.DealHits(3, new[] { "Rending" }, ArmorPenetration: 0)),
+                new[] { new ResolvedRule("Rending", CoreRuleCatalog.Rending) });
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 3, new[] { shard }, new Position(10f, 10f));
+            DataBinding<UnitData> enemy = MakeMultiModelEnemy(new PlayerID(System.Guid.NewGuid()),
+                new Position(12f, 10f), modelCount: 3); // defense 4
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            int living = enemy.GetValue().Models.Count(m => m.GetIsAlive());
+            Assert.That(living, Is.EqualTo(2),
+                "only the single natural-6 hit carried AP4 and failed the save; the two base hits saved, so 2 of 3 survive");
+        }
+
         // #034 single-model targeting — a damage spell flagged SingleModel resolves "as a unit of [1]": all
         // wounds funnel to one chosen model with no carry-over. 3 hits at AP(6) would wipe the 3-model unit
         // (cf. the Blast test above), but confinement kills only the picked model — the other two survive.
@@ -728,6 +757,41 @@ namespace FDG.Tests
         }
     }
 
+    // Deterministic roller for the per-hit-AP spell test. The cast check (RollDecisive) always passes on
+    // a 6; the FIRST Roll — the spell's hit roll — comes up one natural 6 and the rest 5s, so exactly one
+    // hit triggers Rending; every later Roll (the save rolls) is all-5s, honouring rollCount so per-group
+    // save counts stay right. Face 5 saves at threshold 4 (base hits) but fails at 6 (the AP hit).
+    internal sealed class ScriptedRoller : IDiceRoller
+    {
+        private int _rollCalls;
+
+        // Cast success check — a 6 clears the 4+ threshold without touching the hit/save script.
+        public IDiceResults RollDecisive(int sideCount) => OnFace(sideCount, 6, 1f);
+
+        public IDiceResults Roll(int sideCount, float rollCount)
+        {
+            _rollCalls++;
+            if (_rollCalls == 1)
+            {
+                // The spell's hit roll: one natural 6 (Rending fires) plus two 5s (auto-hit, base AP).
+                float[] perSide = new float[sideCount];
+                perSide[6 - 1] = 1f;
+                perSide[5 - 1] = 2f;
+                return new DiceResults(perSide);
+            }
+
+            // Every save roll shows 5s: base hits (need 4) save, the AP hit (need 6) fails.
+            return OnFace(sideCount, 5, rollCount);
+        }
+
+        private static IDiceResults OnFace(int sideCount, int face, float count)
+        {
+            float[] perSide = new float[sideCount];
+            perSide[face - 1] = count;
+            return new DiceResults(perSide);
+        }
+    }
+
     // The round-start spell-token grant fires no player requests; any request signals a wiring bug.
     internal sealed class NoRequestsRequester : IPlayerRequestByID
     {
@@ -751,6 +815,12 @@ namespace FDG.Tests
                     return Task.FromResult((TReply)(object)targetPick.ValidOptions[0].Option);
                 case SelectionRequest<ModelData> modelPick:
                     return Task.FromResult((TReply)(object)modelPick.ValidOptions[0].Option);
+                case AssignWoundsRequest woundPick:
+                    // A partial kill (fewer wounds than models) lets the defender choose which models fall;
+                    // for these tests the choice is immaterial, so auto-fill it the way EOF/CLI input does.
+                    var wounds = new AssignWoundsResults(woundPick.UnitReceivingWounds, woundPick.TotalWoundsToAssign);
+                    wounds.AutoFill();
+                    return Task.FromResult((TReply)(object)wounds);
                 default:
                     throw new System.InvalidOperationException("Unexpected request: " + request.GetType());
             }

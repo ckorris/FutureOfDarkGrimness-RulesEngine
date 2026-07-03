@@ -232,6 +232,21 @@ public abstract record RuleOperation
     public sealed record ReduceArmorPenetration(int Amount) : RuleOperation;
 
     /// <summary>
+    /// Apply <see cref="Delta"/> to the defender's save roll, but only for the hits that came up an
+    /// unmodified <see cref="OnRollValue"/> (Rending / Crack AP-on-6). Resolution of
+    /// <see cref="Effect.PerHitSaveModifier"/>; <c>RollToHitStage</c> / <c>ResolveSpellDamageStage</c>
+    /// peel the matching-face hits into their own <see cref="SuccessfulHitInfo"/> carrying this modifier,
+    /// so only those hits save at the raised threshold. A negative <see cref="Delta"/> raises it.
+    /// </summary>
+    public sealed record ApplyPerHitSaveModifier(int OnRollValue, int Delta) : RuleOperation
+    {
+        public override string Describe()
+        {
+            return $"gave hits of {OnRollValue} {(Delta >= 0 ? "+" : "")}{Delta} to the defender's save";
+        }
+    }
+
+    /// <summary>
     /// Fatigue <see cref="Unit"/> for the rest of the round (the #020 melee penalty: hits only on
     /// unmodified 6s). Resolution of <see cref="Effect.ApplyFatigue"/>; runs through the engine's fatigue
     /// authority (<c>FatigueUtilities.ApplyFatigued</c>) via the <see cref="IOperationServices"/> seam.

@@ -33,15 +33,13 @@ namespace FDG.Stages
 
             // Roll THIS target's hits and run the hit-complete fold before the save pipeline. Done per target
             // because the Blast cap depends on the target's living-model count.
-            (float finalHits, int saveModifier) =
+            (List<SuccessfulHitInfo> hitGroups, int saveModifier) =
                 ResolveSpellHits(run.Caster.GetValue(), target.GetValue(), run.BaseHits, run.Weapon);
 
             CombatMetadata metadata = new CombatMetadata(GameContext, run.Caster, target,
                 run.Weapon, weaponCount: 1, isMelee: false);
 
-            RollToHitResults hitResults = new RollToHitResults(
-                new List<SuccessfulHitInfo>() { new SuccessfulHitInfo(SyntheticHits(finalHits)) },
-                new List<FailedHitInfo>());
+            RollToHitResults hitResults = new RollToHitResults(hitGroups, new List<FailedHitInfo>());
             hitResults.SaveModifier = saveModifier;
             metadata.AddResult(hitResults);
             // No cover check runs for a synthetic spell hit; seed a zero bonus so the save stage won't throw.
@@ -82,9 +80,11 @@ namespace FDG.Stages
 
         // Rolls the spell's hits as real dice and runs the hit-complete fold (the same machinery
         // RollToHitStage uses): Blast multiplies (capped at the target's living-model count), "on an
-        // unmodified 6" rules add hits, and Rending promotes AP into a carried save modifier. The dice
-        // faces don't gate the hits — every die is an automatic hit — they only feed the on-6 rules.
-        private (float hits, int saveModifier) ResolveSpellHits(IUnit caster, IUnit target, int baseHits, Weapon spellWeapon)
+        // unmodified 6" rules add hits, and Rending/Crack promote AP on the natural 6s. The dice faces
+        // don't gate the hits — every die is an automatic hit — they only feed the on-6 rules, so the
+        // rolled histogram itself is the successful-hit batch the per-hit AP split partitions.
+        private (List<SuccessfulHitInfo> hitGroups, int saveModifier) ResolveSpellHits(
+            IUnit caster, IUnit target, int baseHits, Weapon spellWeapon)
         {
             IDiceResults rolled = GameContext.DiceRoller.Roll(baseHits);
             float distance = UnitCompareUtilities.MinDistanceBetweenUnits(caster, target, out _, out _,
@@ -94,20 +94,47 @@ namespace FDG.Stages
                 new HitRollCompleteContext(caster, target, rolled, distance, false, false),
                 (caster, ERuleSeat.Actor, spellWeapon, (IReadOnlyList<IModel>?)null, EModelRuleScope.AnyOwner));
 
+            // Split the auto-hitting rolled dice so a natural 6 carries Rending/Crack AP per-hit while the
+            // rest save at base AP. No per-hit rule → a single base-AP group holding every rolled hit.
+            List<SuccessfulHitInfo> groups = PerHitApSplitter.Split(rolled, ops);
+
+            // Surge-style extra hits are base AP (a generated hit is not itself a natural 6).
             HitInjectionSink injection = new HitInjectionSink();
             injection.ApplyFrom(ops);
-            float hits = rolled.TotalRolls + injection.TotalExtraHits;
+            if (injection.TotalExtraHits > 0f)
+            {
+                groups.Add(new SuccessfulHitInfo(SyntheticHits(injection.TotalExtraHits)));
+            }
 
+            // Blast multiplies the POST-injection total, capped at the target's living-model count; the
+            // added hits are base AP. Mirrors RollToHitStage — the original groups (including the AP group)
+            // are untouched and only the capped extra is appended.
             HitMultiplierSink multiplier = new HitMultiplierSink();
             multiplier.ApplyFrom(ops);
             if (multiplier.NetMultiplier > 1)
             {
-                hits = System.Math.Min(hits * multiplier.NetMultiplier, CountLivingModels(target));
+                float currentHits = TotalHits(groups);
+                float cappedHits = System.Math.Min(currentHits * multiplier.NetMultiplier, CountLivingModels(target));
+                float extraHits = cappedHits - currentHits;
+                if (extraHits > 0f)
+                {
+                    groups.Add(new SuccessfulHitInfo(SyntheticHits(extraHits)));
+                }
             }
 
             RollModifierSink saveModifiers = new RollModifierSink();
             saveModifiers.ApplyFrom(ops);
-            return (hits, saveModifiers.Net(ERollKind.Save));
+            return (groups, saveModifiers.Net(ERollKind.Save));
+        }
+
+        private static float TotalHits(List<SuccessfulHitInfo> groups)
+        {
+            float total = 0f;
+            foreach (SuccessfulHitInfo group in groups)
+            {
+                total += group.HitCount;
+            }
+            return total;
         }
 
         private static int CountLivingModels(IUnit unit)

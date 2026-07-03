@@ -59,11 +59,6 @@ namespace FDG.Stages
             IDiceResults successfulResults = rollToHitResults.SubsetAtOrAbove(hitRollNeeded);
             IDiceResults failedResults = rollToHitResults.SubsetBelow(hitRollNeeded);
 
-            //We only add one to the list for now, but effects might copy and move around.
-            RollToHitResults results = new RollToHitResults(
-                new List<SuccessfulHitInfo>() { new SuccessfulHitInfo(successfulResults) },
-                new List<FailedHitInfo>() { new FailedHitInfo(failedResults) });
-
             GameContext.Log($"Rolled {successfulResults.TotalRolls} successful hits out of {attacks} total attacks.");
 
             // Show the natural to-hit roll (the synthetic extra-hits below aren't dice).
@@ -71,10 +66,10 @@ namespace FDG.Stages
                 DiceRolledBeat.From(rollToHitResults, hitRollNeeded, GameContext.Settings.RandomnessType, "Roll to Hit",
                     $"{successfulResults.TotalRolls:0.##} hits"));
 
-            // #042 extra-hit rules (Surge / Furious / Relentless) fire at hit-roll-complete: an
-            // unmodified 6 spawns extra hits. Evaluate the attacker's rules against the UNMODIFIED
-            // rolls, fold InsertExtraHits ops through the sink, and append the total as synthetic
-            // successes. The stage interprets no operation; generated hits are terminal (not re-fed).
+            // #042 hit-roll-complete rules fire here, evaluated against the UNMODIFIED rolls (the synthetic
+            // hits added below sit at face 6 and would pollute a natural-6 read). One evaluation feeds them
+            // all: extra-hit (Surge/Furious/Relentless), hit-multiplier (Blast), per-hit-AP (Rending/Crack)
+            // and whole-attack save (Thrust) rules on the attacker, plus the defender's defensive save mods.
             IUnit attacker = metaData.AttackingUnit.GetValue();
             IUnit defender = metaData.DefendingUnit.GetValue();
             float distance = UnitCompareUtilities.MinDistanceBetweenUnits(attacker, defender, out _, out _, includeVertical: true);
@@ -92,9 +87,20 @@ namespace FDG.Stages
                 // The defender contributes its DEFENSIVE save modifiers here (Shielded's +1 to defense) —
                 // the mirror of how DetermineHitRollStage evaluates the defender as Subject for hit
                 // modifiers. Its Net(Save) folds into RollToHitResults.SaveModifier below alongside the
-                // attacker's AP, so a defensive +1 and an attacker's -N net correctly.
+                // attacker's whole-attack AP, so a defensive +1 and an attacker's -N net correctly.
                 (defender, ERuleSeat.Subject, (IWeapon?)null, (IReadOnlyList<IModel>?)null,
                     EModelRuleScope.AnyOwner));
+
+            // #032 per-hit AP (Rending/Crack on an unmodified 6): split the rolled successes so only the
+            // matching-face hits carry the raised save threshold; the rest stay at base AP. With no such
+            // rule the splitter returns a single group — identical to the old one-group behaviour.
+            RollToHitResults results = new RollToHitResults(
+                PerHitApSplitter.Split(successfulResults, operations),
+                new List<FailedHitInfo>() { new FailedHitInfo(failedResults) });
+
+            // #042 extra-hit rules (Surge / Furious / Relentless) fire at hit-roll-complete: an
+            // unmodified 6 spawns extra hits. Fold InsertExtraHits ops through the sink and append the
+            // total as synthetic successes (base AP — a generated hit is not itself a natural 6).
             HitInjectionSink hitInjection = new HitInjectionSink();
             hitInjection.ApplyFrom(operations);
 
@@ -122,10 +128,10 @@ namespace FDG.Stages
                 }
             }
 
-            // #042 save-modifier rules (Rending) also fire at hit-roll-complete: an unmodified 6 to hit
-            // promotes the attack's AP, modelled as a save-roll modifier on the defender. Fold it here —
-            // where the UNMODIFIED roll is still correct (synthetic hits sit at face 6 and would pollute
-            // a later read) — and carry the scalar to the save stage via RollToHitResults.SaveModifier.
+            // Whole-attack save-modifier rules fold their net modifier here and carry it to the save stage
+            // via RollToHitResults.SaveModifier — Thrust's charge AP, the defender's Shielded +1. Rending
+            // and Crack no longer ride this scalar: their AP is per-hit (split into a face group above), so
+            // this now holds only genuinely attack-wide modifiers.
             RollModifierSink saveModifiers = new RollModifierSink();
             saveModifiers.ApplyFrom(operations);
             results.SaveModifier = saveModifiers.Net(ERollKind.Save);
@@ -160,8 +166,9 @@ namespace FDG.Stages
 
         // Bridges a scalar extra-hit count into the IDiceResults the save flow consumes. Injected
         // hits have no real face — only the count (TotalRolls) matters downstream, plus the weapon's
-        // AP — so they sit at the top face as automatic successes. If a future per-hit rule (Rending,
-        // #032) reads a hit's face, it must treat injected hits as base-AP, not natural 6s.
+        // AP — so they sit at the top face as automatic successes. The #032 per-hit AP split
+        // (Rending/Crack) runs only over the ROLLED successes, never these synthetic groups, so injected
+        // hits stay base-AP even though they sit at face 6 — exactly as they must.
         private static IDiceResults SyntheticHits(float count, IDiceResults template)
         {
             int faceCount = template.SideMax - template.SideMin + 1;

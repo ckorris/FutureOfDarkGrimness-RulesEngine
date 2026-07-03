@@ -8,10 +8,10 @@ namespace FDG.Tests
     // (SuccessfulHitInfo.SaveModifier) flows into that group's save threshold in the REAL
     // DetermineSaveRollsNeededStage, independent of and stacking with the unit-wide
     // RollToHitResults.SaveModifier. This is the "way for effects on the hits to affect the save
-    // rolls" seam; no rule produces a per-hit modifier yet (migrating Rending onto it is deferred),
-    // so the mechanism is exercised by tagging the hit group directly. FixedDiceRoller(6) makes the
-    // one attack a natural 6 → one hit group. Sign convention mirrors the unit-wide carry: a
-    // negative modifier raises the threshold (harder to save).
+    // rolls" seam that Rending/Crack now ride via PerHitApSplitter (see RendingRuleIntegrationTests);
+    // here the mechanism is exercised by tagging the hit group directly, decoupled from any rule.
+    // FixedDiceRoller(6) makes the one attack a natural 6 → one hit group. Sign convention mirrors the
+    // unit-wide carry: a negative modifier raises the threshold (harder to save).
     [TestFixture]
     public class PerHitSaveEffectIntegrationTests
     {

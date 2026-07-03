@@ -1,3 +1,4 @@
+using System.Linq;
 using FDG.Data;
 using FDG.Rules.Dispatch;
 using FDG.Stages;
@@ -5,12 +6,12 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // Vertical-slice integration test for #042: proves Rending's AP promotion flows from the REAL
-    // RollToHitStage to the REAL DetermineSaveRollsNeededStage. On an unmodified 6 to hit, Rending
-    // fires Shooting_OnHitRollComplete -> RollModifier(Save, -4); RollToHitStage folds it into
-    // RollToHitResults.SaveModifier (where the unmodified roll is still correct), and the save stage
-    // raises the defender's save threshold by 4. Modelled as a flat save modifier (queue-test model);
-    // true per-hit AP is deferred. FixedDiceRoller(6) makes every hit a natural 6.
+    // Vertical-slice integration test for #032/#042: proves Rending's PER-HIT AP promotion flows from
+    // the REAL RollToHitStage to the REAL DetermineSaveRollsNeededStage. On an unmodified 6 to hit,
+    // Rending fires Shooting_OnHitRollComplete -> PerHitSaveModifier(6, -4); RollToHitStage peels the
+    // natural-6 hits into their own SuccessfulHitInfo carrying that modifier while the rest stay at base
+    // AP, and the save stage raises only that group's threshold by 4. FixedDiceRoller(6) makes the lone
+    // hit a natural 6 (one AP group); ProbabilisticRoll_* mixes faces to prove non-6 hits are untouched.
     [TestFixture]
     public class RendingRuleIntegrationTests
     {
@@ -35,14 +36,44 @@ namespace FDG.Tests
             AttachRending(attacker);
 
             RollToHitResults hits = await RunHitStage(attacker, defender);
-            Assert.That(hits.SaveModifier, Is.EqualTo(-4), "Rending queues a -4 save modifier on a natural 6 to hit.");
+            Assert.That(hits.SaveModifier, Is.EqualTo(0),
+                "Rending's AP is per-hit now — it no longer carries a whole-attack save modifier.");
+            Assert.That(hits.SuccessfulHitList.Count, Is.EqualTo(1), "the lone hit was a natural 6 → one AP group, no base remainder.");
+            Assert.That(hits.SuccessfulHitList[0].SaveModifier, Is.EqualTo(-4),
+                "the natural-6 hit group carries Rending's -4 per-hit save modifier.");
 
             DetermineSaveRollNeededResults saves = await RunSaveNeededStage(attacker, defender, hits);
             foreach (PendingSaveRolls pending in saves.PendingSaveRollsList)
             {
                 Assert.That(pending.SaveNeeded, Is.EqualTo(8),
-                    "base defense 4 + 4 from Rending's AP = save threshold 8 (pre-clamp).");
+                    "base defense 4 + 4 from Rending's per-hit AP = save threshold 8 (pre-clamp).");
             }
+        }
+
+        // The heart of the fix: with a mix of hit faces, ONLY the natural 6s get AP. The probabilistic
+        // roller makes Roll(6) yield exactly one of each face, so hitting on 4+ lands 3 hits — one 6
+        // (AP4 → save 8) and two 4/5s (base AP → save 4). Proves both the per-hit split and that it holds
+        // under the probabilistic (histogram) roller, where a face's count is fractional/aggregate.
+        [Test]
+        public async Task RendingAttacker_ProbabilisticRoll_OnlyNatural6sSaveAtRaisedThreshold()
+        {
+            _ctx = new TestGameContext(_store, new ProbabilisticDiceRoller());
+
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(DefenderPos); // defense 4, quality 4 → hit on 4+
+            AttachRending(attacker);
+
+            RollToHitResults hits = await RunHitStage(attacker, defender, attackCount: 6);
+            Assert.That(hits.SaveModifier, Is.EqualTo(0), "no whole-attack modifier — Rending's AP is carried per-hit.");
+
+            DetermineSaveRollNeededResults saves = await RunSaveNeededStage(attacker, defender, hits);
+
+            PendingSaveRolls apGroup = saves.PendingSaveRollsList.Single(p => p.SaveNeeded == 8);
+            PendingSaveRolls baseGroup = saves.PendingSaveRollsList.Single(p => p.SaveNeeded == 4);
+            Assert.That(apGroup.HitCount, Is.EqualTo(1f).Within(0.0001f),
+                "one of the six dice was a natural 6 → one AP hit at save threshold 8.");
+            Assert.That(baseGroup.HitCount, Is.EqualTo(2f).Within(0.0001f),
+                "the 4 and 5 hits (two of them) save at base defense 4 — untouched by Rending.");
         }
 
         [Test]
@@ -71,23 +102,26 @@ namespace FDG.Tests
             attacker.GetValue().AttachRuleDefinition(new ResolvedRule("Crack", CoreRuleCatalog.Crack));
 
             RollToHitResults hits = await RunHitStage(attacker, defender);
-            Assert.That(hits.SaveModifier, Is.EqualTo(-2), "Crack queues a -2 save modifier (AP+2) on a natural 6 to hit.");
+            Assert.That(hits.SaveModifier, Is.EqualTo(0), "Crack's AP is per-hit — no whole-attack save modifier.");
+            Assert.That(hits.SuccessfulHitList[0].SaveModifier, Is.EqualTo(-2),
+                "the natural-6 hit group carries Crack's -2 per-hit save modifier (AP+2).");
 
             DetermineSaveRollNeededResults saves = await RunSaveNeededStage(attacker, defender, hits);
             foreach (PendingSaveRolls pending in saves.PendingSaveRollsList)
             {
                 Assert.That(pending.SaveNeeded, Is.EqualTo(6),
-                    "base defense 4 + 2 from Crack's AP = save threshold 6.");
+                    "base defense 4 + 2 from Crack's per-hit AP = save threshold 6.");
             }
         }
 
-        private async Task<RollToHitResults> RunHitStage(DataBinding<UnitData> attacker, DataBinding<UnitData> defender)
+        private async Task<RollToHitResults> RunHitStage(DataBinding<UnitData> attacker, DataBinding<UnitData> defender,
+            int attackCount = 1)
         {
             var stage = new RollToHitStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>());
             stage.NextStage.Bind("done");
 
             var metadata = NewMetadata(attacker, defender);
-            metadata.AddResult(new DetermineHitRollResults(4, attackCount: 1)); // a 6 clears 4+
+            metadata.AddResult(new DetermineHitRollResults(4, attackCount)); // a 6 clears 4+
             await stage.Enter(metadata);
 
             Assert.That(metadata.QueryForResult(out RollToHitResults result), Is.True);

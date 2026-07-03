@@ -61,6 +61,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(MarkTarget), "markTarget")]
 [JsonDerivedType(typeof(ReduceArmorPenetration), "reduceArmorPenetration")]
 [JsonDerivedType(typeof(CountAsInTerrain), "countAsInTerrain")]
+[JsonDerivedType(typeof(PerHitSaveModifier), "perHitSaveModifier")]
 
 public abstract record Effect
 {
@@ -103,6 +104,22 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.ApplyRollModifier(RollKind, Delta));
+        }
+    }
+
+    /// <summary>
+    /// AP that lands only on the hits that rolled an unmodified <see cref="OnRollValue"/> — Rending /
+    /// Crack promoting AP on a natural 6, modelled as <see cref="Delta"/> to the defender's save. Unlike
+    /// <see cref="RollModifier"/> (which carries a whole-attack save modifier applied to every hit),
+    /// this tags only the matching-face hits: the hit-roll stage peels those hits into their own group
+    /// carrying <see cref="Delta"/> while the rest save at base AP. The stage reads the roll histogram,
+    /// so the matching-face count stays correct — and fractional — under the probabilistic roller.
+    /// </summary>
+    public sealed record PerHitSaveModifier(int OnRollValue, int Delta) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.ApplyPerHitSaveModifier(OnRollValue, Delta));
         }
     }
 

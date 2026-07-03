@@ -1,4 +1,6 @@
 using FDG.Data;
+using FDG.Presentation;
+using FDG.Presentation.Beats;
 using FDG.StageResolution.Requests;
 
 namespace FDG.Stages
@@ -102,13 +104,36 @@ namespace FDG.Stages
         /// <summary>
         /// The full move sequence for an out-of-band move: apply dangerous-terrain effects, then
         /// commit positions. Mirrors the normal flow's
-        /// <c>ApplyNonMovementTerrainEffectsStage</c> → <c>ExecuteMoveStage</c> order.
+        /// <c>ApplyNonMovementTerrainEffectsStage</c> → <c>ExecuteMoveStage</c> order. Returns the
+        /// dangerous-terrain rolls so the caller can present them (<see cref="PresentDangerousTerrainRolls"/>) —
+        /// the normal flow presents from its stage, so the out-of-band caller must too.
         /// </summary>
-        public static void Commit(IGameContext gameContext, IReadOnlyList<ModelMoveEntry> paths,
+        public static IReadOnlyList<DangerousTerrainRoll> Commit(IGameContext gameContext, IReadOnlyList<ModelMoveEntry> paths,
             IEnumerable<ITerrain> relevantTerrain, string unitName, bool ignoresDangerousTerrain = false)
         {
-            ApplyDangerousTerrainEffects(gameContext, paths, relevantTerrain, unitName, ignoresDangerousTerrain);
+            IReadOnlyList<DangerousTerrainRoll> rolls =
+                ApplyDangerousTerrainEffects(gameContext, paths, relevantTerrain, unitName, ignoresDangerousTerrain);
             CommitPositions(paths);
+            return rolls;
+        }
+
+        /// <summary>
+        /// Presents each model's dangerous-terrain roll as a <see cref="DiceRolledBeat"/> (a single d6:
+        /// 2+ is safe/green, a 1 is a wound/red). Shared by the normal-move stage and the out-of-band
+        /// (triggered) move so a Vanguard / forced move shows the same roll the player sees on a normal move.
+        /// Dangerous terrain deals wounds but is NOT a morale-test source, so this presents rolls only —
+        /// no morale test is run here.
+        /// </summary>
+        public static async Task PresentDangerousTerrainRolls(IGameContext gameContext,
+            IReadOnlyList<DangerousTerrainRoll> rolls)
+        {
+            foreach (DangerousTerrainRoll dt in rolls)
+            {
+                float[] faces = new float[6];
+                faces[dt.Roll - 1] = 1f;
+                await gameContext.Presenter.Present(new DiceRolledBeat(faces, sideMin: 1, successThreshold: 2,
+                    gameContext.Settings.RandomnessType, "Dangerous Terrain", dt.Wounded ? "1 wound!" : "Safe"));
+            }
         }
 
         /// <summary>
@@ -118,8 +143,10 @@ namespace FDG.Stages
         /// <paramref name="errors"/> describes why.
         /// </summary>
         public static bool TryMove(IGameContext gameContext, DataBinding<UnitData> unit,
-            List<ModelMoveEntry> paths, float maxInches, out List<ReasonForInvalidMove> errors)
+            List<ModelMoveEntry> paths, float maxInches, out List<ReasonForInvalidMove> errors,
+            out IReadOnlyList<DangerousTerrainRoll> dangerRolls)
         {
+            dangerRolls = System.Array.Empty<DangerousTerrainRoll>();
             List<ITerrain> relevantTerrain = new List<ITerrain>(gameContext.TableState.Terrain.Objects);
 
             // #090: an out-of-band move (e.g. Vanguard) is enemy-aware like a normal move — it may not pass
@@ -139,7 +166,7 @@ namespace FDG.Stages
             }
 
             // Flying ignores Dangerous terrain too (same AllTerrain scope as the impassible waiver above).
-            Commit(gameContext, paths, relevantTerrain, unit.GetValue().Name, ignoresDangerousTerrain: ignoresAllTerrain);
+            dangerRolls = Commit(gameContext, paths, relevantTerrain, unit.GetValue().Name, ignoresDangerousTerrain: ignoresAllTerrain);
             return true;
         }
     }

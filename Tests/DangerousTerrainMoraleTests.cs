@@ -6,11 +6,11 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #009 — dangerous terrain that reduces a unit to half strength or less triggers a morale test, the
-    // same wound-driven path as shooting (a failed test makes the unit Shaken, not Routed — Rout is a
-    // melee-only result, GF v3.5.1). Models are 1 wound each; FixedDiceRoller(1) both wounds each model
-    // that crosses the dangerous zone (a roll of 1) and fails the Quality-4 morale test (1 < 4), so one
-    // fixed die drives the whole reduce-and-Shaken.
+    // Dangerous terrain deals wounds but is NOT a morale-test source (corrected 2026-07-02). Shooting, melee,
+    // transport destruction, etc. cause morale tests; crossing dangerous terrain never does. The earlier #009
+    // wiring that ran a half-strength morale test from dangerous terrain was a rules bug and was removed.
+    // Models are 1 wound each; FixedDiceRoller(1) wounds each model that crosses the dangerous zone (a roll of
+    // 1) — the unit takes casualties but is never asked to take a morale test.
     [TestFixture]
     public class DangerousTerrainMoraleTests
     {
@@ -21,10 +21,10 @@ namespace FDG.Tests
         public void SetUp() => _store = GameDataStore.GameDataStoreBuilder.GetDefault();
 
         [Test]
-        public async Task ReducedToHalfByDangerousTerrain_FailsMorale_IsShaken()
+        public async Task ReducedToHalfByDangerousTerrain_TakesNoMoraleTest_NotShaken()
         {
-            // 4 models: 2 cross the dangerous zone (and die to it), 2 move clear — leaving the unit at
-            // half strength before the morale test.
+            // 4 models: 2 cross the dangerous zone (and die to it), 2 move clear — leaving the unit at half
+            // strength. Half strength from shooting would force a morale test, but dangerous terrain never does.
             var crossing1 = MakeModel(new Position(0, 0));
             var crossing2 = MakeModel(new Position(0, 1));
             var clear1 = MakeModel(new Position(0, 5));
@@ -41,18 +41,19 @@ namespace FDG.Tests
 
             await RunStage(unit, paths, dieValue: 1);
 
-            Assert.That(unit.GetValue().GetIsAlive(), Is.True,
-                "reduced to half by terrain, then failed morale → Shaken, not Routed (terrain morale never Routs).");
-            Assert.That(unit.GetValue().Tokens.HasToken(Rules.Foundation.TokenType.Shaken), Is.True,
-                "the unit that failed its terrain-driven morale test is Shaken.");
+            Assert.That(unit.GetValue().Models.Count(m => m.GetIsAlive()), Is.EqualTo(2),
+                "the two models that crossed dangerous terrain took a wound each and died.");
+            Assert.That(unit.GetValue().Tokens.HasToken(Rules.Foundation.TokenType.Shaken), Is.False,
+                "dangerous terrain never triggers a morale test, so the unit is not Shaken even at half strength.");
             Assert.That(clear1.GetValue().GetIsAlive(), Is.True,
-                "a model that never crossed dangerous terrain stays alive — nothing Routs the unit.");
+                "a model that never crossed dangerous terrain is untouched.");
         }
 
         [Test]
         public async Task DangerousTerrainButStaysAboveHalf_NoMoraleTest_Survives()
         {
-            // 4 models: only 1 crosses the dangerous zone, so the unit stays above half (3 of 4).
+            // 4 models: only 1 crosses the dangerous zone. No morale test either way (dangerous terrain never
+            // triggers one) — one model dies, the rest are untouched.
             var crossing = MakeModel(new Position(0, 0));
             var clear1 = MakeModel(new Position(0, 5));
             var clear2 = MakeModel(new Position(0, 6));
@@ -70,8 +71,10 @@ namespace FDG.Tests
             await RunStage(unit, paths, dieValue: 1);
 
             Assert.That(unit.GetValue().GetIsAlive(), Is.True);
+            Assert.That(unit.GetValue().Tokens.HasToken(Rules.Foundation.TokenType.Shaken), Is.False,
+                "dangerous terrain never triggers a morale test.");
             Assert.That(unit.GetValue().Models.Count(m => m.GetIsAlive()), Is.EqualTo(3),
-                "one model died to terrain; above half means no morale test, so the other three live.");
+                "one model died to terrain; the other three live.");
         }
 
         // Helpers

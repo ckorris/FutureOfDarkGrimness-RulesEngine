@@ -46,12 +46,17 @@ namespace FDG.Stages
                 .RequestDecision<DefineMovementPathRequest, List<ModelMoveEntry>>(pathRequest);
 
             if (!MovementExecutor.TryMove(_gameContext, unitBinding, movements, maxInches,
-                    out List<ReasonForInvalidMove> errors))
+                    out List<ReasonForInvalidMove> errors,
+                    out IReadOnlyList<MovementExecutor.DangerousTerrainRoll> dangerRolls))
             {
                 throw new RequestResponseInvalidException(
                     $"Triggered move for {unit.Name} was invalid: "
                     + string.Join(", ", errors.Select(e => e.ToString())));
             }
+
+            // Present the dangerous-terrain roll(s), same as the normal-move stage — a triggered move
+            // (Vanguard, forced move, etc.) that crosses dangerous terrain shows the roll, not just the wound.
+            await MovementExecutor.PresentDangerousTerrainRolls(_gameContext, dangerRolls);
         }
 
         public Task ApplyFatigue(IUnit unit)

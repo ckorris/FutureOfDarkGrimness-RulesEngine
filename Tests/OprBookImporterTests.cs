@@ -46,6 +46,30 @@ public class OprBookImporterTests
     private static BookFile Import() => OprBookImporter.Import(OprJson, "TestSource", "CC-BY-SA 4.0");
 
     [Test]
+    public void Import_AsciiFoldsBookText()
+    {
+        // Game text is ASCII-only (CLAUDE.md): the font atlas has no glyphs beyond Latin-1, so OPR's
+        // typographic characters must fold at import. Corpus-verbatim shapes: the em-dash, curly quotes,
+        // and the i-macron (Alien Hives). The curly DOUBLE quotes are the treacherous case — they fold to
+        // '"', so the fold must run on parsed string values, never on the raw JSON text (folding raw text
+        // would inject an unescaped quote and corrupt the document — 29/47 corpus books hit exactly that).
+        // Truly unfoldable characters warn instead of mangling.
+        string json = """{"name":"Kī’s “Legion” — Elite","versionString":"1.0","units":[]}""";
+        var warnings = new List<string>();
+
+        BookFile book = OprBookImporter.Import(json, "src", "lic", warnings.Add);
+
+        Assert.That(book.Name, Is.EqualTo("Ki's \"Legion\" - Elite"));
+        Assert.That(warnings, Is.Empty);
+
+        Assert.That(OprBookImporter.AsciiFold("世"), Is.EqualTo("世"),
+            "an unfoldable character is preserved, not mangled");
+        var leftoverWarnings = new List<string>();
+        OprBookImporter.AsciiFold("世", leftoverWarnings.Add);
+        Assert.That(leftoverWarnings, Has.Count.EqualTo(1));
+    }
+
+    [Test]
     public void Import_MapsUnitStats_AndStampsAttribution()
     {
         BookFile book = Import();

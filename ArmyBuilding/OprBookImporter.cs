@@ -81,6 +81,13 @@ namespace FDG.ArmyBuilding
 
         public static BookFile Import(string oprJson, string source, string license, Action<string>? warn = null)
         {
+            // Game text is ASCII-only (see CLAUDE.md) — the app's font atlas bakes no glyphs beyond Latin-1,
+            // so OPR's typographic characters (em-dashes, curly quotes, macrons like the i-macron in some
+            // Alien Hives text) would render as '?'. Fold every string VALUE in the document up front so all
+            // imported text lands ASCII. Value-by-value via JsonNode, NOT on the raw text: folding a curly
+            // double quote to '"' inside raw JSON would terminate the string and corrupt the document.
+            oprJson = AsciiFoldJsonValues(oprJson, warn);
+
             OprBook opr = JsonSerializer.Deserialize<OprBook>(oprJson, ReadOpts)
                 ?? throw new InvalidOperationException("OPR army-book JSON did not deserialize.");
 
@@ -117,6 +124,84 @@ namespace FDG.ArmyBuilding
             }
 
             return book;
+        }
+
+        /// <summary>Parses the JSON and ASCII-folds every string value (leaves, not property names — those
+        /// are ASCII schema keys), then re-serializes. The serializer re-escapes any quote the fold
+        /// introduced, so the document stays well-formed.</summary>
+        internal static string AsciiFoldJsonValues(string json, Action<string>? warn = null)
+        {
+            if (json.All(c => c <= 127)) return json;
+
+            System.Text.Json.Nodes.JsonNode? root = System.Text.Json.Nodes.JsonNode.Parse(json);
+            if (root is null) return json;
+            FoldNode(root, warn);
+            return root.ToJsonString();
+        }
+
+        private static void FoldNode(System.Text.Json.Nodes.JsonNode node, Action<string>? warn)
+        {
+            switch (node)
+            {
+                case System.Text.Json.Nodes.JsonObject obj:
+                    foreach (var pair in obj.ToList())
+                    {
+                        if (pair.Value is System.Text.Json.Nodes.JsonValue v && v.TryGetValue(out string? s))
+                            obj[pair.Key] = AsciiFold(s, warn);
+                        else if (pair.Value is not null)
+                            FoldNode(pair.Value, warn);
+                    }
+                    break;
+                case System.Text.Json.Nodes.JsonArray arr:
+                    for (int i = 0; i < arr.Count; i++)
+                    {
+                        if (arr[i] is System.Text.Json.Nodes.JsonValue v && v.TryGetValue(out string? s))
+                            arr[i] = AsciiFold(s, warn);
+                        else if (arr[i] is not null)
+                            FoldNode(arr[i]!, warn);
+                    }
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// Folds text to ASCII: typographic punctuation maps to its plain equivalent, accented letters lose
+        /// their diacritics via NFD decomposition (i-macron -> i). Anything still non-ASCII after both passes
+        /// is kept as-is and reported through <paramref name="warn"/> — never silently mangled.
+        /// </summary>
+        internal static string AsciiFold(string text, Action<string>? warn = null)
+        {
+            if (text.All(c => c <= 127)) return text;
+
+            var sb = new System.Text.StringBuilder(text.Length);
+            foreach (char c in text.Normalize(System.Text.NormalizationForm.FormD))
+            {
+                if (c <= 127) { sb.Append(c); continue; }
+                if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) ==
+                    System.Globalization.UnicodeCategory.NonSpacingMark) continue; // combining accent from NFD
+                sb.Append(c switch
+                {
+                    '‐' or '‑' or '‒' or '–' or '—' or '―' or '−' => "-",
+                    '‘' or '’' or 'ʼ' => "'",
+                    '“' or '”' => "\"",
+                    '…' => "...",
+                    ' ' => " ",  // no-break space
+                    '×' => "x",  // multiplication sign
+                    '→' => "->",
+                    '≤' => "<=",
+                    '≥' => ">=",
+                    _ => c.ToString(),
+                });
+            }
+
+            string folded = sb.ToString().Normalize(System.Text.NormalizationForm.FormC);
+            char[] leftovers = folded.Where(c => c > 127).Distinct().ToArray();
+            if (leftovers.Length > 0)
+            {
+                warn?.Invoke("Non-ASCII characters survived the import fold (will render as '?' in-game): " +
+                    string.Join(", ", leftovers.Select(c => $"U+{(int)c:X4} '{c}'")));
+            }
+            return folded;
         }
 
         private static RosterUnit MapUnit(OprUnit unit, IReadOnlyDictionary<string, OprPackage> packages)
@@ -492,7 +577,7 @@ namespace FDG.ArmyBuilding
                 },
                 Array.Empty<ActivatedAbility>(),
                 Valence: EValence.Negative,
-                Description: $"This unit counts as being in {kind} Terrain on its next move — {consequence} (from {spellName}).");
+                Description: $"This unit counts as being in {kind} Terrain on its next move - {consequence} (from {spellName}).");
         }
 
         private static SpecialRuleDefinition SynthesizeApLossRule(string spellName, int apLoss)

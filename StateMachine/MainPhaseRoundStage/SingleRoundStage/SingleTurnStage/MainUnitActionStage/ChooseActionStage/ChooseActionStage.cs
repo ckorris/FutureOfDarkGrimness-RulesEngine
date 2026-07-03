@@ -57,7 +57,7 @@ namespace FDG.Stages
             {
                 IUnit activatingUnit = context.ActivatingUnit.GetValue();
                 activatingUnit.Tokens.RemoveTokens(TokenType.Shaken);
-                GameContext.Log($"{activatingUnit.Name} is Shaken — staying idle this activation and recovering.");
+                GameContext.Log($"{activatingUnit.Name} is Shaken - staying idle this activation and recovering.");
                 await ToReconcileEndOfActivation.Activate(context);
                 return;
             }
@@ -224,7 +224,7 @@ namespace FDG.Stages
             // decided up front from the raw offer count.)
             if (validOptions.Count == 0)
             {
-                GameContext.Log($"No actions available for {context.ActivatingUnit.GetValue().Name} — passing.");
+                GameContext.Log($"No actions available for {context.ActivatingUnit.GetValue().Name} - passing.");
                 await ToReconcileEndOfActivation.Activate(context);
                 return;
             }
@@ -297,7 +297,7 @@ namespace FDG.Stages
             // #029: an Aircraft that flew off the table this activation is out of play — no charging from limbo.
             if (context.ActivatingUnit.GetValue().Tokens.HasToken(Rules.Foundation.TokenType.OffTableFromForcedMove))
             {
-                reasonIfCant = "Flew off the table — it redeploys from an edge next round.";
+                reasonIfCant = "Flew off the table - it redeploys from an edge next round.";
                 return false;
             }
 
@@ -350,7 +350,7 @@ namespace FDG.Stages
 
             if(context.MoveDistance > precursor.MaxRushDistance + 0.0001f)
             {
-                reasonIfCant = $"Moved {context.MoveDistance:F2}\" — beyond Rush range; must engage in melee.";
+                reasonIfCant = $"Moved {context.MoveDistance:F2}\" - beyond Rush range; must engage in melee.";
                 return false;
             }
 
@@ -408,7 +408,7 @@ namespace FDG.Stages
             // its shooting (its models sit at origin until the edge redeploy next round).
             if (context.ActivatingUnit.GetValue().Tokens.HasToken(Rules.Foundation.TokenType.OffTableFromForcedMove))
             {
-                reasonIfCant = "Flew off the table — it redeploys from an edge next round.";
+                reasonIfCant = "Flew off the table - it redeploys from an edge next round.";
                 return false;
             }
 

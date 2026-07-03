@@ -101,7 +101,7 @@ namespace FDG.Stages
             UnitData unit = context.MovingUnit.GetValue();
             Float2 heading = ForcedAircraftMove.GetHeading(unit);
 
-            var request = new AircraftAdvanceRequest(playerID, $"{unit.Name} (Aircraft) — forced move",
+            var request = new AircraftAdvanceRequest(playerID, $"{unit.Name} (Aircraft) - forced move",
                 context.MovingUnit, heading,
                 ForcedAircraftMove.MinDistanceInches, ForcedAircraftMove.MaxDistanceInches);
             AircraftAdvanceResult choice = await context.PlayerRequester()
@@ -127,7 +127,7 @@ namespace FDG.Stages
                 }
                 unit.Tokens.AddToken(new Rules.Tokens.Token(Rules.Foundation.TokenType.OffTableFromForcedMove, 1,
                     new Rules.Foundation.TokenClearTrigger.ManualOnly()));
-                context.GameContext.Log($"{unit.Name} (Aircraft) flew off the table edge — it redeploys from an edge next round.");
+                context.GameContext.Log($"{unit.Name} (Aircraft) flew off the table edge - it redeploys from an edge next round.");
 
                 context.SubmitValidPathTemplate(hold);
                 await OnPathDefined.Activate(context);

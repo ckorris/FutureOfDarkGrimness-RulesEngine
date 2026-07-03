@@ -201,7 +201,7 @@ namespace FDG.StageResolution
 
             if (failedCount > 0)
             {
-                _textOutput.Log($"Player {playerID} disconnected — failed {failedCount} pending request(s): {reason}");
+                _textOutput.Log($"Player {playerID} disconnected - failed {failedCount} pending request(s): {reason}");
             }
         }
 

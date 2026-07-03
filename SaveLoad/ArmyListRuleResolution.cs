@@ -86,7 +86,7 @@ namespace FDG.SaveLoad
                 Debug.WriteLine(
                     $"[#059] Skipping special rule '{ruleEntry.PrintableName}' on {ownerDescription}: " +
                     $"its effects read Arg({maxArgIndex}) but the entry supplies only {arguments.Count} " +
-                    "argument(s) — a numeric value is likely missing from the army-list reference.");
+                    "argument(s) - a numeric value is likely missing from the army-list reference.");
                 return null;
             }
 

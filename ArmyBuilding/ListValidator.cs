@@ -48,7 +48,7 @@ namespace FDG.ArmyBuilding
                 int models = perUnit[i]!.ModelCount;
                 if (models < roster.MinModels || models > roster.MaxModels)
                     issues.Add(new ListIssue(
-                        $"{roster.Name}: {models} models (allowed {roster.MinModels}–{roster.MaxModels}).",
+                        $"{roster.Name}: {models} models (allowed {roster.MinModels}-{roster.MaxModels}).",
                         ListIssueSeverity.Error, i));
 
                 // Unique — "This unit may only be taken once per army." An absolute list-building rule
@@ -57,7 +57,7 @@ namespace FDG.ArmyBuilding
                 if (HasRule(roster.Rules, "Unique")
                     && list.Units.Take(i).Any(prev => prev.RosterUnitId == bu.RosterUnitId))
                     issues.Add(new ListIssue(
-                        $"{roster.Name}: Unique — the army may only include one copy.",
+                        $"{roster.Name}: Unique - the army may only include one copy.",
                         ListIssueSeverity.Error, i));
 
                 foreach (UpgradeSection section in roster.Sections)

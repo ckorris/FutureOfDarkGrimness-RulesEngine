@@ -42,7 +42,7 @@ namespace FDG.Stages
                     MathF.Abs(s.Y - facing.Y) > HeadingMatchToleranceInches)
                 {
                     throw new InvalidOperationException(
-                        $"Aircraft '{unit.Name}' has models with divergent facing — an Aircraft's models must share one heading.");
+                        $"Aircraft '{unit.Name}' has models with divergent facing - an Aircraft's models must share one heading.");
                 }
             }
             return shared ?? new Float2(0f, 1f);

@@ -85,7 +85,7 @@ namespace FDG.Stages
             if (metaData.IsMelee && FatigueUtilities.CountsAsFatiguedInMelee(attacker))
             {
                 results.HitRollNeeded = 6;
-                GameContext.Log($"{attacker.Name} is fatigued — hits only on unmodified 6s in melee.");
+                GameContext.Log($"{attacker.Name} is fatigued - hits only on unmodified 6s in melee.");
             }
 
             await onFinished(results);

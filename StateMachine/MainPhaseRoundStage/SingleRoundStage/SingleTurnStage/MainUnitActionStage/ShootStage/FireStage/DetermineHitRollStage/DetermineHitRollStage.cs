@@ -37,11 +37,15 @@ namespace FDG.Stages
             IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
                 new HitRollModifierContext(attacker, defender, distance, AttackerMoved: metaData.AttackerMoved,
                     IsMelee: metaData.IsMelee, IsCharging: metaData.IsCharging),
-                // #006 slice F: the attacker batch's sole-owner model contributes its own per-model rules
-                // (a joined hero's Furious/Relentless/Thrust fire for the hero's batch only, not the unit).
+                // #006 slice F / #093: the attacker batch's living owners contribute their per-model rules
+                // under AllOwners semantics — a rule fires only when every owner shares it, so a joined
+                // hero's Furious/Relentless/Thrust fire for a hero-only batch (and a homogeneous elite
+                // squad's shared per-model rule fires once), without leaking onto a mixed batch's pooled roll.
                 (attacker, ERuleSeat.Actor, metaData.WeaponType,
-                    HeroStatRules.WeaponBatchRuleOwners(metaData.AttackingUnit.GetValue(), metaData.WeaponType)),
-                (defender, ERuleSeat.Subject, (IWeapon?)null, (IReadOnlyList<IModel>?)null));
+                    HeroStatRules.LivingWeaponBatchOwners(metaData.AttackingUnit.GetValue(), metaData.WeaponType),
+                    EModelRuleScope.AllOwners),
+                (defender, ERuleSeat.Subject, (IWeapon?)null, (IReadOnlyList<IModel>?)null,
+                    EModelRuleScope.AnyOwner));
 
             // #042 quality-floor rules (Reliable) set the BASE quality before per-roll modifiers:
             // "treated as 2+, still modifiable". Fold the floor sink and improve the base, then let

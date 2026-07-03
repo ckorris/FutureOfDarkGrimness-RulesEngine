@@ -91,7 +91,7 @@ namespace FDG.Stages
 
             IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator.EvaluateAll(
                 new HitRollCompleteContext(caster, target, rolled, distance, false, false),
-                (caster, ERuleSeat.Actor, spellWeapon, (IReadOnlyList<IModel>?)null));
+                (caster, ERuleSeat.Actor, spellWeapon, (IReadOnlyList<IModel>?)null, EModelRuleScope.AnyOwner));
 
             HitInjectionSink injection = new HitInjectionSink();
             injection.ApplyFrom(ops);

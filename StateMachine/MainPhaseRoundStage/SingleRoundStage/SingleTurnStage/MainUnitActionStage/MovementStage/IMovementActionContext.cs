@@ -18,6 +18,14 @@ namespace FDG.Stages
 
         public float MaxChargeDistance { get; }
 
+        /// <summary>
+        /// This model's own Advance/Rush/Charge budget (#093): the unit base + unit movement rules + that
+        /// model's OWN movement rules (a joined hero's Fast/Slow). Equals the unit-wide scalars for every
+        /// model of a unit with no per-model movement rules. Returns false (and the unit scalars) when the
+        /// unit can't move or the model has no computed budget.
+        /// </summary>
+        public bool TryGetModelMoveBudget(IModel model, out float advance, out float rush, out float charge);
+
         public List<ITerrain> RelevantTerrain { get; }
 
         public bool TryGetMovementDistance(out float distance);
@@ -64,6 +72,9 @@ namespace FDG.Stages
         private float _maxAdvanceDistance;
         private float _maxRushDistance;
         private float _maxChargeDistance;
+        private readonly Dictionary<ModelID, ModelBudget> _modelBudgets = new();
+
+        private readonly record struct ModelBudget(float Advance, float Rush, float Charge);
 
         private bool _hasMoved = false;
         private float? _movementDistance;
@@ -96,8 +107,31 @@ namespace FDG.Stages
             _maxRushDistance += movementModifiers.Net(EActionType.Rush);
             _maxChargeDistance += movementModifiers.Net(EActionType.Charge);
 
+            // #093: per-model budgets. Each living model's budget folds the unit's movement rules AND that
+            // model's own (a joined hero's Fast/Slow), so a Fast hero can range ahead within coherency while
+            // the rest of the unit keeps the unit budget. A native model with no model rules lands exactly on
+            // the unit scalars above.
+            float baseAdvance = precursor.MaxAdvanceDistance;
+            float baseRush = precursor.MaxRushDistance;
+            float baseCharge = precursor.MaxChargeDistance;
+            foreach (IModel model in unit.Models)
+            {
+                if (!model.GetIsAlive())
+                {
+                    continue;
+                }
+
+                MovementModifierSink perModel = new MovementModifierSink();
+                AccumulateModelMovementRules(unit, model, EActionType.Advance, baseAdvance, perModel);
+                AccumulateModelMovementRules(unit, model, EActionType.Rush, baseRush, perModel);
+                AccumulateModelMovementRules(unit, model, EActionType.Charge, baseCharge, perModel);
+                _modelBudgets[model.ID] = new ModelBudget(
+                    baseAdvance + perModel.Net(EActionType.Advance),
+                    baseRush + perModel.Net(EActionType.Rush),
+                    baseCharge + perModel.Net(EActionType.Charge));
+            }
         }
-        
+
         //TODO: Move down.
         private void AccumulateMovementRules(IUnit unit, EActionType action, float baseDistance,
             MovementModifierSink sink)
@@ -106,6 +140,35 @@ namespace FDG.Stages
                 new MoveActionDeclaredContext(unit, action, baseDistance),
                 (unit, ERuleSeat.Actor));
             sink.ApplyFrom(operations);
+        }
+
+        // Like AccumulateMovementRules but evaluates the unit's rules AND the given model's own rules
+        // (AnyOwner union), so a per-model Fast/Slow folds into that model's budget only.
+        private void AccumulateModelMovementRules(IUnit unit, IModel model, EActionType action,
+            float baseDistance, MovementModifierSink sink)
+        {
+            IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
+                new MoveActionDeclaredContext(unit, action, baseDistance),
+                (unit, ERuleSeat.Actor, (IWeapon?)null, new[] { model }, EModelRuleScope.AnyOwner));
+            sink.ApplyFrom(operations);
+        }
+
+        public bool TryGetModelMoveBudget(IModel model, out float advance, out float rush, out float charge)
+        {
+            if (_canMove && _modelBudgets.TryGetValue(model.ID, out ModelBudget budget))
+            {
+                advance = budget.Advance;
+                rush = budget.Rush;
+                charge = budget.Charge;
+                return true;
+            }
+
+            // Fallback to the unit scalars (respecting the can't-move gate), so a caller that hands in a model
+            // absent from the map — e.g. one that died after the context was built — still gets a sane cap.
+            advance = MaxAdvanceDistance;
+            rush = MaxRushDistance;
+            charge = MaxChargeDistance;
+            return _canMove;
         }
 
         public void SubmitValidPathTemplate(List<ModelMoveEntry> paths)

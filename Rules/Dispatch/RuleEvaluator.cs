@@ -51,7 +51,8 @@ public sealed class RuleEvaluator
     /// a Blast cannon's rules apply to its shots and not its bearer's other weapons.
     /// </summary>
     public IReadOnlyList<RuleOperation> Evaluate(IUnit unit, ERuleSeat seat, IHookContext context,
-        IWeapon? weapon = null, IReadOnlyList<IModel>? models = null)
+        IWeapon? weapon = null, IReadOnlyList<IModel>? models = null,
+        EModelRuleScope modelScope = EModelRuleScope.AnyOwner)
     {
         var tagged = new List<TaggedOperation>();
         // Single-participant Evaluate does NOT run the consume-on-fire pass — grantsToConsume stays null —
@@ -59,7 +60,8 @@ public sealed class RuleEvaluator
         // 3 of its 4 call sites are read-only queries (TryGet*Defer) that MUST NOT consume, and no corpus
         // rule grants a one-shot buff firing only at a round-start/deployment/activation hook. If one ever
         // does, add a `consumeGrants` opt-in and set it on the apply site (GrantSpellTokens) only — see #104.
-        CollectTagged(unit, seat, weapon, models, context, tagged, new DedupState(), grantsToConsume: null);
+        CollectTagged(unit, seat, weapon, models, modelScope, context, tagged, new DedupState(),
+            grantsToConsume: null);
 
         // Per-unit Evaluate does NOT run the suppression first-pass — cross-unit suppression
         // (an attacker's Unstoppable cancelling a defender's Regeneration) only exists once the
@@ -93,14 +95,16 @@ public sealed class RuleEvaluator
     }
 
     /// <summary>
-    /// Model-aware participant form (#006 slice F): a participant may also name the specific model(s) the
-    /// hook involves, and those models' own rules (<see cref="IModel.RuleDefinitions"/>) are evaluated
-    /// alongside the unit's and weapon's. Opt-in — only stages that pass models (currently the hit stages,
-    /// for a weapon batch's sole owner) see per-model rules; every other call site is unaffected. This is
-    /// how a joined hero's own rules fire for the hero alone rather than the whole host unit.
+    /// Model-aware participant form (#006 slice F, #093): a participant may also name the specific model(s)
+    /// the hook involves and how to compose their own rules (<see cref="IModel.RuleDefinitions"/>) via
+    /// <see cref="EModelRuleScope"/> — <c>AnyOwner</c> unions them (any model brings the rule), <c>AllOwners</c>
+    /// fires only rules every model shares (a pooled combat batch). Opt-in: only stages that pass models
+    /// (the hit stages, over a weapon batch's living owners) see per-model rules; every other call site is
+    /// unaffected. This is how a joined hero's own rules fire for the hero's batch rather than the whole unit.
     /// </summary>
     public IReadOnlyList<RuleOperation> EvaluateAll(IHookContext context,
-        params (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon, IReadOnlyList<IModel>? Models)[] participants)
+        params (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon, IReadOnlyList<IModel>? Models,
+            EModelRuleScope ModelScope)[] participants)
     {
         return CollectSurviving(context, log: true, participants).Select(t => t.Op).ToList();
     }
@@ -136,14 +140,16 @@ public sealed class RuleEvaluator
     }
 
     /// <summary> Widens weaponed participants to the model-aware tuple with no per-model rules (the
-    /// non-slice-F default), so the original call sites keep their exact behavior. </summary>
-    private static (IUnit, ERuleSeat, IWeapon?, IReadOnlyList<IModel>?)[] WithModels(
+    /// non-slice-F default; the scope is moot with null models), so the original call sites keep their
+    /// exact behavior. </summary>
+    private static (IUnit, ERuleSeat, IWeapon?, IReadOnlyList<IModel>?, EModelRuleScope)[] WithModels(
         (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon)[] participants)
     {
-        var expanded = new (IUnit, ERuleSeat, IWeapon?, IReadOnlyList<IModel>?)[participants.Length];
+        var expanded = new (IUnit, ERuleSeat, IWeapon?, IReadOnlyList<IModel>?, EModelRuleScope)[participants.Length];
         for (int i = 0; i < participants.Length; i++)
         {
-            expanded[i] = (participants[i].Unit, participants[i].Seat, participants[i].Weapon, null);
+            expanded[i] = (participants[i].Unit, participants[i].Seat, participants[i].Weapon, null,
+                EModelRuleScope.AnyOwner);
         }
         return expanded;
     }
@@ -156,7 +162,8 @@ public sealed class RuleEvaluator
     /// when <paramref name="log"/> is true.
     /// </summary>
     private List<TaggedOperation> CollectSurviving(IHookContext context, bool log,
-        params (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon, IReadOnlyList<IModel>? Models)[] participants)
+        params (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon, IReadOnlyList<IModel>? Models,
+            EModelRuleScope ModelScope)[] participants)
     {
         var tagged = new List<TaggedOperation>();
 
@@ -171,9 +178,10 @@ public sealed class RuleEvaluator
         // the walk, regardless of whether the rule's condition passed or its op survived suppression.
         List<(IUnit Unit, Token Grant)>? grantsToConsume = log ? new List<(IUnit, Token)>() : null;
 
-        foreach ((IUnit unit, ERuleSeat seat, IWeapon? weapon, IReadOnlyList<IModel>? models) in participants)
+        foreach ((IUnit unit, ERuleSeat seat, IWeapon? weapon, IReadOnlyList<IModel>? models,
+            EModelRuleScope modelScope) in participants)
         {
-            CollectTagged(unit, seat, weapon, models, context, tagged, seen, grantsToConsume);
+            CollectTagged(unit, seat, weapon, models, modelScope, context, tagged, seen, grantsToConsume);
         }
 
         var suppressedRuleNames = tagged
@@ -241,7 +249,7 @@ public sealed class RuleEvaluator
     /// operations survive.
     /// </summary>
     private void CollectTagged(IUnit unit, ERuleSeat seat, IWeapon? weapon, IReadOnlyList<IModel>? models,
-        IHookContext context, List<TaggedOperation> sink, DedupState seen,
+        EModelRuleScope modelScope, IHookContext context, List<TaggedOperation> sink, DedupState seen,
         List<(IUnit Unit, Token Grant)>? grantsToConsume)
     {
         CollectFromRules(unit.RuleDefinitions, unit, carryingWeapon: null, seat, context, sink, seen);
@@ -258,16 +266,68 @@ public sealed class RuleEvaluator
             CollectFromRules(weapon.RuleDefinitions, unit, weapon, seat, context, sink, seen);
         }
 
-        // #006 slice F: per-model rules for the model(s) this hook actually involves (e.g. a weapon
-        // batch's sole owner on the hit hooks). Bearer stays the unit, so dedup + logging are unchanged.
-        if (models != null)
+        // #006 slice F / #093: per-model rules for the model(s) this hook involves, composed per the
+        // participant's EModelRuleScope. AnyOwner unions each model's rules (any involved model brings it —
+        // a joined Caster's token grant). AllOwners fires only rules EVERY listed model shares, so a pooled
+        // combat batch's per-model rule applies only when all its living owners carry it (no leak onto the
+        // batch's shared dice; a single-owner list is the joined-hero case, unchanged). Bearer stays the
+        // unit either way, so dedup + logging are unchanged.
+        if (models != null && models.Count > 0)
         {
-            foreach (IModel model in models)
+            if (modelScope == EModelRuleScope.AllOwners)
             {
-                CollectFromRules(model.RuleDefinitions, unit, carryingWeapon: null, seat, context, sink, seen);
+                CollectFromRules(RulesSharedByAll(models), unit, carryingWeapon: null, seat, context, sink, seen);
+            }
+            else
+            {
+                foreach (IModel model in models)
+                {
+                    CollectFromRules(model.RuleDefinitions, unit, carryingWeapon: null, seat, context, sink, seen);
+                }
             }
         }
     }
+
+    /// <summary>
+    /// The rules carried by EVERY model in <paramref name="models"/> — matched by definition and arguments
+    /// (an (X) rule matches only at the same X) — one representative per distinct rule. The intersection
+    /// backing <see cref="EModelRuleScope.AllOwners"/> dispatch: a pooled batch's per-model rule fires only
+    /// when all its living owners share it. A single-model list returns that model's rules (the joined-hero
+    /// sole-owner case, unchanged from slice F). Caller guarantees a non-empty list.
+    /// </summary>
+    private static IReadOnlyList<ResolvedRule> RulesSharedByAll(IReadOnlyList<IModel> models)
+    {
+        var shared = new List<ResolvedRule>();
+        foreach (ResolvedRule candidate in models[0].RuleDefinitions)
+        {
+            if (shared.Any(existing => RulesMatch(existing, candidate)))
+            {
+                continue; // a duplicate of a rule already recorded from an earlier entry on the first model
+            }
+
+            bool onEveryModel = true;
+            for (int i = 1; i < models.Count; i++)
+            {
+                if (!models[i].RuleDefinitions.Any(other => RulesMatch(other, candidate)))
+                {
+                    onEveryModel = false;
+                    break;
+                }
+            }
+
+            if (onEveryModel)
+            {
+                shared.Add(candidate);
+            }
+        }
+
+        return shared;
+    }
+
+    /// <summary> Two attachments are the same rule when they share a definition and identical arguments
+    /// (<see cref="RuleArgument"/> is a value record), so Deadly(3) matches Deadly(3) but not Deadly(2). </summary>
+    private static bool RulesMatch(ResolvedRule a, ResolvedRule b) =>
+        a.Definition == b.Definition && a.Arguments.SequenceEqual(b.Arguments);
 
     private void CollectFromRules(IReadOnlyList<ResolvedRule> rules, IUnit unit, IWeapon? carryingWeapon,
         ERuleSeat seat, IHookContext context, List<TaggedOperation> sink, DedupState seen)
@@ -440,7 +500,28 @@ public sealed class RuleEvaluator
 
         IUnit unit = acting.ActingUnit;
 
-        foreach (ResolvedRule rule in unit.RuleDefinitions)
+        // The acting unit's own rules, plus each LIVING model's per-model rules (#093): a joined hero's
+        // activated ability (Vanguard, Martial Prowess) is offered for the host unit even though the merge
+        // relocated it onto the hero model. AnyOwner — any model bringing an ability offers it; the `seen`
+        // set keys each distinct ability (definition + ability) so an ability carried by both the unit and
+        // a model (or by several models) is offered once, not once per carrier.
+        var seen = new HashSet<(SpecialRuleDefinition, ActivatedAbility)>();
+        GatherOffersFromRules(unit.RuleDefinitions, unit, context, offers, seen);
+        foreach (IModel model in unit.Models)
+        {
+            if (model.GetIsAlive())
+            {
+                GatherOffersFromRules(model.RuleDefinitions, unit, context, offers, seen);
+            }
+        }
+
+        return offers;
+    }
+
+    private void GatherOffersFromRules(IReadOnlyList<ResolvedRule> rules, IUnit unit, IHookContext context,
+        List<AbilityOffer> offers, HashSet<(SpecialRuleDefinition, ActivatedAbility)> seen)
+    {
+        foreach (ResolvedRule rule in rules)
         {
             var invocation = new RuleInvocation(context, unit, rule.Arguments, DiceRoller: _diceRoller);
 
@@ -461,11 +542,14 @@ public sealed class RuleEvaluator
                     continue;
                 }
 
+                if (!seen.Add((rule.Definition, ability)))
+                {
+                    continue;
+                }
+
                 offers.Add(new AbilityOffer(unit, rule.RequestedName, ability));
             }
         }
-
-        return offers;
     }
 
     /// <summary>

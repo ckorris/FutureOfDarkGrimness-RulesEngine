@@ -39,7 +39,7 @@ namespace FDG.Tests
             // Translate the whole unit +3" along x — within the 9" budget, coherency preserved.
             List<ModelMoveEntry> paths = TranslatePaths(unit, dx: 3f, dz: 0f);
 
-            bool moved = MovementExecutor.TryMove(ctx, unit, paths, maxInches: 9f, out var errors);
+            bool moved = MovementExecutor.TryMove(ctx, unit, paths, maxInches: 9f, out var errors, out _);
 
             Assert.That(moved, Is.True, "a 3\" move is within the 9\" budget");
             Assert.That(errors, Is.Empty);
@@ -55,7 +55,7 @@ namespace FDG.Tests
 
             List<ModelMoveEntry> paths = TranslatePaths(unit, dx: 20f, dz: 0f);
 
-            bool moved = MovementExecutor.TryMove(ctx, unit, paths, maxInches: 9f, out var errors);
+            bool moved = MovementExecutor.TryMove(ctx, unit, paths, maxInches: 9f, out var errors, out _);
 
             Assert.That(moved, Is.False, "a 20\" move exceeds the 9\" budget");
             Assert.That(errors, Is.Not.Empty);

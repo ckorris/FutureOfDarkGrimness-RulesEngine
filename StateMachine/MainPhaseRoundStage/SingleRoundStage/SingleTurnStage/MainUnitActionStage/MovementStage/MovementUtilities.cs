@@ -21,7 +21,7 @@ namespace FDG.Stages
         {
             errors = new List<ReasonForInvalidMove>();
 
-            ValidateOutOfMoveRange(moves, maxDistanceInches, ref errors);
+            ValidateOutOfMoveRange(moves, _ => maxDistanceInches, ref errors);
             //This overload is only reached with terrain: null (the no-terrain convenience form), so the terrain
             //checks are no-ops regardless — no Strider/Flying flags to thread here.
             ValidateMovingThroughImpassibleTerrain(moves, terrain, ignoresImpassibleTerrain: false, ref errors);
@@ -52,7 +52,7 @@ namespace FDG.Stages
                 enemyFootprints as IReadOnlyList<EnemyModelFootprint> ?? enemyFootprints?.ToList()
                 ?? (IReadOnlyList<EnemyModelFootprint>)Array.Empty<EnemyModelFootprint>();
 
-            ValidateOutOfMoveRange(moves, maxDistanceInches, ref errors);
+            ValidateOutOfMoveRange(moves, _ => maxDistanceInches, ref errors);
             ValidateMovingThroughImpassibleTerrain(moves, terrain, ignoresImpassibleTerrain, ref errors);
             ValidateMovingThroughDifficultTerrain(moves, terrain, ignoresDifficultTerrain, ref errors);
             ValidateMovingThroughEnemyUnits(moves, enemies, canMoveThroughEnemies, ref errors);
@@ -88,6 +88,22 @@ namespace FDG.Stages
             IEnumerable<EnemyModelFootprint> enemyFootprints, bool canMoveThroughEnemies,
             bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
             IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors)
+            => ValidatePaths(moves, _ => new ModelMoveBudget(maxRushDistance, maxDistanceInches),
+                enemyFootprints, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain,
+                terrain, out errors);
+
+        /// <summary>
+        /// Per-model form of the full Move-action validation (#093): each model is capped by its OWN
+        /// <see cref="ModelMoveBudget"/> (a joined hero's Fast/Slow gives it a different budget than the rest
+        /// of the unit) instead of one unit-wide pair of scalars. Coherency still reins a fast model in.
+        /// The scalar overload above delegates here with the same budget for every model, so unit-wide
+        /// callers are unchanged.
+        /// </summary>
+        public static bool ValidatePaths(List<ModelMoveEntry> moves,
+            Func<ModelMoveEntry, ModelMoveBudget> budgetFor,
+            IEnumerable<EnemyModelFootprint> enemyFootprints, bool canMoveThroughEnemies,
+            bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
+            IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors)
         {
             errors = new List<ReasonForInvalidMove>();
 
@@ -95,12 +111,12 @@ namespace FDG.Stages
                 enemyFootprints as IReadOnlyList<EnemyModelFootprint> ?? enemyFootprints?.ToList()
                 ?? (IReadOnlyList<EnemyModelFootprint>)Array.Empty<EnemyModelFootprint>();
 
-            ValidateOutOfMoveRange(moves, maxDistanceInches, ref errors);
+            ValidateOutOfMoveRange(moves, move => budgetFor(move).MaxDistanceInches, ref errors);
             ValidateMovingThroughImpassibleTerrain(moves, terrain, ignoresImpassibleTerrain, ref errors);
             ValidateMovingThroughDifficultTerrain(moves, terrain, ignoresDifficultTerrain, ref errors);
             ValidateMovingThroughEnemyUnits(moves, enemies, canMoveThroughEnemies, ref errors);
             ValidateCoherency(moves, ref errors);
-            ValidateChargeReach(moves, maxRushDistance, enemies, ref errors);
+            ValidateChargeReach(moves, move => budgetFor(move).MaxRushDistance, enemies, ref errors);
 
             return errors.Count == 0;
         }
@@ -220,11 +236,16 @@ namespace FDG.Stages
 
         public static void ValidateChargeReach(List<ModelMoveEntry> moves, float maxRushDistance,
             IEnumerable<EnemyModelFootprint> enemyFootprints, ref List<ReasonForInvalidMove> errors)
+            => ValidateChargeReach(moves, _ => maxRushDistance, enemyFootprints, ref errors);
+
+        private static void ValidateChargeReach(List<ModelMoveEntry> moves,
+            Func<ModelMoveEntry, float> maxRushDistanceFor,
+            IEnumerable<EnemyModelFootprint> enemyFootprints, ref List<ReasonForInvalidMove> errors)
         {
             Dictionary<ModelMoveEntry, float> totalDistances = GetTotalMoveDistances(moves);
 
-            //If nobody exceeds the Rush cap, the rule doesn't apply.
-            bool anyBeyondRush = totalDistances.Values.Any(d => d > maxRushDistance + 0.0001f);
+            //If nobody exceeds their own Rush cap, the rule doesn't apply.
+            bool anyBeyondRush = totalDistances.Any(kvp => kvp.Value > maxRushDistanceFor(kvp.Key) + 0.0001f);
             if (!anyBeyondRush) return;
 
             //At least one model in the unit must end within melee range of an enemy model (horizontal).
@@ -244,8 +265,8 @@ namespace FDG.Stages
 
             if (!anyInMelee)
             {
-                //Attach the violation to the first model that went beyond Rush.
-                ModelMoveEntry culprit = totalDistances.First(kvp => kvp.Value > maxRushDistance + 0.0001f).Key;
+                //Attach the violation to the first model that went beyond its own Rush.
+                ModelMoveEntry culprit = totalDistances.First(kvp => kvp.Value > maxRushDistanceFor(kvp.Key) + 0.0001f).Key;
                 errors.Add(new ReasonForInvalidMove(EErrorReasonType.ChargeRangeRequiresMeleeReach, culprit.Model));
             }
         }
@@ -278,14 +299,14 @@ namespace FDG.Stages
             return distances;
         }
 
-        private static void ValidateOutOfMoveRange(List<ModelMoveEntry> moves, float maxChargeDistance,
-            ref List<ReasonForInvalidMove> reasonsForInvalidMove)
+        private static void ValidateOutOfMoveRange(List<ModelMoveEntry> moves,
+            Func<ModelMoveEntry, float> maxDistanceFor, ref List<ReasonForInvalidMove> reasonsForInvalidMove)
         {
             Dictionary<ModelMoveEntry, float> totalMoveDistances = GetTotalMoveDistances(moves);
 
             foreach (KeyValuePair<ModelMoveEntry, float> kvp in totalMoveDistances)
             {
-                if (kvp.Value > maxChargeDistance)
+                if (kvp.Value > maxDistanceFor(kvp.Key))
                 {
                     reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.OutOfMoveRange, kvp.Key.Model));
                 }

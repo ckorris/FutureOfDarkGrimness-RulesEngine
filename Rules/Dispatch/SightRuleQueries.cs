@@ -58,5 +58,22 @@ namespace FDG.Rules.Dispatch
         /// </summary>
         public static bool IgnoresTerrain(IUnit attacker, IWeapon weapon, RuleEvaluator evaluator)
             => LineOfSightIgnoreSource(attacker, weapon, evaluator) != null;
+
+        /// <summary>
+        /// Whether this weapon's attack re-scopes to a single chosen model in the target unit (Takedown,
+        /// #157). Used by ChooseRangedAttackStage to fire the weapon's copies as SEPARATE single-shot
+        /// attacks, so each shot picks its own victim. Non-consuming — BuildTargetListStage's own per-attack
+        /// evaluation still drives the actual pick (and spends any one-shot grant there, not here).
+        /// </summary>
+        public static bool TargetsIndividualModels(IUnit attacker, IWeapon weapon, IUnit defender,
+            RuleEvaluator evaluator)
+        {
+            foreach ((RuleOperation op, string _) in evaluator.EvaluateAllNamed(
+                         new ShootTargetsSelectedContext(attacker, defender), (attacker, ERuleSeat.Actor, weapon)))
+            {
+                if (op is RuleOperation.TargetIndividualModel) return true;
+            }
+            return false;
+        }
     }
 }

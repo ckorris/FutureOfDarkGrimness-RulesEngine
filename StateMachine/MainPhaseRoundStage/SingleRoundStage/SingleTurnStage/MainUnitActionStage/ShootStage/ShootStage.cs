@@ -39,6 +39,7 @@ namespace FDG.Stages
                 .AddChild(new ChooseRangedAttackStage(GameContext, this), out var chooseRangedWeapon)
                 //.AddChild(new ChooseRangedTargetStage(GameContext, this), out var chooseRangedTarget)
                 .AddChild(new FireStage(GameContext, this), out var fire)
+                .AddChild(new DetermineMorePendingShotsStage(GameContext, this), out var morePendingShots)
                 .AddChild(new ResolveRangedMoraleStage(GameContext, this), out var resolveRangedMorale)
                 .AddChild(new DetermineCanKeepShootingStage(GameContext, this), out var determineCanKeepShooting)
                 .AddChild(new PostShootStage(GameContext, this), out var postShoot)
@@ -54,7 +55,11 @@ namespace FDG.Stages
             // PostShootStage so the post-shoot move (Hit & Run / Harassing) is offered once per action.
             chooseRangedWeapon.OnNoValidShots.Bind(postShoot);
 
-            fire.OnFinishedFiring.Bind(resolveRangedMorale);
+            // #157: while queued attacks remain (a Takedown-split volley), loop FireStage — each entry
+            // consumes one queued shot with its own target-model pick. Morale runs once, after the volley.
+            fire.OnFinishedFiring.Bind(morePendingShots);
+            morePendingShots.FireNextShot.Bind(fire);
+            morePendingShots.ToMorale.Bind(resolveRangedMorale);
             resolveRangedMorale.ToFinished.Bind(determineCanKeepShooting);
             determineCanKeepShooting.ReturnToChooseWeapon.Bind(chooseRangedWeapon);
             determineCanKeepShooting.ToFinishShooting.Bind(postShoot);

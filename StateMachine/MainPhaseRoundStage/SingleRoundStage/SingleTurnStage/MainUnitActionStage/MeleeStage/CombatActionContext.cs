@@ -47,9 +47,17 @@ namespace FDG.Stages
         /// </summary>
         public void SetInRangeDefenders(IReadOnlyList<DataBinding<ModelData>> models);
 
-        public Weapon? ShootingWeaponType { get; }
+        /// <summary>True while at least one queued attack awaits firing. Normally one per
+        /// <see cref="SetAttackWeapon"/>; a Takedown-split weapon queues one single-shot attack per copy
+        /// (#157) and FireStage loops until the queue drains.</summary>
+        public bool HasPendingAttack { get; }
 
-        public int? ShootingWeaponCount { get; }
+        /// <summary>#157: split the just-queued attack (weapon, N) into N single-shot attacks so each shot
+        /// picks its own individual target (Takedown / Sniper). No-op unless exactly one attack is queued.</summary>
+        public void SplitPendingAttackIntoSingleShots();
+
+        /// <summary>Drop any queued attacks — the burst's target died mid-way, the leftover shots fizzle (#157).</summary>
+        public void ClearPendingAttacks();
 
         public float AttackerRemainingWoundsAtStart { get; }
 
@@ -115,9 +123,12 @@ namespace FDG.Stages
 
         public IGameContext GameContext { get; }
 
-        public Weapon? ShootingWeaponType { get; private set; } = null;
+        // The attack(s) set up by SetAttackWeapon and consumed one per FireStage/SwingMeleeWeaponStage
+        // entry. Normally holds a single (weapon, count) batch; SplitPendingAttackIntoSingleShots (#157)
+        // turns a Takedown batch into N single-shot entries so each shot picks its own victim.
+        private readonly Queue<(Weapon Weapon, int Count)> _pendingAttacks = new Queue<(Weapon, int)>();
 
-        public int? ShootingWeaponCount { get; private set; } = null;
+        public bool HasPendingAttack => _pendingAttacks.Count > 0;
 
         private ConcurrentDictionary<Weapon, int> _availableWeapons;
 
@@ -197,9 +208,23 @@ namespace FDG.Stages
 
             _alreadyUsedWeapons.TryAdd(weaponToConsume, weaponCount);
 
-            ShootingWeaponType = weaponToConsume;
-            ShootingWeaponCount = weaponCount;
+            _pendingAttacks.Enqueue((weaponToConsume, weaponCount));
         }
+
+        public void SplitPendingAttackIntoSingleShots()
+        {
+            // Only ever called right after SetAttackWeapon, so exactly one batch is queued; anything else
+            // means the caller is mid-burst and splitting would corrupt the queue.
+            if (_pendingAttacks.Count != 1) return;
+
+            (Weapon weapon, int count) = _pendingAttacks.Dequeue();
+            for (int i = 0; i < count; i++)
+            {
+                _pendingAttacks.Enqueue((weapon, 1));
+            }
+        }
+
+        public void ClearPendingAttacks() => _pendingAttacks.Clear();
 
         public void SetDefender(DataBinding<UnitData> defendingUnit)
         {
@@ -234,25 +259,22 @@ namespace FDG.Stages
             // Rebuild the melee-weapon pool from the new attacker's in-range models; nothing used yet this swing.
             _availableWeapons = GetTypeSortedWeapons(MeleeRangeUtilities.GetMeleeWeaponsFromModels(InRangeAttackingModels));
             _alreadyUsedWeapons.Clear();
+            _pendingAttacks.Clear();
         }
 
         public ICombatMetadata ConsumeAttackIntoContext(IGameContext gameContext)
         {
-
-            if(DefendingUnit == default || ShootingWeaponType == default || ShootingWeaponCount == default)
+            if (DefendingUnit == default || _pendingAttacks.Count == 0)
             {
-                throw new InvalidOperationException($"Called {nameof(ConsumeAttackIntoContext)} when attack was not set up. " + 
+                throw new InvalidOperationException($"Called {nameof(ConsumeAttackIntoContext)} when attack was not set up. " +
                     "Must have all values set before consuming.");
             }
 
-            CombatMetadata meleeCombatMetadata = new CombatMetadata(gameContext, AttackingUnit,
-                DefendingUnit, ShootingWeaponType, ShootingWeaponCount.Value, _attackerMoved, _isMelee, _isCharging);
-
             // Don't clear DefendingUnit — OfferStrikeBackStage needs it after this call.
-            ShootingWeaponType = null;
-            ShootingWeaponCount = null;
+            (Weapon weapon, int count) = _pendingAttacks.Dequeue();
 
-            return meleeCombatMetadata;
+            return new CombatMetadata(gameContext, AttackingUnit,
+                DefendingUnit, weapon, count, _attackerMoved, _isMelee, _isCharging);
         }
 
         //TODO: Repeated in Ranged version. Move to static class.

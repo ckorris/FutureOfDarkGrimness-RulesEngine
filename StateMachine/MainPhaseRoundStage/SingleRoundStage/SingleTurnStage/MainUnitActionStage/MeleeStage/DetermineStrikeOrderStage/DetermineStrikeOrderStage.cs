@@ -18,6 +18,8 @@ namespace FDG.Stages
     /// </summary>
     public class DetermineStrikeOrderStage : StageBase<ICombatActionContext>
     {
+        private static readonly TextColor CounterBannerColor = new TextColor(80, 220, 200, 255);
+
         public StageBinding OnStrikeOrderDetermined;
 
         public DetermineStrikeOrderStage(IGameContext gameContext, IStateMachineLayer<ICombatActionContext> parent)
@@ -43,7 +45,10 @@ namespace FDG.Stages
             if (operations.OfType<RuleOperation.StrikeFirst>().Any()
                 && context.DefendingUnit.GetValue().GetMeleeWeapons().Count > 0)
             {
-                GameContext.Log($"{defender.Name}'s Counter: it strikes first against the charging {attacker.Name}.");
+                // Announce (banner + log) that the charged unit gets the first swing thanks to Counter,
+                // before the role swap makes it so.
+                await GameContext.Announce(
+                    $"{defender.Name} counters the charge — strikes first!", CounterBannerColor);
                 context.SwapCombatRoles();
             }
 

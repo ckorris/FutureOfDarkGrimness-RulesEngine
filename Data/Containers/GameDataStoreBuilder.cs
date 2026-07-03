@@ -61,6 +61,8 @@ namespace FDG.Data
                 // Appended last: TypeID is positional and baked into every serialized DataReference,
                 // so new types must go at the end to keep older type maps / saves valid.
                 .RegisterType<GameProgressData>(2)
+                // #150: per-model facing (Float2 unit normal), one binding per model — sized like Position.
+                .RegisterType<Float2>(128)
                 .Build();
             }
         }

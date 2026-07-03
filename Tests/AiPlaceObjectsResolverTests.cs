@@ -58,6 +58,205 @@ namespace FDG.Tests
             }
         }
 
+        // #150: the default deploy facing points toward the table centre — a top-zone unit starts facing
+        // down at the enemy instead of off the table (matters for Aircraft, whose heading IS the facing).
+        [Test]
+        public void DefaultDeployFacing_PointsTowardTableCentre()
+        {
+            float tableH = GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES;
+            var bottomZone = new RectangularZone(0f, 72f, 0f, 12f);
+            var topZone = new RectangularZone(0f, 72f, tableH - 12f, tableH);
+
+            Assert.That(PlacementUtilities.DefaultDeployFacing(bottomZone.Bounds, tableH), Is.EqualTo(new Float2(0f, 1f)),
+                "a bottom zone faces up (+Z) toward the centre.");
+            Assert.That(PlacementUtilities.DefaultDeployFacing(topZone.Bounds, tableH), Is.EqualTo(new Float2(0f, -1f)),
+                "a top zone faces down (−Z) toward the centre.");
+        }
+
+        // #150: a rotated/elongated base must be allowed as close to an edge as its TRUE reach in that
+        // direction — the facing-aware containment insets each edge by the real per-axis footprint extent, not
+        // the circumscribing circle (which over-blocks the thin axis, stopping a base short of the side). It
+        // still keeps the whole base on the table.
+        [Test]
+        public void IsBaseWithinZone_FacingAware_HugsTheThinEdgeButStaysOnTable()
+        {
+            var rect = new RectangleBase(1f, 3f); // long axis along Z at +Z facing: 0.5" on X, 1.5" on Z
+            Float2 up = new Float2(0f, 1f);
+            var zone = new RectangularZone(0f, 40f, 0f, 40f);
+
+            // Centre 0.6" from the left edge: the 0.5" X-extent clears it (footprint reaches x=0.1"), so the
+            // facing-aware check accepts it — where the bounding circle (half-diagonal ≈ 1.58") over-blocks.
+            var nearLeft = new Position(0.6f, 20f);
+            Assert.That(PlacementUtilities.IsBaseWithinZone(nearLeft, rect, up, zone), Is.True,
+                "a base thin on X can sit close to the side edge.");
+            Assert.That(PlacementUtilities.IsBaseWithinZone(nearLeft, rect.CircumscribedRadiusInches, zone), Is.False,
+                "the bounding circle wrongly over-blocks the thin axis.");
+
+            // But a base whose footprint actually crosses the edge is still rejected (never off the table).
+            var overLeft = new Position(0.3f, 20f); // 0.5" X-extent reaches x=-0.2" < 0
+            Assert.That(PlacementUtilities.IsBaseWithinZone(overLeft, rect, up, zone), Is.False,
+                "a footprint that crosses the edge is rejected.");
+        }
+
+        // #029: an edge-constrained placement (the Aircraft off-table redeploy) must come back on touching a
+        // table edge, with the models facing inward from that edge (facing = heading, so the aircraft doesn't
+        // immediately fly back off).
+        [Test]
+        public async Task EdgeConstrainedPlacement_TouchesATableEdge_AndFacesInward()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var selfPlayer = new PlayerID(System.Guid.NewGuid());
+
+            var placing = new List<DataBinding<ModelData>>();
+            for (int i = 0; i < 2; i++)
+            {
+                var m = new ModelData(0.75f, new List<Weapon>(), new Position(0f, 0f), store);
+                placing.Add(store.GetDataBinding<ModelData>(store.Create(m)));
+            }
+            var unit = new UnitData(selfPlayer, "Skyblade", 4, 4, placing);
+            store.Create(unit);
+
+            var tableState = new TableState(store);
+            var resolver = new AiPlaceObjectsResolver<ModelData>(tableState);
+            var wholeTable = new RectangularZone(0f, GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES,
+                0f, GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES);
+            var request = new PlaceObjectsRequest<ModelData>(selfPlayer, "Aircraft Redeploy", wholeTable,
+                placing, mustTouchTableEdge: true);
+
+            List<PlacedObjectEntry<ModelData>> result = await resolver.Resolve(request);
+
+            Assert.That(result, Has.Count.EqualTo(2));
+            bool anyTouches = result.Any(e => PlacementUtilities.TouchesZoneEdge(
+                e.Position, e.Binding.GetValue().BaseShape.CircumscribedRadiusInches, wholeTable.Bounds));
+            Assert.That(anyTouches, Is.True, "at least one base must touch a table edge.");
+
+            foreach (var e in result)
+            {
+                Assert.That(e.Facing.HasValue, Is.True, "edge placements carry an inward facing.");
+                Float2 f = e.Facing!.Value;
+                // Inward = the facing points away from the touched edge, into the table.
+                float len = MathF.Sqrt(f.X * f.X + f.Y * f.Y);
+                Assert.That(len, Is.EqualTo(1f).Within(0.001f), "the facing is a unit vector.");
+            }
+        }
+
+        // #150: rectangular bases must not overlap when the AI auto-packs them. The old inscribed
+        // BaseRadiusInches under-bounded a tall rectangle, so adjacent bases in a grid overlapped; the
+        // resolver now packs by the circumscribing radius. Verified against the true shape-aware collision.
+        [Test]
+        public async Task RectangularBases_PackWithoutOverlapping()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var selfPlayer = new PlayerID(System.Guid.NewGuid());
+
+            var placing = new List<DataBinding<ModelData>>();
+            for (int i = 0; i < 6; i++)
+            {
+                // 1" wide × 3" tall — a rectangle whose inscribed radius (0.5") is far smaller than its
+                // circumscribed one (~1.58"); the packing spacing must use the latter.
+                var m = new ModelData(new RectangleBase(1f, 3f), new List<Weapon>(), new Position(0f, 0f), store);
+                placing.Add(store.GetDataBinding<ModelData>(store.Create(m)));
+            }
+            var unit = new UnitData(selfPlayer, "Wall-Bearers", 4, 4, placing);
+            store.Create(unit);
+
+            var tableState = new TableState(store);
+            var resolver = new AiPlaceObjectsResolver<ModelData>(tableState);
+            var zone = new RectangularZone(0f, 48f, 0f, 24f);
+            var request = new PlaceObjectsRequest<ModelData>(selfPlayer, "Place Unit Models", zone, placing);
+
+            List<PlacedObjectEntry<ModelData>> result = await resolver.Resolve(request);
+
+            Assert.That(result, Has.Count.EqualTo(6));
+            for (int i = 0; i < result.Count; i++)
+                for (int j = i + 1; j < result.Count; j++)
+                {
+                    Float2 fi = result[i].Facing ?? new Float2(0f, 1f);
+                    Float2 fj = result[j].Facing ?? new Float2(0f, 1f);
+                    bool colliding = BaseShapeGeometry.AreColliding(
+                        result[i].Binding.GetValue().BaseShape, result[i].Position, fi,
+                        result[j].Binding.GetValue().BaseShape, result[j].Position, fj);
+                    Assert.That(colliding, Is.False,
+                        $"rectangular bases {i} and {j} overlap at ({result[i].Position.x:F1},{result[i].Position.z:F1}) / " +
+                        $"({result[j].Position.x:F1},{result[j].Position.z:F1})");
+                }
+        }
+
+        // #150 follow-up: no base may be deployed off the table. Deployment zones sit flush with the table
+        // edge, so a rectangular base whose footprint pokes past the zone edge would be off the board — the AI
+        // must keep every base fully within the table.
+        [Test]
+        public async Task NeverDeploysABaseOffTheTable()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var selfPlayer = new PlayerID(System.Guid.NewGuid());
+
+            var placing = new List<DataBinding<ModelData>>();
+            for (int i = 0; i < 8; i++)
+            {
+                var m = new ModelData(new RectangleBase(1f, 3f), new List<Weapon>(), new Position(0f, 0f), store);
+                placing.Add(store.GetDataBinding<ModelData>(store.Create(m)));
+            }
+            store.Create(new UnitData(selfPlayer, "Wall-Bearers", 4, 4, placing));
+
+            var tableState = new TableState(store);
+            var resolver = new AiPlaceObjectsResolver<ModelData>(tableState);
+            float tableW = GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES;
+            float tableH = GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES;
+            // A bottom deployment zone, flush with the table's bottom/left/right edges (as real zones are).
+            var zone = new RectangularZone(0f, tableW, 0f, 12f);
+            var request = new PlaceObjectsRequest<ModelData>(selfPlayer, "Place Unit Models", zone, placing);
+
+            List<PlacedObjectEntry<ModelData>> result = await resolver.Resolve(request);
+
+            Assert.That(result, Has.Count.EqualTo(8));
+            foreach (var e in result)
+            {
+                float r = e.Binding.GetValue().BaseShape.CircumscribedRadiusInches;
+                Assert.That(e.Position.x, Is.GreaterThanOrEqualTo(r - 0.001f).And.LessThanOrEqualTo(tableW - r + 0.001f),
+                    $"base off the left/right table edge at x={e.Position.x:F2}");
+                Assert.That(e.Position.z, Is.GreaterThanOrEqualTo(r - 0.001f).And.LessThanOrEqualTo(tableH - r + 0.001f),
+                    $"base off the bottom/top table edge at z={e.Position.z:F2}");
+            }
+        }
+
+        // Degenerate case: a unit far too big for its zone forces the AI's clamped fallback. The block can't fit,
+        // but the last-resort table clamp must still keep every base on the board (never off the table).
+        [Test]
+        public async Task UnitBiggerThanZone_StillLandsOnTable()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var selfPlayer = new PlayerID(System.Guid.NewGuid());
+
+            var placing = new List<DataBinding<ModelData>>();
+            for (int i = 0; i < 12; i++)
+            {
+                var m = new ModelData(new RectangleBase(2f, 2f), new List<Weapon>(), new Position(0f, 0f), store);
+                placing.Add(store.GetDataBinding<ModelData>(store.Create(m)));
+            }
+            store.Create(new UnitData(selfPlayer, "Big Block", 4, 4, placing));
+
+            var tableState = new TableState(store);
+            var resolver = new AiPlaceObjectsResolver<ModelData>(tableState);
+            float tableW = GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES;
+            float tableH = GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES;
+            // A tiny corner zone the 12-model block cannot possibly fit into.
+            var zone = new RectangularZone(0f, 6f, 0f, 6f);
+            var request = new PlaceObjectsRequest<ModelData>(selfPlayer, "Place Unit Models", zone, placing);
+
+            List<PlacedObjectEntry<ModelData>> result = await resolver.Resolve(request);
+
+            Assert.That(result, Has.Count.EqualTo(12));
+            foreach (var e in result)
+            {
+                float r = e.Binding.GetValue().BaseShape.CircumscribedRadiusInches;
+                Assert.That(e.Position.x, Is.GreaterThanOrEqualTo(r - 0.01f).And.LessThanOrEqualTo(tableW - r + 0.01f),
+                    $"base off the table at x={e.Position.x:F2}");
+                Assert.That(e.Position.z, Is.GreaterThanOrEqualTo(r - 0.01f).And.LessThanOrEqualTo(tableH - r + 0.01f),
+                    $"base off the table at z={e.Position.z:F2}");
+            }
+        }
+
         // The bug a user hit: a 10-model unit deployed with one model stranded far out of cohesion (behind
         // terrain) and the rest in an over-wide line. The resolver must place the whole unit as one block
         // satisfying BOTH cohesion rules — every model within 1" of a neighbour AND within 9" of every other —

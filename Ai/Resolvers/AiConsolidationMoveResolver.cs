@@ -95,7 +95,7 @@ namespace FDG.Ai.Resolvers
                 {
                     if (model is ModelData md && md.GetIsAlive() && (md.Position.x != 0f || md.Position.z != 0f))
                     {
-                        footprints.Add(new EnemyModelFootprint(md.Position, md.BaseRadiusInches, unitKey, uncontactable));
+                        footprints.Add(new EnemyModelFootprint(md.Position, md.BaseRadiusInches, unitKey, uncontactable, md.BaseShape, md.Facing));
                         anyLiving = true;
                     }
                 }
@@ -151,7 +151,9 @@ namespace FDG.Ai.Resolvers
             foreach (var mb in aliveModels)
             {
                 var m = mb.GetValue();
-                float r = m.BaseRadiusInches;
+                // Circumscribing radius so a rotated rectangular base can't poke a corner off the table
+                // (rotation-safe, matching ForcedAircraftMove / TouchesZoneEdge). Circle: unchanged.
+                float r = m.BaseShape.CircumscribedRadiusInches;
                 t = MathF.Min(t, AxisLimit(m.Position.x, dx, r, w - r));
                 t = MathF.Min(t, AxisLimit(m.Position.z, dz, r, h - r));
             }

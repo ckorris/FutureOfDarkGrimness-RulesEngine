@@ -350,7 +350,8 @@ namespace FDG.GameModel
 
                 foreach(DataBinding<ModelData> model in unit.ModelBindings())
                 {
-                    float xPos = xStart + modelDeployCount[playerID] * (xOffset + model.GetValue().BaseRadiusInches * 2);
+                    // Circumscribing radius so rectangular bases don't overlap in this fallback auto-deploy row. #150.
+                    float xPos = xStart + modelDeployCount[playerID] * (xOffset + model.GetValue().BaseShape.CircumscribedRadiusInches * 2);
 
                     model.GetValue().SetPosition(new Position(xPos, zPos));
 

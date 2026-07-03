@@ -42,6 +42,7 @@ namespace FDG.Tests
                 .RegisterType<float>(64)
                 .RegisterType<Position>(64)
                 .RegisterType<ModelData>(64)
+                .RegisterType<Float2>(64)
                 .Build();
 
             var registry = new StageResolverRegistry();
@@ -96,12 +97,14 @@ namespace FDG.Tests
                 .RegisterType<float>(64)
                 .RegisterType<Position>(64)
                 .RegisterType<ModelData>(64)
+                .RegisterType<Float2>(64)
                 .Build();
 
             var gameDataStoreTo = new GameDataStore.GameDataStoreBuilder()
                 .RegisterType<float>(64)
                 .RegisterType<Position>(64)
                 .RegisterType<ModelData>(64)
+                .RegisterType<Float2>(64)
                 .Build();
 
             // Create test data in the source store
@@ -244,6 +247,7 @@ namespace FDG.Tests
                 .RegisterType<float>(64)
                 .RegisterType<Position>(64)
                 .RegisterType<ModelData>(64)
+                .RegisterType<Float2>(64)
                 .Build();
 
             var registry = new StageResolverRegistry();
@@ -278,12 +282,14 @@ namespace FDG.Tests
                 .RegisterType<float>(64)
                 .RegisterType<Position>(64)
                 .RegisterType<ModelData>(64)
+                .RegisterType<Float2>(64)
                 .Build();
 
             var gameDataStoreTo = new GameDataStore.GameDataStoreBuilder()
                 .RegisterType<float>(64)
                 .RegisterType<Position>(64)
                 .RegisterType<ModelData>(64)
+                .RegisterType<Float2>(64)
                 .Build();
 
             // Create test data in the source store

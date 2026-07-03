@@ -32,6 +32,16 @@ namespace FDG.Stages
             settings.TerrainPlacementMode == ETerrainPlacementMode.Alternating
             && settings.TerrainPieceCount <= 0;
 
+        /// <summary>
+        /// True only when players actually take turns placing terrain — Alternating mode with a positive piece
+        /// count, the one case the terrain roll-off's alternation order is used. Automatic modes
+        /// (AutoFromLayout / LoadFromFile) place terrain without player turns, so the roll-off ("who places
+        /// terrain first") is meaningless and is skipped, going straight to the objective phase.
+        /// </summary>
+        public static bool NeedsTerrainRollOff(GameSettings settings) =>
+            settings.TerrainPlacementMode == ETerrainPlacementMode.Alternating
+            && settings.TerrainPieceCount > 0;
+
         public PlaceTerrainStage(IGameContext gameContext, IStateMachineLayer<IMapSetupContext> parent)
             : base(gameContext, parent)
         {

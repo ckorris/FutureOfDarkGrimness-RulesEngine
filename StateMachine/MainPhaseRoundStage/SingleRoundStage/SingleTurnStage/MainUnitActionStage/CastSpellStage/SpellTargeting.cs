@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using FDG.Data;
+using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
 
 namespace FDG.Stages
@@ -42,6 +43,17 @@ namespace FDG.Stages
             PlayerID casterPlayer, TargetSelector selector)
             => GetEligibleTargets(gameContext, caster, casterPlayer, selector).Count > 0;
 
+        /// <summary>
+        /// True when the unit can cast — it carries Caster either directly, or on a joined hero's MODEL after
+        /// the #006 hero-merge moves the hero's own rules there (the #093 joined-Caster corner). The
+        /// round-start token grant (StartOfRoundExtraActionStage) is model-aware to match, so the unit's pool
+        /// is funded. Shared by <see cref="ChooseActionStage"/> (gate the Cast action) and
+        /// <see cref="CastSpellStage"/> (find friendly/enemy Casters that may modify a cast — #103).
+        /// </summary>
+        public static bool IsCaster(IUnit unit) =>
+            unit.RuleDefinitions.Any(rule => rule.Definition == CoreRuleCatalog.Caster)
+            || unit.Models.Any(model => model.RuleDefinitions.Any(rule => rule.Definition == CoreRuleCatalog.Caster));
+
         private static bool MatchesAffinity(ETargetAffinity affinity, DataBinding<UnitData> caster,
             DataBinding<UnitData> candidate, System.Func<PlayerID, bool> isFriendly)
         {
@@ -73,7 +85,7 @@ namespace FDG.Stages
                     ModelData tm = targetModel.GetValue();
                     Position targetPos = tm.PositionBinding.GetValue();
                     float distance = DistanceUtilities.GetBaseToBaseDistanceInches_3D(
-                        casterPos, targetPos, cm.BaseShape, tm.BaseShape);
+                        casterPos, targetPos, cm.BaseShape, cm.Facing, tm.BaseShape, tm.Facing);
                     if (distance > selector.RangeInches) continue;
                     if (!selector.RequireLineOfSight) return true;
                     if (LineOfSightUtilities.HasLineOfSight(casterPos, targetPos, blockers)) return true;

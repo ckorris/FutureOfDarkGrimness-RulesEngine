@@ -1,6 +1,7 @@
 using System.Linq;
 using System.Text.Json.Serialization;
 using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 
 namespace FDG.Rules.Definitions;
 
@@ -31,6 +32,7 @@ namespace FDG.Rules.Definitions;
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
 [JsonDerivedType(typeof(Always), "always")]
 [JsonDerivedType(typeof(UnitHasRule), "unitHasRule")]
+[JsonDerivedType(typeof(AllModelsHaveThisRule), "allModelsHaveThisRule")]
 [JsonDerivedType(typeof(TargetHasRule), "targetHasRule")]
 [JsonDerivedType(typeof(ActionTypeIs), "actionTypeIs")]
 [JsonDerivedType(typeof(UnmodifiedRollEquals), "unmodifiedRollEquals")]
@@ -76,6 +78,78 @@ public abstract record Condition
             invocation.Bearer.RuleDefinitions.Any(
                 r => string.Equals(r.Definition.Name, RuleName, StringComparison.OrdinalIgnoreCase)
                     || string.Equals(r.RequestedName, RuleName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// True only when EVERY living model in the bearer unit carries the rule being evaluated
+    /// (<see cref="RuleInvocation.Definition"/>). Gates the unit-wide defensive/morale rules the rulebook
+    /// says apply only if the whole unit has them (Stealth, Regeneration, Fearless): a joined hero that
+    /// doesn't natively carry the rule breaks it for the unit, and a lone hero carrying it doesn't grant it
+    /// to the unit. A model "has" the rule if it's on the model's own <see cref="IModel.RuleDefinitions"/>,
+    /// or — for a native (non-joined) model — on the unit's <see cref="IUnit.RuleDefinitions"/>; a joined
+    /// hero (<see cref="IUnit.JoinedHeroModelId"/>) uses only its own rules, since the merge relocated the
+    /// hero's rules onto the hero model and OPR heroes don't inherit the host unit's rules. Matches by rule
+    /// definition (these rules are argument-less); a future (X) variant needing arg-awareness would extend
+    /// this. Self-referential — reads the firing rule's own identity, so one condition serves every
+    /// all-models rule.
+    /// </summary>
+    public sealed record AllModelsHaveThisRule : Condition
+    {
+        public override bool Evaluate(RuleInvocation invocation)
+        {
+            SpecialRuleDefinition? definition = invocation.Definition;
+            if (definition == null)
+            {
+                return true; // no rule identity to check — not reached on the passive path, which sets it
+            }
+
+            IUnit unit = invocation.Bearer;
+            ModelID? heroModelId = unit.JoinedHeroModelId;
+            // A static unit rule OR an aura / "gains rule X" grant (both project unit-wide, no radius) means
+            // every NATIVE model has the rule; only the joined hero can diverge.
+            bool unitLevel = UnitHasStaticOrGrantedRule(unit, definition);
+
+            foreach (IModel model in unit.Models)
+            {
+                if (!model.GetIsAlive())
+                {
+                    continue;
+                }
+
+                bool isJoinedHero = heroModelId is ModelID hid && model.ID == hid;
+                bool hasRule = model.RuleDefinitions.Any(r => r.Definition == definition)
+                    || (!isJoinedHero && unitLevel);
+
+                if (!hasRule)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // True if the unit carries the rule as a static attachment or holds an aura/"gains rule X" grant for
+        // it. Granted rules are matched by canonical name — the alias-aware resolver the dispatcher uses for
+        // read-back isn't available inside a condition, and core auras grant the canonical name.
+        private static bool UnitHasStaticOrGrantedRule(IUnit unit, SpecialRuleDefinition definition)
+        {
+            if (unit.RuleDefinitions.Any(r => r.Definition == definition))
+            {
+                return true;
+            }
+
+            foreach (Token token in unit.Tokens.GetAllTokens(TokenType.RuleGrant))
+            {
+                if (token.Payload is TokenPayload.RuleGrant grant
+                    && string.Equals(grant.RuleName, definition.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 
     /// <summary>

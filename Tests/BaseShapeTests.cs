@@ -116,6 +116,54 @@ namespace FDG.Tests
             Assert.That(rectFirst, Is.EqualTo(2f).Within(Tol), "gap is symmetric regardless of argument order.");
         }
 
+        // --- Facing-aware gap (#150: the rounded-convex-hull mechanism) ------------------------------
+
+        [Test]
+        public void Gap_Rectangles_FacingChangesTheFootprint()
+        {
+            var tall = new RectangleBase(1f, 6f); // 1" wide × 6" tall
+            Position pa = new Position(0f, 0f), pb = new Position(0f, 7f);
+            Float2 up = new Float2(0f, 1f), side = new Float2(1f, 0f);
+
+            // Both upright: the 6" lengths face each other → gap 7 − 3 − 3 = 1.
+            Assert.That(BaseShapeGeometry.SurfaceGap2D(tall, pa, up, tall, pb, up),
+                Is.EqualTo(1f).Within(Tol));
+
+            // B turned sideways: only its 1" width spans Z → gap 7 − 3 − 0.5 = 3.5.
+            Assert.That(BaseShapeGeometry.SurfaceGap2D(tall, pa, up, tall, pb, side),
+                Is.EqualTo(3.5f).Within(Tol));
+        }
+
+        [Test]
+        public void AreColliding_RotatedRect_FlipsResult()
+        {
+            var tall = new RectangleBase(1f, 6f);
+            Position pa = new Position(0f, 0f), pb = new Position(0f, 5f);
+            Float2 up = new Float2(0f, 1f), side = new Float2(1f, 0f);
+
+            Assert.That(BaseShapeGeometry.AreColliding(tall, pa, up, tall, pb, up), Is.True,
+                "both upright, their 6\" lengths overlap.");
+            Assert.That(BaseShapeGeometry.AreColliding(tall, pa, up, tall, pb, side), Is.False,
+                "turning one sideways pulls its footprint clear.");
+        }
+
+        [Test]
+        public void Gap_CircleCircle_FacingIrrelevantAndByteIdentical()
+        {
+            var ca = new CircleBase(0.6f);
+            var cb = new CircleBase(0.4f);
+            Position a = new Position(1f, 2f), b = new Position(4f, 6f); // centre distance 5
+            const float expected = 5f - 0.6f - 0.4f;
+
+            float facingAware = BaseShapeGeometry.SurfaceGap2D(ca, a, new Float2(1f, 0f), cb, b, new Float2(0f, -1f));
+            float facingLess = BaseShapeGeometry.SurfaceGap2D(ca, a, cb, b);
+            float radiusPath = DistanceUtilities.GetBaseToBaseDistanceInches_2D(a, b, 0.6f, 0.4f);
+
+            Assert.That(facingAware, Is.EqualTo(expected).Within(Tol), "circles ignore facing.");
+            Assert.That(facingLess, Is.EqualTo(expected).Within(Tol));
+            Assert.That(facingAware, Is.EqualTo(radiusPath).Within(Tol), "still byte-identical to the radius path.");
+        }
+
         // --- 3D (vertical) ---------------------------------------------------------------------------
 
         [Test]
@@ -126,6 +174,40 @@ namespace FDG.Tests
                 new Position(0f, 0f, 0f), new Position(3f, 4f, 0f),
                 new CircleBase(1f), new CircleBase(1f));
             Assert.That(gap, Is.EqualTo(4.12310f).Within(Tol));
+        }
+
+        // --- Shape-to-point distance (#150: objective seizure etc.) ----------------------------------
+
+        [Test]
+        public void SurfaceDistanceToPoint2D_Circle_SubtractsRadius()
+        {
+            float d = BaseShapeGeometry.SurfaceDistanceToPoint2D(
+                new CircleBase(1f), new Position(0f, 0f), new Float2(0f, 1f), new Position(4f, 0f));
+            Assert.That(d, Is.EqualTo(3f).Within(Tol)); // 4" centre distance − 1" radius
+        }
+
+        [Test]
+        public void SurfaceDistanceToPoint2D_Rectangle_OrientationChangesDistance()
+        {
+            // 1" wide × 6" tall base at the origin; query point 4" away along +Z.
+            var rect = new RectangleBase(1f, 6f);
+            var point = new Position(0f, 4f);
+
+            // Facing +Z → the 6" (height) axis points at the query: nearest edge 3" out, so a 1" gap.
+            float lengthwise = BaseShapeGeometry.SurfaceDistanceToPoint2D(rect, new Position(0f, 0f), new Float2(0f, 1f), point);
+            Assert.That(lengthwise, Is.EqualTo(1f).Within(Tol));
+
+            // Facing +X → only the 1" (width) axis points at the query: nearest edge 0.5" out, so a 3.5" gap.
+            float crosswise = BaseShapeGeometry.SurfaceDistanceToPoint2D(rect, new Position(0f, 0f), new Float2(1f, 0f), point);
+            Assert.That(crosswise, Is.EqualTo(3.5f).Within(Tol));
+        }
+
+        [Test]
+        public void SurfaceDistanceToPoint2D_PointInsideBase_IsZero()
+        {
+            float d = BaseShapeGeometry.SurfaceDistanceToPoint2D(
+                new RectangleBase(2f, 2f), new Position(0f, 0f), new Float2(0f, 1f), new Position(0.5f, 0.5f));
+            Assert.That(d, Is.EqualTo(0f).Within(Tol));
         }
 
         // --- Defaults --------------------------------------------------------------------------------
@@ -153,11 +235,13 @@ namespace FDG.Tests
 
             string woundsJson   = fromStore.GetValueAsJson<float>(model.RemainingWoundsBinding.Reference);
             string positionJson = fromStore.GetValueAsJson<Position>(model.PositionBinding.Reference);
+            string positionJsonFacing = fromStore.GetValueAsJson<Float2>(model.FacingBinding.Reference);
             string modelJson    = fromStore.GetValueAsJson<ModelData>(modelRef);
 
             GameDataStore toStore = NewStore();
             toStore.CreateFromReferenceAndJson(model.RemainingWoundsBinding.Reference, woundsJson);
             toStore.CreateFromReferenceAndJson(model.PositionBinding.Reference, positionJson);
+            toStore.CreateFromReferenceAndJson(model.FacingBinding.Reference, positionJsonFacing);
             toStore.CreateFromReferenceAndJson(modelRef, modelJson);
 
             ModelData restored = toStore.GetValue<ModelData>(modelRef);
@@ -168,11 +252,51 @@ namespace FDG.Tests
             Assert.That(rect.HeightInches, Is.EqualTo(1.9685040f).Within(Tol));
         }
 
+        [Test]
+        public void Facing_DefaultsToForward_UpdatesAndSurvivesRoundTrip()
+        {
+            // #150: every model carries a yaw facing (a unit normal). Default is +Z (0,1) — the pre-facing
+            // axis-aligned convention — and like Position it is store-backed, so it must round-trip.
+            GameDataStore fromStore = NewStore();
+            ModelData model = new ModelData(new CircleBase(0.5f), new List<Weapon>(), new Position(), fromStore);
+
+            Assert.That(model.Facing.X, Is.EqualTo(0f).Within(Tol), "default facing is +Z.");
+            Assert.That(model.Facing.Y, Is.EqualTo(1f).Within(Tol), "default facing is +Z.");
+
+            // SetFacing updates the value and raises the change event.
+            bool fired = false;
+            Float2 observed = default;
+            ((IModel)model).OnFacingChanged += (oldValue, newValue) => { fired = true; observed = newValue; };
+            model.SetFacing(new Float2(1f, 0f));
+            Assert.That(fired, Is.True, "SetFacing raises OnFacingChanged.");
+            Assert.That(observed.X, Is.EqualTo(1f).Within(Tol));
+            Assert.That(model.Facing.X, Is.EqualTo(1f).Within(Tol));
+            Assert.That(model.Facing.Y, Is.EqualTo(0f).Within(Tol));
+
+            // The (non-default) facing must survive a serialization round-trip.
+            DataReference modelRef = fromStore.Create(model);
+            string woundsJson   = fromStore.GetValueAsJson<float>(model.RemainingWoundsBinding.Reference);
+            string positionJson = fromStore.GetValueAsJson<Position>(model.PositionBinding.Reference);
+            string facingJson   = fromStore.GetValueAsJson<Float2>(model.FacingBinding.Reference);
+            string modelJson    = fromStore.GetValueAsJson<ModelData>(modelRef);
+
+            GameDataStore toStore = NewStore();
+            toStore.CreateFromReferenceAndJson(model.RemainingWoundsBinding.Reference, woundsJson);
+            toStore.CreateFromReferenceAndJson(model.PositionBinding.Reference, positionJson);
+            toStore.CreateFromReferenceAndJson(model.FacingBinding.Reference, facingJson);
+            toStore.CreateFromReferenceAndJson(modelRef, modelJson);
+
+            ModelData restored = toStore.GetValue<ModelData>(modelRef);
+            Assert.That(restored.Facing.X, Is.EqualTo(1f).Within(Tol), "facing X must survive round-trip.");
+            Assert.That(restored.Facing.Y, Is.EqualTo(0f).Within(Tol), "facing Y must survive round-trip.");
+        }
+
         private static GameDataStore NewStore() =>
             new GameDataStore.GameDataStoreBuilder()
                 .RegisterType<float>(8)
                 .RegisterType<Position>(8)
                 .RegisterType<ModelData>(8)
+                .RegisterType<Float2>(8)
                 .Build();
     }
 }

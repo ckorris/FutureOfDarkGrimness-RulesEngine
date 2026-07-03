@@ -21,7 +21,7 @@ namespace FDG.Stages
             if (!model.GetIsAlive() || !enemy.GetIsAlive()) return false;
 
             float horizontal = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
-                model.Position, enemy.Position, model.BaseShape, enemy.BaseShape);
+                model.Position, enemy.Position, model.BaseShape, model.Facing, enemy.BaseShape, enemy.Facing);
             if (horizontal > GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL) return false;
 
             float vertical = Position.GetVerticalDistance(model.Position, enemy.Position);

@@ -32,6 +32,16 @@ namespace FDG.Ai.Resolvers
                 ? request.MaxAdvanceDistance - 0.001f
                 : request.MaxDistanceInches - 0.001f;
 
+            // #093: validate each model against its OWN budget (a joined hero's Fast/Slow), matching the
+            // authoritative stage check. The AI moves the whole unit as a grid, so this mainly backs the step
+            // off when a tighter (Slow) model would exceed its budget; a unit with no per-model rules gets the
+            // unit scalars for every model.
+            Func<ModelMoveEntry, ModelMoveBudget> budgetFor = entry =>
+            {
+                var (_, rush, maxDist) = request.BudgetFor(entry.Model.GetValue().ID);
+                return new ModelMoveBudget(rush, maxDist);
+            };
+
             var enemyFootprints = GetLiveEnemyFootprints();
             if (enemyFootprints.Count == 0)
                 return Task.FromResult(StayInPlace(request));
@@ -114,8 +124,8 @@ namespace FDG.Ai.Resolvers
             // step off until it passes (and standing still as a last resort). The AI never submits a move
             // the engine will reject.
             List<ModelMoveEntry> candidate = BuildCandidate(living, cx, cz, ndx, ndz, step, request);
-            bool valid = MovementUtilities.ValidatePaths(candidate, request.MaxRushDistance,
-                request.MaxDistanceInches, enemyFootprints, request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, request.IgnoresImpassibleTerrain, allTerrain, out _);
+            bool valid = MovementUtilities.ValidatePaths(candidate, budgetFor,
+                enemyFootprints, request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, request.IgnoresImpassibleTerrain, allTerrain, out _);
 
             int attempts = 0;
             while (!valid && attempts < MaxBackoffAttempts)
@@ -124,8 +134,8 @@ namespace FDG.Ai.Resolvers
                 candidate = step < MinBackoffStepInches
                     ? StayInPlace(request)
                     : BuildCandidate(living, cx, cz, ndx, ndz, step, request);
-                valid = MovementUtilities.ValidatePaths(candidate, request.MaxRushDistance,
-                    request.MaxDistanceInches, enemyFootprints, request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, request.IgnoresImpassibleTerrain, allTerrain, out _);
+                valid = MovementUtilities.ValidatePaths(candidate, budgetFor,
+                enemyFootprints, request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, request.IgnoresImpassibleTerrain, allTerrain, out _);
                 attempts++;
             }
 
@@ -133,8 +143,8 @@ namespace FDG.Ai.Resolvers
             {
                 // Reform in place to close any casualty gaps...
                 candidate = StayInPlace(request);
-                valid = MovementUtilities.ValidatePaths(candidate, request.MaxRushDistance,
-                    request.MaxDistanceInches, enemyFootprints, request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, request.IgnoresImpassibleTerrain, allTerrain, out _);
+                valid = MovementUtilities.ValidatePaths(candidate, budgetFor,
+                enemyFootprints, request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, request.IgnoresImpassibleTerrain, allTerrain, out _);
 
                 // ...but if even that is rejected (a unit intermingled with enemies can't re-pack without
                 // a model crossing an enemy base), hold exact positions — zero-length paths can't move
@@ -170,10 +180,12 @@ namespace FDG.Ai.Resolvers
             {
                 if (move.Positions.Count == 0) continue;
                 Position end = move.Positions[move.Positions.Count - 1];
-                float r = move.Model.GetValue().BaseRadiusInches;
+                ModelData m = move.Model.GetValue();
                 foreach (var enemy in enemies)
                 {
-                    float gap = Position.GetDistance2D(end, enemy.Center) - r - enemy.BaseRadiusInches;
+                    // Shape- and facing-aware, so the AI aims for the same gap the (shape-aware) move
+                    // validator measures (#150). Circles reduce to the old distance − rMoving − rEnemy.
+                    float gap = BaseShapeGeometry.SurfaceGap2D(m.BaseShape, end, m.Facing, enemy.BaseShape, enemy.Center, enemy.Facing);
                     if (gap < min) min = gap;
                 }
             }
@@ -215,7 +227,7 @@ namespace FDG.Ai.Resolvers
                 {
                     if (model is ModelData md && md.GetIsAlive() && (md.Position.x != 0f || md.Position.z != 0f))
                     {
-                        footprints.Add(new EnemyModelFootprint(md.Position, md.BaseRadiusInches, unitKey, uncontactable));
+                        footprints.Add(new EnemyModelFootprint(md.Position, md.BaseRadiusInches, unitKey, uncontactable, md.BaseShape, md.Facing));
                         anyLiving = true;
                     }
                 }

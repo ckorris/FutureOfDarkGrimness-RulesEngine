@@ -53,6 +53,15 @@ namespace FDG
         /// </summary>
         public float BaseRadiusInches => BaseShape.BoundingRadiusInches;
 
+        /// <summary>
+        /// This model's facing on the table: a yaw-only orientation as a unit normal in the X/Z plane,
+        /// pointing along the base's local +Z ("forward" / height) axis. Default (0,1) reproduces the
+        /// pre-facing axis-aligned layout (a <see cref="RectangleBase"/>'s width→X, height→Z), so existing
+        /// armies are geometrically and visually unchanged. Drives oriented base geometry (#150) and
+        /// rendering; an Aircraft derives its flight heading from it (asserting all its models share one).
+        /// </summary>
+        public Float2 Facing { get; }
+
         public IReadOnlyList<Weapon> Weapons { get; }
 
         public IMeshProvider MeshProvider { get; }
@@ -60,6 +69,11 @@ namespace FDG
         public IMaterialProvider MaterialProvider { get; }
 
         public void SetPosition(Position newPosition);
+
+        /// <summary>
+        /// Sets this model's yaw facing — a unit normal in the table's X/Z plane (see <see cref="Facing"/>).
+        /// </summary>
+        public void SetFacing(Float2 facingNormal);
 
         /// <summary>
         /// Sets this model's maximum wounds (Tough) and fills it to that maximum. A creation-time
@@ -70,6 +84,8 @@ namespace FDG
         public void DealWounds(float wounds);
 
         public event DataValueChangedHandler<Position> OnPositionChanged;
+
+        public event DataValueChangedHandler<Float2> OnFacingChanged;
 
         public event DataValueChangedHandler<float> OnWoundsDealt;
     }
@@ -136,14 +152,16 @@ namespace FDG
 
         public static float BaseDistanceToOtherModel_2D(this IModel thisModel, IModel otherModel)
         {
+            // Facing-aware: an oriented rectangular base measures by its true footprint, not an axis-aligned
+            // or circular approximation (#150).
             return DistanceUtilities.GetBaseToBaseDistanceInches_2D(thisModel.Position, otherModel.Position,
-                thisModel.BaseShape, otherModel.BaseShape);
+                thisModel.BaseShape, thisModel.Facing, otherModel.BaseShape, otherModel.Facing);
         }
 
         public static float BaseDistanceToOtherModel_3D(this IModel thisModel, IModel otherModel)
         {
             return DistanceUtilities.GetBaseToBaseDistanceInches_3D(thisModel.Position, otherModel.Position,
-                thisModel.BaseShape, otherModel.BaseShape);
+                thisModel.BaseShape, thisModel.Facing, otherModel.BaseShape, otherModel.Facing);
         }
     }
 

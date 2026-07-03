@@ -18,6 +18,15 @@ namespace FDG.StageResolution.Requests
         public float MaxDistanceInches { get; }
 
         /// <summary>
+        /// Per-model move budgets (#093), one entry per living model whose budget the resolvers should honour
+        /// — a joined hero's Fast/Slow gives it a different Advance/Rush/hard-cap than the rest of the unit.
+        /// The scalars above are the unit-wide default; a resolver looks a model up here and falls back to
+        /// them when it's absent (see <see cref="BudgetFor"/>). Empty when the unit has no per-model movement
+        /// rules, so every model uses the unit scalars — identical to the pre-#093 request.
+        /// </summary>
+        public IReadOnlyList<ModelMoveBudgetInfo> ModelMoveBudgets { get; }
+
+        /// <summary>
         /// Per-weapon sighting rules for the moving unit's ranged weapons — whether each ignores cover
         /// (Blast) or intervening terrain (Indirect). The movement resolver doesn't consume this yet, but
         /// it's the info needed to represent "after I move here, can I shoot that" (a cover-/terrain-blocked
@@ -64,7 +73,8 @@ namespace FDG.StageResolution.Requests
             DataBinding<UnitData> unitDataBinding, float maxAdvanceDistance, float maxRushDistance, float maxDistanceInches,
             IReadOnlyList<WeaponSightProfile>? weaponSightProfiles = null, bool canMoveThroughEnemies = false,
             bool ignoresDifficultTerrain = false, bool ignoresImpassibleTerrain = false,
-            IReadOnlyList<WeaponRangeOverride>? weaponRangeOverrides = null)
+            IReadOnlyList<WeaponRangeOverride>? weaponRangeOverrides = null,
+            IReadOnlyList<ModelMoveBudgetInfo>? modelMoveBudgets = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -78,13 +88,15 @@ namespace FDG.StageResolution.Requests
             IgnoresDifficultTerrain = ignoresDifficultTerrain;
             IgnoresImpassibleTerrain = ignoresImpassibleTerrain;
             WeaponRangeOverrides = weaponRangeOverrides ?? new List<WeaponRangeOverride>();
+            ModelMoveBudgets = modelMoveBudgets ?? new List<ModelMoveBudgetInfo>();
         }
 
         public DefineMovementPathRequest(PlayerID targetPlayerID,  string taskName,
             DataBinding<UnitData> unitDataBinding, float maxAdvanceDistance, float maxRushDistance, float maxDistanceInches,
             IReadOnlyList<WeaponSightProfile>? weaponSightProfiles = null, bool canMoveThroughEnemies = false,
             bool ignoresDifficultTerrain = false, bool ignoresImpassibleTerrain = false,
-            IReadOnlyList<WeaponRangeOverride>? weaponRangeOverrides = null)
+            IReadOnlyList<WeaponRangeOverride>? weaponRangeOverrides = null,
+            IReadOnlyList<ModelMoveBudgetInfo>? modelMoveBudgets = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = new TaskID(Guid.NewGuid());
@@ -98,6 +110,24 @@ namespace FDG.StageResolution.Requests
             IgnoresDifficultTerrain = ignoresDifficultTerrain;
             IgnoresImpassibleTerrain = ignoresImpassibleTerrain;
             WeaponRangeOverrides = weaponRangeOverrides ?? new List<WeaponRangeOverride>();
+            ModelMoveBudgets = modelMoveBudgets ?? new List<ModelMoveBudgetInfo>();
+        }
+
+        /// <summary>
+        /// This model's (Advance, Rush, hard-cap) budget: its <see cref="ModelMoveBudgets"/> entry, or the
+        /// unit-wide scalars when it has none. The single lookup every resolver uses so their move-preview
+        /// caps agree with the authoritative per-model stage check.
+        /// </summary>
+        public (float advance, float rush, float maxDistance) BudgetFor(ModelID modelId)
+        {
+            foreach (ModelMoveBudgetInfo budget in ModelMoveBudgets)
+            {
+                if (budget.ModelId == modelId)
+                {
+                    return (budget.MaxAdvanceDistance, budget.MaxRushDistance, budget.MaxDistanceInches);
+                }
+            }
+            return (MaxAdvanceDistance, MaxRushDistance, MaxDistanceInches);
         }
 
         public Task<List<ModelMoveEntry>> Resolve(List<ModelMoveEntry> resolution)
@@ -106,7 +136,28 @@ namespace FDG.StageResolution.Requests
         }
     }
 
-    public record ModelMoveEntry(DataBinding<ModelData> Model, List<Position> Positions);
+    // Facings (#150), when present, is parallel to Positions: Facings[i] is the model's yaw facing (a unit
+    // normal) at Positions[i]. The GUI movement resolver fills it — by default the direction of travel into
+    // each waypoint, so a model turns through corners — so the executor can set facing per step (and future
+    // presentation beats can lerp rotation along the path). Null → facing is left unchanged (AI moves, aircraft).
+    public record ModelMoveEntry(DataBinding<ModelData> Model, List<Position> Positions, List<Float2>? Facings = null);
+
+    /// <summary>
+    /// One living model's per-model move budget (#093), carried on <see cref="DefineMovementPathRequest"/> so
+    /// resolvers can preview/clamp each model against its own Advance/Rush/hard-cap. <see cref="MaxDistanceInches"/>
+    /// is the collapsed hard cap (max of the model's Rush and its Melee-Shrouding-shrunk Charge), matching what
+    /// the authoritative <c>DefinePathStage</c> re-validation enforces.
+    /// </summary>
+    public record ModelMoveBudgetInfo(ModelID ModelId, float MaxAdvanceDistance, float MaxRushDistance,
+        float MaxDistanceInches);
+
+    /// <summary>
+    /// The per-model move caps a validator enforces: the Rush distance (the charge-reach gate) and the hard
+    /// distance cap (Rush vs effective Charge, collapsed). Per-model so a joined hero's Fast/Slow gives that
+    /// model its own budget while the rest of the unit keeps theirs (#093); a unit with no per-model movement
+    /// rules has the same budget for every model — identical to the pre-#093 unit-wide scalars.
+    /// </summary>
+    public readonly record struct ModelMoveBudget(float MaxRushDistance, float MaxDistanceInches);
 
     /// <summary>
     /// One of the moving unit's ranged weapons and whether it ignores cover (Blast) / line of sight

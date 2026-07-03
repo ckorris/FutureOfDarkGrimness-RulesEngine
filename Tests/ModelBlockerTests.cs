@@ -140,6 +140,35 @@ namespace FDG.Tests
                 "Models in enemy units that are neither attacker nor defender must still block LoS.");
         }
 
+        [Test]
+        public void RectangularBlocker_LongAxisAcrossSightLine_Blocks()
+        {
+            // Sight line runs along z=5. A 0.5"×6" base centred at (10, 7.5) — 2.5" off the line, far outside its
+            // inscribed bounding circle (r=0.25). Facing +Z, its 6" length reaches down across the line (to z=4.5),
+            // so its true footprint blocks where the bounding circle never would (#150).
+            DataBinding<UnitData> attackerUnit = MakeUnit(new[] { AttackerPos });
+            DataBinding<UnitData> defenderUnit = MakeUnit(new[] { TargetPos });
+            MakeOrphanModel(new Position(10, 7.5f), new RectangleBase(0.5f, 6f), new Float2(0f, 1f));
+
+            var blockers = LineOfSightUtilities.BuildModelBlockers(_ctx.TableState, attackerUnit, defenderUnit).ToList();
+            Assert.That(LineOfSightUtilities.HasLineOfSight(AttackerPos, TargetPos, blockers), Is.False,
+                "a long base reaching across the sight line blocks, though its bounding circle wouldn't.");
+        }
+
+        [Test]
+        public void RectangularBlocker_ShortAxisAcrossSightLine_DoesNotBlock()
+        {
+            // Same base and centre, rotated to face +X: only its 0.5" width points at the sight line (reaching
+            // z=7.25, short of z=5), so it no longer blocks. Orientation alone flips the outcome (#150).
+            DataBinding<UnitData> attackerUnit = MakeUnit(new[] { AttackerPos });
+            DataBinding<UnitData> defenderUnit = MakeUnit(new[] { TargetPos });
+            MakeOrphanModel(new Position(10, 7.5f), new RectangleBase(0.5f, 6f), new Float2(1f, 0f));
+
+            var blockers = LineOfSightUtilities.BuildModelBlockers(_ctx.TableState, attackerUnit, defenderUnit).ToList();
+            Assert.That(LineOfSightUtilities.HasLineOfSight(AttackerPos, TargetPos, blockers), Is.True,
+                "rotated so only its narrow width faces the line, the base no longer blocks.");
+        }
+
         // Helpers
 
         private DataBinding<UnitData> MakeUnit(IEnumerable<Position> positions, PlayerID? playerID = null)
@@ -169,6 +198,14 @@ namespace FDG.Tests
                 weapons: new List<Weapon>(),
                 initialPosition: pos,
                 gameDataStore: _store);
+            _store.Create(md);
+        }
+
+        // Orphan blocker with an explicit base shape + facing (#150 orientation-aware LoS).
+        private void MakeOrphanModel(Position pos, IBaseShape shape, Float2 facing)
+        {
+            var md = new ModelData(shape, new List<Weapon>(), pos, _store);
+            md.SetFacing(facing);
             _store.Create(md);
         }
     }

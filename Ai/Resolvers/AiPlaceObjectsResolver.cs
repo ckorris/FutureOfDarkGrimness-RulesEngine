@@ -56,22 +56,35 @@ namespace FDG.Ai.Resolvers
             if (models.Count == 0)
                 return Task.FromResult(new List<PlacedObjectEntry<T>>());
 
+            // maxRadius (circumscribing) is the rotation-safe bound for the zone margins / on-table containment.
             float maxRadius = models.Select(b => GetBaseRadius(b.GetValue())).DefaultIfEmpty(0.75f).Max();
-            float spacing = maxRadius * 2 + 0.1f; // 0.1" base-to-base, so adjacent models satisfy the 1" rule
 
-            // Square-ish grid: minimises the block's diagonal, keeping it inside the 9" all-pairs rule for any
-            // realistic unit size. Matches CohesiveFormation.PackGrid so deploy and movement form the same shape.
+            // Per-axis cell spacing (#150): a single radius over-spaces the short axis of an elongated rectangle
+            // (breaking the 1" cohesion rule) or under-spaces the long axis (overlapping). Extents are measured at
+            // the deploy facing (axis-aligned toward the table centre), matching CohesiveFormation.PackGrid so
+            // deploy and movement form the same cohesive shape. A circle gives (r, r) — the old square grid.
+            Float2 deployFacing = PlacementUtilities.DefaultDeployFacing(bounds, GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES);
+            float maxHalfX = 0.1f, maxHalfZ = 0.1f;
+            foreach (var b in models)
+            {
+                var (hx, hz) = GetHalfExtents(b.GetValue(), deployFacing);
+                if (hx > maxHalfX) maxHalfX = hx;
+                if (hz > maxHalfZ) maxHalfZ = hz;
+            }
+            float spacingX = 2f * maxHalfX + 0.1f; // 0.1" base-to-base per axis, so adjacent models satisfy the 1" rule
+            float spacingZ = 2f * maxHalfZ + 0.1f;
+
             int cols = Math.Max(1, (int)MathF.Ceiling(MathF.Sqrt(models.Count)));
             int rows = (int)MathF.Ceiling(models.Count / (float)cols);
-            float gridWidth = (cols - 1) * spacing;
-            float gridHeight = (rows - 1) * spacing;
+            float gridWidth = (cols - 1) * spacingX;
+            float gridHeight = (rows - 1) * spacingZ;
 
             var existing = GetTableOccupants().ToList();
 
             // Preferred block centre: this unit's fan-out lane (across the zone width) + alternating Z band.
             float usableLeft = bounds.Left + maxRadius;
             float usableWidth = MathF.Max(0f, (bounds.Right - maxRadius) - usableLeft);
-            float laneStep = MathF.Max(spacing, FanOutLaneSpacingInches);
+            float laneStep = MathF.Max(spacingX, FanOutLaneSpacingInches);
             int lanes = Math.Max(1, (int)(usableWidth / laneStep));
             int lane = deployIndex % lanes;
             int band = deployIndex / lanes;
@@ -87,20 +100,43 @@ namespace FDG.Ai.Resolvers
             float czMin = (bounds.Bottom + maxRadius) + gridHeight / 2f;
             float czMax = (bounds.Top - maxRadius) - gridHeight / 2f;
 
-            Position center = FindBlockCenter(zone, maxRadius, cols, spacing, gridWidth, gridHeight,
-                models.Count, preferredCx, preferredCz, cxMin, cxMax, czMin, czMax, existing, enemies, minEnemyDist);
+            Position center;
+            Float2? facing = null;
+            if (request.MustTouchTableEdge)
+            {
+                // #029 edge redeploy: the block must come back on touching a table edge.
+                center = FindEdgeBlockCenter(zone, maxRadius, cols, spacingX, spacingZ, gridWidth, gridHeight,
+                    models.Count, preferredCx, preferredCz, cxMin, cxMax, czMin, czMax, existing, enemies,
+                    minEnemyDist, out facing);
+            }
+            else
+            {
+                center = FindBlockCenter(zone, maxRadius, cols, spacingX, spacingZ, gridWidth, gridHeight,
+                    models.Count, preferredCx, preferredCz, cxMin, cxMax, czMin, czMax, existing, enemies, minEnemyDist);
+                // Face toward the table centre (a top-zone unit faces down) — matters for Aircraft, whose
+                // heading IS this facing (#150); a whole-table zone (Ambush) lands on the neutral +Z default.
+                facing = PlacementUtilities.DefaultDeployFacing(bounds, GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES);
+            }
 
-            var positions = BuildGrid(center, cols, spacing, gridWidth, gridHeight, models.Count);
+            var positions = BuildGrid(center, cols, spacingX, spacingZ, gridWidth, gridHeight, models.Count);
             var placed = new List<PlacedObjectEntry<T>>(models.Count);
             for (int i = 0; i < models.Count; i++)
-                placed.Add(new PlacedObjectEntry<T>(models[i], positions[i]));
+            {
+                // Last-resort net: if a clear block never fit (crowded zone, or a unit bigger than its zone) the
+                // fallback centre can push edge models past the bounds — clamp each base so it never lands off the
+                // table. Normal placements already sit inside the zone, so this is a no-op for them.
+                Position safe = PlacementUtilities.ClampBaseWithinTable(positions[i], GetBaseRadius(models[i].GetValue()),
+                    GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES, GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES);
+                placed.Add(new PlacedObjectEntry<T>(models[i], safe, facing));
+            }
 
             return Task.FromResult(placed);
         }
 
-        // The model positions of a square-ish block centred at (center): cols per row, filling left→right,
-        // top→bottom, for exactly `count` models (the last row may be partial).
-        private static List<Position> BuildGrid(Position center, int cols, float spacing,
+        // The model positions of a block centred at (center): cols per row, filling left→right, top→bottom,
+        // for exactly `count` models (the last row may be partial). Per-axis spacing so an elongated rectangle
+        // packs tight on its short axis and clear on its long axis (#150).
+        private static List<Position> BuildGrid(Position center, int cols, float spacingX, float spacingZ,
             float gridWidth, float gridHeight, int count)
         {
             var positions = new List<Position>(count);
@@ -108,8 +144,8 @@ namespace FDG.Ai.Resolvers
             {
                 int col = k % cols, row = k / cols;
                 positions.Add(new Position(
-                    center.x - gridWidth / 2f + col * spacing,
-                    center.z - gridHeight / 2f + row * spacing));
+                    center.x - gridWidth / 2f + col * spacingX,
+                    center.z - gridHeight / 2f + row * spacingZ));
             }
             return positions;
         }
@@ -117,7 +153,7 @@ namespace FDG.Ai.Resolvers
         // Searches block centres (preferred lane/band first, then spiralling outward in `spacing` steps within
         // the in-bounds range) for one where the whole block is legal. Falls back to the clamped preferred
         // centre — block intact, so the unit is cohesion-valid even when the zone is too cramped to be clear.
-        private Position FindBlockCenter(IBoundedZone zone, float radius, int cols, float spacing,
+        private Position FindBlockCenter(IBoundedZone zone, float radius, int cols, float spacingX, float spacingZ,
             float gridWidth, float gridHeight, int count, float preferredCx, float preferredCz,
             float cxMin, float cxMax, float czMin, float czMax,
             List<(Position pos, float radius)> existing, List<Position> enemies, float minEnemyDist)
@@ -125,11 +161,11 @@ namespace FDG.Ai.Resolvers
             float startCx = Math.Clamp(preferredCx, MathF.Min(cxMin, cxMax), MathF.Max(cxMin, cxMax));
             float startCz = Math.Clamp(preferredCz, MathF.Min(czMin, czMax), MathF.Max(czMin, czMax));
 
-            foreach (float cz in CandidateAxis(startCz, czMin, czMax, spacing))
-                foreach (float cx in CandidateAxis(startCx, cxMin, cxMax, spacing))
+            foreach (float cz in CandidateAxis(startCz, czMin, czMax, spacingZ))
+                foreach (float cx in CandidateAxis(startCx, cxMin, cxMax, spacingX))
                 {
                     var center = new Position(cx, cz);
-                    if (BlockIsValid(center, zone, radius, cols, spacing, gridWidth, gridHeight, count, existing, enemies, minEnemyDist))
+                    if (BlockIsValid(center, zone, radius, cols, spacingX, spacingZ, gridWidth, gridHeight, count, existing, enemies, minEnemyDist))
                         return center;
                 }
 
@@ -154,13 +190,57 @@ namespace FDG.Ai.Resolvers
             }
         }
 
-        private bool BlockIsValid(Position center, IBoundedZone zone, float radius, int cols, float spacing,
+        // #029 edge mode: one axis is pinned to its in-bounds extreme, so the block's outermost bases sit
+        // exactly `radius` from that zone edge — touching it. The other axis sweeps for a clear spot. Edges
+        // are tried nearest-to-preferred first; models face inward from the chosen edge, so a redeployed
+        // Aircraft's new heading (facing = heading, #150) doesn't immediately carry it back off the table.
+        private Position FindEdgeBlockCenter(IBoundedZone zone, float radius, int cols, float spacingX, float spacingZ,
+            float gridWidth, float gridHeight, int count, float preferredCx, float preferredCz,
+            float cxMin, float cxMax, float czMin, float czMax,
+            List<(Position pos, float radius)> existing, List<Position> enemies, float minEnemyDist,
+            out Float2? inwardFacing)
+        {
+            var edges = new (float dist, float exMin, float exMax, float ezMin, float ezMax, Float2 facing)[]
+            {
+                (MathF.Abs(preferredCz - czMin), cxMin, cxMax, czMin, czMin, new Float2(0f, 1f)),   // bottom → face +Z
+                (MathF.Abs(preferredCz - czMax), cxMin, cxMax, czMax, czMax, new Float2(0f, -1f)),  // top → face −Z
+                (MathF.Abs(preferredCx - cxMin), cxMin, cxMin, czMin, czMax, new Float2(1f, 0f)),   // left → face +X
+                (MathF.Abs(preferredCx - cxMax), cxMax, cxMax, czMin, czMax, new Float2(-1f, 0f)),  // right → face −X
+            };
+
+            foreach (var edge in edges.OrderBy(e => e.dist))
+            {
+                float startCx = Math.Clamp(preferredCx, MathF.Min(edge.exMin, edge.exMax), MathF.Max(edge.exMin, edge.exMax));
+                float startCz = Math.Clamp(preferredCz, MathF.Min(edge.ezMin, edge.ezMax), MathF.Max(edge.ezMin, edge.ezMax));
+                foreach (float cz in CandidateAxis(startCz, edge.ezMin, edge.ezMax, spacingZ))
+                    foreach (float cx in CandidateAxis(startCx, edge.exMin, edge.exMax, spacingX))
+                    {
+                        var centre = new Position(cx, cz);
+                        if (BlockIsValid(centre, zone, radius, cols, spacingX, spacingZ, gridWidth, gridHeight, count, existing, enemies, minEnemyDist))
+                        {
+                            inwardFacing = edge.facing;
+                            return centre;
+                        }
+                    }
+            }
+
+            // No clear spot on any edge — intact block on the bottom edge at the clamped preferred lane
+            // (cramped but touching and never scattered, matching the non-edge fallback's philosophy).
+            inwardFacing = new Float2(0f, 1f);
+            return new Position(
+                Math.Clamp(preferredCx, MathF.Min(cxMin, cxMax), MathF.Max(cxMin, cxMax)),
+                czMin);
+        }
+
+        private bool BlockIsValid(Position center, IBoundedZone zone, float radius, int cols, float spacingX, float spacingZ,
             float gridWidth, float gridHeight, int count, List<(Position pos, float radius)> existing,
             List<Position> enemies, float minEnemyDist)
         {
-            foreach (Position p in BuildGrid(center, cols, spacing, gridWidth, gridHeight, count))
+            foreach (Position p in BuildGrid(center, cols, spacingX, spacingZ, gridWidth, gridHeight, count))
             {
-                if (!zone.IsPointWithinZone(p)) return false; // outside the true shape (e.g. a circle's corner)
+                // The whole base must fit in the zone (footprint, not just the centre) — so no base pokes past a
+                // zone edge, and since deployment zones are flush with the table edge, none goes off the table.
+                if (!PlacementUtilities.IsBaseWithinZone(p, radius, zone)) return false;
                 if (OverlapsExisting(p, radius, existing)) return false;
                 if (PlacementUtilities.OverlapsImpassibleTerrain(p, radius, _impassibleTerrain)) return false;
                 if (TooCloseToEnemy(p, enemies, minEnemyDist)) return false;
@@ -196,7 +276,11 @@ namespace FDG.Ai.Resolvers
             {
                 var pos = model.Position;
                 if (pos.x == 0f && pos.z == 0f) continue;
-                yield return (pos, model.BaseRadiusInches);
+                // Circumscribing radius so the placing block keeps clear of an existing rectangular base at any
+                // facing (consistent with the placing model's radius). A conservative cross-unit LAYOUT bound —
+                // the block's own cohesion is guaranteed by its per-axis grid, and exact shape-vs-shape collision
+                // is enforced by the movement validators (#150).
+                yield return (pos, model.BaseShape.CircumscribedRadiusInches);
             }
         }
 
@@ -213,7 +297,18 @@ namespace FDG.Ai.Resolvers
             return MathF.Sqrt(dx * dx + dz * dz);
         }
 
+        // The AI auto-placer lays out an axis-aligned grid using each model's CIRCUMSCRIBING circle — a
+        // conservative bound that never overlaps or leaves the zone for any base shape or facing, and matches
+        // the GUI deploy resolver's convention (#150). The inscribed BaseRadiusInches under-bounds a
+        // rectangular base and let adjacent bases overlap. This is a layout bound only; exact shape-vs-shape
+        // collision (BaseShapeGeometry) is what the movement validators and manual deploy enforce.
         private static float GetBaseRadius(T value) =>
-            value is ModelData m ? m.BaseRadiusInches : 0.75f;
+            value is ModelData m ? m.BaseShape.CircumscribedRadiusInches : 0.75f;
+
+        // Per-axis footprint half-extents at the deploy facing, for the grid's column/row spacing (#150).
+        // A rectangle packs tight on its short axis and clear on its long axis, so the block satisfies both
+        // cohesion (1" nearest-neighbour) and overlap-free — a single radius can't do both for a non-square base.
+        private static (float hx, float hz) GetHalfExtents(T value, Float2 facing) =>
+            value is ModelData m ? BaseShapeGeometry.FootprintHalfExtents(m.BaseShape, facing) : (0.75f, 0.75f);
     }
 }

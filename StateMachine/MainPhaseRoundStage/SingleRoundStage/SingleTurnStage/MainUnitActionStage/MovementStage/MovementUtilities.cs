@@ -21,7 +21,7 @@ namespace FDG.Stages
         {
             errors = new List<ReasonForInvalidMove>();
 
-            ValidateOutOfMoveRange(moves, maxDistanceInches, ref errors);
+            ValidateOutOfMoveRange(moves, _ => maxDistanceInches, ref errors);
             //This overload is only reached with terrain: null (the no-terrain convenience form), so the terrain
             //checks are no-ops regardless — no Strider/Flying flags to thread here.
             ValidateMovingThroughImpassibleTerrain(moves, terrain, ignoresImpassibleTerrain: false, ref errors);
@@ -52,7 +52,7 @@ namespace FDG.Stages
                 enemyFootprints as IReadOnlyList<EnemyModelFootprint> ?? enemyFootprints?.ToList()
                 ?? (IReadOnlyList<EnemyModelFootprint>)Array.Empty<EnemyModelFootprint>();
 
-            ValidateOutOfMoveRange(moves, maxDistanceInches, ref errors);
+            ValidateOutOfMoveRange(moves, _ => maxDistanceInches, ref errors);
             ValidateMovingThroughImpassibleTerrain(moves, terrain, ignoresImpassibleTerrain, ref errors);
             ValidateMovingThroughDifficultTerrain(moves, terrain, ignoresDifficultTerrain, ref errors);
             ValidateMovingThroughEnemyUnits(moves, enemies, canMoveThroughEnemies, ref errors);
@@ -88,6 +88,22 @@ namespace FDG.Stages
             IEnumerable<EnemyModelFootprint> enemyFootprints, bool canMoveThroughEnemies,
             bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
             IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors)
+            => ValidatePaths(moves, _ => new ModelMoveBudget(maxRushDistance, maxDistanceInches),
+                enemyFootprints, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain,
+                terrain, out errors);
+
+        /// <summary>
+        /// Per-model form of the full Move-action validation (#093): each model is capped by its OWN
+        /// <see cref="ModelMoveBudget"/> (a joined hero's Fast/Slow gives it a different budget than the rest
+        /// of the unit) instead of one unit-wide pair of scalars. Coherency still reins a fast model in.
+        /// The scalar overload above delegates here with the same budget for every model, so unit-wide
+        /// callers are unchanged.
+        /// </summary>
+        public static bool ValidatePaths(List<ModelMoveEntry> moves,
+            Func<ModelMoveEntry, ModelMoveBudget> budgetFor,
+            IEnumerable<EnemyModelFootprint> enemyFootprints, bool canMoveThroughEnemies,
+            bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
+            IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors)
         {
             errors = new List<ReasonForInvalidMove>();
 
@@ -95,12 +111,12 @@ namespace FDG.Stages
                 enemyFootprints as IReadOnlyList<EnemyModelFootprint> ?? enemyFootprints?.ToList()
                 ?? (IReadOnlyList<EnemyModelFootprint>)Array.Empty<EnemyModelFootprint>();
 
-            ValidateOutOfMoveRange(moves, maxDistanceInches, ref errors);
+            ValidateOutOfMoveRange(moves, move => budgetFor(move).MaxDistanceInches, ref errors);
             ValidateMovingThroughImpassibleTerrain(moves, terrain, ignoresImpassibleTerrain, ref errors);
             ValidateMovingThroughDifficultTerrain(moves, terrain, ignoresDifficultTerrain, ref errors);
             ValidateMovingThroughEnemyUnits(moves, enemies, canMoveThroughEnemies, ref errors);
             ValidateCoherency(moves, ref errors);
-            ValidateChargeReach(moves, maxRushDistance, enemies, ref errors);
+            ValidateChargeReach(moves, move => budgetFor(move).MaxRushDistance, enemies, ref errors);
 
             return errors.Count == 0;
         }
@@ -137,7 +153,7 @@ namespace FDG.Stages
                     {
                         ModelData md = enemyModel.GetValue();
                         footprints.Add(new EnemyModelFootprint(md.PositionBinding.GetValue(), md.BaseRadiusInches,
-                            unitKey, uncontactable));
+                            unitKey, uncontactable, md.BaseShape, md.Facing));
                         anyLiving = true;
                     }
                     if (anyLiving) unitKey++;
@@ -188,23 +204,29 @@ namespace FDG.Stages
             {
                 if (!enemyModel.GetIsAlive()) continue;
 
-                Position enemyCenter = enemyModel.GetValue().PositionBinding.GetValue();
-                float enemyRadius = enemyModel.GetValue().BaseRadiusInches;
+                ModelData enemy = enemyModel.GetValue();
+                // The enemy's true footprint as a zone; the moving base is swept along each path segment against
+                // it (#150). For circular bases this reduces to the old combined-radius swept-disc, unchanged.
+                IZone enemyZone = enemy.BaseShape.ToZone(enemy.PositionBinding.GetValue(), enemy.Facing);
 
                 foreach (ModelMoveEntry move in moves)
                 {
                     if (move.Positions.Count == 0) continue;
 
-                    float contactDistance = enemyRadius + move.Model.GetValue().BaseRadiusInches;
-                    Position segmentStart = move.Model.GetValue().PositionBinding.GetValue();
+                    ModelData movingModel = move.Model.GetValue();
+                    IBaseShape movingShape = movingModel.BaseShape;
+                    Float2 movingFacing = movingModel.Facing;
+                    Position segStartPos = movingModel.PositionBinding.GetValue();
+                    Float2 segmentStart = new Float2(segStartPos.x, segStartPos.z);
 
                     foreach (Position step in move.Positions)
                     {
-                        if (DistancePointToSegment2D(enemyCenter, segmentStart, step) <= contactDistance)
+                        Float2 segmentEnd = new Float2(step.x, step.z);
+                        if (SweptBaseGeometry.DoesSweptBaseIntersectZone(enemyZone, segmentStart, segmentEnd, movingShape, movingFacing))
                         {
                             return true;
                         }
-                        segmentStart = step;
+                        segmentStart = segmentEnd;
                     }
                 }
             }
@@ -212,37 +234,18 @@ namespace FDG.Stages
             return false;
         }
 
-        // Shortest 2D (x,z) distance from point p to the segment a->b.
-        private static float DistancePointToSegment2D(Position p, Position a, Position b)
-            => DistancePointToSegment2D(p, a, b, out _);
-
-        // As above, also reporting the closest point on the segment (so callers can tell an interior
-        // crossing from a touch at an endpoint).
-        private static float DistancePointToSegment2D(Position p, Position a, Position b, out Float2 closest)
-        {
-            float abx = b.x - a.x;
-            float abz = b.z - a.z;
-            float lengthSq = abx * abx + abz * abz;
-
-            float t = lengthSq <= 1e-6f ? 0f : ((p.x - a.x) * abx + (p.z - a.z) * abz) / lengthSq;
-            t = Math.Clamp(t, 0f, 1f);
-
-            float closestX = a.x + t * abx;
-            float closestZ = a.z + t * abz;
-            closest = new Float2(closestX, closestZ);
-            float dx = p.x - closestX;
-            float dz = p.z - closestZ;
-
-            return MathF.Sqrt(dx * dx + dz * dz);
-        }
-
         public static void ValidateChargeReach(List<ModelMoveEntry> moves, float maxRushDistance,
+            IEnumerable<EnemyModelFootprint> enemyFootprints, ref List<ReasonForInvalidMove> errors)
+            => ValidateChargeReach(moves, _ => maxRushDistance, enemyFootprints, ref errors);
+
+        private static void ValidateChargeReach(List<ModelMoveEntry> moves,
+            Func<ModelMoveEntry, float> maxRushDistanceFor,
             IEnumerable<EnemyModelFootprint> enemyFootprints, ref List<ReasonForInvalidMove> errors)
         {
             Dictionary<ModelMoveEntry, float> totalDistances = GetTotalMoveDistances(moves);
 
-            //If nobody exceeds the Rush cap, the rule doesn't apply.
-            bool anyBeyondRush = totalDistances.Values.Any(d => d > maxRushDistance + 0.0001f);
+            //If nobody exceeds their own Rush cap, the rule doesn't apply.
+            bool anyBeyondRush = totalDistances.Any(kvp => kvp.Value > maxRushDistanceFor(kvp.Key) + 0.0001f);
             if (!anyBeyondRush) return;
 
             //At least one model in the unit must end within melee range of an enemy model (horizontal).
@@ -262,8 +265,8 @@ namespace FDG.Stages
 
             if (!anyInMelee)
             {
-                //Attach the violation to the first model that went beyond Rush.
-                ModelMoveEntry culprit = totalDistances.First(kvp => kvp.Value > maxRushDistance + 0.0001f).Key;
+                //Attach the violation to the first model that went beyond its own Rush.
+                ModelMoveEntry culprit = totalDistances.First(kvp => kvp.Value > maxRushDistanceFor(kvp.Key) + 0.0001f).Key;
                 errors.Add(new ReasonForInvalidMove(EErrorReasonType.ChargeRangeRequiresMeleeReach, culprit.Model));
             }
         }
@@ -296,14 +299,14 @@ namespace FDG.Stages
             return distances;
         }
 
-        private static void ValidateOutOfMoveRange(List<ModelMoveEntry> moves, float maxChargeDistance,
-            ref List<ReasonForInvalidMove> reasonsForInvalidMove)
+        private static void ValidateOutOfMoveRange(List<ModelMoveEntry> moves,
+            Func<ModelMoveEntry, float> maxDistanceFor, ref List<ReasonForInvalidMove> reasonsForInvalidMove)
         {
             Dictionary<ModelMoveEntry, float> totalMoveDistances = GetTotalMoveDistances(moves);
 
             foreach (KeyValuePair<ModelMoveEntry, float> kvp in totalMoveDistances)
             {
-                if (kvp.Value > maxChargeDistance)
+                if (kvp.Value > maxDistanceFor(kvp.Key))
                 {
                     reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.OutOfMoveRange, kvp.Key.Model));
                 }
@@ -328,8 +331,10 @@ namespace FDG.Stages
             {
                 if (move.Positions.Count == 0) continue;
 
-                float baseRadius = move.Model.GetValue().BaseRadiusInches;
-                Position startPos = move.Model.GetValue().PositionBinding.GetValue();
+                var model = move.Model.GetValue();
+                IBaseShape baseShape = model.BaseShape;
+                Float2 facing = model.Facing;
+                Position startPos = model.PositionBinding.GetValue();
                 Float2 segmentStart = new Float2(startPos.x, startPos.z);
 
                 bool blocked = false;
@@ -345,9 +350,9 @@ namespace FDG.Stages
 
                     foreach (ITerrain piece in impassable)
                     {
-                        //Inflate the footprint by the model's base radius so base overlap (not just
-                        //the center crossing) counts as moving through impassable terrain.
-                        if (piece.DoesPathIntersectZone(segmentStart, segmentEnd, baseRadius))
+                        //Sweep the model's true base footprint (shape + facing) along the segment so base
+                        //overlap — not just the centre crossing — counts as moving through impassable terrain (#150).
+                        if (SweptBaseGeometry.DoesSweptBaseIntersectZone(piece.Shape, segmentStart, segmentEnd, baseShape, facing))
                         {
                             reasonsForInvalidMove.Add(
                                 new ReasonForInvalidMove(EErrorReasonType.MovingThroughImpassibleTerrain, move.Model));
@@ -377,8 +382,10 @@ namespace FDG.Stages
                 .ToList();
             if (dangerous.Count == 0 || move.Positions.Count == 0) return false;
 
-            float baseRadius = move.Model.GetValue().BaseRadiusInches;
-            Position startPos = move.Model.GetValue().PositionBinding.GetValue();
+            var model = move.Model.GetValue();
+            IBaseShape baseShape = model.BaseShape;
+            Float2 facing = model.Facing;
+            Position startPos = model.PositionBinding.GetValue();
             Float2 segmentStart = new Float2(startPos.x, startPos.z);
 
             for (int i = 0; i < move.Positions.Count; i++)
@@ -387,7 +394,7 @@ namespace FDG.Stages
                 if (IsZeroLengthSegment(segmentStart, segmentEnd)) continue; // a hold doesn't cross terrain
                 foreach (ITerrain piece in dangerous)
                 {
-                    if (piece.DoesPathIntersectZone(segmentStart, segmentEnd, baseRadius))
+                    if (SweptBaseGeometry.DoesSweptBaseIntersectZone(piece.Shape, segmentStart, segmentEnd, baseShape, facing))
                         return true;
                 }
                 segmentStart = segmentEnd;
@@ -415,8 +422,10 @@ namespace FDG.Stages
             {
                 if (move.Positions.Count == 0) continue;
 
-                float baseRadius = move.Model.GetValue().BaseRadiusInches;
-                Position startPos = move.Model.GetValue().PositionBinding.GetValue();
+                var model = move.Model.GetValue();
+                IBaseShape baseShape = model.BaseShape;
+                Float2 facing = model.Facing;
+                Position startPos = model.PositionBinding.GetValue();
                 Float2 segmentStart = new Float2(startPos.x, startPos.z);
 
                 bool crossesDifficult = false;
@@ -426,7 +435,7 @@ namespace FDG.Stages
                     if (IsZeroLengthSegment(segmentStart, segmentEnd)) continue; // a hold doesn't cross terrain
                     foreach (ITerrain piece in difficult)
                     {
-                        if (piece.DoesPathIntersectZone(segmentStart, segmentEnd, baseRadius))
+                        if (SweptBaseGeometry.DoesSweptBaseIntersectZone(piece.Shape, segmentStart, segmentEnd, baseShape, facing))
                         {
                             crossesDifficult = true;
                             break;
@@ -496,8 +505,10 @@ namespace FDG.Stages
             {
                 if (move.Positions.Count == 0) continue;
 
-                float movingRadius = move.Model.GetValue().BaseRadiusInches;
-                Position start = move.Model.GetValue().PositionBinding.GetValue();
+                var movingModel = move.Model.GetValue();
+                IBaseShape movingShape = movingModel.BaseShape;
+                Float2 movingFacing = movingModel.Facing;
+                Position start = movingModel.PositionBinding.GetValue();
                 Position end = move.Positions[move.Positions.Count - 1];
 
                 bool flaggedThrough = false;
@@ -505,9 +516,11 @@ namespace FDG.Stages
 
                 foreach (EnemyModelFootprint enemy in enemyFootprints)
                 {
-                    float contactDistance = movingRadius + enemy.BaseRadiusInches;
-                    float startGap = Position.GetDistance2D(start, enemy.Center) - contactDistance;
-                    float endGap = Position.GetDistance2D(end, enemy.Center) - contactDistance;
+                    // Start/end base-to-base gaps use the true, facing-oriented footprints (#150); for circular
+                    // bases this is exactly the old `distance − (rMoving + rEnemy)`, so circle behaviour is
+                    // unchanged, and a rotated rectangular base measures by its real outline.
+                    float startGap = BaseShapeGeometry.SurfaceGap2D(movingShape, start, movingFacing, enemy.BaseShape, enemy.Center, enemy.Facing);
+                    float endGap = BaseShapeGeometry.SurfaceGap2D(movingShape, end, movingFacing, enemy.BaseShape, enemy.Center, enemy.Facing);
                     bool movedCloser = endGap < startGap - ENEMY_PROXIMITY_EPSILON_INCHES;
 
                     // #029: an Aircraft can't be moved into base contact with — a move that closes to within the
@@ -525,20 +538,24 @@ namespace FDG.Stages
                         continue;
                     }
 
-                    //Pass-through: the swept base crosses this enemy's base at an interior point of the path
-                    //(not at the model's own start, and not where it ends in legal contact). A clean charge's
-                    //closest approach is its destination, so it isn't caught here. A fly-over unit
-                    //(canMoveThroughEnemies, e.g. Strafing) is exempt from this block — it may path through an
-                    //enemy base — but it is still caught by the ending-stacked check below.
-                    if (!canMoveThroughEnemies && !flaggedThrough)
+                    //Pass-through (#150, shape- and facing-aware): the base starts CLEAR of this enemy and ends
+                    //CLEAR of it, yet its swept footprint crosses the enemy's base somewhere along the path — so
+                    //it must have gone in one side and out the other. The same swept-zone test the Strafing
+                    //through-check uses (exact for rectangles at any facing; a circle reduces to the old swept
+                    //disc). A clean charge ends in CONTACT (endGap ≈ 0), so it's not "ends clear" and is handled
+                    //by the ending-stacked / standoff rules below, not here. A model that begins in contact
+                    //(startGap ≤ tol) isn't newly penalised for its pre-existing position. canMoveThroughEnemies
+                    //(Strafing fly-over) is exempt — it may path through an enemy base.
+                    if (!canMoveThroughEnemies && !flaggedThrough
+                        && startGap > ENEMY_CONTACT_TOLERANCE_INCHES && endGap > ENEMY_CONTACT_TOLERANCE_INCHES)
                     {
+                        IZone enemyZone = enemy.BaseShape.ToZone(enemy.Center, enemy.Facing);
                         Position segStart = start;
                         foreach (Position step in move.Positions)
                         {
-                            float gap = DistancePointToSegment2D(enemy.Center, segStart, step, out Float2 closest) - contactDistance;
-                            bool atPathStart = Distance2D(closest, start) <= ENEMY_CONTACT_TOLERANCE_INCHES;
-                            bool atPathEnd = Distance2D(closest, end) <= ENEMY_CONTACT_TOLERANCE_INCHES;
-                            if (gap < -ENEMY_CONTACT_TOLERANCE_INCHES && !atPathStart && !atPathEnd)
+                            Float2 a = new Float2(segStart.x, segStart.z);
+                            Float2 b = new Float2(step.x, step.z);
+                            if (SweptBaseGeometry.DoesSweptBaseIntersectZone(enemyZone, a, b, movingShape, movingFacing))
                             {
                                 reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.MovingThroughEnemyUnit, move.Model));
                                 flaggedThrough = true;
@@ -567,13 +584,6 @@ namespace FDG.Stages
                     if (flaggedThrough && flaggedStandoff) break;
                 }
             }
-        }
-
-        private static float Distance2D(Float2 a, Position b)
-        {
-            float dx = a.X - b.x;
-            float dz = a.Y - b.z;
-            return MathF.Sqrt(dx * dx + dz * dz);
         }
 
         // Float slack on the cohesion limits so a move that lands a model exactly on the 1"/9" boundary
@@ -625,7 +635,8 @@ namespace FDG.Stages
                 for (int j = i + 1; j < models.Count; j++)
                 {
                     float distance = DistanceUtilities.GetBaseToBaseDistanceInches_3D(positions[i], positions[j],
-                        models[i].GetValue().BaseShape, models[j].GetValue().BaseShape);
+                        models[i].GetValue().BaseShape, models[i].GetValue().Facing,
+                        models[j].GetValue().BaseShape, models[j].GetValue().Facing);
 
                     nearestDistances[i] = Math.Min(distance, nearestDistances[i]);
                     farthestDistances[i] = Math.Max(distance, farthestDistances[i]);
@@ -729,6 +740,10 @@ namespace FDG.Stages
     {
         public readonly Position Center;
         public readonly float BaseRadiusInches;
+        // The enemy's true base footprint and facing (#150), used shape-aware by both the end-state gap checks
+        // and the mid-path swept pass-through — so a rectangular enemy is measured by its real oriented outline.
+        public readonly IBaseShape BaseShape;
+        public readonly Float2 Facing;
         public readonly int UnitKey;
 
         /// <summary>
@@ -738,10 +753,14 @@ namespace FDG.Stages
         /// </summary>
         public readonly bool Uncontactable;
 
-        public EnemyModelFootprint(Position center, float baseRadiusInches, int unitKey, bool uncontactable = false)
+        public EnemyModelFootprint(Position center, float baseRadiusInches, int unitKey, bool uncontactable = false,
+            IBaseShape? baseShape = null, Float2? facing = null)
         {
             Center = center;
             BaseRadiusInches = baseRadiusInches;
+            // No explicit shape (radius-only callers / tests) → a circle of that radius, i.e. the prior behaviour.
+            BaseShape = baseShape ?? new CircleBase(baseRadiusInches);
+            Facing = facing ?? new Float2(0f, 1f); // forward (+Z) — the axis-aligned default for radius-only callers
             UnitKey = unitKey;
             Uncontactable = uncontactable;
         }

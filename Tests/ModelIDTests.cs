@@ -35,12 +35,14 @@ namespace FDG.Tests
 
             DataReference woundsRef = store.Create(1f);
             DataReference positionRef = store.Create(new Position());
+            DataReference facingRef = store.Create(new Float2(0f, 1f));
 
             var model = new ModelData(
                 baseShape: new CircleBase(0.75f),
                 totalWounds: 1,
                 remainingWoundsBinding: store.GetDataBinding<float>(woundsRef),
                 positionBinding: store.GetDataBinding<Position>(positionRef),
+                facingBinding: store.GetDataBinding<Float2>(facingRef),
                 weapons: new List<Weapon>(),
                 id: providedId);
 
@@ -63,11 +65,13 @@ namespace FDG.Tests
 
             string serializedWounds   = fromStore.GetValueAsJson<float>(model.RemainingWoundsBinding.Reference);
             string serializedPosition = fromStore.GetValueAsJson<Position>(model.PositionBinding.Reference);
+            string serializedFacing   = fromStore.GetValueAsJson<Float2>(model.FacingBinding.Reference);
             string serializedModel    = fromStore.GetValueAsJson<ModelData>(modelRef);
 
             GameDataStore toStore = NewStore();
             toStore.CreateFromReferenceAndJson(model.RemainingWoundsBinding.Reference, serializedWounds);
             toStore.CreateFromReferenceAndJson(model.PositionBinding.Reference, serializedPosition);
+            toStore.CreateFromReferenceAndJson(model.FacingBinding.Reference, serializedFacing);
             toStore.CreateFromReferenceAndJson(modelRef, serializedModel);
 
             ModelData deserializedModel = toStore.GetValue<ModelData>(modelRef);
@@ -81,6 +85,7 @@ namespace FDG.Tests
                 .RegisterType<float>(8)
                 .RegisterType<Position>(8)
                 .RegisterType<ModelData>(8)
+                .RegisterType<Float2>(8)
                 .Build();
 
         /// <summary>

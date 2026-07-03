@@ -112,6 +112,7 @@ namespace FDG.Tests
                 .RegisterType<float>(1)
                 .RegisterType<Position>(1)
                 .RegisterType<ModelData>(1)
+                .RegisterType<Float2>(1)
                 .Build();
 
             float baseRadiusInches = 0.75f;
@@ -127,19 +128,23 @@ namespace FDG.Tests
 
             DataReference floatDataReference = retrievedLocalModelData.RemainingWoundsBinding.Reference;
             DataReference positionDataReference = retrievedLocalModelData.PositionBinding.Reference;
+            DataReference facingDataReference = retrievedLocalModelData.FacingBinding.Reference;
 
             string serializedFloatData = gameDataStoreFrom.GetValueAsJson<float>(floatDataReference);
             string serializedPositionData = gameDataStoreFrom.GetValueAsJson<Position>(positionDataReference);
+            string serializedFacingData = gameDataStoreFrom.GetValueAsJson<Float2>(facingDataReference);
             string serializedModelData = gameDataStoreFrom.GetValueAsJson<ModelData>(modelDataReference);
 
             GameDataStore gameDataStoreTo = new GameDataStore.GameDataStoreBuilder()
                 .RegisterType<float>(1)
                 .RegisterType<Position>(1)
                 .RegisterType<ModelData>(1)
+                .RegisterType<Float2>(1)
                 .Build();
 
             gameDataStoreTo.CreateFromReferenceAndJson(floatDataReference, serializedFloatData);
             gameDataStoreTo.CreateFromReferenceAndJson(positionDataReference, serializedPositionData);
+            gameDataStoreTo.CreateFromReferenceAndJson(facingDataReference, serializedFacingData);
             gameDataStoreTo.CreateFromReferenceAndJson(modelDataReference, serializedModelData);
 
             ModelData deserializedModelData = gameDataStoreTo.GetValue<ModelData>(modelDataReference);
@@ -158,6 +163,7 @@ namespace FDG.Tests
                  .RegisterType<Position>(1)
                  .RegisterType<ModelData>(1)
                  .RegisterType<UnitData>(1)
+                 .RegisterType<Float2>(1)
                  .Build();
 
             // Create a dummy ModelData needed by UnitData.
@@ -186,6 +192,7 @@ namespace FDG.Tests
 
             string serializedWoundsData = gameDataStoreFrom.GetValueAsJson<float>(modelData.RemainingWoundsBinding.Reference);
             string serializedPositionData = gameDataStoreFrom.GetValueAsJson<Position>(modelData.PositionBinding.Reference);
+            string serializedPositionDataFacing = gameDataStoreFrom.GetValueAsJson<Float2>(modelData.FacingBinding.Reference);
             string serializedModelData = gameDataStoreFrom.GetValueAsJson<ModelData>(modelDataReference);
             string serializedUnitData = gameDataStoreFrom.GetValueAsJson<UnitData>(unitDataReference);
 
@@ -195,10 +202,12 @@ namespace FDG.Tests
                  .RegisterType<Position>(1)
                  .RegisterType<ModelData>(1)
                  .RegisterType<UnitData>(1)
+                 .RegisterType<Float2>(1)
                  .Build();
 
             gameDataStoreTo.CreateFromReferenceAndJson(modelData.RemainingWoundsBinding.Reference, serializedWoundsData);
             gameDataStoreTo.CreateFromReferenceAndJson(modelData.PositionBinding.Reference, serializedPositionData);
+            gameDataStoreTo.CreateFromReferenceAndJson(modelData.FacingBinding.Reference, serializedPositionDataFacing);
             gameDataStoreTo.CreateFromReferenceAndJson(modelDataReference, serializedModelData);
             gameDataStoreTo.CreateFromReferenceAndJson(unitDataReference, serializedUnitData);
 
@@ -232,6 +241,7 @@ namespace FDG.Tests
                  .RegisterType<ModelData>(1)
                  .RegisterType<UnitData>(1)
                  .RegisterType<ArmyData>(1)
+                 .RegisterType<Float2>(1)
                  .Build();
 
             // Create a dummy ModelData (as above) for the UnitData.
@@ -260,6 +270,7 @@ namespace FDG.Tests
 
             string serializedWoundsData = gameDataStoreFrom.GetValueAsJson<float>(modelData.RemainingWoundsBinding.Reference);
             string serializedPositionData = gameDataStoreFrom.GetValueAsJson<Position>(modelData.PositionBinding.Reference);
+            string serializedPositionDataFacing = gameDataStoreFrom.GetValueAsJson<Float2>(modelData.FacingBinding.Reference);
             string serializedModelData = gameDataStoreFrom.GetValueAsJson<ModelData>(modelDataReference);
             string serializedUnitData = gameDataStoreFrom.GetValueAsJson<UnitData>(unitDataReference);
             string serializedArmyData = gameDataStoreFrom.GetValueAsJson<ArmyData>(armyDataReference);
@@ -271,10 +282,12 @@ namespace FDG.Tests
                  .RegisterType<ModelData>(1)
                  .RegisterType<UnitData>(1)
                  .RegisterType<ArmyData>(1)
+                 .RegisterType<Float2>(1)
                  .Build();
 
             gameDataStoreTo.CreateFromReferenceAndJson(modelData.RemainingWoundsBinding.Reference, serializedWoundsData);
             gameDataStoreTo.CreateFromReferenceAndJson(modelData.PositionBinding.Reference, serializedPositionData);
+            gameDataStoreTo.CreateFromReferenceAndJson(modelData.FacingBinding.Reference, serializedPositionDataFacing);
             gameDataStoreTo.CreateFromReferenceAndJson(modelDataReference, serializedModelData);
             gameDataStoreTo.CreateFromReferenceAndJson(unitDataReference, serializedUnitData);
             gameDataStoreTo.CreateFromReferenceAndJson(armyDataReference, serializedArmyData);

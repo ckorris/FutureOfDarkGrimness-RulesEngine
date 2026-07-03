@@ -471,6 +471,116 @@ namespace FDG.Tests
                 "a duration grant persists across reads");
         }
 
+        // #103 — a friendly Caster within 18" spends a token to add +1 to a cast, turning a would-fail roll
+        // into a success. Self-buff spell so success is observable as a RuleGrant on the caster; a fixed face
+        // of 3 fails the base 4+ but clears the assisted 3+.
+        [Test]
+        public async Task CastSpellStage_FriendlyCasterAssist_RescuesFailedCast()
+        {
+            var requester = new CannedAssistRequester(tokensPerAssister: 1);
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedDiceRoller(3));
+
+            DataBinding<UnitData> caster = MakeCasterBinding(_player, casterRating: 3, tokens: 1, new Position(10f, 10f));
+            DataBinding<UnitData> ally = MakeCasterBinding(_player, casterRating: 3, tokens: 2, new Position(12f, 10f));
+            var army = new ArmyData(_player, new List<DataBinding<UnitData>> { caster, ally });
+            army.SetSpells(new[] { SelfBuffSpell("Bless", threshold: 1, grantedRule: "Furious") });
+            _store.Create(army);
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Assert.That(caster.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant), Is.Not.Empty,
+                "the +1 friendly assist turned the failed cast (face 3 vs 4+) into a success (3+), applying the buff");
+            Assert.That(ally.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(1),
+                "the assisting Caster spent one of its two spell tokens");
+            Assert.That(requester.AssistPromptCount, Is.EqualTo(1),
+                "the one eligible friendly Caster was offered the assist");
+        }
+
+        // #103 — an enemy Caster within 18" spends a token to subtract 1 from the cast, spoiling a roll that
+        // would otherwise succeed. A fixed face of 4 clears the base 4+ but not the hindered 5+.
+        [Test]
+        public async Task CastSpellStage_EnemyCasterHinder_SpoilsSuccessfulCast()
+        {
+            var requester = new CannedAssistRequester(tokensPerAssister: 1);
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedDiceRoller(4));
+
+            DataBinding<UnitData> caster = MakeCasterBinding(_player, casterRating: 3, tokens: 1, new Position(10f, 10f));
+            var army = new ArmyData(_player, new List<DataBinding<UnitData>> { caster });
+            army.SetSpells(new[] { SelfBuffSpell("Bless", threshold: 1, grantedRule: "Furious") });
+            _store.Create(army);
+
+            var enemyPlayer = new PlayerID(System.Guid.NewGuid());
+            DataBinding<UnitData> enemyCaster =
+                MakeCasterBinding(enemyPlayer, casterRating: 3, tokens: 2, new Position(12f, 10f));
+            _store.Create(new ArmyData(enemyPlayer, new List<DataBinding<UnitData>> { enemyCaster }));
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Assert.That(caster.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant), Is.Empty,
+                "the -1 enemy hinder dropped the cast (face 4 vs hindered 5+) below success — no buff applied");
+            Assert.That(enemyCaster.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(1),
+                "the hindering enemy Caster spent one of its two spell tokens");
+        }
+
+        // #103 — a Caster beyond 18" is neither prompted nor able to sway the cast, so it resolves on the
+        // base 4+ (and a fixed face of 3 fails). Guards the range gate and the no-nearby-Caster no-op.
+        [Test]
+        public async Task CastSpellStage_CasterBeyondRange_NotOfferedAssist()
+        {
+            var requester = new CannedAssistRequester(tokensPerAssister: 1);
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedDiceRoller(3));
+
+            DataBinding<UnitData> caster = MakeCasterBinding(_player, casterRating: 3, tokens: 1, new Position(10f, 10f));
+            // 25" apart (base-to-base ~24") — outside the 18" assist range.
+            DataBinding<UnitData> farAlly = MakeCasterBinding(_player, casterRating: 3, tokens: 2, new Position(35f, 10f));
+            var army = new ArmyData(_player, new List<DataBinding<UnitData>> { caster, farAlly });
+            army.SetSpells(new[] { SelfBuffSpell("Bless", threshold: 1, grantedRule: "Furious") });
+            _store.Create(army);
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Assert.That(requester.AssistPromptCount, Is.EqualTo(0), "a Caster beyond 18\" is not offered the assist");
+            Assert.That(farAlly.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(2),
+                "the out-of-range Caster spent nothing");
+            Assert.That(caster.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant), Is.Empty,
+                "with no assist the cast resolved on the base 4+ and failed on a 3");
+        }
+
+        private static RuntimeSpell SelfBuffSpell(string name, int threshold, string grantedRule) =>
+            new RuntimeSpell(
+                new SpellDefinition(name, threshold,
+                    new TargetSelector(18f, 1, 1, ETargetAffinity.Self, RequireLineOfSight: false),
+                    new Effect.AddRule(grantedRule, ELifetime.NextTrigger)),
+                System.Array.Empty<ResolvedRule>());
+
+        // A caster unit (Caster rating + optional spell tokens) with no army — the caller assembles the
+        // ArmyData so multiple casters can share one army (needed for the #103 assist tests).
+        private DataBinding<UnitData> MakeCasterBinding(PlayerID player, int casterRating, int tokens, Position pos)
+        {
+            var model = new ModelData(0.5f, new List<Weapon>(), pos, _store);
+            var modelBindings = new List<DataBinding<ModelData>> { _store.GetDataBinding<ModelData>(_store.Create(model)) };
+
+            var unit = new UnitData(player, "Wizards", quality: 4, defense: 4, modelBindings: modelBindings);
+            DataBinding<UnitData> binding = _store.GetDataBinding<UnitData>(_store.Create(unit));
+            binding.GetValue().AttachRuleDefinition(new ResolvedRule("Caster", CoreRuleCatalog.Caster,
+                new RuleArgument[] { new RuleArgument.Int(casterRating) }));
+            if (tokens > 0)
+            {
+                binding.GetValue().Tokens.AddToken(
+                    new Token(TokenType.SpellTokens, tokens, new TokenClearTrigger.ManualOnly()));
+            }
+            return binding;
+        }
+
         private static RuntimeSpell DamageSpell(string name, int threshold, int hits, int armorPenetration) =>
             new RuntimeSpell(
                 new SpellDefinition(name, threshold,
@@ -683,6 +793,39 @@ namespace FDG.Tests
                     }
                     return Task.FromResult((TReply)(object)entries);
                 }
+                default:
+                    throw new System.InvalidOperationException("Unexpected request: " + request.GetType());
+            }
+        }
+    }
+
+    // Drives a cast that opens a #103 assist window: picks the first spell + target, and for each
+    // CastAssistRequest spends a fixed number of tokens (clamped to what the assister actually has).
+    // Counts the assist prompts so a test can assert who was (and wasn't) offered the choice.
+    internal sealed class CannedAssistRequester : IPlayerRequestByID
+    {
+        private readonly int _tokensPerAssister;
+        public int AssistPromptCount { get; private set; }
+
+        public CannedAssistRequester(int tokensPerAssister)
+        {
+            _tokensPerAssister = tokensPerAssister;
+        }
+
+        public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
+            where TRequest : IStageTaskRequest<TReply>
+        {
+            switch (request)
+            {
+                case CastAssistRequest assist:
+                    AssistPromptCount++;
+                    return Task.FromResult((TReply)(object)System.Math.Min(_tokensPerAssister, assist.AvailableTokens));
+                case StringSelectionRequest spellPick:
+                    return Task.FromResult((TReply)(object)spellPick.ValidOptions[0]);
+                case SelectionRequest<UnitData> targetPick:
+                    return Task.FromResult((TReply)(object)targetPick.ValidOptions[0].Option);
+                case SelectionRequest<ModelData> modelPick:
+                    return Task.FromResult((TReply)(object)modelPick.ValidOptions[0].Option);
                 default:
                     throw new System.InvalidOperationException("Unexpected request: " + request.GetType());
             }

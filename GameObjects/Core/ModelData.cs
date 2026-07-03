@@ -61,6 +61,10 @@ namespace FDG
 
         public DataBinding<Position> PositionBinding;
 
+        // Per-model yaw facing as a unit normal (#150). Store-backed like PositionBinding so it replicates
+        // over the network, is observable for rendering, and round-trips through save/load.
+        public DataBinding<Float2> FacingBinding;
+
         public List<Weapon> Weapons;
 
 
@@ -69,6 +73,11 @@ namespace FDG
         public float WoundsDealt => TotalWounds - RemainingWoundsBinding.GetValue();
 
         public Position Position => PositionBinding.GetValue();
+
+        /// <summary> The facing every freshly created model gets: +Z, reproducing the pre-#150 axis-aligned layout. </summary>
+        public static readonly Float2 DefaultFacing = new Float2(0f, 1f);
+
+        public Float2 Facing => FacingBinding.GetValue();
 
         // The base footprint (#149). Serialized (Newtonsoft TypeNameHandling.Auto records the concrete
         // shape via $type); legacy saves with no base fall back to the default circle in the ctor.
@@ -84,6 +93,12 @@ namespace FDG
         {
             add { PositionBinding.OnValueChanged += value; }
             remove { PositionBinding.OnValueChanged -= value; }
+        }
+
+        event DataValueChangedHandler<Float2> IModel.OnFacingChanged
+        {
+            add { FacingBinding.OnValueChanged += value; }
+            remove { FacingBinding.OnValueChanged -= value; }
         }
 
         event DataValueChangedHandler<float> IModel.OnWoundsDealt
@@ -136,11 +151,16 @@ namespace FDG
             PositionBinding.SetValue(newPosition);
         }
 
+        public void SetFacing(Float2 facingNormal)
+        {
+            FacingBinding.SetValue(facingNormal);
+        }
+
         #endregion
 
         [JsonConstructor]
         public ModelData(IBaseShape baseShape, float totalWounds, DataBinding<float> remainingWoundsBinding, DataBinding<Position> positionBinding,
-            List<Weapon> weapons, ModelID? id = null)
+            DataBinding<Float2> facingBinding, List<Weapon> weapons, ModelID? id = null)
         {
             ID = id ?? new ModelID(System.Guid.NewGuid());
 
@@ -148,6 +168,8 @@ namespace FDG
             BaseShape = baseShape ?? BaseShapeDefaults.Default();
             RemainingWoundsBinding = remainingWoundsBinding;
             PositionBinding = positionBinding;
+            // Saves predating #150 carry no facing binding; such saves don't survive a version anyway (#070).
+            FacingBinding = facingBinding;
             Weapons = weapons;
             TotalWounds = totalWounds;
         }
@@ -169,9 +191,11 @@ namespace FDG
 
             DataReference remainingWoundsRef = gameDataStore.Create(TotalWounds);
             DataReference positionRef = gameDataStore.Create(initialPosition);
+            DataReference facingRef = gameDataStore.Create(DefaultFacing);
 
             RemainingWoundsBinding = gameDataStore.GetDataBinding<float>(remainingWoundsRef);
             PositionBinding = gameDataStore.GetDataBinding<Position>(positionRef);
+            FacingBinding = gameDataStore.GetDataBinding<Float2>(facingRef);
         }
 
         public ModelData(IModelTemplate modelToCopy, IReadWriteableGameDataStore gameDataStore)
@@ -185,9 +209,11 @@ namespace FDG
 
             DataReference remainingWoundsRef = gameDataStore.Create(TotalWounds);
             DataReference positionRef = gameDataStore.Create(new Position());
+            DataReference facingRef = gameDataStore.Create(DefaultFacing);
 
             RemainingWoundsBinding = gameDataStore.GetDataBinding<float>(remainingWoundsRef);
             PositionBinding = gameDataStore.GetDataBinding<Position>(positionRef);
+            FacingBinding = gameDataStore.GetDataBinding<Float2>(facingRef);
         }
 
         private int CalculateTotalWounds()
@@ -212,13 +238,13 @@ namespace FDG
         public static float BaseDistanceToOtherModel_2D(this ModelData thisModel, ModelData otherModel)
         {
             return DistanceUtilities.GetBaseToBaseDistanceInches_2D(thisModel.PositionBinding.GetValue(),
-                otherModel.PositionBinding.GetValue(), thisModel.BaseShape, otherModel.BaseShape);
+                otherModel.PositionBinding.GetValue(), thisModel.BaseShape, thisModel.Facing, otherModel.BaseShape, otherModel.Facing);
         }
 
         public static float BaseDistanceToOtherModel_3D(this ModelData thisModel, ModelData otherModel)
         {
             return DistanceUtilities.GetBaseToBaseDistanceInches_3D(thisModel.PositionBinding.GetValue(),
-                otherModel.PositionBinding.GetValue(), thisModel.BaseShape, otherModel.BaseShape);
+                otherModel.PositionBinding.GetValue(), thisModel.BaseShape, thisModel.Facing, otherModel.BaseShape, otherModel.Facing);
         }
     }
 }

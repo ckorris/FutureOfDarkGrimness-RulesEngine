@@ -46,6 +46,60 @@ namespace FDG
             SurfaceGap2D(a, posA, facingA, b, posB, facingB) < 0f;
 
         /// <summary>
+        /// The farthest a base may translate from <paramref name="start"/> toward <paramref name="end"/>
+        /// (facing held at <paramref name="movingFacing"/>) before its footprint first touches the static base
+        /// <paramref name="otherShape"/> at <paramref name="otherPos"/>/<paramref name="otherFacing"/> (#155).
+        /// The move-preview sibling of <see cref="AreColliding"/>: it answers "how far can I slide before I hit
+        /// this model?" so a resolver can clamp a ghost to stop just short of an enemy base instead of drawing a
+        /// move that passes through it. Returns the full segment length when the slide never makes contact, and 0
+        /// when the bases already touch at <paramref name="start"/>. The gap along a straight slide between two
+        /// convex bodies is convex (one minimum), so a coarse forward scan brackets the first contact without
+        /// skipping a graze, and a bisection refines it to <paramref name="toleranceInches"/>. The returned
+        /// distance is a known-clear bound (the low side of the bracket).
+        /// </summary>
+        public static float MaxTravelBeforeBaseCollision(IBaseShape movingShape, Float2 start, Float2 end,
+            Float2 movingFacing, IBaseShape otherShape, Position otherPos, Float2 otherFacing,
+            float toleranceInches = 0.005f)
+        {
+            float GapAt(float t)
+            {
+                Position at = new Position(start.X + (end.X - start.X) * t, start.Y + (end.Y - start.Y) * t);
+                return SurfaceGap2D(movingShape, at, movingFacing, otherShape, otherPos, otherFacing);
+            }
+
+            if (GapAt(0f) < 0f) return 0f;
+
+            float dx = end.X - start.X, dz = end.Y - start.Y;
+            float length = MathF.Sqrt(dx * dx + dz * dz);
+            if (length <= 0f) return 0f;
+
+            // Coarse scan for the first sample that is in contact; step is fine enough (<= 0.2") that the gap
+            // can't dip below zero and back above it between two samples for a real base.
+            int steps = Math.Max(8, (int)MathF.Ceiling(length / 0.2f));
+            float prevT = 0f;
+            bool bracketed = false;
+            float hiT = length;
+            for (int i = 1; i <= steps; i++)
+            {
+                float t = length * i / steps;
+                float paramT = t / length;
+                if (GapAt(paramT) < 0f) { hiT = t; bracketed = true; break; }
+                prevT = t;
+            }
+            if (!bracketed) return length; // never makes contact along the slide
+
+            float tolerance = MathF.Max(toleranceInches, 1e-4f);
+            float lo = prevT, hi = hiT; // lo: known clear; hi: known in contact
+            while (hi - lo > tolerance)
+            {
+                float mid = (lo + hi) * 0.5f;
+                if (GapAt(mid / length) < 0f) hi = mid;
+                else lo = mid;
+            }
+            return lo;
+        }
+
+        /// <summary>
         /// Horizontal (X/Z) distance from <paramref name="point"/> to the nearest point on the surface of base
         /// <paramref name="shape"/> centred at <paramref name="center"/> and oriented by <paramref name="facing"/>
         /// (a yaw unit normal along the base's local +Z axis; a zero vector means forward/+Z). Zero when the point

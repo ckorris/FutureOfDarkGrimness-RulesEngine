@@ -145,6 +145,42 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void Detailed_ReportsCappedCrossing_WhenEnteringWithCapRoom()
+        {
+            var r = MovementUtilities.ClampTravelForDifficultTerrainDetailed(
+                new Float2(0f, 0f), new Float2(12f, 0f), traveledBeforeSegmentInches: 0f,
+                pathAlreadyCrossedDifficultTerrain: false, HalfInchBase, FacingZ,
+                DifficultBand(), ignoresDifficultTerrain: false);
+
+            Assert.That(r.Kind, Is.EqualTo(MovementUtilities.EDifficultClampKind.CappedCrossing));
+            Assert.That(r.AllowedInches, Is.EqualTo(Cap - Margin).Within(0.001f));
+        }
+
+        [Test]
+        public void Detailed_ReportsStoppedShortOfEdge_WhenEntryUnaffordable()
+        {
+            var r = MovementUtilities.ClampTravelForDifficultTerrainDetailed(
+                new Float2(0f, 0f), new Float2(12f, 0f), traveledBeforeSegmentInches: 5.5f,
+                pathAlreadyCrossedDifficultTerrain: false, HalfInchBase, FacingZ,
+                DifficultBand(), ignoresDifficultTerrain: false);
+
+            Assert.That(r.Kind, Is.EqualTo(MovementUtilities.EDifficultClampKind.StoppedShortOfEdge));
+            Assert.That(r.AllowedInches, Is.EqualTo(1.5f - Margin).Within(0.02f));
+        }
+
+        [Test]
+        public void Detailed_ReportsNotLimited_WhenSegmentMissesDifficult()
+        {
+            var r = MovementUtilities.ClampTravelForDifficultTerrainDetailed(
+                new Float2(0f, 5f), new Float2(12f, 5f), traveledBeforeSegmentInches: 0f,
+                pathAlreadyCrossedDifficultTerrain: false, HalfInchBase, FacingZ,
+                DifficultBand(), ignoresDifficultTerrain: false);
+
+            Assert.That(r.Kind, Is.EqualTo(MovementUtilities.EDifficultClampKind.NotLimited));
+            Assert.That(r.AllowedInches, Is.EqualTo(12f));
+        }
+
+        [Test]
         public void DoesPathCrossDifficultTerrain_MirrorsTheDangerousCheck()
         {
             GameDataStore store = GameDataStore.GameDataStoreBuilder.GetDefault();

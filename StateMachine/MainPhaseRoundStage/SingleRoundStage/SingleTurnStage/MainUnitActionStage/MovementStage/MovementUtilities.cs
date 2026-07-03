@@ -420,45 +420,79 @@ namespace FDG.Stages
         /// constants can't fail on float drift (#155).</summary>
         public const float DIFFICULT_TERRAIN_CLAMP_MARGIN_INCHES = 0.01f;
 
+        /// <summary>Why (and whether) <see cref="ClampTravelForDifficultTerrainDetailed"/> shortened a segment
+        /// (#155) — lets a resolver show the right on-screen warning.</summary>
+        public enum EDifficultClampKind
+        {
+            /// <summary>Difficult terrain didn't constrain this segment.</summary>
+            NotLimited,
+            /// <summary>The model moves through Difficult terrain, so its total move is held to the 6" cap.</summary>
+            CappedCrossing,
+            /// <summary>The model had already moved too far to afford entering, so it stops short of the edge.</summary>
+            StoppedShortOfEdge,
+        }
+
+        /// <summary>Result of the difficult-terrain preview clamp: how far the segment may travel, and why it
+        /// was (or wasn't) shortened (#155).</summary>
+        public readonly struct DifficultClampResult
+        {
+            public readonly float AllowedInches;
+            public readonly EDifficultClampKind Kind;
+            public DifficultClampResult(float allowedInches, EDifficultClampKind kind)
+            { AllowedInches = allowedInches; Kind = kind; }
+        }
+
         /// <summary>
         /// How far a model may actually travel along one straight preview segment, honouring the
         /// difficult-terrain move cap (#155) — the enforcement mirror of
         /// <see cref="ValidateMovingThroughDifficultTerrain"/>, for resolvers that clamp a live ghost instead
-        /// of reporting an error after the fact. Semantics:
-        /// <list type="bullet">
-        /// <item>No Difficult terrain in play, a zero-length segment, or
-        /// <paramref name="ignoresDifficultTerrain"/> (Strider/Flying): the full segment is allowed.</item>
-        /// <item>The path so far has already crossed Difficult terrain
-        /// (<paramref name="pathAlreadyCrossedDifficultTerrain"/>, see
-        /// <see cref="DoesPathCrossDifficultTerrain"/>): the whole move is capped at
-        /// <see cref="GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES"/> total, so this segment gets
-        /// whatever remains after <paramref name="traveledBeforeSegmentInches"/> (minus the margin).</item>
-        /// <item>Otherwise, if the segment would enter Difficult terrain: entering caps the total move the
-        /// same way. When the cap still leaves room past the entry point the cap is the limit; when it
-        /// doesn't (the model has already moved too far to afford entering), travel stops just short of the
-        /// terrain edge instead.</item>
-        /// </list>
-        /// Band/charge caps are the caller's job — the returned distance only ever shrinks the segment.
+        /// of reporting an error after the fact. Band/charge caps are the caller's job — the returned distance
+        /// only ever shrinks the segment. See <see cref="ClampTravelForDifficultTerrainDetailed"/> for the
+        /// per-case reason.
         /// </summary>
         public static float ClampTravelForDifficultTerrain(Float2 segmentStart, Float2 segmentEnd,
+            float traveledBeforeSegmentInches, bool pathAlreadyCrossedDifficultTerrain,
+            IBaseShape baseShape, Float2 facing,
+            IEnumerable<ITerrain>? terrain, bool ignoresDifficultTerrain)
+            => ClampTravelForDifficultTerrainDetailed(segmentStart, segmentEnd, traveledBeforeSegmentInches,
+                pathAlreadyCrossedDifficultTerrain, baseShape, facing, terrain, ignoresDifficultTerrain).AllowedInches;
+
+        /// <summary>
+        /// As <see cref="ClampTravelForDifficultTerrain"/>, but also reports WHY the segment was shortened so a
+        /// resolver can warn accordingly (#155). Cases:
+        /// <list type="bullet">
+        /// <item>No Difficult terrain in play, a zero-length segment, or
+        /// <paramref name="ignoresDifficultTerrain"/> (Strider/Flying): full segment,
+        /// <see cref="EDifficultClampKind.NotLimited"/>.</item>
+        /// <item>The path so far has already crossed Difficult terrain
+        /// (<paramref name="pathAlreadyCrossedDifficultTerrain"/>) OR this segment enters it with cap room to
+        /// spare: the whole move is capped at
+        /// <see cref="GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES"/> total —
+        /// <see cref="EDifficultClampKind.CappedCrossing"/>.</item>
+        /// <item>The segment would enter Difficult terrain but the model has already moved too far to afford
+        /// entering: it stops just short of the edge — <see cref="EDifficultClampKind.StoppedShortOfEdge"/>.</item>
+        /// </list>
+        /// </summary>
+        public static DifficultClampResult ClampTravelForDifficultTerrainDetailed(Float2 segmentStart, Float2 segmentEnd,
             float traveledBeforeSegmentInches, bool pathAlreadyCrossedDifficultTerrain,
             IBaseShape baseShape, Float2 facing,
             IEnumerable<ITerrain>? terrain, bool ignoresDifficultTerrain)
         {
             float dx = segmentEnd.X - segmentStart.X, dz = segmentEnd.Y - segmentStart.Y;
             float desired = MathF.Sqrt(dx * dx + dz * dz);
-            if (ignoresDifficultTerrain || desired <= 0f || terrain == null) return desired;
+            if (ignoresDifficultTerrain || desired <= 0f || terrain == null)
+                return new DifficultClampResult(desired, EDifficultClampKind.NotLimited);
 
             List<ITerrain> difficult = terrain
                 .Where(t => t.TerrainType.HasFlag(ETerrainType.Difficult))
                 .ToList();
-            if (difficult.Count == 0) return desired;
+            if (difficult.Count == 0) return new DifficultClampResult(desired, EDifficultClampKind.NotLimited);
 
             float capRemaining = GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES
                 - traveledBeforeSegmentInches - DIFFICULT_TERRAIN_CLAMP_MARGIN_INCHES;
 
             if (pathAlreadyCrossedDifficultTerrain)
-                return Math.Clamp(capRemaining, 0f, desired);
+                return new DifficultClampResult(Math.Clamp(capRemaining, 0f, desired), EDifficultClampKind.CappedCrossing);
 
             // Farthest travel along the segment before the swept base first touches any difficult piece.
             float entry = desired;
@@ -468,10 +502,13 @@ namespace FDG.Stages
                     piece.Shape, segmentStart, segmentEnd, baseShape, facing));
                 if (entry <= 0f) break;
             }
-            if (entry >= desired) return desired; // never enters difficult within this segment
+            if (entry >= desired) return new DifficultClampResult(desired, EDifficultClampKind.NotLimited); // never enters
 
-            if (capRemaining > entry) return MathF.Min(desired, capRemaining);
-            return Math.Clamp(entry - DIFFICULT_TERRAIN_CLAMP_MARGIN_INCHES, 0f, desired);
+            if (capRemaining > entry)
+                return new DifficultClampResult(MathF.Min(desired, capRemaining), EDifficultClampKind.CappedCrossing);
+            return new DifficultClampResult(
+                Math.Clamp(entry - DIFFICULT_TERRAIN_CLAMP_MARGIN_INCHES, 0f, desired),
+                EDifficultClampKind.StoppedShortOfEdge);
         }
 
         private static void ValidateMovingThroughDifficultTerrain(List<ModelMoveEntry> moves,

@@ -109,6 +109,51 @@ namespace FDG.Tests
             Assert.That(sideTravel, Is.EqualTo(3.5f).Within(0.02f));
         }
 
+        // #155: base-vs-base first-contact travel used by the enemy-unit move-preview clamp.
+
+        [Test]
+        public void MaxTravelBeforeBaseCollision_StopsWhenDiscsTouch()
+        {
+            // Two 1" discs; the mover slides +X from (0,0) toward a static disc centred at (6,0). They touch
+            // (surface gap 0) when the mover's centre is at 4 (centre distance 2 = rA + rB).
+            var moving = new CircleBase(1f);
+            var other = new CircleBase(1f);
+            float travel = BaseShapeGeometry.MaxTravelBeforeBaseCollision(
+                moving, new Float2(0f, 0f), new Float2(10f, 0f), new Float2(0f, 1f),
+                other, new Position(6f, 0f), new Float2(0f, 1f));
+
+            Assert.That(travel, Is.EqualTo(4f).Within(0.02f));
+            // The clamped endpoint must itself be clear of the other base.
+            Assert.That(BaseShapeGeometry.AreColliding(
+                moving, new Position(travel, 0f), new Float2(0f, 1f), other, new Position(6f, 0f), new Float2(0f, 1f)),
+                Is.False);
+        }
+
+        [Test]
+        public void MaxTravelBeforeBaseCollision_SlideMissesOtherBase_ReturnsFullLength()
+        {
+            var moving = new CircleBase(0.5f);
+            var other = new CircleBase(0.5f);
+            // Passing 5" above the static base — never within 1" contact distance.
+            float travel = BaseShapeGeometry.MaxTravelBeforeBaseCollision(
+                moving, new Float2(0f, 5f), new Float2(10f, 5f), new Float2(0f, 1f),
+                other, new Position(5f, 0f), new Float2(0f, 1f));
+
+            Assert.That(travel, Is.EqualTo(MathF.Sqrt(100f)).Within(0.02f));
+        }
+
+        [Test]
+        public void MaxTravelBeforeBaseCollision_AlreadyTouching_ReturnsZero()
+        {
+            var moving = new CircleBase(1f);
+            var other = new CircleBase(1f);
+            float travel = BaseShapeGeometry.MaxTravelBeforeBaseCollision(
+                moving, new Float2(1f, 0f), new Float2(10f, 0f), new Float2(0f, 1f),
+                other, new Position(2.5f, 0f), new Float2(0f, 1f)); // centres 1.5" apart, radii sum 2 -> overlapping
+
+            Assert.That(travel, Is.EqualTo(0f));
+        }
+
         [Test]
         public void Rectangle_AgainstRotatedZone_OBB()
         {

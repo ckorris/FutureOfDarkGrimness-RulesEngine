@@ -1564,8 +1564,8 @@ public static class CoreRuleCatalog
     /// charged / moved into base contact with; must deploy before all other units.</item>
     /// <item>Forced movement: may only Advance (this <see cref="Effect.RestrictActions"/> at
     /// <see cref="EHookID.Activation_OnActionChoice"/>), which DefinePathStage turns into a forced straight-line
-    /// 30–36" move along the unit's fixed heading (<c>UnitData.AircraftHeading</c>, set once toward the table
-    /// centre, never turned); if it flies off a table edge it leaves play and redeploys from an edge next round
+    /// 30–36" move along the unit's fixed heading (held on the models' <c>IModel.Facing</c>, set once toward the
+    /// table centre, never turned); if it flies off a table edge it leaves play and redeploys from an edge next round
     /// (<c>ForcedAircraftMove</c> + StartOfRoundExtraActionStage). Simplifications, see WorkItems/029: the heading
     /// auto-aims toward centre (no player heading pick) and the redeploy zone is the whole table ("any edge"
     /// relaxed).</item>

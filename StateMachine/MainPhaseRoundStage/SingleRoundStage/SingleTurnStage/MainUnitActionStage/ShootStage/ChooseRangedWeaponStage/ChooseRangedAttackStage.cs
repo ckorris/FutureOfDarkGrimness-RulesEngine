@@ -380,7 +380,7 @@ namespace FDG.Stages
         private static bool IsTargetWithinRange(ModelData attacker, ModelData target, float effectiveRangeInches)
         {
             float distance = DistanceUtilities.GetBaseToBaseDistanceInches_3D(attacker.PositionBinding.GetValue(),
-                target.PositionBinding.GetValue(), attacker.BaseShape, target.BaseShape);
+                target.PositionBinding.GetValue(), attacker.BaseShape, attacker.Facing, target.BaseShape, target.Facing);
             return distance <= effectiveRangeInches;
         }
 

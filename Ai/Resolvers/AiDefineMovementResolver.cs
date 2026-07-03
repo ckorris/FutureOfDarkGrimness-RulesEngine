@@ -180,10 +180,12 @@ namespace FDG.Ai.Resolvers
             {
                 if (move.Positions.Count == 0) continue;
                 Position end = move.Positions[move.Positions.Count - 1];
-                float r = move.Model.GetValue().BaseRadiusInches;
+                ModelData m = move.Model.GetValue();
                 foreach (var enemy in enemies)
                 {
-                    float gap = Position.GetDistance2D(end, enemy.Center) - r - enemy.BaseRadiusInches;
+                    // Shape- and facing-aware, so the AI aims for the same gap the (shape-aware) move
+                    // validator measures (#150). Circles reduce to the old distance − rMoving − rEnemy.
+                    float gap = BaseShapeGeometry.SurfaceGap2D(m.BaseShape, end, m.Facing, enemy.BaseShape, enemy.Center, enemy.Facing);
                     if (gap < min) min = gap;
                 }
             }
@@ -225,7 +227,7 @@ namespace FDG.Ai.Resolvers
                 {
                     if (model is ModelData md && md.GetIsAlive() && (md.Position.x != 0f || md.Position.z != 0f))
                     {
-                        footprints.Add(new EnemyModelFootprint(md.Position, md.BaseRadiusInches, unitKey, uncontactable));
+                        footprints.Add(new EnemyModelFootprint(md.Position, md.BaseRadiusInches, unitKey, uncontactable, md.BaseShape, md.Facing));
                         anyLiving = true;
                     }
                 }

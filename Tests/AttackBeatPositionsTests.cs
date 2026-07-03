@@ -17,6 +17,7 @@ namespace FDG.Tests
                 .RegisterType<Position>(16)
                 .RegisterType<ModelData>(16)
                 .RegisterType<UnitData>(4)
+                .RegisterType<Float2>(16)
                 .Build();
 
         private static DataBinding<ModelData> MakeModel(GameDataStore store, List<Weapon> weapons, Position pos)

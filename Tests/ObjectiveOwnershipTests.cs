@@ -152,6 +152,34 @@ namespace FDG.Tests
             unit.Tokens.AddToken(new Rules.Tokens.Token(Rules.Foundation.TokenType.ArrivedFromReserve, 1,
                 new Rules.Foundation.TokenClearTrigger.RoundEnd()));
 
+        [Test]
+        public async Task ReconcileObjectivesStage_RectangularBase_LongAxisTowardObjective_Seizes()
+        {
+            // A 1"×6" base centred 4" from the objective along Z, facing +Z so its long (6") axis points at the
+            // objective: the base edge is 1" away — inside the 3" seizure range. The true footprint + facing,
+            // not the (inscribed-circle) bounding radius, decides this (#150).
+            var playerID = new PlayerID(Guid.NewGuid());
+            var objective = CreateObjective(new Position(5, 5));
+            CreateUnit(playerID, new RectangleBase(1f, 6f), new Position(5, 9), new Float2(0f, 1f));
+
+            await RunReconcileOnce();
+
+            Assert.That(objective.OwnerID, Is.EqualTo(playerID), "long axis toward the objective (edge 1\" away) seizes.");
+        }
+
+        [Test]
+        public async Task ReconcileObjectivesStage_RectangularBase_ShortAxisTowardObjective_DoesNotSeize()
+        {
+            // Same 1"×6" base and position, rotated to face +X so only its 1"-wide axis points at the objective:
+            // the base edge is 3.5" away — outside the 3" range. Rotating the base alone flips the outcome (#150).
+            var objective = CreateObjective(new Position(5, 5));
+            CreateUnit(new PlayerID(Guid.NewGuid()), new RectangleBase(1f, 6f), new Position(5, 9), new Float2(1f, 0f));
+
+            await RunReconcileOnce();
+
+            Assert.That(objective.OwnerID, Is.Null, "short axis toward the objective (edge 3.5\" away) does not seize.");
+        }
+
         private ObjectiveData CreateObjective(Position position)
         {
             var obj = new ObjectiveData(position, _store);
@@ -166,6 +194,20 @@ namespace FDG.Tests
                 weapons: new List<Weapon>(),
                 initialPosition: modelPosition,
                 gameDataStore: _store);
+            var modelRef = _store.Create(modelData);
+            var modelBinding = _store.GetDataBinding<ModelData>(modelRef);
+
+            var unit = new UnitData(playerID, "TestUnit", quality: 4, defense: 4,
+                modelBindings: new List<DataBinding<ModelData>> { modelBinding });
+            _store.Create(unit);
+            return unit;
+        }
+
+        // Overload with an explicit base shape + facing, for the #150 orientation-aware seizure tests.
+        private UnitData CreateUnit(PlayerID playerID, IBaseShape shape, Position modelPosition, Float2 facing)
+        {
+            var modelData = new ModelData(shape, new List<Weapon>(), modelPosition, _store);
+            modelData.SetFacing(facing);
             var modelRef = _store.Create(modelData);
             var modelBinding = _store.GetDataBinding<ModelData>(modelRef);
 

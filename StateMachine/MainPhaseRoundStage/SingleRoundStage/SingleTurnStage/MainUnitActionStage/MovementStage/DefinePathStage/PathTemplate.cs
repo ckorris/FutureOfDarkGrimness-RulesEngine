@@ -124,12 +124,26 @@ namespace FDG
             return path.Last();
         }
 
-        public List<ModelMoveEntry> GetResultsAsList()
+        /// <summary>
+        /// Builds the per-model move entries. When <paramref name="travelDirectionFacing"/> is set (#150), each
+        /// entry carries a per-waypoint facing: the direction of travel into that waypoint (so the model turns
+        /// through corners), rotated by the model's manual offset from <paramref name="facingOffsets"/> if any.
+        /// Off by default, so validation and non-facing callers (e.g. consolidation) are unchanged.
+        /// </summary>
+        public List<ModelMoveEntry> GetResultsAsList(IReadOnlyDictionary<IModel, float>? facingOffsets = null,
+            bool travelDirectionFacing = false)
         {
             List<ModelMoveEntry> results = new List<ModelMoveEntry>(_paths.Count);
             foreach(KeyValuePair< DataBinding<ModelData>, List<Position>> kvp in _paths)
             {
-                results.Add(new ModelMoveEntry(kvp.Key, kvp.Value));
+                List<Float2>? facings = null;
+                if (travelDirectionFacing && kvp.Value.Count > 0)
+                {
+                    IModel model = kvp.Key.GetValue();
+                    float offset = facingOffsets != null && facingOffsets.TryGetValue(model, out float o) ? o : 0f;
+                    facings = MovementFacingUtilities.WaypointFacings(model.Position, kvp.Value, model.Facing, offset);
+                }
+                results.Add(new ModelMoveEntry(kvp.Key, kvp.Value, facings));
             }
 
             return results;

@@ -294,6 +294,13 @@ namespace FDG.Stages
                 return false;
             }
 
+            // #029: an Aircraft that flew off the table this activation is out of play — no charging from limbo.
+            if (context.ActivatingUnit.GetValue().Tokens.HasToken(Rules.Foundation.TokenType.OffTableFromForcedMove))
+            {
+                reasonIfCant = "Flew off the table — it redeploys from an edge next round.";
+                return false;
+            }
+
             if (context.HasAttacked)
             {
                 reasonIfCant = "Has already attacked.";
@@ -397,6 +404,14 @@ namespace FDG.Stages
                 return false;
             }
 
+            // #029: an Aircraft that flew off the table this activation is out of play — flying off skips
+            // its shooting (its models sit at origin until the edge redeploy next round).
+            if (context.ActivatingUnit.GetValue().Tokens.HasToken(Rules.Foundation.TokenType.OffTableFromForcedMove))
+            {
+                reasonIfCant = "Flew off the table — it redeploys from an edge next round.";
+                return false;
+            }
+
             if (context.HasAttacked)
             {
                 reasonIfCant = "Has already attacked.";
@@ -405,9 +420,12 @@ namespace FDG.Stages
 
             context.ActivatingUnit.GetValue().GetMobility(out float moveShootDistanceInches, out _);
 
-            if (context.MoveDistance.LessThanOrAlmostEqual(moveShootDistanceInches) == false)
+            // Aircraft only ever Advance — a forced 30-36" straight-line move — and may shoot after it, so the
+            // normal advance-and-shoot distance cap (which distinguishes Advance from Rush) doesn't apply (#029).
+            bool isAircraft = Rules.Dispatch.AircraftRules.IsAircraft(context.ActivatingUnit.GetValue());
+            if (!isAircraft && context.MoveDistance.LessThanOrAlmostEqual(moveShootDistanceInches) == false)
             {
-                reasonIfCant = $"Moved {context.MoveDistance} inches, when max to move and shoot for {context.ActivatingUnit.GetValue().Name} " + 
+                reasonIfCant = $"Moved {context.MoveDistance} inches, when max to move and shoot for {context.ActivatingUnit.GetValue().Name} " +
                     $" is {moveShootDistanceInches}.";
                 return false;
             }

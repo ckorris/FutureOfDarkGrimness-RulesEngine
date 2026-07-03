@@ -26,18 +26,18 @@ namespace FDG.Stages
             if (models.Count == 1)
                 return new List<ModelMoveEntry> { new ModelMoveEntry(models[0], new List<Position> { new Position(centerX, centerZ) }) };
 
-            float spacing = GridSpacing(models);
+            var (sx, sz) = GridSpacingXZ(models);
             int cols = (int)MathF.Ceiling(MathF.Sqrt(models.Count));
             int rows = (int)MathF.Ceiling(models.Count / (float)cols);
-            float gridWidth = (cols - 1) * spacing;
-            float gridHeight = (rows - 1) * spacing;
+            float gridWidth = (cols - 1) * sx;
+            float gridHeight = (rows - 1) * sz;
 
             var slots = new List<Position>(models.Count);
             for (int k = 0; k < models.Count; k++)
             {
                 int col = k % cols, row = k / cols;
-                slots.Add(new Position(centerX - gridWidth / 2f + col * spacing,
-                                       centerZ - gridHeight / 2f + row * spacing));
+                slots.Add(new Position(centerX - gridWidth / 2f + col * sx,
+                                       centerZ - gridHeight / 2f + row * sz));
             }
             return AssignNearest(models, slots);
         }
@@ -52,10 +52,11 @@ namespace FDG.Stages
         {
             if (models.Count <= 1) return Math.Max(0f, desiredStep);
 
-            float spacing = GridSpacing(models);
+            var (sx, sz) = GridSpacingXZ(models);
             int cols = (int)MathF.Ceiling(MathF.Sqrt(models.Count));
             int rows = (int)MathF.Ceiling(models.Count / (float)cols);
-            float gridRadius = 0.5f * spacing * MathF.Sqrt((cols - 1) * (cols - 1) + (rows - 1) * (rows - 1));
+            float gw = (cols - 1) * sx, gh = (rows - 1) * sz;
+            float gridRadius = 0.5f * MathF.Sqrt(gw * gw + gh * gh);
             float currentSpread = models.Max(mb =>
             {
                 var p = mb.GetValue().Position;
@@ -65,8 +66,22 @@ namespace FDG.Stages
             return Math.Min(Math.Max(0f, desiredStep), maxStep);
         }
 
-        private static float GridSpacing(IReadOnlyList<DataBinding<ModelData>> models)
-            => 2f * models.Max(mb => mb.GetValue().BaseRadiusInches) + 0.1f; // 0.1" base-to-base
+        // Per-axis grid spacing (#150): column spacing from the widest base's X extent, row spacing from the
+        // tallest base's Z extent, each + a 0.1" base-to-base gap. A single radius can't pack a non-square
+        // rectangle both overlap-free AND within the 1" cohesion rule — the short axis needs the smaller
+        // spacing. Facing-aware via the footprint extents; a circle gives (r, r), reproducing the old square grid.
+        private static (float x, float z) GridSpacingXZ(IReadOnlyList<DataBinding<ModelData>> models)
+        {
+            float maxHalfX = 0f, maxHalfZ = 0f;
+            foreach (var mb in models)
+            {
+                var m = mb.GetValue();
+                var (hx, hz) = BaseShapeGeometry.FootprintHalfExtents(m.BaseShape, m.Facing);
+                if (hx > maxHalfX) maxHalfX = hx;
+                if (hz > maxHalfZ) maxHalfZ = hz;
+            }
+            return (2f * maxHalfX + 0.1f, 2f * maxHalfZ + 0.1f);
+        }
 
         private static List<ModelMoveEntry> AssignNearest(IReadOnlyList<DataBinding<ModelData>> models, List<Position> slots)
         {

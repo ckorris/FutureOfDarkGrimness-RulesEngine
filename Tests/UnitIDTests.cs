@@ -55,6 +55,7 @@ namespace FDG.Tests
                 .RegisterType<Position>(1)
                 .RegisterType<ModelData>(1)
                 .RegisterType<UnitData>(1)
+                .RegisterType<Float2>(1)
                 .Build();
 
             var modelData = new ModelData(
@@ -79,6 +80,7 @@ namespace FDG.Tests
             // can find its model binding on the other side.
             string serializedWounds   = fromStore.GetValueAsJson<float>(modelData.RemainingWoundsBinding.Reference);
             string serializedPosition = fromStore.GetValueAsJson<Position>(modelData.PositionBinding.Reference);
+            string serializedPositionFacing = fromStore.GetValueAsJson<Float2>(modelData.FacingBinding.Reference);
             string serializedModel    = fromStore.GetValueAsJson<ModelData>(modelRef);
             string serializedUnit     = fromStore.GetValueAsJson<UnitData>(unitRef);
 
@@ -87,10 +89,12 @@ namespace FDG.Tests
                 .RegisterType<Position>(1)
                 .RegisterType<ModelData>(1)
                 .RegisterType<UnitData>(1)
+                .RegisterType<Float2>(1)
                 .Build();
 
             toStore.CreateFromReferenceAndJson(modelData.RemainingWoundsBinding.Reference, serializedWounds);
             toStore.CreateFromReferenceAndJson(modelData.PositionBinding.Reference, serializedPosition);
+            toStore.CreateFromReferenceAndJson(modelData.FacingBinding.Reference, serializedPositionFacing);
             toStore.CreateFromReferenceAndJson(modelRef, serializedModel);
             toStore.CreateFromReferenceAndJson(unitRef, serializedUnit);
 

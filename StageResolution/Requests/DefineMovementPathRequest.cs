@@ -136,7 +136,11 @@ namespace FDG.StageResolution.Requests
         }
     }
 
-    public record ModelMoveEntry(DataBinding<ModelData> Model, List<Position> Positions);
+    // Facings (#150), when present, is parallel to Positions: Facings[i] is the model's yaw facing (a unit
+    // normal) at Positions[i]. The GUI movement resolver fills it — by default the direction of travel into
+    // each waypoint, so a model turns through corners — so the executor can set facing per step (and future
+    // presentation beats can lerp rotation along the path). Null → facing is left unchanged (AI moves, aircraft).
+    public record ModelMoveEntry(DataBinding<ModelData> Model, List<Position> Positions, List<Float2>? Facings = null);
 
     /// <summary>
     /// One living model's per-model move budget (#093), carried on <see cref="DefineMovementPathRequest"/> so

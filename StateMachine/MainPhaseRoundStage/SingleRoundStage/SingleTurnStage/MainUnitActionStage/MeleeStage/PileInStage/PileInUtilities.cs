@@ -58,7 +58,7 @@ namespace FDG.Stages
             var candidates = new List<(DataBinding<ModelData> Defender, DataBinding<ModelData> Charger, float B2B)>();
             foreach (DataBinding<ModelData> d in liveDefenders)
             {
-                float b2b = NearestB2BAt(d.GetValue().Position, d.GetValue().BaseRadiusInches, liveChargers,
+                float b2b = NearestB2BAt(d.GetValue().Position, d.GetValue().BaseShape, liveChargers,
                     out DataBinding<ModelData>? nearest);
                 if (nearest == null) continue;
                 if (b2b <= BTB_EPSILON_INCHES) continue;
@@ -85,16 +85,16 @@ namespace FDG.Stages
                 float step = MathF.Min(MAX_PILE_IN_DISTANCE_INCHES, currentB2B);
 
                 // Don't overlap other models. Target charger is exempt — we're moving toward it.
-                step = LimitStepByObstructions(defenderPos, dirX, dirZ, defenderModel.BaseRadiusInches, step,
+                step = LimitStepByObstructions(defenderPos, defenderModel.BaseShape, defenderModel.Facing, dirX, dirZ, step,
                     defender, targetCharger, liveChargers, liveDefenders, workingDefenderPositions);
 
                 if (step < MIN_MEANINGFUL_STEP_INCHES) continue;
 
                 Position tentative = new Position(defenderPos.x + dirX * step, defenderPos.z + dirZ * step);
 
-                // Impassable terrain: if the move's straight segment crosses any impassable piece, skip pile-in
-                // for this model. Rule's "as close as possible" caps out at zero in this case.
-                if (PathCrossesImpassable(defenderPos, tentative, impassable)) continue;
+                // Impassable terrain: if the move sweeps the model's base through any impassable piece, skip
+                // pile-in for this model. Rule's "as close as possible" caps out at zero in this case.
+                if (PathCrossesImpassable(defenderPos, tentative, defenderModel.BaseShape, defenderModel.Facing, impassable)) continue;
 
                 workingDefenderPositions[defender] = tentative;
                 movedDefenders.Add(defender);
@@ -122,7 +122,7 @@ namespace FDG.Stages
             return result;
         }
 
-        private static float NearestB2BAt(Position pos, float radius, List<DataBinding<ModelData>> chargers,
+        private static float NearestB2BAt(Position pos, IBaseShape shape, List<DataBinding<ModelData>> chargers,
             out DataBinding<ModelData>? nearest)
         {
             nearest = null;
@@ -130,8 +130,10 @@ namespace FDG.Stages
             foreach (DataBinding<ModelData> c in chargers)
             {
                 ModelData cm = c.GetValue();
+                // True base-to-base gap (#150), so a defender piles in to real contact, not bounding-circle
+                // contact. Circle-vs-circle is exactly the old radius form.
                 float b2b = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
-                    pos, cm.Position, radius, cm.BaseRadiusInches);
+                    pos, cm.Position, shape, cm.BaseShape);
                 if (b2b < bestB2B) { bestB2B = b2b; nearest = c; }
             }
             return bestB2B;
@@ -139,8 +141,8 @@ namespace FDG.Stages
 
         // For each non-target obstruction, return the max step along (dirX, dirZ) before the moving model's
         // base touches it. Takes the min over all obstructions.
-        private static float LimitStepByObstructions(Position from, float dirX, float dirZ, float radius,
-            float maxStep,
+        private static float LimitStepByObstructions(Position from, IBaseShape movingShape, Float2 movingFacing,
+            float dirX, float dirZ, float maxStep,
             DataBinding<ModelData> selfDefender,
             DataBinding<ModelData> targetCharger,
             List<DataBinding<ModelData>> chargers,
@@ -153,44 +155,74 @@ namespace FDG.Stages
             {
                 if (ReferenceEquals(other, targetCharger)) continue;
                 ModelData om = other.GetValue();
-                allowed = MathF.Min(allowed, MaxStepToTouch(from, dirX, dirZ, radius, om.Position, om.BaseRadiusInches));
+                allowed = MathF.Min(allowed, MaxStepToTouch(from, movingShape, movingFacing, dirX, dirZ, allowed,
+                    om.Position, om.BaseShape, om.Facing));
             }
             foreach (DataBinding<ModelData> other in defenders)
             {
                 if (ReferenceEquals(other, selfDefender)) continue;
+                ModelData om = other.GetValue();
                 Position otherPos = workingDefenderPositions[other];
-                allowed = MathF.Min(allowed, MaxStepToTouch(from, dirX, dirZ, radius, otherPos, other.GetValue().BaseRadiusInches));
+                allowed = MathF.Min(allowed, MaxStepToTouch(from, movingShape, movingFacing, dirX, dirZ, allowed,
+                    otherPos, om.BaseShape, om.Facing));
             }
             return MathF.Max(0f, allowed);
         }
 
-        // Max distance the moving model (at `from`, radius r, moving along unit dir) can travel before its base
-        // touches the static obstacle (at obstPos, radius obstR). Returns +infinity if dir misses or obstacle behind.
-        private static float MaxStepToTouch(Position from, float dirX, float dirZ, float r,
-            Position obstPos, float obstR)
+        // Max distance the moving base (at `from`, along unit dir) can travel before it touches the static obstacle
+        // base at obstPos, capped at `upperBound`. Circle-vs-circle keeps the exact closed-form ray-vs-circle
+        // (unchanged); any rectangle involved binary-searches the swept footprint intersection (#150).
+        private static float MaxStepToTouch(Position from, IBaseShape movingShape, Float2 movingFacing,
+            float dirX, float dirZ, float upperBound, Position obstPos, IBaseShape obstShape, Float2 obstFacing)
         {
-            float dx = obstPos.x - from.x;
-            float dz = obstPos.z - from.z;
-            float proj = dx * dirX + dz * dirZ;
-            if (proj <= 0f) return float.PositiveInfinity;
-            float distSq = dx * dx + dz * dz;
-            float perpSq = distSq - proj * proj;
-            float combined = r + obstR;
-            float combinedSq = combined * combined;
-            if (perpSq >= combinedSq) return float.PositiveInfinity;
-            float behind = MathF.Sqrt(combinedSq - perpSq);
-            // Subtract a tiny margin so float drift doesn't leave bases overlapping after the move.
-            return MathF.Max(0f, proj - behind - 0.001f);
+            if (movingShape is CircleBase mc && obstShape is CircleBase oc)
+            {
+                float dx = obstPos.x - from.x;
+                float dz = obstPos.z - from.z;
+                float proj = dx * dirX + dz * dirZ;
+                if (proj <= 0f) return float.PositiveInfinity;
+                float distSq = dx * dx + dz * dz;
+                float perpSq = distSq - proj * proj;
+                float combined = mc.RadiusInches + oc.RadiusInches;
+                float combinedSq = combined * combined;
+                if (perpSq >= combinedSq) return float.PositiveInfinity;
+                float behind = MathF.Sqrt(combinedSq - perpSq);
+                // Subtract a tiny margin so float drift doesn't leave bases overlapping after the move.
+                return MathF.Max(0f, proj - behind - 0.001f);
+            }
+
+            if (upperBound <= 0f) return 0f;
+            IZone obstZone = obstShape.ToZone(obstPos, obstFacing);
+            Float2 origin = new Float2(from.x, from.z);
+            // The swept-footprint overlap grows monotonically with travel, so binary-search the transition.
+            if (SweptBaseGeometry.DoesSweptBaseIntersectZone(obstZone, origin, origin, movingShape, movingFacing))
+                return 0f; // already touching where it stands
+            Float2 farEnd = new Float2(from.x + dirX * upperBound, from.z + dirZ * upperBound);
+            if (!SweptBaseGeometry.DoesSweptBaseIntersectZone(obstZone, origin, farEnd, movingShape, movingFacing))
+                return upperBound; // never reaches the obstacle within the bound
+            float lo = 0f, hi = upperBound;
+            for (int i = 0; i < 24; i++)
+            {
+                float mid = (lo + hi) * 0.5f;
+                Float2 end = new Float2(from.x + dirX * mid, from.z + dirZ * mid);
+                if (SweptBaseGeometry.DoesSweptBaseIntersectZone(obstZone, origin, end, movingShape, movingFacing)) hi = mid;
+                else lo = mid;
+            }
+            return MathF.Max(0f, lo - 0.001f);
         }
 
-        private static bool PathCrossesImpassable(Position from, Position to, List<ITerrain> impassable)
+        // Sweeps the moving base's true footprint (not a point) from `from` to `to` against each impassible
+        // piece (#150) — a rectangular base can no longer clip a corner of terrain undetected. A circular base
+        // reduces to the swept disc.
+        private static bool PathCrossesImpassable(Position from, Position to, IBaseShape movingShape, Float2 movingFacing,
+            List<ITerrain> impassable)
         {
             if (impassable.Count == 0) return false;
             Float2 a = new Float2(from.x, from.z);
             Float2 b = new Float2(to.x, to.z);
             foreach (ITerrain piece in impassable)
             {
-                if (piece.DoesPathIntersectZone(a, b)) return true;
+                if (SweptBaseGeometry.DoesSweptBaseIntersectZone(piece.Shape, a, b, movingShape, movingFacing)) return true;
             }
             return false;
         }
@@ -225,7 +257,7 @@ namespace FDG.Stages
                     if (i == j) continue;
                     DataBinding<ModelData> dj = defenders[j];
                     float d = DistanceUtilities.GetBaseToBaseDistanceInches_3D(
-                        pi, positions[dj], mi.BaseShape, dj.GetValue().BaseShape);
+                        pi, positions[dj], mi.BaseShape, mi.Facing, dj.GetValue().BaseShape, dj.GetValue().Facing);
                     if (d < nearest) { nearest = d; nearestIdx = j; }
                 }
                 float excess = nearest - GameWideConstants.MAX_MODEL_DISTANCE_FROM_ANY_OTHER_MODEL_INCHES;
@@ -250,7 +282,7 @@ namespace FDG.Stages
                     DataBinding<ModelData> dj = defenders[j];
                     float d = DistanceUtilities.GetBaseToBaseDistanceInches_3D(
                         positions[di], positions[dj],
-                        di.GetValue().BaseShape, dj.GetValue().BaseShape);
+                        di.GetValue().BaseShape, di.GetValue().Facing, dj.GetValue().BaseShape, dj.GetValue().Facing);
                     float excess = d - GameWideConstants.MAX_MODEL_DISTANCE_FROM_ALL_OTHER_MODELS_INCHES;
                     if (excess > 0f)
                     {

@@ -46,8 +46,10 @@ namespace FDG.Stages
             {
                 if (model.Position.x == 0f && model.Position.z == 0f) continue;
                 if (excluded.Contains(model)) continue;
+                // A LoS blocker with the model's true (oriented) footprint (#150): a rectangle blocks line of
+                // sight with its real shape, not its inscribed bounding circle.
                 blockers.Add(new TerrainData(ETerrainType.Blocking,
-                    new CircularZone(model.Position.x, model.Position.z, model.BaseRadiusInches)));
+                    model.BaseShape.ToZone(model.Position, model.Facing)));
             }
             return blockers;
         }

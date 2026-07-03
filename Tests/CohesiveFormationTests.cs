@@ -56,6 +56,36 @@ namespace FDG.Tests
             Assert.That(entries[0].Positions[^1].z, Is.EqualTo(3f).Within(0.001f));
         }
 
+        // #150: a wide rectangular base (4"×1.5") can't be packed cohesively by a single spacing scalar — the
+        // circumscribing radius over-spaces the 1.5" short axis (rows 2.87" apart → breaks the 1" rule) and the
+        // inscribed radius under-spaces the 4" long axis (bases overlap). Per-axis grid spacing packs it tight
+        // on both. Validated against the real shape-aware cohesion check (this crashed the game before the fix).
+        [Test]
+        public void PackGrid_WideRectangles_ProduceCohesionValidFormation()
+        {
+            var models = MakeRectModels(4f, 1.5f,
+                new Position(0, 0), new Position(30, 0), new Position(0, 30), new Position(30, 30),
+                new Position(15, 15));
+
+            var entries = CohesiveFormation.PackGrid(models, centerX: 20f, centerZ: 20f);
+
+            bool valid = MovementUtilities.ValidatePaths(entries, maxDistanceInches: 200f, out var errors);
+            Assert.That(valid, Is.True,
+                "re-packed wide-rectangle formation must satisfy cohesion. Errors: " +
+                string.Join(", ", errors.Select(e => MovementUtilities.ErrorReasonToString(e.ErrorReasonType))));
+        }
+
+        private List<DataBinding<ModelData>> MakeRectModels(float w, float h, params Position[] positions)
+        {
+            var list = new List<DataBinding<ModelData>>(positions.Length);
+            foreach (var pos in positions)
+            {
+                var md = new ModelData(new RectangleBase(w, h), new List<Weapon>(), pos, _store);
+                list.Add(_store.GetDataBinding<ModelData>(_store.Create(md)));
+            }
+            return list;
+        }
+
         private List<DataBinding<ModelData>> MakeModels(params Position[] positions)
         {
             var list = new List<DataBinding<ModelData>>(positions.Length);

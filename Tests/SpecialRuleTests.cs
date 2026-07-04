@@ -9,11 +9,11 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // Phase 6 red baseline for Work Item #042. Each test constructs a rule inline,
-    // attaches it to the relevant unit, fires the matching hook context, and asserts
-    // on the RuleOperation queue the bus should produce. They FAIL today: RuleHookBus
-    // is still the Phase 4 stub returning an empty queue. Phase 7 turns them green in
-    // the order documented in 042-implementation-checklist.txt.
+    // Work Item #042 special-rule dispatch tests. Each test constructs a rule inline,
+    // attaches it to the relevant unit, evaluates the matching hook context through the
+    // RuleEvaluator (harness.Evaluate / EvaluateAll), and asserts on the resulting
+    // RuleOperation queue. (The old RuleHookBus stub these were first drafted against was
+    // retired under #069; passive dispatch and activated abilities live on RuleEvaluator.)
     [TestFixture]
     public class SpecialRuleTests
     {

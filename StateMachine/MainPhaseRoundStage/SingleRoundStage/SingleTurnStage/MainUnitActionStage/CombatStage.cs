@@ -1,10 +1,9 @@
 using System;
-using System.Collections.Generic;
 
 namespace FDG.Stages
 {
 
-    public abstract class CombatStage<TResult, TSelf, TMetadata> : StageBase<TMetadata>, ICombatEffectsSink<TResult>
+    public abstract class CombatStage<TResult, TSelf, TMetadata> : StageBase<TMetadata>
         where TSelf : CombatStage<TResult, TSelf, TMetadata>
         where TMetadata : ICombatMetadata
     {
@@ -12,13 +11,6 @@ namespace FDG.Stages
 
         public StageBinding NextStage;
 
-        //Not sure if interface needed.
-        #region ICombatEffectsSink 
-        public List<ICombatEffect<TResult>> OnExecuteEffectsList => _effects;
-
-        #endregion
-
-        private List<ICombatEffect<TResult>> _effects = new List<ICombatEffect<TResult>>();
         protected CombatStage(IGameContext gameContext, IStateMachineLayer<TMetadata> parent) : base(gameContext, parent)
         {
             NextStage = new StageBinding(this);
@@ -46,8 +38,6 @@ namespace FDG.Stages
         public sealed override void Exit()
         {
             base.Exit();
-
-            _effects.Clear();
         }
 
         private Task Execute(TMetadata context)
@@ -57,28 +47,11 @@ namespace FDG.Stages
                 throw new Exception($"Ran combat stage of type {typeof(TResult)} when a result was already present.");
             }
 
-            //Copy the list so that the pre-execute effects can modify it safely.
-            List<ICombatEffect<TResult>> effectsCopy = new List<ICombatEffect<TResult>>(_effects);
-
-            foreach (ICombatEffect<TResult> effect in effectsCopy)
+            return RunStage(context, async result =>
             {
-                effect.OnPreExecute(context, this);
-            }
-
-            return RunStage(context, (result) => RunPostExecuteEffects(context, result));
-        }
-
-        private async Task RunPostExecuteEffects(TMetadata context, TResult result)
-        {
-            //For post-execute effects, use the original, as it may have been purposefully modified in pre-execute.
-            foreach (ICombatEffect<TResult> effect in _effects)
-            {
-                effect.OnPostExecute(context, result);
-            }
-
-            context.AddResult(result);
-
-            await Finish(context);
+                context.AddResult(result);
+                await Finish(context);
+            });
         }
 
         private Task Finish(TMetadata context)

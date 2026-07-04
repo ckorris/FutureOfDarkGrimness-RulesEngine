@@ -31,6 +31,24 @@ namespace FDG.Ai.Resolvers
             float cx = aliveModels.Average(mb => mb.GetValue().Position.x);
             float cz = aliveModels.Average(mb => mb.GetValue().Position.z);
 
+            List<EnemyModelFootprint> footprints = GetLiveEnemyFootprints();
+            IEnumerable<ITerrain> terrain = _tableState.Terrain.Objects;
+
+            // #159: a unit left out of coherency by a mid-unit casualty can't consolidate as a rigid delta (a
+            // rigid translate preserves the hole, and ConsolidateStage would reject the still-broken result).
+            // Re-form the survivors toward their centroid within the cap first — pulling them as close back to
+            // coherency as the 1-3" consolidation allows (the "attempt to bring them together"). Validated
+            // against the same lenient check ConsolidateStage runs, so it's never rejected downstream.
+            if (!CohesiveFormation.IsCohesive(aliveModels))
+            {
+                List<ModelMoveEntry> reform = CohesiveFormation.ReformTowardWithinCap(
+                    aliveModels, cx, cz, request.MaxDistanceInches - 0.001f);
+                if (MovementUtilities.ValidateConsolidationPaths(reform, request.MaxDistanceInches, footprints,
+                        request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, request.IgnoresImpassibleTerrain, terrain, out _))
+                    return Task.FromResult(reform);
+                // else fall through — a rigid step (which never worsens coherency) or the hold below stays valid.
+            }
+
             (float dx, float dz)? target = request.Reason == EConsolidationReason.Disengage
                 ? GetDisengageDelta(cx, cz)
                 : GetWipeoutDelta(cx, cz);
@@ -49,13 +67,10 @@ namespace FDG.Ai.Resolvers
             // Back the step off until the same validator ConsolidateStage runs accepts the move, standing
             // still as a last resort — so the AI never submits a consolidation the stage will reject (e.g. one
             // that passes through or ends stacked on a different enemy unit). #090.
-            List<EnemyModelFootprint> footprints = GetLiveEnemyFootprints();
-            IEnumerable<ITerrain> terrain = _tableState.Terrain.Objects;
-
             for (float step = maxStep; step >= 0.01f; step *= 0.5f)
             {
                 List<ModelMoveEntry> candidate = BuildDeltaMove(aliveModels, dirX, dirZ, step);
-                if (MovementUtilities.ValidatePaths(candidate, request.MaxDistanceInches, footprints,
+                if (MovementUtilities.ValidateConsolidationPaths(candidate, request.MaxDistanceInches, footprints,
                         request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, request.IgnoresImpassibleTerrain, terrain, out _))
                     return Task.FromResult(candidate);
             }

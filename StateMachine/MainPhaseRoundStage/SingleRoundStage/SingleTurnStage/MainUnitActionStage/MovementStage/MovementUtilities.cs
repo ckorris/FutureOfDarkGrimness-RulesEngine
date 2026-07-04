@@ -122,12 +122,50 @@ namespace FDG.Stages
         }
 
         /// <summary>
+        /// Consolidation-move validation (#159): the cap, terrain, and enemy-crossing checks stay strict, but
+        /// the coherency rule is LENIENT. A unit left out of coherency by a mid-unit casualty (its survivors
+        /// end up &gt;1" apart) can't always re-form within the tiny 1-3" consolidation cap, so a consolidation
+        /// is only rejected for coherency when it makes coherency WORSE than it already was (see
+        /// <see cref="ValidateCoherencyNotWorsened"/>). A hold, or any move that pulls the unit together, is
+        /// therefore always legal — the unit can never be trapped with no valid consolidation.
+        /// </summary>
+        public static bool ValidateConsolidationPaths(List<ModelMoveEntry> moves, float maxDistanceInches,
+            IEnumerable<EnemyModelFootprint> enemyFootprints, bool canMoveThroughEnemies,
+            bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
+            IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors)
+        {
+            errors = new List<ReasonForInvalidMove>();
+
+            IReadOnlyList<EnemyModelFootprint> enemies =
+                enemyFootprints as IReadOnlyList<EnemyModelFootprint> ?? enemyFootprints?.ToList()
+                ?? (IReadOnlyList<EnemyModelFootprint>)Array.Empty<EnemyModelFootprint>();
+
+            ValidateOutOfMoveRange(moves, _ => maxDistanceInches, ref errors);
+            ValidateMovingThroughImpassibleTerrain(moves, terrain, ignoresImpassibleTerrain, ref errors);
+            ValidateMovingThroughDifficultTerrain(moves, terrain, ignoresDifficultTerrain, ref errors);
+            ValidateMovingThroughEnemyUnits(moves, enemies, canMoveThroughEnemies, ref errors);
+            ValidateCoherencyNotWorsened(moves, ref errors);
+
+            return errors.Count == 0;
+        }
+
+        /// <summary>
         /// Every living enemy model's base footprint (centre + radius), tagged with a per-unit key so the
         /// move-through / standoff check can tell which models belong to the same enemy unit (a charge into
         /// one model of a unit legitimately ends within the 1" standoff of that whole unit). The key is only
         /// stable within the returned list. Enemies are everyone not on the moving unit's team.
         /// </summary>
         public static List<EnemyModelFootprint> GetEnemyModelFootprints(DataBinding<UnitData> movingUnit, IGameContext gameContext)
+            => GetEnemyModelFootprints(movingUnit, gameContext, excludeUnit: null);
+
+        /// <summary>
+        /// As <see cref="GetEnemyModelFootprints(DataBinding{UnitData}, IGameContext)"/>, but omits every model
+        /// of <paramref name="excludeUnit"/>. Pile-in uses this to obstacle-check a defender against every enemy
+        /// unit EXCEPT the one it is piling toward — so a defender stops at base contact with a third-party (or
+        /// already-engaged) enemy instead of plowing through it (#159).
+        /// </summary>
+        public static List<EnemyModelFootprint> GetEnemyModelFootprints(DataBinding<UnitData> movingUnit,
+            IGameContext gameContext, DataBinding<UnitData>? excludeUnit)
         {
             PlayerID owner = movingUnit.GetValue().PlayerID;
 
@@ -144,6 +182,7 @@ namespace FDG.Stages
             {
                 foreach (DataBinding<UnitData> enemyUnit in enemyArmy.UnitBindings)
                 {
+                    if (excludeUnit != null && ReferenceEquals(enemyUnit.GetValue(), excludeUnit.GetValue())) continue;
                     // #029: an Aircraft can't be moved into base contact with — tag its footprints so the
                     // validator never lets a charger end engaged with it.
                     bool uncontactable = Rules.Dispatch.AircraftRules.IsAircraft(enemyUnit.GetValue());
@@ -746,7 +785,79 @@ namespace FDG.Stages
         }
 
 
-        public static void AssertModelInUnit(DataBinding<UnitData> unit, DataBinding<ModelData> model, 
+        /// <summary>
+        /// Lenient coherency check for consolidation (#159): tolerates a break that already existed at the
+        /// models' CURRENT (pre-move) positions. A model is flagged only when the move makes its coherency
+        /// worse — its post-move nearest-neighbour gap exceeds max(1", its pre-move nearest gap), or its
+        /// post-move farthest gap exceeds max(9", its pre-move farthest gap). So a mid-unit casualty that
+        /// leaves survivors &gt;1" apart doesn't trap the unit: a hold (positions unchanged) is always valid,
+        /// and any re-forming move that shrinks the gaps is valid, but a move that scatters the unit further
+        /// is still rejected. Mirrors the enemy-standoff rule's "only penalise moves that close the distance".
+        /// </summary>
+        private static void ValidateCoherencyNotWorsened(List<ModelMoveEntry> moves,
+            ref List<ReasonForInvalidMove> reasonsForInvalidMove)
+        {
+            List<DataBinding<ModelData>> models = new List<DataBinding<ModelData>>();
+            List<Position> before = new List<Position>();
+            List<Position> after = new List<Position>();
+
+            foreach (ModelMoveEntry moveEntry in moves)
+            {
+                if (moveEntry.Model.GetValue().GetIsAlive() == false) continue;
+
+                models.Add(moveEntry.Model);
+                before.Add(moveEntry.Model.GetValue().PositionBinding.GetValue());
+                after.Add(moveEntry.Positions.Count > 0
+                    ? moveEntry.Positions.Last()
+                    : moveEntry.Model.GetValue().PositionBinding.GetValue());
+            }
+
+            if (models.Count <= 1) return;
+
+            ComputeCohesionExtents(models, before, out float[] nearestBefore, out float[] farthestBefore);
+            ComputeCohesionExtents(models, after, out float[] nearestAfter, out float[] farthestAfter);
+
+            for (int i = 0; i < models.Count; i++)
+            {
+                float nearestLimit = Math.Max(GameWideConstants.MAX_MODEL_DISTANCE_FROM_ANY_OTHER_MODEL_INCHES,
+                    nearestBefore[i]) + COHESION_EPSILON_INCHES;
+                if (nearestAfter[i] > nearestLimit)
+                    reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.TooFarFromAnyUnitModel, models[i]));
+
+                float farthestLimit = Math.Max(GameWideConstants.MAX_MODEL_DISTANCE_FROM_ALL_OTHER_MODELS_INCHES,
+                    farthestBefore[i]) + COHESION_EPSILON_INCHES;
+                if (farthestAfter[i] > farthestLimit)
+                    reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.TooFarFromAllUnitModels, models[i]));
+            }
+        }
+
+        // Per-model nearest- and farthest-neighbour base-to-base 3D distances at the given positions
+        // (index-aligned with <paramref name="models"/>). Shared by the not-worsened coherency check.
+        private static void ComputeCohesionExtents(List<DataBinding<ModelData>> models, List<Position> positions,
+            out float[] nearest, out float[] farthest)
+        {
+            int count = models.Count;
+            nearest = new float[count];
+            farthest = new float[count];
+            for (int i = 0; i < count; i++) { nearest[i] = float.PositiveInfinity; farthest[i] = float.NegativeInfinity; }
+
+            for (int i = 0; i < count; i++)
+            {
+                for (int j = i + 1; j < count; j++)
+                {
+                    float distance = DistanceUtilities.GetBaseToBaseDistanceInches_3D(positions[i], positions[j],
+                        models[i].GetValue().BaseShape, models[i].GetValue().Facing,
+                        models[j].GetValue().BaseShape, models[j].GetValue().Facing);
+
+                    nearest[i] = Math.Min(distance, nearest[i]);
+                    farthest[i] = Math.Max(distance, farthest[i]);
+                    nearest[j] = Math.Min(distance, nearest[j]);
+                    farthest[j] = Math.Max(distance, farthest[j]);
+                }
+            }
+        }
+
+        public static void AssertModelInUnit(DataBinding<UnitData> unit, DataBinding<ModelData> model,
             [CallerMemberName] string methodName = null)
         {
             if (model == default)

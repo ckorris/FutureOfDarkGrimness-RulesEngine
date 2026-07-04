@@ -55,11 +55,13 @@ namespace FDG.Stages
             List<ModelMoveEntry> movements = await context.PlayerRequester()
                 .RequestDecision<ConsolidationMoveRequest, List<ModelMoveEntry>>(request);
 
-            // Validate against the cap, terrain, and enemy footprints. Cohesion is preserved trivially when
-            // the unit moves as a single delta (resolver convention) so we still run the standard validator
-            // to catch any per-model paths a future resolver might submit.
+            // Validate against the cap, terrain, and enemy footprints. Coherency is LENIENT here (#159): a unit
+            // left out of coherency by a mid-unit casualty can't always re-form within the 1-3" consolidation
+            // cap, so the move is only rejected for coherency if it makes coherency WORSE than it already was.
+            // (The resolvers still re-form toward the group within the cap — this just keeps a badly-holed unit
+            // from being trapped with no legal consolidation.)
             IEnumerable<ITerrain>? terrain = context.GameContext.TableState.Terrain.Objects;
-            if (!MovementUtilities.ValidatePaths(movements, maxDist, enemyFootprints, canMoveThroughEnemies,
+            if (!MovementUtilities.ValidateConsolidationPaths(movements, maxDist, enemyFootprints, canMoveThroughEnemies,
                     ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, out List<ReasonForInvalidMove> errors))
             {
                 StringBuilder sb = new StringBuilder(errors[0].ToString());

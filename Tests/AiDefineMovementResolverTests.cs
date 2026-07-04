@@ -186,6 +186,62 @@ namespace FDG.Tests
         }
 
         [Test]
+        public async Task Resolve_MixedBaseCasualtyUnit_AdvancingTowardEnemy_ProducesValidMove()
+        {
+            // #159: a unit mixing one large base (r=1.5", e.g. a monster/joined hero) with small troopers
+            // (r=0.5") that has taken a casualty (leaving the survivors out of cohesion) advances toward an
+            // enemy. The re-pack fallbacks (PackGrid) can't reach cohesion for mixed bases, so the resolver
+            // used to hold the survivors in their out-of-cohesion positions -> a move DefinePathStage rejects
+            // (TooFarFromAnyUnitModel) and crashes the game. The resolver must never emit such a move.
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var selfPlayer = new PlayerID(System.Guid.NewGuid());
+            var enemyPlayer = new PlayerID(System.Guid.NewGuid());
+
+            // A tight, in-cohesion mixed-base row: big model then four small ones (0.1" base-to-base gaps).
+            var radii = new[] { 1.5f, 0.5f, 0.5f, 0.5f, 0.5f };
+            var bindings = new List<DataBinding<ModelData>>();
+            float x = 0f;
+            float prevR = 0f;
+            for (int i = 0; i < radii.Length; i++)
+            {
+                if (i > 0) x += prevR + 0.1f + radii[i];
+                var m = new ModelData(radii[i], new List<Weapon>(), new Position(x, 20f), store);
+                bindings.Add(store.GetDataBinding<ModelData>(store.Create(m)));
+                prevR = radii[i];
+            }
+            // Kill the two small models next to the big one, leaving the big model >1" from every survivor.
+            foreach (int dead in new[] { 1, 2 })
+                bindings[dead].GetValue().DealWounds(bindings[dead].GetValue().TotalWounds);
+
+            var moverUnit = new UnitData(selfPlayer, "MixedSurvivors", 4, 4, bindings);
+            var moverUnitBinding = store.GetDataBinding<UnitData>(store.Create(moverUnit));
+            store.Create(new ArmyData(selfPlayer, new List<DataBinding<UnitData>> { moverUnitBinding }));
+
+            // Enemy far to the east so the AI advances toward it.
+            var enemyPos = new Position(40f, 20f);
+            var enemy = new ModelData(0.75f, new List<Weapon>(), enemyPos, store);
+            var enemyBinding = store.GetDataBinding<ModelData>(store.Create(enemy));
+            var enemyUnit = new UnitData(enemyPlayer, "Enemies", 4, 4,
+                new List<DataBinding<ModelData>> { enemyBinding });
+            var enemyUnitBinding = store.GetDataBinding<UnitData>(store.Create(enemyUnit));
+            store.Create(new ArmyData(enemyPlayer, new List<DataBinding<UnitData>> { enemyUnitBinding }));
+
+            var tableState = new TableState(store);
+            var resolver = new AiDefineMovementResolver(tableState, selfPlayer);
+            var request = new DefineMovementPathRequest(selfPlayer, "Move", moverUnitBinding,
+                maxAdvanceDistance: 6f, maxRushDistance: 12f, maxDistanceInches: 12f);
+
+            List<ModelMoveEntry> result = await resolver.Resolve(request);
+
+            var footprints = new List<EnemyModelFootprint> { new EnemyModelFootprint(enemyPos, 0.75f, 0) };
+            bool valid = MovementUtilities.ValidatePaths(result, request.MaxRushDistance,
+                request.MaxDistanceInches, footprints, new List<ITerrain>(), out var errors);
+            Assert.That(valid, Is.True,
+                "AI must never emit a move the engine rejects (mixed-base casualty unit): "
+                + string.Join(", ", errors.Select(e => e.ToString())));
+        }
+
+        [Test]
         public async Task Resolve_MeleeUnitInReach_ChargesIntoBaseContact()
         {
             // #089: a melee unit that can reach should close to base contact, not stall ~1" out.

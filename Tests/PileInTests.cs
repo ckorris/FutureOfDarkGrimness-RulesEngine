@@ -178,6 +178,36 @@ namespace FDG.Tests
                 "Defenders must remain within 1\" b2b after pile-in.");
         }
 
+        [Test]
+        public void DefenderPilingTowardCharger_DoesNotPlowThroughAThirdPartyEnemy()
+        {
+            // #159: the defender is charged by a charger far to its right, so it wants to pile the full 3"
+            // toward it — but a DIFFERENT (large) enemy base sits between them. Pile-in used to only avoid the
+            // charging unit's models, so the defender plowed straight into the third-party base (deep overlap),
+            // leaving a model stacked inside an enemy. It must stop at contact with that base instead.
+            var defender = MakeModel(new Position(0f, 0f), radius: 0.5f);
+            var charger = MakeModel(new Position(10f, 0f), radius: 0.5f);
+            // Third-party enemy: a big base centred at (3,0), radius 1.0 (spans x 2..4), directly in the lane.
+            var thirdParty = new EnemyModelFootprint(new Position(3f, 0f), baseRadiusInches: 1.0f, unitKey: 0,
+                uncontactable: false, baseShape: new CircleBase(1.0f), facing: new Float2(0f, 1f));
+
+            var moves = PileInUtilities.ComputePileInMoves(
+                chargingModels: new[] { charger },
+                defendingModels: new[] { defender },
+                terrain: null,
+                otherEnemyModels: new[] { thirdParty });
+
+            Position end = moves.Count > 0 ? moves[0].NewPosition : defender.GetValue().Position;
+
+            // The defender advanced toward the charger...
+            Assert.That(end.x, Is.GreaterThan(0.5f), "defender should still pile in toward the charger.");
+            // ...but did NOT end overlapping the third-party base beyond the contact tolerance.
+            float gap = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
+                end, new Position(3f, 0f), new CircleBase(0.5f), new CircleBase(1.0f));
+            Assert.That(gap, Is.GreaterThanOrEqualTo(-0.11f),
+                $"defender must stop at contact with the third-party enemy, not overlap it (gap {gap:F3}).");
+        }
+
         private DataBinding<ModelData> MakeModel(IBaseShape shape, Position initialPosition)
         {
             var modelData = new ModelData(shape, new List<Weapon>(), initialPosition, _store);

@@ -219,7 +219,14 @@ namespace FDG
                 (float aMin, float aMax) = Project(a, axis);
                 (float bMin, float bMax) = Project(b, axis);
                 float overlap = MathF.Min(aMax, bMax) - MathF.Max(aMin, bMin);
-                if (overlap <= 0f) return true; // separated on this axis
+                // Strictly-negative overlap is a real gap (a separating axis). overlap == 0 is a shared
+                // boundary, NOT a separation: it also arises when a zero-WIDTH projection (a point/circle hull)
+                // falls strictly inside the other's slab — i.e. a circle centred inside a rectangle. Treating
+                // that as "separated" made a fully-contained circle read as +gap (clear), which let the
+                // move-through check false-positive "moves through an enemy" on a stationary model a melee had
+                // stacked inside a large base (#159). Two just-touching bases still resolve to gap 0 via the
+                // penetration branch below (min overlap 0), so the touching boundary is unchanged.
+                if (overlap < 0f) return true; // separated on this axis
                 penetration = MathF.Min(penetration, overlap);
             }
             return false;

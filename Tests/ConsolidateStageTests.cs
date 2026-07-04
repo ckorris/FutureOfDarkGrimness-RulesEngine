@@ -109,6 +109,44 @@ namespace FDG.Tests
             Assert.ThrowsAsync<RequestResponseInvalidException>(async () => await RunConsolidate(ctx, combat));
         }
 
+        [Test]
+        public async Task HoledUnit_HoldReply_DoesNotThrow()
+        {
+            // #159: a 3-model attacker loses its MIDDLE model, leaving the two survivors ~2.2" apart (base to
+            // base > 1"), i.e. already out of coherency. A rigid hold can't restore coherency within the 1"
+            // disengage cap, and ConsolidateStage used to reject the still-broken result and crash the game.
+            // A consolidation must not be rejected for a break it didn't cause and can't fix in 1".
+            var (ctx, combat, requester, attacker, _) = BuildBattlefield(
+                attackerPositions: new[] { new Position(0, 0), new Position(0, 1.1f), new Position(0, 2.2f) },
+                defenderPositions: new[] { new Position(5, 0) });
+            KillModel(attacker, 1); // middle model dies -> survivors at z=0 and z=2.2 (2.2" apart)
+            requester.Reply = req => StayInPlace(req);
+
+            Assert.DoesNotThrowAsync(async () => await RunConsolidate(ctx, combat));
+        }
+
+        [Test]
+        public void HoledUnit_ScatteringReply_Throws()
+        {
+            // The leniency is one-directional: a consolidation that makes coherency WORSE (drags a survivor
+            // even farther from the other) is still rejected, so the tolerance can't be abused to scatter.
+            var (ctx, combat, requester, attacker, _) = BuildBattlefield(
+                attackerPositions: new[] { new Position(0, 0), new Position(0, 1.1f), new Position(0, 2.2f) },
+                defenderPositions: new[] { new Position(5, 0) });
+            KillModel(attacker, 1);
+            // Push the far survivor another 0.5" away (z 2.2 -> 2.7), widening the existing gap.
+            requester.Reply = req => req.UnitDataBinding.GetValue().ModelBindings
+                .Where(mb => mb.GetValue().GetIsAlive())
+                .Select(mb =>
+                {
+                    var m = mb.GetValue();
+                    float newZ = m.Position.z > 1f ? m.Position.z + 0.5f : m.Position.z;
+                    return new ModelMoveEntry(mb, new List<Position> { new Position(m.Position.x, newZ) });
+                }).ToList();
+
+            Assert.ThrowsAsync<RequestResponseInvalidException>(async () => await RunConsolidate(ctx, combat));
+        }
+
         // ──────────────────────────────────────────────────────────────────────
         // Helpers
         // ──────────────────────────────────────────────────────────────────────
@@ -136,6 +174,12 @@ namespace FDG.Tests
                 var m = mb.GetValue();
                 m.DealWounds(m.TotalWounds);
             }
+        }
+
+        private static void KillModel(DataBinding<UnitData> unit, int index)
+        {
+            var m = unit.GetValue().ModelBindings[index].GetValue();
+            m.DealWounds(m.TotalWounds);
         }
 
         private static (TestCtx ctx, CombatActionContext combat, CapturingRequester requester,

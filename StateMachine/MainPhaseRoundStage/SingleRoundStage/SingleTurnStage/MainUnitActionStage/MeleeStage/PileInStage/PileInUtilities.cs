@@ -32,8 +32,15 @@ namespace FDG.Stages
         public static List<PileInMove> ComputePileInMoves(
             IReadOnlyList<DataBinding<ModelData>> chargingModels,
             IReadOnlyList<DataBinding<ModelData>> defendingModels,
-            IEnumerable<ITerrain>? terrain)
+            IEnumerable<ITerrain>? terrain,
+            IReadOnlyList<EnemyModelFootprint>? otherEnemyModels = null)
         {
+            // Enemy models the defender must not overlap while piling in, OTHER than the charging unit it is
+            // moving toward (third-party enemy units, or a unit it is already engaged with). Without these a
+            // defender piling toward its charger could plow straight through a different enemy's base (#159).
+            IReadOnlyList<EnemyModelFootprint> otherEnemies =
+                otherEnemyModels ?? System.Array.Empty<EnemyModelFootprint>();
+
             List<DataBinding<ModelData>> liveChargers = chargingModels
                 .Where(m => m.GetValue().GetIsAlive()).ToList();
             List<DataBinding<ModelData>> liveDefenders = defendingModels
@@ -58,7 +65,7 @@ namespace FDG.Stages
             var candidates = new List<(DataBinding<ModelData> Defender, DataBinding<ModelData> Charger, float B2B)>();
             foreach (DataBinding<ModelData> d in liveDefenders)
             {
-                float b2b = NearestB2BAt(d.GetValue().Position, d.GetValue().BaseShape, liveChargers,
+                float b2b = NearestB2BAt(d.GetValue().Position, d.GetValue().BaseShape, d.GetValue().Facing, liveChargers,
                     out DataBinding<ModelData>? nearest);
                 if (nearest == null) continue;
                 if (b2b <= BTB_EPSILON_INCHES) continue;
@@ -84,9 +91,11 @@ namespace FDG.Stages
                 // Cap: 3", or distance to BTB with target charger, whichever is smaller.
                 float step = MathF.Min(MAX_PILE_IN_DISTANCE_INCHES, currentB2B);
 
-                // Don't overlap other models. Target charger is exempt — we're moving toward it.
+                // Don't overlap other models. Target charger is exempt — we're moving toward it (we cap the
+                // step at contact with it via currentB2B). Every OTHER model — other chargers, unit-mates, and
+                // any other enemy unit (#159) — clamps the step so the defender stops at contact, not overlap.
                 step = LimitStepByObstructions(defenderPos, defenderModel.BaseShape, defenderModel.Facing, dirX, dirZ, step,
-                    defender, targetCharger, liveChargers, liveDefenders, workingDefenderPositions);
+                    defender, targetCharger, liveChargers, liveDefenders, workingDefenderPositions, otherEnemies);
 
                 if (step < MIN_MEANINGFUL_STEP_INCHES) continue;
 
@@ -122,18 +131,19 @@ namespace FDG.Stages
             return result;
         }
 
-        private static float NearestB2BAt(Position pos, IBaseShape shape, List<DataBinding<ModelData>> chargers,
-            out DataBinding<ModelData>? nearest)
+        private static float NearestB2BAt(Position pos, IBaseShape shape, Float2 facing,
+            List<DataBinding<ModelData>> chargers, out DataBinding<ModelData>? nearest)
         {
             nearest = null;
             float bestB2B = float.PositiveInfinity;
             foreach (DataBinding<ModelData> c in chargers)
             {
                 ModelData cm = c.GetValue();
-                // True base-to-base gap (#150), so a defender piles in to real contact, not bounding-circle
-                // contact. Circle-vs-circle is exactly the old radius form.
+                // True facing-aware base-to-base gap (#150/#159), so the pile-in step caps at real contact —
+                // a facing-less gap over-estimates a rotated rectangle's reach and let the defender overshoot
+                // into it. Circle-vs-circle is exactly the old radius form (facing is irrelevant for circles).
                 float b2b = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
-                    pos, cm.Position, shape, cm.BaseShape);
+                    pos, cm.Position, shape, facing, cm.BaseShape, cm.Facing);
                 if (b2b < bestB2B) { bestB2B = b2b; nearest = c; }
             }
             return bestB2B;
@@ -147,7 +157,8 @@ namespace FDG.Stages
             DataBinding<ModelData> targetCharger,
             List<DataBinding<ModelData>> chargers,
             List<DataBinding<ModelData>> defenders,
-            Dictionary<DataBinding<ModelData>, Position> workingDefenderPositions)
+            Dictionary<DataBinding<ModelData>, Position> workingDefenderPositions,
+            IReadOnlyList<EnemyModelFootprint> otherEnemies)
         {
             float allowed = maxStep;
 
@@ -165,6 +176,13 @@ namespace FDG.Stages
                 Position otherPos = workingDefenderPositions[other];
                 allowed = MathF.Min(allowed, MaxStepToTouch(from, movingShape, movingFacing, dirX, dirZ, allowed,
                     otherPos, om.BaseShape, om.Facing));
+            }
+            // #159: any OTHER enemy unit's model (not the charging unit) is a hard obstacle — a defender may not
+            // pile through it. Stops the defender at contact with a third-party / already-engaged enemy base.
+            foreach (EnemyModelFootprint enemy in otherEnemies)
+            {
+                allowed = MathF.Min(allowed, MaxStepToTouch(from, movingShape, movingFacing, dirX, dirZ, allowed,
+                    enemy.Center, enemy.BaseShape, enemy.Facing));
             }
             return MathF.Max(0f, allowed);
         }

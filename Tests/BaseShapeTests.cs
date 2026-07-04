@@ -99,6 +99,27 @@ namespace FDG.Tests
             Assert.That(gap, Is.LessThan(0f), "overlapping bases report a negative (penetration) gap.");
         }
 
+        // #159: a small circle whose CENTRE sits inside a larger rectangle is fully overlapping and must report
+        // a negative gap. The zero-WIDTH projection of a point/circle hull used to read overlap == 0 on every
+        // rectangle axis as "separated", so a contained circle reported a positive (clear) gap — which made the
+        // move-through check false-positive "moves through an enemy" on a stationary model a melee had stacked
+        // inside a large base.
+        [Test]
+        public void Gap_CircleInsideRectangle_IsNegative()
+        {
+            CircleBase circle = new CircleBase(1f);
+            RectangleBase rect = new RectangleBase(6f, 6f); // half-extent 3; the circle sits well inside it
+            Position center = new Position(0f, 0f);
+
+            float circleFirst = BaseShapeGeometry.SurfaceGap2D(circle, center, rect, center);
+            float rectFirst = BaseShapeGeometry.SurfaceGap2D(rect, center, circle, center);
+
+            Assert.That(circleFirst, Is.LessThan(0f), "a circle centred inside a rectangle overlaps it.");
+            Assert.That(rectFirst, Is.LessThan(0f), "argument order must not change the containment verdict.");
+            Assert.That(BaseShapeGeometry.AreColliding(circle, center, new Float2(0f, 1f), rect, center, new Float2(0f, 1f)),
+                Is.True, "AreColliding must report a contained circle as colliding.");
+        }
+
         // --- Circle ↔ rect gap (both argument orders) ------------------------------------------------
 
         [Test]

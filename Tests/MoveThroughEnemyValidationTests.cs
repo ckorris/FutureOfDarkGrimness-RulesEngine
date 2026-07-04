@@ -277,6 +277,29 @@ namespace FDG.Tests
             Assert.That(circleOk, Is.True, "a bounding-circle approximation misses the enemy entirely.");
         }
 
+        [Test]
+        public void StackedInsideLargeEnemyBase_Holds_Accepted()
+        {
+            // #159: a melee (pile-in) can leave a small model stacked concentric INSIDE a large enemy base.
+            // On its next activation the model just holds. SurfaceGap2D used to report a contained circle as a
+            // positive (clear) gap, so the move-through pass-through guard thought the model started/ended clear
+            // and the swept-zone test then false-positived "moves through an enemy unit" on a zero-length move.
+            // Holding (or any non-closer move) from an already-overlapping position must be legal.
+            DataBinding<ModelData> model = MakeModel(new Position(0f, 0f)); // radius 0.75
+            ModelMoveEntry hold = new ModelMoveEntry(model, new List<Position> { new Position(0f, 0f) });
+
+            var bigEnemy = new List<EnemyModelFootprint>
+            {
+                new EnemyModelFootprint(new Position(0f, 0f), baseRadiusInches: 2.5f, unitKey: 0,
+                    uncontactable: false, baseShape: new RectangleBase(5f, 5f), facing: new Float2(0f, 1f)),
+            };
+
+            bool ok = MovementUtilities.ValidatePaths(new List<ModelMoveEntry> { hold },
+                maxRushDistance: 12f, maxDistanceInches: 12f, bigEnemy, terrain: null, out var errors);
+
+            Assert.That(ok, Is.True, Why(errors));
+        }
+
         private static List<EnemyModelFootprint> Enemy(Position center)
             => new List<EnemyModelFootprint> { new EnemyModelFootprint(center, 0.75f, unitKey: 0) };
 

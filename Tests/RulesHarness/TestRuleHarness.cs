@@ -9,21 +9,16 @@ namespace FDG.Tests.RulesHarness
 {
     /// <summary>
     /// One-stop scaffold for #042 special-rule tests. Owns the data store, a
-    /// <see cref="TestGameContext"/> (with deterministic dice), the rule
-    /// <see cref="Resolver"/>, and the <see cref="Bus"/>, and collapses unit
+    /// <see cref="TestGameContext"/> (with deterministic dice), and the rule
+    /// <see cref="Resolver"/> / <see cref="Evaluator"/>, and collapses unit
     /// construction + rule attachment + hook firing into a few calls so a test
     /// reads like the rule under test rather than the wiring around it.
-    ///
-    /// The bus is still the Phase 4 stub (returns no operations); Phase 6 tests
-    /// that attach rules and expect operations stay RED until Phase 7a implements
-    /// real dispatch.
     /// </summary>
     internal sealed class TestRuleHarness
     {
         private const float DefaultBaseRadiusInches = 0.75f;
 
         public RuleResolver Resolver { get; } = new();
-        public RuleHookBus Bus { get; } = new();
         public RuleEvaluator Evaluator { get; }
         public TestGameContext GameContext { get; }
 
@@ -107,9 +102,9 @@ namespace FDG.Tests.RulesHarness
 
         /// <summary>
         /// Fires a hook and returns the resulting operations. A <see cref="UnitDestroyedContext"/>
-        /// additionally runs owner-destroyed token cleanup across every container (the
-        /// stand-in for the stage that will drive this once rules are wired into the engine);
-        /// other hooks go through the (now vestigial) bus stub.
+        /// runs owner-destroyed token cleanup across every container (the stand-in for the stage
+        /// that will drive this once rules are wired into the engine); every other hook returns
+        /// no operations (passive dispatch and activated abilities live on <see cref="Evaluator"/>).
         /// </summary>
         public IReadOnlyList<RuleOperation> Fire(IHookContext context)
         {
@@ -118,7 +113,7 @@ namespace FDG.Tests.RulesHarness
                 _tokenClearService.ClearForDestroyedOwner(destroyed.DestroyedUnit.ID, AllTokenContainers());
             }
 
-            return Bus.Dispatch(context);
+            return Array.Empty<RuleOperation>();
         }
 
         /// <summary> Every token container on the table — unit- and model-scoped. </summary>

@@ -191,15 +191,25 @@ public static class TransportUtilities
         Position.GetDistance2D(modelPosition, transportPosition) <= MaxTransportRangeInches;
 
     /// <summary>
+    /// One occupant model's dangerous-terrain test during spillout, returned by
+    /// <see cref="ApplySpilloutEffects"/> so the stage can present it (a d6 beat, then a hurt/death beat).
+    /// This is Rules-layer data only — the beats themselves are emitted stage-side, since the Rules layer
+    /// holds no presenter (the same return-then-present split as <c>MovementExecutor.DangerousTerrainRoll</c>).
+    /// <paramref name="Died"/> is the model's state after the test (a 1 that took its last wound).
+    /// </summary>
+    public readonly record struct SpilloutModelRoll(ModelID Model, Position Position, int Roll, bool Wounded, bool Died);
+
+    /// <summary>
     /// The deterministic consequences a transport's destruction inflicts on one occupant once it has been
     /// placed: it is no longer embarked (the <see cref="TokenType.EmbarkedIn"/> link is cut), it becomes
     /// Shaken, and every living model takes a dangerous-terrain test (a decisive d6 via
     /// <paramref name="diceRoller"/>; a roll of 1 deals one wound). The placement itself — the owner
     /// choosing where, within 6" of the wreck — is the stage's interactive part and is NOT done here; this
     /// is the slice of spillout that is deterministic given the dice, so it can be unit-tested ahead of the
-    /// mid-combat orchestration.
+    /// mid-combat orchestration. Returns each model's roll so the stage can present it (dice + hurt/death
+    /// beats); the return is otherwise inert (callers that only want the state change can ignore it).
     /// </summary>
-    public static void ApplySpilloutEffects(IUnit occupant, IDiceRoller diceRoller)
+    public static IReadOnlyList<SpilloutModelRoll> ApplySpilloutEffects(IUnit occupant, IDiceRoller diceRoller)
     {
         Disembark(occupant);
 
@@ -207,17 +217,28 @@ public static class TransportUtilities
         // inlined to avoid a Rules→Stages dependency.
         occupant.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.Shaken));
 
+        List<SpilloutModelRoll> rolls = new List<SpilloutModelRoll>();
         foreach (IModel model in occupant.Models)
         {
             if (!model.GetIsAlive()) continue;
 
             // Decisive per-model die — one concrete face even under the probabilistic roller (cf. #090).
             IDiceResults roll = diceRoller.RollDecisive(6);
-            if (roll.At(1) > 0f)
+
+            // Faces start at SideMin (1), not 0 — find the one that came up (for the presented d6 beat).
+            int rollValue = roll.SideMin;
+            for (int v = roll.SideMin; v <= roll.SideMax; v++)
+                if (roll.At(v) > 0f) { rollValue = v; break; }
+
+            bool wounded = roll.At(1) > 0f;
+            if (wounded)
             {
                 model.DealWounds(1f);
             }
+
+            rolls.Add(new SpilloutModelRoll(model.ID, model.Position, rollValue, wounded, model.GetIsDead()));
         }
+        return rolls;
     }
 
     // --- Effective position (opt-in seam) --------------------------------------------------------

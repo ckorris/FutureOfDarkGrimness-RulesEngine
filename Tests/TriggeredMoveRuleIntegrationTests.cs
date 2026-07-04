@@ -418,19 +418,20 @@ namespace FDG.Tests
         public IPlayerRequestByID PlayerRequester { get; }
         public TableState TableState { get; }
         public IReadWriteableGameDataStore GameDataStore { get; }
-        public IPresenter Presenter { get; } = new LocalPresenter(null, new InstantPresentationClock());
+        public IPresenter Presenter { get; }
         public GameSettings Settings { get; } = GameSettings.GetDefault();
         public List<ITeam>? FirstDeploymentRollOrder => null;
         IGameContext IGameContextAccessor.GameContext => this;
 
         public TriggeredMoveTestContext(GameDataStore store, IPlayerRequestByID requester,
-            IDiceRoller? diceRoller = null)
+            IDiceRoller? diceRoller = null, IPresentationSink? presentationSink = null)
         {
             GameDataStore = store;
             TableState = new TableState(store);
             PlayerRequester = requester;
             DiceRoller = diceRoller ?? new FixedDiceRoller(4);
             RuleEvaluator = new RuleEvaluator(DiceRoller);
+            Presenter = new LocalPresenter(presentationSink, new InstantPresentationClock());
         }
 
         public void SetFirstDeploymentRollOrder(List<ITeam> order) { }

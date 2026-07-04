@@ -1,5 +1,7 @@
 using System;
+using System.Linq;
 using FDG.Data;
+using FDG.Presentation.Beats;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
 using FDG.Stages;
@@ -83,7 +85,62 @@ namespace FDG.Tests
             Assert.That(result.UnitsSpilledOut, Is.EqualTo(0));
         }
 
+        // #096 facet 2: the spillout narrates itself with presentation beats (was log-only). A destroyed
+        // transport with a doomed occupant plays a wreck banner, the occupant's Shaken banner, a per-model
+        // dangerous-terrain d6, and a death animation for a model the test kills.
+        [Test]
+        public async Task DestroyedTransport_PresentsSpilloutBeats()
+        {
+            DataBinding<UnitData> transport = MakeTransport("Rhino", capacity: 6, new Position(10f, 10f));
+            DataBinding<UnitData> occupant = MakeUnit(_player, "Grunts", 1, new Position(0f, 0f)); // 1-wound model
+            TransportUtilities.Embark(occupant.GetValue(), transport.GetValue());
+            transport.GetValue().Models[0].DealWounds(1f); // destroy the transport
+
+            var sink = new RecordingPresentationSink();
+            // Every model rolls a 1 → the dangerous test wounds it; the 1-wound occupant model dies.
+            await RunSpilloutCapturing(transport, new FixedDiceRoller(1), sink);
+
+            var banners = sink.Beats.OfType<BannerBeat>().ToList();
+            Assert.That(banners.Any(b => b.BannerText.Contains("destroyed")), Is.True, "a wreck banner is presented.");
+            Assert.That(banners.Any(b => b.BannerText.Contains("Shaken")), Is.True, "the spilled unit's Shaken banner is presented.");
+            Assert.That(sink.Beats.OfType<DiceRolledBeat>().Any(d => d.Label == "Dangerous Terrain"), Is.True,
+                "each occupant model's dangerous-terrain die is surfaced.");
+            Assert.That(sink.Beats.OfType<ModelDiedBeat>().Any(), Is.True,
+                "a model killed by the dangerous test animates its death.");
+        }
+
+        [Test]
+        public async Task SpilloutSafeRoll_PresentsDicePerModel_ButNoCasualtyBeat()
+        {
+            DataBinding<UnitData> transport = MakeTransport("Rhino", capacity: 6, new Position(10f, 10f));
+            DataBinding<UnitData> occupant = MakeUnit(_player, "Grunts", 2, new Position(0f, 0f));
+            TransportUtilities.Embark(occupant.GetValue(), transport.GetValue());
+            transport.GetValue().Models[0].DealWounds(1f);
+
+            var sink = new RecordingPresentationSink();
+            await RunSpilloutCapturing(transport, new FixedDiceRoller(4), sink); // 4 = safe, no wounds
+
+            Assert.That(sink.Beats.OfType<DiceRolledBeat>().Count(), Is.EqualTo(2), "one dangerous-terrain die per living model.");
+            Assert.That(sink.Beats.OfType<ModelDiedBeat>().Any(), Is.False, "a safe roll kills no one.");
+            Assert.That(sink.Beats.OfType<ModelWoundedBeat>().Any(), Is.False);
+        }
+
         // --- helpers ---
+
+        private async Task<SpilloutResults> RunSpilloutCapturing(DataBinding<UnitData> defender,
+            IDiceRoller roller, RecordingPresentationSink sink)
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CannedPlaceRequester(new Position(10f, 10f)),
+                roller, sink);
+
+            var weapon = new Weapon("Test", rangeInches: 24f, attacks: 1, armorPenetration: 0);
+            var metadata = new CombatMetadata(ctx, _attacker, defender, weapon, weaponCount: 1);
+
+            var stage = new SpilloutOccupantsStage<ICombatMetadata>(ctx, new NoOpLayer<ICombatMetadata>());
+            stage.NextStage.Bind("done");
+            await stage.Enter(metadata);
+            return metadata.QueryForResult(out SpilloutResults result) ? result : new SpilloutResults(0);
+        }
 
         private async Task<SpilloutResults> RunSpillout(DataBinding<UnitData> defender)
         {

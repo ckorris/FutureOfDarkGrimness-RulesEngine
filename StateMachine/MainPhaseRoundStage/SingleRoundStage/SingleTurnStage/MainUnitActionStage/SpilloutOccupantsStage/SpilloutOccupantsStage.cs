@@ -1,4 +1,5 @@
 using FDG.Data;
+using FDG.Presentation.Beats;
 using FDG.Rules.Dispatch;
 using FDG.StageResolution.Requests;
 
@@ -25,6 +26,11 @@ namespace FDG.Stages
         : CombatStage<SpilloutResults, SpilloutOccupantsStage<TMetadata>, TMetadata>
         where TMetadata : ICombatMetadata
     {
+        // The wreck is dramatic (red, like a Rout); each occupant spilling out is Shaken (amber, matching
+        // the morale Shaken banner). Kept local — MoraleUtilities' copies are private.
+        private static readonly TextColor WreckBannerColor  = new TextColor(220, 40, 40, 255);
+        private static readonly TextColor ShakenBannerColor = new TextColor(255, 170, 60, 255);
+
         public SpilloutOccupantsStage(IGameContext gameContext, IStateMachineLayer<TMetadata> parent)
             : base(gameContext, parent)
         {
@@ -56,7 +62,8 @@ namespace FDG.Stages
             Position wreck = RepresentativePosition(transport);
             CircularZone zone = new CircularZone(wreck.Position2D, TransportUtilities.MaxTransportRangeInches);
 
-            GameContext.Log($"{transport.Name} destroyed: {occupants.Count} embarked unit(s) spill out.");
+            await GameContext.Announce(
+                $"{transport.Name} destroyed - {occupants.Count} unit(s) spill out!", WreckBannerColor);
 
             foreach (IUnit occupant in occupants)
             {
@@ -73,12 +80,36 @@ namespace FDG.Stages
                 }
 
                 // Un-embark + Shaken + a per-model dangerous-terrain test (the deterministic core, unit-tested
-                // in slice A). Run after placement so the dangerous test rolls for the now-on-table models.
-                TransportUtilities.ApplySpilloutEffects(occupantUnit, GameContext.DiceRoller);
-                GameContext.Log($"{occupantUnit.Name} spilled out of {transport.Name} (Shaken + dangerous test).");
+                // in slice A). Run after placement so the dangerous test rolls for the now-on-table models; the
+                // returned rolls drive the presentation below.
+                IReadOnlyList<TransportUtilities.SpilloutModelRoll> rolls =
+                    TransportUtilities.ApplySpilloutEffects(occupantUnit, GameContext.DiceRoller);
+
+                await GameContext.Announce($"{occupantUnit.Name} spills out - Shaken!", ShakenBannerColor);
+                await PresentSpilloutRolls(occupantUnit, rolls);
             }
 
             return occupants.Count;
+        }
+
+        // Present each occupant model's dangerous-terrain test in lockstep with the visuals: the d6 (2+ safe,
+        // a 1 wounds — the same beat MovementExecutor uses for dangerous terrain), then a hurt flinch or a
+        // death animation for a model the test wounded. Sound falls out via PresentationSoundCues.CueFor.
+        private async Task PresentSpilloutRolls(UnitData occupant,
+            IReadOnlyList<TransportUtilities.SpilloutModelRoll> rolls)
+        {
+            foreach (TransportUtilities.SpilloutModelRoll r in rolls)
+            {
+                float[] faces = new float[6];
+                faces[r.Roll - 1] = 1f;
+                await GameContext.Presenter.Present(new DiceRolledBeat(faces, sideMin: 1, successThreshold: 2,
+                    GameContext.Settings.RandomnessType, "Dangerous Terrain", r.Wounded ? "1 wound!" : "Safe"));
+
+                if (r.Died)
+                    await GameContext.Presenter.Present(new ModelDiedBeat(r.Model, occupant.ID, occupant.Name, r.Position));
+                else if (r.Wounded)
+                    await GameContext.Presenter.Present(new ModelWoundedBeat(r.Model, r.Position));
+            }
         }
 
         // A destroyed transport's models are all dead but retain their last positions — read the wreck spot.

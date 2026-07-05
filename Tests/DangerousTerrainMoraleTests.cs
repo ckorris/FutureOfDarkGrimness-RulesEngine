@@ -9,8 +9,9 @@ namespace FDG.Tests
     // Dangerous terrain deals wounds but is NOT a morale-test source (corrected 2026-07-02). Shooting, melee,
     // transport destruction, etc. cause morale tests; crossing dangerous terrain never does. The earlier #009
     // wiring that ran a half-strength morale test from dangerous terrain was a rules bug and was removed.
-    // Models are 1 wound each; FixedDiceRoller(1) wounds each model that crosses the dangerous zone (a roll of
-    // 1) — the unit takes casualties but is never asked to take a morale test.
+    // Models are 1 wound each; every crossing model now rolls together in one batch, so the roller must honor
+    // rollCount -- FixedFaceDiceRoller(1) makes every die in the batch a 1, wounding each crossing model. The
+    // unit takes casualties but is never asked to take a morale test.
     [TestFixture]
     public class DangerousTerrainMoraleTests
     {
@@ -77,11 +78,47 @@ namespace FDG.Tests
                 "one model died to terrain; the other three live.");
         }
 
+        [Test]
+        public async Task ProbabilisticRoller_DealsFractionalWoundsAcrossTheBatch()
+        {
+            // 3 models all cross the dangerous zone. Under the probabilistic roller a single batch of 3 d6
+            // yields the expected 3/6 = 0.5 ones, spread evenly (0.5/3 wound each) -- fractional wounds that
+            // don't kill a 1-wound model. This is exactly what N separate decisive per-model rolls could not
+            // produce, and why batching matters for the probabilistic roller.
+            var m1 = MakeModel(new Position(0, 0));
+            var m2 = MakeModel(new Position(0, 1));
+            var m3 = MakeModel(new Position(0, -1));
+            var unit = MakeUnit(m1, m2, m3);
+
+            var paths = new List<ModelMoveEntry>
+            {
+                new ModelMoveEntry(m1, new List<Position> { new Position(8, 0) }),
+                new ModelMoveEntry(m2, new List<Position> { new Position(8, 1) }),
+                new ModelMoveEntry(m3, new List<Position> { new Position(8, -1) }),
+            };
+
+            var settings = GameSettings.GetDefault();
+            settings.RandomnessType = ERandomnessType.Probabilistic;
+            var ctx = new TestGameContext(_store, new ProbabilisticDiceRoller(), settings: settings);
+            var stage = new ApplyNonMovementTerrainEffectsStage(ctx, new NoOpLayer<IMovementActionContext>());
+            stage.OnAppliedNonMovementTerrainEffects.Bind("done");
+            var terrain = new List<ITerrain> { new TerrainData(ETerrainType.Dangerous, DangerZone) };
+            await stage.Enter(new StubMovementContext(ctx, unit, paths, terrain));
+
+            Assert.That(unit.GetValue().Models.Count(m => m.GetIsAlive()), Is.EqualTo(3),
+                "fractional wounds from the probabilistic batch don't kill a 1-wound model.");
+            float total = m1.GetValue().WoundsDealt + m2.GetValue().WoundsDealt + m3.GetValue().WoundsDealt;
+            Assert.That(total, Is.EqualTo(0.5f).Within(0.001f),
+                "the batch of 3 dice deals an expected 3/6 = 0.5 wounds total, spread across the models.");
+        }
+
         // Helpers
 
         private Task RunStage(DataBinding<UnitData> unit, List<ModelMoveEntry> paths, int dieValue)
         {
-            var ctx = new TestGameContext(_store, new FixedDiceRoller(dieValue));
+            // FixedFaceDiceRoller honors rollCount so the single batched Roll(6, N) reports N dice on the
+            // fixed face (FixedDiceRoller collapses every batch to a single die).
+            var ctx = new TestGameContext(_store, new FixedFaceDiceRoller(dieValue));
             var stage = new ApplyNonMovementTerrainEffectsStage(ctx, new NoOpLayer<IMovementActionContext>());
             stage.OnAppliedNonMovementTerrainEffects.Bind("done");
             var terrain = new List<ITerrain> { new TerrainData(ETerrainType.Dangerous, DangerZone) };

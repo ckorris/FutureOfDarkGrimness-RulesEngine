@@ -43,6 +43,20 @@ namespace FDG
         }
 
         /// <summary>
+        /// Records the unit currently taking its activation (or clears it with null) on the store's
+        /// progress record, so <see cref="IGameProgress.ActivatingUnit"/> can surface it. No-op if no
+        /// progress record exists yet (pre-main-phase, or minimal test stores). Writes through
+        /// <see cref="WriteProgress"/> so the change replicates to clients like the rest of the record.
+        /// </summary>
+        public static void SetActivatingUnit(IReadWriteableGameDataStore store, DataBinding<UnitData>? unit)
+        {
+            GameProgressData? progress = TryGetProgress(store);
+            if (progress == null) return;
+            progress.ActivatingUnit = unit;
+            WriteProgress(store, progress);
+        }
+
+        /// <summary>
         /// Snapshots the live round/turn position into a serializable <see cref="GameProgressData"/>.
         /// Teams are recorded by <see cref="ITeam.TeamNumber"/>; unactivated units are flattened
         /// across players (each unit carries its own <see cref="UnitData.PlayerID"/>). The round

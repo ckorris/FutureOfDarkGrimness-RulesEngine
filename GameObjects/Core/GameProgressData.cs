@@ -11,6 +11,10 @@ namespace FDG
     /// <see cref="FDG.Stages.SingleRoundContext"/> (which are recreated each round and never
     /// persisted).
     /// <para>
+    /// This is the raw persisted record; the player-facing read model over it (round, scores, the
+    /// activating unit) is <see cref="IGameProgress"/>, exposed via <see cref="ITableState.Progress"/>.
+    /// </para>
+    /// <para>
     /// Teams are referenced by <see cref="ITeam.TeamNumber"/> — a stable, serializable identifier —
     /// rather than by <see cref="ITeam"/> object reference. Units are referenced by
     /// <see cref="DataBinding{T}"/>, which serializes to a bare <see cref="DataReference"/>.
@@ -23,7 +27,14 @@ namespace FDG
         public EResumeStage Stage;
 
         /// <summary>1-based round number (mirrors <see cref="FDG.Stages.IMainPhaseContext.RoundCount"/>).</summary>
-        public int RoundCount;
+        public int RoundCount { get; set; }
+
+        /// <summary>
+        /// The unit currently taking its activation, or null between activations (and outside the main
+        /// phase). Set at the start of a unit's activation and cleared at its end, so the read model can
+        /// spotlight it. Serializes to a bare <see cref="DataReference"/> like the other unit references.
+        /// </summary>
+        public DataBinding<UnitData>? ActivatingUnit { get; set; }
 
         /// <summary>
         /// This round's team activation order, by <see cref="ITeam.TeamNumber"/>. Equal to the
@@ -61,7 +72,8 @@ namespace FDG
             int currentTeamIndex,
             Dictionary<int, int> currentPlayerIndexPerTeam,
             List<DataBinding<UnitData>> unactivatedUnits,
-            GameSettings settings)
+            GameSettings settings,
+            DataBinding<UnitData>? activatingUnit = null)
         {
             Stage = stage;
             RoundCount = roundCount;
@@ -71,6 +83,7 @@ namespace FDG
             CurrentPlayerIndexPerTeam = currentPlayerIndexPerTeam;
             UnactivatedUnits = unactivatedUnits;
             Settings = settings;
+            ActivatingUnit = activatingUnit;
         }
     }
 

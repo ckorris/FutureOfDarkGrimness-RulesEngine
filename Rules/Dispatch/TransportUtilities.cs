@@ -194,7 +194,7 @@ public static class TransportUtilities
     /// One occupant model's dangerous-terrain test during spillout, returned by
     /// <see cref="ApplySpilloutEffects"/> so the stage can present it (a d6 beat, then a hurt/death beat).
     /// This is Rules-layer data only — the beats themselves are emitted stage-side, since the Rules layer
-    /// holds no presenter (the same return-then-present split as <c>MovementExecutor.DangerousTerrainRoll</c>).
+    /// holds no presenter (the same return-then-present split as <c>MovementExecutor.DangerousTerrainResult</c>).
     /// <paramref name="Died"/> is the model's state after the test (a 1 that took its last wound).
     /// </summary>
     public readonly record struct SpilloutModelRoll(ModelID Model, Position Position, int Roll, bool Wounded, bool Died);

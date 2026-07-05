@@ -33,14 +33,14 @@ namespace FDG.Stages
             bool countsAsInDangerousTerrain = Rules.Dispatch.MovementRuleQueries.CountsAsInTerrain(
                 movingUnit.GetValue(), GameContext.RuleEvaluator, Rules.Definitions.ECountAsTerrain.Dangerous);
 
-            IReadOnlyList<MovementExecutor.DangerousTerrainRoll> dangerRolls =
+            MovementExecutor.DangerousTerrainResult dangerResult =
                 MovementExecutor.ApplyDangerousTerrainEffects(GameContext, paths, context.RelevantTerrain, unitName,
                     ignoresDangerousTerrain, countsAsInDangerousTerrain);
 
             // Dangerous terrain deals wounds but is NOT a morale-test source — shooting, melee, transport
             // destruction, etc. trigger morale tests, but crossing dangerous terrain never does. Present the
-            // roll(s) (shared with the triggered-move path) and move on; no morale test here.
-            await MovementExecutor.PresentDangerousTerrainRolls(GameContext, dangerRolls);
+            // batched roll (shared with the triggered-move path) and move on; no morale test here.
+            await MovementExecutor.PresentDangerousTerrainRolls(GameContext, dangerResult);
 
             await OnAppliedNonMovementTerrainEffects.Activate(context);
         }

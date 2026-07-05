@@ -41,7 +41,7 @@ namespace FDG.Presentation.Beats
         public string? ResultSummary { get; }
 
         public DiceRolledBeat(IReadOnlyList<float> faceCounts, int sideMin, int successThreshold,
-            ERandomnessType mode, string label, string? resultSummary = null)
+            ERandomnessType mode, string label, string? resultSummary = null, bool held = false)
         {
             FaceCounts = faceCounts;
             SideMin = sideMin;
@@ -49,7 +49,18 @@ namespace FDG.Presentation.Beats
             Mode = mode;
             Label = label;
             ResultSummary = resultSummary;
+            Held = held;
         }
+
+        /// <summary>
+        /// When true, the settled dice linger on screen after their lead-in (via the held-beat
+        /// mechanism) so the result stays visible while the wounds it produced animate. Serializes so a
+        /// networked client holds the dice too.
+        /// </summary>
+        public override bool Held { get; }
+
+        /// <summary>Long enough for the faces to flick and settle before the engine moves on.</summary>
+        public override TimeSpan HoldLeadIn => TimeSpan.FromMilliseconds(600);
 
         public int SideMax => SideMin + FaceCounts.Count - 1;
 
@@ -77,14 +88,14 @@ namespace FDG.Presentation.Beats
         /// Build a beat from an engine roll result, capturing the per-face histogram.
         /// </summary>
         public static DiceRolledBeat From(IDiceResults results, int successThreshold, ERandomnessType mode,
-            string label, string? resultSummary = null)
+            string label, string? resultSummary = null, bool held = false)
         {
             int min = results.SideMin, max = results.SideMax;
             float[] faceCounts = new float[max - min + 1];
             for (int f = min; f <= max; f++)
                 faceCounts[f - min] = results.At(f);
 
-            return new DiceRolledBeat(faceCounts, min, successThreshold, mode, label, resultSummary);
+            return new DiceRolledBeat(faceCounts, min, successThreshold, mode, label, resultSummary, held);
         }
     }
 }

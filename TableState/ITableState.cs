@@ -21,6 +21,14 @@ namespace FDG
 
         public IDataState<IObjective> Objectives { get; }
 
+        /// <summary>
+        /// Aggregate read model of the game's progression -- round number, objective scores, the unit
+        /// currently activating, etc. -- as live state read each frame. A single object so new
+        /// progression facts can be added to <see cref="IGameProgress"/> without changing this surface.
+        /// Read it instead of parsing round info out of the log or banner stream.
+        /// </summary>
+        public IGameProgress Progress { get; }
+
     }
 
     public class TableState : ITableState
@@ -40,6 +48,8 @@ namespace FDG
 
         public IDataState<IObjective> Objectives { get; }
 
+        public IGameProgress Progress { get; }
+
 
         public TableState(IReadableGameDataStore gameDataStore)
         {
@@ -51,6 +61,7 @@ namespace FDG
             Teams = new DataState<ITeam, TeamData>(gameDataStore);
             Terrain = new DataState<ITerrain, TerrainData>(gameDataStore);
             Objectives = new DataState<IObjective, ObjectiveData>(gameDataStore);
+            Progress = new GameProgress(gameDataStore);
         }
     }
 }

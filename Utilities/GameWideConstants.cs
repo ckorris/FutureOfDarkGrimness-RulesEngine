@@ -47,6 +47,12 @@ namespace FDG
         public const float DEFAULT_TABLE_HEIGHT_INCHES = 48;
 
         /// <summary>
+        /// The number of rounds a game lasts before victory is calculated (the official GDF game length).
+        /// After this many rounds have been reconciled the main phase hands off to victory calculation.
+        /// </summary>
+        public const int NUMBER_OF_ROUNDS = 4;
+
+        /// <summary>
         /// Maximum number of distinct enemy units a single unit may target during one shoot action.
         /// </summary>
         public const int MAX_TARGETED_UNITS_PER_SHOOT_ACTION = 2;

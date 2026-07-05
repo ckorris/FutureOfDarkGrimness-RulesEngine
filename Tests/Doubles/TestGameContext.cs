@@ -15,7 +15,7 @@ namespace FDG.Tests
         public TableState TableState { get; }
         public IReadWriteableGameDataStore GameDataStore { get; }
         public IPresenter Presenter { get; }
-        public GameSettings Settings { get; } = GameSettings.GetDefault();
+        public GameSettings Settings { get; }
         public List<ITeam>? FirstDeploymentRollOrder => null;
         IGameContext IGameContextAccessor.GameContext => this;
 
@@ -24,11 +24,12 @@ namespace FDG.Tests
         // tests that don't care about presentation are unaffected.
         public TestGameContext(GameDataStore store, IDiceRoller diceRoller,
             ITextOutput? textOutput = null, IPresenter? presenter = null,
-            RuleResolver? ruleResolver = null)
+            RuleResolver? ruleResolver = null, GameSettings? settings = null)
         {
             GameDataStore = store;
             TableState = new TableState(store);
             DiceRoller = diceRoller;
+            Settings = settings ?? GameSettings.GetDefault();
             // Optional resolver so granted-rule read-back (#100 #1) resolves token-granted rules by name —
             // needed by tests that exercise grants/marks through a stage; null keeps the legacy no-op path.
             RuleEvaluator = new RuleEvaluator(diceRoller, ruleResolver: ruleResolver);

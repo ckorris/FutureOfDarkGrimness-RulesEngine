@@ -44,9 +44,11 @@ namespace FDG.Stages
                 // 0 wounds" roll-to-save animation for it.
                 if (saveRolls.HitCount > 0)
                 {
+                    // Held: the settled save dice stay on screen while the assign-wounds resolver and the
+                    // resulting wound/death animations play, so the result reads as one continuous moment.
                     await GameContext.Presenter.Present(
                         DiceRolledBeat.From(rollToSaveResults, saveNeeded, GameContext.Settings.RandomnessType, "Roll to Save",
-                            $"{successfulResults.TotalRolls:0.##} saved, {failedResults.TotalRolls:0.##} wounds"));
+                            $"{successfulResults.TotalRolls:0.##} saved, {failedResults.TotalRolls:0.##} wounds", held: true));
                 }
             }
 

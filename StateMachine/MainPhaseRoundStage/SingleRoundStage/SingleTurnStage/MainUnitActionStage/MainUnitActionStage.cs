@@ -21,6 +21,11 @@ namespace FDG.Stages
         {
             GameContext.Log("Main Unit Action stage entered.");
 
+            // Record the activating unit on the progress record so the read model can spotlight it.
+            // Guarded like the rolling snapshot so minimal-store unit tests (no GameProgressData) are unaffected.
+            if (context.ActivatedUnit != null && GameContext.GameDataStore.IsTypeAssigned<GameProgressData>())
+                GameProgressUtilities.SetActivatingUnit(GameContext.GameDataStore, context.ActivatedUnit);
+
             await base.Enter(context);
         }
 

@@ -72,13 +72,13 @@ namespace FDG.Stages
             }
             new TokenClearService().ClearForHook(EHookID.Round_OnRoundEnd, containers);
 
-            if (_timesEntered < 4)
+            if (_timesEntered < GameWideConstants.NUMBER_OF_ROUNDS)
             {
                 await ToReconcileEndOfTurn.Activate(context);
             }
             else
             {
-                GameContext.Log("Four rounds complete. Proceeding to victory calculation.");
+                GameContext.Log($"{GameWideConstants.NUMBER_OF_ROUNDS} rounds complete. Proceeding to victory calculation.");
                 await ToVictoryCalculation.Activate(context);
             }
         }

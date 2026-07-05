@@ -28,7 +28,9 @@ namespace FDG.Presentation
         public Task Present(PresentationBeat beat, CancellationToken ct = default)
         {
             _sink?.OnBeat(beat);
-            return _clock.Wait(beat.NominalDuration, ct);
+            // A held beat only paces its lead-in, so the engine proceeds to the next beat while the
+            // front-end keeps the display lingering (see PresentationBeat.Held).
+            return _clock.Wait(beat.Held ? beat.HoldLeadIn : beat.NominalDuration, ct);
         }
     }
 }

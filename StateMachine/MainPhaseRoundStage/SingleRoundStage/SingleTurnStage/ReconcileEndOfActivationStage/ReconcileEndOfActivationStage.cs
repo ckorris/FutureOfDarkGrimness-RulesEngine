@@ -30,6 +30,10 @@ namespace FDG.Stages
                 new TokenClearService().ClearForHook(EHookID.Activation_OnEndOfActivation, containers);
             }
 
+            // Activation over -- clear the spotlight target so nothing is highlighted between activations.
+            if (GameContext.GameDataStore.IsTypeAssigned<GameProgressData>())
+                GameProgressUtilities.SetActivatingUnit(GameContext.GameDataStore, null);
+
             await OnFinished.Activate(context);
         }
     }

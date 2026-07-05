@@ -40,7 +40,8 @@ namespace FDG.Presentation
                 }
             }
 
-            return _clock.Wait(beat.NominalDuration, ct);
+            // A held beat only paces its lead-in (see PresentationBeat.Held).
+            return _clock.Wait(beat.Held ? beat.HoldLeadIn : beat.NominalDuration, ct);
         }
     }
 }

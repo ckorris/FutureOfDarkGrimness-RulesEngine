@@ -31,6 +31,22 @@ namespace FDG.Presentation
         public abstract TimeSpan NominalDuration { get; }
 
         /// <summary>
+        /// A "held" beat displays and then LINGERS on screen instead of clearing when done, so later
+        /// action beats can play over it (e.g. save dice that stay visible while the wounds they
+        /// caused land). The presenter paces only <see cref="HoldLeadIn"/> for a held beat -- enough
+        /// for the display to appear/settle -- then lets the engine proceed while the front-end keeps
+        /// the display up until it is superseded or lingers out. Non-held beats (the default) block for
+        /// their full <see cref="NominalDuration"/> and clear when finished.
+        /// </summary>
+        public virtual bool Held => false;
+
+        /// <summary>
+        /// For a <see cref="Held"/> beat, how long the presenter paces before moving on. Ignored when
+        /// <see cref="Held"/> is false; defaults to the full duration.
+        /// </summary>
+        public virtual TimeSpan HoldLeadIn => NominalDuration;
+
+        /// <summary>
         /// Optional plain-text rendering for the CLI / a unified feed. <c>null</c> means the
         /// beat has no text form. This does <em>not</em> replace <see cref="ITextOutput.Log"/>:
         /// explicit log calls still fire independently; logs and beats are siblings, not

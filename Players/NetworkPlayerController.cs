@@ -93,16 +93,21 @@ namespace FDG.Players
             }
         }
 
+        // This controller represents ONE remote client, so it sends only to that client's connection
+        // (like NetworkedPresentationSink). Broadcasting with SendCommandToAllAsync also dispatched
+        // locally on the host -- so the host displayed every line twice (once via its own
+        // LocalPlayerController, once via that loopback) and multi-client games sent each line once per
+        // network controller. SendCommandToSingleAsync to this connection avoids both (#105 de-dup).
         public void SendLogMessage(string logMessage, TextColor color)
         {
             LogChatNetworkMessage messageRecord = new LogChatNetworkMessage(logMessage, color);
-            _messageBusHost.SendCommandToAllAsync(messageRecord);
+            _messageBusHost.SendCommandToSingleAsync(messageRecord, ConnectionID);
         }
 
         public void SendPlayerMessage(string sendingPlayerName, EChatMessageType messageType, string message)
         {
             PlayerChatNetworkMessage messageRecord = new PlayerChatNetworkMessage(sendingPlayerName, messageType, message);
-            _messageBusHost.SendCommandToAllAsync(messageRecord);
+            _messageBusHost.SendCommandToSingleAsync(messageRecord, ConnectionID);
         }
     }
 }

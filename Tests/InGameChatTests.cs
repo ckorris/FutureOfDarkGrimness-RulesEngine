@@ -53,5 +53,25 @@ namespace FDG.Tests
             Assert.That(fireCount, Is.EqualTo(0),
                 "a controller relays only its own player's chat, so there's no misattributed re-broadcast.");
         }
+
+        // #105 de-dup: a controller represents ONE client, so its outgoing chat targets that client's
+        // connection (SendCommandToSingleAsync), NOT a broadcast (SendCommandToAllAsync). A broadcast also
+        // dispatches locally on the host, so the host would display every line twice (its own
+        // LocalPlayerController plus the loopback).
+        [Test]
+        public void SendPlayerMessage_TargetsThisClientsConnection_NotABroadcast()
+        {
+            var bus = new RequestSystemTests.MockMessageBusHost();
+            var playerID = new PlayerID(Guid.NewGuid());
+            var controller = new NetworkPlayerController("Net", playerID, ConnectionID.Host, bus,
+                GameDataStore.GameDataStoreBuilder.GetDefault());
+
+            controller.SendPlayerMessage("Host", EChatMessageType.Global, "hi");
+
+            Assert.That(bus.LastSentWasBroadcast, Is.False,
+                "per-client send avoids the host-loopback duplicate.");
+            Assert.That(bus.LastSentConnection, Is.EqualTo(ConnectionID.Host));
+            Assert.That(bus.LastSentCommand, Is.InstanceOf<PlayerChatNetworkMessage>());
+        }
     }
 }

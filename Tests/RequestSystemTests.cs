@@ -264,6 +264,12 @@ namespace FDG.Tests
             public bool LastRequestWasLocal { get; private set; }
             public bool LastRequestWasBroadcast { get; private set; }
 
+            // Routing of the last send of ANY message type (not just requests): what was sent, to which
+            // connection (null for broadcast/local), and whether it was a broadcast.
+            public object? LastSentCommand { get; private set; }
+            public ConnectionID? LastSentConnection { get; private set; }
+            public bool LastSentWasBroadcast { get; private set; }
+
             public event Action<ConnectionID>? OnClientDisconnected;
 
             public void SimulateClientDisconnected(ConnectionID connectionID) => OnClientDisconnected?.Invoke(connectionID);
@@ -290,6 +296,7 @@ namespace FDG.Tests
 
             public Task SendCommandToAllAsync<TMessage>(TMessage command)
             {
+                LastSentCommand = command; LastSentConnection = null; LastSentWasBroadcast = true;
                 if (command is StageTaskRequestMessage requestMessage)
                 {
                     LastRequestMessage = requestMessage;
@@ -303,6 +310,7 @@ namespace FDG.Tests
 
             public Task SendCommandToSingleAsync<TMessage>(TMessage command, ConnectionID connectionID)
             {
+                LastSentCommand = command; LastSentConnection = connectionID; LastSentWasBroadcast = false;
                 if (command is StageTaskRequestMessage requestMessage)
                 {
                     LastRequestMessage = requestMessage;
@@ -316,6 +324,7 @@ namespace FDG.Tests
 
             public Task SendCommandToLocalAsync<TMessage>(TMessage command)
             {
+                LastSentCommand = command; LastSentConnection = null; LastSentWasBroadcast = false;
                 if (command is StageTaskRequestMessage requestMessage)
                 {
                     LastRequestMessage = requestMessage;

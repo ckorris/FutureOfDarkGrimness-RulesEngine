@@ -1,3 +1,4 @@
+using System.Linq;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
@@ -112,6 +113,35 @@ namespace FDG.Rules.Dispatch
                 }
             }
             return System.Math.Max(floor, baseChargeInches + delta);
+        }
+
+        /// <summary>
+        /// The distance <paramref name="unit"/> may move and still shoot (Advance), including its movement
+        /// rules (Fast/Quick/Rapid Advance/...). Mirrors <c>MovementActionContext</c>'s unit-scalar Advance
+        /// computation exactly — the base <see cref="GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES"/> plus the
+        /// <see cref="MovementModifierSink"/> net for Advance, fed by the <see cref="Contexts.MoveActionDeclaredContext"/>
+        /// "when" fired for all three actions onto one sink (as the context does) — so the shoot-after-advance
+        /// gate (<c>ChooseActionStage.GetCanShoot</c>) agrees with the distance the move resolver actually
+        /// granted. Without this a Fast unit that legally advanced past the base 6" is wrongly blocked from
+        /// shooting, because the stubbed <c>GetMobility</c> returns only the base. Non-logging (safe per-frame).
+        /// (The situational difficult-terrain cap is intentionally not applied here: the resolver already caps
+        /// the actual move, so the moved distance is always &lt;= this allowance regardless.)
+        /// </summary>
+        public static float EffectiveMoveShootDistance(IUnit unit, RuleEvaluator evaluator)
+        {
+            MovementModifierSink sink = new MovementModifierSink();
+            AccumulateMovementRules(unit, evaluator, EActionType.Advance, GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES, sink);
+            AccumulateMovementRules(unit, evaluator, EActionType.Rush, GameWideConstants.RUSH_DISTANCE_INCHES, sink);
+            AccumulateMovementRules(unit, evaluator, EActionType.Charge, GameWideConstants.CHARGE_DISTANCE_INCHES, sink);
+            return GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES + sink.Net(EActionType.Advance);
+        }
+
+        private static void AccumulateMovementRules(IUnit unit, RuleEvaluator evaluator, EActionType action,
+            float baseDistance, MovementModifierSink sink)
+        {
+            var operations = evaluator.EvaluateAllNamed(
+                new MoveActionDeclaredContext(unit, action, baseDistance), (unit, ERuleSeat.Actor));
+            sink.ApplyFrom(operations.Select(t => t.Op));
         }
     }
 }

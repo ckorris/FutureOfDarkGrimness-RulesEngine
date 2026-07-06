@@ -145,6 +145,32 @@ namespace FDG.Tests
                 "Rapid Charge is Charge-only; Rush untouched.");
         }
 
+        // The shoot-after-advance gate (ChooseActionStage.GetCanShoot) must use the SAME advance distance the
+        // move resolver grants — otherwise a Fast unit that legally advances past the base 6" is wrongly
+        // blocked from shooting. MovementRuleQueries.EffectiveMoveShootDistance is that shared value.
+        [Test]
+        public void EffectiveMoveShootDistance_NoRules_IsBaseDistance()
+        {
+            float advance = MovementRuleQueries.EffectiveMoveShootDistance(MakeUnit().GetValue(), _ctx.RuleEvaluator);
+            Assert.That(advance, Is.EqualTo(GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES).Within(0.001f),
+                "a unit with no movement rules advances-and-shoots the base distance");
+        }
+
+        [Test]
+        public void EffectiveMoveShootDistance_FastUnit_MatchesMoveResolverAdvance()
+        {
+            DataBinding<UnitData> fast = MakeUnit();
+            AttachFast(fast);
+
+            float gateAdvance = MovementRuleQueries.EffectiveMoveShootDistance(fast.GetValue(), _ctx.RuleEvaluator);
+            float resolverAdvance = new MovementActionContext(_ctx, fast).MaxAdvanceDistance;
+
+            Assert.That(gateAdvance, Is.EqualTo(GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES + 2f).Within(0.001f),
+                "Fast raises the advance-and-shoot distance by +2\"");
+            Assert.That(gateAdvance, Is.EqualTo(resolverAdvance).Within(0.001f),
+                "the shoot gate's advance distance must equal what the move resolver actually allows");
+        }
+
         // ── #153: one-shot movement grants + counts-as-terrain ─────────────────────────────────────────
 
         // A one-shot ("once, next time it would apply") granted movement rule must contribute to ALL

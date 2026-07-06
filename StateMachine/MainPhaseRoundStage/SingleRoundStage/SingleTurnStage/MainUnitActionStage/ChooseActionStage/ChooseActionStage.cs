@@ -418,7 +418,12 @@ namespace FDG.Stages
                 return false;
             }
 
-            context.ActivatingUnit.GetValue().GetMobility(out float moveShootDistanceInches, out _);
+            // The advance-and-shoot cap must include the unit's movement rules (Fast/Quick/Rapid Advance/...)
+            // so a unit that legally advanced past the base 6" isn't wrongly blocked from shooting. GetMobility
+            // is stubbed (returns the base only); this mirrors the distance MovementActionContext actually
+            // granted the move, so the shoot gate agrees with what the move resolver allowed.
+            float moveShootDistanceInches = Rules.Dispatch.MovementRuleQueries.EffectiveMoveShootDistance(
+                context.ActivatingUnit.GetValue(), GameContext.RuleEvaluator);
 
             // Aircraft only ever Advance — a forced 30-36" straight-line move — and may shoot after it, so the
             // normal advance-and-shoot distance cap (which distinguishes Advance from Rush) doesn't apply (#029).

@@ -44,6 +44,14 @@ namespace FDG
 
         /// <summary>Controlled-objective counts, one entry per filled player slot, in slot order.</summary>
         IReadOnlyList<PlayerObjectiveScore> Scores { get; }
+
+        /// <summary>
+        /// Units (across all players) that have NOT yet activated this round; empty outside the main
+        /// phase. Backed by the replicated <see cref="GameProgressData.UnactivatedUnits"/>, so it reads
+        /// the same on host and client. The tactical overlay uses it to show only unactivated enemies as
+        /// projecting threat -- frontiers shrink as enemies spend their activations.
+        /// </summary>
+        IReadOnlyList<IUnit> UnactivatedUnits { get; }
     }
 
     /// <summary>
@@ -62,6 +70,22 @@ namespace FDG
         public int? RoundCount => GameProgressUtilities.TryGetProgress(_store)?.RoundCount;
 
         public IUnit? ActivatingUnit => GameProgressUtilities.TryGetProgress(_store)?.ActivatingUnit?.GetValue();
+
+        public IReadOnlyList<IUnit> UnactivatedUnits
+        {
+            get
+            {
+                GameProgressData? progress = GameProgressUtilities.TryGetProgress(_store);
+                if (progress?.UnactivatedUnits == null) return new List<IUnit>();
+                var units = new List<IUnit>(progress.UnactivatedUnits.Count);
+                foreach (DataBinding<UnitData> binding in progress.UnactivatedUnits)
+                {
+                    if (binding != null && binding.IsValid)
+                        units.Add(binding.GetValue());
+                }
+                return units;
+            }
+        }
 
         public IReadOnlyList<PlayerObjectiveScore> Scores
         {

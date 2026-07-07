@@ -28,5 +28,13 @@ namespace FDG.TextInterface
 
             System.Diagnostics.Debug.WriteLine($"LOG: {message}");
         }
+
+        // Debug-category line: same relay path, flagged so the front end can route it to its Debug view.
+        public void LogDebug(string message, TextColor? color = null)
+        {
+            _playerTextRelayer.SendLogMessageToAll(message, color ?? TextColor.White, isDebug: true);
+
+            System.Diagnostics.Debug.WriteLine($"DEBUG: {message}");
+        }
     }
 }

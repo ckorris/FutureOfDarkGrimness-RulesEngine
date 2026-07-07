@@ -22,6 +22,15 @@ namespace FDG
         }
 
         /// <summary>
+        /// Log a developer-facing detail line to the Debug category — hidden in the front end unless the
+        /// player turns the Debug toggle on. Same call shape as <see cref="Log"/>.
+        /// </summary>
+        public static void LogDebug(this IGameContextAccessor contextAccessor, string message, TextColor? color = null)
+        {
+            contextAccessor.GameContext.TextOutput.LogDebug(message, color);
+        }
+
+        /// <summary>
         /// Announce a beat to the player: shows a big flashing banner (<see cref="BannerBeat"/>) AND
         /// writes the same text to the regular log, both in <paramref name="color"/> (white by
         /// default). Manually called, like <see cref="Log"/> — not automatic per stage. Awaitable so

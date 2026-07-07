@@ -104,6 +104,12 @@ namespace FDG.Players
             _messageBusHost.SendCommandToSingleAsync(messageRecord, ConnectionID);
         }
 
+        public void SendLogMessage(string logMessage, TextColor color, bool isDebug)
+        {
+            LogChatNetworkMessage messageRecord = new LogChatNetworkMessage(logMessage, color, isDebug);
+            _messageBusHost.SendCommandToSingleAsync(messageRecord, ConnectionID);
+        }
+
         public void SendPlayerMessage(string sendingPlayerName, EChatMessageType messageType, string message)
         {
             PlayerChatNetworkMessage messageRecord = new PlayerChatNetworkMessage(sendingPlayerName, messageType, message);

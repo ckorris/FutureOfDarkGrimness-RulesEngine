@@ -19,7 +19,7 @@ namespace FDG.Stages
 
         public override async Task Enter(ISingleTurnContext context)
         {
-            context.Log("Entered Choose Unit to Activate stage.");
+            context.LogDebug("Entered Choose Unit to Activate stage.");
     
             //Find all units.
             List<SelectionRequest<UnitData>.ValidOption> validOptions = new List<SelectionRequest<UnitData>.ValidOption>();

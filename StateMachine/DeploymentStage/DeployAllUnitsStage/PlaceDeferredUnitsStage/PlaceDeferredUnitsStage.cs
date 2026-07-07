@@ -23,7 +23,7 @@ namespace FDG.Stages
 
         public override async Task Enter(IDeploymentTurnContext context)
         {
-            context.Log("Entered Place Deferred Units stage.");
+            context.LogDebug("Entered Place Deferred Units stage.");
 
             // Only Scout-style (AfterNormalDeployment) units reach the deferred pool. Ambush units are
             // held interactively at selection time (ChooseUnitToDeployStage) and stay off-table until a

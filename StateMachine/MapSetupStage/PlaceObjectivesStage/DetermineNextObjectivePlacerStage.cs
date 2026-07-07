@@ -15,7 +15,7 @@ namespace FDG.Stages
 
         public override async Task Enter(IObjectivePlacementTurnContext context)
         {
-            context.Log($"Entered {nameof(DetermineNextObjectivePlacerStage)}.");
+            context.LogDebug($"Entered {nameof(DetermineNextObjectivePlacerStage)}.");
 
             if (!context.HasRemainingMarkers())
             {

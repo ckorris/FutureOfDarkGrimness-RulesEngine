@@ -15,7 +15,7 @@ namespace FDG.Stages
 
         public override async Task Enter(IMainPhaseContext context)
         {
-            context.Log($"Entered {nameof(ReconcileNewRoundStage)}.");
+            context.LogDebug($"Entered {nameof(ReconcileNewRoundStage)}.");
 
             // #083 — break the synchronous-continuation chain once per round. With piped/AI input every
             // stage transition completes synchronously, so without a yield the entire game would run as one

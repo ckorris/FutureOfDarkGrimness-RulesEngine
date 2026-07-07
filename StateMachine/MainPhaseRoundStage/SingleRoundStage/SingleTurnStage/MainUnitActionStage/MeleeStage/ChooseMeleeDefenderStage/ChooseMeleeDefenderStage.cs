@@ -20,7 +20,7 @@ namespace FDG.Stages
 
         public override async Task Enter(ICombatActionContext context)
         {
-            GameContext.Log("Entered Choose Melee Defender.");
+            GameContext.LogDebug("Entered Choose Melee Defender.");
 
             List<ActionChoice> choices = new List<ActionChoice>();
 

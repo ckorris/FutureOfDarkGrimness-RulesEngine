@@ -26,7 +26,7 @@ namespace FDG.Stages
             targets.AddRange(metaData.DefendingUnit.ModelBindings());
 
             string pluralizedModelWord = (targets.Count == 1) ? "model" : "models";
-            GameContext.Log($"Created ordered target list of {targets.Count} {pluralizedModelWord}.");
+            GameContext.LogDebug($"Created ordered target list of {targets.Count} {pluralizedModelWord}.");
 
             BuildTargetListResults results = new BuildTargetListResults(targets);
 

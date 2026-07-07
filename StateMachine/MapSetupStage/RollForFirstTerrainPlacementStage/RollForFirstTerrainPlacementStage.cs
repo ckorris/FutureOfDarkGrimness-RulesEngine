@@ -19,7 +19,7 @@ namespace FDG.Stages
 
         public override async Task Enter(IMapSetupContext context)
         {
-            context.Log($"Entered {nameof(RollForFirstTerrainPlacementStage)}.");
+            context.LogDebug($"Entered {nameof(RollForFirstTerrainPlacementStage)}.");
 
             // The roll-off only sets the alternation order for player-placed (Alternating) terrain. When terrain
             // is placed automatically — or there are no alternating pieces — no one places terrain by taking

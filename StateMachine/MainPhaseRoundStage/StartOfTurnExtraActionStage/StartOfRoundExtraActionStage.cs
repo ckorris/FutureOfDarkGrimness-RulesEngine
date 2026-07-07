@@ -19,7 +19,7 @@ namespace FDG.Stages
 
         public override async Task Enter(IMainPhaseContext context)
         {
-            context.Log($"Entered {nameof(StartOfRoundExtraActionStage)}.");
+            context.LogDebug($"Entered {nameof(StartOfRoundExtraActionStage)}.");
 
             await context.Announce($"Round {context.RoundCount}", new TextColor(120, 200, 255, 255));
 

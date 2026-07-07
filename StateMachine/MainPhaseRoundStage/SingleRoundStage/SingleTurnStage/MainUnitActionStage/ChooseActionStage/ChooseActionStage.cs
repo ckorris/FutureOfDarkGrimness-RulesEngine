@@ -44,7 +44,7 @@ namespace FDG.Stages
         public override async Task Enter(IUnitActionContext context)
         {
 
-            GameContext.Log("Entered Choose Action.");
+            GameContext.LogDebug("Entered Choose Action.");
 
             // A unit that began its activation Shaken must stay idle for the whole activation and
             // recovers (the token clears) at the end of it. The decision turns on whether it was

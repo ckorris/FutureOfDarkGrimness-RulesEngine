@@ -34,5 +34,46 @@ namespace FDG.Tests
             Assert.That(choice, Is.EqualTo(ChooseUnitToDeployStage.DEPLOY_NORMALLY_CHOICE),
                 "the AI never holds a unit in reserve — it deploys normally.");
         }
+
+        // Regression: when the AI has already moved (so Charge/Move/Shoot aren't offered) and Pass is
+        // GATED OUT (unit rushed -> "must engage"), the only valid option can be one the AI doesn't model
+        // (e.g. Cast). The Choose-Action fallback must return a VALID option, not Pass -- returning Pass
+        // when it isn't offered faults ChooseActionStage ("Request option was Pass, but that wasn't an option").
+        [Test]
+        public async Task Resolve_ChooseAction_PassNotOffered_ReturnsValidOptionNotPass()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var player = new PlayerID(System.Guid.NewGuid());
+            var resolver = new AiStringSelectionResolver(new TableState(store), player);
+
+            var request = new StringSelectionRequest(player, "Choose Action",
+                new List<string> { ChooseActionStage.CAST_CHOICE_NAME },
+                new List<StringSelectionRequest.InvalidOption>
+                {
+                    new StringSelectionRequest.InvalidOption(ChooseActionStage.PASS_CHOICE_NAME, "must engage in melee"),
+                });
+
+            string choice = await resolver.Resolve(request);
+
+            Assert.That(choice, Is.EqualTo(ChooseActionStage.CAST_CHOICE_NAME));
+            Assert.That(choice, Is.Not.EqualTo(ChooseActionStage.PASS_CHOICE_NAME));
+        }
+
+        // The AI still passes when passing IS allowed and nothing more useful is offered.
+        [Test]
+        public async Task Resolve_ChooseAction_PassOffered_PassesWhenNothingBetter()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var player = new PlayerID(System.Guid.NewGuid());
+            var resolver = new AiStringSelectionResolver(new TableState(store), player);
+
+            var request = new StringSelectionRequest(player, "Choose Action",
+                new List<string> { ChooseActionStage.PASS_CHOICE_NAME },
+                new List<StringSelectionRequest.InvalidOption>());
+
+            string choice = await resolver.Resolve(request);
+
+            Assert.That(choice, Is.EqualTo(ChooseActionStage.PASS_CHOICE_NAME));
+        }
     }
 }

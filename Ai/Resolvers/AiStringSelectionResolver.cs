@@ -40,7 +40,11 @@ namespace FDG.Ai.Resolvers
             return Task.FromResult(request.ValidOptions[0]);
         }
 
-        // Priority: Charge > Move (to set up a shoot later) > Shoot (only if enemies in range) > Pass
+        // Priority: Charge > Move (to set up a shoot later) > Shoot (only if enemies in range) > Pass.
+        // The fallback MUST stay within ValidOptions: returning Pass when it isn't offered -- e.g. the
+        // unit rushed and now "must engage", leaving only Cast or a forced action -- faults
+        // ChooseActionStage ("Request option was Pass, but that wasn't an option"). ValidOptions is
+        // guaranteed non-empty (ChooseActionStage auto-passes when it's empty without sending a request).
         private string ChooseAction(IReadOnlyList<string> options)
         {
             if (options.Contains(ChooseActionStage.CHARGE_CHOICE_NAME))
@@ -52,7 +56,9 @@ namespace FDG.Ai.Resolvers
             if (options.Contains(ChooseActionStage.SHOOT_CHOICE_NAME) && AnyEnemyInShootingRange())
                 return ChooseActionStage.SHOOT_CHOICE_NAME;
 
-            return ChooseActionStage.PASS_CHOICE_NAME;
+            return options.Contains(ChooseActionStage.PASS_CHOICE_NAME)
+                ? ChooseActionStage.PASS_CHOICE_NAME
+                : options[0];
         }
 
         // Returns true if any living enemy model is within the max ranged weapon range

@@ -7,12 +7,13 @@ public sealed class WoundModifierSink : IWoundModifierSink
     private int _netMultiplier = 1;
 
     /// <summary>
-    /// Write face (called by operations): compounds <paramref name="factor"/> into
-    /// the running multiplier.
+    /// Write face (called by operations): records <paramref name="factor"/>, keeping the highest seen.
+    /// If several multiplier sources land on one attack, the best one wins — take-the-best like the
+    /// other value sinks (MaxWounds/QualityFloor/WoundIgnore), not compounding.
     /// </summary>
     public void Multiply(int factor)
     {
-        _netMultiplier *= factor;
+        _netMultiplier = Math.Max(_netMultiplier, factor);
     }
 
     /// <summary>

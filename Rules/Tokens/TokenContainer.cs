@@ -20,13 +20,16 @@ public class TokenContainer : ITokenContainer
             return;
         }
         
-        //If we already have tokens of the same type, owner, AND payload, just add to that pile. The payload
-        //must match too: distinct RuleGrant payloads (different granted rules) on the same owner are
-        //semantically different tokens and must stay separate entries — without this they would collapse
-        //into one count, silently dropping every granted rule but the first. Payload-less tokens (Payload
-        //null) merge by type+owner exactly as before (Equals(null, null) is true).
+        //If we already have tokens of the same type, owner, payload, AND clear trigger, just add to that
+        //pile. The payload must match too: distinct RuleGrant payloads (different granted rules) on the
+        //same owner are semantically different tokens and must stay separate entries — without this they
+        //would collapse into one count, silently dropping every granted rule but the first. The clear
+        //trigger must match for the same reason: two same-delta StatModifier grants with different
+        //durations ("next roll" vs "this round") are different buffs — merging them would keep only the
+        //first arrival's trigger, giving one of them the wrong lifetime. Payload-less same-trigger tokens
+        //merge by type+owner exactly as before (Equals(null, null) is true).
         int existingIndex = _tokens.FindIndex(t => t.Type == token.Type && t.OwnerUnitID == token.OwnerUnitID
-            && Equals(t.Payload, token.Payload));
+            && Equals(t.Payload, token.Payload) && Equals(t.ClearTrigger, token.ClearTrigger));
         if (existingIndex < 0)
         {
             _tokens.Add(token);
@@ -50,6 +53,10 @@ public class TokenContainer : ITokenContainer
     public int RemoveTokensWithPayload(TokenType tokenType, UnitID? owner, TokenPayload? payload, int count = 1)
         => RemoveMatching(entry => entry.Type == tokenType && entry.OwnerUnitID == owner
             && Equals(entry.Payload, payload), count);
+
+    public int RemoveFirstTriggerTokens(TokenType tokenType, int count = 1)
+        => RemoveMatching(entry => entry.Type == tokenType
+            && entry.ClearTrigger is TokenClearTrigger.FirstTrigger, count);
 
     /// <summary>
     /// Drains up to <paramref name="count"/> tokens from entries satisfying

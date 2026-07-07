@@ -230,6 +230,60 @@ namespace FDG.Tests
         // --- Helpers ---
 
         // A self-targeted pre-attack ability, once per activation, granting the bearer a marker token.
+        // Audit BUG-1 — a DealHits pre-attack ability (Breath Attack shape) must actually deal its hits
+        // through the save->wound pipeline, not silently no-op after paying its cost. AP(6) pushes the
+        // defense-4 save to 10, so the face-4 saves all fail: 3 hits kill the 3-model enemy.
+        // (FixedFaceDiceRoller, not FixedDiceRoller — the latter collapses the 3 save rolls to one.)
+        [Test]
+        public async Task DealHitsAbility_ResolvesHitsThroughSaveAndWoundPipeline()
+        {
+            DataBinding<UnitData> enemy = MakeEnemyUnitAt(new Position(3f, 0f), modelCount: 3);
+            var requester = new DealHitsPreAttackRequester("Breath", enemy);
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedFaceDiceRoller(4));
+
+            var breath = new SpecialRuleDefinition("Breath", Array.Empty<HookEntry>(), new[]
+            {
+                new ActivatedAbility(
+                    EHookID.Activation_OnPreAttack, new Cost.OncePerActivation(),
+                    new TargetSelector(6f, 1, 1, ETargetAffinity.Foe, false),
+                    new Effect.DealHits(3, Array.Empty<string>(), ArmorPenetration: 6),
+                    new Condition.Always()),
+            });
+            DataBinding<UnitData> unit = MakeUnitAt(new Position(0f, 0f), breath);
+
+            UnitActionContext unitCtx = NewActivation(ctx, unit);
+            bool finished = false;
+            var stage = new PreAttackStage(ctx, new NoOpLayer<IUnitActionContext>(), EActionType.Hold);
+            stage.OnFinished.Bind("OnFinished");
+            stage.OnFinished.OnWillActivate += _ => finished = true;
+            await stage.Enter(unitCtx);
+
+            Assert.That(enemy.GetValue().GetIsAlive(), Is.False,
+                "3 hits at AP(6) auto-fail every save and kill the 3-model enemy - the ability must deal " +
+                "real damage, not just log that it was used");
+            Assert.That(finished, Is.True, "the pipeline hands off to the attack via OnFinished");
+            Assert.That(unit.GetValue().Tokens.HasToken(new TokenType("AbilityUsed:Breath")), Is.True,
+                "the once-per-activation cost gate closed");
+        }
+
+        // An enemy-player unit within pre-attack targeting range.
+        private DataBinding<UnitData> MakeEnemyUnitAt(Position position, int modelCount)
+        {
+            var enemyPlayer = new PlayerID(Guid.NewGuid());
+            var modelBindings = new List<DataBinding<ModelData>>();
+            for (int i = 0; i < modelCount; i++)
+            {
+                var model = new ModelData(0.5f, new List<Weapon>(),
+                    new Position(position.x + i * 0.6f, position.z), _store);
+                modelBindings.Add(_store.GetDataBinding<ModelData>(_store.Create(model)));
+            }
+
+            var unit = new UnitData(enemyPlayer, "Enemy Grunts", quality: 4, defense: 4, modelBindings: modelBindings);
+            DataBinding<UnitData> binding = _store.GetDataBinding<UnitData>(_store.Create(unit));
+            _store.Create(new ArmyData(enemyPlayer, new List<DataBinding<UnitData>> { binding }));
+            return binding;
+        }
+
         private static (SpecialRuleDefinition def, TokenType marker) MakeSelfBuffRule()
         {
             var marker = new TokenType("PreAttackBuffFired");
@@ -314,6 +368,44 @@ namespace FDG.Tests
 
             _store.Create(new ArmyData(_player, new List<DataBinding<UnitData>> { binding }));
             return binding;
+        }
+    }
+
+    // CannedPreAttackRequester plus the wound-assignment half a DealHits ability's save->wound pipeline
+    // raises (auto-filled, StrafeRequester-style).
+    internal sealed class DealHitsPreAttackRequester : IPlayerRequestByID
+    {
+        private readonly string _abilityChoice;
+        private readonly DataBinding<UnitData> _target;
+
+        public DealHitsPreAttackRequester(string abilityChoice, DataBinding<UnitData> target)
+        {
+            _abilityChoice = abilityChoice;
+            _target = target;
+        }
+
+        public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
+            where TRequest : IStageTaskRequest<TReply>
+        {
+            if (request is StringSelectionRequest)
+            {
+                return Task.FromResult((TReply)(object)_abilityChoice);
+            }
+
+            if (request is CancellableSelectionRequest<UnitData>)
+            {
+                CancellableResult<DataBinding<UnitData>> result = new Selected<DataBinding<UnitData>>(_target);
+                return Task.FromResult((TReply)(object)result);
+            }
+
+            if (request is AssignWoundsRequest woundRequest)
+            {
+                var result = new AssignWoundsResults(woundRequest.UnitReceivingWounds, woundRequest.TotalWoundsToAssign);
+                result.AutoFill();
+                return Task.FromResult((TReply)(object)result);
+            }
+
+            throw new InvalidOperationException("Unexpected request type: " + request.GetType());
         }
     }
 

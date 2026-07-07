@@ -3,7 +3,6 @@ using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 
 namespace FDG.SaveLoad
 {
@@ -53,8 +52,8 @@ namespace FDG.SaveLoad
         /// <summary>
         /// Resolves <paramref name="ruleEntry"/> against <paramref name="ruleResolver"/> and
         /// returns the attachment-ready <see cref="ResolvedRule"/> (requested name preserved
-        /// for alias display, per-instance arguments carried). Returns null — with a debug
-        /// warning, so partial armies still load — when the rule has no definition in the
+        /// for alias display, per-instance arguments carried). Returns null — with a
+        /// <see cref="RuleDiagnostics"/> warning, so partial armies still load — when the rule has no definition in the
         /// registry (valid but not yet implemented) or when its declared
         /// <see cref="SpecialRuleDefinition.Scope"/> doesn't match
         /// <paramref name="attachmentScope"/> (a weapon rule named at unit level, or vice
@@ -67,15 +66,15 @@ namespace FDG.SaveLoad
 
             if (!ruleResolver.TryResolve(lookupName, out ResolvedRule resolved))
             {
-                Debug.WriteLine(
-                    $"[#042] Skipping unimplemented special rule '{ruleEntry.PrintableName}' on {ownerDescription}.");
+                RuleDiagnostics.Warn(
+                    $"Skipping unimplemented special rule '{ruleEntry.PrintableName}' on {ownerDescription}.");
                 return null;
             }
 
             if (resolved.Definition.Scope != attachmentScope)
             {
-                Debug.WriteLine(
-                    $"[#027] Skipping special rule '{ruleEntry.PrintableName}' on {ownerDescription}: " +
+                RuleDiagnostics.Warn(
+                    $"Skipping special rule '{ruleEntry.PrintableName}' on {ownerDescription}: " +
                     $"it is a {resolved.Definition.Scope}-scoped rule and can't attach at {attachmentScope} scope.");
                 return null;
             }
@@ -83,8 +82,8 @@ namespace FDG.SaveLoad
             int maxArgIndex = RuleArgumentArity.MaxReferencedArgIndex(resolved.Definition);
             if (maxArgIndex >= arguments.Count)
             {
-                Debug.WriteLine(
-                    $"[#059] Skipping special rule '{ruleEntry.PrintableName}' on {ownerDescription}: " +
+                RuleDiagnostics.Warn(
+                    $"Skipping special rule '{ruleEntry.PrintableName}' on {ownerDescription}: " +
                     $"its effects read Arg({maxArgIndex}) but the entry supplies only {arguments.Count} " +
                     "argument(s) - a numeric value is likely missing from the army-list reference.");
                 return null;

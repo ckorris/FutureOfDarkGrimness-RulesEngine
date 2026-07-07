@@ -33,7 +33,7 @@ namespace FDG.Stages
 
             // Roll THIS target's hits and run the hit-complete fold before the save pipeline. Done per target
             // because the Blast cap depends on the target's living-model count.
-            (List<SuccessfulHitInfo> hitGroups, int saveModifier) =
+            (List<SuccessfulHitInfo> hitGroups, int saveModifier, int apReduction) =
                 ResolveSpellHits(run.Caster.GetValue(), target.GetValue(), run.BaseHits, run.Weapon);
 
             CombatMetadata metadata = new CombatMetadata(GameContext, run.Caster, target,
@@ -41,6 +41,7 @@ namespace FDG.Stages
 
             RollToHitResults hitResults = new RollToHitResults(hitGroups, new List<FailedHitInfo>());
             hitResults.SaveModifier = saveModifier;
+            hitResults.ArmorPenetrationReduction = apReduction;
             metadata.AddResult(hitResults);
             // No cover check runs for a synthetic spell hit; seed a zero bonus so the save stage won't throw.
             metadata.AddResult(new CoverCheckResults(0));
@@ -83,16 +84,22 @@ namespace FDG.Stages
         // unmodified 6" rules add hits, and Rending/Crack promote AP on the natural 6s. The dice faces
         // don't gate the hits — every die is an automatic hit — they only feed the on-6 rules, so the
         // rolled histogram itself is the successful-hit batch the per-hit AP split partitions.
-        private (List<SuccessfulHitInfo> hitGroups, int saveModifier) ResolveSpellHits(
+        private (List<SuccessfulHitInfo> hitGroups, int saveModifier, int apReduction) ResolveSpellHits(
             IUnit caster, IUnit target, int baseHits, Weapon spellWeapon)
         {
             IDiceResults rolled = GameContext.DiceRoller.Roll(baseHits);
             float distance = UnitCompareUtilities.MinDistanceBetweenUnits(caster, target, out _, out _,
                 includeVertical: false);
 
+            // The DEFENDER participates too (Subject seat), mirroring RollToHitStage: Fortified's AP
+            // reduction fires against spell damage like any other hit. IsSpell lets rules whose corpus
+            // text excludes spells (Shielded) gate themselves out via Condition.IsNotSpell.
             IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator.EvaluateAll(
-                new HitRollCompleteContext(caster, target, rolled, distance, false, false),
-                (caster, ERuleSeat.Actor, spellWeapon, (IReadOnlyList<IModel>?)null, EModelRuleScope.AnyOwner));
+                new HitRollCompleteContext(caster, target, rolled, distance, IsMelee: false,
+                    IsCharging: false, IsSpell: true),
+                (caster, ERuleSeat.Actor, spellWeapon, (IReadOnlyList<IModel>?)null, EModelRuleScope.AnyOwner),
+                (target, ERuleSeat.Subject, (IWeapon?)null, (IReadOnlyList<IModel>?)null,
+                    EModelRuleScope.AnyOwner));
 
             // Split the auto-hitting rolled dice so a natural 6 carries Rending/Crack AP per-hit while the
             // rest save at base AP. No per-hit rule → a single base-AP group holding every rolled hit.
@@ -124,7 +131,12 @@ namespace FDG.Stages
 
             RollModifierSink saveModifiers = new RollModifierSink();
             saveModifiers.ApplyFrom(ops);
-            return (groups, saveModifiers.Net(ERollKind.Save));
+
+            // Fortified (defender) reduces the incoming spell AP, floored at the save stage — the same
+            // fold RollToHitStage does for weapon attacks.
+            int apReduction = ops.OfType<RuleOperation.ReduceArmorPenetration>().Sum(op => op.Amount);
+
+            return (groups, saveModifiers.Net(ERollKind.Save), apReduction);
         }
 
         private static float TotalHits(List<SuccessfulHitInfo> groups)

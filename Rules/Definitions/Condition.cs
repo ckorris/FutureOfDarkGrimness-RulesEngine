@@ -46,6 +46,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(AfterMoving), "afterMoving")]
 [JsonDerivedType(typeof(IsMelee), "isMelee")]
 [JsonDerivedType(typeof(IsCharging), "isCharging")]
+[JsonDerivedType(typeof(IsNotSpell), "isNotSpell")]
 public abstract record Condition
 {
 
@@ -319,5 +320,16 @@ public abstract record Condition
     public sealed record IsCharging : CapabilityCondition<IHasCharging>
     {
         protected override bool EvaluateCore(IHasCharging context) => context.IsCharging;
+    }
+
+    /// <summary>
+    /// True when the hits being resolved do NOT come from a spell. Gates rules whose corpus text
+    /// excludes spell damage (Shielded's "against hits that are not from spells") on the hit-complete
+    /// hook, which the spell-damage pipeline fires with <c>IsSpell: true</c> and the weapon pipelines
+    /// fire with the default false.
+    /// </summary>
+    public sealed record IsNotSpell : CapabilityCondition<IHasIsSpell>
+    {
+        protected override bool EvaluateCore(IHasIsSpell context) => !context.IsSpell;
     }
 }

@@ -16,9 +16,7 @@ namespace FDG.Rules.Dispatch;
 ///         owned solely by the hero fires at the hero's Quality.</item>
 /// </list>
 ///
-/// NOTE: the bodies below are deliberately the pre-#006 behavior (always the unit's own stat). The
-/// per-slice work fills each in (and wires the matching stage to call it). The HeroStatRulesTests red
-/// tests pin the intended hero behavior so each slice has a failing test to drive it.
+/// All three helpers are implemented and wired into their stages; HeroStatRulesTests pins the behavior.
 /// </summary>
 public static class HeroStatRules
 {

@@ -22,6 +22,10 @@ namespace FDG.Stages
 
             UnitData defendingUnit = metaData.DefendingUnit.GetValue();
 
+            // Alive-before/dead-after guard for the destruction seam below: upstream stages already stop
+            // attacking a dead defender, so this is defense-in-depth against a double-fire.
+            bool defenderWasAlive = metaData.DefendingUnit.GetIsAlive();
+
             foreach(PendingWounds pendingWound in assignWoundsResults.PendingWounds)
             {
                 ModelData model = pendingWound.Model; //Shorthand.
@@ -60,6 +64,15 @@ namespace FDG.Stages
             else
             {
                 GameContext.Log($"Applying {totalWoundsApplied} wounds killed {modelsKilled} models, killing the unit.");
+
+                // The one choke point every attacker-caused death passes through (shooting, melee swings,
+                // impact hits, spell damage, strafing): clear the dead unit's cross-unit marks and fire
+                // the unit-destroyed hook with the attacker as killer.
+                if (defenderWasAlive)
+                {
+                    await UnitDestructionNotifier.NotifyUnitDestroyed(GameContext, defendingUnit,
+                        metaData.AttackingUnit.GetValue());
+                }
             }
 
             await onFinished(new ApplyWoundsResults(modelsKilled));

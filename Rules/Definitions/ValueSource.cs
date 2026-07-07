@@ -36,6 +36,16 @@ public abstract record ValueSource
     {
         public override int Resolve(IReadOnlyList<RuleArgument> arguments)
         {
+            // Descriptive guard rather than a raw IndexOutOfRangeException: the usual way to get here
+            // is granting an argumented (X) rule by name (AddRule/Aura/MarkTarget payloads carry no
+            // argument slot), which the grant path is supposed to have screened out already.
+            if (Index >= arguments.Count)
+            {
+                throw new InvalidOperationException(
+                    $"Arg({Index}) is out of range: only {arguments.Count} argument(s) supplied. " +
+                    "Argumented (X) rules cannot be granted by name.");
+            }
+
             return arguments[Index] is RuleArgument.Int i
                 ? i.Value
                 : throw new InvalidOperationException($"Arg({Index}) expected an Int argument.");

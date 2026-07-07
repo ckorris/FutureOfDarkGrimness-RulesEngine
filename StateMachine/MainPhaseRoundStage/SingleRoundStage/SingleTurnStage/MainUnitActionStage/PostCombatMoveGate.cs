@@ -43,9 +43,12 @@ namespace FDG.Stages
                 return;
             }
 
-            // Budget already spent this round → don't even offer the move again.
+            // Budget already spent this round → don't even offer the move again. Any token ops sharing
+            // the hook still apply — a non-move rule's markers must not vanish just because the move
+            // budget is gone (ApplyTokenOperations ignores the move ops themselves, so nothing double-fires).
             if (unit.Tokens.HasToken(TokenType.PostCombatMoveUsed))
             {
+                OperationApplier.ApplyTokenOperations(operations);
                 return;
             }
 

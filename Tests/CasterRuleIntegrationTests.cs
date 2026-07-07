@@ -232,6 +232,52 @@ namespace FDG.Tests
                 "casting spent the spell's 2-token cost");
         }
 
+        // Audit BUG-3 — the defender's Subject-seat rules fire on spell damage: Fortified reduces the
+        // spell's AP(1) to 0, so the defense-4 save needs a 4 instead of a 5. Every roll is a fixed face
+        // 4: without Fortified the save fails (4 < 5) and the enemy dies; with it the save succeeds.
+        [Test]
+        public async Task CastSpellStage_DamageSpell_FortifiedReducesSpellAp()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester(), new FixedFaceDiceRoller(4));
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
+                new[] { DamageSpell("Bolt", threshold: 2, hits: 1, armorPenetration: 1) }, new Position(10f, 10f));
+            DataBinding<UnitData> enemy = MakeEnemyUnit(new PlayerID(System.Guid.NewGuid()), new Position(12f, 10f));
+            enemy.GetValue().AttachRuleDefinition(new ResolvedRule("Fortified", CoreRuleCatalog.Fortified));
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Assert.That(caster.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(0),
+                "the cast actually happened (tokens spent) - the survival below is the save, not a whiffed cast");
+            Assert.That(enemy.GetValue().GetIsAlive(), Is.True,
+                "Fortified cancels the spell's AP(1), so the fixed face-4 save clears the base defense 4");
+        }
+
+        // Audit BUG-3 control — Shielded's corpus text excludes spell damage ("hits that are NOT from
+        // spells"), enforced by Condition.IsNotSpell now that the spell pipeline evaluates defenders.
+        // The AP(1) spell save needs a 5; the fixed face 4 fails it and the enemy dies (the same face 4
+        // clears the 4+ cast roll). If Shielded leaked into spell damage its +1 would drop the needed
+        // save back to 4 and the enemy would live.
+        [Test]
+        public async Task CastSpellStage_DamageSpell_ShieldedDoesNotApplyToSpells()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester(), new FixedFaceDiceRoller(4));
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
+                new[] { DamageSpell("Bolt", threshold: 2, hits: 1, armorPenetration: 1) }, new Position(10f, 10f));
+            DataBinding<UnitData> enemy = MakeEnemyUnit(new PlayerID(System.Guid.NewGuid()), new Position(12f, 10f));
+            enemy.GetValue().AttachRuleDefinition(new ResolvedRule("Shielded", CoreRuleCatalog.Shielded));
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Assert.That(enemy.GetValue().GetIsAlive(), Is.False,
+                "Shielded must not modify spell saves; the face-4 roll fails the AP(1) save needing a 5");
+        }
+
         // #033 Slice A — pre-save hit rules now fire on spell damage. A Blast(3) spell multiplies its 2 base
         // hits to 6 (capped at the 6-model target), and AP(6) auto-fails every save, so the unit is wiped —
         // without the hit-complete fold only the 2 base hits would land (killing 2). Uses FixedFaceDiceRoller

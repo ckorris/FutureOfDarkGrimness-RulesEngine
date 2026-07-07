@@ -27,6 +27,15 @@ public interface ITokenContainer
     /// </summary>
     public int RemoveTokensWithPayload(TokenType tokenType, UnitID? owner, TokenPayload? payload, int count = 1);
 
+    /// <summary>
+    /// Removes up to <paramref name="count"/> tokens of <paramref name="tokenType"/> whose clear trigger
+    /// is <see cref="TokenClearTrigger.FirstTrigger"/>, leaving duration-triggered entries of the same
+    /// type untouched. Used by one-shot grant consumption (<c>GrantedRollModifiers.ConsumeNet</c>) so
+    /// spending a "next roll" buff can never drain a coexisting "this round" buff of the same roll kind.
+    /// Returns the number actually removed.
+    /// </summary>
+    public int RemoveFirstTriggerTokens(TokenType tokenType, int count = 1);
+
     public bool HasToken(TokenType tokenType);
 
     public int GetTokenCount(TokenType tokenType);

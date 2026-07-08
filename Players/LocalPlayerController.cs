@@ -82,6 +82,14 @@ namespace FDG.Players
             _localPlayer.LogMessageUI?.DisplayLogMessage(logMessage, color);
         }
 
+        public void SendLogMessage(string logMessage, TextColor color, bool isDebug)
+        {
+            if (isDebug)
+                _localPlayer.LogMessageUI?.DisplayDebugMessage(logMessage, color);
+            else
+                _localPlayer.LogMessageUI?.DisplayLogMessage(logMessage, color);
+        }
+
         public void SendPlayerMessage(string sendingPlayerName, EChatMessageType messageType, string message)
         {
             _localPlayer.PlayerMessageUI?.DisplayPlayerMessage(sendingPlayerName, messageType, message);

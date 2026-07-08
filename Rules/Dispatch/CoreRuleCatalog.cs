@@ -964,13 +964,15 @@ public static class CoreRuleCatalog
     /// the seam where <c>RollToHitStage</c> now evaluates the defender; its modifier folds into the save
     /// threshold alongside the attacker's AP (a +1 defense and an attacker's -N net). Applies to both
     /// shooting and melee (the hit stages are shared). The corpus's "against hits that are NOT from spells"
-    /// facet is approximated: spell damage injects hits past this hook, so it isn't modified here anyway.
+    /// facet is enforced by <see cref="Condition.IsNotSpell"/>: the spell-damage pipeline evaluates the
+    /// defender at this hook too (so Fortified works vs spells), and this condition is what keeps
+    /// Shielded's bonus out of it.
     /// </summary>
     public static SpecialRuleDefinition Shielded { get; } = new SpecialRuleDefinition("Shielded",
         new[]
         {
             new HookEntry(EHookID.Shooting_OnHitRollComplete,
-                new Condition.Always(),
+                new Condition.IsNotSpell(),
                 new Effect.RollModifier(ERollKind.Save, Delta: +1),
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject),

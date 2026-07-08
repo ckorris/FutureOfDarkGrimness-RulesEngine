@@ -39,7 +39,7 @@ namespace FDG.TextInterface
             }
         }
 
-        public void SendLogMessageToAll(string message, TextColor color)
+        public void SendLogMessageToAll(string message, TextColor color, bool isDebug = false)
         {
             foreach (PlayerSlot slot in _playerSlotManager.PlayerSlots)
             {
@@ -48,7 +48,7 @@ namespace FDG.TextInterface
                     continue;
                 }
 
-                slot.Controller.SendLogMessage(message, color);
+                slot.Controller.SendLogMessage(message, color, isDebug);
             }
         }
 

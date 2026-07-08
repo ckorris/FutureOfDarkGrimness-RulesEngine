@@ -16,7 +16,7 @@ namespace FDG.Stages
 
         public override async Task Enter(IDeploymentTurnContext context)
         {
-            context.Log("Entering Determine Next Deploy Player stage.");
+            context.LogDebug("Entering Determine Next Deploy Player stage.");
 
             // First time through we keep the cursor's initial state (the roll-off winner) — but only
             // if that player actually has a unit to deploy. If their whole army was set aside (e.g.

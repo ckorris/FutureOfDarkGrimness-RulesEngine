@@ -50,7 +50,7 @@ namespace FDG.Stages
 
         public override async Task Enter(IMapSetupContext context)
         {
-            context.Log($"Entered {nameof(PlaceTerrainStage)} in mode {context.GameContext.Settings.TerrainPlacementMode}.");
+            context.LogDebug($"Entered {nameof(PlaceTerrainStage)} in mode {context.GameContext.Settings.TerrainPlacementMode}.");
 
             if (ShouldSkipTerrainPhase(context.GameContext.Settings))
             {
@@ -222,7 +222,7 @@ namespace FDG.Stages
 
                 if (result.TemplateIndex < 0 || result.TemplateIndex >= pool.Count)
                 {
-                    context.Log($"  Resolver returned out-of-range template index {result.TemplateIndex}; re-prompting.");
+                    context.LogDebug($"  Resolver returned out-of-range template index {result.TemplateIndex}; re-prompting.");
                     continue;
                 }
 
@@ -237,7 +237,7 @@ namespace FDG.Stages
                 if (validity == TerrainPlacementValidity.Valid)
                     return result;
 
-                context.Log($"  Resolver returned invalid placement ({validity}); re-prompting.");
+                context.LogDebug($"  Resolver returned invalid placement ({validity}); re-prompting.");
             }
         }
     }

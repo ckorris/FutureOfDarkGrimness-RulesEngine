@@ -15,7 +15,7 @@ namespace FDG.Stages
 
         public override async Task Enter(IUnitActionContext context)
         {
-            GameContext.Log($"Melee stage entered.");
+            GameContext.LogDebug($"Melee stage entered.");
 
             await base.Enter(context);
         }

@@ -34,12 +34,12 @@ namespace FDG.Rules.Dispatch
                 }
             }
 
-            // Remove the consumed one-shot grants. Owner-agnostic drain: in the dominant case a unit holds a
-            // single roll-modifier buff of a given kind; mixing a "once" and a duration grant of the SAME
-            // roll on one unit is the rare edge that could clear the duration one early (recorded in #033).
+            // Remove the consumed one-shot grants — and only those. The trigger-aware drain leaves
+            // duration grants (ThisActivation / ThisRound) of the same roll kind untouched, so mixing a
+            // "once" and a duration buff on one unit no longer clears the duration one early (#033 edge).
             if (firstTriggerCount > 0)
             {
-                unit.Tokens.RemoveTokens(type, firstTriggerCount);
+                unit.Tokens.RemoveFirstTriggerTokens(type, firstTriggerCount);
             }
             return net;
         }

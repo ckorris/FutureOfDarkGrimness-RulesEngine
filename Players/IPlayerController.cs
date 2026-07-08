@@ -22,6 +22,11 @@ namespace FDG.Players
 
         public void SendLogMessage(string logMessage, TextColor color);
 
+        // Debug-category variant. Defaults to a normal log line for controllers that don't distinguish
+        // (AI, test doubles); the local and network controllers override it to route the debug flag on.
+        public void SendLogMessage(string logMessage, TextColor color, bool isDebug)
+            => SendLogMessage(logMessage, color);
+
         public void SendPlayerMessage(string sendingPlayerName, EChatMessageType messageType, string message);
     }
 }

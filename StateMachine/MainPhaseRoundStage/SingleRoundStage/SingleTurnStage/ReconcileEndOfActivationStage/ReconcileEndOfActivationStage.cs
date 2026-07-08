@@ -18,7 +18,7 @@ namespace FDG.Stages
 
         public override async Task Enter(ISingleTurnContext context)
         {
-            GameContext.Log($"ReconcileEndOfActivationStage entrance {_enterCount}");
+            GameContext.LogDebug($"ReconcileEndOfActivationStage entrance {_enterCount}");
 
             // Clear the just-activated unit's "used this activation" markers (once-per-activation cost gates,
             // e.g. Strafing) so they reset for its next activation.

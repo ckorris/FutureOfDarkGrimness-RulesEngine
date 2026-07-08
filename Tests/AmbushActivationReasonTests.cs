@@ -36,7 +36,7 @@ namespace FDG.Tests
 
             SelectionRequest<UnitData>.InvalidOption invalid =
                 request.InvalidOptions.Single(o => o.Option == reserve);
-            Assert.That(invalid.Reason, Is.EqualTo("Ambush reserves can't arrive until round 2."),
+            Assert.That(invalid.Reason, Is.EqualTo("Reserve - arrives round 2."),
                 "a round-1 Ambush reserve can't arrive yet — say so, don't call it 'already activated'.");
         }
 
@@ -50,7 +50,7 @@ namespace FDG.Tests
 
             SelectionRequest<UnitData>.InvalidOption invalid =
                 request.InvalidOptions.Single(o => o.Option == reserve);
-            Assert.That(invalid.Reason, Is.EqualTo("In Ambush reserve (not yet deployed)."),
+            Assert.That(invalid.Reason, Is.EqualTo("In Ambush reserve."),
                 "from round 2 the reserve could arrive but hasn't been deployed — reflect that, not activation.");
         }
 
@@ -67,7 +67,7 @@ namespace FDG.Tests
 
             SelectionRequest<UnitData>.InvalidOption invalid =
                 request.InvalidOptions.Single(o => o.Option == spent);
-            Assert.That(invalid.Reason, Is.EqualTo("This unit has already activated."));
+            Assert.That(invalid.Reason, Is.EqualTo("Already activated."));
         }
 
         private async Task<SelectionRequest<UnitData>> RunStage(DataBinding<UnitData> unactivated)

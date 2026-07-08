@@ -260,6 +260,12 @@ public abstract record Effect
     /// <see cref="WithRules"/> entry because AP is a weapon stat, not a #042 rule — it sets the synthetic
     /// spell weapon's AP directly. <see cref="Count"/> is a fixed authored value because every
     /// offensive-spell hit-count in the corpus is fixed — no rule-data randomness on the count itself.
+    ///
+    /// SUPPORTED PATHS (not universal): the emitted <see cref="RuleOperation.InvokeDealHits"/> is only
+    /// executed by the three stages wired for it — spells (CastSpellStage), Strafing, and pre-attack
+    /// abilities (PreAttackStage). It is NOT an <see cref="ExecutableOperation"/>, so any other hook's
+    /// generic op application silently drops it. <see cref="WithRules"/> is honored only on the spell
+    /// path (pre-resolved at army load); Strafing and pre-attack warn and skip it.
     /// </summary>
     public sealed record DealHits(int Count, IReadOnlyList<string> WithRules, int ArmorPenetration = 0) : Effect
     {
@@ -322,7 +328,14 @@ public abstract record Effect
     /// spell tokens, consuming once-per-game markers, etc. Pairs with
     /// <see cref="Cost.ConsumesToken"/> at the activated-ability layer.
     /// </summary>
-    public sealed record ConsumeToken(TokenType TType, int Count) : Effect;
+    public sealed record ConsumeToken(TokenType TType, int Count) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.ConsumeTokensFromUnit(
+                ruleInvocation.EffectiveTarget, TType, Count));
+        }
+    }
 
     /// <summary>
     /// Invokes the movement subsystem inline — the effect's target moves up to

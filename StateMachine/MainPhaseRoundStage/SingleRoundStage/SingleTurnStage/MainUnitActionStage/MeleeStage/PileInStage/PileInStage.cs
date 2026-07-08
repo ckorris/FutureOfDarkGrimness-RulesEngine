@@ -12,7 +12,7 @@ namespace FDG.Stages
 
         public override async Task Enter(ICombatActionContext context)
         {
-            GameContext.Log("Entered pile in stage.");
+            GameContext.LogDebug("Entered pile in stage.");
 
             var chargingUnit = context.AttackingUnit.GetValue();
             var defendingUnit = context.DefendingUnit.GetValue();

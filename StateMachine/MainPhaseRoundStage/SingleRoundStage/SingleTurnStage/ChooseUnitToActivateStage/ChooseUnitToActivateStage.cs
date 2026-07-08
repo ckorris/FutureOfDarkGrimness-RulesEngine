@@ -19,7 +19,7 @@ namespace FDG.Stages
 
         public override async Task Enter(ISingleTurnContext context)
         {
-            context.Log("Entered Choose Unit to Activate stage.");
+            context.LogDebug("Entered Choose Unit to Activate stage.");
     
             //Find all units.
             List<SelectionRequest<UnitData>.ValidOption> validOptions = new List<SelectionRequest<UnitData>.ValidOption>();
@@ -74,11 +74,11 @@ namespace FDG.Stages
             {
                 int round = GameProgressUtilities.TryGetProgress(GameContext.GameDataStore)?.RoundCount ?? 1;
                 return round < 2
-                    ? "Ambush reserves can't arrive until round 2."
-                    : "In Ambush reserve (not yet deployed).";
+                    ? "Reserve - arrives round 2."
+                    : "In Ambush reserve.";
             }
 
-            return "This unit has already activated.";
+            return "Already activated.";
         }
 
         // A unit that has never been placed has all models at the default origin (0,0,0).

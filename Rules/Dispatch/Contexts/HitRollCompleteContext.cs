@@ -21,8 +21,9 @@ namespace FDG.Rules.Dispatch.Contexts
     /// </summary>
     public sealed record HitRollCompleteContext(
         IUnit Attacker, IUnit Target, IDiceResults UnmodifiedHitRolls,
-        float DistanceInches = 0f, bool IsMelee = false, bool IsCharging = false)
-        : IHookContext, IHasUnmodifiedHitRolls, IHasDistance, IHasCombatKind, IHasCharging, IHasTarget
+        float DistanceInches = 0f, bool IsMelee = false, bool IsCharging = false, bool IsSpell = false)
+        : IHookContext, IHasUnmodifiedHitRolls, IHasDistance, IHasCombatKind, IHasCharging, IHasTarget,
+            IHasIsSpell
     {
         public EHookID Hook => EHookID.Shooting_OnHitRollComplete;
     }

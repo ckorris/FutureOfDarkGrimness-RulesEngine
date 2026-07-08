@@ -435,6 +435,20 @@ public sealed class RuleEvaluator
 
             if (!_ruleResolver.TryResolve(grant.RuleName, out ResolvedRule resolved))
             {
+                RuleDiagnostics.WarnOnce($"grant:{grant.RuleName}",
+                    $"Granted rule '{grant.RuleName}' on {unit.Name} has no definition in the registry - " +
+                    "the grant does nothing.");
+                continue;
+            }
+
+            // A granted rule arrives with no arguments (RuleGrant payloads have no argument slot), so an
+            // argumented (X) rule would throw in ValueSource.Arg.Resolve mid-dispatch. Screen it out
+            // here, mirroring army-load's arity gate in ArmyListRuleResolution.ResolveForScope.
+            if (RuleArgumentArity.MaxReferencedArgIndex(resolved.Definition) >= 0)
+            {
+                RuleDiagnostics.WarnOnce($"grant-arity:{grant.RuleName}",
+                    $"Granted rule '{grant.RuleName}' on {unit.Name} reads arguments, but grants carry " +
+                    "none - skipped.");
                 continue;
             }
 

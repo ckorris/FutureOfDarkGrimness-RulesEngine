@@ -18,7 +18,7 @@ namespace FDG.Stages
 
         public override async Task Enter(IMapSetupContext context)
         {
-            context.Log($"Entered {nameof(RollForFirstObjectivePlacementStage)}.");
+            context.LogDebug($"Entered {nameof(RollForFirstObjectivePlacementStage)}.");
 
             List<ITeam> teams = context.GameContext.TableState.Teams.Objects.ToList();
             List<string> teamNames = teams.Select(t => $"Team {t.TeamNumber}").ToList();

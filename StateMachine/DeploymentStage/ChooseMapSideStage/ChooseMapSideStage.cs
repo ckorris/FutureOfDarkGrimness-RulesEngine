@@ -23,7 +23,7 @@ namespace FDG.Stages
 
         public override async Task Enter(IDeploymentContext context)
         {
-            context.Log("Entered Choose Map Side stage.");
+            context.LogDebug("Entered Choose Map Side stage.");
 
             List<ITeam> teamOrderedByRoll = context.MapSideRollOrder;
 
@@ -68,7 +68,7 @@ namespace FDG.Stages
                 //Have the first player on the team choose a zone.
                 PlayerID firstTeamPlayer = thisTeam.Players.First();
 
-                context.Log($"Requesting player choose deployment zone.");
+                context.LogDebug($"Requesting player choose deployment zone.");
                 ChooseDeploymentZoneRequest request = new ChooseDeploymentZoneRequest(firstTeamPlayer,
                     "Choose Deployment Zone", zoneBindings, choices.Values.ToList());
 

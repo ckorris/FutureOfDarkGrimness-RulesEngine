@@ -20,7 +20,7 @@ namespace FDG.Stages
 
         public override async Task Enter(IDeploymentTurnContext context)
         {
-            context.Log("Entered Deploy Unit stage.");
+            context.LogDebug("Entered Deploy Unit stage.");
 
             if(context.CurrentDeployingUnit == null)
             {

@@ -29,7 +29,7 @@ namespace FDG.Stages
 
         public override async Task Enter(IDeploymentTurnContext context)
         {
-            context.Log("Entered Choose Unit to Deploy stage.");
+            context.LogDebug("Entered Choose Unit to Deploy stage.");
 
             if(context.CurrentDeployingUnit != null)
             {

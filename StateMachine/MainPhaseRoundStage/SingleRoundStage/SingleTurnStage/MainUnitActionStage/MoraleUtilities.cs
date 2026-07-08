@@ -208,6 +208,11 @@ namespace FDG.Stages
                 deaths.Add(new RoutedModel(model.ID, model.Position));
 
             await gameContext.Presenter.Present(new UnitRoutedBeat(unit.ID, unit.Name, deaths));
+
+            // A routed unit is destroyed: its cross-unit OwnerDestroyed marks clear. No killer is passed —
+            // whether a rout counts as "destroyed by" the melee winner is an open rules question, so the
+            // unit-destroyed hook deliberately does not fire here (see UnitDestructionNotifier).
+            await UnitDestructionNotifier.NotifyUnitDestroyed(gameContext, unit, killer: null);
         }
     }
 }

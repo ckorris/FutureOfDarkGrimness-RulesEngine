@@ -30,7 +30,7 @@ namespace FDG.Stages
 
         public override async Task Enter(IGameContext context)
         {
-            GameContext.TextOutput.Log($"Main Phase stage entering child: Reconcile New Turn.");
+            GameContext.TextOutput.LogDebug($"Main Phase stage entering child: Reconcile New Turn.");
 
             await base.Enter(context);
         }

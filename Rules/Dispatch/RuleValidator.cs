@@ -25,7 +25,13 @@ public sealed class RuleValidator
         {
             if (!_catalog.TryGetContextType(entry.HookID, out _))
             {
-                continue; //Unknown hook. Nothing to validate against.
+                // Unknown hook: nothing to validate against — but that means NO stage constructs a
+                // context for it, so the entry can never fire. Registering it is legal (the hook may be
+                // reserved for future wiring), but silently is how inert rules ship, so warn loudly.
+                RuleDiagnostics.WarnOnce($"dead-hook:{rule.Name}:{entry.HookID}",
+                    $"Rule '{rule.Name}' has a passive entry on hook '{entry.HookID}', which no engine " +
+                    "stage currently fires - that entry will never trigger in a game.");
+                continue;
             }
 
             IReadOnlyCollection<Type> provided = _catalog.CapabilitiesOf(entry.HookID);

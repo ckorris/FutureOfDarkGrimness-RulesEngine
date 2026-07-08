@@ -8,10 +8,10 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // Red tests pinning the #006 stat-divergence slices C/D/E. HeroStatRules is currently stubbed to the
-    // pre-#006 behavior (always the unit's own stat), so these FAIL until the matching slice fills the
-    // helper in (and wires the stage to call it). Each is [Ignore]d so the committed suite stays green
-    // ("never commit red"); remove the [Ignore] when implementing that slice.
+    // Pins the #006 stat-divergence slices C/D/E: morale at the hero's Quality while it lives, saves at
+    // the hero's Defense once it's the sole survivor, and hero-only weapon batches hitting at the hero's
+    // Quality. HeroStatRules is fully implemented and wired into the resolution stages; these tests keep
+    // that behavior from regressing.
     [TestFixture]
     public class HeroStatRulesTests
     {

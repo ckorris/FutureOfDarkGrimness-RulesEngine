@@ -14,7 +14,7 @@ namespace FDG.Stages
 
         public override async Task Enter(IMapSetupContext context)
         {
-            context.Log($"Entered {nameof(RollForObjectiveCountStage)}.");
+            context.LogDebug($"Entered {nameof(RollForObjectiveCountStage)}.");
 
             // D3+2 gives 3–5 objectives. Roll a real, decisive D3 (RollDecisive resolves one concrete
             // face even under the probabilistic roller; a plain Roll would spread to an expected value).

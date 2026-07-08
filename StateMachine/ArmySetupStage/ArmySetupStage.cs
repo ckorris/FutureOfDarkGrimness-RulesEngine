@@ -17,7 +17,7 @@ namespace FDG.Stages
 
         public override async Task Enter(IGameContext context)
         {
-            context.Log($"Entered {nameof(ArmySetupStage)}.");
+            context.LogDebug($"Entered {nameof(ArmySetupStage)}.");
 
             List<Task<DataBinding<ArmyData>>> requestTasks = new List<Task<DataBinding<ArmyData>>>();
 

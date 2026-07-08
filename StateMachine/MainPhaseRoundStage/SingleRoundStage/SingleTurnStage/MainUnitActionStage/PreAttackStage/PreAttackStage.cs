@@ -7,6 +7,7 @@ using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
+using FDG.Utilities;
 
 namespace FDG.Stages
 {
@@ -29,8 +30,16 @@ namespace FDG.Stages
     /// Self abilities resolve against the bearer; Friend/Foe/Any abilities resolve their
     /// <c>TargetSelector</c> through <see cref="PreAttackTargeting"/> and a
     /// <see cref="CancellableSelectionRequest{T}"/> so the player picks the unit(s) (slice 2b).
+    ///
+    /// A <see cref="Effect.DealHits"/> ability (Breath Attack) resolves like <see cref="StrafingStage"/>:
+    /// the hits ride a synthetic weapon carrying the effect's AP and run the shared save→wound child
+    /// pipeline, then the stage finishes. StrafingStage's limitations are shared: at most ONE DealHits
+    /// ability resolves per pre-attack entry (the menu does not resume after the child pipeline — the
+    /// engine's await-chained transitions make looping past a child pipeline unsafe), and
+    /// <c>DealHits.WithRules</c> is not applied (no rule resolver is reachable at stage runtime; warned
+    /// loudly via <see cref="RuleDiagnostics"/> — see SpecialRulesAudit.md).
     /// </summary>
-    public class PreAttackStage : StageBase<IUnitActionContext>
+    public class PreAttackStage : ParentStage<IUnitActionContext, ICombatMetadata>
     {
         /// <summary> Sentinel option the player picks to stop using pre-attack abilities and attack. </summary>
         public const string DONE_CHOICE = "Done";
@@ -38,10 +47,15 @@ namespace FDG.Stages
         public StageBinding OnFinished;
         private readonly EActionType _actionType;
 
+        // The DealHits target/hits/weapon computed in Enter and seeded into the child metadata. Only
+        // meaningful between the accepted ability and the child pipeline running (StrafingStage pattern).
+        private DataBinding<UnitData>? _pendingTarget;
+        private float _pendingHits;
+        private Weapon? _pendingWeapon;
+
         public PreAttackStage(IGameContext gameContext, IStateMachineLayer<IUnitActionContext> parent,
             EActionType actionType) : base(gameContext, parent)
         {
-            OnFinished = new StageBinding(this);
             _actionType = actionType;
         }
 
@@ -51,6 +65,10 @@ namespace FDG.Stages
 
         public override async Task Enter(IUnitActionContext context)
         {
+            _pendingTarget = null;
+            _pendingHits = 0f;
+            _pendingWeapon = null;
+
             IUnit unit = context.ActivatingUnit.GetValue();
 
             // Used-this-entry guard: a pre-attack ability is offered at most once per attack regardless of
@@ -92,37 +110,124 @@ namespace FDG.Stages
                 // Picked → not re-offered this attack even if the player then backs out of target selection.
                 usedThisEntry.Add(chosen.RuleName);
 
-                IReadOnlyList<IUnit>? targets = await SelectTargets(context, chosen.Ability.TargetSelector);
-                if (targets == null)
+                IReadOnlyList<DataBinding<UnitData>>? targetBindings =
+                    await SelectTargets(context, chosen.Ability.TargetSelector);
+                if (targetBindings == null)
                 {
                     // Backed out of (or couldn't complete) target selection — nothing applied, no cost paid.
                     continue;
                 }
 
+                IReadOnlyList<IUnit> targets = targetBindings.Select(b => (IUnit)b.GetValue()).ToList();
                 IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator.ResolveAbility(chosen, targets);
                 OperationApplier.ApplyTokenOperations(ops);
                 GameContext.Log($"{unit.Name} used {chosen.RuleName} before attacking.");
+
+                // A DealHits ability resolves through the save→wound child pipeline (StrafingStage
+                // pattern): seed the synthetic attack, run the children ONCE, and finish. The menu loop
+                // cannot resume after the child pipeline — its await only completes far downstream — so
+                // this is deliberately a single-shot detour, mirroring StrafingStage.
+                RuleOperation.InvokeDealHits? dealHits =
+                    ops.OfType<RuleOperation.InvokeDealHits>().FirstOrDefault();
+                if (dealHits != null && dealHits.Count > 0)
+                {
+                    DataBinding<UnitData>? targetBinding = targetBindings
+                        .FirstOrDefault(b => ReferenceEquals(b.GetValue(), dealHits.Target))
+                        ?? targetBindings.FirstOrDefault();
+                    if (targetBinding != null)
+                    {
+                        if (dealHits.WithRules.Count > 0)
+                        {
+                            RuleDiagnostics.WarnOnce($"pre-attack-withrules:{chosen.RuleName}",
+                                $"'{chosen.RuleName}' deals hits 'with' [{string.Join(", ", dealHits.WithRules)}], " +
+                                "but weapon rules on a pre-attack DealHits ability are not applied yet - " +
+                                "the hits resolve at the ability's AP only.");
+                        }
+
+                        _pendingTarget = targetBinding;
+                        _pendingHits = dealHits.Count;
+                        _pendingWeapon = new Weapon(chosen.RuleName, rangeInches: 0f, attacks: 0,
+                            armorPenetration: dealHits.ArmorPenetration);
+                        GameContext.Log($"{unit.Name}'s {chosen.RuleName} deals {dealHits.Count} hit(s) at " +
+                            $"AP({dealHits.ArmorPenetration}) to {targetBinding.GetValue().Name}.");
+
+                        // Run the save→wound sub-pipeline; its terminal event fires OnFinished.
+                        await base.Enter(context);
+                        return;
+                    }
+                }
             }
 
             await OnFinished.Activate(context);
+        }
+
+        protected override ICombatMetadata GetNewChildContext(IUnitActionContext contextSelf)
+        {
+            // The DealHits come from an ability, not a weapon volley — model them as a synthetic attack so
+            // the shared save/wound stages can consume them (the histogram face is cosmetic; saves count
+            // by TotalRolls).
+            CombatMetadata metadata = new CombatMetadata(GameContext, contextSelf.ActivatingUnit,
+                _pendingTarget!, _pendingWeapon!, weaponCount: 1, isMelee: false);
+
+            metadata.AddResult(new RollToHitResults(
+                new List<SuccessfulHitInfo>() { new SuccessfulHitInfo(SyntheticHits(_pendingHits)) },
+                new List<FailedHitInfo>()));
+            // No cover check runs for a synthetic ability hit; seed a zero bonus so the save stage won't throw.
+            metadata.AddResult(new CoverCheckResults(0));
+
+            return metadata;
+        }
+
+        protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<ICombatMetadata> startingChild)
+        {
+            OnFinished = new StageBinding(this);
+
+            Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
+                .AddChild(new DetermineSaveRollsNeededStage<ICombatMetadata>(GameContext, this), out var determineSaveRollsNeeded)
+                .AddChild(new RollToSaveStage<ICombatMetadata>(GameContext, this), out var rollToSave)
+                .AddChild(new AssignWoundsStage<ICombatMetadata>(GameContext, this), out var assignWounds)
+                .AddChild(new ApplyWoundsStage<ICombatMetadata>(GameContext, this), out var applyWounds)
+                .AddSibling(nameof(OnFinished), OnFinished, out string finishedEvent)
+                .Build();
+
+            startingChild = determineSaveRollsNeeded;
+
+            determineSaveRollsNeeded.BindNextStage(rollToSave)
+                .BindNextStage(assignWounds)
+                .BindNextStage(applyWounds)
+                .BindToEvent(finishedEvent);
+
+            return dictionary;
+        }
+
+        // Bridges a scalar hit count into the IDiceResults the save flow consumes (mirrors
+        // StrafingStage.SyntheticHits / ResolveImpactHitsStage). The face is cosmetic — saves count by
+        // TotalRolls.
+        private static IDiceResults SyntheticHits(float count)
+        {
+            float[] perSide = new float[IDiceRollerExtensions.DEFAULT_SIDE_COUNT];
+            perSide[perSide.Length - 1] = count;
+            return new DiceResults(perSide);
         }
 
         /// <summary>
         /// Resolves the ability's <see cref="TargetSelector"/> into the chosen target unit(s): the bearer
         /// for Self; otherwise the player picks between MinCount and MaxCount eligible units one at a time
         /// (each removed from the pool as it's taken). Returns null if the player backed out before meeting
-        /// the minimum — the caller treats that as "ability not used."
+        /// the minimum — the caller treats that as "ability not used." Returns bindings (not bare units) so
+        /// a DealHits ability can seed the child pipeline's CombatMetadata with the picked target.
         /// </summary>
-        private async Task<IReadOnlyList<IUnit>?> SelectTargets(IUnitActionContext context, TargetSelector selector)
+        private async Task<IReadOnlyList<DataBinding<UnitData>>?> SelectTargets(IUnitActionContext context,
+            TargetSelector selector)
         {
             if (selector.TargetAffinity == ETargetAffinity.Self)
             {
-                return new[] { context.ActivatingUnit.GetValue() };
+                return new[] { context.ActivatingUnit };
             }
 
             List<DataBinding<UnitData>> remaining = PreAttackTargeting.EligibleTargets(
                 context.ActivatingUnit, selector, GameContext);
-            List<IUnit> chosen = new List<IUnit>();
+            List<DataBinding<UnitData>> chosen = new List<DataBinding<UnitData>>();
 
             while (chosen.Count < selector.MaxCount && remaining.Count > 0)
             {
@@ -145,7 +250,7 @@ namespace FDG.Stages
                 }
 
                 DataBinding<UnitData> picked = ((Selected<DataBinding<UnitData>>)result).Value;
-                chosen.Add(picked.GetValue());
+                chosen.Add(picked);
                 remaining.Remove(picked);
             }
 

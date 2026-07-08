@@ -5,7 +5,13 @@ namespace FDG.Rules.Definitions;
 /// <summary>
 /// One passive wiring of a rule: at the given <see cref="HookID"/>, if the
 /// <see cref="Condition"/> matches the live hook context, the
-/// <see cref="Effect"/> fires with the given <see cref="Lifetime"/> scope.
+/// <see cref="Effect"/> fires.
+///
+/// NOTE: <see cref="Lifetime"/> is currently declarative only — nothing reads it. Per-attack "reset"
+/// behavior actually comes from the consuming stages instantiating their sinks fresh per attack, and
+/// granted-token durations come from <see cref="TokenClearTrigger"/>, not from this field. Keep setting
+/// it to the honest intent (it documents the entry and may be wired later), but do not expect changing
+/// it to alter behavior.
 ///
 /// The atomic unit of "passive rule attachment." A <see cref="SpecialRuleDefinition"/>
 /// typically carries several HookEntries — one per hook the rule attaches to.

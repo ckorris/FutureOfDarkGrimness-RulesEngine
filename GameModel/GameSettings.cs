@@ -9,6 +9,15 @@ namespace FDG
 
         public ERandomnessType RandomnessType;
 
+        /// <summary>
+        /// Optional seed for <see cref="ERandomnessType.Realistic"/> dice (#167): set, the host's
+        /// roller produces the same sequence every run, making manual repro cases shareable
+        /// ("seed 42, scenario X, the bug appears on the second volley"). Null (the default and the
+        /// value in every pre-#167 save) keeps today's unseeded behavior. Rolls happen host-side
+        /// only, so the seed never needs to reach clients.
+        /// </summary>
+        public int? DiceSeed;
+
         public ETurnStyle TurnStyle;
 
         /// <summary>
@@ -36,6 +45,7 @@ namespace FDG
                 ArmyPoints = 2000,
                 TerrainPieceCount = 20,
                 RandomnessType = ERandomnessType.Realistic,
+                DiceSeed = null,
                 TurnStyle = ETurnStyle.Standard,
                 AutoPlaceObjectivesDebug = false,
                 TerrainPlacementMode = ETerrainPlacementMode.AutoFromLayout,

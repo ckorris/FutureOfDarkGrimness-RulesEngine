@@ -6,13 +6,22 @@ using System;
 /// </summary>
 public class RealisticDiceRoller : IDiceRoller
 {
+    // #167: when a seed is supplied the roller holds ONE Random so the whole game's roll sequence is
+    // reproducible. Unseeded keeps the historical behavior (a fresh time-seeded Random per Roll call).
+    private readonly Random? _seededRandom;
+
+    public RealisticDiceRoller(int? seed = null)
+    {
+        _seededRandom = seed.HasValue ? new Random(seed.Value) : null;
+    }
+
     public IDiceResults Roll(int sideCount, float rollCount)
     {
         int rollCountInt = (int)Math.Round(rollCount);
 
         float[] rolls = new float[sideCount];
 
-        Random random = new Random();
+        Random random = _seededRandom ?? new Random();
 
         for(int i = 0; i < rollCountInt; i++)
         {

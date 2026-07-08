@@ -22,7 +22,7 @@ namespace FDG.Rules.Dispatch
         public static bool CanMoveThroughEnemies(IUnit unit, RuleEvaluator evaluator)
         {
             foreach ((RuleOperation op, string _) in evaluator.EvaluateAllNamed(
-                         new MoveThroughEnemyContext(unit), (unit, ERuleSeat.Actor)))
+                         new MoveThroughEnemyContext(unit), RuleParticipant.Actor(unit)))
             {
                 if (op is RuleOperation.IgnoreEnemyMovementBlock) return true;
             }
@@ -42,7 +42,7 @@ namespace FDG.Rules.Dispatch
         public static bool IgnoresDifficultTerrain(IUnit unit, RuleEvaluator evaluator)
         {
             foreach ((RuleOperation op, string _) in evaluator.EvaluateAllNamed(
-                         new MoveThroughTerrainContext(unit), (unit, ERuleSeat.Actor)))
+                         new MoveThroughTerrainContext(unit), RuleParticipant.Actor(unit)))
             {
                 if (op is RuleOperation.IgnoreTerrainEffects) return true;
             }
@@ -59,7 +59,7 @@ namespace FDG.Rules.Dispatch
         public static bool IgnoresAllTerrain(IUnit unit, RuleEvaluator evaluator)
         {
             foreach ((RuleOperation op, string _) in evaluator.EvaluateAllNamed(
-                         new MoveThroughTerrainContext(unit), (unit, ERuleSeat.Actor)))
+                         new MoveThroughTerrainContext(unit), RuleParticipant.Actor(unit)))
             {
                 if (op is RuleOperation.IgnoreTerrainEffects terrain && terrain.Scope == ETerrainIgnoreScope.AllTerrain)
                     return true;
@@ -78,7 +78,7 @@ namespace FDG.Rules.Dispatch
         public static bool CountsAsInTerrain(IUnit unit, RuleEvaluator evaluator, ECountAsTerrain kind)
         {
             foreach ((RuleOperation op, string _) in evaluator.EvaluateAllNamed(
-                         new MoveThroughTerrainContext(unit), (unit, ERuleSeat.Actor)))
+                         new MoveThroughTerrainContext(unit), RuleParticipant.Actor(unit)))
             {
                 if (op is RuleOperation.CountAsInTerrain counted && counted.Terrain == kind) return true;
             }
@@ -104,12 +104,10 @@ namespace FDG.Rules.Dispatch
             float floor = 0f;
             foreach ((RuleOperation op, string _) in evaluator.EvaluateAllNamed(
                          new ChargeDeclaredContext(charger, target, baseChargeInches),
-                         (charger, ERuleSeat.Actor, (IWeapon?)null, (IReadOnlyList<IModel>?)null,
-                             EModelRuleScope.AnyOwner),
+                         RuleParticipant.Actor(charger),
                          // #183: the charged unit's living models surface a joined hero's relocated Melee
                          // Shrouding / Darkborn (Defensive) charge debuff, gated by AllModelsHaveThisRule.
-                         (target, ERuleSeat.Subject, (IWeapon?)null, HeroStatRules.LivingModels(target),
-                             EModelRuleScope.AnyOwner)))
+                         RuleParticipant.Subject(target, models: HeroStatRules.LivingModels(target))))
             {
                 if (op is RuleOperation.ApplyMovementBonus move && move.ActionType == EActionType.Charge)
                 {
@@ -145,7 +143,7 @@ namespace FDG.Rules.Dispatch
             float baseDistance, MovementModifierSink sink)
         {
             var operations = evaluator.EvaluateAllNamed(
-                new MoveActionDeclaredContext(unit, action, baseDistance), (unit, ERuleSeat.Actor));
+                new MoveActionDeclaredContext(unit, action, baseDistance), RuleParticipant.Actor(unit));
             sink.ApplyFrom(operations.Select(t => t.Op));
         }
     }

@@ -37,9 +37,9 @@ namespace FDG.Tests
 
             RuleEvaluator evaluator = Evaluator();
             // Note: the caller never runs OperationApplier — exactly like the hit/save pipeline.
-            evaluator.EvaluateAll(Context(unit, target), (unit.GetValue(), ERuleSeat.Actor, null));
+            evaluator.EvaluateAll(Context(unit, target), RuleParticipant.Actor(unit.GetValue()));
             IReadOnlyList<RuleOperation> second = evaluator.EvaluateAll(
-                Context(unit, target), (unit.GetValue(), ERuleSeat.Actor, null));
+                Context(unit, target), RuleParticipant.Actor(unit.GetValue()));
 
             Assert.That(second.OfType<RuleOperation.QualityFloor>(), Is.Empty,
                 "a 'next time' grant is spent on its first occurrence and no longer fires");
@@ -55,12 +55,12 @@ namespace FDG.Tests
             GrantRule(unit, "Reliable", ELifetime.NextTrigger);
 
             RuleEvaluator evaluator = Evaluator();
-            evaluator.EvaluateAllNamed(Context(unit, target), (unit.GetValue(), ERuleSeat.Actor));
+            evaluator.EvaluateAllNamed(Context(unit, target), RuleParticipant.Actor(unit.GetValue()));
 
             Assert.That(unit.GetValue().Tokens.HasToken(TokenType.RuleGrant), Is.True,
                 "a read-only query must not burn a one-shot buff");
             IReadOnlyList<RuleOperation> live = evaluator.EvaluateAll(
-                Context(unit, target), (unit.GetValue(), ERuleSeat.Actor, null));
+                Context(unit, target), RuleParticipant.Actor(unit.GetValue()));
             Assert.That(live.OfType<RuleOperation.QualityFloor>().Count(), Is.EqualTo(1),
                 "the grant survived the read-only query, so the next live eval still fires it once");
         }
@@ -73,9 +73,9 @@ namespace FDG.Tests
             GrantRule(unit, "Reliable", ELifetime.ThisRound);
 
             RuleEvaluator evaluator = Evaluator();
-            evaluator.EvaluateAll(Context(unit, target), (unit.GetValue(), ERuleSeat.Actor, null));
+            evaluator.EvaluateAll(Context(unit, target), RuleParticipant.Actor(unit.GetValue()));
             IReadOnlyList<RuleOperation> second = evaluator.EvaluateAll(
-                Context(unit, target), (unit.GetValue(), ERuleSeat.Actor, null));
+                Context(unit, target), RuleParticipant.Actor(unit.GetValue()));
 
             Assert.That(second.OfType<RuleOperation.QualityFloor>().Count(), Is.EqualTo(1),
                 "a duration grant fires every time until swept at round end, not consumed on use");

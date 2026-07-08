@@ -20,7 +20,7 @@ public static class UnitCreationRules
     public static void Apply(IUnit unit, RuleEvaluator evaluator)
     {
         IReadOnlyList<RuleOperation> operations = evaluator.EvaluateAll(
-            new UnitCreatedContext(unit), (unit, ERuleSeat.Actor));
+            new UnitCreatedContext(unit), RuleParticipant.Actor(unit));
 
         // Auras (and any other creation-time grants): an Effect.Aura at Lifecycle_OnUnitCreated emits a
         // GrantTokenToUnit; apply it here so the granted rule projects unit-wide for the rest of the game

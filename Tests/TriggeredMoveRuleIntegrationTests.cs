@@ -101,7 +101,7 @@ namespace FDG.Tests
             unit.GetValue().AttachRuleDefinition(new ResolvedRule("Harassing", CoreRuleCatalog.Harassing));
 
             IReadOnlyList<RuleOperation> ops = ctx.RuleEvaluator.EvaluateAll(
-                new PostShootActionContext(unit.GetValue()), (unit.GetValue(), ERuleSeat.Actor));
+                new PostShootActionContext(unit.GetValue()), RuleParticipant.Actor(unit.GetValue()));
 
             await OperationExecutor.Execute(ops, new GameOperationServices(ctx));
 
@@ -124,7 +124,7 @@ namespace FDG.Tests
             unit.GetValue().AttachRuleDefinition(new ResolvedRule("Harassing", CoreRuleCatalog.Harassing));
 
             IReadOnlyList<RuleOperation> ops = ctx.RuleEvaluator.EvaluateAll(
-                new PostMeleeActionContext(unit.GetValue()), (unit.GetValue(), ERuleSeat.Actor));
+                new PostMeleeActionContext(unit.GetValue()), RuleParticipant.Actor(unit.GetValue()));
 
             await OperationExecutor.Execute(ops, new GameOperationServices(ctx));
 
@@ -172,9 +172,9 @@ namespace FDG.Tests
             IUnit u = unit.GetValue();
 
             IReadOnlyList<RuleOperation> shootOps = ctx.RuleEvaluator.EvaluateAll(
-                new PostShootActionContext(u), (u, ERuleSeat.Actor));
+                new PostShootActionContext(u), RuleParticipant.Actor(u));
             IReadOnlyList<RuleOperation> meleeOps = ctx.RuleEvaluator.EvaluateAll(
-                new PostMeleeActionContext(u), (u, ERuleSeat.Actor));
+                new PostMeleeActionContext(u), RuleParticipant.Actor(u));
 
             Assert.That(shootOps.Count, Is.EqualTo(shoot ? 1 : 0), $"{name} post-shoot op count");
             Assert.That(meleeOps.Count, Is.EqualTo(melee ? 1 : 0), $"{name} post-melee op count");
@@ -193,7 +193,7 @@ namespace FDG.Tests
             DataBinding<UnitData> unit = MakeUnit(new Position(0f, 0f));
 
             IReadOnlyList<RuleOperation> ops = ctx.RuleEvaluator.EvaluateAll(
-                new PostShootActionContext(unit.GetValue()), (unit.GetValue(), ERuleSeat.Actor));
+                new PostShootActionContext(unit.GetValue()), RuleParticipant.Actor(unit.GetValue()));
 
             Assert.That(ops, Is.Empty, "a unit without a post-shoot rule yields no triggered move");
             Assert.That(requester.Captured, Is.Null, "no movement-path request is issued");
@@ -213,14 +213,14 @@ namespace FDG.Tests
 
             // First trigger (after shooting): moves and spends the round's budget.
             await PostCombatMoveGate.OfferIfAvailable(ctx, u, ctx.RuleEvaluator.EvaluateAll(
-                new PostShootActionContext(u), (u, ERuleSeat.Actor)));
+                new PostShootActionContext(u), RuleParticipant.Actor(u)));
             AssertModelAt(unit, 0, 2f, 0f);
             Assert.That(u.Tokens.HasToken(TokenType.PostCombatMoveUsed), Is.True,
                 "moving after shooting spends the once-per-round post-combat move");
 
             // Second trigger same round (after melee): gated — the unit does NOT move again.
             await PostCombatMoveGate.OfferIfAvailable(ctx, u, ctx.RuleEvaluator.EvaluateAll(
-                new PostMeleeActionContext(u), (u, ERuleSeat.Actor)));
+                new PostMeleeActionContext(u), RuleParticipant.Actor(u)));
             AssertModelAt(unit, 0, 2f, 0f);
         }
 
@@ -236,7 +236,7 @@ namespace FDG.Tests
             IUnit u = unit.GetValue();
 
             await PostCombatMoveGate.OfferIfAvailable(ctx, u, ctx.RuleEvaluator.EvaluateAll(
-                new PostShootActionContext(u), (u, ERuleSeat.Actor)));
+                new PostShootActionContext(u), RuleParticipant.Actor(u)));
 
             Assert.That(u.Tokens.HasToken(TokenType.PostCombatMoveUsed), Is.False,
                 "declining the optional move (zero distance) keeps the round's budget");
@@ -256,7 +256,7 @@ namespace FDG.Tests
             IUnit u = unit.GetValue();
 
             IReadOnlyList<RuleOperation> ops = ctx.RuleEvaluator.EvaluateAll(
-                new PostShootActionContext(u), (u, ERuleSeat.Actor));
+                new PostShootActionContext(u), RuleParticipant.Actor(u));
             await PostCombatMoveGate.OfferIfAvailable(ctx, u, ops);
 
             Assert.That(requester.Captured!.MaxDistanceInches, Is.EqualTo(6f).Within(0.001f),
@@ -275,7 +275,7 @@ namespace FDG.Tests
             IUnit u = unit.GetValue();
 
             IReadOnlyList<RuleOperation> ops = ctx.RuleEvaluator.EvaluateAll(
-                new PostShootActionContext(u), (u, ERuleSeat.Actor));
+                new PostShootActionContext(u), RuleParticipant.Actor(u));
 
             Assert.That(ops, Is.Empty,
                 "Harassing Boost's UnitHasRule(Harassing) gate fails when the unit lacks Harassing");
@@ -298,9 +298,9 @@ namespace FDG.Tests
 
             // The granted Hit & Run Shooter projects via read-back and fires at post-shoot, not melee.
             IReadOnlyList<RuleOperation> shootOps = evaluator.EvaluateAll(
-                new PostShootActionContext(u), (u, ERuleSeat.Actor));
+                new PostShootActionContext(u), RuleParticipant.Actor(u));
             IReadOnlyList<RuleOperation> meleeOps = evaluator.EvaluateAll(
-                new PostMeleeActionContext(u), (u, ERuleSeat.Actor));
+                new PostMeleeActionContext(u), RuleParticipant.Actor(u));
 
             Assert.That(shootOps.Count, Is.EqualTo(1), "granted Hit & Run Shooter fires at post-shoot");
             Assert.That(shootOps[0], Is.InstanceOf<RuleOperation.InvokeTriggeredMove>());

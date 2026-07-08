@@ -30,7 +30,7 @@ namespace FDG.Tests
             harness.Register(CoreRuleCatalog.Immobile);
             IUnit unit = harness.BuildUnit("P1", modelCount: 1, "Immobile");
 
-            var ops = harness.EvaluateAll(new ActionChoiceContext(unit), (unit, ERuleSeat.Actor));
+            var ops = harness.EvaluateAll(new ActionChoiceContext(unit), RuleParticipant.Actor(unit));
 
             ops.HasOperation<RuleOperation.RestrictActions>(op =>
                 op.Allowed.Count == 1 && op.Allowed[0] == EActionType.Hold);

@@ -1,6 +1,7 @@
 
 using FDG.Data;
 using FDG.Rules.Definitions;
+using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
 using FDG.StageResolution.Requests;
@@ -51,7 +52,7 @@ namespace FDG.Stages
 
             IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
                 new ShootTargetsSelectedContext(attacker, defender),
-                (attacker, ERuleSeat.Actor, metaData.WeaponType));
+                RuleParticipant.Actor(attacker, metaData.WeaponType));
 
             if (!operations.OfType<RuleOperation.TargetIndividualModel>().Any())
             {

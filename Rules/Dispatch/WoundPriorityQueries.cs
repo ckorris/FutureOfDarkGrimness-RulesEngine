@@ -29,7 +29,7 @@ namespace FDG.Rules.Dispatch
             // future wound-multiplier rule becomes defender-specific, this query needs the real target.)
             IEnumerable<RuleOperation> operations = evaluator.EvaluateAllNamed(
                     new PreApplyWoundContext(attacker, attacker),
-                    (attacker, ERuleSeat.Actor, weapon))
+                    RuleParticipant.Actor(attacker, weapon))
                 .Select(tagged => tagged.Op);
 
             WoundModifierSink sink = new WoundModifierSink();

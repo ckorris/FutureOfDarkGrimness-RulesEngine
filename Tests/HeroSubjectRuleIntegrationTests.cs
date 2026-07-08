@@ -127,10 +127,8 @@ namespace FDG.Tests
 
             evaluator.EvaluateAll(
                 new HitRollModifierContext(attacker, defender, DistanceInches: 5f),
-                (attacker, ERuleSeat.Actor, (IWeapon?)null, (IReadOnlyList<IModel>?)null,
-                    EModelRuleScope.AnyOwner),
-                (defender, ERuleSeat.Subject, (IWeapon?)null, HeroStatRules.LivingModels(defender),
-                    EModelRuleScope.AnyOwner));
+                RuleParticipant.Actor(attacker),
+                RuleParticipant.Subject(defender, models: HeroStatRules.LivingModels(defender)));
 
             Assert.That(output.DebugLines,
                 Has.Some.Match(".*Evasive.*condition AllModelsHaveThisRule not met.*"),

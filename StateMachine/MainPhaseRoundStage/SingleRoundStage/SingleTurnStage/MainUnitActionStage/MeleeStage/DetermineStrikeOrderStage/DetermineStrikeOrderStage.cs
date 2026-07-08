@@ -64,15 +64,15 @@ namespace FDG.Stages
         /// visible (gated by AllModelsHaveThisRule); the weapon carriers stay model-less (weapon-scoped
         /// Counter rides the weapon, not a model).
         /// </summary>
-        internal static (IUnit, ERuleSeat, IWeapon?, IReadOnlyList<IModel>?, EModelRuleScope)[] SubjectWithMeleeWeapons(IUnit defender)
+        internal static RuleParticipant[] SubjectWithMeleeWeapons(IUnit defender)
         {
-            var participants = new List<(IUnit, ERuleSeat, IWeapon?, IReadOnlyList<IModel>?, EModelRuleScope)>
+            var participants = new List<RuleParticipant>
             {
-                (defender, ERuleSeat.Subject, null, HeroStatRules.LivingModels(defender), EModelRuleScope.AnyOwner),
+                RuleParticipant.Subject(defender, models: HeroStatRules.LivingModels(defender)),
             };
             foreach (Weapon meleeWeapon in defender.GetMeleeWeapons())
             {
-                participants.Add((defender, ERuleSeat.Subject, meleeWeapon, null, EModelRuleScope.AnyOwner));
+                participants.Add(RuleParticipant.Subject(defender, meleeWeapon));
             }
             return participants.ToArray();
         }

@@ -182,10 +182,10 @@ namespace FDG.Tests
             harness.GrantRule(defender, "Regeneration", ELifetime.NextTrigger, clear: new TokenClearTrigger.FirstTrigger());
 
             // EvaluateAll is the live apply path; it spends the one-shot grant on this occurrence.
-            var ops = harness.EvaluateAll(SaveContext(attacker, defender), (defender, ERuleSeat.Subject));
+            var ops = harness.EvaluateAll(SaveContext(attacker, defender), RuleParticipant.Subject(defender));
             ops.HasOperation<RuleOperation.IgnoreWound>(op => op.MinRoll == 5);
 
-            var after = harness.EvaluateAll(SaveContext(attacker, defender), (defender, ERuleSeat.Subject));
+            var after = harness.EvaluateAll(SaveContext(attacker, defender), RuleParticipant.Subject(defender));
             Assert.That(after.OfType<RuleOperation.IgnoreWound>(), Is.Empty, "spent grant no longer fires");
         }
 
@@ -200,8 +200,8 @@ namespace FDG.Tests
             IUnit attacker = harness.BuildUnit("P2", modelCount: 3);
             harness.GrantRule(defender, "Regeneration"); // default: Aura / ManualOnly
 
-            harness.EvaluateAll(SaveContext(attacker, defender), (defender, ERuleSeat.Subject));
-            var after = harness.EvaluateAll(SaveContext(attacker, defender), (defender, ERuleSeat.Subject));
+            harness.EvaluateAll(SaveContext(attacker, defender), RuleParticipant.Subject(defender));
+            var after = harness.EvaluateAll(SaveContext(attacker, defender), RuleParticipant.Subject(defender));
 
             after.HasOperation<RuleOperation.IgnoreWound>(op => op.MinRoll == 5);
         }

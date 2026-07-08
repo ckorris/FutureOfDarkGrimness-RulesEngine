@@ -44,11 +44,7 @@ namespace FDG.Stages
             // impact-dice reduction fires (#027); the charger's Impact(X) is a unit rule. #183: the
             // Subject participants carry the defender's living models (via SubjectWithMeleeWeapons) so a
             // joined hero's per-model defensive rules at charge-contact are visible.
-            var participants =
-                new List<(IUnit, ERuleSeat, IWeapon?, IReadOnlyList<IModel>?, EModelRuleScope)>
-                {
-                    (attacker, ERuleSeat.Actor, null, null, EModelRuleScope.AnyOwner),
-                };
+            var participants = new List<RuleParticipant> { RuleParticipant.Actor(attacker) };
             participants.AddRange(DetermineStrikeOrderStage.SubjectWithMeleeWeapons(defender));
 
             IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(

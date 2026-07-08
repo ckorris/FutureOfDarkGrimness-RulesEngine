@@ -25,7 +25,7 @@ namespace FDG.Rules.Dispatch
         public static string? CoverIgnoreSource(IUnit attacker, IWeapon weapon, RuleEvaluator evaluator)
         {
             foreach ((RuleOperation op, string ruleName) in evaluator.EvaluateAllNamed(
-                         new CoverIgnoreContext(attacker), (attacker, ERuleSeat.Actor, weapon)))
+                         new CoverIgnoreContext(attacker), RuleParticipant.Actor(attacker, weapon)))
             {
                 if (op is RuleOperation.IgnoreCover) return ruleName;
             }
@@ -44,7 +44,7 @@ namespace FDG.Rules.Dispatch
         public static string? LineOfSightIgnoreSource(IUnit attacker, IWeapon weapon, RuleEvaluator evaluator)
         {
             foreach ((RuleOperation op, string ruleName) in evaluator.EvaluateAllNamed(
-                         new CoverIgnoreContext(attacker), (attacker, ERuleSeat.Actor, weapon)))
+                         new CoverIgnoreContext(attacker), RuleParticipant.Actor(attacker, weapon)))
             {
                 if (op is RuleOperation.IgnoreLineOfSight) return ruleName;
             }
@@ -69,7 +69,7 @@ namespace FDG.Rules.Dispatch
             RuleEvaluator evaluator)
         {
             foreach ((RuleOperation op, string _) in evaluator.EvaluateAllNamed(
-                         new ShootTargetsSelectedContext(attacker, defender), (attacker, ERuleSeat.Actor, weapon)))
+                         new ShootTargetsSelectedContext(attacker, defender), RuleParticipant.Actor(attacker, weapon)))
             {
                 if (op is RuleOperation.TargetIndividualModel) return true;
             }

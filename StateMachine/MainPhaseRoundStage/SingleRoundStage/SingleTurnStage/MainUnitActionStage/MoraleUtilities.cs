@@ -63,7 +63,7 @@ namespace FDG.Stages
             }
 
             IReadOnlyList<RuleOperation> preTestOps = gameContext.RuleEvaluator.EvaluateAll(
-                new PreMoraleTestContext(testingUnit), (testingUnit, ERuleSeat.Actor, null));
+                new PreMoraleTestContext(testingUnit), RuleParticipant.Actor(testingUnit));
             RollModifierSink modifiers = new RollModifierSink();
             modifiers.ApplyFrom(preTestOps);
             // #033 granted morale modifiers (e.g. a spell's "-1 to morale" debuff) fold in with the same
@@ -83,7 +83,7 @@ namespace FDG.Stages
 
             // Failed — offer morale rules a second chance (Fearless: a fresh decisive die, 4+ passes).
             IReadOnlyList<RuleOperation> completeOps = gameContext.RuleEvaluator.EvaluateAll(
-                new MoraleTestContext(testingUnit), (testingUnit, ERuleSeat.Actor, null));
+                new MoraleTestContext(testingUnit), RuleParticipant.Actor(testingUnit));
             RerollSink rerollSink = new RerollSink();
             rerollSink.ApplyFrom(completeOps);
             if (rerollSink.RerollMoraleOnFailure)

@@ -145,12 +145,7 @@ namespace FDG.Tests.RulesHarness
         /// stage-facing counterpart of <see cref="Evaluate"/>; what real stages call.
         /// </summary>
         public IReadOnlyList<RuleOperation> EvaluateAll(IHookContext context,
-            params (IUnit Unit, ERuleSeat Seat)[] participants)
-            => Evaluator.EvaluateAll(context, participants);
-
-        /// <summary> Weapon-aware participant form (#027): what the fire-pipeline stages call. </summary>
-        public IReadOnlyList<RuleOperation> EvaluateAll(IHookContext context,
-            params (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon)[] participants)
+            params RuleParticipant[] participants)
             => Evaluator.EvaluateAll(context, participants);
 
         /// <summary>

@@ -35,7 +35,7 @@ namespace FDG.Stages
             // Hit & Run / Harassing HookEntry yields an InvokeTriggeredMove the executor runs through
             // the movement subsystem. Units without such a rule produce no operations — no-op.
             IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
-                new PostShootActionContext(unit), (unit, ERuleSeat.Actor));
+                new PostShootActionContext(unit), RuleParticipant.Actor(unit));
 
             // The gate enacts the triggered move (if the unit has a post-shoot rule and hasn't already
             // moved this round) and enforces the family's once-per-round budget — see PostCombatMoveGate.

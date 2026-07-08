@@ -160,7 +160,7 @@ namespace FDG.Stages
         {
             IReadOnlyList<(RuleOperation Op, string RuleName)> operations = GameContext.RuleEvaluator
                 .EvaluateAllNamed(new MoveActionDeclaredContext(unit, action, baseDistance),
-                    (unit, ERuleSeat.Actor));
+                    RuleParticipant.Actor(unit));
             sink.ApplyFrom(operations.Select(t => t.Op).ToList());
         }
 
@@ -173,7 +173,7 @@ namespace FDG.Stages
         {
             IReadOnlyList<(RuleOperation Op, string RuleName)> operations = GameContext.RuleEvaluator
                 .EvaluateAllNamed(new MoveActionDeclaredContext(unit, action, baseDistance),
-                    (unit, ERuleSeat.Actor, (IWeapon?)null, new[] { model }, EModelRuleScope.AnyOwner));
+                    RuleParticipant.Actor(unit, models: new[] { model }));
             sink.ApplyFrom(operations.Select(t => t.Op).ToList());
         }
 

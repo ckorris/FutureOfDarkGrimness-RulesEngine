@@ -97,11 +97,10 @@ namespace FDG.Stages
             IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator.EvaluateAll(
                 new HitRollCompleteContext(caster, target, rolled, distance, IsMelee: false,
                     IsCharging: false, IsSpell: true),
-                (caster, ERuleSeat.Actor, spellWeapon, (IReadOnlyList<IModel>?)null, EModelRuleScope.AnyOwner),
+                RuleParticipant.Actor(caster, spellWeapon),
                 // #183: the target's living models surface a joined hero's relocated defensive rules
                 // (Fortified vs spell AP; Shielded self-gates out via IsNotSpell) after the merge.
-                (target, ERuleSeat.Subject, (IWeapon?)null, HeroStatRules.LivingModels(target),
-                    EModelRuleScope.AnyOwner));
+                RuleParticipant.Subject(target, models: HeroStatRules.LivingModels(target)));
 
             // Split the auto-hitting rolled dice so a natural 6 carries Rending/Crack AP per-hit while the
             // rest save at base AP. No per-hit rule → a single base-AP group holding every rolled hit.

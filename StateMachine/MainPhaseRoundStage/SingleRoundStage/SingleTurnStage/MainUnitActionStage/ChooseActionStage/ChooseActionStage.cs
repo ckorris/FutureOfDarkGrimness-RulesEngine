@@ -465,7 +465,7 @@ namespace FDG.Stages
         {
             IUnit unit = context.ActivatingUnit.GetValue();
             IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator.EvaluateAll(
-                new ActionChoiceContext(unit), (unit, ERuleSeat.Actor));
+                new ActionChoiceContext(unit), RuleParticipant.Actor(unit));
 
             HashSet<EActionType>? allowed = null;
             foreach (RuleOperation op in ops)

@@ -38,7 +38,7 @@ namespace FDG.Stages
                 // Harassing HookEntry yields an optional InvokeTriggeredMove the executor runs through the
                 // movement subsystem. A unit without such a rule produces no operations — no-op.
                 IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
-                    new PostMeleeActionContext(attacked), (attacked, ERuleSeat.Actor));
+                    new PostMeleeActionContext(attacked), RuleParticipant.Actor(attacked));
 
                 // Gate enacts the move (if the unit has a post-melee rule and hasn't already moved this
                 // round) and enforces the family's once-per-round budget — shared with the shooting seam.

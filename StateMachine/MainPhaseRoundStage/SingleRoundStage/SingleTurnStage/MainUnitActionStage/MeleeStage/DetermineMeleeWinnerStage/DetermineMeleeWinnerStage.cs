@@ -1,5 +1,6 @@
 ﻿
 using FDG.Rules.Definitions;
+using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
 using FDG.Utilities;
@@ -68,7 +69,7 @@ namespace FDG.Stages
         private float SumExtraMeleeWounds(MeleeResolutionContext resolution, IUnit actor)
         {
             IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
-                resolution, (actor, ERuleSeat.Actor, null));
+                resolution, RuleParticipant.Actor(actor));
 
             float extra = 0f;
             foreach (RuleOperation operation in operations)

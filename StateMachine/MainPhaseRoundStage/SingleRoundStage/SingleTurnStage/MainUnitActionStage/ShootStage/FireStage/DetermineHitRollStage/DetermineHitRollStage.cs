@@ -41,14 +41,13 @@ namespace FDG.Stages
                 // under AllOwners semantics — a rule fires only when every owner shares it, so a joined
                 // hero's Furious/Relentless/Thrust fire for a hero-only batch (and a homogeneous elite
                 // squad's shared per-model rule fires once), without leaking onto a mixed batch's pooled roll.
-                (attacker, ERuleSeat.Actor, metaData.WeaponType,
+                RuleParticipant.Actor(attacker, metaData.WeaponType,
                     HeroStatRules.LivingWeaponBatchOwners(metaData.AttackingUnit.GetValue(), metaData.WeaponType),
                     EModelRuleScope.AllOwners),
                 // #183: the defender's living models contribute their per-model defensive rules (a joined
                 // hero's relocated Evasive/Melee-Evasion/Artillery) under AnyOwner, so the merge no longer
                 // hides them; the rule's AllModelsHaveThisRule gate still decides whether it applies.
-                (defender, ERuleSeat.Subject, (IWeapon?)null, HeroStatRules.LivingModels(defender),
-                    EModelRuleScope.AnyOwner));
+                RuleParticipant.Subject(defender, models: HeroStatRules.LivingModels(defender)));
 
             // #042 quality-floor rules (Reliable) set the BASE quality before per-roll modifiers:
             // "treated as 2+, still modifiable". Fold the floor sink and improve the base, then let

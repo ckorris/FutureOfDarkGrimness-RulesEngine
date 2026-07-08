@@ -3,6 +3,7 @@
 using System.Linq;
 using FDG.Data;
 using FDG.Rules.Definitions;
+using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
 using FDG.StageResolution.Requests;
@@ -172,7 +173,7 @@ namespace FDG.Stages
         private string GetDeferRuleName(IUnit unit)
         {
             IReadOnlyList<(RuleOperation Op, string RuleName)> named = GameContext.RuleEvaluator
-                .EvaluateAllNamed(new PreDeploymentSelectContext(unit), (unit, ERuleSeat.Actor));
+                .EvaluateAllNamed(new PreDeploymentSelectContext(unit), RuleParticipant.Actor(unit));
 
             foreach ((RuleOperation op, string name) in named)
             {
@@ -190,7 +191,7 @@ namespace FDG.Stages
         private bool TryGetReserveRuleName(IUnit unit, out string ruleName)
         {
             IReadOnlyList<(RuleOperation Op, string RuleName)> named = GameContext.RuleEvaluator
-                .EvaluateAllNamed(new PreDeploymentSelectContext(unit), (unit, ERuleSeat.Actor));
+                .EvaluateAllNamed(new PreDeploymentSelectContext(unit), RuleParticipant.Actor(unit));
 
             foreach ((RuleOperation op, string name) in named)
             {

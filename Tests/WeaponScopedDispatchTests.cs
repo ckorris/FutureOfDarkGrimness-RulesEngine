@@ -59,9 +59,9 @@ namespace FDG.Tests
             var context = new HitRollModifierContext(attacker.GetValue(), defender.GetValue(), DistanceInches: 10f);
 
             IReadOnlyList<RuleOperation> withWeapon = evaluator.EvaluateAll(context,
-                (attacker.GetValue(), ERuleSeat.Actor, reliableGun));
+                RuleParticipant.Actor(attacker.GetValue(), reliableGun));
             IReadOnlyList<RuleOperation> withoutWeapon = evaluator.EvaluateAll(context,
-                (attacker.GetValue(), ERuleSeat.Actor, null));
+                RuleParticipant.Actor(attacker.GetValue()));
 
             Assert.That(withWeapon.OfType<RuleOperation.QualityFloor>().Count(), Is.EqualTo(1),
                 "Reliable fires when its carrying weapon is the one attacking.");
@@ -82,7 +82,7 @@ namespace FDG.Tests
             var evaluator = new RuleEvaluator(new FixedDiceRoller(4));
             IReadOnlyList<RuleOperation> operations = evaluator.EvaluateAll(
                 new HitRollModifierContext(attacker.GetValue(), defender.GetValue(), DistanceInches: 10f),
-                (attacker.GetValue(), ERuleSeat.Actor, gun));
+                RuleParticipant.Actor(attacker.GetValue(), gun));
 
             Assert.That(operations.OfType<RuleOperation.QualityFloor>().Count(), Is.EqualTo(1),
                 "Multiple instances of the same argument-less rule don't stack.");

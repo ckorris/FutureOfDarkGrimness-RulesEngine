@@ -54,7 +54,7 @@ namespace FDG.Tests
 
             var context = new HitRollCompleteContext(attacker, defender,
                 TestDice.Faces(6, 3), IsMelee: true, IsCharging: true);
-            _evaluator.EvaluateAll(context, (attacker, ERuleSeat.Actor), (defender, ERuleSeat.Subject));
+            _evaluator.EvaluateAll(context, RuleParticipant.Actor(attacker), RuleParticipant.Subject(defender));
 
             Assert.That(_output.DebugLines, Has.Some.Contains("Shooting_OnHitRollComplete fires"));
             Assert.That(_output.DebugLines, Has.Some.Match(".*Furious.*fired -> InsertExtraHits.*"));
@@ -69,7 +69,7 @@ namespace FDG.Tests
 
             // 5" — inside Stealth's >9" gate, so the condition fails and the trace must say which.
             var context = new HitRollModifierContext(attacker, defender, DistanceInches: 5f);
-            _evaluator.EvaluateAll(context, (attacker, ERuleSeat.Actor), (defender, ERuleSeat.Subject));
+            _evaluator.EvaluateAll(context, RuleParticipant.Actor(attacker), RuleParticipant.Subject(defender));
 
             Assert.That(_output.DebugLines,
                 Has.Some.Match(".*Stealth.*condition And\\(DistanceGreaterThan, AllModelsHaveThisRule\\) not met.*"));
@@ -84,7 +84,7 @@ namespace FDG.Tests
             IUnit defender = _harness.BuildUnit("B", 3, "Regeneration");
 
             var context = new SaveRollCompleteContext(attacker, defender, TestDice.Faces(6));
-            _evaluator.EvaluateAll(context, (attacker, ERuleSeat.Actor), (defender, ERuleSeat.Subject));
+            _evaluator.EvaluateAll(context, RuleParticipant.Actor(attacker), RuleParticipant.Subject(defender));
 
             Assert.That(_output.DebugLines, Has.Some.Match(".*Regeneration IgnoreWound suppressed by Bane.*"));
         }
@@ -98,7 +98,7 @@ namespace FDG.Tests
 
             var context = new HitRollCompleteContext(attacker, defender,
                 TestDice.Faces(6), IsMelee: true, IsCharging: true);
-            _evaluator.EvaluateAllNamed(context, (attacker, ERuleSeat.Actor), (defender, ERuleSeat.Subject));
+            _evaluator.EvaluateAllNamed(context, RuleParticipant.Actor(attacker), RuleParticipant.Subject(defender));
 
             Assert.That(_output.DebugLines, Is.Empty,
                 "log:false query paths run per-frame while building UI and must not trace.");
@@ -114,7 +114,7 @@ namespace FDG.Tests
 
             var context = new HitRollCompleteContext(attacker, defender,
                 TestDice.Faces(6), IsMelee: true, IsCharging: true);
-            _evaluator.EvaluateAll(context, (attacker, ERuleSeat.Actor), (defender, ERuleSeat.Subject));
+            _evaluator.EvaluateAll(context, RuleParticipant.Actor(attacker), RuleParticipant.Subject(defender));
 
             Assert.That(_output.DebugLines, Is.Empty);
             Assert.That(_output.Lines, Has.Some.Contains("Furious"),

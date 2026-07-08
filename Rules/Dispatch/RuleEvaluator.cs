@@ -75,36 +75,14 @@ public sealed class RuleEvaluator
         return tagged.Select(t => t.Op).ToList();
     }
 
-    public IReadOnlyList<RuleOperation> EvaluateAll(IHookContext context,
-        params (IUnit Unit, ERuleSeat Seat)[] participants)
-    {
-        return EvaluateAll(context, WithoutWeapons(participants));
-    }
-
     /// <summary>
-    /// Weapon-aware participant form (#027): a participant with a weapon contributes that
-    /// weapon's rules alongside its unit rules — the attacker's firing weapon in the shoot
-    /// pipeline, each defender melee weapon at strike-order time. Identical rules reached
-    /// through several carriers fire once (the rulebook's "multiple instances of the same
-    /// rule don't stack"), except argumented (X) rules, which stack by the book.
+    /// Collects each participant's matching operations (weapon rules per #027, per-model rules per
+    /// #093/#183 when a participant names models), runs the suppression first-pass, logs each surviving
+    /// op, and returns the resolved queue. Identical rules reached through several carriers fire once
+    /// (the rulebook's "multiple instances of the same rule don't stack"), except argumented (X) rules,
+    /// which stack by the book.
     /// </summary>
-    public IReadOnlyList<RuleOperation> EvaluateAll(IHookContext context,
-        params (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon)[] participants)
-    {
-        return CollectSurviving(context, log: true, WithModels(participants)).Select(t => t.Op).ToList();
-    }
-
-    /// <summary>
-    /// Model-aware participant form (#006 slice F, #093): a participant may also name the specific model(s)
-    /// the hook involves and how to compose their own rules (<see cref="IModel.RuleDefinitions"/>) via
-    /// <see cref="EModelRuleScope"/> — <c>AnyOwner</c> unions them (any model brings the rule), <c>AllOwners</c>
-    /// fires only rules every model shares (a pooled combat batch). Opt-in: only stages that pass models
-    /// (the hit stages, over a weapon batch's living owners) see per-model rules; every other call site is
-    /// unaffected. This is how a joined hero's own rules fire for the hero's batch rather than the whole unit.
-    /// </summary>
-    public IReadOnlyList<RuleOperation> EvaluateAll(IHookContext context,
-        params (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon, IReadOnlyList<IModel>? Models,
-            EModelRuleScope ModelScope)[] participants)
+    public IReadOnlyList<RuleOperation> EvaluateAll(IHookContext context, params RuleParticipant[] participants)
     {
         return CollectSurviving(context, log: true, participants).Select(t => t.Op).ToList();
     }
@@ -113,60 +91,14 @@ public sealed class RuleEvaluator
     /// Like <see cref="EvaluateAll"/>, but pairs each surviving operation with the alias-aware display
     /// name (<see cref="ResolvedRule.RequestedName"/>) of the rule that produced it — so presentation
     /// queries (e.g. <see cref="SightRuleQueries"/>) can attribute an effect to its rule. Does NOT log:
-    /// it's a read-only query callers may run per-frame while building UI, so it must not spam the game log.
+    /// it's a read-only query callers may run per-frame while building UI, so it must not spam the game
+    /// log, and it does not spend one-shot (NextTrigger) grants.
     /// </summary>
     public IReadOnlyList<(RuleOperation Op, string RuleName)> EvaluateAllNamed(IHookContext context,
-        params (IUnit Unit, ERuleSeat Seat)[] participants)
-    {
-        return EvaluateAllNamed(context, WithoutWeapons(participants));
-    }
-
-    /// <summary> Weapon-aware form of <see cref="EvaluateAllNamed"/> (#027). </summary>
-    public IReadOnlyList<(RuleOperation Op, string RuleName)> EvaluateAllNamed(IHookContext context,
-        params (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon)[] participants)
-    {
-        return CollectSurviving(context, log: false, WithModels(participants))
-            .Select(t => (t.Op, t.Origin.RequestedName)).ToList();
-    }
-
-    /// <summary>
-    /// Model-aware form of <see cref="EvaluateAllNamed"/> (#093 × #153): folds the named model(s)' own rules
-    /// per <see cref="EModelRuleScope"/>, like the model-aware <see cref="EvaluateAll"/>, but as a read-only
-    /// query — <c>log: false</c> means it neither logs nor spends one-shot (NextTrigger) grants. Used by the
-    /// movement context's per-model budget projection, which runs at construction and must not consume a
-    /// granted movement rule (that grant is spent once by <c>ExecuteMoveStage</c> when the move resolves).
-    /// </summary>
-    public IReadOnlyList<(RuleOperation Op, string RuleName)> EvaluateAllNamed(IHookContext context,
-        params (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon, IReadOnlyList<IModel>? Models,
-            EModelRuleScope ModelScope)[] participants)
+        params RuleParticipant[] participants)
     {
         return CollectSurviving(context, log: false, participants)
             .Select(t => (t.Op, t.Origin.RequestedName)).ToList();
-    }
-
-    private static (IUnit, ERuleSeat, IWeapon?)[] WithoutWeapons((IUnit Unit, ERuleSeat Seat)[] participants)
-    {
-        var expanded = new (IUnit, ERuleSeat, IWeapon?)[participants.Length];
-        for (int i = 0; i < participants.Length; i++)
-        {
-            expanded[i] = (participants[i].Unit, participants[i].Seat, null);
-        }
-        return expanded;
-    }
-
-    /// <summary> Widens weaponed participants to the model-aware tuple with no per-model rules (the
-    /// non-slice-F default; the scope is moot with null models), so the original call sites keep their
-    /// exact behavior. </summary>
-    private static (IUnit, ERuleSeat, IWeapon?, IReadOnlyList<IModel>?, EModelRuleScope)[] WithModels(
-        (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon)[] participants)
-    {
-        var expanded = new (IUnit, ERuleSeat, IWeapon?, IReadOnlyList<IModel>?, EModelRuleScope)[participants.Length];
-        for (int i = 0; i < participants.Length; i++)
-        {
-            expanded[i] = (participants[i].Unit, participants[i].Seat, participants[i].Weapon, null,
-                EModelRuleScope.AnyOwner);
-        }
-        return expanded;
     }
 
     /// <summary>
@@ -177,8 +109,7 @@ public sealed class RuleEvaluator
     /// when <paramref name="log"/> is true.
     /// </summary>
     private List<TaggedOperation> CollectSurviving(IHookContext context, bool log,
-        params (IUnit Unit, ERuleSeat Seat, IWeapon? Weapon, IReadOnlyList<IModel>? Models,
-            EModelRuleScope ModelScope)[] participants)
+        params RuleParticipant[] participants)
     {
         var tagged = new List<TaggedOperation>();
 
@@ -202,11 +133,10 @@ public sealed class RuleEvaluator
         // the walk, regardless of whether the rule's condition passed or its op survived suppression.
         List<(IUnit Unit, Token Grant)>? grantsToConsume = log ? new List<(IUnit, Token)>() : null;
 
-        foreach ((IUnit unit, ERuleSeat seat, IWeapon? weapon, IReadOnlyList<IModel>? models,
-            EModelRuleScope modelScope) in participants)
+        foreach (RuleParticipant p in participants)
         {
-            CollectTagged(unit, seat, weapon, models, modelScope, context, tagged, seen, grantsToConsume,
-                trace);
+            CollectTagged(p.Unit, p.Seat, p.Weapon, p.Models, p.ModelScope, context, tagged, seen,
+                grantsToConsume, trace);
         }
 
         var suppressedRuleNames = tagged

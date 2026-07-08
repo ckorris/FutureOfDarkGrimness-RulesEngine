@@ -81,7 +81,7 @@ namespace FDG.Stages
                 // under AllOwners semantics (fires only when every owner shares it), so a joined hero's
                 // Furious/Relentless fire for a hero-only batch and a homogeneous squad's shared per-model
                 // rule fires once — without leaking onto a mixed batch's pooled roll.
-                (attacker, ERuleSeat.Actor, metaData.WeaponType,
+                RuleParticipant.Actor(attacker, metaData.WeaponType,
                     HeroStatRules.LivingWeaponBatchOwners(metaData.AttackingUnit.GetValue(), metaData.WeaponType),
                     EModelRuleScope.AllOwners),
                 // The defender contributes its DEFENSIVE save modifiers here (Shielded's +1 to defense,
@@ -90,8 +90,7 @@ namespace FDG.Stages
                 // alongside the attacker's whole-attack AP, so a defensive +1 and an attacker's -N net
                 // correctly. #183: passing the defender's living models surfaces a joined hero's relocated
                 // Shielded/Fortified (gated by AllModelsHaveThisRule) instead of silently dropping them.
-                (defender, ERuleSeat.Subject, (IWeapon?)null, HeroStatRules.LivingModels(defender),
-                    EModelRuleScope.AnyOwner));
+                RuleParticipant.Subject(defender, models: HeroStatRules.LivingModels(defender)));
 
             // #032 per-hit AP (Rending/Crack on an unmodified 6): split the rolled successes so only the
             // matching-face hits carry the raised save threshold; the rest stay at base AP. With no such

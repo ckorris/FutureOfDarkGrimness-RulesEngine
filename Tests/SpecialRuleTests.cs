@@ -731,8 +731,8 @@ namespace FDG.Tests
 
             var ops = harness.EvaluateAll(
                 new SaveRollCompleteContext(attacker, defender, TestDice.Faces(2, 3)),
-                (attacker, ERuleSeat.Actor),
-                (defender, ERuleSeat.Subject));
+                RuleParticipant.Actor(attacker),
+                RuleParticipant.Subject(defender));
 
             Assert.That(ops.OfType<RuleOperation.IgnoreWound>(), Is.Empty,
                 "Regeneration's IgnoreWound should be suppressed.");
@@ -753,8 +753,8 @@ namespace FDG.Tests
 
             var ops = harness.EvaluateAll(
                 new SaveRollCompleteContext(attacker, defender, TestDice.Faces(2, 3)),
-                (attacker, ERuleSeat.Actor),
-                (defender, ERuleSeat.Subject));
+                RuleParticipant.Actor(attacker),
+                RuleParticipant.Subject(defender));
 
             ops.HasOperation<RuleOperation.IgnoreWound>(op => op.MinRoll == 5);
         }
@@ -775,8 +775,8 @@ namespace FDG.Tests
 
             var ops = harness.EvaluateAll(
                 new SaveRollCompleteContext(attacker, defender, TestDice.Faces(2, 3)),
-                (attacker, ERuleSeat.Actor),
-                (defender, ERuleSeat.Subject));
+                RuleParticipant.Actor(attacker),
+                RuleParticipant.Subject(defender));
 
             Assert.That(ops.OfType<RuleOperation.IgnoreWound>(), Is.Empty,
                 "Aliased Regeneration ('Healing Pods') should still be suppressed by canonical name.");

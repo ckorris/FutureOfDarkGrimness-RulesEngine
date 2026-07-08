@@ -11,6 +11,11 @@ namespace FDG.Stages
     /// once per alive-to-dead transition (guarded by an alive-before/dead-after check at the call site,
     /// since the engine has no unit-removal primitive or death event to subscribe to):
     /// <list type="bullet">
+    ///   <item>Transport spillout always runs first (#169): a destroyed transport's occupants are
+    ///         placed within 6" of the wreck, un-embarked, Shaken, and dangerous-terrain-tested via
+    ///         <see cref="SpilloutExecutor"/>. The EmbarkedIn link is ManualOnly (never auto-swept),
+    ///         so this seam is the one place it's cut on the transport's death — regardless of how
+    ///         it died and before the killer-attribution early-return below.</item>
     ///   <item>Cross-unit token cleanup always runs: marks the dead unit placed on other units with
     ///         <see cref="TokenClearTrigger.OwnerDestroyed"/> clear the moment their placer dies.</item>
     ///   <item><see cref="EHookID.Shooting_OnUnitDestroyed"/> fires only when the death has an
@@ -24,6 +29,10 @@ namespace FDG.Stages
     {
         public static async Task NotifyUnitDestroyed(IGameContext gameContext, IUnit dead, IUnit? killer)
         {
+            // #169: spill a destroyed transport's occupants before anything else — including the
+            // killer-less (Rout) path, which previously bypassed spillout entirely.
+            await SpilloutExecutor.SpillIfDestroyedTransport(gameContext, dead);
+
             // A destroyed unit's OwnerDestroyed marks die with it, wherever they sit.
             List<ITokenContainer> containers = new List<ITokenContainer>();
             foreach (IUnit unit in gameContext.TableState.Units.Objects)

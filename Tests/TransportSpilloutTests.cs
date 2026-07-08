@@ -9,25 +9,25 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // Vertical-slice integration test for #035 slice E: mid-combat destruction spillout, driven through the
-    // real SpilloutOccupantsStage (the stage inserted after ApplyWounds in both the shooting FireStage and
-    // the melee SwingMeleeWeaponStage). When the unit that just took wounds is a Transport that has now been
-    // destroyed, its embarked units spill out: placed within 6" of the wreck (interactive PlaceObjectsRequest)
-    // and un-embarked + Shaken + dangerous-tested. The deterministic effects are unit-tested in slice A; this
-    // proves the stage orchestration (detect destruction → place → apply).
+    // Integration tests for Transport destruction spillout (#035 slice E, rearchitected by #169).
+    // Spillout now runs from UnitDestructionNotifier — the single destruction choke point every
+    // notifying death path funnels through (shooting/melee/impact/spell/strafing via ApplyWoundsStage,
+    // melee Rout via MoraleUtilities.RoutWithPresentation) — with the flow itself extracted into
+    // SpilloutExecutor. When the dead unit is a Transport, its embarked units spill out: placed within
+    // 6" of the wreck (interactive PlaceObjectsRequest), un-embarked + Shaken + dangerous-tested.
+    // The deterministic effects are unit-tested in slice A; these prove the orchestration
+    // (detect destruction -> place -> apply) and the #169 Rout path end-to-end.
     [TestFixture]
     public class TransportSpilloutTests
     {
         private GameDataStore _store = null!;
         private PlayerID _player;
-        private DataBinding<UnitData> _attacker = null!; // irrelevant to spillout, but CombatMetadata needs one
 
         [SetUp]
         public void SetUp()
         {
             _store = GameDataStore.GameDataStoreBuilder.GetDefault();
             _player = new PlayerID(Guid.NewGuid());
-            _attacker = MakeUnit(new PlayerID(Guid.NewGuid()), "Attacker", 1, new Position(50f, 50f));
         }
 
         [Test]
@@ -40,9 +40,9 @@ namespace FDG.Tests
             transport.GetValue().Models[0].DealWounds(1f); // destroy the transport (last model dies)
             Assert.That(transport.GetValue().GetIsDead(), Is.True, "precondition: the transport is destroyed.");
 
-            SpilloutResults result = await RunSpillout(transport);
+            int spilled = await RunSpillout(transport);
 
-            Assert.That(result.UnitsSpilledOut, Is.EqualTo(1));
+            Assert.That(spilled, Is.EqualTo(1));
             Assert.That(TransportUtilities.IsEmbarked(occupant.GetValue()), Is.False, "the occupant is no longer embarked.");
             Assert.That(occupant.GetValue().GetIsOnBattlefield(), Is.True, "the occupant is placed near the wreck (on the table).");
             Assert.That(occupant.GetValue().Tokens.HasToken(TokenType.Shaken), Is.True, "spilled-out occupants are Shaken.");
@@ -56,9 +56,9 @@ namespace FDG.Tests
             TransportUtilities.Embark(occupant.GetValue(), transport.GetValue());
             // Transport NOT destroyed (still alive).
 
-            SpilloutResults result = await RunSpillout(transport);
+            int spilled = await RunSpillout(transport);
 
-            Assert.That(result.UnitsSpilledOut, Is.EqualTo(0));
+            Assert.That(spilled, Is.EqualTo(0));
             Assert.That(TransportUtilities.IsEmbarked(occupant.GetValue()), Is.True, "a surviving transport keeps its passengers.");
         }
 
@@ -69,9 +69,9 @@ namespace FDG.Tests
             squad.GetValue().Models[0].DealWounds(1f); // destroyed
             Assert.That(squad.GetValue().GetIsDead(), Is.True);
 
-            SpilloutResults result = await RunSpillout(squad);
+            int spilled = await RunSpillout(squad);
 
-            Assert.That(result.UnitsSpilledOut, Is.EqualTo(0), "a destroyed non-transport has no occupants to spill.");
+            Assert.That(spilled, Is.EqualTo(0), "a destroyed non-transport has no occupants to spill.");
         }
 
         [Test]
@@ -80,9 +80,49 @@ namespace FDG.Tests
             DataBinding<UnitData> transport = MakeTransport("Rhino", capacity: 6, new Position(10f, 10f)); // nobody aboard
             transport.GetValue().Models[0].DealWounds(1f);
 
-            SpilloutResults result = await RunSpillout(transport);
+            int spilled = await RunSpillout(transport);
 
-            Assert.That(result.UnitsSpilledOut, Is.EqualTo(0));
+            Assert.That(spilled, Is.EqualTo(0));
+        }
+
+        // #169: the bug this rearchitecture fixes — a Transport killed by a melee-morale Rout (the
+        // killer-less path through UnitDestructionNotifier) must spill its occupants exactly like one
+        // shot or cut down. Drives the REAL Rout path: RoutWithPresentation -> NotifyUnitDestroyed
+        // (killer: null) -> SpilloutExecutor. Previously the occupants stayed permanently embarked
+        // off-table ("ghost" state).
+        [Test]
+        public async Task RoutedTransport_SpillsOutOccupants()
+        {
+            DataBinding<UnitData> transport = MakeTransport("Rhino", capacity: 6, new Position(10f, 10f));
+            DataBinding<UnitData> occupant = MakeUnit(_player, "Grunts", 2, new Position(0f, 0f));
+            TransportUtilities.Embark(occupant.GetValue(), transport.GetValue());
+            Assert.That(transport.GetValue().GetIsAlive(), Is.True, "precondition: the transport routs from alive.");
+
+            var ctx = new TriggeredMoveTestContext(_store, new CannedPlaceRequester(new Position(10f, 10f)));
+            await MoraleUtilities.RoutWithPresentation(ctx, transport);
+
+            Assert.That(transport.GetValue().GetIsDead(), Is.True, "the routed transport is destroyed.");
+            Assert.That(TransportUtilities.IsEmbarked(occupant.GetValue()), Is.False,
+                "the occupant is un-embarked - not stranded in the ghost state.");
+            Assert.That(occupant.GetValue().GetIsOnBattlefield(), Is.True, "the occupant is placed near the wreck.");
+            Assert.That(occupant.GetValue().Tokens.HasToken(TokenType.Shaken), Is.True, "spilled-out occupants are Shaken.");
+        }
+
+        // #169: the choke point itself — NotifyUnitDestroyed spills regardless of killer attribution
+        // (the killer-less early-return must not skip spillout).
+        [Test]
+        public async Task NotifyUnitDestroyed_WithoutKiller_StillSpills()
+        {
+            DataBinding<UnitData> transport = MakeTransport("Rhino", capacity: 6, new Position(10f, 10f));
+            DataBinding<UnitData> occupant = MakeUnit(_player, "Grunts", 2, new Position(0f, 0f));
+            TransportUtilities.Embark(occupant.GetValue(), transport.GetValue());
+            transport.GetValue().Models[0].DealWounds(1f);
+
+            var ctx = new TriggeredMoveTestContext(_store, new CannedPlaceRequester(new Position(10f, 10f)));
+            await UnitDestructionNotifier.NotifyUnitDestroyed(ctx, transport.GetValue(), killer: null);
+
+            Assert.That(TransportUtilities.IsEmbarked(occupant.GetValue()), Is.False);
+            Assert.That(occupant.GetValue().Tokens.HasToken(TokenType.Shaken), Is.True);
         }
 
         // #096 facet 2: the spillout narrates itself with presentation beats (was log-only). A destroyed
@@ -127,36 +167,19 @@ namespace FDG.Tests
 
         // --- helpers ---
 
-        private async Task<SpilloutResults> RunSpilloutCapturing(DataBinding<UnitData> defender,
+        private async Task<int> RunSpilloutCapturing(DataBinding<UnitData> dead,
             IDiceRoller roller, RecordingPresentationSink sink)
         {
             var ctx = new TriggeredMoveTestContext(_store, new CannedPlaceRequester(new Position(10f, 10f)),
                 roller, sink);
-
-            var weapon = new Weapon("Test", rangeInches: 24f, attacks: 1, armorPenetration: 0);
-            var metadata = new CombatMetadata(ctx, _attacker, defender, weapon, weaponCount: 1);
-
-            var stage = new SpilloutOccupantsStage<ICombatMetadata>(ctx, new NoOpLayer<ICombatMetadata>());
-            stage.NextStage.Bind("done");
-            await stage.Enter(metadata);
-            return metadata.QueryForResult(out SpilloutResults result) ? result : new SpilloutResults(0);
+            return await SpilloutExecutor.SpillIfDestroyedTransport(ctx, dead.GetValue());
         }
 
-        private async Task<SpilloutResults> RunSpillout(DataBinding<UnitData> defender)
+        private async Task<int> RunSpillout(DataBinding<UnitData> dead)
         {
             // The place-requester drops each spilled unit at the wreck position (within 6").
             var ctx = new TriggeredMoveTestContext(_store, new CannedPlaceRequester(new Position(10f, 10f)));
-
-            var weapon = new Weapon("Test", rangeInches: 24f, attacks: 1, armorPenetration: 0);
-            var metadata = new CombatMetadata(ctx, _attacker, defender, weapon, weaponCount: 1);
-
-            var stage = new SpilloutOccupantsStage<ICombatMetadata>(ctx, new NoOpLayer<ICombatMetadata>());
-            stage.NextStage.Bind("done");
-            await stage.Enter(metadata);
-
-            Assert.That(metadata.QueryForResult(out SpilloutResults result), Is.True,
-                "the spillout stage must store a SpilloutResults in the metadata.");
-            return result;
+            return await SpilloutExecutor.SpillIfDestroyedTransport(ctx, dead.GetValue());
         }
 
         private DataBinding<UnitData> MakeUnit(PlayerID player, string name, int modelCount, Position pos)

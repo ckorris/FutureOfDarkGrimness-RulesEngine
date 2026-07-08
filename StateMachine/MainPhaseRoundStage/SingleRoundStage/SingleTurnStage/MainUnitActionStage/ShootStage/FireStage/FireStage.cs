@@ -39,9 +39,9 @@ namespace FDG.Stages
                 .AddChild(new DetermineSaveRollsNeededStage<ICombatMetadata>(GameContext, this), out var determineSaveRollNeeded)
                 .AddChild(new RollToSaveStage<ICombatMetadata>(GameContext, this), out var rollToSave)
                 .AddChild(new AssignWoundsStage<ICombatMetadata>(GameContext, this), out var assignWounds)
+                // Transport spillout (#035 slice E) is no longer a stage here — ApplyWoundsStage's
+                // UnitDestructionNotifier call runs it for every destruction path (#169).
                 .AddChild(new ApplyWoundsStage<ICombatMetadata>(GameContext, this), out var applyWounds)
-                // #035 slice E — after wounds land, spill out a just-destroyed transport's occupants.
-                .AddChild(new SpilloutOccupantsStage<ICombatMetadata>(GameContext, this), out var spillout)
                 .AddSibling(nameof(OnFinishedFiring), OnFinishedFiring, out string finishedFiringName)
                 .Build();
 
@@ -58,7 +58,6 @@ namespace FDG.Stages
                 .BindNextStage(rollToSave)
                 .BindNextStage(assignWounds)
                 .BindNextStage(applyWounds)
-                .BindNextStage(spillout)
                 .BindToEvent(finishedFiringName);
 
             return dictionary;

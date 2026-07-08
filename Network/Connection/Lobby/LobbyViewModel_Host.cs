@@ -75,6 +75,16 @@ namespace FDG.Network.Connection.Lobby
 
         private INetworkHost _host;
 
+        // The lobby password the host set, or null/empty for an open lobby. Compared plain-text against the
+        // joining client's greeting (QF1) - adequate at this trust level (a small group of invited players);
+        // the real confidentiality story is running over a trusted tunnel (see the build's Tailscale note).
+        private readonly string? _password;
+
+        // How long a freshly accepted connection has to send its greeting before the host drops it (QF2).
+        // Guards an internet-exposed port: a scanner or half-open connection that never greets is evicted
+        // instead of sitting on the roster's broadcast stream.
+        private const int GREETING_TIMEOUT_MS = 10000;
+
         private string _hostPlayerName;
 
         private MessageBusHost_Networked _messageBus;
@@ -96,12 +106,17 @@ namespace FDG.Network.Connection.Lobby
 
         public bool IsResumeMode => _isResume;
 
+        // Set once the game launches (QF6). After this a fresh greeting is refused - the roster is fixed and
+        // the store is mid-game, so a late joiner has nothing valid to become.
+        private bool _isLaunched;
+
         public LobbyViewModel_Host(string hostPlayerName, string serverName, string? password, INetworkHost host)
         {
             _gameDataStore = GameDataStore.GameDataStoreBuilder.GetDefault();
 
             _messageBus = new MessageBusHost_Networked(host, _gameDataStore);
             _host = host;
+            _password = password;
             _hostPlayerName = hostPlayerName;
             PlayerID thisPlayerID = new PlayerID(Guid.NewGuid());
 
@@ -151,6 +166,7 @@ namespace FDG.Network.Connection.Lobby
             _gameDataStore = loadedGameDataStore;
             _messageBus = new MessageBusHost_Networked(host, _gameDataStore);
             _host = host;
+            _password = password;
             _hostPlayerName = hostPlayerName;
 
             // Faithfully resume the saved game's settings (turn style, randomness, etc.).
@@ -218,9 +234,44 @@ namespace FDG.Network.Connection.Lobby
         private void OnNewClientConnected(ConnectionID connectionID)
         {
             Debug.WriteLine($"{nameof(LobbyViewModel_Host)}.{nameof(OnNewClientConnected)}.");
-            //Test: Just send it the current player list.
 
-            //Maybe do nothing?
+            // Evict a connection that never greets within the timeout (QF2). A real client greets
+            // immediately on construction, so anything still un-rostered after the window is a scan or a
+            // half-open connection that shouldn't keep receiving broadcasts.
+            _ = EnforceGreetingTimeoutAsync(connectionID);
+        }
+
+        private async Task EnforceGreetingTimeoutAsync(ConnectionID connectionID)
+        {
+            await Task.Delay(GREETING_TIMEOUT_MS).ConfigureAwait(false);
+
+            try
+            {
+                // A greeted client (new-game or resume) is in _playerInfosFull with this ConnectionID; a
+                // scanner never made it onto the roster.
+                bool hasRosterEntry = _playerInfosFull.Values.Any(info => info.ConnectionID == connectionID);
+                if (hasRosterEntry == false)
+                {
+                    Debug.WriteLine($"Dropping connection {connectionID.ID}: no greeting within timeout.");
+                    _host.DisconnectClient(connectionID);
+                }
+            }
+            catch (Exception exception)
+            {
+                // Fire-and-forget: never let a snapshot race on _playerInfosFull surface as an unobserved
+                // task exception. Worst case we skip evicting one connection.
+                Debug.WriteLine($"Greeting-timeout check failed for {connectionID.ID}: {exception.Message}");
+            }
+        }
+
+        // Reject a join: send the reason to just this connection, then drop it (QF1/QF2). Awaits the send so
+        // the reason is handed to the socket before the close, so the client shows the reason rather than a
+        // bare connection-closed.
+        private async Task RejectJoinAsync(ConnectionID connectionID, string reason)
+        {
+            await _messageBus.SendCommandToSingleAsync(new LobbyJoinRejectedMessage(reason), connectionID)
+                .ConfigureAwait(false);
+            _host.DisconnectClient(connectionID);
         }
 
         private void OnReceiveNewClientGreeting(NewLobbyClientGreeting greeting, ConnectionID connectionID)
@@ -231,7 +282,26 @@ namespace FDG.Network.Connection.Lobby
             if (!NetworkProtocol.TryValidateJoin(greeting.ProtocolVersion, greeting.TypeMapHash, out string rejectReason))
             {
                 Debug.WriteLine($"Rejecting client '{greeting.PlayerName}': {rejectReason}");
-                _messageBus.SendCommandToSingleAsync(new LobbyJoinRejectedMessage(rejectReason), connectionID);
+                _ = RejectJoinAsync(connectionID, rejectReason);
+                return;
+            }
+
+            // Gate the join on the lobby password (QF1). Plain-text compare is acceptable here (small invited
+            // group; a trusted tunnel is the real confidentiality layer). An open lobby (null/empty password)
+            // skips the check.
+            if (!string.IsNullOrEmpty(_password) && greeting.Password != _password)
+            {
+                Debug.WriteLine($"Rejecting client '{greeting.PlayerName}': incorrect password.");
+                _ = RejectJoinAsync(connectionID, "Incorrect password.");
+                return;
+            }
+
+            // The game is already running - the roster is fixed and there's no valid slot for a latecomer,
+            // so refuse the join rather than corrupt the in-progress game (QF6).
+            if (_isLaunched)
+            {
+                Debug.WriteLine($"Rejecting client '{greeting.PlayerName}': game already in progress.");
+                _ = RejectJoinAsync(connectionID, "Game already in progress.");
                 return;
             }
 
@@ -248,7 +318,10 @@ namespace FDG.Network.Connection.Lobby
             //Assign a player ID to this person. 
             //TODO: I may have decided to give players their IDs elsewhere but I can't remember, double check that.
             PlayerID newClientPlayerID = new PlayerID(Guid.NewGuid());
-            _messageBus.SendCommandToAllAsync(new LobbyPlayerIDAssignment(newClientPlayerID));
+            // Send the ID assignment ONLY to the joining connection (QF5). Broadcasting it made every
+            // already-connected client adopt the newest joiner's PlayerID (the client sets _thisPlayerID
+            // unconditionally on receipt), so a second remote client silently hijacked the first's identity.
+            _messageBus.SendCommandToSingleAsync(new LobbyPlayerIDAssignment(newClientPlayerID), connectionID);
 
             //Send the server name.
             LobbyServerNameMessage lobbyServerNameMessage = new LobbyServerNameMessage(_serverName.Value);
@@ -288,8 +361,9 @@ namespace FDG.Network.Connection.Lobby
             openSlot.PlayerName = greeting.PlayerName;
             openSlot.ConnectionID = connectionID;
 
-            // Adopt the saved slot's PlayerID (not a fresh one) so the client resumes as that player.
-            _messageBus.SendCommandToAllAsync(new LobbyPlayerIDAssignment(openSlot.PlayerID));
+            // Adopt the saved slot's PlayerID (not a fresh one) so the client resumes as that player. Sent
+            // only to the joining connection (QF5) - see the new-game path for why broadcasting is wrong.
+            _messageBus.SendCommandToSingleAsync(new LobbyPlayerIDAssignment(openSlot.PlayerID), connectionID);
             _messageBus.SendCommandToAllAsync(new LobbyServerNameMessage(_serverName.Value));
             _messageBus.SendCommandToAllAsync(new LobbyGameSettingsUpdate(_gameSettings));
             UpdateInfoSummariesFromFullList();
@@ -297,8 +371,16 @@ namespace FDG.Network.Connection.Lobby
 
         private void OnClientDisconnected(ConnectionID disconnectedConnectionID)
         {
-            PlayerID leavingPlayerID = _playerInfosFull.First(info => info.Value.ConnectionID == disconnectedConnectionID).Key;
-            _playerInfosFull.Remove(leavingPlayerID);
+            // A connection that dropped without ever making it onto the roster (a port scan, or a join we
+            // rejected + disconnected) has no entry here; First would throw on that (QF7).
+            KeyValuePair<PlayerID, LobbyPlayerInfoFull> entry =
+                _playerInfosFull.FirstOrDefault(info => info.Value.ConnectionID == disconnectedConnectionID);
+            if (entry.Value == null)
+            {
+                return;
+            }
+
+            _playerInfosFull.Remove(entry.Key);
             UpdateInfoSummariesFromFullList();
         }
 
@@ -397,6 +479,7 @@ namespace FDG.Network.Connection.Lobby
         // rebuilt slots don't create duplicates.
         private async Task LaunchResume()
         {
+            _isLaunched = true; //Refuse late joiners from here on (QF6).
             await _messageBus.SendCommandToAllAsync(new LobbyChatMessage("System", LAUNCHING_GAME_MESSAGE));
             await Task.Delay(300);
 
@@ -486,6 +569,7 @@ namespace FDG.Network.Connection.Lobby
 
         private async Task Launch()
         {
+            _isLaunched = true; //Refuse late joiners from here on (QF6).
             LobbyChatMessage gameStartingMessage = new LobbyChatMessage("System", LAUNCHING_GAME_MESSAGE);
             //AddMessageToLocalList(gameStartingMessage);
             await _messageBus.SendCommandToAllAsync(gameStartingMessage);

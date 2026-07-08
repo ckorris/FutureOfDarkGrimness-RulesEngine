@@ -214,6 +214,15 @@ namespace FDG.GameModel
                     await stateMachine.Enter(context);
                 }
             }
+            catch (RequestMessageSender.PlayerDisconnectedException disconnect)
+            {
+                // A player leaving mid-game is a normal event, not an engine fault: end the game with a
+                // plain message and no alarming stack dump. Full mid-game recovery (auto-save + rejoin) is
+                // work item #187.
+                string message = DescribePlayerLeft(_playerSlotManager, disconnect.PlayerID);
+                Console.WriteLine($"Game ended: {message}");
+                OnGameEnded?.Invoke(message);
+            }
             catch (Exception ex)
             {
                 // The state machine runs detached, so an unhandled fault would otherwise be unobserved
@@ -221,6 +230,24 @@ namespace FDG.GameModel
                 Console.WriteLine($"[GAME ERROR] State machine faulted: {ex}");
                 OnGameEnded?.Invoke($"Game error: {ex.Message}");
             }
+        }
+
+        // Friendly end-of-game text for a player who dropped mid-game. Internal + static so it can be tested
+        // directly without standing up a whole game. GetSlotByID throws if the slot is already gone, so it
+        // falls back to a generic label rather than turning a lookup miss into a second fault.
+        internal static string DescribePlayerLeft(PlayerSlotManager playerSlotManager, PlayerID playerID)
+        {
+            string name;
+            try
+            {
+                name = playerSlotManager.GetSlotByID(playerID).Name;
+            }
+            catch
+            {
+                name = "A player";
+            }
+
+            return $"{name} left the game. The game has ended.";
         }
 
         private async void LaunchSingleTurnTester(GameContext gameContext)

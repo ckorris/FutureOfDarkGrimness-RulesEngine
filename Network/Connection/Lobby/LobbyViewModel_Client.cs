@@ -10,6 +10,7 @@ using FDG.Players;
 using FDG.SaveLoad;
 using System.Diagnostics;
 using System.Reactive.Subjects;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace FDG.Network.Connection.Lobby
@@ -86,6 +87,14 @@ namespace FDG.Network.Connection.Lobby
 
         private IMessageBusClient _messageBusClient;
 
+        // Kept so we can unsubscribe from OnDisconnected on dispose (QF8).
+        private readonly INetworkClient _networkClient;
+
+        // 0 until OnGameEnded has been raised once, then 1. Both a normal GameEndedMessage and a lost-host
+        // disconnect can try to end the game; whichever wins, the other is suppressed so the client doesn't
+        // fire the return-to-menu flow twice or overwrite a real result with "connection lost" (QF8).
+        private int _gameEndedRaised;
+
         // Completes once the host accepts (result null) or rejects (result = readable reason) the join (#075).
         // ClientModal awaits this before navigating to the lobby, so a build-mismatch rejection shows in the
         // connect modal instead of half-joining.
@@ -104,11 +113,13 @@ namespace FDG.Network.Connection.Lobby
         // as the host. Fires on the network read-loop thread.
         public event Action<string>? OnGameEnded;
 
-        public LobbyViewModel_Client(string thisPlayerName, INetworkClient networkclient)
+        public LobbyViewModel_Client(string thisPlayerName, INetworkClient networkclient, string? password = null)
         {
              _gameDataStore = GameDataStore.GameDataStoreBuilder.GetDefault();
 
             _messageBusClient = new MessageBusClient_Networked(networkclient, _gameDataStore);
+            _networkClient = networkclient;
+            _networkClient.OnDisconnected += OnHostConnectionLost;
 
             _thisPlayerName = thisPlayerName;
 
@@ -135,9 +146,10 @@ namespace FDG.Network.Connection.Lobby
             _messageBusClient.RegisterForMessageEvent<LobbyJoinRejectedMessage>(OnJoinRejectedReceived);
 
             //Send greeting — includes this build's protocol version + type-map fingerprint so the host can
-            //refuse an incompatible build before we join the roster (#075).
+            //refuse an incompatible build before we join the roster (#075), plus the lobby password the host
+            //gates the join on (QF1).
             NewLobbyClientGreeting greeting = new NewLobbyClientGreeting(
-                thisPlayerName, NetworkProtocol.Version, NetworkProtocol.LocalTypeMapHash);
+                thisPlayerName, NetworkProtocol.Version, NetworkProtocol.LocalTypeMapHash, password);
             _messageBusClient.SendCommandToHostAsync(greeting);
 
             //Show init message in chatbox.
@@ -181,6 +193,26 @@ namespace FDG.Network.Connection.Lobby
         public void Dispose()
         {
             _messageBusClient.DeregisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);
+            _networkClient.OnDisconnected -= OnHostConnectionLost;
+        }
+
+        // The host's connection dropped (crash / quit / network loss). Treat it as a game-end so the client
+        // leaves the frozen board (or dead lobby) and returns to the menu, rather than hanging (QF8).
+        private void OnHostConnectionLost()
+        {
+            RaiseGameEndedOnce("Connection to the host was lost.");
+        }
+
+        // Raises OnGameEnded at most once, so a normal end and a subsequent host-gone disconnect don't both
+        // fire (QF8).
+        private void RaiseGameEndedOnce(string result)
+        {
+            if (Interlocked.Exchange(ref _gameEndedRaised, 1) != 0)
+            {
+                return;
+            }
+
+            OnGameEnded?.Invoke(result);
         }
 
         private void OnPlayerIDAssignmentReceived(LobbyPlayerIDAssignment assignment)
@@ -256,7 +288,7 @@ namespace FDG.Network.Connection.Lobby
 
         private void OnGameEndedMessageReceived(GameEndedMessage gameEndedMessage)
         {
-            OnGameEnded?.Invoke(gameEndedMessage.Result);
+            RaiseGameEndedOnce(gameEndedMessage.Result);
         }
 
         public void SetArmyPoints(int armyPoints)

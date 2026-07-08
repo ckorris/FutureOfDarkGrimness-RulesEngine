@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Buffers;
 using System.IO;
+using System.Net.Sockets;
 
 namespace FDG.Network
 {
@@ -17,21 +18,58 @@ namespace FDG.Network
 
         public const int TEMP_PORT = 6389; //TODO Make this specifyable.
 
+        // Tunes a freshly connected/accepted socket for WAN turn-based play (QF3):
+        // - NoDelay disables Nagle so a small decision frame isn't held waiting to coalesce, which with the
+        //   peer's delayed-ACK can add ~100-200ms per message over the internet.
+        // - KeepAlive (plus the per-connection time/interval tuning where the platform supports it) lets a
+        //   silently-dead peer be detected instead of the connection looking alive forever.
+        public static void ConfigureSocket(TcpClient client)
+        {
+            client.NoDelay = true;
+
+            Socket socket = client.Client;
+            socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
+
+            // Per-connection keepalive tuning isn't available on every OS/runtime combo; fall back to the
+            // system defaults (KeepAlive still on) if any option is unsupported.
+            try
+            {
+                socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveTime, 30);
+                socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveInterval, 5);
+                socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveRetryCount, 5);
+            }
+            catch (SocketException) { }
+            catch (PlatformNotSupportedException) { }
+        }
+
         public static async Task WriteCommandAsync(Stream stream, ArraySegment<byte> dataBuffer,
             CancellationToken cancellationToken = default)
         {
-            //Write the magic numbers.
-            byte[] magicNumbers = BitConverter.GetBytes(MAGIC_NUMBERS);
-            await stream.WriteAsync(magicNumbers, 0, MAGIC_NUMBERS_BYTE_SIZE, cancellationToken)
-                .ConfigureAwait(false);
-            
-            byte[] lengthPrefix = BitConverter.GetBytes(dataBuffer.Count);
-            await stream.WriteAsync(lengthPrefix, 0, HEADER_LENGTH_BYTE_SIZE, cancellationToken)
-                .ConfigureAwait(false);
+            // Assemble the whole frame ([magic][length][payload]) into one buffer and write it in a single
+            // WriteAsync (QF4). With NoDelay on, three separate small writes would each become their own tiny
+            // segment; one write lets the frame ride in as few packets as possible. The per-connection write
+            // lock upstream still serializes whole frames, so this can't interleave with another send.
+            int frameLength = MAGIC_NUMBERS_BYTE_SIZE + HEADER_LENGTH_BYTE_SIZE + dataBuffer.Count;
+            byte[] frame = ArrayPool<byte>.Shared.Rent(frameLength);
+            try
+            {
+                BitConverter.TryWriteBytes(frame.AsSpan(0, MAGIC_NUMBERS_BYTE_SIZE), MAGIC_NUMBERS);
+                BitConverter.TryWriteBytes(frame.AsSpan(MAGIC_NUMBERS_BYTE_SIZE, HEADER_LENGTH_BYTE_SIZE),
+                    dataBuffer.Count);
 
-            //TODO: Below I can auto-complete and use dataBuffer.Array.AsMemory to avoid warning. Research before using.
-            await stream.WriteAsync(dataBuffer.Array, dataBuffer.Offset, dataBuffer.Count, cancellationToken)
-                .ConfigureAwait(false);
+                if (dataBuffer.Count > 0 && dataBuffer.Array != null)
+                {
+                    Buffer.BlockCopy(dataBuffer.Array, dataBuffer.Offset, frame,
+                        MAGIC_NUMBERS_BYTE_SIZE + HEADER_LENGTH_BYTE_SIZE, dataBuffer.Count);
+                }
+
+                await stream.WriteAsync(frame.AsMemory(0, frameLength), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(frame);
+            }
         }
 
         public static async Task<ArraySegment<byte>> ReadCommandAsync(Stream stream,

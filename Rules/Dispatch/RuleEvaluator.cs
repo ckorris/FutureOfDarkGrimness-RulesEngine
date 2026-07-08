@@ -61,7 +61,7 @@ public sealed class RuleEvaluator
         // rule grants a one-shot buff firing only at a round-start/deployment/activation hook. If one ever
         // does, add a `consumeGrants` opt-in and set it on the apply site (GrantSpellTokens) only — see #104.
         CollectTagged(unit, seat, weapon, models, modelScope, context, tagged, new DedupState(),
-            grantsToConsume: null);
+            grantsToConsume: null, trace: TraceEnabled);
 
         // Per-unit Evaluate does NOT run the suppression first-pass — cross-unit suppression
         // (an attacker's Unstoppable cancelling a defender's Regeneration) only exists once the
@@ -182,6 +182,15 @@ public sealed class RuleEvaluator
     {
         var tagged = new List<TaggedOperation>();
 
+        // #163 — only live evaluations narrate; the read-only named queries (log == false) run per-frame
+        // while building UI and must stay silent even with tracing on.
+        bool trace = log && TraceEnabled;
+        if (trace)
+        {
+            TraceLine($"{context.Hook} fires - " + string.Join(", ", participants.Select(p =>
+                p.Weapon == null ? $"{p.Unit.Name} ({p.Seat})" : $"{p.Unit.Name} ({p.Seat}, {p.Weapon.Name})")));
+        }
+
         // Shared across the whole event so the same rule reached through several carriers
         // (unit + weapon, two identical weapons, or the unit walked once per weapon
         // participant) fires once per bearer.
@@ -196,7 +205,8 @@ public sealed class RuleEvaluator
         foreach ((IUnit unit, ERuleSeat seat, IWeapon? weapon, IReadOnlyList<IModel>? models,
             EModelRuleScope modelScope) in participants)
         {
-            CollectTagged(unit, seat, weapon, models, modelScope, context, tagged, seen, grantsToConsume);
+            CollectTagged(unit, seat, weapon, models, modelScope, context, tagged, seen, grantsToConsume,
+                trace);
         }
 
         var suppressedRuleNames = tagged
@@ -220,6 +230,15 @@ public sealed class RuleEvaluator
             {
                 // Dropped by a suppressor — emit no log line (logging happens post-suppression,
                 // so a cancelled op never prints).
+                if (trace)
+                {
+                    string suppressors = string.Join(", ", tagged
+                        .Where(s => s.Op is RuleOperation.SuppressRule sup
+                            && sup.RuleName == t.Origin.Definition.Name)
+                        .Select(s => s.Origin.RequestedName).Distinct());
+                    TraceLine($"{t.Bearer.Name}'s {t.Origin.RequestedName} " +
+                        $"{t.Op.GetType().Name} suppressed by {suppressors}");
+                }
                 continue;
             }
 
@@ -254,8 +273,10 @@ public sealed class RuleEvaluator
         var seen = new DedupState();
         foreach ((IUnit unit, ERuleSeat seat) in participants)
         {
+            // trace: false — this walk only exists to find spendable grants; the live evaluation that
+            // preceded it already narrated the hook.
             CollectTagged(unit, seat, weapon: null, models: null, EModelRuleScope.AnyOwner, context, tagged,
-                seen, grantsToConsume);
+                seen, grantsToConsume, trace: false);
         }
 
         SpendGrants(grantsToConsume);
@@ -293,20 +314,20 @@ public sealed class RuleEvaluator
     /// </summary>
     private void CollectTagged(IUnit unit, ERuleSeat seat, IWeapon? weapon, IReadOnlyList<IModel>? models,
         EModelRuleScope modelScope, IHookContext context, List<TaggedOperation> sink, DedupState seen,
-        List<(IUnit Unit, Token Grant)>? grantsToConsume)
+        List<(IUnit Unit, Token Grant)>? grantsToConsume, bool trace)
     {
-        CollectFromRules(unit.RuleDefinitions, unit, carryingWeapon: null, seat, context, sink, seen);
+        CollectFromRules(unit.RuleDefinitions, unit, carryingWeapon: null, seat, context, sink, seen, trace);
 
         // Token-granted rules (auras, "gains rule X" buffs): the unit behaves as if it has each rule
         // named by a RuleGrant token. Walked through the same per-rule path as static attachments, so
         // they honour the firing seat/condition and share the dedup (an argument-less rule granted on
         // top of a static copy fires once) and suppression first-pass. Bearer stays the unit, never a
         // weapon — grants live on unit token containers.
-        CollectGrantedRules(unit, seat, context, sink, seen, grantsToConsume);
+        CollectGrantedRules(unit, seat, context, sink, seen, grantsToConsume, trace);
 
         if (weapon != null)
         {
-            CollectFromRules(weapon.RuleDefinitions, unit, weapon, seat, context, sink, seen);
+            CollectFromRules(weapon.RuleDefinitions, unit, weapon, seat, context, sink, seen, trace);
         }
 
         // #006 slice F / #093: per-model rules for the model(s) this hook involves, composed per the
@@ -319,13 +340,15 @@ public sealed class RuleEvaluator
         {
             if (modelScope == EModelRuleScope.AllOwners)
             {
-                CollectFromRules(RulesSharedByAll(models), unit, carryingWeapon: null, seat, context, sink, seen);
+                CollectFromRules(RulesSharedByAll(models), unit, carryingWeapon: null, seat, context, sink,
+                    seen, trace);
             }
             else
             {
                 foreach (IModel model in models)
                 {
-                    CollectFromRules(model.RuleDefinitions, unit, carryingWeapon: null, seat, context, sink, seen);
+                    CollectFromRules(model.RuleDefinitions, unit, carryingWeapon: null, seat, context, sink,
+                        seen, trace);
                 }
             }
         }
@@ -373,12 +396,22 @@ public sealed class RuleEvaluator
         a.Definition == b.Definition && a.Arguments.SequenceEqual(b.Arguments);
 
     private void CollectFromRules(IReadOnlyList<ResolvedRule> rules, IUnit unit, IWeapon? carryingWeapon,
-        ERuleSeat seat, IHookContext context, List<TaggedOperation> sink, DedupState seen)
+        ERuleSeat seat, IHookContext context, List<TaggedOperation> sink, DedupState seen, bool trace)
     {
         foreach (ResolvedRule rule in rules)
         {
+            // #163 — narrate only rules that actually listen at this hook+seat; walking every rule
+            // past every hook would drown the trace in non-events.
+            bool traceThisRule = trace && rule.Definition.Passive
+                .Any(e => e.HookID == context.Hook && e.Seat == seat);
+
             if (!seen.ShouldFire(unit, rule))
             {
+                if (traceThisRule)
+                {
+                    TraceLine($"{unit.Name}'s {rule.RequestedName}: duplicate instance skipped " +
+                        "(multiple instances of the same rule do not stack)");
+                }
                 continue;
             }
 
@@ -394,11 +427,24 @@ public sealed class RuleEvaluator
 
                 if (!entry.Condition.Evaluate(invocation))
                 {
+                    if (traceThisRule)
+                    {
+                        TraceLine($"{unit.Name}'s {rule.RequestedName} at {context.Hook}/{seat}: " +
+                            $"condition {DescribeCondition(entry.Condition)} not met");
+                    }
                     continue;
                 }
 
                 var produced = new List<RuleOperation>();
                 entry.Effect.Apply(invocation, produced);
+
+                if (traceThisRule)
+                {
+                    TraceLine($"{unit.Name}'s {rule.RequestedName} at {context.Hook}/{seat}: " +
+                        (produced.Count == 0
+                            ? $"condition passed but {entry.Effect.GetType().Name} produced no operations"
+                            : $"fired -> {string.Join(", ", produced.Select(op => op.GetType().Name))}"));
+                }
 
                 foreach (RuleOperation op in produced)
                 {
@@ -418,7 +464,7 @@ public sealed class RuleEvaluator
     /// </summary>
     private void CollectGrantedRules(IUnit unit, ERuleSeat seat, IHookContext context,
         List<TaggedOperation> sink, DedupState seen,
-        List<(IUnit Unit, Token Grant)>? grantsToConsume)
+        List<(IUnit Unit, Token Grant)>? grantsToConsume, bool trace)
     {
         if (_ruleResolver == null)
         {
@@ -467,7 +513,7 @@ public sealed class RuleEvaluator
 
         if (granted != null)
         {
-            CollectFromRules(granted, unit, carryingWeapon: null, seat, context, sink, seen);
+            CollectFromRules(granted, unit, carryingWeapon: null, seat, context, sink, seen, trace);
         }
     }
 
@@ -496,6 +542,21 @@ public sealed class RuleEvaluator
             : $"{t.Bearer.Name}'s {t.Weapon.Name}'s {t.Origin.RequestedName}";
         _log?.Log($"{carrier} {t.Op.Describe()}.");
     }
+
+    // #163 — dispatch tracing. Lines ride the Debug log channel (hidden in the GUI unless the console's
+    // Debug toggle is on; printed as normal [LOG] lines headless), gated by the process-wide
+    // RuleTrace.Enabled switch the app sets via --trace-rules or the GUI Debug toggle.
+    private bool TraceEnabled => RuleTrace.Enabled && _log != null;
+
+    private void TraceLine(string message) => _log?.LogDebug($"trace: {message}");
+
+    private static string DescribeCondition(Condition condition) => condition switch
+    {
+        Condition.And and => $"And({DescribeCondition(and.Left)}, {DescribeCondition(and.Right)})",
+        Condition.Or or => $"Or({DescribeCondition(or.Left)}, {DescribeCondition(or.Right)})",
+        Condition.Not not => $"Not({DescribeCondition(not.Inner)})",
+        _ => condition.GetType().Name,
+    };
 
     /// <summary>
     /// A produced operation paired with the rule that produced it, the unit carrying that rule,
@@ -591,17 +652,32 @@ public sealed class RuleEvaluator
 
                 if (!ability.AvailableWhen.Evaluate(invocation))
                 {
+                    if (TraceEnabled)
+                    {
+                        TraceLine($"{unit.Name}'s {rule.RequestedName} ability at {context.Hook}: " +
+                            $"not offered (availability {DescribeCondition(ability.AvailableWhen)} not met)");
+                    }
                     continue;
                 }
 
                 if (!IsAffordable(ability.Cost, unit, rule.RequestedName))
                 {
+                    if (TraceEnabled)
+                    {
+                        TraceLine($"{unit.Name}'s {rule.RequestedName} ability at {context.Hook}: " +
+                            $"not offered (cannot pay {ability.Cost.GetType().Name})");
+                    }
                     continue;
                 }
 
                 if (!seen.Add((rule.Definition, ability)))
                 {
                     continue;
+                }
+
+                if (TraceEnabled)
+                {
+                    TraceLine($"{unit.Name}'s {rule.RequestedName} ability at {context.Hook}: offered");
                 }
 
                 offers.Add(new AbilityOffer(unit, rule.RequestedName, ability));

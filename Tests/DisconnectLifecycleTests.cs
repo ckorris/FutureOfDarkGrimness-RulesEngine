@@ -1,4 +1,5 @@
 using FDG.Data;
+using FDG.GameModel;
 using FDG.Network.Connection;
 using FDG.Players;
 using FDG.StageResolution;
@@ -80,6 +81,41 @@ namespace FDG.Tests
             Assert.That(pending.IsFaulted, Is.True);
             Assert.That(pending.Exception!.InnerException,
                 Is.TypeOf<RequestMessageSender.PlayerDisconnectedException>());
+        }
+
+        // When the mid-game disconnect ends the game, the player-facing message names the departed player
+        // and reads like a normal event, not an engine fault / stack trace.
+        [Test]
+        public void DescribePlayerLeft_NamesTheDepartedPlayer()
+        {
+            var store = BuildStore();
+            var playerID = new PlayerID(Guid.NewGuid());
+            var connectionID = new ConnectionID(Guid.NewGuid());
+            var slot = new PlayerSlot(0, 1, playerID, null, store);
+            var bus = new RequestSystemTests.MockMessageBusHost();
+            slot.AssignPlayerController(new NetworkPlayerController("Mrs. Client", playerID, connectionID, bus, store));
+            var manager = new PlayerSlotManager(new[] { slot });
+
+            string message = FDGServer.DescribePlayerLeft(manager, playerID);
+
+            Assert.That(message, Does.Contain("Mrs. Client"));
+            Assert.That(message, Does.Contain("game has ended"));
+            Assert.That(message, Does.Not.Contain("Exception"),
+                "a player leaving must not read like an engine fault.");
+        }
+
+        // If the departed player's slot is already gone, messaging falls back to a generic label instead of
+        // throwing a second exception out of the end-of-game handler.
+        [Test]
+        public void DescribePlayerLeft_UnknownPlayer_FallsBackGracefully()
+        {
+            var store = BuildStore();
+            var slot = new PlayerSlot(0, 1, new PlayerID(Guid.NewGuid()), null, store);
+            var manager = new PlayerSlotManager(new[] { slot });
+
+            string message = FDGServer.DescribePlayerLeft(manager, new PlayerID(Guid.NewGuid()));
+
+            Assert.That(message, Is.EqualTo("A player left the game. The game has ended."));
         }
 
         // A disconnect for a connection that maps to no game slot must not fail anyone's requests.

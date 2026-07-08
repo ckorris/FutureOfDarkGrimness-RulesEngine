@@ -3,6 +3,7 @@ using FDG.Data.Containers;
 using FDG.MessageBus;
 using FDG.Network.Connection;
 using FDG.Network.Messages.DataMessages;
+using FDG.SaveLoad;
 
 namespace FDG.Network.Synchronization
 {
@@ -49,10 +50,14 @@ namespace FDG.Network.Synchronization
 
         private void OnReceivedAllDataMessage(AddAllDataMessage allDataMessage)
         {
-            foreach (ReferenceJsonValuePair refValuePair in allDataMessage.AllData)
-            {
-                _gameDataStore.CreateFromReferenceAndJson(refValuePair.DataReference, refValuePair.JsonValue);
-            }
+            // The catch-up snapshot lists entries in store (registration) order, which is not dependency
+            // order - e.g. ModelData carries a DataBinding<Float2> facing but Float2 is registered last
+            // (#150). Replaying with the shared StoreReplay pipeline retries forward references, rehydrates
+            // [JsonIgnore] rule blobs (#095) and rewires wound subscriptions - identical to save/load, so a
+            // networked client ends up with the same populated, rule-carrying store the host has. A naive
+            // single pass instead threw IsNotAssigned on the first forward reference and left the client
+            // store empty, which then failed the first deploy SelectionRequest<UnitData>.
+            StoreReplay.Rebuild(_gameDataStore, allDataMessage.AllData);
         }
     }
 }

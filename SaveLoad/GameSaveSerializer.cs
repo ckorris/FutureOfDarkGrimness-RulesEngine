@@ -56,86 +56,12 @@ namespace FDG.SaveLoad
 
             GameDataStore store = GameDataStore.CreateFromTypeMap(typeMap);
 
-            ReplayEntries(store, file.Entries);
-            RewireSubscriptions(store);
-            RehydrateRuleDefinitions(store);
+            // Replay entries (with forward-reference retry), rehydrate [JsonIgnore] rule blobs, and rewire
+            // the wound subscriptions the JSON constructors skip. Shared with the full-state network sync
+            // (GameDataUpdateReceiver) so both rebuild paths behave identically. See StoreReplay.
+            StoreReplay.Rebuild(store, file.Entries);
 
             return store;
-        }
-
-        // Replay every entry, deferring any whose DataBinding fields can't yet resolve and retrying
-        // them on the next pass. A failed CreateFromReferenceAndJson writes nothing (it throws while
-        // deserializing, before the store is touched), so deferred entries are safe to retry.
-        private static void ReplayEntries(GameDataStore store, List<ReferenceJsonValuePair> entries)
-        {
-            List<ReferenceJsonValuePair> pending = new List<ReferenceJsonValuePair>(entries);
-
-            while (pending.Count > 0)
-            {
-                List<ReferenceJsonValuePair> stillPending = new List<ReferenceJsonValuePair>();
-                Exception? lastError = null;
-
-                foreach (ReferenceJsonValuePair pair in pending)
-                {
-                    try
-                    {
-                        store.CreateFromReferenceAndJson(pair.DataReference, pair.JsonValue);
-                    }
-                    catch (Exception ex)
-                    {
-                        lastError = ex;
-                        stillPending.Add(pair);
-                    }
-                }
-
-                if (stillPending.Count == pending.Count)
-                {
-                    throw new InvalidOperationException(
-                        $"Save load stalled with {stillPending.Count} unresolved entr(ies); a referenced " +
-                        "value is missing or the references are cyclic.", lastError);
-                }
-
-                pending = stillPending;
-            }
-        }
-
-        private static void RewireSubscriptions(GameDataStore store)
-        {
-            if (store.IsTypeAssigned<UnitData>())
-            {
-                foreach (UnitData unit in store.GetAllValues<UnitData>())
-                {
-                    unit.RewireModelWoundSubscriptions();
-                }
-            }
-        }
-
-        // #095: RuleDefinitions is [JsonIgnore] on every carrier; each persists its attached rules as an
-        // STJ blob (RuleAttachmentPersistence) which we replay back onto the live lists here, so a resumed
-        // game carries the same unit/model/weapon rules it was saved with. Restores rule OBJECTS only —
-        // creation-time effects (e.g. Tough's max-wounds) are NOT re-applied; those stay gated to
-        // fresh-game creation in FDGServer, so a resume neither loses the rule nor doubles its effect.
-        private static void RehydrateRuleDefinitions(GameDataStore store)
-        {
-            if (store.IsTypeAssigned<UnitData>())
-            {
-                foreach (UnitData unit in store.GetAllValues<UnitData>())
-                {
-                    unit.RehydrateRules();
-                }
-            }
-
-            if (store.IsTypeAssigned<ModelData>())
-            {
-                foreach (ModelData model in store.GetAllValues<ModelData>())
-                {
-                    model.RehydrateRules();
-                    foreach (Weapon weapon in model.Weapons)
-                    {
-                        weapon.RehydrateRules();
-                    }
-                }
-            }
         }
 
         // Resolve a saved type-map entry's identity: a stable ID first (#070), then a Type.FullName fallback

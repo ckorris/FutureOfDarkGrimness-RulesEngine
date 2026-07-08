@@ -173,8 +173,41 @@ namespace FDG.Tests
                 "the lone Tough model survives a sub-lethal hit.");
         }
 
+        // #183 finding-2 — Resistance's two thresholds through the REAL stage: the base 6+ on weapon
+        // wounds, and the spell facet's 2+ ("if the wounds were from a spell, they are ignored on a 2+
+        // instead") when the metadata is flagged IsSpell. ProbabilisticDiceRoller makes the per-wound
+        // ignore roll deterministic and fractional: 2 wounds keep 2*(5/6) on a 6+ but only 2*(1/6) on a 2+.
+        [Test]
+        public async Task ResistanceDefender_WeaponWounds_IgnoredOnSixPlus()
+        {
+            _ctx = new WoundTestContext(_store, _requester, new ProbabilisticDiceRoller());
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 5);
+            AttachResistance(defender);
+
+            await RunStage(attacker, defender, failedSaves: 2);
+
+            Assert.That(_requester.Captured!.TotalWoundsToAssign, Is.EqualTo(2f - 2f / 6f).Within(0.001f),
+                "weapon wounds: each ignored only on a 6+, so 1/6 of the 2 wounds are dropped.");
+        }
+
+        [Test]
+        public async Task ResistanceDefender_SpellWounds_IgnoredOnTwoPlus()
+        {
+            _ctx = new WoundTestContext(_store, _requester, new ProbabilisticDiceRoller());
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 5);
+            AttachResistance(defender);
+
+            await RunStage(attacker, defender, failedSaves: 2, isSpell: true);
+
+            Assert.That(_requester.Captured!.TotalWoundsToAssign, Is.EqualTo(2f / 6f).Within(0.001f),
+                "spell wounds: the IsSpell-gated 2+ entry wins the sink's best-threshold fold, " +
+                "so 5/6 of the 2 wounds are dropped.");
+        }
+
         private async Task<CombatMetadata> RunStage(DataBinding<UnitData> attacker, DataBinding<UnitData> defender,
-            int failedSaves, bool isMelee = false)
+            int failedSaves, bool isMelee = false, bool isSpell = false)
         {
             var layer = new NoOpLayer<ICombatMetadata>();
             var stage = new AssignWoundsStage<ICombatMetadata>(_ctx, layer);
@@ -182,7 +215,7 @@ namespace FDG.Tests
 
             var weapon = new Weapon("Test", rangeInches: 48f, attacks: 1, armorPenetration: 0);
             var metadata = new CombatMetadata(_ctx, attacker, defender, weapon, weaponCount: 1,
-                attackerMoved: false, isMelee: isMelee);
+                attackerMoved: false, isMelee: isMelee, isSpell: isSpell);
 
             // One FailedSaveInfo per wound (SaveCount == its dice TotalRolls == 1).
             var failedList = new List<FailedSaveInfo>();
@@ -205,6 +238,11 @@ namespace FDG.Tests
         private static void AttachShred(DataBinding<UnitData> unit)
         {
             unit.GetValue().AttachRuleDefinition(new ResolvedRule("Shred", CoreRuleCatalog.Shred));
+        }
+
+        private static void AttachResistance(DataBinding<UnitData> unit)
+        {
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Resistance", CoreRuleCatalog.Resistance));
         }
 
         private DataBinding<UnitData> MakeUnit(int modelCount, int woundsPerModel = 1)

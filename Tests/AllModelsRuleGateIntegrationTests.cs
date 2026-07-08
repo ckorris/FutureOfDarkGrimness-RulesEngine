@@ -5,6 +5,7 @@ using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 using FDG.SaveLoad;
 using NUnit.Framework;
 
@@ -70,24 +71,62 @@ namespace FDG.Tests
                 "the all-models check ignores dead models, so losing the ruleless hero restores Stealth.");
         }
 
+        // #183 — unit-held grants cover the joined hero too: a buff cast on the combined unit (or an aura)
+        // targets every current model, so it must not be broken by the hero the way a host STATIC rule is.
+        [Test]
+        public void Stealth_GrantedToUnit_CoversJoinedHero_Applies()
+        {
+            UnitData defender = MakeStealthUnitWithHero(heroHasStealth: false);
+            GrantStealth(defender);
+
+            Assert.That(StealthApplies(defender), Is.True,
+                "a unit-held Stealth grant covers the joined hero, so the gate passes despite the hero " +
+                "lacking the rule statically.");
+        }
+
+        // #183 — the aura-hero scenario: NOBODY has Stealth statically; the whole unit (hero included) has
+        // it only via a RuleGrant token, the way an aura the hero itself brought would grant it. The granted
+        // rule must both be collected (resolver) and pass its own all-models gate.
+        [Test]
+        public void Stealth_PureGrant_NoStaticCopyAnywhere_Applies()
+        {
+            UnitData defender = MakeStealthUnitWithHero(heroHasStealth: false, hostHasStealth: false);
+            GrantStealth(defender);
+
+            var resolver = new RuleResolver();
+            resolver.Register(CoreRuleCatalog.Stealth);
+            var evaluator = new RuleEvaluator(new FixedDiceRoller(1), null, resolver);
+
+            Assert.That(StealthApplies(defender, evaluator), Is.True,
+                "a granted-only Stealth applies to a hero-joined unit: the grant covers every living model.");
+        }
+
         // --- harness ---
 
         // True if CoreRuleCatalog.Stealth produces its -1-to-hit modifier for this defender at > 9".
-        private bool StealthApplies(UnitData defender)
+        private bool StealthApplies(UnitData defender, RuleEvaluator? evaluator = null)
         {
             UnitData attacker = MakeUnit(modelCount: 1);
             var context = new HitRollModifierContext(attacker, defender, DistanceInches: 12f);
-            IReadOnlyList<RuleOperation> ops = _evaluator.Evaluate(defender, ERuleSeat.Subject, context);
+            IReadOnlyList<RuleOperation> ops =
+                (evaluator ?? _evaluator).Evaluate(defender, ERuleSeat.Subject, context);
             return ops.OfType<RuleOperation.ApplyRollModifier>()
                 .Any(op => op.Roll == ERollKind.Hit && op.Delta == -1);
         }
 
+        private static void GrantStealth(UnitData unit) =>
+            unit.Tokens.AddToken(new Token(TokenType.RuleGrant, 1, new TokenClearTrigger.ManualOnly(),
+                Payload: new TokenPayload.RuleGrant("Stealth", ELifetime.UntilEndOfGame)));
+
         // A Stealth host unit (Stealth on the unit) merged with a 1-model hero that either does or doesn't
         // carry Stealth on its own. Mirrors HeroPerModelRuleIntegrationTests' merge harness.
-        private UnitData MakeStealthUnitWithHero(bool heroHasStealth)
+        private UnitData MakeStealthUnitWithHero(bool heroHasStealth, bool hostHasStealth = true)
         {
             UnitData host = MakeUnit(modelCount: 3);
-            host.AttachRuleDefinition(new ResolvedRule("Stealth", CoreRuleCatalog.Stealth));
+            if (hostHasStealth)
+            {
+                host.AttachRuleDefinition(new ResolvedRule("Stealth", CoreRuleCatalog.Stealth));
+            }
 
             UnitData hero = MakeUnit(modelCount: 1);
             hero.AttachRuleDefinition(new ResolvedRule("Hero", CoreRuleCatalog.Hero));

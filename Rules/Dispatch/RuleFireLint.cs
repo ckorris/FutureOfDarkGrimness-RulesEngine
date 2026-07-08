@@ -413,8 +413,11 @@ public static class RuleFireLint
             case EHookID.Shooting_OnSaveRollComplete:
                 foreach (bool isMelee in new[] { false, true })
                 {
+                    // isSpell only varies for the shooting-shaped use — the spell pipeline never sets IsMelee.
                     yield return new SaveRollCompleteContext(attacker, defender, OneOfEachFace(), isMelee);
                 }
+                yield return new SaveRollCompleteContext(attacker, defender, OneOfEachFace(),
+                    IsMelee: false, IsSpell: true);
                 break;
             case EHookID.Shooting_OnPreApplyWound:
                 yield return new PreApplyWoundContext(attacker, defender);

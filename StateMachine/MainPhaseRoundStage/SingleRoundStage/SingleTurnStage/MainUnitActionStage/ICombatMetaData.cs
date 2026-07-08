@@ -25,6 +25,10 @@ namespace FDG
         /// <summary>True when the attacker is charging (the charger's swing, not a strike-back); drives Thrust.</summary>
         public bool IsCharging { get; }
 
+        /// <summary>True when the hits come from a damage spell (ResolveSpellDamageStage) rather than a
+        /// weapon; drives spell-facet save-side rules (Resistance's ignore-on-2+).</summary>
+        public bool IsSpell { get; }
+
         //TODO: Next value can replace everything after?
         public void AddResult<TResult>(TResult result);
 
@@ -49,12 +53,14 @@ namespace FDG
 
         public bool IsCharging { get; private set; }
 
+        public bool IsSpell { get; private set; }
+
 
         private QueryableResults _queryableResults = new QueryableResults();
 
         public CombatMetadata(IGameContext gameContext, DataBinding<UnitData> attackingUnit,
             DataBinding<UnitData> defendingUnit, IWeapon weaponType, int weaponCount,
-            bool attackerMoved = false, bool isMelee = false, bool isCharging = false)
+            bool attackerMoved = false, bool isMelee = false, bool isCharging = false, bool isSpell = false)
         {
             GameContext = gameContext;
             AttackingUnit = attackingUnit;
@@ -64,6 +70,7 @@ namespace FDG
             AttackerMoved = attackerMoved;
             IsMelee = isMelee;
             IsCharging = isCharging;
+            IsSpell = isSpell;
         }
 
         public void AddResult<TResult>(TResult result)

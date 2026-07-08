@@ -37,7 +37,7 @@ namespace FDG.Stages
                 ResolveSpellHits(run.Caster.GetValue(), target.GetValue(), run.BaseHits, run.Weapon);
 
             CombatMetadata metadata = new CombatMetadata(GameContext, run.Caster, target,
-                run.Weapon, weaponCount: 1, isMelee: false);
+                run.Weapon, weaponCount: 1, isMelee: false, isSpell: true);
 
             RollToHitResults hitResults = new RollToHitResults(hitGroups, new List<FailedHitInfo>());
             hitResults.SaveModifier = saveModifier;

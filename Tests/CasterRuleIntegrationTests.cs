@@ -278,6 +278,31 @@ namespace FDG.Tests
                 "Shielded must not modify spell saves; the face-4 roll fails the AP(1) save needing a 5");
         }
 
+        // #183 finding-2 — Resistance's spell facet end-to-end: "if the wounds were from a spell, they are
+        // ignored on a 2+ instead" of the base 6+. Every roll is a fixed face 4: the cast (needs 2) succeeds,
+        // the AP(1) save (needs 5) fails and deals 1 wound, and the wound-ignore roll's face 4 clears the
+        // spell threshold 2 — but would fail the weapon threshold 6 — so the enemy survives only because
+        // ResolveSpellDamageStage flags its metadata IsSpell and the gated 2+ entry wins the sink fold.
+        [Test]
+        public async Task CastSpellStage_DamageSpell_ResistanceIgnoresSpellWoundsOnTwoPlus()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester(), new FixedFaceDiceRoller(4));
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
+                new[] { DamageSpell("Bolt", threshold: 2, hits: 1, armorPenetration: 1) }, new Position(10f, 10f));
+            DataBinding<UnitData> enemy = MakeEnemyUnit(new PlayerID(System.Guid.NewGuid()), new Position(12f, 10f));
+            enemy.GetValue().AttachRuleDefinition(new ResolvedRule("Resistance", CoreRuleCatalog.Resistance));
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Assert.That(caster.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(0),
+                "the cast actually happened (tokens spent) - the survival below is the ignore, not a whiffed cast");
+            Assert.That(enemy.GetValue().GetIsAlive(), Is.True,
+                "the face-4 ignore roll clears Resistance's 2+ spell threshold, so the spell wound is ignored");
+        }
+
         // #033 Slice A — pre-save hit rules now fire on spell damage. A Blast(3) spell multiplies its 2 base
         // hits to 6 (capped at the 6-model target), and AP(6) auto-fails every save, so the unit is wiped —
         // without the hit-complete fold only the 2 base hits would land (killing 2). Uses FixedFaceDiceRoller

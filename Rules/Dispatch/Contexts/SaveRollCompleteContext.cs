@@ -15,10 +15,14 @@ namespace FDG.Rules.Dispatch.Contexts
     /// (the save flow is shared) so combat-kind-gated save-side rules (e.g. a
     /// "when shooting" Shred/Bane/Unstoppable variant) can read <c>Not(IsMelee)</c>
     /// — the same threading <see cref="HitRollCompleteContext"/> has on the hit side.
+    /// <see cref="IsSpell"/> marks wounds resolved through the spell-damage pipeline
+    /// (spell-facet rules like Resistance's ignore-on-2+ read <c>IsSpell</c>), the
+    /// same flag <see cref="HitRollCompleteContext"/> carries on the hit side.
     /// </summary>
     public sealed record SaveRollCompleteContext(
-        IUnit Attacker, IUnit Defender, IDiceResults UnmodifiedSaveRolls, bool IsMelee = false)
-        : IHookContext, IHasTarget, IHasUnmodifiedSaveRolls, IHasCombatKind
+        IUnit Attacker, IUnit Defender, IDiceResults UnmodifiedSaveRolls, bool IsMelee = false,
+        bool IsSpell = false)
+        : IHookContext, IHasTarget, IHasUnmodifiedSaveRolls, IHasCombatKind, IHasIsSpell
     {
         public EHookID Hook => EHookID.Shooting_OnSaveRollComplete;
 

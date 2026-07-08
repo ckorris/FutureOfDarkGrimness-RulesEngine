@@ -47,6 +47,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(IsMelee), "isMelee")]
 [JsonDerivedType(typeof(IsCharging), "isCharging")]
 [JsonDerivedType(typeof(IsNotSpell), "isNotSpell")]
+[JsonDerivedType(typeof(IsSpell), "isSpell")]
 public abstract record Condition
 {
 
@@ -87,12 +88,15 @@ public abstract record Condition
     /// says apply only if the whole unit has them (Stealth, Regeneration, Fearless): a joined hero that
     /// doesn't natively carry the rule breaks it for the unit, and a lone hero carrying it doesn't grant it
     /// to the unit. A model "has" the rule if it's on the model's own <see cref="IModel.RuleDefinitions"/>,
-    /// or — for a native (non-joined) model — on the unit's <see cref="IUnit.RuleDefinitions"/>; a joined
-    /// hero (<see cref="IUnit.JoinedHeroModelId"/>) uses only its own rules, since the merge relocated the
-    /// hero's rules onto the hero model and OPR heroes don't inherit the host unit's rules. Matches by rule
-    /// definition (these rules are argument-less); a future (X) variant needing arg-awareness would extend
-    /// this. Self-referential — reads the firing rule's own identity, so one condition serves every
-    /// all-models rule.
+    /// or — for a native (non-joined) model — STATICALLY on the unit's <see cref="IUnit.RuleDefinitions"/>;
+    /// a joined hero (<see cref="IUnit.JoinedHeroModelId"/>) doesn't count the host's static rules, since
+    /// the merge relocated the hero's own rules onto the hero model and OPR heroes don't inherit the host
+    /// unit's rules. Unit-held GRANTS (aura / "gains rule X" tokens) count for EVERY living model, hero
+    /// included (#183): every grant in the vocabulary targets the whole current unit — auras say "this
+    /// model and its unit", buff spells pick a unit — so a hero that brings its own aura, or a buff cast on
+    /// the combined unit, must not break the gate. Matches by rule definition (these rules are
+    /// argument-less); a future (X) variant needing arg-awareness would extend this. Self-referential —
+    /// reads the firing rule's own identity, so one condition serves every all-models rule.
     /// </summary>
     public sealed record AllModelsHaveThisRule : Condition
     {
@@ -106,9 +110,10 @@ public abstract record Condition
 
             IUnit unit = invocation.Bearer;
             ModelID? heroModelId = unit.JoinedHeroModelId;
-            // A static unit rule OR an aura / "gains rule X" grant (both project unit-wide, no radius) means
-            // every NATIVE model has the rule; only the joined hero can diverge.
-            bool unitLevel = UnitHasStaticOrGrantedRule(unit, definition);
+            // A static unit rule covers every NATIVE model; a grant covers every model including a joined
+            // hero (grants target the current combined unit, static rules predate the hero's arrival).
+            bool unitStatic = unit.RuleDefinitions.Any(r => r.Definition == definition);
+            bool unitGranted = UnitHasGrantedRule(unit, definition);
 
             foreach (IModel model in unit.Models)
             {
@@ -119,7 +124,8 @@ public abstract record Condition
 
                 bool isJoinedHero = heroModelId is ModelID hid && model.ID == hid;
                 bool hasRule = model.RuleDefinitions.Any(r => r.Definition == definition)
-                    || (!isJoinedHero && unitLevel);
+                    || unitGranted
+                    || (!isJoinedHero && unitStatic);
 
                 if (!hasRule)
                 {
@@ -130,16 +136,11 @@ public abstract record Condition
             return true;
         }
 
-        // True if the unit carries the rule as a static attachment or holds an aura/"gains rule X" grant for
-        // it. Granted rules are matched by canonical name — the alias-aware resolver the dispatcher uses for
-        // read-back isn't available inside a condition, and core auras grant the canonical name.
-        private static bool UnitHasStaticOrGrantedRule(IUnit unit, SpecialRuleDefinition definition)
+        // True if the unit holds an aura/"gains rule X" grant for the rule. Granted rules are matched by
+        // canonical name — the alias-aware resolver the dispatcher uses for read-back isn't available
+        // inside a condition, and core auras grant the canonical name.
+        private static bool UnitHasGrantedRule(IUnit unit, SpecialRuleDefinition definition)
         {
-            if (unit.RuleDefinitions.Any(r => r.Definition == definition))
-            {
-                return true;
-            }
-
             foreach (Token token in unit.Tokens.GetAllTokens(TokenType.RuleGrant))
             {
                 if (token.Payload is TokenPayload.RuleGrant grant
@@ -331,5 +332,15 @@ public abstract record Condition
     public sealed record IsNotSpell : CapabilityCondition<IHasIsSpell>
     {
         protected override bool EvaluateCore(IHasIsSpell context) => !context.IsSpell;
+    }
+
+    /// <summary>
+    /// True when the hits being resolved DO come from a spell — <see cref="IsNotSpell"/>'s positive
+    /// twin. Gates rules with a spells-only facet (Resistance's "if the wounds were from a spell, they
+    /// are ignored on a 2+ instead").
+    /// </summary>
+    public sealed record IsSpell : CapabilityCondition<IHasIsSpell>
+    {
+        protected override bool EvaluateCore(IHasIsSpell context) => context.IsSpell;
     }
 }

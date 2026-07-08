@@ -893,9 +893,13 @@ public static class CoreRuleCatalog
     // Defensive wound-ignore + AP corpus rules (reuse IgnoreWoundOnRoll / save-modifier primitives) ------
 
     /// <summary>
-    /// Resistance: when this unit takes wounds, each is ignored on a die roll of 6+. Regeneration's
-    /// wound-ignore at a higher threshold — <see cref="Effect.IgnoreWoundOnRoll"/>(6) on the defender
-    /// (Subject) at <see cref="EHookID.Shooting_OnSaveRollComplete"/>.
+    /// Resistance: when this unit takes wounds, each is ignored on a die roll of 6+ — or on a 2+ if the
+    /// wounds came from a spell (corpus: "If the wounds were from a spell, then they are ignored on a 2+
+    /// instead"). Two <see cref="Effect.IgnoreWoundOnRoll"/> entries on the defender (Subject) at
+    /// <see cref="EHookID.Shooting_OnSaveRollComplete"/>: an unconditional 6+ and a
+    /// <see cref="Condition.IsSpell"/>-gated 2+; on spell damage both fire and the
+    /// <see cref="WoundIgnoreSink"/> keeps the best (lowest) threshold, yielding exactly the
+    /// "2+ instead" reading.
     /// </summary>
     public static SpecialRuleDefinition Resistance { get; } = new SpecialRuleDefinition("Resistance",
         new[]
@@ -905,10 +909,15 @@ public static class CoreRuleCatalog
                 new Effect.IgnoreWoundOnRoll(MinRoll: 6),
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject),
+            new HookEntry(EHookID.Shooting_OnSaveRollComplete,
+                new Condition.IsSpell(),
+                new Effect.IgnoreWoundOnRoll(MinRoll: 2),
+                ELifetime.ThisAttack,
+                ERuleSeat.Subject),
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "Ignores each wound on a roll of 6+.");
+        Description: "Ignores each wound on a roll of 6+ (2+ if the wounds came from a spell).");
 
     /// <summary> Protected: mechanically identical to <see cref="Resistance"/> — each wound ignored on a 6+. </summary>
     public static SpecialRuleDefinition Protected { get; } = new SpecialRuleDefinition("Protected",

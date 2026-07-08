@@ -21,6 +21,10 @@ namespace FDG.Network.Connection
 
         Task SendCommandToSingleClientAsync(ConnectionID client, ArraySegment<byte> data, bool isPooled);
 
+        // Forcibly drop a single client (QF2). Used to evict a rejected or un-greeted connection so an
+        // internet-exposed port doesn't leave port-scanners lingering on the roster's broadcast stream.
+        void DisconnectClient(ConnectionID client);
+
         void Stop();
 
     }
@@ -71,6 +75,11 @@ namespace FDG.Network.Connection
                         Debug.WriteLine($"Exception while accepting a client: {exception.Message}");
                         break;
                     }
+
+                    // Keepalive so a peer that dies silently over a WAN (crash / sleep / NAT mapping expiry)
+                    // is detected instead of looking alive forever, and NoDelay so a turn-based decision
+                    // isn't held up by Nagle + delayed-ACK (QF3).
+                    CommandProtocol.ConfigureSocket(client);
 
                     Guid guid = Guid.NewGuid();
                     ConnectionID connectionID = new ConnectionID(guid);
@@ -205,6 +214,23 @@ namespace FDG.Network.Connection
             }
         }
 
+
+        public void DisconnectClient(ConnectionID connectionID)
+        {
+            // Just close the socket; the client's read loop (HandleClientAsync) throws, hits its finally,
+            // and does the roster removal + OnClientDisconnected exactly as it does for a natural drop.
+            if (_connectedClients.TryGetValue(connectionID, out ClientConnection? connection))
+            {
+                try
+                {
+                    connection.Client.Close();
+                }
+                catch (Exception exception)
+                {
+                    Debug.WriteLine($"Exception while disconnecting client: {exception.Message}");
+                }
+            }
+        }
 
         public void Stop()
         {

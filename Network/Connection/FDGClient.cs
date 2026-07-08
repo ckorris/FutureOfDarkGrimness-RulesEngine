@@ -12,6 +12,11 @@ namespace FDG.Network.Connection
 
         event Action<ArraySegment<byte>>? OnMessageReceived;
 
+        // Fired exactly once when the connection to the host goes away - a clean host shutdown, a crash, or
+        // a network drop all funnel through Disconnect() (QF8). Lets the client surface "host lost" and
+        // return to the menu instead of sitting on a frozen board forever.
+        event Action? OnDisconnected;
+
         Task SendCommandToHost(ArraySegment<byte> command, bool isPooled);
 
         void Disconnect();
@@ -29,6 +34,8 @@ namespace FDG.Network.Connection
 
         public event Action<ArraySegment<byte>>? OnMessageReceived;
 
+        public event Action? OnDisconnected;
+
         public async Task<bool> ConnectAsync(IPAddress serverIP)
         {
             try
@@ -38,6 +45,9 @@ namespace FDG.Network.Connection
 
                 await _tcpClient.ConnectAsync(serverIP, CommandProtocol.TEMP_PORT)
                     .ConfigureAwait(false);
+
+                // Keepalive + NoDelay, matching the host side (QF3).
+                CommandProtocol.ConfigureSocket(_tcpClient);
 
                 _isConnected = true;
                 Debug.WriteLine("Connected to host.");
@@ -91,6 +101,8 @@ namespace FDG.Network.Connection
 
         public void Disconnect()
         {
+            // The early return makes Disconnect idempotent, so OnDisconnected fires exactly once even though
+            // several paths call it (read-loop finally, send failure, explicit disconnect).
             if (_isConnected == false)
             {
                 return;
@@ -108,6 +120,8 @@ namespace FDG.Network.Connection
             }
 
             Debug.WriteLine("Client disconnected.");
+
+            OnDisconnected?.Invoke();
         }
 
         private async Task ReceiveLoopAsync(CancellationToken cancellationToken)

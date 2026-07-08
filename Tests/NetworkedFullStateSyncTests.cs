@@ -112,6 +112,8 @@ namespace FDG.Tests
                 return Task.CompletedTask;
             }
 
+            public void DisconnectClient(ConnectionID clientId) { }
+
             public void Stop() { }
 
             internal void ReceiveFromClient(ArraySegment<byte> data) =>
@@ -123,6 +125,7 @@ namespace FDG.Tests
             public LoopbackHost? Host;
 
             public event Action<ArraySegment<byte>>? OnMessageReceived;
+            public event Action? OnDisconnected;
 
             public Task<bool> ConnectAsync(IPAddress serverIP) => Task.FromResult(true);
 
@@ -132,7 +135,7 @@ namespace FDG.Tests
                 return Task.CompletedTask;
             }
 
-            public void Disconnect() { }
+            public void Disconnect() => OnDisconnected?.Invoke();
 
             internal void Deliver(ArraySegment<byte> data) => OnMessageReceived?.Invoke(data);
         }

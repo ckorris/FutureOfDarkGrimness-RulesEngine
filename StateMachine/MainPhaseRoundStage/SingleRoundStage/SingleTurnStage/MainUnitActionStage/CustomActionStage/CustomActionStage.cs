@@ -46,6 +46,7 @@ namespace FDG.Stages
             IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator
                 .ResolveAbility(offer, new[] { bearer });
             OperationApplier.ApplyTokenOperations(ops);
+            await OperationExecutor.Execute(ops, new GameOperationServices(GameContext));
 
             GameContext.Log($"{bearer.Name} used {offer.RuleName}.");
 

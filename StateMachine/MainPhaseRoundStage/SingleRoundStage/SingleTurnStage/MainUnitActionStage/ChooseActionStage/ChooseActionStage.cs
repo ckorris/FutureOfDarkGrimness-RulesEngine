@@ -365,6 +365,13 @@ namespace FDG.Stages
         private bool GetCanCast(IUnitActionContext context, out string reasonIfCant)
         {
             IUnit unit = context.ActivatingUnit.GetValue();
+
+            if (TransportUtilities.IsEmbarked(unit))
+            {
+                reasonIfCant = "Embarked; disembark first.";
+                return false;
+            }
+
             int tokens = unit.Tokens.GetTokenCount(TokenType.SpellTokens);
             PlayerID player = context.ActivatingPlayer();
 

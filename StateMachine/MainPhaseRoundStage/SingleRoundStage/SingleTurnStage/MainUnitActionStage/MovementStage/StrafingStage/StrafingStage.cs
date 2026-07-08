@@ -83,8 +83,10 @@ namespace FDG.Stages
                     .ResolveAbility(offer, new[] { (IUnit)enemy.GetValue() });
 
                 // Apply the cost marker (the once-per-activation gate) via the shared token applier;
-                // OperationExecutor runs only ExecutableOperations, so it never applies cost tokens.
+                // OperationExecutor runs only ExecutableOperations, so it never applies cost tokens -
+                // both are needed to cover the full operation queue.
                 OperationApplier.ApplyTokenOperations(ops);
+                await OperationExecutor.Execute(ops, new GameOperationServices(GameContext));
 
                 int hits = ops.OfType<RuleOperation.InvokeDealHits>().Select(op => op.Count).FirstOrDefault();
                 if (hits > 0)

@@ -24,7 +24,7 @@ namespace FDG.Stages
             await context.Announce($"Round {context.RoundCount}", new TextColor(120, 200, 255, 255));
 
             // Caster units replenish their spell tokens at the top of every round (#033), including round 1.
-            GrantSpellTokens();
+            await GrantSpellTokens();
 
             // Ambush reserves may arrive from round 2 onward; so do Aircraft that flew off the table edge.
             if (context.RoundCount >= 2)
@@ -45,7 +45,7 @@ namespace FDG.Stages
         /// re-enters this stage each round); the resume path skips this stage, so a resumed game does not
         /// re-grant the round's tokens.
         /// </summary>
-        private void GrantSpellTokens()
+        private async Task GrantSpellTokens()
         {
             foreach (ArmyData army in GameContext.GameDataStore.GetAllValues<ArmyData>().ToList())
             {
@@ -61,6 +61,7 @@ namespace FDG.Stages
                     IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator.Evaluate(
                         unit, ERuleSeat.Actor, new RoundStartContext(unit), weapon: null, models: unit.Models);
                     OperationApplier.ApplyTokenOperations(ops);
+                    await OperationExecutor.Execute(ops, new GameOperationServices(GameContext));
 
                     int excess = unit.Tokens.GetTokenCount(TokenType.SpellTokens)
                         - GameWideConstants.MAX_SPELL_TOKENS;

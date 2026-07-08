@@ -86,10 +86,17 @@ namespace FDG.ArmyBuilding
             // Alien Hives text) would render as '?'. Fold every string VALUE in the document up front so all
             // imported text lands ASCII. Value-by-value via JsonNode, NOT on the raw text: folding a curly
             // double quote to '"' inside raw JSON would terminate the string and corrupt the document.
-            oprJson = AsciiFoldJsonValues(oprJson, warn);
-
-            OprBook opr = JsonSerializer.Deserialize<OprBook>(oprJson, ReadOpts)
-                ?? throw new InvalidOperationException("OPR army-book JSON did not deserialize.");
+            OprBook opr;
+            try
+            {
+                oprJson = AsciiFoldJsonValues(oprJson, warn);
+                opr = JsonSerializer.Deserialize<OprBook>(oprJson, ReadOpts)
+                    ?? throw new InvalidOperationException("OPR army-book JSON did not deserialize.");
+            }
+            catch (JsonException ex)
+            {
+                throw new InvalidOperationException($"Malformed OPR army-book JSON: {ex.Message}", ex);
+            }
 
             var packages = (opr.UpgradePackages ?? new()).Where(p => p.Uid is not null)
                 .ToDictionary(p => p.Uid!, p => p);

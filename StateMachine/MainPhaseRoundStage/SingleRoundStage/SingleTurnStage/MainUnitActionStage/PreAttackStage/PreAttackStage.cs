@@ -121,6 +121,7 @@ namespace FDG.Stages
                 IReadOnlyList<IUnit> targets = targetBindings.Select(b => (IUnit)b.GetValue()).ToList();
                 IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator.ResolveAbility(chosen, targets);
                 OperationApplier.ApplyTokenOperations(ops);
+                await OperationExecutor.Execute(ops, new GameOperationServices(GameContext));
                 GameContext.Log($"{unit.Name} used {chosen.RuleName} before attacking.");
 
                 // A DealHits ability resolves through the save→wound child pipeline (StrafingStage

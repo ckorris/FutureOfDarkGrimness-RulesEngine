@@ -72,17 +72,24 @@ namespace FDG.Stages
 
             results.HitRollNeeded -= rollModifiers.Net(ERollKind.Hit);
 
+            // #020 Fatigue: a unit that has already charged or struck back this round — or that is Shaken
+            // (#089) — hits only on unmodified 6s in melee, ignoring all modifiers. Computed up front so the
+            // one-shot grant consumption below can skip itself rather than spending a buff for no effect.
+            bool fatiguedInMelee = metaData.IsMelee && FatigueUtilities.CountsAsFatiguedInMelee(attacker);
+
             // #033 granted "+X to hit" buffs on the attacker (one-shot / duration) fold in with the same
-            // sign convention; one-shot ("next time") grants are consumed by this roll.
-            results.HitRollNeeded -= GrantedRollModifiers.ConsumeNet(metaData.AttackingUnit.GetValue(), ERollKind.Hit);
+            // sign convention; one-shot ("next time") grants are consumed by this roll - skipped while
+            // fatigued so the buff carries over to the attacker's next (non-fatigued) attack instead.
+            if (!fatiguedInMelee)
+            {
+                results.HitRollNeeded -= GrantedRollModifiers.ConsumeNet(metaData.AttackingUnit.GetValue(), ERollKind.Hit);
+            }
 
             GameContext.Log($"Base hit roll required is {results.HitRollNeeded} based on attacker's quality.");
 
-            // #020 Fatigue: a unit that has already charged or struck back this round — or that is Shaken
-            // (#089) — hits only on unmodified 6s in melee. Override the computed threshold rather than
-            // stacking a modifier, since the rule ignores all modifiers; the d6 comparison in
+            // Override the computed threshold rather than stacking a modifier; the d6 comparison in
             // RollToHitStage then admits only natural 6s.
-            if (metaData.IsMelee && FatigueUtilities.CountsAsFatiguedInMelee(attacker))
+            if (fatiguedInMelee)
             {
                 results.HitRollNeeded = 6;
                 GameContext.Log($"{attacker.Name} is fatigued - hits only on unmodified 6s in melee.");

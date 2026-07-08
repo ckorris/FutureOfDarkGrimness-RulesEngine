@@ -47,8 +47,11 @@ namespace FDG.Stages
             // table / avoid impassible terrain.
             CircularZone zone = new CircularZone(transportPosition.Position2D, TransportUtilities.MaxTransportRangeInches);
 
+            List<DataBinding<ModelData>> livingModels = unit.ModelBindings
+                .Where(binding => binding.GetValue().GetIsAlive()).ToList();
+
             var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID, $"Disembark {unit.Name}",
-                zone, unit.ModelBindings);
+                zone, livingModels);
 
             List<PlacedObjectEntry<ModelData>> placements = await GameContext.PlayerRequester
                 .RequestDecision<PlaceObjectsRequest<ModelData>, List<PlacedObjectEntry<ModelData>>>(request);

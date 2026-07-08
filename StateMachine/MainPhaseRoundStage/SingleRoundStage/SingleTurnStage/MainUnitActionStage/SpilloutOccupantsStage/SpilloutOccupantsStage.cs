@@ -69,14 +69,18 @@ namespace FDG.Stages
             {
                 UnitData occupantUnit = (UnitData)occupant;
 
+                List<DataBinding<ModelData>> livingModels = occupantUnit.ModelBindings
+                    .Where(binding => binding.GetValue().GetIsAlive()).ToList();
+
                 var request = new PlaceObjectsRequest<ModelData>(occupantUnit.PlayerID,
-                    $"Spill out {occupantUnit.Name} (within 6\" of the wreck)", zone, occupantUnit.ModelBindings);
+                    $"Spill out {occupantUnit.Name} (within 6\" of the wreck)", zone, livingModels);
                 List<PlacedObjectEntry<ModelData>> placements = await GameContext.PlayerRequester
                     .RequestDecision<PlaceObjectsRequest<ModelData>, List<PlacedObjectEntry<ModelData>>>(request);
 
                 foreach (PlacedObjectEntry<ModelData> placement in placements)
                 {
                     placement.Binding.GetValue().SetPosition(placement.Position);
+                    if (placement.Facing.HasValue) placement.Binding.GetValue().SetFacing(placement.Facing.Value);
                 }
 
                 // Un-embark + Shaken + a per-model dangerous-terrain test (the deterministic core, unit-tested

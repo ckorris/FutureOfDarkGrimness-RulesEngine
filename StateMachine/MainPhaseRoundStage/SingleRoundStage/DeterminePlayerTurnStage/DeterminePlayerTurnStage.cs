@@ -104,7 +104,7 @@ namespace FDG.Stages
                     IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator
                         .ResolveAbility(offer, new[] { (IUnit)unit.GetValue() });
 
-                    ApplyReactivationOps(context, unit, ops);
+                    await ApplyReactivationOps(context, unit, ops);
                 }
             }
         }
@@ -114,10 +114,11 @@ namespace FDG.Stages
         /// the cost marker the once-per-game gate reads, and the <see cref="RuleOperation.InvokeReactivate"/>
         /// marker re-adds the unit to the unactivated pool.
         /// </summary>
-        private static void ApplyReactivationOps(ISingleRoundContext context, DataBinding<UnitData> unit,
+        private async Task ApplyReactivationOps(ISingleRoundContext context, DataBinding<UnitData> unit,
             IReadOnlyList<RuleOperation> ops)
         {
             OperationApplier.ApplyTokenOperations(ops);
+            await OperationExecutor.Execute(ops, new GameOperationServices(GameContext));
 
             if (ops.OfType<RuleOperation.InvokeReactivate>().Any())
             {

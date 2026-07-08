@@ -28,8 +28,11 @@ namespace FDG.Rules.Dispatch
             int floor = 0;
             foreach ((RuleOperation op, string _) in evaluator.EvaluateAllNamed(
                          new RangeModifierContext(attacker),
-                         (attacker, ERuleSeat.Actor, weapon),
-                         (defender, ERuleSeat.Subject, (IWeapon?)null)))
+                         (attacker, ERuleSeat.Actor, weapon, (IReadOnlyList<IModel>?)null, EModelRuleScope.AnyOwner),
+                         // #183: the defender's living models surface a joined hero's relocated Ranged
+                         // Shrouding / Darkborn (Defensive), gated by AllModelsHaveThisRule.
+                         (defender, ERuleSeat.Subject, (IWeapon?)null, HeroStatRules.LivingModels(defender),
+                             EModelRuleScope.AnyOwner)))
             {
                 if (op is RuleOperation.ApplyRangeModifier rangeModifier)
                 {

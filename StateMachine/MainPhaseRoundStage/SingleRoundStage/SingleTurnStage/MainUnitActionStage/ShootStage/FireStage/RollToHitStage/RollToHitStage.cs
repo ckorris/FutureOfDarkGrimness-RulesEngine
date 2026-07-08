@@ -84,11 +84,13 @@ namespace FDG.Stages
                 (attacker, ERuleSeat.Actor, metaData.WeaponType,
                     HeroStatRules.LivingWeaponBatchOwners(metaData.AttackingUnit.GetValue(), metaData.WeaponType),
                     EModelRuleScope.AllOwners),
-                // The defender contributes its DEFENSIVE save modifiers here (Shielded's +1 to defense) —
-                // the mirror of how DetermineHitRollStage evaluates the defender as Subject for hit
-                // modifiers. Its Net(Save) folds into RollToHitResults.SaveModifier below alongside the
-                // attacker's whole-attack AP, so a defensive +1 and an attacker's -N net correctly.
-                (defender, ERuleSeat.Subject, (IWeapon?)null, (IReadOnlyList<IModel>?)null,
+                // The defender contributes its DEFENSIVE save modifiers here (Shielded's +1 to defense,
+                // Fortified's AP reduction) — the mirror of how DetermineHitRollStage evaluates the defender
+                // as Subject for hit modifiers. Its Net(Save) folds into RollToHitResults.SaveModifier below
+                // alongside the attacker's whole-attack AP, so a defensive +1 and an attacker's -N net
+                // correctly. #183: passing the defender's living models surfaces a joined hero's relocated
+                // Shielded/Fortified (gated by AllModelsHaveThisRule) instead of silently dropping them.
+                (defender, ERuleSeat.Subject, (IWeapon?)null, HeroStatRules.LivingModels(defender),
                     EModelRuleScope.AnyOwner));
 
             // #032 per-hit AP (Rending/Crack on an unmodified 6): split the rolled successes so only the

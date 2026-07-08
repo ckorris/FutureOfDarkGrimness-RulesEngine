@@ -40,8 +40,10 @@ namespace FDG.Stages
 
             IReadOnlyList<RuleOperation> ops = gameContext.RuleEvaluator.EvaluateAll(
                 new UnitDestroyedContext(DestroyedUnit: dead, KillerUnit: killer),
-                (killer, ERuleSeat.Actor, (IWeapon?)null),
-                (dead, ERuleSeat.Subject, (IWeapon?)null));
+                (killer, ERuleSeat.Actor, (IWeapon?)null, (IReadOnlyList<IModel>?)null, EModelRuleScope.AnyOwner),
+                // #183: the destroyed unit's models (none living - it's dead) are passed in full so a joined
+                // hero's own per-model rule at the unit-destroyed hook would still be seen; AnyOwner unions them.
+                (dead, ERuleSeat.Subject, (IWeapon?)null, dead.Models, EModelRuleScope.AnyOwner));
             OperationApplier.ApplyTokenOperations(ops);
             await OperationExecutor.Execute(ops, new GameOperationServices(gameContext));
         }

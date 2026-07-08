@@ -106,6 +106,11 @@ public static class HeroJoinResolver
             // #006 slice F: carry the hero's own unit-scoped rules onto the hero MODEL, so they fire for the
             // hero alone (Furious/Relentless/Thrust) rather than the whole host unit. The Hero marker stays
             // structural (no hooks); weapon-scoped rules already ride the hero's weapon and need no move.
+            // #183: DEFENSIVE (Subject-seat) rules relocated here (Evasive/Resistance/Fortified/...) are now
+            // visible at every Subject dispatch site, which passes the defender's living models (AnyOwner).
+            // Their AllModelsHaveThisRule gate then governs both directions: a hero that lacks a rule the
+            // host has breaks it for the unit, and a rule only the hero has fires only once the hero is the
+            // sole survivor (matching the last-model-Defense philosophy). Before #183 these silently vanished.
             foreach (ResolvedRule rule in hero.RuleDefinitions)
             {
                 if (rule.Definition == CoreRuleCatalog.Hero)

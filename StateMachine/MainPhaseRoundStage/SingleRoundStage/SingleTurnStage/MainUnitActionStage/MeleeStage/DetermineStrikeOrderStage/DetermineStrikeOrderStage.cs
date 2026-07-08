@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using FDG.Rules.Definitions;
+using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
 
@@ -58,14 +59,20 @@ namespace FDG.Stages
         /// <summary>
         /// The defender as a Subject participant once per living-model melee weapon (so
         /// weapon-scoped Counter fires), plus once weaponless (so unit-scoped defensive
-        /// rules fire even with no melee weapons).
+        /// rules fire even with no melee weapons). #183: the weaponless participant carries the defender's
+        /// living models under AnyOwner, so a joined hero's relocated unit-scoped Counter-Attack becomes
+        /// visible (gated by AllModelsHaveThisRule); the weapon carriers stay model-less (weapon-scoped
+        /// Counter rides the weapon, not a model).
         /// </summary>
-        internal static (IUnit, ERuleSeat, IWeapon?)[] SubjectWithMeleeWeapons(IUnit defender)
+        internal static (IUnit, ERuleSeat, IWeapon?, IReadOnlyList<IModel>?, EModelRuleScope)[] SubjectWithMeleeWeapons(IUnit defender)
         {
-            var participants = new List<(IUnit, ERuleSeat, IWeapon?)> { (defender, ERuleSeat.Subject, null) };
+            var participants = new List<(IUnit, ERuleSeat, IWeapon?, IReadOnlyList<IModel>?, EModelRuleScope)>
+            {
+                (defender, ERuleSeat.Subject, null, HeroStatRules.LivingModels(defender), EModelRuleScope.AnyOwner),
+            };
             foreach (Weapon meleeWeapon in defender.GetMeleeWeapons())
             {
-                participants.Add((defender, ERuleSeat.Subject, meleeWeapon));
+                participants.Add((defender, ERuleSeat.Subject, meleeWeapon, null, EModelRuleScope.AnyOwner));
             }
             return participants.ToArray();
         }

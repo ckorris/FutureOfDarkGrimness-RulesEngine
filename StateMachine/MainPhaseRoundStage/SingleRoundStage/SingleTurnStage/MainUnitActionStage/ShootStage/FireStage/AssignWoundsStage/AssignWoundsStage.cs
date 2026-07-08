@@ -40,8 +40,13 @@ namespace FDG.Stages
             IReadOnlyList<RuleOperation> saveCompleteOperations = GameContext.RuleEvaluator.EvaluateAll(
                 new SaveRollCompleteContext(attacker, defender, CombineSaveRolls(rollToSaveResults),
                     metaData.IsMelee, metaData.IsSpell),
-                (attacker, ERuleSeat.Actor, metaData.WeaponType),
-                (defender, ERuleSeat.Subject, null));
+                (attacker, ERuleSeat.Actor, metaData.WeaponType, (IReadOnlyList<IModel>?)null,
+                    EModelRuleScope.AnyOwner),
+                // #183: the defender's living models surface a joined hero's relocated wound-ignore rules
+                // (Regeneration/Resistance/Protected), gated by AllModelsHaveThisRule - so a sole-surviving
+                // hero regenerates, and the trace shows the gate deciding while grunts live.
+                (defender, ERuleSeat.Subject, (IWeapon?)null, HeroStatRules.LivingModels(defender),
+                    EModelRuleScope.AnyOwner));
 
             // #042 save-reroll rules (Bane): the defender re-rolls unmodified-6 saves, turning saved 6s
             // into possible failures. Re-roll each successful group's natural-6 count and add the new

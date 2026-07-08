@@ -44,7 +44,10 @@ namespace FDG.Stages
                 (attacker, ERuleSeat.Actor, metaData.WeaponType,
                     HeroStatRules.LivingWeaponBatchOwners(metaData.AttackingUnit.GetValue(), metaData.WeaponType),
                     EModelRuleScope.AllOwners),
-                (defender, ERuleSeat.Subject, (IWeapon?)null, (IReadOnlyList<IModel>?)null,
+                // #183: the defender's living models contribute their per-model defensive rules (a joined
+                // hero's relocated Evasive/Melee-Evasion/Artillery) under AnyOwner, so the merge no longer
+                // hides them; the rule's AllModelsHaveThisRule gate still decides whether it applies.
+                (defender, ERuleSeat.Subject, (IWeapon?)null, HeroStatRules.LivingModels(defender),
                     EModelRuleScope.AnyOwner));
 
             // #042 quality-floor rules (Reliable) set the BASE quality before per-roll modifiers:

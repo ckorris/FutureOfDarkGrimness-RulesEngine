@@ -93,4 +93,17 @@ public static class HeroStatRules
             .Where(model => model.GetIsAlive() && model.Weapons.Any(weapon => comparer.Equals(weapon, weaponType)))
             .ToList();
     }
+
+    /// <summary>
+    /// The living models of a defending unit — the Subject-seat counterpart to
+    /// <see cref="LivingWeaponBatchOwners"/>. The defensive dispatch sites (#183) pass these as the
+    /// per-model rule contributors under <see cref="EModelRuleScope.AnyOwner"/>, so a joined hero's
+    /// relocated defensive rules (Evasive, Resistance, Fortified, ...) become VISIBLE to the evaluator —
+    /// and the #163 trace — after the merge. The rule's own <see cref="Definitions.Condition.AllModelsHaveThisRule"/>
+    /// gate then decides whether it actually applies (only when every living model has it — i.e. the hero
+    /// is the sole survivor, or the whole unit shares it). For a non-hero unit no model carries per-model
+    /// rules, so unioning them adds nothing and behaviour is unchanged.
+    /// </summary>
+    public static IReadOnlyList<IModel> LivingModels(IUnit unit) =>
+        unit.Models.Where(model => model.GetIsAlive()).ToList();
 }

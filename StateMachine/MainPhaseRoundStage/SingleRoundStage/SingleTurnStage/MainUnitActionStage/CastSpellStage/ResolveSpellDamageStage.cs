@@ -98,7 +98,9 @@ namespace FDG.Stages
                 new HitRollCompleteContext(caster, target, rolled, distance, IsMelee: false,
                     IsCharging: false, IsSpell: true),
                 (caster, ERuleSeat.Actor, spellWeapon, (IReadOnlyList<IModel>?)null, EModelRuleScope.AnyOwner),
-                (target, ERuleSeat.Subject, (IWeapon?)null, (IReadOnlyList<IModel>?)null,
+                // #183: the target's living models surface a joined hero's relocated defensive rules
+                // (Fortified vs spell AP; Shielded self-gates out via IsNotSpell) after the merge.
+                (target, ERuleSeat.Subject, (IWeapon?)null, HeroStatRules.LivingModels(target),
                     EModelRuleScope.AnyOwner));
 
             // Split the auto-hitting rolled dice so a natural 6 carries Rending/Crack AP per-hit while the

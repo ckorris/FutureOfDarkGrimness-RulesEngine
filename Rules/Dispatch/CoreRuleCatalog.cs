@@ -111,7 +111,7 @@ public static class CoreRuleCatalog
                 new Effect.RollModifier(ERollKind.Hit, Delta: +1),
                 ELifetime.ThisAttack),
             new HookEntry(EHookID.Shooting_OnHitRollModifier,
-                new Condition.DistanceGreaterThan(9f),
+                new Condition.And(new Condition.DistanceGreaterThan(9f), new Condition.AllModelsHaveThisRule()),
                 new Effect.RollModifier(ERollKind.Hit, Delta: -2),
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject),
@@ -173,7 +173,7 @@ public static class CoreRuleCatalog
         new[]
         {
             new HookEntry(EHookID.Shooting_OnHitRollModifier,
-                new Condition.Always(),
+                new Condition.AllModelsHaveThisRule(),
                 new Effect.RollModifier(ERollKind.Hit, Delta: -1),
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject),
@@ -191,7 +191,7 @@ public static class CoreRuleCatalog
         new[]
         {
             new HookEntry(EHookID.Shooting_OnHitRollModifier,
-                new Condition.IsMelee(),
+                new Condition.And(new Condition.IsMelee(), new Condition.AllModelsHaveThisRule()),
                 new Effect.RollModifier(ERollKind.Hit, Delta: -1),
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject),
@@ -564,7 +564,7 @@ public static class CoreRuleCatalog
         new[]
         {
             new HookEntry(EHookID.Melee_OnCounterTrigger,
-                new Condition.Always(),
+                new Condition.AllModelsHaveThisRule(),
                 new Effect.StrikeFirst(),
                 ELifetime.ThisActivation,
                 ERuleSeat.Subject),
@@ -905,12 +905,12 @@ public static class CoreRuleCatalog
         new[]
         {
             new HookEntry(EHookID.Shooting_OnSaveRollComplete,
-                new Condition.Always(),
+                new Condition.AllModelsHaveThisRule(),
                 new Effect.IgnoreWoundOnRoll(MinRoll: 6),
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject),
             new HookEntry(EHookID.Shooting_OnSaveRollComplete,
-                new Condition.IsSpell(),
+                new Condition.And(new Condition.IsSpell(), new Condition.AllModelsHaveThisRule()),
                 new Effect.IgnoreWoundOnRoll(MinRoll: 2),
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject),
@@ -924,7 +924,7 @@ public static class CoreRuleCatalog
         new[]
         {
             new HookEntry(EHookID.Shooting_OnSaveRollComplete,
-                new Condition.Always(),
+                new Condition.AllModelsHaveThisRule(),
                 new Effect.IgnoreWoundOnRoll(MinRoll: 6),
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject),
@@ -981,7 +981,7 @@ public static class CoreRuleCatalog
         new[]
         {
             new HookEntry(EHookID.Shooting_OnHitRollComplete,
-                new Condition.IsNotSpell(),
+                new Condition.And(new Condition.IsNotSpell(), new Condition.AllModelsHaveThisRule()),
                 new Effect.RollModifier(ERollKind.Save, Delta: +1),
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject),
@@ -1002,7 +1002,7 @@ public static class CoreRuleCatalog
         new[]
         {
             new HookEntry(EHookID.Shooting_OnHitRollComplete,
-                new Condition.Always(),
+                new Condition.AllModelsHaveThisRule(),
                 new Effect.ReduceArmorPenetration(1),
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject),
@@ -1586,12 +1586,12 @@ public static class CoreRuleCatalog
         new[]
         {
             new HookEntry(EHookID.Shooting_OnRangeCheck,
-                new Condition.Always(),
+                new Condition.AllModelsHaveThisRule(),
                 new Effect.RangeModifier(Delta: -12),
                 ELifetime.ThisActivation,
                 ERuleSeat.Subject),
             new HookEntry(EHookID.Shooting_OnHitRollModifier,
-                new Condition.Always(),
+                new Condition.AllModelsHaveThisRule(),
                 new Effect.RollModifier(ERollKind.Hit, Delta: -1),
                 ELifetime.ThisAttack,
                 ERuleSeat.Subject),
@@ -1637,15 +1637,16 @@ public static class CoreRuleCatalog
     /// 6". A Subject-seat passive at <see cref="EHookID.Shooting_OnRangeCheck"/> emitting
     /// <see cref="Effect.RangeModifier"/>(−6, floor 6) — the defender contributes the debuff, mirroring how
     /// <see cref="Shielded"/> contributes a Subject-seat save bonus. Scope: the corpus's "where ALL MODELS have
-    /// this rule" is approximated as unit-level (per-model gating is #093). The floor adopts the "to a min. of
-    /// 6\"" reading; some armies print Ranged Shrouding without it, but the two differ only for a weapon whose
-    /// post-reduction range would fall below 6" (i.e. base range &lt; 12") — negligible for normal weapons.
+    /// this rule" is enforced by <see cref="Condition.AllModelsHaveThisRule"/> (#183) — a joined hero that lacks
+    /// it breaks the debuff for the unit. The floor adopts the "to a min. of 6\"" reading; some armies print
+    /// Ranged Shrouding without it, but the two differ only for a weapon whose post-reduction range would fall
+    /// below 6" (i.e. base range &lt; 12") — negligible for normal weapons.
     /// </summary>
     public static SpecialRuleDefinition RangedShrouding { get; } = new SpecialRuleDefinition("Ranged Shrouding",
         new[]
         {
             new HookEntry(EHookID.Shooting_OnRangeCheck,
-                new Condition.Always(),
+                new Condition.AllModelsHaveThisRule(),
                 new Effect.RangeModifier(Delta: -6, MinResultInches: 6),
                 ELifetime.ThisActivation,
                 ERuleSeat.Subject),
@@ -1686,18 +1687,19 @@ public static class CoreRuleCatalog
     /// at <see cref="EHookID.Movement_OnChargeDeclared"/> (read by
     /// <see cref="MovementRuleQueries.EffectiveChargeDistanceAgainst"/> and applied as the worst-case charge-budget
     /// reduction in DefinePathStage). The corpus's other "Darkborn"; named to disambiguate from
-    /// <see cref="DarkbornOffensive"/>. Scope: "where all models have this rule" is approximated unit-level (#093).
+    /// <see cref="DarkbornOffensive"/>. Scope: "where all models have this rule" is enforced by
+    /// <see cref="Condition.AllModelsHaveThisRule"/> on both facets (#183).
     /// </summary>
     public static SpecialRuleDefinition DarkbornDefensive { get; } = new SpecialRuleDefinition("Darkborn (Defensive)",
         new[]
         {
             new HookEntry(EHookID.Shooting_OnRangeCheck,
-                new Condition.Always(),
+                new Condition.AllModelsHaveThisRule(),
                 new Effect.RangeModifier(Delta: -4, MinResultInches: 6),
                 ELifetime.ThisActivation,
                 ERuleSeat.Subject),
             new HookEntry(EHookID.Movement_OnChargeDeclared,
-                new Condition.Always(),
+                new Condition.AllModelsHaveThisRule(),
                 new Effect.MovementBonus(EActionType.Charge, DistanceInches: -2f, MinResultInches: 6f),
                 ELifetime.ThisActivation,
                 ERuleSeat.Subject),
@@ -1712,15 +1714,15 @@ public static class CoreRuleCatalog
     /// <see cref="Effect.MovementBonus"/>(Charge, −3, floor 6) at <see cref="EHookID.Movement_OnChargeDeclared"/>
     /// (previously a dormant hook), read by <see cref="MovementRuleQueries.EffectiveChargeDistanceAgainst"/> and
     /// applied as a worst-case reduction to the charger's budget in <c>DefinePathStage</c>. Scope: the corpus's
-    /// "where ALL MODELS have this rule" is approximated as unit-level (per-model gating is #093), and the
-    /// reduction is conservative (worst case among reachable enemies) because a charge's target isn't pinned
+    /// "where ALL MODELS have this rule" is enforced by <see cref="Condition.AllModelsHaveThisRule"/> (#183), and
+    /// the reduction is conservative (worst case among reachable enemies) because a charge's target isn't pinned
     /// until the move ends. Same mechanism unblocks defensive Darkborn's "−2 charge" and Aircraft-style facets.
     /// </summary>
     public static SpecialRuleDefinition MeleeShrouding { get; } = new SpecialRuleDefinition("Melee Shrouding",
         new[]
         {
             new HookEntry(EHookID.Movement_OnChargeDeclared,
-                new Condition.Always(),
+                new Condition.AllModelsHaveThisRule(),
                 new Effect.MovementBonus(EActionType.Charge, DistanceInches: -3f, MinResultInches: 6f),
                 ELifetime.ThisActivation,
                 ERuleSeat.Subject),

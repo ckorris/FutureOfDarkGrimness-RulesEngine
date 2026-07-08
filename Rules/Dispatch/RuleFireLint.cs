@@ -65,9 +65,7 @@ public static class RuleFireLint
 
         foreach (RuleViolation violation in Validator.Validate(definition))
         {
-            problems.Add($"{violation.Member} at {violation.Hook} requires capability " +
-                $"{violation.MissingCapability.Name}, which that hook's context does not provide - " +
-                "the entry can never fire.");
+            problems.Add($"at {violation.Hook}: {violation.Describe()}.");
         }
 
         if (definition.Passive.Count == 0 && definition.Activated.Count == 0)

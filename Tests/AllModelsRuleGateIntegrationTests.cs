@@ -7,6 +7,7 @@ using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
 using FDG.SaveLoad;
+using FDG.Tests.RulesHarness;
 using NUnit.Framework;
 
 namespace FDG.Tests
@@ -101,7 +102,78 @@ namespace FDG.Tests
                 "a granted-only Stealth applies to a hero-joined unit: the grant covers every living model.");
         }
 
+        // #183 slice 1 — the gate governs every unit-targeted Subject-seat effect class, in BOTH directions:
+        // a homogeneous unit fires the rule, and a unit whose joined hero LACKS the rule loses it entirely
+        // (the host-side / audit-Bug-24 fix — previously only the 3 special-cased rules checked all-models).
+        // One case per effect class: hit-mod (Evasive), wound-ignore (Protected), save-mod (Shielded),
+        // range-mod (Ranged Shrouding), charge-mod (Melee Shrouding), strike-first (Counter-Attack). Each
+        // asserts on op production, which is non-empty iff the rule's gated entry fired.
+
+        [Test]
+        public void Evasive_HitModifier_GateGovernsHostAndHero()
+        {
+            UnitData attacker = MakeUnit(1);
+            AssertGate(CoreRuleCatalog.Evasive,
+                d => new HitRollModifierContext(attacker, d, DistanceInches: 5f));
+        }
+
+        [Test]
+        public void Protected_WoundIgnore_GateGovernsHostAndHero()
+        {
+            UnitData attacker = MakeUnit(1);
+            AssertGate(CoreRuleCatalog.Protected,
+                d => new SaveRollCompleteContext(attacker, d, TestDice.Faces(1), IsMelee: false));
+        }
+
+        [Test]
+        public void Shielded_SaveModifier_GateGovernsHostAndHero()
+        {
+            UnitData attacker = MakeUnit(1);
+            AssertGate(CoreRuleCatalog.Shielded,
+                d => new HitRollCompleteContext(attacker, d, TestDice.Faces(1), IsSpell: false));
+        }
+
+        [Test]
+        public void RangedShrouding_RangeModifier_GateGovernsHostAndHero()
+        {
+            UnitData attacker = MakeUnit(1);
+            AssertGate(CoreRuleCatalog.RangedShrouding, _ => new RangeModifierContext(attacker));
+        }
+
+        [Test]
+        public void MeleeShrouding_ChargeModifier_GateGovernsHostAndHero()
+        {
+            UnitData charger = MakeUnit(1);
+            AssertGate(CoreRuleCatalog.MeleeShrouding,
+                d => new ChargeDeclaredContext(charger, d, BaseDistanceInches: 12f));
+        }
+
+        [Test]
+        public void CounterAttack_StrikeFirst_GateGovernsHostAndHero()
+        {
+            UnitData attacker = MakeUnit(1);
+            AssertGate(CoreRuleCatalog.CounterAttack, d => new CounterTriggerContext(attacker, d));
+        }
+
         // --- harness ---
+
+        // Asserts the #183 all-models gate governs a Subject-seat rule both ways: a homogeneous unit fires
+        // it (all native models have it), and a unit whose joined hero lacks it fires nothing (the gate
+        // fails over the hero). buildContext maps the tested defender to its firing context.
+        private void AssertGate(SpecialRuleDefinition rule, System.Func<UnitData, IHookContext> buildContext)
+        {
+            UnitData homogeneous = MakeUnit(5);
+            homogeneous.AttachRuleDefinition(new ResolvedRule(rule.Name, rule));
+            Assert.That(ProducesSubjectOps(homogeneous, buildContext(homogeneous)), Is.True,
+                $"a homogeneous {rule.Name} unit: every model has it, so it fires.");
+
+            UnitData heroLacks = MakeUnitWithHero(rule, heroHasRule: false);
+            Assert.That(ProducesSubjectOps(heroLacks, buildContext(heroLacks)), Is.False,
+                $"a joined hero without {rule.Name} breaks the gate, so the whole unit loses it.");
+        }
+
+        private bool ProducesSubjectOps(UnitData defender, IHookContext context) =>
+            _evaluator.Evaluate(defender, ERuleSeat.Subject, context).Count > 0;
 
         // True if CoreRuleCatalog.Stealth produces its -1-to-hit modifier for this defender at > 9".
         private bool StealthApplies(UnitData defender, RuleEvaluator? evaluator = null)
@@ -118,21 +190,24 @@ namespace FDG.Tests
             unit.Tokens.AddToken(new Token(TokenType.RuleGrant, 1, new TokenClearTrigger.ManualOnly(),
                 Payload: new TokenPayload.RuleGrant("Stealth", ELifetime.UntilEndOfGame)));
 
-        // A Stealth host unit (Stealth on the unit) merged with a 1-model hero that either does or doesn't
-        // carry Stealth on its own. Mirrors HeroPerModelRuleIntegrationTests' merge harness.
-        private UnitData MakeStealthUnitWithHero(bool heroHasStealth, bool hostHasStealth = true)
+        private UnitData MakeStealthUnitWithHero(bool heroHasStealth, bool hostHasStealth = true) =>
+            MakeUnitWithHero(CoreRuleCatalog.Stealth, heroHasStealth, hostHasStealth);
+
+        // A host unit carrying <paramref name="rule"/> (statically, when hostHasRule) merged with a 1-model
+        // hero that either does or doesn't carry it. Mirrors HeroPerModelRuleIntegrationTests' merge harness.
+        private UnitData MakeUnitWithHero(SpecialRuleDefinition rule, bool heroHasRule, bool hostHasRule = true)
         {
             UnitData host = MakeUnit(modelCount: 3);
-            if (hostHasStealth)
+            if (hostHasRule)
             {
-                host.AttachRuleDefinition(new ResolvedRule("Stealth", CoreRuleCatalog.Stealth));
+                host.AttachRuleDefinition(new ResolvedRule(rule.Name, rule));
             }
 
             UnitData hero = MakeUnit(modelCount: 1);
             hero.AttachRuleDefinition(new ResolvedRule("Hero", CoreRuleCatalog.Hero));
-            if (heroHasStealth)
+            if (heroHasRule)
             {
-                hero.AttachRuleDefinition(new ResolvedRule("Stealth", CoreRuleCatalog.Stealth));
+                hero.AttachRuleDefinition(new ResolvedRule(rule.Name, rule));
             }
 
             HeroJoinResolver.Apply(new List<(UnitFileEntry, UnitData)>

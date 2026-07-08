@@ -298,8 +298,7 @@ namespace FDG.ArmyBuilding
 
                 foreach (RuleViolation violation in validator.Validate(definition))
                 {
-                    problems.Add($"'{definition.Name}' at {violation.Hook}: {violation.Member} requires " +
-                        $"{violation.MissingCapability.Name}, which that hook does not provide.");
+                    problems.Add($"'{definition.Name}' at {violation.Hook}: {violation.Describe()}.");
                 }
 
                 foreach (string granted in GrantedRuleNames(definition).Distinct(StringComparer.OrdinalIgnoreCase))

@@ -17,13 +17,15 @@ namespace FDG.Tests
     {
         private static readonly List<ActivatedAbility> NoAbilities = new List<ActivatedAbility>();
 
-        // Stealth: DistanceGreaterThan on the hit-modifier hook (context provides IHasDistance). Clean.
+        // Stealth: DistanceGreaterThan on the hit-modifier hook (context provides IHasDistance), And-composed
+        // with the #183 AllModelsHaveThisRule gate every Subject-seat defensive rule now requires. Clean.
         private static SpecialRuleDefinition WellFormedRule(string name) =>
             new SpecialRuleDefinition(name,
                 new List<HookEntry>
                 {
                     new HookEntry(EHookID.Shooting_OnHitRollModifier,
-                        new Condition.DistanceGreaterThan(9f),
+                        new Condition.And(new Condition.DistanceGreaterThan(9f),
+                            new Condition.AllModelsHaveThisRule()),
                         new Effect.RollModifier(ERollKind.Hit, Delta: -1),
                         ELifetime.ThisAttack, ERuleSeat.Subject),
                 },

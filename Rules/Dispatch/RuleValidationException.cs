@@ -31,8 +31,7 @@ public sealed class RuleValidationException : Exception
         foreach (RuleViolation v in violations)
         {
             sb.AppendLine();
-            sb.Append($"  {v.RuleName} @ {v.Hook}: {v.Member} needs {v.MissingCapability.Name}, " +
-                      "hook can't provide it");
+            sb.Append($"  {v.RuleName} @ {v.Hook}: {v.Describe()}");
         }
 
         return sb.ToString();

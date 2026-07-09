@@ -21,5 +21,15 @@ namespace FDG.Rules.Definitions;
 /// the corresponding <see cref="Cost"/> subtypes; under the hood these become
 /// token grants and consumes via the dispatcher.
 /// </summary>
+/// <param name="Label">
+/// Display name for THIS ability, when its rule offers more than one to choose between (#197 P5a:
+/// "when this unit is activated, pick one effect: ... either get AP(+1) or get +1 to hit rolls"). Such a
+/// rule carries one <see cref="ActivatedAbility"/> per effect, all at the same <paramref name="TriggerHook"/>,
+/// and the label is what the player picks by — <c>AbilityOffer.RuleName</c> can't distinguish them.
+/// Empty (the default, and the case for every single-ability rule) means "display the rule's name".
+///
+/// A once-per-X <see cref="Cost"/> is keyed on the RULE name, not the ability, so choosing one effect
+/// spends the gate for all of them. That is exactly the "pick one" semantics the corpus wants.
+/// </param>
 public record ActivatedAbility(EHookID TriggerHook, Cost Cost, TargetSelector TargetSelector,
-    Effect Effect, Condition AvailableWhen);
+    Effect Effect, Condition AvailableWhen, string Label = "");

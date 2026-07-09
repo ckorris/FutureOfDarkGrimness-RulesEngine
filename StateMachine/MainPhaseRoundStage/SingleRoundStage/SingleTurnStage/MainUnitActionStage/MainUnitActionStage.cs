@@ -46,6 +46,10 @@ namespace FDG.Stages
             ToReconcileEndOfActivation = new StageBinding(this);
 
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
+                // #197 P5a — fires Activation_OnActivationStart before anything else, so the "pick one effect
+                // until the end of the activation" rules resolve before an action is chosen. Only ever entered
+                // as the starting child; every loop-back below returns to ChooseAction, so it runs once.
+                .AddChild(new ActivationStartStage(GameContext, this), out var activationStart)
                 .AddChild(new ChooseActionStage(GameContext, this), out var chooseAction)
                 .AddChild(new MovementStage(GameContext, this), out var movement)
                 .AddChild(new MeleeStage(GameContext, this), out var melee)
@@ -63,7 +67,8 @@ namespace FDG.Stages
                 .AddSibling(nameof(ToReconcileEndOfActivation), ToReconcileEndOfActivation, out string toReconcileActivationEvent)
                 .Build();
 
-            startingChild = chooseAction;
+            startingChild = activationStart;
+            activationStart.OnFinished.Bind(chooseAction);
 
             chooseAction.ToMovement.Bind(movement);
             // #100 #2 — route the attack edges through the pre-attack stage, which hands off to the real

@@ -29,6 +29,7 @@ namespace FDG.Ai
             IStageResolverRegistry registry = new StageResolverRegistry()
                 .RegisterResolver(new AiYesNoResolver())
                 .RegisterResolver(new AiStringSelectionResolver(tableState, playerID))
+                .RegisterResolver(new AiChooseAbilityEffectResolver())
                 .RegisterResolver(new AiCastAssistResolver())
                 .RegisterResolver(new AiChooseDeploymentZoneResolver())
                 .RegisterResolver(new AiChooseRangedAttackResolver())

@@ -223,11 +223,12 @@ public static class RuleFireLint
     /// <summary>
     /// The hooks whose stages call <see cref="RuleEvaluator.GatherOffers"/>. An ability authored at any
     /// other hook is dead data. Sources: ChooseActionStage, PreAttackStage, StrafingStage,
-    /// DeterminePlayerTurnStage, DeployUnitStage — update BOTH this set and
+    /// DeterminePlayerTurnStage, DeployUnitStage, ActivationStartStage — update BOTH this set and
     /// <see cref="IsOpHandledAtAbilityHook"/> when a stage gains an offer site.
     /// </summary>
     private static readonly IReadOnlyList<EHookID> AbilityOfferingHooks = new[]
     {
+        EHookID.Activation_OnActivationStart,
         EHookID.Activation_OnActionChoice,
         EHookID.Activation_OnPreAttack,
         EHookID.Activation_OnNextActivatorRequested,
@@ -358,6 +359,9 @@ public static class RuleFireLint
                 break;
             case EHookID.Activation_OnNextActivatorRequested:
                 yield return new NextActivatorRequestedContext(bearer);
+                break;
+            case EHookID.Activation_OnActivationStart:
+                yield return new ActivationStartContext(bearer);
                 break;
             case EHookID.Activation_OnActionChoice:
                 yield return new ActionChoiceContext(bearer);

@@ -62,12 +62,9 @@ namespace FDG.SaveLoad
         public static ResolvedRule? ResolveForScope(IRuleResolver ruleResolver, SpecialRuleEntry ruleEntry,
             ERuleScope attachmentScope, string ownerDescription)
         {
-            (string lookupName, IReadOnlyList<RuleArgument> arguments) = DescribeRuleEntry(ruleEntry);
-
-            if (!ruleResolver.TryResolve(lookupName, out ResolvedRule resolved))
+            ResolvedRule? resolved = ResolveAnyScope(ruleResolver, ruleEntry, ownerDescription);
+            if (resolved == null)
             {
-                RuleDiagnostics.Warn(
-                    $"Skipping unimplemented special rule '{ruleEntry.PrintableName}' on {ownerDescription}.");
                 return null;
             }
 
@@ -76,6 +73,33 @@ namespace FDG.SaveLoad
                 RuleDiagnostics.Warn(
                     $"Skipping special rule '{ruleEntry.PrintableName}' on {ownerDescription}: " +
                     $"it is a {resolved.Definition.Scope}-scoped rule and can't attach at {attachmentScope} scope.");
+                return null;
+            }
+
+            return resolved;
+        }
+
+        /// <summary>
+        /// <see cref="ResolveForScope"/> without the scope gate: resolves the name and checks argument
+        /// arity, leaving the caller to read <see cref="SpecialRuleDefinition.Scope"/> and decide where the
+        /// rule belongs. Still returns null (with a warning) for an unimplemented name or a missing numeric
+        /// argument, since neither can attach anywhere.
+        ///
+        /// The unit-level attachment path (#192 slice 0) needs this: wargear is a rule-bundle folded into
+        /// the unit's rule list, so a weapon rule granted by an item arrives named at unit scope and must be
+        /// re-homed onto the unit's weapons rather than dropped. Weapon-level attachment keeps using
+        /// <see cref="ResolveForScope"/> — a unit rule named on a weapon profile really is misauthored data
+        /// and has nowhere to go.
+        /// </summary>
+        public static ResolvedRule? ResolveAnyScope(IRuleResolver ruleResolver, SpecialRuleEntry ruleEntry,
+            string ownerDescription)
+        {
+            (string lookupName, IReadOnlyList<RuleArgument> arguments) = DescribeRuleEntry(ruleEntry);
+
+            if (!ruleResolver.TryResolve(lookupName, out ResolvedRule resolved))
+            {
+                RuleDiagnostics.Warn(
+                    $"Skipping unimplemented special rule '{ruleEntry.PrintableName}' on {ownerDescription}.");
                 return null;
             }
 

@@ -107,21 +107,37 @@ namespace FDG.GameModel
 
         //Resolves each special rule named on the army-list entry against the rule registry and
         //attaches the resolved #042 definition to the unit. A valid-but-not-yet-implemented core
-        //rule (one with no definition in the catalog) — or a weapon-scoped rule misauthored at
-        //unit level (#027) — is skipped with a warning so partial armies still load and the
-        //rules that ARE implemented still fire. Weapon-level rules attach inside the UnitData
-        //constructor via the same ArmyListRuleResolution helper.
+        //rule (one with no definition in the catalog) is skipped with a warning so partial armies
+        //still load and the rules that ARE implemented still fire. Weapon-level rules attach inside
+        //the UnitData constructor via the same ArmyListRuleResolution helper.
+        //
+        //#192 slice 0: a weapon-scoped rule CAN legitimately be named here. Wargear is a rule-bundle
+        //flattened into the unit's rule list at compile time (ListCompiler), so an item that grants a
+        //weapon rule to the whole unit ("Toxic Cysts: Bane in Melee") arrives at unit scope. Those
+        //attach to every weapon the unit carries; the rules' own isMelee / not(isMelee) gates then pick
+        //the right weapons at dispatch, which reads the firing weapon's rules (RollToHitStage passes it
+        //into RuleParticipant.Actor). Wargear that names a specific weapon ("upgrade all Pulse Rifles
+        //with a Drone Controller") never reaches this path — ListCompiler lands those rules directly on
+        //the named weapon, so a Reliable rifle does not make its owner's melee taser hit on 2+.
         private static void AttachRulesFromArmyList(UnitData unitData, UnitFileEntry unitEntry, IRuleResolver ruleResolver)
         {
             foreach (SpecialRuleEntry ruleEntry in unitEntry.SpecialRules)
             {
-                ResolvedRule? resolved = ArmyListRuleResolution.ResolveForScope(
-                    ruleResolver, ruleEntry, ERuleScope.Unit, $"unit '{unitData.Name}'");
+                ResolvedRule? resolved = ArmyListRuleResolution.ResolveAnyScope(
+                    ruleResolver, ruleEntry, $"unit '{unitData.Name}'");
 
-                if (resolved != null)
+                if (resolved == null)
+                {
+                    continue;
+                }
+
+                if (resolved.Definition.Scope == ERuleScope.Unit)
                 {
                     unitData.AttachRuleDefinition(resolved);
+                    continue;
                 }
+
+                AttachToEveryWeapon(unitData, ruleEntry, resolved);
             }
 
             // #035: every unit carries the engine-internal Disembark + Embark abilities (slice C/D), each
@@ -130,6 +146,27 @@ namespace FDG.GameModel
             // army-load rule lifecycle and are restored by the #094 resume rehydration.
             unitData.AttachRuleDefinition(new ResolvedRule(CoreRuleCatalog.DisembarkRuleName, CoreRuleCatalog.Disembark));
             unitData.AttachRuleDefinition(new ResolvedRule(CoreRuleCatalog.EmbarkRuleName, CoreRuleCatalog.Embark));
+        }
+
+        //Re-homes a unit-level weapon rule onto each of the unit's weapons. ResolvedRule is immutable, so
+        //one instance is shared across them (as the UnitData constructor already does across a weapon
+        //entry's quantity). A unit with no weapons has nowhere to put it — warn rather than lose it silently.
+        private static void AttachToEveryWeapon(UnitData unitData, SpecialRuleEntry ruleEntry, ResolvedRule resolved)
+        {
+            List<Weapon> weapons = ((IUnit)unitData).AllWeapons(_ => true);
+
+            if (weapons.Count == 0)
+            {
+                RuleDiagnostics.Warn(
+                    $"Skipping weapon rule '{ruleEntry.PrintableName}' on unit '{unitData.Name}': " +
+                    "it is granted at unit level but the unit carries no weapons to attach it to.");
+                return;
+            }
+
+            foreach (Weapon weapon in weapons)
+            {
+                weapon.AttachRuleDefinition(resolved);
+            }
         }
     }
 }

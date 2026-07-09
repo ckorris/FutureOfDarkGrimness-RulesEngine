@@ -201,8 +201,13 @@ public static class CoreRuleCatalog
         Description: "Enemies take -1 to hit when attacking this unit in melee.");
 
     /// <summary>
-    /// Attacker: +1 to hit when attacking (melee or shooting) — lowers the bearer's hit threshold. The
-    /// Actor-seat counterpart to <see cref="Evasive"/>, no gate.
+    /// Attacker: +1 to hit when attacking with this weapon (melee or shooting) — lowers the bearer's hit
+    /// threshold. The Actor-seat counterpart to <see cref="Evasive"/>, no gate.
+    ///
+    /// Weapon-scoped (#192 slice 0): every corpus reference attaches it to a weapon, either directly on a
+    /// profile or through a targeted wargear upgrade ("upgrade the Marksman Carbine with a Scope"), which
+    /// ListCompiler lands on the named weapon. A model carrying a scoped carbine and a plain sidearm must
+    /// get the bonus only on the carbine, so the bearer has to be the weapon rather than the unit.
     /// </summary>
     public static SpecialRuleDefinition Precise { get; } = new SpecialRuleDefinition("Precise",
         new[]
@@ -213,8 +218,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>(),
+        ERuleScope.Weapon,
         Valence: EValence.Positive,
-        Description: "+1 to hit when this unit attacks, in melee or shooting.");
+        Description: "+1 to hit when attacking with this weapon, in melee or shooting.");
 
     /// <summary>
     /// Attacker: +1 to hit when shooting only — gated to non-melee via <c>Not(IsMelee)</c> (the gate
@@ -490,6 +496,10 @@ public static class CoreRuleCatalog
     /// (shared shoot/melee hook), and AP(+1) is modelled as a -1 save modifier folded at
     /// <see cref="EHookID.Shooting_OnHitRollComplete"/> and carried to the save stage (same machinery
     /// as Rending). The melee + charging gate distinguishes the charger's swing from a strike-back.
+    ///
+    /// Weapon-scoped (#192 slice 0), matching where the corpus attaches it. The melee gate means a
+    /// unit-scoped attachment would have behaved identically for a single-melee-weapon model, but a
+    /// charger holding two melee weapons must only get the bonus on the one carrying the rule.
     /// </summary>
     public static SpecialRuleDefinition Thrust { get; } = new SpecialRuleDefinition("Thrust",
         new[]
@@ -504,8 +514,9 @@ public static class CoreRuleCatalog
                 ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>(),
+        ERuleScope.Weapon,
         Valence: EValence.Positive,
-        Description: "When charging, +1 to hit and AP(+1) in melee.");
+        Description: "When charging, +1 to hit and AP(+1) with this weapon in melee.");
 
     /// <summary>
     /// Impact(X): on charge contact, the charger rolls X dice — each 2+ scores an automatic hit on the

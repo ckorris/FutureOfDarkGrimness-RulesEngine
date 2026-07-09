@@ -9,9 +9,14 @@ namespace FDG.Tests
     // #027 slice 1: weapons are first-class rule carriers. Army-load resolves each
     // WeaponFileEntry's special-rule names against the registry and attaches the resolved
     // definitions to that weapon's instances — not to the unit, not to sibling weapons.
-    // Scope is enforced in both directions at the load seam (ArmyListRuleResolution):
-    // a weapon-scoped rule named at unit level, or a unit-scoped rule named on a weapon,
-    // is skipped with a warning instead of attaching where it doesn't belong.
+    // ArmyListRuleResolution.ResolveForScope refuses either scope mismatch: a unit-scoped rule
+    // named on a weapon, or a weapon-scoped rule named at unit level, is skipped with a warning.
+    //
+    // #192 slice 0 note: the unit-level attachment path no longer calls ResolveForScope, because a
+    // weapon rule can arrive there legitimately (wargear flattens into the unit's rule list). It uses
+    // ResolveAnyScope and re-homes the rule onto the unit's weapons — see
+    // WeaponScopedWargearRoutingTests. The ResolveForScope contract asserted below is unchanged, and
+    // still governs the weapon-level path, where a unit rule really has nowhere to go.
     [TestFixture]
     public class WeaponRuleAttachmentTests
     {

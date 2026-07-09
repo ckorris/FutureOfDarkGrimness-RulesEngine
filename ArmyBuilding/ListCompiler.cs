@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using FDG.Rules.Definitions;
+using FDG.Rules.Dispatch;
+using FDG.Rules.Foundation;
 using FDG.SaveLoad;
 
 namespace FDG.ArmyBuilding
@@ -122,6 +125,13 @@ namespace FDG.ArmyBuilding
             };
             List<ItemEntry> items = roster.Items.Select(CloneItem).ToList();
 
+            // #192 slice 0. Wargear whose rules are weapon-scoped AND whose section names a target weapon
+            // ("Upgrade all Pulse Rifles with: Drone Controller (Reliable, Takedown)") attaches those rules
+            // to that weapon, not to the unit — a Reliable rifle must not make its owner's melee taser hit
+            // on 2+. Everything placed that way is recorded here so the rule-bundle fold below skips it.
+            HashSet<string> weaponScopedNames = WeaponScopedRuleNames(book);
+            HashSet<(string Item, SpecialRuleEntry Rule)> placedOnWeapons = new();
+
             // Apply in the book's section order, not click order — a later section may target weapons an
             // earlier one grants (e.g. "Replace one Shard Carbine" after "Replace all ... with Shard Carbines"),
             // so compilation must not depend on the sequence the user toggled things in.
@@ -156,18 +166,115 @@ namespace FDG.ArmyBuilding
                     case UpgradeVariant.Upgrade:
                     case UpgradeVariant.PickN:
                         AddGains(unit, items, option, applications);
+                        // Only non-Replace variants: a Replace has already removed its targets above, so
+                        // there is no weapon left to attach to.
+                        PlaceTargetedWeaponRules(unit, section, option, applications, weaponScopedNames, placedOnWeapons);
                         break;
                 }
             }
 
-            // Items are rule-bundles at runtime: fold their rules into the unit (deduped by value).
+            // Items are rule-bundles at runtime: fold their rules into the unit (deduped by value). A rule
+            // already placed on its target weapon is skipped — it lives there, not on the unit. A weapon
+            // rule from an UNtargeted item ("Toxic Cysts (Bane in Melee)") does fold in, and army-load
+            // (GameBootstrap) spreads it across every weapon the unit carries.
             foreach (ItemEntry item in items)
                 foreach (SpecialRuleEntry rule in item.Rules)
-                    if (!unit.SpecialRules.Contains(rule))
+                    if (!placedOnWeapons.Contains((item.Name, rule)) && !unit.SpecialRules.Contains(rule))
                         unit.SpecialRules.Add(rule);
 
             return (unit, items);
         }
+
+        /// <summary>Rule names this book resolves to a <see cref="ERuleScope.Weapon"/>-scoped definition.
+        /// A book definition overrides a core one of the same name (that is the registration order at army
+        /// load), so it also decides the scope here.</summary>
+        private static HashSet<string> WeaponScopedRuleNames(BookFile book)
+        {
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (SpecialRuleDefinition definition in CoreRuleCatalog.All)
+                if (definition.Scope == ERuleScope.Weapon)
+                    names.Add(definition.Name);
+
+            foreach (SpecialRuleDefinition definition in book.RuleDefinitions)
+                if (definition.Scope == ERuleScope.Weapon) names.Add(definition.Name);
+                else names.Remove(definition.Name);
+
+            return names;
+        }
+
+        // Moves an option's weapon-scoped gains onto the weapons its section targets, recording each
+        // (item, rule) pair placed so it is not ALSO folded onto the unit. A target that matches no weapon
+        // the unit currently carries (e.g. a scope bought without the carbine it upgrades) places nothing,
+        // and the rule falls back to the unit-level path — the list validator's business, not ours.
+        private static void PlaceTargetedWeaponRules(UnitFileEntry unit, UpgradeSection section, UpgradeOption option,
+            int applications, HashSet<string> weaponScopedNames, HashSet<(string, SpecialRuleEntry)> placedOnWeapons)
+        {
+            if (section.Targets.Count == 0) return;
+
+            foreach (ItemEntry item in option.ItemsGained)
+                foreach (SpecialRuleEntry rule in item.Rules)
+                    if (weaponScopedNames.Contains(RuleLookupName(rule)))
+                        foreach (string target in section.Targets)
+                            if (AttachRuleToWeapons(unit.Weapons, target, rule, applications))
+                                placedOnWeapons.Add((item.Name, rule));
+
+            foreach (SpecialRuleEntry rule in option.RulesGained)
+                if (weaponScopedNames.Contains(RuleLookupName(rule)))
+                    foreach (string target in section.Targets)
+                        AttachRuleToWeapons(unit.Weapons, target, rule, applications);
+        }
+
+        // Attaches `rule` to up to `applications` copies of `target`. When the entry has more copies than
+        // the upgrade bought, it splits: the upgraded copies become their own WeaponFileEntry (SameProfile
+        // already keys on SpecialRules, so they never re-merge with the un-upgraded ones). Returns whether
+        // any copy took the rule.
+        private static bool AttachRuleToWeapons(List<WeaponFileEntry> weapons, string target, SpecialRuleEntry rule,
+            int applications)
+        {
+            int remaining = applications;
+            bool attached = false;
+            var upgraded = new List<WeaponFileEntry>();
+
+            for (int i = 0; i < weapons.Count && remaining > 0; i++)
+            {
+                WeaponFileEntry weapon = weapons[i];
+                if (!TargetMatches(weapon.Name, target)) continue;
+
+                if (weapon.SpecialRules.Contains(rule))
+                {
+                    // Already carries it (a re-applied option, or the profile shipped with it).
+                    remaining -= weapon.Quantity;
+                    attached = true;
+                    continue;
+                }
+
+                int take = Math.Min(weapon.Quantity, remaining);
+                if (take == weapon.Quantity)
+                {
+                    weapon.SpecialRules.Add(rule);
+                }
+                else
+                {
+                    weapon.Quantity -= take;
+                    WeaponFileEntry clone = CloneWeapon(weapon);
+                    clone.Quantity = take;
+                    clone.SpecialRules.Add(rule);
+                    upgraded.Add(clone);
+                }
+
+                remaining -= take;
+                attached = true;
+            }
+
+            weapons.AddRange(upgraded);
+            return attached;
+        }
+
+        // The name a rule entry resolves under — an alias looks up the rule it renames, so its scope is
+        // that rule's scope. Mirrors ArmyListRuleResolution.DescribeRuleEntry, which army-load uses.
+        private static string RuleLookupName(SpecialRuleEntry rule) =>
+            ArmyListRuleResolution.DescribeRuleEntry(rule).lookupName;
 
         // How many times an option applies — drives cost + gain scaling, and (for Replace) is clamped so you
         // can never replace more targets than the unit actually has.

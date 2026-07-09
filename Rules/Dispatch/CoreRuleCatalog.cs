@@ -204,7 +204,7 @@ public static class CoreRuleCatalog
     /// Attacker: +1 to hit when attacking with this weapon (melee or shooting) — lowers the bearer's hit
     /// threshold. The Actor-seat counterpart to <see cref="Evasive"/>, no gate.
     ///
-    /// Weapon-scoped (#192 slice 0): every corpus reference attaches it to a weapon, either directly on a
+    /// Weapon-scoped (#197 slice 0): every corpus reference attaches it to a weapon, either directly on a
     /// profile or through a targeted wargear upgrade ("upgrade the Marksman Carbine with a Scope"), which
     /// ListCompiler lands on the named weapon. A model carrying a scoped carbine and a plain sidearm must
     /// get the bonus only on the carbine, so the bearer has to be the weapon rather than the unit.
@@ -497,7 +497,7 @@ public static class CoreRuleCatalog
     /// <see cref="EHookID.Shooting_OnHitRollComplete"/> and carried to the save stage (same machinery
     /// as Rending). The melee + charging gate distinguishes the charger's swing from a strike-back.
     ///
-    /// Weapon-scoped (#192 slice 0), matching where the corpus attaches it. The melee gate means a
+    /// Weapon-scoped (#197 slice 0), matching where the corpus attaches it. The melee gate means a
     /// unit-scoped attachment would have behaved identically for a single-melee-weapon model, but a
     /// charger holding two melee weapons must only get the bonus on the one carrying the rule.
     /// </summary>

@@ -11,7 +11,7 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #192 slice 0. Wargear is a rule-bundle: ListCompiler flattens an item's rules into the unit's rule
+    // #197 slice 0. Wargear is a rule-bundle: ListCompiler flattens an item's rules into the unit's rule
     // list, which is how 157 references to already-implemented WEAPON rules ended up named at UNIT scope and
     // were dropped by ArmyListRuleResolution's scope gate. Two paths now carry them to the right place, and
     // which path applies is decided by whether the upgrade names a target weapon:
@@ -92,7 +92,7 @@ namespace FDG.Tests
         {
             // "Upgrade the Master Marksman Carbine with a Scope" bought without the carbine it upgrades.
             // Nothing matches, so the rule folds onto the unit rather than vanishing; army-load then spreads
-            // it, preserving the pre-#192 behaviour instead of silently dropping a rule the player paid for.
+            // it, preserving the pre-#197 behaviour instead of silently dropping a rule the player paid for.
             RosterUnit roster = SniperDrones();
             roster.Sections[0].Targets = new List<string> { "Master Marksman Carbines" };
 

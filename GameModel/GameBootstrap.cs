@@ -111,7 +111,7 @@ namespace FDG.GameModel
         //still load and the rules that ARE implemented still fire. Weapon-level rules attach inside
         //the UnitData constructor via the same ArmyListRuleResolution helper.
         //
-        //#192 slice 0: a weapon-scoped rule CAN legitimately be named here. Wargear is a rule-bundle
+        //#197 slice 0: a weapon-scoped rule CAN legitimately be named here. Wargear is a rule-bundle
         //flattened into the unit's rule list at compile time (ListCompiler), so an item that grants a
         //weapon rule to the whole unit ("Toxic Cysts: Bane in Melee") arrives at unit scope. Those
         //attach to every weapon the unit carries; the rules' own isMelee / not(isMelee) gates then pick

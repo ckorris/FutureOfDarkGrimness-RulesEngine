@@ -125,7 +125,7 @@ namespace FDG.ArmyBuilding
             };
             List<ItemEntry> items = roster.Items.Select(CloneItem).ToList();
 
-            // #192 slice 0. Wargear whose rules are weapon-scoped AND whose section names a target weapon
+            // #197 slice 0. Wargear whose rules are weapon-scoped AND whose section names a target weapon
             // ("Upgrade all Pulse Rifles with: Drone Controller (Reliable, Takedown)") attaches those rules
             // to that weapon, not to the unit — a Reliable rifle must not make its owner's melee taser hit
             // on 2+. Everything placed that way is recorded here so the rule-bundle fold below skips it.

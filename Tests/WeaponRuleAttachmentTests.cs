@@ -12,7 +12,7 @@ namespace FDG.Tests
     // ArmyListRuleResolution.ResolveForScope refuses either scope mismatch: a unit-scoped rule
     // named on a weapon, or a weapon-scoped rule named at unit level, is skipped with a warning.
     //
-    // #192 slice 0 note: the unit-level attachment path no longer calls ResolveForScope, because a
+    // #197 slice 0 note: the unit-level attachment path no longer calls ResolveForScope, because a
     // weapon rule can arrive there legitimately (wargear flattens into the unit's rule list). It uses
     // ResolveAnyScope and re-homes the rule onto the unit's weapons — see
     // WeaponScopedWargearRoutingTests. The ResolveForScope contract asserted below is unchanged, and

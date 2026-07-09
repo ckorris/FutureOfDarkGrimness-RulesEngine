@@ -85,7 +85,7 @@ namespace FDG.SaveLoad
         /// rule belongs. Still returns null (with a warning) for an unimplemented name or a missing numeric
         /// argument, since neither can attach anywhere.
         ///
-        /// The unit-level attachment path (#192 slice 0) needs this: wargear is a rule-bundle folded into
+        /// The unit-level attachment path (#197 slice 0) needs this: wargear is a rule-bundle folded into
         /// the unit's rule list, so a weapon rule granted by an item arrives named at unit scope and must be
         /// re-homed onto the unit's weapons rather than dropped. Weapon-level attachment keeps using
         /// <see cref="ResolveForScope"/> — a unit rule named on a weapon profile really is misauthored data

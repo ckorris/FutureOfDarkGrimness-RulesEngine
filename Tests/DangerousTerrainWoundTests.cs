@@ -218,5 +218,7 @@ namespace FDG.Tests
 
         public bool TryGetMovementDistance(out float distance) { distance = 0f; return false; }
         public void SubmitValidPathTemplate(List<ModelMoveEntry> paths) { }
+        public bool MoveCancelled { get; private set; }
+        public void RegisterMoveCancelled() => MoveCancelled = true;
     }
 }

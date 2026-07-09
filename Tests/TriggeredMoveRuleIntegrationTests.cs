@@ -403,7 +403,7 @@ namespace FDG.Tests
                     entries.Add(new ModelMoveEntry(model,
                         new List<Position> { new Position(start.x + _dx, start.z + _dz) }));
                 }
-                return Task.FromResult((TReply)(object)entries);
+                return Task.FromResult((TReply)(object)new Selected<List<ModelMoveEntry>>(entries));
             }
             throw new System.InvalidOperationException("Unexpected request type: " + request.GetType());
         }

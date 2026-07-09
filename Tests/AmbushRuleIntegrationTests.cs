@@ -182,7 +182,7 @@ namespace FDG.Tests
                     var entries = place.ModelsToPlace
                         .Select(m => new PlacedObjectEntry<ModelData>(m, dest))
                         .ToList();
-                    return Task.FromResult((TReply)(object)entries);
+                    return Task.FromResult((TReply)(object)new Selected<List<PlacedObjectEntry<ModelData>>>(entries));
                 default:
                     throw new System.InvalidOperationException("Unexpected request: " + request.GetType());
             }

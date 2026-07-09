@@ -78,6 +78,8 @@ namespace FDG.Stages
             chooseAction.ToEmbark.Bind(embark);
             chooseAction.ToReconcileEndOfActivation.Bind(toReconcileActivationEvent);
             movement.OnFinishedMovement.Bind(chooseAction);
+            // Abandoning the move at the path prompt returns without registering a move distance.
+            movement.BackToChooseAction.Bind(chooseAction);
             melee.OnFinishedMelee.Bind(chooseAction);
             // Backing out of a charge before any dice or movement must not spend the attack, so it returns
             // through its own binding rather than OnFinishedMelee. Same shape as the shoot pair below.
@@ -90,6 +92,8 @@ namespace FDG.Stages
             castSpell.OnFinished.Bind(chooseAction);
             // #035 — after disembarking (Advance-equivalent), loop back so the unit may still Shoot.
             disembark.OnFinished.Bind(chooseAction);
+            // Cancelling the disembark placement leaves the unit aboard with its move unspent.
+            disembark.OnBackToChooseAction.Bind(chooseAction);
             // #035 slice D — boarding a transport ends the activation (the unit is now inside); cancelling
             // the transport choice returns to the action menu.
             embark.OnEmbarked.Bind(toReconcileActivationEvent);

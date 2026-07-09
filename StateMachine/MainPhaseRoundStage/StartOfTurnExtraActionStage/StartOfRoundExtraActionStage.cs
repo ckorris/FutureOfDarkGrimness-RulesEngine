@@ -4,6 +4,7 @@ using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
+using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 
 namespace FDG.Stages
@@ -144,8 +145,8 @@ namespace FDG.Stages
                 wholeTable, unit.ModelBindings, minDistanceFromEnemiesInches: minDistanceFromEnemies,
                 mustTouchTableEdge: mustTouchTableEdge);
 
-            List<PlacedObjectEntry<ModelData>> placements = await GameContext.PlayerRequester
-                .RequestDecision<PlaceObjectsRequest<ModelData>, List<PlacedObjectEntry<ModelData>>>(request);
+            List<PlacedObjectEntry<ModelData>> placements = await PlacementRequesting
+                .RequestMandatoryPlacement(GameContext.PlayerRequester, request);
 
             foreach (PlacedObjectEntry<ModelData> placement in placements)
             {

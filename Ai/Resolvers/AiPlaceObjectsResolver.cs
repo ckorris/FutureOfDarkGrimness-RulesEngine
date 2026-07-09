@@ -18,7 +18,7 @@ namespace FDG.Ai.Resolvers
     /// model. If no fully-clear centre exists it places the block intact at the best clamped centre — cramped
     /// but never scattered, so a model is never stranded out of cohesion.
     /// </summary>
-    public class AiPlaceObjectsResolver<T> : IStageResolver<PlaceObjectsRequest<T>, List<PlacedObjectEntry<T>>>
+    public class AiPlaceObjectsResolver<T> : IStageResolver<PlaceObjectsRequest<T>, CancellableResult<List<PlacedObjectEntry<T>>>>
     {
         private readonly ITableState _tableState;
         private readonly Dictionary<PlayerID, int> _deployCountPerPlayer = new();
@@ -37,7 +37,11 @@ namespace FDG.Ai.Resolvers
             _tableState = tableState;
         }
 
-        public Task<List<PlacedObjectEntry<T>>> Resolve(PlaceObjectsRequest<T> request)
+        /// <summary> The AI always places; it never declines a disembark it chose to make. </summary>
+        public async Task<CancellableResult<List<PlacedObjectEntry<T>>>> Resolve(PlaceObjectsRequest<T> request)
+            => new Selected<List<PlacedObjectEntry<T>>>(await ChoosePlacements(request));
+
+        private Task<List<PlacedObjectEntry<T>>> ChoosePlacements(PlaceObjectsRequest<T> request)
         {
             var zone = request.DeploymentZone;
             ZoneBounds bounds = zone.Bounds;

@@ -1,5 +1,6 @@
 using FDG.Data;
 using FDG.Rules.Definitions;
+using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 
 namespace FDG.Stages
@@ -38,8 +39,8 @@ namespace FDG.Stages
                 var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID, "Place Scout Unit",
                     forwardZone, unit.ModelBindings);
 
-                List<PlacedObjectEntry<ModelData>> placements = await GameContext.PlayerRequester
-                    .RequestDecision<PlaceObjectsRequest<ModelData>, List<PlacedObjectEntry<ModelData>>>(request);
+                List<PlacedObjectEntry<ModelData>> placements = await PlacementRequesting
+                    .RequestMandatoryPlacement(GameContext.PlayerRequester, request);
 
                 foreach (PlacedObjectEntry<ModelData> placement in placements)
                 {

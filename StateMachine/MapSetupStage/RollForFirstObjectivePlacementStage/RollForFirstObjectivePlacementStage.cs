@@ -1,4 +1,4 @@
-namespace FDG.Stages
+﻿namespace FDG.Stages
 {
     /// <summary>
     /// Rolls off to pick which team places the first objective marker, then
@@ -24,7 +24,7 @@ namespace FDG.Stages
             List<string> teamNames = teams.Select(t => $"Team {t.TeamNumber}").ToList();
 
             ITeam winner = await DiceUtilities.RollOff_SingleWinner(teams, teamNames,
-                context.GameContext.TextOutput, context.GameContext.Presenter, "Objective Roll-Off");
+                context.GameContext.TextOutput, context.GameContext.DiceRoller, context.GameContext.Presenter, "Objective Roll-Off");
 
             // Build the alternation order: winner first, then the rest in their existing order.
             var order = new List<ITeam> { winner };

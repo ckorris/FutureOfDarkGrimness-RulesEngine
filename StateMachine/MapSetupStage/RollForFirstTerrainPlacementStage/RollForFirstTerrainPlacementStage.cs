@@ -1,4 +1,4 @@
-namespace FDG.Stages
+﻿namespace FDG.Stages
 {
     /// <summary>
     /// Rolls off to pick which team places terrain first, and records the full alternation order on the
@@ -35,7 +35,7 @@ namespace FDG.Stages
             List<string> teamNames = teams.Select(t => $"Team {t.TeamNumber}").ToList();
 
             ITeam winner = await DiceUtilities.RollOff_SingleWinner(teams, teamNames,
-                context.GameContext.TextOutput, context.GameContext.Presenter, "Terrain Roll-Off");
+                context.GameContext.TextOutput, context.GameContext.DiceRoller, context.GameContext.Presenter, "Terrain Roll-Off");
 
             var order = new List<ITeam> { winner };
             foreach (var t in teams)

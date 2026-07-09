@@ -19,7 +19,7 @@ namespace FDG.Stages
             List<string> teamNames = teams.Select(team => $"Team {team.TeamNumber}").ToList();
 
             List<ITeam> rollOrder = await DiceUtilities.RollOff_Ordered(teams, teamNames,
-                context.GameContext.TextOutput, context.GameContext.Presenter, "Map Side Roll-Off");
+                context.GameContext.TextOutput, context.GameContext.DiceRoller, context.GameContext.Presenter, "Map Side Roll-Off");
 
             ITeam winner = rollOrder.First();
             context.Log($"Team {winner.TeamNumber} won the roll-off and will choose their side of the map.");

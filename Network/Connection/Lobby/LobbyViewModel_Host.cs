@@ -516,7 +516,7 @@ namespace FDG.Network.Connection.Lobby
                     case EPlayerType.AI:
                         FDGGame_AsLocal aiGame = new FDGGame_AsLocal(_gameDataStore, _messageBus);
                         playerSlot.AssignPlayerController(AiResolverRegistryFactory.CreateSoloRulesController(
-                            info.PlayerName, playerSlot.PlayerID, aiGame));
+                            info.PlayerName, playerSlot.PlayerID, aiGame, _gameSettings.DiceSeed, playerSlot.SlotID));
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
@@ -632,7 +632,8 @@ namespace FDG.Network.Connection.Lobby
                     case EPlayerType.AI:
                         FDGGame_AsLocal aiGame = new FDGGame_AsLocal(_gameDataStore, _messageBus);
                         ComputerPlayerController aiController = AiResolverRegistryFactory.CreateSoloRulesController(
-                            lobbyPlayerInfo.PlayerName, playerSlot.PlayerID, aiGame);
+                            lobbyPlayerInfo.PlayerName, playerSlot.PlayerID, aiGame,
+                            _gameSettings.DiceSeed, playerSlot.SlotID);
                         playerSlot.AssignPlayerController(aiController);
                         break;
                     default:

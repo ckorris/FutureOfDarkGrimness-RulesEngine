@@ -13,8 +13,19 @@ namespace FDG.Ai
         public const bool SlowMode = false;
         private const int SlowModeDelayMs = 1000;
 
-        public static IStageResolverRegistry BuildSoloRules(ITableState tableState, PlayerID playerID)
+        /// <param name="seed">
+        /// The GAME's seed (<see cref="GameSettings.DiceSeed"/>), not a per-player one — this method
+        /// derives the player's own stream from it via <paramref name="slotID"/>, so two AI players never
+        /// share a sequence and a seeded game replays identically (#193). Null = unseeded, as before.
+        /// </param>
+        /// <param name="slotID">The player's slot index. Stable across runs and across save/resume, unlike the PlayerID GUID.</param>
+        public static IStageResolverRegistry BuildSoloRules(ITableState tableState, PlayerID playerID,
+            int? seed = null, int slotID = 0)
         {
+            int? playerSeed = GameRandom.DeriveForSlot(seed, slotID);
+            Random? objectiveRng = playerSeed.HasValue ? GameRandom.Create(playerSeed, salt: 1) : null;
+            Random? terrainRng = playerSeed.HasValue ? GameRandom.Create(playerSeed, salt: 2) : null;
+
             IStageResolverRegistry registry = new StageResolverRegistry()
                 .RegisterResolver(new AiYesNoResolver())
                 .RegisterResolver(new AiStringSelectionResolver(tableState, playerID))
@@ -30,8 +41,8 @@ namespace FDG.Ai
                 .RegisterResolver(new AiSelectionResolver<ModelData>())
                 .RegisterResolver(new AiSelectionResolver<RectangularZone>())
                 .RegisterResolver(new AiPlaceObjectsResolver<ModelData>(tableState))
-                .RegisterResolver(new AiPlaceObjectiveResolver(tableState))
-                .RegisterResolver(new AiPlaceOneTerrainResolver(tableState));
+                .RegisterResolver(new AiPlaceObjectiveResolver(tableState, objectiveRng))
+                .RegisterResolver(new AiPlaceOneTerrainResolver(tableState, terrainRng));
 
             if (SlowMode)
                 registry = new AiSlowModeRegistry(registry, SlowModeDelayMs);
@@ -40,9 +51,9 @@ namespace FDG.Ai
         }
 
         public static ComputerPlayerController CreateSoloRulesController(
-            string name, PlayerID id, FDGGame_AsLocal localGame)
+            string name, PlayerID id, FDGGame_AsLocal localGame, int? seed = null, int slotID = 0)
         {
-            var registry = BuildSoloRules(localGame.TableState, id);
+            var registry = BuildSoloRules(localGame.TableState, id, seed, slotID);
             return new ComputerPlayerController(name, id, localGame, registry);
         }
     }

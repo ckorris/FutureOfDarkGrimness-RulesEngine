@@ -1,8 +1,21 @@
 using System;
+using FDG;
 
 public class ProbabilisticDiceRoller : IDiceRoller
 {
-    private static readonly Random _random = new Random();
+    // #193: per-instance, never static. A static Random would be shared by every game in the process,
+    // so concurrent self-play games would consume each other's numbers (nondeterministic, and a race).
+    private readonly Random _random;
+
+    /// <param name="seed">
+    /// Seeds the decisive-roll stream. Null keeps the historical unseeded behavior. <see cref="Roll"/>
+    /// is pure expected-value math and never touches randomness, so the seed only governs
+    /// <see cref="RollDecisive"/>.
+    /// </param>
+    public ProbabilisticDiceRoller(int? seed = null)
+    {
+        _random = GameRandom.Create(seed, GameRandom.SALT_GAME_CONTEXT);
+    }
 
     public IDiceResults Roll(int sideCount, float rollCount)
     {

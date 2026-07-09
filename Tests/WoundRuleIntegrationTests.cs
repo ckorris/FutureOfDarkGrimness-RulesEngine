@@ -1,4 +1,4 @@
-using FDG.Data;
+﻿using FDG.Data;
 using FDG.Players;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
@@ -292,6 +292,8 @@ namespace FDG.Tests
     {
         public ITextOutput TextOutput { get; } = new EmptyTextOutput();
         public IDiceRoller DiceRoller { get; }
+        // #193: tests get a fixed-seed stream so any Rng-driven stage behaves reproducibly.
+        public Random Rng { get; } = new Random(20260709);
         public RuleEvaluator RuleEvaluator { get; }
         public IPlayerRequestByID PlayerRequester { get; }
         public TableState TableState { get; }

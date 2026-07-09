@@ -187,7 +187,9 @@ namespace FDG.GameModel
         {
             IDiceRoller diceRoller = gameSettings.RandomnessType switch
             {
-                ERandomnessType.Probabilistic => new ProbabilisticDiceRoller(),
+                // #193: probabilistic combat is pure expected-value math, but its decisive rolls (morale,
+                // objective count, dangerous terrain) are real draws and take the seed too.
+                ERandomnessType.Probabilistic => new ProbabilisticDiceRoller(gameSettings.DiceSeed),
                 // #167: an explicit seed makes Realistic-mode runs repeatable (scenario testing / repro cases).
                 ERandomnessType.Realistic => new RealisticDiceRoller(gameSettings.DiceSeed),
                 _ => throw new ArgumentOutOfRangeException()

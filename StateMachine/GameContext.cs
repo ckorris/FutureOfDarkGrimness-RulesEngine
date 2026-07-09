@@ -15,8 +15,16 @@ namespace FDG
 
         public IDiceRoller DiceRoller { get; }
 
+        /// <summary>
+        /// The game's single seeded source of NON-dice randomness (shuffles, tie-breaks that aren't rolls).
+        /// Dice go through <see cref="DiceRoller"/>. Nothing on the game path may construct its own
+        /// <c>Random</c>: same seed + same build must reproduce the same game, including when many games
+        /// run concurrently in one process (#193). Seeded from <see cref="GameSettings.DiceSeed"/>.
+        /// </summary>
+        public Random Rng { get; }
+
         public RuleEvaluator RuleEvaluator { get; }
-        
+
         public IPlayerRequestByID PlayerRequester { get; }
 
         public TableState TableState { get; }
@@ -65,8 +73,10 @@ namespace FDG
 
         public IDiceRoller DiceRoller { get; }
 
+        public Random Rng { get; }
+
         public RuleEvaluator RuleEvaluator { get; }
-        
+
         public IPlayerRequestByID PlayerRequester { get; }
 
         public TableState TableState { get; }
@@ -94,6 +104,7 @@ namespace FDG
         {
             TextOutput = textOutput;
             DiceRoller = diceRoller;
+            Rng = GameRandom.Create(settings.DiceSeed, GameRandom.SALT_GAME_CONTEXT);
             // ruleResolver lets the evaluator read token-granted rules (auras / "gains rule X" buffs)
             // back to their definitions. Optional so the Samples' bare-context construction and the
             // resume path (no fresh army-load resolver; see #095) still compile and run.

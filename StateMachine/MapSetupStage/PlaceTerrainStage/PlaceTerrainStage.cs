@@ -103,7 +103,11 @@ namespace FDG.Stages
         /// </summary>
         private static void PlaceAutoLayout(IMapSetupContext context, TerrainLayoutFile layout)
         {
-            System.Random rng = new System.Random();
+            // #198: the thinning draws from the game's seeded source. This was `new System.Random()` -
+            // the last unseeded RNG on the game path (missed by #193's audit because the fully-qualified
+            // spelling dodged its grep) - so the auto layout differed every run regardless of the seed,
+            // and every seeded game diverged from the terrain onward.
+            System.Random rng = context.GameContext.Rng;
             float tableH = GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES;
             float deploy = GameWideConstants.DEPLOYMENT_DISTANCE_INCHES;
 

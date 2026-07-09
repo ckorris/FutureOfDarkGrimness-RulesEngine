@@ -36,7 +36,8 @@ namespace FDG.Stages
 
             IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
                 new HitRollModifierContext(attacker, defender, distance, AttackerMoved: metaData.AttackerMoved,
-                    IsMelee: metaData.IsMelee, IsCharging: metaData.IsCharging),
+                    IsMelee: metaData.IsMelee, IsCharging: metaData.IsCharging,
+                    ChargeOriginDistanceInches: metaData.ChargeOriginDistanceInches),
                 // #006 slice F / #093: the attacker batch's living owners contribute their per-model rules
                 // under AllOwners semantics — a rule fires only when every owner shares it, so a joined
                 // hero's Furious/Relentless/Thrust fire for a hero-only batch (and a homogeneous elite

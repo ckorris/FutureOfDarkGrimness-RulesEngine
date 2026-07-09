@@ -391,9 +391,10 @@ public static class RuleFireLint
                 foreach (bool moved in new[] { false, true })
                 foreach (bool isMelee in new[] { false, true })
                 foreach (bool isCharging in new[] { false, true })
+                foreach (float chargeOrigin in new[] { 0f, FarInches })
                 {
                     yield return new HitRollModifierContext(attacker, defender, distance, moved,
-                        isMelee, isCharging);
+                        isMelee, isCharging, chargeOrigin);
                 }
                 break;
             case EHookID.Shooting_OnHitRollComplete:

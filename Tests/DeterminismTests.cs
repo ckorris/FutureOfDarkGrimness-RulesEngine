@@ -5,6 +5,7 @@ using FDG.Ai.Resolvers;
 using FDG.Data;
 using FDG.GameModel;
 using FDG.Players;
+using FDG.Rules.Foundation;
 using FDG.SaveLoad;
 using FDG.StageResolution.Requests;
 using NUnit.Framework;
@@ -241,6 +242,22 @@ namespace FDG.Tests
         }
 
         [Test]
+        [CancelAfter(180_000)]
+        public async Task SameSeed_FreshGameWithRichArmies_IsIdentical()
+        {
+            // #198: the simple-army fixtures above were green while real games diverged - their armies
+            // never exercised auto-layout terrain thinning (both used AutoPlaceObjectivesDebug-free maps
+            // but tiny footprints), deployment-zone interactions, Ambush arrival, Scout/Vanguard moves,
+            // or melee reactions. This pins the full rule-heavy path end-to-end.
+            GameFingerprint first = await PlaySeededFreshGame(seed: 60601, MakeRichArmy("Reds"), MakeRichArmy("Blues"));
+            GameFingerprint second = await PlaySeededFreshGame(seed: 60601, MakeRichArmy("Reds"), MakeRichArmy("Blues"));
+
+            Assert.That(second.Summary, Is.EqualTo(first.Summary));
+            Assert.That(second.FinalState, Is.EqualTo(first.FinalState),
+                "a rich-army seeded game diverged - some randomness or ordering escapes the seed (#198 regression).");
+        }
+
+        [Test]
         [CancelAfter(300_000)]
         public async Task SameSeed_FreshGameAmidConcurrentGames_MatchesTheSoloRun()
         {
@@ -348,7 +365,8 @@ namespace FDG.Tests
         /// mode. Unlike the scenario resume, this runs the roll-offs, objective placement and deployment,
         /// so it covers every randomness site #193 seeded.
         /// </summary>
-        private static async Task<GameFingerprint> PlaySeededFreshGame(int seed)
+        private static async Task<GameFingerprint> PlaySeededFreshGame(int seed,
+            ArmyListFile? armyA = null, ArmyListFile? armyB = null)
         {
             var store = GameDataStore.GameDataStoreBuilder.GetDefault();
             var bus = new InProcessBus();
@@ -357,7 +375,7 @@ namespace FDG.Tests
             for (int i = 0; i < slots.Length; i++)
             {
                 slots[i] = new PlayerSlot(i, teamNumber: i, new PlayerID(Guid.NewGuid()),
-                    i == 0 ? MakeShooterArmy() : MakeDefenderArmy(), store);
+                    i == 0 ? armyA ?? MakeShooterArmy() : armyB ?? MakeDefenderArmy(), store);
                 var aiGame = new FDGGame_AsLocal(store, bus);
                 slots[i].AssignPlayerController(AiResolverRegistryFactory.CreateSoloRulesController(
                     $"AI {i}", slots[i].PlayerID, aiGame, seed, slots[i].SlotID));
@@ -445,6 +463,75 @@ namespace FDG.Tests
                         {
                             Unit = "Guards",
                             Models = new() { new[] { 40f, 26f }, new[] { 41f, 26f }, new[] { 42f, 26f } },
+                        },
+                    },
+                },
+            },
+        };
+
+        // The FdgLab builtin army's rule spread: movement rules (Very Fast/Vanguard/Scout), deferred
+        // deployment (Ambush), melee reactions (Counter/Thrust/Impact/Furious), weapon rules
+        // (Surge/Blast/Takedown), Strafing, Martial Prowess - the paths the simple armies never touch.
+        private static ArmyListFile MakeRichArmy(string name) => new ArmyListFile
+        {
+            Name = name,
+            Units = new()
+            {
+                new UnitFileEntry
+                {
+                    Name = "Warriors", ModelCount = 5, Quality = 4, Defense = 4,
+                    SpecialRules = new()
+                    {
+                        new SpecialRuleEntry_Core("Stealth"),
+                        new SpecialRuleEntry_Core("Very Fast"),
+                        new SpecialRuleEntry_Core("Vanguard"),
+                        new SpecialRuleEntry_Core("Thrust"),
+                        new SpecialRuleEntry_CoreNumeric("Impact", 2),
+                        new SpecialRuleEntry_Core("Furious"),
+                        new SpecialRuleEntry_Core("Strafing"),
+                    },
+                    Weapons = new()
+                    {
+                        new WeaponFileEntry { Name = "Rifle", RangeInches = 24, Attacks = 1 },
+                        new WeaponFileEntry { Name = "Blade", RangeInches = 0, Attacks = 2 },
+                    },
+                },
+                new UnitFileEntry
+                {
+                    Name = "Heavy Gunners", ModelCount = 3, Quality = 4, Defense = 4,
+                    SpecialRules = new()
+                    {
+                        new SpecialRuleEntry_Core("Scout"),
+                        new SpecialRuleEntry_Core("Martial Prowess"),
+                    },
+                    Weapons = new()
+                    {
+                        new WeaponFileEntry
+                        {
+                            Name = "Heavy Rifle", RangeInches = 36, Attacks = 1,
+                            SpecialRules = new()
+                            {
+                                new SpecialRuleEntry_Core("Surge"),
+                                new SpecialRuleEntry_CoreNumeric("Blast", 3),
+                            },
+                        },
+                        new WeaponFileEntry
+                        {
+                            Name = "Fists", RangeInches = 0, Attacks = 1,
+                            SpecialRules = new() { new SpecialRuleEntry_Core("Counter") },
+                        },
+                    },
+                },
+                new UnitFileEntry
+                {
+                    Name = "Infiltrators", ModelCount = 2, Quality = 4, Defense = 4,
+                    SpecialRules = new() { new SpecialRuleEntry_Core("Ambush") },
+                    Weapons = new()
+                    {
+                        new WeaponFileEntry
+                        {
+                            Name = "Rifle", RangeInches = 24, Attacks = 1,
+                            SpecialRules = new() { new SpecialRuleEntry_Core("Takedown") },
                         },
                     },
                 },

@@ -20,6 +20,13 @@ namespace FDG.StageResolution
         private readonly ConcurrentDictionary<TaskID, SuccessAndFailActions> _pendingTaskAndResolvers
             = new ConcurrentDictionary<TaskID, SuccessAndFailActions>();
 
+        // Players whose connection has dropped. A request targeting one of these is faulted the moment it's
+        // made — not just the ones in flight at disconnect time — so a drop that lands while it isn't that
+        // player's turn still ends the game at their next request instead of hanging on a dead connection.
+        // Written on the network read thread (disconnect), read on the engine thread (RequestDecision).
+        private readonly ConcurrentDictionary<PlayerID, byte> _disconnectedPlayers
+            = new ConcurrentDictionary<PlayerID, byte>();
+
         public RequestMessageSender(IMessageBusHost messageBusHost, IReadableGameDataStore gameDataStore,
             PlayerSlotManager playerSlotManager, ITextOutput textOutput)
         {
@@ -37,6 +44,19 @@ namespace FDG.StageResolution
             where TRequest : IStageTaskRequest<TReply>
         {
             PlayerID targetPlayerID = request.TargetPlayerID;
+
+            // A player who has already dropped will never answer. Fault the request on arrival rather than
+            // sending it into a dead connection and hanging — this is what catches a disconnect that landed
+            // while it wasn't this player's turn (the in-flight fail path alone can't, there was nothing
+            // pending then). The awaiting stage rethrows PlayerDisconnectedException, which FDGServer turns
+            // into a graceful game-end.
+            if (_disconnectedPlayers.ContainsKey(targetPlayerID))
+            {
+                TaskCompletionSource<TReply> alreadyGone =
+                    new TaskCompletionSource<TReply>(TaskCreationOptions.RunContinuationsAsynchronously);
+                alreadyGone.SetException(new PlayerDisconnectedException(targetPlayerID, "Player disconnected."));
+                return alreadyGone.Task;
+            }
 
             TaskID taskID = new TaskID(Guid.NewGuid());
             string? requestFullTypeName = typeof(TRequest).FullName;
@@ -165,6 +185,10 @@ namespace FDG.StageResolution
             {
                 return;
             }
+
+            // Record the drop before failing in-flight requests, so a request racing in during the fail is
+            // rejected by RequestDecision's guard rather than slipping through to the dead connection.
+            _disconnectedPlayers.TryAdd(playerID, 0);
 
             FailPendingRequestsForPlayer(playerID, "Player disconnected.");
         }

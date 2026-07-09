@@ -83,6 +83,33 @@ namespace FDG.Tests
                 Is.TypeOf<RequestMessageSender.PlayerDisconnectedException>());
         }
 
+        // The drop that lands while it ISN'T this player's turn: no request is pending to fail, but a later
+        // request for that player must fault at once (not hang on the dead connection). Regression for
+        // "closed the client and nothing happened, then the host hangs at the client's next turn."
+        [Test]
+        public void RequestAfterDisconnect_ForThatPlayer_FaultsImmediately()
+        {
+            var store = BuildStore();
+            var playerID = new PlayerID(Guid.NewGuid());
+            var connectionID = new ConnectionID(Guid.NewGuid());
+            var slot = new PlayerSlot(0, 1, playerID, null, store);
+            var bus = new RequestSystemTests.MockMessageBusHost();
+            slot.AssignPlayerController(new NetworkPlayerController("Net", playerID, connectionID, bus, store));
+            var sender = new RequestMessageSender(bus, store,
+                new PlayerSlotManager(new[] { slot }), new EmptyTextOutput());
+
+            // Player drops while nothing is pending for them (it wasn't their turn).
+            bus.SimulateClientDisconnected(connectionID);
+
+            // Their turn finally comes up and the engine asks them to decide.
+            Task<bool> pending = sender.RequestDecision<YesNoRequest, bool>(new YesNoRequest(playerID, "Q?"));
+
+            Assert.That(pending.IsFaulted, Is.True,
+                "a request for an already-disconnected player must fault at once, not hang.");
+            Assert.That(pending.Exception!.InnerException,
+                Is.TypeOf<RequestMessageSender.PlayerDisconnectedException>());
+        }
+
         // When the mid-game disconnect ends the game, the player-facing message names the departed player
         // and reads like a normal event, not an engine fault / stack trace.
         [Test]

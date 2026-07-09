@@ -13,10 +13,16 @@ namespace FDG.Stages
         {
             var objectives = GameContext.TableState.Objectives.Objects.ToList();
 
+            // Final scores and round count come from the live read model, so the structured result agrees
+            // with whatever the scoreboard last showed. Scores covers filled player slots in slot order
+            // (deterministic); the tally below covers every objective owner, including any player without
+            // a slot, which is what decides the winner.
+            IReadOnlyList<PlayerObjectiveScore> finalScores = GameContext.TableState.Progress.Scores;
+            int roundsPlayed = GameContext.TableState.Progress.RoundCount ?? 0;
+
             if (objectives.Count == 0)
             {
-                await context.Announce("It's a tie!");
-                GameContext.NotifyGameEnded("It's a tie!");
+                await AnnounceTie(context, finalScores, roundsPlayed);
                 return;
             }
 
@@ -40,22 +46,29 @@ namespace FDG.Stages
 
             if (winners.Count == 0 || topScore == 0)
             {
-                await context.Announce("It's a tie!");
-                GameContext.NotifyGameEnded("It's a tie!");
+                await AnnounceTie(context, finalScores, roundsPlayed);
             }
             else if (winners.Count > 1)
             {
-                await context.Announce("It's a tie!");
-                GameContext.NotifyGameEnded("It's a tie!");
+                await AnnounceTie(context, finalScores, roundsPlayed);
             }
             else
             {
                 var winner = winners[0];
                 string winnerName = GameContext.TableState.Players.Objects
                     .FirstOrDefault(p => p.PlayerID == winner)?.Name ?? "A player";
-                await context.Announce($"{winnerName} wins!", new TextColor(255, 215, 0, 255));
-                GameContext.NotifyGameEnded($"{winnerName} wins!");
+                GameResult result = GameResult.ForWin(winner, winnerName, finalScores, roundsPlayed);
+                await context.Announce(result.Message, new TextColor(255, 215, 0, 255));
+                GameContext.NotifyGameCompleted(result);
             }
+        }
+
+        private async Task AnnounceTie(IGameContext context, IReadOnlyList<PlayerObjectiveScore> finalScores,
+            int roundsPlayed)
+        {
+            GameResult result = GameResult.ForTie(finalScores, roundsPlayed);
+            await context.Announce(result.Message);
+            GameContext.NotifyGameCompleted(result);
         }
 
         public override void Exit()

@@ -435,6 +435,6 @@ namespace FDG.Tests
         }
 
         public void SetFirstDeploymentRollOrder(List<ITeam> order) { }
-        public void NotifyGameEnded(string result) { }
+        public void NotifyGameCompleted(GameResult result) { }
     }
 }

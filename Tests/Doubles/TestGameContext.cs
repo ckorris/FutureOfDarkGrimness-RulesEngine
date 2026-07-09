@@ -40,7 +40,7 @@ namespace FDG.Tests
         public void SetFirstDeploymentRollOrder(List<ITeam> order) { }
 
         // Virtual so tests that care about the end-of-game contract (e.g. VictoryCalculationStage)
-        // can subclass and record the result string; the base is a no-op for everyone else.
-        public virtual void NotifyGameEnded(string result) { }
+        // can subclass and record the result; the base is a no-op for everyone else.
+        public virtual void NotifyGameCompleted(GameResult result) { }
     }
 }

@@ -39,7 +39,12 @@ namespace FDG
 
         public void SetFirstDeploymentRollOrder(List<ITeam> firstDeploymentRollWinner);
 
-        public void NotifyGameEnded(string result);
+        /// <summary>
+        /// Ends the game with a structured <see cref="GameResult"/>. Raised once, by
+        /// <see cref="Stages.VictoryCalculationStage"/>. <see cref="GameModel.FDGServer"/> fans this out to
+        /// both its structured <c>OnGameCompleted</c> event and its legacy <c>OnGameEnded(string)</c> event.
+        /// </summary>
+        public void NotifyGameCompleted(GameResult result);
 
         /// <summary>
         /// When resuming a loaded game, the flow-state snapshot to rebuild the first round from;
@@ -76,7 +81,7 @@ namespace FDG
 
         public GameProgressData? ResumeProgress { get; private set; }
 
-        public event Action<string>? OnGameEnded;
+        public event Action<GameResult>? OnGameCompleted;
 
         public GameContext(ITextOutput textOutput, IDiceRoller diceRoller,
                 IPlayerRequestByID playerRequester,
@@ -113,9 +118,9 @@ namespace FDG
             FirstDeploymentRollOrder = firstDeploymentRollWinner;
         }
 
-        public void NotifyGameEnded(string result)
+        public void NotifyGameCompleted(GameResult result)
         {
-            OnGameEnded?.Invoke(result);
+            OnGameCompleted?.Invoke(result);
         }
     }
 }

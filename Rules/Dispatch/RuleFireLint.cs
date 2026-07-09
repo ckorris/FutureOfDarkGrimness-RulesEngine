@@ -142,6 +142,21 @@ public static class RuleFireLint
 
             if (produced.Count > 0)
             {
+                // Producing an operation is not the same as having one READ. A rollModifier(Hit) emitted at
+                // Shooting_OnHitRollComplete is discarded — the dice are already rolled, and only Save deltas
+                // fold from that hook. Two shipped rules did exactly that and did nothing in play (#197).
+                List<RuleOperation> ignored = produced
+                    .Where(op => !IsOpConsumedAtPassiveHook(entry.HookID, op))
+                    .ToList();
+
+                if (ignored.Count == produced.Count)
+                {
+                    problems.Add($"{label}: fires, but no stage at this hook reads what it produces " +
+                        $"[{string.Join(", ", ignored.Select(DescribeOp))}] - the entry is a no-op in play. " +
+                        "Either move it to the hook that consumes the operation, or extend " +
+                        "IsOpConsumedAtPassiveHook if a stage has learned to read it.");
+                }
+
                 return; // fired
             }
         }
@@ -243,6 +258,116 @@ public static class RuleFireLint
     /// <see cref="RuleOperation.InvokeDealHits"/> only resolves on the pre-attack and strafing child
     /// pipelines, and <see cref="RuleOperation.InvokeReactivate"/> only in DeterminePlayerTurnStage.
     /// </summary>
+    /// <summary>
+    /// Whether the stage that fires <paramref name="hook"/> actually READS <paramref name="op"/>. The
+    /// passive-side twin of <see cref="IsOpHandledAtAbilityHook"/>, and the same kind of hand-maintained map:
+    /// when a stage learns to consume a new operation, extend this. The drift direction is a loud false
+    /// failure, never a silent false pass — an unmapped (hook, op) pair reports as unconsumed.
+    ///
+    /// <para>This closes the gap that let <c>Changebound</c> and <c>Machine-Fog</c> ship as complete no-ops
+    /// (#197): both emitted a <see cref="RuleOperation.ApplyRollModifier"/> for <see cref="ERollKind.Hit"/> at
+    /// <see cref="EHookID.Shooting_OnHitRollComplete"/>, where the hit dice have already been rolled and only
+    /// <see cref="ERollKind.Save"/> deltas fold onward. Both the validator and the rest of this lint passed
+    /// them: the condition was well-formed and the effect produced an operation. Nothing checked that anyone
+    /// was listening. Note the map keys on the operation's <i>payload</i> where that decides consumption
+    /// (roll kind), not just its type.</para>
+    ///
+    /// Deliberately NOT covered, and still on WorkItems/166: whether the consumed value is used *correctly*
+    /// (a Save delta folded with the wrong sign is invisible here), and whether several rules' operations
+    /// compose to the right total — <c>FdgRaylib.Tests/BoostRuleCompositionTests</c> covers that for the
+    /// rules it names.
+    /// </summary>
+    private static bool IsOpConsumedAtPassiveHook(EHookID hook, RuleOperation op)
+    {
+        // Suppression (Effect.IgnoreRule -> SuppressRule) is resolved by the evaluator's own first pass, not
+        // by any stage, so it is read wherever it is emitted.
+        if (op is RuleOperation.SuppressRule)
+        {
+            return true;
+        }
+
+        return hook switch
+        {
+            // DetermineHitRollStage: shifts the hit threshold and floors Quality. It never reads a Save delta.
+            EHookID.Shooting_OnHitRollModifier =>
+                op is RuleOperation.ApplyRollModifier { Roll: ERollKind.Hit } or RuleOperation.QualityFloor,
+
+            // RollToHitStage: per-hit AP split, extra hits, hit multiplier, whole-attack Save delta, and the
+            // defender's AP reduction. The hit roll is already made, so a Hit delta here is discarded.
+            EHookID.Shooting_OnHitRollComplete =>
+                op is RuleOperation.ApplyRollModifier { Roll: ERollKind.Save }
+                    or RuleOperation.InsertExtraHits
+                    or RuleOperation.MultiplyHits
+                    or RuleOperation.ApplyPerHitSaveModifier
+                    or RuleOperation.ReduceArmorPenetration,
+
+            // SightRuleQueries reads the attacker's weapon-sight flags off CoverIgnoreContext.
+            EHookID.Shooting_OnSaveRollModifier =>
+                op is RuleOperation.IgnoreCover or RuleOperation.IgnoreLineOfSight,
+
+            // AssignWoundsStage: the save reroll, injected wounds, and the wound-ignore threshold.
+            EHookID.Shooting_OnSaveRollComplete =>
+                op is RuleOperation.ApplyReroll { Roll: ERollKind.Save }
+                    or RuleOperation.InsertExtraWounds
+                    or RuleOperation.IgnoreWound,
+
+            EHookID.Shooting_OnPreApplyWound => op is RuleOperation.MultiplyWounds,
+            EHookID.Shooting_OnRangeCheck => op is RuleOperation.ApplyRangeModifier,
+            EHookID.Shooting_OnShootTargetsSelected => op is RuleOperation.TargetIndividualModel,
+            EHookID.Shooting_OnPostShoot => op is RuleOperation.InvokeTriggeredMove,
+
+            // UnitDestructionNotifier applies token ops and runs executables at the death choke point.
+            EHookID.Shooting_OnUnitDestroyed => IsTokenOrExecutable(op),
+
+            EHookID.Movement_OnMoveActionDeclared or EHookID.Movement_OnChargeDeclared =>
+                op is RuleOperation.ApplyMovementBonus,
+            EHookID.Movement_OnMoveThroughTerrain =>
+                op is RuleOperation.IgnoreTerrainEffects or RuleOperation.CountAsInTerrain,
+            EHookID.Movement_OnMoveThroughEnemy => op is RuleOperation.IgnoreEnemyMovementBlock,
+
+            EHookID.Morale_OnPreMoraleTest => op is RuleOperation.ApplyRollModifier { Roll: ERollKind.Morale },
+            EHookID.Morale_OnMoraleTestComplete => op is RuleOperation.ApplyReroll { Roll: ERollKind.Morale },
+
+            // ReduceImpactDicePerModel folds into the same ChargeImpactHits sink, as a negative dice count.
+            EHookID.Melee_OnChargeContact => op is RuleOperation.ChargeImpactHits,
+            EHookID.Melee_OnCounterTrigger => op is RuleOperation.StrikeFirst,
+            EHookID.Melee_OnMeleeResolution => op is RuleOperation.ExtraMeleeWoundCount,
+            EHookID.Melee_OnPostMelee => op is RuleOperation.InvokeTriggeredMove,
+
+            EHookID.Activation_OnActionChoice => op is RuleOperation.RestrictActions,
+
+            // UnitCreationRules applies the token grants (auras) and folds SetMaxWounds (Tough).
+            EHookID.Lifecycle_OnUnitCreated =>
+                op is RuleOperation.SetMaxWounds || IsTokenOrExecutable(op),
+
+            EHookID.Deployment_OnPreDeploymentSelect => op is RuleOperation.DeferDeployment,
+
+            // StartOfRoundExtraActionStage applies token ops and runs executables for every living unit.
+            EHookID.Round_OnRoundStart => IsTokenOrExecutable(op),
+
+            // Activation_OnActivationStart / OnEndOfActivation carry activated abilities and token lifecycle,
+            // not passive sinks; a passive entry there can still legitimately grant or spend a token.
+            EHookID.Activation_OnActivationStart or EHookID.Activation_OnEndOfActivation =>
+                IsTokenOrExecutable(op),
+
+            _ => false,
+        };
+    }
+
+    private static bool IsOpTokenWork(RuleOperation op) =>
+        op is RuleOperation.GrantTokenToUnit or RuleOperation.GrantTokenToModel
+            or RuleOperation.ConsumeTokensFromUnit or RuleOperation.ConsumeTokensFromModel
+            or RuleOperation.InvokeHeal;
+
+    private static bool IsTokenOrExecutable(RuleOperation op) => IsOpTokenWork(op) || op is ExecutableOperation;
+
+    private static string DescribeOp(RuleOperation op) => op switch
+    {
+        RuleOperation.ApplyRollModifier m => $"{nameof(RuleOperation.ApplyRollModifier)}({m.Roll})",
+        RuleOperation.ApplyReroll r => $"{nameof(RuleOperation.ApplyReroll)}({r.Roll})",
+        _ => op.GetType().Name,
+    };
+
     private static bool IsOpHandledAtAbilityHook(EHookID hook, RuleOperation op) => op switch
     {
         RuleOperation.GrantTokenToUnit or RuleOperation.GrantTokenToModel

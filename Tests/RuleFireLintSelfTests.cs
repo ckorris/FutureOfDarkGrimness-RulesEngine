@@ -70,6 +70,55 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void PassiveEntry_ProducingAnOperationNoStageReads_IsFlagged()
+        {
+            // The exact shape of the shipped Changebound / Machine-Fog bug (#197): a defensive -1 to hit,
+            // emitted at Shooting_OnHitRollComplete. The condition is fine and the effect produces a real
+            // operation, so every other check passes — but the hit dice are already rolled by then, and only
+            // Save deltas fold from that hook. Core Stealth, the identical shape, sits at the modifier hook.
+            var rule = Passive("Lint Deaf Hook", new HookEntry(EHookID.Shooting_OnHitRollComplete,
+                new Condition.AllModelsHaveThisRule(),   // RuleValidator requires this of Subject-seat rules
+                new Effect.RollModifier(ERollKind.Hit, Delta: -1),
+                ELifetime.ThisAttack,
+                ERuleSeat.Subject));
+
+            IReadOnlyList<string> problems = RuleFireLint.Check(rule);
+
+            Assert.That(problems, Has.Some.Contains("no stage at this hook reads what it produces"));
+            Assert.That(problems, Has.Some.Contains("ApplyRollModifier(Hit)"),
+                "The report must name the roll kind - ApplyRollModifier(Save) at the same hook IS read.");
+        }
+
+        [Test]
+        public void PassiveEntry_ProducingAConsumedOperation_AtTheSameHook_IsClean()
+        {
+            // The other half of the pair: Shielded's +1 to defense, same hook and seat, and read. Pins that
+            // the consumption map keys on the operation's roll kind rather than its type.
+            var rule = Passive("Lint Heard Hook", new HookEntry(EHookID.Shooting_OnHitRollComplete,
+                new Condition.AllModelsHaveThisRule(),   // RuleValidator requires this of Subject-seat rules
+                new Effect.RollModifier(ERollKind.Save, Delta: 1),
+                ELifetime.ThisAttack,
+                ERuleSeat.Subject));
+
+            Assert.That(RuleFireLint.Check(rule), Is.Empty);
+        }
+
+        [Test]
+        public void PassiveEntry_ProducingBothAReadAndAnIgnoredOperation_IsNotFlagged()
+        {
+            // A rule whose entry produces several operations is fine as long as SOMETHING reads one of them:
+            // Rending emits a per-hit AP split at the hit-complete hook, and suppression ops ride along.
+            // Only an entry whose ENTIRE output is ignored is a no-op.
+            var rule = Passive("Lint Partly Heard", new HookEntry(EHookID.Shooting_OnSaveRollComplete,
+                new Condition.Always(),
+                new Effect.IgnoreRule("Regeneration"),
+                ELifetime.ThisAttack));
+
+            Assert.That(RuleFireLint.Check(rule), Is.Empty,
+                "SuppressRule is resolved by the evaluator itself, so it is read wherever it is emitted.");
+        }
+
+        [Test]
         public void Ability_AtAHookNoStagePolls_IsFlagged()
         {
             var rule = new SpecialRuleDefinition("Lint Unpolled", NoEntries, new List<ActivatedAbility>

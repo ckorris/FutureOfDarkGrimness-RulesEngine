@@ -15,8 +15,6 @@ namespace FDG.Stages
         public StageBinding ToReconcileEndOfTurn;
         public StageBinding ToVictoryCalculation;
 
-        private int _timesEntered = 0;
-
         public ReconcileObjectivesStage(IGameContext gameContext, IStateMachineLayer<IMainPhaseContext> parent) : base(gameContext, parent)
         {
             ToReconcileEndOfTurn = new StageBinding(this);
@@ -25,8 +23,14 @@ namespace FDG.Stages
 
         public override async Task Enter(IMainPhaseContext context)
         {
-            _timesEntered++;
-            GameContext.Log($"Reconciling objectives (end of round {_timesEntered}).");
+            // #195: the game ends after NUMBER_OF_ROUNDS *game* rounds, which is not the same as the
+            // number of times this stage instance has been entered. A resumed game builds a fresh stage,
+            // so an entry counter restarts at zero and the game plays a full four MORE rounds (a save
+            // resumed at round 2 ran 2..5). The round number is authoritative: it is restored from the
+            // save, and SingleRoundStage has already advanced it (OnEndOfRound, on its way out) by the
+            // time we get here — so the round that just finished is RoundCount - 1.
+            int roundJustFinished = context.RoundCount - 1;
+            GameContext.Log($"Reconciling objectives (end of round {roundJustFinished}).");
 
             var tableState = GameContext.TableState;
 
@@ -72,7 +76,7 @@ namespace FDG.Stages
             }
             new TokenClearService().ClearForHook(EHookID.Round_OnRoundEnd, containers);
 
-            if (_timesEntered < GameWideConstants.NUMBER_OF_ROUNDS)
+            if (roundJustFinished < GameWideConstants.NUMBER_OF_ROUNDS)
             {
                 await ToReconcileEndOfTurn.Activate(context);
             }

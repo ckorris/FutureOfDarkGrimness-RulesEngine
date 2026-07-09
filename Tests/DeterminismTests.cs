@@ -284,22 +284,15 @@ namespace FDG.Tests
 
         /// <summary>
         /// Guards against the fixture's central failure mode: two games that FAULTED identically satisfy
-        /// every equality assertion here and "prove" determinism while proving nothing.
-        /// <para>
-        /// <paramref name="expectedRounds"/> is null for resumed games. A resumed game currently plays four
-        /// MORE rounds instead of finishing the four-round game (a game resumed at round 2 runs 2..5) —
-        /// pre-existing resume bug, filed as #195. Pinning the buggy 5 here would cement it, so resumed
-        /// games only assert they did not fault.
-        /// </para>
+        /// every equality assertion here and "prove" determinism while proving nothing. Every game here —
+        /// fresh or resumed — must complete the full four rounds (#195 made that true of resumes too).
         /// </summary>
-        private static void AssertReallyPlayed(GameResult result, int? expectedRounds)
+        private static void AssertReallyPlayed(GameResult result)
         {
             Assert.That(result.Outcome, Is.Not.EqualTo(EGameOutcome.Fault),
                 $"the game faulted instead of playing: {result.Message}");
-            Assert.That(result.RoundsPlayed, Is.GreaterThan(0), "the game never reached the main phase.");
-
-            if (expectedRounds.HasValue)
-                Assert.That(result.RoundsPlayed, Is.EqualTo(expectedRounds.Value), "the game ended early.");
+            Assert.That(result.RoundsPlayed, Is.EqualTo(GameWideConstants.NUMBER_OF_ROUNDS),
+                "the game did not play the full four rounds.");
         }
 
         private static Task<List<string>> RollOffOrder(IDiceRoller roller)
@@ -319,7 +312,6 @@ namespace FDG.Tests
         /// </summary>
         private static async Task<GameFingerprint> PlaySeededGame(int seed)
         {
-            int? expectedRounds = null; // resumed game: see AssertReallyPlayed / #195
             ScenarioFile scenario = MakeScenario(seed);
             GameDataStore store = ScenarioCompiler.Compile(scenario, new[] { MakeShooterArmy(), MakeDefenderArmy() });
 
@@ -346,7 +338,7 @@ namespace FDG.Tests
             Assert.That(finished, Is.SameAs(completed.Task), "the seeded game must play to completion without hanging.");
 
             GameResult gameResult = await completed.Task;
-            AssertReallyPlayed(gameResult, expectedRounds);
+            AssertReallyPlayed(gameResult);
 
             return new GameFingerprint(gameResult.ToSummaryLine(), FingerprintFinalState(store));
         }
@@ -358,7 +350,6 @@ namespace FDG.Tests
         /// </summary>
         private static async Task<GameFingerprint> PlaySeededFreshGame(int seed)
         {
-            int? expectedRounds = GameWideConstants.NUMBER_OF_ROUNDS; // a fresh game plays exactly the full game
             var store = GameDataStore.GameDataStoreBuilder.GetDefault();
             var bus = new InProcessBus();
 
@@ -385,7 +376,7 @@ namespace FDG.Tests
             Assert.That(finished, Is.SameAs(completed.Task), "the seeded fresh game must play to completion without hanging.");
 
             GameResult gameResult = await completed.Task;
-            AssertReallyPlayed(gameResult, expectedRounds);
+            AssertReallyPlayed(gameResult);
 
             return new GameFingerprint(gameResult.ToSummaryLine(), FingerprintFinalState(store));
         }

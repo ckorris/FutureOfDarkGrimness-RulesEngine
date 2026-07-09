@@ -3,6 +3,22 @@ using FDG.Data;
 
 namespace FDG.Stages
 {
+    /// <summary>
+    /// A defender engaged during the current action, with its remaining wounds captured the first time it
+    /// was targeted. <see cref="ICombatActionContext.AttackedDefenders"/>.
+    /// </summary>
+    public readonly struct AttackedDefender
+    {
+        public DataBinding<UnitData> Defender { get; }
+        public float RemainingWoundsAtStart { get; }
+
+        public AttackedDefender(DataBinding<UnitData> defender, float remainingWoundsAtStart)
+        {
+            Defender = defender;
+            RemainingWoundsAtStart = remainingWoundsAtStart;
+        }
+    }
+
     //TODO: There's lots of info that's specific to parts of the melee process.
     //Having a query handler like the combat metadata could be an improvement.
     public interface ICombatActionContext : IGameContextAccessor
@@ -76,7 +92,17 @@ namespace FDG.Stages
         public IReadOnlyCollection<DataReference> AttackedDefenderRefs { get; }
 
         /// <summary>
-        /// Add a defender to <see cref="AttackedDefenderRefs"/>. Safe to call multiple times with the same defender.
+        /// Every distinct defender engaged this action, in the order they were first targeted, each paired
+        /// with its remaining wounds at the moment it was first targeted - i.e. before this attacker had
+        /// dealt it any damage. Shooting resolves morale once per entry after the whole activation, so the
+        /// half-strength crossing is measured against the wounds the defender started with, not against a
+        /// mid-volley snapshot. See <c>ResolveRangedMoraleStage</c>.
+        /// </summary>
+        public IReadOnlyList<AttackedDefender> AttackedDefenders { get; }
+
+        /// <summary>
+        /// Add a defender to <see cref="AttackedDefenderRefs"/> and <see cref="AttackedDefenders"/>. Safe to
+        /// call multiple times with the same defender; only the first call snapshots its wounds.
         /// </summary>
         public void RegisterAttackedDefender(DataBinding<UnitData> defender);
 
@@ -136,11 +162,18 @@ namespace FDG.Stages
 
         private HashSet<DataReference> _attackedDefenderRefs = new HashSet<DataReference>();
 
+        private readonly List<AttackedDefender> _attackedDefenders = new List<AttackedDefender>();
+
         public IReadOnlyCollection<DataReference> AttackedDefenderRefs => _attackedDefenderRefs;
+
+        public IReadOnlyList<AttackedDefender> AttackedDefenders => _attackedDefenders;
 
         public void RegisterAttackedDefender(DataBinding<UnitData> defender)
         {
-            _attackedDefenderRefs.Add(defender.Reference);
+            // Snapshot on first sight only. A later weapon aimed at the same unit must not re-baseline its
+            // wounds, or the half-strength crossing would be measured against damage we already dealt.
+            if (_attackedDefenderRefs.Add(defender.Reference))
+                _attackedDefenders.Add(new AttackedDefender(defender, defender.GetValue().RemainingWounds));
         }
 
         private QueryableResults _queryableResults = new QueryableResults();

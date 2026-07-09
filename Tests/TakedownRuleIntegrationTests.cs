@@ -159,7 +159,7 @@ namespace FDG.Tests
 
             var stage = new DetermineMorePendingShotsStage(ctx, new NoOpLayer<ICombatActionContext>());
             stage.FireNextShot.Bind("fire");
-            stage.ToMorale.Bind("morale");
+            stage.OnVolleyComplete.Bind("volleyComplete");
             await stage.Enter(combat);
 
             Assert.That(combat.HasPendingAttack, Is.False,

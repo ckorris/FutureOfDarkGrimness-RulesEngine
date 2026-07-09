@@ -35,6 +35,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(Heal), "heal")]
 [JsonDerivedType(typeof(GrantToken), "grantToken")]
 [JsonDerivedType(typeof(ConsumeToken), "consumeToken")]
+[JsonDerivedType(typeof(ClearTokenOnRoll), "clearTokenOnRoll")]
 [JsonDerivedType(typeof(TriggeredMove), "triggeredMove")]
 [JsonDerivedType(typeof(Reactivate), "reactivate")]
 [JsonDerivedType(typeof(MultiplyWounds), "multiplyWounds")]
@@ -684,6 +685,27 @@ public abstract record Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
+        }
+    }
+
+    /// <summary>
+    /// Roll one die; on <see cref="MinRoll"/>+ every token of <see cref="TType"/> is removed from the bearer.
+    /// The corpus' round-start Shaken recovery (Steadfast / Battleborn / Honor Code: "if a unit where all
+    /// models have this rule is Shaken at the beginning of the round, roll one die. On a 4+, it stops being
+    /// Shaken"). Gate it on <see cref="Condition.TokenPresent"/> so the die is only rolled when there is
+    /// something to clear.
+    ///
+    /// <para>An <see cref="ExecutableOperation"/> rather than a sink fold, for the reason
+    /// <see cref="MoraleTestThen"/> is: the roll is live state, and clearing a token is imperative. The
+    /// engine rolls it with <c>RollDecisive</c>, never a histogram — the outcome is binary (the unit either
+    /// recovers or does not), so a probabilistic roller must still produce a concrete face or the token would
+    /// be fractionally removed.</para>
+    /// </summary>
+    public sealed record ClearTokenOnRoll(TokenType TType, int MinRoll) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.InvokeClearTokenOnRoll(ruleInvocation.Bearer, TType, MinRoll));
         }
     }
 

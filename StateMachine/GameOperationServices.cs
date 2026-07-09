@@ -1,3 +1,4 @@
+using FDG.Presentation.Beats;
 using FDG.Data;
 using FDG.Rules.Definitions;
 using FDG.StageResolution;
@@ -72,6 +73,32 @@ namespace FDG.Stages
         {
             FatigueUtilities.ApplyFatigued(unit);
             return Task.CompletedTask;
+        }
+
+        public async Task ClearTokenOnRoll(IUnit unit, Rules.Foundation.TokenType tokenType, int minRoll)
+        {
+            // RollDecisiveFace, never Roll(1): the outcome is binary — the unit either sheds the token or it
+            // does not — so under the probabilistic roller a histogram would want to remove a FRACTION of a
+            // token. RollDecisive commits to one face (and RollDecisiveFace throws if a roller ever stops
+            // honouring that), which is the same threshold-on-a-decisive-roll shape every other pass/fail
+            // test in the engine uses. Routing it through the context roller also keeps it seed-reproducible.
+            int face = _gameContext.DiceRoller.RollDecisiveFace();
+            bool cleared = face >= minRoll;
+            if (cleared)
+            {
+                unit.Tokens.RemoveTokens(tokenType);
+            }
+
+            _gameContext.Log($"{unit.Name} rolled {face} to shed {tokenType} on a {minRoll}+ - " +
+                (cleared ? "recovered." : "no effect."));
+
+            // The beat's histogram is exactly the roll that happened: one die, on the face it showed.
+            float[] perSide = new float[IDiceRollerExtensions.DEFAULT_SIDE_COUNT];
+            perSide[face - 1] = 1f;
+
+            await _gameContext.Presenter.Present(DiceRolledBeat.From(new DiceResults(perSide), minRoll,
+                _gameContext.Settings.RandomnessType, $"Recover from {tokenType}",
+                cleared ? "recovered" : "still " + tokenType));
         }
 
         private DataBinding<UnitData> ResolveUnitBinding(IUnit unit)

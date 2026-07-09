@@ -251,6 +251,24 @@ public abstract record RuleOperation
     /// unmodified 6s). Resolution of <see cref="Effect.ApplyFatigue"/>; runs through the engine's fatigue
     /// authority (<c>FatigueUtilities.ApplyFatigued</c>) via the <see cref="IOperationServices"/> seam.
     /// </summary>
+    /// <summary>
+    /// Roll one die against <see cref="MinRoll"/> and, on a pass, strip every <see cref="TType"/> token from
+    /// <see cref="Unit"/>. Resolution of <see cref="Effect.ClearTokenOnRoll"/> — the round-start Shaken
+    /// recovery. Executable, not a sink fold: the roll reads live dice and the removal is imperative.
+    /// </summary>
+    public sealed record InvokeClearTokenOnRoll(IUnit Unit, TokenType TType, int MinRoll) : ExecutableOperation
+    {
+        public override Task Execute(IOperationServices services)
+        {
+            return services.ClearTokenOnRoll(Unit, TType, MinRoll);
+        }
+
+        public override string Describe()
+        {
+            return $"rolled to clear {TType} on a {MinRoll}+";
+        }
+    }
+
     public sealed record InvokeApplyFatigue(IUnit Unit) : ExecutableOperation
     {
         public override Task Execute(IOperationServices services)

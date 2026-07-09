@@ -32,4 +32,13 @@ public interface IOperationServices
     /// round-end clear and idempotency live in one place.
     /// </summary>
     Task ApplyFatigue(IUnit unit);
+
+    /// <summary>
+    /// Roll one die for <paramref name="unit"/>; on <paramref name="minRoll"/>+ remove every
+    /// <paramref name="tokenType"/> token it holds. Resolution of
+    /// <see cref="RuleOperation.InvokeClearTokenOnRoll"/> (round-start Shaken recovery). The implementation
+    /// must roll DECISIVELY — the outcome is binary, so a probabilistic roller has to yield a concrete face
+    /// rather than a fractional one.
+    /// </summary>
+    Task ClearTokenOnRoll(IUnit unit, Rules.Foundation.TokenType tokenType, int minRoll);
 }

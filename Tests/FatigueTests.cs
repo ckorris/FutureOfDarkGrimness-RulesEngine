@@ -148,7 +148,57 @@ namespace FDG.Tests
                 "the swapped-in unit swung, so it is fatigued too.");
         }
 
+        // --- Lifecycle: the token clears at end of round through the REAL sweep ---
+
+        // Repro for the reported "fatigue never goes away on a unit that is charged every round":
+        // strike-back fatigue must clear at the end-of-round sweep (ReconcileObjectivesStage walking
+        // the real table state), and a fresh strike-back the following round re-applies exactly one
+        // token — no stacking, no leftover from the prior round.
+        [Test]
+        public async Task StrikeBackFatigue_ClearsAtRoundEnd_AndReappliesSinglyNextRound()
+        {
+            var charger = MakeUnit("Charger", 1);
+            var defender = MakeUnit("Defender", 1);
+
+            // Round 1: charged, struck back — both fatigued (one token each).
+            await RunChargeMelee(charger, defender);
+            Assert.That(defender.GetValue().Tokens.GetTokenCount(TokenType.Fatigued), Is.EqualTo(1));
+            Assert.That(charger.GetValue().Tokens.GetTokenCount(TokenType.Fatigued), Is.EqualTo(1));
+
+            await RunRoundEndSweep();
+            Assert.That(defender.GetValue().Tokens.HasToken(TokenType.Fatigued), Is.False,
+                "Fatigued must clear at the end of the round.");
+            Assert.That(charger.GetValue().Tokens.HasToken(TokenType.Fatigued), Is.False);
+
+            // Round 2: charged again, strikes back again — fatigued again, still exactly one token.
+            await RunChargeMelee(charger, defender);
+            Assert.That(defender.GetValue().Tokens.GetTokenCount(TokenType.Fatigued), Is.EqualTo(1),
+                "re-applying the following round must yield a single token, not a stack.");
+
+            await RunRoundEndSweep();
+            Assert.That(defender.GetValue().Tokens.HasToken(TokenType.Fatigued), Is.False,
+                "the second round's token clears at that round's end too.");
+        }
+
         // --- Helpers ---
+
+        private async Task RunChargeMelee(DataBinding<UnitData> charger, DataBinding<UnitData> defender)
+        {
+            var combat = new CombatActionContext(_ctx, charger, isMelee: true, isCharging: true);
+            combat.SetDefender(defender);
+            combat.RegisterDefenderStruckBack();
+            await RunFatigue(combat);
+        }
+
+        private Task RunRoundEndSweep()
+        {
+            var stage = new ReconcileObjectivesStage(_ctx, new NoOpLayer<IMainPhaseContext>());
+            stage.ToReconcileEndOfTurn.Bind(
+                ReconcileObjectivesStage.RECONCILE_OBJECTIVES_TO_RECONCILE_NEW_TURN);
+            stage.ToVictoryCalculation.Bind(
+                ReconcileObjectivesStage.RECONCILE_OBJECTIVES_TO_VICTORY_CALCULATION_TRANSITION);
+            return stage.Enter(new StubMainPhaseContext(_ctx));
+        }
 
         private async Task RunFatigue(CombatActionContext combat)
         {

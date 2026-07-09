@@ -139,11 +139,65 @@ namespace FDG.Rules.Dispatch
             return GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES + sink.Net(EActionType.Advance);
         }
 
+        /// <summary>
+        /// The longest distance any model of <paramref name="unit"/> may legally move WITHOUT the move
+        /// having to end in melee: the unit's Rush allowance including its movement rules
+        /// (Agile/Slow/...), or a model's own larger Rush budget where a per-model rule raises it
+        /// (#093, a joined hero). Mirrors <c>MovementActionContext</c>'s unit-scalar and per-model Rush
+        /// computations, for the same reason <see cref="EffectiveMoveShootDistance"/> exists: the Pass
+        /// gate (<c>ChooseActionStage.GetCanPass</c>) must agree with the distance the move resolver
+        /// actually granted. Comparing against the bare default instead wrongly locks a rush-boosted
+        /// unit that legally moved past the base 12" out of Pass ("must engage in melee"), leaving only
+        /// its layered actions (e.g. Cast) until they run dry. Non-logging - safe to call per-frame.
+        /// (The situational difficult-terrain cap is intentionally not applied: the resolver already
+        /// caps the actual move, so the moved distance is always &lt;= this allowance regardless.)
+        /// </summary>
+        public static float EffectiveMaxRushDistance(IUnit unit, RuleEvaluator evaluator)
+        {
+            MovementModifierSink unitSink = new MovementModifierSink();
+            AccumulateMovementRules(unit, evaluator, EActionType.Advance, GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES, unitSink);
+            AccumulateMovementRules(unit, evaluator, EActionType.Rush, GameWideConstants.RUSH_DISTANCE_INCHES, unitSink);
+            AccumulateMovementRules(unit, evaluator, EActionType.Charge, GameWideConstants.CHARGE_DISTANCE_INCHES, unitSink);
+            float maxRush = GameWideConstants.RUSH_DISTANCE_INCHES + unitSink.Net(EActionType.Rush);
+
+            foreach (IModel model in unit.Models)
+            {
+                if (!model.GetIsAlive())
+                {
+                    continue;
+                }
+
+                MovementModifierSink modelSink = new MovementModifierSink();
+                AccumulateModelMovementRules(unit, model, evaluator, EActionType.Advance, GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES, modelSink);
+                AccumulateModelMovementRules(unit, model, evaluator, EActionType.Rush, GameWideConstants.RUSH_DISTANCE_INCHES, modelSink);
+                AccumulateModelMovementRules(unit, model, evaluator, EActionType.Charge, GameWideConstants.CHARGE_DISTANCE_INCHES, modelSink);
+                float modelRush = GameWideConstants.RUSH_DISTANCE_INCHES + modelSink.Net(EActionType.Rush);
+                if (modelRush > maxRush)
+                {
+                    maxRush = modelRush;
+                }
+            }
+
+            return maxRush;
+        }
+
         private static void AccumulateMovementRules(IUnit unit, RuleEvaluator evaluator, EActionType action,
             float baseDistance, MovementModifierSink sink)
         {
             var operations = evaluator.EvaluateAllNamed(
                 new MoveActionDeclaredContext(unit, action, baseDistance), RuleParticipant.Actor(unit));
+            sink.ApplyFrom(operations.Select(t => t.Op));
+        }
+
+        // Like AccumulateMovementRules but folds the given model's own rules (AnyOwner union) so a
+        // per-model Fast/Slow lands in that model's budget only — mirrors MovementActionContext's
+        // per-model accumulation. Read-only (EvaluateAllNamed): must not consume one-shot grants.
+        private static void AccumulateModelMovementRules(IUnit unit, IModel model, RuleEvaluator evaluator,
+            EActionType action, float baseDistance, MovementModifierSink sink)
+        {
+            var operations = evaluator.EvaluateAllNamed(
+                new MoveActionDeclaredContext(unit, action, baseDistance),
+                RuleParticipant.Actor(unit, models: new[] { model }));
             sink.ApplyFrom(operations.Select(t => t.Op));
         }
     }

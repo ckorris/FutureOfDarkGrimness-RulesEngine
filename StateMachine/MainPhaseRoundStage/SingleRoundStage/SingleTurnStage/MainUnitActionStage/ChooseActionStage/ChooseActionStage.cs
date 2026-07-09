@@ -344,11 +344,27 @@ namespace FDG.Stages
 
         public static bool GetCanPass(IGameContext gameContext, IUnitActionContext context, out string reasonIfCant)
         {
-            //If the unit moved further than its Rush distance, the move was only legal
-            //because it ended in melee — so it must follow through and engage. Pass is gated off.
-            MovementContextPrecursor precursor = MovementContextPrecursor.GetDefault(gameContext);
+            //A unit that has already attacked has followed through on whatever its move obligated —
+            //the flow loops back here after the melee (layered actions may remain), and the distance
+            //gate below must not re-fire on the same move. Without this, a caster that charged
+            //beyond-Rush was locked out of Pass AFTER winning its melee, forced to Cast until its
+            //spell tokens ran dry before the zero-options fallback ended the activation.
+            if (context.HasAttacked)
+            {
+                reasonIfCant = null;
+                return true;
+            }
 
-            if(context.MoveDistance > precursor.MaxRushDistance + 0.0001f)
+            //If the unit moved further than its Rush allowance, the move was only legal
+            //because it ended in melee — so it must follow through and engage. Pass is gated off.
+            //The allowance must be the unit's REAL one — movement rules (Agile/...) and per-model
+            //budgets (#093, a joined hero) included, exactly what the move resolver granted — not the
+            //bare default, which wrongly gated Pass for any legally-long rush (same class of bug as
+            //the GetCanShoot advance-and-shoot cap; see MovementRuleQueries.EffectiveMaxRushDistance).
+            float maxRushDistance = Rules.Dispatch.MovementRuleQueries.EffectiveMaxRushDistance(
+                context.ActivatingUnit.GetValue(), gameContext.RuleEvaluator);
+
+            if(context.MoveDistance > maxRushDistance + 0.0001f)
             {
                 reasonIfCant = $"Moved {context.MoveDistance:F2}\" - beyond Rush range; must engage in melee.";
                 return false;

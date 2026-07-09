@@ -563,7 +563,56 @@ public sealed class RuleEvaluator
             }
         }
 
+        // #197 P5a: a GRANTED rule's abilities are offered too, mirroring CollectGrantedRules on the passive
+        // side. Without this an aura that confers an ability-only rule (Versatile Reach Aura -> Versatile
+        // Reach) grants a token nothing ever reads — the Breath Attack failure mode, one level up. No shipped
+        // aura granted an ability-bearing rule before now, which is why the asymmetry went unnoticed.
+        GatherOffersFromRules(GrantedRules(unit), unit, context, offers, seen);
+
         return offers;
+    }
+
+    /// <summary>
+    /// The unit's <see cref="TokenType.RuleGrant"/> tokens resolved back to definitions, with the same
+    /// screening <see cref="CollectGrantedRules"/> applies: no resolver means no granted rules, an unknown
+    /// name is skipped with a warning, and an argumented (X) rule is skipped because a grant payload carries
+    /// no arguments to feed it. Never consumes a one-shot grant — offering an ability is not firing it.
+    /// </summary>
+    private IReadOnlyList<ResolvedRule> GrantedRules(IUnit unit)
+    {
+        if (_ruleResolver == null)
+        {
+            return Array.Empty<ResolvedRule>();
+        }
+
+        var granted = new List<ResolvedRule>();
+        foreach (Token token in unit.Tokens.GetAllTokens(TokenType.RuleGrant))
+        {
+            if (token.Payload is not TokenPayload.RuleGrant grant)
+            {
+                continue;
+            }
+
+            if (!_ruleResolver.TryResolve(grant.RuleName, out ResolvedRule resolved))
+            {
+                RuleDiagnostics.WarnOnce($"grant:{grant.RuleName}",
+                    $"Granted rule '{grant.RuleName}' on {unit.Name} has no definition in the registry - " +
+                    "the grant does nothing.");
+                continue;
+            }
+
+            if (RuleArgumentArity.MaxReferencedArgIndex(resolved.Definition) >= 0)
+            {
+                RuleDiagnostics.WarnOnce($"grant-arity:{grant.RuleName}",
+                    $"Granted rule '{grant.RuleName}' on {unit.Name} reads arguments, but grants carry " +
+                    "none - skipped.");
+                continue;
+            }
+
+            granted.Add(resolved);
+        }
+
+        return granted;
     }
 
     private void GatherOffersFromRules(IReadOnlyList<ResolvedRule> rules, IUnit unit, IHookContext context,

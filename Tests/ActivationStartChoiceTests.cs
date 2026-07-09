@@ -160,6 +160,35 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void AnAuraGrantedRule_HasItsAbilitiesOffered()
+        {
+            // Versatile Reach Aura (56 refs) grants Versatile Reach, whose entire content is activated
+            // abilities. GatherOffers used to read only the unit's and its models' OWN rules, so the grant
+            // token landed and nothing ever read it - an aura conferring an ability-only rule did nothing.
+            // No shipped aura granted an ability-bearing rule, which is why the asymmetry with the passive
+            // path's CollectGrantedRules went unnoticed until this slice needed it.
+            TestRuleHarness harness = Harness();
+            harness.Register(new SpecialRuleDefinition("Versatile Attack Aura",
+                new[]
+                {
+                    new HookEntry(EHookID.Lifecycle_OnUnitCreated, new Condition.Always(),
+                        new Effect.Aura("Versatile Attack"), ELifetime.UntilEndOfGame),
+                },
+                Array.Empty<ActivatedAbility>()));
+
+            IUnit unit = harness.BuildUnit("P1", 1, "Versatile Attack Aura");
+
+            Assert.That(harness.OfferAbilities(new ActivationStartContext(unit)), Is.Empty,
+                "Nothing is granted until the aura fires.");
+
+            OperationApplier.ApplyTokenOperations(
+                harness.Evaluate(unit, ERuleSeat.Actor, new UnitCreatedContext(unit)));
+
+            Assert.That(harness.OfferAbilities(new ActivationStartContext(unit)), Has.Count.EqualTo(2),
+                "Both of the granted rule's effects must be offered, exactly as if the unit carried it.");
+        }
+
+        [Test]
         public void ARuleOfferingOneAbility_NeedsNoLabel()
         {
             // Every pre-existing rule has exactly one ability and no label; the stage applies it without a

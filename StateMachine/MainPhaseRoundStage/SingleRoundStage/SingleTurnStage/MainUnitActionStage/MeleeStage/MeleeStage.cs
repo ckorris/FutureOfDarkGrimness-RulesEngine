@@ -34,8 +34,13 @@ namespace FDG.Stages
             // Melee is only ever entered via a Charge action, so the activating unit's melee swing
             // is a charge — isCharging:true drives charge-only rules (Thrust). The defender's
             // strike-back (StrikeBackStage) builds its context with isCharging:false.
+            //
+            // #197: the activation context carries the pre-move distance to each enemy, which is the distance
+            // this charge was declared from. Handed down so the "shoots or charges enemies over 9\" away"
+            // rules can gate their melee arm once the defender is picked.
             return new CombatActionContext(contextSelf.GameContext, contextSelf.ActivatingUnit,
-                isMelee: true, attackerMoved: contextSelf.HasMoved, isCharging: true);
+                isMelee: true, attackerMoved: contextSelf.HasMoved, isCharging: true,
+                activationContext: contextSelf);
         }
 
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<ICombatActionContext> startingChild)

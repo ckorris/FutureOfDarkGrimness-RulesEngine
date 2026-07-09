@@ -19,14 +19,24 @@ namespace FDG.Rules.Dispatch.Contexts
     /// (spell-facet rules like Resistance's ignore-on-2+ read <c>IsSpell</c>), the
     /// same flag <see cref="HitRollCompleteContext"/> carries on the hit side.
     /// </summary>
+    /// <param name="DistanceInches">Attacker-to-defender distance, carried so save-side rules can be
+    /// range-gated the way hit-side ones already are (#197). The wound-side Boost rules read it through
+    /// <see cref="IHasAttackOriginDistance"/> rather than directly.</param>
+    /// <param name="ChargeOriginDistanceInches">How far the defender was when the charging unit's
+    /// activation began. 0 for shooting and for a non-charge melee swing.</param>
     public sealed record SaveRollCompleteContext(
         IUnit Attacker, IUnit Defender, IDiceResults UnmodifiedSaveRolls, bool IsMelee = false,
-        bool IsSpell = false)
-        : IHookContext, IHasTarget, IHasUnmodifiedSaveRolls, IHasCombatKind, IHasIsSpell
+        bool IsSpell = false, float DistanceInches = 0f, float ChargeOriginDistanceInches = 0f)
+        : IHookContext, IHasTarget, IHasUnmodifiedSaveRolls, IHasCombatKind, IHasIsSpell, IHasDistance,
+            IHasAttackOriginDistance
     {
         public EHookID Hook => EHookID.Shooting_OnSaveRollComplete;
 
         // The defender IS the target for target-keyed conditions (TargetMajorityHasTough etc.).
         IUnit IHasTarget.Target => Defender;
+
+        // Mirrors HitRollCompleteContext: in melee the launch distance is the charge's declared distance,
+        // never the base-contact distance the save is being rolled at.
+        public float AttackOriginDistanceInches => IsMelee ? ChargeOriginDistanceInches : DistanceInches;
     }
 }

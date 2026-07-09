@@ -194,9 +194,14 @@ namespace FDG.Stages
         // the formerly-defending unit the attacker, and it is not charging).
         private bool _isCharging;
 
+        // #197: the activation context of the charging unit, consulted once the defender is known to recover
+        // how far away that defender was before the charger moved. Null for shooting and for the strike-back
+        // context (neither is a charge), and null on the resolver-less simulator paths.
+        private readonly IUnitActionContext? _activationContext;
+
 
         public CombatActionContext(IGameContext gameContext, DataBinding<UnitData> attackingUnit, bool isMelee,
-            bool attackerMoved = false, bool isCharging = false)
+            bool attackerMoved = false, bool isCharging = false, IUnitActionContext? activationContext = null)
         {
             GameContext = gameContext;
             AttackingUnit = attackingUnit;
@@ -204,6 +209,7 @@ namespace FDG.Stages
             _attackerMoved = attackerMoved;
             _isMelee = isMelee;
             _isCharging = isCharging;
+            _activationContext = activationContext;
             if(isMelee)
             {
                 _availableWeapons = GetTypeSortedWeapons(attackingUnit.GetValue().GetMeleeWeapons());
@@ -307,7 +313,19 @@ namespace FDG.Stages
             (Weapon weapon, int count) = _pendingAttacks.Dequeue();
 
             return new CombatMetadata(gameContext, AttackingUnit,
-                DefendingUnit, weapon, count, _attackerMoved, _isMelee, _isCharging);
+                DefendingUnit, weapon, count, _attackerMoved, _isMelee, _isCharging,
+                chargeOriginDistanceInches: ChargeOriginDistanceAgainstDefender());
+        }
+
+        // #197: only a charge has a launch distance, and only once the defender is pinned. A unit that was
+        // absent from the activation-start snapshot (spawned mid-activation, or a simulator path with no
+        // activation context) reports 0, which reads as "not launched from over N inches" for every gate.
+        private float ChargeOriginDistanceAgainstDefender()
+        {
+            if (!_isCharging || _activationContext == null || DefendingUnit == default) return 0f;
+
+            return _activationContext.TryGetActivationStartDistanceTo(
+                DefendingUnit.GetValue().ID, out float distance) ? distance : 0f;
         }
 
         //TODO: Repeated in Ranged version. Move to static class.

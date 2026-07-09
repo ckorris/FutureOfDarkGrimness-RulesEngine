@@ -33,13 +33,20 @@ namespace FDG.Stages
             IUnit attacker = metaData.AttackingUnit.GetValue();
             IUnit defender = metaData.DefendingUnit.GetValue();
 
+            // #197: the same measurement RollToHitStage takes, so a save-side rule can be range-gated the way
+            // a hit-side one is. Only meaningful for shooting; a melee save is always rolled in base contact,
+            // which is why the Boost rules read the charge's launch distance instead (see
+            // IHasAttackOriginDistance).
+            float distance = UnitCompareUtilities.MinDistanceBetweenUnits(
+                attacker, defender, out _, out _, includeVertical: true);
+
             // #042 save-roll-complete rules (Bane reroll, Regeneration ignore, plus the suppressors'
             // ignore-Regeneration facet) all fire here. Evaluate BOTH participants once, so the
             // evaluator's suppression first-pass can cancel Regeneration before its op is folded. The
             // resulting queue feeds the reroll (below, before Deadly) and the wound-ignore (after Deadly).
             IReadOnlyList<RuleOperation> saveCompleteOperations = GameContext.RuleEvaluator.EvaluateAll(
                 new SaveRollCompleteContext(attacker, defender, CombineSaveRolls(rollToSaveResults),
-                    metaData.IsMelee, metaData.IsSpell),
+                    metaData.IsMelee, metaData.IsSpell, distance, metaData.ChargeOriginDistanceInches),
                 RuleParticipant.Actor(attacker, metaData.WeaponType),
                 // #183: the defender's living models surface a joined hero's relocated wound-ignore rules
                 // (Regeneration/Resistance/Protected), gated by AllModelsHaveThisRule - so a sole-surviving

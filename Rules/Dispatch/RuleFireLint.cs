@@ -397,12 +397,18 @@ public static class RuleFireLint
                 }
                 break;
             case EHookID.Shooting_OnHitRollComplete:
+                // chargeOrigin varies independently of the live distance: a melee swing is always resolved in
+                // base contact, so only the charge's launch distance can satisfy AttackedFromOverInches there.
+                // Without a far-origin variant, every "shoots or charges over 9in away" rule's melee arm would
+                // look unfireable to the lint.
                 foreach (float distance in new[] { NearInches, FarInches })
                 foreach (bool isMelee in new[] { false, true })
                 foreach (bool isCharging in new[] { false, true })
+                foreach (float chargeOrigin in new[] { 0f, FarInches })
                 {
                     yield return new HitRollCompleteContext(attacker, defender, OneOfEachFace(),
-                        distance, isMelee, isCharging);
+                        distance, isMelee, isCharging, IsSpell: false,
+                        ChargeOriginDistanceInches: chargeOrigin);
                 }
                 break;
             case EHookID.Shooting_OnSaveRollModifier:
@@ -410,9 +416,12 @@ public static class RuleFireLint
                 break;
             case EHookID.Shooting_OnSaveRollComplete:
                 foreach (bool isMelee in new[] { false, true })
+                foreach (float distance in new[] { NearInches, FarInches })
+                foreach (float chargeOrigin in new[] { 0f, FarInches })
                 {
                     // isSpell only varies for the shooting-shaped use — the spell pipeline never sets IsMelee.
-                    yield return new SaveRollCompleteContext(attacker, defender, OneOfEachFace(), isMelee);
+                    yield return new SaveRollCompleteContext(attacker, defender, OneOfEachFace(), isMelee,
+                        IsSpell: false, DistanceInches: distance, ChargeOriginDistanceInches: chargeOrigin);
                 }
                 yield return new SaveRollCompleteContext(attacker, defender, OneOfEachFace(),
                     IsMelee: false, IsSpell: true);

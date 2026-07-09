@@ -37,6 +37,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(ActionTypeIs), "actionTypeIs")]
 [JsonDerivedType(typeof(UnmodifiedRollEquals), "unmodifiedRollEquals")]
 [JsonDerivedType(typeof(DistanceGreaterThan), "distanceGreaterThan")]
+[JsonDerivedType(typeof(AttackedFromOverInches), "attackedFromOverInches")]
 [JsonDerivedType(typeof(StatGreaterOrEqualTo), "statGreaterOrEqualTo")]
 [JsonDerivedType(typeof(TargetMajorityHasTough), "targetMajorityHasTough")]
 [JsonDerivedType(typeof(TokenPresent), "tokenPresent")]
@@ -199,6 +200,24 @@ public abstract record Condition
         protected override bool EvaluateCore(IHasDistance context)
         {
             return context.DistanceInches > DistanceInches;
+        }
+    }
+
+    /// <summary>
+    /// True if the attack was <i>launched</i> from further than the given inches — the live distance when
+    /// shooting, the activation-start distance to the defender when charging. See
+    /// <see cref="IHasAttackOriginDistance"/> for why this is not just <see cref="DistanceGreaterThan"/>:
+    /// a melee attack resolves in base contact, so a live-distance gate of 9" can never pass there.
+    ///
+    /// Exists because six corpus rules (Devout/Ferocious/Warbound/Infected/Mischievous/Scrapper Boost)
+    /// share the wording "when it shoots or charges enemies over 9\" away". Each expresses that as one
+    /// condition; a non-charging melee swing reports 0 and is excluded, as the rule text intends.
+    /// </summary>
+    public sealed record AttackedFromOverInches(float DistanceInches) : CapabilityCondition<IHasAttackOriginDistance>
+    {
+        protected override bool EvaluateCore(IHasAttackOriginDistance context)
+        {
+            return context.AttackOriginDistanceInches > DistanceInches;
         }
     }
 

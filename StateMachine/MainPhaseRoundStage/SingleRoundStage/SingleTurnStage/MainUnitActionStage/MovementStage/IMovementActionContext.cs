@@ -33,6 +33,15 @@ namespace FDG.Stages
         public bool TryGetPaths(out IReadOnlyList<ModelMoveEntry> paths);
 
         public void SubmitValidPathTemplate(List<ModelMoveEntry> paths);
+
+        /// <summary>
+        /// The player abandoned the move at the path prompt. No path was submitted and nothing moved, so
+        /// <c>MovementStage</c> must leave without registering a move distance.
+        /// </summary>
+        public bool MoveCancelled { get; }
+
+        /// <summary>Record that the move was abandoned before a path was submitted.</summary>
+        public void RegisterMoveCancelled();
     }
 
     public class MovementActionContext : IMovementActionContext
@@ -201,6 +210,10 @@ namespace FDG.Stages
             _movementDistance = MovementUtilities.GetMaxMoveDistance(paths);
             _paths = paths;
         }
+
+        public bool MoveCancelled { get; private set; }
+
+        public void RegisterMoveCancelled() => MoveCancelled = true;
 
         public bool TryGetMovementDistance(out float distance)
         {

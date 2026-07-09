@@ -88,14 +88,11 @@ namespace FDG.Stages
                 await BackToChooseAction.Activate(context);
                 return;
             }
-            else if(validDefenders.Count == 1)
-            {
-                //No need to pose the request, just attack.
-                await ChooseDefender(validDefenders.First().Option);
-                return;
-            }
 
-            //If we're here, we have multiple potential targets. Ask the user who to attack.
+            // Ask even when there is exactly one valid defender. This prompt carries the charge's only Back
+            // button, and nothing has been mutated yet (impact hits and the pile-in move both come later),
+            // so auto-selecting the sole defender used to commit the player to a charge they may have
+            // clicked by mistake - with no way back.
             CancellableSelectionRequest<UnitData> request = new CancellableSelectionRequest<UnitData>(attackingPlayer, "Choose defending unit",
                 validDefenders, invalidDefenders);
 

@@ -70,6 +70,27 @@ namespace FDG.Tests
             Assert.That(invalid.Reason, Is.EqualTo("Already activated."));
         }
 
+        // The playtest bug: a held-back Ambush unit showed up activatable on round 1 and was drawn in the
+        // table's bottom-left corner. Reserve used to be inferred from "all models sit at (0,0)", so any
+        // stray write to a reserve model's position promoted it to deployed. Reserve is now unit state, and
+        // a nudged coordinate must not change that.
+        [Test]
+        public async Task ReserveUnitWithAStrayPosition_IsStillInReserve()
+        {
+            (DataBinding<UnitData> reserve, DataBinding<UnitData> active) = MakeArmy();
+            reserve.GetValue().ModelBindings[0].GetValue().SetPosition(new Position(0.01f, 0.01f));
+
+            Assert.That(reserve.GetValue().GetIsOnBattlefield(), Is.False,
+                "a nudged coordinate does not put a reserve unit on the battlefield.");
+
+            SelectionRequest<UnitData> request = await RunStage(unactivated: active);
+
+            SelectionRequest<UnitData>.InvalidOption invalid =
+                request.InvalidOptions.Single(o => o.Option == reserve);
+            Assert.That(invalid.Reason, Is.EqualTo("Reserve - arrives round 2."),
+                "it is still a reserve, so it still cannot be activated on round 1.");
+        }
+
         private async Task<SelectionRequest<UnitData>> RunStage(DataBinding<UnitData> unactivated)
         {
             var requester = new CapturingSelectionRequester();
@@ -105,7 +126,11 @@ namespace FDG.Tests
             DataBinding<UnitData> binding = _store.GetDataBinding<UnitData>(_store.Create(unit));
 
             if (ambush)
+            {
                 binding.GetValue().AttachRuleDefinition(new ResolvedRule("Ambush", CoreRuleCatalog.Ambush));
+                // Held back at deployment. Reserve is explicit state, not "its model sits at (0,0)".
+                Rules.Dispatch.ReserveRules.PlaceInReserve(binding.GetValue());
+            }
 
             return binding;
         }

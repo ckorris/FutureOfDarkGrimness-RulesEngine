@@ -90,7 +90,7 @@ namespace FDG.Tests
 
             public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
                 where TRequest : IStageTaskRequest<TReply>
-                => Task.FromResult((TReply)(object)_move);
+                => Task.FromResult((TReply)(object)new Selected<List<ModelMoveEntry>>(_move));
         }
     }
 }

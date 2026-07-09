@@ -18,7 +18,7 @@ namespace FDG.Ai.Resolvers
     /// model. If no fully-clear centre exists it places the block intact at the best clamped centre — cramped
     /// but never scattered, so a model is never stranded out of cohesion.
     /// </summary>
-    public class AiPlaceObjectsResolver<T> : IStageResolver<PlaceObjectsRequest<T>, List<PlacedObjectEntry<T>>>
+    public class AiPlaceObjectsResolver<T> : IStageResolver<PlaceObjectsRequest<T>, CancellableResult<List<PlacedObjectEntry<T>>>>
     {
         private readonly ITableState _tableState;
         private readonly Dictionary<PlayerID, int> _deployCountPerPlayer = new();
@@ -37,7 +37,11 @@ namespace FDG.Ai.Resolvers
             _tableState = tableState;
         }
 
-        public Task<List<PlacedObjectEntry<T>>> Resolve(PlaceObjectsRequest<T> request)
+        /// <summary> The AI always places; it never declines a disembark it chose to make. </summary>
+        public async Task<CancellableResult<List<PlacedObjectEntry<T>>>> Resolve(PlaceObjectsRequest<T> request)
+            => new Selected<List<PlacedObjectEntry<T>>>(await ChoosePlacements(request));
+
+        private Task<List<PlacedObjectEntry<T>>> ChoosePlacements(PlaceObjectsRequest<T> request)
         {
             var zone = request.DeploymentZone;
             ZoneBounds bounds = zone.Bounds;
@@ -272,8 +276,18 @@ namespace FDG.Ai.Resolvers
 
         private IEnumerable<(Position, float)> GetTableOccupants()
         {
+            // A model belonging to an off-table unit occupies nothing; ask the unit rather than trusting
+            // that its parked coordinate is exactly the origin.
+            var offTable = new HashSet<IModel>(ReferenceEqualityComparer.Instance);
+            foreach (IUnit unit in _tableState.Units.Objects)
+            {
+                if (unit.GetIsOnBattlefield()) continue;
+                foreach (IModel m in unit.Models) offTable.Add(m);
+            }
+
             foreach (var model in _tableState.Models.Objects)
             {
+                if (offTable.Contains(model)) continue;
                 var pos = model.Position;
                 if (pos.x == 0f && pos.z == 0f) continue;
                 // Circumscribing radius so the placing block keeps clear of an existing rectangular base at any

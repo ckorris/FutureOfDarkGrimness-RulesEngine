@@ -52,17 +52,21 @@ namespace FDG.Stages
             chooseRangedWeapon.OnChoseWeapon.Bind(fire);
             chooseRangedWeapon.BackToChooseAction.Bind(backToChooseEvent);
             // Both shoot exits — "fired all weapons" and "no further valid shots" — converge on
-            // PostShootStage so the post-shoot move (Hit & Run / Harassing) is offered once per action.
-            chooseRangedWeapon.OnNoValidShots.Bind(postShoot);
+            // ResolveRangedMoraleStage and then PostShootStage, so morale is tested once and the
+            // post-shoot move (Hit & Run / Harassing) is offered once per action. OnNoValidShots only
+            // fires once a weapon has already been used, so it must not bypass morale.
+            chooseRangedWeapon.OnNoValidShots.Bind(resolveRangedMorale);
 
             // #157: while queued attacks remain (a Takedown-split volley), loop FireStage — each entry
-            // consumes one queued shot with its own target-model pick. Morale runs once, after the volley.
+            // consumes one queued shot with its own target-model pick.
             fire.OnFinishedFiring.Bind(morePendingShots);
             morePendingShots.FireNextShot.Bind(fire);
-            morePendingShots.ToMorale.Bind(resolveRangedMorale);
-            resolveRangedMorale.ToFinished.Bind(determineCanKeepShooting);
+            morePendingShots.OnVolleyComplete.Bind(determineCanKeepShooting);
             determineCanKeepShooting.ReturnToChooseWeapon.Bind(chooseRangedWeapon);
-            determineCanKeepShooting.ToFinishShooting.Bind(postShoot);
+            // Morale runs after the LAST weapon, not after each one: one test per unit that was shot at,
+            // measured against its wounds when this attacker first targeted it.
+            determineCanKeepShooting.ToFinishShooting.Bind(resolveRangedMorale);
+            resolveRangedMorale.ToFinished.Bind(postShoot);
             postShoot.ToFinished.Bind(onFinishedShootingEvent);
 
             return dictionary;

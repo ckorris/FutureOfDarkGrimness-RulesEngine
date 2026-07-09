@@ -74,8 +74,11 @@ namespace FDG.Stages
             // Decisive single die — one concrete face even under the probabilistic roller (#090).
             IDiceResults initialRoll = gameContext.DiceRoller.RollDecisive();
             bool passedInitial = initialRoll.AtOrAbove(rollNeeded) >= 1f;
+            // Name the unit under test: a shoot action can now roll morale for several defenders in a row,
+            // so an anonymous "Morale Test" banner leaves the player guessing which one is being tested.
             await gameContext.Presenter.Present(DiceRolledBeat.From(initialRoll, rollNeeded,
-                gameContext.Settings.RandomnessType, "Morale Test", passedInitial ? "Passed" : "Failed"));
+                gameContext.Settings.RandomnessType, $"{testingUnit.Name} - Morale Test",
+                passedInitial ? "Passed" : "Failed"));
             if (passedInitial)
             {
                 return new MoraleTestOutcome(passed: true, rollNeeded, passedViaReroll: false);
@@ -91,7 +94,8 @@ namespace FDG.Stages
                 IDiceResults reroll = gameContext.DiceRoller.RollDecisive();
                 bool passedReroll = reroll.AtOrAbove(FEARLESS_REROLL_PASSES_ON) >= 1f;
                 await gameContext.Presenter.Present(DiceRolledBeat.From(reroll, FEARLESS_REROLL_PASSES_ON,
-                    gameContext.Settings.RandomnessType, "Fearless Re-roll", passedReroll ? "Passed" : "Failed"));
+                    gameContext.Settings.RandomnessType, $"{testingUnit.Name} - Fearless Re-roll",
+                    passedReroll ? "Passed" : "Failed"));
                 if (passedReroll)
                 {
                     return new MoraleTestOutcome(passed: true, rollNeeded, passedViaReroll: true);

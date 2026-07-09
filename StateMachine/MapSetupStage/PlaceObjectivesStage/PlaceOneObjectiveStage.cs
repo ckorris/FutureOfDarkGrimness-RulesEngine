@@ -87,8 +87,9 @@ namespace FDG.Stages
                 for (float z = band.Bottom; z <= band.Top; z += CandidateGridStepInches)
                     candidates.Add(new Float2(x, z));
 
-            // Shuffle for non-deterministic placement.
-            var rng = new Random();
+            // Shuffle so auto-placement varies between games. Draws from the game's seeded source, so a
+            // seeded run reproduces its layout exactly (#193) while an unseeded one still varies.
+            Random rng = context.GameContext.Rng;
             for (int i = candidates.Count - 1; i > 0; i--)
             {
                 int j = rng.Next(i + 1);

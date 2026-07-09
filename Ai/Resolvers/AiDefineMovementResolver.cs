@@ -11,7 +11,7 @@ namespace FDG.Ai.Resolvers
     /// Melee/Hybrid units rush at full charge distance to close the gap.
     /// Shooting units advance at advance distance (preserving the ability to shoot afterward).
     /// </summary>
-    public class AiDefineMovementResolver : IStageResolver<DefineMovementPathRequest, List<ModelMoveEntry>>
+    public class AiDefineMovementResolver : IStageResolver<DefineMovementPathRequest, CancellableResult<List<ModelMoveEntry>>>
     {
         private readonly ITableState _tableState;
         private readonly PlayerID _playerID;
@@ -22,7 +22,14 @@ namespace FDG.Ai.Resolvers
             _playerID = playerID;
         }
 
-        public Task<List<ModelMoveEntry>> Resolve(DefineMovementPathRequest request)
+        /// <summary>
+        /// The AI never backs out of a move it chose to make, so it always answers with a path (standing
+        /// still is expressed as a zero-length one, not a cancel).
+        /// </summary>
+        public async Task<CancellableResult<List<ModelMoveEntry>>> Resolve(DefineMovementPathRequest request)
+            => new Selected<List<ModelMoveEntry>>(await ChoosePath(request));
+
+        private Task<List<ModelMoveEntry>> ChoosePath(DefineMovementPathRequest request)
         {
             var unit = request.UnitDataBinding.GetValue();
             var archetype = AiUnitClassifier.Classify(unit);

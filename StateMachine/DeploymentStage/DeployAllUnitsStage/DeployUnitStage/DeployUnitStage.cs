@@ -4,6 +4,7 @@ using FDG.Data;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
+using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 
 namespace FDG.Stages
@@ -43,8 +44,8 @@ namespace FDG.Stages
             var placeObjectsRequest = new PlaceObjectsRequest<ModelData>(currentPlayerID, "Place Unit Models",
                 deploymentZone.GetValue(), deployingUnit.ModelBindings);
 
-            List<PlacedObjectEntry<ModelData>> modelPositions = await GameContext.PlayerRequester.RequestDecision
-                <PlaceObjectsRequest<ModelData>, List<PlacedObjectEntry<ModelData>>>(placeObjectsRequest);
+            List<PlacedObjectEntry<ModelData>> modelPositions = await PlacementRequesting
+                .RequestMandatoryPlacement(GameContext.PlayerRequester, placeObjectsRequest);
 
             //Actually place the objects.
             foreach(PlacedObjectEntry<ModelData> entry in modelPositions)
@@ -52,6 +53,10 @@ namespace FDG.Stages
                 entry.Binding.GetValue().SetPosition(entry.Position);
                 if (entry.Facing.HasValue) entry.Binding.GetValue().SetFacing(entry.Facing.Value);
             }
+
+            // On the table is the negation of in reserve. A freshly deployed unit never carries the token,
+            // but a legacy save's bootstrap may have stamped it (see GameSaveSerializer.StampLegacyReserves).
+            Rules.Dispatch.ReserveRules.ClearReserve(deployingUnit);
 
             await OfferPostDeploymentAbilities(deployingUnit, currentPlayerID);
 

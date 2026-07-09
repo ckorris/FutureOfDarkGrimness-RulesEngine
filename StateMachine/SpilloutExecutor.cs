@@ -1,6 +1,7 @@
 using FDG.Data;
 using FDG.Presentation.Beats;
 using FDG.Rules.Dispatch;
+using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 
 namespace FDG.Stages
@@ -67,8 +68,8 @@ namespace FDG.Stages
 
                 var request = new PlaceObjectsRequest<ModelData>(occupantUnit.PlayerID,
                     $"Spill out {occupantUnit.Name} (within 6\" of the wreck)", zone, livingModels);
-                List<PlacedObjectEntry<ModelData>> placements = await gameContext.PlayerRequester
-                    .RequestDecision<PlaceObjectsRequest<ModelData>, List<PlacedObjectEntry<ModelData>>>(request);
+                List<PlacedObjectEntry<ModelData>> placements = await PlacementRequesting
+                    .RequestMandatoryPlacement(gameContext.PlayerRequester, request);
 
                 foreach (PlacedObjectEntry<ModelData> placement in placements)
                 {

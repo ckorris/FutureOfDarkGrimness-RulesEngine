@@ -1,5 +1,6 @@
 using FDG.Data;
 using FDG.Rules.Dispatch;
+using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 
 namespace FDG.Stages
@@ -20,10 +21,18 @@ namespace FDG.Stages
     {
         public StageBinding OnFinished;
 
+        /// <summary>
+        /// The player abandoned the disembark at the placement prompt. Nothing has been mutated - models are
+        /// only repositioned once placements come back - so the unit stays aboard and returns to the action
+        /// menu with its move unspent. Mirrors <see cref="EmbarkStage.OnBackToChooseAction"/>.
+        /// </summary>
+        public StageBinding OnBackToChooseAction;
+
         public DisembarkStage(IGameContext gameContext, IStateMachineLayer<IUnitActionContext> parent)
             : base(gameContext, parent)
         {
             OnFinished = new StageBinding(this);
+            OnBackToChooseAction = new StageBinding(this);
         }
 
         public override async Task Enter(IUnitActionContext context)
@@ -51,10 +60,20 @@ namespace FDG.Stages
                 .Where(binding => binding.GetValue().GetIsAlive()).ToList();
 
             var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID, $"Disembark {unit.Name}",
-                zone, livingModels);
+                zone, livingModels, allowCancel: true);
 
-            List<PlacedObjectEntry<ModelData>> placements = await GameContext.PlayerRequester
-                .RequestDecision<PlaceObjectsRequest<ModelData>, List<PlacedObjectEntry<ModelData>>>(request);
+            CancellableResult<List<PlacedObjectEntry<ModelData>>> result = await GameContext.PlayerRequester
+                .RequestDecision<PlaceObjectsRequest<ModelData>, CancellableResult<List<PlacedObjectEntry<ModelData>>>>(request);
+
+            // Backing out costs nothing: no model has been repositioned and the unit is still aboard.
+            if (result is Cancelled<List<PlacedObjectEntry<ModelData>>>)
+            {
+                GameContext.Log($"{unit.Name} stayed aboard {transport.Name} - returning to Choose Action.");
+                await OnBackToChooseAction.Activate(context);
+                return;
+            }
+
+            List<PlacedObjectEntry<ModelData>> placements = ((Selected<List<PlacedObjectEntry<ModelData>>>)result).Value;
 
             foreach (PlacedObjectEntry<ModelData> placement in placements)
             {

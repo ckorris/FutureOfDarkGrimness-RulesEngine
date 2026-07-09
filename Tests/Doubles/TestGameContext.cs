@@ -1,4 +1,4 @@
-using FDG.Data;
+﻿using FDG.Data;
 using FDG.Players;
 using FDG.Presentation;
 using FDG.Rules.Dispatch;
@@ -10,6 +10,8 @@ namespace FDG.Tests
     {
         public ITextOutput TextOutput { get; }
         public IDiceRoller DiceRoller { get; }
+        // #193: tests get a fixed-seed stream so any Rng-driven stage behaves reproducibly.
+        public Random Rng { get; } = new Random(20260709);
         public RuleEvaluator RuleEvaluator { get; }
         public IPlayerRequestByID PlayerRequester { get; } = new NullPlayerRequester();
         public TableState TableState { get; }
@@ -40,7 +42,7 @@ namespace FDG.Tests
         public void SetFirstDeploymentRollOrder(List<ITeam> order) { }
 
         // Virtual so tests that care about the end-of-game contract (e.g. VictoryCalculationStage)
-        // can subclass and record the result string; the base is a no-op for everyone else.
-        public virtual void NotifyGameEnded(string result) { }
+        // can subclass and record the result; the base is a no-op for everyone else.
+        public virtual void NotifyGameCompleted(GameResult result) { }
     }
 }

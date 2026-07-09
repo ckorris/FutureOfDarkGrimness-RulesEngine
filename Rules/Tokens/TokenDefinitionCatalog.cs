@@ -102,6 +102,10 @@ public static class TokenDefinitionCatalog
             new(TokenType.ARRIVED_FROM_RESERVE_ID, "Arrived from reserve", EValence.Neutral,
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd()),
 
+            // ManualOnly: reserve must survive the round-end sweep until the unit actually arrives.
+            new(TokenType.IN_RESERVE_ID, "In reserve", EValence.Neutral,
+                ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.ManualOnly()),
+
             new(TokenType.EMBARKED_IN_ID, "Embarked", EValence.Neutral,
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.ManualOnly()),
 

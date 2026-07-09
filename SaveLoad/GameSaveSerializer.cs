@@ -1,5 +1,7 @@
 using FDG.Data;
 using FDG.Data.Containers;
+using FDG.Rules.Dispatch;
+using FDG.Rules.Foundation;
 using Newtonsoft.Json;
 
 namespace FDG.SaveLoad
@@ -61,7 +63,48 @@ namespace FDG.SaveLoad
             // (GameDataUpdateReceiver) so both rebuild paths behave identically. See StoreReplay.
             StoreReplay.Rebuild(store, file.Entries);
 
+            StampLegacyReserves(store);
+
             return store;
+        }
+
+        /// <summary>
+        /// Reserve used to be inferred from "every model of this unit sits at the world origin"; it is now
+        /// unit state (<see cref="TokenType.InReserve"/>). A save written before that change carries no such
+        /// token, so its held-back Ambush units would never be offered to arrive. Re-derive the token once,
+        /// on load, from the old positional rule.
+        ///
+        /// Save-path only, deliberately: the network full-state sync shares StoreReplay but must stay a
+        /// faithful mirror of the host's store, and the host already sends the token.
+        ///
+        /// A unit still awaiting its first deployment also has every model at the origin and gets stamped
+        /// here. That is harmless - deployment clears the token the moment it places the unit - and it is
+        /// what keeps this from needing a save-version bump (see #178).
+        /// </summary>
+        private static void StampLegacyReserves(IReadWriteableGameDataStore store)
+        {
+            if (!store.IsTypeAssigned<UnitData>()) return;
+
+            foreach (UnitData unit in store.GetAllValues<UnitData>())
+            {
+                if (!unit.GetIsAlive()) continue;
+                if (ReserveRules.IsInReserve(unit)) continue;                              // saved post-change
+                if (unit.Tokens.HasToken(TokenType.EmbarkedIn)) continue;                  // aboard a transport
+                if (unit.Tokens.HasToken(TokenType.OffTableFromForcedMove)) continue;      // aircraft, flew off
+
+                bool everyLivingModelAtOrigin = true;
+                foreach (IModel model in unit.Models)
+                {
+                    if (!model.GetIsAlive()) continue;
+                    if (model.Position.x != 0f || model.Position.z != 0f)
+                    {
+                        everyLivingModelAtOrigin = false;
+                        break;
+                    }
+                }
+
+                if (everyLivingModelAtOrigin) ReserveRules.PlaceInReserve(unit);
+            }
         }
 
         // Resolve a saved type-map entry's identity: a stable ID first (#070), then a Type.FullName fallback

@@ -240,7 +240,7 @@ public static class CoreRuleCatalog
 
     // Movement-modifier sink (MovementActionContext) -----------------------------
 
-    /// <summary> Advance +2". </summary>
+    /// <summary> Advance +2", Rush/Charge +4" (the positive mirror of <see cref="Slow"/>). </summary>
     public static SpecialRuleDefinition Fast { get; } = new SpecialRuleDefinition("Fast",
         new[]
         {
@@ -248,12 +248,20 @@ public static class CoreRuleCatalog
                 new Condition.ActionTypeIs(EActionType.Advance),
                 new Effect.MovementBonus(EActionType.Advance, DistanceInches: 2f),
                 ELifetime.ThisActivation),
+            new HookEntry(EHookID.Movement_OnMoveActionDeclared,
+                new Condition.ActionTypeIs(EActionType.Rush),
+                new Effect.MovementBonus(EActionType.Rush, DistanceInches: 4f),
+                ELifetime.ThisActivation),
+            new HookEntry(EHookID.Movement_OnMoveActionDeclared,
+                new Condition.ActionTypeIs(EActionType.Charge),
+                new Effect.MovementBonus(EActionType.Charge, DistanceInches: 4f),
+                ELifetime.ThisActivation),
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "Moves +2\" when Advancing.");
+        Description: "Moves +2\" when Advancing and +4\" when Rushing or Charging.");
 
-    /// <summary> Fast, doubled: Advance +4". </summary>
+    /// <summary> Fast, doubled: Advance +4", Rush/Charge +8". </summary>
     public static SpecialRuleDefinition VeryFast { get; } = new SpecialRuleDefinition("Very Fast",
         new[]
         {
@@ -261,10 +269,18 @@ public static class CoreRuleCatalog
                 new Condition.ActionTypeIs(EActionType.Advance),
                 new Effect.MovementBonus(EActionType.Advance, DistanceInches: 4f),
                 ELifetime.ThisActivation),
+            new HookEntry(EHookID.Movement_OnMoveActionDeclared,
+                new Condition.ActionTypeIs(EActionType.Rush),
+                new Effect.MovementBonus(EActionType.Rush, DistanceInches: 8f),
+                ELifetime.ThisActivation),
+            new HookEntry(EHookID.Movement_OnMoveActionDeclared,
+                new Condition.ActionTypeIs(EActionType.Charge),
+                new Effect.MovementBonus(EActionType.Charge, DistanceInches: 8f),
+                ELifetime.ThisActivation),
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
-        Description: "Moves +4\" when Advancing.");
+        Description: "Moves +4\" when Advancing and +8\" when Rushing or Charging.");
 
     /// <summary> Advance -2", Rush/Charge -4". </summary>
     public static SpecialRuleDefinition Slow { get; } = new SpecialRuleDefinition("Slow",

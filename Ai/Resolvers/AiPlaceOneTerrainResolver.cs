@@ -1,4 +1,4 @@
-using FDG.SaveLoad;
+﻿using FDG.SaveLoad;
 using FDG.Stages;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
@@ -16,11 +16,16 @@ namespace FDG.Ai.Resolvers
         private const int MaxAttempts = 200;
 
         private readonly ITableState _tableState;
-        private readonly Random _rng = new();
+        private readonly Random _rng;
 
-        public AiPlaceOneTerrainResolver(ITableState tableState)
+        /// <param name="rng">
+        /// The player's seeded random stream (#193). Null keeps the historical unseeded behavior; the
+        /// distribution of layouts is unchanged either way, only its reproducibility.
+        /// </param>
+        public AiPlaceOneTerrainResolver(ITableState tableState, Random? rng = null)
         {
             _tableState = tableState;
+            _rng = rng ?? new Random();
         }
 
         public Task<TerrainPlacementResult> Resolve(PlaceOneTerrainRequest request)

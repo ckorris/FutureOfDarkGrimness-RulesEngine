@@ -3,7 +3,7 @@ using Newtonsoft.Json;
 
 namespace FDG.StageResolution.Requests
 {
-    public class PlaceObjectsRequest<T> : IStageTaskRequest<List<PlacedObjectEntry<T>>>
+    public class PlaceObjectsRequest<T> : IStageTaskRequest<CancellableResult<List<PlacedObjectEntry<T>>>>
     {
         public PlayerID TargetPlayerID { get; }
 
@@ -36,10 +36,18 @@ namespace FDG.StageResolution.Requests
         /// </summary>
         public bool MustTouchTableEdge { get; }
 
+        /// <summary>
+        /// Whether the resolver should offer a Back button that abandons the placement. True only for
+        /// Disembark, an action the player chose from the action menu and can decline before any model is
+        /// repositioned. False for placements the player cannot refuse - deployment, Scout, Ambush arrival,
+        /// transport spillout - where a Cancelled reply has nowhere to return to.
+        /// </summary>
+        public bool AllowCancel { get; }
+
         [JsonConstructor]
         public PlaceObjectsRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
             IBoundedZone deploymentZone, IReadOnlyList<DataBinding<T>> modelsToPlace,
-            float minDistanceFromEnemiesInches = 0f, bool mustTouchTableEdge = false)
+            float minDistanceFromEnemiesInches = 0f, bool mustTouchTableEdge = false, bool allowCancel = false)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -48,11 +56,12 @@ namespace FDG.StageResolution.Requests
             ModelsToPlace = modelsToPlace;
             MinDistanceFromEnemiesInches = minDistanceFromEnemiesInches;
             MustTouchTableEdge = mustTouchTableEdge;
+            AllowCancel = allowCancel;
         }
 
         public PlaceObjectsRequest(PlayerID targetPlayerID, string taskName,
             IBoundedZone deploymentZone, IReadOnlyList<DataBinding<T>> modelsToPlace,
-            float minDistanceFromEnemiesInches = 0f, bool mustTouchTableEdge = false)
+            float minDistanceFromEnemiesInches = 0f, bool mustTouchTableEdge = false, bool allowCancel = false)
         {
             TargetPlayerID = targetPlayerID;
             TaskName = taskName;
@@ -60,9 +69,10 @@ namespace FDG.StageResolution.Requests
             ModelsToPlace = modelsToPlace;
             MinDistanceFromEnemiesInches = minDistanceFromEnemiesInches;
             MustTouchTableEdge = mustTouchTableEdge;
+            AllowCancel = allowCancel;
         }
 
-        public Task<List<PlacedObjectEntry<T>>> Resolve(List<PlacedObjectEntry<T>> resolution)
+        public Task<CancellableResult<List<PlacedObjectEntry<T>>>> Resolve(CancellableResult<List<PlacedObjectEntry<T>>> resolution)
         {
             return Task.FromResult(resolution);
         }

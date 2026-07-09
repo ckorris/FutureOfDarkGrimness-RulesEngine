@@ -1,3 +1,4 @@
+using System;
 
 public interface IDiceRoller
 {
@@ -26,5 +27,26 @@ public static class IDiceRollerExtensions
     public static IDiceResults RollDecisive(this IDiceRoller roller)
     {
         return roller.RollDecisive(DEFAULT_SIDE_COUNT);
+    }
+
+    /// <summary>
+    /// The single face a <see cref="IDiceRoller.RollDecisive"/> came up on, as a plain int. For code that
+    /// needs to compare or rank raw rolls (roll-offs) rather than count successes against a threshold.
+    /// Routing these through the roller — instead of a private <c>Random</c> — is what keeps them
+    /// reproducible under a seed (#193); <c>RollDecisive</c> guarantees a concrete face even in
+    /// probabilistic mode, which is why the old "we can't use the context roller here" workaround is gone.
+    /// </summary>
+    public static int RollDecisiveFace(this IDiceRoller roller, int sideCount = DEFAULT_SIDE_COUNT)
+    {
+        IDiceResults results = roller.RollDecisive(sideCount);
+
+        for (int face = results.SideMin; face <= results.SideMax; face++)
+        {
+            if (results.At(face) >= 1f)
+                return face;
+        }
+
+        throw new InvalidOperationException(
+            $"A decisive d{sideCount} produced no concrete face; {roller.GetType().Name}.RollDecisive is broken.");
     }
 }

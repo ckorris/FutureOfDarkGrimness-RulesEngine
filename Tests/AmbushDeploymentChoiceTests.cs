@@ -86,6 +86,10 @@ namespace FDG.Tests
             Assert.That(deployment.CurrentDeployingUnit, Is.Null, "a held unit is never set as the deploying unit.");
             Assert.That(deployment.UndeployedUnits[_player], Is.Empty, "holding consumes the player's deployment for the turn.");
             AssertAllAtOrigin(ambush, "a held Ambush unit stays off-table.");
+            Assert.That(Rules.Dispatch.ReserveRules.IsInReserve(ambush.GetValue()), Is.True,
+                "holding records reserve as unit state, so nothing has to infer it from model positions.");
+            Assert.That(ambush.GetValue().GetIsOnBattlefield(), Is.False,
+                "a held unit is off the battlefield: not activatable, not targetable, not drawn.");
         }
 
         [Test]

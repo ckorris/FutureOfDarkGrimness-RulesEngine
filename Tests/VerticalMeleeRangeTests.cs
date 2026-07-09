@@ -1,6 +1,9 @@
 using System.Linq;
 using FDG.Data;
+using FDG.Players;
 using FDG.Stages;
+using FDG.StageResolution;
+using FDG.StageResolution.Requests;
 using NUnit.Framework;
 
 namespace FDG.Tests
@@ -18,12 +21,14 @@ namespace FDG.Tests
     {
         private GameDataStore _store = null!;
         private WoundTestContext _ctx = null!;
+        private MeleeDefenderRequester _requester = null!;
 
         [SetUp]
         public void SetUp()
         {
             _store = GameDataStore.GameDataStoreBuilder.GetDefault();
-            _ctx = new WoundTestContext(_store, new CapturingWoundRequester());
+            _requester = new MeleeDefenderRequester();
+            _ctx = new WoundTestContext(_store, _requester);
         }
 
         [Test]
@@ -98,8 +103,7 @@ namespace FDG.Tests
         [Test]
         public async Task ChooseMeleeDefender_EnemyWithinCylinder_IsChosen()
         {
-            // Same horizontal placement, but within the 4" vertical reach — now a valid defender, so the
-            // single-candidate fast path selects it (no requester needed).
+            // Same horizontal placement, but within the 4" vertical reach — now a valid defender.
             DataBinding<UnitData> attacker = MakeUnit(new Position(0f, 0f, 0f));
             MakeEnemyArmy(new Position(1f, 2f, 0f));
 
@@ -107,6 +111,33 @@ namespace FDG.Tests
 
             Assert.That(defenderChosen, Is.True, "An enemy inside the melee cylinder is a valid defender.");
             Assert.That(backToChooseAction, Is.False);
+        }
+
+        // The sole valid defender is still offered as a prompt rather than auto-selected: that prompt is the
+        // charge's only Back button, and nothing has been mutated yet.
+        [Test]
+        public async Task ChooseMeleeDefender_SingleValidDefender_StillPrompts()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(new Position(0f, 0f, 0f));
+            MakeEnemyArmy(new Position(1f, 2f, 0f));
+
+            await RunChooseMeleeDefender(attacker);
+
+            Assert.That(_requester.RequestCount, Is.EqualTo(1),
+                "one valid defender must still be posed as a cancellable request, not auto-attacked.");
+        }
+
+        [Test]
+        public async Task ChooseMeleeDefender_PlayerCancels_BacksOutWithoutChoosingDefender()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(new Position(0f, 0f, 0f));
+            MakeEnemyArmy(new Position(1f, 2f, 0f));
+            _requester.CancelEverything = true;
+
+            var (defenderChosen, backToChooseAction) = await RunChooseMeleeDefender(attacker);
+
+            Assert.That(defenderChosen, Is.False, "cancelling picks no defender.");
+            Assert.That(backToChooseAction, Is.True, "cancelling routes to the back-out exit.");
         }
 
         private async Task<(bool defenderChosen, bool backToChooseAction)> RunChooseMeleeDefender(
@@ -157,6 +188,28 @@ namespace FDG.Tests
 
             UnitData unit = new UnitData(playerID, "TestUnit", quality: 4, defense: 4, modelBindings: modelBindings);
             return _store.GetDataBinding<UnitData>(_store.Create(unit));
+        }
+    }
+
+    // Answers the defender pick by taking the first valid option, or by cancelling. ChooseMeleeDefenderStage
+    // now always poses the request (even for a single defender), so these tests need a real reply.
+    internal sealed class MeleeDefenderRequester : IPlayerRequestByID
+    {
+        public bool CancelEverything { get; set; }
+        public int RequestCount { get; private set; }
+
+        public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
+            where TRequest : IStageTaskRequest<TReply>
+        {
+            if (request is CancellableSelectionRequest<UnitData> selection)
+            {
+                RequestCount++;
+                CancellableResult<DataBinding<UnitData>> result = CancelEverything
+                    ? new Cancelled<DataBinding<UnitData>>()
+                    : new Selected<DataBinding<UnitData>>(selection.ValidOptions[0].Option);
+                return Task.FromResult((TReply)(object)result);
+            }
+            throw new System.InvalidOperationException("Unexpected request type: " + request.GetType());
         }
     }
 }

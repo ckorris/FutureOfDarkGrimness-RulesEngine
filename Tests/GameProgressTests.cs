@@ -1,4 +1,4 @@
-using FDG.Data;
+﻿using FDG.Data;
 using FDG.Players;
 using FDG.SaveLoad;
 using FDG.Stages;
@@ -314,6 +314,8 @@ namespace FDG.Tests
         {
             public ITextOutput TextOutput { get; } = new EmptyTextOutput();
             public IDiceRoller DiceRoller => null!;
+            // #193: tests get a fixed-seed stream so any Rng-driven stage behaves reproducibly.
+            public Random Rng { get; } = new Random(20260709);
             public RuleEvaluator RuleEvaluator => null!;
             public IPlayerRequestByID PlayerRequester => null!;
             public TableState TableState { get; }
@@ -330,7 +332,7 @@ namespace FDG.Tests
             }
 
             public void SetFirstDeploymentRollOrder(List<ITeam> order) { }
-            public void NotifyGameEnded(string result) { }
+            public void NotifyGameCompleted(GameResult result) { }
         }
     }
 }

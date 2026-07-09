@@ -1,5 +1,6 @@
 using FDG.Data;
 using FDG.Rules.Definitions;
+using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 
 namespace FDG.Stages
@@ -38,14 +39,18 @@ namespace FDG.Stages
                 var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID, "Place Scout Unit",
                     forwardZone, unit.ModelBindings);
 
-                List<PlacedObjectEntry<ModelData>> placements = await GameContext.PlayerRequester
-                    .RequestDecision<PlaceObjectsRequest<ModelData>, List<PlacedObjectEntry<ModelData>>>(request);
+                List<PlacedObjectEntry<ModelData>> placements = await PlacementRequesting
+                    .RequestMandatoryPlacement(GameContext.PlayerRequester, request);
 
                 foreach (PlacedObjectEntry<ModelData> placement in placements)
                 {
                     placement.Binding.GetValue().SetPosition(placement.Position);
                     if (placement.Facing.HasValue) placement.Binding.GetValue().SetFacing(placement.Facing.Value);
                 }
+
+                // On the table is the negation of in reserve (a Scout defers within deployment, so it never
+                // carries the token; a legacy save's bootstrap may have stamped it).
+                Rules.Dispatch.ReserveRules.ClearReserve(unit);
 
                 context.Log($"{unit.Name} deployed via Scout.");
             }

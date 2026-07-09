@@ -11,10 +11,18 @@ namespace FDG.Stages
     {
         public StageBinding OnPathDefined;
 
+        /// <summary>
+        /// The player abandoned the move before committing to a path. Nothing has been mutated yet - model
+        /// positions are only written by <c>ExecuteMoveStage</c> - so <c>MovementStage</c> routes this
+        /// straight back to the action menu without registering a move.
+        /// </summary>
+        public StageBinding BackToChooseAction;
+
         public DefinePathStage(IGameContext gameContext, IStateMachineLayer<IMovementActionContext> parent)
             : base(gameContext, parent)
         {
             OnPathDefined = new StageBinding(this);
+            BackToChooseAction = new StageBinding(this);
         }
 
         public override async Task Enter(IMovementActionContext context)
@@ -61,10 +69,22 @@ namespace FDG.Stages
                 context.MaxAdvanceDistance, context.MaxRushDistance, hardCap,
                 WeaponSightProfileBuilder.For(context.MovingUnit.GetValue(), context.GameContext.RuleEvaluator),
                 canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, BuildRangeOverrides(context),
-                perModelBudgets);
+                perModelBudgets, allowCancel: true);
 
-            List<ModelMoveEntry> movements = await context.PlayerRequester()
-                .RequestDecision<DefineMovementPathRequest, List<ModelMoveEntry>>(pathRequest);
+            CancellableResult<List<ModelMoveEntry>> pathResult = await context.PlayerRequester()
+                .RequestDecision<DefineMovementPathRequest, CancellableResult<List<ModelMoveEntry>>>(pathRequest);
+
+            // Backing out here costs nothing: positions are committed downstream by ExecuteMoveStage, and
+            // strafing hits are rolled after this stage.
+            if (pathResult is Cancelled<List<ModelMoveEntry>>)
+            {
+                context.RegisterMoveCancelled();
+                GameContext.Log($"{context.MovingUnit.GetValue().Name} did not move - returning to Choose Action.");
+                await BackToChooseAction.Activate(context);
+                return;
+            }
+
+            List<ModelMoveEntry> movements = ((Selected<List<ModelMoveEntry>>)pathResult).Value;
 
             List<EnemyModelFootprint> enemyFootprints = MovementUtilities.GetEnemyModelFootprints(context.MovingUnit, context.GameContext);
 

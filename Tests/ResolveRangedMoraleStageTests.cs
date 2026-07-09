@@ -6,9 +6,13 @@ using NUnit.Framework;
 namespace FDG.Tests
 {
     // #009 — A unit reduced to half strength or less by shooting takes a morale test; a failed test makes
-    // it Shaken (a non-melee morale failure never Routs — Rout is a melee-only result, GF v3.5.1). The
-    // test fires only on the weapon that *crosses* the unit into half strength (DefenderRemainingWoundsAtStart
-    // is snapshotted before each fire), so a later weapon at an already-sub-half target doesn't re-test.
+    // it Shaken (a non-melee morale failure never Routs — Rout is a melee-only result, GF v3.5.1).
+    //
+    // The stage runs ONCE, after the attacker has fired every weapon, and tests each unit it shot at
+    // exactly once. The half-strength crossing is measured against the defender's wounds at the moment it
+    // was first targeted (captured by RegisterAttackedDefender), so a unit shot by three weapons tests at
+    // most once, and a unit already below half before the shooting began doesn't test at all.
+    //
     // Quality is 4 throughout, so FixedDiceRoller(>=4) passes and FixedDiceRoller(<4) fails.
     [TestFixture]
     public class ResolveRangedMoraleStageTests
@@ -17,15 +21,15 @@ namespace FDG.Tests
         public async Task ReducedToHalfStrength_FailsTest_IsShaken()
         {
             var (combat, defender) = BuildShoot(defenderModels: 4, dieValue: 1);
-            combat.SetDefender(defender);          // snapshot at full strength (above half)
-            KillModels(defender, 2);               // this fire drops it to 2 of 4 — half strength
+            combat.RegisterAttackedDefender(defender);  // snapshot at full strength (above half)
+            KillModels(defender, 2);                    // the shooting drops it to 2 of 4 — half strength
 
             bool finished = await RunResolve(combat);
 
             Assert.That(finished, Is.True);
             Assert.That(defender.GetValue().GetIsAlive(), Is.True,
                 "a failed non-melee morale test makes the unit Shaken, not destroyed — shooting never Routs.");
-            Assert.That(defender.GetValue().Tokens.HasToken(Rules.Foundation.TokenType.Shaken), Is.True,
+            Assert.That(IsShaken(defender), Is.True,
                 "the surviving-but-failed unit carries the Shaken token.");
         }
 
@@ -33,13 +37,13 @@ namespace FDG.Tests
         public async Task ReducedToHalfStrength_PassesTest_Survives()
         {
             var (combat, defender) = BuildShoot(defenderModels: 4, dieValue: 6);
-            combat.SetDefender(defender);
+            combat.RegisterAttackedDefender(defender);
             KillModels(defender, 2);
 
             await RunResolve(combat);
 
             Assert.That(defender.GetValue().GetIsAlive(), Is.True, "a passed test leaves the unit on the table.");
-            Assert.That(defender.GetValue().Tokens.HasToken(Rules.Foundation.TokenType.Shaken), Is.False,
+            Assert.That(IsShaken(defender), Is.False,
                 "a passed morale test applies nothing — only a failed test makes the unit Shaken.");
         }
 
@@ -47,33 +51,33 @@ namespace FDG.Tests
         public async Task StaysAboveHalfStrength_NoTest()
         {
             var (combat, defender) = BuildShoot(defenderModels: 4, dieValue: 1); // would fail a test if one were taken
-            combat.SetDefender(defender);
-            KillModels(defender, 1);               // 3 of 4 remain — above half
+            combat.RegisterAttackedDefender(defender);
+            KillModels(defender, 1);                    // 3 of 4 remain — above half
 
             await RunResolve(combat);
 
-            Assert.That(defender.GetValue().GetIsAlive(), Is.True, "no test is taken above half strength, so the failing die is irrelevant.");
+            Assert.That(IsShaken(defender), Is.False, "no test is taken above half strength, so the failing die is irrelevant.");
         }
 
         [Test]
-        public async Task AlreadyAtHalfBeforeThisFire_NoReTest()
+        public async Task AlreadyAtHalfBeforeShooting_NoTest()
         {
             var (combat, defender) = BuildShoot(defenderModels: 4, dieValue: 1);
-            KillModels(defender, 2);               // already at half BEFORE this weapon
-            combat.SetDefender(defender);          // snapshot taken at half strength
+            KillModels(defender, 2);                    // already at half BEFORE this attacker targeted it
+            combat.RegisterAttackedDefender(defender);  // snapshot taken at half strength
 
             await RunResolve(combat);
 
-            Assert.That(defender.GetValue().GetIsAlive(), Is.True,
-                "a unit already at half strength before the fire isn't re-tested — guards against double jeopardy from multi-weapon fire.");
+            Assert.That(IsShaken(defender), Is.False,
+                "a unit already at half strength before the shooting isn't tested.");
         }
 
         [Test]
         public async Task DestroyedOutright_NoTestNoError()
         {
             var (combat, defender) = BuildShoot(defenderModels: 2, dieValue: 6);
-            combat.SetDefender(defender);
-            KillModels(defender, 2);               // wiped out by the fire
+            combat.RegisterAttackedDefender(defender);
+            KillModels(defender, 2);                    // wiped out by the fire
 
             bool finished = await RunResolve(combat);
 
@@ -81,7 +85,65 @@ namespace FDG.Tests
             Assert.That(defender.GetValue().GetIsDead(), Is.True);
         }
 
+        [Test]
+        public async Task NothingWasShotAt_NoTestNoError()
+        {
+            var (combat, _) = BuildShoot(defenderModels: 4, dieValue: 1);
+
+            bool finished = await RunResolve(combat);
+
+            Assert.That(finished, Is.True, "a shoot action that never picked a target passes straight through.");
+        }
+
+        // The bug this stage was moved to fix: morale used to run inside the per-weapon loop and only ever
+        // tested the CURRENT weapon's target, so a unit shot by a second weapon never rolled.
+        [Test]
+        public async Task EveryDefenderShotAt_IsTestedOnce()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var ctx = new TestGameContext(store, new FixedDiceRoller(1));
+            var attacker = MakeUnit(store, "Attacker", modelCount: 1, new Position(0, 0));
+            DataBinding<UnitData> first  = MakeUnit(store, "Defender1", modelCount: 4, new Position(10, 0));
+            DataBinding<UnitData> second = MakeUnit(store, "Defender2", modelCount: 4, new Position(20, 0));
+            var combat = new CombatActionContext(ctx, attacker, isMelee: false);
+
+            combat.RegisterAttackedDefender(first);
+            combat.RegisterAttackedDefender(second);
+            KillModels(first, 2);
+            KillModels(second, 2);
+
+            await RunResolve(combat);
+
+            Assert.That(IsShaken(first), Is.True, "the first weapon's target is tested.");
+            Assert.That(IsShaken(second), Is.True,
+                "the second weapon's target is tested too — morale is resolved once per unit that was shot at.");
+        }
+
+        // The other half of the fix: the wounds baseline is captured on FIRST sight, so a defender targeted
+        // by several weapons is measured against the wounds it had before any of them fired.
+        [Test]
+        public async Task DefenderTargetedBySeveralWeapons_SnapshotTakenOnFirstSight()
+        {
+            var (combat, defender) = BuildShoot(defenderModels: 4, dieValue: 1);
+
+            combat.RegisterAttackedDefender(defender);  // weapon 1 declares: 4 of 4
+            KillModels(defender, 1);                    // weapon 1 kills one -> 3 of 4, still above half
+            combat.RegisterAttackedDefender(defender);  // weapon 2 declares at the same unit — must NOT re-baseline
+            KillModels(defender, 1);                    // weapon 2 kills one -> 2 of 4, crossed into half
+
+            await RunResolve(combat);
+
+            Assert.That(combat.AttackedDefenders.Count, Is.EqualTo(1), "the same defender is recorded once.");
+            Assert.That(combat.AttackedDefenders[0].RemainingWoundsAtStart, Is.EqualTo(4f).Within(0.001f),
+                "the baseline is the wound count before the first weapon fired, not before the last one.");
+            Assert.That(IsShaken(defender), Is.True,
+                "the unit crossed into half strength over the whole action, so it tests once at the end.");
+        }
+
         // Helpers
+
+        private static bool IsShaken(DataBinding<UnitData> unit) =>
+            unit.GetValue().Tokens.HasToken(Rules.Foundation.TokenType.Shaken);
 
         private static async Task<bool> RunResolve(CombatActionContext combat)
         {

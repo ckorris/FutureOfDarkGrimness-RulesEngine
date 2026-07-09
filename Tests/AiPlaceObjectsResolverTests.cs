@@ -1,5 +1,6 @@
 using FDG.Ai.Resolvers;
 using FDG.Data;
+using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 using NUnit.Framework;
 
@@ -45,7 +46,7 @@ namespace FDG.Tests
             var request = new PlaceObjectsRequest<ModelData>(selfPlayer, "Ambush Deploy", wholeTable,
                 placing, minDistanceFromEnemiesInches: minDist);
 
-            List<PlacedObjectEntry<ModelData>> result = await resolver.Resolve(request);
+            List<PlacedObjectEntry<ModelData>> result = Unwrap(await resolver.Resolve(request));
 
             Assert.That(result, Has.Count.EqualTo(2));
             foreach (PlacedObjectEntry<ModelData> entry in result)
@@ -123,7 +124,7 @@ namespace FDG.Tests
             var request = new PlaceObjectsRequest<ModelData>(selfPlayer, "Aircraft Redeploy", wholeTable,
                 placing, mustTouchTableEdge: true);
 
-            List<PlacedObjectEntry<ModelData>> result = await resolver.Resolve(request);
+            List<PlacedObjectEntry<ModelData>> result = Unwrap(await resolver.Resolve(request));
 
             Assert.That(result, Has.Count.EqualTo(2));
             bool anyTouches = result.Any(e => PlacementUtilities.TouchesZoneEdge(
@@ -165,7 +166,7 @@ namespace FDG.Tests
             var zone = new RectangularZone(0f, 48f, 0f, 24f);
             var request = new PlaceObjectsRequest<ModelData>(selfPlayer, "Place Unit Models", zone, placing);
 
-            List<PlacedObjectEntry<ModelData>> result = await resolver.Resolve(request);
+            List<PlacedObjectEntry<ModelData>> result = Unwrap(await resolver.Resolve(request));
 
             Assert.That(result, Has.Count.EqualTo(6));
             for (int i = 0; i < result.Count; i++)
@@ -207,7 +208,7 @@ namespace FDG.Tests
             var zone = new RectangularZone(0f, tableW, 0f, 12f);
             var request = new PlaceObjectsRequest<ModelData>(selfPlayer, "Place Unit Models", zone, placing);
 
-            List<PlacedObjectEntry<ModelData>> result = await resolver.Resolve(request);
+            List<PlacedObjectEntry<ModelData>> result = Unwrap(await resolver.Resolve(request));
 
             Assert.That(result, Has.Count.EqualTo(8));
             foreach (var e in result)
@@ -244,7 +245,7 @@ namespace FDG.Tests
             var zone = new RectangularZone(0f, 6f, 0f, 6f);
             var request = new PlaceObjectsRequest<ModelData>(selfPlayer, "Place Unit Models", zone, placing);
 
-            List<PlacedObjectEntry<ModelData>> result = await resolver.Resolve(request);
+            List<PlacedObjectEntry<ModelData>> result = Unwrap(await resolver.Resolve(request));
 
             Assert.That(result, Has.Count.EqualTo(12));
             foreach (var e in result)
@@ -285,7 +286,7 @@ namespace FDG.Tests
             var resolver = new AiPlaceObjectsResolver<ModelData>(tableState);
             var request = new PlaceObjectsRequest<ModelData>(selfPlayer, "Place Unit Models", zone, placing);
 
-            List<PlacedObjectEntry<ModelData>> result = await resolver.Resolve(request);
+            List<PlacedObjectEntry<ModelData>> result = Unwrap(await resolver.Resolve(request));
 
             Assert.That(result, Has.Count.EqualTo(10));
 
@@ -344,7 +345,7 @@ namespace FDG.Tests
             var resolver = new AiPlaceObjectsResolver<ModelData>(tableState);
             var request = new PlaceObjectsRequest<ModelData>(selfPlayer, "Place Unit Models", zone, placing);
 
-            List<PlacedObjectEntry<ModelData>> result = await resolver.Resolve(request);
+            List<PlacedObjectEntry<ModelData>> result = Unwrap(await resolver.Resolve(request));
 
             Assert.That(result, Has.Count.EqualTo(5));
             var impassible = new List<ITerrain> { wall };
@@ -355,5 +356,15 @@ namespace FDG.Tests
                     $"AI must not deploy a model overlapping impassible terrain (placed at {entry.Position.x:F1}, {entry.Position.z:F1}).");
             }
         }
+
+        // The AI resolver never cancels a placement.
+        private static List<PlacedObjectEntry<ModelData>> Unwrap(
+            CancellableResult<List<PlacedObjectEntry<ModelData>>> result)
+        {
+            Assert.That(result, Is.InstanceOf<Selected<List<PlacedObjectEntry<ModelData>>>>(),
+                "the AI must always supply placements.");
+            return ((Selected<List<PlacedObjectEntry<ModelData>>>)result).Value;
+        }
+
     }
 }

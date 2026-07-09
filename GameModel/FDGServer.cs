@@ -20,7 +20,19 @@ namespace FDG.GameModel
 {
     public class FDGServer
     {
+        /// <summary>
+        /// The end-of-game sentence ("X wins!", "It's a tie!", a disconnect/fault reason). Consumed by the
+        /// front ends and forwarded over the wire; always fires alongside <see cref="OnGameCompleted"/>.
+        /// </summary>
         public event Action<string>? OnGameEnded;
+
+        /// <summary>
+        /// The structured end-of-game record (#192), for automated play: benchmarks, self-play training,
+        /// and search rollouts read the winner and score margin from here instead of parsing
+        /// <see cref="OnGameEnded"/>'s prose. Host-side only; never crosses the wire. Fires exactly once,
+        /// immediately before <see cref="OnGameEnded"/>.
+        /// </summary>
+        public event Action<GameResult>? OnGameCompleted;
 
         private IReadWriteableGameDataStore _gameDataStore;
         private IMessageBusHost _messageBusHost;
@@ -118,7 +130,7 @@ namespace FDG.GameModel
 
             _gameContext = new GameContext(textOutput, GetDiceRoller(gameSettings), requestMessageSender,
                 tableState, _gameDataStore, presentationRelayer, gameSettings, resumeProgress, _ruleResolver);
-            _gameContext.OnGameEnded += result => OnGameEnded?.Invoke(result);
+            _gameContext.OnGameCompleted += RaiseGameCompleted;
 
             // #042 creation-time rules (Tough): set each model's max wounds now that the evaluator
             // exists. Skipped on resume — max wounds are already in the loaded store (persisted on
@@ -175,7 +187,9 @@ namespace FDG.GameModel
         {
             IDiceRoller diceRoller = gameSettings.RandomnessType switch
             {
-                ERandomnessType.Probabilistic => new ProbabilisticDiceRoller(),
+                // #193: probabilistic combat is pure expected-value math, but its decisive rolls (morale,
+                // objective count, dangerous terrain) are real draws and take the seed too.
+                ERandomnessType.Probabilistic => new ProbabilisticDiceRoller(gameSettings.DiceSeed),
                 // #167: an explicit seed makes Realistic-mode runs repeatable (scenario testing / repro cases).
                 ERandomnessType.Realistic => new RealisticDiceRoller(gameSettings.DiceSeed),
                 _ => throw new ArgumentOutOfRangeException()
@@ -221,15 +235,25 @@ namespace FDG.GameModel
                 // work item #187.
                 string message = DescribePlayerLeft(_playerSlotManager, disconnect.PlayerID);
                 Console.WriteLine($"Game ended: {message}");
-                OnGameEnded?.Invoke(message);
+                RaiseGameCompleted(GameResult.ForFault(message));
             }
             catch (Exception ex)
             {
                 // The state machine runs detached, so an unhandled fault would otherwise be unobserved
                 // (silent hang) — surface it and end the game so the app can exit cleanly.
                 Console.WriteLine($"[GAME ERROR] State machine faulted: {ex}");
-                OnGameEnded?.Invoke($"Game error: {ex.Message}");
+                RaiseGameCompleted(GameResult.ForFault($"Game error: {ex.Message}"));
             }
+        }
+
+        // Single fan-out point for every way a game can finish (victory, disconnect, engine fault), so the
+        // structured and legacy events can never disagree or fire without each other. Structured first:
+        // OnGameEnded subscribers tear the game down (CliApp completes its TCS), so a later-raised
+        // OnGameCompleted could arrive after the process has moved on.
+        private void RaiseGameCompleted(GameResult result)
+        {
+            OnGameCompleted?.Invoke(result);
+            OnGameEnded?.Invoke(result.Message);
         }
 
         // Friendly end-of-game text for a player who dropped mid-game. Internal + static so it can be tested

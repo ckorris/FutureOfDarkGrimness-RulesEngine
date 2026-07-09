@@ -42,8 +42,17 @@ namespace FDG.Stages
                 WeaponSightProfileBuilder.For(unitBinding.GetValue(), _gameContext.RuleEvaluator),
                 canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain);
 
-            List<ModelMoveEntry> movements = await _gameContext.PlayerRequester
-                .RequestDecision<DefineMovementPathRequest, List<ModelMoveEntry>>(pathRequest);
+            // allowCancel defaults to false: a triggered move is imposed by a rule, not chosen, so the
+            // resolver offers no Back and a Cancelled reply would have nowhere to return to.
+            CancellableResult<List<ModelMoveEntry>> pathResult = await _gameContext.PlayerRequester
+                .RequestDecision<DefineMovementPathRequest, CancellableResult<List<ModelMoveEntry>>>(pathRequest);
+
+            if (pathResult is not Selected<List<ModelMoveEntry>> selectedPath)
+            {
+                throw new RequestResponseInvalidException(
+                    $"Triggered move for {unit.Name} cannot be cancelled - the rule that forced it has already fired.");
+            }
+            List<ModelMoveEntry> movements = selectedPath.Value;
 
             if (!MovementExecutor.TryMove(_gameContext, unitBinding, movements, maxInches,
                     out List<ReasonForInvalidMove> errors,

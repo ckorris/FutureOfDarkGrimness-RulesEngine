@@ -1,5 +1,6 @@
 using FDG.Ai.Resolvers;
 using FDG.Data;
+using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 using FDG.Stages;
 using NUnit.Framework;
@@ -47,7 +48,7 @@ namespace FDG.Tests
             var request = new DefineMovementPathRequest(selfPlayer, "Move", moverUnitBinding,
                 maxAdvanceDistance: 12f, maxRushDistance: 12f, maxDistanceInches: 12f);
 
-            List<ModelMoveEntry> result = await resolver.Resolve(request);
+            List<ModelMoveEntry> result = Unwrap(await resolver.Resolve(request));
 
             bool valid = MovementUtilities.ValidatePaths(result, request.MaxRushDistance,
                 request.MaxDistanceInches, new List<EnemyModelFootprint> { new EnemyModelFootprint(enemyPos, 0.75f, 0) },
@@ -86,7 +87,7 @@ namespace FDG.Tests
             var request = new DefineMovementPathRequest(selfPlayer, "Move", moverUnitBinding,
                 maxAdvanceDistance: 12f, maxRushDistance: 12f, maxDistanceInches: 12f);
 
-            List<ModelMoveEntry> result = await resolver.Resolve(request);
+            List<ModelMoveEntry> result = Unwrap(await resolver.Resolve(request));
 
             Position finalPos = result[0].Positions[result[0].Positions.Count - 1];
             Assert.That(Position.GetDistance2D(finalPos, start), Is.GreaterThan(2f),
@@ -130,7 +131,7 @@ namespace FDG.Tests
             var request = new DefineMovementPathRequest(selfPlayer, "Move", moverUnitBinding,
                 maxAdvanceDistance: 6f, maxRushDistance: 12f, maxDistanceInches: 12f);
 
-            List<ModelMoveEntry> result = await resolver.Resolve(request);
+            List<ModelMoveEntry> result = Unwrap(await resolver.Resolve(request));
 
             bool valid = MovementUtilities.ValidatePaths(result, request.MaxRushDistance,
                 request.MaxDistanceInches, new List<EnemyModelFootprint> { new EnemyModelFootprint(enemyPos, 0.75f, 0) },
@@ -175,7 +176,7 @@ namespace FDG.Tests
             var request = new DefineMovementPathRequest(selfPlayer, "Move", unitBinding,
                 maxAdvanceDistance: 6f, maxRushDistance: 12f, maxDistanceInches: 12f);
 
-            List<ModelMoveEntry> result = await resolver.Resolve(request);
+            List<ModelMoveEntry> result = Unwrap(await resolver.Resolve(request));
 
             bool valid = MovementUtilities.ValidatePaths(result, request.MaxRushDistance,
                 request.MaxDistanceInches, new List<EnemyModelFootprint>(), new List<ITerrain>(), out var errors);
@@ -231,7 +232,7 @@ namespace FDG.Tests
             var request = new DefineMovementPathRequest(selfPlayer, "Move", moverUnitBinding,
                 maxAdvanceDistance: 6f, maxRushDistance: 12f, maxDistanceInches: 12f);
 
-            List<ModelMoveEntry> result = await resolver.Resolve(request);
+            List<ModelMoveEntry> result = Unwrap(await resolver.Resolve(request));
 
             var footprints = new List<EnemyModelFootprint> { new EnemyModelFootprint(enemyPos, 0.75f, 0) };
             bool valid = MovementUtilities.ValidatePaths(result, request.MaxRushDistance,
@@ -268,7 +269,7 @@ namespace FDG.Tests
             var request = new DefineMovementPathRequest(selfPlayer, "Move", moverUnitBinding,
                 maxAdvanceDistance: 6f, maxRushDistance: 12f, maxDistanceInches: 12f);
 
-            List<ModelMoveEntry> result = await resolver.Resolve(request);
+            List<ModelMoveEntry> result = Unwrap(await resolver.Resolve(request));
 
             var footprints = new List<EnemyModelFootprint> { new EnemyModelFootprint(enemyPos, 0.75f, 0) };
             bool valid = MovementUtilities.ValidatePaths(result, request.MaxRushDistance,
@@ -307,7 +308,7 @@ namespace FDG.Tests
             var request = new DefineMovementPathRequest(selfPlayer, "Move", moverUnitBinding,
                 maxAdvanceDistance: 6f, maxRushDistance: 12f, maxDistanceInches: 12f);
 
-            List<ModelMoveEntry> result = await resolver.Resolve(request);
+            List<ModelMoveEntry> result = Unwrap(await resolver.Resolve(request));
 
             var footprints = new List<EnemyModelFootprint> { new EnemyModelFootprint(enemyPos, 0.75f, 0) };
             bool valid = MovementUtilities.ValidatePaths(result, request.MaxRushDistance,
@@ -348,7 +349,7 @@ namespace FDG.Tests
             var request = new DefineMovementPathRequest(selfPlayer, "Move", moverUnitBinding,
                 maxAdvanceDistance: 6f, maxRushDistance: 12f, maxDistanceInches: 12f);
 
-            List<ModelMoveEntry> result = await resolver.Resolve(request);
+            List<ModelMoveEntry> result = Unwrap(await resolver.Resolve(request));
 
             var footprints = new List<EnemyModelFootprint> { new EnemyModelFootprint(enemyPos, 0.75f, 0) };
             bool valid = MovementUtilities.ValidatePaths(result, request.MaxRushDistance,
@@ -369,5 +370,14 @@ namespace FDG.Tests
                 }
             return min;
         }
+
+        // The AI resolver never cancels - it answers a stand-still as a zero-length path, not a Cancelled.
+        private static List<ModelMoveEntry> Unwrap(CancellableResult<List<ModelMoveEntry>> result)
+        {
+            Assert.That(result, Is.InstanceOf<Selected<List<ModelMoveEntry>>>(),
+                "the AI must always supply a path.");
+            return ((Selected<List<ModelMoveEntry>>)result).Value;
+        }
+
     }
 }

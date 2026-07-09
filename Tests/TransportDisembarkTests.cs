@@ -95,6 +95,51 @@ namespace FDG.Tests
             Assert.That(finished, Is.True, "loops back to Choose Action.");
         }
 
+        // Nothing is repositioned until the placements come back, so cancelling the prompt must leave the
+        // unit aboard with its move unspent — the same back-out Embark has always had.
+        [Test]
+        public async Task DisembarkStage_PlayerCancelsPlacement_StaysAboardWithMoveUnspent()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CancellingPlaceRequester());
+            DataBinding<UnitData> transport = MakeTransport("Rhino", capacity: 6, deployed: true);
+            DataBinding<UnitData> squad = MakeSquadWithDisembark("Grunts", modelCount: 2);
+            TransportUtilities.Embark(squad.GetValue(), transport.GetValue());
+
+            var unitCtx = NewActivation(ctx, squad);
+            bool finished = false, backedOut = false;
+            var stage = new DisembarkStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            stage.OnBackToChooseAction.Bind("OnBackToChooseAction");
+            stage.OnFinished.OnWillActivate += _ => finished = true;
+            stage.OnBackToChooseAction.OnWillActivate += _ => backedOut = true;
+            await stage.Enter(unitCtx);
+
+            Assert.That(backedOut, Is.True, "cancelling routes to the back-out exit.");
+            Assert.That(finished, Is.False, "the back-out must not travel the finished exit.");
+            Assert.That(TransportUtilities.IsEmbarked(squad.GetValue()), Is.True, "the unit is still aboard.");
+            Assert.That(squad.GetValue().GetIsOnBattlefield(), Is.False, "no model was repositioned.");
+            Assert.That(unitCtx.HasMoved, Is.False, "a disembark that never happened doesn't spend the move.");
+        }
+
+        [Test]
+        public async Task DisembarkStage_PlacementRequest_OffersCancel()
+        {
+            var requester = new CannedPlaceRequester(new Position(12f, 10f));
+            var ctx = new TriggeredMoveTestContext(_store, requester);
+            DataBinding<UnitData> transport = MakeTransport("Rhino", capacity: 6, deployed: true);
+            DataBinding<UnitData> squad = MakeSquadWithDisembark("Grunts", modelCount: 2);
+            TransportUtilities.Embark(squad.GetValue(), transport.GetValue());
+
+            var stage = new DisembarkStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            stage.OnBackToChooseAction.Bind("OnBackToChooseAction");
+            await stage.Enter(NewActivation(ctx, squad));
+
+            Assert.That(requester.LastRequest, Is.Not.Null);
+            Assert.That(requester.LastRequest!.AllowCancel, Is.True,
+                "the disembark placement offers a Back button; deployment and spillout do not.");
+        }
+
         // --- helpers ---
 
         private static UnitActionContext NewActivation(IGameContext ctx, DataBinding<UnitData> unit)
@@ -166,16 +211,31 @@ namespace FDG.Tests
 
         public CannedPlaceRequester(Position at) => _at = at;
 
+        public PlaceObjectsRequest<ModelData>? LastRequest { get; private set; }
+
         public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
             where TRequest : IStageTaskRequest<TReply>
         {
             if (request is PlaceObjectsRequest<ModelData> place)
             {
+                LastRequest = place;
                 List<PlacedObjectEntry<ModelData>> placements = place.ModelsToPlace
                     .Select(binding => new PlacedObjectEntry<ModelData>(binding, _at))
                     .ToList();
-                return Task.FromResult((TReply)(object)placements);
+                return Task.FromResult((TReply)(object)new Selected<List<PlacedObjectEntry<ModelData>>>(placements));
             }
+            throw new InvalidOperationException("Unexpected request type: " + request.GetType());
+        }
+    }
+
+    // Backs out of the placement prompt, the way a player clicking Back does.
+    internal sealed class CancellingPlaceRequester : IPlayerRequestByID
+    {
+        public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
+            where TRequest : IStageTaskRequest<TReply>
+        {
+            if (request is PlaceObjectsRequest<ModelData>)
+                return Task.FromResult((TReply)(object)new Cancelled<List<PlacedObjectEntry<ModelData>>>());
             throw new InvalidOperationException("Unexpected request type: " + request.GetType());
         }
     }

@@ -28,14 +28,12 @@ public static class DiceUtilities
     }
 
     public static async Task<T> RollOff_SingleWinner<T>(List<T> competitors, List<string> competitorNames,
-        ITextOutput logger, IPresenter? presenter = null, string rollLabel = "Roll-Off")
+        ITextOutput logger, IDiceRoller diceRoller, IPresenter? presenter = null, string rollLabel = "Roll-Off")
     {
         if (competitors.Count != competitorNames.Count)
         {
             throw new InvalidOperationException($"Must have equal number of {nameof(competitors)} and {nameof(competitorNames)}.");
         }
-
-        Random random = new Random();
 
         if (competitors.Count < 1)
         {
@@ -50,15 +48,16 @@ public static class DiceUtilities
             //Have all competitors roll a D6, and as long as the highest value isn't tied, that's the winner.
             //We could just pick a competitor at random but doing it this way lets us show cool dice rolling
             //results and makes it feel more like a game.
-            //Also note that we're not using the DiceRoller in context because that may not be random.
-            //However this roll always has to be random.
+            //This roll always has to resolve to a real face, so it goes through RollDecisive — which every
+            //roller, probabilistic included, answers with one concrete face (#193; before that this method
+            //owned a private unseeded Random, which no seed could reach).
             int[] rolls = new int[competitors.Count];
 
             int highest = -1;
 
             for (int i = 0; i < competitors.Count; i++)
             {
-                int roll = random.Next(1, 7); //1 through 7, inclusive of 6.
+                int roll = diceRoller.RollDecisiveFace();
                 rolls[i] = roll;
 
                 logger.Log($"{competitorNames[i]} rolled {roll}.");
@@ -113,24 +112,21 @@ public static class DiceUtilities
     /// <exception cref="InvalidOperationException">If <paramref name="competitors"/> and <paramref name="competitorNames"/> don't match in length.</exception>
     /// <exception cref="InvalidOperationException">If <paramref name="competitors"/> doesn't have at least two values.</exception>
     public static async Task<List<T>> RollOff_Ordered<T>(List<T> competitors, List<string> competitorNames,
-        ITextOutput logger, IPresenter? presenter = null, string rollLabel = "Roll-Off")
+        ITextOutput logger, IDiceRoller diceRoller, IPresenter? presenter = null, string rollLabel = "Roll-Off")
     {
         if (competitors.Count != competitorNames.Count)
         {
             throw new InvalidOperationException($"Must have equal number of {nameof(competitors)} and {nameof(competitorNames)}.");
         }
 
-        Random random = new Random();
-
-
-        return await RankGroup<T>(competitors, competitorNames, logger, random, presenter, rollLabel);
+        return await RankGroup<T>(competitors, competitorNames, logger, diceRoller, presenter, rollLabel);
     }
 
 
     /// <summary>
-    /// Recursive helper for <see cref="RollOff_Ordered{T}(List{T}, List{string}, ITextOutput, IPresenter, string)"/>
+    /// Recursive helper for <see cref="RollOff_Ordered{T}(List{T}, List{string}, ITextOutput, IDiceRoller, IPresenter, string)"/>
     private static async Task<List<T>> RankGroup<T>(List<T> group, List<string> groupNames, ITextOutput logger,
-        Random random, IPresenter? presenter, string rollLabel)
+        IDiceRoller diceRoller, IPresenter? presenter, string rollLabel)
     {
         if (group.Count == 1)
         {
@@ -146,7 +142,7 @@ public static class DiceUtilities
 
         for (int i = 0; i < count; i++)
         {
-            int roll = random.Next(1, 7);
+            int roll = diceRoller.RollDecisiveFace();
             rolls[i] = roll;
             logger.Log($"{groupNames[i]} rolled {roll}.");
             highest = Math.Max(highest, roll);
@@ -197,7 +193,7 @@ public static class DiceUtilities
                 sb.Append('.');
                 logger.Log(sb.ToString());
 
-                ranked.AddRange(await RankGroup(bucket, names, logger, random, presenter, rollLabel));
+                ranked.AddRange(await RankGroup(bucket, names, logger, diceRoller, presenter, rollLabel));
 
             }
         }

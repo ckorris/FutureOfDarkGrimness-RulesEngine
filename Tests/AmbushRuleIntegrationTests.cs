@@ -42,6 +42,8 @@ namespace FDG.Tests
 
             Assert.That(requester.PlaceRequest, Is.Null, "no placement is offered in round 1");
             AssertAllAtOrigin(ambush, "Ambush unit stays in reserve in round 1");
+            Assert.That(ambush.GetValue().GetIsOnBattlefield(), Is.False,
+                "a reserve is not on the battlefield, so it can't be activated or targeted.");
         }
 
         [Test]
@@ -61,6 +63,9 @@ namespace FDG.Tests
                 Assert.That(pos.x, Is.EqualTo(20f).Within(0.001f));
                 Assert.That(pos.z, Is.EqualTo(20f).Within(0.001f));
             }
+            Assert.That(Rules.Dispatch.ReserveRules.IsInReserve(ambush.GetValue()), Is.False,
+                "arriving clears the reserve state.");
+            Assert.That(ambush.GetValue().GetIsOnBattlefield(), Is.True, "it is now in play.");
         }
 
         [Test]
@@ -73,6 +78,8 @@ namespace FDG.Tests
 
             Assert.That(requester.PlaceRequest, Is.Null, "declining means no placement");
             AssertAllAtOrigin(ambush, "a declined Ambush unit stays in reserve");
+            Assert.That(Rules.Dispatch.ReserveRules.IsInReserve(ambush.GetValue()), Is.True,
+                "declining leaves the reserve state in place, so it is offered again next round.");
         }
 
         [Test]
@@ -130,6 +137,8 @@ namespace FDG.Tests
                 modelBindings: modelBindings);
             DataBinding<UnitData> binding = _store.GetDataBinding<UnitData>(_store.Create(unit));
             binding.GetValue().AttachRuleDefinition(new ResolvedRule("Ambush", CoreRuleCatalog.Ambush));
+            // The player held it back at deployment: reserve is explicit unit state, not an origin position.
+            Rules.Dispatch.ReserveRules.PlaceInReserve(binding.GetValue());
 
             _store.Create(new ArmyData(_player, new List<DataBinding<UnitData>> { binding }));
             return binding;
@@ -182,7 +191,7 @@ namespace FDG.Tests
                     var entries = place.ModelsToPlace
                         .Select(m => new PlacedObjectEntry<ModelData>(m, dest))
                         .ToList();
-                    return Task.FromResult((TReply)(object)entries);
+                    return Task.FromResult((TReply)(object)new Selected<List<PlacedObjectEntry<ModelData>>>(entries));
                 default:
                     throw new System.InvalidOperationException("Unexpected request: " + request.GetType());
             }

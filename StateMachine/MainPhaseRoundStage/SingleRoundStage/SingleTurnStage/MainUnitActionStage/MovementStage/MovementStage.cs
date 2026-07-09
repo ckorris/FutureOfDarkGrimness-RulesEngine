@@ -6,9 +6,16 @@ namespace FDG.Stages
     {
         public StageBinding OnFinishedMovement;
 
+        /// <summary>
+        /// The player abandoned the move at the path prompt. Distinct from <see cref="OnFinishedMovement"/>
+        /// because leaving through that binding registers a move distance and marks the unit as having
+        /// moved; a move that never happened must leave the unit free to choose another action.
+        /// </summary>
+        public StageBinding BackToChooseAction;
+
         public MovementStage(IGameContext gameContext, IStateMachineLayer<IUnitActionContext> parent) : base(gameContext, parent)
         {
-            
+
         }
 
 
@@ -20,6 +27,7 @@ namespace FDG.Stages
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IMovementActionContext> startingChild)
         {
             OnFinishedMovement = new StageBinding(this);
+            BackToChooseAction = new StageBinding(this);
 
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
                 .AddChild(new DefinePathStage(GameContext, this), out var definePath)
@@ -27,11 +35,13 @@ namespace FDG.Stages
                 .AddChild(new StrafingStage(GameContext, this), out var strafing)
                 .AddChild(new ExecuteMoveStage(GameContext, this), out var executeMove)
                 .AddSibling(nameof(OnFinishedMovement), OnFinishedMovement, out string onFinishedMovement)
+                .AddSibling(nameof(BackToChooseAction), BackToChooseAction, out string backToChooseEvent)
                 .Build();
 
             startingChild = definePath;
 
             definePath.OnPathDefined.Bind(applyEffects);
+            definePath.BackToChooseAction.Bind(backToChooseEvent);
             // Strafing runs before the move is committed, so move-through detection reads the path from each
             // model's start position; on a strafe it resolves hits, then movement executes.
             applyEffects.OnAppliedNonMovementTerrainEffects.Bind(strafing);
@@ -44,6 +54,10 @@ namespace FDG.Stages
         protected override void ReconcileChildContextBeforeLeaving(IUnitActionContext selfContext, IMovementActionContext childContext)
         {
             base.ReconcileChildContextBeforeLeaving(selfContext, childContext);
+
+            // Runs on every exit, including the back-out. An abandoned move submitted no path, so there is
+            // no distance to reconcile and the unit must not be marked as having moved.
+            if (childContext.MoveCancelled) return;
 
             if(childContext.TryGetMovementDistance(out var distance) == false)
             {

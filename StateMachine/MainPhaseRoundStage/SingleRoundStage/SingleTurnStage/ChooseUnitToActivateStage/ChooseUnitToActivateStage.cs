@@ -70,7 +70,7 @@ namespace FDG.Stages
         // checks to decide who it offers to bring on.)
         private string GetUnavailableReason(UnitData unit)
         {
-            if (IsUnplaced(unit) && TryGetLaterRoundDefer(unit, out _))
+            if (Rules.Dispatch.ReserveRules.IsInReserve(unit) && TryGetLaterRoundDefer(unit, out _))
             {
                 int round = GameProgressUtilities.TryGetProgress(GameContext.GameDataStore)?.RoundCount ?? 1;
                 return round < 2
@@ -79,17 +79,6 @@ namespace FDG.Stages
             }
 
             return "Already activated.";
-        }
-
-        // A unit that has never been placed has all models at the default origin (0,0,0).
-        private static bool IsUnplaced(UnitData unit)
-        {
-            foreach (DataBinding<ModelData> model in unit.ModelBindings)
-            {
-                Position pos = model.GetValue().PositionBinding.GetValue();
-                if (pos.x != 0f || pos.z != 0f) return false;
-            }
-            return true;
         }
 
         private bool TryGetLaterRoundDefer(IUnit unit, out RuleOperation.DeferDeployment defer)

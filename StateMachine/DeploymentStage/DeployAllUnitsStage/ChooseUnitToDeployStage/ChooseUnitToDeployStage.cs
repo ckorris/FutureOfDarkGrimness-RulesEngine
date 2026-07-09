@@ -122,6 +122,8 @@ namespace FDG.Stages
                     if (choice == EAmbushChoice.Hold)
                     {
                         context.UndeployedUnits[currentPlayerID].Remove(chosenUnit);
+                        // Reserve is explicit state on the unit, not "its models happen to sit at the origin".
+                        Rules.Dispatch.ReserveRules.PlaceInReserve(chosenUnit.GetValue());
                         context.Log($"{chosenUnit.GetValue().Name} held in {ruleName}.");
                         await context.Announce($"{chosenUnit.GetValue().Name} held in {ruleName}.",
                             new TextColor(255, 170, 60, 255));

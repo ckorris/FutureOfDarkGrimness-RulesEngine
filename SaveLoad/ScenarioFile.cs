@@ -35,7 +35,11 @@ namespace FDG.SaveLoad
         /// <summary>"Probabilistic" (default — histogram dice, deterministic modifier arithmetic) or "Realistic".</summary>
         public string Randomness { get; set; } = "Probabilistic";
 
-        /// <summary>Optional seed for Realistic dice, for repeatable runs. Ignored in Probabilistic mode.</summary>
+        /// <summary>
+        /// Optional seed for repeatable runs. Seeds Realistic dice, and (since #193) Probabilistic mode's
+        /// decisive rolls, the objective auto-placer, and each AI player's own stream — so a seeded
+        /// scenario replays identically in either randomness mode.
+        /// </summary>
         public int? DiceSeed { get; set; }
     }
 

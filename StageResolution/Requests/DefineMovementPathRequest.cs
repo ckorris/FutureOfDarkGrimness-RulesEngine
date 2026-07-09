@@ -3,7 +3,7 @@ using Newtonsoft.Json;
 
 namespace FDG.StageResolution.Requests
 {
-    public class DefineMovementPathRequest : IStageTaskRequest<List<ModelMoveEntry>>
+    public class DefineMovementPathRequest : IStageTaskRequest<CancellableResult<List<ModelMoveEntry>>>
     {
         public PlayerID TargetPlayerID { get; }
 
@@ -68,13 +68,23 @@ namespace FDG.StageResolution.Requests
         /// </summary>
         public IReadOnlyList<WeaponRangeOverride> WeaponRangeOverrides { get; }
 
+        /// <summary>
+        /// Whether the resolver should offer a Back button that abandons the whole move. True for the Move
+        /// action, whose stage returns to the action menu without spending the move — nothing is mutated
+        /// until <c>ExecuteMoveStage</c> commits positions. False for moves the player did not choose and
+        /// may not decline (a rule-triggered move; see <c>GameOperationServices</c>), where a Cancelled
+        /// reply has no meaning. Mirrors <see cref="SelectionRequest{T}"/>'s AllowCancel.
+        /// </summary>
+        public bool AllowCancel { get; }
+
         [JsonConstructor]
         public DefineMovementPathRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
             DataBinding<UnitData> unitDataBinding, float maxAdvanceDistance, float maxRushDistance, float maxDistanceInches,
             IReadOnlyList<WeaponSightProfile>? weaponSightProfiles = null, bool canMoveThroughEnemies = false,
             bool ignoresDifficultTerrain = false, bool ignoresImpassibleTerrain = false,
             IReadOnlyList<WeaponRangeOverride>? weaponRangeOverrides = null,
-            IReadOnlyList<ModelMoveBudgetInfo>? modelMoveBudgets = null)
+            IReadOnlyList<ModelMoveBudgetInfo>? modelMoveBudgets = null,
+            bool allowCancel = false)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -89,6 +99,7 @@ namespace FDG.StageResolution.Requests
             IgnoresImpassibleTerrain = ignoresImpassibleTerrain;
             WeaponRangeOverrides = weaponRangeOverrides ?? new List<WeaponRangeOverride>();
             ModelMoveBudgets = modelMoveBudgets ?? new List<ModelMoveBudgetInfo>();
+            AllowCancel = allowCancel;
         }
 
         public DefineMovementPathRequest(PlayerID targetPlayerID,  string taskName,
@@ -96,7 +107,8 @@ namespace FDG.StageResolution.Requests
             IReadOnlyList<WeaponSightProfile>? weaponSightProfiles = null, bool canMoveThroughEnemies = false,
             bool ignoresDifficultTerrain = false, bool ignoresImpassibleTerrain = false,
             IReadOnlyList<WeaponRangeOverride>? weaponRangeOverrides = null,
-            IReadOnlyList<ModelMoveBudgetInfo>? modelMoveBudgets = null)
+            IReadOnlyList<ModelMoveBudgetInfo>? modelMoveBudgets = null,
+            bool allowCancel = false)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = new TaskID(Guid.NewGuid());
@@ -111,6 +123,7 @@ namespace FDG.StageResolution.Requests
             IgnoresImpassibleTerrain = ignoresImpassibleTerrain;
             WeaponRangeOverrides = weaponRangeOverrides ?? new List<WeaponRangeOverride>();
             ModelMoveBudgets = modelMoveBudgets ?? new List<ModelMoveBudgetInfo>();
+            AllowCancel = allowCancel;
         }
 
         /// <summary>
@@ -130,7 +143,7 @@ namespace FDG.StageResolution.Requests
             return (MaxAdvanceDistance, MaxRushDistance, MaxDistanceInches);
         }
 
-        public Task<List<ModelMoveEntry>> Resolve(List<ModelMoveEntry> resolution)
+        public Task<CancellableResult<List<ModelMoveEntry>>> Resolve(CancellableResult<List<ModelMoveEntry>> resolution)
         {
             return Task.FromResult(resolution);
         }

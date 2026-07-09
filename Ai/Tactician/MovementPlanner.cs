@@ -185,6 +185,90 @@ namespace FDG.Ai.Tactician
             return CohesiveFormation.PackGrid(living, cx, cz);
         }
 
+        /// <summary>
+        /// A path-following candidate (#191 A3b): the unit travels <paramref name="arcLengthInches"/>
+        /// along <paramref name="path"/>, every model sharing the path's interior waypoints (so the
+        /// whole unit funnels through corridors) and fanning out into the formation at the endpoint.
+        /// The arc length is the ladder's backoff knob, exactly like the straight candidate's step.
+        /// </summary>
+        public static List<ModelMoveEntry> BuildPathCandidate(DataBinding<UnitData> unit,
+            List<DataBinding<ModelData>> living, List<Position> path, float arcLengthInches,
+            IReadOnlyList<ITerrain> terrain, float baseRadiusInches, float maxDistanceInches,
+            EFormation formation = EFormation.Grid)
+        {
+            if (arcLengthInches <= 0f || path.Count < 2) return StayInPlace(unit);
+
+            (Position endpoint, List<Position> passed, _) =
+                GridPathfinder.AdvanceAlongPath(path, arcLengthInches, terrain, baseRadiusInches);
+
+            Position previous = passed.Count > 0 ? passed[^1] : path[0];
+            float dirX = endpoint.x - previous.x;
+            float dirZ = endpoint.z - previous.z;
+            float length = MathF.Sqrt(dirX * dirX + dirZ * dirZ);
+            (dirX, dirZ) = length < 1e-6f ? (1f, 0f) : (dirX / length, dirZ / length);
+
+            List<ModelMoveEntry> destinations;
+            if (living.Count == 1)
+            {
+                destinations = new List<ModelMoveEntry>
+                    { new ModelMoveEntry(living[0], new List<Position> { endpoint }) };
+            }
+            else
+            {
+                destinations = formation == EFormation.Line
+                    ? PackLine(living, endpoint.x, endpoint.z, -dirZ, dirX)
+                    : CohesiveFormation.PackGrid(living, endpoint.x, endpoint.z);
+            }
+
+            if (passed.Count == 0) return destinations;
+            return destinations
+                .Select(entry => new ModelMoveEntry(entry.Model,
+                    passed.Concat(entry.Positions).ToList()))
+                .ToList();
+        }
+
+        /// <summary>
+        /// The A3b composition: pathfind around impassible terrain toward <paramref name="goal"/>,
+        /// advance up to the move budget (applying the engine's 6" whole-move cap when the route
+        /// crosses difficult ground), and hand the result through the G3 ladder - the returned move
+        /// is always one the engine accepts. Falls back to the straight line when no route exists
+        /// (the ladder then shortens it), or when the unit flies over terrain anyway.
+        /// </summary>
+        public static List<ModelMoveEntry> PlanMoveToward(DataBinding<UnitData> unit,
+            List<DataBinding<ModelData>> living, ITableState tableState, Position goal,
+            float moveBudgetInches, float maxDistanceInches,
+            Func<ModelMoveEntry, ModelMoveBudget> budgetFor,
+            bool canMoveThroughEnemies, bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
+            EFormation formation = EFormation.Grid)
+        {
+            var terrain = tableState.Terrain.Objects.ToList();
+            var enemies = LiveEnemyFootprints(tableState, unit.GetValue().PlayerID);
+            float cx = living.Average(mb => mb.GetValue().Position.x);
+            float cz = living.Average(mb => mb.GetValue().Position.z);
+            var start = new Position(cx, cz);
+            float baseRadius = living.Max(mb => mb.GetValue().BaseRadiusInches);
+
+            List<Position>? path = null;
+            if (!ignoresImpassibleTerrain)
+            {
+                TerrainGrid grid = TerrainGrid.Build(terrain, baseRadius);
+                path = GridPathfinder.FindPath(grid, terrain, start, goal, baseRadius);
+            }
+            path ??= new List<Position> { start, goal };
+
+            float budget = moveBudgetInches;
+            (_, _, bool crossesDifficult) =
+                GridPathfinder.AdvanceAlongPath(path, budget, terrain, baseRadius);
+            if (crossesDifficult && !ignoresDifficultTerrain)
+                budget = Math.Min(budget, GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES - 0.001f);
+
+            return ValidateWithBackoff(
+                arc => BuildPathCandidate(unit, living, path, arc, terrain, baseRadius,
+                    maxDistanceInches, formation),
+                budget, unit, living, budgetFor, enemies,
+                canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain);
+        }
+
         /// <summary>Zero-length paths for the living models - always move-through-valid.</summary>
         public static List<ModelMoveEntry> HoldExactPositions(List<DataBinding<ModelData>> living)
             => living.Select(mb => new ModelMoveEntry(mb, new List<Position> { mb.GetValue().Position })).ToList();

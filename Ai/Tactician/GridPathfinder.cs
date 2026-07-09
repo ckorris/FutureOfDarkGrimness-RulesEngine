@@ -1,0 +1,250 @@
+using FDG.Utilities;
+
+namespace FDG.Ai.Tactician
+{
+    /// <summary>
+    /// Terrain occupancy over the table at a coarse cell size, inflated by a base radius so a cell is
+    /// "blocked" when a model base CENTERED there would touch impassible terrain (#191 A3b - matches
+    /// the swept-path validator's Minkowski inflation). Built per query; measured cheap (a few
+    /// thousand point tests), revisit only with profiler evidence (plan G6).
+    /// </summary>
+    public sealed class TerrainGrid
+    {
+        public const float CellSizeInches = 1f;
+
+        private readonly bool[] _blocked;
+        private readonly bool[] _difficult;
+
+        public int Cols { get; }
+        public int Rows { get; }
+
+        private TerrainGrid(int cols, int rows, bool[] blocked, bool[] difficult)
+        {
+            Cols = cols;
+            Rows = rows;
+            _blocked = blocked;
+            _difficult = difficult;
+        }
+
+        public static TerrainGrid Build(IReadOnlyList<ITerrain> terrain, float baseRadiusInches,
+            float tableWidthInches = GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES,
+            float tableHeightInches = GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES)
+        {
+            int cols = (int)MathF.Ceiling(tableWidthInches / CellSizeInches);
+            int rows = (int)MathF.Ceiling(tableHeightInches / CellSizeInches);
+            var blocked = new bool[cols * rows];
+            var difficult = new bool[cols * rows];
+
+            foreach (ITerrain piece in terrain)
+            {
+                bool isImpassible = piece.TerrainType.HasFlag(ETerrainType.Impassible);
+                bool isDifficult = piece.TerrainType.HasFlag(ETerrainType.Difficult);
+                if (!isImpassible && !isDifficult) continue;
+
+                for (int row = 0; row < rows; row++)
+                {
+                    for (int col = 0; col < cols; col++)
+                    {
+                        var center = new Float2((col + 0.5f) * CellSizeInches, (row + 0.5f) * CellSizeInches);
+                        // Degenerate swept-disc = "does a base centered here touch the piece".
+                        if (!piece.Shape.DoesPathIntersectZone(center, center, baseRadiusInches)) continue;
+                        if (isImpassible) blocked[row * cols + col] = true;
+                        if (isDifficult) difficult[row * cols + col] = true;
+                    }
+                }
+            }
+
+            return new TerrainGrid(cols, rows, blocked, difficult);
+        }
+
+        public bool IsBlocked(int col, int row) => _blocked[row * Cols + col];
+        public bool IsDifficult(int col, int row) => _difficult[row * Cols + col];
+
+        public (int Col, int Row) ToCell(Position position) => (
+            Math.Clamp((int)(position.x / CellSizeInches), 0, Cols - 1),
+            Math.Clamp((int)(position.z / CellSizeInches), 0, Rows - 1));
+
+        public Position CellCenter(int col, int row) =>
+            new Position((col + 0.5f) * CellSizeInches, (row + 0.5f) * CellSizeInches);
+    }
+
+    /// <summary>
+    /// A* over a <see cref="TerrainGrid"/> (#191 A3b, plan D5: goal-directed geometry, never random
+    /// sampling - this is what threads the narrow hallway the old angular skirting could not).
+    /// Deterministic: fixed expansion order, no randomness (G5).
+    /// </summary>
+    public static class GridPathfinder
+    {
+        // Difficult terrain costs extra so clear routes of similar length win. This is a route
+        // PREFERENCE only - the rules-true consequence (whole move capped at 6") is applied by the
+        // caller when the chosen path does cross difficult ground.
+        private const float DifficultCostMultiplier = 2f;
+
+        // 8-connected neighbourhood; diagonals must not cut a blocked corner.
+        private static readonly (int DCol, int DRow, float Cost)[] Steps =
+        {
+            (1, 0, 1f), (-1, 0, 1f), (0, 1, 1f), (0, -1, 1f),
+            (1, 1, 1.41421356f), (1, -1, 1.41421356f), (-1, 1, 1.41421356f), (-1, -1, 1.41421356f),
+        };
+
+        /// <summary>
+        /// A polyline from <paramref name="start"/> to <paramref name="goal"/> that avoids impassible
+        /// terrain (inflated by <paramref name="baseRadiusInches"/>), string-pulled so straight clear
+        /// runs collapse to single segments; null when the goal is unreachable. The start cell is never
+        /// treated as blocked (a unit standing at a wall's inflation edge must still be able to leave).
+        /// The returned list starts at <paramref name="start"/> and ends at <paramref name="goal"/>.
+        /// </summary>
+        public static List<Position>? FindPath(TerrainGrid grid, IReadOnlyList<ITerrain> terrain,
+            Position start, Position goal, float baseRadiusInches)
+        {
+            // A clear straight shot needs no search - the common case, and it keeps clear-lane
+            // candidates identical to what straight construction produces.
+            if (SegmentClear(terrain, start, goal, baseRadiusInches))
+                return new List<Position> { start, goal };
+
+            (int startCol, int startRow) = grid.ToCell(start);
+            (int goalCol, int goalRow) = grid.ToCell(goal);
+            if (grid.IsBlocked(goalCol, goalRow)) return null;
+
+            int cells = grid.Cols * grid.Rows;
+            var cameFrom = new int[cells];
+            var costSoFar = new float[cells];
+            Array.Fill(cameFrom, -1);
+            Array.Fill(costSoFar, float.PositiveInfinity);
+
+            int startIndex = startRow * grid.Cols + startCol;
+            int goalIndex = goalRow * grid.Cols + goalCol;
+            costSoFar[startIndex] = 0f;
+
+            var open = new PriorityQueue<int, float>();
+            open.Enqueue(startIndex, Octile(startCol, startRow, goalCol, goalRow));
+
+            while (open.TryDequeue(out int current, out _))
+            {
+                if (current == goalIndex) break;
+                int col = current % grid.Cols;
+                int row = current / grid.Cols;
+
+                foreach ((int dCol, int dRow, float stepCost) in Steps)
+                {
+                    int nextCol = col + dCol;
+                    int nextRow = row + dRow;
+                    if (nextCol < 0 || nextCol >= grid.Cols || nextRow < 0 || nextRow >= grid.Rows) continue;
+                    if (grid.IsBlocked(nextCol, nextRow)) continue;
+                    // No corner cutting: a diagonal requires both orthogonal neighbours clear.
+                    if (dCol != 0 && dRow != 0
+                        && (grid.IsBlocked(col + dCol, row) || grid.IsBlocked(col, row + dRow))) continue;
+
+                    float multiplier = grid.IsDifficult(nextCol, nextRow) ? DifficultCostMultiplier : 1f;
+                    float newCost = costSoFar[current] + stepCost * multiplier;
+                    int next = nextRow * grid.Cols + nextCol;
+                    if (newCost >= costSoFar[next]) continue;
+
+                    costSoFar[next] = newCost;
+                    cameFrom[next] = current;
+                    open.Enqueue(next, newCost + Octile(nextCol, nextRow, goalCol, goalRow));
+                }
+            }
+
+            if (cameFrom[goalIndex] < 0 && goalIndex != startIndex) return null;
+
+            // Reconstruct as cell centres, with the exact endpoints substituted at both ends.
+            var cellsOnPath = new List<int>();
+            for (int index = goalIndex; index >= 0; index = cameFrom[index])
+            {
+                cellsOnPath.Add(index);
+                if (index == startIndex) break;
+            }
+            cellsOnPath.Reverse();
+
+            var waypoints = new List<Position> { start };
+            for (int i = 1; i < cellsOnPath.Count - 1; i++)
+                waypoints.Add(grid.CellCenter(cellsOnPath[i] % grid.Cols, cellsOnPath[i] / grid.Cols));
+            waypoints.Add(goal);
+
+            return StringPull(terrain, waypoints, baseRadiusInches);
+        }
+
+        /// <summary>
+        /// Walks <paramref name="path"/> up to <paramref name="budgetInches"/> of arc length. Returns
+        /// the reached endpoint, the waypoints fully traversed on the way (exclusive of the start
+        /// point - these become the move's intermediate legs), and whether any traversed segment
+        /// crosses difficult terrain (the caller then applies the engine's 6" whole-move cap).
+        /// </summary>
+        public static (Position Endpoint, List<Position> PassedWaypoints, bool CrossesDifficult)
+            AdvanceAlongPath(List<Position> path, float budgetInches, IReadOnlyList<ITerrain> terrain,
+                float baseRadiusInches)
+        {
+            var passed = new List<Position>();
+            bool crossesDifficult = false;
+            float remaining = Math.Max(0f, budgetInches);
+            Position current = path[0];
+
+            for (int i = 1; i < path.Count; i++)
+            {
+                float dx = path[i].x - current.x;
+                float dz = path[i].z - current.z;
+                float length = MathF.Sqrt(dx * dx + dz * dz);
+
+                Position legEnd = length <= remaining
+                    ? path[i]
+                    : new Position(current.x + dx / length * remaining, current.z + dz / length * remaining);
+
+                crossesDifficult |= terrain.Any(t => t.TerrainType.HasFlag(ETerrainType.Difficult)
+                    && t.Shape.DoesPathIntersectZone(
+                        new Float2(current.x, current.z), new Float2(legEnd.x, legEnd.z), baseRadiusInches));
+
+                if (length <= remaining)
+                {
+                    remaining -= length;
+                    current = path[i];
+                    if (i < path.Count - 1) passed.Add(path[i]);
+                    continue;
+                }
+
+                return (legEnd, passed, crossesDifficult);
+            }
+
+            return (current, passed, crossesDifficult);
+        }
+
+        private static float Octile(int aCol, int aRow, int bCol, int bRow)
+        {
+            int dx = Math.Abs(aCol - bCol), dz = Math.Abs(aRow - bRow);
+            return (dx + dz) + (1.41421356f - 2f) * Math.Min(dx, dz);
+        }
+
+        // Greedy line-of-sight simplification: from each anchor, keep the farthest waypoint reachable
+        // by a clear swept segment. Preserves endpoints; always terminates (worst case advances one).
+        private static List<Position> StringPull(IReadOnlyList<ITerrain> terrain,
+            List<Position> waypoints, float baseRadiusInches)
+        {
+            var result = new List<Position> { waypoints[0] };
+            int anchor = 0;
+            while (anchor < waypoints.Count - 1)
+            {
+                int farthest = anchor + 1;
+                for (int probe = waypoints.Count - 1; probe > anchor + 1; probe--)
+                {
+                    if (SegmentClear(terrain, waypoints[anchor], waypoints[probe], baseRadiusInches))
+                    {
+                        farthest = probe;
+                        break;
+                    }
+                }
+                result.Add(waypoints[farthest]);
+                anchor = farthest;
+            }
+            return result;
+        }
+
+        private static bool SegmentClear(IReadOnlyList<ITerrain> terrain, Position from, Position to,
+            float baseRadiusInches)
+        {
+            var start = new Float2(from.x, from.z);
+            var end = new Float2(to.x, to.z);
+            return !terrain.Any(t => t.TerrainType.HasFlag(ETerrainType.Impassible)
+                && t.Shape.DoesPathIntersectZone(start, end, baseRadiusInches));
+        }
+    }
+}

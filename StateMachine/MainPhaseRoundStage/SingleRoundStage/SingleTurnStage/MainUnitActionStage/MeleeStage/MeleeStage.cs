@@ -7,9 +7,18 @@ namespace FDG.Stages
     {
         public StageBinding OnFinishedMelee;
 
+        /// <summary>
+        /// Left the charge without fighting - no defender was reachable, or the player backed out of the
+        /// defender pick. Distinct from <see cref="OnFinishedMelee"/> precisely because that binding's
+        /// OnWillActivate spends the unit's attack; routing a back-out through it would leave the unit
+        /// unable to Move, Charge or Shoot for the rest of its activation. Mirrors
+        /// <see cref="ShootStage.BackToChooseAction"/>.
+        /// </summary>
+        public StageBinding BackToChooseAction;
+
         public MeleeStage(IGameContext gameContext, IStateMachineLayer<IUnitActionContext> parent) : base(gameContext, parent)
         {
-            
+
         }
 
 
@@ -33,6 +42,7 @@ namespace FDG.Stages
         {
             OnFinishedMelee = new StageBinding(this);
             OnFinishedMelee.OnWillActivate += OnMeleeFinished;
+            BackToChooseAction = new StageBinding(this);
 
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
                 .AddChild(new ChooseMeleeDefenderStage(GameContext, this), out var chooseMeleeDefender)
@@ -54,12 +64,14 @@ namespace FDG.Stages
                 .AddChild(new ConsolidateStage(GameContext, this), out var consolidate)
                 .AddChild(new PostMeleeStage(GameContext, this), out var postMelee)
                 .AddSibling(nameof(OnFinishedMelee), OnFinishedMelee, out string meleeFinishedEvent)
+                .AddSibling(nameof(BackToChooseAction), BackToChooseAction, out string backToChooseEvent)
                 .Build();
 
             startingChild = chooseMeleeDefender;
 
             chooseMeleeDefender.OnDefenderChosen.Bind(resolveImpact);
-            chooseMeleeDefender.BackToChooseAction.Bind(meleeFinishedEvent); //Should go back to choosing.
+            // Nothing has been rolled or moved yet, so this exit must not spend the unit's attack.
+            chooseMeleeDefender.BackToChooseAction.Bind(backToChooseEvent);
             resolveImpact.OnImpactResolved.Bind(determineStrikeOrder); // #042 Impact: charge-contact auto-hits before swings.
             determineStrikeOrder.OnStrikeOrderDetermined.Bind(pileIn); // #042 Counter: charged unit may strike first.
             pileIn.OnPiledIn.Bind(determineInRangeAttackers);
@@ -87,7 +99,7 @@ namespace FDG.Stages
             applyFatigueStage.OnFatigueApplied.Bind(consolidate);
             // After the melee fully resolves, the charged unit may make its post-melee move (Harassing);
             // PostMeleeStage fires the Melee_OnPostMelee hook then finishes. The BackToChooseAction exit
-            // (no melee occurred) still goes straight to meleeFinishedEvent, bypassing the move.
+            // (no melee occurred) leaves via backToChooseEvent, bypassing both the move and the attack spend.
             consolidate.OnConsolidated.Bind(postMelee);
             postMelee.ToFinished.Bind(meleeFinishedEvent);
 

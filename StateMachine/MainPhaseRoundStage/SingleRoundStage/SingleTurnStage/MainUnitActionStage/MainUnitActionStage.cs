@@ -79,6 +79,9 @@ namespace FDG.Stages
             chooseAction.ToReconcileEndOfActivation.Bind(toReconcileActivationEvent);
             movement.OnFinishedMovement.Bind(chooseAction);
             melee.OnFinishedMelee.Bind(chooseAction);
+            // Backing out of a charge before any dice or movement must not spend the attack, so it returns
+            // through its own binding rather than OnFinishedMelee. Same shape as the shoot pair below.
+            melee.BackToChooseAction.Bind(chooseAction);
             shoot.OnFinishedShooting.Bind(chooseAction);
             shoot.BackToChooseAction.Bind(chooseAction);
             // #010 — a resolved custom action loops back to Choose Action (layered, doesn't end the turn).

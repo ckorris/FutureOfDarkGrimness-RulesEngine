@@ -1,4 +1,5 @@
 using FDG.Data;
+using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
 using FDG.SaveLoad;
@@ -207,6 +208,38 @@ namespace FDG.Tests
             string legacyish = JsonConvert.SerializeObject(file);
 
             Assert.DoesNotThrow(() => GameSaveSerializer.Load(legacyish));
+        }
+
+        // Reserve is unit state now (TokenType.InReserve), but saves written before that carry no token —
+        // only the old "every model sits at the origin" tell. Load re-derives the token so a held-back
+        // Ambush unit is still offered its arrival. See GameSaveSerializer.StampLegacyReserves.
+        [Test]
+        public void Load_LegacySaveWithUnplacedUnit_RederivesTheReserveToken()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var player = new PlayerID(Guid.NewGuid());
+
+            DataReference reserveRef = MakeUnitAt(store, player, "Infiltrators", new Position(0f, 0f));
+            DataReference placedRef  = MakeUnitAt(store, player, "Warriors", new Position(10f, 10f));
+
+            // Saved by an older build: no InReserve token anywhere.
+            Assert.That(store.GetValue<UnitData>(reserveRef).Tokens.HasToken(TokenType.InReserve), Is.False);
+
+            GameDataStore loaded = GameSaveSerializer.Load(GameSaveSerializer.Save(store));
+
+            Assert.That(ReserveRules.IsInReserve(loaded.GetValue<UnitData>(reserveRef)), Is.True,
+                "an unplaced unit is re-derived as a reserve, so it can still arrive.");
+            Assert.That(ReserveRules.IsInReserve(loaded.GetValue<UnitData>(placedRef)), Is.False,
+                "a deployed unit is not a reserve.");
+            Assert.That(loaded.GetValue<UnitData>(placedRef).GetIsOnBattlefield(), Is.True);
+        }
+
+        private static DataReference MakeUnitAt(GameDataStore store, PlayerID player, string name, Position at)
+        {
+            var model = new ModelData(0.5f, new List<Weapon>(), at, store);
+            DataBinding<ModelData> modelBinding = store.GetDataBinding<ModelData>(store.Create(model));
+            var unit = new UnitData(player, name, 4, 4, new List<DataBinding<ModelData>> { modelBinding });
+            return store.Create(unit);
         }
     }
 }

@@ -106,13 +106,28 @@ namespace FDG
         }
 
         /// <summary>
-        /// Whether any living model of this unit is on the table (a non-origin position). A unit kept in
-        /// reserve (Ambush) has never been placed, so all its models sit at the default origin (0,0,0);
-        /// such a unit is alive but not yet on the battlefield, and must be excluded from activation,
-        /// targeting, etc. until it arrives. Mirrors the renderer/AI "(0,0,0) means unplaced" convention.
+        /// Whether this unit is in play: alive, and neither held off the table nor tucked inside something.
+        /// The single gate for activation, targeting, line of sight, and drawing.
+        ///
+        /// Off-table state is explicit, and each kind of it owns a token: a unit held for a later-round
+        /// arrival carries <see cref="Rules.Foundation.TokenType.InReserve"/>, one riding a transport
+        /// carries <c>EmbarkedIn</c>, and an Aircraft that flew past the edge carries
+        /// <c>OffTableFromForcedMove</c>. Those checks come first and are authoritative.
+        ///
+        /// The origin check that follows is the last resort, for a unit that has simply never been placed
+        /// (mid-deployment, before its models get positions). It used to be the ONLY check, which made
+        /// "off-table" a property of a coordinate rather than of the unit - so anything that wrote a
+        /// reserve model's position promoted it to deployed, and a held-back Ambush unit turned up
+        /// activatable on round 1, drawn in the table's bottom-left corner. A model's base never fits
+        /// wholly inside the table with its centre exactly at (0,0), so the coordinate is still a safe
+        /// "never placed" marker - it is just no longer the thing that defines reserve.
         /// </summary>
         public static bool GetIsOnBattlefield(this IUnit unit)
         {
+            if (Rules.Dispatch.ReserveRules.IsInReserve(unit)) return false;
+            if (unit.Tokens.HasToken(Rules.Foundation.TokenType.EmbarkedIn)) return false;
+            if (unit.Tokens.HasToken(Rules.Foundation.TokenType.OffTableFromForcedMove)) return false;
+
             foreach (IModel model in unit.Models)
             {
                 if (!model.GetIsAlive()) continue;

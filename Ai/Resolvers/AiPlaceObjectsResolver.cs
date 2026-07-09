@@ -276,8 +276,18 @@ namespace FDG.Ai.Resolvers
 
         private IEnumerable<(Position, float)> GetTableOccupants()
         {
+            // A model belonging to an off-table unit occupies nothing; ask the unit rather than trusting
+            // that its parked coordinate is exactly the origin.
+            var offTable = new HashSet<IModel>(ReferenceEqualityComparer.Instance);
+            foreach (IUnit unit in _tableState.Units.Objects)
+            {
+                if (unit.GetIsOnBattlefield()) continue;
+                foreach (IModel m in unit.Models) offTable.Add(m);
+            }
+
             foreach (var model in _tableState.Models.Objects)
             {
+                if (offTable.Contains(model)) continue;
                 var pos = model.Position;
                 if (pos.x == 0f && pos.z == 0f) continue;
                 // Circumscribing radius so the placing block keeps clear of an existing rectangular base at any

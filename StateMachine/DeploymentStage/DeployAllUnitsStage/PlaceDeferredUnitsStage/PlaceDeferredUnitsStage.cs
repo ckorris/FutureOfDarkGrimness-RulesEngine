@@ -48,6 +48,10 @@ namespace FDG.Stages
                     if (placement.Facing.HasValue) placement.Binding.GetValue().SetFacing(placement.Facing.Value);
                 }
 
+                // On the table is the negation of in reserve (a Scout defers within deployment, so it never
+                // carries the token; a legacy save's bootstrap may have stamped it).
+                Rules.Dispatch.ReserveRules.ClearReserve(unit);
+
                 context.Log($"{unit.Name} deployed via Scout.");
             }
 

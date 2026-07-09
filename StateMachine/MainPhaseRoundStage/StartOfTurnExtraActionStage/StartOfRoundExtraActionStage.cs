@@ -88,7 +88,7 @@ namespace FDG.Stages
                     UnitData unit = unitBinding.GetValue();
 
                     if (!unit.GetIsAlive()) continue;
-                    if (!IsUnplaced(unit)) continue;
+                    if (!ReserveRules.IsInReserve(unit)) continue;
                     if (!TryGetLaterRoundDefer(unit, out RuleOperation.DeferDeployment defer)) continue;
 
                     bool bringOn = await GameContext.PlayerRequester.RequestDecision<YesNoRequest, bool>(
@@ -96,7 +96,7 @@ namespace FDG.Stages
 
                     if (!bringOn) continue;
 
-                    await PlaceFromReserve(unit, defer.PlacementRangeInches);
+                    await PlaceFromReserve(unit, defer.PlacementRangeInches);   // clears the reserve state
                     // A unit that arrives from reserve can't seize or contest objectives the round it
                     // arrives. Mark it so ReconcileObjectivesStage excludes its models from this round's
                     // objective check; the RoundEnd clear trigger sweeps the marker after that check.
@@ -153,17 +153,10 @@ namespace FDG.Stages
                 placement.Binding.GetValue().SetPosition(placement.Position);
                 if (placement.Facing.HasValue) placement.Binding.GetValue().SetFacing(placement.Facing.Value);
             }
-        }
 
-        // A unit that has never been placed has all models at the default origin (0,0,0).
-        private static bool IsUnplaced(UnitData unit)
-        {
-            foreach (DataBinding<ModelData> model in unit.ModelBindings)
-            {
-                Position pos = model.GetValue().PositionBinding.GetValue();
-                if (pos.x != 0f || pos.z != 0f) return false;
-            }
-            return true;
+            // On the table is the negation of in reserve. Asserting it here (rather than only at the ambush
+            // call site) keeps the invariant true for the Aircraft redeploy path too.
+            ReserveRules.ClearReserve(unit);
         }
 
         private bool TryGetLaterRoundDefer(IUnit unit, out RuleOperation.DeferDeployment defer)

@@ -33,6 +33,15 @@ namespace FDG.Stages
             var excluded = new HashSet<IModel>(ReferenceEqualityComparer.Instance);
             foreach (IUnit unit in tableState.Units.Objects)
             {
+                // A unit that isn't in play blocks nothing: an Ambush reserve, an embarked squad, and an
+                // Aircraft that flew off the edge all park their models at the origin. Asking the unit is
+                // authoritative; the per-model origin check below only catches models with no unit.
+                if (!unit.GetIsOnBattlefield())
+                {
+                    foreach (IModel m in unit.Models) excluded.Add(m);
+                    continue;
+                }
+
                 bool isAlly = attackerTeam != null
                     ? attackerTeam.IsPlayerOnTeam(unit.PlayerID)
                     : unit.PlayerID.Equals(attackerPlayerID);

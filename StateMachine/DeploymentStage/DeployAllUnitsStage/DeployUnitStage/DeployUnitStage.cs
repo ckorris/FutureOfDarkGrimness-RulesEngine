@@ -54,6 +54,10 @@ namespace FDG.Stages
                 if (entry.Facing.HasValue) entry.Binding.GetValue().SetFacing(entry.Facing.Value);
             }
 
+            // On the table is the negation of in reserve. A freshly deployed unit never carries the token,
+            // but a legacy save's bootstrap may have stamped it (see GameSaveSerializer.StampLegacyReserves).
+            Rules.Dispatch.ReserveRules.ClearReserve(deployingUnit);
+
             await OfferPostDeploymentAbilities(deployingUnit, currentPlayerID);
 
             context.CurrentDeployingUnit = null; //Cleanup.

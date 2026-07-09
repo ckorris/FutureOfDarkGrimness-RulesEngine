@@ -7,6 +7,7 @@ public readonly record struct TokenType(string Id)
     public const string SPELL_TOKENS_ID = "SpellTokens";
     public const string RULE_GRANT_ID = "RuleGrant";
     public const string ARRIVED_FROM_RESERVE_ID = "ArrivedFromReserve";
+    public const string IN_RESERVE_ID = "InReserve";
     public const string EMBARKED_IN_ID = "EmbarkedIn";
     public const string MARK_ID = "Mark";
     public const string POST_COMBAT_MOVE_USED_ID = "PostCombatMoveUsed";
@@ -37,6 +38,22 @@ public readonly record struct TokenType(string Id)
     /// round-end token sweep removes it after that round's objective check.
     /// </summary>
     public static readonly TokenType ArrivedFromReserve = new(ARRIVED_FROM_RESERVE_ID);
+
+    /// <summary>
+    /// Marks a unit the player held back at deployment for a later-round arrival (Ambush): it is off the
+    /// table and cannot be activated, targeted, or drawn until it arrives.
+    ///
+    /// Before this token existed, "in reserve" was inferred from every model sitting at the world origin,
+    /// a rule re-derived independently in the activation pool, two `IsUnplaced` copies, the renderer, the
+    /// AI, and the line-of-sight builder. That made reserve status a property of a position rather than of
+    /// the unit: anything that wrote a reserve model's position - even writing (0,0) back onto it - made
+    /// the unit look deployed, which is how a held-back unit turned up activatable in round 1 and drawn in
+    /// the table's bottom-left corner.
+    ///
+    /// Carried with a <c>ManualOnly</c> clear trigger: it must survive the round-end sweep, and
+    /// <c>StartOfRoundExtraActionStage</c> removes it explicitly when the unit arrives.
+    /// </summary>
+    public static readonly TokenType InReserve = new(IN_RESERVE_ID);
 
     /// <summary>
     /// #029: marks an Aircraft that flew off the table edge during its forced move. It's held off the table

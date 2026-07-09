@@ -27,7 +27,7 @@ namespace FDG.Tests
         }
 
         [Test]
-        public void FastUnit_AddsTwoInchesToAdvance_LeavesRushAndChargeAlone()
+        public void FastUnit_AddsTwoToAdvance_FourToRushAndCharge()
         {
             var baseline = new MovementActionContext(_ctx, MakeUnit());
 
@@ -36,11 +36,28 @@ namespace FDG.Tests
             var context = new MovementActionContext(_ctx, fast);
 
             Assert.That(context.MaxAdvanceDistance, Is.EqualTo(baseline.MaxAdvanceDistance + 2f).Within(0.001f),
-                "Fast adds +2\" to the Advance budget.");
-            Assert.That(context.MaxRushDistance, Is.EqualTo(baseline.MaxRushDistance).Within(0.001f),
-                "Fast's only entry is gated on Advance, so Rush is untouched.");
-            Assert.That(context.MaxChargeDistance, Is.EqualTo(baseline.MaxChargeDistance).Within(0.001f),
-                "Fast's only entry is gated on Advance, so Charge is untouched.");
+                "Fast adds +2\" to Advance.");
+            Assert.That(context.MaxRushDistance, Is.EqualTo(baseline.MaxRushDistance + 4f).Within(0.001f),
+                "Fast adds +4\" to Rush.");
+            Assert.That(context.MaxChargeDistance, Is.EqualTo(baseline.MaxChargeDistance + 4f).Within(0.001f),
+                "Fast adds +4\" to Charge.");
+        }
+
+        [Test]
+        public void VeryFastUnit_DoublesFastsBonuses()
+        {
+            var baseline = new MovementActionContext(_ctx, MakeUnit());
+
+            DataBinding<UnitData> veryFast = MakeUnit();
+            veryFast.GetValue().AttachRuleDefinition(new ResolvedRule("Very Fast", CoreRuleCatalog.VeryFast));
+            var context = new MovementActionContext(_ctx, veryFast);
+
+            Assert.That(context.MaxAdvanceDistance, Is.EqualTo(baseline.MaxAdvanceDistance + 4f).Within(0.001f),
+                "Very Fast adds +4\" to Advance.");
+            Assert.That(context.MaxRushDistance, Is.EqualTo(baseline.MaxRushDistance + 8f).Within(0.001f),
+                "Very Fast adds +8\" to Rush.");
+            Assert.That(context.MaxChargeDistance, Is.EqualTo(baseline.MaxChargeDistance + 8f).Within(0.001f),
+                "Very Fast adds +8\" to Charge.");
         }
 
         [Test]

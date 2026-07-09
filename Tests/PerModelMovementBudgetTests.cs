@@ -29,7 +29,7 @@ namespace FDG.Tests
         }
 
         [Test]
-        public void Context_FastModel_GetsPerModelAdvanceBonus_UnitmateDoesNot()
+        public void Context_FastModel_GetsPerModelMoveBonuses_UnitmateDoesNot()
         {
             DataBinding<ModelData> fast = MakeModel(new Position(0, 0));
             DataBinding<ModelData> normal = MakeModel(new Position(2, 0));
@@ -43,8 +43,8 @@ namespace FDG.Tests
 
             Assert.That(fastAdvance, Is.EqualTo(normalAdvance + 2f).Within(0.001f),
                 "the Fast model's own Advance budget is +2; its unitmate's is the unit base.");
-            Assert.That(fastRush, Is.EqualTo(normalRush).Within(0.001f),
-                "Fast only affects Advance, so both models share the unit Rush budget.");
+            Assert.That(fastRush, Is.EqualTo(normalRush + 4f).Within(0.001f),
+                "the Fast model's own Rush budget is +4; its unitmate's is the unit base.");
         }
 
         [Test]

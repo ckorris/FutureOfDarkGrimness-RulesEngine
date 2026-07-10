@@ -18,6 +18,11 @@ namespace FDG.Ai.Tactician.Resolvers
     {
         /// <summary>DeployUnitStage's literal TaskName - the deployment discriminator.</summary>
         public const string DeploymentTaskName = "Place Unit Models";
+        /// <summary>PlaceDeferredUnitsStage's literal - Scout placement into the forward-extended
+        /// zone works exactly like deployment (#191 A5-2).</summary>
+        public const string ScoutTaskName = "Place Scout Unit";
+        /// <summary>StartOfRoundExtraActionStage's literal - Ambush arrival over the whole table.</summary>
+        public const string AmbushTaskName = "Ambush Deploy";
 
         // How far behind the zone's forward edge a unit prefers to stand, by weapon reach.
         private const float LongRangeDepthInches = 6f;
@@ -33,7 +38,9 @@ namespace FDG.Ai.Tactician.Resolvers
         protected override Position PreferredBlockCenter(PlaceObjectsRequest<T> request, ZoneBounds bounds,
             int deployIndex, float maxRadius, float gridWidth, float gridHeight, float spacingX)
         {
-            if (request.TaskName != DeploymentTaskName)
+            bool deploymentShaped = request.TaskName == DeploymentTaskName
+                || request.TaskName == ScoutTaskName;
+            if (!deploymentShaped && request.TaskName != AmbushTaskName)
                 return base.PreferredBlockCenter(request, bounds, deployIndex, maxRadius,
                     gridWidth, gridHeight, spacingX);
 
@@ -41,6 +48,15 @@ namespace FDG.Ai.Tactician.Resolvers
             if (objectives.Count == 0)
                 return base.PreferredBlockCenter(request, bounds, deployIndex, maxRadius,
                     gridWidth, gridHeight, spacingX);
+
+            // Ambush arrival (#191 A5-2): the whole table is the zone and the engine enforces the
+            // rule's enemy clearance (the caller spiral-searches off the aim), so aim straight at
+            // the most WINNABLE objective - not ours, fewest enemies nearby, central as the tie
+            // break. The unit cannot score the round it arrives; the payoff is holding the marker
+            // from the next round on. Dropping beside enemy units to set up charges is a recorded
+            // deferral (search-level judgment).
+            if (request.TaskName == AmbushTaskName)
+                return BestAmbushObjective(objectives, request).Position;
 
             // Spread successive units across the objectives, closest to our zone first, so the army
             // fans out over what decides the game instead of over empty table.
@@ -60,6 +76,46 @@ namespace FDG.Ai.Tactician.Resolvers
             // The caller clamps into the zone and spiral-searches for a clear block, so a raw aim
             // (the objective's X, our chosen depth) is safe even when the objective is off-zone.
             return new Position(aim.Position.x, z);
+        }
+
+        // Not-ours first, then fewest living enemy models within the contest radius, then nearest
+        // the table centre - all deterministic comparisons on live state.
+        private IObjective BestAmbushObjective(List<IObjective> objectives, PlaceObjectsRequest<T> request)
+        {
+            var tableCentre = new Position(GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES / 2f,
+                GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES / 2f);
+            IObjective best = objectives[0];
+            (int Ours, int Enemies, float CentreDistSq) bestKey = (int.MaxValue, int.MaxValue, float.MaxValue);
+            foreach (IObjective objective in objectives)
+            {
+                (int, int, float) key = (
+                    objective.OwnerID.HasValue && objective.OwnerID.Value == request.TargetPlayerID ? 1 : 0,
+                    EnemiesNear(objective.Position, request.TargetPlayerID),
+                    DistSq(objective.Position, tableCentre));
+                if (key.CompareTo(bestKey) < 0)
+                {
+                    bestKey = key;
+                    best = objective;
+                }
+            }
+            return best;
+        }
+
+        private int EnemiesNear(Position point, PlayerID us)
+        {
+            const float contestRadiusInches = 9f;
+            int count = 0;
+            foreach (IUnit unit in _tableState.Units.Objects)
+            {
+                if (unit.PlayerID == us || !unit.GetIsOnBattlefield()) continue;
+                foreach (IModel model in unit.Models)
+                {
+                    if (!model.GetIsAlive()) continue;
+                    if (DistSq(model.Position, point) <= contestRadiusInches * contestRadiusInches)
+                        count++;
+                }
+            }
+            return count;
         }
 
         private static float DepthFor(float maxWeaponRange) => maxWeaponRange switch

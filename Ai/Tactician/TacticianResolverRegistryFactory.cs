@@ -36,7 +36,7 @@ namespace FDG.Ai.Tactician
 
             // A4-2: the (action x macro-action) pair is planned once at Choose Action and played out
             // at the movement request; solo-rules instances are the per-request fallbacks (G3).
-            registry.RegisterResolver(new Resolvers.TacticianActionResolver(planner,
+            registry.RegisterResolver(new Resolvers.TacticianActionResolver(planner, tableState,
                 new FDG.Ai.Resolvers.AiStringSelectionResolver(tableState, playerID)));
             registry.RegisterResolver(new Resolvers.TacticianMovementResolver(planner, tableState,
                 new FDG.Ai.Resolvers.AiDefineMovementResolver(tableState, playerID)));

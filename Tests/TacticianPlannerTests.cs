@@ -74,6 +74,29 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void MeleeUnitOutOfChargeReach_ApproachesInsteadOfStanding()
+        {
+            // The A4 gate failure mechanism (#191, twice): a one-step greedy score gave melee units
+            // outside charge reach no reason to close. The approach term fixes it: brawlers 24" from
+            // lunch, no objectives - the best plan is a move that closes the charge gap.
+            var brawlers = MakeUnit(_us, 5, Blade(attacks: 3), atX: 20f, atZ: 24f);
+            var lunch = MakeUnit(_them, 3, Rifle(), atX: 44f, atZ: 24f);
+            _planner.BeginActivation(brawlers);
+
+            string? action = _planner.ChooseAction(AllActions);
+            List<StageResolution.Requests.ModelMoveEntry>? move = _planner.TakePlannedMove(brawlers);
+
+            Assert.That(action, Is.EqualTo(ChooseActionStage.MOVEMENT_CHOICE_NAME));
+            Assert.That(move, Is.Not.Null);
+            var ends = move!.Select(e => e.Positions[^1]).ToList();
+            var endCentroid = new Position(ends.Average(p => p.x), ends.Average(p => p.z));
+            float closed = Distance(new Position(20f, 24f), new Position(44f, 24f))
+                - Distance(endCentroid, new Position(44f, 24f));
+            Assert.That(closed, Is.GreaterThanOrEqualTo(6f),
+                "the approach must spend most of a rush closing toward the charge target");
+        }
+
+        [Test]
         public void SecondChooseAction_AfterTheMove_ShootsThenPasses()
         {
             _store.Create(new ObjectiveData(new Position(30f, 24f), _store));

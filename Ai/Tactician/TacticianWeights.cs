@@ -35,6 +35,14 @@ namespace FDG.Ai.Tactician
         public const float MoveObjective = 0.75f;
         public const float MoveReachableBonus = 0.05f;
 
+        // ADDED 2026-07-10 after the second gate failure (mirror avg 25.4% - ledger entry): melee
+        // armies collapsed because a one-step score gives units outside charge reach no reason to
+        // close (offense 0 beyond 12", retaliation punishes proximity). Approach = the melee
+        // exchange margin-if-reached x the fraction of the charge gap this move closes; 0.75 keeps
+        // a completed approach worth less than the actual charge (MoveDamage 1.0), so real charges
+        // still dominate when reachable.
+        public const float MoveApproach = 0.75f;
+
         // --- Target choice (A4-3) -------------------------------------------------------------------
         // Shooting/melee targets score by value-weighted damage; finishing a unit off is worth extra
         // (a dead unit stops acting; a wounded one does not).

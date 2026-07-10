@@ -1,4 +1,5 @@
 using FDG.Data;
+using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.StageResolution.Requests;
 using FDG.Stages;
@@ -20,6 +21,9 @@ namespace FDG.Ai.Tactician
 
         private DataBinding<UnitData>? _activeUnit;
         private MacroAction? _plan;
+        // Melee exchange margin + charge reach per enemy; both are endpoint-independent, so one
+        // computation serves every candidate of the activation.
+        private readonly Dictionary<DataReference, (float Margin, float Reach)> _meleeApproach = new();
 
         /// <summary>The unit whose activation is being planned (null between activations).</summary>
         public DataBinding<UnitData>? ActiveUnit => _activeUnit;
@@ -35,6 +39,7 @@ namespace FDG.Ai.Tactician
         {
             _activeUnit = unit;
             _plan = null;
+            _meleeApproach.Clear();
         }
 
         /// <summary>
@@ -117,9 +122,12 @@ namespace FDG.Ai.Tactician
         {
             UnitData self = _activeUnit!.GetValue();
             Position end = candidate.ProjectedCentroid;
+            Position now = Centroid(self);
+            bool meleeCapable = self.GetMeleeWeapons().Count > 0;
 
             float offense = 0f;
             float retaliation = 0f;
+            float approach = 0f;
             foreach (DataBinding<UnitData> enemyBinding in EnemyBindings(self.PlayerID))
             {
                 UnitData enemy = enemyBinding.GetValue();
@@ -127,6 +135,7 @@ namespace FDG.Ai.Tactician
                 float endDistance = Distance(end, enemyPos);
 
                 if (candidate.Intent == EMacroIntent.ChargeToContact
+                    && candidate.ActionType == EActionType.Charge
                     && candidate.TargetEnemy != null && ReferenceEquals(candidate.TargetEnemy, enemy)
                     && candidate.Feasibility == EFeasibility.Reachable)
                 {
@@ -140,6 +149,23 @@ namespace FDG.Ai.Tactician
                     AttackEstimate shot = CombatMath.EstimateShooting(_evaluator, _activeUnit, enemyBinding,
                         new AttackContext(Math.Max(1f, endDistance), AttackerMoved: candidate.Intent != EMacroIntent.Hold));
                     offense = Math.Max(offense, ValueFraction(shot.ExpectedWounds, enemy));
+                }
+
+                // Approach value (#191 A4 gate fix - the mechanism behind the two failed gates:
+                // greedy one-step scoring gave melee units outside charge reach no reason to close).
+                // Closing toward a PROFITABLE charge is worth part of the exchange margin we'd get
+                // on arrival, scaled by how much of the remaining charge gap this move closes.
+                // Zero once the enemy is already in reach - the real charge candidate scores there.
+                if (meleeCapable)
+                {
+                    (float margin, float reach) = MeleeApproachAgainst(enemyBinding);
+                    float gapNow = Distance(now, enemyPos) - reach;
+                    if (margin > 0f && gapNow > 1f)
+                    {
+                        float gapEnd = Math.Max(0f, endDistance - reach);
+                        approach = Math.Max(approach,
+                            margin * Math.Clamp((gapNow - gapEnd) / gapNow, 0f, 1f));
+                    }
                 }
 
                 // What the enemy could do to us at the endpoint next activation (their advance included).
@@ -162,7 +188,24 @@ namespace FDG.Ai.Tactician
             return TacticianWeights.MoveDamage * offense
                  - TacticianWeights.MoveRetaliation * retaliation
                  + TacticianWeights.MoveObjective * objectiveDelta
+                 + TacticianWeights.MoveApproach * approach
                  + (candidate.Feasibility == EFeasibility.Reachable ? TacticianWeights.MoveReachableBonus : 0f);
+        }
+
+        private (float Margin, float Reach) MeleeApproachAgainst(DataBinding<UnitData> enemyBinding)
+        {
+            if (_meleeApproach.TryGetValue(enemyBinding.Reference, out (float, float) cached))
+                return cached;
+
+            UnitData self = _activeUnit!.GetValue();
+            UnitData enemy = enemyBinding.GetValue();
+            MeleeEstimate melee = CombatMath.EstimateMelee(_evaluator, _activeUnit, enemyBinding);
+            (float, float) result = (
+                ValueFraction(melee.AttackerAttack.ExpectedWounds, enemy)
+                    - ValueFraction(melee.DefenderReturn.ExpectedWounds, self),
+                TacticalAnalysis.ChargeDistanceAgainst(self, enemy, _evaluator));
+            _meleeApproach[enemyBinding.Reference] = result;
+            return result;
         }
 
         // +1 for each objective the endpoint newly holds/contests for us, -1 for a held objective the
@@ -204,14 +247,17 @@ namespace FDG.Ai.Tactician
         }
 
         // Charge maps to Charge; Hold maps to Shoot (stand and fire) or Pass; everything else moves.
+        // Dispatch keys on the candidate's ACTION TYPE for charges: an out-of-reach M5 candidate is
+        // a rush-budget approach (EActionType.Rush) and plays as a plain move (#191 A4 gate fix).
         private static string? ActionNameFor(MacroAction candidate, IReadOnlyList<string> validOptions)
         {
+            if (candidate.ActionType == EActionType.Charge)
+                return candidate.Feasibility == EFeasibility.Reachable
+                    && validOptions.Contains(ChooseActionStage.CHARGE_CHOICE_NAME)
+                    ? ChooseActionStage.CHARGE_CHOICE_NAME : null;
+
             switch (candidate.Intent)
             {
-                case EMacroIntent.ChargeToContact:
-                    return candidate.Feasibility == EFeasibility.Reachable
-                        && validOptions.Contains(ChooseActionStage.CHARGE_CHOICE_NAME)
-                        ? ChooseActionStage.CHARGE_CHOICE_NAME : null;
                 case EMacroIntent.Hold:
                     if (validOptions.Contains(ChooseActionStage.SHOOT_CHOICE_NAME))
                         return ChooseActionStage.SHOOT_CHOICE_NAME;

@@ -31,6 +31,8 @@ namespace FDG.Ai.Tactician
 
         private const float ContactFeasibleGapInches = 0.25f;
         private const float BandMarginInches = 0.5f;
+        // Non-charge moves must end >= 1" from enemies (engine standoff rule); aim with slack.
+        private const float ApproachStandoffGapInches = 1.1f;
 
         public static List<MacroAction> Enumerate(RuleEvaluator evaluator, ITableState tableState,
             DataBinding<UnitData> unit, int candidateBudget = DefaultCandidateBudget)
@@ -107,9 +109,31 @@ namespace FDG.Ai.Tactician
                 // M5 - charge to contact (generated even when the exchange looks bad - diversity rule).
                 if (hasMelee)
                 {
-                    candidates.Add(BuildCharge(unit, living, tableState, evaluator, self, enemy,
+                    MacroAction charge = BuildCharge(unit, living, tableState, evaluator, self, enemy,
                         start, leadRadius, terrain, enemyFootprints,
-                        canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain));
+                        canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain);
+                    if (charge.Feasibility == EFeasibility.Reachable)
+                    {
+                        candidates.Add(charge);
+                    }
+                    else
+                    {
+                        // Out of charge reach: a charge-budget move is not playable this activation
+                        // (the declared action would be Move, whose budget is the rush distance), so
+                        // approach instead - rush to a point outside the 1"-standoff rule on the lane
+                        // to the nearest enemy model. Same M5 intent, played as a move; the planner's
+                        // approach term makes this worth taking (#191 A4 gate fix).
+                        IModel? nearest = NearestLivingModel(enemy, start);
+                        Position aim = nearest?.Position ?? enemyPos;
+                        float standoff = leadRadius + (nearest?.BaseRadiusInches ?? 0.5f)
+                            + ApproachStandoffGapInches;
+                        candidates.Add(Plan(EMacroIntent.ChargeToContact,
+                            $"intent=ChargeToContact target={enemy.Name} approach",
+                            EActionType.Rush, unit, living, tableState, evaluator,
+                            PointAtDistanceFrom(aim, start, standoff), rush,
+                            canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain,
+                            goalRadius: 1f, targetEnemy: enemy, sharedGrid: sharedGrid));
+                    }
                 }
             }
 

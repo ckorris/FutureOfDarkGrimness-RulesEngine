@@ -183,6 +183,10 @@ namespace FDG.Stages
                 foreach (DataBinding<UnitData> enemyUnit in enemyArmy.UnitBindings)
                 {
                     if (excludeUnit != null && ReferenceEquals(enemyUnit.GetValue(), excludeUnit.GetValue())) continue;
+                    // #207: embarked / reserve / off-table units are not obstacles. Their models are
+                    // parked at the origin (EmbarkStage), so counting their footprints made (0,0) an
+                    // invisible wall that rejected any legal move sweeping near the table corner.
+                    if (!enemyUnit.GetValue().GetIsOnBattlefield()) continue;
                     // #029: an Aircraft can't be moved into base contact with — tag its footprints so the
                     // validator never lets a charger end engaged with it.
                     bool uncontactable = Rules.Dispatch.AircraftRules.IsAircraft(enemyUnit.GetValue());
@@ -227,6 +231,9 @@ namespace FDG.Stages
                 foreach (DataBinding<UnitData> enemyUnit in enemyArmy.UnitBindings)
                 {
                     if (enemyUnit.GetValue().GetIsDead()) continue;
+                    // #207: same origin-parking gap as GetEnemyModelFootprints - an embarked unit's
+                    // models sit at (0,0) and must not register as moved-through.
+                    if (!enemyUnit.GetValue().GetIsOnBattlefield()) continue;
                     if (PathPassesThroughUnit(moves, enemyUnit))
                     {
                         crossed.Add(enemyUnit);

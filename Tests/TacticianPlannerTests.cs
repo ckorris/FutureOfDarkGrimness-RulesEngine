@@ -247,6 +247,47 @@ namespace FDG.Tests
                 "the boat can be shot dead next activation - do not die inside it");
         }
 
+        [Test]
+        public void ShooterWithATargetInRange_NeverPicksAMoveThatForfeitsItsShot()
+        {
+            // #16/RL-row: CanShootAfter said Escort/SeekCoverFrom keep the shot, but the generator
+            // plans both as RUSH - the engine then blocks the shot after the move. Robot Legions'
+            // Warriors picked SeekCoverFrom three rounds running and fired 0-1 times per GAME.
+            // Recreated here: horde in rifle range AND in charge-threat range (so holding pays a
+            // retaliation price), cover in rush reach behind the gunline (so SeekCoverFrom exists
+            // and dodges the charge). Contract: with a target in range, any chosen move must stay
+            // within the advance-and-shoot cap; otherwise stand and shoot.
+            var gunline = MakeUnit(_us, 5, Rifle(), atX: 30f, atZ: 24f);
+            MakeUnit(_them, 8, Blade(attacks: 3), atX: 16f, atZ: 24f);     // 14": in range AND charge-threat
+            _store.Create(new TerrainData(ETerrainType.Cover, new RectangularZone(32f, 36f, 26f, 30f)));
+            _planner.BeginActivation(gunline);
+
+            string? action = _planner.ChooseAction(AllActions);
+
+            if (action == ChooseActionStage.MOVEMENT_CHOICE_NAME)
+            {
+                List<StageResolution.Requests.ModelMoveEntry>? move = _planner.TakePlannedMove(gunline);
+                Assert.That(move, Is.Not.Null);
+                float maxPath = move!.Max(e =>
+                {
+                    // Positions excludes the start point - walk from where the model stands now.
+                    float length = Distance(e.Model.GetValue().Position, e.Positions[0]);
+                    for (int i = 1; i < e.Positions.Count; i++)
+                        length += Distance(e.Positions[i - 1], e.Positions[i]);
+                    return length;
+                });
+                Assert.That(maxPath, Is.LessThanOrEqualTo(
+                    Rules.Dispatch.MovementRuleQueries.EffectiveMoveShootDistance(
+                        gunline.GetValue(), new RuleEvaluator(new ProbabilisticDiceRoller())) + 0.01f),
+                    "a move past the advance-and-shoot cap forfeits the volley the score was paid for");
+            }
+            else
+            {
+                Assert.That(action, Is.EqualTo(ChooseActionStage.SHOOT_CHOICE_NAME),
+                    "with the horde in rifle range the shot must happen this activation");
+            }
+        }
+
         private static Weapon Unarmed() => new Weapon("Fists", 0f, 1, 0);
 
         private static float DistanceToSegment(Position p, Position a, Position b)

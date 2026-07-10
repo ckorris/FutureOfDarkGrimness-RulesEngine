@@ -567,14 +567,14 @@ namespace FDG.Ai.Tactician
             return delta;
         }
 
-        private static bool CanShootAfter(MacroAction candidate) => candidate.Intent switch
-        {
-            EMacroIntent.Hold => true,
-            EMacroIntent.AdvanceOnObjective or EMacroIntent.EngageAtRange
-                or EMacroIntent.SeekCoverFrom or EMacroIntent.MoveToCast or EMacroIntent.Escort => true,
-            // Rush-budget intents give up shooting; charge damage is scored as melee above.
-            _ => false,
-        };
+        // Keyed on the ACTION TYPE the executor will declare, not the intent: the engine's shoot
+        // gate compares the actual moved distance to the advance-and-shoot cap, so only Hold and
+        // Advance plans keep the volley. Keying on intent said Escort/SeekCoverFrom (both planned
+        // as Rush) could shoot after - phantom offense that made gunline units "seek cover" or
+        // "escort" every round instead of firing (#16 RL-row collapse: Warriors fired 0-1 times
+        // per game; the RL row was the only one below the 50% gate line).
+        private static bool CanShootAfter(MacroAction candidate) =>
+            candidate.ActionType is EActionType.Hold or EActionType.Advance;
 
         private static float ValueFraction(float expectedWounds, UnitData target)
         {

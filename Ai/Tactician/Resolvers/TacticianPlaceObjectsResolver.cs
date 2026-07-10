@@ -1,5 +1,6 @@
 using FDG.Ai.Resolvers;
 using FDG.Data;
+using FDG.Rules.Dispatch;
 using FDG.StageResolution.Requests;
 
 namespace FDG.Ai.Tactician.Resolvers
@@ -29,10 +30,13 @@ namespace FDG.Ai.Tactician.Resolvers
         private const float MidRangeDepthInches = 3f;
 
         private readonly ITableState _tableState;
+        private readonly RuleEvaluator _evaluator;
 
-        public TacticianPlaceObjectsResolver(ITableState tableState) : base(tableState)
+        public TacticianPlaceObjectsResolver(ITableState tableState, RuleEvaluator? evaluator = null)
+            : base(tableState)
         {
             _tableState = tableState;
+            _evaluator = evaluator ?? new RuleEvaluator(new ProbabilisticDiceRoller());
         }
 
         protected override Position PreferredBlockCenter(PlaceObjectsRequest<T> request, ZoneBounds bounds,
@@ -49,14 +53,18 @@ namespace FDG.Ai.Tactician.Resolvers
                 return base.PreferredBlockCenter(request, bounds, deployIndex, maxRadius,
                     gridWidth, gridHeight, spacingX);
 
-            // Ambush arrival (#191 A5-2): the whole table is the zone and the engine enforces the
-            // rule's enemy clearance (the caller spiral-searches off the aim), so aim straight at
-            // the most WINNABLE objective - not ours, fewest enemies nearby, central as the tie
-            // break. The unit cannot score the round it arrives; the payoff is holding the marker
-            // from the next round on. Dropping beside enemy units to set up charges is a recorded
-            // deferral (search-level judgment).
+            // Ambush arrival (#191 A5-2, revised A5-8 - Chris: "in real games they'll always pop
+            // up right behind a unit that they'll do lots of damage to"): aim at the spot behind
+            // the best STRIKE victim when one is worth it (gross damage over the bar, exchange
+            // net-positive after retaliation); otherwise at the most winnable objective (not
+            // ours, fewest enemies nearby, central as the tie break). The unit cannot score the
+            // round it arrives, so a strike costs no scoring tempo. The engine enforces the
+            // rule's enemy clearance (the caller spiral-searches off the aim).
             if (request.TaskName == AmbushTaskName)
-                return BestAmbushObjective(objectives, request).Position;
+            {
+                Position? strike = BestStrikePosition(request);
+                return strike ?? BestAmbushObjective(objectives, request).Position;
+            }
 
             // Spread successive units across the objectives, closest to our zone first, so the army
             // fans out over what decides the game instead of over empty table.
@@ -76,6 +84,142 @@ namespace FDG.Ai.Tactician.Resolvers
             // The caller clamps into the zone and spiral-searches for a clear block, so a raw aim
             // (the objective's X, our chosen depth) is safe even when the objective is off-zone.
             return new Position(aim.Position.x, z);
+        }
+
+        // A5-8: the strike aim - for each enemy unit, a landing spot just over the rule's enemy
+        // clearance on the side AWAY from the rest of their army ("right behind it"), scored by
+        // what the arriver does to the victim next activation (best of shooting from the spot and
+        // a charge if the victim is in charge-threat reach) minus the usual retaliation price.
+        // Null when no victim clears the gross-damage bar with a net-positive exchange.
+        private Position? BestStrikePosition(PlaceObjectsRequest<T> request)
+        {
+            DataBinding<UnitData>? arriver = OwningUnit(request);
+            if (arriver == null) return null;
+
+            var enemies = new List<DataBinding<UnitData>>();
+            foreach (IArmy army in _tableState.Armies.Objects)
+            {
+                if (army.PlayerID == request.TargetPlayerID || army is not ArmyData data) continue;
+                foreach (DataBinding<UnitData> unit in data.UnitBindings)
+                    if (unit.GetValue().GetIsAlive() && unit.GetValue().GetIsOnBattlefield())
+                        enemies.Add(unit);
+            }
+            if (enemies.Count == 0) return null;
+
+            float clearance = Math.Max(1f, request.MinDistanceFromEnemiesInches) + 0.6f;
+            Position? best = null;
+            float bestNet = 0f;
+            foreach (DataBinding<UnitData> victim in enemies)
+            {
+                Position spot = SpotBehind(victim, enemies, clearance);
+                float distance = MathF.Sqrt(DistSq(spot, Centroid(victim.GetValue())));
+
+                float damage = 0f;
+                AttackEstimate shot = CombatMath.EstimateShooting(_evaluator, arriver, victim,
+                    new AttackContext(distance, AttackerMoved: true));
+                damage = Math.Max(damage, ValueFraction(shot.ExpectedWounds, victim.GetValue()));
+                if (TacticalAnalysis.MeleeThreatReach(arriver.GetValue(), victim.GetValue(), _evaluator)
+                    >= distance)
+                {
+                    MeleeEstimate melee = CombatMath.EstimateMelee(_evaluator, arriver, victim);
+                    damage = Math.Max(damage,
+                        ValueFraction(melee.AttackerAttack.ExpectedWounds, victim.GetValue())
+                        - ValueFraction(melee.DefenderReturn.ExpectedWounds, arriver.GetValue()));
+                }
+                if (damage < TacticianWeights.AmbushStrikeMinDamageValue) continue;
+
+                float net = damage - TacticianWeights.MoveRetaliation * RetaliationAt(spot, arriver, enemies);
+                if (net <= bestNet) continue;
+                bestNet = net;
+                best = spot;
+            }
+            return best;
+        }
+
+        // The landing spot: just past the clearance from the victim, on the side facing away from
+        // the mass of the REST of their army (their backfield); away from the table centre when
+        // the victim is their only unit.
+        private static Position SpotBehind(DataBinding<UnitData> victim,
+            List<DataBinding<UnitData>> enemies, float clearance)
+        {
+            Position victimPos = Centroid(victim.GetValue());
+            float massX = 0f, massZ = 0f;
+            int others = 0;
+            foreach (DataBinding<UnitData> enemy in enemies)
+            {
+                if (ReferenceEquals(enemy, victim)) continue;
+                Position p = Centroid(enemy.GetValue());
+                massX += p.x; massZ += p.z; others++;
+            }
+            Position awayFrom = others > 0
+                ? new Position(massX / others, massZ / others)
+                : new Position(GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES / 2f,
+                    GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES / 2f);
+
+            float dx = victimPos.x - awayFrom.x, dz = victimPos.z - awayFrom.z;
+            float length = MathF.Sqrt(dx * dx + dz * dz);
+            if (length < 1e-3f) { dx = 1f; dz = 0f; length = 1f; }
+            return new Position(
+                Math.Clamp(victimPos.x + dx / length * clearance, 0f, GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES),
+                Math.Clamp(victimPos.z + dz / length * clearance, 0f, GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES));
+        }
+
+        // The planner's retaliation term, reshaped for a landing spot: the worst single enemy
+        // answer (their shooting with their advance folded in; half the melee margin if the spot
+        // is inside their charge-threat reach).
+        private float RetaliationAt(Position spot, DataBinding<UnitData> arriver,
+            List<DataBinding<UnitData>> enemies)
+        {
+            float worst = 0f;
+            foreach (DataBinding<UnitData> enemy in enemies)
+            {
+                float distance = MathF.Sqrt(DistSq(spot, Centroid(enemy.GetValue())));
+                float reach = Math.Max(1f, distance
+                    - TacticalAnalysis.AdvanceDistance(enemy.GetValue(), _evaluator));
+                AttackEstimate incoming = CombatMath.EstimateShooting(_evaluator, enemy, arriver,
+                    new AttackContext(reach, AttackerMoved: true));
+                float value = ValueFraction(incoming.ExpectedWounds, arriver.GetValue());
+                if (enemy.GetValue().GetMeleeWeapons().Count > 0
+                    && TacticalAnalysis.MeleeThreatReach(enemy.GetValue(), arriver.GetValue(), _evaluator)
+                        >= distance - 1f)
+                {
+                    value = Math.Max(value, 0.5f * ValueFraction(
+                        CombatMath.EstimateMelee(_evaluator, enemy, arriver).AttackerAttack.ExpectedWounds,
+                        arriver.GetValue()));
+                }
+                worst = Math.Max(worst, value);
+            }
+            return worst;
+        }
+
+        private DataBinding<UnitData>? OwningUnit(PlaceObjectsRequest<T> request)
+        {
+            ArmyData? army = SpellValuation.ArmyOf(_tableState, request.TargetPlayerID);
+            if (army == null || request.ModelsToPlace.Count == 0) return null;
+            if (request.ModelsToPlace[0] is not DataBinding<ModelData> firstModel) return null;
+            foreach (DataBinding<UnitData> unit in army.UnitBindings)
+                foreach (DataBinding<ModelData> model in unit.GetValue().ModelBindings)
+                    if (model.Reference.Equals(firstModel.Reference))
+                        return unit;
+            return null;
+        }
+
+        private static float ValueFraction(float expectedWounds, UnitData target)
+        {
+            float remaining = Math.Max(1f, target.RemainingWounds);
+            return Math.Min(1f, expectedWounds / remaining) * TacticalAnalysis.UnitValue(target) / 100f;
+        }
+
+        private static Position Centroid(UnitData unit)
+        {
+            float x = 0f, z = 0f;
+            int living = 0;
+            foreach (IModel model in unit.Models)
+            {
+                if (!model.GetIsAlive()) continue;
+                x += model.Position.x; z += model.Position.z; living++;
+            }
+            return living == 0 ? new Position(0f, 0f) : new Position(x / living, z / living);
         }
 
         // Not-ours first, then fewest living enemy models within the contest radius, then nearest

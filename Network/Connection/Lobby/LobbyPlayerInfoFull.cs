@@ -1,4 +1,5 @@
-﻿using FDG.Players;
+﻿using FDG.Ai;
+using FDG.Players;
 using FDG.SaveLoad;
 
 namespace FDG.Network.Connection.Lobby
@@ -17,8 +18,12 @@ namespace FDG.Network.Connection.Lobby
 
         public PlayerID PlayerID;
 
+        /// <summary>Which AI plays this slot - meaningful only when <see cref="PlayerType"/> is AI (#191 A6).</summary>
+        public EAiProfile AiProfile;
+
         public LobbyPlayerInfoFull(string playerName, ArmyListFile? armyListFile, ETeamOption teamNumber,
-        EPlayerType playerType, ConnectionID connectionID, PlayerID playerID)
+        EPlayerType playerType, ConnectionID connectionID, PlayerID playerID,
+        EAiProfile aiProfile = EAiProfile.SoloRules)
         {
             PlayerName = playerName;
             ArmyListFile = armyListFile;
@@ -26,6 +31,7 @@ namespace FDG.Network.Connection.Lobby
             PlayerType = playerType;
             ConnectionID = connectionID;
             PlayerID = playerID;
+            AiProfile = aiProfile;
         }
     }
 }

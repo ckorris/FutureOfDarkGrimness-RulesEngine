@@ -59,7 +59,7 @@ namespace FDG.Ai.Tactician
             // non-deployment placement (disembark, spillout, ambush, reposition).
             registry.RegisterResolver<PlaceObjectsRequest<ModelData>,
                 CancellableResult<List<PlacedObjectEntry<ModelData>>>>(
-                new Resolvers.TacticianPlaceObjectsResolver<ModelData>(tableState));
+                new Resolvers.TacticianPlaceObjectsResolver<ModelData>(tableState, evaluator));
 
             // A4b-2: objective placement by army profile (firebase armies cluster the markers,
             // mobile/melee armies spread them; zones are chosen after objectives, so no side bias).

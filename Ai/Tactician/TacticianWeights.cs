@@ -77,6 +77,14 @@ namespace FDG.Ai.Tactician
         // because the argmax already weighs the charge against its own Hold/shoot candidates.
         public const float ChargeTarpitPerWound = 0.04f;
 
+        // A5-8 (Chris): Ambush arrivals aim BEHIND a vulnerable enemy unit, not at a marker -
+        // "in real games they'll always pop up right behind a unit that they'll do lots of
+        // damage to". Strike when the best victim is worth at least this much gross damage
+        // value (a quarter of a reference-100 unit) and the exchange is net-positive after
+        // retaliation; otherwise fall back to the most winnable objective. Arrivals cannot
+        // seize markers the round they land anyway, so the strike costs no scoring tempo.
+        public const float AmbushStrikeMinDamageValue = 0.25f;
+
         // --- Casting (A5) ---------------------------------------------------------------------------
         // A cast is layered (it never ends the activation), so the planner casts whenever the net
         // expected value is positive: base 4+ success chance x the summed target values, minus a

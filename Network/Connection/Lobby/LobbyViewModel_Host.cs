@@ -464,11 +464,13 @@ namespace FDG.Network.Connection.Lobby
         }
 
         // Re-crew a saved slot before resuming (Local / AI; networked client assignment is a follow-up).
-        public void SetSavedSlotPlayerType(PlayerID slotPlayerID, EPlayerType playerType)
+        public void SetSavedSlotPlayerType(PlayerID slotPlayerID, EPlayerType playerType,
+            FDG.Ai.EAiProfile aiProfile = FDG.Ai.EAiProfile.SoloRules)
         {
             if (_playerInfosFull.TryGetValue(slotPlayerID, out LobbyPlayerInfoFull? info))
             {
                 info.PlayerType = playerType;
+                info.AiProfile = aiProfile;
                 UpdateInfoSummariesFromFullList();
             }
         }
@@ -515,8 +517,9 @@ namespace FDG.Network.Connection.Lobby
                         break;
                     case EPlayerType.AI:
                         FDGGame_AsLocal aiGame = new FDGGame_AsLocal(_gameDataStore, _messageBus);
-                        playerSlot.AssignPlayerController(AiResolverRegistryFactory.CreateSoloRulesController(
-                            info.PlayerName, playerSlot.PlayerID, aiGame, _gameSettings.DiceSeed, playerSlot.SlotID));
+                        playerSlot.AssignPlayerController(FDG.Ai.AiProfileFactory.CreateController(
+                            info.AiProfile, info.PlayerName, playerSlot.PlayerID, aiGame,
+                            _gameSettings.DiceSeed, playerSlot.SlotID));
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
@@ -631,8 +634,8 @@ namespace FDG.Network.Connection.Lobby
                         break;
                     case EPlayerType.AI:
                         FDGGame_AsLocal aiGame = new FDGGame_AsLocal(_gameDataStore, _messageBus);
-                        ComputerPlayerController aiController = AiResolverRegistryFactory.CreateSoloRulesController(
-                            lobbyPlayerInfo.PlayerName, playerSlot.PlayerID, aiGame,
+                        ComputerPlayerController aiController = FDG.Ai.AiProfileFactory.CreateController(
+                            lobbyPlayerInfo.AiProfile, lobbyPlayerInfo.PlayerName, playerSlot.PlayerID, aiGame,
                             _gameSettings.DiceSeed, playerSlot.SlotID);
                         playerSlot.AssignPlayerController(aiController);
                         break;
@@ -853,17 +856,21 @@ namespace FDG.Network.Connection.Lobby
             _messageBus.SendCommandToAllAsync(gameSettingsUpdate);
         }
 
-        public void AddAiPlayer()
+        public void AddAiPlayer(FDG.Ai.EAiProfile profile)
         {
             int playerNumber = _playerInfos.Value.Count + 1;
-            string name = $"Computer Player {playerNumber}";
+            // #191 A6: the profile is the product name in the lobby - "Tactician Bot" is the
+            // challenge AI, "DerpBot" the legacy solo-rules bot (Chris's naming).
+            string botName = profile == FDG.Ai.EAiProfile.Tactician ? "Tactician Bot" : "DerpBot";
+            string name = $"{botName} {playerNumber}";
             Debug.WriteLine($"Added AI player: {name}");
 
             PlayerID newPlayerID = new PlayerID(Guid.NewGuid());
             int tempTeamNumber = playerNumber;
 
             LobbyPlayerInfoFull newLobbyPlayerInfo = new LobbyPlayerInfoFull(name, GetTempTestArmyFile(),
-                (ETeamOption)tempTeamNumber, EPlayerType.AI, new ConnectionID(Guid.Empty), newPlayerID);
+                (ETeamOption)tempTeamNumber, EPlayerType.AI, new ConnectionID(Guid.Empty), newPlayerID,
+                profile);
             _playerInfosFull.Add(newPlayerID, newLobbyPlayerInfo);
             UpdateInfoSummariesFromFullList();
 

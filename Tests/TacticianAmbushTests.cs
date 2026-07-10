@@ -101,6 +101,34 @@ namespace FDG.Tests
                 "the arrival lands on the uncontested objective, not the camped one");
         }
 
+        [Test]
+        public async Task AmbushArrival_DropsBehindAJuicyVictim_InsteadOfOnAMarker()
+        {
+            // A5-8 (Chris): "in real games they'll always pop up right behind a unit that
+            // they'll do lots of damage to." A fat gunline within charge-after-landing reach
+            // outvalues the free marker across the table.
+            _store.Create(new ObjectiveData(new Position(40f, 24f), _store));
+            MakeUnit(_them, "Gunline", 10, Rifle(), atX: 12f, atZ: 24f);
+            var arrivers = MakeUnit(_us, "Strikers", 5, new Weapon("Claws", 0f, 3, 0), atX: 0f, atZ: 0f);
+            BuildArmies();
+            var resolver = new TacticianPlaceObjectsResolver<ModelData>(_tableState);
+
+            var reply = await resolver.Resolve(new PlaceObjectsRequest<ModelData>(
+                _us, TacticianPlaceObjectsResolver<ModelData>.AmbushTaskName,
+                new RectangularZone(0f, 48f, 0f, 48f), arrivers.GetValue().ModelBindings,
+                minDistanceFromEnemiesInches: 9f));
+
+            var placed = ((Selected<List<PlacedObjectEntry<ModelData>>>)reply).Value;
+            float cx = placed.Average(p => p.Position.x);
+            float cz = placed.Average(p => p.Position.z);
+            float toVictim = MathF.Sqrt((cx - 12f) * (cx - 12f) + (cz - 24f) * (cz - 24f));
+            float toMarker = MathF.Sqrt((cx - 40f) * (cx - 40f) + (cz - 24f) * (cz - 24f));
+            Assert.That(toVictim, Is.LessThanOrEqualTo(14f),
+                "the arrival lands a charge away from the gunline");
+            Assert.That(toMarker, Is.GreaterThan(20f),
+                "the free marker across the table loses to the strike");
+        }
+
         // --- fixtures ---
 
         private static StringSelectionRequest HoldPrompt(PlayerID player, string unitName) =>

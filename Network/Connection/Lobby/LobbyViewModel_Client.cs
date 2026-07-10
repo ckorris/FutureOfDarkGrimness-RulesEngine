@@ -27,7 +27,8 @@ namespace FDG.Network.Connection.Lobby
         // Only the host can load/resume a saved game.
         public bool IsResumeMode => false;
 
-        public void SetSavedSlotPlayerType(PlayerID slotPlayerID, EPlayerType playerType) { }
+        public void SetSavedSlotPlayerType(PlayerID slotPlayerID, EPlayerType playerType,
+            FDG.Ai.EAiProfile aiProfile = FDG.Ai.EAiProfile.SoloRules) { }
 
         public bool TryResumeGame(out string? failReason)
         {
@@ -161,7 +162,7 @@ namespace FDG.Network.Connection.Lobby
             throw new InvalidOperationException("Tried to add local player when not the host.");
         }
 
-        public void AddAiPlayer()
+        public void AddAiPlayer(FDG.Ai.EAiProfile profile)
         {
             throw new InvalidOperationException("Tried to add AI player when not the host.");
         }

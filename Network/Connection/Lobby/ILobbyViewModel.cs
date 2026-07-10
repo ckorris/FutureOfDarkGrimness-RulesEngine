@@ -1,4 +1,5 @@
-﻿using FDG.EngineInterface;
+﻿using FDG.Ai;
+using FDG.EngineInterface;
 using FDG.Network.Messages;
 using FDG.Players;
 using FDG.SaveLoad;
@@ -75,7 +76,9 @@ namespace FDG.Network.Connection.Lobby
 
         void AddLocalPlayer();
 
-        void AddAiPlayer();
+        /// <summary>Adds an AI slot playing as <paramref name="profile"/> (#191 A6): the
+        /// profile decides the resolver registry at launch and the bot's display name.</summary>
+        void AddAiPlayer(EAiProfile profile);
 
         void SendMessage(string message);
 
@@ -106,7 +109,9 @@ namespace FDG.Network.Connection.Lobby
         bool IsResumeMode { get; }
 
         /// <summary>Re-crews a saved slot (by its preserved PlayerID) before resuming. No-op when not host/resume.</summary>
-        void SetSavedSlotPlayerType(PlayerID slotPlayerID, EPlayerType playerType);
+        /// <param name="aiProfile">Which AI plays the slot when <paramref name="playerType"/> is AI.</param>
+        void SetSavedSlotPlayerType(PlayerID slotPlayerID, EPlayerType playerType,
+            EAiProfile aiProfile = EAiProfile.SoloRules);
 
         /// <summary>Resumes the loaded game (host only). Returns false with a reason if this isn't a resume lobby.</summary>
         bool TryResumeGame(out string? failReason);

@@ -55,6 +55,10 @@ namespace FDG.Ai.Tactician
                 CancellableResult<List<PlacedObjectEntry<ModelData>>>>(
                 new Resolvers.TacticianPlaceObjectsResolver<ModelData>(tableState));
 
+            // A4b-2: objective placement by army profile (firebase armies cluster the markers,
+            // mobile/melee armies spread them; zones are chosen after objectives, so no side bias).
+            registry.RegisterResolver(new Resolvers.TacticianPlaceObjectiveResolver(tableState));
+
             return registry;
         }
 

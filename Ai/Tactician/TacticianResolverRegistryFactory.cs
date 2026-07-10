@@ -44,6 +44,9 @@ namespace FDG.Ai.Tactician
                 new FDG.Ai.Resolvers.AiChooseRangedAttackResolver()));
             registry.RegisterResolver(new Resolvers.TacticianMeleeDefenderResolver(tableState, evaluator, planner));
 
+            // A4-4: wound assignment preserving output (cheapest-output casualties first).
+            registry.RegisterResolver(new Resolvers.TacticianAssignWoundsResolver());
+
             return registry;
         }
 

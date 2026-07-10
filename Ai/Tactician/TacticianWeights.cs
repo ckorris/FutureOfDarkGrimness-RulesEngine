@@ -14,8 +14,12 @@ namespace FDG.Ai.Tactician
         // Rationale: act with a unit before the opponent's next activation can remove it or its
         // opportunity; flips beat damage because objectives decide the winner.
 
+        // TUNED 2026-07-10 after the A4-2 gate collapse (mirror avg 23.75% - ledger entry): the
+        // objective terms were flat bonuses (2.0-2.5) while damage terms are value-FRACTIONS
+        // (~0.0-0.5), so every unit rushed objectives and nothing ever fought back. One scale now:
+        // a flip is worth a strong exchange, not ten of them.
         public const float ActivationKillOpportunity = 1.0f;
-        public const float ActivationObjectiveFlip = 2.0f;
+        public const float ActivationObjectiveFlip = 0.75f;
         public const float ActivationUnderThreat = 0.75f;
 
         // --- Action + movement choice (A4-2) --------------------------------------------------------
@@ -28,7 +32,7 @@ namespace FDG.Ai.Tactician
 
         public const float MoveDamage = 1.0f;
         public const float MoveRetaliation = 0.6f;
-        public const float MoveObjective = 2.5f;
+        public const float MoveObjective = 0.75f;
         public const float MoveReachableBonus = 0.05f;
 
         // --- Target choice (A4-3) -------------------------------------------------------------------

@@ -9,44 +9,25 @@ using static FDG.Tests.TestArmies;
 
 namespace FDG.Tests
 {
-    // #191 A0 — the Tactician scaffold delegates every request to the solo-rules resolvers, so a
-    // seeded Tactician game must be THE SAME GAME as the solo-rules game under the same seed. This
-    // pin proves the whole selection path (profile -> registry -> controller) is wired without
-    // touching behavior.
-    //
-    // When a Phase A slice replaces a resolver, this pin is EXPECTED to break: replace it then with
-    // the slice's own behavioral tests + benchmark evidence (ledger entry) - never by weakening the
-    // assertion while claiming the scaffold is still a pure delegate.
+    // #191 A0/A4 — the A0 identity pin (Tactician game == solo-rules game) was retired when A4-1
+    // replaced the activation resolver, exactly as that pin's comment prescribed: its successors are
+    // the per-resolver behavioral tests (TacticianActivationResolverTests etc.) plus the benchmark
+    // evidence recorded per swap in the #191 ledger. What remains pinned here is the G5 contract:
+    // a seeded Tactician game reproduces itself exactly.
     [TestFixture]
     public class TacticianScaffoldTests
     {
         [Test]
         [CancelAfter(300_000)]
-        public async Task TacticianScaffold_SameSeed_IsTheSameGameAsSoloRules()
-        {
-            // Rich armies: the full path (auto-layout thinning, Ambush/Scout/Vanguard, melee
-            // reactions, Blast) - identical simple games could hide a profile that only diverges
-            // on rule-heavy requests.
-            GameFingerprint solo = await PlayFreshGame(seed: 24601, EAiProfile.SoloRules);
-            GameFingerprint tactician = await PlayFreshGame(seed: 24601, EAiProfile.Tactician);
-
-            Assert.That(tactician.Summary, Is.EqualTo(solo.Summary),
-                "the Tactician scaffold reached a different result than solo-rules under the same seed.");
-            Assert.That(tactician.FinalState, Is.EqualTo(solo.FinalState),
-                "the Tactician scaffold played a different game than solo-rules under the same seed - " +
-                "the A0 delegation is not transparent.");
-        }
-
-        [Test]
-        [CancelAfter(300_000)]
         public async Task TacticianScaffold_SameSeed_ReproducesItself()
         {
             // The G5 contract holds for the new profile in its own right, not just via equality
-            // with solo-rules. (Seed note: 31415 deterministically trips a pre-existing engine
-            // fault - AutoFill can't assign a ~0.0555 fractional wound - filed as #199; any seed
-            // works here as long as the game actually completes.)
-            GameFingerprint first = await PlayFreshGame(seed: 424242, EAiProfile.Tactician);
-            GameFingerprint second = await PlayFreshGame(seed: 424242, EAiProfile.Tactician);
+            // with solo-rules. (Seed note: any seed works as long as the game completes - but #199,
+            // the AutoFill fractional-wound fault, keeps eating seeds: 31415 originally, then
+            // 424242/424243/777001 once A4-1 changed activation order. Fixing #199 is becoming
+            // load-bearing for Tactician testing; see the #191 ledger.)
+            GameFingerprint first = await PlayFreshGame(seed: 90210, EAiProfile.Tactician);
+            GameFingerprint second = await PlayFreshGame(seed: 90210, EAiProfile.Tactician);
 
             Assert.That(second.Summary, Is.EqualTo(first.Summary));
             Assert.That(second.FinalState, Is.EqualTo(first.FinalState),

@@ -51,13 +51,15 @@ namespace FDG.Stages
             //TODO: We don't catch if there are no options and we're stuck in the menu forever.
             // Choosing which unit to activate is mandatory — no back-destination, so no cancel (a null/Back
             // reply has nowhere to go and crashes the networked reply path).
-            SelectionRequest<UnitData> request = new SelectionRequest<UnitData>(context.ActivatedPlayer, "Choose Unit to Activate",
-                validOptions, invalidOptions, allowCancel: false);
+            // #191 A4-1: its own request TYPE (not a bare SelectionRequest<UnitData>) so AI resolvers
+            // replace exactly this decision without string-matching the prompt.
+            ChooseUnitToActivateRequest request = new ChooseUnitToActivateRequest(
+                context.ActivatedPlayer, validOptions, invalidOptions);
 
             System.Diagnostics.Debug.WriteLine($"Choose unit requesting player {context.ActivatedPlayer}. ");
 
             DataBinding<UnitData> chosenUnit = await GameContext.PlayerRequester
-                .RequestDecision<SelectionRequest<UnitData>, DataBinding<UnitData>>(request);
+                .RequestDecision<ChooseUnitToActivateRequest, DataBinding<UnitData>>(request);
 
             context.Log($"Activating: {chosenUnit.GetValue().Name}.");
             context.ChooseUnitToActivate(chosenUnit);

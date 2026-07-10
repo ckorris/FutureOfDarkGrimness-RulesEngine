@@ -18,9 +18,20 @@ namespace FDG.Ai.Tactician
         public static IStageResolverRegistry Build(ITableState tableState, PlayerID playerID,
             TacticianOptions options)
         {
-            // Wholesale delegation for now; as slices land this becomes an explicit registry mixing
-            // Tactician resolvers with the remaining solo-rules ones (fallback discipline: plan G3).
-            return AiResolverRegistryFactory.BuildSoloRules(tableState, playerID, options.Seed, options.SlotID);
+            // Solo-rules answers everything the Tactician has not replaced yet (fallback discipline,
+            // plan G3); each A4 slice registers one more replacement below.
+            var registry = new TacticianRegistry(
+                AiResolverRegistryFactory.BuildSoloRules(tableState, playerID, options.Seed, options.SlotID));
+
+            // A bare evaluator: rules attached to units/weapons evaluate fully; granted-token
+            // read-back (aura buffs) needs the game's own resolver-backed evaluator, which resolvers
+            // do not receive today - recorded gap in the #191 ledger.
+            var evaluator = new Rules.Dispatch.RuleEvaluator(new ProbabilisticDiceRoller());
+
+            // A4-1: activation order by urgency.
+            registry.RegisterResolver(new Resolvers.TacticianActivationResolver(tableState, evaluator));
+
+            return registry;
         }
 
         public static ComputerPlayerController CreateController(string name, PlayerID id,

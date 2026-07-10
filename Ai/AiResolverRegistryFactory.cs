@@ -39,6 +39,11 @@ namespace FDG.Ai
                 .RegisterResolver(new AiConsolidationMoveResolver(tableState, playerID))
                 .RegisterResolver(new AiAssignWoundsResolver())
                 .RegisterResolver(new AiSelectionResolver<UnitData>())
+                // #191 A4-1's request split: activation is its own type; solo-rules keeps the same
+                // first-option behavior via the adapter (pinned by the benchmark hashes).
+                .RegisterResolver(new DerivedRequestAdapter<StageResolution.Requests.ChooseUnitToActivateRequest,
+                    StageResolution.Requests.SelectionRequest<UnitData>, Data.DataBinding<UnitData>>(
+                    new AiSelectionResolver<UnitData>()))
                 .RegisterResolver(new AiSelectionResolver<ModelData>())
                 .RegisterResolver(new AiSelectionResolver<RectangularZone>())
                 .RegisterResolver(new AiPlaceObjectsResolver<ModelData>(tableState))

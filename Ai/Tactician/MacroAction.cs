@@ -5,9 +5,9 @@ using FDG.StageResolution.Requests;
 namespace FDG.Ai.Tactician
 {
     /// <summary>
-    /// The macro-action intent families of Appendix A v2 (confirmed by Chris 2026-07-09).
-    /// M11 MoveToCast and M12 DeliverCargo arrive with A3c's second sub-slice (they need the
-    /// casting and transport queries); mid-game MoveToEmbark was cut at confirmation.
+    /// The macro-action intent families of Appendix A v2 (confirmed by Chris 2026-07-09;
+    /// mid-game MoveToEmbark was cut at confirmation - deploy-time embark rides the
+    /// deployment intents instead).
     /// </summary>
     public enum EMacroIntent
     {
@@ -21,6 +21,8 @@ namespace FDG.Ai.Tactician
         Block,              // M8
         Escort,             // M9
         Concentrate,        // M10
+        MoveToCast,         // M11
+        DeliverCargo,       // M12
     }
 
     /// <summary>M4's range bands. SafeShooting is the kite band: inside our reach, outside theirs.</summary>

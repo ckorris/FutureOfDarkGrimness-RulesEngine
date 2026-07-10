@@ -1,6 +1,9 @@
 using FDG.Ai.Tactician;
 using FDG.Data;
+using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 using FDG.StageResolution.Requests;
 using FDG.Stages;
 using FDG.Utilities;
@@ -209,6 +212,87 @@ namespace FDG.Tests
                 Assert.That(valid, Is.True,
                     $"{action.Rationale}: emitted move must be engine-valid ({string.Join(", ", reasons)})");
             }
+        }
+
+        [Test]
+        public void MoveToCast_CasterOutOfSpellRange_MovesIntoRange()
+        {
+            // A Foe-affinity 12" spell, target 20" away: the set-up move closes toward cast range.
+            var caster = MakeUnit(_us, 1, Rifle(), atX: 10f, atZ: 24f);
+            caster.GetValue().Tokens.AddToken(new Token(
+                TokenType.SpellTokens, 3, new TokenClearTrigger.ManualOnly()));
+            var enemy = MakeUnit(_them, 3, Blade(), atX: 30f, atZ: 24f);
+            MakeArmyWithSpell(_us, caster, new TargetSelector(
+                12f, 1, 1, ETargetAffinity.Foe, RequireLineOfSight: true));
+
+            List<MacroAction> actions = MacroActionGenerator.Enumerate(_evaluator, _tableState, caster);
+            MacroAction? cast = actions.FirstOrDefault(a => a.Intent == EMacroIntent.MoveToCast);
+
+            Assert.That(cast, Is.Not.Null, "an affordable out-of-range spell generates a set-up move");
+            float before = Distance(new Position(10f, 24f), Centroid(enemy));
+            float after = Distance(cast!.ProjectedCentroid, Centroid(enemy));
+            Assert.That(after, Is.LessThan(before), "the set-up move closes toward cast range");
+        }
+
+        [Test]
+        public void MoveToCast_NotGenerated_WithoutSpellTokens()
+        {
+            var unit = MakeUnit(_us, 1, Rifle(), atX: 10f, atZ: 24f);
+            MakeUnit(_them, 3, Blade(), atX: 30f, atZ: 24f);
+            MakeArmyWithSpell(_us, unit, new TargetSelector(
+                12f, 1, 1, ETargetAffinity.Foe, RequireLineOfSight: true));
+
+            List<MacroAction> actions = MacroActionGenerator.Enumerate(_evaluator, _tableState, unit);
+
+            Assert.That(actions.Any(a => a.Intent == EMacroIntent.MoveToCast), Is.False,
+                "a unit with no spell tokens is not a caster");
+        }
+
+        [Test]
+        public void DeliverCargo_LoadedTransport_RoutesTowardAnObjective()
+        {
+            MakeObjective(new Position(50f, 24f));
+            var transport = MakeUnit(_us, 1, Rifle(), atX: 15f, atZ: 24f);
+            transport.GetValue().AttachRuleDefinition(new ResolvedRule("Transport",
+                CoreRuleCatalog.Transport, new RuleArgument[] { new RuleArgument.Int(6) }));
+            var cargo = MakeUnit(_us, 3, Blade(), atX: 15f, atZ: 24f);
+            cargo.GetValue().Tokens.AddToken(new Token(
+                TokenType.EmbarkedIn, 1, new TokenClearTrigger.ManualOnly(),
+                OwnerUnitID: transport.GetValue().ID));
+
+            List<MacroAction> actions = MacroActionGenerator.Enumerate(_evaluator, _tableState, transport);
+            MacroAction? deliver = actions.FirstOrDefault(a => a.Intent == EMacroIntent.DeliverCargo);
+
+            Assert.That(deliver, Is.Not.Null, "a loaded transport gets a delivery intent");
+            Assert.That(Distance(deliver!.ProjectedCentroid, new Position(50f, 24f)),
+                Is.LessThan(Distance(new Position(15f, 24f), new Position(50f, 24f)) - 6f));
+        }
+
+        [Test]
+        public void DeliverCargo_NotGenerated_ForEmptyTransport()
+        {
+            MakeObjective(new Position(50f, 24f));
+            var transport = MakeUnit(_us, 1, Rifle(), atX: 15f, atZ: 24f);
+            transport.GetValue().AttachRuleDefinition(new ResolvedRule("Transport",
+                CoreRuleCatalog.Transport, new RuleArgument[] { new RuleArgument.Int(6) }));
+
+            List<MacroAction> actions = MacroActionGenerator.Enumerate(_evaluator, _tableState, transport);
+
+            Assert.That(actions.Any(a => a.Intent == EMacroIntent.DeliverCargo), Is.False,
+                "an empty transport has no cargo plan to serve");
+        }
+
+        private void MakeArmyWithSpell(PlayerID owner, DataBinding<UnitData> unit,
+            TargetSelector target)
+        {
+            var army = new ArmyData(owner, new List<DataBinding<UnitData>> { unit });
+            army.SetSpells(new List<RuntimeSpell>
+            {
+                new RuntimeSpell(new SpellDefinition("Test Bolt", 2, target,
+                    new Effect.DealHits(3, Array.Empty<string>())),
+                    Array.Empty<ResolvedRule>()),
+            });
+            _store.Create(army);
         }
 
         // --- fixtures ---------------------------------------------------------------------------------

@@ -124,6 +124,8 @@ namespace FDG.Stages
 
             if (livingModels.Count == 0) return;
 
+            GameContext.Log($"{unit.Name} may reposition each model up to {maxInches:0.##}\".");
+
             var wholeTable = new RectangularZone(0f, GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES,
                 0f, GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES);
 
@@ -140,13 +142,21 @@ namespace FDG.Stages
                 return;
             }
 
+            // Standing still is a legal answer, and the CLI/AI resolvers give it by default - so report what
+            // actually happened rather than claiming a move that never occurred.
+            bool anyMoved = false;
             foreach (PlacedObjectEntry<ModelData> placement in selected.Value)
             {
-                placement.Binding.GetValue().SetPosition(placement.Position);
-                if (placement.Facing.HasValue) placement.Binding.GetValue().SetFacing(placement.Facing.Value);
+                ModelData model = placement.Binding.GetValue();
+                if (Position.GetDistance2D(model.Position, placement.Position) > 0.001f) anyMoved = true;
+
+                model.SetPosition(placement.Position);
+                if (placement.Facing.HasValue) model.SetFacing(placement.Facing.Value);
             }
 
-            GameContext.Log($"{unit.Name} repositioned (up to {maxInches:0.##}\").");
+            GameContext.Log(anyMoved
+                ? $"{unit.Name} repositioned."
+                : $"{unit.Name} held its position.");
         }
 
         private async Task<int> AskWhichEffect(IUnitActionContext context, string ruleName, IUnit unit,

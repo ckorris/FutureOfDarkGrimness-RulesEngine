@@ -64,6 +64,14 @@ namespace FDG.Ai.Tactician
         {
             if (_activeUnit == null) return null;
 
+            // A5-5: an embarked unit's only real choice is Disembark-or-ride. The macro generator
+            // has no candidates for an off-table unit, so without this the fallback chain ended in
+            // Pass and cargo RODE UNTIL THE TRANSPORT DIED (zero voluntary disembarks in the
+            // DE-vs-Orks logs - the whole payload never fought). Get out when the transport has
+            // arrived somewhere worth fighting for; keep riding otherwise.
+            if (validOptions.Contains(CoreRuleCatalog.DisembarkRuleName) && WantsDisembark())
+                return CoreRuleCatalog.DisembarkRuleName;
+
             // A5: casting is layered - it loops straight back here without ending the activation -
             // so a positive-value cast is taken FIRST whenever the engine offers Cast; the planned
             // action still happens on re-entry. Checked before the post-move branch too, which is
@@ -214,6 +222,46 @@ namespace FDG.Ai.Tactician
             if (pickIndex > Math.Max(1, spell.Target.MinCount) && bestValue <= 0f) return true;
             choice = best;
             return true;
+        }
+
+        // A5-5 disembark timing: the transport has ARRIVED when a marker we do not own outright,
+        // or an enemy the cargo would beat in melee, is within the cargo's reach after the 6"
+        // placement. Otherwise keep riding (M12 DeliverCargo is still driving the boat there).
+        private bool WantsDisembark()
+        {
+            UnitData self = _activeUnit!.GetValue();
+            IUnit? transport = null;
+            if (Rules.Dispatch.TransportUtilities.GetTransportId(self) is UnitID transportId)
+            {
+                foreach (IUnit unit in _tableState.Units.Objects)
+                    if (unit.ID == transportId) { transport = unit; break; }
+            }
+            if (transport == null) return true; // no live transport to ride: get out
+            Position here = Centroid((UnitData)transport);
+
+            const float placementInches = 6f;
+            float cargoReach = placementInches + TacticalAnalysis.AdvanceDistance(self, _evaluator);
+
+            foreach (ObjectiveProjection projection in TacticalAnalysis.ProjectObjectives(_tableState))
+            {
+                bool ours = projection.ProjectedOwner.HasValue
+                    && projection.ProjectedOwner.Value == self.PlayerID;
+                if (!ours && Distance(here, projection.Objective.Position)
+                        <= cargoReach + TacticalAnalysis.ObjectiveSeizureRadiusInches)
+                    return true;
+            }
+
+            if (self.GetMeleeWeapons().Count > 0)
+            {
+                foreach (DataBinding<UnitData> enemyBinding in EnemyBindings(self.PlayerID))
+                {
+                    (float margin, float reach) = MeleeApproachAgainst(enemyBinding);
+                    if (margin <= 0f) continue;
+                    if (Distance(here, Centroid(enemyBinding.GetValue())) <= placementInches + reach)
+                        return true;
+                }
+            }
+            return false;
         }
 
         // The best strictly-positive-value spell the unit can afford right now, or null. The
@@ -381,10 +429,26 @@ namespace FDG.Ai.Tactician
             // (their move + charge next activation, with a little slack).
             if (threat == null || threatDistance > 26f) return null;
 
-            float wardThreatValue = ValueFraction(
-                CombatMath.EstimateMelee(_evaluator, threat, ward).AttackerAttack.ExpectedWounds,
-                ward.GetValue());
-            _screenLane = (Centroid(threat.GetValue()), wardPos, wardThreatValue);
+            // A5-4b (Chris review): the ward's threat is the EXCHANGE MARGIN, not raw incoming -
+            // a counter-blade powerhouse that eats chargers needs no screen.
+            MeleeEstimate exchange = CombatMath.EstimateMelee(_evaluator, threat, ward);
+            float wardThreatValue = Math.Max(0f,
+                ValueFraction(exchange.AttackerAttack.ExpectedWounds, ward.GetValue())
+                - ValueFraction(exchange.DefenderReturn.ExpectedWounds, threat.GetValue()));
+            if (wardThreatValue <= 0f) return null;
+
+            // A5-4b: one screen per lane - if another friendly already stands on it, the lane is
+            // manned and a second body adds nothing (no dogpiled screens).
+            Position threatPos = Centroid(threat.GetValue());
+            foreach (DataBinding<UnitData> friendly in FriendlyBindings(self.PlayerID))
+            {
+                if (friendly.Reference.Equals(_activeUnit!.Reference)
+                    || friendly.Reference.Equals(ward.Reference)) continue;
+                if (DistanceToSegment(Centroid(friendly.GetValue()), threatPos, wardPos) <= 2.5f)
+                    return null;
+            }
+
+            _screenLane = (threatPos, wardPos, wardThreatValue);
             return _screenLane;
         }
 

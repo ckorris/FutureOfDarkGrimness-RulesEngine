@@ -161,6 +161,52 @@ namespace FDG.Tests
                 "early markers still matter - ownership persists");
         }
 
+        [Test]
+        public void NoScreenIsThrown_ForAWardThatWinsTheExchange()
+        {
+            // A5-4b: the ward's threat is the exchange MARGIN - a counter-wall of blades that eats
+            // chargers needs no bodyguard, so the cheap unit must not be pulled onto the lane.
+            var screen = MakeUnit(_us, 3, Unarmed(), atX: 34f, atZ: 32f);
+            MakeUnit(_us, 5, Blade(attacks: 4), atX: 40f, atZ: 24f);    // powerhouse "ward"
+            MakeUnit(_them, 4, Blade(attacks: 1), atX: 20f, atZ: 24f);  // weak chaff "threat"
+            _planner.BeginActivation(screen);
+
+            _planner.ChooseAction(AllActions);
+            List<StageResolution.Requests.ModelMoveEntry>? move = _planner.TakePlannedMove(screen);
+
+            if (move != null)
+            {
+                var ends = move.Select(e => e.Positions[^1]).ToList();
+                var endCentroid = new Position(ends.Average(p => p.x), ends.Average(p => p.z));
+                float toLane = DistanceToSegment(endCentroid,
+                    new Position(20f, 24f), new Position(40f, 24f));
+                Assert.That(toLane, Is.GreaterThan(3f),
+                    "no screen credit should pull the unit onto a lane the ward dominates");
+            }
+        }
+
+        [Test]
+        public void EmbarkedCargo_Disembarks_WhenTheTransportArrives_AndRidesOtherwise()
+        {
+            // A5-5: cargo rode until the transport died (zero voluntary disembarks in the
+            // DE-vs-Orks logs). Near a marker we do not own: get out. In the middle of nowhere:
+            // keep riding (never Disembark).
+            var transport = MakeUnit(_us, 1, Rifle(), atX: 30f, atZ: 24f);
+            var cargo = MakeUnit(_us, 4, Blade(), atX: 30f, atZ: 24f);
+            TransportUtilities.Embark(cargo.GetValue(), transport.GetValue());
+            string[] options = { CoreRuleCatalog.DisembarkRuleName, ChooseActionStage.PASS_CHOICE_NAME };
+
+            _planner.BeginActivation(cargo);
+            Assert.That(_planner.ChooseAction(options),
+                Is.Not.EqualTo(CoreRuleCatalog.DisembarkRuleName),
+                "nothing worth fighting for in reach: keep riding");
+
+            _store.Create(new ObjectiveData(new Position(35f, 24f), _store));
+            _planner.BeginActivation(cargo);
+            Assert.That(_planner.ChooseAction(options), Is.EqualTo(CoreRuleCatalog.DisembarkRuleName),
+                "a marker in the cargo's post-drop reach: get out and take it");
+        }
+
         private static Weapon Unarmed() => new Weapon("Fists", 0f, 1, 0);
 
         private static float DistanceToSegment(Position p, Position a, Position b)

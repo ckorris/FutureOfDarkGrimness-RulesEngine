@@ -34,6 +34,21 @@ namespace FDG.Tests
                 "a seeded Tactician game diverged from itself.");
         }
 
+        // #199's seed graveyard: each of these deterministically faulted mid-game with "AutoFill
+        // could not assign all wounds" (a float-identity bug in the wound-assignment capacity math)
+        // before the fix - 31415 under solo-rules from day one, the rest under the Tactician as soon
+        // as A4-1 changed activation order. All must now play the full four rounds.
+        [TestCase(31415, EAiProfile.SoloRules)]
+        [TestCase(424242, EAiProfile.Tactician)]
+        [TestCase(424243, EAiProfile.Tactician)]
+        [TestCase(777001, EAiProfile.Tactician)]
+        [CancelAfter(300_000)]
+        public async Task FractionalWoundSeeds_PlayToCompletion(int seed, EAiProfile profile)
+        {
+            GameFingerprint game = await PlayFreshGame(seed, profile);
+            Assert.That(game.Summary, Does.Contain("rounds=4"));
+        }
+
         /// <summary>
         /// A fresh whole game (map setup -> deployment -> 4 rounds), the given profile on both
         /// slots, probabilistic dice — the DeterminismTests fresh-game harness with the AI chosen

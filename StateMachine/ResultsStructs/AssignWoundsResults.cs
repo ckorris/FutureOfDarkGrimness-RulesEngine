@@ -93,7 +93,7 @@ namespace FDG
         private static bool CanTakeMoreWounds(PendingWounds entry)
         {
             ModelData model = entry.Model.GetValue();
-            return model.TotalWounds - model.WoundsDealt - entry.Wounds > 0f;
+            return model.TotalWounds - model.WoundsDealt - entry.Wounds > WoundEpsilon;
         }
 
         /// <summary>
@@ -122,7 +122,16 @@ namespace FDG
             TotalWoundsToAssign = totalWoundsToAssign;
         }
 
-        public bool IsFinishedAssigning => TotalAssignedWounds == TotalWoundsToAssign;
+        /// <summary>
+        /// #199: wound quantities are float chains (hit x save x regeneration expected values), and the
+        /// pool and the per-model capacities are computed by DIFFERENT summation orders/round-trips, so
+        /// exact float comparisons intermittently declare a dying model "full" while a ~0.05 residue
+        /// remains - and AutoFill threw, faulting the whole game. Anything below this epsilon is
+        /// rounding noise, orders of magnitude beneath the smallest meaningful wound fraction (1/216).
+        /// </summary>
+        public const float WoundEpsilon = 0.0001f;
+
+        public bool IsFinishedAssigning => TotalAssignedWounds >= TotalWoundsToAssign - WoundEpsilon;
 
 
         public bool TryAddWounds(DataBinding<ModelData> model)
@@ -155,10 +164,14 @@ namespace FDG
                 return false;
             }
 
-            float woundsToAdd = Math.Min(pendingWoundsEntry.Model.GetValue().RemainingWoundsBinding.GetValue(),
-                TotalWoundsToAssign - TotalAssignedWounds);
+            // #199: ONE capacity formula, and clamp to it rather than reject. The old code took the
+            // amount from RemainingWoundsBinding but guarded against TotalWounds - WoundsDealt, which is
+            // the binding's own double-rounded round-trip (WoundsDealt = TotalWounds - binding) - a one-ULP
+            // mismatch made a legal fill look like an overfill and AutoFill faulted the game.
+            float capacity = model.TotalWounds() - model.WoundsDealt() - pendingWoundsEntry.Wounds;
+            float woundsToAdd = Math.Min(capacity, TotalWoundsToAssign - TotalAssignedWounds);
 
-            if (pendingWoundsEntry.Wounds + woundsToAdd > model.TotalWounds() - model.WoundsDealt())
+            if (woundsToAdd <= WoundEpsilon)
             {
                 return false;
             }
@@ -198,7 +211,7 @@ namespace FDG
             {
                 if (IsHero(entry.Model)) continue;
                 float remaining = entry.Model.TotalWounds() - entry.Model.WoundsDealt();
-                if (entry.Wounds < remaining) return true;
+                if (entry.Wounds < remaining - WoundEpsilon) return true;
             }
             return false;
         }

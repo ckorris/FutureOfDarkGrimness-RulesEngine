@@ -106,17 +106,15 @@ namespace FDG.Ai.Resolvers
 
             var existing = GetTableOccupants().ToList();
 
-            // Preferred block centre: this unit's fan-out lane (across the zone width) + alternating Z band.
+            // Preferred block centre - the ONLY strategy knob in this resolver; everything after it is
+            // legality machinery (in-zone clamps, spiral search, terrain/overlap/enemy clearance).
+            // Virtual so the Tactician (#191 A4b) can aim the same machinery at objectives; the base
+            // implementation is the solo bot's historical fan-out, unchanged.
             float usableLeft = bounds.Left + maxRadius;
-            float usableWidth = MathF.Max(0f, (bounds.Right - maxRadius) - usableLeft);
-            float laneStep = MathF.Max(spacingX, FanOutLaneSpacingInches);
-            int lanes = Math.Max(1, (int)(usableWidth / laneStep));
-            int lane = deployIndex % lanes;
-            int band = deployIndex / lanes;
-            int signedBand = (band % 2 == 0) ? band / 2 : -((band + 1) / 2); // 0, +1, -1, +2, -2, ...
-
-            float preferredCx = usableLeft + lane * laneStep + gridWidth / 2f;
-            float preferredCz = bounds.CenterZ + signedBand * FanOutBandSpacingInches;
+            Position preferred = PreferredBlockCenter(request, bounds, deployIndex, maxRadius,
+                gridWidth, gridHeight, spacingX);
+            float preferredCx = preferred.x;
+            float preferredCz = preferred.z;
 
             // Range of block centres that keep every cell inside the zone bounds. If the block is wider/taller
             // than the usable zone the range inverts; the clamps below then collapse it to the zone centre.
@@ -156,6 +154,27 @@ namespace FDG.Ai.Resolvers
             }
 
             return Task.FromResult(placed);
+        }
+
+        /// <summary>
+        /// The solo bot's fan-out: successive units march across the zone in lanes, wrapping into
+        /// alternating Z bands. Overrides pick a different aim (the Tactician deploys toward
+        /// objectives, #191 A4b); the caller clamps the result into the zone and spiral-searches
+        /// around it for a legal block, so an override can return a raw aim point safely.
+        /// </summary>
+        protected virtual Position PreferredBlockCenter(PlaceObjectsRequest<T> request, ZoneBounds bounds,
+            int deployIndex, float maxRadius, float gridWidth, float gridHeight, float spacingX)
+        {
+            float usableLeft = bounds.Left + maxRadius;
+            float usableWidth = MathF.Max(0f, (bounds.Right - maxRadius) - usableLeft);
+            float laneStep = MathF.Max(spacingX, FanOutLaneSpacingInches);
+            int lanes = Math.Max(1, (int)(usableWidth / laneStep));
+            int lane = deployIndex % lanes;
+            int band = deployIndex / lanes;
+            int signedBand = (band % 2 == 0) ? band / 2 : -((band + 1) / 2); // 0, +1, -1, +2, -2, ...
+
+            return new Position(usableLeft + lane * laneStep + gridWidth / 2f,
+                bounds.CenterZ + signedBand * FanOutBandSpacingInches);
         }
 
         // The model positions of a block centred at (center): cols per row, filling left→right, top→bottom,

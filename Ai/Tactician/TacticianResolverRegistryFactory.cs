@@ -1,6 +1,8 @@
+using FDG.Data;
 using FDG.GameModel;
 using FDG.Players;
 using FDG.StageResolution;
+using FDG.StageResolution.Requests;
 
 namespace FDG.Ai.Tactician
 {
@@ -46,6 +48,12 @@ namespace FDG.Ai.Tactician
 
             // A4-4: wound assignment preserving output (cheapest-output casualties first).
             registry.RegisterResolver(new Resolvers.TacticianAssignWoundsResolver());
+
+            // A4b: objective-aware deployment. The subclass IS the solo resolver for every
+            // non-deployment placement (disembark, spillout, ambush, reposition).
+            registry.RegisterResolver<PlaceObjectsRequest<ModelData>,
+                CancellableResult<List<PlacedObjectEntry<ModelData>>>>(
+                new Resolvers.TacticianPlaceObjectsResolver<ModelData>(tableState));
 
             return registry;
         }

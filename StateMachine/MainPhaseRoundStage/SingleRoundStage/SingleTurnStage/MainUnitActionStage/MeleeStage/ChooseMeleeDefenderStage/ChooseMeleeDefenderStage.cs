@@ -93,12 +93,13 @@ namespace FDG.Stages
             // button, and nothing has been mutated yet (impact hits and the pile-in move both come later),
             // so auto-selecting the sole defender used to commit the player to a charge they may have
             // clicked by mistake - with no way back.
-            CancellableSelectionRequest<UnitData> request = new CancellableSelectionRequest<UnitData>(attackingPlayer, "Choose defending unit",
+            // #191 A4-3: its own request TYPE so AI resolvers replace exactly this decision.
+            ChooseMeleeDefenderRequest request = new ChooseMeleeDefenderRequest(attackingPlayer, "Choose defending unit",
                 validDefenders, invalidDefenders);
 
             CancellableResult<DataBinding<UnitData>> defenderResult
                 = await GameContext.PlayerRequester
-                .RequestDecision<CancellableSelectionRequest<UnitData>, CancellableResult<DataBinding<UnitData>>>(request);
+                .RequestDecision<ChooseMeleeDefenderRequest, CancellableResult<DataBinding<UnitData>>>(request);
 
             if (defenderResult is Cancelled<DataBinding<UnitData>>)
             {

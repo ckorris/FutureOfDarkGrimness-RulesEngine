@@ -30,5 +30,11 @@ namespace FDG.Ai.Tactician
         public const float MoveRetaliation = 0.6f;
         public const float MoveObjective = 2.5f;
         public const float MoveReachableBonus = 0.05f;
+
+        // --- Target choice (A4-3) -------------------------------------------------------------------
+        // Shooting/melee targets score by value-weighted damage; finishing a unit off is worth extra
+        // (a dead unit stops acting; a wounded one does not).
+        public const float ShootingKillBonus = 1.5f;
+        public const float MeleeKillBonus = 1.5f;
     }
 }

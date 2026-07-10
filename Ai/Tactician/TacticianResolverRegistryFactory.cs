@@ -39,6 +39,11 @@ namespace FDG.Ai.Tactician
             registry.RegisterResolver(new Resolvers.TacticianMovementResolver(planner, tableState,
                 new FDG.Ai.Resolvers.AiDefineMovementResolver(tableState, playerID)));
 
+            // A4-3: value-weighted target choice (shooting + melee defender).
+            registry.RegisterResolver(new Resolvers.TacticianRangedAttackResolver(evaluator,
+                new FDG.Ai.Resolvers.AiChooseRangedAttackResolver()));
+            registry.RegisterResolver(new Resolvers.TacticianMeleeDefenderResolver(tableState, evaluator, planner));
+
             return registry;
         }
 

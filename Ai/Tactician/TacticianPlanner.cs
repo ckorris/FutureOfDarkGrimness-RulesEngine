@@ -21,6 +21,9 @@ namespace FDG.Ai.Tactician
         private DataBinding<UnitData>? _activeUnit;
         private MacroAction? _plan;
 
+        /// <summary>The unit whose activation is being planned (null between activations).</summary>
+        public DataBinding<UnitData>? ActiveUnit => _activeUnit;
+
         public TacticianPlanner(ITableState tableState, RuleEvaluator evaluator)
         {
             _tableState = tableState;

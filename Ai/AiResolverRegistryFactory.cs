@@ -34,6 +34,10 @@ namespace FDG.Ai
                 .RegisterResolver(new AiChooseDeploymentZoneResolver())
                 .RegisterResolver(new AiChooseRangedAttackResolver())
                 .RegisterResolver(new AiChooseMeleeDefenderResolver())
+                .RegisterResolver(new DerivedRequestAdapter<StageResolution.Requests.ChooseMeleeDefenderRequest,
+                    StageResolution.Requests.CancellableSelectionRequest<UnitData>,
+                    StageResolution.CancellableResult<Data.DataBinding<UnitData>>>(
+                    new AiChooseMeleeDefenderResolver()))
                 .RegisterResolver(new AiDefineMovementResolver(tableState, playerID))
                 .RegisterResolver(new AiAircraftAdvanceResolver())
                 .RegisterResolver(new AiConsolidationMoveResolver(tableState, playerID))

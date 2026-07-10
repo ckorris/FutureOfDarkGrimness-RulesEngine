@@ -43,6 +43,19 @@ namespace FDG.Ai.Tactician
         // still dominate when reachable.
         public const float MoveApproach = 0.75f;
 
+        // --- Casting (A5) ---------------------------------------------------------------------------
+        // A cast is layered (it never ends the activation), so the planner casts whenever the net
+        // expected value is positive: base 4+ success chance x the summed target values, minus a
+        // small opportunity cost per token burned (the attempt spends them win or lose). Non-damage
+        // effects (buffs, debuffs, forced moves) price a flat fraction of the target's value - the
+        // documented A5 placeholder; anticipatory buff valuation arrives with Phase C's evaluator.
+        public const float CastEffectStaticFraction = 0.2f;
+        public const float CastTokenValue = 0.02f;
+        // Assist (#103): one token shifts the caster's 4+ one face = 1/6 of the spell's value,
+        // boosting a friend or denying an enemy alike (the solo bot always declines). Spend while
+        // that beats the token cost, capped per request so one cast never drains a whole pool.
+        public const int CastAssistMaxTokens = 2;
+
         // --- Target choice (A4-3) -------------------------------------------------------------------
         // Shooting/melee targets score by value-weighted damage; finishing a unit off is worth extra
         // (a dead unit stops acting; a wounded one does not).

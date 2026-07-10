@@ -59,6 +59,15 @@ namespace FDG.Ai.Tactician
             // mobile/melee armies spread them; zones are chosen after objectives, so no side bias).
             registry.RegisterResolver(new Resolvers.TacticianPlaceObjectiveResolver(tableState));
 
+            // A5: casting. Cast is taken at Choose Action whenever a positive-value spell x target
+            // exists (layered - it costs the activation nothing; TacticianActionResolver above also
+            // answers the spell picker); target picks maximize value and never cancel into the
+            // Choose Action livelock; assists spend tokens when a one-face threshold shift beats
+            // their cost. Non-spell unit selections fall through to the embedded solo resolver.
+            registry.RegisterResolver(new Resolvers.TacticianUnitSelectionResolver(planner,
+                new FDG.Ai.Resolvers.AiSelectionResolver<UnitData>()));
+            registry.RegisterResolver(new Resolvers.TacticianCastAssistResolver(tableState, evaluator));
+
             return registry;
         }
 

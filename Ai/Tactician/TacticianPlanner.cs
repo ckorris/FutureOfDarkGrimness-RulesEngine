@@ -1,6 +1,7 @@
 using FDG.Data;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Foundation;
 using FDG.StageResolution.Requests;
 using FDG.Stages;
 using FDG.Utilities;
@@ -19,8 +20,13 @@ namespace FDG.Ai.Tactician
         private readonly ITableState _tableState;
         private readonly RuleEvaluator _evaluator;
 
+        // Belt-and-braces livelock guard on casting: every attempt burns tokens (win or lose), so
+        // this can never bind in a legal game (the pool caps at 6) - it only bounds a broken loop.
+        private const int MaxCastAttemptsPerActivation = 8;
+
         private DataBinding<UnitData>? _activeUnit;
         private MacroAction? _plan;
+        private int _castAttempts;
         // Melee exchange margin + charge reach per enemy; both are endpoint-independent, so one
         // computation serves every candidate of the activation.
         private readonly Dictionary<DataReference, (float Margin, float Reach)> _meleeApproach = new();
@@ -39,6 +45,7 @@ namespace FDG.Ai.Tactician
         {
             _activeUnit = unit;
             _plan = null;
+            _castAttempts = 0;
             _meleeApproach.Clear();
         }
 
@@ -50,6 +57,18 @@ namespace FDG.Ai.Tactician
         public string? ChooseAction(IReadOnlyList<string> validOptions)
         {
             if (_activeUnit == null) return null;
+
+            // A5: casting is layered - it loops straight back here without ending the activation -
+            // so a positive-value cast is taken FIRST whenever the engine offers Cast; the planned
+            // action still happens on re-entry. Checked before the post-move branch too, which is
+            // what makes an M11 MoveToCast set-up move pay off in the same activation.
+            if (validOptions.Contains(ChooseActionStage.CAST_CHOICE_NAME)
+                && _castAttempts < MaxCastAttemptsPerActivation
+                && BestAffordableCast() != null)
+            {
+                _castAttempts++;
+                return ChooseActionStage.CAST_CHOICE_NAME;
+            }
 
             // Post-move re-entry: the plan was played out; shoot if the engine still lets us,
             // otherwise end the activation.
@@ -109,6 +128,111 @@ namespace FDG.Ai.Tactician
 
             List<ModelMoveEntry> move = _plan.Move;
             return move.Count == 0 ? null : move;
+        }
+
+        // --- casting (A5) ---------------------------------------------------------------------------
+
+        /// <summary>
+        /// Answers the cast stage's spell picker: the highest-net-value OFFERED spell, never
+        /// Cancel - a cancelled pick loops straight back to Choose Action with nothing spent, so
+        /// under a deterministic policy it must be unreachable (the forced-Cast livelock class).
+        /// Null when the caster or its army is unknown; the solo fallback then picks the first
+        /// spell, which also spends tokens and terminates.
+        /// </summary>
+        public string? ChooseSpell(IReadOnlyList<string> validOptions)
+        {
+            if (_activeUnit == null) return null;
+            ArmyData? army = SpellValuation.ArmyOf(_tableState, _activeUnit.GetValue().PlayerID);
+            if (army == null) return null;
+
+            string? bestLabel = null;
+            float bestValue = float.NegativeInfinity;
+            foreach (string option in validOptions)
+            {
+                RuntimeSpell? spell = SpellValuation.FindByLabel(army, option);
+                if (spell == null) continue; // Cancel, or a label we cannot map back to a spell
+                float value = SpellValuation.NetCastValue(_evaluator, _tableState, _activeUnit, spell);
+                if (bestLabel == null || value > bestValue)
+                {
+                    bestValue = value;
+                    bestLabel = option;
+                }
+            }
+            return bestLabel;
+        }
+
+        /// <summary>
+        /// Answers one "Choose target for {spell} ({k} of up to {N})" pick with the highest-value
+        /// option. A null <paramref name="choice"/> with a true return is a deliberate cancel -
+        /// only ever once the spell's minimum target count is met, because cancelling earlier
+        /// aborts the whole cast UNSPENT and Choose Action would re-plan the same cast forever.
+        /// False = no claim (unparseable instructions, unknown spell); caller falls back to solo.
+        /// </summary>
+        public bool TryChooseSpellTarget(string instructions,
+            IReadOnlyList<SelectionRequest<UnitData>.ValidOption> options,
+            out DataBinding<UnitData>? choice)
+        {
+            choice = null;
+            if (_activeUnit == null || options.Count == 0) return false;
+
+            const string prefix = "Choose target for ";
+            if (!instructions.StartsWith(prefix, StringComparison.Ordinal)) return false;
+            int suffixStart = instructions.LastIndexOf(" (", StringComparison.Ordinal);
+            if (suffixStart <= prefix.Length) return false;
+            string spellName = instructions[prefix.Length..suffixStart];
+            string suffix = instructions[(suffixStart + 2)..];
+            int ofIndex = suffix.IndexOf(" of up to ", StringComparison.Ordinal);
+            if (ofIndex < 0 || !int.TryParse(suffix[..ofIndex], out int pickIndex)) return false;
+
+            ArmyData? army = SpellValuation.ArmyOf(_tableState, _activeUnit.GetValue().PlayerID);
+            RuntimeSpell? spell = army == null ? null : SpellValuation.FindByName(army, spellName);
+            if (spell == null) return false;
+
+            PlayerID us = _activeUnit.GetValue().PlayerID;
+            DataBinding<UnitData>? best = null;
+            float bestValue = float.NegativeInfinity;
+            foreach (SelectionRequest<UnitData>.ValidOption option in options)
+            {
+                bool friendly = SpellValuation.IsFriendlyTo(
+                    _tableState, us, option.Option.GetValue().PlayerID);
+                float value = SpellValuation.TargetValue(
+                    _evaluator, _activeUnit, spell, option.Option, friendly);
+                if (best == null || value > bestValue)
+                {
+                    bestValue = value;
+                    best = option.Option;
+                }
+            }
+
+            // Extra targets only while they ADD value; stopping is only legal past the minimum.
+            if (pickIndex > Math.Max(1, spell.Target.MinCount) && bestValue <= 0f) return true;
+            choice = best;
+            return true;
+        }
+
+        // The best strictly-positive-value spell the unit can afford right now, or null. The
+        // engine gates the Cast option on ITS eligibility (affordable + legal target), so this
+        // only decides whether casting is WORTH it.
+        private RuntimeSpell? BestAffordableCast()
+        {
+            UnitData self = _activeUnit!.GetValue();
+            ArmyData? army = SpellValuation.ArmyOf(_tableState, self.PlayerID);
+            if (army == null) return null;
+
+            int tokens = self.Tokens.GetTokenCount(TokenType.SpellTokens);
+            RuntimeSpell? best = null;
+            float bestValue = 0f; // strictly positive expected value required to bother
+            foreach (RuntimeSpell spell in army.Spells)
+            {
+                if (spell.Threshold <= 0 || spell.Threshold > tokens) continue;
+                float value = SpellValuation.NetCastValue(_evaluator, _tableState, _activeUnit!, spell);
+                if (value > bestValue)
+                {
+                    bestValue = value;
+                    best = spell;
+                }
+            }
+            return best;
         }
 
         // --- scoring --------------------------------------------------------------------------------

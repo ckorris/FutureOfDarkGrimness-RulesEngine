@@ -100,6 +100,33 @@ namespace FDG.Ai.Tactician
         }
 
         /// <summary>
+        /// Expected result of a damage spell (<see cref="Effect.DealHits"/>) landing on the defender
+        /// (#191 A5): the spell's fixed hit count resolved through the save/wound mirror, with the
+        /// spell's AP and pre-resolved weapon rules riding a synthetic weapon exactly as
+        /// <see cref="CastSpellStage"/> builds one. Returns Zero for a non-damage spell. Not priced
+        /// (recorded A5 gap): the stage's hit-complete fold on the fixed hits (Blast multiply, on-6
+        /// extras) - the estimate is the raw count through saves.
+        /// </summary>
+        public static AttackEstimate EstimateSpellDamage(RuleEvaluator evaluator,
+            DataBinding<UnitData> caster, DataBinding<UnitData> defender, RuntimeSpell spell)
+        {
+            if (spell.Effect is not Effect.DealHits dealHits) return AttackEstimate.Zero;
+
+            Weapon spellWeapon = new Weapon(spell.Name, rangeInches: 0f, attacks: 0,
+                armorPenetration: dealHits.ArmorPenetration);
+            foreach (ResolvedRule rule in spell.WeaponRules)
+            {
+                spellWeapon.AttachRuleDefinition(rule);
+            }
+
+            var notes = new List<string>();
+            float wounds = ResolveSaves(evaluator, caster.GetValue(), defender.GetValue(), spellWeapon,
+                SingleGroup(dealHits.Count), apReduction: 0, wholeAttackSaveModifier: 0,
+                coverBonus: 0, isMelee: false, notes);
+            return Finish(wounds, defender, notes);
+        }
+
+        /// <summary>
         /// Expected result of a full melee exchange, attacker charging the defender. Sequencing mirrors
         /// MeleeStage: impact hits first, then Counter's strike-first swap (which also strips the
         /// charge from the charger's swings - the engine's charger loses IsCharging after the swap),

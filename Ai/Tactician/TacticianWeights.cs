@@ -36,7 +36,14 @@ namespace FDG.Ai.Tactician
         // baseline showed tie-heavy games from objective-blind play.
 
         public const float MoveDamage = 1.0f;
-        public const float MoveRetaliation = 0.6f;
+        // RETUNED 0.6 -> 0.45 (2026-07-10, Chris's hand-played game 1: "melee staying back"):
+        // against a HUMAN gunline that holds its line, 0.6 x incoming swamped every forward term
+        // for fragile units - his save showed Winged Grunts preferring FallBack (0.059) over
+        // rushing an objective 23" out (0.039), and Guardians topping out on SeekCover. The solo
+        // benchmark opponent advances into the horde, which masked the crossing problem entirely.
+        // Exposure still prices (0.45 x a full volley beats most gradients) but no longer
+        // dominates the reason a melee army exists: crossing the table.
+        public const float MoveRetaliation = 0.45f;
         public const float MoveObjective = 0.75f;
         public const float MoveReachableBonus = 0.05f;
 

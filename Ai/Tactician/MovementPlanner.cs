@@ -250,7 +250,8 @@ namespace FDG.Ai.Tactician
             float moveBudgetInches, float maxDistanceInches,
             Func<ModelMoveEntry, ModelMoveBudget> budgetFor,
             bool canMoveThroughEnemies, bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
-            EFormation formation = EFormation.Grid, (float X, float Z)? lineAxis = null)
+            EFormation formation = EFormation.Grid, (float X, float Z)? lineAxis = null,
+            Func<TerrainGrid>? sharedGrid = null)
         {
             var terrain = tableState.Terrain.Objects.ToList();
             var enemies = LiveEnemyFootprints(tableState, unit.GetValue().PlayerID);
@@ -259,10 +260,16 @@ namespace FDG.Ai.Tactician
             var start = new Position(cx, cz);
             float baseRadius = living.Max(mb => mb.GetValue().BaseRadiusInches);
 
+            // Grid construction is the expensive part (thousands of point tests), so: straight-clear
+            // paths never touch it, and callers planning MANY candidates in one activation share one
+            // build via sharedGrid (the A4-2 hot path - per-candidate builds cost ~0.5s per decision).
             List<Position>? path = null;
-            if (!ignoresImpassibleTerrain)
+            if (!ignoresImpassibleTerrain
+                && terrain.Any(t => t.TerrainType.HasFlag(ETerrainType.Impassible)
+                    && t.Shape.DoesPathIntersectZone(new Float2(start.x, start.z),
+                        new Float2(goal.x, goal.z), baseRadius)))
             {
-                TerrainGrid grid = TerrainGrid.Build(terrain, baseRadius);
+                TerrainGrid grid = sharedGrid?.Invoke() ?? TerrainGrid.Build(terrain, baseRadius);
                 path = GridPathfinder.FindPath(grid, terrain, start, goal, baseRadius);
             }
             path ??= new List<Position> { start, goal };

@@ -55,6 +55,13 @@ namespace FDG.Ai.Tactician
             List<IUnit> enemies = LivingEnemies(tableState, self.PlayerID);
             List<IUnit> friends = LivingFriends(tableState, self);
 
+            var terrain = tableState.Terrain.Objects.ToList();
+            var enemyFootprints = MovementPlanner.LiveEnemyFootprints(tableState, self.PlayerID);
+            float leadRadius = living.Max(mb => mb.GetValue().BaseRadiusInches);
+            // One terrain grid for the whole enumeration (built only if some candidate needs it).
+            TerrainGrid? cachedGrid = null;
+            Func<TerrainGrid> sharedGrid = () => cachedGrid ??= TerrainGrid.Build(terrain, leadRadius);
+
             // M2/M3 - objectives, both budgets (rush reaches farther; ranking keeps the useful one).
             foreach (IObjective objective in tableState.Objectives.Objects)
             {
@@ -63,22 +70,19 @@ namespace FDG.Ai.Tactician
                     EActionType.Advance, unit, living, tableState, evaluator, objective.Position, advance,
                     canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain,
                     goalRadius: TacticalAnalysis.ObjectiveSeizureRadiusInches,
-                    targetObjective: objective));
+                    targetObjective: objective, sharedGrid: sharedGrid));
                 candidates.Add(Plan(EMacroIntent.RushObjective,
                     $"intent=RushObjective obj=({objective.Position.x:F0},{objective.Position.z:F0})",
                     EActionType.Rush, unit, living, tableState, evaluator, objective.Position, rush,
                     canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain,
                     goalRadius: TacticalAnalysis.ObjectiveSeizureRadiusInches,
-                    targetObjective: objective));
+                    targetObjective: objective, sharedGrid: sharedGrid));
             }
 
             List<IUnit> rankedEnemies = enemies
                 .OrderByDescending(TacticalAnalysis.UnitValue).Take(TopEnemies).ToList();
             bool hasRanged = self.GetRangedWeapons().Count > 0;
             bool hasMelee = self.GetMeleeWeapons().Count > 0;
-            var terrain = tableState.Terrain.Objects.ToList();
-            var enemyFootprints = MovementPlanner.LiveEnemyFootprints(tableState, self.PlayerID);
-            float leadRadius = living.Max(mb => mb.GetValue().BaseRadiusInches);
 
             foreach (IUnit enemy in rankedEnemies)
             {
@@ -96,7 +100,7 @@ namespace FDG.Ai.Tactician
                             $"intent=EngageAtRange band={band} target={enemy.Name} d={d:F1}",
                             EActionType.Advance, unit, living, tableState, evaluator, goal, advance,
                             canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain,
-                            goalRadius: BandMarginInches, targetEnemy: enemy, band: band));
+                            goalRadius: BandMarginInches, targetEnemy: enemy, band: band, sharedGrid: sharedGrid));
                     }
                 }
 
@@ -120,7 +124,7 @@ namespace FDG.Ai.Tactician
                     $"intent=FallBack from={threat.Name}", EActionType.Rush,
                     unit, living, tableState, evaluator, ClampToTable(away), rush,
                     canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, goalRadius: 1f,
-                    targetEnemy: threat));
+                    targetEnemy: threat, sharedGrid: sharedGrid));
             }
 
             // M7 - seek cover from the biggest threat, behind the nearest cover piece in reach.
@@ -131,7 +135,7 @@ namespace FDG.Ai.Tactician
                     $"intent=SeekCoverFrom from={rankedEnemies[0].Name}", EActionType.Rush,
                     unit, living, tableState, evaluator, coverGoal, rush,
                     canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, goalRadius: 1f,
-                    targetEnemy: rankedEnemies[0]));
+                    targetEnemy: rankedEnemies[0], sharedGrid: sharedGrid));
             }
 
             // M8 - block the biggest threat's lane to our most valuable asset (a LINE across it).
@@ -151,7 +155,7 @@ namespace FDG.Ai.Tactician
                         unit, living, tableState, evaluator, lane, rush,
                         canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, goalRadius: 1f,
                         targetEnemy: threat, formation: MovementPlanner.EFormation.Line,
-                        lineAxis: (-laneDz, laneDx)));
+                        lineAxis: (-laneDz, laneDx), sharedGrid: sharedGrid));
                 }
             }
 
@@ -166,7 +170,7 @@ namespace FDG.Ai.Tactician
                     $"intent=Escort ally={ward.Name}", EActionType.Rush,
                     unit, living, tableState, evaluator, ClampToTable(goal), rush,
                     canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, goalRadius: 2f,
-                    targetAlly: ward));
+                    targetAlly: ward, sharedGrid: sharedGrid));
             }
 
             // M10 - concentrate on the rest of the army's centroid.
@@ -176,7 +180,7 @@ namespace FDG.Ai.Tactician
                 candidates.Add(Plan(EMacroIntent.Concentrate,
                     "intent=Concentrate", EActionType.Rush,
                     unit, living, tableState, evaluator, mass, rush,
-                    canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, goalRadius: 3f));
+                    canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, goalRadius: 3f, sharedGrid: sharedGrid));
             }
 
             // M11 - move into cast range of the best spell's intended target. Only for units holding
@@ -324,7 +328,7 @@ namespace FDG.Ai.Tactician
             float goalRadius, IUnit? targetEnemy = null, IObjective? targetObjective = null,
             IUnit? targetAlly = null, ERangeBand? band = null,
             MovementPlanner.EFormation formation = MovementPlanner.EFormation.Grid,
-            (float X, float Z)? lineAxis = null)
+            (float X, float Z)? lineAxis = null, Func<TerrainGrid>? sharedGrid = null)
         {
             // The MOVE takes the float-precision margin; the VALIDATOR keeps the full budget
             // (the ResolverGuide gotcha - giving both the same reduced number makes the first
@@ -332,7 +336,7 @@ namespace FDG.Ai.Tactician
             float safeBudget = Math.Max(0f, budget - 0.001f);
             List<ModelMoveEntry> move = MovementPlanner.PlanMoveToward(unit, living, tableState, goal,
                 safeBudget, safeBudget, _ => new ModelMoveBudget(budget, budget),
-                canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, formation, lineAxis);
+                canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, formation, lineAxis, sharedGrid);
 
             Position end = MoveCentroid(move, living);
             Position start = Centroid(living, unit.GetValue());

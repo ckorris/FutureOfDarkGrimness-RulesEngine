@@ -17,5 +17,18 @@ namespace FDG.Ai.Tactician
         public const float ActivationKillOpportunity = 1.0f;
         public const float ActivationObjectiveFlip = 2.0f;
         public const float ActivationUnderThreat = 0.75f;
+
+        // --- Action + movement choice (A4-2) --------------------------------------------------------
+        // score = MoveDamage * (value-weighted damage from the endpoint; melee margin for charges)
+        //       - MoveRetaliation * (best value-weighted damage an enemy can put on the endpoint)
+        //       + MoveObjective   * (objectives newly held minus held objectives abandoned)
+        //       + MoveReachableBonus when the candidate fully reaches its goal.
+        // Objectives dominate deliberately: they decide the winner (house invariant), and the
+        // baseline showed tie-heavy games from objective-blind play.
+
+        public const float MoveDamage = 1.0f;
+        public const float MoveRetaliation = 0.6f;
+        public const float MoveObjective = 2.5f;
+        public const float MoveReachableBonus = 0.05f;
     }
 }

@@ -16,11 +16,14 @@ namespace FDG.Ai.Tactician.Resolvers
     {
         private readonly ITableState _tableState;
         private readonly RuleEvaluator _evaluator;
+        private readonly TacticianPlanner? _planner;
 
-        public TacticianActivationResolver(ITableState tableState, RuleEvaluator evaluator)
+        public TacticianActivationResolver(ITableState tableState, RuleEvaluator evaluator,
+            TacticianPlanner? planner = null)
         {
             _tableState = tableState;
             _evaluator = evaluator;
+            _planner = planner;
         }
 
         public Task<DataBinding<UnitData>> Resolve(ChooseUnitToActivateRequest request)
@@ -30,7 +33,10 @@ namespace FDG.Ai.Tactician.Resolvers
                     $"AI received a {nameof(ChooseUnitToActivateRequest)} with no valid options.");
 
             if (request.ValidOptions.Count == 1)
+            {
+                _planner?.BeginActivation(request.ValidOptions[0].Option);
                 return Task.FromResult(request.ValidOptions[0].Option);
+            }
 
             DataBinding<UnitData> best = request.ValidOptions[0].Option;
             float bestScore = float.NegativeInfinity;
@@ -43,6 +49,7 @@ namespace FDG.Ai.Tactician.Resolvers
                     best = option.Option;
                 }
             }
+            _planner?.BeginActivation(best);
             return Task.FromResult(best);
         }
 

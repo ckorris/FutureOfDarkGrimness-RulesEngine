@@ -27,9 +27,17 @@ namespace FDG.Ai.Tactician
             // read-back (aura buffs) needs the game's own resolver-backed evaluator, which resolvers
             // do not receive today - recorded gap in the #191 ledger.
             var evaluator = new Rules.Dispatch.RuleEvaluator(new ProbabilisticDiceRoller());
+            var planner = new TacticianPlanner(tableState, evaluator);
 
-            // A4-1: activation order by urgency.
-            registry.RegisterResolver(new Resolvers.TacticianActivationResolver(tableState, evaluator));
+            // A4-1: activation order by urgency (also announces the active unit to the planner).
+            registry.RegisterResolver(new Resolvers.TacticianActivationResolver(tableState, evaluator, planner));
+
+            // A4-2: the (action x macro-action) pair is planned once at Choose Action and played out
+            // at the movement request; solo-rules instances are the per-request fallbacks (G3).
+            registry.RegisterResolver(new Resolvers.TacticianActionResolver(planner,
+                new FDG.Ai.Resolvers.AiStringSelectionResolver(tableState, playerID)));
+            registry.RegisterResolver(new Resolvers.TacticianMovementResolver(planner, tableState,
+                new FDG.Ai.Resolvers.AiDefineMovementResolver(tableState, playerID)));
 
             return registry;
         }

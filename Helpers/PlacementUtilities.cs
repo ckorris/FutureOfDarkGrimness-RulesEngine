@@ -82,6 +82,23 @@ namespace FDG
         /// circumscribed radius, so any facing counts). #029: the Aircraft off-table redeploy must come back
         /// on touching a table edge.
         /// </summary>
+        /// <summary>
+        /// Whether <paramref name="candidate"/> is within <paramref name="maxInches"/> of
+        /// <paramref name="start"/> — the per-model radius of a reposition-at-activation placement (#197).
+        /// A non-positive radius means unconstrained (every deployment / reserve arrival).
+        ///
+        /// The epsilon mirrors the movement validators' margin (see docs/ResolverGuide.md): a click resolved
+        /// through pixel-to-inch conversion, or an auto-placement that walks a grid, can land a hair over an
+        /// exact boundary and would otherwise be rejected for a distance the player cannot see.
+        /// </summary>
+        public static bool IsWithinStartRadius(Position candidate, Position start, float maxInches)
+        {
+            if (maxInches <= 0f) return true;
+            return Position.GetDistance2D(candidate, start) <= maxInches + StartRadiusEpsilonInches;
+        }
+
+        public const float StartRadiusEpsilonInches = 0.001f;
+
         public static bool TouchesZoneEdge(Position centre, float circumscribedRadiusInches, ZoneBounds bounds)
         {
             float nearestEdge = MathF.Min(

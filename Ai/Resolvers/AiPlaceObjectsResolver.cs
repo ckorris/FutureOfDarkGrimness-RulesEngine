@@ -39,7 +39,28 @@ namespace FDG.Ai.Resolvers
 
         /// <summary> The AI always places; it never declines a disembark it chose to make. </summary>
         public async Task<CancellableResult<List<PlacedObjectEntry<T>>>> Resolve(PlaceObjectsRequest<T> request)
-            => new Selected<List<PlacedObjectEntry<T>>>(await ChoosePlacements(request));
+        {
+            // #197 reposition-at-activation (Wolfborn / Bounding / Rapid Blink): "you MAY place all models
+            // within D3in of their position". The block-packing search below aims at a deployment-zone lane
+            // and knows nothing about each model's own D3in circle, so it would happily propose an illegal
+            // placement. The bot also has no way to value a 1-3in shuffle before it has chosen an action or a
+            // target. Standing still is always legal and always available, so it declines - the same
+            // conservative stance as the pre-attack ability menu's "skip". A real policy belongs to #191.
+            if (request.MaxDistanceFromStartInches > 0f)
+            {
+                return new Selected<List<PlacedObjectEntry<T>>>(StayPut(request));
+            }
+
+            return new Selected<List<PlacedObjectEntry<T>>>(await ChoosePlacements(request));
+        }
+
+        /// <summary>Every model exactly where it already stands — a no-op placement, trivially inside any
+        /// per-model radius and guaranteed not to break a cohesion or overlap rule it already satisfies.</summary>
+        private static List<PlacedObjectEntry<T>> StayPut(PlaceObjectsRequest<T> request) =>
+            request.ModelsToPlace
+                .Select(binding => new PlacedObjectEntry<T>(binding,
+                    binding.GetValue() is ModelData model ? model.Position : new Position()))
+                .ToList();
 
         private Task<List<PlacedObjectEntry<T>>> ChoosePlacements(PlaceObjectsRequest<T> request)
         {

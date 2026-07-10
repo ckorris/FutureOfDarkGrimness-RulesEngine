@@ -36,6 +36,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(GrantToken), "grantToken")]
 [JsonDerivedType(typeof(ConsumeToken), "consumeToken")]
 [JsonDerivedType(typeof(ClearTokenOnRoll), "clearTokenOnRoll")]
+[JsonDerivedType(typeof(RepositionAtActivation), "repositionAtActivation")]
 [JsonDerivedType(typeof(TriggeredMove), "triggeredMove")]
 [JsonDerivedType(typeof(Reactivate), "reactivate")]
 [JsonDerivedType(typeof(MultiplyWounds), "multiplyWounds")]
@@ -685,6 +686,35 @@ public abstract record Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
+        }
+    }
+
+    /// <summary>
+    /// The bearer's models may each be PLACED anywhere fully within a rolled distance of where they stand —
+    /// the corpus' reposition-at-activation rules (Wolfborn / Rapid Blink, "you may place all models with this
+    /// rule in it anywhere fully within D3\" of their position"; Bounding, D3+1\"). A placement, not a move:
+    /// nothing is asked of the path, only of the destination.
+    ///
+    /// <para>The die is rolled here, at Apply, exactly as <see cref="Heal"/> rolls its own — the operation
+    /// carries a concrete distance. Multiple entries SUM: Rapid Blink Boost widens "within D3\"" to
+    /// "within 2D3\"" by contributing a second, independently rolled D3, which is the increment discipline
+    /// every other Boost rule follows. The stage folds them into ONE placement rather than prompting twice.</para>
+    /// </summary>
+    public sealed record RepositionAtActivation(DiceExpression Distance, int PlusInches = 0) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            // Σ face·count over the histogram, like Heal: a distance is a continuous magnitude, so the
+            // probabilistic roller's expected value is meaningful here (unlike a pass/fail test, which must
+            // ride RollDecisive to stay binary).
+            IDiceResults results = ruleInvocation.DiceRoller!.Roll(Distance.Sides, 1f);
+            float inches = PlusInches;
+            for (int face = results.SideMin; face <= results.SideMax; face++)
+            {
+                inches += face * results.At(face);
+            }
+
+            operations.Add(new RuleOperation.RepositionModels(inches));
         }
     }
 

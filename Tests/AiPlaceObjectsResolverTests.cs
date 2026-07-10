@@ -99,6 +99,40 @@ namespace FDG.Tests
                 "a footprint that crosses the edge is rejected.");
         }
 
+        // #197 reposition-at-activation: a per-model radius makes the block-packing search meaningless (it aims
+        // at a deployment lane and knows nothing about each model's own circle), and the bot cannot value a
+        // 1-3in shuffle before it has chosen an action or a target. It declines by standing still - which is a
+        // legal answer, because the rule says "you MAY place".
+        [Test]
+        public async Task RepositionRequest_LeavesEveryModelWhereItStands()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var selfPlayer = new PlayerID(System.Guid.NewGuid());
+
+            var starts = new[] { new Position(12f, 20f), new Position(13f, 20f), new Position(12f, 21f) };
+            var placing = starts
+                .Select(p => store.GetDataBinding<ModelData>(
+                    store.Create(new ModelData(0.5f, new List<Weapon>(), p, store))))
+                .ToList();
+            store.Create(new UnitData(selfPlayer, "Wolfborn Pack", 4, 4, placing));
+
+            var resolver = new AiPlaceObjectsResolver<ModelData>(new TableState(store));
+            var wholeTable = new RectangularZone(0f, GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES,
+                0f, GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES);
+            var request = new PlaceObjectsRequest<ModelData>(selfPlayer, "Reposition", wholeTable, placing,
+                allowCancel: true, maxDistanceFromStartInches: 3f);
+
+            List<PlacedObjectEntry<ModelData>> result = Unwrap(await resolver.Resolve(request));
+
+            Assert.That(result.Select(e => e.Position), Is.EqualTo(starts).AsCollection,
+                "Standing still is always inside the radius and never breaks a rule the unit already satisfies.");
+            foreach (PlacedObjectEntry<ModelData> entry in result)
+            {
+                Assert.That(PlacementUtilities.IsWithinStartRadius(
+                    entry.Position, entry.Binding.GetValue().Position, 3f), Is.True);
+            }
+        }
+
         // #029: an edge-constrained placement (the Aircraft off-table redeploy) must come back on touching a
         // table edge, with the models facing inward from that edge (facing = heading, so the aircraft doesn't
         // immediately fly back off).

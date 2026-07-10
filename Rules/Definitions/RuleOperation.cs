@@ -252,6 +252,17 @@ public abstract record RuleOperation
     /// authority (<c>FatigueUtilities.ApplyFatigued</c>) via the <see cref="IOperationServices"/> seam.
     /// </summary>
     /// <summary>
+    /// The activating unit's models may each be placed within <see cref="MaxInches"/> of where they stand.
+    /// Resolution of <see cref="Effect.RepositionAtActivation"/>.
+    ///
+    /// <para>Deliberately NOT an <see cref="ExecutableOperation"/>: several of these can fire at once (a Rapid
+    /// Blink unit that also has Rapid Blink Boost emits two), and executing each would prompt the player twice.
+    /// <c>ActivationStartStage</c> sums them into a single placement instead — the same "the stage folds it"
+    /// shape <c>PreAttackStage</c> uses for DealHits.</para>
+    /// </summary>
+    public sealed record RepositionModels(float MaxInches) : RuleOperation;
+
+    /// <summary>
     /// Roll one die against <see cref="MinRoll"/> and, on a pass, strip every <see cref="TType"/> token from
     /// <see cref="Unit"/>. Resolution of <see cref="Effect.ClearTokenOnRoll"/> — the round-start Shaken
     /// recovery. Executable, not a sink fold: the roll reads live dice and the removal is imperative.

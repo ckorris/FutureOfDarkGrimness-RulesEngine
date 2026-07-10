@@ -345,10 +345,14 @@ public static class RuleFireLint
             // StartOfRoundExtraActionStage applies token ops and runs executables for every living unit.
             EHookID.Round_OnRoundStart => IsTokenOrExecutable(op),
 
-            // Activation_OnActivationStart / OnEndOfActivation carry activated abilities and token lifecycle,
-            // not passive sinks; a passive entry there can still legitimately grant or spend a token.
-            EHookID.Activation_OnActivationStart or EHookID.Activation_OnEndOfActivation =>
-                IsTokenOrExecutable(op),
+            // ActivationStartStage applies token ops, runs executables, and folds RepositionModels into one
+            // placement. (Before #197's reposition slice nothing evaluated passive entries here at all, which
+            // made this arm a false pass — the map has to track what a stage really does, not what it could.)
+            EHookID.Activation_OnActivationStart =>
+                op is RuleOperation.RepositionModels || IsTokenOrExecutable(op),
+
+            // Activation_OnEndOfActivation carries token lifecycle only.
+            EHookID.Activation_OnEndOfActivation => IsTokenOrExecutable(op),
 
             _ => false,
         };

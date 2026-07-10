@@ -39,11 +39,14 @@ namespace FDG.SaveLoad
                 warnings.Add($"Too many Heroes: {heroCount} (max {heroAllowance} at {army.PointsLimit} pts; 1 per {POINTS_PER_HERO}).");
             }
 
-            // Copy cap — no more than 3 of any same-named unit. Blank names are skipped, since several
-            // half-built (unnamed) entries shouldn't read as duplicates of each other.
+            // Copy cap — no more than 3 SQUADS of any same-named unit. A merged combined pair (one
+            // "X (Combined)" entry) is ONE squad toward the cap (Chris, 2026-07-10: doubled-up
+            // squads must not count twice), and it shares its group with plain "X" squads - hence
+            // the suffix strip. Blank names are skipped, since several half-built (unnamed)
+            // entries shouldn't read as duplicates of each other.
             foreach (IGrouping<string, UnitFileEntry> group in army.Units
                 .Where(u => !string.IsNullOrWhiteSpace(u.Name))
-                .GroupBy(u => u.Name, StringComparer.Ordinal)
+                .GroupBy(u => BaseUnitName(u.Name), StringComparer.Ordinal)
                 .Where(g => g.Count() > MAX_COPIES_PER_UNIT))
             {
                 warnings.Add($"Too many copies of \"{group.Key}\": {group.Count()} (max {MAX_COPIES_PER_UNIT}).");
@@ -58,6 +61,13 @@ namespace FDG.SaveLoad
 
             return warnings;
         }
+
+        /// <summary>The copy-cap group key: the unit's name with the compiler's " (Combined)"
+        /// merge suffix stripped, so a combined pair groups with plain squads of the same unit.</summary>
+        private static string BaseUnitName(string name) =>
+            name.EndsWith(" (Combined)", StringComparison.Ordinal)
+                ? name[..^" (Combined)".Length]
+                : name;
 
         /// <summary>True if the unit carries the Hero rule (recursing through alias entries). The single
         /// definition of "is this army-file unit a Hero", shared with the Army Builder UI.</summary>

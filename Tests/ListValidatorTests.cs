@@ -110,16 +110,41 @@ public class ListValidatorTests
     private static BuilderUnit Warriors(string id) => new() { RosterUnitId = "warriors", Id = id };
 
     [Test]
-    public void ValidCombinedPair_NoCombinedIssues_AndCountsAsTwoCopiesForComposition()
+    public void ValidCombinedPair_NoCombinedIssues_AndCountsAsOneSquadForComposition()
     {
-        // Four warriors squads as two combined pairs: no combined-link issues, but composition still sees
-        // FOUR copies (the merge must not hide copies from the force-org caps).
+        // Four warriors rows as two combined pairs = TWO squads on the table (Chris, 2026-07-10:
+        // doubled-up squads must not count twice toward the copy cap) - no copy warning.
         var issues = Check(DemoBook.Build(), List(100000,
             Warriors("a"), Combined("b", "a"), Warriors("c"), Combined("d", "c")));
 
         Assert.That(issues.Any(i => i.Message.Contains("combine")), Is.False);
         Assert.That(issues.Any(i => i.Severity == ListIssueSeverity.Warning && i.Message.Contains("copies")),
-            Is.True, "force-org copy caps run on the unmerged rows");
+            Is.False, "a combined pair is one squad toward the copy cap");
+    }
+
+    [Test]
+    public void FourCombinedPairs_ExceedTheCopyCap()
+    {
+        // Eight rows as four pairs = four squads: one over the 3-copy cap.
+        var issues = Check(DemoBook.Build(), List(100000,
+            Warriors("a"), Combined("b", "a"), Warriors("c"), Combined("d", "c"),
+            Warriors("e"), Combined("f", "e"), Warriors("g"), Combined("h", "g")));
+
+        Assert.That(issues.Any(i => i.Severity == ListIssueSeverity.Warning && i.Message.Contains("copies")),
+            Is.True, "four squads of one unit exceed the cap even when each is a combined pair");
+    }
+
+    [Test]
+    public void CombinedPairsAndPlainSquads_ShareOneCopyGroup()
+    {
+        // Two pairs + two plain squads = four squads of the same unit - over the cap; the
+        // " (Combined)" name suffix must not split the group.
+        var issues = Check(DemoBook.Build(), List(100000,
+            Warriors("a"), Combined("b", "a"), Warriors("c"), Combined("d", "c"),
+            Warriors("e"), Warriors("f")));
+
+        Assert.That(issues.Any(i => i.Severity == ListIssueSeverity.Warning && i.Message.Contains("copies")),
+            Is.True, "pairs and plain squads of the same unit count into one group");
     }
 
     [Test]

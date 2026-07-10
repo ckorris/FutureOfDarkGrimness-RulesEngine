@@ -74,17 +74,18 @@ namespace FDG.ArmyBuilding
 
             ValidateCombinedLinks(book, list, issues);
 
-            // Hero-join + composition checks run on the UNMERGED per-row units: GDF counts a combined unit
-            // as two copies for composition caps, and join targets are authored against row ids (the
-            // compiler remaps a join into a merged host at compile time).
+            // Hero-join checks run on the UNMERGED per-row units: join targets are authored against
+            // row ids (the compiler remaps a join into a merged host at compile time).
             var unmerged = new BuiltArmyFile { PointsLimit = list.PointsLimit };
             unmerged.Units.AddRange(perUnit.Where(u => u is not null)!);
 
             ValidateHeroJoins(unmerged, issues);
 
-            // Army-composition caps (reuse the engine validator) as Warnings. The points cap is already an Error
-            // above, so drop its duplicate from the warning set.
-            foreach (string warning in ForceOrgValidator.Validate(unmerged))
+            // Army-composition caps (reuse the engine validator) as Warnings, on the MERGED output:
+            // a combined pair is ONE squad toward the copy cap (Chris, 2026-07-10 - doubled-up
+            // squads must not count twice; supersedes the earlier count-as-two-copies reading).
+            // The points cap is already an Error above, so drop its duplicate from the warning set.
+            foreach (string warning in ForceOrgValidator.Validate(compiled))
                 if (!warning.StartsWith("Over points limit"))
                     issues.Add(new ListIssue(warning, ListIssueSeverity.Warning));
 

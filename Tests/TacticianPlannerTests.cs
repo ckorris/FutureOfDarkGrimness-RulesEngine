@@ -97,6 +97,36 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void ShooterFarFromObjective_ClosesOnIt_InsteadOfFreezing()
+        {
+            // The a5-2-gate loss mechanism (#191 A5-3): an uncontested objective two moves away
+            // and a scary horde out of rifle reach - the on-marker-only objective term scored Hold
+            // best (offense 0, retaliation punishes closing) and the army froze while the horde
+            // took the marker race. The objective gradient must make the unit start walking.
+            _store.Create(new ObjectiveData(new Position(44f, 24f), _store));
+            var shooters = MakeUnit(_us, 3, Rifle(), atX: 20f, atZ: 24f); // 24" out
+            MakeUnit(_them, 6, Blade(attacks: 3), atX: 44f, atZ: 4f);     // looming, out of range
+            _planner.BeginActivation(shooters);
+
+            string? action = _planner.ChooseAction(new[]
+            {
+                ChooseActionStage.MOVEMENT_CHOICE_NAME, ChooseActionStage.CHARGE_CHOICE_NAME,
+                ChooseActionStage.PASS_CHOICE_NAME, // no Shoot: nothing is in range, engine gates it
+            });
+            List<StageResolution.Requests.ModelMoveEntry>? move = _planner.TakePlannedMove(shooters);
+
+            Assert.That(action, Is.EqualTo(ChooseActionStage.MOVEMENT_CHOICE_NAME),
+                "standing still concedes the marker race");
+            Assert.That(move, Is.Not.Null);
+            var ends = move!.Select(e => e.Positions[^1]).ToList();
+            var endCentroid = new Position(ends.Average(p => p.x), ends.Average(p => p.z));
+            float closed = Distance(new Position(20f, 24f), new Position(44f, 24f))
+                - Distance(endCentroid, new Position(44f, 24f));
+            Assert.That(closed, Is.GreaterThanOrEqualTo(4f),
+                "the move must make real progress toward the objective");
+        }
+
+        [Test]
         public void SecondChooseAction_AfterTheMove_ShootsThenPasses()
         {
             _store.Create(new ObjectiveData(new Position(30f, 24f), _store));

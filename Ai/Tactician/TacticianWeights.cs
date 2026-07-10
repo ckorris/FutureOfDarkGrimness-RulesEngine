@@ -43,6 +43,14 @@ namespace FDG.Ai.Tactician
         // still dominate when reachable.
         public const float MoveApproach = 0.75f;
 
+        // ADDED 2026-07-10 (A5-3) from the a5-2-gate loss reading: ObjectiveDelta only pays ON the
+        // marker, so a unit two moves out had NO reason to close - the same greedy-horizon hole as
+        // the melee approach, on the other win condition. Shooter armies froze against hordes
+        // (every exchange negative + retaliation punishes proximity => Hold/Pass) and conceded the
+        // marker race in round 4. Approach pays a fraction of the gap closed toward the nearest
+        // objective we do not already own; below MoveObjective so ARRIVING still dominates.
+        public const float MoveObjectiveApproach = 0.4f;
+
         // --- Casting (A5) ---------------------------------------------------------------------------
         // A cast is layered (it never ends the activation), so the planner casts whenever the net
         // expected value is positive: base 4+ success chance x the summed target values, minus a

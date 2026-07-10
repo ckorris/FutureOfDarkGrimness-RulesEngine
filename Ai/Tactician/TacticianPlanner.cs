@@ -308,12 +308,36 @@ namespace FDG.Ai.Tactician
             }
 
             float objectiveDelta = ObjectiveDelta(self, end);
+            float objectiveApproach = ObjectiveApproach(now, end);
 
             return TacticianWeights.MoveDamage * offense
                  - TacticianWeights.MoveRetaliation * retaliation
                  + TacticianWeights.MoveObjective * objectiveDelta
                  + TacticianWeights.MoveApproach * approach
+                 + TacticianWeights.MoveObjectiveApproach * objectiveApproach
                  + (candidate.Feasibility == EFeasibility.Reachable ? TacticianWeights.MoveReachableBonus : 0f);
+        }
+
+        // A5-3: the gradient HALF of the objective term - the fraction of the gap to the nearest
+        // not-ours objective this move closes. ObjectiveDelta pays only ON the marker; without a
+        // gradient a unit two moves out never starts walking (the shooter-freeze mechanism from
+        // the a5-2-gate loss reading, the melee-approach bug's twin).
+        private float ObjectiveApproach(Position now, Position end)
+        {
+            float onIt = TacticalAnalysis.ObjectiveSeizureRadiusInches + 1.5f;
+            float best = 0f;
+            foreach (ObjectiveProjection projection in TacticalAnalysis.ProjectObjectives(_tableState))
+            {
+                bool ours = projection.ProjectedOwner.HasValue
+                    && projection.ProjectedOwner.Value == _activeUnit!.GetValue().PlayerID;
+                if (ours) continue;
+
+                float gapNow = Distance(now, projection.Objective.Position) - onIt;
+                if (gapNow <= 0f) continue; // already there: ObjectiveDelta pays, not the gradient
+                float gapEnd = Math.Max(0f, Distance(end, projection.Objective.Position) - onIt);
+                best = Math.Max(best, Math.Clamp((gapNow - gapEnd) / gapNow, 0f, 1f));
+            }
+            return best;
         }
 
         private (float Margin, float Reach) MeleeApproachAgainst(DataBinding<UnitData> enemyBinding)

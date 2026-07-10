@@ -43,6 +43,11 @@ namespace FDG.Stages
 
         public override async Task Enter(IUnitActionContext context)
         {
+            // #203: Choose Action is the hub every action loop passes through (shoot -> back, cast ->
+            // back, layered actions...), so a yield here bounds the stack WITHIN an activation too - a
+            // buggy action ping-pong (#200's livelock) then idles at constant depth until the watchdog
+            // reports it, instead of killing the whole process.
+            await Task.Yield();
 
             GameContext.LogDebug("Entered Choose Action.");
 

@@ -18,6 +18,12 @@ namespace FDG.Stages
 
         public override async Task Enter(ISingleTurnContext context)
         {
+            // #203: stage transitions complete synchronously, so without a yield every decision in the
+            // game leaves frames on one ever-deepening call stack and a long game dies as an uncatchable
+            // StackOverflow. Yielding once per activation unwinds the accumulated chain, bounding stack
+            // depth by the deepest single activation instead of the whole game.
+            await Task.Yield();
+
             GameContext.LogDebug($"ReconcileEndOfActivationStage entrance {_enterCount}");
 
             // Clear the just-activated unit's "used this activation" markers (once-per-activation cost gates,

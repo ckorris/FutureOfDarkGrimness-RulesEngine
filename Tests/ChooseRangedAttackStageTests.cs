@@ -413,6 +413,90 @@ namespace FDG.Tests
         // StageBinding.Activate refuses to fire if the binding hasn't been .Bind()'d to a target.
         // The NoOpLayer drops every transition on the floor, so the event names are irrelevant —
         // we just need *something* bound.
+        // ── #200: a spent Limited+Deadly weapon must not lock out the unit's other weapons ─────────
+        // The Orks-pool livelock: Deadly-first gating ran BEFORE Limited-spent gating, so an empty
+        // rocket still demanded to be "fired first" and every option went unselectable - while the
+        // Shoot-action gate (which skipped the spent rocket but never applied Deadly gating) kept
+        // saying "fireable". Deterministic AI: Choose Action <-> Shoot forever. Both now share one
+        // gating pipeline; these tests pin the two halves.
+
+        [Test]
+        public async Task Enter_SpentLimitedDeadlyWeapon_OthersStillFireable_AndGateAgrees()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var requester = new CapturingRangedRequester { Reply = _ => new Cancelled<RangedAttackChoice>() };
+            var ctx = new TestGameContextWithRequester(store, requester);
+            var attackerPlayer = new PlayerID(Guid.NewGuid());
+            var enemyPlayer = new PlayerID(Guid.NewGuid());
+            store.Create(new TeamData(0, new List<PlayerID> { attackerPlayer }));
+            store.Create(new TeamData(1, new List<PlayerID> { enemyPlayer }));
+
+            Weapon rocket = new Weapon("Rocket", rangeInches: 18f, attacks: 1, armorPenetration: 1);
+            rocket.AttachRuleDefinition(new ResolvedRule("Deadly", CoreRuleCatalog.Deadly,
+                new RuleArgument[] { new RuleArgument.Int(3) }));
+            rocket.AttachRuleDefinition(new ResolvedRule("Limited", CoreRuleCatalog.Limited));
+
+            var attackerUnit = MakeUnit(store, attackerPlayer, "Bikers",
+                new[] { MakeModel(store, new Position(0, 0, 0), rocket, Rifle()) });
+            store.Create(new ArmyData(attackerPlayer, new List<DataBinding<UnitData>> { attackerUnit }));
+            var enemyUnit = MakeUnit(store, enemyPlayer, "Enemy",
+                new[] { MakeModel(store, new Position(10, 0, 0)) });
+            store.Create(new ArmyData(enemyPlayer, new List<DataBinding<UnitData>> { enemyUnit }));
+
+            Rules.Dispatch.LimitedRules.MarkFired(attackerUnit.GetValue(), rocket);
+
+            // The gate half: the rifle is still fireable, so Shoot must stay offered...
+            Assert.That(ChooseRangedAttackStage.HasAnyFireableTarget(attackerUnit, ctx), Is.True,
+                "the rifle can fire - the spent rocket must not gray out Shoot");
+
+            // ...and the stage half must AGREE: it requests a choice (no bounce), the rifle's target
+            // selectable, the spent rocket's gated by Limited - never by "fire Deadly first".
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+            await stage.Enter(new CombatActionContext(ctx, attackerUnit, isMelee: false));
+
+            Assert.That(requester.Captured, Is.Not.Null,
+                "the stage must offer a weapon choice, not bounce back to Choose Action (#200)");
+            var rifleStats = requester.Captured!.WeaponOptions.Single(o => o.Weapon.Name == "Rifle")
+                .WeaponTargetStats.Single();
+            var rocketStats = requester.Captured!.WeaponOptions.Single(o => o.Weapon.Name == "Rocket")
+                .WeaponTargetStats.Single();
+            Assert.That(rifleStats.UnselectableReason, Is.Null, "the rifle's target is selectable");
+            Assert.That(rocketStats.UnselectableReason, Does.Contain("Limited"),
+                "the spent rocket is gated by Limited, not by Deadly-first");
+        }
+
+        [Test]
+        public async Task GateAndStage_AgreeWhenOnlyWeaponIsSpent()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var requester = new CapturingRangedRequester { Reply = _ => new Cancelled<RangedAttackChoice>() };
+            var ctx = new TestGameContextWithRequester(store, requester);
+            var attackerPlayer = new PlayerID(Guid.NewGuid());
+            var enemyPlayer = new PlayerID(Guid.NewGuid());
+            store.Create(new TeamData(0, new List<PlayerID> { attackerPlayer }));
+            store.Create(new TeamData(1, new List<PlayerID> { enemyPlayer }));
+
+            Weapon rocket = new Weapon("Rocket", rangeInches: 18f, attacks: 1, armorPenetration: 1);
+            rocket.AttachRuleDefinition(new ResolvedRule("Limited", CoreRuleCatalog.Limited));
+            var attackerUnit = MakeUnit(store, attackerPlayer, "Bikers",
+                new[] { MakeModel(store, new Position(0, 0, 0), rocket) });
+            store.Create(new ArmyData(attackerPlayer, new List<DataBinding<UnitData>> { attackerUnit }));
+            var enemyUnit = MakeUnit(store, enemyPlayer, "Enemy",
+                new[] { MakeModel(store, new Position(10, 0, 0)) });
+            store.Create(new ArmyData(enemyPlayer, new List<DataBinding<UnitData>> { enemyUnit }));
+
+            Rules.Dispatch.LimitedRules.MarkFired(attackerUnit.GetValue(), rocket);
+
+            Assert.That(ChooseRangedAttackStage.HasAnyFireableTarget(attackerUnit, ctx), Is.False,
+                "nothing can fire - Shoot must be grayed out");
+
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+            await stage.Enter(new CombatActionContext(ctx, attackerUnit, isMelee: false));
+            Assert.That(requester.Captured, Is.Null, "the stage agrees: nothing to offer");
+        }
+
         private static void BindAllStageEvents(ChooseRangedAttackStage stage)
         {
             stage.OnChoseWeapon.Bind("test-on-chose-weapon");

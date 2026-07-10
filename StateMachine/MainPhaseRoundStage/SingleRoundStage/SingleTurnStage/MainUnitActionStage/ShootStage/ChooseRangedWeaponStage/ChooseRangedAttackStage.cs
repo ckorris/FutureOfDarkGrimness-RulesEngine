@@ -35,14 +35,7 @@ namespace FDG.Stages
             List<WeaponOption> weaponOptions = BuildWeaponOptions(context.AttackingUnit, context.AvailableWeapons,
                 context.GameContext, terrainSnapshot, context.AttackedDefenderRefs);
 
-            // #028: Deadly (wound-multiplier) weapons must be fired before the unit's other weapons, so a
-            // clump removes whole models before normal wounds spread across the unit. Run after option-
-            // building so a Deadly weapon with no valid target this action doesn't lock out the rest.
-            ApplyDeadlyFirstGating(weaponOptions, context.AttackingUnit, context.GameContext);
-
-            // #032 Limited: a weapon may only be fired once per game. Exclude any Limited weapon whose every
-            // living carrier has already fired it (tracked by a per-model token), so it's no longer offered.
-            ApplyLimitedSpentGating(weaponOptions, context.AttackingUnit);
+            ApplyTargetGating(weaponOptions, context.AttackingUnit, context.GameContext);
 
             if (!HasAnyFireableOption(weaponOptions))
             {
@@ -108,6 +101,29 @@ namespace FDG.Stages
         /// Each fired weapon leaves <see cref="ICombatActionContext.AvailableWeapons"/> once used, so once
         /// the last Deadly weapon is spent this gate no longer fires and the rest become selectable.
         /// </summary>
+        /// <summary>
+        /// The post-build gating pipeline, shared by <see cref="Enter"/> and
+        /// <see cref="HasAnyFireableTarget"/> so the Shoot ACTION gate and the shoot STAGE can never
+        /// disagree about whether anything is fireable (#200 - they did, and a deterministic AI
+        /// livelocked on the Choose Action / Shoot bounce).
+        /// ORDER MATTERS (#200's root cause): Limited-spent gating must run BEFORE Deadly-first
+        /// gating - a spent Limited+Deadly weapon can never fire again, so it must not count as a
+        /// priority weapon that locks out the unit's other weapons ("fire the empty rocket first").
+        /// </summary>
+        private static void ApplyTargetGating(List<WeaponOption> weaponOptions,
+            DataBinding<UnitData> attackingUnit, IGameContext gameContext)
+        {
+            // #032 Limited: a weapon may only be fired once per game. Exclude any Limited weapon whose
+            // every living carrier has already fired it (per-model token), so it's no longer offered.
+            ApplyLimitedSpentGating(weaponOptions, attackingUnit);
+
+            // #028: Deadly (wound-multiplier) weapons must be fired before the unit's other weapons, so
+            // a clump removes whole models before normal wounds spread. Runs after option-building AND
+            // after Limited gating: a Deadly weapon with no valid target - or one already spent - must
+            // not lock out the rest.
+            ApplyDeadlyFirstGating(weaponOptions, attackingUnit, gameContext);
+        }
+
         private static void ApplyDeadlyFirstGating(List<WeaponOption> weaponOptions,
             DataBinding<UnitData> attackingUnit, IGameContext gameContext)
         {
@@ -199,15 +215,10 @@ namespace FDG.Stages
             List<WeaponOption> options = BuildWeaponOptions(attackingUnit, availableWeapons, gameContext,
                 terrainSnapshot, Array.Empty<DataReference>());
 
-            foreach (WeaponOption wo in options)
-            {
-                // #032 Limited: a fully-spent Limited weapon can't fire, so it must not keep Shoot available.
-                if (LimitedRules.IsSpent(unitValue, wo.Weapon)) continue;
-                foreach (WeaponTargetStats ts in wo.WeaponTargetStats)
-                    if (ts.UnselectableReason == null && ts.modelsThatCanShoot.Count > 0)
-                        return true;
-            }
-            return false;
+            // The stage's own gating pipeline, verbatim (#200): the gate must answer exactly what the
+            // stage will conclude, or a deterministic AI ping-pongs between Choose Action and Shoot.
+            ApplyTargetGating(options, attackingUnit, gameContext);
+            return HasAnyFireableOption(options);
         }
 
         private static List<WeaponOption> BuildWeaponOptions(DataBinding<UnitData> attackingUnit,

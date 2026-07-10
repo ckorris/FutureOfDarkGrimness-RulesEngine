@@ -194,9 +194,17 @@ namespace FDG.Ai.Tactician
         public static List<ModelMoveEntry> BuildPathCandidate(DataBinding<UnitData> unit,
             List<DataBinding<ModelData>> living, List<Position> path, float arcLengthInches,
             IReadOnlyList<ITerrain> terrain, float baseRadiusInches, float maxDistanceInches,
-            EFormation formation = EFormation.Grid)
+            EFormation formation = EFormation.Grid, (float X, float Z)? lineAxis = null)
         {
             if (arcLengthInches <= 0f || path.Count < 2) return StayInPlace(unit);
+
+            // Pre-clamp so the worst-case per-model move (arc + current spread + formation radius)
+            // fits the budget - otherwise the first candidate always over-runs and the ladder halves
+            // the whole move, wasting half the budget. Conservative for waypoint paths (the clamp is
+            // direction-agnostic), which only ever shortens, never invalidates.
+            arcLengthInches = CohesiveFormation.ClampRepackStep(
+                living, path[0].x, path[0].z, arcLengthInches, maxDistanceInches);
+            if (arcLengthInches <= 0f) return StayInPlace(unit);
 
             (Position endpoint, List<Position> passed, _) =
                 GridPathfinder.AdvanceAlongPath(path, arcLengthInches, terrain, baseRadiusInches);
@@ -215,8 +223,11 @@ namespace FDG.Ai.Tactician
             }
             else
             {
+                // A Line spreads along the caller's axis when given (M8: perpendicular to the lane
+                // being walled, regardless of approach direction); default: across the move.
+                (float lineX, float lineZ) = lineAxis ?? (-dirZ, dirX);
                 destinations = formation == EFormation.Line
-                    ? PackLine(living, endpoint.x, endpoint.z, -dirZ, dirX)
+                    ? PackLine(living, endpoint.x, endpoint.z, lineX, lineZ)
                     : CohesiveFormation.PackGrid(living, endpoint.x, endpoint.z);
             }
 
@@ -239,7 +250,7 @@ namespace FDG.Ai.Tactician
             float moveBudgetInches, float maxDistanceInches,
             Func<ModelMoveEntry, ModelMoveBudget> budgetFor,
             bool canMoveThroughEnemies, bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
-            EFormation formation = EFormation.Grid)
+            EFormation formation = EFormation.Grid, (float X, float Z)? lineAxis = null)
         {
             var terrain = tableState.Terrain.Objects.ToList();
             var enemies = LiveEnemyFootprints(tableState, unit.GetValue().PlayerID);
@@ -264,7 +275,7 @@ namespace FDG.Ai.Tactician
 
             return ValidateWithBackoff(
                 arc => BuildPathCandidate(unit, living, path, arc, terrain, baseRadius,
-                    maxDistanceInches, formation),
+                    maxDistanceInches, formation, lineAxis),
                 budget, unit, living, budgetFor, enemies,
                 canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain);
         }

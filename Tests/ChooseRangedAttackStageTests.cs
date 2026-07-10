@@ -467,6 +467,50 @@ namespace FDG.Tests
         }
 
         [Test]
+        public async Task DeadDeadlyCarrier_DoesNotGateTheSurvivorsWeapons()
+        {
+            // Chris's follow-up to #200: if the ONLY model carrying a Deadly weapon dies, the unit's
+            // other weapons must not be locked behind "fire Deadly first". Safe by construction today
+            // (weapon pools and shooters both enumerate LIVING models only) - pinned here so it stays so.
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var requester = new CapturingRangedRequester { Reply = _ => new Cancelled<RangedAttackChoice>() };
+            var ctx = new TestGameContextWithRequester(store, requester);
+            var attackerPlayer = new PlayerID(Guid.NewGuid());
+            var enemyPlayer = new PlayerID(Guid.NewGuid());
+            store.Create(new TeamData(0, new List<PlayerID> { attackerPlayer }));
+            store.Create(new TeamData(1, new List<PlayerID> { enemyPlayer }));
+
+            Weapon rocket = new Weapon("Rocket", rangeInches: 18f, attacks: 1, armorPenetration: 1);
+            rocket.AttachRuleDefinition(new ResolvedRule("Deadly", CoreRuleCatalog.Deadly,
+                new RuleArgument[] { new RuleArgument.Int(3) }));
+
+            var rocketeer = MakeModel(store, new Position(0, 0, 0), rocket);
+            var rifleman = MakeModel(store, new Position(1, 0, 0), Rifle());
+            var attackerUnit = MakeUnit(store, attackerPlayer, "Squad", new[] { rocketeer, rifleman });
+            store.Create(new ArmyData(attackerPlayer, new List<DataBinding<UnitData>> { attackerUnit }));
+            var enemyUnit = MakeUnit(store, enemyPlayer, "Enemy",
+                new[] { MakeModel(store, new Position(10, 0, 0)) });
+            store.Create(new ArmyData(enemyPlayer, new List<DataBinding<UnitData>> { enemyUnit }));
+
+            rocketeer.GetValue().DealWounds(rocketeer.GetValue().TotalWounds); // the rocketeer dies
+
+            Assert.That(ChooseRangedAttackStage.HasAnyFireableTarget(attackerUnit, ctx), Is.True,
+                "the surviving rifleman can fire");
+
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+            await stage.Enter(new CombatActionContext(ctx, attackerUnit, isMelee: false));
+
+            Assert.That(requester.Captured, Is.Not.Null, "the stage must offer the rifle");
+            Assert.That(requester.Captured!.WeaponOptions.Select(o => o.Weapon.Name),
+                Does.Not.Contain("Rocket"), "a dead model's weapon is not offered at all");
+            var rifleStats = requester.Captured!.WeaponOptions.Single(o => o.Weapon.Name == "Rifle")
+                .WeaponTargetStats.Single();
+            Assert.That(rifleStats.UnselectableReason, Is.Null,
+                "the rifle must not be gated behind a dead model's Deadly weapon");
+        }
+
+        [Test]
         public async Task GateAndStage_AgreeWhenOnlyWeaponIsSpent()
         {
             var store = GameDataStore.GameDataStoreBuilder.GetDefault();

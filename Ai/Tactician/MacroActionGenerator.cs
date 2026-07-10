@@ -162,18 +162,20 @@ namespace FDG.Ai.Tactician
                     targetEnemy: rankedEnemies[0], sharedGrid: sharedGrid));
             }
 
-            // M8 - block the biggest threat's lane to our most valuable asset (a LINE across it).
+            // M8 - block the biggest threat's lane to our most valuable assets (a LINE across it).
+            // A5-8: two lanes (top-2 assets by value) - the PLANNER's screen credit decides which
+            // ward is genuinely threatened (threatened-value re-key); the generator just makes
+            // sure the paying lane has a candidate standing on it.
             if (enemies.Count > 0)
             {
                 IUnit threat = rankedEnemies[0];
-                Position? asset = MostValuableAssetPosition(tableState, self, friends);
-                if (asset != null)
+                foreach (Position asset in AssetPositions(tableState, self, friends))
                 {
                     Position threatPos2 = Centroid(threat);
-                    Position lane = Midpoint(threatPos2, asset.Value);
+                    Position lane = Midpoint(threatPos2, asset);
                     // The barrier spreads PERPENDICULAR to the lane it walls, whatever direction the
                     // blocker approaches from.
-                    float laneDx = asset.Value.x - threatPos2.x, laneDz = asset.Value.z - threatPos2.z;
+                    float laneDx = asset.x - threatPos2.x, laneDz = asset.z - threatPos2.z;
                     candidates.Add(Plan(EMacroIntent.Block,
                         $"intent=Block enemy={threat.Name}", EActionType.Rush,
                         unit, living, tableState, evaluator, lane, rush,
@@ -183,18 +185,21 @@ namespace FDG.Ai.Tactician
                 }
             }
 
-            // M9 - escort the most valuable OTHER friendly unit, interposing toward its threat.
+            // M9 - escort valuable OTHER friendly units, interposing toward each one's threat
+            // (top-2 by value, same A5-8 rationale as M8: the planner picks the paying lane).
             if (friends.Count > 0 && enemies.Count > 0)
             {
-                IUnit ward = friends.OrderByDescending(TacticalAnalysis.UnitValue).First();
-                Position wardPos = Centroid(ward);
-                IUnit wardThreat = enemies.OrderBy(e => Distance(Centroid(e), wardPos)).First();
-                Position goal = PointAtDistanceFrom(wardPos, Centroid(wardThreat), -2.5f);
-                candidates.Add(Plan(EMacroIntent.Escort,
-                    $"intent=Escort ally={ward.Name}", EActionType.Rush,
-                    unit, living, tableState, evaluator, ClampToTable(goal), rush,
-                    canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, goalRadius: 2f,
-                    targetAlly: ward, sharedGrid: sharedGrid));
+                foreach (IUnit ward in friends.OrderByDescending(TacticalAnalysis.UnitValue).Take(2))
+                {
+                    Position wardPos = Centroid(ward);
+                    IUnit wardThreat = enemies.OrderBy(e => Distance(Centroid(e), wardPos)).First();
+                    Position goal = PointAtDistanceFrom(wardPos, Centroid(wardThreat), -2.5f);
+                    candidates.Add(Plan(EMacroIntent.Escort,
+                        $"intent=Escort ally={ward.Name}", EActionType.Rush,
+                        unit, living, tableState, evaluator, ClampToTable(goal), rush,
+                        canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, goalRadius: 2f,
+                        targetAlly: ward, sharedGrid: sharedGrid));
+                }
             }
 
             // M10 - concentrate on the rest of the army's centroid.
@@ -466,15 +471,19 @@ namespace FDG.Ai.Tactician
 
         // --- M8 asset choice ----------------------------------------------------------------------------
 
-        private static Position? MostValuableAssetPosition(ITableState tableState, UnitData self,
+        private static IEnumerable<Position> AssetPositions(ITableState tableState, UnitData self,
             List<IUnit> friends)
         {
             if (friends.Count > 0)
-                return Centroid(friends.OrderByDescending(TacticalAnalysis.UnitValue).First());
+            {
+                foreach (IUnit friend in friends.OrderByDescending(TacticalAnalysis.UnitValue).Take(2))
+                    yield return Centroid(friend);
+                yield break;
+            }
 
             IObjective? owned = tableState.Objectives.Objects
                 .FirstOrDefault(o => o.OwnerID.HasValue && o.OwnerID.Value == self.PlayerID);
-            return owned?.Position;
+            if (owned != null) yield return owned.Position;
         }
 
         // --- geometry helpers ------------------------------------------------------------------------

@@ -339,9 +339,13 @@ namespace FDG.Ai.Tactician
                     && candidate.Feasibility == EFeasibility.Reachable)
                 {
                     MeleeEstimate melee = CombatMath.EstimateMelee(_evaluator, _activeUnit, enemyBinding);
+                    // A5-8 (Chris): a landed charge also degrades the target's next volley (it
+                    // still shoots on its own activation - with fewer guns and chargers in the
+                    // way), so tying up a shooter earns a tarpit bonus on top of the exchange.
                     offense = Math.Max(offense,
                         ValueFraction(melee.AttackerAttack.ExpectedWounds, enemy)
-                        - ValueFraction(melee.DefenderReturn.ExpectedWounds, self));
+                        - ValueFraction(melee.DefenderReturn.ExpectedWounds, self)
+                        + TacticianWeights.ChargeTarpitPerWound * TacticalAnalysis.RangedOutputWounds(enemy));
                 }
                 else if (CanShootAfter(candidate))
                 {
@@ -402,8 +406,9 @@ namespace FDG.Ai.Tactician
 
             return TacticianWeights.MoveDamage * offense
                  - TacticianWeights.MoveRetaliation * retaliation
-                 + urgency * (TacticianWeights.MoveObjective * objectiveDelta
-                              + TacticianWeights.MoveObjectiveApproach * objectiveApproach)
+                 + urgency * TacticianWeights.MoveObjective * objectiveDelta
+                 // A5-8: the gradient is deadline-scaled per objective INSIDE ObjectiveApproach.
+                 + TacticianWeights.MoveObjectiveApproach * objectiveApproach
                  + TacticianWeights.MoveApproach * approach
                  + TacticianWeights.MoveScreen * ScreenValue(end)
                  + (candidate.Feasibility == EFeasibility.Reachable ? TacticianWeights.MoveReachableBonus : 0f);
@@ -438,37 +443,47 @@ namespace FDG.Ai.Tactician
             _screenLaneComputed = true;
 
             UnitData self = _activeUnit!.GetValue();
+            // A5-8 (Chris): pick the ward by THREATENED value, not raw value - of everything in
+            // the army, a D2/Tough(18) monolith needs protection the least, and while it topped
+            // the raw-value pick its ~zero exchange margin nulled the lane so NOBODY screened
+            // ANYONE. Ward = the friendly that stands to LOSE the most value to the melee threat
+            // nearest it (A5-4b margin, so a counter-blade powerhouse still needs no screen).
+            List<DataBinding<UnitData>> meleeEnemies = EnemyBindings(self.PlayerID)
+                .Where(e => e.GetValue().GetMeleeWeapons().Count > 0).ToList();
             DataBinding<UnitData>? ward = null;
-            float wardValue = 0f;
+            DataBinding<UnitData>? threat = null;
+            float wardThreatValue = 0f;
             foreach (DataBinding<UnitData> friendly in FriendlyBindings(self.PlayerID))
             {
                 if (friendly.Reference.Equals(_activeUnit.Reference)) continue;
+
+                Position friendlyPos = Centroid(friendly.GetValue());
+                DataBinding<UnitData>? nearest = null;
+                float nearestDistance = float.MaxValue;
+                foreach (DataBinding<UnitData> enemyBinding in meleeEnemies)
+                {
+                    float d = Distance(Centroid(enemyBinding.GetValue()), friendlyPos);
+                    if (d < nearestDistance) { nearestDistance = d; nearest = enemyBinding; }
+                }
+                // A screen only matters while the threat could realistically reach the ward soon
+                // (their move + charge next activation, with a little slack).
+                if (nearest == null || nearestDistance > 26f) continue;
+
+                MeleeEstimate exchange = CombatMath.EstimateMelee(_evaluator, nearest, friendly);
+                float inbound = ValueFraction(exchange.AttackerAttack.ExpectedWounds, friendly.GetValue());
                 // A5-6: a loaded transport is worth boat + payload - protect the delivery.
-                float value = TacticalAnalysis.UnitValueWithCargo(friendly.GetValue(), _tableState);
-                if (value > wardValue) { wardValue = value; ward = friendly; }
+                float plainValue = TacticalAnalysis.UnitValue(friendly.GetValue());
+                if (plainValue > 0f)
+                    inbound *= TacticalAnalysis.UnitValueWithCargo(friendly.GetValue(), _tableState) / plainValue;
+                float margin = inbound
+                    - ValueFraction(exchange.DefenderReturn.ExpectedWounds, nearest.GetValue());
+                if (margin <= wardThreatValue) continue;
+                wardThreatValue = margin;
+                ward = friendly;
+                threat = nearest;
             }
-            if (ward == null) return null;
-
+            if (ward == null || threat == null) return null;
             Position wardPos = Centroid(ward.GetValue());
-            DataBinding<UnitData>? threat = null;
-            float threatDistance = float.MaxValue;
-            foreach (DataBinding<UnitData> enemyBinding in EnemyBindings(self.PlayerID))
-            {
-                if (enemyBinding.GetValue().GetMeleeWeapons().Count == 0) continue;
-                float d = Distance(Centroid(enemyBinding.GetValue()), wardPos);
-                if (d < threatDistance) { threatDistance = d; threat = enemyBinding; }
-            }
-            // A screen only matters while the threat could realistically reach the ward soon
-            // (their move + charge next activation, with a little slack).
-            if (threat == null || threatDistance > 26f) return null;
-
-            // A5-4b (Chris review): the ward's threat is the EXCHANGE MARGIN, not raw incoming -
-            // a counter-blade powerhouse that eats chargers needs no screen.
-            MeleeEstimate exchange = CombatMath.EstimateMelee(_evaluator, threat, ward);
-            float wardThreatValue = Math.Max(0f,
-                ValueFraction(exchange.AttackerAttack.ExpectedWounds, ward.GetValue())
-                - ValueFraction(exchange.DefenderReturn.ExpectedWounds, threat.GetValue()));
-            if (wardThreatValue <= 0f) return null;
 
             // A5-4b: one screen per lane - if another friendly already stands on it, the lane is
             // manned and a second body adds nothing (no dogpiled screens).
@@ -506,24 +521,47 @@ namespace FDG.Ai.Tactician
             }
         }
 
+        // Past this much negative slack the marker cannot be reached even rushing every remaining
+        // round - no credit, no futile marches. A little negative is still paid (worth trying).
+        private const float HopelessSlackRounds = -1f;
+        // How fast the deadline urgency decays back to the round baseline per round of slack.
+        private const float DeadlineDecayPerSlackRound = 0.3f;
+
         // A5-3: the gradient HALF of the objective term - the fraction of the gap to the nearest
         // not-ours objective this move closes. ObjectiveDelta pays only ON the marker; without a
         // gradient a unit two moves out never starts walking (the shooter-freeze mechanism from
         // the a5-2-gate loss reading, the melee-approach bug's twin).
+        // A5-8 (Chris): deadline-aware per objective - a Slow army must leave EARLY, a fast one
+        // can shoot now and pop on late. Urgency is the full final-round 1.3 when the unit must
+        // start now to arrive by game end (slack ~0), decays to the round baseline as slack
+        // grows (a shooter with time to spare keeps shooting), and is zero when the marker is
+        // unreachable even rushing every remaining round.
         private float ObjectiveApproach(Position now, Position end)
         {
             float onIt = TacticalAnalysis.ObjectiveSeizureRadiusInches + 1.5f;
+            UnitData self = _activeUnit!.GetValue();
+            float speed = Math.Max(1f, TacticalAnalysis.RushDistance(self, _evaluator));
+            int round = _tableState.Progress.RoundCount ?? 1;
+            int totalRounds = _tableState.Progress.TotalRounds;
+            float movesLeft = totalRounds - round + 1;
+            float baseline = ObjectiveUrgency(round, totalRounds);
+
             float best = 0f;
             foreach (ObjectiveProjection projection in TacticalAnalysis.ProjectObjectives(_tableState))
             {
                 bool ours = projection.ProjectedOwner.HasValue
-                    && projection.ProjectedOwner.Value == _activeUnit!.GetValue().PlayerID;
+                    && projection.ProjectedOwner.Value == self.PlayerID;
                 if (ours) continue;
 
                 float gapNow = Distance(now, projection.Objective.Position) - onIt;
                 if (gapNow <= 0f) continue; // already there: ObjectiveDelta pays, not the gradient
+                float slack = movesLeft - gapNow / speed;
+                if (slack < HopelessSlackRounds) continue;
+                float urgency = Math.Clamp(1.3f - DeadlineDecayPerSlackRound * (slack - 0.25f),
+                    baseline, 1.3f);
+
                 float gapEnd = Math.Max(0f, Distance(end, projection.Objective.Position) - onIt);
-                best = Math.Max(best, Math.Clamp((gapNow - gapEnd) / gapNow, 0f, 1f));
+                best = Math.Max(best, urgency * Math.Clamp((gapNow - gapEnd) / gapNow, 0f, 1f));
             }
             return best;
         }

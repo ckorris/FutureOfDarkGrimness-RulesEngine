@@ -68,6 +68,15 @@ namespace FDG.Ai.Tactician
         // morale tests rout whole mobs (the engine's own mechanic - break the horde, don't shave it).
         public const float MoraleBreakBonus = 1.3f;
 
+        // A5-8 (Chris): a landed charge also DEGRADES the target's next volley - it still shoots
+        // on its own activation, but with fewer models and chargers obscuring lanes - so a charge
+        // earns this bonus per expected wound of the target's ranged output (reference Q4/D4).
+        // Deliberately a fraction, not full denial (Chris's correction: charging does not skip
+        // the target's activation). Cheap durable chaff pays little retaliation for the exchange,
+        // which is exactly the tarpit role; the charger's own forgone shooting needs no term
+        // because the argmax already weighs the charge against its own Hold/shoot candidates.
+        public const float ChargeTarpitPerWound = 0.04f;
+
         // --- Casting (A5) ---------------------------------------------------------------------------
         // A cast is layered (it never ends the activation), so the planner casts whenever the net
         // expected value is positive: base 4+ success chance x the summed target values, minus a

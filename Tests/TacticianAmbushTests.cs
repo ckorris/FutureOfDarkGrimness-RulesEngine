@@ -10,9 +10,10 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #191 A5-2 - ambush/reserves: melee and short-range Ambushers hold (the solo bot never
-    // does), shooters deploy normally, at most half the army is ever held, and an arriving unit
-    // drops onto the most winnable objective. Scout placement reuses the deployment aim.
+    // #191 A5-2, revised A5-8 (Chris): EVERYTHING with Ambush holds, always - round 1 is
+    // positioning, and Ambush is free movement (the old melee-only + half-army-cap heuristic
+    // left long-range Ambushers walking on at round 1). An arriving unit drops onto the most
+    // winnable objective. Scout placement reuses the deployment aim.
     [TestFixture]
     public class TacticianAmbushTests
     {
@@ -33,40 +34,37 @@ namespace FDG.Tests
         }
 
         [Test]
-        public void MeleeAmbusher_Holds_ShooterDeploysNormally()
+        public void EverythingWithAmbush_Holds_MeleeAndShooterAlike()
         {
             MakeUnit(_us, "Brawlers", 4, Blade());
             MakeUnit(_us, "Riflemen", 4, Rifle());
-            MakeUnit(_us, "Gunners", 3, Rifle());
             BuildArmies();
 
-            Assert.That(AmbushPolicy.ShouldHold(_tableState, _us, "Brawlers"), Is.True,
-                "a melee unit gains the most from teleporting past the approach march");
-            Assert.That(AmbushPolicy.ShouldHold(_tableState, _us, "Riflemen"), Is.False,
-                "holding a long-range unit trades away a round of shooting");
+            Assert.That(AmbushPolicy.ShouldHold(_tableState, _us, "Brawlers"), Is.True);
+            Assert.That(AmbushPolicy.ShouldHold(_tableState, _us, "Riflemen"), Is.True,
+                "A5-8 (Chris): Ambush is free positioning - a shooter teleporting to its own "
+                + "range band beats a round of marching too");
         }
 
         [Test]
-        public void NeverHoldsMoreThanHalfTheArmy()
+        public void TheWholeArmyMayHold()
         {
             var first = MakeUnit(_us, "Brawlers A", 4, Blade());
             MakeUnit(_us, "Brawlers B", 4, Blade());
-            MakeUnit(_us, "Riflemen", 4, Rifle());
             BuildArmies();
 
             Assert.That(AmbushPolicy.ShouldHold(_tableState, _us, "Brawlers A"), Is.True);
             ReserveRules.PlaceInReserve(first.GetValue()); // the engine holds it on that answer
 
-            Assert.That(AmbushPolicy.ShouldHold(_tableState, _us, "Brawlers B"), Is.False,
-                "a second hold would put half the 3-unit army in reserve - the table is never conceded");
+            Assert.That(AmbushPolicy.ShouldHold(_tableState, _us, "Brawlers B"), Is.True,
+                "A5-8: no half-army cap - if the whole army can ambush, it does");
         }
 
         [Test]
-        public async Task HoldPrompt_IsAnsweredHoldForMelee_DeployForShooters()
+        public async Task HoldPrompt_IsAnsweredHold_ForEveryProfile()
         {
             MakeUnit(_us, "Brawlers", 4, Blade());
             MakeUnit(_us, "Riflemen", 4, Rifle());
-            MakeUnit(_us, "Gunners", 3, Rifle());
             BuildArmies();
             var resolver = new TacticianActionResolver(
                 new TacticianPlanner(_tableState, new RuleEvaluator(new ProbabilisticDiceRoller())),
@@ -76,7 +74,7 @@ namespace FDG.Tests
             string shooter = await resolver.Resolve(HoldPrompt(_us, "Riflemen"));
 
             Assert.That(melee, Is.EqualTo("Hold in Ambush"));
-            Assert.That(shooter, Is.EqualTo(ChooseUnitToDeployStage.DEPLOY_NORMALLY_CHOICE));
+            Assert.That(shooter, Is.EqualTo("Hold in Ambush"));
         }
 
         [Test]

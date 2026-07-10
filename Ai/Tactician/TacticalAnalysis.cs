@@ -207,6 +207,28 @@ namespace FDG.Ai.Tactician
         }
 
         /// <summary>
+        /// Expected wounds of one ranged volley against a reference Q4/D4 target - the shooting
+        /// half of the <see cref="UnitValue"/> output loop (#191 A5-8). Prices what tying this
+        /// unit up in melee degrades; zero for melee-only units.
+        /// </summary>
+        public static float RangedOutputWounds(IUnit unit)
+        {
+            float hitChance = (7 - DiceUtilities.ClampSuccessRollNeeded(unit.Quality)) / 6f;
+            float output = 0f;
+            foreach (IModel model in unit.Models)
+            {
+                if (!model.GetIsAlive()) continue;
+                foreach (Weapon weapon in model.Weapons)
+                {
+                    if (weapon.RangeInches <= 0f) continue;
+                    int referenceSave = DiceUtilities.ClampSuccessRollNeeded(4 + weapon.ArmorPenetration);
+                    output += weapon.Attacks * hitChance * (referenceSave - 1) / 6f;
+                }
+            }
+            return output;
+        }
+
+        /// <summary>
         /// <see cref="UnitValue"/> plus the value of anything riding inside (#191 A5-6): a loaded
         /// transport is worth boat + payload - both when choosing what to protect and when choosing
         /// what to shoot (destroying it spills the cargo out Shaken).

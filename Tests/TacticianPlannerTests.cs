@@ -288,6 +288,64 @@ namespace FDG.Tests
             }
         }
 
+        [Test]
+        public void CheapChaff_ChargesTheGunline_ToTarpitIt()
+        {
+            // A5-8 (Chris): Bot Swarms were designed as tie-up chaff, but a charge priced only by
+            // its wound exchange never happens into anything competent. The tarpit bonus prices
+            // what the charge DEGRADES (the target's next volley). Short-gun gunline so that
+            // without the bonus the best move is fleeing out of its range - with it, charge.
+            var chaff = MakeUnit(_us, 3, Blade(attacks: 1), atX: 30f, atZ: 24f);
+            MakeUnit(_them, 6, new Weapon("Scatter Gun", 12f, 3, 0), atX: 40f, atZ: 24f, quality: 3);
+            _planner.BeginActivation(chaff);
+
+            string? action = _planner.ChooseAction(AllActions);
+
+            Assert.That(action, Is.EqualTo(ChooseActionStage.CHARGE_CHOICE_NAME),
+                "tying up six scatter guns outvalues running from them");
+        }
+
+        [Test]
+        public void HopelesslyFarObjective_IsNotChased()
+        {
+            // A5-8: the approach gradient fades to zero for a marker the unit cannot reach even
+            // rushing every remaining round - no futile marches.
+            _store.Create(new ObjectiveData(new Position(5f, 76f), _store));
+            var unit = MakeUnit(_us, 3, Rifle(), atX: 5f, atZ: 5f); // 71" out, 12"/round, 4 rounds
+            _planner.BeginActivation(unit);
+
+            string? action = _planner.ChooseAction(new[]
+            {
+                ChooseActionStage.MOVEMENT_CHOICE_NAME, ChooseActionStage.PASS_CHOICE_NAME,
+            });
+
+            Assert.That(action, Is.EqualTo(ChooseActionStage.PASS_CHOICE_NAME),
+                "a marker that cannot be reached by game end is worth nothing");
+        }
+
+        [Test]
+        public void BarelyReachableObjective_IsChasedFromRoundOne()
+        {
+            // A5-8: deadline urgency - a unit that must start walking NOW to arrive by game end
+            // gets the full final-round objective urgency in round 1.
+            _store.Create(new ObjectiveData(new Position(5f, 50f), _store));
+            var unit = MakeUnit(_us, 3, Rifle(), atX: 5f, atZ: 5f); // 45" out: ~3.4 of 4 moves
+            _planner.BeginActivation(unit);
+
+            string? action = _planner.ChooseAction(new[]
+            {
+                ChooseActionStage.MOVEMENT_CHOICE_NAME, ChooseActionStage.PASS_CHOICE_NAME,
+            });
+            List<StageResolution.Requests.ModelMoveEntry>? move = _planner.TakePlannedMove(unit);
+
+            Assert.That(action, Is.EqualTo(ChooseActionStage.MOVEMENT_CHOICE_NAME));
+            Assert.That(move, Is.Not.Null);
+            var ends = move!.Select(e => e.Positions[^1]).ToList();
+            float endGap = Distance(new Position(ends.Average(p => p.x), ends.Average(p => p.z)),
+                new Position(5f, 50f));
+            Assert.That(endGap, Is.LessThanOrEqualTo(41f), "the walk starts in round 1");
+        }
+
         private static Weapon Unarmed() => new Weapon("Fists", 0f, 1, 0);
 
         private static float DistanceToSegment(Position p, Position a, Position b)
@@ -340,7 +398,7 @@ namespace FDG.Tests
         private static Weapon Blade(int attacks = 2) => new Weapon("Blade", 0f, attacks, 0);
 
         private DataBinding<UnitData> MakeUnit(PlayerID owner, int modelCount, Weapon weapon,
-            float atX, float atZ)
+            float atX, float atZ, int quality = 4, int defense = 4)
         {
             var modelBindings = new List<DataBinding<ModelData>>(modelCount);
             for (int i = 0; i < modelCount; i++)
@@ -349,7 +407,7 @@ namespace FDG.Tests
                     new Position(atX + (i % 2) * 1.1f, atZ + (i / 2) * 1.1f), _store);
                 modelBindings.Add(_store.GetDataBinding<ModelData>(_store.Create(model)));
             }
-            var unit = new UnitData(owner, $"U{atX}", quality: 4, defense: 4, modelBindings: modelBindings);
+            var unit = new UnitData(owner, $"U{atX}", quality, defense, modelBindings: modelBindings);
             var binding = _store.GetDataBinding<UnitData>(_store.Create(unit));
             _store.Create(new ArmyData(owner, new List<DataBinding<UnitData>> { binding }));
             return binding;

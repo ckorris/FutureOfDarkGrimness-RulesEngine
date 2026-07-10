@@ -58,7 +58,15 @@ namespace FDG.Stages
                     "The unit has already attacked with this weapon."));
             }
 
-            StringSelectionRequest request = new StringSelectionRequest(context.AttackingUnit.PlayerID(), 
+            // #209: the weapon pool is a dictionary keyed by the Weapon reference type, so its
+            // enumeration order is identity-hash-dependent - it varied per run, which made multi-
+            // weapon units swing in a random order and broke same-seed replay (#193). Present the
+            // options in a deterministic order instead; #028's Deadly gating above still decides
+            // which of them are valid.
+            validOptions.Sort((a, b) => string.CompareOrdinal(a.Item1, b.Item1));
+            invalidOptions.Sort((a, b) => string.CompareOrdinal(a.Option, b.Option));
+
+            StringSelectionRequest request = new StringSelectionRequest(context.AttackingUnit.PlayerID(),
                 "Choose weapon:", validOptions.Select(option => option.Item1).ToList(), invalidOptions);
 
             string chosenWeaponStatsName = await GameContext.PlayerRequester

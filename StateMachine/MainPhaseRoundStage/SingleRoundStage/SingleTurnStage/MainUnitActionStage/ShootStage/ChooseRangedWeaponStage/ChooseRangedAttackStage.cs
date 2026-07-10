@@ -281,7 +281,12 @@ namespace FDG.Stages
                 }
             }
 
-            return nameAndWeaponOptions.Values.ToList();
+            // #209: availableWeapons is keyed by the Weapon reference type, so its enumeration
+            // order is identity-hash-dependent and varied per run, breaking same-seed replay
+            // (#193). The options go out in a deterministic order (names are unique here - the
+            // pool dedupes by name and Add above throws on collisions).
+            return nameAndWeaponOptions.Values
+                .OrderBy(option => option.Weapon.Name, StringComparer.Ordinal).ToList();
         }
 
         private static Dictionary<string, WeaponTargetStats> BuildAttacksForEnemyUnit(DataBinding<UnitData> attackingUnit,

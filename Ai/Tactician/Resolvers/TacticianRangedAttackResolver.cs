@@ -48,8 +48,16 @@ namespace FDG.Ai.Tactician.Resolvers
 
                     float remaining = Math.Max(1f, target.RemainingWounds);
                     float fractionKilled = Math.Min(1f, wounds / remaining);
+                    // A5-4 mob breaking: a volley that pushes the unit below HALF strength is
+                    // worth extra beyond its wounds - half-strength morale tests rout whole mobs
+                    // (the engine's own mechanic), so breaking a horde beats shaving it.
+                    int living = target.Models.Count(m => m.GetIsAlive());
+                    float kills = CombatMath.ExpectedKillsFrom(target, wounds);
+                    bool breaks = living * 2 > target.Models.Count
+                        && (living - kills) * 2f <= target.Models.Count;
                     float score = fractionKilled * TacticalAnalysis.UnitValue(target)
-                        * (wounds >= remaining ? TacticianWeights.ShootingKillBonus : 1f);
+                        * (wounds >= remaining ? TacticianWeights.ShootingKillBonus
+                           : breaks ? TacticianWeights.MoraleBreakBonus : 1f);
 
                     if (score > bestScore)
                     {

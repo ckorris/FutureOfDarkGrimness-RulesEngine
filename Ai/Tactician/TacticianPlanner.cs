@@ -30,6 +30,10 @@ namespace FDG.Ai.Tactician
         // Melee exchange margin + charge reach per enemy; both are endpoint-independent, so one
         // computation serves every candidate of the activation.
         private readonly Dictionary<DataReference, (float Margin, float Reach)> _meleeApproach = new();
+        // A5-4 screening pair for this activation (most valuable OTHER friendly + the melee threat
+        // nearest it, with the ward's threatened value) - endpoint-independent, computed lazily.
+        private (Position ThreatPos, Position WardPos, float WardThreatValue)? _screenLane;
+        private bool _screenLaneComputed;
 
         /// <summary>The unit whose activation is being planned (null between activations).</summary>
         public DataBinding<UnitData>? ActiveUnit => _activeUnit;
@@ -47,6 +51,8 @@ namespace FDG.Ai.Tactician
             _plan = null;
             _castAttempts = 0;
             _meleeApproach.Clear();
+            _screenLane = null;
+            _screenLaneComputed = false;
         }
 
         /// <summary>
@@ -309,13 +315,98 @@ namespace FDG.Ai.Tactician
 
             float objectiveDelta = ObjectiveDelta(self, end);
             float objectiveApproach = ObjectiveApproach(now, end);
+            // A5-4: markers matter most when the round about to score is the last one; early
+            // rounds, attrition buys the endgame (a marker held in a horde's path is lost later).
+            float urgency = ObjectiveUrgency(_tableState.Progress.RoundCount ?? 1,
+                _tableState.Progress.TotalRounds);
 
             return TacticianWeights.MoveDamage * offense
                  - TacticianWeights.MoveRetaliation * retaliation
-                 + TacticianWeights.MoveObjective * objectiveDelta
+                 + urgency * (TacticianWeights.MoveObjective * objectiveDelta
+                              + TacticianWeights.MoveObjectiveApproach * objectiveApproach)
                  + TacticianWeights.MoveApproach * approach
-                 + TacticianWeights.MoveObjectiveApproach * objectiveApproach
+                 + TacticianWeights.MoveScreen * ScreenValue(end)
                  + (candidate.Feasibility == EFeasibility.Reachable ? TacticianWeights.MoveReachableBonus : 0f);
+        }
+
+        /// <summary>Round scaling for the objective terms (#191 A5-4): ~0.66 in round 1 rising to
+        /// 1.3 in the final round, when ownership becomes the score.</summary>
+        internal static float ObjectiveUrgency(int round, int totalRounds)
+        {
+            float t = (float)round / Math.Max(1, totalRounds);
+            return t >= 1f ? 1.3f : 0.55f + 0.45f * t;
+        }
+
+        // A5-4: credit for interposing on the lane between the biggest melee threat and our most
+        // valuable OTHER unit - the M8/M9 candidates always existed, nothing paid them. There is
+        // deliberately no who-may-screen gate: the retaliation term already charges each unit
+        // personally for absorbing the charge, so tough cheap bodies screen and casters do not.
+        private float ScreenValue(Position end)
+        {
+            (Position threatPos, Position wardPos, float wardThreatValue)? lane = ScreenLane();
+            if (lane == null) return 0f;
+
+            float toLane = DistanceToSegment(end, lane.Value.threatPos, lane.Value.wardPos);
+            // Squarely on the lane counts fully; credit fades to nothing 5" off it.
+            float intercept = Math.Clamp((5f - toLane) / (5f - 1.5f), 0f, 1f);
+            return intercept * lane.Value.wardThreatValue;
+        }
+
+        private (Position, Position, float)? ScreenLane()
+        {
+            if (_screenLaneComputed) return _screenLane;
+            _screenLaneComputed = true;
+
+            UnitData self = _activeUnit!.GetValue();
+            DataBinding<UnitData>? ward = null;
+            float wardValue = 0f;
+            foreach (DataBinding<UnitData> friendly in FriendlyBindings(self.PlayerID))
+            {
+                if (friendly.Reference.Equals(_activeUnit.Reference)) continue;
+                float value = TacticalAnalysis.UnitValue(friendly.GetValue());
+                if (value > wardValue) { wardValue = value; ward = friendly; }
+            }
+            if (ward == null) return null;
+
+            Position wardPos = Centroid(ward.GetValue());
+            DataBinding<UnitData>? threat = null;
+            float threatDistance = float.MaxValue;
+            foreach (DataBinding<UnitData> enemyBinding in EnemyBindings(self.PlayerID))
+            {
+                if (enemyBinding.GetValue().GetMeleeWeapons().Count == 0) continue;
+                float d = Distance(Centroid(enemyBinding.GetValue()), wardPos);
+                if (d < threatDistance) { threatDistance = d; threat = enemyBinding; }
+            }
+            // A screen only matters while the threat could realistically reach the ward soon
+            // (their move + charge next activation, with a little slack).
+            if (threat == null || threatDistance > 26f) return null;
+
+            float wardThreatValue = ValueFraction(
+                CombatMath.EstimateMelee(_evaluator, threat, ward).AttackerAttack.ExpectedWounds,
+                ward.GetValue());
+            _screenLane = (Centroid(threat.GetValue()), wardPos, wardThreatValue);
+            return _screenLane;
+        }
+
+        private static float DistanceToSegment(Position p, Position a, Position b)
+        {
+            float abx = b.x - a.x, abz = b.z - a.z;
+            float lengthSq = abx * abx + abz * abz;
+            if (lengthSq <= 0.0001f) return Distance(p, a);
+            float t = Math.Clamp(((p.x - a.x) * abx + (p.z - a.z) * abz) / lengthSq, 0f, 1f);
+            return Distance(p, new Position(a.x + t * abx, a.z + t * abz));
+        }
+
+        private IEnumerable<DataBinding<UnitData>> FriendlyBindings(PlayerID us)
+        {
+            foreach (IArmy army in _tableState.Armies.Objects)
+            {
+                if (army.PlayerID != us || army is not ArmyData data) continue;
+                foreach (DataBinding<UnitData> unit in data.UnitBindings)
+                    if (unit.GetValue().Models.Any(m => m.GetIsAlive())
+                        && unit.GetValue().GetIsOnBattlefield())
+                        yield return unit;
+            }
         }
 
         // A5-3: the gradient HALF of the objective term - the fraction of the gap to the nearest

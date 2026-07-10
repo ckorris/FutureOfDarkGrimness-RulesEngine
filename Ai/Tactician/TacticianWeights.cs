@@ -51,6 +51,18 @@ namespace FDG.Ai.Tactician
         // objective we do not already own; below MoveObjective so ARRIVING still dominates.
         public const float MoveObjectiveApproach = 0.4f;
 
+        // --- Anti-horde play (A5-4: screening + mob breaking + round-scaled objectives) -------------
+        // From the 49%-cell loss reading: elite gunlines got CAUGHT holding markers in the horde's
+        // path. The Block/Escort candidates always existed (M8/M9 line walls across the threat
+        // lane) - nothing credited them. Screen pays the ward's threatened value scaled by how
+        // squarely the endpoint sits on the threat->ward lane; there is deliberately NO eligibility
+        // gate - the retaliation term already charges each unit personally for absorbing the
+        // charge, so a Tough tank or an emptied transport screens cheaply and a caster never does.
+        public const float MoveScreen = 0.8f;
+        // Pushing a unit below half strength is worth extra beyond the wounds: half-strength
+        // morale tests rout whole mobs (the engine's own mechanic - break the horde, don't shave it).
+        public const float MoraleBreakBonus = 1.3f;
+
         // --- Casting (A5) ---------------------------------------------------------------------------
         // A cast is layered (it never ends the activation), so the planner casts whenever the net
         // expected value is positive: base 4+ success chance x the summed target values, minus a

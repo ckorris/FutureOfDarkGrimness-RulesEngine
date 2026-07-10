@@ -80,6 +80,27 @@ namespace FDG.Tests
                 "charge the shooters, not the counter-blade wall");
         }
 
+        [Test]
+        public async Task Shooting_PrefersBreakingAMob_OverAnEqualFreshTarget()
+        {
+            // A5-4 mob breaking: two targets with IDENTICAL remaining wounds and living guns - the
+            // only difference is that the weakened mob is one volley from HALF strength (where the
+            // engine's morale test routs it). Without the break bonus the values tie and list
+            // order decides; the bonus must make the breakable mob win outright.
+            var attacker = MakeUnit(_us, 5, Rifle(), atX: 20f, atZ: 20f);
+            var fresh = MakeUnit(_them, 6, Blade(), atX: 30f, atZ: 20f);
+            var mob = MakeUnit(_them, 10, Blade(), atX: 30f, atZ: 28f);
+            KillAllBut(mob, survivors: 6); // 6/10 living: ~1 more kill crosses half strength
+
+            var resolver = new TacticianRangedAttackResolver(_evaluator,
+                new FDG.Ai.Resolvers.AiChooseRangedAttackResolver());
+            var reply = await resolver.Resolve(BuildRequest(attacker, fresh, mob));
+            var choice = ((Selected<RangedAttackChoice>)reply).Value;
+
+            Assert.That(choice.TargetUnit.Reference, Is.EqualTo(mob.Reference),
+                "breaking the mob (half-strength morale) outvalues an equal volley into a fresh unit");
+        }
+
         // --- fixtures ---------------------------------------------------------------------------
 
         private ChooseRangedAttackRequest BuildRequest(DataBinding<UnitData> attacker,

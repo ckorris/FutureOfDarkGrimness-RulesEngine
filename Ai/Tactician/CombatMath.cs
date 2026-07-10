@@ -474,6 +474,13 @@ namespace FDG.Ai.Tactician
                 .OfType<RuleOperation.ExtraMeleeWoundCount>().Sum(op => op.Amount);
         }
 
+        /// <summary>
+        /// Expected whole-model kills from this many wounds into the defender, via the engine's
+        /// own allocation order (#191 A5-4 - mob-break pricing needs kills, not just wounds).
+        /// </summary>
+        public static float ExpectedKillsFrom(UnitData defender, float wounds)
+            => ExpectedKills(defender, Math.Min(wounds, defender.RemainingWounds), out _);
+
         private static AttackEstimate Finish(float totalWounds, DataBinding<UnitData> defender,
             IReadOnlyList<string> notes)
         {

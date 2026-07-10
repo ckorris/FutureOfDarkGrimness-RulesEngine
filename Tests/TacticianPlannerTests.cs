@@ -127,6 +127,52 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void CheapUnit_ScreensTheValuableShooters_FromTheHorde()
+        {
+            // A5-4: the M8/M9 interposition candidates always existed - nothing paid them. A cheap
+            // unarmed body between a melee horde and our expensive gunline must move ONTO the
+            // charge lane (its own retaliation price is what keeps casters from doing the same).
+            var screen = MakeUnit(_us, 3, Unarmed(), atX: 34f, atZ: 32f);
+            MakeUnit(_us, 5, Rifle(), atX: 40f, atZ: 24f);              // the ward
+            MakeUnit(_them, 6, Blade(attacks: 3), atX: 20f, atZ: 24f);  // the horde, 20" out
+            _planner.BeginActivation(screen);
+
+            string? action = _planner.ChooseAction(AllActions);
+            List<StageResolution.Requests.ModelMoveEntry>? move = _planner.TakePlannedMove(screen);
+
+            Assert.That(action, Is.EqualTo(ChooseActionStage.MOVEMENT_CHOICE_NAME));
+            Assert.That(move, Is.Not.Null);
+            var ends = move!.Select(e => e.Positions[^1]).ToList();
+            var endCentroid = new Position(ends.Average(p => p.x), ends.Average(p => p.z));
+            float toLane = DistanceToSegment(endCentroid,
+                new Position(20f, 24f), new Position(40f, 24f));
+            Assert.That(toLane, Is.LessThanOrEqualTo(3.5f),
+                "the screen must end on the horde->gunline charge lane");
+        }
+
+        [Test]
+        public void ObjectiveUrgency_RisesThroughTheGame()
+        {
+            Assert.That(TacticianPlanner.ObjectiveUrgency(1, 4),
+                Is.LessThan(TacticianPlanner.ObjectiveUrgency(3, 4)));
+            Assert.That(TacticianPlanner.ObjectiveUrgency(4, 4), Is.EqualTo(1.3f).Within(0.001f),
+                "the final round is when ownership becomes the score");
+            Assert.That(TacticianPlanner.ObjectiveUrgency(1, 4), Is.GreaterThanOrEqualTo(0.5f),
+                "early markers still matter - ownership persists");
+        }
+
+        private static Weapon Unarmed() => new Weapon("Fists", 0f, 1, 0);
+
+        private static float DistanceToSegment(Position p, Position a, Position b)
+        {
+            float abx = b.x - a.x, abz = b.z - a.z;
+            float lengthSq = abx * abx + abz * abz;
+            float t = Math.Clamp(((p.x - a.x) * abx + (p.z - a.z) * abz) / lengthSq, 0f, 1f);
+            var q = new Position(a.x + t * abx, a.z + t * abz);
+            return Distance(p, q);
+        }
+
+        [Test]
         public void SecondChooseAction_AfterTheMove_ShootsThenPasses()
         {
             _store.Create(new ObjectiveData(new Position(30f, 24f), _store));

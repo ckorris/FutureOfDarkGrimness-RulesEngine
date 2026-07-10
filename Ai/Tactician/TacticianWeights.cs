@@ -22,6 +22,11 @@ namespace FDG.Ai.Tactician
         public const float ActivationObjectiveFlip = 0.75f;
         public const float ActivationUnderThreat = 0.75f;
 
+        // A5-6 (Chris): the round's delivery is boat-then-payload - a loaded transport acts early
+        // (drive before the cargo decides) and embarked cargo acts late (after the boat has moved).
+        public const float ActivationLoadedTransportBias = 0.5f;
+        public const float ActivationEmbarkedCargoBias = -0.5f;
+
         // --- Action + movement choice (A4-2) --------------------------------------------------------
         // score = MoveDamage * (value-weighted damage from the endpoint; melee margin for charges)
         //       - MoveRetaliation * (best value-weighted damage an enemy can put on the endpoint)
@@ -81,5 +86,17 @@ namespace FDG.Ai.Tactician
         // (a dead unit stops acting; a wounded one does not).
         public const float ShootingKillBonus = 1.5f;
         public const float MeleeKillBonus = 1.5f;
+
+        // --- Transports + snipers (A5-6, Chris's review pass) ---------------------------------------
+        // Cargo bails when the boat could lose this fraction of its remaining wounds to one enemy
+        // activation - a transport destroyed with a unit inside spills it out Shaken.
+        public const float TransportEvacuationFraction = 0.5f;
+        // Takedown/single-model spell picks: prefer the model whose removal hurts - weapon output,
+        // plus a bonus for models carrying their own rules (a joined hero's rules live on its MODEL
+        // after the #006 merge, so this is the hero-sniping signal).
+        public const float SnipeSpecialModelBonus = 1.5f;
+        // Shooting prefers targets that can charge US next activation - kill the thing about to
+        // eat you before the thing that cannot reach you.
+        public const float ShootThreatFactor = 1.25f;
     }
 }

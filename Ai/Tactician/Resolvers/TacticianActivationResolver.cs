@@ -100,9 +100,20 @@ namespace FDG.Ai.Tactician.Resolvers
                 }
             }
 
+            // A5-6 (Chris): boat-then-payload - a loaded transport acts early so it can drive
+            // before the cargo's own activation decides whether to get out; embarked cargo acts
+            // late (nothing it does matters until the boat has moved).
+            float transportBias = 0f;
+            if (TransportUtilities.IsEmbarked(unit))
+                transportBias = TacticianWeights.ActivationEmbarkedCargoBias;
+            else if (TransportUtilities.IsTransport(unit)
+                && TransportUtilities.GetOccupants(unit, _tableState.Units.Objects.ToList()).Any())
+                transportBias = TacticianWeights.ActivationLoadedTransportBias;
+
             return TacticianWeights.ActivationKillOpportunity * kill
                  + TacticianWeights.ActivationObjectiveFlip * flip
-                 + TacticianWeights.ActivationUnderThreat * threat;
+                 + TacticianWeights.ActivationUnderThreat * threat
+                 + transportBias;
         }
 
         // Expected wounds as a fraction of the target's remaining wounds, weighted by its value -

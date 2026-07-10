@@ -230,14 +230,35 @@ namespace FDG.Ai.Tactician
         private bool WantsDisembark()
         {
             UnitData self = _activeUnit!.GetValue();
-            IUnit? transport = null;
+            DataBinding<UnitData>? transport = null;
             if (Rules.Dispatch.TransportUtilities.GetTransportId(self) is UnitID transportId)
             {
-                foreach (IUnit unit in _tableState.Units.Objects)
-                    if (unit.ID == transportId) { transport = unit; break; }
+                foreach (DataBinding<UnitData> friendly in FriendlyBindings(self.PlayerID))
+                    if (friendly.GetValue().ID == transportId) { transport = friendly; break; }
             }
             if (transport == null) return true; // no live transport to ride: get out
-            Position here = Centroid((UnitData)transport);
+            Position here = Centroid(transport.GetValue());
+
+            // A5-6 (Chris): if the boat could lose half its remaining wounds to a single enemy
+            // activation, bail NOW - a transport destroyed with cargo inside spills it out Shaken.
+            float incoming = 0f;
+            foreach (DataBinding<UnitData> enemyBinding in EnemyBindings(self.PlayerID))
+            {
+                UnitData enemy = enemyBinding.GetValue();
+                float d = Distance(here, Centroid(enemy));
+                float theirReach = Math.Max(1f, d - TacticalAnalysis.AdvanceDistance(enemy, _evaluator));
+                incoming = Math.Max(incoming, CombatMath.EstimateShooting(_evaluator, enemyBinding,
+                    transport, new AttackContext(theirReach, AttackerMoved: true)).ExpectedWounds);
+                if (enemy.GetMeleeWeapons().Count > 0
+                    && TacticalAnalysis.MeleeThreatReach(enemy, transport.GetValue(), _evaluator) >= d - 1f)
+                {
+                    incoming = Math.Max(incoming, CombatMath.EstimateMelee(_evaluator, enemyBinding,
+                        transport).AttackerAttack.ExpectedWounds);
+                }
+            }
+            if (incoming >= TacticianWeights.TransportEvacuationFraction
+                    * transport.GetValue().RemainingWounds)
+                return true;
 
             const float placementInches = 6f;
             float cargoReach = placementInches + TacticalAnalysis.AdvanceDistance(self, _evaluator);
@@ -341,6 +362,16 @@ namespace FDG.Ai.Tactician
                     if (margin > 0f && gapNow > 1f)
                     {
                         float gapEnd = Math.Max(0f, endDistance - reach);
+                        // A5-6 (Chris): charging beats being charged. No credit for walking INSIDE
+                        // the enemy's own threat reach (charge budget + the 2" melee cylinder,
+                        // +1.5" centroid slack) - the approach stages at their line and takes the
+                        // charge on OUR next activation instead of eating theirs.
+                        if (enemy.GetMeleeWeapons().Count > 0)
+                        {
+                            float stageGap = Math.Max(0f,
+                                TacticalAnalysis.MeleeThreatReach(enemy, self, _evaluator) + 1.5f - reach);
+                            gapEnd = Math.Max(gapEnd, Math.Min(stageGap, gapNow));
+                        }
                         approach = Math.Max(approach,
                             margin * Math.Clamp((gapNow - gapEnd) / gapNow, 0f, 1f));
                     }
@@ -351,8 +382,9 @@ namespace FDG.Ai.Tactician
                 AttackEstimate incoming = CombatMath.EstimateShooting(_evaluator, enemyBinding, _activeUnit,
                     new AttackContext(theirReach, AttackerMoved: true));
                 float incomingValue = ValueFraction(incoming.ExpectedWounds, self);
-                // Melee threat: if they can charge the endpoint, count their melee margin too.
-                if (TacticalAnalysis.ChargeDistanceAgainst(enemy, self, _evaluator) >= endDistance - 1f
+                // Melee threat: if they can charge the endpoint (charge + 2" melee cylinder),
+                // count their melee margin too.
+                if (TacticalAnalysis.MeleeThreatReach(enemy, self, _evaluator) >= endDistance - 1f
                     && enemy.GetMeleeWeapons().Count > 0)
                 {
                     incomingValue = Math.Max(incomingValue, 0.5f * ValueFraction(
@@ -411,7 +443,8 @@ namespace FDG.Ai.Tactician
             foreach (DataBinding<UnitData> friendly in FriendlyBindings(self.PlayerID))
             {
                 if (friendly.Reference.Equals(_activeUnit.Reference)) continue;
-                float value = TacticalAnalysis.UnitValue(friendly.GetValue());
+                // A5-6: a loaded transport is worth boat + payload - protect the delivery.
+                float value = TacticalAnalysis.UnitValueWithCargo(friendly.GetValue(), _tableState);
                 if (value > wardValue) { wardValue = value; ward = friendly; }
             }
             if (ward == null) return null;

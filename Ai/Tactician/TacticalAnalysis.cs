@@ -49,6 +49,15 @@ namespace FDG.Ai.Tactician
                 charger, target, ChargeBudget(charger, evaluator), evaluator);
 
         /// <summary>
+        /// How far away the charger is genuinely DANGEROUS (#191 A5-6): its charge budget plus the
+        /// 2" horizontal melee cylinder (a charge only needs to END within melee range, not in
+        /// base contact). Centroid-based callers get a little extra slack on top.
+        /// </summary>
+        public static float MeleeThreatReach(IUnit charger, IUnit target, RuleEvaluator evaluator) =>
+            ChargeDistanceAgainst(charger, target, evaluator)
+            + GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL;
+
+        /// <summary>
         /// The unit's charge move allowance including its movement rules - the same accumulation
         /// MovementActionContext performs (the "when" fired for all three actions onto one sink).
         /// </summary>
@@ -195,6 +204,23 @@ namespace FDG.Ai.Tactician
             }
 
             return MathF.Sqrt(durability * (1f + output)) * 10f;
+        }
+
+        /// <summary>
+        /// <see cref="UnitValue"/> plus the value of anything riding inside (#191 A5-6): a loaded
+        /// transport is worth boat + payload - both when choosing what to protect and when choosing
+        /// what to shoot (destroying it spills the cargo out Shaken).
+        /// </summary>
+        public static float UnitValueWithCargo(IUnit unit, ITableState tableState)
+        {
+            float value = UnitValue(unit);
+            if (!Rules.Dispatch.TransportUtilities.IsTransport(unit)) return value;
+            foreach (IUnit occupant in Rules.Dispatch.TransportUtilities.GetOccupants(
+                unit, tableState.Units.Objects.ToList()))
+            {
+                value += UnitValue(occupant);
+            }
+            return value;
         }
     }
 }

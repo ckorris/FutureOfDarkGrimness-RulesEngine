@@ -207,6 +207,46 @@ namespace FDG.Tests
                 "a marker in the cargo's post-drop reach: get out and take it");
         }
 
+        [Test]
+        public void Approach_StagesOutsideTheEnemyThreatLine_InsteadOfWalkingIntoIt()
+        {
+            // A5-6 (Chris): charging beats being charged. Approaching brawlers must stop OUTSIDE
+            // the enemy's charge budget + 2" melee cylinder, staged to charge next activation.
+            var brawlers = MakeUnit(_us, 5, Blade(attacks: 3), atX: 14f, atZ: 24f);
+            var chaff = MakeUnit(_them, 4, Blade(attacks: 1), atX: 44f, atZ: 24f); // 30" out
+            _planner.BeginActivation(brawlers);
+
+            string? action = _planner.ChooseAction(AllActions);
+            List<StageResolution.Requests.ModelMoveEntry>? move = _planner.TakePlannedMove(brawlers);
+
+            Assert.That(action, Is.EqualTo(ChooseActionStage.MOVEMENT_CHOICE_NAME));
+            Assert.That(move, Is.Not.Null);
+            var ends = move!.Select(e => e.Positions[^1]).ToList();
+            var endCentroid = new Position(ends.Average(p => p.x), ends.Average(p => p.z));
+            float endDistance = Distance(endCentroid, new Position(44f, 24f));
+            Assert.That(endDistance, Is.GreaterThan(14f),
+                "must stage outside charge (12) + melee cylinder (2)");
+            Assert.That(endDistance, Is.LessThan(22f),
+                "but still close enough that OUR charge lands next activation");
+        }
+
+        [Test]
+        public void EmbarkedCargo_Bails_WhenTheTransportIsAboutToDie()
+        {
+            // A5-6 (Chris): a transport destroyed with cargo inside spills it out Shaken - if the
+            // boat can lose half its wounds to one enemy activation, get out NOW even with no
+            // marker in reach.
+            var transport = MakeUnit(_us, 1, Rifle(), atX: 30f, atZ: 24f); // 1 wound: fragile
+            var cargo = MakeUnit(_us, 4, Blade(), atX: 30f, atZ: 24f);
+            TransportUtilities.Embark(cargo.GetValue(), transport.GetValue());
+            MakeUnit(_them, 5, Rifle(), atX: 40f, atZ: 24f); // a volley away, no markers anywhere
+            string[] options = { CoreRuleCatalog.DisembarkRuleName, ChooseActionStage.PASS_CHOICE_NAME };
+
+            _planner.BeginActivation(cargo);
+            Assert.That(_planner.ChooseAction(options), Is.EqualTo(CoreRuleCatalog.DisembarkRuleName),
+                "the boat can be shot dead next activation - do not die inside it");
+        }
+
         private static Weapon Unarmed() => new Weapon("Fists", 0f, 1, 0);
 
         private static float DistanceToSegment(Position p, Position a, Position b)

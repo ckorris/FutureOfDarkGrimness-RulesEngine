@@ -101,6 +101,71 @@ namespace FDG.Tests
                 "breaking the mob (half-strength morale) outvalues an equal volley into a fresh unit");
         }
 
+        [Test]
+        public async Task Shooting_PrefersTheChargerThatCanReachUs_OverAnEqualDistantTwin()
+        {
+            // A5-6: two identical melee units; one can charge us next activation, one cannot.
+            // Kill the thing about to eat you. (The distant twin is listed first so a tie would
+            // pick it - the threat factor must break the tie the right way.)
+            var attacker = MakeUnit(_us, 5, Rifle(), atX: 20f, atZ: 20f);
+            var far = MakeUnit(_them, 5, Blade(), atX: 20f, atZ: 42f);  // 22" - out of charge reach
+            var near = MakeUnit(_them, 5, Blade(), atX: 20f, atZ: 30f); // 10" - charges next turn
+
+            var resolver = new TacticianRangedAttackResolver(_evaluator,
+                new FDG.Ai.Resolvers.AiChooseRangedAttackResolver(), _tableState);
+            var reply = await resolver.Resolve(BuildRequest(attacker, far, near));
+            var choice = ((Selected<RangedAttackChoice>)reply).Value;
+
+            Assert.That(choice.TargetUnit.Reference, Is.EqualTo(near.Reference),
+                "the unit that can charge us next activation dies first");
+        }
+
+        [Test]
+        public async Task Shooting_PrefersTheLoadedTransport_OverAnEmptyTwin()
+        {
+            // A5-6: a loaded transport is worth boat + payload (killing it spills the cargo out
+            // Shaken). Empty twin first, so a tie would pick it.
+            var attacker = MakeUnit(_us, 5, Rifle(), atX: 20f, atZ: 20f);
+            var empty = MakeUnit(_them, 1, Rifle(), atX: 30f, atZ: 20f);
+            var loaded = MakeUnit(_them, 1, Rifle(), atX: 30f, atZ: 26f);
+            var cargo = MakeUnit(_them, 4, Blade(), atX: 30f, atZ: 26f);
+            foreach (var boat in new[] { empty, loaded })
+                boat.GetValue().AttachRuleDefinition(new ResolvedRule(TransportUtilities.TransportRuleName,
+                    CoreRuleCatalog.Transport, new Rules.Foundation.RuleArgument[]
+                    { new Rules.Foundation.RuleArgument.Int(6) }));
+            TransportUtilities.Embark(cargo.GetValue(), loaded.GetValue());
+
+            var resolver = new TacticianRangedAttackResolver(_evaluator,
+                new FDG.Ai.Resolvers.AiChooseRangedAttackResolver(), _tableState);
+            var reply = await resolver.Resolve(BuildRequest(attacker, empty, loaded));
+            var choice = ((Selected<RangedAttackChoice>)reply).Value;
+
+            Assert.That(choice.TargetUnit.Reference, Is.EqualTo(loaded.Reference),
+                "the boat with a payload inside is the more valuable kill");
+        }
+
+        [Test]
+        public async Task ModelPick_SnipesTheOutputModel_NotModelOne()
+        {
+            // A5-6: Takedown/single-model spells took "Model 1"; the pick must go to the model
+            // whose removal hurts - the heavy-weapon carrier.
+            var grunt1 = MakeModel(_store, new Position(30, 20, 0), new Weapon("Rifle", 24f, 1, 0));
+            var grunt2 = MakeModel(_store, new Position(31, 20, 0), new Weapon("Rifle", 24f, 1, 0));
+            var heavy = MakeModel(_store, new Position(32, 20, 0), new Weapon("Melter", 12f, 3, 4));
+
+            var resolver = new TacticianModelSelectionResolver(new FDG.Ai.Resolvers.AiSelectionResolver<ModelData>());
+            var request = new SelectionRequest<ModelData>(_us, "Takedown: choose the target model",
+                new List<SelectionRequest<ModelData>.ValidOption>
+                {
+                    new(grunt1, "Model 1"), new(grunt2, "Model 2"), new(heavy, "Model 3"),
+                },
+                Array.Empty<SelectionRequest<ModelData>.InvalidOption>(), allowCancel: false);
+
+            var chosen = await resolver.Resolve(request);
+            Assert.That(chosen.Reference, Is.EqualTo(heavy.Reference),
+                "snipe the melter carrier, not whoever stands first in line");
+        }
+
         // --- fixtures ---------------------------------------------------------------------------
 
         private ChooseRangedAttackRequest BuildRequest(DataBinding<UnitData> attacker,
@@ -123,6 +188,12 @@ namespace FDG.Tests
 
         private static Weapon Rifle(int ap = 0) => new Weapon("Rifle", 24f, 1, ap);
         private static Weapon Blade(int attacks = 2) => new Weapon("Blade", 0f, attacks, 0);
+
+        private static DataBinding<ModelData> MakeModel(GameDataStore store, Position position, Weapon weapon)
+        {
+            var model = new ModelData(0.5f, new List<Weapon> { weapon }, position, store);
+            return store.GetDataBinding<ModelData>(store.Create(model));
+        }
 
         private DataBinding<UnitData> MakeUnit(PlayerID owner, int modelCount, Weapon weapon,
             float atX, float atZ, int quality = 4, int defense = 4, int woundsPerModel = 1)

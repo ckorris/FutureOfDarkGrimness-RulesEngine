@@ -41,10 +41,16 @@ namespace FDG.Ai.Tactician
             registry.RegisterResolver(new Resolvers.TacticianMovementResolver(planner, tableState,
                 new FDG.Ai.Resolvers.AiDefineMovementResolver(tableState, playerID)));
 
-            // A4-3: value-weighted target choice (shooting + melee defender).
+            // A4-3: value-weighted target choice (shooting + melee defender). A5-6 adds cargo-aware
+            // target value and the charge-threat factor (tableState).
             registry.RegisterResolver(new Resolvers.TacticianRangedAttackResolver(evaluator,
-                new FDG.Ai.Resolvers.AiChooseRangedAttackResolver()));
+                new FDG.Ai.Resolvers.AiChooseRangedAttackResolver(), tableState));
             registry.RegisterResolver(new Resolvers.TacticianMeleeDefenderResolver(tableState, evaluator, planner));
+
+            // A5-6 (Chris's resolver pass): Takedown/sniper and single-model spell picks - WHICH
+            // model dies is the rule's whole point; solo took "Model 1".
+            registry.RegisterResolver(new Resolvers.TacticianModelSelectionResolver(
+                new FDG.Ai.Resolvers.AiSelectionResolver<ModelData>()));
 
             // A4-4: wound assignment preserving output (cheapest-output casualties first).
             registry.RegisterResolver(new Resolvers.TacticianAssignWoundsResolver());

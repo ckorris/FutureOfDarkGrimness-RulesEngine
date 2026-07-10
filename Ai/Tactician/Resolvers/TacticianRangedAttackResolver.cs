@@ -18,12 +18,15 @@ namespace FDG.Ai.Tactician.Resolvers
         : IStageResolver<ChooseRangedAttackRequest, CancellableResult<RangedAttackChoice>>
     {
         private readonly RuleEvaluator _evaluator;
+        private readonly ITableState? _tableState;
         private readonly IStageResolver<ChooseRangedAttackRequest, CancellableResult<RangedAttackChoice>> _soloFallback;
 
         public TacticianRangedAttackResolver(RuleEvaluator evaluator,
-            IStageResolver<ChooseRangedAttackRequest, CancellableResult<RangedAttackChoice>> soloFallback)
+            IStageResolver<ChooseRangedAttackRequest, CancellableResult<RangedAttackChoice>> soloFallback,
+            ITableState? tableState = null)
         {
             _evaluator = evaluator;
+            _tableState = tableState;
             _soloFallback = soloFallback;
         }
 
@@ -55,9 +58,19 @@ namespace FDG.Ai.Tactician.Resolvers
                     float kills = CombatMath.ExpectedKillsFrom(target, wounds);
                     bool breaks = living * 2 > target.Models.Count
                         && (living - kills) * 2f <= target.Models.Count;
-                    float score = fractionKilled * TacticalAnalysis.UnitValue(target)
+                    // A5-6: a loaded transport is worth boat + payload (destroying it spills the
+                    // cargo out Shaken), and a target that can charge US next activation is worth
+                    // killing before one that cannot reach us.
+                    float targetValue = _tableState != null
+                        ? TacticalAnalysis.UnitValueWithCargo(target, _tableState)
+                        : TacticalAnalysis.UnitValue(target);
+                    bool threatensUs = target.GetMeleeWeapons().Count > 0
+                        && TacticalAnalysis.MeleeThreatReach(target,
+                            request.AttackingUnit.GetValue(), _evaluator) >= distance - 1f;
+                    float score = fractionKilled * targetValue
                         * (wounds >= remaining ? TacticianWeights.ShootingKillBonus
-                           : breaks ? TacticianWeights.MoraleBreakBonus : 1f);
+                           : breaks ? TacticianWeights.MoraleBreakBonus : 1f)
+                        * (threatensUs ? TacticianWeights.ShootThreatFactor : 1f);
 
                     if (score > bestScore)
                     {

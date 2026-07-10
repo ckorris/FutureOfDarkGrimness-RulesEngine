@@ -69,6 +69,21 @@ namespace FDG.Tests
             Assert.That(chosen == a || chosen == b, Is.True);
         }
 
+        [Test]
+        public async Task LoadedTransport_ActsBeforeItsEmbarkedCargo()
+        {
+            // A5-6 (Chris): boat-then-payload - the transport must move before the cargo's own
+            // activation decides whether to get out.
+            var transport = MakeUnit(_us, 1, Rifle(), atX: 20f, atZ: 24f);
+            var cargo = MakeUnit(_us, 4, Rifle(), atX: 20f, atZ: 24f);
+            TransportUtilities.Embark(cargo.GetValue(), transport.GetValue());
+            // No enemies/objectives: only the transport biases separate them.
+
+            DataBinding<UnitData> chosen = await _resolver.Resolve(Request(cargo, transport));
+
+            Assert.That(chosen, Is.EqualTo(transport), "drive the boat before the payload decides");
+        }
+
         private ChooseUnitToActivateRequest Request(params DataBinding<UnitData>[] options) =>
             new ChooseUnitToActivateRequest(_us,
                 options.Select(o => new SelectionRequest<UnitData>.ValidOption(o, o.GetValue().Name)).ToList(),

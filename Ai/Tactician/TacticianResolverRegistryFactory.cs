@@ -71,7 +71,7 @@ namespace FDG.Ai.Tactician
             // Choose Action livelock; assists spend tokens when a one-face threshold shift beats
             // their cost. Non-spell unit selections fall through to the embedded solo resolver.
             registry.RegisterResolver(new Resolvers.TacticianUnitSelectionResolver(planner,
-                new FDG.Ai.Resolvers.AiSelectionResolver<UnitData>()));
+                new FDG.Ai.Resolvers.AiSelectionResolver<UnitData>(), tableState, evaluator));
             registry.RegisterResolver(new Resolvers.TacticianCastAssistResolver(tableState, evaluator));
 
             return registry;

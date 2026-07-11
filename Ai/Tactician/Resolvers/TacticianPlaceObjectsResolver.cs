@@ -73,6 +73,17 @@ namespace FDG.Ai.Tactician.Resolvers
                 DistSq(a.Position, zoneCenter).CompareTo(DistSq(b.Position, zoneCenter)));
             IObjective aim = objectives[deployIndex % objectives.Count];
 
+            // A5-9 (Chris's option 2): matchup-weighted lane choice. Score each objective lane by
+            // the VISIBLE enemy units roughly opposite it (favorability of us-vs-them, faded over
+            // 18" of lateral offset); when some lane clearly beats the round-robin spread, take
+            // it - the Deadly platform drifts opposite their Tough units, the gauss line opposite
+            // the horde. With nothing deployed yet (or no clear signal) the spread stands.
+            if (deploymentShaped)
+            {
+                IObjective? counter = BestMatchupLane(request, objectives, out float edge);
+                if (counter != null && edge > MatchupLaneEdgeThreshold) aim = counter;
+            }
+
             // Depth: the forward edge is the one facing the table centre (DefaultDeployFacing.Y is
             // the +-1 Z direction the zone looks toward). Melee crowds the line; shooters step back
             // without leaving reach of the mid-table.
@@ -84,6 +95,44 @@ namespace FDG.Ai.Tactician.Resolvers
             // The caller clamps into the zone and spiral-searches for a clear block, so a raw aim
             // (the objective's X, our chosen depth) is safe even when the objective is off-zone.
             return new Position(aim.Position.x, z);
+        }
+
+        // A lane must beat the default spread by a real margin before it overrides (score units:
+        // fractions of a reference-100 unit's value).
+        private const float MatchupLaneEdgeThreshold = 0.05f;
+        private const float LaneHalfWidthInches = 18f;
+
+        // A5-9: the matchup-best objective lane for the deploying unit, judged against enemies
+        // already ON the battlefield. `edge` is best-lane score minus second-best - the override
+        // only fires when the choice is clear, so blind early placements keep the spread.
+        private IObjective? BestMatchupLane(PlaceObjectsRequest<T> request,
+            List<IObjective> objectives, out float edge)
+        {
+            edge = 0f;
+            DataBinding<UnitData>? us = OwningUnit(request);
+            if (us == null) return null;
+
+            var visibleEnemies = DeploymentMatchup.EnemyBindings(_tableState, request.TargetPlayerID)
+                .Where(e => e.GetValue().GetIsOnBattlefield()).ToList();
+            if (visibleEnemies.Count == 0) return null;
+
+            IObjective? best = null;
+            float bestScore = float.MinValue, second = float.MinValue;
+            foreach (IObjective objective in objectives)
+            {
+                float score = 0f;
+                foreach (DataBinding<UnitData> enemy in visibleEnemies)
+                {
+                    float lateral = Math.Abs(Centroid(enemy.GetValue()).x - objective.Position.x);
+                    float weight = Math.Clamp(1f - lateral / LaneHalfWidthInches, 0f, 1f);
+                    if (weight <= 0f) continue;
+                    score += weight * DeploymentMatchup.Favorability(_evaluator, us, enemy);
+                }
+                if (score > bestScore) { second = bestScore; bestScore = score; best = objective; }
+                else if (score > second) { second = score; }
+            }
+            edge = objectives.Count < 2 ? bestScore : bestScore - second;
+            return best;
         }
 
         // A5-8: the strike aim - for each enemy unit, a landing spot just over the rule's enemy

@@ -206,5 +206,42 @@ namespace FDG.Tests
             ModelMoveEntry stationary = new ModelMoveEntry(model, new List<Position>());
             Assert.That(MovementUtilities.DoesPathCrossDifficultTerrain(stationary, terrain), Is.False);
         }
+
+        // #213: the impassible preview sibling of the Difficult/Dangerous checks - lets the move GUI flag a
+        // path that would move THROUGH impassible terrain as invalid (red, un-clickable) up front.
+        [Test]
+        public void DoesPathCrossImpassibleTerrain_MirrorsTheDifficultCheck()
+        {
+            GameDataStore store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            ModelData modelData = new ModelData(
+                baseRadiusInches: 0.75f,
+                weapons: new List<Weapon>(),
+                initialPosition: new Position(0, 0),
+                gameDataStore: store);
+            DataBinding<ModelData> model = store.GetDataBinding<ModelData>(store.Create(modelData));
+
+            var impassible = new List<ITerrain>
+            {
+                new TerrainData(ETerrainType.Impassible, new RectangularZone(2f, 10f, -2f, 2f))
+            };
+
+            // A straight run along z=0 sweeps through the wall at x in [2,10].
+            ModelMoveEntry crossing = new ModelMoveEntry(model, new List<Position> { new Position(12, 0) });
+            Assert.That(MovementUtilities.DoesPathCrossImpassibleTerrain(crossing, impassible), Is.True);
+
+            // Difficult-flagged pieces must not register as impassible.
+            var difficultOnly = new List<ITerrain>
+            {
+                new TerrainData(ETerrainType.Difficult, new RectangularZone(2f, 10f, -2f, 2f))
+            };
+            Assert.That(MovementUtilities.DoesPathCrossImpassibleTerrain(crossing, difficultOnly), Is.False);
+
+            // A path that stays clear of the wall (up the x=0 lane) doesn't cross it.
+            ModelMoveEntry clear = new ModelMoveEntry(model, new List<Position> { new Position(0, 10) });
+            Assert.That(MovementUtilities.DoesPathCrossImpassibleTerrain(clear, impassible), Is.False);
+
+            ModelMoveEntry stationary = new ModelMoveEntry(model, new List<Position>());
+            Assert.That(MovementUtilities.DoesPathCrossImpassibleTerrain(stationary, impassible), Is.False);
+        }
     }
 }

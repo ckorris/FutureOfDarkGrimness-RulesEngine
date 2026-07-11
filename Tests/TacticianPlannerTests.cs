@@ -392,6 +392,126 @@ namespace FDG.Tests
             Assert.That(_planner.ChooseAction(AllActions), Is.Null);
         }
 
+        [Test]
+        public void SafeGarrison_ReleasesTowardTheNextObjective()
+        {
+            // Chris's game 3 ("even after the objective was 100% safe, they still stayed"): the
+            // walk-away penalty prices re-capture risk, which is zero when no enemy can reach the
+            // marker before game end. Round 3 of 4: the only enemy is ~54" from our marker (> 2
+            // rounds of rushing), a neutral marker sits two moves out - the garrison must march.
+            SetRound(3);
+            var ours = new ObjectiveData(new Position(20f, 24f), _store);
+            ours.SetOwner(_us);
+            _store.Create(ours);
+            _store.Create(new ObjectiveData(new Position(40f, 24f), _store));
+            var garrison = MakeUnit(_us, 3, Rifle(), atX: 20f, atZ: 24f);
+            MakeUnit(_them, 3, Unarmed(), atX: 70f, atZ: 44f);
+            _planner.BeginActivation(garrison);
+
+            string? action = _planner.ChooseAction(AllActions);
+            List<StageResolution.Requests.ModelMoveEntry>? move = _planner.TakePlannedMove(garrison);
+
+            Assert.That(action, Is.EqualTo(ChooseActionStage.MOVEMENT_CHOICE_NAME),
+                "a garrison on an uncontestable marker has no reason to keep standing on it");
+            Assert.That(move, Is.Not.Null);
+            var ends = move!.Select(e => e.Positions[^1]).ToList();
+            var endCentroid = new Position(ends.Average(p => p.x), ends.Average(p => p.z));
+            float closed = Distance(new Position(20f, 24f), new Position(40f, 24f))
+                - Distance(endCentroid, new Position(40f, 24f));
+            Assert.That(closed, Is.GreaterThanOrEqualTo(6f),
+                "the released garrison must make real progress toward the next marker");
+        }
+
+        [Test]
+        public void GuardedGarrison_HoldsItsMarker()
+        {
+            // The counter-case: same board, but the enemy CAN still reach our marker before game
+            // end - the walk-away penalty stands and the garrison stays home.
+            SetRound(3);
+            var ours = new ObjectiveData(new Position(20f, 24f), _store);
+            ours.SetOwner(_us);
+            _store.Create(ours);
+            _store.Create(new ObjectiveData(new Position(40f, 24f), _store));
+            var garrison = MakeUnit(_us, 3, Rifle(), atX: 20f, atZ: 24f);
+            MakeUnit(_them, 3, Unarmed(), atX: 40f, atZ: 36f); // ~23" from our marker, 2 rushes reach it
+            _planner.BeginActivation(garrison);
+
+            _planner.ChooseAction(AllActions);
+            List<StageResolution.Requests.ModelMoveEntry>? move = _planner.TakePlannedMove(garrison);
+
+            if (move != null)
+            {
+                var ends = move.Select(e => e.Positions[^1]).ToList();
+                var endCentroid = new Position(ends.Average(p => p.x), ends.Average(p => p.z));
+                Assert.That(Distance(endCentroid, new Position(20f, 24f)),
+                    Is.LessThanOrEqualTo(TacticalAnalysis.ObjectiveSeizureRadiusInches + 1.5f),
+                    "with the marker still contestable, any move must keep holding it");
+            }
+        }
+
+        [Test]
+        public void EnemyInReserve_KeepsEveryMarkerGuarded()
+        {
+            // Anything alive but off the battlefield (Ambush reserve, embarked cargo) can land
+            // nearly anywhere, so its existence keeps every marker contestable - the release
+            // must stay conservative.
+            SetRound(3);
+            var ours = new ObjectiveData(new Position(20f, 24f), _store);
+            ours.SetOwner(_us);
+            _store.Create(ours);
+            _store.Create(new ObjectiveData(new Position(40f, 24f), _store));
+            var garrison = MakeUnit(_us, 3, Rifle(), atX: 20f, atZ: 24f);
+            MakeUnit(_them, 3, Unarmed(), atX: 70f, atZ: 44f);
+            var lurker = MakeUnit(_them, 3, Blade(attacks: 3), atX: 0f, atZ: 0f);
+            ReserveRules.PlaceInReserve(lurker.GetValue());
+            _planner.BeginActivation(garrison);
+
+            _planner.ChooseAction(AllActions);
+            List<StageResolution.Requests.ModelMoveEntry>? move = _planner.TakePlannedMove(garrison);
+
+            if (move != null)
+            {
+                var ends = move.Select(e => e.Positions[^1]).ToList();
+                var endCentroid = new Position(ends.Average(p => p.x), ends.Average(p => p.z));
+                Assert.That(Distance(endCentroid, new Position(20f, 24f)),
+                    Is.LessThanOrEqualTo(TacticalAnalysis.ObjectiveSeizureRadiusInches + 1.5f),
+                    "with an enemy still in reserve, the garrison must keep holding its marker");
+            }
+        }
+
+        [Test]
+        public void Retaliation_Dilutes_WithFriendsInTheSameThreatEnvelope()
+        {
+            // The recurring freeze mechanism from Chris's hand games 1-3: every unit priced the
+            // enemy's FULL volley onto itself, so flooding a gunline was unpriceable. The same
+            // forward candidate must score strictly better once friends share the envelope.
+            var brawlers = MakeUnit(_us, 5, Blade(attacks: 3), atX: 20f, atZ: 24f);
+            var gunline = MakeUnit(_them, 5, Rifle(), atX: 44f, atZ: 24f);
+            _planner.BeginActivation(brawlers);
+            List<MacroAction> candidates = MacroActionGenerator.Enumerate(
+                new RuleEvaluator(new ProbabilisticDiceRoller()), _tableState, brawlers);
+            MacroAction forward = candidates
+                .OrderBy(c => Distance(c.ProjectedCentroid, new Position(44f, 24f))).First();
+            float alone = _planner.Score(forward);
+
+            MakeUnit(_us, 5, Blade(attacks: 3), atX: 24f, atZ: 30f); // both well inside the
+            MakeUnit(_us, 5, Blade(attacks: 3), atX: 16f, atZ: 18f); // rifles' 30" envelope
+            _planner.BeginActivation(brawlers); // clears the per-activation sharer cache
+
+            float withCompany = _planner.Score(forward);
+
+            Assert.That(withCompany, Is.GreaterThan(alone + 0.01f),
+                "friends inside the enemy's threat envelope must dilute the priced retaliation");
+        }
+
+        private void SetRound(int round)
+        {
+            var progress = new GameProgressData(EResumeStage.MainPhase, round,
+                new List<int>(), new List<int>(), 0, new Dictionary<int, int>(),
+                new List<DataBinding<UnitData>>(), GameSettings.GetDefault());
+            _store.Create(progress);
+        }
+
         // --- fixtures ---------------------------------------------------------------------------
 
         private static Weapon Rifle() => new Weapon("Rifle", rangeInches: 24f, attacks: 1, armorPenetration: 0);

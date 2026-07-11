@@ -129,6 +129,55 @@ public class OprBookImporterTests
         Assert.That(targeter.Rules, Has.One.EqualTo(new SpecialRuleEntry_Core("Reliable")));
     }
 
+    // #197 (Darkborn): OPR uses the bare name "Darkborn" for two different rules across armies. The catalog
+    // registers them disambiguated ("Darkborn (Offensive)"/"(Defensive)"), so the bare name resolved to
+    // nothing; the importer routes it to the right variant by army name. A rule name carried on a unit, a
+    // weapon, and an upgrade option all disambiguate (the walk reaches every rule-reference site).
+    private const string DarkbornJson = """
+    {
+      "name": "%ARMY%", "versionString": "1.0",
+      "units": [
+        { "id": "u1", "name": "Reaver", "size": 1, "cost": 50, "quality": 3, "defense": 3,
+          "weapons": [ {"name":"Blade","count":1,"range":null,"attacks":2,"specialRules":[{"name":"Darkborn"}]} ],
+          "rules": [ {"name":"Darkborn"} ],
+          "upgrades": ["P1"] }
+      ],
+      "upgradePackages": [
+        { "uid": "P1", "sections": [
+          { "id":"s1", "label":"Blessing", "variant":"upgrade", "affects":{"type":"all"},
+            "options":[ { "id":"o1", "label":"Dark Gift", "cost":5, "gains":[{"type":"ArmyBookRule","name":"Darkborn"}] } ] }
+        ] }
+      ]
+    }
+    """;
+
+    [TestCase("Dark Brothers", "Darkborn (Defensive)")]
+    [TestCase("Dark Prime Brothers", "Darkborn (Offensive)")]
+    public void Import_DisambiguatesDarkborn_ByArmy(string army, string expected)
+    {
+        BookFile book = OprBookImporter.Import(DarkbornJson.Replace("%ARMY%", army), "src", "lic");
+        RosterUnit reaver = book.Units.Single();
+
+        Assert.That(reaver.Rules, Has.One.EqualTo(new SpecialRuleEntry_Core(expected)),
+            "unit-level Darkborn should route to the army's variant");
+        Assert.That(reaver.Weapons.Single().SpecialRules, Has.One.EqualTo(new SpecialRuleEntry_Core(expected)),
+            "weapon-level Darkborn should route too");
+        Assert.That(reaver.Sections.Single().Options.Single().RulesGained,
+            Has.One.EqualTo(new SpecialRuleEntry_Core(expected)),
+            "upgrade-gained Darkborn should route too");
+        Assert.That(book.Units.SelectMany(u => u.Rules), Has.None.EqualTo(new SpecialRuleEntry_Core("Darkborn")),
+            "the bare name must not survive for an army that defines Darkborn");
+    }
+
+    [Test]
+    public void Import_LeavesDarkbornUntouched_ForAnUnlistedArmy()
+    {
+        // Only the two armies that actually define "Darkborn" are disambiguated; a stray reference in any
+        // other book is left as-is (it simply stays an unresolved reference, exactly as before).
+        BookFile book = OprBookImporter.Import(DarkbornJson.Replace("%ARMY%", "Some Other Legion"), "src", "lic");
+        Assert.That(book.Units.Single().Rules, Has.One.EqualTo(new SpecialRuleEntry_Core("Darkborn")));
+    }
+
     // Every bases variant observed in the real books: round number, round oval "WxH", round "none" with a
     // square fallback, both empty, and the field absent entirely.
     private const string BasesJson = """

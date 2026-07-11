@@ -113,6 +113,8 @@ namespace FDG.ArmyBuilding
             foreach (OprUnit unit in opr.Units ?? new())
                 book.Units.Add(MapUnit(unit, packages));
 
+            DisambiguateAmbiguousRuleNames(book);
+
             foreach (OprSpell spell in opr.Spells ?? new())
             {
                 SpellDefinition? parsed = TryParseSpell(spell, out SpecialRuleDefinition? synthesized);
@@ -265,6 +267,60 @@ namespace FDG.ArmyBuilding
             r.Rating is int rating
                 ? new SpecialRuleEntry_CoreNumeric(r.Name ?? "Rule", rating)
                 : new SpecialRuleEntry_Core(r.Name ?? "Rule");
+
+        // #197 (Darkborn): OPR reuses the bare name "Darkborn" for two mechanically different rules across
+        // armies -- Dark Brothers' is the defensive debuff (enemies get -4" range / -2" charge vs this unit),
+        // Dark Prime Brothers' is the offensive self-buff (+3" range / +3" charge). The catalog registers them
+        // under disambiguated names ("Darkborn (Defensive)" / "Darkborn (Offensive)"); the bare name resolves
+        // to neither, so all references were dead. Only the importer has the owning-army context needed to
+        // route the bare name to the right variant, so it does the disambiguation once, at import time, keyed
+        // on the OPR army name -- a re-import stays correct rather than reintroducing the dead bare name.
+        private static readonly Dictionary<(string Army, string Rule), string> AmbiguousRuleNames = new()
+        {
+            [("Dark Brothers", "Darkborn")] = "Darkborn (Defensive)",
+            [("Dark Prime Brothers", "Darkborn")] = "Darkborn (Offensive)",
+        };
+
+        private static void DisambiguateAmbiguousRuleNames(BookFile book)
+        {
+            void Fix(List<SpecialRuleEntry> rules)
+            {
+                for (int i = 0; i < rules.Count; i++)
+                    rules[i] = Disambiguate(book.Name, rules[i]);
+            }
+
+            foreach (RosterUnit unit in book.Units)
+            {
+                Fix(unit.Rules);
+                foreach (WeaponFileEntry w in unit.Weapons) Fix(w.SpecialRules);
+                foreach (ItemEntry item in unit.Items) Fix(item.Rules);
+                foreach (UpgradeSection section in unit.Sections)
+                    foreach (UpgradeOption option in section.Options)
+                    {
+                        Fix(option.RulesGained);
+                        foreach (WeaponFileEntry w in option.WeaponsGained) Fix(w.SpecialRules);
+                        foreach (ItemEntry item in option.ItemsGained) Fix(item.Rules);
+                    }
+            }
+        }
+
+        private static SpecialRuleEntry Disambiguate(string armyName, SpecialRuleEntry entry)
+        {
+            string? name = entry switch
+            {
+                SpecialRuleEntry_Core core => core.Name,
+                SpecialRuleEntry_CoreNumeric numeric => numeric.Name,
+                _ => null,
+            };
+            if (name is null || !AmbiguousRuleNames.TryGetValue((armyName, name), out string? canonical))
+                return entry;
+
+            return entry switch
+            {
+                SpecialRuleEntry_CoreNumeric numeric => new SpecialRuleEntry_CoreNumeric(canonical, numeric.NumericValue),
+                _ => new SpecialRuleEntry_Core(canonical),
+            };
+        }
 
         private static UpgradeSection MapSection(OprSection s)
         {

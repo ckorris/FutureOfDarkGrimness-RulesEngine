@@ -349,34 +349,51 @@ namespace FDG.Stages
 
         public static bool GetCanPass(IGameContext gameContext, IUnitActionContext context, out string reasonIfCant)
         {
-            //A unit that has already attacked has followed through on whatever its move obligated —
-            //the flow loops back here after the melee (layered actions may remain), and the distance
-            //gate below must not re-fire on the same move. Without this, a caster that charged
-            //beyond-Rush was locked out of Pass AFTER winning its melee, forced to Cast until its
-            //spell tokens ran dry before the zero-options fallback ended the activation.
+            //A unit that has already attacked has followed through on the engage obligation — the flow loops
+            //back here after the melee (layered actions may remain), and the proximity gate below must not
+            //re-fire. Without this, a caster that charged into contact would be locked out of Pass AFTER
+            //winning its melee, forced to Cast until its spell tokens ran dry before the zero-options fallback.
             if (context.HasAttacked)
             {
                 reasonIfCant = null;
                 return true;
             }
 
-            //If the unit moved further than its Rush allowance, the move was only legal
-            //because it ended in melee — so it must follow through and engage. Pass is gated off.
-            //The allowance must be the unit's REAL one — movement rules (Agile/...) and per-model
-            //budgets (#093, a joined hero) included, exactly what the move resolver granted — not the
-            //bare default, which wrongly gated Pass for any legally-long rush (same class of bug as
-            //the GetCanShoot advance-and-shoot cap; see MovementRuleQueries.EffectiveMaxRushDistance).
-            float maxRushDistance = Rules.Dispatch.MovementRuleQueries.EffectiveMaxRushDistance(
-                context.ActivatingUnit.GetValue(), gameContext.RuleEvaluator);
-
-            if(context.MoveDistance > maxRushDistance + 0.0001f)
+            //#206 — forced-charge is a PROXIMITY obligation, not a distance-moved one, and it is enforced here
+            //rather than at move time (the movement validator no longer rejects ending in the standoff band).
+            //A unit standing within ENEMY_STANDOFF_DISTANCE_INCHES (base-to-base) of an enemy can't idle in its
+            //face: Pass is gated so it must Charge (or reposition, e.g. Teleport, then re-evaluate). The "can
+            //charge" band is wider (melee range, 2"), so a unit at 1"-2" may Charge but is NOT forced — it may
+            //still Pass. Teleporting out past the standoff restores Pass; teleporting but staying inside it does
+            //not. Measured over living models only, against non-allied units.
+            IUnit unit = context.ActivatingUnit.GetValue();
+            if (AnyEnemyWithinStandoff(gameContext, context.ActivatingPlayer(), unit))
             {
-                reasonIfCant = $"Moved {context.MoveDistance:F2}\" - beyond Rush range; must engage in melee.";
+                reasonIfCant = "Within 1\" of an enemy - must charge (or reposition) rather than stand idle.";
                 return false;
             }
 
             reasonIfCant = null;
             return true;
+        }
+
+        //True when any non-allied unit has a living model within ENEMY_STANDOFF_DISTANCE_INCHES (base-to-base,
+        //3D) of one of this unit's living models. Allies are excluded via the activating player's team, mirroring
+        //GetCanCharge's target screening.
+        private static bool AnyEnemyWithinStandoff(IGameContext gameContext, PlayerID activatingPlayer, IUnit unit)
+        {
+            TeamData? playerTeam = gameContext.GameDataStore().GetAllValues<TeamData>()
+                .FirstOrDefault(t => t.IsPlayerOnTeam(activatingPlayer));
+            IReadOnlyList<PlayerID> alliedPlayers = playerTeam != null
+                ? playerTeam.Players
+                : new List<PlayerID> { activatingPlayer };
+
+            return gameContext.GameDataStore().GetAllValues<ArmyData>()
+                .Where(a => !alliedPlayers.Contains(a.PlayerID))
+                .SelectMany(a => a.UnitBindings)
+                .Any(enemyUnit => UnitCompareUtilities.MinDistanceBetweenUnits(
+                        unit, enemyUnit.GetValue(), out _, out _, includeVertical: true)
+                    < GameWideConstants.ENEMY_STANDOFF_DISTANCE_INCHES);
         }
 
         // #033 — true when the caster's army has at least one spell it can currently CAST: affordable AND

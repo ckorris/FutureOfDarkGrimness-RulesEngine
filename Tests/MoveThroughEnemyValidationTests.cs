@@ -45,18 +45,19 @@ namespace FDG.Tests
             Assert.That(ok, Is.True, Why(errors));
         }
 
+        // #206 — a non-charge move MAY now end inside the standoff band (right up against an enemy). The move
+        // validator no longer rejects it; the forced-charge obligation moves to ChooseActionStage.GetCanPass
+        // (see ChooseActionPassDisableTests). Pass-through and ending-stacked are still enforced (below).
         [Test]
-        public void NonChargeEndsInsideStandoff_Rejected()
+        public void NonChargeEndsInsideStandoff_Accepted()
         {
-            //Ends at (2.6,0): 2.4" centre-to-centre from the enemy (0.9" base-to-base) — inside the 1"
-            //standoff but not close enough to count as a charge.
+            //Ends at (2.6,0): 0.9" base-to-base from the enemy — inside the old 1" standoff, not stacked.
             DataBinding<ModelData> model = MakeModel(new Position(0, 0));
             ModelMoveEntry move = new ModelMoveEntry(model, new List<Position> { new Position(2.6f, 0) });
 
             bool ok = Validate(move, Enemy(new Position(5, 0)), out var errors);
 
-            Assert.That(ok, Is.False);
-            Assert.That(errors.Any(e => e.ErrorReasonType == EErrorReasonType.EndedTooCloseToEnemy), Is.True);
+            Assert.That(ok, Is.True, Why(errors));
         }
 
         [Test]
@@ -84,11 +85,14 @@ namespace FDG.Tests
             Assert.That(errors.Any(e => e.ErrorReasonType == EErrorReasonType.MovingThroughEnemyUnit), Is.True);
         }
 
+        // #206 — with the standoff-band rejection gone, a charge that ends in contact with enemy A while landing
+        // 0.8" from A's unit-mate B is simply legal (it was already legal via the old waiver; now there is no
+        // band to waive). Kept as a regression guard that ending near several models of one enemy unit is fine.
         [Test]
-        public void ChargingOneModelWaivesStandoffForRestOfThatUnit()
+        public void ChargeEndingNearSeveralModelsOfOneEnemyUnit_Accepted()
         {
             //Ends in contact with enemy A at (5,0); enemy B at (5.8,0) is part of the SAME unit and ends up
-            //0.8" base-to-base away (inside the standoff). Reaching A waives the standoff for B's whole unit.
+            //0.8" base-to-base away.
             DataBinding<ModelData> model = MakeModel(new Position(0, 0));
             ModelMoveEntry move = new ModelMoveEntry(model, new List<Position> { new Position(3.5f, 0) });
 
@@ -232,25 +236,27 @@ namespace FDG.Tests
             Assert.That(ok, Is.True, Why(errors));
         }
 
+        // #206 — a wide rectangular footprint ending inside the old standoff band (its flat 0.5" from an enemy)
+        // is now accepted, exactly like the circular case: the standoff-band rejection is gone for contactable
+        // enemies. (#150's shape-aware geometry still governs pass-through and ending-stacked — see the swept
+        // test below.)
         [Test]
-        public void RectangularMover_WideFootprintEndsInStandoffBand_FlaggedWhereBoundingCircleWouldPass()
+        public void RectangularMover_WideFootprintEndsInFormerStandoffBand_Accepted()
         {
             // A 6"×1" base ending at (5,0): its 3" half-width reaches X=8, leaving a 0.5" gap to an enemy circle
-            // at (9.25,0) — inside the 1" standoff band. The shape-aware end-state check flags it (#150).
+            // at (9.25,0) — inside the old 1" standoff band, but not stacked and not passed through.
             DataBinding<ModelData> rectModel = MakeModel(new RectangleBase(6f, 1f), new Position(0, 0));
             bool rectOk = Validate(new ModelMoveEntry(rectModel, new List<Position> { new Position(5f, 0) }),
                 Enemy(new Position(9.25f, 0)), out var rectErrors);
 
-            Assert.That(rectOk, Is.False, "the wide footprint ends inside the standoff band.");
-            Assert.That(rectErrors.Any(e => e.ErrorReasonType == EErrorReasonType.EndedTooCloseToEnemy), Is.True);
+            Assert.That(rectOk, Is.True, Why(rectErrors));
 
-            // Control: a circular base of the rectangle's inscribed bounding radius (0.5) reads a 3" gap and makes
-            // the same move legally — the approximation the shape-aware check replaces.
+            // The circular case (which never tripped the band anyway) is likewise accepted.
             DataBinding<ModelData> circleModel = MakeModel(new CircleBase(0.5f), new Position(0, 0));
             bool circleOk = Validate(new ModelMoveEntry(circleModel, new List<Position> { new Position(5f, 0) }),
-                Enemy(new Position(9.25f, 0)), out _);
+                Enemy(new Position(9.25f, 0)), out var circleErrors);
 
-            Assert.That(circleOk, Is.True, "a bounding-circle approximation would let this move pass.");
+            Assert.That(circleOk, Is.True, Why(circleErrors));
         }
 
         [Test]

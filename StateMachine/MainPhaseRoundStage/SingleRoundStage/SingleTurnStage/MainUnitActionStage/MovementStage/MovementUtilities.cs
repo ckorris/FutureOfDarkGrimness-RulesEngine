@@ -592,45 +592,24 @@ namespace FDG.Stages
         private const float ENEMY_CONTACT_TOLERANCE_INCHES = 0.1f;
 
         /// <summary>
-        /// Two related rules (GF movement):
-        /// <list type="bullet">
-        /// <item>A model may not move <i>through</i> an enemy base — its swept base may not overlap an enemy
-        /// base mid-path, nor end stacked on one.</item>
-        /// <item>A model that isn't charging must end at least <see cref="GameWideConstants.ENEMY_STANDOFF_DISTANCE_INCHES"/>
-        /// (base-to-base) from every enemy. "Charging" is detected geometrically: a move that ends in base
-        /// contact with an enemy unit waives the standoff for that whole unit (so reaching one model of a
-        /// multi-model unit doesn't fail you for being within 1" of its other models).</item>
-        /// </list>
-        /// Only moves that actually close the distance are penalised, so a model already inside an enemy's
-        /// reach (e.g. left there by a pile-in/consolidation move) can still move away or hold without
-        /// being trapped into an impossible-to-satisfy state.
+        /// A model may not move <i>through</i> an enemy base — its swept base may not overlap an enemy base
+        /// mid-path, nor end stacked on one. Only moves that actually close the distance are penalised, so a
+        /// model already inside an enemy's reach (e.g. left there by a pile-in/consolidation move) can still
+        /// move away or hold without being trapped into an impossible-to-satisfy state.
+        ///
+        /// #206 — there is deliberately NO "must end 1in from an enemy without charging" standoff rejection
+        /// here. A non-charge move MAY end inside the standoff band (right up against an enemy); the
+        /// consequence is enforced downstream, not at move time — <see cref="ChooseActionStage.GetCanPass"/>
+        /// gates Pass when the unit ends within <see cref="GameWideConstants.ENEMY_STANDOFF_DISTANCE_INCHES"/>
+        /// of an enemy, so the unit is forced to Charge (or reposition) rather than blocked from finishing its
+        /// move. Uncontactable enemies (Aircraft, #029) keep their own standoff below: they can't be charged,
+        /// so closing into contact with one has no legal follow-up and stays rejected.
         /// </summary>
         private static void ValidateMovingThroughEnemyUnits(List<ModelMoveEntry> moves,
             IReadOnlyList<EnemyModelFootprint> enemyFootprints, bool canMoveThroughEnemies,
             ref List<ReasonForInvalidMove> reasonsForInvalidMove)
         {
             if (enemyFootprints == null || enemyFootprints.Count == 0) return;
-
-            //First pass: which enemy units does this move charge into? A unit is engaged if any moving model
-            //ends within melee range of one of its models — the same completed-charge test ValidateChargeReach
-            //uses. Charging a unit waives the standoff for that whole unit (you legitimately end within 1" of
-            //all its models, not just the one you reached).
-            HashSet<int> engagedUnitKeys = new HashSet<int>();
-            foreach (ModelMoveEntry move in moves)
-            {
-                if (move.Positions.Count == 0) continue;
-                Position end = move.Positions[move.Positions.Count - 1];
-
-                foreach (EnemyModelFootprint enemy in enemyFootprints)
-                {
-                    // #029: an Aircraft (uncontactable) is never "engaged" — a charger can't end in contact with
-                    // it, so it stays subject to the standoff + ending-stacked rejections below (can't be charged).
-                    if (enemy.Uncontactable) continue;
-                    if (Position.GetDistance2D(end, enemy.Center)
-                        <= GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL + ENEMY_PROXIMITY_EPSILON_INCHES)
-                        engagedUnitKeys.Add(enemy.UnitKey);
-                }
-            }
 
             foreach (ModelMoveEntry move in moves)
             {
@@ -703,16 +682,11 @@ namespace FDG.Stages
                         flaggedThrough = true;
                     }
 
-                    //Standoff: ending in the (contact, standoff) band is illegal unless this unit is being charged.
-                    if (!flaggedStandoff && movedCloser && !engagedUnitKeys.Contains(enemy.UnitKey)
-                        && endGap > ENEMY_CONTACT_TOLERANCE_INCHES
-                        && endGap < GameWideConstants.ENEMY_STANDOFF_DISTANCE_INCHES - ENEMY_PROXIMITY_EPSILON_INCHES)
-                    {
-                        reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.EndedTooCloseToEnemy, move.Model));
-                        flaggedStandoff = true;
-                    }
+                    // #206 — no standoff-band rejection for a contactable enemy: a non-charge move may end right
+                    // up against one. GetCanPass forces the charge afterward. (The aircraft branch above keeps
+                    // its own standoff — an Aircraft can't be charged, so contact with it has no follow-up.)
 
-                    if (flaggedThrough && flaggedStandoff) break;
+                    if (flaggedThrough) break;
                 }
             }
         }

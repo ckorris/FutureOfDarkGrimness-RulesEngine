@@ -17,12 +17,16 @@ namespace FDG.Ai
         /// player's own stream from it by <paramref name="slotID"/> (#193). Null = unseeded.
         /// </param>
         /// <param name="slotID">The player's slot index. Stable across runs and save/resume, unlike the PlayerID GUID.</param>
+        /// <param name="decisionLog">Analysis sink (#191 tooling): profiles that plan (Tactician,
+        /// Gunline) narrate each Choose Action decision into it. Null in normal play.</param>
         public static IStageResolverRegistry BuildRegistry(EAiProfile profile, ITableState tableState,
-            PlayerID playerID, int? seed = null, int slotID = 0) => profile switch
+            PlayerID playerID, int? seed = null, int slotID = 0, Action<string>? decisionLog = null) => profile switch
         {
             EAiProfile.SoloRules => AiResolverRegistryFactory.BuildSoloRules(tableState, playerID, seed, slotID),
             EAiProfile.Tactician => TacticianResolverRegistryFactory.Build(tableState, playerID,
-                new TacticianOptions { Seed = seed, SlotID = slotID }),
+                new TacticianOptions { Seed = seed, SlotID = slotID, DecisionLog = decisionLog }),
+            EAiProfile.Gunline => Gunline.GunlineResolverRegistryFactory.Build(tableState, playerID,
+                seed, slotID, decisionLog),
             _ => throw new ArgumentOutOfRangeException(nameof(profile), profile, "Unknown AI profile."),
         };
 

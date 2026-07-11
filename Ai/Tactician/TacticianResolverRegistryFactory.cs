@@ -29,7 +29,7 @@ namespace FDG.Ai.Tactician
             // read-back (aura buffs) needs the game's own resolver-backed evaluator, which resolvers
             // do not receive today - recorded gap in the #191 ledger.
             var evaluator = new Rules.Dispatch.RuleEvaluator(new ProbabilisticDiceRoller());
-            var planner = new TacticianPlanner(tableState, evaluator);
+            var planner = new TacticianPlanner(tableState, evaluator, options.DecisionLog);
 
             // A4-1: activation order by urgency (also announces the active unit to the planner).
             registry.RegisterResolver(new Resolvers.TacticianActivationResolver(tableState, evaluator, planner));

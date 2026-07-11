@@ -15,11 +15,11 @@ namespace FDG.Ai.Tactician.Resolvers
     public class TacticianMovementResolver
         : IStageResolver<DefineMovementPathRequest, CancellableResult<List<ModelMoveEntry>>>
     {
-        private readonly TacticianPlanner _planner;
+        private readonly IMovePlanSource _planner;
         private readonly ITableState _tableState;
         private readonly IStageResolver<DefineMovementPathRequest, CancellableResult<List<ModelMoveEntry>>> _soloFallback;
 
-        public TacticianMovementResolver(TacticianPlanner planner, ITableState tableState,
+        public TacticianMovementResolver(IMovePlanSource planner, ITableState tableState,
             IStageResolver<DefineMovementPathRequest, CancellableResult<List<ModelMoveEntry>>> soloFallback)
         {
             _planner = planner;

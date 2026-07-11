@@ -9,5 +9,11 @@ namespace FDG.Ai
     {
         SoloRules,
         Tactician,
+        /// <summary>
+        /// Scripted human stand-in (#191 tooling): holds a defensive line and shoots, moving only
+        /// to claim enemy-free objectives. Measurement apparatus for behaviors the advancing solo
+        /// bot never elicits (melee armies crossing a held firing line), not a ladder rung.
+        /// </summary>
+        Gunline,
     }
 }

@@ -15,5 +15,11 @@ namespace FDG.Ai.Tactician
 
         /// <summary>The player's slot index. Stable across runs and save/resume, unlike the PlayerID GUID.</summary>
         public int SlotID { get; init; }
+
+        /// <summary>
+        /// Analysis sink (#191 tooling): receives one block per Choose Action - the winner plus
+        /// the full scored candidate table. Null (the default) in normal play.
+        /// </summary>
+        public Action<string>? DecisionLog { get; init; }
     }
 }

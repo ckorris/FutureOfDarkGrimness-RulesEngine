@@ -23,11 +23,17 @@ namespace FDG.Stages
             var otherEnemies = MovementUtilities.GetEnemyModelFootprints(
                 context.DefendingUnit, GameContext, excludeUnit: context.AttackingUnit);
 
+            // #205: the defender's FRIENDLY units are hard obstacles too - a pile-in may not stack the defender
+            // on top of its own teammates any more than on a third-party enemy. Pile-in stops the mover short of
+            // every obstacle footprint, so folding friendlies into the same list keeps it off them.
+            var friendlyObstacles = MovementUtilities.GetFriendlyModelFootprints(context.DefendingUnit, GameContext);
+            var obstacles = otherEnemies.Concat(friendlyObstacles).ToList();
+
             var moves = PileInUtilities.ComputePileInMoves(
                 chargingUnit.ModelBindings,
                 defendingUnit.ModelBindings,
                 GameContext.TableState.Terrain.Objects,
-                otherEnemies);
+                obstacles);
 
             foreach (var move in moves)
             {

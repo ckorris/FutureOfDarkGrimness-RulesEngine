@@ -40,9 +40,13 @@ namespace FDG.Ai.Tactician.Resolvers
             };
             var enemies = MovementPlanner.LiveEnemyFootprints(_tableState,
                 request.UnitDataBinding.GetValue().PlayerID);
+            // #205: reject a planned macro-move that would end stacked on a friendly, falling back to the solo
+            // resolver (which re-plans around friendlies) rather than submitting a move the stage rejects.
+            var friendlies = MovementPlanner.LiveFriendlyFootprints(_tableState,
+                request.UnitDataBinding.GetValue().PlayerID, request.UnitDataBinding.GetValue().ID);
             bool valid = MovementUtilities.ValidatePaths(planned, budgetFor, enemies,
                 request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain,
-                request.IgnoresImpassibleTerrain, _tableState.Terrain.Objects.ToList(), out _);
+                request.IgnoresImpassibleTerrain, _tableState.Terrain.Objects.ToList(), out _, friendlies);
 
             return valid
                 ? Task.FromResult<CancellableResult<List<ModelMoveEntry>>>(new Selected<List<ModelMoveEntry>>(planned))

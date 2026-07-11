@@ -127,12 +127,12 @@ namespace FDG.Ai.Tactician
             DataBinding<UnitData> unit, List<DataBinding<ModelData>> living,
             Func<ModelMoveEntry, ModelMoveBudget> budgetFor, List<EnemyModelFootprint> enemies,
             bool canMoveThroughEnemies, bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
-            List<ITerrain> terrain)
+            List<ITerrain> terrain, IReadOnlyList<EnemyModelFootprint>? friendlies = null)
         {
             float step = initialStep;
             List<ModelMoveEntry> candidate = candidateAt(step);
             bool valid = MovementUtilities.ValidatePaths(candidate, budgetFor,
-                enemies, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, out _);
+                enemies, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, out _, friendlies);
 
             int attempts = 0;
             while (!valid && attempts < MaxBackoffAttempts)
@@ -142,7 +142,7 @@ namespace FDG.Ai.Tactician
                     ? StayInPlace(unit)
                     : candidateAt(step);
                 valid = MovementUtilities.ValidatePaths(candidate, budgetFor,
-                    enemies, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, out _);
+                    enemies, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, out _, friendlies);
                 attempts++;
             }
 
@@ -151,7 +151,7 @@ namespace FDG.Ai.Tactician
                 // Reform in place to close any casualty gaps...
                 candidate = StayInPlace(unit);
                 valid = MovementUtilities.ValidatePaths(candidate, budgetFor,
-                    enemies, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, out _);
+                    enemies, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, out _, friendlies);
 
                 // ...but if even that is rejected (a unit intermingled with enemies can't re-pack without
                 // a model crossing an enemy base), hold exact positions.
@@ -255,6 +255,7 @@ namespace FDG.Ai.Tactician
         {
             var terrain = tableState.Terrain.Objects.ToList();
             var enemies = LiveEnemyFootprints(tableState, unit.GetValue().PlayerID);
+            var friendlies = LiveFriendlyFootprints(tableState, unit.GetValue().PlayerID, unit.GetValue().ID);
             float cx = living.Average(mb => mb.GetValue().Position.x);
             float cz = living.Average(mb => mb.GetValue().Position.z);
             var start = new Position(cx, cz);
@@ -284,7 +285,7 @@ namespace FDG.Ai.Tactician
                 arc => BuildPathCandidate(unit, living, path, arc, terrain, baseRadius,
                     maxDistanceInches, formation, lineAxis),
                 budget, unit, living, budgetFor, enemies,
-                canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain);
+                canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, friendlies);
         }
 
         /// <summary>Zero-length paths for the living models - always move-through-valid.</summary>
@@ -311,6 +312,40 @@ namespace FDG.Ai.Tactician
                     {
                         footprints.Add(new EnemyModelFootprint(md.Position, md.BaseRadiusInches, unitKey,
                             uncontactable, md.BaseShape, md.Facing));
+                        anyLiving = true;
+                    }
+                }
+                if (anyLiving) unitKey++;
+            }
+            return footprints;
+        }
+
+        /// <summary>
+        /// Living friendly model footprints (same team as <paramref name="playerID"/>, EXCLUDING the moving
+        /// unit) - the #205 end-overlap obstacles the AI must not stack on. Team-based so it matches the
+        /// authoritative <see cref="MovementUtilities.GetFriendlyModelFootprints"/> (in the 1v1 pool that is
+        /// just "my other units"); reserve-parked models at (0,0) are excluded by convention, exactly like
+        /// <see cref="LiveEnemyFootprints"/>. Reuses EnemyModelFootprint purely as a base-footprint carrier.
+        /// </summary>
+        public static List<EnemyModelFootprint> LiveFriendlyFootprints(ITableState tableState, PlayerID playerID,
+            UnitID excludeUnitId)
+        {
+            ITeam? team = tableState.Teams.Objects.FirstOrDefault(t => t.Players.Contains(playerID));
+            IReadOnlyList<PlayerID> allied = team != null ? team.Players : new List<PlayerID> { playerID };
+
+            var footprints = new List<EnemyModelFootprint>();
+            int unitKey = 0;
+            foreach (var unit in tableState.Units.Objects)
+            {
+                if (!allied.Contains(unit.PlayerID)) continue;
+                if (unit.ID.Equals(excludeUnitId)) continue;
+                bool anyLiving = false;
+                foreach (var model in unit.Models)
+                {
+                    if (model is ModelData md && md.GetIsAlive() && (md.Position.x != 0f || md.Position.z != 0f))
+                    {
+                        footprints.Add(new EnemyModelFootprint(md.Position, md.BaseRadiusInches, unitKey,
+                            false, md.BaseShape, md.Facing));
                         anyLiving = true;
                     }
                 }

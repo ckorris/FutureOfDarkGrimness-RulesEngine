@@ -170,6 +170,8 @@ namespace FDG.Stages
             // #090: an out-of-band move (e.g. Vanguard) is enemy-aware like a normal move — it may not pass
             // through or end stacked on an enemy unless the unit may move through enemies (Strafing fly-over).
             List<EnemyModelFootprint> enemyFootprints = MovementUtilities.GetEnemyModelFootprints(unit, gameContext);
+            // #205: a triggered move (Harassing / Hit & Run / forced move) may not end stacked on a friendly.
+            List<EnemyModelFootprint> friendlyFootprints = MovementUtilities.GetFriendlyModelFootprints(unit, gameContext);
             bool canMoveThroughEnemies = Rules.Dispatch.MovementRuleQueries.CanMoveThroughEnemies(
                 unit.GetValue(), gameContext.RuleEvaluator);
             bool ignoresDifficultTerrain = Rules.Dispatch.MovementRuleQueries.IgnoresDifficultTerrain(
@@ -178,7 +180,7 @@ namespace FDG.Stages
                 unit.GetValue(), gameContext.RuleEvaluator);
 
             if (!MovementUtilities.ValidatePaths(paths, maxInches, enemyFootprints, canMoveThroughEnemies,
-                    ignoresDifficultTerrain, ignoresAllTerrain, relevantTerrain, out errors))
+                    ignoresDifficultTerrain, ignoresAllTerrain, relevantTerrain, out errors, friendlyFootprints))
             {
                 return false;
             }

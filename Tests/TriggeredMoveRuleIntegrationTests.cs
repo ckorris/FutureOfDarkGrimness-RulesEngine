@@ -88,6 +88,74 @@ namespace FDG.Tests
             AssertModelAt(unit, 1, 5f, 1f);
         }
 
+        // #208: an OPTIONAL triggered move whose resolver hands back a path the authoritative validator
+        // rejects (here a cohesion-breaking hold - the models start >1" apart, as a unit spread by
+        // post-melee intermingling does, and the resolver can only hold them there) is DECLINED, not
+        // faulted. The unit stays exactly where it was and no exception escapes.
+        [Test]
+        public async Task TriggeredMove_OptionalInvalidPath_DeclinesInsteadOfFaulting()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CannedHoldPathRequester());
+            DataBinding<UnitData> unit = MakeUnit(new Position(0f, 0f), new Position(5f, 0f));
+
+            var move = new RuleOperation.InvokeTriggeredMove(unit.GetValue(), MaxInches: 3f, IsOptional: true);
+
+            Assert.DoesNotThrowAsync(() =>
+                OperationExecutor.Execute(new RuleOperation[] { move }, new GameOperationServices(ctx)));
+            AssertModelAt(unit, 0, 0f, 0f);
+            AssertModelAt(unit, 1, 5f, 0f);
+        }
+
+        // The forced-move twin: a NON-optional triggered move (a spell pushing an enemy) that comes back
+        // invalid is a genuine engine bug, not a legal "no thanks" - so it still faults loudly. Guards
+        // that the #208 decline is scoped to optional moves and did not swallow forced-move errors.
+        [Test]
+        public void TriggeredMove_ForcedInvalidPath_StillFaults()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CannedHoldPathRequester());
+            DataBinding<UnitData> unit = MakeUnit(new Position(0f, 0f), new Position(5f, 0f));
+
+            var move = new RuleOperation.InvokeTriggeredMove(unit.GetValue(), MaxInches: 3f, IsOptional: false);
+
+            Assert.ThrowsAsync<RequestResponseInvalidException>(() =>
+                OperationExecutor.Execute(new RuleOperation[] { move }, new GameOperationServices(ctx)));
+        }
+
+        // #208: the clean decline channel - an optional move is cancellable (allowCancel = isOptional), so
+        // a resolver with no legal destination (the AI's stuck case) replies Cancelled. That is a decline,
+        // not a fault: the unit stays put and no exception escapes.
+        [Test]
+        public async Task TriggeredMove_OptionalCancelled_DeclinesInsteadOfFaulting()
+        {
+            var requester = new CannedCancelMovePathRequester();
+            var ctx = new TriggeredMoveTestContext(_store, requester);
+            DataBinding<UnitData> unit = MakeUnit(new Position(0f, 0f), new Position(0f, 1f));
+
+            var move = new RuleOperation.InvokeTriggeredMove(unit.GetValue(), MaxInches: 3f, IsOptional: true);
+
+            Assert.DoesNotThrowAsync(() =>
+                OperationExecutor.Execute(new RuleOperation[] { move }, new GameOperationServices(ctx)));
+            Assert.That(requester.Captured!.AllowCancel, Is.True,
+                "an optional triggered move offers the resolver a decline (allowCancel = isOptional)");
+            AssertModelAt(unit, 0, 0f, 0f);
+            AssertModelAt(unit, 1, 0f, 1f);
+        }
+
+        // A forced move is NOT cancellable (allowCancel is false), so a Cancelled reply is an engine
+        // contract violation and still faults - the pre-#208 behavior, preserved for forced moves.
+        [Test]
+        public void TriggeredMove_ForcedCancelled_StillFaults()
+        {
+            var requester = new CannedCancelMovePathRequester();
+            var ctx = new TriggeredMoveTestContext(_store, requester);
+            DataBinding<UnitData> unit = MakeUnit(new Position(0f, 0f), new Position(0f, 1f));
+
+            var move = new RuleOperation.InvokeTriggeredMove(unit.GetValue(), MaxInches: 3f, IsOptional: false);
+
+            Assert.ThrowsAsync<RequestResponseInvalidException>(() =>
+                OperationExecutor.Execute(new RuleOperation[] { move }, new GameOperationServices(ctx)));
+        }
+
         // Harassing is a PASSIVE rule (a HookEntry, not an activated ability) that fires at the
         // post-shoot hook PostShootStage now drives. Proves the same TriggeredMove seam reached from a
         // static rule at Shooting_OnPostShoot: EvaluateAll -> OperationExecutor -> movement subsystem.
@@ -404,6 +472,45 @@ namespace FDG.Tests
                         new List<Position> { new Position(start.x + _dx, start.z + _dz) }));
                 }
                 return Task.FromResult((TReply)(object)new Selected<List<ModelMoveEntry>>(entries));
+            }
+            throw new System.InvalidOperationException("Unexpected request type: " + request.GetType());
+        }
+    }
+
+    // Holds every model at its exact current position (a zero-length path per model). When the models
+    // start >1" apart this is a cohesion-BREAKING submission - the #208 case a stuck resolver produces.
+    internal sealed class CannedHoldPathRequester : IPlayerRequestByID
+    {
+        public DefineMovementPathRequest? Captured { get; private set; }
+
+        public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
+            where TRequest : IStageTaskRequest<TReply>
+        {
+            if (request is DefineMovementPathRequest moveRequest)
+            {
+                Captured = moveRequest;
+                var entries = moveRequest.UnitDataBinding.GetValue().ModelBindings
+                    .Select(model => new ModelMoveEntry(model,
+                        new List<Position> { model.GetValue().PositionBinding.GetValue() }))
+                    .ToList();
+                return Task.FromResult((TReply)(object)new Selected<List<ModelMoveEntry>>(entries));
+            }
+            throw new System.InvalidOperationException("Unexpected request type: " + request.GetType());
+        }
+    }
+
+    // Replies Cancelled to a movement request - the AI's decline when no legal path exists (#208).
+    internal sealed class CannedCancelMovePathRequester : IPlayerRequestByID
+    {
+        public DefineMovementPathRequest? Captured { get; private set; }
+
+        public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
+            where TRequest : IStageTaskRequest<TReply>
+        {
+            if (request is DefineMovementPathRequest moveRequest)
+            {
+                Captured = moveRequest;
+                return Task.FromResult((TReply)(object)new Cancelled<List<ModelMoveEntry>>());
             }
             throw new System.InvalidOperationException("Unexpected request type: " + request.GetType());
         }

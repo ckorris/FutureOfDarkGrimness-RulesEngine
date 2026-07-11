@@ -358,6 +358,72 @@ namespace FDG.Tests
                 "A unit already in contact must still get a valid move: " + string.Join(", ", errors.Select(e => e.ToString())));
         }
 
+        // #208: when NO legal path exists - here two models start 6" apart (a unit spread by post-melee
+        // intermingling) and the move budget is too small to either advance meaningfully or re-pack them
+        // into cohesion - the AI must NOT submit the cohesion-breaking hold that faults the executor. On a
+        // CANCELLABLE request (an optional post-combat "may move") it declines with Cancelled instead.
+        [Test]
+        public async Task Resolve_NoLegalPath_CancellableRequest_DeclinesWithCancelled()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var selfPlayer = new PlayerID(System.Guid.NewGuid());
+            var enemyPlayer = new PlayerID(System.Guid.NewGuid());
+
+            // Two mover models 6" apart - already breaking cohesion, as a post-melee spread does.
+            var a = store.GetDataBinding<ModelData>(store.Create(new ModelData(0.5f, new List<Weapon>(), new Position(0f, 0f), store)));
+            var b = store.GetDataBinding<ModelData>(store.Create(new ModelData(0.5f, new List<Weapon>(), new Position(0f, 6f), store)));
+            var moverUnit = new UnitData(selfPlayer, "Spread", 4, 4, new List<DataBinding<ModelData>> { a, b });
+            var moverUnitBinding = store.GetDataBinding<UnitData>(store.Create(moverUnit));
+
+            // An enemy exists (so the resolver takes the advance path, not the no-enemy early-out) but is
+            // far away and irrelevant to reachability.
+            var enemy = store.GetDataBinding<ModelData>(store.Create(new ModelData(0.5f, new List<Weapon>(), new Position(0f, 100f), store)));
+            store.Create(new UnitData(enemyPlayer, "Enemies", 4, 4, new List<DataBinding<ModelData>> { enemy }));
+
+            var tableState = new TableState(store);
+            var resolver = new AiDefineMovementResolver(tableState, selfPlayer);
+
+            // A tiny budget: the models cannot advance to a valid spot NOR re-pack the 6" apart into
+            // cohesion within 0.3", so the ladder bottoms out at the cohesion-breaking hold.
+            var request = new DefineMovementPathRequest(selfPlayer, "Triggered Move", moverUnitBinding,
+                maxAdvanceDistance: 0.3f, maxRushDistance: 0.3f, maxDistanceInches: 0.3f, allowCancel: true);
+
+            CancellableResult<List<ModelMoveEntry>> result = await resolver.Resolve(request);
+
+            Assert.That(result, Is.InstanceOf<Cancelled<List<ModelMoveEntry>>>(),
+                "with no legal path and a cancellable request the AI declines rather than submitting an invalid move");
+        }
+
+        // The forced-move twin of the above: an identical stuck unit on a NON-cancellable request has no
+        // decline channel, so the AI still returns its least-bad path (the pre-#208 behavior). It stays a
+        // path, not a Cancelled - MoveUnit is then responsible for faulting a truly-forced invalid move.
+        [Test]
+        public async Task Resolve_NoLegalPath_NonCancellableRequest_StillReturnsAPath()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var selfPlayer = new PlayerID(System.Guid.NewGuid());
+            var enemyPlayer = new PlayerID(System.Guid.NewGuid());
+
+            var a = store.GetDataBinding<ModelData>(store.Create(new ModelData(0.5f, new List<Weapon>(), new Position(0f, 0f), store)));
+            var b = store.GetDataBinding<ModelData>(store.Create(new ModelData(0.5f, new List<Weapon>(), new Position(0f, 6f), store)));
+            var moverUnit = new UnitData(selfPlayer, "Spread", 4, 4, new List<DataBinding<ModelData>> { a, b });
+            var moverUnitBinding = store.GetDataBinding<UnitData>(store.Create(moverUnit));
+
+            var enemy = store.GetDataBinding<ModelData>(store.Create(new ModelData(0.5f, new List<Weapon>(), new Position(0f, 100f), store)));
+            store.Create(new UnitData(enemyPlayer, "Enemies", 4, 4, new List<DataBinding<ModelData>> { enemy }));
+
+            var tableState = new TableState(store);
+            var resolver = new AiDefineMovementResolver(tableState, selfPlayer);
+
+            var request = new DefineMovementPathRequest(selfPlayer, "Triggered Move", moverUnitBinding,
+                maxAdvanceDistance: 0.3f, maxRushDistance: 0.3f, maxDistanceInches: 0.3f, allowCancel: false);
+
+            CancellableResult<List<ModelMoveEntry>> result = await resolver.Resolve(request);
+
+            Assert.That(result, Is.InstanceOf<Selected<List<ModelMoveEntry>>>(),
+                "a non-cancellable request has no decline channel, so the AI still supplies a path");
+        }
+
         // Smallest base-to-base gap between any moved model's end position and the enemy (both radius 0.75").
         private static float MinGap(List<ModelMoveEntry> moves, Position enemy)
         {
@@ -371,7 +437,9 @@ namespace FDG.Tests
             return min;
         }
 
-        // The AI resolver never cancels - it answers a stand-still as a zero-length path, not a Cancelled.
+        // The AI answers a stand-still as a zero-length path, not a Cancelled - EXCEPT when the request is
+        // cancellable (an optional triggered move) AND no legal path exists, where it declines (#208). None
+        // of the requests these tests build set AllowCancel, so here the AI must always supply a path.
         private static List<ModelMoveEntry> Unwrap(CancellableResult<List<ModelMoveEntry>> result)
         {
             Assert.That(result, Is.InstanceOf<Selected<List<ModelMoveEntry>>>(),

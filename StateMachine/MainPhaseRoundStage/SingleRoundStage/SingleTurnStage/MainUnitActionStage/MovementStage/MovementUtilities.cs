@@ -491,6 +491,16 @@ namespace FDG.Stages
                 .Where(t => t.TerrainType.HasFlag(ETerrainType.Difficult))
                 .ToList());
 
+        /// <summary>Public sibling of the Difficult/Dangerous checks (#213): whether the move's swept base
+        /// path touches any Impassible-flagged piece. Lets a move-preview resolver flag a "moving through
+        /// impassible terrain" path as invalid (red, un-clickable) up front, instead of only rejecting it at
+        /// the Done gate. The authoritative enforcement is <see cref="ValidateMovingThroughImpassibleTerrain"/>;
+        /// this is the same swept-base test it uses, for preview.</summary>
+        public static bool DoesPathCrossImpassibleTerrain(ModelMoveEntry move, IEnumerable<ITerrain> terrain)
+            => DoesPathCrossTerrainPieces(move, terrain
+                .Where(t => t.TerrainType.HasFlag(ETerrainType.Impassible))
+                .ToList());
+
         private static bool DoesPathCrossTerrainPieces(ModelMoveEntry move, List<ITerrain> pieces)
         {
             if (pieces.Count == 0 || move.Positions.Count == 0) return false;

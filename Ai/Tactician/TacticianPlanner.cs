@@ -38,6 +38,12 @@ namespace FDG.Ai.Tactician
         // nearest it, with the ward's threatened value) - endpoint-independent, computed lazily.
         private (Position ThreatPos, Position WardPos, float WardThreatValue)? _screenLane;
         private bool _screenLaneComputed;
+        // Whether any enemy can still reach the marker before game end, per objective (keyed by
+        // marker position) - endpoint-independent, computed lazily per activation.
+        private readonly Dictionary<(float X, float Z), bool> _markerContestable = new();
+        // Other friendlies inside each enemy's threat envelope (alternative targets that dilute
+        // its volley) - endpoint-independent, computed lazily per activation.
+        private readonly Dictionary<DataReference, int> _envelopeSharers = new();
 
         /// <summary>The unit whose activation is being planned (null between activations).</summary>
         public DataBinding<UnitData>? ActiveUnit => _activeUnit;
@@ -59,6 +65,8 @@ namespace FDG.Ai.Tactician
             _meleeApproach.Clear();
             _screenLane = null;
             _screenLaneComputed = false;
+            _markerContestable.Clear();
+            _envelopeSharers.Clear();
         }
 
         /// <summary>
@@ -425,7 +433,13 @@ namespace FDG.Ai.Tactician
                     incomingValue = Math.Max(incomingValue, 0.5f * ValueFraction(
                         CombatMath.EstimateMelee(_evaluator, enemyBinding, _activeUnit).AttackerAttack.ExpectedWounds, self));
                 }
-                retaliation = Math.Max(retaliation, incomingValue);
+                // Focus-fire dilution (Chris's games 1-3 - the recurring "melee slides sideways /
+                // garrison won't advance" mechanism): this enemy's volley lands on ONE target per
+                // activation, so with friends inside the same threat envelope the expected share
+                // of it shrinks. Pricing the full volley onto every unit made flooding a gunline
+                // unpriceable - nobody could afford to be the one who closes.
+                retaliation = Math.Max(retaliation, incomingValue
+                    / (1f + TacticianWeights.RetaliationDilutionPerSharer * EnvelopeSharers(enemyBinding)));
             }
 
             float objectiveDelta = ObjectiveDelta(self, end);
@@ -630,10 +644,85 @@ namespace FDG.Ai.Tactician
 
                 if (!projectedOurs && endOnIt) delta += 1f;
                 if (projectedOurs && weAreOnItNow && !endOnIt
-                    && projection.PlayersInRange.Count(p => p == self.PlayerID) <= 1)
+                    && projection.PlayersInRange.Count(p => p == self.PlayerID) <= 1
+                    && MarkerContestable(projection.Objective.Position))
                     delta -= 1f;
             }
             return delta;
+        }
+
+        // Garrison release (#191, Chris's game 3 - "even after the objective was 100% safe, they
+        // still stayed"): ownership is sticky, so the walk-away penalty prices RE-CAPTURE risk -
+        // which is zero once no living enemy can put a base within seizure range of the marker
+        // before the game ends (rounds left x its best move, rush or charge). Anything alive but
+        // off the battlefield (reserve, embarked cargo) could still land or spill out anywhere,
+        // so its mere existence keeps every marker contestable - conservative, and moot by the
+        // late rounds where the lock actually bites.
+        private bool MarkerContestable(Position marker)
+        {
+            (float X, float Z) key = (marker.x, marker.z);
+            if (_markerContestable.TryGetValue(key, out bool cached)) return cached;
+
+            UnitData self = _activeUnit!.GetValue();
+            int round = _tableState.Progress.RoundCount ?? 1;
+            float movesLeft = _tableState.Progress.TotalRounds - round + 1;
+
+            bool contestable = AnyEnemyOffBattlefield(self.PlayerID);
+            if (!contestable)
+            {
+                foreach (DataBinding<UnitData> enemyBinding in EnemyBindings(self.PlayerID))
+                {
+                    UnitData enemy = enemyBinding.GetValue();
+                    if (AircraftRules.IsAircraft(enemy)) continue; // can never seize or contest
+                    float reach = movesLeft * Math.Max(
+                        TacticalAnalysis.RushDistance(enemy, _evaluator),
+                        TacticalAnalysis.ChargeBudget(enemy, _evaluator));
+                    if (TacticalAnalysis.MinBaseEdgeDistanceToPoint(enemy, marker)
+                        <= reach + TacticalAnalysis.ObjectiveSeizureRadiusInches)
+                    {
+                        contestable = true;
+                        break;
+                    }
+                }
+            }
+            _markerContestable[key] = contestable;
+            return contestable;
+        }
+
+        // Friendlies OTHER than the active unit whose current position sits inside this enemy's
+        // threat envelope (advance + weapon reach, or charge reach, per ThreatRangeAgainst) -
+        // the alternative targets that dilute the volley the retaliation term prices. Candidate-
+        // independent (friends are where they are), so one count serves the whole activation.
+        private int EnvelopeSharers(DataBinding<UnitData> enemyBinding)
+        {
+            if (_envelopeSharers.TryGetValue(enemyBinding.Reference, out int cached)) return cached;
+
+            UnitData enemy = enemyBinding.GetValue();
+            Position enemyPos = Centroid(enemy);
+            int count = 0;
+            foreach (DataBinding<UnitData> friendlyBinding in FriendlyBindings(_activeUnit!.GetValue().PlayerID))
+            {
+                if (friendlyBinding.Reference.Equals(_activeUnit.Reference)) continue;
+                UnitData friendly = friendlyBinding.GetValue();
+                if (Distance(enemyPos, Centroid(friendly))
+                    <= TacticalAnalysis.ThreatRangeAgainst(enemy, friendly, _evaluator))
+                    count++;
+            }
+            _envelopeSharers[enemyBinding.Reference] = count;
+            return count;
+        }
+
+        private bool AnyEnemyOffBattlefield(PlayerID us)
+        {
+            foreach (IArmy army in _tableState.Armies.Objects)
+            {
+                if (army.PlayerID == us || army is not ArmyData data) continue;
+                foreach (DataBinding<UnitData> unit in data.UnitBindings)
+                    if (unit.GetValue().Models.Any(m => m.GetIsAlive())
+                        && !unit.GetValue().GetIsOnBattlefield())
+                        return true;
+            }
+            return false;
         }
 
         // Keyed on the ACTION TYPE the executor will declare, not the intent: the engine's shoot

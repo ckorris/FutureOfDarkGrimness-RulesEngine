@@ -67,16 +67,19 @@ namespace FDG.Stages
 
             GameContext.Log($"Saved {totalSuccesses} wounds, taking {totalFailures}.");
 
-            // One held save-roll beat per distinct threshold, in first-seen order, captioned with the weapon
-            // and why there are extra hits ("2 hits x3 (Blast) = 6", "3 hits +1 (Furious) = 4", "2 hits,
-            // Rending AP+1"). Held so the settled dice linger while the wounds they cause animate.
+            // One save-roll beat per distinct threshold, in first-seen order, captioned with the weapon and
+            // why there are extra hits ("2 hits x3 (Blast) = 6", "3 hits +1 (Furious) = 4", "2 hits, Rending
+            // AP+1"). #204 follow-up: these are NOT held. A held beat only paces its short lead-in and then
+            // lingers until superseded, so with two thresholds the first flicked past in ~600ms while the
+            // last lingered through the whole wound animation - uneven. Non-held gives every threshold the
+            // same full DiceRoll duration (matching the Roll-to-Hit beat), so the rolls read evenly.
             string weaponName = metaData.WeaponType.Name;
             foreach (SaveThresholdBucket bucket in buckets)
             {
                 await GameContext.Presenter.Present(
                     DiceRolledBeat.From(bucket.BuildResults(), bucket.SaveNeeded, GameContext.Settings.RandomnessType,
                         $"{weaponName}: {bucket.ComposeExplanation()}",
-                        $"{bucket.Saved:0.##} saved, {bucket.Wounds:0.##} wounds", held: true));
+                        $"{bucket.Saved:0.##} saved, {bucket.Wounds:0.##} wounds", held: false));
             }
 
             // Deflection "pings" for the saved shots. Saves are resolved per AP group, not per

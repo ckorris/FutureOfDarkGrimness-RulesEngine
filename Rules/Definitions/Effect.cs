@@ -58,6 +58,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(DeferDeployment), "deferDeployment")]
 [JsonDerivedType(typeof(Disembark), "disembark")]
 [JsonDerivedType(typeof(Embark), "embark")]
+[JsonDerivedType(typeof(Teleport), "teleport")]
 [JsonDerivedType(typeof(MoraleTestThen), "moraleTestThen")]
 [JsonDerivedType(typeof(ApplyFatigue), "applyFatigue")]
 [JsonDerivedType(typeof(MarkTarget), "markTarget")]
@@ -662,6 +663,23 @@ public abstract record Effect
     /// since the availability is spatial and can't be a data condition). <see cref="Apply"/> is a no-op.
     /// </summary>
     public sealed record Embark : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+        }
+    }
+
+    /// <summary>
+    /// #197 — marker for the Teleport activated ability (a unit repositioning up to 6" on its activation,
+    /// "once per activation, before attacking"). Like <see cref="Disembark"/>/<see cref="Embark"/>, it
+    /// carries no resolvable operation: the placement itself - each living model set anywhere fully within
+    /// 6" of its own position - is enacted by <c>TeleportStage</c>, to which <c>ChooseActionStage</c> routes
+    /// this offer by name (the generic custom-action resolver is token-ops only). Being a menu action that
+    /// loops back to Choose Action, the unit re-evaluates Charge/Shoot/Pass from its new position each time
+    /// (#206's proximity Pass gate is what makes "teleport clear of an enemy -> Pass returns" work).
+    /// <see cref="Apply"/> is a deliberate no-op so a stray generic resolution can't crash mid-activation.
+    /// </summary>
+    public sealed record Teleport : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {

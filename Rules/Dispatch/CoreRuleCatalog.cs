@@ -41,7 +41,7 @@ public static class CoreRuleCatalog
         CourageAura, BaneInMeleeAura, RendingInMeleeAura, ShredInMeleeAura, UnstoppableInMeleeAura,
         Resistance, Protected, PiercingAssault, PiercingHunter, Shielded, Fortified,
         ResistanceAura, ProtectedAura, PiercingAssaultAura, PiercingHunterAura, ShieldedAura, FortifiedAura,
-        Strider, Flying, Aircraft,
+        Strider, Flying, Aircraft, Teleport, TeleportAura,
         IncreasedShootingRange, RangedShrouding, DarkbornOffensive, DarkbornDefensive, MeleeShrouding,
         IncreasedShootingRangeAura, RangedShroudingAura, MeleeShroudingAura,
     };
@@ -1191,6 +1191,33 @@ public static class CoreRuleCatalog
         Valence: EValence.Neutral,
         Description: "Board a friendly transport that has room, within move range.");
 
+    /// <summary> Canonical name of the Teleport ability (#197). </summary>
+    public const string TeleportRuleName = "Teleport";
+
+    /// <summary>
+    /// Teleport (#197): "once per activation, before attacking, you may place this model anywhere fully
+    /// within 6&quot; of its position." Unlike Disembark/Embark this IS a book-listed faction rule (Knight
+    /// Brothers, Eternal Dynasty, ...), so it lives in <see cref="All"/> and resolves at army-load wherever a
+    /// book references "Teleport" - but its effect is a placement, not a token op, so it follows the same
+    /// engine-stage pattern: offered at <see cref="EHookID.Activation_OnActionChoice"/> as a menu action, then
+    /// routed by name to <c>TeleportStage</c> (the generic custom-action resolver is token-ops only).
+    /// <see cref="Cost.OncePerActivation"/> makes it a single reposition per activation; the "before
+    /// attacking" gate (not-yet-attacked) is applied in engine code by <c>ChooseActionStage</c>, like Embark's
+    /// spatial gate. Fully layered - it sets neither HasMoved nor HasAttacked - so a unit may move, teleport,
+    /// then still shoot; the teleport is bonus repositioning that does not count toward the move-shoot cap.
+    /// </summary>
+    public static SpecialRuleDefinition Teleport { get; } = new SpecialRuleDefinition(TeleportRuleName,
+        Array.Empty<HookEntry>(),
+        new[]
+        {
+            new ActivatedAbility(EHookID.Activation_OnActionChoice, new Cost.OncePerActivation(),
+                new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
+                new Effect.Teleport(),
+                new Condition.Always()),
+        },
+        Valence: EValence.Neutral,
+        Description: "Once per activation, before attacking, place each model fully within 6\" of its position.");
+
     // Triggered-move primitive (DeployUnitStage offer -> MovementExecutor) --------
 
     /// <summary>
@@ -1381,6 +1408,9 @@ public static class CoreRuleCatalog
     // their base rule and are deliberately omitted here.
     /// <summary> Regeneration Aura: grants <see cref="Regeneration"/> unit-wide. </summary>
     public static SpecialRuleDefinition RegenerationAura { get; } = UnitAura("Regeneration Aura", "Regeneration");
+    /// <summary> #197 Teleport Aura: "this model and its unit get Teleport" - grants <see cref="Teleport"/>
+    /// unit-wide (the granted activated ability surfaces in Choose Action for the whole unit). </summary>
+    public static SpecialRuleDefinition TeleportAura { get; } = UnitAura("Teleport Aura", "Teleport");
     /// <summary> Furious Aura: grants <see cref="Furious"/> unit-wide. </summary>
     public static SpecialRuleDefinition FuriousAura { get; } = UnitAura("Furious Aura", "Furious");
     /// <summary> Stealth Aura: grants <see cref="Stealth"/> unit-wide. </summary>

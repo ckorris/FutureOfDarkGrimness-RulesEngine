@@ -31,6 +31,8 @@ namespace FDG.Tests
                 "ChooseActionStage routes the offer to DisembarkStage, which performs the move.",
             ["Embark"] = "stage-enacted: Effect.Embark is a deliberate no-op marker; ChooseActionStage " +
                 "routes the offer to EmbarkStage after the spatial transport-in-range gate.",
+            ["Teleport"] = "stage-enacted: Effect.Teleport is a deliberate no-op marker; ChooseActionStage " +
+                "routes the offer to TeleportStage, which runs the 6\" placement (#197).",
         };
 
         // All plus the two standalone definitions FDGServer attaches to every unit at army setup —

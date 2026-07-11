@@ -21,6 +21,7 @@ namespace FDG.Stages
         public StageBinding ToCustomAction;
         public StageBinding ToDisembark;
         public StageBinding ToEmbark;
+        public StageBinding ToTeleport;
         public StageBinding ToReconcileEndOfActivation;
 
         public const string MOVEMENT_CHOICE_NAME = "Move";
@@ -38,6 +39,7 @@ namespace FDG.Stages
             ToCustomAction = new StageBinding(this);
             ToDisembark = new StageBinding(this);
             ToEmbark = new StageBinding(this);
+            ToTeleport = new StageBinding(this);
             ToReconcileEndOfActivation = new StageBinding(this);
         }
 
@@ -196,6 +198,26 @@ namespace FDG.Stages
                     {
                         validOptions.Add(offer.RuleName);
                         outcomes.Add(offer.RuleName, () => ToEmbark.Activate(context));
+                    }
+                    continue;
+                }
+
+                // #197 Teleport — a book-listed rule (not engine-internal like Disembark/Embark) whose effect
+                // is a placement, so it routes to TeleportStage rather than the token-op resolver. Available
+                // "before attacking": gated on not-having-attacked here (its once-per-activation is enforced by
+                // the ability's own cost). The offer is stashed like a generic custom action so TeleportStage
+                // can resolve it to pay that cost. Fully layered - does not consume the move.
+                if (offer.RuleName == CoreRuleCatalog.TeleportRuleName)
+                {
+                    if (!context.HasAttacked && !outcomes.ContainsKey(offer.RuleName))
+                    {
+                        AbilityOffer teleportOffer = offer;
+                        validOptions.Add(offer.RuleName);
+                        outcomes.Add(offer.RuleName, () =>
+                        {
+                            context.SetPendingCustomAction(teleportOffer);
+                            return ToTeleport.Activate(context);
+                        });
                     }
                     continue;
                 }

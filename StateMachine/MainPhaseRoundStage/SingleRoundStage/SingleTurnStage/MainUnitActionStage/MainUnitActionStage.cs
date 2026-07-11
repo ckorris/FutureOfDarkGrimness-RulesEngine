@@ -64,6 +64,9 @@ namespace FDG.Stages
                 .AddChild(new CastSpellStage(GameContext, this), out var castSpell)
                 .AddChild(new DisembarkStage(GameContext, this), out var disembark)
                 .AddChild(new EmbarkStage(GameContext, this), out var embark)
+                // #197 Teleport — a 6" reposition-placement offered in Choose Action; loops back so the unit
+                // re-evaluates its options from the new position (layered, doesn't end the turn).
+                .AddChild(new TeleportStage(GameContext, this), out var teleport)
                 .AddSibling(nameof(ToReconcileEndOfActivation), ToReconcileEndOfActivation, out string toReconcileActivationEvent)
                 .Build();
 
@@ -81,6 +84,7 @@ namespace FDG.Stages
             chooseAction.ToCast.Bind(castSpell);
             chooseAction.ToDisembark.Bind(disembark);
             chooseAction.ToEmbark.Bind(embark);
+            chooseAction.ToTeleport.Bind(teleport);
             chooseAction.ToReconcileEndOfActivation.Bind(toReconcileActivationEvent);
             movement.OnFinishedMovement.Bind(chooseAction);
             // Abandoning the move at the path prompt returns without registering a move distance.
@@ -103,6 +107,9 @@ namespace FDG.Stages
             // the transport choice returns to the action menu.
             embark.OnEmbarked.Bind(toReconcileActivationEvent);
             embark.OnBackToChooseAction.Bind(chooseAction);
+            // #197 — after teleporting (or declining), loop back so Charge/Shoot/Pass re-evaluate from the new
+            // position. Layered like Cast/CustomAction (doesn't set HasMoved/HasAttacked).
+            teleport.OnFinished.Bind(chooseAction);
 
             return dictionary;
         }

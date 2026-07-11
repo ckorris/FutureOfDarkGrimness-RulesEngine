@@ -1,4 +1,4 @@
-﻿
+
 using FDG.Data;
 
 namespace FDG.Stages
@@ -7,11 +7,23 @@ namespace FDG.Stages
     {
         public PlayerID ActivatedPlayer { get; }
 
-        public IReadOnlyList<DataBinding<UnitData>> PlayerUnactivatedUnits { get; } 
+        public IReadOnlyList<DataBinding<UnitData>> PlayerUnactivatedUnits { get; }
 
         public DataBinding<UnitData>? ActivatedUnit { get; }
 
+        // #197 Delayed Action: the acting player held a unit back (passed the turn) instead of activating.
+        // No unit activated this turn - SingleTurnStage skips MarkUnitAsActivated so the held-back unit
+        // stays in the pool, and the cursor advances to the opponent.
+        public bool WasDelayed { get; }
+
+        // #197: true when an opposing team has strictly more units left to activate than the acting player's
+        // team, the gate Delayed Action rides on. Snapshotted at turn start (pools don't change until a unit
+        // is marked activated at turn end), so ChooseUnitToActivateStage can read it while deciding.
+        public bool OpponentHasMoreUnitsToActivate { get; }
+
         public void ChooseUnitToActivate(DataBinding<UnitData> unitToActivate);
+
+        public void MarkTurnDelayed();
     }
 
     public class SingleTurnContext : ISingleTurnContext
@@ -24,7 +36,12 @@ namespace FDG.Stages
 
         public IReadOnlyList<DataBinding<UnitData>> PlayerUnactivatedUnits { get; }
 
-        public SingleTurnContext(IGameContext gameContext, PlayerID activatedPlayer, List<DataBinding<UnitData>> playerUnactivatedUnits)
+        public bool WasDelayed { get; private set; }
+
+        public bool OpponentHasMoreUnitsToActivate { get; }
+
+        public SingleTurnContext(IGameContext gameContext, PlayerID activatedPlayer,
+            List<DataBinding<UnitData>> playerUnactivatedUnits, bool opponentHasMoreUnitsToActivate = false)
         {
             foreach(DataBinding<UnitData> unit in playerUnactivatedUnits)
             {
@@ -38,6 +55,7 @@ namespace FDG.Stages
             GameContext = gameContext;
             ActivatedPlayer = activatedPlayer;
             PlayerUnactivatedUnits = playerUnactivatedUnits;
+            OpponentHasMoreUnitsToActivate = opponentHasMoreUnitsToActivate;
         }
 
         public void ChooseUnitToActivate(DataBinding<UnitData> unitToActivate)
@@ -49,6 +67,11 @@ namespace FDG.Stages
             }
 
             ActivatedUnit = unitToActivate;
+        }
+
+        public void MarkTurnDelayed()
+        {
+            WasDelayed = true;
         }
     }
 }

@@ -41,7 +41,7 @@ public static class CoreRuleCatalog
         CourageAura, BaneInMeleeAura, RendingInMeleeAura, ShredInMeleeAura, UnstoppableInMeleeAura,
         Resistance, Protected, PiercingAssault, PiercingHunter, Shielded, Fortified,
         ResistanceAura, ProtectedAura, PiercingAssaultAura, PiercingHunterAura, ShieldedAura, FortifiedAura,
-        Strider, Flying, Aircraft, Teleport, TeleportAura,
+        Strider, Flying, Aircraft, Teleport, TeleportAura, DelayedAction,
         IncreasedShootingRange, RangedShrouding, DarkbornOffensive, DarkbornDefensive, MeleeShrouding,
         IncreasedShootingRangeAura, RangedShroudingAura, MeleeShroudingAura,
     };
@@ -1190,6 +1190,26 @@ public static class CoreRuleCatalog
         },
         Valence: EValence.Neutral,
         Description: "Board a friendly transport that has room, within move range.");
+
+    /// <summary> Canonical name of the Delayed Action rule (#197). </summary>
+    public const string DelayedActionRuleName = "Delayed Action";
+
+    /// <summary>
+    /// Delayed Action (#197): "Once per round, if your opponent has more units left to activate than you,
+    /// this model's unit may pass its turn instead of activating (may still be activated later)." An engine
+    /// marker (no dispatch hooks or abilities) - like <see cref="Hero"/>/<see cref="Transport"/>, its effect
+    /// is enacted stage-side, not through the rule pipeline. <c>ChooseUnitToActivateStage</c> detects it by
+    /// name on the chosen unit and, when the opponent has more units left to activate and the team hasn't
+    /// already delayed this round (a team-wide <see cref="Foundation.TokenType.DelayedActionUsed"/> scan),
+    /// offers to hold the unit back: the turn passes to the opponent with the unit still in the pool.
+    /// Allowlisted in the catalog fire-lint (a marker with no operations).
+    /// </summary>
+    public static SpecialRuleDefinition DelayedAction { get; } = new SpecialRuleDefinition(DelayedActionRuleName,
+        Array.Empty<HookEntry>(),
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "Once per round, if your opponent has more units left to activate than you, this unit " +
+                     "may hold back (pass the turn) and activate later instead.");
 
     /// <summary> Canonical name of the Teleport ability (#197). </summary>
     public const string TeleportRuleName = "Teleport";

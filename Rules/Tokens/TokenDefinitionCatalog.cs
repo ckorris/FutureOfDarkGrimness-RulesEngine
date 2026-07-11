@@ -112,6 +112,9 @@ public static class TokenDefinitionCatalog
             new(TokenType.POST_COMBAT_MOVE_USED_ID, "Post-combat move used", EValence.Neutral,
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd()),
 
+            new(TokenType.DELAYED_ACTION_USED_ID, "Delayed Action used", EValence.Neutral,
+                ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd()),
+
             new(TokenType.OFF_TABLE_FROM_FORCED_MOVE_ID, "Off table (forced move)", EValence.Neutral,
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.ManualOnly()),
         };

@@ -11,6 +11,7 @@ public readonly record struct TokenType(string Id)
     public const string EMBARKED_IN_ID = "EmbarkedIn";
     public const string MARK_ID = "Mark";
     public const string POST_COMBAT_MOVE_USED_ID = "PostCombatMoveUsed";
+    public const string DELAYED_ACTION_USED_ID = "DelayedActionUsed";
     public const string OFF_TABLE_FROM_FORCED_MOVE_ID = "OffTableFromForcedMove";
     public const string LIMITED_SPENT_ID = "LimitedSpent";
 
@@ -93,6 +94,14 @@ public readonly record struct TokenType(string Id)
     /// shared budget across shooting and melee — a unit moves at most once after combat per round.
     /// </summary>
     public static readonly TokenType PostCombatMoveUsed = new(POST_COMBAT_MOVE_USED_ID);
+
+    /// <summary>
+    /// #197 Delayed Action: per-round, per-team marker that a team has already used its once-per-round
+    /// "hold back" (pass the turn without activating). Placed on the unit that was held back; scanned across
+    /// the team's living units before offering the option again. Carried with a <c>RoundEnd</c> clear
+    /// trigger, swept by the round-end token pass (same lifecycle as <see cref="Fatigued"/>).
+    /// </summary>
+    public static readonly TokenType DelayedActionUsed = new(DELAYED_ACTION_USED_ID);
 
     /// <summary>
     /// A cross-unit "mark" placed on an enemy unit by a mark spell/ability (#100 #14). Carries a

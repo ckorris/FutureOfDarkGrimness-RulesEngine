@@ -1,8 +1,10 @@
 
 using FDG.Data;
 using FDG.Rules.Definitions;
+using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 using FDG.StageResolution.Requests;
 
 namespace FDG.Stages
@@ -11,10 +13,16 @@ namespace FDG.Stages
     public class ChooseUnitToActivateStage : StageBase<ISingleTurnContext>
     {
         public StageBinding ToMainUnitAction;
+
+        // #197 Delayed Action: the acting player chose to hold the picked unit back (pass the turn). Routes
+        // straight to end-of-turn, skipping activation - the unit stays in the pool for a later turn.
+        public StageBinding ToDelayedTurnEnd;
+
         public ChooseUnitToActivateStage(IGameContext gameContext, IStateMachineLayer<ISingleTurnContext> parent)
             : base(gameContext, parent)
         {
             ToMainUnitAction = new StageBinding(this);
+            ToDelayedTurnEnd = new StageBinding(this);
         }
 
         public override async Task Enter(ISingleTurnContext context)
@@ -61,9 +69,71 @@ namespace FDG.Stages
             DataBinding<UnitData> chosenUnit = await GameContext.PlayerRequester
                 .RequestDecision<ChooseUnitToActivateRequest, DataBinding<UnitData>>(request);
 
+            // #197 Delayed Action: if the chosen unit can hold back this turn, offer it before committing to
+            // the activation. Accepting passes the turn (the unit stays in the pool) rather than activating.
+            if (CanOfferDelayedAction(context, chosenUnit.GetValue()))
+            {
+                var holdBack = new YesNoRequest(context.ActivatedPlayer,
+                    $"Delayed Action: hold {chosenUnit.GetValue().Name} back to activate later this round " +
+                    "(your opponent activates next instead)?",
+                    defaultAnswer: false);
+
+                bool delay = await GameContext.PlayerRequester
+                    .RequestDecision<YesNoRequest, bool>(holdBack);
+
+                if (delay)
+                {
+                    // One hold-back per team per round: mark the unit so the team-wide scan blocks another.
+                    chosenUnit.GetValue().Tokens.AddToken(
+                        TokenDefinitionCatalog.Create(TokenType.DelayedActionUsed));
+                    context.MarkTurnDelayed();
+                    context.Log($"{chosenUnit.GetValue().Name} used Delayed Action to hold back - " +
+                        "the opponent activates next.");
+                    await ToDelayedTurnEnd.Activate(context);
+                    return;
+                }
+            }
+
             context.Log($"Activating: {chosenUnit.GetValue().Name}.");
             context.ChooseUnitToActivate(chosenUnit);
             await ToMainUnitAction.Activate(context);
+        }
+
+        /// <summary>
+        /// Delayed Action ("once per round, if your opponent has more units left to activate than you, this
+        /// unit may pass its turn instead of activating"): offer the hold-back iff the chosen unit carries the
+        /// rule, an opposing team has more units left to activate (snapshotted on the turn context), and this
+        /// team has not already used its once-per-round hold-back - detected by scanning the team's living
+        /// units for the <see cref="TokenType.DelayedActionUsed"/> marker.
+        /// </summary>
+        private bool CanOfferDelayedAction(ISingleTurnContext context, UnitData chosenUnit)
+        {
+            if (!context.OpponentHasMoreUnitsToActivate) return false;
+            if (!UnitHasDelayedAction(chosenUnit)) return false;
+            if (TeamAlreadyDelayedThisRound(context.ActivatedPlayer)) return false;
+            return true;
+        }
+
+        private static bool UnitHasDelayedAction(UnitData unit)
+        {
+            bool Has(IReadOnlyList<ResolvedRule> rules) =>
+                rules.Any(r => r.Definition.Name == CoreRuleCatalog.DelayedActionRuleName);
+
+            if (Has(unit.RuleDefinitions)) return true;
+            // Defensive: the rule is unit-scoped, but a per-model attach (joined hero) would live on a model.
+            return unit.Models.Any(m => m is ModelData md && Has(md.RuleDefinitions));
+        }
+
+        private bool TeamAlreadyDelayedThisRound(PlayerID actingPlayer)
+        {
+            ITeam actingTeam = GameContext.TableState.Teams.Objects
+                .First(team => team.IsPlayerOnTeam(actingPlayer));
+
+            return GameContext.GameDataStore.GetAllValues<ArmyData>()
+                .Where(army => actingTeam.Players.Contains(army.PlayerID))
+                .SelectMany(army => army.UnitBindings)
+                .Where(unit => unit.GetValue().GetIsAlive())
+                .Any(unit => unit.GetValue().Tokens.HasToken(TokenType.DelayedActionUsed));
         }
 
         // Why a unit can't be activated right now. An unplaced Ambush reserve (off-table, deferred to a

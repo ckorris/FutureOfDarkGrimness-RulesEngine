@@ -323,10 +323,15 @@ namespace FDG.Ai.Tactician
                 float step = MovementPlanner.RefineStepTowardGap(unit, living, start.x, start.z,
                     ndx, ndz, initialStep, chargeReach,
                     MovementPlanner.ChargeContactTargetGapInches, enemyFootprints, chargeReach);
+                // #216: friendly footprints included - a friendly-blind charge lane plans a move
+                // the #205 stacking check rejects at resolve time, silently degrading the whole
+                // activation to the solo resolver. With them, the backoff ladder shortens the
+                // charge around the friendly instead (feasibility grades by the achieved gap).
                 move = MovementPlanner.ValidateWithBackoff(
                     s => MovementPlanner.BuildCandidate(unit, living, start.x, start.z, ndx, ndz, s, chargeReach),
                     step, unit, living, _ => new ModelMoveBudget(fullChargeReach, fullChargeReach),
-                    enemyFootprints, canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, terrain);
+                    enemyFootprints, canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, terrain,
+                    MovementPlanner.LiveFriendlyFootprints(tableState, self.PlayerID, self.ID));
             }
             else
             {

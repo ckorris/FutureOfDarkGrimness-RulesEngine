@@ -215,6 +215,31 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void ChargeThroughAFriendly_PlansAValidMove()
+        {
+            // #216: a friendly parked on the charge lane's endpoint. Friendly-blind planning built
+            // a charge the #205 stacking check rejects at resolve time - and the rejection silently
+            // degraded the whole activation to the solo resolver. The emitted candidate must
+            // already be valid against friendly footprints (the backoff ladder shortens it).
+            var brawlers = MakeUnit(_us, 3, Blade(), atX: 20f, atZ: 24f);
+            MakeUnit(_us, 3, Rifle(), atX: 29.5f, atZ: 24f); // squatting on the contact point
+            MakeUnit(_them, 3, Rifle(), atX: 32f, atZ: 24f);
+
+            List<MacroAction> actions = MacroActionGenerator.Enumerate(_evaluator, _tableState, brawlers);
+            MacroAction charge = actions.First(a => a.Intent == EMacroIntent.ChargeToContact);
+            var enemies = MovementPlanner.LiveEnemyFootprints(_tableState, _us);
+            var friendlies = MovementPlanner.LiveFriendlyFootprints(_tableState, _us,
+                brawlers.GetValue().ID);
+
+            bool valid = MovementUtilities.ValidatePaths(charge.Move,
+                _ => new ModelMoveBudget(24f, 24f), enemies, false, false, false,
+                _tableState.Terrain.Objects.ToList(), out List<ReasonForInvalidMove> reasons,
+                friendlies);
+            Assert.That(valid, Is.True,
+                $"the charge plan must not end stacked on the friendly ({string.Join(", ", reasons)})");
+        }
+
+        [Test]
         public void MoveToCast_CasterOutOfSpellRange_MovesIntoRange()
         {
             // A Foe-affinity 12" spell, target 20" away: the set-up move closes toward cast range.

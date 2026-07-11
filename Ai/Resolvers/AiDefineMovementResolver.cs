@@ -30,13 +30,23 @@ namespace FDG.Ai.Resolvers
         }
 
         /// <summary>
-        /// The AI never backs out of a move it chose to make, so it always answers with a path (standing
-        /// still is expressed as a zero-length one, not a cancel).
+        /// The AI answers with a path (standing still is expressed as a zero-length one, not a cancel) --
+        /// EXCEPT when no legal path exists at all (a unit still intermingled with the enemy whose living
+        /// models cannot re-pack into cohesion without crossing an enemy base). A cancellable move (an
+        /// optional post-combat "may move") is then declined via Cancelled rather than by submitting a
+        /// cohesion-breaking path the executor would reject and fault on (#208); a non-cancellable forced
+        /// move must still return a path, so it holds exact positions as before.
         /// </summary>
         public async Task<CancellableResult<List<ModelMoveEntry>>> Resolve(DefineMovementPathRequest request)
-            => new Selected<List<ModelMoveEntry>>(await ChoosePath(request));
+        {
+            List<ModelMoveEntry>? path = await ChoosePath(request);
+            return path == null
+                ? new Cancelled<List<ModelMoveEntry>>()
+                : new Selected<List<ModelMoveEntry>>(path);
+        }
 
-        private Task<List<ModelMoveEntry>> ChoosePath(DefineMovementPathRequest request)
+        // Null return: no legal path exists and the move is cancellable, so Resolve replies Cancelled (#208).
+        private Task<List<ModelMoveEntry>?> ChoosePath(DefineMovementPathRequest request)
         {
             var unitBinding = request.UnitDataBinding;
             var unit = unitBinding.GetValue();
@@ -132,7 +142,20 @@ namespace FDG.Ai.Resolvers
                 request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, request.IgnoresImpassibleTerrain,
                 allTerrain);
 
-            return Task.FromResult(candidate);
+            // The ladder's last resort (hold exact positions) is move-through-valid but can still BREAK
+            // COHESION when the living models are already spread >1" apart - a unit intermingled with the
+            // enemy after melee that cannot re-pack without a model crossing an enemy base. Submitting that
+            // faults the executor (#208). When the move is cancellable (an optional post-combat "may move")
+            // decline it instead - no legal destination exists. A non-cancellable move has no decline
+            // channel, so it still submits the least-bad candidate exactly as before (behavior pinned).
+            if (request.AllowCancel && !MovementUtilities.ValidatePaths(candidate, budgetFor,
+                    enemyFootprints, request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain,
+                    request.IgnoresImpassibleTerrain, allTerrain, out _))
+            {
+                return Task.FromResult<List<ModelMoveEntry>?>(null);
+            }
+
+            return Task.FromResult<List<ModelMoveEntry>?>(candidate);
         }
 
         private static float Dist(float ax, float az, float bx, float bz)

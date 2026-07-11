@@ -38,18 +38,31 @@ namespace FDG.Stages
 
             // A triggered move has a single budget; offer it in every slot so the resolver
             // renders one ring rather than the Advance/Rush/Charge tiers.
+            //
+            // allowCancel tracks optionality: an optional "may move" (Harassing / Hit & Run and the rest
+            // of the post-combat family) can be declined, so the resolver may reply Cancelled and a human
+            // gets a Back button. A FORCED move (e.g. a spell pushing an enemy) is not cancellable - the
+            // rule has already fired and there is nowhere to return to.
             var pathRequest = new DefineMovementPathRequest(mover, "Triggered Move",
                 unitBinding, maxInches, maxInches, maxInches,
                 WeaponSightProfileBuilder.For(unitBinding.GetValue(), _gameContext.RuleEvaluator),
-                canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain);
+                canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain,
+                allowCancel: isOptional);
 
-            // allowCancel defaults to false: a triggered move is imposed by a rule, not chosen, so the
-            // resolver offers no Back and a Cancelled reply would have nowhere to return to.
             CancellableResult<List<ModelMoveEntry>> pathResult = await _gameContext.PlayerRequester
                 .RequestDecision<DefineMovementPathRequest, CancellableResult<List<ModelMoveEntry>>>(pathRequest);
 
             if (pathResult is not Selected<List<ModelMoveEntry>> selectedPath)
             {
+                // Declined. For an optional move that is a legal "no thanks" - typically a unit still
+                // intermingled with the enemy after melee whose living models cannot re-pack into
+                // cohesion without crossing an enemy base, so no legal destination exists. The unit
+                // simply does not move (the caller sees no position change and keeps its budget).
+                if (isOptional)
+                {
+                    _gameContext.Log($"{unit.Name} declines its triggered move - no legal destination.");
+                    return;
+                }
                 throw new RequestResponseInvalidException(
                     $"Triggered move for {unit.Name} cannot be cancelled - the rule that forced it has already fired.");
             }
@@ -59,6 +72,17 @@ namespace FDG.Stages
                     out List<ReasonForInvalidMove> errors,
                     out MovementExecutor.DangerousTerrainResult dangerResult))
             {
+                // The resolver returned a path the authoritative validator rejects. For an optional move
+                // this is the same "no legal destination" case as a cancel - a resolver with no decline
+                // channel (the headless CLI auto-play) submits its best invalid guess instead of cancelling.
+                // Treat it as a decline: the unit does not move. A forced move still faults, surfacing the bug.
+                if (isOptional)
+                {
+                    _gameContext.Log($"{unit.Name} declines its triggered move - no legal destination.");
+                    _gameContext.LogDebug($"Triggered move for {unit.Name} declined - resolver path invalid: "
+                        + string.Join(", ", errors.Select(e => e.ToString())) + ".");
+                    return;
+                }
                 throw new RequestResponseInvalidException(
                     $"Triggered move for {unit.Name} was invalid: "
                     + string.Join(", ", errors.Select(e => e.ToString())));

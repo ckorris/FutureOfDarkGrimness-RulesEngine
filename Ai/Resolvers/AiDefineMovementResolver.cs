@@ -68,6 +68,9 @@ namespace FDG.Ai.Resolvers
             };
 
             var enemyFootprints = MovementPlanner.LiveEnemyFootprints(_tableState, _playerID);
+            // #205: friendly models the move may pass through but must not END stacked on - fed to the ladder
+            // so the AI backs off a spot that would overlap a teammate (the authoritative stage rejects it).
+            var friendlyFootprints = MovementPlanner.LiveFriendlyFootprints(_tableState, _playerID, unit.ID);
             if (enemyFootprints.Count == 0)
                 return Task.FromResult(MovementPlanner.StayInPlace(unitBinding));
 
@@ -140,7 +143,7 @@ namespace FDG.Ai.Resolvers
                 s => MovementPlanner.BuildCandidate(unitBinding, living, cx, cz, ndx, ndz, s, request.MaxDistanceInches),
                 step, unitBinding, living, budgetFor, enemyFootprints,
                 request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, request.IgnoresImpassibleTerrain,
-                allTerrain);
+                allTerrain, friendlyFootprints);
 
             // The ladder's last resort (hold exact positions) is move-through-valid but can still BREAK
             // COHESION when the living models are already spread >1" apart - a unit intermingled with the
@@ -150,7 +153,7 @@ namespace FDG.Ai.Resolvers
             // channel, so it still submits the least-bad candidate exactly as before (behavior pinned).
             if (request.AllowCancel && !MovementUtilities.ValidatePaths(candidate, budgetFor,
                     enemyFootprints, request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain,
-                    request.IgnoresImpassibleTerrain, allTerrain, out _))
+                    request.IgnoresImpassibleTerrain, allTerrain, out _, friendlyFootprints))
             {
                 return Task.FromResult<List<ModelMoveEntry>?>(null);
             }

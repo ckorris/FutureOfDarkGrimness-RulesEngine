@@ -48,6 +48,9 @@ namespace FDG.Stages
                 context.AttackingUnit.GetValue(), context.GameContext.RuleEvaluator);
             List<EnemyModelFootprint> enemyFootprints =
                 MovementUtilities.GetEnemyModelFootprints(context.AttackingUnit, context.GameContext);
+            // #205: a consolidation move may not end stacked on a friendly unit either.
+            List<EnemyModelFootprint> friendlyFootprints =
+                MovementUtilities.GetFriendlyModelFootprints(context.AttackingUnit, context.GameContext);
 
             var request = new ConsolidationMoveRequest(playerID, $"Consolidate Move ({reason})",
                 context.AttackingUnit, maxDist, reason, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain);
@@ -62,7 +65,8 @@ namespace FDG.Stages
             // from being trapped with no legal consolidation.)
             IEnumerable<ITerrain>? terrain = context.GameContext.TableState.Terrain.Objects;
             if (!MovementUtilities.ValidateConsolidationPaths(movements, maxDist, enemyFootprints, canMoveThroughEnemies,
-                    ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, out List<ReasonForInvalidMove> errors))
+                    ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, out List<ReasonForInvalidMove> errors,
+                    friendlyFootprints))
             {
                 StringBuilder sb = new StringBuilder(errors[0].ToString());
                 for (int i = 1; i < errors.Count; i++) sb.Append(", ").Append(errors[i].ToString());

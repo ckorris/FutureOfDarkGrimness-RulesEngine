@@ -15,11 +15,11 @@ namespace FDG.Ai.Tactician.Resolvers
     public class TacticianMovementResolver
         : IStageResolver<DefineMovementPathRequest, CancellableResult<List<ModelMoveEntry>>>
     {
-        private readonly TacticianPlanner _planner;
+        private readonly IMovePlanSource _planner;
         private readonly ITableState _tableState;
         private readonly IStageResolver<DefineMovementPathRequest, CancellableResult<List<ModelMoveEntry>>> _soloFallback;
 
-        public TacticianMovementResolver(TacticianPlanner planner, ITableState tableState,
+        public TacticianMovementResolver(IMovePlanSource planner, ITableState tableState,
             IStageResolver<DefineMovementPathRequest, CancellableResult<List<ModelMoveEntry>>> soloFallback)
         {
             _planner = planner;
@@ -40,9 +40,13 @@ namespace FDG.Ai.Tactician.Resolvers
             };
             var enemies = MovementPlanner.LiveEnemyFootprints(_tableState,
                 request.UnitDataBinding.GetValue().PlayerID);
+            // #205: reject a planned macro-move that would end stacked on a friendly, falling back to the solo
+            // resolver (which re-plans around friendlies) rather than submitting a move the stage rejects.
+            var friendlies = MovementPlanner.LiveFriendlyFootprints(_tableState,
+                request.UnitDataBinding.GetValue().PlayerID, request.UnitDataBinding.GetValue().ID);
             bool valid = MovementUtilities.ValidatePaths(planned, budgetFor, enemies,
                 request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain,
-                request.IgnoresImpassibleTerrain, _tableState.Terrain.Objects.ToList(), out _);
+                request.IgnoresImpassibleTerrain, _tableState.Terrain.Objects.ToList(), out _, friendlies);
 
             return valid
                 ? Task.FromResult<CancellableResult<List<ModelMoveEntry>>>(new Selected<List<ModelMoveEntry>>(planned))

@@ -15,10 +15,14 @@ namespace FDG.Ai.Tactician
     /// caches the winning candidate here, and the movement resolver plays it out. One planner per
     /// controller; the engine thread runs a player's requests sequentially, so no locking.
     /// </summary>
-    public sealed class TacticianPlanner
+    public sealed class TacticianPlanner : IMovePlanSource
     {
         private readonly ITableState _tableState;
         private readonly RuleEvaluator _evaluator;
+        // Analysis sink (#191 tooling): when set, every Choose Action plan is narrated - the full
+        // scored candidate table, not just the winner - so headless games are replayable decisions,
+        // not just outcomes. Null in normal play; costs nothing when unset.
+        private readonly Action<string>? _decisionLog;
 
         // Belt-and-braces livelock guard on casting: every attempt burns tokens (win or lose), so
         // this can never bind in a legal game (the pool caps at 6) - it only bounds a broken loop.
@@ -38,10 +42,12 @@ namespace FDG.Ai.Tactician
         /// <summary>The unit whose activation is being planned (null between activations).</summary>
         public DataBinding<UnitData>? ActiveUnit => _activeUnit;
 
-        public TacticianPlanner(ITableState tableState, RuleEvaluator evaluator)
+        public TacticianPlanner(ITableState tableState, RuleEvaluator evaluator,
+            Action<string>? decisionLog = null)
         {
             _tableState = tableState;
             _evaluator = evaluator;
+            _decisionLog = decisionLog;
         }
 
         /// <summary>Called by the activation resolver the moment it picks the unit.</summary>
@@ -99,6 +105,8 @@ namespace FDG.Ai.Tactician
             MacroAction? best = null;
             string? bestAction = null;
             float bestScore = float.NegativeInfinity;
+            List<(MacroAction Candidate, string Action, float Score)>? scored =
+                _decisionLog == null ? null : new();
 
             foreach (MacroAction candidate in candidates)
             {
@@ -106,6 +114,7 @@ namespace FDG.Ai.Tactician
                 if (action == null) continue; // not executable under the currently valid actions
 
                 float score = Score(candidate);
+                scored?.Add((candidate, action, score));
                 if (score > bestScore)
                 {
                     bestScore = score;
@@ -114,6 +123,7 @@ namespace FDG.Ai.Tactician
                 }
             }
 
+            if (scored != null) LogDecision(scored, best, bestAction);
             if (best == null || bestAction == null) return null;
 
             // Hold-and-shoot / pass need no movement; movement plans are cached for the move request.
@@ -128,6 +138,27 @@ namespace FDG.Ai.Tactician
             }
 
             return bestAction;
+        }
+
+        // One block per Choose Action: the winner line, then the full candidate table (score-desc)
+        // in the same format the FdgLab analyze command prints, so logs and save dumps read alike.
+        private void LogDecision(List<(MacroAction Candidate, string Action, float Score)> scored,
+            MacroAction? best, string? bestAction)
+        {
+            if (_decisionLog == null || _activeUnit == null) return;
+            UnitData self = _activeUnit.GetValue();
+            Position at = Centroid(self);
+            _decisionLog($"plan {self.Name} at ({at.x:F1},{at.z:F1}) -> " +
+                (best == null ? "(no claim: solo fallback)" : $"{bestAction} [{best.Intent}]"));
+            foreach ((MacroAction k, string action, float score) in scored.OrderByDescending(s => s.Score))
+            {
+                string target = k.TargetEnemy != null ? $" vs {k.TargetEnemy.Name}"
+                    : k.TargetObjective != null
+                        ? $" obj({k.TargetObjective.Position.x:F0},{k.TargetObjective.Position.z:F0})"
+                        : k.TargetAlly != null ? $" ally {k.TargetAlly.Name}" : "";
+                _decisionLog($"  {score,8:F4}  {action,-6} {k.Intent,-18} {k.Feasibility,-13} " +
+                    $"end=({k.ProjectedCentroid.x:F1},{k.ProjectedCentroid.z:F1}){target}");
+            }
         }
 
         /// <summary>

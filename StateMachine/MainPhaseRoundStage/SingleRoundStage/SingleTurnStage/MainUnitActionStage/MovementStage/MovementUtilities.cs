@@ -13,6 +13,11 @@ namespace FDG.Stages
             return distances.Values.Max();
         }
 
+        // Normalise an optional footprint sequence to a non-null read-only list (empty when null).
+        private static IReadOnlyList<EnemyModelFootprint> AsReadOnly(IEnumerable<EnemyModelFootprint>? footprints)
+            => footprints as IReadOnlyList<EnemyModelFootprint> ?? footprints?.ToList()
+               ?? (IReadOnlyList<EnemyModelFootprint>)Array.Empty<EnemyModelFootprint>();
+
         public static bool ValidatePaths(List<ModelMoveEntry> moves, float maxDistanceInches, out List<ReasonForInvalidMove> errors)
             => ValidatePaths(moves, maxDistanceInches, terrain: null, out errors);
 
@@ -44,7 +49,8 @@ namespace FDG.Stages
         public static bool ValidatePaths(List<ModelMoveEntry> moves, float maxDistanceInches,
             IEnumerable<EnemyModelFootprint> enemyFootprints, bool canMoveThroughEnemies,
             bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
-            IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors)
+            IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors,
+            IEnumerable<EnemyModelFootprint>? friendlyFootprints = null)
         {
             errors = new List<ReasonForInvalidMove>();
 
@@ -57,6 +63,7 @@ namespace FDG.Stages
             ValidateMovingThroughDifficultTerrain(moves, terrain, ignoresDifficultTerrain, ref errors);
             ValidateMovingThroughEnemyUnits(moves, enemies, canMoveThroughEnemies, ref errors);
             ValidateCoherency(moves, ref errors);
+            ValidateEndsOnFriendly(moves, AsReadOnly(friendlyFootprints), ref errors);
 
             return errors.Count == 0;
         }
@@ -103,7 +110,8 @@ namespace FDG.Stages
             Func<ModelMoveEntry, ModelMoveBudget> budgetFor,
             IEnumerable<EnemyModelFootprint> enemyFootprints, bool canMoveThroughEnemies,
             bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
-            IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors)
+            IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors,
+            IEnumerable<EnemyModelFootprint>? friendlyFootprints = null)
         {
             errors = new List<ReasonForInvalidMove>();
 
@@ -117,6 +125,7 @@ namespace FDG.Stages
             ValidateMovingThroughEnemyUnits(moves, enemies, canMoveThroughEnemies, ref errors);
             ValidateCoherency(moves, ref errors);
             ValidateChargeReach(moves, move => budgetFor(move).MaxRushDistance, enemies, ref errors);
+            ValidateEndsOnFriendly(moves, AsReadOnly(friendlyFootprints), ref errors);
 
             return errors.Count == 0;
         }
@@ -132,7 +141,8 @@ namespace FDG.Stages
         public static bool ValidateConsolidationPaths(List<ModelMoveEntry> moves, float maxDistanceInches,
             IEnumerable<EnemyModelFootprint> enemyFootprints, bool canMoveThroughEnemies,
             bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
-            IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors)
+            IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors,
+            IEnumerable<EnemyModelFootprint>? friendlyFootprints = null)
         {
             errors = new List<ReasonForInvalidMove>();
 
@@ -145,6 +155,7 @@ namespace FDG.Stages
             ValidateMovingThroughDifficultTerrain(moves, terrain, ignoresDifficultTerrain, ref errors);
             ValidateMovingThroughEnemyUnits(moves, enemies, canMoveThroughEnemies, ref errors);
             ValidateCoherencyNotWorsened(moves, ref errors);
+            ValidateEndsOnFriendly(moves, AsReadOnly(friendlyFootprints), ref errors);
 
             return errors.Count == 0;
         }
@@ -197,6 +208,50 @@ namespace FDG.Stages
                         ModelData md = enemyModel.GetValue();
                         footprints.Add(new EnemyModelFootprint(md.PositionBinding.GetValue(), md.BaseRadiusInches,
                             unitKey, uncontactable, md.BaseShape, md.Facing));
+                        anyLiving = true;
+                    }
+                    if (anyLiving) unitKey++;
+                }
+            }
+
+            return footprints;
+        }
+
+        /// <summary>
+        /// Every living on-battlefield model of a FRIENDLY unit - one on the moving unit's team, but NOT the
+        /// moving unit itself. #205: a unit may pass THROUGH friendlies but may not END its move stacked on
+        /// them, and only enemy footprints were validated before, so the AI resolvers happily ended on top of
+        /// friendly models. Reuses <see cref="EnemyModelFootprint"/> purely as a base-footprint carrier (its
+        /// UnitKey/Uncontactable fields are unused by the friendly-overlap check).
+        /// </summary>
+        public static List<EnemyModelFootprint> GetFriendlyModelFootprints(DataBinding<UnitData> movingUnit, IGameContext gameContext)
+        {
+            PlayerID owner = movingUnit.GetValue().PlayerID;
+
+            TeamData? ownerTeam = gameContext.GameDataStore().GetAllValues<TeamData>()
+                .FirstOrDefault(t => t.IsPlayerOnTeam(owner));
+            IReadOnlyList<PlayerID> alliedPlayers = ownerTeam != null
+                ? ownerTeam.Players
+                : new List<PlayerID> { owner };
+
+            List<EnemyModelFootprint> footprints = new List<EnemyModelFootprint>();
+            int unitKey = 0;
+            foreach (ArmyData friendlyArmy in gameContext.GameDataStore().GetAllValues<ArmyData>()
+                .Where(a => alliedPlayers.Contains(a.PlayerID)))
+            {
+                foreach (DataBinding<UnitData> friendlyUnit in friendlyArmy.UnitBindings)
+                {
+                    // Not myself - my own cohesion (not the friendly-overlap rule) governs my models' spacing.
+                    if (ReferenceEquals(friendlyUnit.GetValue(), movingUnit.GetValue())) continue;
+                    // Embarked / reserve / off-table units are parked at the origin and are not obstacles (#207).
+                    if (!friendlyUnit.GetValue().GetIsOnBattlefield()) continue;
+                    bool anyLiving = false;
+                    foreach (DataBinding<ModelData> friendlyModel in friendlyUnit.ModelBindings()
+                        .Where(m => m.GetIsAlive()))
+                    {
+                        ModelData md = friendlyModel.GetValue();
+                        footprints.Add(new EnemyModelFootprint(md.PositionBinding.GetValue(), md.BaseRadiusInches,
+                            unitKey, false, md.BaseShape, md.Facing));
                         anyLiving = true;
                     }
                     if (anyLiving) unitKey++;
@@ -691,6 +746,49 @@ namespace FDG.Stages
             }
         }
 
+        /// <summary>
+        /// #205: a model may not END its move stacked on top of a FRIENDLY unit's base. Passing THROUGH a
+        /// friendly is legal (only the end position is checked, never the swept path), and a model that was
+        /// ALREADY overlapping a friendly at its start isn't newly penalised (mirrors the enemy rule's "only
+        /// moves that close the distance") - so a unit is never trapped with no legal move. Friendlies have no
+        /// standoff band: only true base overlap (interpenetration, not mere contact) is illegal, which is why
+        /// this uses <see cref="BaseShapeGeometry.AreColliding"/> (SurfaceGap &lt; 0), not the enemy standoff.
+        /// The GUI resolver enforces the same rule live (WouldOverlapAnyModel); this is the authoritative
+        /// engine guard the AI resolvers were missing.
+        /// </summary>
+        private static void ValidateEndsOnFriendly(List<ModelMoveEntry> moves,
+            IReadOnlyList<EnemyModelFootprint> friendlyFootprints, ref List<ReasonForInvalidMove> reasonsForInvalidMove)
+        {
+            if (friendlyFootprints == null || friendlyFootprints.Count == 0) return;
+
+            foreach (ModelMoveEntry move in moves)
+            {
+                if (move.Positions.Count == 0) continue;
+
+                ModelData movingModel = move.Model.GetValue();
+                IBaseShape movingShape = movingModel.BaseShape;
+                Float2 movingFacing = movingModel.Facing;
+                Position start = movingModel.PositionBinding.GetValue();
+                Position end = move.Positions[move.Positions.Count - 1];
+
+                foreach (EnemyModelFootprint friendly in friendlyFootprints)
+                {
+                    if (!BaseShapeGeometry.AreColliding(movingShape, end, movingFacing,
+                            friendly.BaseShape, friendly.Center, friendly.Facing))
+                        continue;
+
+                    // Already overlapping this friendly at the start (should never happen in legal play) - don't
+                    // trap the unit by rejecting a move it can't avoid; only NEWLY ending stacked is illegal.
+                    if (BaseShapeGeometry.AreColliding(movingShape, start, movingFacing,
+                            friendly.BaseShape, friendly.Center, friendly.Facing))
+                        continue;
+
+                    reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.EndedOnFriendlyUnit, move.Model));
+                    break; // one flag per model is enough
+                }
+            }
+        }
+
         // Float slack on the cohesion limits so a move that lands a model exactly on the 1"/9" boundary
         // isn't rejected by sub-thousandth rounding in the 3D base-to-base distance.
         private const float COHESION_EPSILON_INCHES = 0.001f;
@@ -874,6 +972,8 @@ namespace FDG.Stages
                         "inches from another model in the unit";
                 case EErrorReasonType.ChargeRangeRequiresMeleeReach:
                     return $"A model moved beyond Rush range, but no model ends within {GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL}\" of an enemy";
+                case EErrorReasonType.EndedOnFriendlyUnit:
+                    return "Ends stacked on top of a friendly unit";
                 default:
                     throw new ArgumentOutOfRangeException();
             }
@@ -905,7 +1005,8 @@ namespace FDG.Stages
         TooFarFromAnyUnitModel,
         TooFarFromAllUnitModels,
         ChargeRangeRequiresMeleeReach,
-        EndedTooCloseToEnemy
+        EndedTooCloseToEnemy,
+        EndedOnFriendlyUnit
     }
 
     /// <summary>

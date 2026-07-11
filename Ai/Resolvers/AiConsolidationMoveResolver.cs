@@ -1,3 +1,4 @@
+using FDG.Ai.Tactician;
 using FDG.Data;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
@@ -32,6 +33,10 @@ namespace FDG.Ai.Resolvers
             float cz = aliveModels.Average(mb => mb.GetValue().Position.z);
 
             List<EnemyModelFootprint> footprints = GetLiveEnemyFootprints();
+            // #205: friendly obstacles the consolidation may not end stacked on (fed to the same lenient
+            // validator ConsolidateStage runs, so the AI backs off rather than being rejected downstream).
+            List<EnemyModelFootprint> friendlyFootprints =
+                MovementPlanner.LiveFriendlyFootprints(_tableState, _playerID, unit.ID);
             IEnumerable<ITerrain> terrain = _tableState.Terrain.Objects;
 
             // #159: a unit left out of coherency by a mid-unit casualty can't consolidate as a rigid delta (a
@@ -44,7 +49,7 @@ namespace FDG.Ai.Resolvers
                 List<ModelMoveEntry> reform = CohesiveFormation.ReformTowardWithinCap(
                     aliveModels, cx, cz, request.MaxDistanceInches - 0.001f);
                 if (MovementUtilities.ValidateConsolidationPaths(reform, request.MaxDistanceInches, footprints,
-                        request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, request.IgnoresImpassibleTerrain, terrain, out _))
+                        request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, request.IgnoresImpassibleTerrain, terrain, out _, friendlyFootprints))
                     return Task.FromResult(reform);
                 // else fall through — a rigid step (which never worsens coherency) or the hold below stays valid.
             }
@@ -71,7 +76,7 @@ namespace FDG.Ai.Resolvers
             {
                 List<ModelMoveEntry> candidate = BuildDeltaMove(aliveModels, dirX, dirZ, step);
                 if (MovementUtilities.ValidateConsolidationPaths(candidate, request.MaxDistanceInches, footprints,
-                        request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, request.IgnoresImpassibleTerrain, terrain, out _))
+                        request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, request.IgnoresImpassibleTerrain, terrain, out _, friendlyFootprints))
                     return Task.FromResult(candidate);
             }
             return Task.FromResult(StayInPlace(aliveModels));

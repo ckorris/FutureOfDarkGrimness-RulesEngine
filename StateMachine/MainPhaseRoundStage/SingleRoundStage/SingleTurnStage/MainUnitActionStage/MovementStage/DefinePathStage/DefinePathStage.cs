@@ -87,6 +87,9 @@ namespace FDG.Stages
             List<ModelMoveEntry> movements = ((Selected<List<ModelMoveEntry>>)pathResult).Value;
 
             List<EnemyModelFootprint> enemyFootprints = MovementUtilities.GetEnemyModelFootprints(context.MovingUnit, context.GameContext);
+            // #205: friendly models are obstacles for the END-of-move check - a unit may pass through them but
+            // may not end stacked on them. The authoritative guard the AI resolvers were missing.
+            List<EnemyModelFootprint> friendlyFootprints = MovementUtilities.GetFriendlyModelFootprints(context.MovingUnit, context.GameContext);
 
             // #093: validate each model against its OWN budget — the same per-model budgets the request
             // carried to the resolver, so the move preview and the authoritative check agree exactly.
@@ -94,7 +97,8 @@ namespace FDG.Stages
                 entry => { var (_, rush, maxDist) = pathRequest.BudgetFor(entry.Model.GetValue().ID);
                            return new ModelMoveBudget(rush, maxDist); },
                 enemyFootprints, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain,
-                context.RelevantTerrain, out List<ReasonForInvalidMove> invalidReasons) == false)
+                context.RelevantTerrain, out List<ReasonForInvalidMove> invalidReasons,
+                friendlyFootprints) == false)
             {
                 StringBuilder sb = new StringBuilder(invalidReasons[0].ToString());
                 for(int i = 1; i < invalidReasons.Count; i++)

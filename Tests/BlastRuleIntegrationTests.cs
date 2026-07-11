@@ -1,3 +1,4 @@
+using System.Linq;
 using FDG.Data;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
@@ -57,6 +58,23 @@ namespace FDG.Tests
 
             Assert.That(TotalHits(result), Is.EqualTo(2f),
                 "Blast(10) would give 10 hits but is capped at the 2-model target unit.");
+        }
+
+        // #204: end-to-end, the Blast overflow group must carry a BlastMultiplier source (rule name +
+        // multiplier) so the save-roll presentation can render "x3 (Blast)". Guards the RollToHitStage ->
+        // save wiring the synthetic SaveBeatGroupingTests can't reach.
+        [Test]
+        public async Task Blast3_TagsOverflowGroupWithBlastSource()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            AttachBlast(attacker, 3);
+
+            RollToHitResults result = await RunStage(attacker, MakeUnit(TargetPos, modelCount: 5));
+
+            SuccessfulHitInfo blast = result.SuccessfulHitList
+                .First(h => h.Source.Kind == EHitSourceKind.BlastMultiplier);
+            Assert.That(blast.Source.RuleName, Is.EqualTo("Blast"));
+            Assert.That(blast.Source.Amount, Is.EqualTo(3f), "the multiplier is carried for the 'x3' text.");
         }
 
         private async Task<RollToHitResults> RunStage(DataBinding<UnitData> attacker, DataBinding<UnitData> defender)

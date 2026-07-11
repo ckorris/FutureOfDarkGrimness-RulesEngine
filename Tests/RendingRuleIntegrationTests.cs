@@ -42,6 +42,12 @@ namespace FDG.Tests
             Assert.That(hits.SuccessfulHitList[0].SaveModifier, Is.EqualTo(-4),
                 "the natural-6 hit group carries Rending's -4 per-hit save modifier.");
 
+            // #204: the peeled group is tagged with Rending + its AP magnitude so the save stage can render
+            // "Rending AP+4" as a separate roll from the base group.
+            Assert.That(hits.SuccessfulHitList[0].Source.Kind, Is.EqualTo(EHitSourceKind.PerHitAp));
+            Assert.That(hits.SuccessfulHitList[0].Source.RuleName, Is.EqualTo("Rending"));
+            Assert.That(hits.SuccessfulHitList[0].Source.Amount, Is.EqualTo(4f), "AP magnitude for the 'AP+4' text.");
+
             DetermineSaveRollNeededResults saves = await RunSaveNeededStage(attacker, defender, hits);
             foreach (PendingSaveRolls pending in saves.PendingSaveRollsList)
             {

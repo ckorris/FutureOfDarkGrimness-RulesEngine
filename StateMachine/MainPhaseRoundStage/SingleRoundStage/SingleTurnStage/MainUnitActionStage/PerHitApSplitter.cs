@@ -27,15 +27,29 @@ namespace FDG.Stages
         /// </summary>
         public static List<SuccessfulHitInfo> Split(
             IDiceResults successfulHits, IReadOnlyList<RuleOperation> operations)
+            => Split(successfulHits, operations.Select(o => (o, "")).ToList());
+
+        /// <summary>
+        /// As <see cref="Split(IDiceResults, IReadOnlyList{RuleOperation})"/>, but each per-hit-AP operation
+        /// carries the alias-aware name of the rule that produced it (#204), so the peeled group's
+        /// <see cref="HitGroupSource"/> can attribute the raised save threshold to "Rending" / "Crack" in
+        /// the save-roll presentation. The base remainder is tagged <see cref="HitGroupSource.Base"/>.
+        /// </summary>
+        public static List<SuccessfulHitInfo> Split(
+            IDiceResults successfulHits, IReadOnlyList<(RuleOperation Op, string RuleName)> namedOperations)
         {
             // Sum the deltas per triggering face — two AP-on-6 rules (e.g. Rending + Crack) on the same
-            // weapon stack onto the same natural-6 hits.
+            // weapon stack onto the same natural-6 hits — and remember which rule(s) named each face.
             Dictionary<int, int> deltaByFace = new Dictionary<int, int>();
-            foreach (RuleOperation.ApplyPerHitSaveModifier op in
-                operations.OfType<RuleOperation.ApplyPerHitSaveModifier>())
+            Dictionary<int, List<string>> namesByFace = new Dictionary<int, List<string>>();
+            foreach ((RuleOperation op, string ruleName) in namedOperations)
             {
-                deltaByFace.TryGetValue(op.OnRollValue, out int current);
-                deltaByFace[op.OnRollValue] = current + op.Delta;
+                if (op is not RuleOperation.ApplyPerHitSaveModifier perHit) continue;
+                deltaByFace.TryGetValue(perHit.OnRollValue, out int current);
+                deltaByFace[perHit.OnRollValue] = current + perHit.Delta;
+                if (!namesByFace.TryGetValue(perHit.OnRollValue, out List<string>? names))
+                    namesByFace[perHit.OnRollValue] = names = new List<string>();
+                if (!string.IsNullOrEmpty(ruleName) && !names.Contains(ruleName)) names.Add(ruleName);
             }
 
             if (deltaByFace.Count == 0)
@@ -56,7 +70,11 @@ namespace FDG.Stages
                 IDiceResults faceHits = successfulHits.SubsetAt(face);
                 if (faceHits.TotalRolls > 0f)
                 {
-                    groups.Add(new SuccessfulHitInfo(faceHits, entry.Value));
+                    // Amount is the AP magnitude for display ("AP+1"): a negative save delta raises the threshold.
+                    string ruleName = namesByFace.TryGetValue(face, out List<string>? ns) && ns.Count > 0
+                        ? string.Join("+", ns) : "";
+                    var source = new HitGroupSource(EHitSourceKind.PerHitAp, ruleName, -entry.Value);
+                    groups.Add(new SuccessfulHitInfo(faceHits, entry.Value, source));
                     peeledFaces.Add(face);
                 }
             }
@@ -64,7 +82,7 @@ namespace FDG.Stages
             IDiceResults remainder = RemoveFaces(successfulHits, peeledFaces);
             if (remainder.TotalRolls > 0f)
             {
-                groups.Add(new SuccessfulHitInfo(remainder));
+                groups.Add(new SuccessfulHitInfo(remainder, 0, HitGroupSource.Base));
             }
 
             // No hits landed anywhere (whiff, or the only hits were on peeled faces with 0 count): keep

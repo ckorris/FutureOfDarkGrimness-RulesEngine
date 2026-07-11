@@ -51,7 +51,7 @@ namespace FDG.Stages
                 // its threshold, stacking on top of the unit-wide modifiers already folded into
                 // baseDefenseWithAP (same sign convention — a negative raises the threshold).
                 int saveNeeded = baseDefenseWithAP - hits.SaveModifier;
-                PendingSaveRolls pendingSaveRolls = new PendingSaveRolls(hits.Rolls, saveNeeded);
+                PendingSaveRolls pendingSaveRolls = new PendingSaveRolls(hits.Rolls, saveNeeded, hits.Source);
 
                 pendingSaveRollsList.Add(pendingSaveRolls);
             }

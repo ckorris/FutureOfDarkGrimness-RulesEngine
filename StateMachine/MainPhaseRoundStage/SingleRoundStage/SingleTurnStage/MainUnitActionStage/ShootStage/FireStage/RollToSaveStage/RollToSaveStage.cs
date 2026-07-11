@@ -1,6 +1,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Text;
 using FDG.Presentation;
 using FDG.Presentation.Beats;
 
@@ -24,6 +26,13 @@ namespace FDG.Stages
 
             DetermineSaveRollNeededResults saveRollsNeeded = QueryForResultOrThrowException<DetermineSaveRollNeededResults>(metaData);
 
+            // #204: batch the beat presentation by save THRESHOLD, so hits saved with the same stats (the
+            // base group plus Blast's multiplier hits plus Furious's on-6 extras) show as ONE roll, while
+            // hits that save differently (Rending's per-hit AP) show as a separate, spaced roll - exactly how
+            // it's rolled at the table. The dice ROLLING below is untouched (each group rolled separately,
+            // same RNG draws, same per-group results), so this is purely presentational and outcome-neutral.
+            List<SaveThresholdBucket> buckets = new List<SaveThresholdBucket>();
+
             foreach (PendingSaveRolls saveRolls in saveRollsNeeded.PendingSaveRollsList)
             {
                 IDiceResults rollToSaveResults = GameContext.DiceRoller.Roll(saveRolls.HitCount);
@@ -40,21 +49,35 @@ namespace FDG.Stages
                 totalFailures += failedResults.TotalRolls;
 
                 // RollToHitStage emits one hit group per volley even when it whiffs (0 hits), so a missed
-                // volley reaches here as a group with no save dice. Don't narrate a hollow "0 saved,
-                // 0 wounds" roll-to-save animation for it.
+                // volley reaches here as a group with no save dice. Don't fold a hollow group into a beat.
                 if (saveRolls.HitCount > 0)
                 {
-                    // Held: the settled save dice stay on screen while the assign-wounds resolver and the
-                    // resulting wound/death animations play, so the result reads as one continuous moment.
-                    await GameContext.Presenter.Present(
-                        DiceRolledBeat.From(rollToSaveResults, saveNeeded, GameContext.Settings.RandomnessType, "Roll to Save",
-                            $"{successfulResults.TotalRolls:0.##} saved, {failedResults.TotalRolls:0.##} wounds", held: true));
+                    SaveThresholdBucket bucket = buckets.FirstOrDefault(b => b.SaveNeeded == saveNeeded);
+                    if (bucket == null)
+                    {
+                        bucket = new SaveThresholdBucket(saveNeeded);
+                        buckets.Add(bucket);
+                    }
+                    bucket.Add(rollToSaveResults, successfulResults.TotalRolls, failedResults.TotalRolls,
+                        saveRolls.Source, saveRolls.HitCount);
                 }
             }
 
             RollToSaveResults results = new RollToSaveResults(successfulSaves, failedSaves);
 
             GameContext.Log($"Saved {totalSuccesses} wounds, taking {totalFailures}.");
+
+            // One held save-roll beat per distinct threshold, in first-seen order, captioned with the weapon
+            // and why there are extra hits ("2 hits x3 (Blast) = 6", "3 hits +1 (Furious) = 4", "2 hits,
+            // Rending AP+1"). Held so the settled dice linger while the wounds they cause animate.
+            string weaponName = metaData.WeaponType.Name;
+            foreach (SaveThresholdBucket bucket in buckets)
+            {
+                await GameContext.Presenter.Present(
+                    DiceRolledBeat.From(bucket.BuildResults(), bucket.SaveNeeded, GameContext.Settings.RandomnessType,
+                        $"{weaponName}: {bucket.ComposeExplanation()}",
+                        $"{bucket.Saved:0.##} saved, {bucket.Wounds:0.##} wounds", held: true));
+            }
 
             // Deflection "pings" for the saved shots. Saves are resolved per AP group, not per
             // defending model, so this is unit-level (a count across the defender's models).
@@ -67,6 +90,95 @@ namespace FDG.Stages
             }
 
             await onFinished(results);
+        }
+
+        /// <summary>
+        /// #204: the presentation-only accumulator for one save THRESHOLD. Sums the dice, saved and wound
+        /// counts across every hit group that saves at this threshold, and remembers each group's
+        /// <see cref="HitGroupSource"/> so <see cref="ComposeExplanation"/> can narrate the arithmetic. Never
+        /// touches the authoritative per-group results the save stage still records.
+        /// </summary>
+        private sealed class SaveThresholdBucket
+        {
+            public int SaveNeeded { get; }
+            public float Saved { get; private set; }
+            public float Wounds { get; private set; }
+
+            private int _sideMin = 1;
+            private float[] _faces = System.Array.Empty<float>();
+            private readonly List<(HitGroupSource Source, float Count)> _sources = new List<(HitGroupSource, float)>();
+
+            public SaveThresholdBucket(int saveNeeded) => SaveNeeded = saveNeeded;
+
+            // hitCount is the number of HITS this group carried (== the group's save-dice count with the real
+            // roller); passed explicitly rather than read off the roll so the arithmetic text is correct
+            // regardless of the roller double a test injects.
+            public void Add(IDiceResults roll, float saved, float wounds, HitGroupSource source, float hitCount)
+            {
+                if (_faces.Length == 0)
+                {
+                    _sideMin = roll.SideMin;
+                    _faces = new float[roll.SideMax - roll.SideMin + 1];
+                }
+                for (int face = roll.SideMin; face <= roll.SideMax; face++)
+                    _faces[face - _sideMin] += roll.At(face);
+
+                Saved += saved;
+                Wounds += wounds;
+                _sources.Add((source, hitCount));
+            }
+
+            public IDiceResults BuildResults() => new DiceResults(_faces, _sideMin);
+
+            public float TotalHits => _sources.Sum(s => s.Count);
+
+            /// <summary>Renders "why there are this many hits" from the group sources that fed this threshold.</summary>
+            public string ComposeExplanation()
+            {
+                // A Rending / per-hit-AP threshold: describe the raised save, not an arithmetic build-up.
+                var perHitAp = _sources.Where(s => s.Source.Kind == EHitSourceKind.PerHitAp).ToList();
+                if (perHitAp.Count > 0)
+                {
+                    string name = perHitAp.Select(s => s.Source.RuleName).FirstOrDefault(n => !string.IsNullOrEmpty(n)) ?? "";
+                    float ap = perHitAp[0].Source.Amount;
+                    string apTag = string.IsNullOrEmpty(name) ? $"AP+{ap:0.##}" : $"{name} AP+{ap:0.##}";
+                    return $"{TotalHits:0.##} hits, {apTag}";
+                }
+
+                float baseHits = _sources.Where(s => s.Source.Kind == EHitSourceKind.BaseRolled).Sum(s => s.Count);
+                var extras = _sources.Where(s => s.Source.Kind == EHitSourceKind.ExtraHits).ToList();
+                var blast = _sources.FirstOrDefault(s => s.Source.Kind == EHitSourceKind.BlastMultiplier);
+                bool hasBlast = blast.Source.Kind == EHitSourceKind.BlastMultiplier;
+
+                // No modifiers - just a plain volley.
+                if (extras.Count == 0 && !hasBlast)
+                    return $"{baseHits:0.##} hits";
+
+                // Extras only ("2 hits +1 (Furious) = 3").
+                if (!hasBlast)
+                {
+                    StringBuilder sb = new StringBuilder($"{baseHits:0.##} hits");
+                    foreach ((HitGroupSource src, float count) in extras)
+                        sb.Append($" +{count:0.##} ({src.RuleName})");
+                    return $"{sb} = {TotalHits:0.##}";
+                }
+
+                // Blast multiplies base (+ any on-6 extras). With extras the additive part is parenthesised so
+                // the multiplier reads as applying to the sum ("(2 +1 Furious) x3 (Blast) = 9").
+                string multiplicand;
+                if (extras.Count == 0)
+                {
+                    multiplicand = $"{baseHits:0.##} hits";
+                }
+                else
+                {
+                    StringBuilder sb = new StringBuilder($"{baseHits:0.##}");
+                    foreach ((HitGroupSource src, float count) in extras)
+                        sb.Append($" +{count:0.##} {src.RuleName}");
+                    multiplicand = $"({sb})";
+                }
+                return $"{multiplicand} x{blast.Source.Amount:0.##} ({blast.Source.RuleName}) = {TotalHits:0.##}";
+            }
         }
     }
 }

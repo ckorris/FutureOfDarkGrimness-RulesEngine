@@ -1,4 +1,5 @@
 using FDG.Data;
+using FDG.Rules.Foundation;
 using FDG.Utilities;
 using System.Collections.Generic;
 
@@ -38,6 +39,12 @@ namespace FDG
         /// weapon; drives spell-facet save-side rules (Resistance's ignore-on-2+).</summary>
         public bool IsSpell { get; }
 
+        /// <summary>#197 (P15): the Unpredictable die rolled once for this whole attack action (1-3 -> AP(+1),
+        /// 4-6 -> +1 to hit; <see cref="EUnpredictableBranch.None"/> when no Unpredictable rule applies).
+        /// Fills <c>IHasUnpredictableBranch</c> on the hit/save contexts so both the +1-hit hook (72) and the
+        /// AP/save hook (73) gate on the SAME die.</summary>
+        public EUnpredictableBranch UnpredictableBranch { get; }
+
         //TODO: Next value can replace everything after?
         public void AddResult<TResult>(TResult result);
 
@@ -66,13 +73,16 @@ namespace FDG
 
         public bool IsSpell { get; private set; }
 
+        public EUnpredictableBranch UnpredictableBranch { get; private set; }
+
 
         private QueryableResults _queryableResults = new QueryableResults();
 
         public CombatMetadata(IGameContext gameContext, DataBinding<UnitData> attackingUnit,
             DataBinding<UnitData> defendingUnit, IWeapon weaponType, int weaponCount,
             bool attackerMoved = false, bool isMelee = false, bool isCharging = false, bool isSpell = false,
-            float chargeOriginDistanceInches = 0f)
+            float chargeOriginDistanceInches = 0f,
+            EUnpredictableBranch unpredictableBranch = EUnpredictableBranch.None)
         {
             GameContext = gameContext;
             AttackingUnit = attackingUnit;
@@ -84,6 +94,7 @@ namespace FDG
             IsCharging = isCharging;
             IsSpell = isSpell;
             ChargeOriginDistanceInches = chargeOriginDistanceInches;
+            UnpredictableBranch = unpredictableBranch;
         }
 
         public void AddResult<TResult>(TResult result)

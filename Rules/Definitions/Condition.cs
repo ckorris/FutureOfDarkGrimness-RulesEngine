@@ -49,6 +49,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(IsCharging), "isCharging")]
 [JsonDerivedType(typeof(IsNotSpell), "isNotSpell")]
 [JsonDerivedType(typeof(IsSpell), "isSpell")]
+[JsonDerivedType(typeof(UnpredictableBranchIs), "unpredictableBranchIs")]
 public abstract record Condition
 {
 
@@ -340,6 +341,19 @@ public abstract record Condition
     public sealed record IsCharging : CapabilityCondition<IHasCharging>
     {
         protected override bool EvaluateCore(IHasCharging context) => context.IsCharging;
+    }
+
+    /// <summary>
+    /// #197 (P15): true when this attack's Unpredictable die landed on <see cref="Branch"/>. The die is
+    /// rolled once per attack action and carried on both the hit-roll-modifier hook (the +1-to-hit arm gates
+    /// on <see cref="EUnpredictableBranch.HitBonus"/>) and the hit-roll-complete hook (the AP arm gates on
+    /// <see cref="EUnpredictableBranch.ApBonus"/>), so the two arms read the SAME roll and exactly one fires.
+    /// </summary>
+    public sealed record UnpredictableBranchIs(EUnpredictableBranch Branch)
+        : CapabilityCondition<IHasUnpredictableBranch>
+    {
+        protected override bool EvaluateCore(IHasUnpredictableBranch context) =>
+            context.UnpredictableBranch == Branch;
     }
 
     /// <summary>

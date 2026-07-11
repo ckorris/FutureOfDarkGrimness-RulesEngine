@@ -44,6 +44,8 @@ public static class CoreRuleCatalog
         Strider, Flying, Aircraft, Teleport, TeleportAura, DelayedAction,
         IncreasedShootingRange, RangedShrouding, DarkbornOffensive, DarkbornDefensive, MeleeShrouding,
         IncreasedShootingRangeAura, RangedShroudingAura, MeleeShroudingAura,
+        Unpredictable, UnpredictableFighter, UnpredictableShooter,
+        UnpredictableFighterAura, UnpredictableShooterAura,
     };
 
     /// <summary>
@@ -1807,6 +1809,71 @@ public static class CoreRuleCatalog
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
         Description: "Enemies get -3\" movement when charging this unit, to a minimum of 6\".");
+
+    // Unpredictable family (#197 P15): a per-attack-action randomized branch ---------------------------
+
+    public const string UnpredictableRuleName = "Unpredictable";
+    public const string UnpredictableFighterRuleName = "Unpredictable Fighter";
+    public const string UnpredictableShooterRuleName = "Unpredictable Shooter";
+
+    // The two arms every Unpredictable variant shares: +1 to hit on the HitBonus branch (folded at the
+    // shared hit-roll-modifier hook), and AP(+1) - modelled as a -1 save modifier carried to the save stage,
+    // same as Thrust - on the ApBonus branch. Both gate on the branch that UnpredictableBranchResolver rolled
+    // once for this attack action (carried on the context via IHasUnpredictableBranch), so exactly one fires.
+    private static HookEntry UnpredictableHitArm(Condition gate) =>
+        new HookEntry(EHookID.Shooting_OnHitRollModifier,
+            new Condition.And(gate, new Condition.UnpredictableBranchIs(EUnpredictableBranch.HitBonus)),
+            new Effect.RollModifier(ERollKind.Hit, Delta: +1),
+            ELifetime.ThisAttack);
+
+    private static HookEntry UnpredictableApArm(Condition gate) =>
+        new HookEntry(EHookID.Shooting_OnHitRollComplete,
+            new Condition.And(gate, new Condition.UnpredictableBranchIs(EUnpredictableBranch.ApBonus)),
+            new Effect.RollModifier(ERollKind.Save, Delta: -1),
+            ELifetime.ThisAttack);
+
+    /// <summary>
+    /// Unpredictable (#197 P15): "when attacking, roll one die and apply one effect to all models with this
+    /// rule: on a 1-3 AP(+1), on a 4-6 +1 to hit instead." The die is DECISIVE and rolled once per attack
+    /// ACTION (<see cref="UnpredictableBranchResolver"/>, called from <c>CombatActionContext</c>), then
+    /// carried down to the hit/save contexts so both arms read the SAME branch. Applies to both combat kinds,
+    /// so neither arm carries an IsMelee gate.
+    /// </summary>
+    public static SpecialRuleDefinition Unpredictable { get; } = new SpecialRuleDefinition(UnpredictableRuleName,
+        new[] { UnpredictableHitArm(new Condition.Always()), UnpredictableApArm(new Condition.Always()) },
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "When attacking, roll one die: on a 1-3 the unit gets AP(+1); on a 4-6 it gets +1 to hit instead.");
+
+    /// <summary>
+    /// Unpredictable Fighter (#197 P15): the melee-only <see cref="Unpredictable"/> - both arms gate on
+    /// <see cref="Condition.IsMelee"/>. Same shared per-action decisive roll.
+    /// </summary>
+    public static SpecialRuleDefinition UnpredictableFighter { get; } = new SpecialRuleDefinition(UnpredictableFighterRuleName,
+        new[] { UnpredictableHitArm(new Condition.IsMelee()), UnpredictableApArm(new Condition.IsMelee()) },
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "When in melee, roll one die: on a 1-3 AP(+1); on a 4-6 +1 to hit instead.");
+
+    /// <summary>
+    /// Unpredictable Shooter (#197 P15): the shooting-only <see cref="Unpredictable"/> - both arms gate on
+    /// <c>Not(IsMelee)</c>. Same shared per-action decisive roll.
+    /// </summary>
+    public static SpecialRuleDefinition UnpredictableShooter { get; } = new SpecialRuleDefinition(UnpredictableShooterRuleName,
+        new[]
+        {
+            UnpredictableHitArm(new Condition.Not(new Condition.IsMelee())),
+            UnpredictableApArm(new Condition.Not(new Condition.IsMelee())),
+        },
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "When shooting, roll one die: on a 1-3 AP(+1); on a 4-6 +1 to hit instead.");
+
+    public static SpecialRuleDefinition UnpredictableFighterAura { get; } =
+        UnitAura("Unpredictable Fighter Aura", UnpredictableFighterRuleName);
+
+    public static SpecialRuleDefinition UnpredictableShooterAura { get; } =
+        UnitAura("Unpredictable Shooter Aura", UnpredictableShooterRuleName);
 
     // Pre-attack activated abilities (PreAttackStage offers them at Activation_OnPreAttack) -------------
 

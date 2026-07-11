@@ -45,6 +45,11 @@ public static class RuleFireLint
 {
     private const float FarInches = 1000f;
     private const float NearInches = 0.5f;
+
+    // #197 (P15): the hit/save context variants cover every Unpredictable branch so both arms of an
+    // Unpredictable rule (HitBonus at hook 72, ApBonus at hook 73) find a context that satisfies them.
+    private static readonly EUnpredictableBranch[] UnpredictableBranches =
+        { EUnpredictableBranch.None, EUnpredictableBranch.HitBonus, EUnpredictableBranch.ApBonus };
     private const int GenericArgumentValue = 3;
     private const int LintModelsPerUnit = 3;
 
@@ -525,9 +530,11 @@ public static class RuleFireLint
                 foreach (bool isMelee in new[] { false, true })
                 foreach (bool isCharging in new[] { false, true })
                 foreach (float chargeOrigin in new[] { 0f, FarInches })
+                // #197 (P15): the Unpredictable +1-to-hit arm gates on the HitBonus branch here.
+                foreach (EUnpredictableBranch branch in UnpredictableBranches)
                 {
                     yield return new HitRollModifierContext(attacker, defender, distance, moved,
-                        isMelee, isCharging, chargeOrigin);
+                        isMelee, isCharging, chargeOrigin, branch);
                 }
                 break;
             case EHookID.Shooting_OnHitRollComplete:
@@ -539,10 +546,12 @@ public static class RuleFireLint
                 foreach (bool isMelee in new[] { false, true })
                 foreach (bool isCharging in new[] { false, true })
                 foreach (float chargeOrigin in new[] { 0f, FarInches })
+                // #197 (P15): the Unpredictable AP arm gates on the ApBonus branch here.
+                foreach (EUnpredictableBranch branch in UnpredictableBranches)
                 {
                     yield return new HitRollCompleteContext(attacker, defender, OneOfEachFace(),
                         distance, isMelee, isCharging, IsSpell: false,
-                        ChargeOriginDistanceInches: chargeOrigin);
+                        ChargeOriginDistanceInches: chargeOrigin, UnpredictableBranch: branch);
                 }
                 break;
             case EHookID.Shooting_OnSaveRollModifier:

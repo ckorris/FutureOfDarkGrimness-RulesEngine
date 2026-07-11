@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using FDG.Data;
+using FDG.Rules.Dispatch;
+using FDG.Rules.Foundation;
 
 namespace FDG.Stages
 {
@@ -199,6 +201,12 @@ namespace FDG.Stages
         // context (neither is a charge), and null on the resolver-less simulator paths.
         private readonly IUnitActionContext? _activationContext;
 
+        // #197 (P15): the Unpredictable die, rolled once per attack ACTION and cached so every weapon of the
+        // action shares one branch. Null until the first ConsumeAttackIntoContext resolves it; reset by
+        // SwapCombatRoles so the new attacker (Counter) rolls its own branch. A die is consumed only when the
+        // attacker actually carries an applicable Unpredictable rule (UnpredictableBranchResolver).
+        private EUnpredictableBranch? _unpredictableBranch;
+
 
         public CombatActionContext(IGameContext gameContext, DataBinding<UnitData> attackingUnit, bool isMelee,
             bool attackerMoved = false, bool isCharging = false, IUnitActionContext? activationContext = null)
@@ -292,6 +300,9 @@ namespace FDG.Stages
             // The new attacker (the Counter unit) is striking back into the charge, not charging.
             _isCharging = false;
 
+            // The former defender is now the attacker; its own Unpredictable rule (if any) must roll fresh.
+            _unpredictableBranch = null;
+
             // The in-range sets swap with the roles: the former defenders are now the attackers (#017).
             (InRangeAttackingModels, InRangeDefendingModels) = (InRangeDefendingModels, InRangeAttackingModels);
 
@@ -314,7 +325,18 @@ namespace FDG.Stages
 
             return new CombatMetadata(gameContext, AttackingUnit,
                 DefendingUnit, weapon, count, _attackerMoved, _isMelee, _isCharging,
-                chargeOriginDistanceInches: ChargeOriginDistanceAgainstDefender());
+                chargeOriginDistanceInches: ChargeOriginDistanceAgainstDefender(),
+                unpredictableBranch: ResolveUnpredictableBranch());
+        }
+
+        // #197 (P15): roll the Unpredictable die once per attack action, then reuse it for every weapon of
+        // the action (cached). UnpredictableBranchResolver rolls only when the attacker carries an applicable
+        // rule, so a die is not consumed - and the seeded stream is not shifted - for ordinary attacks.
+        private EUnpredictableBranch ResolveUnpredictableBranch()
+        {
+            _unpredictableBranch ??= UnpredictableBranchResolver.Resolve(
+                AttackingUnit.GetValue(), _isMelee, GameContext.DiceRoller);
+            return _unpredictableBranch.Value;
         }
 
         // #197: only a charge has a launch distance, and only once the defender is pinned. A unit that was

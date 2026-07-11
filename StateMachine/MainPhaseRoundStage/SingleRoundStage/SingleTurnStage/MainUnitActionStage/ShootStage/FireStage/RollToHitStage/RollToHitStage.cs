@@ -80,7 +80,8 @@ namespace FDG.Stages
             IReadOnlyList<(RuleOperation Op, string RuleName)> named = GameContext.RuleEvaluator.EvaluateAllNamedLive(
                 new HitRollCompleteContext(attacker, defender, rollToHitResults, distance, metaData.IsMelee,
                     metaData.IsCharging, IsSpell: false,
-                    ChargeOriginDistanceInches: metaData.ChargeOriginDistanceInches),
+                    ChargeOriginDistanceInches: metaData.ChargeOriginDistanceInches,
+                    UnpredictableBranch: metaData.UnpredictableBranch),
                 // #006 slice F / #093: the attacker batch's living owners contribute their per-model rules
                 // under AllOwners semantics (fires only when every owner shares it), so a joined hero's
                 // Furious/Relentless fire for a hero-only batch and a homogeneous squad's shared per-model

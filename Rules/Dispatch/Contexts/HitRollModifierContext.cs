@@ -16,9 +16,10 @@ namespace FDG.Rules.Dispatch.Contexts
     /// live-distance check can never see a charge because melee resolves in base contact.</param>
     public sealed record HitRollModifierContext(
         IUnit Attacker, IUnit Target, float DistanceInches, bool AttackerMoved = false,
-        bool IsMelee = false, bool IsCharging = false, float ChargeOriginDistanceInches = 0f)
+        bool IsMelee = false, bool IsCharging = false, float ChargeOriginDistanceInches = 0f,
+        EUnpredictableBranch UnpredictableBranch = EUnpredictableBranch.None)
         : IHookContext, IHasDistance, IHasAttackerMoved, IHasCombatKind, IHasCharging, IHasTarget,
-            IHasAttackOriginDistance
+            IHasAttackOriginDistance, IHasUnpredictableBranch
     {
         public EHookID Hook => EHookID.Shooting_OnHitRollModifier;
 

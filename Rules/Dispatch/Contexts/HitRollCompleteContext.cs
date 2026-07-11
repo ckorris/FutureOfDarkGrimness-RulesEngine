@@ -25,9 +25,10 @@ namespace FDG.Rules.Dispatch.Contexts
     public sealed record HitRollCompleteContext(
         IUnit Attacker, IUnit Target, IDiceResults UnmodifiedHitRolls,
         float DistanceInches = 0f, bool IsMelee = false, bool IsCharging = false, bool IsSpell = false,
-        float ChargeOriginDistanceInches = 0f)
+        float ChargeOriginDistanceInches = 0f,
+        EUnpredictableBranch UnpredictableBranch = EUnpredictableBranch.None)
         : IHookContext, IHasUnmodifiedHitRolls, IHasDistance, IHasCombatKind, IHasCharging, IHasTarget,
-            IHasIsSpell, IHasAttackOriginDistance
+            IHasIsSpell, IHasAttackOriginDistance, IHasUnpredictableBranch
     {
         public EHookID Hook => EHookID.Shooting_OnHitRollComplete;
 

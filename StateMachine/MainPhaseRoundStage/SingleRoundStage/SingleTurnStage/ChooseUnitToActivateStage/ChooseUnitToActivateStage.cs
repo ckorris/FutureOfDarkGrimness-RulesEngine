@@ -75,7 +75,7 @@ namespace FDG.Stages
             {
                 var holdBack = new YesNoRequest(context.ActivatedPlayer,
                     $"Delayed Action: hold {chosenUnit.GetValue().Name} back to activate later this round " +
-                    "(your opponent activates next instead)? Your team may do this only once per round.",
+                    "(your opponent activates next instead)? You may do this only once per round.",
                     defaultAnswer: false);
 
                 bool delay = await GameContext.PlayerRequester
@@ -103,14 +103,14 @@ namespace FDG.Stages
         /// Delayed Action ("once per round, if your opponent has more units left to activate than you, this
         /// unit may pass its turn instead of activating"): offer the hold-back iff the chosen unit carries the
         /// rule, an opposing team has more units left to activate (snapshotted on the turn context), and this
-        /// team has not already used its once-per-round hold-back - detected by scanning the team's living
-        /// units for the <see cref="TokenType.DelayedActionUsed"/> marker.
+        /// player has not already used their once-per-round hold-back - detected by scanning the player's own
+        /// living units for the <see cref="TokenType.DelayedActionUsed"/> marker.
         /// </summary>
         private bool CanOfferDelayedAction(ISingleTurnContext context, UnitData chosenUnit)
         {
             if (!context.OpponentHasMoreUnitsToActivate) return false;
             if (!UnitHasDelayedAction(chosenUnit)) return false;
-            if (TeamAlreadyDelayedThisRound(context.ActivatedPlayer)) return false;
+            if (PlayerAlreadyDelayedThisRound(context.ActivatedPlayer)) return false;
             return true;
         }
 
@@ -124,13 +124,10 @@ namespace FDG.Stages
             return unit.Models.Any(m => m is ModelData md && Has(md.RuleDefinitions));
         }
 
-        private bool TeamAlreadyDelayedThisRound(PlayerID actingPlayer)
+        private bool PlayerAlreadyDelayedThisRound(PlayerID actingPlayer)
         {
-            ITeam actingTeam = GameContext.TableState.Teams.Objects
-                .First(team => team.IsPlayerOnTeam(actingPlayer));
-
             return GameContext.GameDataStore.GetAllValues<ArmyData>()
-                .Where(army => actingTeam.Players.Contains(army.PlayerID))
+                .Where(army => army.PlayerID == actingPlayer)
                 .SelectMany(army => army.UnitBindings)
                 .Where(unit => unit.GetValue().GetIsAlive())
                 .Any(unit => unit.GetValue().Tokens.HasToken(TokenType.DelayedActionUsed));

@@ -1199,8 +1199,8 @@ public static class CoreRuleCatalog
     /// this model's unit may pass its turn instead of activating (may still be activated later)." An engine
     /// marker (no dispatch hooks or abilities) - like <see cref="Hero"/>/<see cref="Transport"/>, its effect
     /// is enacted stage-side, not through the rule pipeline. <c>ChooseUnitToActivateStage</c> detects it by
-    /// name on the chosen unit and, when the opponent has more units left to activate and the team hasn't
-    /// already delayed this round (a team-wide <see cref="Foundation.TokenType.DelayedActionUsed"/> scan),
+    /// name on the chosen unit and, when the opponent has more units left to activate and the player hasn't
+    /// already delayed this round (a per-player <see cref="Foundation.TokenType.DelayedActionUsed"/> scan),
     /// offers to hold the unit back: the turn passes to the opponent with the unit still in the pool.
     /// Allowlisted in the catalog fire-lint (a marker with no operations).
     /// </summary>

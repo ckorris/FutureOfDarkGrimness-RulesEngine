@@ -124,9 +124,9 @@ namespace FDG.Tests
         }
 
         [Test]
-        public async Task NoOffer_WhenTeamAlreadyHeldBackThisRound()
+        public async Task NoOffer_WhenThisPlayerAlreadyHeldBackThisRound()
         {
-            // A teammate already used the once-per-round hold-back (carries the marker).
+            // One of this player's own units already used the once-per-round hold-back (carries the marker).
             DataBinding<UnitData> alreadyUsed = MakeUnit(_me, "First", withDelayedAction: true);
             alreadyUsed.GetValue().Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.DelayedActionUsed));
 
@@ -140,8 +140,30 @@ namespace FDG.Tests
 
             (bool toDelay, bool toMain) = await RunStage(ctx, turn);
 
-            Assert.That(requester.YesNoAsked, Is.False, "the team's one hold-back per round is already spent.");
+            Assert.That(requester.YesNoAsked, Is.False, "this player's one hold-back per round is already spent.");
             Assert.That(toMain, Is.True);
+        }
+
+        [Test]
+        public async Task TeammateHeldBack_DoesNotBlockThisPlayer()
+        {
+            // The hold-back budget is PER PLAYER, not per team: a DIFFERENT player having already held back
+            // must not close this player's option. (A teammate on the same team, here _opponent's slot stands
+            // in as "some other player" - the per-player scan keys only on the acting player's own units.)
+            DataBinding<UnitData> otherPlayersUsed = MakeUnit(_opponent, "TheirHolder", withDelayedAction: true);
+            otherPlayersUsed.GetValue().Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.DelayedActionUsed));
+
+            DataBinding<UnitData> mine = MakeUnit(_me, "MyHolder", withDelayedAction: true);
+            var requester = new ActivationChoiceRequester(mine, delay: false);
+            var ctx = new TriggeredMoveTestContext(_store, requester);
+
+            var turn = new SingleTurnContext(ctx, _me, new List<DataBinding<UnitData>> { mine },
+                opponentHasMoreUnitsToActivate: true);
+
+            await RunStage(ctx, turn);
+
+            Assert.That(requester.YesNoAsked, Is.True,
+                "another player's spent hold-back must not block this player - the budget is per player.");
         }
 
         [Test]

@@ -96,9 +96,9 @@ public readonly record struct TokenType(string Id)
     public static readonly TokenType PostCombatMoveUsed = new(POST_COMBAT_MOVE_USED_ID);
 
     /// <summary>
-    /// #197 Delayed Action: per-round, per-team marker that a team has already used its once-per-round
+    /// #197 Delayed Action: per-round, per-player marker that a player has already used their once-per-round
     /// "hold back" (pass the turn without activating). Placed on the unit that was held back; scanned across
-    /// the team's living units before offering the option again. Carried with a <c>RoundEnd</c> clear
+    /// the player's own living units before offering the option again. Carried with a <c>RoundEnd</c> clear
     /// trigger, swept by the round-end token pass (same lifecycle as <see cref="Fatigued"/>).
     /// </summary>
     public static readonly TokenType DelayedActionUsed = new(DELAYED_ACTION_USED_ID);

@@ -144,6 +144,51 @@ namespace FDG.Tests
             Assert.That(toMain, Is.True);
         }
 
+        [Test]
+        public async Task Accepted_ViaStage_ThenNotOfferedAgainThisRound()
+        {
+            // Two units carry the rule. Hold the first back through the real stage (which places the token),
+            // then take a second turn and confirm the team's once-per-round hold-back is spent.
+            DataBinding<UnitData> first = MakeUnit(_me, "First", withDelayedAction: true);
+            DataBinding<UnitData> second = MakeUnit(_me, "Second", withDelayedAction: true);
+
+            var acceptReq = new ActivationChoiceRequester(first, delay: true);
+            var ctx = new TriggeredMoveTestContext(_store, acceptReq);
+            var turn1 = new SingleTurnContext(ctx, _me,
+                new List<DataBinding<UnitData>> { first, second }, opponentHasMoreUnitsToActivate: true);
+
+            (bool toDelay1, _) = await RunStage(ctx, turn1);
+            Assert.That(toDelay1, Is.True, "the first hold-back is accepted...");
+            Assert.That(first.GetValue().Tokens.HasToken(TokenType.DelayedActionUsed), Is.True);
+
+            // A later turn (same round, same team) picks the other eligible unit - its own requester/context.
+            var secondReq = new ActivationChoiceRequester(second, delay: true);
+            var ctx2 = new TriggeredMoveTestContext(_store, secondReq);
+            var turn2 = new SingleTurnContext(ctx2, _me,
+                new List<DataBinding<UnitData>> { second }, opponentHasMoreUnitsToActivate: true);
+
+            (bool toDelay2, bool toMain2) = await RunStage(ctx2, turn2);
+
+            Assert.That(secondReq.YesNoAsked, Is.False,
+                "...so the hold-back is not offered again this round, even for a different Delayed Action unit.");
+            Assert.That(toDelay2, Is.False);
+            Assert.That(toMain2, Is.True, "the second unit activates normally.");
+        }
+
+        // The AI answers the hold-back like any yes/no: it returns the request's DefaultAnswer (false here),
+        // so the AI (base bot and Tactician, which inherits AiYesNoResolver) safely DECLINES and activates
+        // normally rather than stalling. Teaching the AI to USE Delayed Action is a Tactician planning item
+        // (#191) - it must coordinate with the activation-order choice, not bolt onto this yes/no.
+        [Test]
+        public async Task AiResolver_DeclinesHoldBack_SoTheAiNeverStalls()
+        {
+            var request = new YesNoRequest(_me, "hold back?", defaultAnswer: false);
+
+            bool answer = await new FDG.Ai.Resolvers.AiYesNoResolver().Resolve(request);
+
+            Assert.That(answer, Is.False, "the AI declines the hold-back (the request default), activating normally.");
+        }
+
         // Runs ChooseUnitToActivateStage and reports which edge fired.
         private static async Task<(bool toDelay, bool toMain)> RunStage(
             TriggeredMoveTestContext ctx, SingleTurnContext turn)

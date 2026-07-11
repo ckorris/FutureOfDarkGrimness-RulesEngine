@@ -74,7 +74,10 @@ namespace FDG.Stages
             IUnit defender = metaData.DefendingUnit.GetValue();
             float distance = UnitCompareUtilities.MinDistanceBetweenUnits(attacker, defender, out _, out _, includeVertical: true);
 
-            IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
+            // #204: the LIVE named evaluation - spends grants / narrates exactly like EvaluateAll, but also
+            // pairs each op with the alias-aware rule name so the save presentation can say "+1 (Furious)",
+            // "x3 (Blast)", "Rending AP+1". `operations` is the plain-op view the existing sinks consume.
+            IReadOnlyList<(RuleOperation Op, string RuleName)> named = GameContext.RuleEvaluator.EvaluateAllNamedLive(
                 new HitRollCompleteContext(attacker, defender, rollToHitResults, distance, metaData.IsMelee,
                     metaData.IsCharging, IsSpell: false,
                     ChargeOriginDistanceInches: metaData.ChargeOriginDistanceInches),
@@ -93,22 +96,28 @@ namespace FDG.Stages
                 // Shielded/Fortified (gated by AllModelsHaveThisRule) instead of silently dropping them.
                 RuleParticipant.Subject(defender, models: HeroStatRules.LivingModels(defender)));
 
+            IReadOnlyList<RuleOperation> operations = named.Select(n => n.Op).ToList();
+
             // #032 per-hit AP (Rending/Crack on an unmodified 6): split the rolled successes so only the
             // matching-face hits carry the raised save threshold; the rest stay at base AP. With no such
-            // rule the splitter returns a single group — identical to the old one-group behaviour.
+            // rule the splitter returns a single group — identical to the old one-group behaviour. The named
+            // form (#204) tags each peeled group with its rule so the save stage can say "Rending AP+1".
             RollToHitResults results = new RollToHitResults(
-                PerHitApSplitter.Split(successfulResults, operations),
+                PerHitApSplitter.Split(successfulResults, named),
                 new List<FailedHitInfo>() { new FailedHitInfo(failedResults) });
 
-            // #042 extra-hit rules (Surge / Furious / Relentless) fire at hit-roll-complete: an
-            // unmodified 6 spawns extra hits. Fold InsertExtraHits ops through the sink and append the
-            // total as synthetic successes (base AP — a generated hit is not itself a natural 6).
+            // #042 extra-hit rules (Surge / Furious / Relentless) fire at hit-roll-complete: an unmodified 6
+            // spawns extra hits. Fold InsertExtraHits ops through the sink and append the total as ONE
+            // synthetic group (base AP — a generated hit is not itself a natural 6). #204 keeps this ONE-group
+            // structure byte-for-byte (so the save-roll RNG is untouched and outcomes don't move) and only
+            // TAGS the group with the responsible rule name(s) for the save presentation ("+3 (Furious)").
             HitInjectionSink hitInjection = new HitInjectionSink();
             hitInjection.ApplyFrom(operations);
-
             if (hitInjection.TotalExtraHits > 0f)
             {
-                results.SuccessfulHitList.Add(new SuccessfulHitInfo(SyntheticHits(hitInjection.TotalExtraHits, rollToHitResults)));
+                results.SuccessfulHitList.Add(new SuccessfulHitInfo(
+                    SyntheticHits(hitInjection.TotalExtraHits, rollToHitResults), 0,
+                    new HitGroupSource(EHitSourceKind.ExtraHits, ExtraHitRuleNames(named), hitInjection.TotalExtraHits)));
             }
 
             // #042 hit-multiplier rules (Blast) fire at the same hook but resolve "after other rules":
@@ -124,7 +133,13 @@ namespace FDG.Stages
                 float extraHits = cappedHits - currentHits;
                 if (extraHits > 0f)
                 {
-                    results.SuccessfulHitList.Add(new SuccessfulHitInfo(SyntheticHits(extraHits, rollToHitResults)));
+                    // #204: tag the overflow group so the save stage shows "xN (Blast)" (name from the op,
+                    // falling back to "Blast" if a book aliased it away).
+                    string blastName = named.FirstOrDefault(n => n.Op is RuleOperation.MultiplyHits).RuleName;
+                    if (string.IsNullOrEmpty(blastName)) blastName = "Blast";
+                    results.SuccessfulHitList.Add(new SuccessfulHitInfo(
+                        SyntheticHits(extraHits, rollToHitResults), 0,
+                        new HitGroupSource(EHitSourceKind.BlastMultiplier, blastName, hitMultiplier.NetMultiplier)));
                     GameContext.Log($"Blast multiplied {currentHits} hits x{hitMultiplier.NetMultiplier}, capped at " +
                         $"{targetModelCount} target models -> {cappedHits} total.");
                 }
@@ -144,6 +159,21 @@ namespace FDG.Stages
                 .OfType<RuleOperation.ReduceArmorPenetration>().Sum(op => op.Amount);
 
             await onFinished(results);
+        }
+
+        // #204: the distinct rule name(s) that added on-6 extra hits, joined for the save presentation
+        // (usually one, e.g. "Furious"; "Furious, Surge" if two stack). Presentation only - does not affect
+        // the pooled hit total. Empty rule names fall back to "extra hits".
+        private static string ExtraHitRuleNames(IReadOnlyList<(RuleOperation Op, string RuleName)> named)
+        {
+            var names = new List<string>();
+            foreach ((RuleOperation op, string ruleName) in named)
+            {
+                if (op is not RuleOperation.InsertExtraHits extra || extra.Count <= 0f) continue;
+                string name = string.IsNullOrEmpty(ruleName) ? "extra hits" : ruleName;
+                if (!names.Contains(name)) names.Add(name);
+            }
+            return names.Count > 0 ? string.Join(", ", names) : "extra hits";
         }
 
         private static float TotalHits(RollToHitResults results)

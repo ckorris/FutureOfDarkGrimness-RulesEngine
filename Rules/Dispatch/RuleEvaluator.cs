@@ -102,6 +102,21 @@ public sealed class RuleEvaluator
     }
 
     /// <summary>
+    /// The live twin of <see cref="EvaluateAllNamed"/>: identical to <see cref="EvaluateAll"/> (it LOGS
+    /// and spends one-shot NextTrigger grants - a real evaluation, not a read-only query), but also pairs
+    /// each surviving operation with the alias-aware display name of the rule that produced it. Used by
+    /// the hit-roll stage (#204) to attribute each extra hit / multiplier / per-hit-AP effect to its rule
+    /// ("+1 (Furious)", "x3 (Blast)") in the save-roll presentation, without re-evaluating (which would
+    /// double-spend grants).
+    /// </summary>
+    public IReadOnlyList<(RuleOperation Op, string RuleName)> EvaluateAllNamedLive(IHookContext context,
+        params RuleParticipant[] participants)
+    {
+        return CollectSurviving(context, log: true, participants)
+            .Select(t => (t.Op, t.Origin.RequestedName)).ToList();
+    }
+
+    /// <summary>
     /// Collects every participant's matching operations, runs the suppression first-pass (a queued
     /// <see cref="RuleOperation.SuppressRule"/>("X") removes every op whose origin rule's canonical name
     /// is "X" — alias-renamed victims included, since it matches <c>Definition.Name</c>), and returns the

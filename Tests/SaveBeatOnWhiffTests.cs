@@ -58,8 +58,10 @@ namespace FDG.Tests
             await stage.Enter(metadata);
         }
 
+        // #204: save-roll beats are now captioned "{weapon}: {breakdown}" (grouped by threshold) rather
+        // than a fixed "Roll to Save" label; the test weapon is named "Test".
         private int SaveBeatCount() =>
-            _presenter.Beats.OfType<DiceRolledBeat>().Count(b => b.Label == "Roll to Save");
+            _presenter.Beats.OfType<DiceRolledBeat>().Count(b => b.Label.StartsWith("Test:"));
 
         private CombatMetadata NewMetadata()
         {

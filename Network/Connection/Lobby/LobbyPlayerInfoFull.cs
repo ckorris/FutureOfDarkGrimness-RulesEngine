@@ -21,6 +21,10 @@ namespace FDG.Network.Connection.Lobby
         /// <summary>Which AI plays this slot - meaningful only when <see cref="PlayerType"/> is AI (#191 A6).</summary>
         public EAiProfile AiProfile;
 
+        /// <summary>Explicit lobby colour pick (#221): an index into the front end's palette, or -1 for no
+        /// pick. Opaque to the engine - stored and rebroadcast, never interpreted.</summary>
+        public int ColorIndex = -1;
+
         public LobbyPlayerInfoFull(string playerName, ArmyListFile? armyListFile, ETeamOption teamNumber,
         EPlayerType playerType, ConnectionID connectionID, PlayerID playerID,
         EAiProfile aiProfile = EAiProfile.SoloRules)

@@ -23,8 +23,9 @@ namespace FDG.Network
         /// The wire-protocol version this build speaks. Bump when the wire format changes in a way the
         /// type-map fingerprint cannot detect (e.g. enum encoding, message registry, framing).
         /// v2: added the lobby password to NewLobbyClientGreeting (QF1) and single-buffer frame writes (QF4).
+        /// v3: added PlayerColorUpdateMessage + LobbyPlayerInfoSummary.ColorIndex (#221 lobby colour sync).
         /// </summary>
-        public const int Version = 2;
+        public const int Version = 3;
 
         private static string? _localTypeMapHash;
 

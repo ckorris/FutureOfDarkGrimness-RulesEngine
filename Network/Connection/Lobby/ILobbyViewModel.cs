@@ -84,6 +84,14 @@ namespace FDG.Network.Connection.Lobby
 
         void UpdateArmyListFile(PlayerID playerId, ArmyListFile armyListFile);
 
+        /// <summary>
+        /// Sets a player's lobby colour pick (#221): an index into the front end's palette (opaque to the
+        /// engine), or -1 to clear. On the host this applies directly (any row) and rebroadcasts the
+        /// roster; on a client it sends the request to the host (own row only). The host ignores a pick
+        /// another player already explicitly holds - the rebroadcast corrects the requester's view.
+        /// </summary>
+        void SetPlayerColor(PlayerID playerId, int colorIndex);
+
         void SetArmyPoints(int armyPoints);
 
         void SetTerrainCount(int terrainCount);

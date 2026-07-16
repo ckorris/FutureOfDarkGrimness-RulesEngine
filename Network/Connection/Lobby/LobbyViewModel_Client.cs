@@ -348,5 +348,24 @@ namespace FDG.Network.Connection.Lobby
 
             _messageBusClient.SendCommandToHostAsync(message);
         }
+
+        // #221: request a colour pick from the host, own row only (mirrors UpdateArmyListFile). The host
+        // applies it (unless another player already holds the colour) and the roster rebroadcast carries
+        // the result back - there's no optimistic local update.
+        public void SetPlayerColor(PlayerID playerId, int colorIndex)
+        {
+            if (_thisPlayerID.HasValue == false)
+            {
+                throw new Exception("Tried to set a player colour before we've been assigned an ID.");
+            }
+
+            if (playerId != _thisPlayerID.Value)
+            {
+                throw new InvalidOperationException("Client tried to set a colour for the wrong player. " +
+                    $"Client's ID: {_thisPlayerID.Value} Update attempt ID: {playerId}");
+            }
+
+            _messageBusClient.SendCommandToHostAsync(new PlayerColorUpdateMessage(playerId, colorIndex));
+        }
     }
 }

@@ -139,6 +139,7 @@ namespace FDG.Network.Connection.Lobby
             _messageBus.RegisterForMessageEvent<LobbyChatMessage_FromClient>(OnChatMessageReceived);
             _messageBus.RegisterForConnectionMessageEvent<NewLobbyClientGreeting>(OnReceiveNewClientGreeting);
             _messageBus.RegisterForMessageEvent<ArmyListUpdateMessage>(OnArmyListFileUpdateReceived);
+            _messageBus.RegisterForMessageEvent<PlayerColorUpdateMessage>(OnPlayerColorUpdateReceived);
 
             //Show init message in chatbox.
             AddMessageToLocalList(new LobbyChatMessage("System", SERVER_START_MESSAGE));
@@ -192,6 +193,7 @@ namespace FDG.Network.Connection.Lobby
             _messageBus.RegisterForMessageEvent<LobbyChatMessage_FromClient>(OnChatMessageReceived);
             _messageBus.RegisterForConnectionMessageEvent<NewLobbyClientGreeting>(OnReceiveNewClientGreeting);
             _messageBus.RegisterForMessageEvent<ArmyListUpdateMessage>(OnArmyListFileUpdateReceived);
+            _messageBus.RegisterForMessageEvent<PlayerColorUpdateMessage>(OnPlayerColorUpdateReceived);
 
             AddMessageToLocalList(new LobbyChatMessage("System", "Loaded saved game. Assign players to slots, then Resume."));
 
@@ -395,7 +397,7 @@ namespace FDG.Network.Connection.Lobby
                     fullInfo.ArmyListFile.TotalPoints)
                     : new ArmyListSummary(false, "N/A", "N/A", 0);
                 infoSummaries.Add(new LobbyPlayerInfoSummary(fullInfo.PlayerName, summary, fullInfo.TeamNumber, fullInfo.PlayerType,
-                    fullInfo.ConnectionID, fullInfo.PlayerID));
+                    fullInfo.ConnectionID, fullInfo.PlayerID, fullInfo.ColorIndex));
             }
 
             LobbyPlayerListUpdate playerListUpdateMessage = new LobbyPlayerListUpdate(infoSummaries);
@@ -423,6 +425,39 @@ namespace FDG.Network.Connection.Lobby
         private void OnArmyListFileUpdateReceived(ArmyListUpdateMessage armyUpdate)
         {
             UpdateArmyListFile(armyUpdate.PlayerID, armyUpdate.DecodeArmy());
+        }
+
+        // #221: a client's colour pick, applied through the same path the host's own picks take. Sender
+        // ownership isn't validated (same trust level as OnArmyListFileUpdateReceived - see #186).
+        private void OnPlayerColorUpdateReceived(PlayerColorUpdateMessage colorUpdate)
+        {
+            SetPlayerColor(colorUpdate.PlayerID, colorUpdate.ColorIndex);
+        }
+
+        public void SetPlayerColor(PlayerID playerId, int colorIndex)
+        {
+            if (_playerInfosFull.TryGetValue(playerId, out LobbyPlayerInfoFull? info) == false)
+            {
+                Debug.WriteLine($"SetPlayerColor: couldn't find player {playerId}.");
+                return;
+            }
+
+            // First-committed-wins on a race for the same colour: an explicit pick another player already
+            // holds is ignored, and the roster rebroadcast below never happens - the requester's UI stays
+            // on the authoritative state it already has. (The palette is app-side; the engine only compares
+            // picks as opaque ints, so front-end DEFAULT colours can't be reserved here - the front end's
+            // dropdown enforces that side.)
+            if (colorIndex >= 0 && _playerInfosFull.Values.Any(
+                    other => other.PlayerID != playerId && other.ColorIndex == colorIndex))
+            {
+                Debug.WriteLine($"SetPlayerColor: colour {colorIndex} already held; ignoring pick by {playerId}.");
+                return;
+            }
+
+            if (info.ColorIndex == colorIndex) return;
+
+            info.ColorIndex = colorIndex;
+            UpdateInfoSummariesFromFullList();
         }
 
         public void Dispose()

@@ -35,6 +35,13 @@ namespace FDG.Presentation.Beats
 
         public override TimeSpan NominalDuration => PresentationDurations.ForVolleys(VolleyCount);
 
+        // #238: held with a zero lead-in, so the presenter emits the attack and immediately proceeds
+        // to the to-hit DiceRolledBeat that always follows it — front-ends animate the shots/swings
+        // WHILE the dice tumble instead of after. The attack's duration (ForVolleys caps at 1600ms)
+        // always fits inside the dice beat's envelope, so the dice pacing covers both.
+        public override bool Held => true;
+        public override TimeSpan HoldLeadIn => TimeSpan.Zero;
+
         // Purely visual — the surrounding hit/wound logs already narrate the outcome.
         public override string? Text => null;
     }

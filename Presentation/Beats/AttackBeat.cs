@@ -23,14 +23,34 @@ namespace FDG.Presentation.Beats
         public int VolleyCount { get; }       // volleys fired one after another (Attacks per weapon)
         public int ArmorPenetration { get; }
 
+        /// <summary>
+        /// #239: the firing weapon's effect-set key — an opaque identifier from the army data that
+        /// selects the projectile/swing visual and sounds. Null means the front-end's global default.
+        /// </summary>
+        public string? WeaponEffect { get; }
+
+        /// <summary>
+        /// #239: natural to-hit successes and attacks rolled, so front-ends can land only the shots
+        /// that actually hit and overshoot the misses. Floats — Realistic-mode dice are fractional.
+        /// <see cref="AttackCount"/> &lt;= 0 means unknown: render the legacy all-shots-connect way.
+        /// </summary>
+        public float HitCount { get; }
+
+        /// <inheritdoc cref="HitCount"/>
+        public float AttackCount { get; }
+
         public AttackBeat(bool isMelee, IReadOnlyList<Position> from, IReadOnlyList<Position> to,
-            int volleyCount, int armorPenetration)
+            int volleyCount, int armorPenetration,
+            string? weaponEffect = null, float hitCount = 0f, float attackCount = 0f)
         {
             IsMelee = isMelee;
             From = from;
             To = to;
             VolleyCount = volleyCount;
             ArmorPenetration = armorPenetration;
+            WeaponEffect = weaponEffect;
+            HitCount = hitCount;
+            AttackCount = attackCount;
         }
 
         public override TimeSpan NominalDuration => PresentationDurations.ForVolleys(VolleyCount);

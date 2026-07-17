@@ -205,7 +205,8 @@ namespace FDG.Tests
             var original = new AttackBeat(isMelee: false,
                 from: new List<Position> { new Position(1f, 2f), new Position(3f, 2f) },
                 to: new List<Position> { new Position(10f, 20f) },
-                volleyCount: 2, armorPenetration: 2);
+                volleyCount: 2, armorPenetration: 2,
+                weaponEffect: "plasma-bolt", hitCount: 1.5f, attackCount: 4f);
 
             PresentationBeat result = RoundTrip(original);
 
@@ -220,6 +221,11 @@ namespace FDG.Tests
             Assert.That(atk.To, Has.Count.EqualTo(1));
             Assert.That(atk.From[1].x, Is.EqualTo(3f).Within(0.0001f));
             Assert.That(atk.To[0].z, Is.EqualTo(20f).Within(0.0001f));
+            // #239: the effect key and hit share must ride the wire so networked clients render
+            // the same per-weapon effect and the same hits/misses as the host.
+            Assert.That(atk.WeaponEffect, Is.EqualTo("plasma-bolt"));
+            Assert.That(atk.HitCount, Is.EqualTo(1.5f).Within(0.0001f));
+            Assert.That(atk.AttackCount, Is.EqualTo(4f).Within(0.0001f));
         }
 
         [Test]
@@ -234,6 +240,7 @@ namespace FDG.Tests
             Assert.That(result.IsMelee, Is.True);
             Assert.That(result.VolleyCount, Is.EqualTo(4));
             Assert.That(result.NominalDuration, Is.EqualTo(PresentationDurations.ForVolleys(4)));
+            Assert.That(result.WeaponEffect, Is.Null, "#239: an unset effect key round-trips as null");
         }
 
         [Test]

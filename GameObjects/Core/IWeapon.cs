@@ -23,10 +23,20 @@ namespace FDG
         /// this weapon. Mirrors <see cref="IUnit.RuleDefinitions"/>.
         /// </summary>
         public IReadOnlyList<ResolvedRule> RuleDefinitions { get; }
+
+        /// <summary>
+        /// #239: the resolved effect-set key for presentation — the weapon entry's explicit key,
+        /// else the army's default for this weapon's ranged/melee kind, resolved once at army load.
+        /// Opaque to the engine (front-ends map it to visuals/sounds); null means the front-end's
+        /// global default.
+        /// </summary>
+        public string? EffectKey { get; }
     }
 
     public class WeaponComparer : IEqualityComparer<IWeapon>
     {
+        // #239: EffectKey is deliberately excluded — it is presentation data, and batch grouping
+        // must not split on it (same-name weapons share a key in practice anyway).
         public bool Equals(IWeapon x, IWeapon y)
         {
             return x.Name == y.Name && x.RangeInches == y.RangeInches
@@ -122,6 +132,9 @@ namespace FDG
 
         public int ArmorPenetration { get; }
 
+        /// <inheritdoc cref="IWeapon.EffectKey"/>
+        public string? EffectKey { get; }
+
         private readonly List<ResolvedRule> _ruleDefinitions = new();
 
         /// <summary>
@@ -135,12 +148,14 @@ namespace FDG
         // save/load resume even though army files are vestigial there. See RuleAttachmentPersistence.
         [JsonProperty] private string? _ruleDefinitionsJson;
 
-        public Weapon(string name, float rangeInches, int attacks, int armorPenetration)
+        public Weapon(string name, float rangeInches, int attacks, int armorPenetration,
+            string? effectKey = null)
         {
             Name = name;
             RangeInches = rangeInches;
             Attacks = attacks;
             ArmorPenetration = armorPenetration;
+            EffectKey = effectKey;
         }
 
         /// <summary>

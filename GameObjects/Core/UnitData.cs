@@ -116,7 +116,8 @@ namespace FDG
         }
 
         public UnitData(PlayerID playerID, UnitFileEntry unitFileEntry, IReadWriteableGameDataStore gameDataStore,
-            IRuleResolver? ruleResolver = null)
+            IRuleResolver? ruleResolver = null,
+            string? defaultRangedEffectSet = null, string? defaultMeleeEffectSet = null)
         {
             ID = new UnitID(System.Guid.NewGuid());
 
@@ -143,10 +144,15 @@ namespace FDG
                 //ResolvedRule is immutable, so duplicates of the same weapon can share it.
                 List<ResolvedRule> weaponRuleDefinitions = ResolveWeaponRules(weaponEntry, ruleResolver);
 
+                // #239: the entry's explicit effect-set key, else the army default for the weapon's
+                // kind. Resolved once here so beat emission just reads Weapon.EffectKey.
+                string? effectKey = weaponEntry.EffectSet
+                    ?? (weaponEntry.RangeInches > 0 ? defaultRangedEffectSet : defaultMeleeEffectSet);
+
                 for (int q = 0; q < weaponEntry.Quantity; q++)
                 {
                     Weapon weapon = new Weapon(weaponEntry.Name, weaponEntry.RangeInches, weaponEntry.Attacks,
-                            weaponEntry.ArmorPenetration);
+                            weaponEntry.ArmorPenetration, effectKey);
 
                     foreach (ResolvedRule rule in weaponRuleDefinitions)
                     {

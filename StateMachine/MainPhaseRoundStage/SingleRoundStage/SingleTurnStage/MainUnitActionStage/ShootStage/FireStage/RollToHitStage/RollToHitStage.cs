@@ -22,28 +22,11 @@ namespace FDG.Stages
 
         protected override async Task RunStage(ICombatMetadata metaData, Func<RollToHitResults, Task> onFinished)
         {
-            // Show the attack — tracers (ranged) or a clash (melee) — before the dice resolve it.
-            // Fire from the actual weapon-carrying models so a mixed unit shows the right source.
-            List<Position> attackerPositions = AttackBeatPositions.FiringModels(metaData.AttackingUnit, metaData.WeaponType);
-            // Ranged: only models a shooter can actually see, so tracers spread across the targetable
-            // defenders without ever depicting a shot at an unhittable one. Melee is adjacent — LoS is
-            // moot and the clash just snaps to the nearest model.
-            List<Position> targetPositions = metaData.IsMelee
-                ? AttackBeatPositions.AlivePlaced(metaData.DefendingUnit)
-                : AttackBeatPositions.VisibleTargets(GameContext.TableState,
-                    metaData.AttackingUnit, metaData.DefendingUnit, metaData.WeaponType);
-            if (attackerPositions.Count > 0 && targetPositions.Count > 0)
-            {
-                // Each volley fires every weapon at once; the weapon's Attacks is the volley count.
-                await GameContext.Presenter.Present(new AttackBeat(metaData.IsMelee,
-                    attackerPositions, targetPositions,
-                    volleyCount: metaData.WeaponType.Attacks,
-                    armorPenetration: metaData.WeaponType.ArmorPenetration));
-            }
-
             // Attack count and hit threshold are both determined in DetermineHitRollStage (#015).
             // Read them here and roll the determined AttackCount — not a local product — so any
-            // attack-count modifier that stage folds in is honoured.
+            // attack-count modifier that stage folds in is honoured. Rolled BEFORE the attack beat
+            // (#239) so the beat can carry the true hit share; the roll's position in the RNG
+            // sequence is unchanged.
             DetermineHitRollResults hitRollResults = QueryForResultOrThrowException<DetermineHitRollResults>(metaData);
 
             float attacks = hitRollResults.AttackCount;
@@ -58,6 +41,31 @@ namespace FDG.Stages
 
             IDiceResults successfulResults = rollToHitResults.SubsetAtOrAbove(hitRollNeeded);
             IDiceResults failedResults = rollToHitResults.SubsetBelow(hitRollNeeded);
+
+            // Show the attack — tracers (ranged) or a clash (melee) — playing WHILE the dice that
+            // resolve it tumble (#238). Fire from the actual weapon-carrying models so a mixed unit
+            // shows the right source.
+            List<Position> attackerPositions = AttackBeatPositions.FiringModels(metaData.AttackingUnit, metaData.WeaponType);
+            // Ranged: only models a shooter can actually see, so tracers spread across the targetable
+            // defenders without ever depicting a shot at an unhittable one. Melee is adjacent — LoS is
+            // moot and the clash just snaps to the nearest model.
+            List<Position> targetPositions = metaData.IsMelee
+                ? AttackBeatPositions.AlivePlaced(metaData.DefendingUnit)
+                : AttackBeatPositions.VisibleTargets(GameContext.TableState,
+                    metaData.AttackingUnit, metaData.DefendingUnit, metaData.WeaponType);
+            if (attackerPositions.Count > 0 && targetPositions.Count > 0)
+            {
+                // Each volley fires every weapon at once; the weapon's Attacks is the volley count.
+                // #239: the weapon's effect key + the natural hit share ride along so the front-end
+                // picks the right visual/sounds and lands only the shots that hit.
+                await GameContext.Presenter.Present(new AttackBeat(metaData.IsMelee,
+                    attackerPositions, targetPositions,
+                    volleyCount: metaData.WeaponType.Attacks,
+                    armorPenetration: metaData.WeaponType.ArmorPenetration,
+                    weaponEffect: metaData.WeaponType.EffectKey,
+                    hitCount: successfulResults.TotalRolls,
+                    attackCount: attacks));
+            }
 
             GameContext.Log($"Rolled {successfulResults.TotalRolls} successful hits out of {attacks} total attacks.");
 

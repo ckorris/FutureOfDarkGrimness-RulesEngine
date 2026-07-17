@@ -23,6 +23,16 @@ namespace FDG.SaveLoad
         public List<UnitFileEntry> Units { get; set; } = new List<UnitFileEntry>();
 
         /// <summary>
+        /// #239: the army's default effect-set keys, used for any weapon entry whose
+        /// <see cref="WeaponFileEntry.EffectSet"/> is null — one for ranged weapons, one for melee.
+        /// Opaque presentation identifiers; null falls through to the front-end's global default.
+        /// </summary>
+        public string? DefaultRangedEffectSet { get; set; }
+
+        /// <inheritdoc cref="DefaultRangedEffectSet"/>
+        public string? DefaultMeleeEffectSet { get; set; }
+
+        /// <summary>
         /// Special-rule definitions that travel embedded with this army (#059). Registered into the
         /// game's rule resolver — core-first, then these, override-by-name — when the army loads, so a
         /// template's own/overriding rules are available before its units resolve their rule names.

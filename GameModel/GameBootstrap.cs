@@ -77,7 +77,8 @@ namespace FDG.GameModel
             List<(UnitFileEntry Entry, UnitData Unit)> built = new(armyListFile.Units.Count);
             foreach (UnitFileEntry unitEntry in armyListFile.Units)
             {
-                UnitData unitData = new UnitData(playerID, unitEntry, gameDataStore, ruleResolver);
+                UnitData unitData = new UnitData(playerID, unitEntry, gameDataStore, ruleResolver,
+                    armyListFile.DefaultRangedEffectSet, armyListFile.DefaultMeleeEffectSet);
                 AttachRulesFromArmyList(unitData, unitEntry, ruleResolver);
                 built.Add((unitEntry, unitData));
             }

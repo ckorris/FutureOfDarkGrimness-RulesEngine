@@ -24,6 +24,15 @@ namespace FDG.SaveLoad
 
         public int ArmorPenetration { get; set; }
 
+        /// <summary>
+        /// #239: this weapon's effect-set key — an opaque presentation identifier (e.g.
+        /// "plasma-bolt") the front-end maps to a projectile/swing visual and sounds. Null falls
+        /// back to the army's default for the weapon's ranged/melee kind
+        /// (<see cref="ArmyListFile.DefaultRangedEffectSet"/> / <see cref="ArmyListFile.DefaultMeleeEffectSet"/>).
+        /// The engine never interprets the value.
+        /// </summary>
+        public string? EffectSet { get; set; }
+
         public List<SpecialRuleEntry> SpecialRules { get; set; } = new List<SpecialRuleEntry>();
     }
 }

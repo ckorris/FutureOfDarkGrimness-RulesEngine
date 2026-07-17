@@ -29,8 +29,11 @@ namespace FDG.SaveLoad
         /// "plasma-bolt") the front-end maps to a projectile/swing visual and sounds. Null falls
         /// back to the army's default for the weapon's ranged/melee kind
         /// (<see cref="ArmyListFile.DefaultRangedEffectSet"/> / <see cref="ArmyListFile.DefaultMeleeEffectSet"/>).
-        /// The engine never interprets the value.
+        /// The engine never interprets the value. Null is omitted on save (both serializers) so
+        /// keyless entries stay byte-identical to pre-#239 files.
         /// </summary>
+        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
         public string? EffectSet { get; set; }
 
         public List<SpecialRuleEntry> SpecialRules { get; set; } = new List<SpecialRuleEntry>();

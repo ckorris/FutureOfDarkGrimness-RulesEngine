@@ -34,6 +34,19 @@ namespace FDG.ArmyBuilding
         /// <summary>License the imported data is used under (e.g. CC-BY-SA 4.0). Empty for hand-authored books.</summary>
         public string License { get; set; } = string.Empty;
 
+        /// <summary>
+        /// #239: the faction's default effect-set keys — copied onto every army compiled from this
+        /// book (<see cref="ArmyListFile.DefaultRangedEffectSet"/>), the fallback for weapons no
+        /// keyword claims. Opaque presentation identifiers; null falls through to the front-end's
+        /// global default. Stamped by <see cref="WeaponEffectAssigner"/> at import / retrofit.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        public string? DefaultRangedEffectSet { get; set; }
+
+        /// <inheritdoc cref="DefaultRangedEffectSet"/>
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        public string? DefaultMeleeEffectSet { get; set; }
+
         public List<RosterUnit> Units { get; set; } = new();
 
         /// <summary>Rule definitions the roster's units/upgrades reference. Copied onto a compiled army so

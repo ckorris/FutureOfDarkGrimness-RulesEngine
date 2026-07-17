@@ -35,6 +35,10 @@ namespace FDG.ArmyBuilding
                 // rule references resolve at load (audit finding 3).
                 RuleDefinitions = new List<FDG.Rules.Definitions.SpecialRuleDefinition>(book.RuleDefinitions),
                 Spells = new List<FDG.Rules.Definitions.SpellDefinition>(book.Spells),
+                // #239: the faction's default effect sets ride the compiled army — from the book,
+                // else the assigner's faction table (covers a book snapshot predating the fields).
+                DefaultRangedEffectSet = book.DefaultRangedEffectSet ?? WeaponEffectAssigner.FactionDefaults(book.Faction).Ranged,
+                DefaultMeleeEffectSet = book.DefaultMeleeEffectSet ?? WeaponEffectAssigner.FactionDefaults(book.Faction).Melee,
                 Selections = list,
                 Book = book,
             };
@@ -181,6 +185,12 @@ namespace FDG.ArmyBuilding
                 foreach (SpecialRuleEntry rule in item.Rules)
                     if (!placedOnWeapons.Contains((item.Name, rule)) && !unit.SpecialRules.Contains(rule))
                         unit.SpecialRules.Add(rule);
+
+            // #239: bake effect-set keys. An explicit book key survives the clone; anything still
+            // unset gets its keyword/override match, so cross-faction tech (plasma, fusion...) beats
+            // the army default. No match stays null — the army default covers it at load.
+            foreach (WeaponFileEntry weapon in unit.Weapons)
+                weapon.EffectSet ??= WeaponEffectAssigner.Match(book.Faction, weapon);
 
             return (unit, items);
         }
@@ -396,6 +406,7 @@ namespace FDG.ArmyBuilding
         {
             Name = w.Name, Quantity = w.Quantity, RangeInches = w.RangeInches,
             Attacks = w.Attacks, ArmorPenetration = w.ArmorPenetration,
+            EffectSet = w.EffectSet,
             SpecialRules = new List<SpecialRuleEntry>(w.SpecialRules),
         };
 

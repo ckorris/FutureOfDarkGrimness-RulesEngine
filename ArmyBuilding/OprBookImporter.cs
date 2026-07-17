@@ -110,6 +110,10 @@ namespace FDG.ArmyBuilding
                 License = license,
             };
 
+            // #239: stamp the faction's default effect sets so armies forged from this book inherit
+            // them (no-op for a faction the assigner's table doesn't know).
+            WeaponEffectAssigner.ApplyToBook(book);
+
             foreach (OprUnit unit in opr.Units ?? new())
                 book.Units.Add(MapUnit(unit, packages));
 

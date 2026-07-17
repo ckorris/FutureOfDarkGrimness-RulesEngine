@@ -25,11 +25,16 @@ namespace FDG.SaveLoad
         /// <summary>
         /// #239: the army's default effect-set keys, used for any weapon entry whose
         /// <see cref="WeaponFileEntry.EffectSet"/> is null — one for ranged weapons, one for melee.
-        /// Opaque presentation identifiers; null falls through to the front-end's global default.
+        /// Opaque presentation identifiers; null falls through to the front-end's global default,
+        /// and is omitted on save so pre-#239 files round-trip unchanged.
         /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        [Newtonsoft.Json.JsonProperty(NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
         public string? DefaultRangedEffectSet { get; set; }
 
         /// <inheritdoc cref="DefaultRangedEffectSet"/>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        [Newtonsoft.Json.JsonProperty(NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
         public string? DefaultMeleeEffectSet { get; set; }
 
         /// <summary>

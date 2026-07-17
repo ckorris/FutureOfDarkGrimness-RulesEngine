@@ -24,7 +24,7 @@ namespace FDG.ArmyBuilding
     //   • attacksMultiplier != 1 on a loadout weapon is unverified corpus territory — attacks stay as-is.
     //   • selectedUpgrades is parsed defensively for RULE gains only (dedupe-merged); `loadout` is trusted
     //     as the sole source of weapons/items.
-    public static class OprListImporter
+    public static partial class OprListImporter
     {
         /// <summary>The OPR army-book major.minor this game's data and rule implementations target. A book
         /// whose versionString is outside this prefix refuses to import (see OprVersionMismatchException).
@@ -420,11 +420,24 @@ namespace FDG.ArmyBuilding
 
         private sealed class OprSelectedUpgrade
         {
+            public OprSelectedRef? Upgrade { get; set; }
             public OprSelectedOption? Option { get; set; }
+        }
+
+        // The selectedUpgrades shape is the corpus's least-verified corner (#241): every field here is
+        // optional and ReconstructSelections walks a defensive matching ladder over whatever is present.
+        private sealed class OprSelectedRef
+        {
+            public string? Id { get; set; }
+            public string? Uid { get; set; }
+            public string? SectionId { get; set; }
         }
 
         private sealed class OprSelectedOption
         {
+            public string? Id { get; set; }
+            public string? Uid { get; set; }
+            public string? Label { get; set; }
             public List<OprLoadoutEntry>? Gains { get; set; }
         }
 

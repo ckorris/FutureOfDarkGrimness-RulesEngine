@@ -388,7 +388,8 @@ namespace FDG.ArmyBuilding
             Rules = new List<SpecialRuleEntry>(i.Rules),
         };
 
-        private static void AddWeapon(List<WeaponFileEntry> weapons, WeaponFileEntry template, int applications)
+        // Internal: OprListImporter (#241) reuses this to consolidate identical weapon profiles.
+        internal static void AddWeapon(List<WeaponFileEntry> weapons, WeaponFileEntry template, int applications)
         {
             int add = Math.Max(1, template.Quantity) * applications;
             WeaponFileEntry? existing = weapons.FirstOrDefault(w => SameProfile(w, template));

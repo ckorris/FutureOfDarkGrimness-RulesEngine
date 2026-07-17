@@ -27,8 +27,8 @@ namespace FDG.ArmyBuilding
     {
         // OPR's JSON types numeric fields loosely — a rating/count can arrive as a number OR a string (and a
         // string field like a base size could plausibly arrive as a bare number). Tolerant converters keep the
-        // import from throwing on that.
-        private static readonly JsonSerializerOptions ReadOpts = new()
+        // import from throwing on that. Shared with OprListImporter (#241) — same corpus, same looseness.
+        internal static readonly JsonSerializerOptions ReadOpts = new()
         {
             PropertyNameCaseInsensitive = true,
             Converters = { new LooseIntConverter(), new LooseNullableIntConverter(), new LooseStringConverter() },
@@ -308,7 +308,7 @@ namespace FDG.ArmyBuilding
             }
         }
 
-        private static SpecialRuleEntry Disambiguate(string armyName, SpecialRuleEntry entry)
+        internal static SpecialRuleEntry Disambiguate(string armyName, SpecialRuleEntry entry)
         {
             string? name = entry switch
             {
@@ -671,7 +671,7 @@ namespace FDG.ArmyBuilding
         // the round basing (GDF standard): a single number → Circle; "WxH" → our Rectangle footprint (the
         // engine has no oval; #149's rectangle is the dimension-faithful stand-in). Fall back to the square
         // spec, else keep the default 28mm circle.
-        private static BaseFileEntry MapBase(OprBases? bases) =>
+        internal static BaseFileEntry MapBase(OprBases? bases) =>
             TryParseBase(bases?.Round, preferCircle: true)
             ?? TryParseBase(bases?.Square, preferCircle: false)
             ?? new BaseFileEntry();
@@ -743,7 +743,7 @@ namespace FDG.ArmyBuilding
             public OprBases? Bases { get; set; }
         }
 
-        private sealed class OprBases
+        internal sealed class OprBases
         {
             public string? Round { get; set; }
             public string? Square { get; set; }

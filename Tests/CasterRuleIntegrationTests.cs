@@ -656,7 +656,7 @@ namespace FDG.Tests
                 "with no assist the cast resolved on the base 4+ and failed on a 3");
         }
 
-        // #243 — the caster spends an extra token of their OWN on the cast (chosen in the spell picker),
+        // #244 — the caster spends an extra token of their OWN on the cast (chosen in the spell picker),
         // turning a would-fail roll into a success: face 3 fails the base 4+ but clears the boosted 3+.
         // Both the cost and the boost come out of the caster's pool.
         [Test]
@@ -681,7 +681,7 @@ namespace FDG.Tests
                 "the caster spent the spell's cost (1) plus the boost (1) from its pool of 3");
         }
 
-        // #243 — boost tokens are spent whether or not the cast succeeds, like the cast cost and #103
+        // #244 — boost tokens are spent whether or not the cast succeeds, like the cast cost and #103
         // assist tokens: face 2 fails even the boosted 3+, and the tokens are still gone.
         [Test]
         public async Task CastSpellStage_SelfBoost_SpentOnFailedCast()
@@ -705,7 +705,7 @@ namespace FDG.Tests
                 "cost + boost are spent regardless of the outcome");
         }
 
-        // #243 x #103 — the self-boost and an enemy hinder stack into one net threshold shift: +1 boost
+        // #244 x #103 — the self-boost and an enemy hinder stack into one net threshold shift: +1 boost
         // and -2 hinder leave a net -1 (5+), so a face of 4 that would clear the base 4+ fails. Also pins
         // the picker's hedge context: the request reports the enemy's 2 in-range hinder tokens.
         [Test]
@@ -1036,7 +1036,7 @@ namespace FDG.Tests
                 "No player request expected during the round-start spell-token grant; got " + request.GetType());
     }
 
-    // Answers a ChooseSpellRequest with the first castable spell and a fixed #243 self-boost.
+    // Answers a ChooseSpellRequest with the first castable spell and a fixed #244 self-boost.
     internal static class CannedSpellPick
     {
         public static ChooseSpellReply FirstCastable(ChooseSpellRequest request, int boostTokens = 0)
@@ -1118,7 +1118,7 @@ namespace FDG.Tests
     }
 
     // Drives a cast that opens a #103 assist window: picks the first spell + target (with an optional
-    // #243 self-boost), and for each CastAssistRequest spends a fixed number of tokens (clamped to what
+    // #244 self-boost), and for each CastAssistRequest spends a fixed number of tokens (clamped to what
     // the assister actually has). Counts the assist prompts and captures the spell picker's request so
     // tests can assert who was offered what.
     internal sealed class CannedAssistRequester : IPlayerRequestByID

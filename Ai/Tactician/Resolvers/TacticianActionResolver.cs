@@ -10,7 +10,7 @@ namespace FDG.Ai.Tactician.Resolvers
     /// returns its action. The deployment hold-or-deploy prompt (#191 A5-2) routes to
     /// AmbushPolicy. Every OTHER string selection - pre-attack menus - delegates to the unmodified
     /// solo-rules resolver (G3 fallback), as does any request the planner declines (its choice not
-    /// valid, no known active unit). The spell picker moved to its own request type (#243,
+    /// valid, no known active unit). The spell picker moved to its own request type (#244,
     /// <see cref="TacticianChooseSpellResolver"/>), so it no longer rides through here.
     /// <para>
     /// Dispatch is on the request's Instructions ("Choose Action") - the same key the solo

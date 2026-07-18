@@ -5,7 +5,7 @@ using FDG.StageResolution.Requests;
 namespace FDG.Ai.Tactician.Resolvers
 {
     /// <summary>
-    /// #191 A5 / #243 — answers the dedicated spell picker with the planner's highest-net-value
+    /// #191 A5 / #244 — answers the dedicated spell picker with the planner's highest-net-value
     /// castable spell (see <see cref="TacticianPlanner.ChooseSpell"/>), never Cancel (the
     /// forced-Cast livelock class). No self-boost yet — a boost policy is a recorded refinement,
     /// same bucket as the assist policy. Falls back to the solo first-castable pick when the

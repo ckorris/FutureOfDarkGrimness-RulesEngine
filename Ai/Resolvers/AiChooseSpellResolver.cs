@@ -4,7 +4,7 @@ using FDG.StageResolution.Requests;
 namespace FDG.Ai.Resolvers
 {
     /// <summary>
-    /// #243 — solo-rules spell pick: the first castable spell, no self-boost. Mirrors the old
+    /// #244 — solo-rules spell pick: the first castable spell, no self-boost. Mirrors the old
     /// first-option StringSelectionRequest default (pinned by the benchmark hashes), and never
     /// cancels — a cancelled pick loops straight back to Choose Action with nothing spent, the
     /// forced-Cast livelock class. A boost policy (spend when the odds are worth it) is a future

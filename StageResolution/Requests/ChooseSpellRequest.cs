@@ -5,7 +5,7 @@ using Newtonsoft.Json;
 namespace FDG.StageResolution.Requests
 {
     /// <summary>
-    /// #243 — the cast action's spell picker: choose which spell to cast AND how many of the caster's own
+    /// #244 — the cast action's spell picker: choose which spell to cast AND how many of the caster's own
     /// extra spell tokens to spend boosting the roll (+1 each, on top of the spell's cost). The reply is a
     /// <see cref="ChooseSpellReply"/>; a negative <see cref="ChooseSpellReply.SpellIndex"/> cancels back to
     /// Choose Action with nothing spent.
@@ -56,7 +56,7 @@ namespace FDG.StageResolution.Requests
         /// natural 1 always fails, so the threshold never drops below 2) plus one per in-range enemy
         /// hinder token. UIs cap the boost picker at min(this, affordable).</summary>
         [JsonIgnore]
-        public int MaxUsefulBoost => (BaseThreshold - 2) + HinderTokensInRange;
+        public int MaxUsefulBoost => (BaseThreshold - DiceUtilities.MINIMUM_SUCCESS_ROLL) + HinderTokensInRange;
 
         [JsonConstructor]
         public ChooseSpellRequest(PlayerID targetPlayerID, TaskID taskID, DataBinding<UnitData> castingUnit,

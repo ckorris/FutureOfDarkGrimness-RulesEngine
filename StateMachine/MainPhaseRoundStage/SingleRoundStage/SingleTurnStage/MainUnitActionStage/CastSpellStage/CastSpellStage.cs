@@ -44,7 +44,7 @@ namespace FDG.Stages
     /// success threshold (clamped to [2, 6] — a natural 1 always fails, a natural 6 always succeeds);
     /// assisters' tokens are spent whether or not the cast succeeds.
     ///
-    /// #243 — the caster may also boost their OWN roll: the spell picker (<see cref="ChooseSpellRequest"/>)
+    /// #244 — the caster may also boost their OWN roll: the spell picker (<see cref="ChooseSpellRequest"/>)
     /// returns extra tokens to spend at +1 each, spent together with the cast cost (so cancelling at target
     /// selection still spends nothing) and announced like a friendly assist so enemy hinderers decide with
     /// the boost visible. #233 — the cast roll rides a <see cref="DiceRolledBeat"/> before the result banner.
@@ -54,10 +54,6 @@ namespace FDG.Stages
         public StageBinding OnFinished;
 
         private const int CAST_SUCCESS_THRESHOLD = 4;
-
-        // GDF core principle: an unmodified 1 always fails and an unmodified 6 always succeeds, so no
-        // amount of boost/assist can shift the effective threshold below 2+ (or above 6+).
-        private const int MIN_ROLL_THRESHOLD = 2;
 
         // #103 assist text-beat colors - match the GUI highlight: blue for a friendly boost (+), orange for
         // an enemy disruption (-).
@@ -89,7 +85,7 @@ namespace FDG.Stages
             // castability here (and the same way in ChooseActionStage.GetCanCast) is what keeps a no-target
             // cast from looping forever under a deterministic resolver — the same reason
             // ChooseRangedAttackStage filters weapons to those with a fireable target. Non-castable spells
-            // still appear in the picker as disabled rows with the reason (#243).
+            // still appear in the picker as disabled rows with the reason (#244).
             int tokens = caster.Tokens.GetTokenCount(TokenType.SpellTokens);
             IReadOnlyList<SpellOffer> offer = BuildSpellOffer(context.ActivatingUnit, player, tokens);
             if (!offer.Any(o => o.Castable))
@@ -99,7 +95,7 @@ namespace FDG.Stages
                 return;
             }
 
-            // 1. Pick a spell + a #243 self-boost count (or cancel back to Choose Action). The boost is only
+            // 1. Pick a spell + a #244 self-boost count (or cancel back to Choose Action). The boost is only
             //    committed at step 3, with the cast cost, so cancelling target selection spends nothing.
             (RuntimeSpell? chosen, int boost) = await PickSpell(context.ActivatingUnit, player, offer, tokens);
             if (chosen == null)
@@ -126,7 +122,7 @@ namespace FDG.Stages
                 return;
             }
 
-            // 3. Spend the spell's token cost + the #243 self-boost to attempt (spent whether or not the
+            // 3. Spend the spell's token cost + the #244 self-boost to attempt (spent whether or not the
             //    cast succeeds). A nonzero boost is announced like a friendly assist so the #103 hinderers
             //    below decide with the boost visible (open information, matching the tabletop).
             caster.Tokens.RemoveTokens(TokenType.SpellTokens, chosen.Threshold + boost);
@@ -144,10 +140,10 @@ namespace FDG.Stages
 
             // 5. Cast roll: one die, base 4+ succeeds, shifted by boost + assists. RollDecisive so it's a
             //    real outcome under the probabilistic roller; a threshold shift (not a post-roll adjustment)
-            //    keeps it a single decisive comparison. Clamp to [2, 6]: a natural 1 always fails and a
-            //    natural 6 always succeeds, no matter how far boost/assists (or hinders) swing the roll.
-            int threshold = System.Math.Clamp(CAST_SUCCESS_THRESHOLD - netModifier,
-                MIN_ROLL_THRESHOLD, IDiceRollerExtensions.DEFAULT_SIDE_COUNT);
+            //    keeps it a single decisive comparison. The shared clamp keeps the GDF core principle (a
+            //    natural 1 always fails, a natural 6 always succeeds - [2, 6]) no matter how far
+            //    boost/assists (or hinders) swing the roll, same as the hit/save/morale sites.
+            int threshold = DiceUtilities.ClampSuccessRollNeeded(CAST_SUCCESS_THRESHOLD - netModifier);
             IDiceResults castRoll = GameContext.DiceRoller.RollDecisive();
             bool success = castRoll.AtOrAbove(threshold) >= 1f;
 
@@ -323,7 +319,7 @@ namespace FDG.Stages
             return offer;
         }
 
-        // #243 — one request returns both the spell and the caster's own boost spend. The reply's boost is
+        // #244 — one request returns both the spell and the caster's own boost spend. The reply's boost is
         // clamped to what remains after the spell's cost; an out-of-range or non-castable index cancels.
         private async Task<(RuntimeSpell? spell, int boost)> PickSpell(DataBinding<UnitData> casterBinding,
             PlayerID player, IReadOnlyList<SpellOffer> offer, int tokens)

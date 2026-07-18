@@ -4,7 +4,10 @@
     /// Rolls off to pick which team places the first objective marker, then
     /// records the full alternation order on the surrounding
     /// <see cref="IMapSetupContext"/>. The winning team is first; remaining
-    /// teams follow in their current declaration order.
+    /// teams follow in their current declaration order. When objectives are
+    /// auto-placed (<see cref="EObjectivePlacementMode.AutoPlaced"/>) no one takes
+    /// turns placing them, so the roll-off - dice and the "places first"
+    /// announcement - is skipped and placement proceeds in team declaration order.
     /// </summary>
     public class RollForFirstObjectivePlacementStage : StageBase<IMapSetupContext>
     {
@@ -21,6 +24,18 @@
             context.LogDebug($"Entered {nameof(RollForFirstObjectivePlacementStage)}.");
 
             List<ITeam> teams = context.GameContext.TableState.Teams.Objects.ToList();
+
+            // Auto-Placed objectives don't involve players taking turns, so there's no one to roll off
+            // for. Skip the dice roll-off and the "places first" beat; place in team declaration order
+            // (the placement loop's cursor still needs an order even though nobody is prompted).
+            if (context.GameContext.Settings.ObjectivePlacementMode == EObjectivePlacementMode.AutoPlaced)
+            {
+                context.Log("  Objectives are auto-placed; skipping the objective roll-off.");
+                context.SetObjectivePlacementTeamOrder(teams);
+                await OnRollComplete.Activate(context);
+                return;
+            }
+
             List<string> teamNames = teams.Select(t => $"Team {t.TeamNumber}").ToList();
 
             ITeam winner = await DiceUtilities.RollOff_SingleWinner(teams, teamNames,

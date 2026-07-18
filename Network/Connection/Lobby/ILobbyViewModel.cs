@@ -51,6 +51,7 @@ namespace FDG.Network.Connection.Lobby
         IObservable<int> TerrainPieceCountObservable { get; }
         IObservable<ETerrainPlacementMode> TerrainPlacementModeObservable { get; }
         IObservable<string?> TerrainLayoutPathObservable { get; }
+        IObservable<EObjectivePlacementMode> ObjectivePlacementModeObservable { get; }
         IObservable<ERandomnessType> RandomnessTypeObservable { get; }
         IObservable<ETurnStyle> TurnStyleObservable { get; }
 
@@ -67,6 +68,8 @@ namespace FDG.Network.Connection.Lobby
         ETerrainPlacementMode TerrainPlacementMode { get; }
 
         string? TerrainLayoutPath { get; }
+
+        EObjectivePlacementMode ObjectivePlacementMode { get; }
 
         ERandomnessType RandomnessType { get; }
 
@@ -99,6 +102,8 @@ namespace FDG.Network.Connection.Lobby
         void SetTerrainPlacementMode(ETerrainPlacementMode mode);
 
         void SetTerrainLayoutPath(string? path);
+
+        void SetObjectivePlacementMode(EObjectivePlacementMode mode);
 
         void SetRandomnessType(ERandomnessType randomnessType);
 

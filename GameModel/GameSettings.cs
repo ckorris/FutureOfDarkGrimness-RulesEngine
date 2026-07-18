@@ -21,11 +21,11 @@ namespace FDG
         public ETurnStyle TurnStyle;
 
         /// <summary>
-        /// Debug: when true, <see cref="FDG.Stages.PlaceObjectivesStage"/> skips
-        /// interactive placement and runs the legacy grid-RNG auto-placer. Off by
-        /// default; intended for headless / piped automation only.
+        /// How objective markers are placed during map setup. See
+        /// <see cref="EObjectivePlacementMode"/>. Default <see cref="EObjectivePlacementMode.AutoPlaced"/>
+        /// (the engine places all markers with no player interaction).
         /// </summary>
-        public bool AutoPlaceObjectivesDebug;
+        public EObjectivePlacementMode ObjectivePlacementMode;
 
         public ETerrainPlacementMode TerrainPlacementMode;
 
@@ -47,7 +47,7 @@ namespace FDG
                 RandomnessType = ERandomnessType.Realistic,
                 DiceSeed = null,
                 TurnStyle = ETurnStyle.Standard,
-                AutoPlaceObjectivesDebug = false,
+                ObjectivePlacementMode = EObjectivePlacementMode.AutoPlaced,
                 TerrainPlacementMode = ETerrainPlacementMode.AutoFromLayout,
                 TerrainLayoutPath = null,
             };
@@ -76,5 +76,21 @@ namespace FDG
 
         /// <summary>Server places the contents of <see cref="GameSettings.TerrainLayoutPath"/> verbatim.</summary>
         LoadFromFile,
+    }
+
+    public enum EObjectivePlacementMode
+    {
+        /// <summary>
+        /// Server auto-places every objective marker with no player interaction, using the
+        /// balanced placement in <see cref="FDG.Stages.ObjectiveAutoPlacer"/> (the same
+        /// algorithm the solo-rules AI uses). Default; the fast path for debug/automation.
+        /// </summary>
+        AutoPlaced,
+
+        /// <summary>
+        /// Roll-off + alternating placement: each player is asked to place a marker in turn
+        /// (human via a resolver, AI via <see cref="FDG.Ai.Resolvers.AiPlaceObjectiveResolver"/>).
+        /// </summary>
+        PlayerPlaced,
     }
 }

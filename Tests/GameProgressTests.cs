@@ -27,7 +27,7 @@ namespace FDG.Tests
                 TerrainPieceCount = 12,
                 RandomnessType = ERandomnessType.Probabilistic,
                 TurnStyle = ETurnStyle.BoltAction,
-                AutoPlaceObjectivesDebug = true,
+                ObjectivePlacementMode = EObjectivePlacementMode.PlayerPlaced,
                 TerrainPlacementMode = ETerrainPlacementMode.LoadFromFile,
                 TerrainLayoutPath = "layouts/ruins.json",
             };
@@ -64,7 +64,7 @@ namespace FDG.Tests
             Assert.That(result.Settings.TerrainPieceCount, Is.EqualTo(12));
             Assert.That(result.Settings.RandomnessType, Is.EqualTo(ERandomnessType.Probabilistic));
             Assert.That(result.Settings.TurnStyle, Is.EqualTo(ETurnStyle.BoltAction));
-            Assert.That(result.Settings.AutoPlaceObjectivesDebug, Is.True);
+            Assert.That(result.Settings.ObjectivePlacementMode, Is.EqualTo(EObjectivePlacementMode.PlayerPlaced));
             Assert.That(result.Settings.TerrainPlacementMode, Is.EqualTo(ETerrainPlacementMode.LoadFromFile));
             Assert.That(result.Settings.TerrainLayoutPath, Is.EqualTo("layouts/ruins.json"));
         }

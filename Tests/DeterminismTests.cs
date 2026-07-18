@@ -370,7 +370,7 @@ namespace FDG.Tests
             GameSettings settings = GameSettings.GetDefault();
             settings.RandomnessType = ERandomnessType.Probabilistic; // exercises the seeded decisive rolls
             settings.DiceSeed = seed;
-            settings.AutoPlaceObjectivesDebug = false;               // exercises the AI objective placer
+            settings.ObjectivePlacementMode = EObjectivePlacementMode.PlayerPlaced; // exercises the AI objective placer
 
             var completed = new TaskCompletionSource<GameResult>();
             var server = new FDGServer(store, bus, settings, slots);

@@ -46,6 +46,7 @@ namespace FDG.Network.Connection.Lobby
         public IObservable<int> TerrainPieceCountObservable => _settings_TerrainPieceCount;
         public IObservable<ETerrainPlacementMode> TerrainPlacementModeObservable => _settings_TerrainPlacementMode;
         public IObservable<string?> TerrainLayoutPathObservable => _settings_TerrainLayoutPath;
+        public IObservable<EObjectivePlacementMode> ObjectivePlacementModeObservable => _settings_ObjectivePlacementMode;
         public IObservable<ERandomnessType> RandomnessTypeObservable => _settings_RandomnessType;
         public IObservable<ETurnStyle> TurnStyleObservable => _settings_TurnMethod;
 
@@ -63,6 +64,8 @@ namespace FDG.Network.Connection.Lobby
 
         public string? TerrainLayoutPath => _settings_TerrainLayoutPath.Value;
 
+        public EObjectivePlacementMode ObjectivePlacementMode => _settings_ObjectivePlacementMode.Value;
+
         public ERandomnessType RandomnessType => _settings_RandomnessType.Value;
 
         public ETurnStyle TurnStyle => _settings_TurnMethod.Value;
@@ -78,6 +81,7 @@ namespace FDG.Network.Connection.Lobby
         private BehaviorSubject<int> _settings_TerrainPieceCount;
         private BehaviorSubject<ETerrainPlacementMode> _settings_TerrainPlacementMode;
         private BehaviorSubject<string?> _settings_TerrainLayoutPath;
+        private BehaviorSubject<EObjectivePlacementMode> _settings_ObjectivePlacementMode;
         private BehaviorSubject<ERandomnessType> _settings_RandomnessType;
         private BehaviorSubject<ETurnStyle> _settings_TurnMethod;
 
@@ -131,6 +135,7 @@ namespace FDG.Network.Connection.Lobby
             _settings_TerrainPieceCount = new BehaviorSubject<int>(0);
             _settings_TerrainPlacementMode = new BehaviorSubject<ETerrainPlacementMode>(ETerrainPlacementMode.AutoFromLayout);
             _settings_TerrainLayoutPath = new BehaviorSubject<string?>(null);
+            _settings_ObjectivePlacementMode = new BehaviorSubject<EObjectivePlacementMode>(EObjectivePlacementMode.AutoPlaced);
             _settings_RandomnessType = new BehaviorSubject<ERandomnessType>(ERandomnessType.Realistic);
             _settings_TurnMethod = new BehaviorSubject<ETurnStyle>(ETurnStyle.Standard);
 
@@ -263,6 +268,10 @@ namespace FDG.Network.Connection.Lobby
             {
                 _settings_TerrainLayoutPath.OnNext(gameSettingsUpdate.GameSettings.TerrainLayoutPath);
             }
+            if (_settings_ObjectivePlacementMode.Value != gameSettingsUpdate.GameSettings.ObjectivePlacementMode)
+            {
+                _settings_ObjectivePlacementMode.OnNext(gameSettingsUpdate.GameSettings.ObjectivePlacementMode);
+            }
             if (_settings_RandomnessType.Value != gameSettingsUpdate.GameSettings.RandomnessType)
             {
                 _settings_RandomnessType.OnNext(gameSettingsUpdate.GameSettings.RandomnessType);
@@ -306,6 +315,11 @@ namespace FDG.Network.Connection.Lobby
         public void SetTerrainPlacementMode(ETerrainPlacementMode mode)
         {
             throw new InvalidOperationException("Tried to set terrain placement mode when not the host.");
+        }
+
+        public void SetObjectivePlacementMode(EObjectivePlacementMode mode)
+        {
+            throw new InvalidOperationException("Tried to set objective placement mode when not the host.");
         }
 
         public void SetTerrainLayoutPath(string? path)

@@ -69,7 +69,8 @@ namespace FDG.Stages
                     float newWounds = rerollResult.Below(saveNeeded);
                     totalWoundsDealt += newWounds;
                     await GameContext.Presenter.Present(DiceRolledBeat.From(rerollResult, saveNeeded,
-                        GameContext.Settings.RandomnessType, "Bane Re-roll", $"{newWounds:0.##} new wounds"));
+                        GameContext.Settings.RandomnessType, "Bane Re-roll", $"{newWounds:0.##} new wounds",
+                        category: ERollBeatCategory.Defense, context: $"{defender.Name} re-saves"));
                 }
             }
 
@@ -117,7 +118,8 @@ namespace FDG.Stages
                 float ignored = regenRoll.AtOrAbove(woundIgnore.Threshold);
                 totalWoundsDealt -= ignored;
                 await GameContext.Presenter.Present(DiceRolledBeat.From(regenRoll, woundIgnore.Threshold,
-                    GameContext.Settings.RandomnessType, "Regeneration", $"{ignored:0.##} ignored"));
+                    GameContext.Settings.RandomnessType, "Regeneration", $"{ignored:0.##} ignored",
+                    category: ERollBeatCategory.Defense, context: defender.Name));
             }
 
             // #042 Takedown: if the attack was re-scoped to a single model (IndividualTargetResult,

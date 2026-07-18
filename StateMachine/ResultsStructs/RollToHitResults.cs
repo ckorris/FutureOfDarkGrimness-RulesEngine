@@ -18,6 +18,12 @@ namespace FDG
         // and carried here; the save stage clamps the weapon's AP by this, floored at 0. 0 when none fired.
         public int ArmorPenetrationReduction;
 
+        // #245: display-ready chips naming the rules behind SaveModifier / ArmorPenetrationReduction
+        // ("Shielded +1", "Thrust -1", "Fortified AP-1"), composed at hit-roll-complete where the named
+        // ops are in hand; DetermineSaveRollsNeededStage folds them into the save beat's chips. Null
+        // when no such rule fired.
+        public List<string>? SaveModifierTags;
+
         public RollToHitResults(List<SuccessfulHitInfo> successfulHits, List<FailedHitInfo> failedHitList)
         {
             SuccessfulHitList = successfulHits;

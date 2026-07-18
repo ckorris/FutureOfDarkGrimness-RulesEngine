@@ -56,7 +56,26 @@ namespace FDG.Stages
                 pendingSaveRollsList.Add(pendingSaveRolls);
             }
 
-            await onFinished(new DetermineSaveRollNeededResults(pendingSaveRollsList));
+            DetermineSaveRollNeededResults results = new DetermineSaveRollNeededResults(pendingSaveRollsList);
+            results.ThresholdTags = ComposeThresholdTags(baseDefense, ap, coverResults.DefenseRollBonus,
+                rollToHitResults.SaveModifierTags, grantedDefense);
+            await onFinished(results);
+        }
+
+        // #245: the save beats' modifier chips - the attack-wide arithmetic behind the threshold
+        // ("Defense 4+ | AP 2 | Cover +1"). Null (no chips, no extended beat) when the threshold is
+        // just the unmodified defense. Per-bucket differences (Rending) stay in the beat label.
+        // Internal for tests.
+        internal static List<string>? ComposeThresholdTags(int baseDefense, int ap, int coverBonus,
+            List<string>? saveModifierTags, int grantedDefense)
+        {
+            List<string> tags = new List<string> { $"Defense {baseDefense}+" };
+            if (ap > 0) tags.Add($"AP {ap}");
+            if (coverBonus > 0) tags.Add($"Cover +{coverBonus}");
+            if (saveModifierTags != null) tags.AddRange(saveModifierTags);
+            if (grantedDefense != 0) tags.Add($"buff {RollTags.Delta(grantedDefense)}");
+
+            return tags.Count > 1 ? tags : null;
         }
     }
 }

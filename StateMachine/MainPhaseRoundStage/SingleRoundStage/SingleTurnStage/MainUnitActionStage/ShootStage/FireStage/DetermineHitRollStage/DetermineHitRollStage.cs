@@ -34,7 +34,9 @@ namespace FDG.Stages
 
             float distance = UnitCompareUtilities.MinDistanceBetweenUnits(attacker, defender, out _, out _, includeVertical:true);
 
-            IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
+            // #245: the NAMED live evaluation — identical to EvaluateAll (logs, spends grants), but each
+            // op carries its alias-aware rule name so the to-hit beat's chips can say "Stealth -1".
+            IReadOnlyList<(RuleOperation Op, string RuleName)> named = GameContext.RuleEvaluator.EvaluateAllNamedLive(
                 new HitRollModifierContext(attacker, defender, distance, AttackerMoved: metaData.AttackerMoved,
                     IsMelee: metaData.IsMelee, IsCharging: metaData.IsCharging,
                     ChargeOriginDistanceInches: metaData.ChargeOriginDistanceInches,
@@ -50,6 +52,8 @@ namespace FDG.Stages
                 // hero's relocated Evasive/Melee-Evasion/Artillery) under AnyOwner, so the merge no longer
                 // hides them; the rule's AllModelsHaveThisRule gate still decides whether it applies.
                 RuleParticipant.Subject(defender, models: HeroStatRules.LivingModels(defender)));
+
+            IReadOnlyList<RuleOperation> operations = named.Select(n => n.Op).ToList();
 
             // #042 quality-floor rules (Reliable) set the BASE quality before per-roll modifiers:
             // "treated as 2+, still modifiable". Fold the floor sink and improve the base, then let
@@ -84,9 +88,11 @@ namespace FDG.Stages
             // #033 granted "+X to hit" buffs on the attacker (one-shot / duration) fold in with the same
             // sign convention; one-shot ("next time") grants are consumed by this roll - skipped while
             // fatigued so the buff carries over to the attacker's next (non-fatigued) attack instead.
+            int grantedNet = 0;
             if (!fatiguedInMelee)
             {
-                results.HitRollNeeded -= GrantedRollModifiers.ConsumeNet(metaData.AttackingUnit.GetValue(), ERollKind.Hit);
+                grantedNet = GrantedRollModifiers.ConsumeNet(metaData.AttackingUnit.GetValue(), ERollKind.Hit);
+                results.HitRollNeeded -= grantedNet;
             }
 
             GameContext.Log($"Base hit roll required is {results.HitRollNeeded} based on attacker's quality.");
@@ -99,7 +105,29 @@ namespace FDG.Stages
                 GameContext.Log($"{attacker.Name} is fatigued - hits only on unmodified 6s in melee.");
             }
 
+            results.ThresholdTags = ComposeThresholdTags(baseQuality, named, grantedNet, fatiguedInMelee);
+
             await onFinished(results);
+        }
+
+        // #245: the to-hit beat's modifier chips - how the threshold came to be. Null (no chips, no
+        // extended beat) when the threshold is just the unmodified quality; otherwise the base plus
+        // one chip per named contribution, so "Quality 4+ | Stealth -1" reads as the arithmetic behind
+        // the badge's "5+". Internal for tests.
+        internal static List<string>? ComposeThresholdTags(int baseQuality,
+            IReadOnlyList<(RuleOperation Op, string RuleName)> named, int grantedNet, bool fatiguedInMelee)
+        {
+            List<string> tags = new List<string> { $"Quality {baseQuality}+" };
+            foreach ((RuleOperation op, string ruleName) in named)
+            {
+                if (op is not RuleOperation.ApplyRollModifier mod || mod.Roll != ERollKind.Hit || mod.Delta == 0)
+                    continue;
+                tags.Add($"{RollTags.NameOr(ruleName, "modifier")} {RollTags.Delta(mod.Delta)}");
+            }
+            if (grantedNet != 0) tags.Add($"buff {RollTags.Delta(grantedNet)}");
+            if (fatiguedInMelee) tags.Add("Fatigued: 6s only");
+
+            return tags.Count > 1 ? tags : null;
         }
 
         // #100 #14 mark claim: if the defender carries any Mark tokens (placed by a "mark an enemy →

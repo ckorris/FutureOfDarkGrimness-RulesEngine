@@ -2,6 +2,7 @@ using System.Threading.Tasks;
 using FDG.Data;
 using FDG.Presentation;
 using FDG.Presentation.Beats;
+using FDG.Utilities;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
@@ -62,14 +63,17 @@ namespace FDG.Stages
                 return new MoraleTestOutcome(passed: false, baseRollNeeded, passedViaReroll: false);
             }
 
-            IReadOnlyList<RuleOperation> preTestOps = gameContext.RuleEvaluator.EvaluateAll(
+            // #245: the NAMED live evaluation - identical to EvaluateAll (logs, spends grants), but each
+            // op carries its rule name so the beat's chips can say which rule shifted the test.
+            IReadOnlyList<(RuleOperation Op, string RuleName)> named = gameContext.RuleEvaluator.EvaluateAllNamedLive(
                 new PreMoraleTestContext(testingUnit), RuleParticipant.Actor(testingUnit));
             RollModifierSink modifiers = new RollModifierSink();
-            modifiers.ApplyFrom(preTestOps);
+            modifiers.ApplyFrom(named.Select(n => n.Op).ToList());
             // #033 granted morale modifiers (e.g. a spell's "-1 to morale" debuff) fold in with the same
             // sign; one-shot ("next time") grants are consumed by this test.
+            int grantedNet = GrantedRollModifiers.ConsumeNet(testingUnit, ERollKind.Morale);
             int rollNeeded = DiceUtilities.ClampSuccessRollNeeded(baseRollNeeded - modifiers.Net(ERollKind.Morale)
-                - GrantedRollModifiers.ConsumeNet(testingUnit, ERollKind.Morale));
+                - grantedNet);
 
             // Decisive single die — one concrete face even under the probabilistic roller (#090).
             IDiceResults initialRoll = gameContext.DiceRoller.RollDecisive();
@@ -78,7 +82,8 @@ namespace FDG.Stages
             // so an anonymous "Morale Test" banner leaves the player guessing which one is being tested.
             await gameContext.Presenter.Present(DiceRolledBeat.From(initialRoll, rollNeeded,
                 gameContext.Settings.RandomnessType, $"{testingUnit.Name} - Morale Test",
-                passedInitial ? "Passed" : "Failed"));
+                passedInitial ? "Passed" : "Failed",
+                modifierTags: ComposeMoraleTags(baseRollNeeded, named, grantedNet)));
             if (passedInitial)
             {
                 return new MoraleTestOutcome(passed: true, rollNeeded, passedViaReroll: false);
@@ -103,6 +108,24 @@ namespace FDG.Stages
             }
 
             return new MoraleTestOutcome(passed: false, rollNeeded, passedViaReroll: false);
+        }
+
+        // #245: the morale beat's modifier chips - base quality plus each named morale modifier and any
+        // granted debuff/buff. Null (no chips, no extended beat) when the test is unmodified.
+        // Internal for tests.
+        internal static List<string>? ComposeMoraleTags(int baseRollNeeded,
+            IReadOnlyList<(RuleOperation Op, string RuleName)> named, int grantedNet)
+        {
+            List<string> tags = new List<string> { $"Quality {baseRollNeeded}+" };
+            foreach ((RuleOperation op, string ruleName) in named)
+            {
+                if (op is not RuleOperation.ApplyRollModifier mod || mod.Roll != ERollKind.Morale || mod.Delta == 0)
+                    continue;
+                tags.Add($"{RollTags.NameOr(ruleName, "modifier")} {RollTags.Delta(mod.Delta)}");
+            }
+            if (grantedNet != 0) tags.Add($"buff {RollTags.Delta(grantedNet)}");
+
+            return tags.Count > 1 ? tags : null;
         }
 
         /// <summary>

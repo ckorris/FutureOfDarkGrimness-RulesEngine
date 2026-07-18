@@ -73,13 +73,19 @@ namespace FDG.Stages
             // lingers until superseded, so with two thresholds the first flicked past in ~600ms while the
             // last lingered through the whole wound animation - uneven. Non-held gives every threshold the
             // same full DiceRoll duration (matching the Roll-to-Hit beat), so the rolls read evenly.
+            // #245 glance metadata: category Defense, the defender's name as the "who", and the
+            // attack-wide threshold arithmetic chips composed in DetermineSaveRollsNeededStage.
             string weaponName = metaData.WeaponType.Name;
+            string defenderName = metaData.DefendingUnit.GetValue().Name;
             foreach (SaveThresholdBucket bucket in buckets)
             {
                 await GameContext.Presenter.Present(
                     DiceRolledBeat.From(bucket.BuildResults(), bucket.SaveNeeded, GameContext.Settings.RandomnessType,
                         $"{weaponName}: {bucket.ComposeExplanation()}",
-                        $"{bucket.Saved:0.##} saved, {bucket.Wounds:0.##} wounds", held: false));
+                        $"{bucket.Saved:0.##} saved, {bucket.Wounds:0.##} wounds", held: false,
+                        category: ERollBeatCategory.Defense,
+                        context: $"{defenderName} saves",
+                        modifierTags: saveRollsNeeded.ThresholdTags));
             }
 
             // #232: no SaveBeat here anymore. The deflection pings + ping sound added noise without

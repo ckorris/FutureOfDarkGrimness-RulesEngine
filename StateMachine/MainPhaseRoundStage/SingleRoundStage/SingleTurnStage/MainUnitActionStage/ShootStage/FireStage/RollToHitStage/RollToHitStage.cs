@@ -69,15 +69,13 @@ namespace FDG.Stages
 
             GameContext.Log($"Rolled {successfulResults.TotalRolls} successful hits out of {attacks} total attacks.");
 
-            // Show the natural to-hit roll (the synthetic extra-hits below aren't dice).
-            await GameContext.Presenter.Present(
-                DiceRolledBeat.From(rollToHitResults, hitRollNeeded, GameContext.Settings.RandomnessType, "Roll to Hit",
-                    $"{successfulResults.TotalRolls:0.##} hits"));
-
             // #042 hit-roll-complete rules fire here, evaluated against the UNMODIFIED rolls (the synthetic
             // hits added below sit at face 6 and would pollute a natural-6 read). One evaluation feeds them
             // all: extra-hit (Surge/Furious/Relentless), hit-multiplier (Blast), per-hit-AP (Rending/Crack)
             // and whole-attack save (Thrust) rules on the attacker, plus the defender's defensive save mods.
+            // #245: evaluated BEFORE the dice beat is presented (it's a pure computation - no awaits, no
+            // rolls - so the RNG sequence and grant spends are unchanged) so the beat can carry the
+            // face-triggered proc chips ("Furious +2 on 6s") that this evaluation produces.
             IUnit attacker = metaData.AttackingUnit.GetValue();
             IUnit defender = metaData.DefendingUnit.GetValue();
             float distance = UnitCompareUtilities.MinDistanceBetweenUnits(attacker, defender, out _, out _, includeVertical: true);
@@ -106,6 +104,18 @@ namespace FDG.Stages
                 RuleParticipant.Subject(defender, models: HeroStatRules.LivingModels(defender)));
 
             IReadOnlyList<RuleOperation> operations = named.Select(n => n.Op).ToList();
+
+            // Show the natural to-hit roll (the synthetic extra-hits below aren't dice), enriched with
+            // the #245 glance metadata: who is rolling at whom, how the threshold came to be (chips
+            // composed in DetermineHitRollStage), and which face-triggered rules fired on it.
+            List<string> procTags = ComposeProcTags(named);
+            await GameContext.Presenter.Present(
+                DiceRolledBeat.From(rollToHitResults, hitRollNeeded, GameContext.Settings.RandomnessType, "Roll to Hit",
+                    $"{successfulResults.TotalRolls:0.##} hits",
+                    category: ERollBeatCategory.Offense,
+                    context: $"{attacker.Name} -> {defender.Name}",
+                    modifierTags: hitRollResults.ThresholdTags,
+                    procTags: procTags.Count > 0 ? procTags : null));
 
             // #032 per-hit AP (Rending/Crack on an unmodified 6): split the rolled successes so only the
             // matching-face hits carry the raised save threshold; the rest stay at base AP. With no such
@@ -167,7 +177,55 @@ namespace FDG.Stages
             results.ArmorPenetrationReduction = operations
                 .OfType<RuleOperation.ReduceArmorPenetration>().Sum(op => op.Amount);
 
+            // #245: name the rules behind the two scalars above so the save beat's chips can say
+            // "Shielded +1" / "Thrust -1" / "Fortified AP-1" instead of an anonymous net number.
+            results.SaveModifierTags = ComposeSaveModifierTags(named);
+
             await onFinished(results);
+        }
+
+        // #245: the to-hit beat's gold proc chips - face-triggered rule effects that fired on this roll.
+        // Extra hits (Furious/Surge/Relentless) trigger on the top face; per-hit AP (Rending/Crack)
+        // names its own face. The front-end highlights top-face successes when any chip is present.
+        // Internal for tests.
+        internal static List<string> ComposeProcTags(IReadOnlyList<(RuleOperation Op, string RuleName)> named)
+        {
+            List<string> tags = new List<string>();
+            foreach ((RuleOperation op, string ruleName) in named)
+            {
+                switch (op)
+                {
+                    case RuleOperation.InsertExtraHits extra when extra.Count > 0f:
+                        tags.Add($"{RollTags.NameOr(ruleName, "extra hits")} +{extra.Count:0.##} on 6s");
+                        break;
+                    case RuleOperation.ApplyPerHitSaveModifier perHit when perHit.Delta != 0:
+                        // A negative save delta raises the threshold - display as the AP it plays as.
+                        tags.Add($"{RollTags.NameOr(ruleName, "AP")} AP+{-perHit.Delta:0.##} on {perHit.OnRollValue}s");
+                        break;
+                }
+            }
+            return tags;
+        }
+
+        // #245: chips naming the whole-attack save modifiers this evaluation produced, for the save
+        // beat. Positive is the defender's favor (Shielded +1), negative the attacker's (Thrust -1);
+        // Fortified's AP reduction reads as the AP it removes. Internal for tests.
+        internal static List<string>? ComposeSaveModifierTags(IReadOnlyList<(RuleOperation Op, string RuleName)> named)
+        {
+            List<string> tags = new List<string>();
+            foreach ((RuleOperation op, string ruleName) in named)
+            {
+                switch (op)
+                {
+                    case RuleOperation.ApplyRollModifier { Roll: ERollKind.Save } mod when mod.Delta != 0:
+                        tags.Add($"{RollTags.NameOr(ruleName, "modifier")} {RollTags.Delta(mod.Delta)}");
+                        break;
+                    case RuleOperation.ReduceArmorPenetration reduce when reduce.Amount != 0:
+                        tags.Add($"{RollTags.NameOr(ruleName, "AP reduction")} AP-{reduce.Amount}");
+                        break;
+                }
+            }
+            return tags.Count > 0 ? tags : null;
         }
 
         // #204: the distinct rule name(s) that added on-6 extra hits, joined for the save presentation

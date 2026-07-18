@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using FDG.Data;
+using FDG.Presentation.Beats;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
@@ -41,12 +42,16 @@ namespace FDG.Stages
     /// #103 — before the roll, other Caster units within 18" may spend their own spell tokens to sway the
     /// cast: friendly Casters add +1 each, enemy Casters subtract 1 each. The net modifier shifts the 4+
     /// success threshold (clamped to [1, 6]); assisters' tokens are spent whether or not the cast succeeds.
+    ///
+    /// #243 — the caster may also boost their OWN roll: the spell picker (<see cref="ChooseSpellRequest"/>)
+    /// returns extra tokens to spend at +1 each, spent together with the cast cost (so cancelling at target
+    /// selection still spends nothing) and announced like a friendly assist so enemy hinderers decide with
+    /// the boost visible. #233 — the cast roll rides a <see cref="DiceRolledBeat"/> before the result banner.
     /// </summary>
     public class CastSpellStage : ParentStage<IUnitActionContext, SpellDamageRunContext>
     {
         public StageBinding OnFinished;
 
-        private const string CANCEL_OPTION = "Cancel";
         private const int CAST_SUCCESS_THRESHOLD = 4;
 
         // #103 assist text-beat colors - match the GUI highlight: blue for a friendly boost (+), orange for
@@ -75,21 +80,23 @@ namespace FDG.Stages
             IUnit caster = context.ActivatingUnit.GetValue();
             PlayerID player = context.ActivatingPlayer();
 
-            // Only castable spells are offered: affordable AND with at least one legal target. Filtering by
-            // target here (and gating the Cast action the same way in ChooseActionStage.GetCanCast) is what
-            // keeps a no-target cast from looping forever under a deterministic resolver — the same reason
-            // ChooseRangedAttackStage filters weapons to those with a fireable target.
+            // Only castable spells are selectable: affordable AND with at least one legal target. Gating on
+            // castability here (and the same way in ChooseActionStage.GetCanCast) is what keeps a no-target
+            // cast from looping forever under a deterministic resolver — the same reason
+            // ChooseRangedAttackStage filters weapons to those with a fireable target. Non-castable spells
+            // still appear in the picker as disabled rows with the reason (#243).
             int tokens = caster.Tokens.GetTokenCount(TokenType.SpellTokens);
-            IReadOnlyList<RuntimeSpell> castable = GetCastableSpells(context.ActivatingUnit, player, tokens);
-            if (castable.Count == 0)
+            IReadOnlyList<SpellOffer> offer = BuildSpellOffer(context.ActivatingUnit, player, tokens);
+            if (!offer.Any(o => o.Castable))
             {
                 GameContext.Log($"{caster.Name} has no castable spell (none affordable with a legal target).");
                 await OnFinished.Activate(context);
                 return;
             }
 
-            // 1. Pick a spell (or cancel back to Choose Action).
-            RuntimeSpell? chosen = await PickSpell(player, castable, tokens, caster.Name);
+            // 1. Pick a spell + a #243 self-boost count (or cancel back to Choose Action). The boost is only
+            //    committed at step 3, with the cast cost, so cancelling target selection spends nothing.
+            (RuntimeSpell? chosen, int boost) = await PickSpell(context.ActivatingUnit, player, offer, tokens);
             if (chosen == null)
             {
                 await OnFinished.Activate(context);
@@ -114,30 +121,44 @@ namespace FDG.Stages
                 return;
             }
 
-            // 3. Spend the spell's token cost to attempt (spent whether or not the cast succeeds).
-            caster.Tokens.RemoveTokens(TokenType.SpellTokens, chosen.Threshold);
+            // 3. Spend the spell's token cost + the #243 self-boost to attempt (spent whether or not the
+            //    cast succeeds). A nonzero boost is announced like a friendly assist so the #103 hinderers
+            //    below decide with the boost visible (open information, matching the tabletop).
+            caster.Tokens.RemoveTokens(TokenType.SpellTokens, chosen.Threshold + boost);
+            if (boost > 0)
+            {
+                await GameContext.Announce(
+                    $"{caster.Name} boosts their own cast of {chosen.Name} (+{boost}).", AssistBannerColor);
+            }
 
             // 4. #103 — other Caster units within 18" may spend their own tokens to sway the cast: friendly
             //    Casters add +1 each, enemy Casters subtract 1 each. Their tokens are spent regardless of the
-            //    cast's outcome (like the cast cost above). The net modifier shifts the success threshold.
+            //    cast's outcome (like the cast cost above). Boost + assists shift the success threshold.
             int assist = await CollectCastAssist(context.ActivatingUnit, player, chosen.Name);
+            int netModifier = boost + assist;
 
-            // 5. Cast roll: one die, base 4+ succeeds, shifted by the assist. RollDecisive so it's a real
-            //    outcome under the probabilistic roller; a threshold shift (not a post-roll adjustment) keeps
-            //    it a single decisive comparison. Clamp to [1, 6] so a big swing still leaves a 6 succeeding /
-            //    a 1 failing rather than asking for an impossible face.
-            int threshold = System.Math.Clamp(CAST_SUCCESS_THRESHOLD - assist, 1, IDiceRollerExtensions.DEFAULT_SIDE_COUNT);
+            // 5. Cast roll: one die, base 4+ succeeds, shifted by boost + assists. RollDecisive so it's a
+            //    real outcome under the probabilistic roller; a threshold shift (not a post-roll adjustment)
+            //    keeps it a single decisive comparison. Clamp to [1, 6] so a big swing still leaves a 6
+            //    succeeding / a 1 failing rather than asking for an impossible face.
+            int threshold = System.Math.Clamp(CAST_SUCCESS_THRESHOLD - netModifier, 1, IDiceRollerExtensions.DEFAULT_SIDE_COUNT);
             IDiceResults castRoll = GameContext.DiceRoller.RollDecisive();
             bool success = castRoll.AtOrAbove(threshold) >= 1f;
 
-            // Spell out the roll so the assist is visible: what came up, what it needed, and (when assisted)
-            // how the net +/-1 shifted the base 4+. Assisters' own contributions were announced as they spent.
-            // The result rides an on-screen text beat: blue on success, red on failure. ASCII only (the log
-            // font has no em-dash glyph, #151).
-            string breakdown = assist != 0
-                ? $" (base {CAST_SUCCESS_THRESHOLD}+, net {(assist > 0 ? "+" : "")}{assist} assist)"
-                : "";
-            string rollDesc = $"rolled {DecisiveFace(castRoll)}, needed {threshold}+{breakdown}; spent {chosen.Threshold} token{(chosen.Threshold == 1 ? "" : "s")}";
+            // #233 — show the die itself: tumbling roll with the shifted threshold, settling into a short
+            // outcome summary. The banner below carries the full math.
+            await GameContext.Presenter.Present(DiceRolledBeat.From(castRoll, threshold,
+                GameContext.Settings.RandomnessType, "Roll to Cast", success ? "Cast!" : "Failed"));
+
+            // Spell out the roll so the boost/assist math is visible: what came up, what it needed, and how
+            // the base 4+ was shifted. Assisters' own contributions were announced as they spent. The result
+            // rides an on-screen text beat: blue on success, red on failure. ASCII only (the log font has no
+            // em-dash glyph, #151).
+            string breakdown = BuildRollBreakdown(boost, assist);
+            string tokensSpent = boost > 0
+                ? $"spent {chosen.Threshold + boost} tokens ({chosen.Threshold} cost + {boost} boost)"
+                : $"spent {chosen.Threshold} token{(chosen.Threshold == 1 ? "" : "s")}";
+            string rollDesc = $"rolled {DecisiveFace(castRoll)}, needed {threshold}+{breakdown}; {tokensSpent}";
 
             if (!success)
             {
@@ -261,47 +282,82 @@ namespace FDG.Stages
             return dictionary;
         }
 
-        private IReadOnlyList<RuntimeSpell> GetCastableSpells(DataBinding<UnitData> caster, PlayerID player, int tokens)
+        // One row of the spell picker: the spell plus whether it can be cast right now (affordable AND has a
+        // legal target) and, when it can't, the reason shown on the disabled row.
+        internal readonly record struct SpellOffer(RuntimeSpell Spell, bool Castable, string? Reason);
+
+        // Every army spell in stable order, each marked castable or carrying its unavailability reason.
+        // Affordability is checked before targets so the cheaper check names the blocking condition first.
+        private IReadOnlyList<SpellOffer> BuildSpellOffer(DataBinding<UnitData> caster, PlayerID player, int tokens)
         {
             ArmyData army = GameContext.GameDataStore().GetAllValues<ArmyData>()
                 .FirstOrDefault(a => a.PlayerID == player);
             if (army == null)
             {
-                return System.Array.Empty<RuntimeSpell>();
+                return System.Array.Empty<SpellOffer>();
             }
-            return army.Spells
-                .Where(s => s.Threshold > 0 && s.Threshold <= tokens
-                    && SpellTargeting.HasAnyEligibleTarget(GameContext, caster, player, s.Target))
-                .ToList();
+
+            List<SpellOffer> offer = new List<SpellOffer>();
+            foreach (RuntimeSpell spell in army.Spells)
+            {
+                if (spell.Threshold <= 0) continue; // malformed — never offered, matching the old filter
+                if (spell.Threshold > tokens)
+                {
+                    offer.Add(new SpellOffer(spell, false, $"need {spell.Threshold} tokens"));
+                }
+                else if (!SpellTargeting.HasAnyEligibleTarget(GameContext, caster, player, spell.Target))
+                {
+                    offer.Add(new SpellOffer(spell, false, "no valid target"));
+                }
+                else
+                {
+                    offer.Add(new SpellOffer(spell, true, null));
+                }
+            }
+            return offer;
         }
 
-        private async Task<RuntimeSpell?> PickSpell(PlayerID player, IReadOnlyList<RuntimeSpell> spells,
-            int tokens, string casterName)
+        // #243 — one request returns both the spell and the caster's own boost spend. The reply's boost is
+        // clamped to what remains after the spell's cost; an out-of-range or non-castable index cancels.
+        private async Task<(RuntimeSpell? spell, int boost)> PickSpell(DataBinding<UnitData> casterBinding,
+            PlayerID player, IReadOnlyList<SpellOffer> offer, int tokens)
         {
-            List<string> options = spells.Select(SpellOptionLabel).ToList();
-            options.Add(CANCEL_OPTION);
+            List<ChooseSpellRequest.SpellOption> options = offer
+                .Select(o => new ChooseSpellRequest.SpellOption(SpellOptionLabel(o.Spell),
+                    SpellText.Describe(o.Spell.Definition), o.Spell.Threshold, o.Castable, o.Reason))
+                .ToList();
 
-            // Subtext under each spell: what it does. The Cancel option carries none.
-            Dictionary<string, string> descriptions = new Dictionary<string, string>();
-            foreach (RuntimeSpell spell in spells)
+            // How much the roll could still be hindered after the caster commits — enemy Casters in assist
+            // range and their tokens — so the picker can gray out boost past the point it can matter.
+            int hinderTokens = FindEligibleAssisters(casterBinding, player)
+                .Where(entry => !entry.friendly)
+                .Sum(entry => entry.unit.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens));
+
+            ChooseSpellRequest request = new ChooseSpellRequest(player, casterBinding, tokens,
+                CAST_SUCCESS_THRESHOLD, hinderTokens, options);
+
+            ChooseSpellReply reply = await GameContext.PlayerRequester
+                .RequestDecision<ChooseSpellRequest, ChooseSpellReply>(request);
+
+            if (reply == null || reply.SpellIndex < 0 || reply.SpellIndex >= offer.Count
+                || !offer[reply.SpellIndex].Castable)
             {
-                descriptions[SpellOptionLabel(spell)] = SpellText.Describe(spell.Definition);
+                return (null, 0);
             }
 
-            string instructions =
-                $"Choose a spell to cast - {casterName} has {tokens} spell token{(tokens == 1 ? "" : "s")}";
+            RuntimeSpell spell = offer[reply.SpellIndex].Spell;
+            int boost = System.Math.Clamp(reply.BoostTokens, 0, tokens - spell.Threshold);
+            return (spell, boost);
+        }
 
-            StringSelectionRequest request = new StringSelectionRequest(player, instructions,
-                options, System.Array.Empty<StringSelectionRequest.InvalidOption>(), descriptions);
-
-            string choice = await GameContext.PlayerRequester
-                .RequestDecision<StringSelectionRequest, string>(request);
-
-            if (choice == CANCEL_OPTION)
-            {
-                return null;
-            }
-            return spells.First(s => SpellOptionLabel(s) == choice);
+        // "(base 4+, self +1, assists -2)" — only the parts that apply; empty when the roll is unmodified.
+        private static string BuildRollBreakdown(int boost, int assist)
+        {
+            if (boost == 0 && assist == 0) return "";
+            List<string> parts = new List<string> { $"base {CAST_SUCCESS_THRESHOLD}+" };
+            if (boost != 0) parts.Add($"self +{boost}");
+            if (assist != 0) parts.Add($"assists {(assist > 0 ? "+" : "")}{assist}");
+            return $" ({string.Join(", ", parts)})";
         }
 
         private async Task<IReadOnlyList<DataBinding<UnitData>>> PickTargets(PlayerID player, RuntimeSpell spell,

@@ -66,12 +66,14 @@ namespace FDG.Ai.Tactician
             registry.RegisterResolver(new Resolvers.TacticianPlaceObjectiveResolver(tableState));
 
             // A5: casting. Cast is taken at Choose Action whenever a positive-value spell x target
-            // exists (layered - it costs the activation nothing; TacticianActionResolver above also
-            // answers the spell picker); target picks maximize value and never cancel into the
-            // Choose Action livelock; assists spend tokens when a one-face threshold shift beats
-            // their cost. Non-spell unit selections fall through to the embedded solo resolver.
+            // exists (layered - it costs the activation nothing; the spell picker itself is its own
+            // request type since #243, answered below); target picks maximize value and never cancel
+            // into the Choose Action livelock; assists spend tokens when a one-face threshold shift
+            // beats their cost. Non-spell unit selections fall through to the embedded solo resolver.
             registry.RegisterResolver(new Resolvers.TacticianUnitSelectionResolver(planner,
                 new FDG.Ai.Resolvers.AiSelectionResolver<UnitData>(), tableState, evaluator));
+            registry.RegisterResolver(new Resolvers.TacticianChooseSpellResolver(planner,
+                new FDG.Ai.Resolvers.AiChooseSpellResolver()));
             registry.RegisterResolver(new Resolvers.TacticianCastAssistResolver(tableState, evaluator));
 
             return registry;

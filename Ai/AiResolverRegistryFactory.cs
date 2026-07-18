@@ -30,6 +30,7 @@ namespace FDG.Ai
                 .RegisterResolver(new AiYesNoResolver())
                 .RegisterResolver(new AiStringSelectionResolver(tableState, playerID))
                 .RegisterResolver(new AiChooseAbilityEffectResolver())
+                .RegisterResolver(new AiChooseSpellResolver())
                 .RegisterResolver(new AiCastAssistResolver())
                 .RegisterResolver(new AiChooseDeploymentZoneResolver())
                 .RegisterResolver(new AiChooseRangedAttackResolver())

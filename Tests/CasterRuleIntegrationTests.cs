@@ -1,6 +1,7 @@
 using System.Linq;
 using FDG.Data;
 using FDG.Players;
+using FDG.Presentation.Beats;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
@@ -655,6 +656,118 @@ namespace FDG.Tests
                 "with no assist the cast resolved on the base 4+ and failed on a 3");
         }
 
+        // #243 — the caster spends an extra token of their OWN on the cast (chosen in the spell picker),
+        // turning a would-fail roll into a success: face 3 fails the base 4+ but clears the boosted 3+.
+        // Both the cost and the boost come out of the caster's pool.
+        [Test]
+        public async Task CastSpellStage_SelfBoost_RescuesFailedCast()
+        {
+            var requester = new CannedAssistRequester(tokensPerAssister: 0, boostTokens: 1);
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedDiceRoller(3));
+
+            DataBinding<UnitData> caster = MakeCasterBinding(_player, casterRating: 3, tokens: 3, new Position(10f, 10f));
+            var army = new ArmyData(_player, new List<DataBinding<UnitData>> { caster });
+            army.SetSpells(new[] { SelfBuffSpell("Bless", threshold: 1, grantedRule: "Furious") });
+            _store.Create(army);
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Assert.That(caster.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant), Is.Not.Empty,
+                "the +1 self-boost turned the failed cast (face 3 vs 4+) into a success (3+), applying the buff");
+            Assert.That(caster.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(1),
+                "the caster spent the spell's cost (1) plus the boost (1) from its pool of 3");
+        }
+
+        // #243 — boost tokens are spent whether or not the cast succeeds, like the cast cost and #103
+        // assist tokens: face 2 fails even the boosted 3+, and the tokens are still gone.
+        [Test]
+        public async Task CastSpellStage_SelfBoost_SpentOnFailedCast()
+        {
+            var requester = new CannedAssistRequester(tokensPerAssister: 0, boostTokens: 1);
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedDiceRoller(2));
+
+            DataBinding<UnitData> caster = MakeCasterBinding(_player, casterRating: 3, tokens: 3, new Position(10f, 10f));
+            var army = new ArmyData(_player, new List<DataBinding<UnitData>> { caster });
+            army.SetSpells(new[] { SelfBuffSpell("Bless", threshold: 1, grantedRule: "Furious") });
+            _store.Create(army);
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Assert.That(caster.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant), Is.Empty,
+                "face 2 fails even the boosted 3+ - no buff applied");
+            Assert.That(caster.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(1),
+                "cost + boost are spent regardless of the outcome");
+        }
+
+        // #243 x #103 — the self-boost and an enemy hinder stack into one net threshold shift: +1 boost
+        // and -2 hinder leave a net -1 (5+), so a face of 4 that would clear the base 4+ fails. Also pins
+        // the picker's hedge context: the request reports the enemy's 2 in-range hinder tokens.
+        [Test]
+        public async Task CastSpellStage_SelfBoost_StacksWithEnemyHinder()
+        {
+            var requester = new CannedAssistRequester(tokensPerAssister: 2, boostTokens: 1);
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedDiceRoller(4));
+
+            DataBinding<UnitData> caster = MakeCasterBinding(_player, casterRating: 3, tokens: 3, new Position(10f, 10f));
+            var army = new ArmyData(_player, new List<DataBinding<UnitData>> { caster });
+            army.SetSpells(new[] { SelfBuffSpell("Bless", threshold: 1, grantedRule: "Furious") });
+            _store.Create(army);
+
+            var enemyPlayer = new PlayerID(System.Guid.NewGuid());
+            DataBinding<UnitData> enemyCaster =
+                MakeCasterBinding(enemyPlayer, casterRating: 3, tokens: 2, new Position(12f, 10f));
+            _store.Create(new ArmyData(enemyPlayer, new List<DataBinding<UnitData>> { enemyCaster }));
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Assert.That(requester.CapturedSpellPick, Is.Not.Null);
+            Assert.That(requester.CapturedSpellPick!.HinderTokensInRange, Is.EqualTo(2),
+                "the picker reports the enemy Caster's 2 in-range tokens as the hedge context");
+            Assert.That(caster.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant), Is.Empty,
+                "net -1 (boost +1, hinder -2) shifts the roll to 5+, so face 4 fails");
+            Assert.That(caster.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(1),
+                "the caster spent cost 1 + boost 1");
+            Assert.That(enemyCaster.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(0),
+                "the enemy Caster spent both hinder tokens");
+        }
+
+        // #233 — the cast roll rides a DiceRolledBeat: the die's face histogram with the SHIFTED threshold
+        // (boosted 3+ here, not the base 4+) and a short outcome summary, before the result banner.
+        [Test]
+        public async Task CastSpellStage_CastRoll_EmitsDiceRolledBeat()
+        {
+            var sink = new RecordingPresentationSink();
+            var requester = new CannedAssistRequester(tokensPerAssister: 0, boostTokens: 1);
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedDiceRoller(3), sink);
+
+            DataBinding<UnitData> caster = MakeCasterBinding(_player, casterRating: 3, tokens: 3, new Position(10f, 10f));
+            var army = new ArmyData(_player, new List<DataBinding<UnitData>> { caster });
+            army.SetSpells(new[] { SelfBuffSpell("Bless", threshold: 1, grantedRule: "Furious") });
+            _store.Create(army);
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            List<DiceRolledBeat> castBeats = sink.Beats.OfType<DiceRolledBeat>()
+                .Where(b => b.Label == "Roll to Cast").ToList();
+            Assert.That(castBeats, Has.Count.EqualTo(1), "exactly one cast-roll beat per attempt");
+            Assert.That(castBeats[0].SuccessThreshold, Is.EqualTo(3),
+                "the beat carries the boost-shifted threshold, not the base 4+");
+            Assert.That(castBeats[0].ResultSummary, Is.EqualTo("Cast!"),
+                "the settled summary states the outcome");
+        }
+
         private static RuntimeSpell SelfBuffSpell(string name, int threshold, string grantedRule) =>
             new RuntimeSpell(
                 new SpellDefinition(name, threshold,
@@ -872,6 +985,19 @@ namespace FDG.Tests
                 "No player request expected during the round-start spell-token grant; got " + request.GetType());
     }
 
+    // Answers a ChooseSpellRequest with the first castable spell and a fixed #243 self-boost.
+    internal static class CannedSpellPick
+    {
+        public static ChooseSpellReply FirstCastable(ChooseSpellRequest request, int boostTokens = 0)
+        {
+            for (int i = 0; i < request.Spells.Count; i++)
+            {
+                if (request.Spells[i].Castable) return new ChooseSpellReply(i, boostTokens);
+            }
+            return ChooseSpellReply.Cancel;
+        }
+    }
+
     // Drives CastSpellStage by picking the first offered spell and the first eligible target.
     internal sealed class CannedCastRequester : IPlayerRequestByID
     {
@@ -880,8 +1006,8 @@ namespace FDG.Tests
         {
             switch (request)
             {
-                case StringSelectionRequest spellPick:
-                    return Task.FromResult((TReply)(object)spellPick.ValidOptions[0]);
+                case ChooseSpellRequest spellPick:
+                    return Task.FromResult((TReply)(object)CannedSpellPick.FirstCastable(spellPick));
                 case SelectionRequest<UnitData> targetPick:
                     return Task.FromResult((TReply)(object)targetPick.ValidOptions[0].Option);
                 case SelectionRequest<ModelData> modelPick:
@@ -918,8 +1044,8 @@ namespace FDG.Tests
         {
             switch (request)
             {
-                case StringSelectionRequest spellPick:
-                    return Task.FromResult((TReply)(object)spellPick.ValidOptions[0]);
+                case ChooseSpellRequest spellPick:
+                    return Task.FromResult((TReply)(object)CannedSpellPick.FirstCastable(spellPick));
                 case SelectionRequest<UnitData> targetPick:
                     return Task.FromResult((TReply)(object)targetPick.ValidOptions[0].Option);
                 case DefineMovementPathRequest moveRequest:
@@ -940,17 +1066,21 @@ namespace FDG.Tests
         }
     }
 
-    // Drives a cast that opens a #103 assist window: picks the first spell + target, and for each
-    // CastAssistRequest spends a fixed number of tokens (clamped to what the assister actually has).
-    // Counts the assist prompts so a test can assert who was (and wasn't) offered the choice.
+    // Drives a cast that opens a #103 assist window: picks the first spell + target (with an optional
+    // #243 self-boost), and for each CastAssistRequest spends a fixed number of tokens (clamped to what
+    // the assister actually has). Counts the assist prompts and captures the spell picker's request so
+    // tests can assert who was offered what.
     internal sealed class CannedAssistRequester : IPlayerRequestByID
     {
         private readonly int _tokensPerAssister;
+        private readonly int _boostTokens;
         public int AssistPromptCount { get; private set; }
+        public ChooseSpellRequest? CapturedSpellPick { get; private set; }
 
-        public CannedAssistRequester(int tokensPerAssister)
+        public CannedAssistRequester(int tokensPerAssister, int boostTokens = 0)
         {
             _tokensPerAssister = tokensPerAssister;
+            _boostTokens = boostTokens;
         }
 
         public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
@@ -961,8 +1091,9 @@ namespace FDG.Tests
                 case CastAssistRequest assist:
                     AssistPromptCount++;
                     return Task.FromResult((TReply)(object)System.Math.Min(_tokensPerAssister, assist.AvailableTokens));
-                case StringSelectionRequest spellPick:
-                    return Task.FromResult((TReply)(object)spellPick.ValidOptions[0]);
+                case ChooseSpellRequest spellPick:
+                    CapturedSpellPick = spellPick;
+                    return Task.FromResult((TReply)(object)CannedSpellPick.FirstCastable(spellPick, _boostTokens));
                 case SelectionRequest<UnitData> targetPick:
                     return Task.FromResult((TReply)(object)targetPick.ValidOptions[0].Option);
                 case SelectionRequest<ModelData> modelPick:

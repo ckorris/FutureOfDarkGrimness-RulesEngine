@@ -897,7 +897,11 @@ namespace FDG.Network.Connection.Lobby
             // #191 A6: the profile is the product name in the lobby - "Tactician Bot" is the
             // challenge AI, "DerpBot" the legacy solo-rules bot (Chris's naming).
             string botName = profile == FDG.Ai.EAiProfile.Tactician ? "Tactician Bot" : "DerpBot";
-            string name = $"{botName} {playerNumber}";
+            // #217: number by rank among same-profile bots (first Tactician Bot is "Tactician Bot 1"
+            // regardless of humans or other bot types), not by total player count.
+            int botNumber = _playerInfosFull.Values.Count(info =>
+                info.PlayerType == EPlayerType.AI && info.AiProfile == profile) + 1;
+            string name = $"{botName} {botNumber}";
             Debug.WriteLine($"Added AI player: {name}");
 
             PlayerID newPlayerID = new PlayerID(Guid.NewGuid());

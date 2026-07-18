@@ -82,15 +82,9 @@ namespace FDG.Stages
                         $"{bucket.Saved:0.##} saved, {bucket.Wounds:0.##} wounds", held: false));
             }
 
-            // Deflection "pings" for the saved shots. Saves are resolved per AP group, not per
-            // defending model, so this is unit-level (a count across the defender's models).
-            int savedCount = (int)MathF.Round(totalSuccesses);
-            if (savedCount > 0)
-            {
-                List<Position> defenders = AttackBeatPositions.AlivePlaced(metaData.DefendingUnit);
-                if (defenders.Count > 0)
-                    await GameContext.Presenter.Present(new SaveBeat(defenders, savedCount));
-            }
+            // #232: no SaveBeat here anymore. The deflection pings + ping sound added noise without
+            // information (the roll beats above already say "N saved, M wounds"), so saved hits get no
+            // beat of their own; failed saves keep their wound/death presentation in ApplyWoundsStage.
 
             await onFinished(results);
         }

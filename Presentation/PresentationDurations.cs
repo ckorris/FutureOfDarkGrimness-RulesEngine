@@ -11,7 +11,8 @@ namespace FDG.Presentation
         /// <summary>Fallback move duration (a ~6" Advance); see <see cref="ForMoveDistance"/>.</summary>
         public static readonly TimeSpan UnitMove     = TimeSpan.FromMilliseconds(600);
         public static readonly TimeSpan ModelDeath   = TimeSpan.FromMilliseconds(500);
-        public static readonly TimeSpan ModelWounded = TimeSpan.FromMilliseconds(300);
+        // #232: trimmed from 300ms - wound flinches play one per wound, so multi-wound volleys dragged.
+        public static readonly TimeSpan ModelWounded = TimeSpan.FromMilliseconds(180);
         public static readonly TimeSpan Saves        = TimeSpan.FromMilliseconds(350);
         // Long enough that the result lingers after the faces lock (the front-end spends only the
         // first fraction "rolling", the rest settled), so players can read the dice — and now the

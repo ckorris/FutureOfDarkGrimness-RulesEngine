@@ -11,8 +11,11 @@ namespace FDG.Presentation
         /// <summary>Fallback move duration (a ~6" Advance); see <see cref="ForMoveDistance"/>.</summary>
         public static readonly TimeSpan UnitMove     = TimeSpan.FromMilliseconds(600);
         public static readonly TimeSpan ModelDeath   = TimeSpan.FromMilliseconds(500);
-        // #232: trimmed from 300ms - wound flinches play one per wound, so multi-wound volleys dragged.
-        public static readonly TimeSpan ModelWounded = TimeSpan.FromMilliseconds(180);
+        public static readonly TimeSpan ModelWounded = TimeSpan.FromMilliseconds(300);
+        // #232 casualty cascade: the engine-paced gap between overlapped casualty beats in one volley.
+        // Each death/flinch still animates its full duration front-end-side; only the LAST casualty
+        // paces in full, so N kills read as a rapid-fire "BE-BE-BE-BEEW" instead of N serial deaths.
+        public static readonly TimeSpan CasualtyStagger = TimeSpan.FromMilliseconds(150);
         public static readonly TimeSpan Saves        = TimeSpan.FromMilliseconds(350);
         // Long enough that the result lingers after the faces lock (the front-end spends only the
         // first fraction "rolling", the rest settled), so players can read the dice — and now the

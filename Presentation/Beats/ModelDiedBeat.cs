@@ -16,15 +16,28 @@ namespace FDG.Presentation.Beats
         public string UnitName { get; }
         public Position Position { get; }
 
-        public ModelDiedBeat(ModelID model, UnitID unit, string unitName, Position position)
+        /// <summary>
+        /// #232 casualty cascade: when true this death overlaps the next casualty beat - the presenter
+        /// paces only <see cref="PresentationDurations.CasualtyStagger"/> before moving on, while the
+        /// front-end still plays the full-length animation concurrently. ApplyWoundsStage sets this on
+        /// every casualty of a volley except the last, so a multi-kill reads as a rapid-fire cascade
+        /// with only the final death playing out on its own.
+        /// </summary>
+        public bool Overlap { get; }
+
+        public ModelDiedBeat(ModelID model, UnitID unit, string unitName, Position position,
+            bool overlap = false)
         {
             Model = model;
             Unit = unit;
             UnitName = unitName;
             Position = position;
+            Overlap = overlap;
         }
 
         public override TimeSpan NominalDuration => PresentationDurations.ModelDeath;
+        public override bool Held => Overlap;
+        public override TimeSpan HoldLeadIn => PresentationDurations.CasualtyStagger;
         public override string? Text => $"{UnitName}: a model is destroyed.";
     }
 }

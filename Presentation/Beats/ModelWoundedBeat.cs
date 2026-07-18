@@ -12,13 +12,20 @@ namespace FDG.Presentation.Beats
         public ModelID Model { get; }
         public Position Position { get; }
 
-        public ModelWoundedBeat(ModelID model, Position position)
+        /// <summary>#232 casualty cascade - same contract as <see cref="ModelDiedBeat.Overlap"/>:
+        /// pace only the stagger, the flinch plays out concurrently with the next casualty.</summary>
+        public bool Overlap { get; }
+
+        public ModelWoundedBeat(ModelID model, Position position, bool overlap = false)
         {
             Model = model;
             Position = position;
+            Overlap = overlap;
         }
 
         public override TimeSpan NominalDuration => PresentationDurations.ModelWounded;
+        public override bool Held => Overlap;
+        public override TimeSpan HoldLeadIn => PresentationDurations.CasualtyStagger;
 
         // The wound/hit logs already narrate the outcome.
         public override string? Text => null;

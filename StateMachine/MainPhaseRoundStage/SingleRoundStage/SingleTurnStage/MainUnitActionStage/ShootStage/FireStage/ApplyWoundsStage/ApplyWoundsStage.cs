@@ -26,8 +26,20 @@ namespace FDG.Stages
             // attacking a dead defender, so this is defense-in-depth against a double-fire.
             bool defenderWasAlive = metaData.DefendingUnit.GetIsAlive();
 
-            foreach(PendingWounds pendingWound in assignWoundsResults.PendingWounds)
+            // #232 casualty cascade: every casualty beat except the LAST overlaps the next (the
+            // presenter paces only the stagger), so a multi-casualty volley plays as a rapid-fire
+            // cascade with the final death/flinch running out in full. The assignments are
+            // precomputed, so the last entry that will emit a beat (Wounds > 0) is known up front.
+            int lastCasualtyIndex = -1;
+            for (int i = 0; i < assignWoundsResults.PendingWounds.Count; i++)
             {
+                if (assignWoundsResults.PendingWounds[i].Wounds > 0)
+                    lastCasualtyIndex = i;
+            }
+
+            for (int i = 0; i < assignWoundsResults.PendingWounds.Count; i++)
+            {
+                PendingWounds pendingWound = assignWoundsResults.PendingWounds[i];
                 ModelData model = pendingWound.Model; //Shorthand.
                 float woundsToDeal = pendingWound.Wounds;
 
@@ -41,6 +53,8 @@ namespace FDG.Stages
                 model.DealWounds(woundsToDeal);
                 totalWoundsApplied += woundsToDeal;
 
+                bool overlap = i != lastCasualtyIndex;
+
                 if(model.GetIsDead())
                 {
                     modelsKilled++;
@@ -48,12 +62,13 @@ namespace FDG.Stages
                     // Present the death where the model fell. State is already dead; the front-end
                     // plays the death animation over the beat's duration before dropping the model.
                     await GameContext.Presenter.Present(
-                        new ModelDiedBeat(model.ID, defendingUnit.ID, defendingUnit.Name, model.Position));
+                        new ModelDiedBeat(model.ID, defendingUnit.ID, defendingUnit.Name, model.Position,
+                            overlap));
                 }
                 else if (woundsToDeal > 0)
                 {
                     // Survived a wound (e.g. Tough) — a hurt flinch, distinct from death.
-                    await GameContext.Presenter.Present(new ModelWoundedBeat(model.ID, model.Position));
+                    await GameContext.Presenter.Present(new ModelWoundedBeat(model.ID, model.Position, overlap));
                 }
             }
 

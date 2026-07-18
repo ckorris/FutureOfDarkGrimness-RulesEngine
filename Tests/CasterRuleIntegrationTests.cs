@@ -740,6 +740,57 @@ namespace FDG.Tests
                 "the enemy Caster spent both hinder tokens");
         }
 
+        // GDF core principle: an unmodified 1 always fails. Even a +3 boost (which would arithmetically
+        // reach 1+) clamps the threshold at 2+, so a natural 1 still fizzles the cast.
+        [Test]
+        public async Task CastSpellStage_NaturalOne_FailsDespiteMaxBoost()
+        {
+            var requester = new CannedAssistRequester(tokensPerAssister: 0, boostTokens: 3);
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedDiceRoller(1));
+
+            DataBinding<UnitData> caster = MakeCasterBinding(_player, casterRating: 3, tokens: 4, new Position(10f, 10f));
+            var army = new ArmyData(_player, new List<DataBinding<UnitData>> { caster });
+            army.SetSpells(new[] { SelfBuffSpell("Bless", threshold: 1, grantedRule: "Furious") });
+            _store.Create(army);
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Assert.That(caster.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant), Is.Empty,
+                "a natural 1 always fails - the +3 boost clamps to 2+, it never reaches an auto-success 1+");
+            Assert.That(caster.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(0),
+                "cost 1 + boost 3 are still spent on the failure");
+        }
+
+        // GDF core principle, mirrored: an unmodified 6 always succeeds. A -3 enemy hinder (arithmetically
+        // 7+) clamps the threshold at 6+, so a natural 6 still casts.
+        [Test]
+        public async Task CastSpellStage_NaturalSix_SucceedsDespiteHeavyHinder()
+        {
+            var requester = new CannedAssistRequester(tokensPerAssister: 3, boostTokens: 0);
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedDiceRoller(6));
+
+            DataBinding<UnitData> caster = MakeCasterBinding(_player, casterRating: 3, tokens: 1, new Position(10f, 10f));
+            var army = new ArmyData(_player, new List<DataBinding<UnitData>> { caster });
+            army.SetSpells(new[] { SelfBuffSpell("Bless", threshold: 1, grantedRule: "Furious") });
+            _store.Create(army);
+
+            var enemyPlayer = new PlayerID(System.Guid.NewGuid());
+            DataBinding<UnitData> enemyCaster =
+                MakeCasterBinding(enemyPlayer, casterRating: 3, tokens: 3, new Position(12f, 10f));
+            _store.Create(new ArmyData(enemyPlayer, new List<DataBinding<UnitData>> { enemyCaster }));
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Assert.That(caster.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant), Is.Not.Empty,
+                "a natural 6 always succeeds - the -3 hinder clamps to 6+, never an impossible 7+");
+        }
+
         // #233 — the cast roll rides a DiceRolledBeat: the die's face histogram with the SHIFTED threshold
         // (boosted 3+ here, not the base 4+) and a short outcome summary, before the result banner.
         [Test]

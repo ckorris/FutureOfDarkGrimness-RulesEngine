@@ -41,7 +41,8 @@ namespace FDG.Stages
     ///
     /// #103 — before the roll, other Caster units within 18" may spend their own spell tokens to sway the
     /// cast: friendly Casters add +1 each, enemy Casters subtract 1 each. The net modifier shifts the 4+
-    /// success threshold (clamped to [1, 6]); assisters' tokens are spent whether or not the cast succeeds.
+    /// success threshold (clamped to [2, 6] — a natural 1 always fails, a natural 6 always succeeds);
+    /// assisters' tokens are spent whether or not the cast succeeds.
     ///
     /// #243 — the caster may also boost their OWN roll: the spell picker (<see cref="ChooseSpellRequest"/>)
     /// returns extra tokens to spend at +1 each, spent together with the cast cost (so cancelling at target
@@ -53,6 +54,10 @@ namespace FDG.Stages
         public StageBinding OnFinished;
 
         private const int CAST_SUCCESS_THRESHOLD = 4;
+
+        // GDF core principle: an unmodified 1 always fails and an unmodified 6 always succeeds, so no
+        // amount of boost/assist can shift the effective threshold below 2+ (or above 6+).
+        private const int MIN_ROLL_THRESHOLD = 2;
 
         // #103 assist text-beat colors - match the GUI highlight: blue for a friendly boost (+), orange for
         // an enemy disruption (-).
@@ -139,9 +144,10 @@ namespace FDG.Stages
 
             // 5. Cast roll: one die, base 4+ succeeds, shifted by boost + assists. RollDecisive so it's a
             //    real outcome under the probabilistic roller; a threshold shift (not a post-roll adjustment)
-            //    keeps it a single decisive comparison. Clamp to [1, 6] so a big swing still leaves a 6
-            //    succeeding / a 1 failing rather than asking for an impossible face.
-            int threshold = System.Math.Clamp(CAST_SUCCESS_THRESHOLD - netModifier, 1, IDiceRollerExtensions.DEFAULT_SIDE_COUNT);
+            //    keeps it a single decisive comparison. Clamp to [2, 6]: a natural 1 always fails and a
+            //    natural 6 always succeeds, no matter how far boost/assists (or hinders) swing the roll.
+            int threshold = System.Math.Clamp(CAST_SUCCESS_THRESHOLD - netModifier,
+                MIN_ROLL_THRESHOLD, IDiceRollerExtensions.DEFAULT_SIDE_COUNT);
             IDiceResults castRoll = GameContext.DiceRoller.RollDecisive();
             bool success = castRoll.AtOrAbove(threshold) >= 1f;
 

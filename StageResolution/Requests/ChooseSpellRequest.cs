@@ -16,11 +16,11 @@ namespace FDG.StageResolution.Requests
     /// picker by sniffing the prompt prefix. It also lets the reply carry the boost count, which a plain
     /// string choice cannot.</para>
     ///
-    /// <para><b>Boost usefulness context.</b> The success threshold clamps at 1, so boosting past
-    /// <c>BaseThreshold - 1</c> only matters as a hedge against enemy Casters hindering (-1 per token,
-    /// prompted AFTER the caster commits). <see cref="HinderTokensInRange"/> carries how many hinder tokens
-    /// enemy Casters within assist range currently hold, so a UI can gray out boost past
-    /// <c>(BaseThreshold - 1) + HinderTokensInRange</c> and say why.</para>
+    /// <para><b>Boost usefulness context.</b> The success threshold clamps at 2 — a natural 1 always
+    /// fails (GDF core principle) — so boosting past <c>BaseThreshold - 2</c> only matters as a hedge
+    /// against enemy Casters hindering (-1 per token, prompted AFTER the caster commits).
+    /// <see cref="HinderTokensInRange"/> carries how many hinder tokens enemy Casters within assist range
+    /// currently hold, so a UI can gray out boost past <see cref="MaxUsefulBoost"/> and say why.</para>
     /// </summary>
     public class ChooseSpellRequest : IStageTaskRequest<ChooseSpellReply>
     {
@@ -51,6 +51,12 @@ namespace FDG.StageResolution.Requests
 
         /// <summary>All of the army's spells in stable order. The reply's index points into this list.</summary>
         public IReadOnlyList<SpellOption> Spells { get; }
+
+        /// <summary>The most boost tokens that can possibly matter: enough to reach the 2+ floor (a
+        /// natural 1 always fails, so the threshold never drops below 2) plus one per in-range enemy
+        /// hinder token. UIs cap the boost picker at min(this, affordable).</summary>
+        [JsonIgnore]
+        public int MaxUsefulBoost => (BaseThreshold - 2) + HinderTokensInRange;
 
         [JsonConstructor]
         public ChooseSpellRequest(PlayerID targetPlayerID, TaskID taskID, DataBinding<UnitData> castingUnit,

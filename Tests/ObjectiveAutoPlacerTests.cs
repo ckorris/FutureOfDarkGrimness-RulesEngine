@@ -7,7 +7,7 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #241 — the Auto-Placed objective mode and the solo-rules AI share one placement helper
+    // #243 — the Auto-Placed objective mode and the solo-rules AI share one placement helper
     // (ObjectiveAutoPlacer). These pin the two guarantees that share buys: every placement is legal,
     // and the helper is identical to AiPlaceObjectiveResolver for the same table state + random stream.
     [TestFixture]

@@ -42,7 +42,11 @@ public sealed class WoundIgnoreSink : IWoundIgnoreSink
 
     /// <summary>
     /// Read face: the roll value at or above which a wound is ignored. Only meaningful when
-    /// <see cref="HasIgnore"/> is true.
+    /// <see cref="HasIgnore"/> is true. Clamped to [2, 6] — a natural 1 always fails and a natural 6
+    /// always succeeds (GDF core principle), so a data-authored out-of-range threshold can never make
+    /// regeneration automatic or impossible. The catalog only defines 2+/5+/6+ today; this guards the
+    /// day thresholds become user-authored data.
     /// </summary>
-    public int Threshold => _bestThreshold ?? 0;
+    public int Threshold =>
+        _bestThreshold.HasValue ? DiceUtilities.ClampSuccessRollNeeded(_bestThreshold.Value) : 0;
 }

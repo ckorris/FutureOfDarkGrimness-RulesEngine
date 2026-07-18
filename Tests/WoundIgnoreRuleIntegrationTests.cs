@@ -111,6 +111,21 @@ namespace FDG.Tests
                 "Resistance ignores a wound on 6+ only (a sixth), so 3 → 2.5.");
         }
 
+        // GDF core principle: the sink's read face clamps a data-authored out-of-range threshold to
+        // [2, 6], so regeneration can never become automatic (a 1+ that ignores on a natural 1) or
+        // impossible (7+). The catalog only defines 2+/5+/6+ today; this guards user-authored data.
+        [Test]
+        public void Sink_Threshold_ClampsOutOfRangeToNaturalBounds()
+        {
+            var automatic = new FDG.Rules.Dispatch.WoundIgnoreSink();
+            automatic.IgnoreOn(1);
+            Assert.That(automatic.Threshold, Is.EqualTo(2), "1+ would ignore on a natural 1 - clamps to 2+");
+
+            var impossible = new FDG.Rules.Dispatch.WoundIgnoreSink();
+            impossible.IgnoreOn(7);
+            Assert.That(impossible.Threshold, Is.EqualTo(6), "7+ could never ignore - a natural 6 still succeeds");
+        }
+
         private static void AttachRule(DataBinding<UnitData> unit, string name, SpecialRuleDefinition definition)
             => unit.GetValue().AttachRuleDefinition(
                 new ResolvedRule(name, definition, System.Array.Empty<RuleArgument>()));

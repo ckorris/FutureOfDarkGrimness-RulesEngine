@@ -56,6 +56,19 @@ namespace FDG.Stages
 
         public void RegisterAttackedFinished();
 
+        /// <summary>
+        /// #248: true once ANYTHING irreversible has happened this activation beyond HasMoved/HasAttacked —
+        /// an activation-start rule applied (token ops, reposition, ThisActivation grant), spell tokens were
+        /// spent, a custom action resolved, a teleport landed. Gates the "back out to unit selection" offer:
+        /// while false (and not moved/attacked), un-picking the unit is safe because re-activating it re-runs
+        /// ActivationStartStage against unchanged state.
+        /// </summary>
+        public bool IrreversibleActionTaken { get; }
+
+        /// <summary>Marks the activation dirty (see <see cref="IrreversibleActionTaken"/>). Called by every
+        /// stage at the exact point it commits something that cannot be undone.</summary>
+        public void MarkIrreversibleAction();
+
         public void Reset(DataBinding<UnitData> activatingUnit);
     }
 
@@ -111,6 +124,13 @@ namespace FDG.Stages
             HasAttacked = true;
         }
 
+        public bool IrreversibleActionTaken { get; private set; }
+
+        public void MarkIrreversibleAction()
+        {
+            IrreversibleActionTaken = true;
+        }
+
         //TODO: This pattern sucks, make a new instance of the context each time.
         public void Reset(DataBinding<UnitData> activatingUnit)
         {
@@ -118,6 +138,7 @@ namespace FDG.Stages
             HasMoved = false;
             MoveDistance = 0f;
             HasAttacked = false;
+            IrreversibleActionTaken = false;
             PendingCustomAction = null;
             StartedActivationShaken = activatingUnit.GetValue().Tokens.HasToken(TokenType.Shaken);
             SnapshotDistancesToEnemies(activatingUnit);

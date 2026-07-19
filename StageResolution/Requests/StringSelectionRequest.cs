@@ -23,10 +23,20 @@ namespace FDG.StageResolution.Requests
         /// </summary>
         public Dictionary<string, string>? OptionDescriptions { get; }
 
+        /// <summary>
+        /// #248: whether the player may back out of this menu without picking anything, replying null —
+        /// the same null-cancel sentinel <see cref="SelectionRequest{T}"/> uses (legitimate over the wire,
+        /// see RequestMessageSender.DeserializeAndReturnReply). Only interactive resolvers ever cancel;
+        /// the CLI EOF default and the AI resolvers always return a real option, so a cancellable menu can
+        /// never loop an automated player. Defaults to false — the stage must opt in AND null-check the
+        /// reply, routing it to a real back-destination (ChooseActionStage -> back to unit selection).
+        /// </summary>
+        public bool AllowCancel { get; }
+
         [JsonConstructor]
         public StringSelectionRequest(PlayerID targetPlayerID, TaskID taskID,
             string instructions, IReadOnlyList<string> validOptions, IReadOnlyList<InvalidOption> invalidOptions,
-            Dictionary<string, string>? optionDescriptions = null)
+            Dictionary<string, string>? optionDescriptions = null, bool allowCancel = false)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -34,12 +44,13 @@ namespace FDG.StageResolution.Requests
             ValidOptions = validOptions;
             InvalidOptions = invalidOptions;
             OptionDescriptions = optionDescriptions;
+            AllowCancel = allowCancel;
             TaskName = "Select Option";
         }
 
         public StringSelectionRequest(PlayerID targetPlayerID, string instructions,
             IReadOnlyList<string> validOptions, IReadOnlyList<InvalidOption> invalidOptions,
-            Dictionary<string, string>? optionDescriptions = null)
+            Dictionary<string, string>? optionDescriptions = null, bool allowCancel = false)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = new TaskID(Guid.NewGuid());
@@ -47,6 +58,7 @@ namespace FDG.StageResolution.Requests
             ValidOptions = validOptions;
             InvalidOptions = invalidOptions;
             OptionDescriptions = optionDescriptions;
+            AllowCancel = allowCancel;
             TaskName = "Select Option";
         }
 

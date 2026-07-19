@@ -64,6 +64,11 @@ namespace FDG.Stages
             {
                 List<AbilityOffer> options = ruleOffers.ToList();
 
+                // #248: resolving the ability spends its once-per-activation cost and grants a
+                // ThisActivation rule — re-running this stage would double-apply, so the activation can
+                // no longer be backed out of.
+                context.MarkIrreversibleAction();
+
                 AbilityOffer chosen = options.Count == 1
                     ? options[0]
                     : options[await AskWhichEffect(context, ruleOffers.Key, unit, options)];
@@ -100,6 +105,10 @@ namespace FDG.Stages
                 new ActivationStartContext(unit), RuleParticipant.Actor(unit));
 
             if (operations.Count == 0) return;
+
+            // #248: token grants / executables / repositions applied here are irreversible — re-running
+            // this stage on a re-activation would double-apply them, so back-out is off the table.
+            context.MarkIrreversibleAction();
 
             OperationApplier.ApplyTokenOperations(operations);
             await OperationExecutor.Execute(operations, new GameOperationServices(GameContext));

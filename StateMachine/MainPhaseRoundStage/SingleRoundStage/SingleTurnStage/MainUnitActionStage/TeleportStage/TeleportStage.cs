@@ -79,6 +79,10 @@ namespace FDG.Stages
                 return;
             }
 
+            // #248: the placement is about to land and the cost about to be paid — irreversible. The
+            // backed-out branch above returns before this, so a declined teleport stays pristine.
+            context.MarkIrreversibleAction();
+
             // Accepted: pay the once-per-activation cost now (the Effect.Teleport marker is a no-op, so resolving
             // the offer yields only the "used" marker token that stops it being re-offered this activation).
             if (offer != null)

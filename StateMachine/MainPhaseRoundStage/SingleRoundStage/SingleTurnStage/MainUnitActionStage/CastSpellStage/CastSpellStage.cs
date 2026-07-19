@@ -125,6 +125,10 @@ namespace FDG.Stages
             // 3. Spend the spell's token cost + the #244 self-boost to attempt (spent whether or not the
             //    cast succeeds). A nonzero boost is announced like a friendly assist so the #103 hinderers
             //    below decide with the boost visible (open information, matching the tabletop).
+            // #248: tokens are spent whether or not the cast succeeds — from here the activation can no
+            // longer be backed out of. Every cancel path above returns before this line, so a browsed-and-
+            // cancelled spell menu stays pristine.
+            context.MarkIrreversibleAction();
             caster.Tokens.RemoveTokens(TokenType.SpellTokens, chosen.Threshold + boost);
             if (boost > 0)
             {

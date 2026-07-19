@@ -12,6 +12,11 @@ namespace FDG.Stages
 
         public StageBinding ToReconcileEndOfActivation;
 
+        // #248: the player backed out of a pristine activation (ChooseActionStage.ToBackOut) — exit to
+        // SingleTurnStage, which routes back to ChooseUnitToActivateStage. Its own sibling exit (not
+        // ToReconcileEndOfActivation) so nothing marks the unit as activated.
+        public StageBinding OnBackedOut;
+
         public MainUnitActionStage(IGameContext gameContext, IStateMachineLayer<ISingleTurnContext> parent) : base(gameContext, parent)
         {
             
@@ -44,6 +49,7 @@ namespace FDG.Stages
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IUnitActionContext> startingChild)
         {
             ToReconcileEndOfActivation = new StageBinding(this);
+            OnBackedOut = new StageBinding(this);
 
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
                 // #197 P5a — fires Activation_OnActivationStart before anything else, so the "pick one effect
@@ -68,6 +74,9 @@ namespace FDG.Stages
                 // re-evaluates its options from the new position (layered, doesn't end the turn).
                 .AddChild(new TeleportStage(GameContext, this), out var teleport)
                 .AddSibling(nameof(ToReconcileEndOfActivation), ToReconcileEndOfActivation, out string toReconcileActivationEvent)
+                // #248: the pristine back-out leaves through its own sibling event so no end-of-activation
+                // reconcile runs and nothing marks the unit as activated.
+                .AddSibling(nameof(OnBackedOut), OnBackedOut, out string backedOutEvent)
                 .Build();
 
             startingChild = activationStart;
@@ -86,6 +95,7 @@ namespace FDG.Stages
             chooseAction.ToEmbark.Bind(embark);
             chooseAction.ToTeleport.Bind(teleport);
             chooseAction.ToReconcileEndOfActivation.Bind(toReconcileActivationEvent);
+            chooseAction.ToBackOut.Bind(backedOutEvent);
             movement.OnFinishedMovement.Bind(chooseAction);
             // Abandoning the move at the path prompt returns without registering a move distance.
             movement.BackToChooseAction.Bind(chooseAction);

@@ -24,6 +24,11 @@ namespace FDG.Stages
         public StageBinding ToTeleport;
         public StageBinding ToReconcileEndOfActivation;
 
+        // #248: un-pick the activated unit and return to unit selection. Offered (AllowCancel) only while
+        // the activation is pristine — nothing moved, attacked, or otherwise committed — so re-activating
+        // this unit later replays ActivationStartStage against unchanged state.
+        public StageBinding ToBackOut;
+
         public const string MOVEMENT_CHOICE_NAME = "Move";
         public const string CHARGE_CHOICE_NAME = "Charge";
         public const string SHOOT_CHOICE_NAME = "Shoot";
@@ -41,6 +46,7 @@ namespace FDG.Stages
             ToEmbark = new StageBinding(this);
             ToTeleport = new StageBinding(this);
             ToReconcileEndOfActivation = new StageBinding(this);
+            ToBackOut = new StageBinding(this);
         }
 
         public override async Task Enter(IUnitActionContext context)
@@ -267,10 +273,31 @@ namespace FDG.Stages
                 invalidOptions.Add(new StringSelectionRequest.InvalidOption(PASS_CHOICE_NAME, cantPassReason));
             }
 
-            StringSelectionRequest request = new StringSelectionRequest(context.ActivatingPlayer(), "Choose Action", validOptions, invalidOptions);
+            // #248: while the activation is pristine, the menu is cancellable — a null reply un-picks the
+            // unit and returns to unit selection. Deliberately NOT a listed option: the AI resolvers and
+            // the CLI EOF default only ever pick real options, so an automated player can never loop the
+            // turn by backing out forever.
+            bool canBackOut = !context.HasMoved && !context.HasAttacked && !context.IrreversibleActionTaken;
+
+            StringSelectionRequest request = new StringSelectionRequest(context.ActivatingPlayer(),
+                "Choose Action", validOptions, invalidOptions, allowCancel: canBackOut);
 
             string choice = await GameContext.PlayerRequester.RequestDecision<StringSelectionRequest, string>(request);
-            
+
+            if (choice == null)
+            {
+                if (!canBackOut)
+                {
+                    throw new ArgumentException(
+                        "Choose Action received a cancel reply, but the activation was not cancellable.");
+                }
+
+                GameContext.Log($"{context.ActivatingUnit.GetValue().Name}: activation backed out - " +
+                    "choose a unit to activate.");
+                await ToBackOut.Activate(context);
+                return;
+            }
+
             if(outcomes.ContainsKey(choice) == false)
             {
                 throw new ArgumentException($"Request option was {choice}, but that wasn't an option.");

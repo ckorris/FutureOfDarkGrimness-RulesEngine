@@ -67,6 +67,10 @@ namespace FDG.Stages
             // MarkUnitAsActivated for the delayed turn, leaving the unit in the pool for a later turn.
             chooseUnitToActivateStage.ToDelayedTurnEnd.Bind(reconcileEndOfActivationStage.Name);
             mainUnitActionStage.ToReconcileEndOfActivation.Bind(reconcileEndOfActivationStage.Name);
+            // #248: a pristine activation was backed out — return to unit selection. Stays inside this
+            // stage (no turn-end reconcile fires), the unit remains unactivated in the pool, and the next
+            // pick overwrites ActivatedUnit.
+            mainUnitActionStage.OnBackedOut.Bind(chooseUnitToActivateStage.Name);
             reconcileEndOfActivationStage.OnFinished.Bind(turnFinishedEventName);
 
             return dictionary;

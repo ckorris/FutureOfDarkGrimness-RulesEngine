@@ -43,6 +43,9 @@ namespace FDG.Stages
 
             IUnit bearer = context.ActivatingUnit.GetValue();
 
+            // #248: resolving the ability pays its cost and applies its effects — irreversible.
+            context.MarkIrreversibleAction();
+
             IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator
                 .ResolveAbility(offer, new[] { bearer });
             OperationApplier.ApplyTokenOperations(ops);

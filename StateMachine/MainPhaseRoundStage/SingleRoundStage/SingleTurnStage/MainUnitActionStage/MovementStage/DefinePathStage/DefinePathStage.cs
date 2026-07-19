@@ -93,12 +93,22 @@ namespace FDG.Stages
 
             // #093: validate each model against its OWN budget — the same per-model budgets the request
             // carried to the resolver, so the move preview and the authoritative check agree exactly.
+            //
+            // #159: coherency is validated LENIENTLY here (lenientCoherency: true). This is a deliberate
+            // deviation from the strict tabletop rule, where a unit must always end its move in coherency.
+            // On tabletop, a unit left broken by a mid-unit casualty and hemmed in by enemy bases is a
+            // situation two players resolve by agreement (nudge a model, accept a token overlap, etc.). We
+            // have no such negotiation channel: every response must be deterministically legal or the stage
+            // throws and the game ends on a fault (#159). The lenient rule only ever relaxes for a unit that
+            // is ALREADY out of coherency at the start of its move — it can then hold or pull together, but
+            // never scatter further (see ValidateCoherencyNotWorsened). A unit that starts coherent is held
+            // to the exact same strict 1"/9" limits as before, so normal play is unchanged.
             if(MovementUtilities.ValidatePaths(movements,
                 entry => { var (_, rush, maxDist) = pathRequest.BudgetFor(entry.Model.GetValue().ID);
                            return new ModelMoveBudget(rush, maxDist); },
                 enemyFootprints, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain,
                 context.RelevantTerrain, out List<ReasonForInvalidMove> invalidReasons,
-                friendlyFootprints) == false)
+                friendlyFootprints, lenientCoherency: true) == false)
             {
                 StringBuilder sb = new StringBuilder(invalidReasons[0].ToString());
                 for(int i = 1; i < invalidReasons.Count; i++)

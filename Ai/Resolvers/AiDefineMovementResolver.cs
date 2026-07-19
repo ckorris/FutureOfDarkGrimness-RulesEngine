@@ -145,12 +145,16 @@ namespace FDG.Ai.Resolvers
                 request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, request.IgnoresImpassibleTerrain,
                 allTerrain, friendlyFootprints);
 
-            // The ladder's last resort (hold exact positions) is move-through-valid but can still BREAK
-            // COHESION when the living models are already spread >1" apart - a unit intermingled with the
-            // enemy after melee that cannot re-pack without a model crossing an enemy base. Submitting that
-            // faults the executor (#208). When the move is cancellable (an optional post-combat "may move")
-            // decline it instead - no legal destination exists. A non-cancellable move has no decline
-            // channel, so it still submits the least-bad candidate exactly as before (behavior pinned).
+            // The ladder's last resort (hold exact positions) can bottom out at a cohesion-breaking hold when
+            // the living models are already spread >1" apart - a unit intermingled with the enemy after melee
+            // that cannot re-pack without a model crossing an enemy base. #159 made DefinePathStage lenient so
+            // submitting that hold no longer faults the game; but for a CANCELLABLE move (an optional
+            // post-combat "may move") a 0" hold achieves nothing, so we still prefer to DECLINE - returning to
+            // the action menu keeps the unit's options open rather than spending the optional move standing
+            // still. The STRICT coherency check is deliberate here: it is the "did the ladder produce a real,
+            // cohesive move, or only a stuck hold?" test that gates the decline. A non-cancellable (forced)
+            // move has no decline channel, so it still submits the least-bad candidate, which the now-lenient
+            // stage accepts (see Resolve_NoLegalPath_NonCancellableRequest_StillReturnsAPath).
             if (request.AllowCancel && !MovementUtilities.ValidatePaths(candidate, budgetFor,
                     enemyFootprints, request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain,
                     request.IgnoresImpassibleTerrain, allTerrain, out _, friendlyFootprints))

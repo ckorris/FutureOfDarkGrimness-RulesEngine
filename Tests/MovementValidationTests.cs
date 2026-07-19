@@ -449,6 +449,87 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void ValidatePaths_LenientCoherency_BrokenUnitHolds_Accepted()
+        {
+            // #159: a unit left broken by a mid-unit casualty (two survivors 1.5" base-to-base apart) that is
+            // boxed in by enemies cannot re-pack; its only move is to HOLD. Under strict coherency that hold
+            // is rejected and DefinePathStage throws (game ends on a fault). With lenientCoherency the hold is
+            // accepted because it does not WORSEN the unit's existing coherency (before == after). This is the
+            // companion to ValidatePaths_TwoLivingModelsTooFarApart_RejectedForCohesion, which pins the strict
+            // rejection of the same positions.
+            DataBinding<ModelData> a = MakeModel(new Position(0, 0));
+            DataBinding<ModelData> b = MakeModel(new Position(3, 0)); // 1.5" base-to-base — already broken
+
+            bool ok = MovementUtilities.ValidatePaths(
+                StayInPlace(a, b),
+                _ => new ModelMoveBudget(12f, 12f),
+                new List<EnemyModelFootprint>(), canMoveThroughEnemies: false,
+                ignoresDifficultTerrain: false, ignoresImpassibleTerrain: false,
+                terrain: null, out List<ReasonForInvalidMove> errors,
+                friendlyFootprints: null, lenientCoherency: true);
+
+            Assert.That(ok, Is.True);
+            Assert.That(errors.Any(e => e.ErrorReasonType == EErrorReasonType.TooFarFromAnyUnitModel), Is.False,
+                "an already-broken unit that holds its positions must be allowed under lenient coherency.");
+        }
+
+        [Test]
+        public void ValidatePaths_LenientCoherency_BrokenUnitScattersFurther_Rejected()
+        {
+            // Lenient does NOT mean skipped: a broken unit may hold or pull together, but a move that makes
+            // coherency WORSE (the two survivors drift from 1.5" to 3.5" base-to-base) is still rejected.
+            DataBinding<ModelData> a = MakeModel(new Position(0, 0));
+            DataBinding<ModelData> b = MakeModel(new Position(3, 0)); // 1.5" base-to-base
+
+            // Move b farther from a (to centre 5" → 3.5" base-to-base): strictly worse than the start.
+            var moves = new List<ModelMoveEntry>
+            {
+                new ModelMoveEntry(a, new List<Position> { a.GetValue().PositionBinding.GetValue() }),
+                new ModelMoveEntry(b, new List<Position> { new Position(5, 0) }),
+            };
+
+            bool ok = MovementUtilities.ValidatePaths(
+                moves,
+                _ => new ModelMoveBudget(12f, 12f),
+                new List<EnemyModelFootprint>(), canMoveThroughEnemies: false,
+                ignoresDifficultTerrain: false, ignoresImpassibleTerrain: false,
+                terrain: null, out List<ReasonForInvalidMove> errors,
+                friendlyFootprints: null, lenientCoherency: true);
+
+            Assert.That(ok, Is.False);
+            Assert.That(errors.Any(e => e.ErrorReasonType == EErrorReasonType.TooFarFromAnyUnitModel), Is.True,
+                "a move that scatters an already-broken unit further must still be rejected.");
+        }
+
+        [Test]
+        public void ValidatePaths_LenientCoherency_CohesiveUnitBreakingCoherency_StillRejected()
+        {
+            // Behaviour-preserving guarantee: lenient coherency is identical to strict for a unit that STARTS
+            // cohesive. Two models touching (0" gap) that move apart to 1.5" base-to-base are rejected exactly
+            // as under the strict rule — the leniency only ever applies to units already out of coherency.
+            DataBinding<ModelData> a = MakeModel(new Position(0, 0));
+            DataBinding<ModelData> b = MakeModel(new Position(1.5f, 0)); // touching (0" base-to-base) — cohesive
+
+            var moves = new List<ModelMoveEntry>
+            {
+                new ModelMoveEntry(a, new List<Position> { a.GetValue().PositionBinding.GetValue() }),
+                new ModelMoveEntry(b, new List<Position> { new Position(3, 0) }), // drift to 1.5" base-to-base
+            };
+
+            bool ok = MovementUtilities.ValidatePaths(
+                moves,
+                _ => new ModelMoveBudget(12f, 12f),
+                new List<EnemyModelFootprint>(), canMoveThroughEnemies: false,
+                ignoresDifficultTerrain: false, ignoresImpassibleTerrain: false,
+                terrain: null, out List<ReasonForInvalidMove> errors,
+                friendlyFootprints: null, lenientCoherency: true);
+
+            Assert.That(ok, Is.False);
+            Assert.That(errors.Any(e => e.ErrorReasonType == EErrorReasonType.TooFarFromAnyUnitModel), Is.True,
+                "a unit that starts cohesive is held to the strict 1\" rule even under lenient coherency.");
+        }
+
+        [Test]
         public void ValidatePaths_LivingModelsJustWithinFloatSlack_Accepted()
         {
             // Base-to-base 1.0005" — over the 1" limit by less than the epsilon, so float rounding at the

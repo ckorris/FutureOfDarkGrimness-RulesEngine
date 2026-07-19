@@ -105,13 +105,22 @@ namespace FDG.Stages
         /// of the unit) instead of one unit-wide pair of scalars. Coherency still reins a fast model in.
         /// The scalar overload above delegates here with the same budget for every model, so unit-wide
         /// callers are unchanged.
+        ///
+        /// <para><paramref name="lenientCoherency"/> (#159): when true, coherency is validated with the
+        /// one-directional-lenient rule (<see cref="ValidateCoherencyNotWorsened"/>) instead of the strict
+        /// end-state rule. This is behaviour-preserving for any unit that STARTS coherent (its pre-move
+        /// nearest gap is &lt;= 1", so the lenient limit collapses to exactly the strict 1" and 9" limits);
+        /// it only relaxes for a unit that is ALREADY broken — e.g. a mid-unit casualty left the survivors
+        /// &gt;1" apart — for which it lets a hold (or any not-worse move) validate instead of throwing.
+        /// See <see cref="DefinePathStage"/> for why the movement path opts in.</para>
         /// </summary>
         public static bool ValidatePaths(List<ModelMoveEntry> moves,
             Func<ModelMoveEntry, ModelMoveBudget> budgetFor,
             IEnumerable<EnemyModelFootprint> enemyFootprints, bool canMoveThroughEnemies,
             bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
             IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors,
-            IEnumerable<EnemyModelFootprint>? friendlyFootprints = null)
+            IEnumerable<EnemyModelFootprint>? friendlyFootprints = null,
+            bool lenientCoherency = false)
         {
             errors = new List<ReasonForInvalidMove>();
 
@@ -123,7 +132,10 @@ namespace FDG.Stages
             ValidateMovingThroughImpassibleTerrain(moves, terrain, ignoresImpassibleTerrain, ref errors);
             ValidateMovingThroughDifficultTerrain(moves, terrain, ignoresDifficultTerrain, ref errors);
             ValidateMovingThroughEnemyUnits(moves, enemies, canMoveThroughEnemies, ref errors);
-            ValidateCoherency(moves, ref errors);
+            if (lenientCoherency)
+                ValidateCoherencyNotWorsened(moves, ref errors);
+            else
+                ValidateCoherency(moves, ref errors);
             ValidateChargeReach(moves, move => budgetFor(move).MaxRushDistance, enemies, ref errors);
             ValidateEndsOnFriendly(moves, AsReadOnly(friendlyFootprints), ref errors);
 

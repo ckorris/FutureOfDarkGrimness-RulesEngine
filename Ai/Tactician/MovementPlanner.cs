@@ -118,9 +118,10 @@ namespace FDG.Ai.Tactician
 
         /// <summary>
         /// The G3 ladder: validate the candidate with the same MovementUtilities.ValidatePaths the stage
-        /// uses, halving the step until it passes; then reform-in-place; then hold exact positions
-        /// (zero-length paths can't move through anything, so the last resort is always valid). The
-        /// returned move is one the engine will accept.
+        /// uses (#159: lenientCoherency, matching DefinePathStage - a unit already broken by a casualty may
+        /// hold rather than be rejected for a coherency it can't restore), halving the step until it passes;
+        /// then reform-in-place; then hold exact positions (zero-length paths can't move through anything, so
+        /// the last resort is always valid). The returned move is one the engine will accept.
         /// </summary>
         public static List<ModelMoveEntry> ValidateWithBackoff(
             Func<float, List<ModelMoveEntry>> candidateAt, float initialStep,
@@ -132,7 +133,7 @@ namespace FDG.Ai.Tactician
             float step = initialStep;
             List<ModelMoveEntry> candidate = candidateAt(step);
             bool valid = MovementUtilities.ValidatePaths(candidate, budgetFor,
-                enemies, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, out _, friendlies);
+                enemies, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, out _, friendlies, lenientCoherency: true);
 
             int attempts = 0;
             while (!valid && attempts < MaxBackoffAttempts)
@@ -142,7 +143,7 @@ namespace FDG.Ai.Tactician
                     ? StayInPlace(unit)
                     : candidateAt(step);
                 valid = MovementUtilities.ValidatePaths(candidate, budgetFor,
-                    enemies, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, out _, friendlies);
+                    enemies, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, out _, friendlies, lenientCoherency: true);
                 attempts++;
             }
 
@@ -151,7 +152,7 @@ namespace FDG.Ai.Tactician
                 // Reform in place to close any casualty gaps...
                 candidate = StayInPlace(unit);
                 valid = MovementUtilities.ValidatePaths(candidate, budgetFor,
-                    enemies, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, out _, friendlies);
+                    enemies, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, out _, friendlies, lenientCoherency: true);
 
                 // ...but if even that is rejected (a unit intermingled with enemies can't re-pack without
                 // a model crossing an enemy base), hold exact positions.

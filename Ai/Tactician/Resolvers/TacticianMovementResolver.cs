@@ -44,9 +44,12 @@ namespace FDG.Ai.Tactician.Resolvers
             // resolver (which re-plans around friendlies) rather than submitting a move the stage rejects.
             var friendlies = MovementPlanner.LiveFriendlyFootprints(_tableState,
                 request.UnitDataBinding.GetValue().PlayerID, request.UnitDataBinding.GetValue().ID);
+            // #159: lenientCoherency mirrors DefinePathStage so this pre-check agrees with the authoritative
+            // one - a plan that holds an already-broken unit isn't rejected for a coherency it can't restore.
             bool valid = MovementUtilities.ValidatePaths(planned, budgetFor, enemies,
                 request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain,
-                request.IgnoresImpassibleTerrain, _tableState.Terrain.Objects.ToList(), out _, friendlies);
+                request.IgnoresImpassibleTerrain, _tableState.Terrain.Objects.ToList(), out _, friendlies,
+                lenientCoherency: true);
 
             return valid
                 ? Task.FromResult<CancellableResult<List<ModelMoveEntry>>>(new Selected<List<ModelMoveEntry>>(planned))

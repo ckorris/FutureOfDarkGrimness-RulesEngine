@@ -125,6 +125,37 @@ namespace FDG.Tests
             Assert.That(turnContext.WasDelayed, Is.False);
         }
 
+        // The whole loop under SingleTurnStage: pick a unit, back out of its pristine activation,
+        // get asked again, pick it again, Pass - the turn ends with exactly ONE unit marked activated
+        // and no wedge. This is the wiring a silent regression would break without any stage throwing.
+        [Test]
+        public async Task SingleTurn_BackOutThenRepick_FinishesWithOneActivation()
+        {
+            PlayerID player = new PlayerID(System.Guid.NewGuid());
+            DataBinding<UnitData> unit = MakeUnit(player, new Position(0f, 0f, 0f));
+            _store.Create(new ArmyData(player, new List<DataBinding<UnitData>> { unit }));
+            MakeEnemyArmy(new Position(5f, 0f, 0f));
+
+            _requester.ActionReplies.Enqueue(null);                              // 1st menu: back out
+            _requester.ActionReplies.Enqueue(ChooseActionStage.PASS_CHOICE_NAME); // 2nd menu: pass
+
+            var round = new FakeRoundContext(_ctx, player, new List<DataBinding<UnitData>> { unit });
+            var turn = new SingleTurnStage(_ctx, new NoOpLayer<ISingleRoundContext>());
+            bool finished = false;
+            turn.OnTurnFinished.Bind("turnFinished");
+            turn.OnTurnFinished.OnWillActivate += _ => finished = true;
+
+            await turn.Enter(round);
+
+            Assert.That(finished, Is.True, "the turn must end normally after the re-pick.");
+            Assert.That(_requester.UnitPickCount, Is.EqualTo(2),
+                "backing out must re-pose the unit selection.");
+            Assert.That(_requester.ActionMenuCount, Is.EqualTo(2));
+            Assert.That(_requester.MenuAllowCancel[0], Is.True, "the first (pristine) menu is cancellable.");
+            Assert.That(round.Marked, Is.EqualTo(new[] { unit }),
+                "exactly one activation is marked, and only after the re-picked turn completes.");
+        }
+
         private async Task<(UnitActionContext Context, bool BackedOut, bool ToMovement, bool Reconciled)>
             RunChooseAction(DataBinding<UnitData> unit, System.Action<UnitActionContext>? mutate = null)
         {
@@ -186,25 +217,87 @@ namespace FDG.Tests
             return _store.GetDataBinding<UnitData>(_store.Create(unit));
         }
 
-        // Scripted action-menu answers: captures the request (for AllowCancel assertions) and replies
-        // with a cancel (null), a named option, or the first valid option.
+        // Scripted answers: unit picks always take the first option; action menus reply from the
+        // ActionReplies queue when non-empty (null = cancel), else ReplyCancel/ReplyOption/first.
+        // Captures counts + each menu's AllowCancel for assertions.
         internal sealed class ActionMenuRequester : IPlayerRequestByID
         {
             public StringSelectionRequest? LastActionRequest { get; private set; }
             public bool ReplyCancel { get; set; }
             public string? ReplyOption { get; set; }
+            public Queue<string?> ActionReplies { get; } = new Queue<string?>();
+            public int UnitPickCount { get; private set; }
+            public int ActionMenuCount { get; private set; }
+            public List<bool> MenuAllowCancel { get; } = new List<bool>();
 
             public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
                 where TRequest : IStageTaskRequest<TReply>
             {
+                if (request is ChooseUnitToActivateRequest pick)
+                {
+                    UnitPickCount++;
+                    return Task.FromResult((TReply)(object)pick.ValidOptions[0].Option);
+                }
                 if (request is StringSelectionRequest menu)
                 {
                     LastActionRequest = menu;
-                    string? reply = ReplyCancel ? null : (ReplyOption ?? menu.ValidOptions[0]);
+                    ActionMenuCount++;
+                    MenuAllowCancel.Add(menu.AllowCancel);
+                    string? reply = ActionReplies.Count > 0
+                        ? ActionReplies.Dequeue()
+                        : ReplyCancel ? null : (ReplyOption ?? menu.ValidOptions[0]);
                     return Task.FromResult((TReply)(object)reply!);
                 }
                 throw new System.InvalidOperationException("Unexpected request type: " + request.GetType());
             }
+        }
+
+        // Just enough ISingleRoundContext for SingleTurnStage: one player, one pool. Records what gets
+        // marked activated. Members SingleTurnStage never touches throw.
+        private sealed class FakeRoundContext : ISingleRoundContext
+        {
+            private readonly IGameContext _gameContext;
+            private readonly PlayerID _player;
+            private readonly Dictionary<PlayerID, List<DataBinding<UnitData>>> _pools;
+
+            public List<DataBinding<UnitData>> Marked { get; } = new List<DataBinding<UnitData>>();
+
+            public FakeRoundContext(IGameContext gameContext, PlayerID player, List<DataBinding<UnitData>> units)
+            {
+                _gameContext = gameContext;
+                _player = player;
+                _pools = new Dictionary<PlayerID, List<DataBinding<UnitData>>> { [player] = units };
+            }
+
+            public IGameContext GameContext => _gameContext;
+            public int RoundCount => 1;
+            public IReadOnlyDictionary<PlayerID, List<DataBinding<UnitData>>> UnactivatedUnits => _pools;
+            public IReadOnlyList<ITeam> TeamActivateOrder => throw new System.NotSupportedException();
+            public FDG.Utilities.TeamPlayerAlternationCursor Cursor => throw new System.NotSupportedException();
+            public int CurrentActivatingTeamIndex { get => 0; set { } }
+            public Dictionary<ITeam, int> CurrentActivePlayerIndexPerTeam => throw new System.NotSupportedException();
+            public IReadOnlyList<ITeam> CurrentRoundTeamFinishOrder => throw new System.NotSupportedException();
+            public PlayerID GetCurrentPlayerID() => _player;
+
+            public void MarkUnitAsActivated(DataBinding<UnitData> activatedUnit)
+            {
+                Marked.Add(activatedUnit);
+                _pools[_player].Remove(activatedUnit);
+            }
+
+            public void ReinstateUnitForActivation(DataBinding<UnitData> unit) { }
+            public void CleanDeadUnitsFromUnactivated() { }
+
+            public bool TryAdvanceToNextPlayer(out ITeam? nextTeam, out PlayerID? nextPlayerID)
+            {
+                nextTeam = null;
+                nextPlayerID = null;
+                return false;
+            }
+
+            public bool DoesAnyTeamHaveRemainingActivations() => false;
+            public bool DoesTeamHaveRemainingActivations(ITeam team) => false;
+            public bool DoesPlayerHaveRemainingActivations(PlayerID playerID) => false;
         }
     }
 }

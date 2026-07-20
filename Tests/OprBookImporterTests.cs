@@ -225,12 +225,28 @@ public class OprBookImporterTests
         Assert.That(Base("f").HeightInches, Is.GreaterThan(Base("f").WidthInches),
             "a rectangular base must be longer along its facing axis than it is wide");
 
-        // Both empty, or no bases field at all → the default base (28mm circle).
+        // Both empty, or no bases field at all → #225 defect B ESTIMATES a base from the unit's rules
+        // rather than silently falling through to the 28mm circle, which used to put tanks and titans on
+        // an infantry dot. These fixtures carry no rules, so they estimate as the smallest vehicle.
+        // (DefaultBaseEstimatorTests covers the estimate itself; this pins that the importer routes to it.)
         foreach (string id in new[] { "d", "e" })
         {
-            Assert.That(Base(id).Shape, Is.EqualTo(EBaseShapeKind.Circle));
-            Assert.That(Base(id).DiameterInches, Is.EqualTo(BaseShapeDefaults.CircleDiameterInches).Within(0.001f));
+            Assert.That(DefaultBaseEstimator.IsUnsizedDefault(Base(id)), Is.False,
+                "an undeclared base must be estimated, never left as the 28mm placeholder");
+            Assert.That(Base(id).Shape, Is.EqualTo(EBaseShapeKind.Rectangle));
+            Assert.That(Base(id).HeightInches, Is.EqualTo(90f / MmPerInch).Within(0.001f));
+            Assert.That(Base(id).WidthInches, Is.EqualTo(52f / MmPerInch).Within(0.001f));
         }
+    }
+
+    [Test]
+    public void Import_WarnsForEveryEstimatedBase_SoGuessesAreNeverSilent()
+    {
+        var warnings = new List<string>();
+        OprBookImporter.Import(BasesJson, "TestSource", "CC-BY-SA 4.0", warnings.Add);
+
+        // Units "d" and "e" declare no base; "a"/"b"/"c" all resolve from real specs.
+        Assert.That(warnings.FindAll(w => w.Contains("no base declared")), Has.Count.EqualTo(2));
     }
 
     // The real corpus shapes verbatim (High Elf Fleets / Alien Hives v3.5.3), plus one unparseable.

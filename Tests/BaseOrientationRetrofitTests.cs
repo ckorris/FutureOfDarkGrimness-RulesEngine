@@ -86,6 +86,57 @@ public class BaseOrientationRetrofitTests
             "the embedded book snapshot must be migrated too");
     }
 
+    // --- #225 defect B: the unsized 28mm default -------------------------------------------------
+
+    [Test]
+    public void ApplyToBook_ReplacesTheUnsized28mmDefault_WithAnEstimate()
+    {
+        // A Tough(24) titan that OPR declared no base for: it used to collide as a 28mm dot.
+        var book = new BookFile { Name = "B" };
+        var titan = new RosterUnit { Name = "Dread Titan", Base = new BaseFileEntry() };
+        titan.Rules.Add(new SpecialRuleEntry_CoreNumeric("Tough", 24));
+        book.Units.Add(titan);
+
+        var estimates = new List<string>();
+        Assert.That(BaseOrientationRetrofit.ApplyToBook(book, estimates), Is.True);
+
+        Assert.That(titan.Base.Shape, Is.EqualTo(EBaseShapeKind.Rectangle));
+        Assert.That(titan.Base.HeightInches, Is.EqualTo(175f / 25.4f).Within(0.001f));
+        Assert.That(estimates, Has.Count.EqualTo(1), "an invented base must be reported, never silent");
+        Assert.That(estimates[0], Does.Contain("Dread Titan"));
+    }
+
+    [Test]
+    public void ApplyToBook_BothDefectsTogether_IsStillIdempotent()
+    {
+        // One unsized default + one mis-oriented rectangle in the same book: after one pass both are
+        // correct, and a second pass must change nothing (an estimate must not itself look unsized).
+        var book = new BookFile { Name = "B" };
+        var tank = new RosterUnit { Name = "Battle Tank", Base = new BaseFileEntry() };
+        tank.Rules.Add(new SpecialRuleEntry_CoreNumeric("Tough", 12));
+        book.Units.Add(tank);
+        book.Units.Add(BookRect("Bikers", widthIn: 60f / 25.4f, heightIn: 35f / 25.4f));
+
+        Assert.That(BaseOrientationRetrofit.ApplyToBook(book), Is.True, "first run fixes both");
+        Assert.That(BaseOrientationRetrofit.ApplyToBook(book), Is.False, "second run must be a no-op");
+
+        Assert.That(tank.Base.HeightInches, Is.EqualTo(120f / 25.4f).Within(0.001f));
+        Assert.That(book.Units[1].Base.HeightInches, Is.EqualTo(60f / 25.4f).Within(0.001f));
+    }
+
+    [Test]
+    public void ApplyToArmy_EstimatesFromTheCompiledUnitsOwnRules()
+    {
+        var army = new ArmyListFile { Name = "A" };
+        var apc = new UnitFileEntry { Name = "APC", Base = new BaseFileEntry() };
+        apc.SpecialRules.Add(new SpecialRuleEntry_CoreNumeric("Tough", 6));
+        army.Units.Add(apc);
+
+        Assert.That(BaseOrientationRetrofit.ApplyToArmy(army), Is.True);
+        Assert.That(apc.Base.Shape, Is.EqualTo(EBaseShapeKind.Rectangle));
+        Assert.That(apc.Base.HeightInches, Is.EqualTo(90f / 25.4f).Within(0.001f));
+    }
+
     [Test]
     public void ApplyToArmy_HandAuthoredArmyWithNoBookSnapshot_StillMigrates()
     {

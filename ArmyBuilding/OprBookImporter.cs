@@ -115,7 +115,7 @@ namespace FDG.ArmyBuilding
             WeaponEffectAssigner.ApplyToBook(book);
 
             foreach (OprUnit unit in opr.Units ?? new())
-                book.Units.Add(MapUnit(unit, packages));
+                book.Units.Add(MapUnit(unit, packages, warn));
 
             DisambiguateAmbiguousRuleNames(book);
 
@@ -217,8 +217,12 @@ namespace FDG.ArmyBuilding
             return folded;
         }
 
-        private static RosterUnit MapUnit(OprUnit unit, IReadOnlyDictionary<string, OprPackage> packages)
+        private static RosterUnit MapUnit(OprUnit unit, IReadOnlyDictionary<string, OprPackage> packages,
+            Action<string>? warn = null)
         {
+            // Mapped up front: #225 defect B estimates a missing base from the unit's rules (Hero + Tough).
+            List<SpecialRuleEntry> rules = (unit.Rules ?? new()).Select(MapRule).ToList();
+
             var roster = new RosterUnit
             {
                 Id = unit.Id ?? Guid.NewGuid().ToString("N")[..8],
@@ -229,9 +233,9 @@ namespace FDG.ArmyBuilding
                 MinModels = Math.Max(1, unit.Size),
                 MaxModels = Math.Max(1, unit.Size),
                 BasePointCost = unit.Cost,
-                Base = MapBase(unit.Bases),
+                Base = MapBase(unit.Bases, rules, unit.Name, warn),
                 Weapons = (unit.Weapons ?? new()).Select(MapWeapon).ToList(),
-                Rules = (unit.Rules ?? new()).Select(MapRule).ToList(),
+                Rules = rules,
                 Items = (unit.Items ?? new()).Select(MapItem).ToList(),
             };
 
@@ -671,16 +675,27 @@ namespace FDG.ArmyBuilding
         // OPR bases come as {round, square} in millimetres — "25", "120x92" (an oval), "none", or "". Prefer
         // the round basing (GDF standard): a single number → Circle; "LxW" → our Rectangle footprint (the
         // engine has no oval; #149's rectangle is the dimension-faithful stand-in). Fall back to the square
-        // spec, else keep the default 28mm circle.
+        // spec, else ESTIMATE one from the unit's rules (#225 defect B).
         //
         // #225: OPR writes the pair LENGTH-first ("60x35" is a 60mm-long, 35mm-wide bike base), while our
         // RectangleBase runs its local +Z (HeightInches) along the facing and +X (WidthInches) across the
         // frontage. So length maps to Height, width to Width — mapping them positionally faced every
         // rectangular model along its short axis, inflating frontage for LoS/overlap/coherency.
-        internal static BaseFileEntry MapBase(OprBases? bases) =>
-            TryParseBase(bases?.Round, preferCircle: true)
-            ?? TryParseBase(bases?.Square, preferCircle: false)
-            ?? new BaseFileEntry();
+        internal static BaseFileEntry MapBase(OprBases? bases, IEnumerable<SpecialRuleEntry>? rules = null,
+            string? unitName = null, Action<string>? warn = null)
+        {
+            BaseFileEntry? declared = TryParseBase(bases?.Round, preferCircle: true)
+                ?? TryParseBase(bases?.Square, preferCircle: false);
+            if (declared != null) return declared;
+
+            // #225 defect B: OPR emits "none" for vehicles/superheavies, so there is nothing to import.
+            // Estimating beats the old silent 28mm-circle fallback, which put every titan and tank on an
+            // infantry dot — but it IS an estimate, so say so rather than letting it pass unnoticed.
+            BaseFileEntry estimated = DefaultBaseEstimator.Estimate(
+                rules ?? Enumerable.Empty<SpecialRuleEntry>(), out string describe);
+            warn?.Invoke($"no base declared for '{unitName ?? "unit"}' - estimated {describe}");
+            return estimated;
+        }
 
         private static BaseFileEntry? TryParseBase(string? spec, bool preferCircle)
         {

@@ -81,6 +81,17 @@ namespace FDG.Stages
             IUnit caster = context.ActivatingUnit.GetValue();
             PlayerID player = context.ActivatingPlayer();
 
+            // #234 — mirror of ChooseActionStage.GetCanCast's HasAttacked gate: Caster(X) is "at any point
+            // before attacking" (GF v3.5.1). ChooseActionStage won't offer Cast once the unit has attacked,
+            // but this stage is reachable directly, so the rule is enforced here too rather than trusted
+            // to the menu.
+            if (context.HasAttacked)
+            {
+                GameContext.Log($"{caster.Name} has already attacked and can no longer cast this activation.");
+                await OnFinished.Activate(context);
+                return;
+            }
+
             // Only castable spells are selectable: affordable AND with at least one legal target. Gating on
             // castability here (and the same way in ChooseActionStage.GetCanCast) is what keeps a no-target
             // cast from looping forever under a deterministic resolver — the same reason

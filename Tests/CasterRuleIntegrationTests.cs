@@ -164,6 +164,70 @@ namespace FDG.Tests
             Assert.That(routed, Is.True, "a caster with a castable spell is offered Cast and routes to the cast stage");
         }
 
+        // #234 — Caster(X) is "at any point before attacking" (GF v3.5.1), so once the unit has shot or
+        // fought, Cast is no longer a valid option. HasAttacked is set by both ShootStage and MeleeStage,
+        // so this one gate covers the charge-then-melee case the item was filed for and the shooting case.
+        [Test]
+        public async Task ChooseAction_AfterAttacking_DoesNotOfferCast()
+        {
+            var requester = new RecordingActionRequester("Pass");
+            var ctx = new TriggeredMoveTestContext(_store, requester);
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 3,
+                new[] { Spell("Zap", threshold: 1, ETargetAffinity.Friend) }, new Position(10f, 10f));
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            unitCtx.RegisterAttackedFinished(); // Shot or fought this activation.
+
+            var stage = new ChooseActionStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.ToReconcileEndOfActivation.Bind("Pass");
+            await stage.Enter(unitCtx);
+
+            Assert.That(requester.OfferedOptions, Does.Not.Contain("Cast"),
+                "once the unit has attacked, the casting window is closed for the rest of the activation.");
+        }
+
+        // #234 — the other half of the rule: moving does NOT close the casting window ("at any point before
+        // attacking"), so a caster that has advanced can still cast. Pins the gate to attacking specifically.
+        [Test]
+        public async Task ChooseAction_AfterMoving_StillOffersCast()
+        {
+            var requester = new RecordingActionRequester("Pass");
+            var ctx = new TriggeredMoveTestContext(_store, requester);
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 3,
+                new[] { Spell("Zap", threshold: 1, ETargetAffinity.Friend) }, new Position(10f, 10f));
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            unitCtx.RegisterMoveFinished(3f);
+
+            var stage = new ChooseActionStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.ToReconcileEndOfActivation.Bind("Pass");
+            await stage.Enter(unitCtx);
+
+            Assert.That(requester.OfferedOptions, Contains.Item("Cast"),
+                "casting brackets the move — having moved does not close the casting window.");
+        }
+
+        // #234 — CastSpellStage is reachable directly, so it enforces the same gate rather than trusting the
+        // menu: entering it after attacking spends nothing and loops straight back.
+        [Test]
+        public async Task CastSpellStage_AfterAttacking_SpendsNothingAndReturns()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester());
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 3,
+                new[] { Spell("Zap", threshold: 2, ETargetAffinity.Foe) }, new Position(10f, 10f));
+            MakeEnemyUnit(new PlayerID(System.Guid.NewGuid()), new Position(12f, 10f));
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            unitCtx.RegisterAttackedFinished();
+
+            bool finished = false;
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            stage.OnFinished.OnWillActivate += _ => finished = true;
+            await stage.Enter(unitCtx);
+
+            Assert.That(caster.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(3),
+                "a cast blocked by the #234 gate spends no tokens");
+            Assert.That(finished, Is.True, "the blocked cast loops back to Choose Action");
+        }
+
         // #033 Slice 2 — casting spends the spell's token cost (on the attempt) and loops back to Choose
         // Action without consuming the move/attack (layered). TriggeredMoveTestContext's FixedDiceRoller(4)
         // means the 4+ roll passes; the token spend is identical on a failed cast.

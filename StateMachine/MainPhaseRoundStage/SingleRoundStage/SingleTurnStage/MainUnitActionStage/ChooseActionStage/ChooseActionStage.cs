@@ -83,9 +83,9 @@ namespace FDG.Stages
             bool canPass = GetCanPass(GameContext, context, out string cantPassReason);
 
             // #033 — a unit with Caster(X) gets a "Cast" action whenever its army has an affordable spell.
-            // Like custom actions, casting is layered (it doesn't end the turn), so it's offered regardless
-            // of whether the unit has moved/attacked. Only shown for casters (no point graying it out for
-            // every non-caster).
+            // Like custom actions, casting is layered (it doesn't end the turn), so moving does not consume
+            // it — but #234 gates it on HasAttacked, per Caster(X)'s "at any point before attacking"
+            // (GF v3.5.1). Only shown for casters (no point graying it out for every non-caster).
             bool isCaster = SpellTargeting.IsCaster(context.ActivatingUnit.GetValue());
             string cantCastReason = null;
             bool canCast = isCaster && GetCanCast(context, out cantCastReason);
@@ -452,6 +452,15 @@ namespace FDG.Stages
         private bool GetCanCast(IUnitActionContext context, out string reasonIfCant)
         {
             IUnit unit = context.ActivatingUnit.GetValue();
+
+            // #234 — Caster(X) is "at any point before attacking" (GF v3.5.1), so shooting or melee closes
+            // the casting window for the rest of the activation. HasAttacked covers both (ShootStage and
+            // MeleeStage are its only setters). Moving does not close it — casting brackets the move.
+            if (context.HasAttacked)
+            {
+                reasonIfCant = "Has already attacked.";
+                return false;
+            }
 
             if (TransportUtilities.IsEmbarked(unit))
             {

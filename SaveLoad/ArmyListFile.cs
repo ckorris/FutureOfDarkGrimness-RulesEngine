@@ -51,12 +51,20 @@ namespace FDG.SaveLoad
         /// </summary>
         public List<SpellDefinition> Spells { get; set; } = new List<SpellDefinition>();
 
+        /// <summary>Points that belong to the army but cannot be attributed to any single unit (#241/#219).
+        /// An Army Forge share list reports per-unit costs as BASE costs and its true total separately in
+        /// `listPoints`; the difference is upgrade points OPR prices internally and never publishes per
+        /// option, so it is unattributable by construction. Carried here so an imported army's
+        /// <see cref="TotalPoints"/> - and therefore force-org validation - matches Army Forge, instead of
+        /// silently importing light. 0 for hand-authored and Forge-compiled armies.</summary>
+        public int UnattributedPoints { get; set; }
+
         [JsonIgnore]
         public int TotalPoints
         {
             get
             {
-                int total = 0;
+                int total = UnattributedPoints;
                 foreach (UnitFileEntry unit in Units)
                 {
                     total += unit.PointCost;

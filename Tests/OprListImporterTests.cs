@@ -78,6 +78,66 @@ public class OprListImporterTests
 
     private static OprListImportResult Import() => OprListImporter.Import(ListJson, Books);
 
+    // Regression (2026-07-19, #241). Per-unit `cost` is a BASE cost and `listPoints` is the only resolved
+    // total, so summing the units imported every upgraded list LIGHT by exactly its upgrade points (150 on
+    // the real High Elf Fleets list that surfaced this). The gap is unattributable by construction - OPR
+    // publishes no per-option price for the upgrades that make it up - so it is parked on the army whole
+    // rather than split on a guess. 490 base + a 60-pt gap against a 500-pt limit: light it reads legal,
+    // correct it does not.
+    private const string GapListJson = """
+    {
+      "id": "GAPLIST", "name": "Upgraded", "gameSystem": "gf", "pointsLimit": 500,
+      "campaignMode": false, "narrativeMode": false, "listPoints": 550,
+      "units": [
+        { "id": "hero1", "cost": 145, "name": "Champion", "size": 1, "quality": 3, "defense": 3,
+          "rules": [], "weapons": [], "armyId": "bookA", "combined": false,
+          "selectionId": "SelHero", "selectedUpgrades": [], "loadout": [] },
+        { "id": "grunts", "cost": 345, "name": "Grunts", "size": 5, "quality": 4, "defense": 4,
+          "rules": [], "weapons": [], "armyId": "bookA", "combined": false,
+          "selectionId": "SelGrunts", "selectedUpgrades": [], "loadout": [] }
+      ]
+    }
+    """;
+
+    [Test]
+    public void Import_TotalsFromListPoints_ParkingUpgradePointsItCannotAttribute()
+    {
+        ArmyListFile army = OprListImporter.Import(GapListJson, Books).Army;
+
+        Assert.That(army.Units.Sum(u => u.PointCost), Is.EqualTo(490), "BASE costs: 145 + 345");
+        Assert.That(army.UnattributedPoints, Is.EqualTo(60), "550 listPoints - 490 attributed");
+        Assert.That(army.TotalPoints, Is.EqualTo(550), "the army must total what Army Forge says it totals");
+    }
+
+    [Test]
+    public void Import_WarnsWhenUpgradePointsCannotBeAttributed()
+    {
+        Assert.That(OprListImporter.Import(GapListJson, Books).Warnings,
+            Has.Some.Contains("cannot be shown against the unit"));
+    }
+
+    // Force-org validation reads TotalPoints; importing light let an over-limit list pass as legal.
+    [Test]
+    public void ImportedArmy_OverPointsLimit_IsCaughtByForceOrgValidation()
+    {
+        ArmyListFile army = OprListImporter.Import(GapListJson, Books).Army;
+
+        Assert.That(army.Units.Sum(u => u.PointCost), Is.LessThan(army.PointsLimit),
+            "base costs alone are UNDER the limit - which is exactly how the bug hid");
+        Assert.That(ForceOrgValidator.Validate(army), Has.Some.Contains("550 / 500"));
+    }
+
+    // A list whose units already sum to its listPoints (no priced upgrades) must park nothing.
+    [Test]
+    public void Import_ParksNothing_WhenUnitCostsAlreadyMatchListPoints()
+    {
+        ArmyListFile army = Import().Army;
+
+        Assert.That(army.Units.Sum(u => u.PointCost), Is.EqualTo(515));
+        Assert.That(army.UnattributedPoints, Is.Zero);
+        Assert.That(army.TotalPoints, Is.EqualTo(515));
+    }
+
     [Test]
     public void Peek_ExtractsNameSystemAndArmyIds()
     {

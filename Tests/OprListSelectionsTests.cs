@@ -45,17 +45,22 @@ public class OprListSelectionsTests
           "selectionId": "{{selectionId}}", "selectedUpgrades": {{selectedUpgrades}}, "loadout": [] }
         """;
 
-    private static string ListJson(params string[] units) => $$"""
+    // NOTE (2026-07-19): a share list's per-unit `cost` is the unit's BASE cost and `listPoints` is the
+    // only resolved total - verified against OPR's own book API, where the same per-unit figure appears as
+    // the catalog price. These fixtures originally encoded `cost` as resolved (base + upgrades), which is
+    // why the reconciliation was comparing incomparable numbers. Pass base costs here.
+    private static string ListJson(int? listPoints, params string[] units) => $$"""
         { "name": "Recon Test", "gameSystem": "gf", "pointsLimit": 500,
+          {{(listPoints is null ? "" : $"\"listPoints\": {listPoints},")}}
           "units": [ {{string.Join(",\n", units)}} ] }
         """;
 
     [Test]
     public void Reconstruct_RebuildsUnits_Links_AndChoices_WithMatchingPoints()
     {
-        string json = ListJson(
+        string json = ListJson(320,
             UnitJson("hero1", "Champion", 145, "SelHero", joinToUnit: "SelGrunts"),
-            UnitJson("grunts", "Grunts", 175, "SelGrunts",
+            UnitJson("grunts", "Grunts", 160, "SelGrunts",
                 selectedUpgrades: """[ { "upgrade": { "uid": "S1" }, "option": { "uid": "O1", "label": "Banner" } } ]"""));
 
         OprForgeSessionResult result = OprListImporter.ReconstructSelections(json, MakeBook());
@@ -72,17 +77,19 @@ public class OprListSelectionsTests
         Assert.That(grunts.Choices[0].SectionId, Is.EqualTo("S1"));
         Assert.That(grunts.Choices[0].OptionId, Is.EqualTo("O1"));
 
-        // 145 + 160 + 15 = 320 on both sides: the reconciliation is clean.
+        // Base costs agree unit for unit (145 vs 145, 160 vs 160), and our compiled 145+160+15 lands on
+        // Army Forge's own listPoints of 320: the reconciliation is clean on both axes.
         Assert.That(result.UnitPointsDeltas, Is.Empty);
         Assert.That(result.OurTotalPoints, Is.EqualTo(320));
         Assert.That(result.TheirTotalPoints, Is.EqualTo(320));
+        Assert.That(result.TheirTotalIsAuthoritative, Is.True);
         Assert.That(result.ExcludedUnits, Is.Empty);
     }
 
     [Test]
     public void Reconstruct_ExcludesUnknownUnit_AndCleansLinksIntoIt()
     {
-        string json = ListJson(
+        string json = ListJson(245,
             UnitJson("nope", "Ghost Walker", 100, "SelGhost"),
             UnitJson("hero1", "Champion", 145, "SelHero", joinToUnit: "SelGhost"));
 
@@ -94,16 +101,18 @@ public class OprListSelectionsTests
         BuilderUnit hero = result.Selections.Units.Single();
         Assert.That(hero.JoinsUnitId, Is.Null, "a join into an excluded unit must not dangle");
 
-        // The excluded unit is out of BOTH totals, so the comparison stays fair.
-        Assert.That(result.TheirTotalPoints, Is.EqualTo(145));
+        // Army Forge's total still counts the excluded unit and we cannot back its share out exactly, so
+        // the two totals are NOT comparable here - the gap must be disclosed, not presented as a delta.
         Assert.That(result.OurTotalPoints, Is.EqualTo(145));
+        Assert.That(result.TheirTotalPoints, Is.EqualTo(245));
+        Assert.That(result.Warnings, Has.Some.Contains("not directly comparable"));
     }
 
     [Test]
     public void Reconstruct_DropsUnmatchableUpgrade_AndReportsPointsDelta()
     {
-        string json = ListJson(
-            UnitJson("grunts", "Grunts", 175, "SelGrunts",
+        string json = ListJson(175,
+            UnitJson("grunts", "Grunts", 160, "SelGrunts",
                 selectedUpgrades: """[ { "option": { "uid": "ZZZ", "label": "Void Cannon" } } ]"""));
 
         OprForgeSessionResult result = OprListImporter.ReconstructSelections(json, MakeBook());
@@ -111,8 +120,10 @@ public class OprListSelectionsTests
         Assert.That(result.Selections.Units.Single().Choices, Is.Empty);
         Assert.That(result.Warnings, Has.Some.Contains("Void Cannon"));
 
-        // Army Forge priced the unit with the upgrade (175); without it we compile 160 - disclosed, not hidden.
-        Assert.That(result.UnitPointsDeltas, Is.EqualTo(new[] { ("Grunts", 160, 175) }));
+        // The BASE costs agree (160 vs 160) - a dropped upgrade cannot show up as a per-unit delta, because
+        // Army Forge never publishes a resolved per-unit cost to subtract from. The 15-point gap surfaces
+        // in the totals instead, alongside the dropped-upgrade warning.
+        Assert.That(result.UnitPointsDeltas, Is.Empty);
         Assert.That(result.OurTotalPoints, Is.EqualTo(160));
         Assert.That(result.TheirTotalPoints, Is.EqualTo(175));
     }
@@ -120,8 +131,8 @@ public class OprListSelectionsTests
     [Test]
     public void Reconstruct_MatchesOptionByLabel_WhenIdsAreAbsent()
     {
-        string json = ListJson(
-            UnitJson("grunts", "Grunts", 175, "SelGrunts",
+        string json = ListJson(175,
+            UnitJson("grunts", "Grunts", 160, "SelGrunts",
                 selectedUpgrades: """[ { "option": { "label": "banner" } } ]"""));
 
         OprForgeSessionResult result = OprListImporter.ReconstructSelections(json, MakeBook());
@@ -130,10 +141,58 @@ public class OprListSelectionsTests
         Assert.That(result.UnitPointsDeltas, Is.Empty);
     }
 
+    // Regression (2026-07-19): the fix that started this - an unpriced upgrade must not be reported as our
+    // compiler getting the price wrong. OPR omits `cost` on options it prices internally; we count them as
+    // free because no endpoint publishes the number, and we SAY so.
+    [Test]
+    public void Reconstruct_DisclosesUnpricedUpgrades_RatherThanBlamingOurCompiler()
+    {
+        BookFile book = MakeBook();
+        UpgradeOption banner = book.Units.Single(u => u.Id == "grunts").Sections.Single().Options.Single();
+        banner.Cost = 0;
+        banner.CostUnpriced = true;   // as OprBookImporter marks an option whose `cost` key is absent
+
+        string json = ListJson(175,
+            UnitJson("grunts", "Grunts", 160, "SelGrunts",
+                selectedUpgrades: """[ { "upgrade": { "uid": "S1" }, "option": { "uid": "O1", "label": "Banner" } } ]"""));
+
+        OprForgeSessionResult result = OprListImporter.ReconstructSelections(json, book);
+
+        Assert.That(result.UnpricedUpgradeCount, Is.EqualTo(1));
+        Assert.That(result.Warnings, Has.Some.Contains("no published Army Forge price"));
+        // Base costs still agree; the 15-point shortfall is OPR's unpublished price, not our arithmetic.
+        Assert.That(result.UnitPointsDeltas, Is.Empty);
+        Assert.That(result.OurTotalPoints, Is.EqualTo(160));
+        Assert.That(result.TheirTotalPoints, Is.EqualTo(175));
+    }
+
+    // A base-cost disagreement is the one per-unit comparison that IS valid, and it means the bundled book
+    // has drifted from OPR's catalog - the check must survive the base-vs-base correction.
+    [Test]
+    public void Reconstruct_ReportsBaseCostDrift_BetweenBundledBookAndShareList()
+    {
+        string json = ListJson(150, UnitJson("grunts", "Grunts", 150, "SelGrunts"));
+
+        OprForgeSessionResult result = OprListImporter.ReconstructSelections(json, MakeBook());
+
+        Assert.That(result.UnitPointsDeltas, Is.EqualTo(new[] { ("Grunts", 160, 150) }));
+    }
+
+    [Test]
+    public void Reconstruct_FallsBackToBaseSum_WhenListPointsIsAbsent()
+    {
+        string json = ListJson(null, UnitJson("hero1", "Champion", 145, "SelHero"));
+
+        OprForgeSessionResult result = OprListImporter.ReconstructSelections(json, MakeBook());
+
+        Assert.That(result.TheirTotalPoints, Is.EqualTo(145));
+        Assert.That(result.TheirTotalIsAuthoritative, Is.False);
+    }
+
     [Test]
     public void Reconstruct_LinksCombinedPair_AndCompileMergesThem()
     {
-        string json = ListJson(
+        string json = ListJson(320,
             UnitJson("grunts", "Grunts", 160, "SelA", combined: true),
             UnitJson("grunts", "Grunts", 160, "SelB", joinToUnit: "SelA", combined: true));
 

@@ -10,9 +10,17 @@ namespace FDG.ArmyBuilding
 {
     // #241 — OnePageRules Army Forge SHARE-LIST importer: the resolved list JSON a share link serves
     // (/api/tts?id=<shareId>) → a plain, playable ArmyListFile. The catalog counterpart is OprBookImporter
-    // (/api/army-books/<uid> → BookFile); this consumes the OTHER shape — per-unit final stats, costs and
-    // `loadout` as Army Forge itself computed them — so upgrade math is OPR's verbatim and never re-derived
-    // through ListCompiler (which keeps #218's Replace-All cost bug out of imports by construction).
+    // (/api/army-books/<uid> → BookFile); this consumes the OTHER shape — per-unit final stats and `loadout`
+    // as Army Forge itself computed them — so gear is OPR's verbatim and never re-derived through
+    // ListCompiler (which keeps #218's Replace-All cost bug out of imports by construction).
+    //
+    // POINTS, precisely (corrected 2026-07-19 — v1/v2 assumed per-unit costs were resolved, and imported
+    // lists came in LIGHT by every upgrade point): a share list's per-unit `cost` is the unit's BASE cost.
+    // The list's true total lives only in the top-level `listPoints`. The gap between them is upgrade
+    // points, and it is NOT recoverable per unit: OPR omits the `cost` key entirely on options it prices in
+    // its internal algorithm (see UpgradeOption.CostUnpriced), on both the list and book endpoints. So the
+    // import trusts `listPoints` for the total and parks the unattributable remainder in
+    // ArmyListFile.UnattributedPoints rather than inventing a per-unit split.
     //
     // The list JSON carries NO version field, so the version gate keys off each referenced army book's
     // CURRENT versionString (the caller fetches /api/army-books/{armyId} and passes the JSON in): a book
@@ -98,6 +106,31 @@ namespace FDG.ArmyBuilding
                 if (army.Units.Any(u => u != entry && u.Id == entry.JoinsUnitId)) continue;
                 warn($"'{entry.Name}' joins a unit that is not in the list (id '{entry.JoinsUnitId}') - it will deploy on its own.");
                 entry.JoinsUnitId = null;
+            }
+
+            // Per-unit costs are BASE costs; listPoints is the only resolved total. Park the difference so
+            // TotalPoints (and force-org validation with it) agrees with Army Forge instead of importing
+            // light by every upgrade point.
+            if (list.ListPoints is int authoritative && authoritative > 0)
+            {
+                int attributed = army.Units.Sum(u => u.PointCost);
+                army.UnattributedPoints = authoritative - attributed;
+                if (army.UnattributedPoints > 0)
+                {
+                    warn($"{army.UnattributedPoints} of this list's {authoritative} pts are upgrade points " +
+                         "Army Forge does not publish per unit - they are counted in the army total but " +
+                         "cannot be shown against the unit that earned them.");
+                }
+                else if (army.UnattributedPoints < 0)
+                {
+                    warn($"Army Forge reports {authoritative} pts but the units sum to {attributed} pts - " +
+                         "importing at the Army Forge total; per-unit costs may be unreliable.");
+                }
+            }
+            else
+            {
+                warn("This list carries no 'listPoints' total - the army total is a sum of BASE unit costs " +
+                     "and will read low if any unit has upgrades.");
             }
 
             if (army.Units.Count == 0)
@@ -370,6 +403,9 @@ namespace FDG.ArmyBuilding
             public string? Name { get; set; }
             public string? GameSystem { get; set; }
             public int? PointsLimit { get; set; }
+            /// <summary>Army Forge's own authoritative total for the list. The ONLY resolved points figure
+            /// in the payload - per-unit `cost` is a base cost (#241, 2026-07-19).</summary>
+            public int? ListPoints { get; set; }
             public bool CampaignMode { get; set; }
             public bool NarrativeMode { get; set; }
             public List<OprListUnit>? Units { get; set; }
@@ -382,6 +418,9 @@ namespace FDG.ArmyBuilding
             public string? Name { get; set; }
             public string? CustomName { get; set; }
             public int Size { get; set; }
+            /// <summary>The unit's BASE cost, NOT its resolved cost with upgrades - verified 2026-07-19
+            /// against OPR's own book API, where the same figure appears as the unit's catalog price.
+            /// Never treat this as a final per-unit total (see ArmyListFile.UnattributedPoints).</summary>
             public int Cost { get; set; }
             public int Quality { get; set; }
             public int Defense { get; set; }

@@ -163,8 +163,16 @@ namespace FDG.ArmyBuilding
         public string Id { get; set; } = string.Empty;
         public string Label { get; set; } = string.Empty;
 
-        /// <summary>Points added per application.</summary>
+        /// <summary>Points added per application. 0 when <see cref="CostUnpriced"/> — see that flag before
+        /// treating a 0 here as "free".</summary>
         public int Cost { get; set; }
+
+        /// <summary>OPR published no price for this option (#219): the source book omits the `cost` key
+        /// entirely, because Army Forge derives the number in its own points algorithm at list-build time
+        /// rather than storing it. Distinct from a genuine free option, which OPR writes as an explicit 0.
+        /// We cannot recover the real price from any OPR endpoint, so <see cref="Cost"/> stays 0 and
+        /// consumers disclose the gap instead of asserting a total they can't stand behind.</summary>
+        public bool CostUnpriced { get; set; }
 
         public List<WeaponFileEntry> WeaponsGained { get; set; } = new();
         public List<SpecialRuleEntry> RulesGained { get; set; } = new();

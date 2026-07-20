@@ -422,6 +422,47 @@ public class OprBookImporterTests
             "absent select keeps the one-pick default");
     }
 
+    // #219 (2026-07-19): OPR writes an explicit "cost": 0 for a genuinely free option, and OMITS the key
+    // entirely on options it prices inside its own points algorithm rather than publishing a number. A
+    // non-nullable int collapsed both onto 0, so unpriced upgrades imported as free and every list carrying
+    // one silently came in light. Verified against the real High Elf Fleets book, which mixes both shapes.
+    private const string CostShapeJson = """
+    {
+      "name": "Costs", "versionString": "1",
+      "units": [ { "id": "u1", "name": "Squad", "size": 5, "cost": 100, "quality": 4, "defense": 4,
+                   "weapons": [], "rules": [], "upgrades": ["P1"] } ],
+      "upgradePackages": [
+        { "uid": "P1", "sections": [
+          { "id":"s1", "label":"Upgrade with", "variant":"upgrade",
+            "options":[
+              { "id":"priced",   "label":"Priced",   "cost":15, "gains":[{"type":"ArmyBookRule","name":"Fast"}] },
+              { "id":"free",     "label":"Free",     "cost":0,  "gains":[{"type":"ArmyBookRule","name":"Scout"}] },
+              { "id":"unpriced", "label":"Unpriced",            "gains":[{"type":"ArmyBookRule","name":"Stealth"}] }
+            ] }
+        ] }
+      ]
+    }
+    """;
+
+    [Test]
+    public void Import_DistinguishesUnpricedOptionFromGenuinelyFreeOption()
+    {
+        BookFile book = OprBookImporter.Import(CostShapeJson, "TestSource", "CC-BY-SA 4.0");
+        List<UpgradeOption> options = book.Units.Single().Sections.Single().Options;
+
+        UpgradeOption priced = options.Single(o => o.Id == "priced");
+        Assert.That(priced.Cost, Is.EqualTo(15));
+        Assert.That(priced.CostUnpriced, Is.False);
+
+        UpgradeOption free = options.Single(o => o.Id == "free");
+        Assert.That(free.Cost, Is.EqualTo(0));
+        Assert.That(free.CostUnpriced, Is.False, "an explicit 0 means free, and must stay distinguishable");
+
+        UpgradeOption unpriced = options.Single(o => o.Id == "unpriced");
+        Assert.That(unpriced.Cost, Is.EqualTo(0), "we have no number to charge - but see the flag");
+        Assert.That(unpriced.CostUnpriced, Is.True, "an ABSENT cost key is 'OPR never published a price'");
+    }
+
     [Test]
     public void ImportedBook_Compiles_WithChosenUpgrade()
     {

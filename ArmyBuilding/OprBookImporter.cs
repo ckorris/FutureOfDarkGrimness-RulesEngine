@@ -376,7 +376,8 @@ namespace FDG.ArmyBuilding
             {
                 Id = o.Id ?? o.Uid ?? Guid.NewGuid().ToString("N")[..8],
                 Label = o.Label ?? string.Empty,
-                Cost = o.Cost,
+                Cost = o.Cost ?? 0,
+                CostUnpriced = o.Cost is null,
             };
             foreach (OprGain g in o.Gains ?? new())
                 AddGain(option, g);
@@ -793,7 +794,10 @@ namespace FDG.ArmyBuilding
             public string? Id { get; set; }
             public string? Uid { get; set; }
             public string? Label { get; set; }
-            public int Cost { get; set; }
+            // Nullable on purpose (#219): OPR omits `cost` entirely on options it prices in its own points
+            // algorithm rather than publishing a static number, and writes an explicit 0 for genuinely free
+            // ones. A non-nullable int collapsed both onto 0 and made unpriced upgrades look free.
+            public int? Cost { get; set; }
             public List<OprGain>? Gains { get; set; }
         }
 

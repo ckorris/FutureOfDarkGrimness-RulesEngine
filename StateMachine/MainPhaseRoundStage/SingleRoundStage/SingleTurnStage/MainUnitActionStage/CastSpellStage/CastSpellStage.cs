@@ -98,7 +98,7 @@ namespace FDG.Stages
             // ChooseRangedAttackStage filters weapons to those with a fireable target. Non-castable spells
             // still appear in the picker as disabled rows with the reason (#244).
             int tokens = caster.Tokens.GetTokenCount(TokenType.SpellTokens);
-            IReadOnlyList<SpellOffer> offer = BuildSpellOffer(context.ActivatingUnit, player, tokens);
+            IReadOnlyList<SpellOffer> offer = BuildSpellOffer(context, context.ActivatingUnit, player, tokens);
             if (!offer.Any(o => o.Castable))
             {
                 GameContext.Log($"{caster.Name} has no castable spell (none affordable with a legal target).");
@@ -140,6 +140,10 @@ namespace FDG.Stages
             // longer be backed out of. Every cancel path above returns before this line, so a browsed-and-
             // cancelled spell menu stays pristine.
             context.MarkIrreversibleAction();
+            // #249 — "only one try per spell": recorded with the cost, before the roll, so a failed cast
+            // burns the try exactly as a successful one does. Every cancel path above returns first, so a
+            // browsed-and-cancelled spell is not consumed.
+            context.RegisterSpellAttempt(chosen.Name);
             caster.Tokens.RemoveTokens(TokenType.SpellTokens, chosen.Threshold + boost);
             if (boost > 0)
             {
@@ -305,7 +309,10 @@ namespace FDG.Stages
 
         // Every army spell in stable order, each marked castable or carrying its unavailability reason.
         // Affordability is checked before targets so the cheaper check names the blocking condition first.
-        private IReadOnlyList<SpellOffer> BuildSpellOffer(DataBinding<UnitData> caster, PlayerID player, int tokens)
+        // #249: already-tried spells are checked first — that one is permanent for the activation, so it
+        // outranks the transient "need N tokens" / "no valid target" reasons.
+        private IReadOnlyList<SpellOffer> BuildSpellOffer(IUnitActionContext context,
+            DataBinding<UnitData> caster, PlayerID player, int tokens)
         {
             ArmyData army = GameContext.GameDataStore().GetAllValues<ArmyData>()
                 .FirstOrDefault(a => a.PlayerID == player);
@@ -318,7 +325,11 @@ namespace FDG.Stages
             foreach (RuntimeSpell spell in army.Spells)
             {
                 if (spell.Threshold <= 0) continue; // malformed — never offered, matching the old filter
-                if (spell.Threshold > tokens)
+                if (context.HasAttemptedSpell(spell.Name))
+                {
+                    offer.Add(new SpellOffer(spell, false, "already tried this activation"));
+                }
+                else if (spell.Threshold > tokens)
                 {
                     offer.Add(new SpellOffer(spell, false, $"need {spell.Threshold} tokens"));
                 }

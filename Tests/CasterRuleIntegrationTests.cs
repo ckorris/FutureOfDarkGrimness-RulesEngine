@@ -205,6 +205,91 @@ namespace FDG.Tests
                 "casting brackets the move — having moved does not close the casting window.");
         }
 
+        // #249 — "only one try per spell". The first cast spends its cost; re-entering the stage finds Zap
+        // already tried, so it is no longer castable and the second attempt spends nothing. A failed roll
+        // would behave identically: the try is recorded with the cost, before the roll.
+        [Test]
+        public async Task CastSpellStage_SameSpellTwiceInOneActivation_SecondTryIsRefused()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester());
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 6,
+                new[] { Spell("Zap", threshold: 2, ETargetAffinity.Foe) }, new Position(10f, 10f));
+            MakeEnemyUnit(new PlayerID(System.Guid.NewGuid()), new Position(12f, 10f));
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+
+            await stage.Enter(unitCtx);
+            Assert.That(caster.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(4),
+                "the first try spends the spell's threshold (6 - 2)");
+
+            await stage.Enter(unitCtx);
+            Assert.That(caster.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(4),
+                "the second try of the same spell is refused and spends nothing, even with tokens to spare");
+        }
+
+        // #249 — the loop guard: once the only spell has been tried, Cast stops being offered. Without this
+        // the menu would keep offering an action that enters CastSpellStage and immediately returns.
+        [Test]
+        public async Task ChooseAction_AfterTryingTheOnlySpell_DoesNotOfferCast()
+        {
+            var requester = new RecordingActionRequester("Pass");
+            var ctx = new TriggeredMoveTestContext(_store, requester);
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 6,
+                new[] { Spell("Zap", threshold: 1, ETargetAffinity.Friend) }, new Position(10f, 10f));
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            unitCtx.RegisterSpellAttempt("Zap");
+
+            var stage = new ChooseActionStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.ToReconcileEndOfActivation.Bind("Pass");
+            await stage.Enter(unitCtx);
+
+            Assert.That(requester.OfferedOptions, Does.Not.Contain("Cast"),
+                "with every spell tried, Cast is no longer a valid action.");
+        }
+
+        // #249 — the other half: casting "one or more spells" per activation is legal, so an untried second
+        // spell keeps Cast on the menu. Pins the limit to per-spell, not per-activation.
+        [Test]
+        public async Task ChooseAction_WithAnUntriedSecondSpell_StillOffersCast()
+        {
+            var requester = new RecordingActionRequester("Pass");
+            var ctx = new TriggeredMoveTestContext(_store, requester);
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 6,
+                new[]
+                {
+                    Spell("Zap", threshold: 1, ETargetAffinity.Friend),
+                    Spell("Haste", threshold: 1, ETargetAffinity.Friend),
+                }, new Position(10f, 10f));
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            unitCtx.RegisterSpellAttempt("Zap");
+
+            var stage = new ChooseActionStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.ToReconcileEndOfActivation.Bind("Pass");
+            await stage.Enter(unitCtx);
+
+            Assert.That(requester.OfferedOptions, Contains.Item("Cast"),
+                "a caster may still cast a different spell it has not yet tried this activation.");
+        }
+
+        // #249 — the limit is per activation: re-activating the caster next round clears the tried set.
+        [Test]
+        public void NewActivation_ClearsTheAttemptedSpellSet()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester());
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 6,
+                new[] { Spell("Zap", threshold: 1, ETargetAffinity.Friend) }, new Position(10f, 10f));
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            unitCtx.RegisterSpellAttempt("Zap");
+            Assert.That(unitCtx.HasAttemptedSpell("Zap"), Is.True);
+
+            unitCtx.Reset(caster); // The caster's next activation.
+
+            Assert.That(unitCtx.HasAttemptedSpell("Zap"), Is.False,
+                "'one try per spell' is scoped to the activation, not the game.");
+        }
+
         // #234 — CastSpellStage is reachable directly, so it enforces the same gate rather than trusting the
         // menu: entering it after attacking spends nothing and loops straight back.
         [Test]

@@ -480,14 +480,28 @@ namespace FDG.Stages
                 return false;
             }
 
-            bool anyAffordable = army.Spells.Any(spell => spell.Threshold > 0 && spell.Threshold <= tokens);
+            // #249 — "only one try per spell": a spell already tried this activation is out of the running
+            // for the rest of it. Filtered here as well as in CastSpellStage's picker because Cast must stop
+            // being offered once nothing castable remains — otherwise picking it enters a stage that finds no
+            // castable spell and loops straight back, the same no-progress cycle the target gate guards.
+            List<RuntimeSpell> untried = army.Spells
+                .Where(spell => spell.Threshold > 0 && !context.HasAttemptedSpell(spell.Name))
+                .ToList();
+
+            if (untried.Count == 0)
+            {
+                reasonIfCant = "Every spell has been tried this activation.";
+                return false;
+            }
+
+            bool anyAffordable = untried.Any(spell => spell.Threshold <= tokens);
             if (!anyAffordable)
             {
                 reasonIfCant = $"Not enough spell tokens ({tokens}).";
                 return false;
             }
 
-            bool anyCastable = army.Spells.Any(spell => spell.Threshold > 0 && spell.Threshold <= tokens
+            bool anyCastable = untried.Any(spell => spell.Threshold <= tokens
                 && SpellTargeting.HasAnyEligibleTarget(GameContext, context.ActivatingUnit, player, spell.Target));
             if (!anyCastable)
             {

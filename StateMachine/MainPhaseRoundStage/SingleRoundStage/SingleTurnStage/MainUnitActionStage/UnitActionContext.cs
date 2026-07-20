@@ -57,6 +57,19 @@ namespace FDG.Stages
         public void RegisterAttackedFinished();
 
         /// <summary>
+        /// #249: whether <paramref name="spellName"/> has already been tried this activation. Caster(X) is
+        /// "spend as many tokens as the spell's value to try casting one or more spells (only one try per
+        /// spell)" — so casting several *different* spells in one activation is legal, but a failed cast
+        /// cannot be re-attempted with the same spell until the caster's next activation. Keyed by name,
+        /// which is what identifies a spell in the army-wide list.
+        /// </summary>
+        public bool HasAttemptedSpell(string spellName);
+
+        /// <summary>Records a cast attempt (see <see cref="HasAttemptedSpell"/>). Called at the moment the
+        /// cost is committed, so a failed roll counts as the one try just as a successful one does.</summary>
+        public void RegisterSpellAttempt(string spellName);
+
+        /// <summary>
         /// #248: true once ANYTHING irreversible has happened this activation beyond HasMoved/HasAttacked —
         /// an activation-start rule applied (token ops, reposition, ThisActivation grant), spell tokens were
         /// spent, a custom action resolved, a teleport landed. Gates the "back out to unit selection" offer:
@@ -124,6 +137,13 @@ namespace FDG.Stages
             HasAttacked = true;
         }
 
+        // #249 — spells tried this activation, by name. Cleared each Reset, like every other per-activation flag.
+        private readonly HashSet<string> _attemptedSpells = new HashSet<string>(System.StringComparer.Ordinal);
+
+        public bool HasAttemptedSpell(string spellName) => _attemptedSpells.Contains(spellName);
+
+        public void RegisterSpellAttempt(string spellName) => _attemptedSpells.Add(spellName);
+
         public bool IrreversibleActionTaken { get; private set; }
 
         public void MarkIrreversibleAction()
@@ -140,6 +160,7 @@ namespace FDG.Stages
             HasAttacked = false;
             IrreversibleActionTaken = false;
             PendingCustomAction = null;
+            _attemptedSpells.Clear();
             StartedActivationShaken = activatingUnit.GetValue().Tokens.HasToken(TokenType.Shaken);
             SnapshotDistancesToEnemies(activatingUnit);
         }

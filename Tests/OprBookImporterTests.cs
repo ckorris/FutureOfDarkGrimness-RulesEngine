@@ -187,6 +187,7 @@ public class OprBookImporterTests
         { "id":"a", "name":"A", "size":1, "cost":10, "quality":4, "defense":4, "bases":{"round":"32","square":"30"} },
         { "id":"b", "name":"B", "size":1, "cost":10, "quality":4, "defense":4, "bases":{"round":"120x92","square":"100x60"} },
         { "id":"c", "name":"C", "size":1, "cost":10, "quality":4, "defense":4, "bases":{"round":"none","square":"175x125"} },
+        { "id":"f", "name":"F", "size":1, "cost":10, "quality":4, "defense":4, "bases":{"round":"60x35","square":""} },
         { "id":"d", "name":"D", "size":1, "cost":10, "quality":4, "defense":4, "bases":{"round":"","square":""} },
         { "id":"e", "name":"E", "size":1, "cost":10, "quality":4, "defense":4 }
       ],
@@ -205,15 +206,24 @@ public class OprBookImporterTests
         Assert.That(Base("a").Shape, Is.EqualTo(EBaseShapeKind.Circle));
         Assert.That(Base("a").DiameterInches, Is.EqualTo(32f / MmPerInch).Within(0.001f));
 
-        // round "120x92" — an oval → our rectangle footprint.
+        // round "120x92" — an oval → our rectangle footprint. #225: OPR writes LENGTH first, and the
+        // engine runs HeightInches along the facing, so 120 (length) is the Height and 92 the Width.
         Assert.That(Base("b").Shape, Is.EqualTo(EBaseShapeKind.Rectangle));
-        Assert.That(Base("b").WidthInches, Is.EqualTo(120f / MmPerInch).Within(0.001f));
-        Assert.That(Base("b").HeightInches, Is.EqualTo(92f / MmPerInch).Within(0.001f));
+        Assert.That(Base("b").HeightInches, Is.EqualTo(120f / MmPerInch).Within(0.001f));
+        Assert.That(Base("b").WidthInches, Is.EqualTo(92f / MmPerInch).Within(0.001f));
 
         // round "none" → fall back to the square "175x125".
         Assert.That(Base("c").Shape, Is.EqualTo(EBaseShapeKind.Rectangle));
-        Assert.That(Base("c").WidthInches, Is.EqualTo(175f / MmPerInch).Within(0.001f));
-        Assert.That(Base("c").HeightInches, Is.EqualTo(125f / MmPerInch).Within(0.001f));
+        Assert.That(Base("c").HeightInches, Is.EqualTo(175f / MmPerInch).Within(0.001f));
+        Assert.That(Base("c").WidthInches, Is.EqualTo(125f / MmPerInch).Within(0.001f));
+
+        // A 60x35 bike base is the unambiguous case: a bike is 60mm long and 35mm wide, so it must face
+        // along its 60mm axis. Height > Width here is the invariant every real rectangular base satisfies.
+        Assert.That(Base("f").Shape, Is.EqualTo(EBaseShapeKind.Rectangle));
+        Assert.That(Base("f").HeightInches, Is.EqualTo(60f / MmPerInch).Within(0.001f));
+        Assert.That(Base("f").WidthInches, Is.EqualTo(35f / MmPerInch).Within(0.001f));
+        Assert.That(Base("f").HeightInches, Is.GreaterThan(Base("f").WidthInches),
+            "a rectangular base must be longer along its facing axis than it is wide");
 
         // Both empty, or no bases field at all → the default base (28mm circle).
         foreach (string id in new[] { "d", "e" })

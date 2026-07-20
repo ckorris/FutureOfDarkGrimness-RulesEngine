@@ -669,9 +669,14 @@ namespace FDG.ArmyBuilding
         private const float MmPerInch = 25.4f;
 
         // OPR bases come as {round, square} in millimetres — "25", "120x92" (an oval), "none", or "". Prefer
-        // the round basing (GDF standard): a single number → Circle; "WxH" → our Rectangle footprint (the
+        // the round basing (GDF standard): a single number → Circle; "LxW" → our Rectangle footprint (the
         // engine has no oval; #149's rectangle is the dimension-faithful stand-in). Fall back to the square
         // spec, else keep the default 28mm circle.
+        //
+        // #225: OPR writes the pair LENGTH-first ("60x35" is a 60mm-long, 35mm-wide bike base), while our
+        // RectangleBase runs its local +Z (HeightInches) along the facing and +X (WidthInches) across the
+        // frontage. So length maps to Height, width to Width — mapping them positionally faced every
+        // rectangular model along its short axis, inflating frontage for LoS/overlap/coherency.
         internal static BaseFileEntry MapBase(OprBases? bases) =>
             TryParseBase(bases?.Round, preferCircle: true)
             ?? TryParseBase(bases?.Square, preferCircle: false)
@@ -692,11 +697,12 @@ namespace FDG.ArmyBuilding
                     : new BaseFileEntry { Shape = EBaseShapeKind.Rectangle, WidthInches = mm / MmPerInch, HeightInches = mm / MmPerInch };
             }
 
+            // Length first, width second (see #225 note on MapBase): length is the facing axis → Height.
             if (!float.TryParse(spec[..x], System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out float w) || w <= 0) return null;
+                    System.Globalization.CultureInfo.InvariantCulture, out float lengthMm) || lengthMm <= 0) return null;
             if (!float.TryParse(spec[(x + 1)..], System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out float h) || h <= 0) return null;
-            return new BaseFileEntry { Shape = EBaseShapeKind.Rectangle, WidthInches = w / MmPerInch, HeightInches = h / MmPerInch };
+                    System.Globalization.CultureInfo.InvariantCulture, out float widthMm) || widthMm <= 0) return null;
+            return new BaseFileEntry { Shape = EBaseShapeKind.Rectangle, WidthInches = widthMm / MmPerInch, HeightInches = lengthMm / MmPerInch };
         }
 
         /// <summary>Maps an OPR item (unit-level or gain) to an <see cref="ItemEntry"/>: name + its rule content.

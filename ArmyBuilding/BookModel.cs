@@ -122,9 +122,13 @@ namespace FDG.ArmyBuilding
     {
         /// <summary>Exactly one model. Cost = option cost.</summary>
         One,
-        /// <summary>0..N models, chosen by a count stepper. Cost = count × option cost.</summary>
+        /// <summary>0..N models, chosen by a count stepper. Cost = count × option cost — Army Forge emits
+        /// one selectedUpgrades entry per application, so each pick is charged (unverified arithmetically:
+        /// no priced "any" option has turned up in a real share list yet — #218).</summary>
         Any,
-        /// <summary>Every eligible model. Cost = eligible-model-count × option cost.</summary>
+        /// <summary>Every eligible model. Cost is FLAT — charged once for the unit, NOT scaled by the models
+        /// it touches (#218, verified 2026-07-19 against a real share list). The effect still applies to
+        /// every eligible model; only the price is levied once.</summary>
         All,
     }
 

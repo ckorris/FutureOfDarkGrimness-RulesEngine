@@ -60,16 +60,19 @@ public class ArmyForgeCompilerTests
     }
 
     [Test]
-    public void Compile_Gunners_ReplaceAll_ScalesCostByTargetCount()
+    public void Compile_Gunners_ReplaceAll_AppliesToEveryModel_ButChargesOnce()
     {
         BuiltArmyFile army = ListCompiler.Compile(DemoBook.Build(), DemoList());
         UnitFileEntry gunners = army.Units.Single(u => u.Name == "Heavy Gunners");
 
-        // All 3 Heavy Rifles swapped for 3 Missile Launchers; cost 120 + 15×3.
+        // All 3 Heavy Rifles swapped for 3 Missile Launchers - the EFFECT still reaches every model...
         Assert.That(gunners.Weapons.Any(w => w.Name == "Heavy Rifle"), Is.False);
         Assert.That(Wpn(gunners, "Missile Launcher").Quantity, Is.EqualTo(3));
         Assert.That(gunners.ModelCount, Is.EqualTo(3));
-        Assert.That(gunners.PointCost, Is.EqualTo(165));
+
+        // ...but a "Replace all" price is flat: 120 + 15 once, NOT 120 + 15x3 (#218, this test previously
+        // pinned the overcharge). Verified against a real share list 2026-07-19.
+        Assert.That(gunners.PointCost, Is.EqualTo(135));
     }
 
     [Test]
@@ -99,7 +102,65 @@ public class ArmyForgeCompilerTests
         // Exactly what the lobby "Load Army" / headless ArmyLoader read (base type → embed skipped).
         ArmyListFile asArmy = JsonSerializer.Deserialize<ArmyListFile>(json, RuleJson.Options)!;
         Assert.That(asArmy.Units, Has.Count.EqualTo(2));
-        Assert.That(asArmy.Units.Sum(u => u.PointCost), Is.EqualTo(271));
+        Assert.That(asArmy.Units.Sum(u => u.PointCost), Is.EqualTo(241)); // 271 before the #218 flat-price fix
+    }
+
+    // #218 regression, pinned to the real numbers that settled the convention: the Havoc Brothers share
+    // list (iaP7jaKVjbUD) carries a 10-pt "Replace all Heavy Rifles and CCWs" on two 5-model units, and
+    // Army Forge's listPoints exceeds the base sum by exactly 20 - not 100. Flat per unit, and NOT scaled
+    // by models. Contrast Affects.Any below, which stays per-application.
+    [Test]
+    public void ReplaceAll_ChargesFlatPerUnit_RegardlessOfModelCount()
+    {
+        var unit = new RosterUnit
+        {
+            Id = "havoc", Name = "Havoc Brothers", BaseModelCount = 5, MinModels = 5, MaxModels = 5,
+            BasePointCost = 160,
+            Weapons = { Wpn("Heavy Rifle", 5) },
+            Sections =
+            {
+                new UpgradeSection
+                {
+                    Id = "all", Label = "Replace all Heavy Rifles", Variant = UpgradeVariant.Replace,
+                    Affects = UpgradeAffects.All, Targets = { "Heavy Rifle" },
+                    Options = { new UpgradeOption { Id = "o", Label = "Heavy Pistol",
+                        WeaponsGained = { Wpn("Heavy Pistol") }, Cost = 10 } },
+                },
+            },
+        };
+
+        UnitFileEntry compiled = CompileOne(unit, new UpgradeChoice { SectionId = "all", OptionId = "o", Count = 1 });
+
+        Assert.That(compiled.PointCost, Is.EqualTo(170), "160 + 10 flat - NOT 160 + 10x5 models");
+        Assert.That(compiled.Weapons.Any(w => w.Name == "Heavy Rifle"), Is.False, "every model still swaps");
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Heavy Pistol").Quantity, Is.EqualTo(5));
+    }
+
+    [Test]
+    public void ReplaceAny_StillChargesPerApplication()
+    {
+        var unit = new RosterUnit
+        {
+            Id = "squad", Name = "Squad", BaseModelCount = 3, MinModels = 3, MaxModels = 3,
+            BasePointCost = 100,
+            Weapons = { Wpn("Axe", 3) },
+            Sections =
+            {
+                new UpgradeSection
+                {
+                    Id = "any", Label = "Replace any Axe", Variant = UpgradeVariant.Replace,
+                    Affects = UpgradeAffects.Any, Targets = { "Axe" }, MaxApplications = 3,
+                    Options = { new UpgradeOption { Id = "o", Label = "Sword",
+                        WeaponsGained = { Wpn("Sword") }, Cost = 10 } },
+                },
+            },
+        };
+
+        UnitFileEntry compiled = CompileOne(unit, new UpgradeChoice { SectionId = "any", OptionId = "o", Count = 2 });
+
+        Assert.That(compiled.PointCost, Is.EqualTo(120), "100 + 10x2 picks - the All fix must not leak here");
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Sword").Quantity, Is.EqualTo(2));
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Axe").Quantity, Is.EqualTo(1));
     }
 
     // ── Replace semantics (target-aware) ────────────────────────────────────────────────────────────────

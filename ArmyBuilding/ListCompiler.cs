@@ -152,7 +152,12 @@ namespace FDG.ArmyBuilding
                 int applications = Applications(section, choice, unit, items);
                 if (applications <= 0) continue;
 
-                unit.PointCost += option.Cost * applications;
+                // #218: a "Replace all X" price is flat for the whole unit - it is NOT multiplied by the
+                // models it touches. Verified 2026-07-19 against the Havoc Brothers share list, where a
+                // 10-pt Replace All on two 5-model units moved Army Forge's total by exactly 20, not 100.
+                // Cost and effect part ways here: every eligible model still gets the swap (`applications`),
+                // but the charge is levied once.
+                unit.PointCost += option.Cost * (section.Affects == UpgradeAffects.All ? 1 : applications);
 
                 switch (section.Variant)
                 {

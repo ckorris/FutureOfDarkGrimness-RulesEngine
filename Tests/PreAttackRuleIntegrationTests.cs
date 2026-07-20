@@ -266,6 +266,91 @@ namespace FDG.Tests
                 "the once-per-activation cost gate closed");
         }
 
+        // #164 — a DealHits ability's WithRules must fold exactly as a fired volley's weapon rules do.
+        // Blast(3) turns the ability's single hit into 3 (capped at the target's living-model count), so a
+        // 3-model enemy is wiped; before this the names were dropped and only one model died. AP(6) pushes
+        // the defense-4 save past 6 so every hit converts, isolating the hit COUNT as the thing under test.
+        [Test]
+        public async Task DealHitsAbility_WithBlast_MultipliesHitsThroughTheSharedFold()
+        {
+            DataBinding<UnitData> enemy = MakeEnemyUnitAt(new Position(3f, 0f), modelCount: 3);
+            var resolver = new RuleResolver();
+            resolver.Register(CoreRuleCatalog.Blast);
+            var ctx = new TriggeredMoveTestContext(_store, new DealHitsPreAttackRequester("Breath", enemy),
+                new FixedFaceDiceRoller(4), ruleResolver: resolver);
+
+            DataBinding<UnitData> unit = MakeUnitAt(new Position(0f, 0f),
+                MakeDealHitsRule(baseHits: 1, withRules: new[] { "Blast(3)" }));
+
+            await RunPreAttack(ctx, unit);
+
+            Assert.That(LivingModels(enemy), Is.EqualTo(0),
+                "Blast(3) must multiply the ability's 1 hit to 3 - the WithRules names have to reach the " +
+                "synthetic weapon and fold at the hit-complete hook, not be dropped");
+        }
+
+        // The control that makes the test above mean something: the SAME ability without Blast kills exactly
+        // one model. If both tests passed with WithRules ignored, the one above would be asserting nothing.
+        [Test]
+        public async Task DealHitsAbility_WithoutBlast_DealsOnlyItsBaseHits()
+        {
+            DataBinding<UnitData> enemy = MakeEnemyUnitAt(new Position(3f, 0f), modelCount: 3);
+            var resolver = new RuleResolver();
+            resolver.Register(CoreRuleCatalog.Blast);
+            var ctx = new TriggeredMoveTestContext(_store, new DealHitsPreAttackRequester("Breath", enemy),
+                new FixedFaceDiceRoller(4), ruleResolver: resolver);
+
+            DataBinding<UnitData> unit = MakeUnitAt(new Position(0f, 0f),
+                MakeDealHitsRule(baseHits: 1, withRules: Array.Empty<string>()));
+
+            await RunPreAttack(ctx, unit);
+
+            Assert.That(LivingModels(enemy), Is.EqualTo(2),
+                "with no WithRules the ability deals its bare 1 hit - the multiply must come from Blast, " +
+                "not from the fold itself");
+        }
+
+        // A missing resolver (bare harness / pre-rehydration resume) must degrade to AP-only rather than
+        // throw: the ability still deals its base hits, it just gets no weapon rules.
+        [Test]
+        public async Task DealHitsAbility_WithBlastButNoResolver_StillDealsBaseHits()
+        {
+            DataBinding<UnitData> enemy = MakeEnemyUnitAt(new Position(3f, 0f), modelCount: 3);
+            var ctx = new TriggeredMoveTestContext(_store, new DealHitsPreAttackRequester("Breath", enemy),
+                new FixedFaceDiceRoller(4));
+
+            DataBinding<UnitData> unit = MakeUnitAt(new Position(0f, 0f),
+                MakeDealHitsRule(baseHits: 1, withRules: new[] { "Blast(3)" }));
+
+            await RunPreAttack(ctx, unit);
+
+            Assert.That(LivingModels(enemy), Is.EqualTo(2),
+                "no resolver - Blast cannot resolve, so the ability falls back to its base hits instead of " +
+                "throwing mid-activation");
+        }
+
+        // A Breath-Attack-shaped Foe ability dealing baseHits at AP(6), optionally 'with' weapon rules.
+        private static SpecialRuleDefinition MakeDealHitsRule(int baseHits, IReadOnlyList<string> withRules)
+            => new SpecialRuleDefinition("Breath", Array.Empty<HookEntry>(), new[]
+            {
+                new ActivatedAbility(
+                    EHookID.Activation_OnPreAttack, new Cost.OncePerActivation(),
+                    new TargetSelector(6f, 1, 1, ETargetAffinity.Foe, false),
+                    new Effect.DealHits(baseHits, withRules, ArmorPenetration: 6),
+                    new Condition.Always()),
+            });
+
+        private static async Task RunPreAttack(TriggeredMoveTestContext ctx, DataBinding<UnitData> unit)
+        {
+            UnitActionContext unitCtx = NewActivation(ctx, unit);
+            var stage = new PreAttackStage(ctx, new NoOpLayer<IUnitActionContext>(), EActionType.Hold);
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+        }
+
+        private static int LivingModels(DataBinding<UnitData> unit)
+            => unit.GetValue().Models.Count(model => model.GetIsAlive());
+
         // An enemy-player unit within pre-attack targeting range.
         private DataBinding<UnitData> MakeEnemyUnitAt(Position position, int modelCount)
         {

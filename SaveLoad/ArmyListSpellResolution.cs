@@ -35,12 +35,28 @@ namespace FDG.SaveLoad
                 return Array.Empty<ResolvedRule>();
             }
 
-            List<ResolvedRule> rules = new List<ResolvedRule>(dealHits.WithRules.Count);
-            foreach (string ruleName in dealHits.WithRules)
+            return ResolveWeaponRuleNames(dealHits.WithRules, ruleResolver, $"spell '{spell.Name}'");
+        }
+
+        /// <summary>
+        /// Resolves a <see cref="Effect.DealHits.WithRules"/> name list into the weapon-scoped
+        /// <see cref="ResolvedRule"/>s a synthetic weapon carries. Shared with the ability / Strafing
+        /// DealHits paths (#164), which resolve at dispatch time rather than army load — an ability can be
+        /// conferred at runtime by an aura or grant, so it has no army-load site of its own.
+        /// <para>Names carry their arguments ("Blast(3)"), parsed by
+        /// <see cref="SpecialRuleEntryParser"/>; an unresolvable or mis-scoped rule is skipped with a
+        /// warning (the same tolerance army-load applies), so a partial effect still resolves.
+        /// <paramref name="context"/> labels those warnings.</para>
+        /// </summary>
+        public static IReadOnlyList<ResolvedRule> ResolveWeaponRuleNames(
+            IReadOnlyList<string> ruleNames, IRuleResolver ruleResolver, string context)
+        {
+            List<ResolvedRule> rules = new List<ResolvedRule>(ruleNames.Count);
+            foreach (string ruleName in ruleNames)
             {
                 SpecialRuleEntry entry = SpecialRuleEntryParser.Parse(ruleName);
                 ResolvedRule? resolved = ArmyListRuleResolution.ResolveForScope(
-                    ruleResolver, entry, ERuleScope.Weapon, $"spell '{spell.Name}'");
+                    ruleResolver, entry, ERuleScope.Weapon, context);
                 if (resolved != null)
                 {
                     rules.Add(resolved);

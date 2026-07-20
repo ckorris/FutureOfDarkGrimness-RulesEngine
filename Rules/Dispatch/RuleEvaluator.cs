@@ -35,6 +35,15 @@ public sealed class RuleEvaluator
     /// </summary>
     private readonly IRuleResolver? _ruleResolver;
 
+    /// <summary>
+    /// The shared army-load resolver, exposed so a STAGE can resolve rule names that are only known at
+    /// dispatch time — an ability's <c>DealHits.WithRules</c> (#164), which unlike a spell's has no
+    /// army-load site to pre-resolve at because the ability may itself have been conferred at runtime by
+    /// an aura or grant. Null under the same conditions the read-back is skipped (see above), so callers
+    /// must tolerate it and degrade to "no weapon rules" rather than throwing.
+    /// </summary>
+    public IRuleResolver? RuleResolver => _ruleResolver;
+
     public RuleEvaluator(IDiceRoller diceRoller, ITextOutput? log = null, IRuleResolver? ruleResolver = null)
     {
         _diceRoller = diceRoller;

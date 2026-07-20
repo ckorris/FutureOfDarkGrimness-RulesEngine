@@ -146,6 +146,50 @@ namespace FDG.Tests
             Assert.That(mover.GetValue().Tokens.HasToken(UsedMarker), Is.False, "declining spends nothing");
         }
 
+        // #164 — the strafe's synthetic weapon used to hardcode AP 0, silently dropping an authored DealHits
+        // AP. Core Strafing carries none, so this probes with a strafe-shaped rule at AP(3): against
+        // defense 4 that puts the save out of reach, so a rolled 5 fails and all 3 hits wound. With the AP
+        // dropped the save would be 4+ and a rolled 5 would SAVE, leaving no wound request at all.
+        // The enemy is 5-strong deliberately: 3 wounds on a 3-model unit wipes it, and a wipe assigns
+        // without asking, so the request this asserts on would never be raised.
+        [Test]
+        public async Task Stage_HonoursTheDealHitsArmorPenetration()
+        {
+            var requester = new StrafeRequester(accept: true);
+            var ctx = new WoundTestContext(_store, requester, new AllOnFaceDiceRoller(5));
+
+            DataBinding<UnitData> mover = MakeUnit(_mover, "Bikers", withStrafing: false, new Position(0f, 0f));
+            mover.GetValue().AttachRuleDefinition(new ResolvedRule("Piercing Strafe", PiercingStrafeRule));
+            MakeUnit(_foe, "Grunts", withStrafing: false,
+                new Position(5f, 0f), new Position(5f, 1f), new Position(5f, 2f),
+                new Position(5f, 3f), new Position(5f, 4f));
+
+            await RunStrafe(ctx, mover, new Position(10f, 0f));
+
+            Assert.That(requester.WoundRequest, Is.Not.Null,
+                "AP(3) vs defense 4 puts the save out of reach, so a rolled 5 fails and the hits wound - " +
+                "an AP hardcoded to 0 would let every save pass and produce no wounds");
+            Assert.That(requester.WoundRequest!.TotalWoundsToAssign, Is.EqualTo(3f),
+                "all 3 strafe hits convert at AP(3)");
+        }
+
+        // Core Strafing's shape with an armour-penetrating payload (the fly-over passive plus the
+        // move-through ability), so the AP has something to ride.
+        private static SpecialRuleDefinition PiercingStrafeRule { get; } = new SpecialRuleDefinition(
+            "Piercing Strafe",
+            new[]
+            {
+                new HookEntry(EHookID.Movement_OnMoveThroughEnemy, new Condition.Always(),
+                    new Effect.IgnoreEnemyMovementBlock(), ELifetime.ThisActivation),
+            },
+            new[]
+            {
+                new ActivatedAbility(EHookID.Movement_OnMoveThroughEnemy, new Cost.OncePerActivation(),
+                    new TargetSelector(1f, 1, 1, ETargetAffinity.Foe, false),
+                    new Effect.DealHits(Count: 3, WithRules: Array.Empty<string>(), ArmorPenetration: 3),
+                    new Condition.Always()),
+            });
+
         private static async Task RunStrafe(WoundTestContext ctx, DataBinding<UnitData> mover, Position destination)
         {
             var moveContext = new MovementActionContext(ctx, mover);

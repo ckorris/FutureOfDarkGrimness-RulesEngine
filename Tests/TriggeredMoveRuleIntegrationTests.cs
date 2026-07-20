@@ -532,14 +532,18 @@ namespace FDG.Tests
         public List<ITeam>? FirstDeploymentRollOrder => null;
         IGameContext IGameContextAccessor.GameContext => this;
 
+        // ruleResolver is optional and defaults to null, matching the bare-evaluator default: granted-rule
+        // read-back and dispatch-time WithRules resolution (#164) both no-op without one. Tests that need
+        // either pass a resolver with the relevant definitions registered.
         public TriggeredMoveTestContext(GameDataStore store, IPlayerRequestByID requester,
-            IDiceRoller? diceRoller = null, IPresentationSink? presentationSink = null)
+            IDiceRoller? diceRoller = null, IPresentationSink? presentationSink = null,
+            IRuleResolver? ruleResolver = null)
         {
             GameDataStore = store;
             TableState = new TableState(store);
             PlayerRequester = requester;
             DiceRoller = diceRoller ?? new FixedDiceRoller(4);
-            RuleEvaluator = new RuleEvaluator(DiceRoller);
+            RuleEvaluator = new RuleEvaluator(DiceRoller, ruleResolver: ruleResolver);
             Presenter = new LocalPresenter(presentationSink, new InstantPresentationClock());
         }
 

@@ -5,6 +5,7 @@ using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
+using FDG.SaveLoad;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 using FDG.Utilities;
@@ -32,12 +33,12 @@ namespace FDG.Stages
     /// <see cref="CancellableSelectionRequest{T}"/> so the player picks the unit(s) (slice 2b).
     ///
     /// A <see cref="Effect.DealHits"/> ability (Breath Attack) resolves like <see cref="StrafingStage"/>:
-    /// the hits ride a synthetic weapon carrying the effect's AP and run the shared save→wound child
-    /// pipeline, then the stage finishes. StrafingStage's limitations are shared: at most ONE DealHits
-    /// ability resolves per pre-attack entry (the menu does not resume after the child pipeline — the
-    /// engine's await-chained transitions make looping past a child pipeline unsafe), and
-    /// <c>DealHits.WithRules</c> is not applied (no rule resolver is reachable at stage runtime; warned
-    /// loudly via <see cref="RuleDiagnostics"/> — see SpecialRulesAudit.md).
+    /// the hits ride a synthetic weapon carrying the effect's AP AND its <c>WithRules</c> weapon rules, and
+    /// run the shared hit-complete fold (<see cref="SyntheticHitResolution"/>) before the save→wound child
+    /// pipeline, so Blast/Rending/Surge apply exactly as they do to a fired volley (#164). One
+    /// StrafingStage limitation is still shared: at most ONE DealHits ability resolves per pre-attack entry
+    /// (the menu does not resume after the child pipeline — the engine's await-chained transitions make
+    /// looping past a child pipeline unsafe).
     /// </summary>
     public class PreAttackStage : ParentStage<IUnitActionContext, ICombatMetadata>
     {
@@ -50,7 +51,7 @@ namespace FDG.Stages
         // The DealHits target/hits/weapon computed in Enter and seeded into the child metadata. Only
         // meaningful between the accepted ability and the child pipeline running (StrafingStage pattern).
         private DataBinding<UnitData>? _pendingTarget;
-        private float _pendingHits;
+        private int _pendingHits;
         private Weapon? _pendingWeapon;
 
         public PreAttackStage(IGameContext gameContext, IStateMachineLayer<IUnitActionContext> parent,
@@ -66,7 +67,7 @@ namespace FDG.Stages
         public override async Task Enter(IUnitActionContext context)
         {
             _pendingTarget = null;
-            _pendingHits = 0f;
+            _pendingHits = 0;
             _pendingWeapon = null;
 
             IUnit unit = context.ActivatingUnit.GetValue();
@@ -137,18 +138,9 @@ namespace FDG.Stages
                         ?? targetBindings.FirstOrDefault();
                     if (targetBinding != null)
                     {
-                        if (dealHits.WithRules.Count > 0)
-                        {
-                            RuleDiagnostics.WarnOnce($"pre-attack-withrules:{chosen.RuleName}",
-                                $"'{chosen.RuleName}' deals hits 'with' [{string.Join(", ", dealHits.WithRules)}], " +
-                                "but weapon rules on a pre-attack DealHits ability are not applied yet - " +
-                                "the hits resolve at the ability's AP only.");
-                        }
-
                         _pendingTarget = targetBinding;
                         _pendingHits = dealHits.Count;
-                        _pendingWeapon = new Weapon(chosen.RuleName, rangeInches: 0f, attacks: 0,
-                            armorPenetration: dealHits.ArmorPenetration);
+                        _pendingWeapon = BuildAbilityWeapon(chosen.RuleName, dealHits);
                         GameContext.Log($"{unit.Name}'s {chosen.RuleName} deals {dealHits.Count} hit(s) at " +
                             $"AP({dealHits.ArmorPenetration}) to {targetBinding.GetValue().Name}.");
 
@@ -162,17 +154,50 @@ namespace FDG.Stages
             await OnFinished.Activate(context);
         }
 
+        /// <summary>
+        /// The synthetic weapon an ability's hits ride: the effect's AP, plus its <c>WithRules</c> resolved
+        /// to weapon-scoped rules so Blast/Rending/Surge fold in (#164). Unlike a spell — which pre-resolves
+        /// at army load — an ability may have been conferred at runtime by an aura or grant, so it has no
+        /// load-time site and resolves here through the evaluator's shared resolver. A null resolver (bare
+        /// harness / pre-rehydration resume) degrades to AP-only, matching the old behaviour rather than
+        /// throwing.
+        /// </summary>
+        private Weapon BuildAbilityWeapon(string abilityName, RuleOperation.InvokeDealHits dealHits)
+        {
+            Weapon weapon = new Weapon(abilityName, rangeInches: 0f, attacks: 0,
+                armorPenetration: dealHits.ArmorPenetration);
+
+            IRuleResolver? resolver = GameContext.RuleEvaluator.RuleResolver;
+            if (dealHits.WithRules.Count == 0 || resolver == null)
+            {
+                return weapon;
+            }
+
+            foreach (ResolvedRule rule in ArmyListSpellResolution.ResolveWeaponRuleNames(
+                dealHits.WithRules, resolver, $"ability '{abilityName}'"))
+            {
+                weapon.AttachRuleDefinition(rule);
+            }
+            return weapon;
+        }
+
         protected override ICombatMetadata GetNewChildContext(IUnitActionContext contextSelf)
         {
             // The DealHits come from an ability, not a weapon volley — model them as a synthetic attack so
-            // the shared save/wound stages can consume them (the histogram face is cosmetic; saves count
-            // by TotalRolls).
+            // the shared save/wound stages can consume them. The hits run through the same hit-complete fold
+            // a fired volley does (#164), so the ability's own weapon rules apply.
+            IUnit attacker = contextSelf.ActivatingUnit.GetValue();
+            SyntheticHitResolution.Result hits = SyntheticHitResolution.Resolve(
+                GameContext, attacker, _pendingTarget!.GetValue(), _pendingHits, _pendingWeapon!,
+                isSpell: false);
+
             CombatMetadata metadata = new CombatMetadata(GameContext, contextSelf.ActivatingUnit,
                 _pendingTarget!, _pendingWeapon!, weaponCount: 1, isMelee: false);
 
-            metadata.AddResult(new RollToHitResults(
-                new List<SuccessfulHitInfo>() { new SuccessfulHitInfo(SyntheticHits(_pendingHits)) },
-                new List<FailedHitInfo>()));
+            RollToHitResults hitResults = new RollToHitResults(hits.HitGroups, new List<FailedHitInfo>());
+            hitResults.SaveModifier = hits.SaveModifier;
+            hitResults.ArmorPenetrationReduction = hits.ArmorPenetrationReduction;
+            metadata.AddResult(hitResults);
             // No cover check runs for a synthetic ability hit; seed a zero bonus so the save stage won't throw.
             metadata.AddResult(new CoverCheckResults(0));
 
@@ -199,16 +224,6 @@ namespace FDG.Stages
                 .BindToEvent(finishedEvent);
 
             return dictionary;
-        }
-
-        // Bridges a scalar hit count into the IDiceResults the save flow consumes (mirrors
-        // StrafingStage.SyntheticHits / ResolveImpactHitsStage). The face is cosmetic — saves count by
-        // TotalRolls.
-        private static IDiceResults SyntheticHits(float count)
-        {
-            float[] perSide = new float[IDiceRollerExtensions.DEFAULT_SIDE_COUNT];
-            perSide[perSide.Length - 1] = count;
-            return new DiceResults(perSide);
         }
 
         /// <summary>

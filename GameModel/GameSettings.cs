@@ -1,9 +1,23 @@
+using Newtonsoft.Json;
 
 namespace FDG
 {
     public struct GameSettings
     {
         public int ArmyPoints;
+
+        /// <summary>
+        /// #201 house-rule cover proximity exceptions (lobby toggle, default ON): a cover piece is
+        /// voided when the shooter's muzzle hugs it (sight-line exit within 2" of the shooter's base
+        /// and not also hugged by the target), or when shooter and target share the same piece at
+        /// under 6" - see <see cref="FDG.Stages.CoverProximityRules"/>. Nullable so pre-#201 saves
+        /// (field absent from the JSON) resolve to the default ON rather than silently OFF; read via
+        /// <see cref="CoverProximityExceptionsEnabled"/>, never directly.
+        /// </summary>
+        public bool? CoverProximityExceptions;
+
+        [JsonIgnore]
+        public bool CoverProximityExceptionsEnabled => CoverProximityExceptions ?? true;
 
         public int TerrainPieceCount;
 
@@ -43,6 +57,7 @@ namespace FDG
             return new GameSettings()
             {
                 ArmyPoints = 2000,
+                CoverProximityExceptions = true,
                 TerrainPieceCount = 20,
                 RandomnessType = ERandomnessType.Realistic,
                 DiceSeed = null,

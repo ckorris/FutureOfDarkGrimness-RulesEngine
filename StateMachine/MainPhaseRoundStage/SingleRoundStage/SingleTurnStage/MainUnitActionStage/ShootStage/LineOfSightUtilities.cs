@@ -93,6 +93,46 @@ namespace FDG.Stages
         }
 
         /// <summary>
+        /// #201 variant: same worst-effect fold, but a piece evaluating to Cover is demoted to Clear
+        /// when the proximity exceptions void it (shooter hugging the piece / shared cover at knife
+        /// range - see <see cref="CoverProximityRules"/>). Pass the endpoint models' base facts in
+        /// <paramref name="coverContext"/>; <paramref name="applyProximityExceptions"/> false makes
+        /// this identical to the 3-arg overload (the lobby toggle OFF path). The 3-arg overload's
+        /// semantics are deliberately untouched - PolarSightMap mirrors THAT function.
+        /// </summary>
+        public static ESightLineEffect EvaluateSightLine(Position attacker, Position target,
+            IEnumerable<ITerrain>? terrain, in CoverContext coverContext, bool applyProximityExceptions)
+        {
+            if (terrain == null)
+            {
+                return ESightLineEffect.Clear;
+            }
+
+            ESightLineEffect worst = ESightLineEffect.Clear;
+
+            foreach (ITerrain piece in terrain)
+            {
+                ESightLineEffect effect = piece.EvaluateSightLine(attacker, target);
+                if (effect == ESightLineEffect.Cover && applyProximityExceptions
+                    && CoverProximityRules.VoidsCover(piece, coverContext))
+                {
+                    continue;
+                }
+                if (effect > worst)
+                {
+                    worst = effect;
+                    if (worst == ESightLineEffect.Blocking)
+                    {
+                        //Can't get worse than this — early-out.
+                        return worst;
+                    }
+                }
+            }
+
+            return worst;
+        }
+
+        /// <summary>
         /// Convenience wrapper for the binary "can attacker see target" check.
         /// Cover does not block sight; only Blocking does.
         /// </summary>

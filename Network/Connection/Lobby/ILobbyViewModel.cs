@@ -54,6 +54,8 @@ namespace FDG.Network.Connection.Lobby
         IObservable<EObjectivePlacementMode> ObjectivePlacementModeObservable { get; }
         IObservable<ERandomnessType> RandomnessTypeObservable { get; }
         IObservable<ETurnStyle> TurnStyleObservable { get; }
+        /// <summary>#201 cover proximity house rules toggle (default on) - see <see cref="GameSettings.CoverProximityExceptions"/>.</summary>
+        IObservable<bool> CoverProximityExceptionsObservable { get; }
 
         string ServerName { get; }
 
@@ -74,6 +76,8 @@ namespace FDG.Network.Connection.Lobby
         ERandomnessType RandomnessType { get; }
 
         ETurnStyle TurnStyle { get; }
+
+        bool CoverProximityExceptions { get; }
 
         bool CheckCanModifyPlayerIDInfo(PlayerID playerID);
 
@@ -108,6 +112,8 @@ namespace FDG.Network.Connection.Lobby
         void SetRandomnessType(ERandomnessType randomnessType);
 
         void SetTurnStyle(ETurnStyle turnStyle);
+
+        void SetCoverProximityExceptions(bool enabled);
 
         bool TryLaunchGame(out string? failReason);
 

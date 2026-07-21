@@ -58,6 +58,28 @@ namespace FDG.Tests
                 }
         }
 
+        // Horizontal balancing: with a marker sitting well to the LEFT of table center, the next
+        // auto-placed marker mirrors it to the RIGHT side, so markers spread across the width instead of
+        // clustering. This is the X-axis analogue of the existing Z (verticality) balancing.
+        [Test]
+        public void AutoPlacer_BalancesHorizontally_AcrossTableCenter()
+        {
+            var band = Band();
+            float centerX = (band.Left + band.Right) / 2f; // 36
+
+            // Seed one marker well left of center; the next should land right of center.
+            _store.Create(new ObjectiveData(new Position(15f, 24f), _store));
+
+            bool found = ObjectiveAutoPlacer.TryChoosePlacement(
+                band, minSeparationInches: 9f, markerIndex: 2, totalMarkers: 5,
+                existing: _tableState.Objectives.Objects.ToList(),
+                impassable: new List<ITerrain>(), new Random(1234), out Position p);
+
+            Assert.That(found, Is.True, "a legal spot exists for the second marker");
+            Assert.That(p.x, Is.GreaterThan(centerX),
+                "second marker balances to the opposite (right) side of table center");
+        }
+
         // The whole point of the shared helper: the Auto-Placed map-setup path and the AI resolver
         // must place markers identically given the same seed, so a solo-rules game looks the same
         // whichever objective mode the lobby chose. Same seed in -> same positions out, marker by marker.

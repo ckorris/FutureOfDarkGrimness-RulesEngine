@@ -1,12 +1,11 @@
 namespace FDG.Stages
 {
     /// <summary>
-    /// Shared objective-marker auto-placement. Picks a position that tends to balance the
-    /// board along the short (Z) axis: the X coordinate is random (X imbalance favors neither
-    /// team and a little asymmetry makes games more interesting), while Z mirrors the existing
-    /// markers' centroid across the table center. A fine sampling of the legal band, sorted by
-    /// distance to that target, is walked until the shared <see cref="ObjectivePlacementValidator"/>
-    /// accepts a spot.
+    /// Shared objective-marker auto-placement. Picks a position that tends to balance the board on
+    /// BOTH axes: each new marker's target mirrors the existing markers' centroid across the table
+    /// center (with jitter), on the long (X) axis as well as the short (Z) axis, so markers spread
+    /// out instead of clustering. A fine sampling of the legal band, sorted by distance to that
+    /// target, is walked until the shared <see cref="ObjectivePlacementValidator"/> accepts a spot.
     /// </summary>
     /// <remarks>
     /// Both the engine's Auto-Placed map-setup path (<see cref="PlaceOneObjectiveStage"/>) and the
@@ -19,7 +18,7 @@ namespace FDG.Stages
     {
         // 1" sampling is fine enough to read as continuous; the validator is the gatekeeper.
         private const float CandidateStepInches = 1f;
-        private const float ZMirrorJitterInches = 2f;
+        private const float MirrorJitterInches = 2f;
         private const float NearCenterThresholdInches = 1f;
         private const float NearCenterLastPlacementJitterInches = 0.5f;
 
@@ -61,37 +60,43 @@ namespace FDG.Stages
         private static Position ChooseTarget(RectangularZone band, int markerIndex, int totalMarkers,
             IReadOnlyList<IObjective> existing, Random rng)
         {
-            float targetX = RandomInRange(rng, band.Left, band.Right);
-
             // First placement: nothing to balance against. Random anywhere in the band.
             if (existing.Count == 0)
-                return new Position(targetX, RandomInRange(rng, band.Bottom, band.Top));
+                return new Position(RandomInRange(rng, band.Left, band.Right),
+                                    RandomInRange(rng, band.Bottom, band.Top));
 
-            float tableCenterZ = (band.Bottom + band.Top) / 2f;
+            // Balance both axes so markers spread rather than cluster: each new target mirrors the
+            // existing centroid across the table center. X first, then Z, to keep the rng draw order
+            // stable for seeded replays (#193).
+            bool isLastPlacement = markerIndex >= totalMarkers;
+            float centroidX = (float)existing.Average(o => (double)o.Position.x);
             float centroidZ = (float)existing.Average(o => (double)o.Position.z);
-            float offsetZ = centroidZ - tableCenterZ;
+            float targetX = MirrorAcrossCenter(band.Left, band.Right, centroidX, isLastPlacement, rng);
+            float targetZ = MirrorAcrossCenter(band.Bottom, band.Top, centroidZ, isLastPlacement, rng);
+            return new Position(targetX, targetZ);
+        }
 
-            float targetZ;
-            if (MathF.Abs(offsetZ) < NearCenterThresholdInches)
-            {
-                // Centroid is already at center — mirroring would just hit the same point.
-                // Last placement: nudge near center to keep symmetry. Otherwise random,
-                // since a future placement can still balance whatever we put here.
-                bool isLastPlacement = markerIndex >= totalMarkers;
-                targetZ = isLastPlacement
-                    ? tableCenterZ + RandomInRange(rng, -NearCenterLastPlacementJitterInches, NearCenterLastPlacementJitterInches)
-                    : RandomInRange(rng, band.Bottom, band.Top);
-            }
+        // Reflects the existing centroid through the axis center to pull the next marker to the opposite
+        // side, with jitter so play doesn't look mechanical. When the centroid already sits at center
+        // (mirroring would hit the same point) the last marker nudges near center to keep symmetry, while
+        // earlier markers go random since a future placement can still balance whatever we put here.
+        private static float MirrorAcrossCenter(float min, float max, float centroid,
+            bool isLastPlacement, Random rng)
+        {
+            float center = (min + max) / 2f;
+            float offset = centroid - center;
+
+            float target;
+            if (MathF.Abs(offset) < NearCenterThresholdInches)
+                target = isLastPlacement
+                    ? center + RandomInRange(rng, -NearCenterLastPlacementJitterInches, NearCenterLastPlacementJitterInches)
+                    : RandomInRange(rng, min, max);
             else
-            {
-                // Reflect Z through the table center, then jitter so play doesn't look mechanical.
-                targetZ = tableCenterZ - offsetZ + RandomInRange(rng, -ZMirrorJitterInches, ZMirrorJitterInches);
-            }
+                target = center - offset + RandomInRange(rng, -MirrorJitterInches, MirrorJitterInches);
 
             // The validator will reject anything outside the band, but clamping keeps the
             // sort-by-distance ordering sensible when the reflected target lands past an edge.
-            targetZ = MathF.Max(band.Bottom, MathF.Min(band.Top, targetZ));
-            return new Position(targetX, targetZ);
+            return MathF.Max(min, MathF.Min(max, target));
         }
 
         private static List<Position> BuildCandidates(RectangularZone band)

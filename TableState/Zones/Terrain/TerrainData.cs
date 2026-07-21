@@ -53,6 +53,9 @@ namespace FDG
         public Float2? GetFirstSegmentEntry(Float2 startPosition, Float2 endPosition)
             => Shape.GetFirstSegmentEntry(startPosition, endPosition);
 
+        public Float2? GetLastSegmentExit(Float2 startPosition, Float2 endPosition)
+            => Shape.GetLastSegmentExit(startPosition, endPosition);
+
         public virtual ESightLineEffect EvaluateSightLine(Position attacker, Position target)
         {
             //2D footprint query. Height is intentionally ignored for now — when

@@ -20,14 +20,21 @@ namespace FDG.Stages
             List<DataBinding<ModelData>> attackers = metaData.AttackingUnit.ModelBindings().ToList();
             List<DataBinding<ModelData>> defenders = metaData.DefendingUnit.ModelBindings().ToList();
 
+            // #201: the proximity exceptions (shooter hugging the piece / shared cover at knife
+            // range) void individual sight-line cover when the lobby toggle is on.
+            bool applyProximity = GameContext.Settings.CoverProximityExceptionsEnabled;
+
             int modelsInCover = 0;
             foreach (DataBinding<ModelData> defender in defenders)
             {
-                Position defPos = defender.GetValue().PositionBinding.GetValue();
+                ModelData defModel = defender.GetValue();
+                Position defPos = defModel.PositionBinding.GetValue();
                 foreach (DataBinding<ModelData> attacker in attackers)
                 {
+                    ModelData atkModel = attacker.GetValue();
                     ESightLineEffect effect = LineOfSightUtilities.EvaluateSightLine(
-                        attacker.GetValue().PositionBinding.GetValue(), defPos, terrain);
+                        atkModel.PositionBinding.GetValue(), defPos, terrain,
+                        CoverContext.ForModels(atkModel, defModel), applyProximity);
                     if (effect == ESightLineEffect.Cover)
                     {
                         modelsInCover++;

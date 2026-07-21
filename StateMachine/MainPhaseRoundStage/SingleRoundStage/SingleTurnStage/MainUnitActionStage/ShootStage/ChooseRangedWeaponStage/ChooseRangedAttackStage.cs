@@ -300,7 +300,8 @@ namespace FDG.Stages
                 gameContext.TableState, attackingUnit, enemyUnit);
             IReadOnlyList<ITerrain> allTerrain = terrain.Concat(modelBlockers).ToList();
 
-            bool hasCover = ComputeHasCover(attackingUnit, enemyUnit, allTerrain);
+            bool hasCover = ComputeHasCover(attackingUnit, enemyUnit, allTerrain,
+                gameContext.Settings.CoverProximityExceptionsEnabled);
 
             foreach (string weaponName in weaponNames)
             {
@@ -414,8 +415,12 @@ namespace FDG.Stages
         // Internal for tests. Dead models must not sway the cover majority (#158): only living defenders
         // can benefit from cover, and only living attackers have sight lines — a squad whose casualties
         // happened to die behind a wall must not grant the survivors standing in the open a cover bonus.
+        // #055/#045 truthfulness: this feeds the targeting UI's cover flag, so it must mirror
+        // CoverCheckStage exactly — including the #201 proximity exceptions, threaded here as
+        // applyProximityExceptions from GameSettings.CoverProximityExceptionsEnabled.
         internal static bool ComputeHasCover(DataBinding<UnitData> attackingUnit,
-            DataBinding<UnitData> defendingUnit, IReadOnlyList<ITerrain> terrain)
+            DataBinding<UnitData> defendingUnit, IReadOnlyList<ITerrain> terrain,
+            bool applyProximityExceptions)
         {
             List<DataBinding<ModelData>> attackers = attackingUnit.ModelBindings()
                 .Where(model => model.GetIsAlive()).ToList();
@@ -426,11 +431,14 @@ namespace FDG.Stages
             int modelsInCover = 0;
             foreach (DataBinding<ModelData> defender in defenders)
             {
-                Position defPos = defender.GetValue().PositionBinding.GetValue();
+                ModelData defModel = defender.GetValue();
+                Position defPos = defModel.PositionBinding.GetValue();
                 foreach (DataBinding<ModelData> attacker in attackers)
                 {
+                    ModelData atkModel = attacker.GetValue();
                     ESightLineEffect effect = LineOfSightUtilities.EvaluateSightLine(
-                        attacker.GetValue().PositionBinding.GetValue(), defPos, terrain);
+                        atkModel.PositionBinding.GetValue(), defPos, terrain,
+                        CoverContext.ForModels(atkModel, defModel), applyProximityExceptions);
                     if (effect == ESightLineEffect.Cover)
                     {
                         modelsInCover++;

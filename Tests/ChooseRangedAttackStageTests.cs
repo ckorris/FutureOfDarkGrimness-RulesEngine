@@ -217,13 +217,15 @@ namespace FDG.Tests
                 new TerrainData(ETerrainType.Cover, new RectangularZone(8, 12, 3, 7))
             };
 
-            Assert.That(ChooseRangedAttackStage.ComputeHasCover(attacker, defender, terrain), Is.False,
+            Assert.That(ChooseRangedAttackStage.ComputeHasCover(attacker, defender, terrain,
+                    applyProximityExceptions: true), Is.False,
                 "corpses behind the wall must not grant the lone survivor in the open a cover bonus");
 
             // Converse: when the LIVING model is the one behind the wall, cover applies (1 of 1).
             var aliveCovered = MakeUnit(store, enemy, "Defender2",
                 new[] { MakeModel(store, new Position(20, 5)) });
-            Assert.That(ChooseRangedAttackStage.ComputeHasCover(attacker, aliveCovered, terrain), Is.True);
+            Assert.That(ChooseRangedAttackStage.ComputeHasCover(attacker, aliveCovered, terrain,
+                applyProximityExceptions: true), Is.True);
         }
 
         // #028: while the unit holds an un-fired Deadly (wound-multiplier) weapon that can reach a target,

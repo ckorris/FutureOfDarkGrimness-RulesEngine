@@ -40,6 +40,7 @@ namespace FDG.Network.Connection.Lobby
         public IObservable<EObjectivePlacementMode> ObjectivePlacementModeObservable => _settings_ObjectivePlacementMode;
         public IObservable<ERandomnessType> RandomnessTypeObservable => _settings_RandomnessType;
         public IObservable<ETurnStyle> TurnStyleObservable => _settings_TurnMethod;
+        public IObservable<bool> CoverProximityExceptionsObservable => _settings_CoverProximityExceptions;
 
         public string ServerName => _serverName.Value;
 
@@ -61,6 +62,8 @@ namespace FDG.Network.Connection.Lobby
 
         public ETurnStyle TurnStyle => _settings_TurnMethod.Value;
 
+        public bool CoverProximityExceptions => _settings_CoverProximityExceptions.Value;
+
         private BehaviorSubject<string> _serverName;
 
         private ReplaySubject<LobbyChatMessage> _chatMessagesSubject;
@@ -76,6 +79,7 @@ namespace FDG.Network.Connection.Lobby
         private BehaviorSubject<EObjectivePlacementMode> _settings_ObjectivePlacementMode;
         private BehaviorSubject<ERandomnessType> _settings_RandomnessType;
         private BehaviorSubject<ETurnStyle> _settings_TurnMethod;
+        private BehaviorSubject<bool> _settings_CoverProximityExceptions;
 
         private INetworkHost _host;
 
@@ -134,6 +138,7 @@ namespace FDG.Network.Connection.Lobby
             _settings_ObjectivePlacementMode = new BehaviorSubject<EObjectivePlacementMode>(_gameSettings.ObjectivePlacementMode);
             _settings_RandomnessType = new BehaviorSubject<ERandomnessType>(_gameSettings.RandomnessType);
             _settings_TurnMethod = new BehaviorSubject<ETurnStyle>(_gameSettings.TurnStyle);
+            _settings_CoverProximityExceptions = new BehaviorSubject<bool>(_gameSettings.CoverProximityExceptionsEnabled);
 
             _playerInfos = new BehaviorSubject<IReadOnlyList<LobbyPlayerInfoSummary>>(new List<LobbyPlayerInfoSummary>());
 
@@ -189,6 +194,7 @@ namespace FDG.Network.Connection.Lobby
             _settings_ObjectivePlacementMode = new BehaviorSubject<EObjectivePlacementMode>(_gameSettings.ObjectivePlacementMode);
             _settings_RandomnessType = new BehaviorSubject<ERandomnessType>(_gameSettings.RandomnessType);
             _settings_TurnMethod = new BehaviorSubject<ETurnStyle>(_gameSettings.TurnStyle);
+            _settings_CoverProximityExceptions = new BehaviorSubject<bool>(_gameSettings.CoverProximityExceptionsEnabled);
 
             _playerInfos = new BehaviorSubject<IReadOnlyList<LobbyPlayerInfoSummary>>(new List<LobbyPlayerInfoSummary>());
 
@@ -862,6 +868,13 @@ namespace FDG.Network.Connection.Lobby
             {
                 _settings_TurnMethod.OnNext(_settings_TurnMethod.Value);
             }
+        }
+
+        public void SetCoverProximityExceptions(bool enabled)
+        {
+            _settings_CoverProximityExceptions.OnNext(enabled);
+            _gameSettings.CoverProximityExceptions = enabled;
+            _messageBus.SendCommandToAllAsync(new LobbyGameSettingsUpdate(_gameSettings));
         }
 
         public bool CheckCanModifyPlayerIDInfo(PlayerID playerID)

@@ -105,6 +105,36 @@ namespace FDG
             return found ? bestPoint : (Float2?)null;
         }
 
+        public Float2? GetLastSegmentExit(Float2 startPosition, Float2 endPosition)
+        {
+            if (IsPointWithinZone(endPosition)) return null;
+
+            Float2[] corners = {
+                new Float2(Left, Bottom),
+                new Float2(Left, Top),
+                new Float2(Right, Top),
+                new Float2(Right, Bottom),
+            };
+
+            // The end is outside, so the largest-t boundary crossing is where the
+            // segment last leaves the rectangle (whether the start is inside or the
+            // segment passes clean through).
+            float bestT = float.MinValue;
+            Float2 bestPoint = default;
+            bool found = false;
+
+            for (int i = 0; i < 4; i++)
+            {
+                if (TrySegmentIntersection(startPosition, endPosition, corners[i], corners[(i + 1) % 4],
+                        out float t, out Float2 point))
+                {
+                    if (t > bestT) { bestT = t; bestPoint = point; found = true; }
+                }
+            }
+
+            return found ? bestPoint : (Float2?)null;
+        }
+
         private static bool TrySegmentIntersection(Float2 p, Float2 p2, Float2 q, Float2 q2,
             out float t, out Float2 point)
         {

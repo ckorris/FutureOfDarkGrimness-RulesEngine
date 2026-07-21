@@ -94,5 +94,27 @@ namespace FDG
             if (t1 < 0f || t1 > 1f) return null;
             return new Float2(startPosition.X + d.X * t1, startPosition.Y + d.Y * t1);
         }
+
+        public Float2? GetLastSegmentExit(Float2 startPosition, Float2 endPosition)
+        {
+            if (IsPointWithinZone(endPosition)) return null;
+
+            Float2 d = endPosition - startPosition;
+            float a = d.X * d.X + d.Y * d.Y;
+            if (a <= 0f) return null;
+
+            Float2 f = startPosition - Center;
+            float b = 2f * (f.X * d.X + f.Y * d.Y);
+            float c = f.X * f.X + f.Y * f.Y - Radius * Radius;
+            float disc = b * b - 4f * a * c;
+            if (disc < 0f) return null;
+
+            float sqrtDisc = MathF.Sqrt(disc);
+            float t2 = (-b + sqrtDisc) / (2f * a);
+            // t2 is the further intersection; the end is outside the circle, so if the
+            // segment touches the circle at all, t2 is where it last leaves it.
+            if (t2 < 0f || t2 > 1f) return null;
+            return new Float2(startPosition.X + d.X * t2, startPosition.Y + d.Y * t2);
+        }
     }
 }

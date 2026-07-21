@@ -49,6 +49,7 @@ namespace FDG.Network.Connection.Lobby
         public IObservable<EObjectivePlacementMode> ObjectivePlacementModeObservable => _settings_ObjectivePlacementMode;
         public IObservable<ERandomnessType> RandomnessTypeObservable => _settings_RandomnessType;
         public IObservable<ETurnStyle> TurnStyleObservable => _settings_TurnMethod;
+        public IObservable<bool> CoverProximityExceptionsObservable => _settings_CoverProximityExceptions;
 
         public string ServerName => _serverName.Value;
 
@@ -70,6 +71,8 @@ namespace FDG.Network.Connection.Lobby
 
         public ETurnStyle TurnStyle => _settings_TurnMethod.Value;
 
+        public bool CoverProximityExceptions => _settings_CoverProximityExceptions.Value;
+
         private BehaviorSubject<string> _serverName;
 
         private ReplaySubject<LobbyChatMessage> _chatMessagesSubject;
@@ -84,6 +87,7 @@ namespace FDG.Network.Connection.Lobby
         private BehaviorSubject<EObjectivePlacementMode> _settings_ObjectivePlacementMode;
         private BehaviorSubject<ERandomnessType> _settings_RandomnessType;
         private BehaviorSubject<ETurnStyle> _settings_TurnMethod;
+        private BehaviorSubject<bool> _settings_CoverProximityExceptions;
 
         private PlayerID? _thisPlayerID = null;
         private string _thisPlayerName;
@@ -138,6 +142,8 @@ namespace FDG.Network.Connection.Lobby
             _settings_ObjectivePlacementMode = new BehaviorSubject<EObjectivePlacementMode>(EObjectivePlacementMode.AutoPlaced);
             _settings_RandomnessType = new BehaviorSubject<ERandomnessType>(ERandomnessType.Realistic);
             _settings_TurnMethod = new BehaviorSubject<ETurnStyle>(ETurnStyle.Standard);
+            // #201: default-on mirrors GameSettings; the host's first LobbyGameSettingsUpdate corrects it.
+            _settings_CoverProximityExceptions = new BehaviorSubject<bool>(true);
 
             //Init empty player list. The host should update us.
             _playerInfos = new BehaviorSubject<IReadOnlyList<LobbyPlayerInfoSummary>>(new List<LobbyPlayerInfoSummary>());
@@ -280,6 +286,10 @@ namespace FDG.Network.Connection.Lobby
             {
                 _settings_TurnMethod.OnNext(gameSettingsUpdate.GameSettings.TurnStyle);
             }
+            if (_settings_CoverProximityExceptions.Value != gameSettingsUpdate.GameSettings.CoverProximityExceptionsEnabled)
+            {
+                _settings_CoverProximityExceptions.OnNext(gameSettingsUpdate.GameSettings.CoverProximityExceptionsEnabled);
+            }
         }
 
         private void OnLaunchGameMessageReceived(LaunchGameMessage launchGameMessage)
@@ -337,6 +347,11 @@ namespace FDG.Network.Connection.Lobby
         {
             throw new InvalidOperationException("Tried to set turn style when not the host.");
 
+        }
+
+        public void SetCoverProximityExceptions(bool enabled)
+        {
+            throw new InvalidOperationException("Tried to set cover proximity exceptions when not the host.");
         }
 
         public bool CheckCanModifyPlayerIDInfo(PlayerID playerID)

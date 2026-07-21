@@ -200,6 +200,7 @@ namespace FDG.Tests
             public bool DoesPathIntersectZone(Float2 a, Float2 b) => Shape.DoesPathIntersectZone(a, b);
             public bool DoesPathIntersectZone(Float2 a, Float2 b, float inflationRadius) => Shape.DoesPathIntersectZone(a, b, inflationRadius);
             public Float2? GetFirstSegmentEntry(Float2 a, Float2 b) => Shape.GetFirstSegmentEntry(a, b);
+            public Float2? GetLastSegmentExit(Float2 a, Float2 b) => Shape.GetLastSegmentExit(a, b);
             public ESightLineEffect EvaluateSightLine(Position attacker, Position target)
                 => _closed ? ESightLineEffect.Blocking : ESightLineEffect.Clear;
         }

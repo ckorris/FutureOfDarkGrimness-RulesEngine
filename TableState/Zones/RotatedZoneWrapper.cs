@@ -57,5 +57,18 @@ namespace FDG
             if (!localEntry.HasValue) return null;
             return ZoneExtensions.RotateAround(localEntry.Value, Pivot, AngleDegrees);
         }
+
+        /// <summary>
+        /// Inverse-rotates the segment into the inner zone's local frame, delegates,
+        /// then forward-rotates the exit point back to world space.
+        /// </summary>
+        public Float2? GetLastSegmentExit(Float2 startPosition, Float2 endPosition)
+        {
+            Float2 localStart = ZoneExtensions.RotateAround(startPosition, Pivot, -AngleDegrees);
+            Float2 localEnd   = ZoneExtensions.RotateAround(endPosition,   Pivot, -AngleDegrees);
+            Float2? localExit = Inner.GetLastSegmentExit(localStart, localEnd);
+            if (!localExit.HasValue) return null;
+            return ZoneExtensions.RotateAround(localExit.Value, Pivot, AngleDegrees);
+        }
     }
 }

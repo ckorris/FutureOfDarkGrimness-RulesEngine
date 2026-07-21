@@ -30,5 +30,16 @@ namespace FDG
         /// where a sight line is broken.
         /// </summary>
         public Float2? GetFirstSegmentEntry(Float2 startPosition, Float2 endPosition);
+
+        /// <summary>
+        /// Returns the point along the segment from <paramref name="startPosition"/> to
+        /// <paramref name="endPosition"/> where the segment LAST leaves this zone — the
+        /// largest-t inside-to-outside boundary crossing — or null if the segment never
+        /// intersects the zone, or if <paramref name="endPosition"/> is inside it (no
+        /// final exit). The end-inside-means-null contract is load-bearing for the #201
+        /// cover proximity rules: a target standing inside a cover piece has no exit
+        /// point, so the attacker-exit rule must not apply.
+        /// </summary>
+        public Float2? GetLastSegmentExit(Float2 startPosition, Float2 endPosition);
     }
 }

@@ -71,5 +71,34 @@ namespace FDG
             }
             return best;
         }
+
+        /// <summary>
+        /// Returns the farthest segment-exit point across all parts. When the end is
+        /// outside every part this IS the union's last exit: if the segment were still
+        /// inside some other part just after the farthest per-part exit, that part's own
+        /// exit would be even farther, contradicting maximality. Null if the end is
+        /// inside any part or no part is crossed.
+        /// </summary>
+        public Float2? GetLastSegmentExit(Float2 startPosition, Float2 endPosition)
+        {
+            if (IsPointWithinZone(endPosition)) return null;
+
+            Float2? best = null;
+            float bestDistSq = -1f;
+            foreach (var part in Parts)
+            {
+                Float2? exit = part.GetLastSegmentExit(startPosition, endPosition);
+                if (!exit.HasValue) continue;
+                float dx = exit.Value.X - startPosition.X;
+                float dy = exit.Value.Y - startPosition.Y;
+                float distSq = dx * dx + dy * dy;
+                if (distSq > bestDistSq)
+                {
+                    bestDistSq = distSq;
+                    best = exit;
+                }
+            }
+            return best;
+        }
     }
 }

@@ -129,6 +129,49 @@ public class OprBookImporterTests
         Assert.That(targeter.Rules, Has.One.EqualTo(new SpecialRuleEntry_Core("Reliable")));
     }
 
+    // #219: when OPR omits the flat `cost` scalar, the real price lives in a per-unit `costs` array keyed by
+    // unit id - the SAME shared option costs 10 pts on one hero and 5 on another. The importer must read this
+    // unit's entry, not treat the option as free. A genuinely uncosted option (no cost, no costs) stays flagged.
+    private const string PerUnitCostJson = """
+    {
+      "name": "Cost Legion", "versionString": "3.5.3",
+      "units": [
+        { "id": "noble",   "name": "Noble",   "size": 1, "cost": 45, "quality": 3, "defense": 4, "upgrades": ["P1"] },
+        { "id": "protector","name": "Protector","size": 1, "cost": 35, "quality": 4, "defense": 5, "upgrades": ["P1"] }
+      ],
+      "upgradePackages": [
+        { "uid": "P1", "sections": [
+          { "id":"s1", "label":"Wargear",
+            "options":[
+              { "id":"pistol", "label":"Master Laser Pistol",
+                "costs":[ {"cost":10,"unitId":"noble"}, {"cost":5,"unitId":"protector"} ] },
+              { "id":"free", "label":"Trinket", "cost":0 },
+              { "id":"mystery", "label":"Unknowable" }
+            ] }
+        ] }
+      ]
+    }
+    """;
+
+    [Test]
+    public void Import_ResolvesPerUnitOptionCost_FromCostsArray()
+    {
+        BookFile book = OprBookImporter.Import(PerUnitCostJson, "src", "lic");
+        UpgradeOption Opt(string unitName, string id) =>
+            book.Units.Single(u => u.Name == unitName).Sections.Single().Options.Single(o => o.Id == id);
+
+        // Same option, different price per unit - and neither is "unpriced".
+        Assert.That(Opt("Noble", "pistol").Cost, Is.EqualTo(10));
+        Assert.That(Opt("Noble", "pistol").CostUnpriced, Is.False);
+        Assert.That(Opt("Protector", "pistol").Cost, Is.EqualTo(5));
+        Assert.That(Opt("Protector", "pistol").CostUnpriced, Is.False);
+
+        // Explicit 0 stays free; an option with neither cost nor costs stays flagged unpriced.
+        Assert.That(Opt("Noble", "free").CostUnpriced, Is.False);
+        Assert.That(Opt("Noble", "mystery").CostUnpriced, Is.True);
+        Assert.That(Opt("Noble", "mystery").Cost, Is.EqualTo(0));
+    }
+
     // #197 (Darkborn): OPR uses the bare name "Darkborn" for two different rules across armies. The catalog
     // registers them disambiguated ("Darkborn (Offensive)"/"(Defensive)"), so the bare name resolved to
     // nothing; the importer routes it to the right variant by army name. A rule name carried on a unit, a

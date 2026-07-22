@@ -20,10 +20,12 @@ namespace FDG.Tests
     /// per-model hero / custom / aliased / argumented) and that tokens — which already round-trip on the
     /// <c>[JsonProperty]</c> container — keep working.
     /// <para>
-    /// Assertions match by <c>Definition.Name</c> / <c>RequestedName</c>, not by <c>==</c> against the
-    /// catalog instance: a deserialized <see cref="SpecialRuleDefinition"/> is a fresh object and record
-    /// equality compares its list members by reference, so identity-match would fail even on a perfect
-    /// round-trip (see <c>SpecialRuleDefinitionSerializationTests</c>, which covers the graph itself).
+    /// Most assertions match by <c>Definition.Name</c> / <c>RequestedName</c>; since #258,
+    /// <c>SpecialRuleDefinition</c> equality IS its canonical name, so <c>==</c> against the catalog
+    /// instance also holds after a round-trip - the <c>DefinitionIdentity_*</c> tests below pin exactly
+    /// that (rehydration builds per-attachment instances, and every engine-side <c>Definition ==</c>
+    /// check must keep working on a resumed game; the WayTooManyInBack Sniper Team crash was the
+    /// loudest symptom of it not).
     /// </para>
     /// </summary>
     [TestFixture]
@@ -359,6 +361,59 @@ namespace FDG.Tests
                 "The EmbarkedIn token (#035) should survive a save/load resume.");
             Assert.That(embarked!.OwnerUnitID, Is.EqualTo(transportId),
                 "The cross-unit OwnerUnitID back-reference to the transport must survive too.");
+        }
+
+        // ──────────────────────────────────────────────────────────────────────
+        // #258: definition identity survives the round-trip. Rehydration builds a fresh
+        // SpecialRuleDefinition per attachment; before #258 gave the record name-based equality,
+        // every `Definition ==` site (Transport, Hero, Caster, WeaponComparer rule matching...)
+        // silently went false on a resumed game, and same-named weapons stopped grouping - which
+        // crashed BuildWeaponOptions with a duplicate name key the moment a multi-model unit with
+        // per-model weapon instances shot (the WayTooManyInBack Sniper Team fault).
+        // ──────────────────────────────────────────────────────────────────────
+
+        [Test]
+        public void DefinitionIdentity_CatalogEquality_SurvivesSaveLoad()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            DataBinding<UnitData> unit = MakeUnit(store, "Sneaks",
+                new[] { MakeModel(store, new Position(1, 1)) });
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Stealth", CoreRuleCatalog.Stealth));
+
+            GameDataStore loaded = SaveAndLoad(store);
+            UnitData loadedUnit = loaded.GetValue<UnitData>(unit.Reference);
+
+            Assert.That(loadedUnit.RuleDefinitions.Any(r => r.Definition == CoreRuleCatalog.Stealth),
+                Is.True,
+                "A rehydrated attachment must still compare == to the catalog definition - every " +
+                "engine-side 'has this rule?' check depends on it.");
+        }
+
+        [Test]
+        public void DefinitionIdentity_WeaponComparer_GroupsSameNamedWeapons_AfterSaveLoad()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+
+            // Two models, each with its OWN Weapon instance of the same profile (how imported
+            // armies arm multi-model units) carrying the same weapon-scoped rule.
+            Weapon RifleFor(int _)
+            {
+                var rifle = new Weapon("Sniper Rifle", rangeInches: 30, attacks: 1, armorPenetration: 1);
+                rifle.AttachRuleDefinition(new ResolvedRule("Reliable", CoreRuleCatalog.Reliable));
+                return rifle;
+            }
+            DataBinding<ModelData> a = MakeModel(store, new Position(1, 1), new List<Weapon> { RifleFor(0) });
+            DataBinding<ModelData> b = MakeModel(store, new Position(2, 1), new List<Weapon> { RifleFor(1) });
+            MakeUnit(store, "Sniper Team", new[] { a, b });
+
+            GameDataStore loaded = SaveAndLoad(store);
+            Weapon rifleA = loaded.GetValue<ModelData>(a.Reference).Weapons.Single();
+            Weapon rifleB = loaded.GetValue<ModelData>(b.Reference).Weapons.Single();
+
+            Assert.That(new WeaponComparer().Equals(rifleA, rifleB), Is.True,
+                "Same-named same-profile weapons must still group after a resume (their rehydrated " +
+                "rule definitions are distinct instances) - otherwise GetTypeSortedWeapons yields one " +
+                "key per model and BuildWeaponOptions throws on the duplicate weapon name.");
         }
 
         // ──────────────────────────────────────────────────────────────────────

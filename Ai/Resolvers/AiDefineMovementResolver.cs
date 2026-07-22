@@ -71,14 +71,23 @@ namespace FDG.Ai.Resolvers
             // #205: friendly models the move may pass through but must not END stacked on - fed to the ladder
             // so the AI backs off a spot that would overlap a teammate (the authoritative stage rejects it).
             var friendlyFootprints = MovementPlanner.LiveFriendlyFootprints(_tableState, _playerID, unit.ID);
-            if (enemyFootprints.Count == 0)
-                return Task.FromResult(MovementPlanner.StayInPlace(unitBinding));
 
             // Move (and re-form) only the living models. Dead ones leave holes in the formation and stay
             // put — they're omitted from the move entries, so the cohesion check only sees living models.
             var living = unit.ModelBindings.Where(mb => mb.GetValue().GetIsAlive()).ToList();
             if (living.Count == 0)
                 return Task.FromResult(MovementPlanner.StayInPlace(unitBinding));
+
+            // #256: the stand-still early-outs bypass the ladder, so they must validate the reform
+            // themselves - with every enemy dead (objectives keep the game going) a unit parked next
+            // to a teammate would otherwise submit a re-pack whose slot lands on the friendly and
+            // fault DefinePathStage (bench seed 1051).
+            if (enemyFootprints.Count == 0)
+                return Task.FromResult<List<ModelMoveEntry>?>(SafeStay());
+
+            List<ModelMoveEntry> SafeStay() => MovementPlanner.StayInPlaceValidated(unitBinding, living,
+                budgetFor, enemyFootprints, request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain,
+                request.IgnoresImpassibleTerrain, _tableState.Terrain.Objects.ToList(), friendlyFootprints);
 
             float cx = living.Average(mb => mb.GetValue().Position.x);
             float cz = living.Average(mb => mb.GetValue().Position.z);
@@ -92,7 +101,7 @@ namespace FDG.Ai.Resolvers
             float dist = MathF.Sqrt(dx * dx + dz * dz);
 
             if (dist < 0.01f)
-                return Task.FromResult(MovementPlanner.StayInPlace(unitBinding));
+                return Task.FromResult<List<ModelMoveEntry>?>(SafeStay());
 
             float ndx = dx / dist;
             float ndz = dz / dist;

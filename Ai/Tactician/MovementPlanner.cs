@@ -13,8 +13,10 @@ namespace FDG.Ai.Tactician
     /// <para>
     /// Extracted verbatim from AiDefineMovementResolver so the solo-rules bot and the Tactician's
     /// macro-action generator (A3c) drive the same machinery. The solo-rules bot's BEHAVIOR is pinned
-    /// unchanged (plan D1): its resolver tests plus the 200-game benchmark outcome hashes
-    /// (B05AA1D810364C6B / F4318EF0D91161F5, recorded in the #191 ledger) must survive this move.
+    /// (plan D1) by its resolver tests plus the 200-game benchmark outcome hashes recorded in the
+    /// #191 ledger. #256 deliberately moved that baseline (measure-and-correct budgets, the S2
+    /// re-aim, the S4 snake); the re-pinned 2026-07-22 hashes are 3674C906996F34CC (builtin mirror)
+    /// / CE3DC8150005FF2C (builtin vs builtin-basic), zero faults, reproducible at DOP 16.
     /// </para>
     /// </summary>
     public static class MovementPlanner
@@ -327,6 +329,27 @@ namespace FDG.Ai.Tactician
                 x += end.x; z += end.z; count++;
             }
             return count == 0 ? (0f, 0f) : (x / count, z / count);
+        }
+
+        /// <summary>
+        /// The G3-safe stand-still: <see cref="StayInPlace"/>'s reform validated like any ladder result,
+        /// degrading to <see cref="HoldExactPositions"/> when even the re-pack is illegal - its slots can
+        /// land on an adjacent friendly (#205's end-overlap rule). Callers that answer a movement request
+        /// with a stay WITHOUT running the ladder must use this, not raw StayInPlace: the bench's seed-1051
+        /// fault was the solo resolver's every-enemy-dead early-out submitting an unvalidated reform whose
+        /// slot overlapped a teammate, faulting DefinePathStage.
+        /// </summary>
+        public static List<ModelMoveEntry> StayInPlaceValidated(DataBinding<UnitData> unit,
+            List<DataBinding<ModelData>> living, Func<ModelMoveEntry, ModelMoveBudget> budgetFor,
+            List<EnemyModelFootprint> enemies, bool canMoveThroughEnemies, bool ignoresDifficultTerrain,
+            bool ignoresImpassibleTerrain, List<ITerrain> terrain,
+            IReadOnlyList<EnemyModelFootprint>? friendlies)
+        {
+            List<ModelMoveEntry> stay = StayInPlace(unit);
+            bool valid = MovementUtilities.ValidatePaths(stay, budgetFor, enemies, canMoveThroughEnemies,
+                ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, out _, friendlies,
+                lenientCoherency: true);
+            return valid ? stay : HoldExactPositions(living);
         }
 
         /// <summary>

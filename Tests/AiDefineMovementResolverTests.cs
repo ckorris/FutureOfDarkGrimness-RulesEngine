@@ -59,6 +59,54 @@ namespace FDG.Tests
         }
 
         [Test]
+        public async Task Resolve_AllEnemiesDead_StandStillNextToFriendly_ResultIsEngineValid()
+        {
+            // #256 bench fault (seed 1051): with every enemy dead (objectives keep the game going), the
+            // resolver's early-out answered with an UNVALIDATED StayInPlace reform whose re-pack slot
+            // landed on an adjacent friendly - DefinePathStage rejects end-on-friendly (#205) and faults.
+            // Geometry copied from the fault: 3 movers whose centroid re-pack row overlaps the teammate.
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var selfPlayer = new PlayerID(System.Guid.NewGuid());
+            const float r = 0.5511811f; // 28mm base
+
+            var moverModels = new[]
+                { new Position(18.474f, 31.937f), new Position(19.319f, 32.646f), new Position(20.521f, 32.646f) }
+                .Select(p => store.GetDataBinding<ModelData>(store.Create(
+                    new ModelData(r, new List<Weapon>(), p, store)))).ToList();
+            var moverUnitBinding = store.GetDataBinding<UnitData>(store.Create(
+                new UnitData(selfPlayer, "Gunners", 4, 4, moverModels)));
+
+            // The adjacent friendly unit the reform's leftmost slot would land on.
+            var friendlyPositions = new[]
+            {
+                new Position(15.485f, 31.610f), new Position(16.687f, 31.610f), new Position(17.288f, 32.812f),
+                new Position(14.883f, 32.812f), new Position(16.086f, 32.812f),
+            };
+            var friendlyModels = friendlyPositions
+                .Select(p => store.GetDataBinding<ModelData>(store.Create(
+                    new ModelData(r, new List<Weapon>(), p, store)))).ToList();
+            store.Create(new UnitData(selfPlayer, "Warriors", 4, 4, friendlyModels));
+
+            // No enemy units at all - the early-out path.
+            var tableState = new TableState(store);
+            var resolver = new AiDefineMovementResolver(tableState, selfPlayer);
+            var request = new DefineMovementPathRequest(selfPlayer, "Move", moverUnitBinding,
+                maxAdvanceDistance: 6f, maxRushDistance: 12f, maxDistanceInches: 12f);
+
+            List<ModelMoveEntry> result = Unwrap(await resolver.Resolve(request));
+
+            var friendlyFootprints = friendlyPositions
+                .Select(p => new EnemyModelFootprint(p, r, 0)).ToList();
+            bool valid = MovementUtilities.ValidatePaths(result,
+                _ => new ModelMoveBudget(12f, 12f), new List<EnemyModelFootprint>(),
+                canMoveThroughEnemies: false, ignoresDifficultTerrain: false, ignoresImpassibleTerrain: false,
+                new List<ITerrain>(), out var errors, friendlyFootprints, lenientCoherency: true);
+            Assert.That(valid, Is.True,
+                "a stand-still with no enemies must not end re-packed onto a friendly: "
+                + string.Join(", ", errors.Select(e => e.ToString())));
+        }
+
+        [Test]
         public async Task Resolve_StraightPathBlockedByImpassible_SkirtsInsteadOfFreezing()
         {
             var store = GameDataStore.GameDataStoreBuilder.GetDefault();

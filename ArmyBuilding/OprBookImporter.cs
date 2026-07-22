@@ -830,7 +830,7 @@ namespace FDG.ArmyBuilding
             public List<OprGain>? Gains { get; set; }
         }
 
-        private sealed class OprOptionCost
+        internal sealed class OprOptionCost
         {
             public int? Cost { get; set; }
             public string? UnitId { get; set; }

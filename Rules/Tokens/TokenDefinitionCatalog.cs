@@ -99,6 +99,25 @@ public static class TokenDefinitionCatalog
                 DefaultClearTrigger: new TokenClearTrigger.ManualOnly(),
                 Description: "Marked - a friendly attacker gains a rule against this unit until the first attack into it."),
 
+            // #100 #14b attacker-bonus markers (Tag/Target/Spotter): Negative valence — they sit on the
+            // marked enemy and help its attackers. ManualOnly: spendables are removed by the claim,
+            // persistents last the game.
+            new(TokenType.SPENDABLE_HIT_BONUS_ID, "Hit marker", EValence.Negative, ETokenProminence.Normal,
+                DefaultClearTrigger: new TokenClearTrigger.ManualOnly(),
+                Description: "Attackers may spend these markers before rolling to hit: +1 to hit rolls per marker removed."),
+
+            new(TokenType.SPENDABLE_AP_BONUS_ID, "AP marker", EValence.Negative, ETokenProminence.Normal,
+                DefaultClearTrigger: new TokenClearTrigger.ManualOnly(),
+                Description: "Attackers may spend these markers before this unit rolls to block: AP(+1) per marker removed."),
+
+            new(TokenType.PERSISTENT_HIT_BONUS_ID, "Targeted (hit)", EValence.Negative, ETokenProminence.Normal,
+                DefaultClearTrigger: new TokenClearTrigger.ManualOnly(),
+                Description: "Attackers get +1 to hit rolls per marker while these sit on this unit."),
+
+            new(TokenType.PERSISTENT_AP_BONUS_ID, "Targeted (AP)", EValence.Negative, ETokenProminence.Normal,
+                DefaultClearTrigger: new TokenClearTrigger.ManualOnly(),
+                Description: "Attackers get AP(+1) per marker while these sit on this unit."),
+
             new(TokenType.ARRIVED_FROM_RESERVE_ID, "Arrived from reserve", EValence.Neutral,
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd()),
 

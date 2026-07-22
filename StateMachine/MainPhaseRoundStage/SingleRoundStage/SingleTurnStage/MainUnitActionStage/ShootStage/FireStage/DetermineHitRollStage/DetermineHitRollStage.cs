@@ -95,6 +95,18 @@ namespace FDG.Stages
                 results.HitRollNeeded -= grantedNet;
             }
 
+            // #100 #14b: attacker-bonus markers on the defender — persistent (Target family) counted,
+            // spendable (Tag/Spotter) claimed via a prompt to the attacking player. Skipped while
+            // fatigued for the same reason as the granted buffs above: only unmodified 6s hit, so
+            // spending markers would waste them.
+            int markerNet = 0;
+            if (!fatiguedInMelee)
+            {
+                markerNet = await TargetMarkerSpend.ConsumeNet(GameContext,
+                    metaData.AttackingUnit.PlayerID(), defender, ERollKind.Hit);
+                results.HitRollNeeded -= markerNet;
+            }
+
             GameContext.Log($"Base hit roll required is {results.HitRollNeeded} based on attacker's quality.");
 
             // Override the computed threshold rather than stacking a modifier; the d6 comparison in
@@ -105,7 +117,8 @@ namespace FDG.Stages
                 GameContext.Log($"{attacker.Name} is fatigued - hits only on unmodified 6s in melee.");
             }
 
-            results.ThresholdTags = ComposeThresholdTags(baseQuality, named, grantedNet, fatiguedInMelee);
+            results.ThresholdTags = ComposeThresholdTags(baseQuality, named, grantedNet, fatiguedInMelee,
+                markerNet);
 
             await onFinished(results);
         }
@@ -115,7 +128,8 @@ namespace FDG.Stages
         // one chip per named contribution, so "Quality 4+ | Stealth -1" reads as the arithmetic behind
         // the badge's "5+". Internal for tests.
         internal static List<string>? ComposeThresholdTags(int baseQuality,
-            IReadOnlyList<(RuleOperation Op, string RuleName)> named, int grantedNet, bool fatiguedInMelee)
+            IReadOnlyList<(RuleOperation Op, string RuleName)> named, int grantedNet, bool fatiguedInMelee,
+            int markerNet = 0)
         {
             List<string> tags = new List<string> { $"Quality {baseQuality}+" };
             foreach ((RuleOperation op, string ruleName) in named)
@@ -125,6 +139,7 @@ namespace FDG.Stages
                 tags.Add($"{RollTags.NameOr(ruleName, "modifier")} {RollTags.Delta(mod.Delta)}");
             }
             if (grantedNet != 0) tags.Add($"buff {RollTags.Delta(grantedNet)}");
+            if (markerNet != 0) tags.Add($"markers {RollTags.Delta(markerNet)}");
             if (fatiguedInMelee) tags.Add("Fatigued: 6s only");
 
             return tags.Count > 1 ? tags : null;

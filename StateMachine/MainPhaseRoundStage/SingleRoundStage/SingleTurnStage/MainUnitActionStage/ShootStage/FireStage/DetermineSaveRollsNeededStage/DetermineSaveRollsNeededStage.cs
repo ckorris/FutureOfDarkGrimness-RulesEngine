@@ -39,11 +39,18 @@ namespace FDG.Stages
             // same sign as cover; one-shot ("next time") grants are consumed by this attack's saves.
             int grantedDefense = GrantedRollModifiers.ConsumeNet(metaData.DefendingUnit.GetValue(), ERollKind.Save);
 
+            // #100 #14b: AP-side attacker-bonus markers on the defender — persistent (Piercing Target)
+            // counted, spendable (Piercing Tag/Spotter) claimed via a prompt to the attacking player
+            // "before rolling to block". A positive net RAISES the defender's threshold.
+            int markerNet = await TargetMarkerSpend.ConsumeNet(GameContext,
+                metaData.AttackingUnit.PlayerID(), metaData.DefendingUnit.GetValue(), ERollKind.Save);
+
             int baseDefenseWithAP = baseDefense + ap - coverResults.DefenseRollBonus - rollToHitResults.SaveModifier
-                - grantedDefense;
+                - grantedDefense + markerNet;
 
             GameContext.Log($"Base roll to save is {baseDefense}, AP {ap}, cover -{coverResults.DefenseRollBonus}, " +
-                $"Rending/save mods {rollToHitResults.SaveModifier}, effective threshold {baseDefenseWithAP} (not yet clamped).");
+                $"Rending/save mods {rollToHitResults.SaveModifier}, markers +{markerNet}, " +
+                $"effective threshold {baseDefenseWithAP} (not yet clamped).");
 
             foreach (SuccessfulHitInfo hits in rollToHitResults.SuccessfulHitList)
             {
@@ -58,7 +65,7 @@ namespace FDG.Stages
 
             DetermineSaveRollNeededResults results = new DetermineSaveRollNeededResults(pendingSaveRollsList);
             results.ThresholdTags = ComposeThresholdTags(baseDefense, ap, coverResults.DefenseRollBonus,
-                rollToHitResults.SaveModifierTags, grantedDefense);
+                rollToHitResults.SaveModifierTags, grantedDefense, markerNet);
             await onFinished(results);
         }
 
@@ -67,13 +74,14 @@ namespace FDG.Stages
         // just the unmodified defense. Per-bucket differences (Rending) stay in the beat label.
         // Internal for tests.
         internal static List<string>? ComposeThresholdTags(int baseDefense, int ap, int coverBonus,
-            List<string>? saveModifierTags, int grantedDefense)
+            List<string>? saveModifierTags, int grantedDefense, int markerNet = 0)
         {
             List<string> tags = new List<string> { $"Defense {baseDefense}+" };
             if (ap > 0) tags.Add($"AP {ap}");
             if (coverBonus > 0) tags.Add($"Cover +{coverBonus}");
             if (saveModifierTags != null) tags.AddRange(saveModifierTags);
             if (grantedDefense != 0) tags.Add($"buff {RollTags.Delta(grantedDefense)}");
+            if (markerNet != 0) tags.Add($"markers +{markerNet}");
 
             return tags.Count > 1 ? tags : null;
         }

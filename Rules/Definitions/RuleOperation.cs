@@ -280,6 +280,25 @@ public abstract record RuleOperation
         }
     }
 
+    /// <summary>
+    /// Roll one die against <see cref="MinRoll"/> and, on a pass, add <see cref="GrantedToken"/> to
+    /// <see cref="Unit"/>'s container. Resolution of <see cref="Effect.GrantTokenOnRoll"/> — the Spotter
+    /// family's "on a 4+ place a marker" (#100 #14b). Executable for the same reason as
+    /// <see cref="InvokeClearTokenOnRoll"/>: the roll reads live dice and the grant is imperative.
+    /// </summary>
+    public sealed record InvokeGrantTokenOnRoll(IUnit Unit, Token GrantedToken, int MinRoll) : ExecutableOperation
+    {
+        public override Task Execute(IOperationServices services)
+        {
+            return services.GrantTokenOnRoll(Unit, GrantedToken, MinRoll);
+        }
+
+        public override string Describe()
+        {
+            return $"rolled to place {GrantedToken.Type} on a {MinRoll}+";
+        }
+    }
+
     public sealed record InvokeApplyFatigue(IUnit Unit) : ExecutableOperation
     {
         public override Task Execute(IOperationServices services)

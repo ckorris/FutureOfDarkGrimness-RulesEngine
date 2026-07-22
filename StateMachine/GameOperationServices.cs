@@ -1,6 +1,7 @@
 using FDG.Presentation.Beats;
 using FDG.Data;
 using FDG.Rules.Definitions;
+using FDG.Rules.Tokens;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 
@@ -123,6 +124,29 @@ namespace FDG.Stages
             await _gameContext.Presenter.Present(DiceRolledBeat.From(new DiceResults(perSide), minRoll,
                 _gameContext.Settings.RandomnessType, $"Recover from {tokenType}",
                 cleared ? "recovered" : "still " + tokenType));
+        }
+
+        public async Task GrantTokenOnRoll(IUnit unit, Rules.Tokens.Token token, int minRoll)
+        {
+            // Decisive for the same reason as ClearTokenOnRoll above: the marker is either placed or it
+            // is not — a histogram would want to place a fraction of one.
+            int face = _gameContext.DiceRoller.RollDecisiveFace();
+            bool placed = face >= minRoll;
+            if (placed)
+            {
+                unit.Tokens.AddToken(token);
+            }
+
+            string label = TokenDefinitionCatalog.Lookup(token.Type).Name;
+            _gameContext.Log($"Rolled {face} to place {label} on {unit.Name} ({minRoll}+ needed) - " +
+                (placed ? "placed." : "no effect."));
+
+            float[] perSide = new float[IDiceRollerExtensions.DEFAULT_SIDE_COUNT];
+            perSide[face - 1] = 1f;
+
+            await _gameContext.Presenter.Present(DiceRolledBeat.From(new DiceResults(perSide), minRoll,
+                _gameContext.Settings.RandomnessType, $"Place {label}",
+                placed ? "marker placed" : "no effect"));
         }
 
         private DataBinding<UnitData> ResolveUnitBinding(IUnit unit)

@@ -41,4 +41,12 @@ public interface IOperationServices
     /// rather than a fractional one.
     /// </summary>
     Task ClearTokenOnRoll(IUnit unit, Rules.Foundation.TokenType tokenType, int minRoll);
+
+    /// <summary>
+    /// Roll one die; on <paramref name="minRoll"/>+ add <paramref name="token"/> to
+    /// <paramref name="unit"/>'s container. Resolution of
+    /// <see cref="RuleOperation.InvokeGrantTokenOnRoll"/> (the Spotter family's "on a 4+ place a
+    /// marker", #100 #14b). Same decisive-roll requirement as <see cref="ClearTokenOnRoll"/>.
+    /// </summary>
+    Task GrantTokenOnRoll(IUnit unit, Rules.Tokens.Token token, int minRoll);
 }

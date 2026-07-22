@@ -13,7 +13,7 @@ namespace FDG.Tests
         // #193: tests get a fixed-seed stream so any Rng-driven stage behaves reproducibly.
         public Random Rng { get; } = new Random(20260709);
         public RuleEvaluator RuleEvaluator { get; }
-        public IPlayerRequestByID PlayerRequester { get; } = new NullPlayerRequester();
+        public IPlayerRequestByID PlayerRequester { get; }
         public TableState TableState { get; }
         public IReadWriteableGameDataStore GameDataStore { get; }
         public IPresenter Presenter { get; }
@@ -26,7 +26,8 @@ namespace FDG.Tests
         // tests that don't care about presentation are unaffected.
         public TestGameContext(GameDataStore store, IDiceRoller diceRoller,
             ITextOutput? textOutput = null, IPresenter? presenter = null,
-            RuleResolver? ruleResolver = null, GameSettings? settings = null)
+            RuleResolver? ruleResolver = null, GameSettings? settings = null,
+            IPlayerRequestByID? playerRequester = null)
         {
             GameDataStore = store;
             TableState = new TableState(store);
@@ -37,6 +38,9 @@ namespace FDG.Tests
             RuleEvaluator = new RuleEvaluator(diceRoller, ruleResolver: ruleResolver);
             TextOutput = textOutput ?? new EmptyTextOutput();
             Presenter = presenter ?? new LocalPresenter(sink: null, new InstantPresentationClock());
+            // Injectable so a marker-spend / ability prompt can be scripted; the null default hangs
+            // forever on any request, which is the honest behavior for tests that expect NO prompt.
+            PlayerRequester = playerRequester ?? new NullPlayerRequester();
         }
 
         public void SetFirstDeploymentRollOrder(List<ITeam> order) { }

@@ -36,6 +36,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(GrantToken), "grantToken")]
 [JsonDerivedType(typeof(ConsumeToken), "consumeToken")]
 [JsonDerivedType(typeof(ClearTokenOnRoll), "clearTokenOnRoll")]
+[JsonDerivedType(typeof(GrantTokenOnRoll), "grantTokenOnRoll")]
 [JsonDerivedType(typeof(RepositionAtActivation), "repositionAtActivation")]
 [JsonDerivedType(typeof(TriggeredMove), "triggeredMove")]
 [JsonDerivedType(typeof(Reactivate), "reactivate")]
@@ -823,6 +824,26 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.InvokeClearTokenOnRoll(ruleInvocation.Bearer, TType, MinRoll));
+        }
+    }
+
+    /// <summary>
+    /// Rolls one die and, on <see cref="MinRoll"/>+, grants the effect's target <see cref="Count"/>
+    /// tokens of <see cref="TType"/> — the roll-gated twin of <see cref="GrantToken"/>, and the grant
+    /// mirror of <see cref="ClearTokenOnRoll"/> (same decisive-roll discipline, for the same dice
+    /// invariant). Covers the Spotter family (#100 #14b): "roll one die, on a 4+ place a marker on it".
+    /// An <see cref="ExecutableOperation"/> because the roll is live state.
+    /// </summary>
+    public sealed record GrantTokenOnRoll(TokenType TType, ValueSource Count, TokenClearTrigger Clear,
+        int MinRoll) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.InvokeGrantTokenOnRoll(
+                ruleInvocation.EffectiveTarget,
+                new Token(TType, Count.Resolve(ruleInvocation.Arguments), Clear,
+                    OwnerUnitID: ruleInvocation.OwnerForEffectiveTarget),
+                MinRoll));
         }
     }
 

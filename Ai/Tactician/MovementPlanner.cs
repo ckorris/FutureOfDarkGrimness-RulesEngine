@@ -34,12 +34,20 @@ namespace FDG.Ai.Tactician
         // #256 S2 re-aim: when a centered re-pack's ONLY fault is ending stacked on a friendly, side-step
         // the pack anchor perpendicular to the move (in these multiples of a base width) before conceding
         // distance to the halving ladder. Nearest offset first, alternating sides - deterministic order.
-        private static readonly float[] ReaimLateralWidthMultiples = { 1f, -1f, 2f, -2f };
+        // Reaches 4 base widths (clearing a blocker takes ~pack-half-width + blocker-half-width; an
+        // 11-model pack is already ~1.7 widths from center to edge), in HALF-width steps past 2: the
+        // WayTooManyInBack reconstruction probe showed the clearing window can be under half a width wide
+        // (2.2 collided, 2.8 cleared, 3.0+ blew the budget), so whole-width jumps stride right over it.
+        private static readonly float[] ReaimLateralWidthMultiples =
+            { 1f, -1f, 2f, -2f, 2.5f, -2.5f, 3f, -3f, 3.5f, -3.5f, 4f, -4f };
 
         // #256 measure-and-correct bounds: pack-build attempts per candidate, and the safety margin
         // taken off each correction (the step<->per-model-move response is ~1:1, but slot
-        // reassignment can wobble it slightly between attempts).
-        public const int RepackCorrectionAttempts = 4;
+        // reassignment can wobble it slightly between attempts). 8 attempts, not 4: with an S2
+        // lateral offset in play the response flattens (the offset's cost doesn't shrink with the
+        // step) and pairing flips can bump the measure back up mid-descent - 4 attempts gave up on
+        // feasible side-steps and degraded them to stays (probed, WayTooManyInBack reconstruction).
+        public const int RepackCorrectionAttempts = 8;
         public const float RepackCorrectionSlackInches = 0.01f;
 
         // Aim tuning. A charge targets just inside base contact (still < the validator's contact
@@ -191,7 +199,8 @@ namespace FDG.Ai.Tactician
                 if (reaimAt != null && step >= MinBackoffStepInches && living.Count > 0
                     && FriendlyStackingIsSoleObstacle(errors))
                 {
-                    List<ModelMoveEntry>? reaimed = TryLateralReaim(reaimAt, step, living, c => Validate(c, out _));
+                    List<ModelMoveEntry>? reaimed = TryLateralReaim(reaimAt, step, living, candidate,
+                        c => Validate(c, out _));
                     if (reaimed != null) return reaimed;
                 }
 
@@ -228,22 +237,59 @@ namespace FDG.Ai.Tactician
             => errors.Count > 0 && errors.All(e => e.ErrorReasonType == EErrorReasonType.EndedOnFriendlyUnit);
 
         /// <summary>
-        /// Probe a few lateral offsets of the pack anchor at a fixed step, returning the first that
-        /// validates (nearest offset first, alternating sides) or null if none clear. The per-model budget
-        /// stays enforced inside the builder's measure-and-correct loop, so a side-step trades forward
-        /// advance for clearance rather than exceeding the move allowance.
+        /// Probe a few lateral offsets of the pack anchor, returning the first that validates AND keeps
+        /// at least half the blocked candidate's forward progress (nearest offset first, alternating
+        /// sides), or null if none clear. Each probe shortens the forward step to sqrt(step^2 - lat^2) -
+        /// the side-step trades forward advance for clearance INSIDE the same budget circle. Probing the
+        /// full step with the offset stacked on top instead makes the builder's measure-and-correct loop
+        /// absorb the whole lateral cost, and past ~3 base widths it fails to converge and degrades to a
+        /// valid-but-useless stay (probed on the WayTooManyInBack reconstruction: an 11-model advance
+        /// collapsed to 0.1"). The forward-progress gate rejects any such degenerate candidate - the
+        /// halving ladder is the better fallback then.
         /// </summary>
         private static List<ModelMoveEntry>? TryLateralReaim(
             Func<float, float, List<ModelMoveEntry>> reaimAt, float step,
-            List<DataBinding<ModelData>> living, Func<List<ModelMoveEntry>, bool> isValid)
+            List<DataBinding<ModelData>> living, List<ModelMoveEntry> blockedCandidate,
+            Func<List<ModelMoveEntry>, bool> isValid)
         {
+            // Forward = the blocked candidate's own centroid displacement (the direction the caller is
+            // actually trying to go, whatever the candidate shape). A near-zero displacement means the
+            // blocked candidate itself was already a stay - nothing worth re-aiming.
+            float sx = living.Average(mb => mb.GetValue().Position.x);
+            float sz = living.Average(mb => mb.GetValue().Position.z);
+            (float bx, float bz) = EndCentroid(blockedCandidate);
+            float fx = bx - sx, fz = bz - sz;
+            float forwardLength = MathF.Sqrt(fx * fx + fz * fz);
+            if (forwardLength < MinBackoffStepInches) return null;
+            (fx, fz) = (fx / forwardLength, fz / forwardLength);
+
             float baseWidth = 2f * living.Max(mb => mb.GetValue().BaseRadiusInches);
             foreach (float multiple in ReaimLateralWidthMultiples)
             {
-                List<ModelMoveEntry> candidate = reaimAt(step, multiple * baseWidth);
-                if (isValid(candidate)) return candidate;
+                float lat = multiple * baseWidth;
+                if (Math.Abs(lat) >= step) continue; // no forward room left inside the budget circle
+                float forwardStep = MathF.Sqrt(step * step - lat * lat);
+                List<ModelMoveEntry> candidate = reaimAt(forwardStep, lat);
+                (float ex, float ez) = EndCentroid(candidate);
+                float forwardProgress = (ex - sx) * fx + (ez - sz) * fz;
+                if (forwardProgress >= 0.5f * forwardLength && isValid(candidate)) return candidate;
             }
             return null;
+        }
+
+        /// <summary>Centroid of a candidate's end positions (models with empty paths stay put).</summary>
+        private static (float X, float Z) EndCentroid(List<ModelMoveEntry> moves)
+        {
+            float x = 0f, z = 0f;
+            int count = 0;
+            foreach (ModelMoveEntry move in moves)
+            {
+                Position end = move.Positions.Count > 0
+                    ? move.Positions[^1]
+                    : move.Model.GetValue().Position;
+                x += end.x; z += end.z; count++;
+            }
+            return count == 0 ? (0f, 0f) : (x / count, z / count);
         }
 
         /// <summary>

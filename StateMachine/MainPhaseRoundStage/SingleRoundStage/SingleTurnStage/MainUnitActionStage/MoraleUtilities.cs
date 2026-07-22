@@ -14,7 +14,7 @@ namespace FDG.Stages
     /// <summary>
     /// Shared morale resolution used by every morale path — the melee loss (<see cref="RollForMoraleStage"/>
     /// → <see cref="AssignMeleeMoralePenaltyStage"/>) and the wound-driven half-strength path (shooting via
-    /// <see cref="ResolveRangedMoraleStage"/>, dangerous terrain): the rule-aware morale test and the two
+    /// <see cref="ResolveRangedMoraleStage"/>): the rule-aware morale test and the two
     /// failure outcomes — Shaken, or Rout when the unit is at half strength or less.
     /// </summary>
     public static class MoraleUtilities
@@ -129,31 +129,32 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// Whether a unit just crossed into half strength: it was above half before taking wounds
-        /// (<paramref name="remainingWoundsBefore"/>) and is at half strength or less now. Used so a
-        /// wound-driven morale test fires only on the blow that reduces the unit to half, not on every
-        /// later hit while it is already there.
+        /// Whether a wound-driven morale test is due: the unit took wounds (its remaining wounds dropped
+        /// below <paramref name="remainingWoundsBefore"/>, the baseline captured when the action began)
+        /// and it now sits at half strength or less. The rule tests at the end of ANY activation whose
+        /// wounds leave the unit at half or less (GF v3.5.1) — including a unit that was already below
+        /// half before this activation's wounds (#254; an earlier crossing-only check skipped those).
         /// </summary>
-        public static bool CrossedIntoHalfStrength(float remainingWoundsBefore, IUnit unitAfter)
+        public static bool WoundsLeftUnitAtHalfStrength(float remainingWoundsBefore, IUnit unitAfter)
         {
-            bool wasAboveHalf = remainingWoundsBefore * 2f > unitAfter.MaxWounds;
-            return wasAboveHalf && unitAfter.GetIsAtHalfStrength();
+            bool tookWounds = unitAfter.RemainingWounds < remainingWoundsBefore;
+            return tookWounds && unitAfter.GetIsAtHalfStrength();
         }
 
         /// <summary>
-        /// Resolve a wound-driven morale test (shooting, dangerous terrain): if the unit was just
-        /// reduced to half strength or less, it tests, and a failure makes it Shaken. A failed non-melee
+        /// Resolve a wound-driven morale test (shooting): if the unit took wounds and is now at half
+        /// strength or less, it tests, and a failure makes it Shaken. A failed non-melee
         /// morale test never Routs — Rout is a melee-only result (GF v3.5.1: the general morale rule says
         /// a failed test makes a unit Shaken; only the melee-results rule routs a loser at half strength).
-        /// Returns null if no test was taken (still above half, or destroyed outright), true if passed,
-        /// false if failed and Shaken. Logging is left to the caller, which knows the wound source.
+        /// Returns null if no test was taken (above half, unwounded, or destroyed outright), true if
+        /// passed, false if failed and Shaken. Logging is left to the caller, which knows the wound source.
         /// </summary>
         public static async Task<bool?> ResolveWoundDrivenMorale(IGameContext gameContext, DataBinding<UnitData> unitBinding,
             float remainingWoundsBefore)
         {
             IUnit unit = unitBinding.GetValue();
             if (!unit.GetIsAlive()) return null;                              // wiped out outright — no test
-            if (!CrossedIntoHalfStrength(remainingWoundsBefore, unit)) return null;
+            if (!WoundsLeftUnitAtHalfStrength(remainingWoundsBefore, unit)) return null;
 
             // #006: a living joined hero takes morale on behalf of the unit (its Quality).
             if ((await TakeMoraleTest(gameContext, unit, HeroStatRules.GetMoraleQuality(unitBinding.GetValue()))).Passed) return true;

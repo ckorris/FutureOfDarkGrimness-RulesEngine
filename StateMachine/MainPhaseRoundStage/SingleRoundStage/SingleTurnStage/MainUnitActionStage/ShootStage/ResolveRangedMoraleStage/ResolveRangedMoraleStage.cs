@@ -33,11 +33,12 @@ namespace FDG.Stages
             await ToFinished.Activate(context);
         }
 
-        // A unit reduced to half strength or less by shooting must take a morale test; a failed test makes
-        // it Shaken (a non-melee morale failure never Routs — Rout is a melee-only result, GF v3.5.1). The
-        // test fires only if the unit *crossed* into half strength over the whole shoot action: the baseline
-        // is its wound count when this attacker first targeted it, so a unit that was already below half
-        // before being shot at doesn't test, and a unit shot by three weapons tests at most once.
+        // A unit left at half strength or less by wounds from shooting must take a morale test; a failed
+        // test makes it Shaken (a non-melee morale failure never Routs — Rout is a melee-only result,
+        // GF v3.5.1). The test fires whenever the shoot action wounded the unit and it now sits at half
+        // or less — a unit already below half tests again every activation it takes wounds (#254). The
+        // baseline is its wound count when this attacker first targeted it, so a unit shot by three
+        // weapons tests at most once, and a targeted-but-unwounded unit doesn't test.
         private async Task ResolveForDefender(AttackedDefender attacked)
         {
             DataBinding<UnitData> defenderBinding = attacked.Defender;
@@ -47,11 +48,11 @@ namespace FDG.Stages
 
             if (result == true)
             {
-                GameContext.Log($"{defenderBinding.Name()} was reduced to half strength but passed its morale test (needed {defenderBinding.Quality()}).");
+                GameContext.Log($"{defenderBinding.Name()} is at half strength or less but passed its morale test (needed {defenderBinding.Quality()}).");
             }
             else if (result == false)
             {
-                GameContext.Log($"{defenderBinding.Name()} was reduced to half strength, failed its morale test, and is now Shaken.");
+                GameContext.Log($"{defenderBinding.Name()} is at half strength or less, failed its morale test, and is now Shaken.");
             }
         }
     }

@@ -9,9 +9,10 @@ namespace FDG.Tests
     // it Shaken (a non-melee morale failure never Routs — Rout is a melee-only result, GF v3.5.1).
     //
     // The stage runs ONCE, after the attacker has fired every weapon, and tests each unit it shot at
-    // exactly once. The half-strength crossing is measured against the defender's wounds at the moment it
-    // was first targeted (captured by RegisterAttackedDefender), so a unit shot by three weapons tests at
-    // most once, and a unit already below half before the shooting began doesn't test at all.
+    // exactly once. "Took wounds" is measured against the defender's wounds at the moment it was first
+    // targeted (captured by RegisterAttackedDefender), so a unit shot by three weapons tests at most
+    // once. A unit already at half or less tests again every activation it takes wounds (#254) — the
+    // rule keys on wounds leaving the unit at half or less, not on crossing the boundary.
     //
     // Quality is 4 throughout, so FixedDiceRoller(>=4) passes and FixedDiceRoller(<4) fails.
     [TestFixture]
@@ -59,17 +60,33 @@ namespace FDG.Tests
             Assert.That(IsShaken(defender), Is.False, "no test is taken above half strength, so the failing die is irrelevant.");
         }
 
+        // #254: the rule is "wounds leave the unit at half or less", not "the unit crossed into half" —
+        // a unit already below half tests again every activation it takes wounds.
         [Test]
-        public async Task AlreadyAtHalfBeforeShooting_NoTest()
+        public async Task AlreadyAtHalfBeforeShooting_WoundedAgain_TestsAgain()
+        {
+            var (combat, defender) = BuildShoot(defenderModels: 6, dieValue: 1);
+            KillModels(defender, 3);                    // already at half BEFORE this attacker targeted it
+            combat.RegisterAttackedDefender(defender);  // snapshot taken at half strength
+            KillModels(defender, 1);                    // the shooting wounds it again while at half
+
+            await RunResolve(combat);
+
+            Assert.That(IsShaken(defender), Is.True,
+                "a unit at half strength that takes wounds from shooting tests again (and this die fails).");
+        }
+
+        [Test]
+        public async Task AlreadyAtHalf_TargetedButUnwounded_NoTest()
         {
             var (combat, defender) = BuildShoot(defenderModels: 4, dieValue: 1);
-            KillModels(defender, 2);                    // already at half BEFORE this attacker targeted it
-            combat.RegisterAttackedDefender(defender);  // snapshot taken at half strength
+            KillModels(defender, 2);                    // at half before the shooting
+            combat.RegisterAttackedDefender(defender);  // targeted, but every shot misses or is saved
 
             await RunResolve(combat);
 
             Assert.That(IsShaken(defender), Is.False,
-                "a unit already at half strength before the shooting isn't tested.");
+                "morale keys on taking wounds — a targeted unit that lost none doesn't test, even at half.");
         }
 
         [Test]
@@ -137,7 +154,7 @@ namespace FDG.Tests
             Assert.That(combat.AttackedDefenders[0].RemainingWoundsAtStart, Is.EqualTo(4f).Within(0.001f),
                 "the baseline is the wound count before the first weapon fired, not before the last one.");
             Assert.That(IsShaken(defender), Is.True,
-                "the unit crossed into half strength over the whole action, so it tests once at the end.");
+                "the action's wounds left the unit at half strength, so it tests once at the end.");
         }
 
         // Helpers

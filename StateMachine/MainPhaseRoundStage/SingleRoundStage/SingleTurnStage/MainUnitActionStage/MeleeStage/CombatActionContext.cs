@@ -96,9 +96,9 @@ namespace FDG.Stages
         /// <summary>
         /// Every distinct defender engaged this action, in the order they were first targeted, each paired
         /// with its remaining wounds at the moment it was first targeted - i.e. before this attacker had
-        /// dealt it any damage. Shooting resolves morale once per entry after the whole activation, so the
-        /// half-strength crossing is measured against the wounds the defender started with, not against a
-        /// mid-volley snapshot. See <c>ResolveRangedMoraleStage</c>.
+        /// dealt it any damage. Shooting resolves morale once per entry after the whole activation, so
+        /// whether the action wounded the defender is measured against the wounds it started with, not
+        /// against a mid-volley snapshot. See <c>ResolveRangedMoraleStage</c>.
         /// </summary>
         public IReadOnlyList<AttackedDefender> AttackedDefenders { get; }
 
@@ -173,7 +173,7 @@ namespace FDG.Stages
         public void RegisterAttackedDefender(DataBinding<UnitData> defender)
         {
             // Snapshot on first sight only. A later weapon aimed at the same unit must not re-baseline its
-            // wounds, or the half-strength crossing would be measured against damage we already dealt.
+            // wounds, or the wounds-taken check would be measured against damage we already dealt.
             if (_attackedDefenderRefs.Add(defender.Reference))
                 _attackedDefenders.Add(new AttackedDefender(defender, defender.GetValue().RemainingWounds));
         }

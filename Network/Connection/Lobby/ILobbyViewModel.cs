@@ -99,6 +99,15 @@ namespace FDG.Network.Connection.Lobby
         /// </summary>
         void SetPlayerColor(PlayerID playerId, int colorIndex);
 
+        /// <summary>
+        /// Sets a player's lobby team (#255). Valid teams are 1..playerCount (as many teams as players).
+        /// On the host this applies directly (any non-network row) and rebroadcasts the roster; on a
+        /// client it sends the request to the host (own row only). Multiple players may share a team -
+        /// that is the point - but launch is blocked while ALL players share one team. No-op in resume
+        /// mode (saved games keep their saved teams).
+        /// </summary>
+        void SetPlayerTeam(PlayerID playerId, ETeamOption teamNumber);
+
         void SetArmyPoints(int armyPoints);
 
         void SetTerrainCount(int terrainCount);

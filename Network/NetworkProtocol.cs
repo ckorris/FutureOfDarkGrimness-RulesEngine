@@ -24,8 +24,9 @@ namespace FDG.Network
         /// type-map fingerprint cannot detect (e.g. enum encoding, message registry, framing).
         /// v2: added the lobby password to NewLobbyClientGreeting (QF1) and single-buffer frame writes (QF4).
         /// v3: added PlayerColorUpdateMessage + LobbyPlayerInfoSummary.ColorIndex (#221 lobby colour sync).
+        /// v4: added PlayerTeamUpdateMessage (#255 lobby team selection).
         /// </summary>
-        public const int Version = 3;
+        public const int Version = 4;
 
         private static string? _localTypeMapHash;
 

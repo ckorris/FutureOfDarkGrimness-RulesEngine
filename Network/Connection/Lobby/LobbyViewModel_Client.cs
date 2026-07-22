@@ -396,5 +396,24 @@ namespace FDG.Network.Connection.Lobby
 
             _messageBusClient.SendCommandToHostAsync(new PlayerColorUpdateMessage(playerId, colorIndex));
         }
+
+        // #255: request a team pick from the host, own row only (mirrors SetPlayerColor). The host
+        // applies it (rejecting out-of-range teams) and the roster rebroadcast carries the result
+        // back - there's no optimistic local update.
+        public void SetPlayerTeam(PlayerID playerId, ETeamOption teamNumber)
+        {
+            if (_thisPlayerID.HasValue == false)
+            {
+                throw new Exception("Tried to set a player team before we've been assigned an ID.");
+            }
+
+            if (playerId != _thisPlayerID.Value)
+            {
+                throw new InvalidOperationException("Client tried to set a team for the wrong player. " +
+                    $"Client's ID: {_thisPlayerID.Value} Update attempt ID: {playerId}");
+            }
+
+            _messageBusClient.SendCommandToHostAsync(new PlayerTeamUpdateMessage(playerId, teamNumber));
+        }
     }
 }

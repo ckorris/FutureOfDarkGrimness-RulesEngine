@@ -150,6 +150,7 @@ namespace FDG.Network.Connection.Lobby
             _messageBus.RegisterForConnectionMessageEvent<NewLobbyClientGreeting>(OnReceiveNewClientGreeting);
             _messageBus.RegisterForMessageEvent<ArmyListUpdateMessage>(OnArmyListFileUpdateReceived);
             _messageBus.RegisterForMessageEvent<PlayerColorUpdateMessage>(OnPlayerColorUpdateReceived);
+            _messageBus.RegisterForMessageEvent<PlayerTeamUpdateMessage>(OnPlayerTeamUpdateReceived);
 
             //Show init message in chatbox.
             AddMessageToLocalList(new LobbyChatMessage("System", SERVER_START_MESSAGE));
@@ -206,6 +207,7 @@ namespace FDG.Network.Connection.Lobby
             _messageBus.RegisterForConnectionMessageEvent<NewLobbyClientGreeting>(OnReceiveNewClientGreeting);
             _messageBus.RegisterForMessageEvent<ArmyListUpdateMessage>(OnArmyListFileUpdateReceived);
             _messageBus.RegisterForMessageEvent<PlayerColorUpdateMessage>(OnPlayerColorUpdateReceived);
+            _messageBus.RegisterForMessageEvent<PlayerTeamUpdateMessage>(OnPlayerTeamUpdateReceived);
 
             AddMessageToLocalList(new LobbyChatMessage("System", "Loaded saved game. Assign players to slots, then Resume."));
 
@@ -341,12 +343,9 @@ namespace FDG.Network.Connection.Lobby
             LobbyServerNameMessage lobbyServerNameMessage = new LobbyServerNameMessage(_serverName.Value);
             _messageBus.SendCommandToAllAsync(lobbyServerNameMessage);
 
-            //TODO: Have something behind the player info list instead of doing this.
-            int tempTeamNumber = _playerInfos.Value.Count + 1;
-
             //ArmyListSummary tempSummary = new ArmyListSummary("Knifeybois", "Alien Hives", 2000);
 
-            LobbyPlayerInfoFull newLobbyPlayerInfo = new LobbyPlayerInfoFull(greeting.PlayerName, null, (ETeamOption)tempTeamNumber,
+            LobbyPlayerInfoFull newLobbyPlayerInfo = new LobbyPlayerInfoFull(greeting.PlayerName, null, FirstEmptyTeam(),
                 EPlayerType.Network, connectionID, newClientPlayerID);
             _playerInfosFull.Add(newClientPlayerID, newLobbyPlayerInfo);
             UpdateInfoSummariesFromFullList();
@@ -469,6 +468,57 @@ namespace FDG.Network.Connection.Lobby
             if (info.ColorIndex == colorIndex) return;
 
             info.ColorIndex = colorIndex;
+            UpdateInfoSummariesFromFullList();
+        }
+
+        // #255: the default team for a newly added player - the lowest team number 1..N not currently
+        // held, where N counts the new player (as many teams as players). A free slot always exists in
+        // that range; at worst the new player lands on the team their own arrival created.
+        private ETeamOption FirstEmptyTeam()
+        {
+            int newPlayerCount = _playerInfosFull.Count + 1;
+            for (int team = 1; team <= newPlayerCount; team++)
+            {
+                if (_playerInfosFull.Values.All(info => (int)info.TeamNumber != team))
+                    return (ETeamOption)team;
+            }
+            return (ETeamOption)newPlayerCount; //Unreachable: N existing players can't occupy all N+1 candidates.
+        }
+
+        // #255: a client's team pick, applied through the same path the host's own picks take. Sender
+        // ownership isn't validated (same trust level as OnPlayerColorUpdateReceived - see #186).
+        private void OnPlayerTeamUpdateReceived(PlayerTeamUpdateMessage teamUpdate)
+        {
+            SetPlayerTeam(teamUpdate.PlayerID, teamUpdate.TeamNumber);
+        }
+
+        public void SetPlayerTeam(PlayerID playerId, ETeamOption teamNumber)
+        {
+            // Resume lobbies keep their saved teams - editing them would desync the saved turn-order state.
+            if (_isResume)
+            {
+                Debug.WriteLine("SetPlayerTeam: ignored in resume mode.");
+                return;
+            }
+
+            if (_playerInfosFull.TryGetValue(playerId, out LobbyPlayerInfoFull? info) == false)
+            {
+                Debug.WriteLine($"SetPlayerTeam: couldn't find player {playerId}.");
+                return;
+            }
+
+            // As many teams as players. (A player can hold a stale out-of-range team after someone
+            // leaves - left as-is by design - but new picks stay in range.)
+            int team = (int)teamNumber;
+            if (team < 1 || team > _playerInfosFull.Count)
+            {
+                Debug.WriteLine($"SetPlayerTeam: team {team} out of range 1..{_playerInfosFull.Count}; ignoring.");
+                return;
+            }
+
+            if (info.TeamNumber == teamNumber) return;
+
+            info.TeamNumber = teamNumber;
             UpdateInfoSummariesFromFullList();
         }
 
@@ -614,6 +664,15 @@ namespace FDG.Network.Connection.Lobby
                         return $"Could not load terrain layout: {error}";
                     break;
             }
+
+            // #255: a game where everyone shares one team has no opposition - hard block (not the
+            // overridable army-problems confirm). Solo lobbies are exempt so test launches keep working.
+            if (_playerInfosFull.Count >= 2 &&
+                _playerInfosFull.Values.Select(info => info.TeamNumber).Distinct().Count() == 1)
+            {
+                return "All players are on the same team - at least two teams must be represented.";
+            }
+
             return null;
         }
 
@@ -912,10 +971,7 @@ namespace FDG.Network.Connection.Lobby
             //TODO: I may have decided to give players their IDs elsewhere but I can't remember, double check that.
             PlayerID newClientPlayerID = new PlayerID(Guid.NewGuid());
 
-            //TODO: Have something behind the player info list instead of doing this.
-            int tempTeamNumber = _playerInfos.Value.Count + 1;
-
-            LobbyPlayerInfoFull newLobbyPlayerInfo = new LobbyPlayerInfoFull(tempName, null, (ETeamOption)tempTeamNumber,
+            LobbyPlayerInfoFull newLobbyPlayerInfo = new LobbyPlayerInfoFull(tempName, null, FirstEmptyTeam(),
                 EPlayerType.Local, new ConnectionID(Guid.Empty), newClientPlayerID);
             _playerInfosFull.Add(newClientPlayerID, newLobbyPlayerInfo);
             UpdateInfoSummariesFromFullList();
@@ -926,7 +982,6 @@ namespace FDG.Network.Connection.Lobby
 
         public void AddAiPlayer(FDG.Ai.EAiProfile profile)
         {
-            int playerNumber = _playerInfos.Value.Count + 1;
             // #191 A6: the profile is the product name in the lobby - "Tactician Bot" is the
             // challenge AI, "DerpBot" the legacy solo-rules bot (Chris's naming).
             string botName = profile == FDG.Ai.EAiProfile.Tactician ? "Tactician Bot" : "DerpBot";
@@ -938,10 +993,9 @@ namespace FDG.Network.Connection.Lobby
             Debug.WriteLine($"Added AI player: {name}");
 
             PlayerID newPlayerID = new PlayerID(Guid.NewGuid());
-            int tempTeamNumber = playerNumber;
 
             LobbyPlayerInfoFull newLobbyPlayerInfo = new LobbyPlayerInfoFull(name, GetTempTestArmyFile(),
-                (ETeamOption)tempTeamNumber, EPlayerType.AI, new ConnectionID(Guid.Empty), newPlayerID,
+                FirstEmptyTeam(), EPlayerType.AI, new ConnectionID(Guid.Empty), newPlayerID,
                 profile);
             _playerInfosFull.Add(newPlayerID, newLobbyPlayerInfo);
             UpdateInfoSummariesFromFullList();

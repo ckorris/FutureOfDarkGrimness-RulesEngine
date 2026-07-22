@@ -143,7 +143,10 @@ namespace FDG.Ai.Resolvers
                 s => MovementPlanner.BuildCandidate(unitBinding, living, cx, cz, ndx, ndz, s, request.MaxDistanceInches),
                 step, unitBinding, living, budgetFor, enemyFootprints,
                 request.CanMoveThroughEnemies, request.IgnoresDifficultTerrain, request.IgnoresImpassibleTerrain,
-                allTerrain, friendlyFootprints);
+                allTerrain, friendlyFootprints,
+                // #256 S2: side-step the pack rather than halve toward zero when the only fault is landing on a friendly.
+                (s, lat) => MovementPlanner.BuildCandidate(unitBinding, living, cx, cz, ndx, ndz, s,
+                    request.MaxDistanceInches, lateralOffsetInches: lat));
 
             // The ladder's last resort (hold exact positions) can bottom out at a cohesion-breaking hold when
             // the living models are already spread >1" apart - a unit intermingled with the enemy after melee

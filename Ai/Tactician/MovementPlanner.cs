@@ -31,6 +31,11 @@ namespace FDG.Ai.Tactician
         public const int MaxBackoffAttempts = 6;
         public const float MinBackoffStepInches = 0.05f;
 
+        // #256 S2 re-aim: when a centered re-pack's ONLY fault is ending stacked on a friendly, side-step
+        // the pack anchor perpendicular to the move (in these multiples of a base width) before conceding
+        // distance to the halving ladder. Nearest offset first, alternating sides - deterministic order.
+        private static readonly float[] ReaimLateralWidthMultiples = { 1f, -1f, 2f, -2f };
+
         // #256 measure-and-correct bounds: pack-build attempts per candidate, and the safety margin
         // taken off each correction (the step<->per-model-move response is ~1:1, but slot
         // reassignment can wobble it slightly between attempts).
@@ -54,18 +59,31 @@ namespace FDG.Ai.Tactician
         /// <paramref name="maxDistanceInches"/> (#256). A non-positive step degrades to
         /// <see cref="StayInPlace"/> (which is why the unit binding is a parameter - that fallback
         /// includes dead models' zero-length paths when 0-1 live).
+        /// <para>
+        /// <paramref name="lateralOffsetInches"/> (#256 S2) shifts the pack anchor perpendicular to the
+        /// move direction - the side-step the ladder tries when a centered re-pack would end stacked on a
+        /// friendly. It adds to each model's travel, so the measure-and-correct loop below shrinks the
+        /// forward step to keep the worst per-model move within budget (a side-step trades advance for
+        /// clearance, never exceeding the allowance).
+        /// </para>
         /// </summary>
         public static List<ModelMoveEntry> BuildCandidate(DataBinding<UnitData> unit,
             List<DataBinding<ModelData>> living,
             float cx, float cz, float ndx, float ndz, float step, float maxDistanceInches,
-            EFormation formation = EFormation.Grid)
+            EFormation formation = EFormation.Grid, float lateralOffsetInches = 0f)
         {
             if (step <= 0f) return StayInPlace(unit);
+
+            // The perpendicular to the (unit-length) move direction; a positive offset side-steps one way.
+            float ax = cx + lateralOffsetInches * -ndz;
+            float az = cz + lateralOffsetInches * ndx;
 
             if (living.Count == 1)
             {
                 var only = living[0].GetValue();
-                var dest = new Position(only.Position.x + ndx * step, only.Position.z + ndz * step);
+                var dest = new Position(
+                    only.Position.x + ndx * step + lateralOffsetInches * -ndz,
+                    only.Position.z + ndz * step + lateralOffsetInches * ndx);
                 return new List<ModelMoveEntry> { new ModelMoveEntry(living[0], new List<Position> { dest }) };
             }
 
@@ -77,8 +95,8 @@ namespace FDG.Ai.Tactician
             // passes converge; any residue is caught by the ladder's ValidatePaths.
             for (int attempt = 0; attempt < RepackCorrectionAttempts; attempt++)
             {
-                float destX = cx + ndx * step;
-                float destZ = cz + ndz * step;
+                float destX = ax + ndx * step;
+                float destZ = az + ndz * step;
                 List<ModelMoveEntry> candidate = formation == EFormation.Line
                     // A barrier line runs PERPENDICULAR to the move direction (across the lane being walled).
                     ? PackLine(living, destX, destZ, -ndz, ndx)
@@ -151,22 +169,37 @@ namespace FDG.Ai.Tactician
             DataBinding<UnitData> unit, List<DataBinding<ModelData>> living,
             Func<ModelMoveEntry, ModelMoveBudget> budgetFor, List<EnemyModelFootprint> enemies,
             bool canMoveThroughEnemies, bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
-            List<ITerrain> terrain, IReadOnlyList<EnemyModelFootprint>? friendlies = null)
+            List<ITerrain> terrain, IReadOnlyList<EnemyModelFootprint>? friendlies = null,
+            Func<float, float, List<ModelMoveEntry>>? reaimAt = null)
         {
+            bool Validate(List<ModelMoveEntry> c, out List<ReasonForInvalidMove> errs) =>
+                MovementUtilities.ValidatePaths(c, budgetFor, enemies, canMoveThroughEnemies,
+                    ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, out errs, friendlies,
+                    lenientCoherency: true);
+
             float step = initialStep;
             List<ModelMoveEntry> candidate = candidateAt(step);
-            bool valid = MovementUtilities.ValidatePaths(candidate, budgetFor,
-                enemies, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, out _, friendlies, lenientCoherency: true);
+            bool valid = Validate(candidate, out List<ReasonForInvalidMove> errors);
 
             int attempts = 0;
             while (!valid && attempts < MaxBackoffAttempts)
             {
+                // #256 S2: when the re-packed formation's ONLY fault is ending stacked on a friendly,
+                // halving just crawls toward zero (the friendly is still in the way - the WayTooManyInBack
+                // corner pocket). Side-step the pack anchor a few base-widths each way at the SAME step
+                // first; if any offset clears, keep the full advance instead of surrendering it.
+                if (reaimAt != null && step >= MinBackoffStepInches && living.Count > 0
+                    && FriendlyStackingIsSoleObstacle(errors))
+                {
+                    List<ModelMoveEntry>? reaimed = TryLateralReaim(reaimAt, step, living, c => Validate(c, out _));
+                    if (reaimed != null) return reaimed;
+                }
+
                 step *= 0.5f;
                 candidate = step < MinBackoffStepInches
                     ? StayInPlace(unit)
                     : candidateAt(step);
-                valid = MovementUtilities.ValidatePaths(candidate, budgetFor,
-                    enemies, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, out _, friendlies, lenientCoherency: true);
+                valid = Validate(candidate, out errors);
                 attempts++;
             }
 
@@ -174,8 +207,7 @@ namespace FDG.Ai.Tactician
             {
                 // Reform in place to close any casualty gaps...
                 candidate = StayInPlace(unit);
-                valid = MovementUtilities.ValidatePaths(candidate, budgetFor,
-                    enemies, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, out _, friendlies, lenientCoherency: true);
+                valid = Validate(candidate, out _);
 
                 // ...but if even that is rejected (a unit intermingled with enemies can't re-pack without
                 // a model crossing an enemy base), hold exact positions.
@@ -184,6 +216,34 @@ namespace FDG.Ai.Tactician
             }
 
             return candidate;
+        }
+
+        /// <summary>
+        /// True when the move is rejected ONLY because one or more models would end stacked on a friendly
+        /// (#256 S2) - the case a lateral side-step of the pack can clear. A mix that also carries a
+        /// terrain, enemy, budget, or coherency fault is left to the halving ladder (a side-step can't fix
+        /// those and might worsen them).
+        /// </summary>
+        private static bool FriendlyStackingIsSoleObstacle(List<ReasonForInvalidMove> errors)
+            => errors.Count > 0 && errors.All(e => e.ErrorReasonType == EErrorReasonType.EndedOnFriendlyUnit);
+
+        /// <summary>
+        /// Probe a few lateral offsets of the pack anchor at a fixed step, returning the first that
+        /// validates (nearest offset first, alternating sides) or null if none clear. The per-model budget
+        /// stays enforced inside the builder's measure-and-correct loop, so a side-step trades forward
+        /// advance for clearance rather than exceeding the move allowance.
+        /// </summary>
+        private static List<ModelMoveEntry>? TryLateralReaim(
+            Func<float, float, List<ModelMoveEntry>> reaimAt, float step,
+            List<DataBinding<ModelData>> living, Func<List<ModelMoveEntry>, bool> isValid)
+        {
+            float baseWidth = 2f * living.Max(mb => mb.GetValue().BaseRadiusInches);
+            foreach (float multiple in ReaimLateralWidthMultiples)
+            {
+                List<ModelMoveEntry> candidate = reaimAt(step, multiple * baseWidth);
+                if (isValid(candidate)) return candidate;
+            }
+            return null;
         }
 
         /// <summary>

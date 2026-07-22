@@ -331,7 +331,10 @@ namespace FDG.Ai.Tactician
                     s => MovementPlanner.BuildCandidate(unit, living, start.x, start.z, ndx, ndz, s, chargeReach),
                     step, unit, living, _ => new ModelMoveBudget(fullChargeReach, fullChargeReach),
                     enemyFootprints, canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, terrain,
-                    MovementPlanner.LiveFriendlyFootprints(tableState, self.PlayerID, self.ID));
+                    MovementPlanner.LiveFriendlyFootprints(tableState, self.PlayerID, self.ID),
+                    // #256 S2: side-step around a friendly in the charge lane instead of halving to a stall.
+                    (s, lat) => MovementPlanner.BuildCandidate(unit, living, start.x, start.z, ndx, ndz, s,
+                        chargeReach, lateralOffsetInches: lat));
             }
             else
             {

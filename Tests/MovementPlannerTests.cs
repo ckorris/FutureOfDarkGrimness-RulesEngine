@@ -121,6 +121,54 @@ namespace FDG.Tests
                 "the ladder-validated open-field advance must survive, not collapse to a stay");
         }
 
+        // --- #256 S2: re-aim instead of halve on friendly stacking. When a centered re-pack's ONLY
+        // fault is that it ends on a friendly, ValidateWithBackoff side-steps the pack anchor a few base
+        // widths before conceding distance to the halving ladder - so a blocked advance keeps most of its
+        // budget instead of crawling toward zero (the WayTooManyInBack corner-pocket case).
+
+        [Test]
+        public void ValidateWithBackoff_FriendlyBlocksCenteredAdvance_SideStepsAndKeepsAdvance()
+        {
+            var models = MakeModels(6, baseRadius: 0.5f);
+            DataBinding<UnitData> unit = MakeUnit(models);
+            (float cx, float cz) = Centroid(models);
+            const float ndx = 1f, ndz = 0f, step = 4f, maxDist = 4f;
+            var noEnemies = new List<EnemyModelFootprint>();
+            var noTerrain = new List<ITerrain>();
+
+            // Drop a friendly exactly on one of the centered advance's model slots, so a straight move
+            // ends stacked - and confirm that is the SOLE fault (what S2 keys on).
+            List<ModelMoveEntry> centered = MovementPlanner.BuildCandidate(unit, models, cx, cz, ndx, ndz, step, maxDist);
+            Position blocked = centered.First(e => e.Positions.Count > 0).Positions[^1];
+            ModelData sample = models[0].GetValue();
+            var friendlies = new List<EnemyModelFootprint>
+                { new EnemyModelFootprint(blocked, sample.BaseRadiusInches, 0, false, sample.BaseShape, sample.Facing) };
+
+            bool centeredValid = MovementUtilities.ValidatePaths(centered, _ => new ModelMoveBudget(maxDist, maxDist),
+                noEnemies, false, false, false, noTerrain, out List<ReasonForInvalidMove> errs, friendlies, lenientCoherency: true);
+            Assert.That(centeredValid, Is.False, "the centered advance must be blocked by the friendly");
+            Assert.That(errs.All(e => e.ErrorReasonType == EErrorReasonType.EndedOnFriendlyUnit), Is.True,
+                "the only fault must be ending on the friendly - the case a side-step can clear");
+
+            List<ModelMoveEntry> move = MovementPlanner.ValidateWithBackoff(
+                s => MovementPlanner.BuildCandidate(unit, models, cx, cz, ndx, ndz, s, maxDist),
+                step, unit, models, _ => new ModelMoveBudget(maxDist, maxDist),
+                noEnemies, false, false, false, noTerrain, friendlies,
+                (s, lat) => MovementPlanner.BuildCandidate(unit, models, cx, cz, ndx, ndz, s, maxDist, lateralOffsetInches: lat));
+
+            bool moveValid = MovementUtilities.ValidatePaths(move, _ => new ModelMoveBudget(maxDist, maxDist),
+                noEnemies, false, false, false, noTerrain, out _, friendlies, lenientCoherency: true);
+            Assert.That(moveValid, Is.True, "the re-aimed move must pass the same validator the stage uses");
+            Assert.That(MaxPathLength(move), Is.LessThanOrEqualTo(4.001f), "still within the per-model budget");
+
+            var ends = move.Where(e => e.Positions.Count > 0).Select(e => e.Positions[^1]).ToList();
+            float ex = ends.Average(p => p.x), ez = ends.Average(p => p.z);
+            Assert.That(NetCentroidMove(move, cx, cz), Is.GreaterThan(2.5f),
+                "the side-step must preserve most of the advance, not halve toward a stall");
+            Assert.That(ex - cx, Is.GreaterThan(2f), "most of the advance is still forward");
+            Assert.That(Math.Abs(ez - cz), Is.GreaterThan(0.4f), "the pack really side-stepped off the blocked axis");
+        }
+
         private DataBinding<UnitData> MakeUnit(List<DataBinding<ModelData>> models)
         {
             var unit = new UnitData(new PlayerID(Guid.NewGuid()), "Blob", quality: 4, defense: 4,

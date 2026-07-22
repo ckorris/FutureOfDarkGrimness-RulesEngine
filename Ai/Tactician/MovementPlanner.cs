@@ -31,6 +31,12 @@ namespace FDG.Ai.Tactician
         public const int MaxBackoffAttempts = 6;
         public const float MinBackoffStepInches = 0.05f;
 
+        // #256 measure-and-correct bounds: pack-build attempts per candidate, and the safety margin
+        // taken off each correction (the step<->per-model-move response is ~1:1, but slot
+        // reassignment can wobble it slightly between attempts).
+        public const int RepackCorrectionAttempts = 4;
+        public const float RepackCorrectionSlackInches = 0.01f;
+
         // Aim tuning. A charge targets just inside base contact (still < the validator's contact
         // tolerance, so it reads as engaged, not standoff-band loitering); an advance targets just past
         // the standoff line. A few measure-and-correct passes converge thanks to the ~1:1 step<->gap
@@ -44,9 +50,10 @@ namespace FDG.Ai.Tactician
         /// The move candidate for a given step along (<paramref name="ndx"/>, <paramref name="ndz"/>):
         /// a single living model steps straight; multiple models re-pack into a cohesive formation at
         /// the translated centroid (a rigid translate would preserve casualty holes and break the 1"
-        /// rule), the re-pack clamped so each model's move stays within <paramref name="maxDistanceInches"/>.
-        /// A non-positive step degrades to <see cref="StayInPlace"/> (which is why the unit binding is
-        /// a parameter - that fallback includes dead models' zero-length paths when 0-1 live).
+        /// rule), the step corrected so each model's actual move stays within
+        /// <paramref name="maxDistanceInches"/> (#256). A non-positive step degrades to
+        /// <see cref="StayInPlace"/> (which is why the unit binding is a parameter - that fallback
+        /// includes dead models' zero-length paths when 0-1 live).
         /// </summary>
         public static List<ModelMoveEntry> BuildCandidate(DataBinding<UnitData> unit,
             List<DataBinding<ModelData>> living,
@@ -62,13 +69,29 @@ namespace FDG.Ai.Tactician
                 return new List<ModelMoveEntry> { new ModelMoveEntry(living[0], new List<Position> { dest }) };
             }
 
-            float clamped = CohesiveFormation.ClampRepackStep(living, cx, cz, step, maxDistanceInches);
-            float destX = cx + ndx * clamped;
-            float destZ = cz + ndz * clamped;
-            return formation == EFormation.Line
-                // A barrier line runs PERPENDICULAR to the move direction (across the lane being walled).
-                ? PackLine(living, destX, destZ, -ndz, ndx)
-                : CohesiveFormation.PackGrid(living, destX, destZ);
+            // #256 measure-and-correct (replaces the worst-case ClampRepackStep pre-clamp, which
+            // subtracted spread + grid radius from the budget and zeroed big units' moves entirely -
+            // an 11-model combined unit could not advance at all): pack at the desired step, measure
+            // the actual worst per-model move, and shrink the step by the overshoot. PackGrid's
+            // nearest-model-to-slot assignment makes a translation cost ~step per model, so a few
+            // passes converge; any residue is caught by the ladder's ValidatePaths.
+            for (int attempt = 0; attempt < RepackCorrectionAttempts; attempt++)
+            {
+                float destX = cx + ndx * step;
+                float destZ = cz + ndz * step;
+                List<ModelMoveEntry> candidate = formation == EFormation.Line
+                    // A barrier line runs PERPENDICULAR to the move direction (across the lane being walled).
+                    ? PackLine(living, destX, destZ, -ndz, ndx)
+                    : CohesiveFormation.PackGrid(living, destX, destZ);
+                candidate = ImprovePairing(candidate);
+                float overshoot = MaxModelMove(candidate) - maxDistanceInches;
+                if (overshoot <= 0f) return candidate;
+                step -= overshoot + RepackCorrectionSlackInches;
+                if (step <= 0f) break;
+            }
+            // Even a near-zero-step re-pack exceeds the budget (casualty holes wider than the move
+            // allowance): stay put and let the ladder's own fallbacks take over.
+            return StayInPlace(unit);
         }
 
         /// <summary>
@@ -183,7 +206,9 @@ namespace FDG.Ai.Tactician
 
             float cx = living.Average(mb => mb.GetValue().Position.x);
             float cz = living.Average(mb => mb.GetValue().Position.z);
-            return CohesiveFormation.PackGrid(living, cx, cz);
+            // #256: without the pairing cleanup a stay can scramble models across rows when the
+            // current and canonical row counts mismatch (measured 2.9" of churn on a parked grid).
+            return ImprovePairing(CohesiveFormation.PackGrid(living, cx, cz));
         }
 
         /// <summary>
@@ -199,14 +224,28 @@ namespace FDG.Ai.Tactician
         {
             if (arcLengthInches <= 0f || path.Count < 2) return StayInPlace(unit);
 
-            // Pre-clamp so the worst-case per-model move (arc + current spread + formation radius)
-            // fits the budget - otherwise the first candidate always over-runs and the ladder halves
-            // the whole move, wasting half the budget. Conservative for waypoint paths (the clamp is
-            // direction-agnostic), which only ever shortens, never invalidates.
-            arcLengthInches = CohesiveFormation.ClampRepackStep(
-                living, path[0].x, path[0].z, arcLengthInches, maxDistanceInches);
-            if (arcLengthInches <= 0f) return StayInPlace(unit);
+            // #256 measure-and-correct, same scheme as BuildCandidate (the worst-case pre-clamp here
+            // cost wide combined units their whole budget). The endpoint - and with it the formation
+            // anchor - moves with the arc, so the pack is rebuilt per attempt.
+            float arc = arcLengthInches;
+            for (int attempt = 0; attempt < RepackCorrectionAttempts; attempt++)
+            {
+                List<ModelMoveEntry> candidate = PathCandidateAt(unit, living, path, arc, terrain,
+                    baseRadiusInches, formation, lineAxis);
+                float overshoot = MaxModelMove(candidate) - maxDistanceInches;
+                if (overshoot <= 0f) return candidate;
+                arc -= overshoot + RepackCorrectionSlackInches;
+                if (arc <= 0f) break;
+            }
+            return StayInPlace(unit);
+        }
 
+        /// <summary>One un-clamped path-following pack at a given arc length (#256's measure loop).</summary>
+        private static List<ModelMoveEntry> PathCandidateAt(DataBinding<UnitData> unit,
+            List<DataBinding<ModelData>> living, List<Position> path, float arcLengthInches,
+            IReadOnlyList<ITerrain> terrain, float baseRadiusInches,
+            EFormation formation, (float X, float Z)? lineAxis)
+        {
             (Position endpoint, List<Position> passed, _) =
                 GridPathfinder.AdvanceAlongPath(path, arcLengthInches, terrain, baseRadiusInches);
 
@@ -230,6 +269,7 @@ namespace FDG.Ai.Tactician
                 destinations = formation == EFormation.Line
                     ? PackLine(living, endpoint.x, endpoint.z, lineX, lineZ)
                     : CohesiveFormation.PackGrid(living, endpoint.x, endpoint.z);
+                destinations = ImprovePairing(destinations);
             }
 
             if (passed.Count == 0) return destinations;
@@ -287,6 +327,79 @@ namespace FDG.Ai.Tactician
                     maxDistanceInches, formation, lineAxis),
                 budget, unit, living, budgetFor, enemies,
                 canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, friendlies);
+        }
+
+        /// <summary>
+        /// Local-search cleanup of a pack's model-to-slot pairing (#256): repeatedly swap two
+        /// models' slots while that lowers the pair's WORST move (the quantity the per-model
+        /// budget caps), with the pair's summed distance as tie-break. The packers' greedy
+        /// nearest-model-to-slot assignment is fine near zero translation but REVERSES rank order
+        /// once the step exceeds the grid spacing (the front model grabs the rearmost slot), and
+        /// any fixed rank-pairing trades that for cross-row leaps when the current and canonical
+        /// row counts mismatch - bottleneck-2-opt fixes both (a pure translation relaxes to the
+        /// identity pairing). The slot set - and with it cohesion and enemy gaps - is unchanged;
+        /// fixed scan order + strict improvement + bounded passes keep it deterministic.
+        /// </summary>
+        private static List<ModelMoveEntry> ImprovePairing(List<ModelMoveEntry> packed)
+        {
+            if (packed.Count <= 1) return packed;
+            Position[] starts = packed.Select(e => e.Model.GetValue().Position).ToArray();
+            Position[] slots = packed.Select(e => e.Positions[^1]).ToArray();
+
+            const float eps = 1e-4f;
+            bool improved = true;
+            for (int pass = 0; pass < 32 && improved; pass++)
+            {
+                improved = false;
+                for (int i = 0; i < slots.Length; i++)
+                {
+                    for (int j = i + 1; j < slots.Length; j++)
+                    {
+                        float di = Dist(starts[i], slots[i]), dj = Dist(starts[j], slots[j]);
+                        float si = Dist(starts[i], slots[j]), sj = Dist(starts[j], slots[i]);
+                        float keptMax = Math.Max(di, dj), swappedMax = Math.Max(si, sj);
+                        if (swappedMax < keptMax - eps
+                            || (swappedMax < keptMax + eps && si + sj + eps < di + dj))
+                        {
+                            (slots[i], slots[j]) = (slots[j], slots[i]);
+                            improved = true;
+                        }
+                    }
+                }
+            }
+
+            var entries = new List<ModelMoveEntry>(packed.Count);
+            for (int i = 0; i < packed.Count; i++)
+                entries.Add(new ModelMoveEntry(packed[i].Model, new List<Position> { slots[i] }));
+            return entries;
+        }
+
+        private static float Dist(Position a, Position b)
+        {
+            float dx = a.x - b.x, dz = a.z - b.z;
+            return MathF.Sqrt(dx * dx + dz * dz);
+        }
+
+        /// <summary>
+        /// Worst per-model total path length of a candidate (start -> waypoints -> slot), the
+        /// quantity ValidateOutOfMoveRange caps - what the #256 correction loops measure against.
+        /// </summary>
+        private static float MaxModelMove(List<ModelMoveEntry> moves)
+        {
+            float max = 0f;
+            foreach (ModelMoveEntry move in moves)
+            {
+                Position previous = move.Model.GetValue().Position;
+                float total = 0f;
+                foreach (Position p in move.Positions)
+                {
+                    float dx = p.x - previous.x, dz = p.z - previous.z;
+                    total += MathF.Sqrt(dx * dx + dz * dz);
+                    previous = p;
+                }
+                if (total > max) max = total;
+            }
+            return max;
         }
 
         /// <summary>Zero-length paths for the living models - always move-through-valid.</summary>

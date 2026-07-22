@@ -63,6 +63,100 @@ namespace FDG.Tests
             Assert.That(perpSpan, Is.LessThan(0.5f));
         }
 
+        // --- #256: measure-and-correct replaced the worst-case ClampRepackStep pre-clamp, which
+        // subtracted spread + grid radius from the budget and left big combined units unable to
+        // advance at all (an 11-model unit's 4" advance clamped to 0.00 in an open field - the
+        // WayTooManyInBack save). These pin that a big unit spends most of its budget while every
+        // model stays within it.
+
+        [Test]
+        public void BuildCandidate_BigUnit_AdvancesMostOfItsBudget()
+        {
+            var models = MakeModels(11, baseRadius: 0.5f);
+            DataBinding<UnitData> unit = MakeUnit(models);
+            (float cx, float cz) = Centroid(models);
+
+            List<ModelMoveEntry> move = MovementPlanner.BuildCandidate(unit, models,
+                cx, cz, ndx: 1f, ndz: 0f, step: 4f, maxDistanceInches: 4f);
+
+            Assert.That(MaxPathLength(move), Is.LessThanOrEqualTo(4.001f),
+                "every model must stay within the move budget");
+            Assert.That(NetCentroidMove(move, cx, cz), Is.GreaterThan(3f),
+                "a tight 11-model unit must spend most of a 4\" budget, not stand still");
+            ApplyMoves(move);
+            Assert.That(CohesiveFormation.IsCohesive(models), Is.True);
+        }
+
+        [Test]
+        public void BuildPathCandidate_BigUnit_AdvancesMostOfItsBudget()
+        {
+            var models = MakeModels(11, baseRadius: 0.5f);
+            DataBinding<UnitData> unit = MakeUnit(models);
+            (float cx, float cz) = Centroid(models);
+            var path = new List<Position> { new Position(cx, cz), new Position(cx + 30f, cz) };
+
+            List<ModelMoveEntry> move = MovementPlanner.BuildPathCandidate(unit, models, path,
+                arcLengthInches: 4f, terrain: new List<ITerrain>(), baseRadiusInches: 0.5f,
+                maxDistanceInches: 4f);
+
+            Assert.That(MaxPathLength(move), Is.LessThanOrEqualTo(4.001f));
+            Assert.That(NetCentroidMove(move, cx, cz), Is.GreaterThan(3f));
+        }
+
+        [Test]
+        public void PlanMoveToward_BigUnitOpenField_AdvancesMostOfItsBudget()
+        {
+            var models = MakeModels(11, baseRadius: 0.5f);
+            DataBinding<UnitData> unit = MakeUnit(models);
+            (float cx, float cz) = Centroid(models);
+            var tableState = new TableState(_store);
+
+            List<ModelMoveEntry> move = MovementPlanner.PlanMoveToward(unit, models, tableState,
+                goal: new Position(cx + 30f, cz), moveBudgetInches: 4f, maxDistanceInches: 4f,
+                budgetFor: _ => new ModelMoveBudget(4f, 4f),
+                canMoveThroughEnemies: false, ignoresDifficultTerrain: false,
+                ignoresImpassibleTerrain: false);
+
+            Assert.That(NetCentroidMove(move, cx, cz), Is.GreaterThan(3f),
+                "the ladder-validated open-field advance must survive, not collapse to a stay");
+        }
+
+        private DataBinding<UnitData> MakeUnit(List<DataBinding<ModelData>> models)
+        {
+            var unit = new UnitData(new PlayerID(Guid.NewGuid()), "Blob", quality: 4, defense: 4,
+                modelBindings: models);
+            return _store.GetDataBinding<UnitData>(_store.Create(unit));
+        }
+
+        private static (float, float) Centroid(List<DataBinding<ModelData>> models) =>
+            (models.Average(mb => mb.GetValue().Position.x),
+             models.Average(mb => mb.GetValue().Position.z));
+
+        private static float NetCentroidMove(List<ModelMoveEntry> move, float cx, float cz)
+        {
+            var ends = move.Where(e => e.Positions.Count > 0).Select(e => e.Positions[^1]).ToList();
+            float ex = ends.Average(p => p.x), ez = ends.Average(p => p.z);
+            return MathF.Sqrt((ex - cx) * (ex - cx) + (ez - cz) * (ez - cz));
+        }
+
+        private static float MaxPathLength(List<ModelMoveEntry> move)
+        {
+            float max = 0f;
+            foreach (ModelMoveEntry entry in move)
+            {
+                Position previous = entry.Model.GetValue().Position;
+                float total = 0f;
+                foreach (Position p in entry.Positions)
+                {
+                    total += MathF.Sqrt((p.x - previous.x) * (p.x - previous.x)
+                        + (p.z - previous.z) * (p.z - previous.z));
+                    previous = p;
+                }
+                max = Math.Max(max, total);
+            }
+            return max;
+        }
+
         private List<DataBinding<ModelData>> MakeModels(int count, float baseRadius)
         {
             var bindings = new List<DataBinding<ModelData>>(count);

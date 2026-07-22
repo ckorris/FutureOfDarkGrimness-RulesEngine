@@ -44,8 +44,9 @@ namespace FDG.Tests
         [Test]
         public void PassiveEntry_OnHookWithNoContext_IsFlagged()
         {
-            // Round_OnRoundEnd has no context type — no stage can ever fire an entry there.
-            var rule = Passive("Lint Dead Hook", new HookEntry(EHookID.Round_OnRoundEnd,
+            // Morale_OnShakenCleared has no context type — no stage can ever fire an entry there.
+            // (Round_OnRoundEnd, the previous example, gained RoundEndContext in #100 #13.)
+            var rule = Passive("Lint Dead Hook", new HookEntry(EHookID.Morale_OnShakenCleared,
                 new Condition.Always(),
                 new Effect.RollModifier(ERollKind.Hit, Delta: 1),
                 ELifetime.ThisRound));

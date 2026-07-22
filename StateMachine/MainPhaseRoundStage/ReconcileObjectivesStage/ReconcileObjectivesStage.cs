@@ -1,4 +1,6 @@
+using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
 
@@ -62,6 +64,21 @@ namespace FDG.Stages
                         : "neutral";
                     GameContext.Log($"  Objective uncontested - remains {ownerDesc}.");
                 }
+            }
+
+            // #100 #13: fire round-end rules for every living unit BEFORE the token sweep below, so
+            // tokens that clear at round end are still visible to them and the ManualOnly markers they
+            // grant (Fortified Growth's accumulation) survive the sweep. Mirror of the round-start loop
+            // in StartOfRoundExtraActionStage.GrantSpellTokens; units with no round-end rules produce no
+            // operations. Models are passed so a joined hero's model-level rule is still seen (#093).
+            foreach (IUnit unit in tableState.Units.Objects.ToList())
+            {
+                if (!unit.GetIsAlive()) continue;
+
+                IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator.Evaluate(
+                    unit, ERuleSeat.Actor, new RoundEndContext(unit), weapon: null, models: unit.Models);
+                OperationApplier.ApplyTokenOperations(ops);
+                await OperationExecutor.Execute(ops, new GameOperationServices(GameContext));
             }
 
             // End of round: clear "this round" tokens across every unit AFTER the objective check above —

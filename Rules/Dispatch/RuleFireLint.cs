@@ -350,6 +350,10 @@ public static class RuleFireLint
             // StartOfRoundExtraActionStage applies token ops and runs executables for every living unit.
             EHookID.Round_OnRoundStart => IsTokenOrExecutable(op),
 
+            // ReconcileObjectivesStage fires round-end rules for every living unit before the token
+            // sweep (#100 #13, Fortified Growth's end-of-round marker).
+            EHookID.Round_OnRoundEnd => IsTokenOrExecutable(op),
+
             // ActivationStartStage applies token ops, runs executables, and folds RepositionModels into one
             // placement. (Before #197's reposition slice nothing evaluated passive entries here at all, which
             // made this arm a false pass — the map has to track what a stage really does, not what it could.)
@@ -481,6 +485,9 @@ public static class RuleFireLint
         {
             case EHookID.Round_OnRoundStart:
                 yield return new RoundStartContext(bearer);
+                break;
+            case EHookID.Round_OnRoundEnd:
+                yield return new RoundEndContext(bearer);
                 break;
             case EHookID.Lifecycle_OnUnitCreated:
                 yield return new UnitCreatedContext(bearer);

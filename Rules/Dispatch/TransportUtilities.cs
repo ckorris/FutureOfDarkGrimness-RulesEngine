@@ -214,8 +214,12 @@ public static class TransportUtilities
         Disembark(occupant);
 
         // Mirrors MoraleUtilities.ApplyShaken (which takes a DataBinding<UnitData> in the stage layer) —
-        // inlined to avoid a Rules→Stages dependency.
+        // inlined to avoid a Rules→Stages dependency. That includes the became-Shaken token clear
+        // (#100 #13, Fortified Growth's lose-all-markers) — keep in sync with ClearShakenTriggeredTokens.
         occupant.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.Shaken));
+        List<ITokenContainer> shakenClear = new List<ITokenContainer> { occupant.Tokens };
+        shakenClear.AddRange(occupant.Models.Select(model => model.Tokens));
+        new TokenClearService().ClearForHook(EHookID.Morale_OnShakenApplied, shakenClear);
 
         List<SpilloutModelRoll> rolls = new List<SpilloutModelRoll>();
         foreach (IModel model in occupant.Models)

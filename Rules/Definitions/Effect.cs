@@ -63,6 +63,8 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(ApplyFatigue), "applyFatigue")]
 [JsonDerivedType(typeof(MarkTarget), "markTarget")]
 [JsonDerivedType(typeof(ReduceArmorPenetration), "reduceArmorPenetration")]
+[JsonDerivedType(typeof(TokenScaledRollModifier), "tokenScaledRollModifier")]
+[JsonDerivedType(typeof(TokenScaledReduceArmorPenetration), "tokenScaledReduceArmorPenetration")]
 [JsonDerivedType(typeof(CountAsInTerrain), "countAsInTerrain")]
 [JsonDerivedType(typeof(PerHitSaveModifier), "perHitSaveModifier")]
 
@@ -313,14 +315,32 @@ public abstract record Effect
     /// cross-unit target tagging when paired with a target selector. The count is
     /// a <see cref="ValueSource"/> so fixed grants use <c>Literal</c> while
     /// arg-driven grants (Caster) use <c>Arg</c>.
+    ///
+    /// <see cref="MaxTotal"/> (0 = uncapped) clamps the grant so the target's total of
+    /// <see cref="TType"/> never exceeds it — the "up to a max. of X markers" clause on the
+    /// growth/frenzy marker family (#100 #13), enforced at grant time exactly like the
+    /// spell-token cap (tokens carry over, so a clear trigger can't express the cap).
     /// </summary>
-    public sealed record GrantToken(TokenType TType, ValueSource Count, TokenClearTrigger Clear) : Effect
+    public sealed record GrantToken(TokenType TType, ValueSource Count, TokenClearTrigger Clear,
+        int MaxTotal = 0) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
+            int count = Count.Resolve(ruleInvocation.Arguments);
+            if (MaxTotal > 0)
+            {
+                count = Math.Min(count,
+                    MaxTotal - ruleInvocation.EffectiveTarget.Tokens.GetTokenCount(TType));
+            }
+
+            if (count <= 0)
+            {
+                return;
+            }
+
             operations.Add(new RuleOperation.GrantTokenToUnit(
                 ruleInvocation.EffectiveTarget,
-                new Token(TType, Count.Resolve(ruleInvocation.Arguments), Clear,
+                new Token(TType, count, Clear,
                     OwnerUnitID: ruleInvocation.OwnerForEffectiveTarget)));
         }
     }
@@ -403,6 +423,55 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.ReduceArmorPenetration(Amount));
+        }
+    }
+
+    /// <summary>
+    /// A roll modifier whose magnitude scales with the BEARER's count of <see cref="TType"/> tokens
+    /// (#100 #13, the growth/frenzy marker family): delta = <see cref="Delta"/> x (count /
+    /// <see cref="PerMarkers"/>, integer division). Emits nothing at zero steps, so author it behind a
+    /// <see cref="Condition.TokenPresent"/> with <c>MinCount = PerMarkers</c> — that also lets
+    /// <see cref="Dispatch.RuleFireLint"/> seed enough markers to prove the entry fires. Marker CAPS
+    /// ("up to a max of two markers") belong on the granting entry (<see cref="GrantToken.MaxTotal"/>),
+    /// not here. Covers Piercing/Precision/Defensive Frenzy (per marker) and the Growth family
+    /// (per two markers).
+    /// </summary>
+    public sealed record TokenScaledRollModifier(TokenType TType, ERollKind RollKind, int Delta,
+        int PerMarkers = 1) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            int steps = ruleInvocation.Bearer.Tokens.GetTokenCount(TType) / PerMarkers;
+            if (steps > 0)
+            {
+                operations.Add(new RuleOperation.ApplyRollModifier(RollKind, Delta * steps));
+            }
+        }
+    }
+
+    /// <summary>
+    /// <see cref="ReduceArmorPenetration"/> scaled by the BEARER's count of <see cref="TType"/> tokens
+    /// (#100 #13): reduction = count / <see cref="PerMarkers"/>, capped at <see cref="MaxReduction"/>
+    /// (0 = uncapped). The cap exists because Fortified Growth reads "for each marker ... up to a max
+    /// of -2" while accumulating up to four markers — a read-side cap distinct from the grant-side one.
+    /// Same consumption seam as <see cref="ReduceArmorPenetration"/> (Subject at the hit-complete hook,
+    /// folded by <c>DetermineSaveRollsNeededStage</c>).
+    /// </summary>
+    public sealed record TokenScaledReduceArmorPenetration(TokenType TType, int PerMarkers = 1,
+        int MaxReduction = 0) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            int steps = ruleInvocation.Bearer.Tokens.GetTokenCount(TType) / PerMarkers;
+            if (MaxReduction > 0)
+            {
+                steps = Math.Min(steps, MaxReduction);
+            }
+
+            if (steps > 0)
+            {
+                operations.Add(new RuleOperation.ReduceArmorPenetration(steps));
+            }
         }
     }
 

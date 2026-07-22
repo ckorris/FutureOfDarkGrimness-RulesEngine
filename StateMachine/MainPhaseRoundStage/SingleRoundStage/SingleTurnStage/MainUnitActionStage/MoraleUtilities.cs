@@ -186,6 +186,20 @@ namespace FDG.Stages
             if (unit.Tokens.HasToken(TokenType.Shaken)) return;
 
             unit.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.Shaken));
+            ClearShakenTriggeredTokens(unit);
+        }
+
+        /// <summary>
+        /// #100 #13: tokens carried with a <c>CustomHook(Morale_OnShakenApplied)</c> clear trigger die
+        /// the moment their bearer becomes Shaken (Fortified Growth's "if this unit is ever Shaken, it
+        /// loses all its markers"). Called from both Shaken-application sites (here and the transport
+        /// spillout); the idempotence guard above means it fires once per became-Shaken transition.
+        /// </summary>
+        public static void ClearShakenTriggeredTokens(IUnit unit)
+        {
+            List<ITokenContainer> containers = new List<ITokenContainer> { unit.Tokens };
+            containers.AddRange(unit.Models.Select(model => model.Tokens));
+            new TokenClearService().ClearForHook(EHookID.Morale_OnShakenApplied, containers);
         }
 
         /// <summary>

@@ -70,6 +70,25 @@ namespace FDG.ArmyBuilding
                             $"{roster.Name}: too many options in \"{section.Label}\" ({picks}/{max}).",
                             ListIssueSeverity.Error, i));
                 }
+
+                // #219 unpriced upgrades: OPR omits the price on options it costs inside its own points
+                // algorithm, so we import them as 0 and flag them CostUnpriced (the real number is on no
+                // OPR endpoint). They play fine, but the compiled total counts them as free and reads short
+                // of the true value - a Warning so that shortfall is a known data gap, not a silent bug.
+                var unpriced = new List<string>();
+                foreach (UpgradeChoice choice in bu.Choices)
+                {
+                    UpgradeSection? section = roster.Sections.FirstOrDefault(s => s.Id == choice.SectionId);
+                    UpgradeOption? option = section?.Options.FirstOrDefault(o => o.Id == choice.OptionId);
+                    if (option is { CostUnpriced: true })
+                        unpriced.Add(option.Label);
+                }
+                if (unpriced.Count > 0)
+                    issues.Add(new ListIssue(
+                        $"{roster.Name}: {unpriced.Count} selected upgrade(s) have no published points cost " +
+                        $"and count as free ({string.Join(", ", unpriced)}); the list total may be under the " +
+                        "true value.",
+                        ListIssueSeverity.Warning, i));
             }
 
             ValidateCombinedLinks(book, list, issues);

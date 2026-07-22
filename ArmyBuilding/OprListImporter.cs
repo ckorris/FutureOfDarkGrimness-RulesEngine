@@ -108,18 +108,18 @@ namespace FDG.ArmyBuilding
                 entry.JoinsUnitId = null;
             }
 
-            // Per-unit costs are BASE costs; listPoints is the only resolved total. Park the difference so
-            // TotalPoints (and force-org validation with it) agrees with Army Forge instead of importing
-            // light by every upgrade point.
+            // Each unit now carries base + its attributed upgrade points (#219). listPoints stays the
+            // authoritative total; park any residual (selections we couldn't price, or list-wide points)
+            // so TotalPoints - and force-org validation with it - still agrees with Army Forge.
             if (list.ListPoints is int authoritative && authoritative > 0)
             {
                 int attributed = army.Units.Sum(u => u.PointCost);
                 army.UnattributedPoints = authoritative - attributed;
                 if (army.UnattributedPoints > 0)
                 {
-                    warn($"{army.UnattributedPoints} of this list's {authoritative} pts are upgrade points " +
-                         "Army Forge does not publish per unit - they are counted in the army total but " +
-                         "cannot be shown against the unit that earned them.");
+                    warn($"{army.UnattributedPoints} of this list's {authoritative} pts could not be attributed " +
+                         "to a specific unit (a selection whose price was missing) - they are still counted in " +
+                         "the army total.");
                 }
                 else if (army.UnattributedPoints < 0)
                 {
@@ -276,7 +276,15 @@ namespace FDG.ArmyBuilding
 
             // Upgrades granting bare RULES may or may not already be reflected in `rules` (unverified
             // corpus corner, see #241) — dedupe-merge covers both. Weapons/items are trusted to `loadout`.
+            // Alongside, sum each selection's price (#219) so the unit carries its real upgraded cost, not
+            // just its base: the option's cost is a flat scalar or a per-unit `costs` entry keyed by unit.Id.
+            // A selection whose price we can't read contributes 0 and stays in UnattributedPoints below.
+            int upgradeCost = 0;
             foreach (OprSelectedUpgrade selected in unit.SelectedUpgrades ?? new())
+            {
+                if (selected.Option is { } opt)
+                    upgradeCost += opt.Cost ?? opt.Costs?.FirstOrDefault(c => c.UnitId == unit.Id)?.Cost ?? 0;
+
                 foreach (OprLoadoutEntry gain in selected.Option?.Gains ?? new())
                 {
                     if (gain.Type == "ArmyBookRule")
@@ -286,6 +294,8 @@ namespace FDG.ArmyBuilding
                             if (inner.Type == "ArmyBookRule")
                                 AddRule(entry, MapRule(new OprListRule { Name = inner.Name, Rating = inner.Rating }, bookName));
                 }
+            }
+            entry.PointCost += upgradeCost;
 
             if (unit.Xp > 0 || (unit.Traits ?? new()).Count > 0)
                 warn($"'{name}': campaign XP/traits are not imported (#242).");
@@ -477,6 +487,11 @@ namespace FDG.ArmyBuilding
             public string? Id { get; set; }
             public string? Uid { get; set; }
             public string? Label { get; set; }
+            // #219: the option's price rides on the selection - a flat `cost`, or (the common case) a per-unit
+            // `costs` array keyed by the owning unit's id. Lets the verbatim import attribute upgrade points to
+            // the unit that bought them instead of parking them all in UnattributedPoints.
+            public int? Cost { get; set; }
+            public List<OprBookImporter.OprOptionCost>? Costs { get; set; }
             public List<OprLoadoutEntry>? Gains { get; set; }
         }
 

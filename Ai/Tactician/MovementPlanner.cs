@@ -13,8 +13,10 @@ namespace FDG.Ai.Tactician
     /// <para>
     /// Extracted verbatim from AiDefineMovementResolver so the solo-rules bot and the Tactician's
     /// macro-action generator (A3c) drive the same machinery. The solo-rules bot's BEHAVIOR is pinned
-    /// unchanged (plan D1): its resolver tests plus the 200-game benchmark outcome hashes
-    /// (B05AA1D810364C6B / F4318EF0D91161F5, recorded in the #191 ledger) must survive this move.
+    /// (plan D1) by its resolver tests plus the 200-game benchmark outcome hashes recorded in the
+    /// #191 ledger. #256 deliberately moved that baseline (measure-and-correct budgets, the S2
+    /// re-aim, the S4 snake); the re-pinned 2026-07-22 hashes are 3674C906996F34CC (builtin mirror)
+    /// / CE3DC8150005FF2C (builtin vs builtin-basic), zero faults, reproducible at DOP 16.
     /// </para>
     /// </summary>
     public static class MovementPlanner
@@ -178,7 +180,8 @@ namespace FDG.Ai.Tactician
             Func<ModelMoveEntry, ModelMoveBudget> budgetFor, List<EnemyModelFootprint> enemies,
             bool canMoveThroughEnemies, bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
             List<ITerrain> terrain, IReadOnlyList<EnemyModelFootprint>? friendlies = null,
-            Func<float, float, List<ModelMoveEntry>>? reaimAt = null)
+            Func<float, float, List<ModelMoveEntry>>? reaimAt = null,
+            Func<float, List<ModelMoveEntry>>? snakeAt = null)
         {
             bool Validate(List<ModelMoveEntry> c, out List<ReasonForInvalidMove> errs) =>
                 MovementUtilities.ValidatePaths(c, budgetFor, enemies, canMoveThroughEnemies,
@@ -202,6 +205,24 @@ namespace FDG.Ai.Tactician
                     List<ModelMoveEntry>? reaimed = TryLateralReaim(reaimAt, step, living, candidate,
                         c => Validate(c, out _));
                     if (reaimed != null) return reaimed;
+                }
+
+                // #256 S4: when the ONLY fault is clipping impassible terrain, the formation is wider
+                // than the corridor the route threads - halving barely helps (the walled pocket's grid
+                // pack needed 0.19" of a 12" budget). Try the on-path snake at the SAME step: valid
+                // wherever the route is clear for one base, at the cost of stretching the formation.
+                if (snakeAt != null && step >= MinBackoffStepInches && living.Count > 0
+                    && errors.Count > 0
+                    && errors.All(e => e.ErrorReasonType == EErrorReasonType.MovingThroughImpassibleTerrain))
+                {
+                    List<ModelMoveEntry> snake = snakeAt(step);
+                    // Gate: the head must really thread the corridor (not a degenerate stay), and the
+                    // unit must gain SOME ground - the first snake move stretches more than it advances,
+                    // so the S2-style half-forward gate would wrongly reject it.
+                    if (MaxModelMove(snake) >= 0.5f * step
+                        && ForwardProgress(living, candidate, snake) > MinBackoffStepInches
+                        && Validate(snake, out _))
+                        return snake;
                 }
 
                 step *= 0.5f;
@@ -277,6 +298,24 @@ namespace FDG.Ai.Tactician
             return null;
         }
 
+        /// <summary>
+        /// How far <paramref name="candidate"/> moves the unit's centroid along the direction the
+        /// BLOCKED candidate was trying to go (#256 S4's gate; 0 when the blocked candidate itself
+        /// went nowhere - nothing to make progress toward).
+        /// </summary>
+        private static float ForwardProgress(List<DataBinding<ModelData>> living,
+            List<ModelMoveEntry> blockedCandidate, List<ModelMoveEntry> candidate)
+        {
+            float sx = living.Average(mb => mb.GetValue().Position.x);
+            float sz = living.Average(mb => mb.GetValue().Position.z);
+            (float bx, float bz) = EndCentroid(blockedCandidate);
+            float fx = bx - sx, fz = bz - sz;
+            float length = MathF.Sqrt(fx * fx + fz * fz);
+            if (length < MinBackoffStepInches) return 0f;
+            (float ex, float ez) = EndCentroid(candidate);
+            return ((ex - sx) * fx + (ez - sz) * fz) / length;
+        }
+
         /// <summary>Centroid of a candidate's end positions (models with empty paths stay put).</summary>
         private static (float X, float Z) EndCentroid(List<ModelMoveEntry> moves)
         {
@@ -290,6 +329,27 @@ namespace FDG.Ai.Tactician
                 x += end.x; z += end.z; count++;
             }
             return count == 0 ? (0f, 0f) : (x / count, z / count);
+        }
+
+        /// <summary>
+        /// The G3-safe stand-still: <see cref="StayInPlace"/>'s reform validated like any ladder result,
+        /// degrading to <see cref="HoldExactPositions"/> when even the re-pack is illegal - its slots can
+        /// land on an adjacent friendly (#205's end-overlap rule). Callers that answer a movement request
+        /// with a stay WITHOUT running the ladder must use this, not raw StayInPlace: the bench's seed-1051
+        /// fault was the solo resolver's every-enemy-dead early-out submitting an unvalidated reform whose
+        /// slot overlapped a teammate, faulting DefinePathStage.
+        /// </summary>
+        public static List<ModelMoveEntry> StayInPlaceValidated(DataBinding<UnitData> unit,
+            List<DataBinding<ModelData>> living, Func<ModelMoveEntry, ModelMoveBudget> budgetFor,
+            List<EnemyModelFootprint> enemies, bool canMoveThroughEnemies, bool ignoresDifficultTerrain,
+            bool ignoresImpassibleTerrain, List<ITerrain> terrain,
+            IReadOnlyList<EnemyModelFootprint>? friendlies)
+        {
+            List<ModelMoveEntry> stay = StayInPlace(unit);
+            bool valid = MovementUtilities.ValidatePaths(stay, budgetFor, enemies, canMoveThroughEnemies,
+                ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, out _, friendlies,
+                lenientCoherency: true);
+            return valid ? stay : HoldExactPositions(living);
         }
 
         /// <summary>
@@ -342,6 +402,74 @@ namespace FDG.Ai.Tactician
             {
                 List<ModelMoveEntry> candidate = PathCandidateAt(unit, living, path, arc, terrain,
                     baseRadiusInches, formation, lineAxis, lateralOffsetInches);
+                float overshoot = MaxModelMove(candidate) - maxDistanceInches;
+                if (overshoot <= 0f) return candidate;
+                arc -= overshoot + RepackCorrectionSlackInches;
+                if (arc <= 0f) break;
+            }
+            return StayInPlace(unit);
+        }
+
+        /// <summary>
+        /// The #256 S4 corridor shape: every model's destination lies ON the pathfound polyline,
+        /// staggered back from the head by base-width spacing - a snake that is clear-by-construction
+        /// wherever the route itself is clear for one base. The endpoint packers (grid and straight
+        /// line) place flank slots geometrically, so in a wall corridor they embed slots in terrain
+        /// and every arc fails "moves through impassible" (the walled Battle Brothers pocket: the
+        /// grid pack needed a 0.19" arc where the snake cleared at 3"). Units too long for one file
+        /// under the 9" all-models rule wrap into parallel files (11 models: 2 files, ~1.75" wide vs
+        /// the ~4.5" grid). The first snake move mostly STRETCHES the unit into the file (small
+        /// centroid gain); from the next activation it flows down the route at ~full arc.
+        /// </summary>
+        public static List<ModelMoveEntry> BuildSnakeCandidate(DataBinding<UnitData> unit,
+            List<DataBinding<ModelData>> living, List<Position> path, float arcLengthInches,
+            IReadOnlyList<ITerrain> terrain, float baseRadiusInches, float maxDistanceInches)
+        {
+            if (arcLengthInches <= 0f || path.Count < 2 || living.Count == 0) return StayInPlace(unit);
+
+            float spacing = 2f * baseRadiusInches + 0.1f; // cohesion-safe 0.1" gap, as PackLine
+            // Wrap into parallel files when a single file would stretch past the 9" all-models rule.
+            const float maxFileSpanInches = 8.5f;
+            int ranksInOneFile = living.Count;
+            int files = Math.Max(1, (int)MathF.Ceiling((ranksInOneFile - 1) * spacing / maxFileSpanInches));
+            int ranks = (int)MathF.Ceiling(living.Count / (float)files);
+
+            // The model nearest the first bend leads; stable order keeps the pairing deterministic.
+            Position bend = path[Math.Min(1, path.Count - 1)];
+            List<DataBinding<ModelData>> order = living
+                .OrderBy(mb =>
+                {
+                    Position p = mb.GetValue().Position;
+                    return (p.x - bend.x) * (p.x - bend.x) + (p.z - bend.z) * (p.z - bend.z);
+                })
+                .ToList();
+
+            float arc = arcLengthInches;
+            for (int attempt = 0; attempt < RepackCorrectionAttempts; attempt++)
+            {
+                var candidate = new List<ModelMoveEntry>(order.Count);
+                for (int i = 0; i < order.Count; i++)
+                {
+                    int rank = i / files;
+                    int file = i % files;
+                    float arcI = Math.Max(0.05f, arc - rank * spacing);
+                    (Position endI, List<Position> passedI, _) =
+                        GridPathfinder.AdvanceAlongPath(path, arcI, terrain, baseRadiusInches);
+
+                    if (files > 1)
+                    {
+                        // Offset parallel files perpendicular to the LOCAL path direction at this point.
+                        Position prev = passedI.Count > 0 ? passedI[^1] : path[0];
+                        float dx = endI.x - prev.x, dz = endI.z - prev.z;
+                        float len = MathF.Sqrt(dx * dx + dz * dz);
+                        (dx, dz) = len < 1e-6f ? (1f, 0f) : (dx / len, dz / len);
+                        float across = (file - (files - 1) / 2f) * spacing;
+                        endI = new Position(endI.x + across * -dz, endI.z + across * dx);
+                    }
+
+                    candidate.Add(new ModelMoveEntry(order[i], passedI.Concat(new[] { endI }).ToList()));
+                }
+
                 float overshoot = MaxModelMove(candidate) - maxDistanceInches;
                 if (overshoot <= 0f) return candidate;
                 arc -= overshoot + RepackCorrectionSlackInches;
@@ -445,7 +573,11 @@ namespace FDG.Ai.Tactician
                 // #256 S2: a friendly parked on the arrival spot side-steps the endpoint fan-out
                 // instead of halving the arc toward a stall (the Warriors-toward-(7,30) row).
                 (arc, lat) => BuildPathCandidate(unit, living, path, arc, terrain, baseRadius,
-                    maxDistanceInches, formation, lineAxis, lat));
+                    maxDistanceInches, formation, lineAxis, lat),
+                // #256 S4: a formation too wide for the route's corridor falls back to the on-path
+                // snake instead of halving to a crawl (the walled Battle Brothers pocket).
+                arc => BuildSnakeCandidate(unit, living, path, arc, terrain, baseRadius,
+                    maxDistanceInches));
         }
 
         /// <summary>

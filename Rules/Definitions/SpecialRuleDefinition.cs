@@ -42,4 +42,16 @@ namespace FDG.Rules.Definitions;
 /// </summary>
 public record SpecialRuleDefinition(string Name, IReadOnlyList<HookEntry> Passive,
     IReadOnlyList<ActivatedAbility> Activated, ERuleScope Scope = ERuleScope.Unit,
-    int EngineArgumentCount = 0, EValence Valence = EValence.Neutral, string Description = "");
+    int EngineArgumentCount = 0, EValence Valence = EValence.Neutral, string Description = "")
+{
+    // #258: identity IS the canonical name - the registry allows one definition per name per
+    // game, and every engine-side "has this rule?" check compares definitions with ==. The
+    // default record equality compared the IReadOnlyList<> members by reference, so the
+    // per-attachment instances that save/load rehydration rebuilds (#095, no resolver on the
+    // resume path) were never equal to the catalog's - silently breaking every Definition ==
+    // site on resumed games and crashing BuildWeaponOptions when WeaponComparer stopped
+    // grouping same-named weapons (the WayTooManyInBack Sniper Team fault).
+    public virtual bool Equals(SpecialRuleDefinition? other) => other is not null && Name == other.Name;
+
+    public override int GetHashCode() => Name.GetHashCode();
+}

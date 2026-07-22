@@ -242,6 +242,58 @@ public class ListValidatorTests
         Assert.That(issues.Any(i => i.Message.Contains("ineligible")), Is.True);
     }
 
+    // ── #219 unpriced upgrades ──────────────────────────────────────────────────────────────────────────
+
+    private static BookFile UnpricedBook() => new()
+    {
+        Name = "P",
+        Units =
+        {
+            new RosterUnit
+            {
+                Id = "x", Name = "X", Quality = 4, Defense = 4, BaseModelCount = 1, MinModels = 1, MaxModels = 1,
+                BasePointCost = 10,
+                Sections =
+                {
+                    new UpgradeSection
+                    {
+                        Id = "s", Label = "Wargear", MaxPicks = 2,
+                        Options =
+                        {
+                            new UpgradeOption { Id = "free", Label = "Free Blade", Cost = 0 },
+                            new UpgradeOption { Id = "paid", Label = "Paid Blade", Cost = 15 },
+                            new UpgradeOption { Id = "hidden", Label = "Hexer", Cost = 0, CostUnpriced = true },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    [Test]
+    public void UnpricedUpgradeSelected_Warns()
+    {
+        var unit = U("x", new UpgradeChoice { SectionId = "s", OptionId = "hidden", Count = 1 });
+        var issues = Check(UnpricedBook(), List(100000, unit));
+
+        ListIssue warn = issues.Single(i => i.Severity == ListIssueSeverity.Warning
+            && i.Message.Contains("no published points cost"));
+        Assert.That(warn.Message, Does.Contain("Hexer"));
+        Assert.That(warn.UnitIndex, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void FreeAndPricedUpgrades_DoNotWarn()
+    {
+        // A genuine 0-cost option (explicit free) and a normally-priced one must not trip the unpriced warning.
+        var unit = U("x",
+            new UpgradeChoice { SectionId = "s", OptionId = "free", Count = 1 },
+            new UpgradeChoice { SectionId = "s", OptionId = "paid", Count = 1 });
+        var issues = Check(UnpricedBook(), List(100000, unit));
+
+        Assert.That(issues.Any(i => i.Message.Contains("no published points cost")), Is.False);
+    }
+
     [Test]
     public void PickCapExceeded_IsAnError()
     {

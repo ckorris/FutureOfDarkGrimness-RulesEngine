@@ -243,7 +243,7 @@ namespace FDG.ArmyBuilding
             foreach (string pkgUid in unit.Upgrades ?? new())
                 if (packages.TryGetValue(pkgUid, out OprPackage? pkg))
                     foreach (OprSection section in pkg.Sections ?? new())
-                        roster.Sections.Add(MapSection(section));
+                        roster.Sections.Add(MapSection(section, roster.Id));
 
             return roster;
         }
@@ -330,7 +330,7 @@ namespace FDG.ArmyBuilding
             };
         }
 
-        private static UpgradeSection MapSection(OprSection s)
+        private static UpgradeSection MapSection(OprSection s, string unitId)
         {
             // OPR affects: "all" (every matched target), "any" (0..present), "exactly N"/"up to N" (bounded),
             // or null ("replace one" = up to 1). A bound of 1 collapses to the One toggle; >1 is a capped stepper.
@@ -370,18 +370,21 @@ namespace FDG.ArmyBuilding
                 MaxApplications = maxApplications,
                 MaxPicks = maxPicks,
                 Targets = s.Targets ?? new(),
-                Options = (s.Options ?? new()).Select(MapOption).ToList(),
+                Options = (s.Options ?? new()).Select(o => MapOption(o, unitId)).ToList(),
             };
         }
 
-        private static UpgradeOption MapOption(OprOption o)
+        private static UpgradeOption MapOption(OprOption o, string unitId)
         {
+            // #219: prefer the flat scalar; fall back to this unit's entry in the per-unit `costs` array.
+            // Only genuinely unpriced (neither present) stays CostUnpriced.
+            int? resolvedCost = o.Cost ?? o.Costs?.FirstOrDefault(c => c.UnitId == unitId)?.Cost;
             var option = new UpgradeOption
             {
                 Id = o.Id ?? o.Uid ?? Guid.NewGuid().ToString("N")[..8],
                 Label = o.Label ?? string.Empty,
-                Cost = o.Cost ?? 0,
-                CostUnpriced = o.Cost is null,
+                Cost = resolvedCost ?? 0,
+                CostUnpriced = resolvedCost is null,
             };
             foreach (OprGain g in o.Gains ?? new())
                 AddGain(option, g);
@@ -819,7 +822,18 @@ namespace FDG.ArmyBuilding
             // algorithm rather than publishing a static number, and writes an explicit 0 for genuinely free
             // ones. A non-nullable int collapsed both onto 0 and made unpriced upgrades look free.
             public int? Cost { get; set; }
+            // #219: when the flat `cost` scalar above is absent, OPR still publishes the price here, keyed by
+            // the referencing unit's id - the SAME option can cost differently on different units (a pistol
+            // swap that is 10 pts on one hero, 5 on another), which is exactly why this is a per-unit array
+            // and not one number. Recovers what looked "unpriced" when only `cost` was read.
+            public List<OprOptionCost>? Costs { get; set; }
             public List<OprGain>? Gains { get; set; }
+        }
+
+        internal sealed class OprOptionCost
+        {
+            public int? Cost { get; set; }
+            public string? UnitId { get; set; }
         }
 
         private sealed class OprGain

@@ -112,8 +112,41 @@ public class OprListImporterTests
     [Test]
     public void Import_WarnsWhenUpgradePointsCannotBeAttributed()
     {
+        // GapListJson's units carry no selectedUpgrades, so the 60-pt gap is genuinely unattributable.
         Assert.That(OprListImporter.Import(GapListJson, Books).Warnings,
-            Has.Some.Contains("cannot be shown against the unit"));
+            Has.Some.Contains("could not be attributed to a specific unit"));
+    }
+
+    // #219: a selection carries its price (a per-unit `costs` entry keyed by unit id), so the unit's upgrade
+    // points attribute to it - the unit reads base + upgrades and nothing is left unattributed.
+    private const string AttributedListJson = """
+    {
+      "id": "ATTRLIST", "name": "Noble", "gameSystem": "gf", "pointsLimit": 2000,
+      "campaignMode": false, "narrativeMode": false, "listPoints": 120,
+      "units": [
+        { "id": "noble", "cost": 45, "name": "Elven Noble", "size": 1, "quality": 3, "defense": 4,
+          "rules": [], "weapons": [], "armyId": "bookA", "combined": false,
+          "selectionId": "SelNoble", "loadout": [],
+          "selectedUpgrades": [
+            { "option": { "id": "o1", "label": "Master Shard Pistol",
+                "costs": [ {"cost":10,"unitId":"noble"}, {"cost":5,"unitId":"other"} ] } },
+            { "option": { "id": "o2", "label": "Master Laser Pistol", "costs": [ {"cost":5,"unitId":"noble"} ] } },
+            { "option": { "id": "o3", "label": "Shield Projector", "costs": [ {"cost":30,"unitId":"noble"} ] } },
+            { "option": { "id": "o4", "label": "Elemental Hexer", "costs": [ {"cost":30,"unitId":"noble"} ] } }
+          ] }
+      ]
+    }
+    """;
+
+    [Test]
+    public void Import_AttributesPerUnitUpgradeCosts_LeavingNothingUnattributed()
+    {
+        ArmyListFile army = OprListImporter.Import(AttributedListJson, Books).Army;
+
+        // 45 base + 10 + 5 + 30 + 30 = 120, using THIS unit's costs[] entry (10, not the "other" unit's 5).
+        Assert.That(army.Units.Single().PointCost, Is.EqualTo(120));
+        Assert.That(army.UnattributedPoints, Is.Zero);
+        Assert.That(army.TotalPoints, Is.EqualTo(120));
     }
 
     // Force-org validation reads TotalPoints; importing light let an over-limit list pass as legal.

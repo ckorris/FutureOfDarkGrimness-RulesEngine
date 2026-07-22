@@ -200,6 +200,67 @@ namespace FDG.Tests
                 "a friendly on the arrival spot must cost a side-step, not most of the advance");
         }
 
+        // --- #256 S4: corridor width. The endpoint packers place flank slots geometrically, so a
+        // formation wider than a wall corridor fails "moves through impassible" at every arc and the
+        // ladder halves to a crawl (the walled Battle Brothers pocket needed a 0.19" arc of a 12"
+        // budget). The snake fallback puts every destination ON the pathfound polyline - clear
+        // wherever the route is clear for one base - at the cost of stretching the formation.
+
+        [Test]
+        public void PlanMoveToward_WallCorridorNarrowerThanFormation_SnakesThroughInsteadOfCrawling()
+        {
+            // A 2"-wide corridor at x in [10,12] between two walls; a 6-model unit (~3.3" wide as a
+            // grid pack) south of it must travel north through the gap.
+            var models = MakeModels(6, baseRadius: 0.5f);
+            DataBinding<UnitData> unit = MakeUnit(models);
+            (float cx, float cz) = Centroid(models);
+            var tableState = new TableState(_store);
+            // Walls flanking a gap directly north of the unit's centroid (models sit at x 20-22,
+            // z 20-21 from MakeModels; the corridor is at x [cx-1, cx+1]).
+            _store.Create(new TerrainData(ETerrainType.Impassible,
+                new RectangularZone(cx - 15f, cx - 1f, cz + 3f, cz + 9f)));
+            _store.Create(new TerrainData(ETerrainType.Impassible,
+                new RectangularZone(cx + 1f, cx + 15f, cz + 3f, cz + 9f)));
+
+            List<ModelMoveEntry> move = MovementPlanner.PlanMoveToward(unit, models, tableState,
+                goal: new Position(cx, cz + 30f), moveBudgetInches: 12f, maxDistanceInches: 12f,
+                budgetFor: _ => new ModelMoveBudget(12.001f, 12.001f),
+                canMoveThroughEnemies: false, ignoresDifficultTerrain: false,
+                ignoresImpassibleTerrain: false);
+
+            bool valid = MovementUtilities.ValidatePaths(move, _ => new ModelMoveBudget(12.001f, 12.001f),
+                new List<EnemyModelFootprint>(), false, false, false,
+                tableState.Terrain.Objects.ToList(), out _, null, lenientCoherency: true);
+            Assert.That(valid, Is.True, "the snake must pass the same validator the stage uses");
+
+            var ends = move.Where(e => e.Positions.Count > 0).Select(e => e.Positions[^1]).ToList();
+            float headZ = ends.Max(p => p.z);
+            Assert.That(headZ - cz, Is.GreaterThan(3f),
+                "the head must actually thread the corridor, not crawl in front of it");
+            Assert.That(NetCentroidMove(move, cx, cz), Is.GreaterThan(1f),
+                "the unit must gain real ground (a first snake move stretches but still advances)");
+        }
+
+        [Test]
+        public void BuildSnakeCandidate_BigUnit_WrapsFilesToStayCohesive()
+        {
+            // 11 models at 1.2" spacing would be a 12" single file - past the 9" all-models rule -
+            // so the snake must wrap into parallel files and stay cohesion-valid.
+            var models = MakeModels(11, baseRadius: 0.5f);
+            DataBinding<UnitData> unit = MakeUnit(models);
+            (float cx, float cz) = Centroid(models);
+            var path = new List<Position> { new Position(cx, cz), new Position(cx, cz + 30f) };
+
+            List<ModelMoveEntry> move = MovementPlanner.BuildSnakeCandidate(unit, models, path,
+                arcLengthInches: 10f, terrain: new List<ITerrain>(), baseRadiusInches: 0.5f,
+                maxDistanceInches: 12f);
+
+            Assert.That(MaxPathLength(move), Is.LessThanOrEqualTo(12.001f));
+            ApplyMoves(move);
+            Assert.That(CohesiveFormation.IsCohesive(models), Is.True,
+                "an 11-model snake must wrap into files rather than break the 9\" rule");
+        }
+
         private DataBinding<UnitData> MakeUnit(List<DataBinding<ModelData>> models)
         {
             var unit = new UnitData(new PlayerID(Guid.NewGuid()), "Blob", quality: 4, defense: 4,

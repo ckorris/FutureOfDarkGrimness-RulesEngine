@@ -96,6 +96,116 @@ namespace FDG.Tests
             Assert.That(_ctx.Result.Winner, Is.Null);
         }
 
+        // #257 team-scoring facets: the winner is the team with the highest SUMMED objective count,
+        // and the victory text names every player on the winning team, never just the team.
+
+        [Test]
+        public async Task TeammatesPoolObjectives_TeamSumDecidesOverIndividualTally()
+        {
+            var a1 = new PlayerID(Guid.NewGuid());
+            var a2 = new PlayerID(Guid.NewGuid());
+            var b = new PlayerID(Guid.NewGuid());
+            CreatePlayer(a1, "Alpha", slotID: 0, teamNumber: 1);
+            CreatePlayer(a2, "Bravo", slotID: 1, teamNumber: 1);
+            CreatePlayer(b, "Charlie", slotID: 2, teamNumber: 2);
+            CreateObjective(owner: a1);
+            CreateObjective(owner: a1);
+            CreateObjective(owner: a2);
+            CreateObjective(owner: b);
+            CreateObjective(owner: b);
+
+            await RunVictory();
+
+            // Individually Alpha and Charlie tie at the top (2-2-1) - the old per-player logic called
+            // this game a tie. Pooled, team 1 wins 3-2.
+            Assert.That(_ctx.Result!.Outcome, Is.EqualTo(EGameOutcome.Win));
+            Assert.That(_ctx.EndResult, Is.EqualTo("Alpha and Bravo win!"));
+        }
+
+        [Test]
+        public async Task TeamWin_MessageListsEveryPlayerOnTheTeam()
+        {
+            var a1 = new PlayerID(Guid.NewGuid());
+            var a2 = new PlayerID(Guid.NewGuid());
+            var b = new PlayerID(Guid.NewGuid());
+            CreatePlayer(a1, "Alpha", slotID: 0, teamNumber: 1);
+            CreatePlayer(a2, "Bravo", slotID: 1, teamNumber: 1);
+            CreatePlayer(b, "Charlie", slotID: 2, teamNumber: 2);
+            CreateObjective(owner: a1);
+            CreateObjective(owner: a2);
+            CreateObjective(owner: b);
+
+            await RunVictory();
+
+            Assert.That(_ctx.EndResult, Is.EqualTo("Alpha and Bravo win!"),
+                "the victory text names the players, not the team number.");
+            Assert.That(_ctx.Result!.Outcome, Is.EqualTo(EGameOutcome.Win));
+            Assert.That(_ctx.Result.Winner, Is.EqualTo(a1), "representative winner is the first slot on the team");
+            Assert.That(_ctx.Result.WinnerPlayers, Is.EqualTo(new[] { a1, a2 }));
+            Assert.That(_ctx.Result.WinnerName, Is.EqualTo("Alpha and Bravo"));
+        }
+
+        [Test]
+        public async Task ZeroScoreTeammate_IsStillNamedInTheVictoryText()
+        {
+            var a1 = new PlayerID(Guid.NewGuid());
+            var a2 = new PlayerID(Guid.NewGuid());
+            var b = new PlayerID(Guid.NewGuid());
+            CreatePlayer(a1, "Alpha", slotID: 0, teamNumber: 1);
+            CreatePlayer(a2, "Bravo", slotID: 1, teamNumber: 1);
+            CreatePlayer(b, "Charlie", slotID: 2, teamNumber: 2);
+            CreateObjective(owner: a1);
+            CreateObjective(owner: a1);
+            CreateObjective(owner: b);
+
+            await RunVictory();
+
+            Assert.That(_ctx.EndResult, Is.EqualTo("Alpha and Bravo win!"),
+                "a teammate who held nothing still shares the win and the banner.");
+            Assert.That(_ctx.Result!.WinnerPlayers, Is.EqualTo(new[] { a1, a2 }));
+        }
+
+        [Test]
+        public async Task ThreePlayerTeamWin_NamesJoinWithCommasAndAnd()
+        {
+            var a1 = new PlayerID(Guid.NewGuid());
+            var a2 = new PlayerID(Guid.NewGuid());
+            var a3 = new PlayerID(Guid.NewGuid());
+            var b = new PlayerID(Guid.NewGuid());
+            CreatePlayer(a1, "Alpha", slotID: 0, teamNumber: 1);
+            CreatePlayer(a2, "Bravo", slotID: 1, teamNumber: 1);
+            CreatePlayer(a3, "Delta", slotID: 2, teamNumber: 1);
+            CreatePlayer(b, "Charlie", slotID: 3, teamNumber: 2);
+            CreateObjective(owner: a1);
+            CreateObjective(owner: a3);
+
+            await RunVictory();
+
+            Assert.That(_ctx.EndResult, Is.EqualTo("Alpha, Bravo and Delta win!"));
+        }
+
+        [Test]
+        public async Task TwoTeamsTiedOnSummedScore_EndsInTie()
+        {
+            var a1 = new PlayerID(Guid.NewGuid());
+            var a2 = new PlayerID(Guid.NewGuid());
+            var b1 = new PlayerID(Guid.NewGuid());
+            var b2 = new PlayerID(Guid.NewGuid());
+            CreatePlayer(a1, "Alpha", slotID: 0, teamNumber: 1);
+            CreatePlayer(a2, "Bravo", slotID: 1, teamNumber: 1);
+            CreatePlayer(b1, "Charlie", slotID: 2, teamNumber: 2);
+            CreatePlayer(b2, "Delta", slotID: 3, teamNumber: 2);
+            CreateObjective(owner: a1);
+            CreateObjective(owner: a2);
+            CreateObjective(owner: b1);
+            CreateObjective(owner: b2);
+
+            await RunVictory();
+
+            Assert.That(_ctx.EndResult, Is.EqualTo("It's a tie!"));
+            Assert.That(_ctx.Result!.Outcome, Is.EqualTo(EGameOutcome.Tie));
+        }
+
         // #192 structured-result facets.
 
         [Test]
@@ -203,9 +313,12 @@ namespace FDG.Tests
                 obj.SetOwner(owner.Value);
         }
 
-        private void CreatePlayer(PlayerID playerID, string name, int slotID)
+        // Default: every player on their own team (slot + 1), matching the pre-#257 world where team
+        // scoring degenerates to per-player scoring. Team tests pass teamNumber explicitly.
+        private void CreatePlayer(PlayerID playerID, string name, int slotID, int? teamNumber = null)
         {
-            _store.Create(new PlayerSlotInfo(playerID, slotID: slotID, teamNumber: 0, name: name, isFilled: true));
+            _store.Create(new PlayerSlotInfo(playerID, slotID: slotID, teamNumber: teamNumber ?? slotID + 1,
+                name: name, isFilled: true));
         }
 
         private void CreateProgress(int roundCount)

@@ -276,11 +276,15 @@ namespace FDG.Ai.Tactician
         /// along <paramref name="path"/>, every model sharing the path's interior waypoints (so the
         /// whole unit funnels through corridors) and fanning out into the formation at the endpoint.
         /// The arc length is the ladder's backoff knob, exactly like the straight candidate's step.
+        /// <paramref name="lateralOffsetInches"/> (#256 S2) shifts the formation anchor perpendicular
+        /// to the path's final segment - the endpoint fan-out side-steps a friendly parked on the
+        /// arrival spot while the funnelled waypoints stay on the route.
         /// </summary>
         public static List<ModelMoveEntry> BuildPathCandidate(DataBinding<UnitData> unit,
             List<DataBinding<ModelData>> living, List<Position> path, float arcLengthInches,
             IReadOnlyList<ITerrain> terrain, float baseRadiusInches, float maxDistanceInches,
-            EFormation formation = EFormation.Grid, (float X, float Z)? lineAxis = null)
+            EFormation formation = EFormation.Grid, (float X, float Z)? lineAxis = null,
+            float lateralOffsetInches = 0f)
         {
             if (arcLengthInches <= 0f || path.Count < 2) return StayInPlace(unit);
 
@@ -291,7 +295,7 @@ namespace FDG.Ai.Tactician
             for (int attempt = 0; attempt < RepackCorrectionAttempts; attempt++)
             {
                 List<ModelMoveEntry> candidate = PathCandidateAt(unit, living, path, arc, terrain,
-                    baseRadiusInches, formation, lineAxis);
+                    baseRadiusInches, formation, lineAxis, lateralOffsetInches);
                 float overshoot = MaxModelMove(candidate) - maxDistanceInches;
                 if (overshoot <= 0f) return candidate;
                 arc -= overshoot + RepackCorrectionSlackInches;
@@ -304,7 +308,7 @@ namespace FDG.Ai.Tactician
         private static List<ModelMoveEntry> PathCandidateAt(DataBinding<UnitData> unit,
             List<DataBinding<ModelData>> living, List<Position> path, float arcLengthInches,
             IReadOnlyList<ITerrain> terrain, float baseRadiusInches,
-            EFormation formation, (float X, float Z)? lineAxis)
+            EFormation formation, (float X, float Z)? lineAxis, float lateralOffsetInches = 0f)
         {
             (Position endpoint, List<Position> passed, _) =
                 GridPathfinder.AdvanceAlongPath(path, arcLengthInches, terrain, baseRadiusInches);
@@ -314,6 +318,11 @@ namespace FDG.Ai.Tactician
             float dirZ = endpoint.z - previous.z;
             float length = MathF.Sqrt(dirX * dirX + dirZ * dirZ);
             (dirX, dirZ) = length < 1e-6f ? (1f, 0f) : (dirX / length, dirZ / length);
+
+            // #256 S2: the re-aim shifts the arrival anchor perpendicular to the final segment.
+            endpoint = new Position(
+                endpoint.x + lateralOffsetInches * -dirZ,
+                endpoint.z + lateralOffsetInches * dirX);
 
             List<ModelMoveEntry> destinations;
             if (living.Count == 1)
@@ -386,7 +395,11 @@ namespace FDG.Ai.Tactician
                 arc => BuildPathCandidate(unit, living, path, arc, terrain, baseRadius,
                     maxDistanceInches, formation, lineAxis),
                 budget, unit, living, budgetFor, enemies,
-                canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, friendlies);
+                canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, friendlies,
+                // #256 S2: a friendly parked on the arrival spot side-steps the endpoint fan-out
+                // instead of halving the arc toward a stall (the Warriors-toward-(7,30) row).
+                (arc, lat) => BuildPathCandidate(unit, living, path, arc, terrain, baseRadius,
+                    maxDistanceInches, formation, lineAxis, lat));
         }
 
         /// <summary>

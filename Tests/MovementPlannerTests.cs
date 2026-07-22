@@ -169,6 +169,37 @@ namespace FDG.Tests
             Assert.That(Math.Abs(ez - cz), Is.GreaterThan(0.4f), "the pack really side-stepped off the blocked axis");
         }
 
+        [Test]
+        public void PlanMoveToward_FriendlyOnArrivalSpot_SideStepsAndKeepsAdvance()
+        {
+            // The Tactician's objective advances route through PlanMoveToward/BuildPathCandidate (even in
+            // an open field - the trivial 2-point path), so the re-aim must work there too, not just for
+            // the straight candidate (the WayTooManyInBack "Warriors toward (7,30)" halving row).
+            var models = MakeModels(6, baseRadius: 0.5f);
+            DataBinding<UnitData> unit = MakeUnit(models);
+            (float cx, float cz) = Centroid(models);
+            var tableState = new TableState(_store);
+            const float budget = 4f;
+            var goal = new Position(cx + 30f, cz);
+
+            // Park a friendly unit dead-ahead where the centered 4" advance would land its pack.
+            var friendlyModels = MakeModels(1, baseRadius: 0.5f);
+            friendlyModels[0].GetValue().SetPosition(new Position(cx + 4f, cz));
+            var friendly = new UnitData(unit.GetValue().PlayerID, "Blocker", quality: 4, defense: 4,
+                modelBindings: friendlyModels);
+            _store.Create(friendly);
+
+            List<ModelMoveEntry> move = MovementPlanner.PlanMoveToward(unit, models, tableState,
+                goal, moveBudgetInches: budget, maxDistanceInches: budget,
+                budgetFor: _ => new ModelMoveBudget(budget, budget),
+                canMoveThroughEnemies: false, ignoresDifficultTerrain: false,
+                ignoresImpassibleTerrain: false);
+
+            Assert.That(MaxPathLength(move), Is.LessThanOrEqualTo(4.001f));
+            Assert.That(NetCentroidMove(move, cx, cz), Is.GreaterThan(2.5f),
+                "a friendly on the arrival spot must cost a side-step, not most of the advance");
+        }
+
         private DataBinding<UnitData> MakeUnit(List<DataBinding<ModelData>> models)
         {
             var unit = new UnitData(new PlayerID(Guid.NewGuid()), "Blob", quality: 4, defense: 4,

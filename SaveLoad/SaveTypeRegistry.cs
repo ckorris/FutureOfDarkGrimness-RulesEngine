@@ -15,7 +15,7 @@ namespace FDG.SaveLoad
     /// <list type="bullet">
     ///   <item><see cref="GameSaveSerializer"/> writes an ID (not the FullName) for each registered store
     ///   type in the save's type map, and resolves it back on load.</item>
-    ///   <item><see cref="StableTypeSerializationBinder"/> emits/reads an ID for the polymorphic
+    ///   <item><see cref="AllowlistSerializationBinder"/> emits/reads an ID for the polymorphic
     ///   <c>$type</c> payloads Newtonsoft records under <c>TypeNameHandling.Auto</c> inside store entries
     ///   (base shapes, token payloads, token clear-triggers, terrain zones).</item>
     /// </list>

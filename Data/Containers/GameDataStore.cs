@@ -85,11 +85,14 @@ namespace FDG.Data
              _jsonConvertSettings = new JsonSerializerSettings()
              {
                  TypeNameHandling = TypeNameHandling.Auto,
-                 // Record polymorphic $type payloads (base shapes, token payloads/clear-triggers, terrain
-                 // zones) by stable string ID rather than assembly-qualified name, so renaming one of those
-                 // types doesn't break saves or the full-state sync (#070). Unregistered types fall back to
-                 // the default FullName behavior.
-                 SerializationBinder = new StableTypeSerializationBinder(),
+                 // Write polymorphic $type payloads (base shapes, token payloads/clear-triggers, terrain
+                 // zones) by stable string ID rather than assembly-qualified name so a rename doesn't break
+                 // saves or the full-state sync (#070). On READ this same binder now ALSO enforces the
+                 // untrusted-input allowlist (#265): store rebuild feeds both save/load and the network
+                 // full-state sync, so a crafted save file or a hostile peer's snapshot can't resolve a
+                 // Newtonsoft gadget $type here. Only engine types / registered IDs / benign collections
+                 // resolve; anything else throws.
+                 SerializationBinder = new AllowlistSerializationBinder(),
                  Converters = converters
              };
 
@@ -151,7 +154,7 @@ namespace FDG.Data
         // NOTE (#186): these settings carry the PERMISSIVE binder (unregistered $type falls back to
         // assembly-qualified resolution) and are safe only for trusted input: saves and store blobs.
         // The network path must not use them directly — MessageSerializer clones them and swaps in
-        // WireSerializationBinder. If a new setting is added here, mirror it in that clone.
+        // AllowlistSerializationBinder. If a new setting is added here, mirror it in that clone.
         public JsonSerializerSettings GetJsonSettings()
         {
             return _jsonConvertSettings;

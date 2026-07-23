@@ -12,6 +12,11 @@ namespace FDG.SaveLoad
         private static readonly JsonSerializerSettings _settings = new JsonSerializerSettings
         {
             TypeNameHandling = TypeNameHandling.Auto,
+            // Terrain layout files are untrusted input (may be hand-authored or shared), and the
+            // IZone $type is polymorphic - gate it through the allowlist (#265) so a crafted file
+            // can't resolve a Newtonsoft gadget. Legit zones are engine types and still load; the
+            // binder also makes the format rename-safe (registered zones now write stable IDs).
+            SerializationBinder = new AllowlistSerializationBinder(),
         };
 
         public static TerrainLayoutFile? TryLoadFromFile(string path, out string? error)

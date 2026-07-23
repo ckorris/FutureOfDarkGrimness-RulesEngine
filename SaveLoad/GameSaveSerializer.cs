@@ -19,7 +19,7 @@ namespace FDG.SaveLoad
     public static class GameSaveSerializer
     {
         // v2 (#070): the type map records stable IDs (SaveTypeRegistry) rather than raw Type.FullName, and
-        // polymorphic $type payloads inside entries do too (via StableTypeSerializationBinder). Bumped from
+        // polymorphic $type payloads inside entries do too (via AllowlistSerializationBinder). Bumped from
         // v1; nothing is distributed, so there are no v1 saves in the wild to migrate — the FullName
         // fallback in ResolveType/the binder is cheap insurance rather than a live compatibility path.
         public const int CurrentVersion = 2;
@@ -116,13 +116,24 @@ namespace FDG.SaveLoad
                 return mapped;
             }
 
-            // Fallback: treat the string as a Type.FullName. Registered types live either in the engine
-            // assembly or in the runtime (primitives).
-            Type? type = typeof(GameDataStore).Assembly.GetType(typeId) ?? Type.GetType(typeId);
-            if (type == null)
+            // Fallback: a legacy FullName for an unregistered type (SaveTypeRegistry writes plain,
+            // never assembly-qualified, FullNames). This is the save's top-level type map, which is
+            // attacker-controlled on an untrusted save, so:
+            //  - resolve within the engine assembly, or as an UNQUALIFIED core name (primitives like
+            //    System.Int32) - the no-comma guard means we never load an arbitrary assembly the way
+            //    a qualified Type.GetType would, and
+            //  - gate the result through the same allowlist the entry binder uses (#265), so even a
+            //    resolvable core type that isn't an allowed leaf/engine type is refused.
+            Type? type = typeof(GameDataStore).Assembly.GetType(typeId);
+            if (type == null && !typeId.Contains(','))
+            {
+                type = Type.GetType(typeId);
+            }
+
+            if (type == null || !AllowlistSerializationBinder.IsAllowed(type))
             {
                 throw new InvalidOperationException(
-                    $"Save references type '{typeId}', which this build can't resolve.");
+                    $"Save references type '{typeId}', which is unregistered or outside the load allowlist (#265).");
             }
 
             return type;

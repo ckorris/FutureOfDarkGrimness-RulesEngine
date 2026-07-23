@@ -106,7 +106,12 @@ namespace FDG.GameModel
             // resolver — and CreateArmies, which builds it for a new game, doesn't run on the resume path.
             // No re-grant is needed: the tokens themselves survive (re-applying creation rules would both
             // double the grants and reset Tough wounds, which is why the resume path skips that pass).
-            BuildRuleResolver(playerSlots);
+            RuleResolver ruleResolver = BuildRuleResolver(playerSlots);
+
+            // #095: the slot army files are vestigial here, so that resolver holds core rules only. Top it
+            // up from each army's persisted definitions - otherwise a grant naming an embedded rule finds
+            // nothing - and re-resolve the spell lists, which are [JsonIgnore] on ArmyData.
+            GameBootstrap.RestoreArmyRuleData(ruleResolver, loadedGameDataStore);
 
             BuildContextAndLaunch(progress.Settings, applyCreationRules: false, resumeProgress: progress);
         }
@@ -172,9 +177,9 @@ namespace FDG.GameModel
         /// the <see cref="RuleEvaluator"/>. The evaluator needs it to read granted-rule tokens back to
         /// their definitions (auras / "gains rule X" buffs). Called by BOTH paths: on resume the surviving
         /// RuleGrant tokens are inert without a resolver, and <see cref="CreateArmies"/> (which built it for
-        /// a new game) doesn't run. On resume the army files may be vestigial (armies already live in the
-        /// loaded store), so embedded custom rules only re-resolve when the file survived — core-rule grants
-        /// always do.
+        /// a new game) doesn't run. On resume the army files are typically vestigial (armies already live in
+        /// the loaded store), so this pass registers little beyond the core catalog there —
+        /// <see cref="GameBootstrap.RestoreArmyRuleData"/> supplies the embedded definitions from the save.
         /// </summary>
         private RuleResolver BuildRuleResolver(PlayerSlot[] playerSlots)
         {

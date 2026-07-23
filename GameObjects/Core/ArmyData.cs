@@ -1,6 +1,8 @@
 ﻿
 using FDG.Data;
+using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Serialization;
 using Newtonsoft.Json;
 
 namespace FDG
@@ -20,6 +22,26 @@ namespace FDG
         [JsonIgnore] public IReadOnlyList<RuntimeSpell> Spells => _spells;
 
         public void SetSpells(IReadOnlyList<RuntimeSpell> spells) => _spells = spells;
+
+        // #095: the army file's embedded rule definitions (#059) + spell list (#033) as an STJ blob, so a
+        // resume can rebuild the two things above that are otherwise unrecoverable — the shared rule
+        // resolver's non-core entries (which granted-rule tokens resolve their names against) and _spells
+        // itself. Newtonsoft carries it as an opaque string; see ArmyRuleDataPersistence for why the army
+        // file itself can't be consulted on resume.
+        [JsonProperty] private string? _armyRuleDataJson;
+
+        /// <summary>Records the army file's rule definitions and spells for <see cref="RestoreRuleData"/>
+        /// to read back after a save/load resume. Called at army load, where the file is still in hand.</summary>
+        public void PersistRuleData(IReadOnlyList<SpecialRuleDefinition> ruleDefinitions,
+            IReadOnlyList<SpellDefinition> spells)
+        {
+            _armyRuleDataJson = ArmyRuleDataPersistence.Serialize(ruleDefinitions, spells);
+        }
+
+        /// <summary>The persisted army-file data, or null when this army carries none (built outside army
+        /// load, or loaded from a pre-#095 save).</summary>
+        public ArmyRuleDataPersistence.PersistedArmyRuleData? RestoreRuleData()
+            => ArmyRuleDataPersistence.Deserialize(_armyRuleDataJson);
 
         [JsonIgnore]
         public IReadOnlyList<IUnit> Units => UnitBindings.Select(bind => bind.GetValue())

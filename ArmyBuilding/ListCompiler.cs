@@ -247,14 +247,17 @@ namespace FDG.ArmyBuilding
         private static bool AttachRuleToWeapons(List<WeaponFileEntry> weapons, string target, SpecialRuleEntry rule,
             int applications)
         {
-            int remaining = applications;
+            // Same quantity-prefix handling as the Replace path (#261): "2x Rapid Shard Cannon" names the
+            // cannon and attaches to two copies per application.
+            (string targetName, int perApplication) = ParseTarget(target);
+            int remaining = applications * perApplication;
             bool attached = false;
             var upgraded = new List<WeaponFileEntry>();
 
             for (int i = 0; i < weapons.Count && remaining > 0; i++)
             {
                 WeaponFileEntry weapon = weapons[i];
-                if (!TargetMatches(weapon.Name, target)) continue;
+                if (!TargetMatches(weapon.Name, targetName)) continue;
 
                 if (weapon.SpecialRules.Contains(rule))
                 {
@@ -341,9 +344,35 @@ namespace FDG.ArmyBuilding
             IEnumerable<WeaponFileEntry> weapons, IEnumerable<ItemEntry> items, IReadOnlyCollection<string> targets) =>
             targets.Count == 0 ? 0 : targets.Min(t => MatchedCount(weapons, items, t));
 
-        private static int MatchedCount(IEnumerable<WeaponFileEntry> weapons, IEnumerable<ItemEntry> items, string target) =>
-            weapons.Where(w => TargetMatches(w.Name, target)).Sum(w => w.Quantity)
-            + items.Where(i => TargetMatches(i.Name, target)).Sum(i => i.Quantity);
+        // How many APPLICATIONS the unit's loadout supports: a target carrying a quantity prefix consumes
+        // that many copies each time it applies, so 2 Rapid Shard Cannons afford exactly one "Replace 2x
+        // Rapid Shard Cannon" (#261).
+        private static int MatchedCount(IEnumerable<WeaponFileEntry> weapons, IEnumerable<ItemEntry> items, string target)
+        {
+            (string name, int perApplication) = ParseTarget(target);
+            int copies = weapons.Where(w => TargetMatches(w.Name, name)).Sum(w => w.Quantity)
+                       + items.Where(i => TargetMatches(i.Name, name)).Sum(i => i.Quantity);
+            return copies / perApplication;
+        }
+
+        /// <summary>
+        /// Splits an OPR upgrade target into its name and how many copies one application consumes.
+        /// OPR writes the count into the target text ("2x Rapid Shard Cannon") rather than as a field, and
+        /// nothing stripped it, so the whole string was matched against weapon names and never hit (#261):
+        /// the swap silently applied nothing, cost nothing, and the Forge greyed the section out as "none
+        /// to replace" while the unit visibly carried the weapon. Absent prefix means one copy.
+        /// </summary>
+        internal static (string Name, int PerApplication) ParseTarget(string target)
+        {
+            string trimmed = target.Trim();
+            int x = trimmed.IndexOf('x');
+            if (x > 0 && int.TryParse(trimmed[..x], out int count) && count > 0 && x + 1 < trimmed.Length
+                && trimmed[x + 1] == ' ')
+            {
+                return (trimmed[(x + 2)..].Trim(), count);
+            }
+            return (trimmed, 1);
+        }
 
         // OPR upgrade targets are pluralised labels ("Energy Swords") that must match a singular weapon/item
         // name ("Energy Sword"). Normalise case + a single trailing 's' so they line up.
@@ -355,10 +384,13 @@ namespace FDG.ArmyBuilding
             return s.EndsWith("s") ? s[..^1] : s;
         }
 
-        // Removes up to `count` copies of the target, consuming matching weapons first, then items.
-        private static void RemoveTarget(List<WeaponFileEntry> weapons, List<ItemEntry> items, string target, int count)
+        // Removes the target for `count` applications, consuming matching weapons first, then items. A
+        // quantity-prefixed target ("2x Rapid Shard Cannon") consumes that many copies per application, so
+        // the swap strips both cannons rather than leaving one behind (#261).
+        private static void RemoveTarget(List<WeaponFileEntry> weapons, List<ItemEntry> items, string rawTarget, int count)
         {
-            int remaining = count;
+            (string target, int perApplication) = ParseTarget(rawTarget);
+            int remaining = count * perApplication;
             for (int i = 0; i < weapons.Count && remaining > 0; i++)
             {
                 if (!TargetMatches(weapons[i].Name, target)) continue;

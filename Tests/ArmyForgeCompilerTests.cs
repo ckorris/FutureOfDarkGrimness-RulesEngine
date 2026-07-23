@@ -374,4 +374,69 @@ public class ArmyForgeCompilerTests
         Assert.That(compiled.Weapons.Single(w => w.Name == "Heavy").Quantity, Is.EqualTo(2));
         Assert.That(compiled.PointCost, Is.EqualTo(106));                                     // 100 + 3×2
     }
+
+    // #261: OPR writes a swap's multiplicity into the target TEXT ("2x Rapid Shard Cannon"), not a field.
+    // Nothing stripped it, so the whole string was matched against weapon names, matched nothing, and the
+    // swap applied nothing and cost nothing while the Forge greyed the section out as "none to replace" -
+    // on a unit visibly carrying the weapon. Modelled on High Elf Fleets' Anti-Gravity Tank.
+    private static RosterUnit TwinCannonTank() => new()
+    {
+        Id = "tank", Name = "Tank", Quality = 3, Defense = 2,
+        BaseModelCount = 1, MinModels = 1, MaxModels = 1, BasePointCost = 520,
+        Weapons = { Wpn("Rapid Shard Cannon", 2), Wpn("Mounted Shardguns") },
+        Sections =
+        {
+            new UpgradeSection
+            {
+                Id = "twin", Label = "Replace 2x Rapid Shard Cannon", Variant = UpgradeVariant.Replace,
+                Affects = UpgradeAffects.One, Targets = { "2x Rapid Shard Cannon" },
+                Options = { new UpgradeOption { Id = "prism", Cost = 45, WeaponsGained = { Wpn("Prism Cannon") } } },
+            },
+        },
+    };
+
+    [Test]
+    public void QuantityPrefixedTarget_ConsumesEveryCopy_AndIsCharged()
+    {
+        UnitFileEntry compiled = CompileOne(TwinCannonTank(),
+            new UpgradeChoice { SectionId = "twin", OptionId = "prism", Count = 1 });
+
+        Assert.That(compiled.Weapons.Any(w => w.Name == "Rapid Shard Cannon"), Is.False,
+            "the swap consumes BOTH cannons - leaving one behind would be a phantom weapon");
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Prism Cannon").Quantity, Is.EqualTo(1));
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Mounted Shardguns").Quantity, Is.EqualTo(1),
+            "an untargeted weapon is untouched");
+        Assert.That(compiled.PointCost, Is.EqualTo(565));                                     // 520 + 45
+    }
+
+    // The Forge greys a Replace out when this returns 0 - the user-visible half of the same bug: after
+    // clearing the upgrade you could not pick it again, because the section reported nothing to replace.
+    [Test]
+    public void QuantityPrefixedTarget_ReportsTheSwapAsAvailable()
+    {
+        RosterUnit tank = TwinCannonTank();
+        Assert.That(ListCompiler.AvailableApplications(tank.Weapons, tank.Items, tank.Sections[0].Targets),
+            Is.EqualTo(1), "2 cannons afford exactly one 2x swap");
+
+        // One cannon short of the prefix is genuinely not enough for a single application.
+        tank.Weapons.Single(w => w.Name == "Rapid Shard Cannon").Quantity = 1;
+        Assert.That(ListCompiler.AvailableApplications(tank.Weapons, tank.Items, tank.Sections[0].Targets),
+            Is.EqualTo(0));
+    }
+
+    [TestCase("2x Rapid Shard Cannon", "Rapid Shard Cannon", 2)]
+    [TestCase("3x Heavy Razor Claws", "Heavy Razor Claws", 3)]
+    [TestCase("Rapid Shard Cannon", "Rapid Shard Cannon", 1)]
+    [TestCase("Energy Swords", "Energy Swords", 1)]
+    [TestCase("Suit-Burst", "Suit-Burst", 1)]
+    // Not a prefix: no digits, or no space after the 'x'. A weapon whose name merely starts with an 'x'-ish
+    // token must not be silently truncated.
+    [TestCase("xeno Blade", "xeno Blade", 1)]
+    [TestCase("2xRapid", "2xRapid", 1)]
+    public void ParseTarget_SplitsTheQuantityPrefix(string target, string expectedName, int expectedPer)
+    {
+        (string name, int per) = ListCompiler.ParseTarget(target);
+        Assert.That(name, Is.EqualTo(expectedName));
+        Assert.That(per, Is.EqualTo(expectedPer));
+    }
 }

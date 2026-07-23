@@ -21,6 +21,18 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void Free_RoundTrips()
+        {
+            // #197 Versatile Defense: the deployment arm is authored with this in the shipped supplement,
+            // so it has to survive the JSON the books carry.
+            Cost original = new Cost.Free();
+            string json = JsonSerializer.Serialize(original, RuleJson.Options);
+
+            Assert.That(json, Does.Contain("\"kind\": \"free\""));
+            Assert.That(JsonSerializer.Deserialize<Cost>(json, RuleJson.Options), Is.EqualTo(original));
+        }
+
+        [Test]
         public void SpellTokens_RoundTrips()
         {
             Cost original = new Cost.SpellTokens(3);

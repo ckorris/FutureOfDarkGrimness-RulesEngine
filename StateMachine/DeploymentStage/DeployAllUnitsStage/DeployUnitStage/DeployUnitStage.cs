@@ -67,42 +67,54 @@ namespace FDG.Stages
 
         /// <summary>
         /// Fires the Deployment_OnUnitDeployed "when" for the just-deployed unit and offers any
-        /// activated abilities triggered there (Vanguard's reposition move; Fanatic's reposition
-        /// placement). For each offer the owning player accepts, the resolved operation queue is enacted:
+        /// activated abilities triggered there. For each one enacted, the resolved operation queue runs:
         /// imperative ops through the engine's executor (the movement subsystem, for a triggered move) and
         /// any <see cref="RuleOperation.RepositionModels"/> folded into a placement (shared with
         /// <c>ActivationStartStage</c>). First production use of the GatherOffers / ResolveAbility /
         /// OperationExecutor chain.
+        ///
+        /// <para>Two shapes hang here, told apart by how many abilities the rule offers. A single ability is
+        /// the "you MAY" shape (Vanguard's reposition move, Fanatic's reposition placement) and keeps its
+        /// Yes/No prompt. SEVERAL abilities is the "pick one effect" shape (Versatile Defense, whose text
+        /// reads "when this unit is deployed or activated, pick one effect"), which is mandatory and routes
+        /// through <see cref="AbilityEffectChoice"/> — the same resolution <c>ActivationStartStage</c>
+        /// uses, so the rule behaves identically at both of its trigger hooks.</para>
         /// </summary>
         private async Task OfferPostDeploymentAbilities(UnitData deployedUnit, PlayerID owningPlayer)
         {
             var deployedContext = new UnitDeployedContext(deployedUnit);
 
-            foreach (AbilityOffer offer in GameContext.RuleEvaluator.GatherOffers(deployedContext))
+            foreach (IReadOnlyList<AbilityOffer> ruleOffers in AbilityEffectChoice.GroupByRule(
+                         GameContext.RuleEvaluator.GatherOffers(deployedContext)))
             {
-                var question = new YesNoRequest(owningPlayer, $"Use {offer.RuleName} on {deployedUnit.Name}?", defaultAnswer: true);
-                bool accepted = await GameContext.PlayerRequester
-                    .RequestDecision<YesNoRequest, bool>(question);
+                if (ruleOffers.Count == 1)
+                {
+                    AbilityOffer offer = ruleOffers[0];
+                    var question = new YesNoRequest(owningPlayer,
+                        $"Use {offer.RuleName} on {deployedUnit.Name}?", defaultAnswer: true);
+                    bool accepted = await GameContext.PlayerRequester
+                        .RequestDecision<YesNoRequest, bool>(question);
 
-                if (!accepted) continue;
+                    if (!accepted) continue;
 
-                GameContext.Log($"{deployedUnit.Name} used {offer.RuleName}.");
+                    GameContext.Log($"{deployedUnit.Name} used {offer.RuleName}.");
+                }
 
-                // Corpus deployment abilities are all Self-targeted (Vanguard) — the bearer is the
-                // target. Foe/Friend target selection (none at this hook yet) lands with the next
-                // activated-ability slice.
-                IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator
-                    .ResolveAbility(offer, new[] { (IUnit)deployedUnit });
+                // Corpus deployment abilities are all Self-targeted — the bearer is the target. Foe/Friend
+                // target selection (none at this hook yet) lands with the next activated-ability slice.
+                // Resolve also closes the cost gate (Vanguard's once-per-game marker) and runs the executor.
+                AbilityEffectChoice.Outcome outcome = await AbilityEffectChoice.Resolve(
+                    GameContext, owningPlayer, deployedUnit, ruleOffers, "on deployment");
 
-                // Close the cost gate (Vanguard's once-per-game marker) — OperationExecutor runs only the
-                // imperative ExecutableOperations, so the token grant must be applied separately.
-                OperationApplier.ApplyTokenOperations(ops);
-
-                await OperationExecutor.Execute(ops, new GameOperationServices(GameContext));
+                if (ruleOffers.Count > 1)
+                {
+                    GameContext.Log($"{deployedUnit.Name}: {outcome.Chosen.RuleName} - " +
+                        $"chose {outcome.Chosen.Ability.Label}.");
+                }
 
                 // Fanatic emits a RepositionModels op the executor ignores (it is stage-folded, not
                 // executable). Fold it into a within-radius placement, exactly as ActivationStartStage does.
-                await RepositionPlacement.OfferFromOperations(GameContext, deployedUnit, ops);
+                await RepositionPlacement.OfferFromOperations(GameContext, deployedUnit, outcome.Operations);
             }
         }
     }

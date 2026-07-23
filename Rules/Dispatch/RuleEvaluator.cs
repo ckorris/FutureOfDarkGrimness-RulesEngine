@@ -644,7 +644,14 @@ public sealed class RuleEvaluator
     {
         foreach (ResolvedRule rule in rules)
         {
-            var invocation = new RuleInvocation(context, unit, rule.Arguments, DiceRoller: _diceRoller);
+            // Definition is what makes a self-referential condition work (Condition.AllModelsHaveThisRule
+            // asks "does every model have the rule that is firing?"). Without it that condition takes its
+            // "no rule identity to check" arm and returns true, so an ability gated on it was silently
+            // ungated. Versatile Defense is the first rule whose text puts the all-models gate on the
+            // CHOICE ("when a unit where all models have this rule is deployed or activated, pick one
+            // effect") rather than on the effect, which is why nothing surfaced it before.
+            var invocation = new RuleInvocation(context, unit, rule.Arguments, DiceRoller: _diceRoller,
+                Definition: rule.Definition);
 
             foreach (ActivatedAbility ability in rule.Definition.Activated)
             {

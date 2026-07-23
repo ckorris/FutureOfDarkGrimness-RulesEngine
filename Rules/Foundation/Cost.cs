@@ -27,6 +27,7 @@ namespace FDG.Rules.Foundation;
 /// Cost variants so authoring stays readable.
 /// </summary>
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
+[JsonDerivedType(typeof(Free), "free")]
 [JsonDerivedType(typeof(OncePerActivation), "oncePerActivation")]
 [JsonDerivedType(typeof(OncePerRound), "oncePerRound")]
 [JsonDerivedType(typeof(OncePerGame), "oncePerGame")]
@@ -35,6 +36,19 @@ namespace FDG.Rules.Foundation;
 
 public abstract record Cost
 {
+    /// <summary>
+    /// No cost and no gate: the ability is always affordable and using it grants no "used" marker.
+    /// For abilities whose once-ness comes from the STAGE rather than from a token — the hook itself
+    /// fires only once (Versatile Defense's deployment arm: a unit is deployed exactly once, and the
+    /// stage resolves its rule's "pick one effect" exactly once).
+    ///
+    /// <para>Not interchangeable with the once-per-X variants for such an ability, because their "used"
+    /// marker is keyed on the RULE name and so is shared by every ability of the rule at every hook: a
+    /// <see cref="OncePerActivation"/> paid at deployment leaves a marker that only clears at the end of
+    /// the unit's FIRST activation, which would close the gate on that activation's own pick.</para>
+    /// </summary>
+    public sealed record Free : Cost;
+
     /// <summary>
     /// The ability may be used at most once during the bearer's current activation.
     /// Implemented as a "used-this-activation" token granted on use and cleared at

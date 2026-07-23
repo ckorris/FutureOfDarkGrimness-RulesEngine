@@ -241,6 +241,11 @@ public abstract record Effect
         ELifetime.ThisActivation => new TokenClearTrigger.ActivationEnd(),
         ELifetime.ThisRound => new TokenClearTrigger.RoundEnd(),
         ELifetime.ThisAttack => new TokenClearTrigger.AttackEnd(),
+        // No dedicated trigger variant: "until my next activation" is exactly "clears when
+        // Activation_OnActivationStart fires for me", which CustomHook already expresses and
+        // TokenClearService.ClearsAtHook already sweeps. ActivationStartStage does the sweeping.
+        ELifetime.UntilNextActivation =>
+            new TokenClearTrigger.CustomHook(EHookID.Activation_OnActivationStart),
         _ => new TokenClearTrigger.ManualOnly(),
     };
 

@@ -1138,6 +1138,13 @@ public static class CoreRuleCatalog
                 new Effect.GrantToken(TokenType.SpellTokens, new ValueSource.Arg(0),
                     new TokenClearTrigger.ManualOnly()),
                 ELifetime.UntilEndOfGame),
+            // The capability half: funding a pool and being ALLOWED to spend it are separate questions,
+            // and the stages ask this one (CastingRuleQueries.CanCast) rather than testing for this rule
+            // by name — so a second caster-conferring rule needs no engine change. See Effect.EnableCasting.
+            new HookEntry(EHookID.Casting_OnCastCapability,
+                new Condition.Always(),
+                new Effect.EnableCasting(),
+                ELifetime.UntilEndOfGame),
         },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,

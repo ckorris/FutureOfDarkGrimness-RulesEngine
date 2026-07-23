@@ -52,6 +52,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(ReduceImpactDicePerModel), "reduceImpactDicePerModel")]
 [JsonDerivedType(typeof(ExtraMeleeWoundCount), "extraMeleeWoundCount")]
 [JsonDerivedType(typeof(StrikeFirst), "strikeFirst")]
+[JsonDerivedType(typeof(EnableCasting), "enableCasting")]
 [JsonDerivedType(typeof(TargetIndividualModel), "targetIndividualModel")]
 [JsonDerivedType(typeof(RestrictActions), "restrictActions")]
 [JsonDerivedType(typeof(RangeModifier), "rangeModifier")]
@@ -323,7 +324,7 @@ public abstract record Effect
                 : ruleInvocation.Bearer.Models.Count(m => m.GetIsAlive()
                     && m.Weapons.Any(w => w.RuleDefinitions.Any(r => r.Definition == ruleInvocation.Definition)));
 
-            int diceCount = DiceCountPerModel.Resolve(ruleInvocation.Arguments) * carriers;
+            int diceCount = DiceCountPerModel.Resolve(ruleInvocation) * carriers;
             if (diceCount <= 0)
             {
                 return;
@@ -402,7 +403,7 @@ public abstract record Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            int count = Count.Resolve(ruleInvocation.Arguments);
+            int count = Count.Resolve(ruleInvocation);
             if (MaxTotal > 0)
             {
                 count = Math.Min(count,
@@ -484,7 +485,7 @@ public abstract record Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.MultiplyWounds(Multiplier.Resolve(ruleInvocation.Arguments)));
+            operations.Add(new RuleOperation.MultiplyWounds(Multiplier.Resolve(ruleInvocation)));
         }
     }
 
@@ -587,7 +588,7 @@ public abstract record Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.SetMaxWounds(Amount.Resolve(ruleInvocation.Arguments)));
+            operations.Add(new RuleOperation.SetMaxWounds(Amount.Resolve(ruleInvocation)));
         }
     }
 
@@ -600,7 +601,7 @@ public abstract record Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.MultiplyHits(Multiplier.Resolve(ruleInvocation.Arguments)));
+            operations.Add(new RuleOperation.MultiplyHits(Multiplier.Resolve(ruleInvocation)));
         }
     }
 
@@ -612,7 +613,7 @@ public abstract record Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.ChargeImpactHits(DiceCount.Resolve(ruleInvocation.Arguments)));
+            operations.Add(new RuleOperation.ChargeImpactHits(DiceCount.Resolve(ruleInvocation)));
         }
     }
 
@@ -649,7 +650,7 @@ public abstract record Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.ExtraMeleeWoundCount(Amount.Resolve(ruleInvocation.Arguments)));
+            operations.Add(new RuleOperation.ExtraMeleeWoundCount(Amount.Resolve(ruleInvocation)));
         }
     }
 
@@ -664,6 +665,29 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.StrikeFirst());
+        }
+    }
+
+    /// <summary>
+    /// The bearer can cast spells — authored at
+    /// <see cref="Foundation.EHookID.Casting_OnCastCapability"/>, where it is the answer to
+    /// "may this unit open the cast prompt?" rather than something that happens.
+    ///
+    /// <para>Casting is a CAPABILITY several rules can confer, so the stages ask for it instead of
+    /// testing for a named rule: core <c>Caster(X)</c> confers it, and so does <c>Caster Group</c>,
+    /// which is not <c>Caster</c> and never could be (its X is a live model count, and granted rules
+    /// carry no arguments). Because the hook is evaluated live, an entry's
+    /// <see cref="Condition"/> gates the capability — the shape the corpus needs for the casting-support
+    /// rules whose service is offered "only if this unit isn't Shaken".</para>
+    ///
+    /// Grants no token and mutates nothing: holding the capability is not a state a unit carries around,
+    /// it is a question re-answered whenever it is asked.
+    /// </summary>
+    public sealed record EnableCasting : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.EnableCasting());
         }
     }
 
@@ -934,7 +958,7 @@ public abstract record Effect
         {
             operations.Add(new RuleOperation.InvokeGrantTokenOnRoll(
                 ruleInvocation.EffectiveTarget,
-                new Token(TType, Count.Resolve(ruleInvocation.Arguments), Clear,
+                new Token(TType, Count.Resolve(ruleInvocation), Clear,
                     OwnerUnitID: ruleInvocation.OwnerForEffectiveTarget),
                 MinRoll));
         }

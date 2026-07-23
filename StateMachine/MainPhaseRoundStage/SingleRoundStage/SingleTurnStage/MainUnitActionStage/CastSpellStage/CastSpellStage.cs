@@ -518,7 +518,7 @@ namespace FDG.Stages
                 if (unitBinding.Reference.Equals(casterBinding.Reference)) continue; // not the casting unit
                 UnitData unit = unitBinding.GetValue();
                 if (!unit.GetIsAlive() || !unit.GetIsOnBattlefield()) continue;
-                if (!SpellTargeting.IsCaster(unit)) continue;
+                if (!SpellTargeting.IsCaster(GameContext, unit)) continue;
                 if (unit.Tokens.GetTokenCount(TokenType.SpellTokens) <= 0) continue;
 
                 float distance = UnitCompareUtilities.MinDistanceBetweenUnits(

@@ -44,15 +44,18 @@ namespace FDG.Stages
             => GetEligibleTargets(gameContext, caster, casterPlayer, selector).Count > 0;
 
         /// <summary>
-        /// True when the unit can cast — it carries Caster either directly, or on a joined hero's MODEL after
-        /// the #006 hero-merge moves the hero's own rules there (the #093 joined-Caster corner). The
-        /// round-start token grant (StartOfRoundExtraActionStage) is model-aware to match, so the unit's pool
-        /// is funded. Shared by <see cref="ChooseActionStage"/> (gate the Cast action) and
+        /// True when the unit can cast. Shared by <see cref="ChooseActionStage"/> (gate the Cast action) and
         /// <see cref="CastSpellStage"/> (find friendly/enemy Casters that may modify a cast — #103).
+        ///
+        /// <para>Asks the rule graph for the CAPABILITY rather than testing for the <c>Caster</c> rule by
+        /// identity: casting is conferred by more than one rule (<c>Caster Group</c>, whose X is a live model
+        /// count and so can never be a granted <c>Caster</c>), and an identity check cannot express a
+        /// capability that depends on live state. The joined-hero corner (#093 — the #006 hero-merge
+        /// relocates a hero's Caster onto its model) is handled inside the query, which names the unit's
+        /// models as participants exactly as the round-start token grant does.</para>
         /// </summary>
-        public static bool IsCaster(IUnit unit) =>
-            unit.RuleDefinitions.Any(rule => rule.Definition == CoreRuleCatalog.Caster)
-            || unit.Models.Any(model => model.RuleDefinitions.Any(rule => rule.Definition == CoreRuleCatalog.Caster));
+        public static bool IsCaster(IGameContext gameContext, IUnit unit) =>
+            CastingRuleQueries.CanCast(unit, gameContext.RuleEvaluator);
 
         private static bool MatchesAffinity(ETargetAffinity affinity, DataBinding<UnitData> caster,
             DataBinding<UnitData> candidate, System.Func<PlayerID, bool> isFriendly)

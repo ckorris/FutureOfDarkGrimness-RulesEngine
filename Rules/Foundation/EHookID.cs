@@ -280,4 +280,19 @@ public enum EHookID
     /// Context: caster, spell, targets.
     /// </summary>
     Casting_OnSpellResolved = 132,
+
+    /// <summary>
+    /// "Can this unit cast at all?" — asked by <c>ChooseActionStage</c> before offering the Cast action,
+    /// and by <c>CastSpellStage</c> when looking for Casters that may sway someone else's cast. A rule
+    /// answers by emitting <see cref="Definitions.RuleOperation.EnableCasting"/>; no emission means no.
+    ///
+    /// <para>A CAPABILITY hook, not an event: nothing happens when it fires, it is a question the rule
+    /// graph answers. That is the point — casting used to be detected by testing for the <c>Caster</c>
+    /// rule by identity, which silently excludes any other rule that confers casting (<c>Caster Group</c>)
+    /// and cannot express a capability that depends on live state. Being an ordinary hook, the answer
+    /// respects the entry's <see cref="Definitions.Condition"/> and rule suppression like anything else.
+    /// </para>
+    /// Context: the unit being asked about.
+    /// </summary>
+    Casting_OnCastCapability = 133,
 }

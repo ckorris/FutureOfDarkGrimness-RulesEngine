@@ -88,7 +88,7 @@ namespace FDG.Stages
             // Like custom actions, casting is layered (it doesn't end the turn), so moving does not consume
             // it — but #234 gates it on HasAttacked, per Caster(X)'s "at any point before attacking"
             // (GF v3.5.1). Only shown for casters (no point graying it out for every non-caster).
-            bool isCaster = SpellTargeting.IsCaster(context.ActivatingUnit.GetValue());
+            bool isCaster = SpellTargeting.IsCaster(GameContext, context.ActivatingUnit.GetValue());
             string cantCastReason = null;
             bool canCast = isCaster && GetCanCast(context, out cantCastReason);
 

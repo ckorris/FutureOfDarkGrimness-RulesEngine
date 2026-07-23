@@ -115,7 +115,7 @@ public abstract record Condition
             // A static unit rule covers every NATIVE model; a grant covers every model including a joined
             // hero (grants target the current combined unit, static rules predate the hero's arrival).
             bool unitStatic = unit.RuleDefinitions.Any(r => r.Definition == definition);
-            bool unitGranted = UnitHasGrantedRule(unit, definition);
+            bool unitGranted = RuleGrantQueries.UnitHasGrantedRule(unit, definition);
 
             foreach (IModel model in unit.Models)
             {
@@ -138,22 +138,6 @@ public abstract record Condition
             return true;
         }
 
-        // True if the unit holds an aura/"gains rule X" grant for the rule. Granted rules are matched by
-        // canonical name — the alias-aware resolver the dispatcher uses for read-back isn't available
-        // inside a condition, and core auras grant the canonical name.
-        private static bool UnitHasGrantedRule(IUnit unit, SpecialRuleDefinition definition)
-        {
-            foreach (Token token in unit.Tokens.GetAllTokens(TokenType.RuleGrant))
-            {
-                if (token.Payload is TokenPayload.RuleGrant grant
-                    && string.Equals(grant.RuleName, definition.Name, StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
     }
 
     /// <summary>

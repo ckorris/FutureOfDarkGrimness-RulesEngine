@@ -475,6 +475,14 @@ public abstract record RuleOperation
     public sealed record StrikeFirst : RuleOperation;
 
     /// <summary>
+    /// The bearer can cast spells. Resolution of <see cref="Effect.EnableCasting"/> (Caster, Caster Group).
+    /// Unlike every other operation here this one is never APPLIED — it is the answer to a question
+    /// <c>CastingRuleQueries.CanCast</c> asks at <see cref="Foundation.EHookID.Casting_OnCastCapability"/>,
+    /// and its presence in the queue IS the capability.
+    /// </summary>
+    public sealed record EnableCasting : RuleOperation;
+
+    /// <summary>
     /// Re-scope the in-flight attack to a single chosen model in the target unit.
     /// Resolution of <see cref="Effect.TargetIndividualModel"/> (Takedown).
     /// </summary>

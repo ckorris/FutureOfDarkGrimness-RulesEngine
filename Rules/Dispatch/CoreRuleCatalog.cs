@@ -48,7 +48,7 @@ public static class CoreRuleCatalog
         UnpredictableFighterAura, UnpredictableShooterAura,
         Ravage, CrossingAttack,
         StormOfChange, StormOfLust, StormOfPlague, StormOfWar,
-        Fanatic,
+        Fanatic, ReDeployment,
     };
 
     /// <summary>
@@ -1236,6 +1236,28 @@ public static class CoreRuleCatalog
         Valence: EValence.Positive,
         Description: "Once per round, if your opponent has more units left to activate than you, this unit " +
                      "may hold back (pass the turn) and activate later instead.");
+
+    /// <summary> Canonical name of the Re-Deployment rule (#197 P21). </summary>
+    public const string ReDeploymentRuleName = "Re-Deployment";
+
+    /// <summary>
+    /// Re-Deployment (#197 P21): "After all other units are deployed (excluding units that were set aside),
+    /// you may remove up to two friendly units from the table and deploy them again. Players alternate in
+    /// placing Re-Deployment units, starting with the player that activates next." An engine marker (no
+    /// dispatch hooks or abilities) - like <see cref="DelayedAction"/>, its effect is a deployment-phase
+    /// sub-stage, not a rule-pipeline op. <c>ReDeploymentStage</c> (after normal deployment, before the
+    /// set-aside Scout placement) detects it by name to compute each player's budget - owner ruling: TWO
+    /// redeploys per Re-Deployment unit owned, stacking - then alternates the players (starting with whoever
+    /// activates next = the head of the deployment roll order) offering each a friendly on-table unit to
+    /// pick up and re-place in its deployment zone. Allowlisted in the catalog fire-lint (a marker with no
+    /// operations).
+    /// </summary>
+    public static SpecialRuleDefinition ReDeployment { get; } = new SpecialRuleDefinition(ReDeploymentRuleName,
+        Array.Empty<HookEntry>(),
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "After deployment, you may pick up and re-place up to two friendly units per unit with " +
+                     "this rule. Players alternate, starting with whoever activates next.");
 
     /// <summary> Canonical name of the Teleport ability (#197). </summary>
     public const string TeleportRuleName = "Teleport";

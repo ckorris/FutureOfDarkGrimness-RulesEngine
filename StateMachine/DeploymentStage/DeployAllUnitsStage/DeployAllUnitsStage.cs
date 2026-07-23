@@ -34,6 +34,7 @@ namespace FDG.Stages
                 .AddChild(new ChooseUnitToDeployStage(GameContext, this), out var chooseUnitToDeploy)
                 .AddChild(new ChooseDeployActionStage(GameContext, this), out var chooseDeployAction)
                 .AddChild(new DeployUnitStage(GameContext, this), out var deployUnitStage)
+                .AddChild(new ReDeploymentStage(GameContext, this), out var reDeployment)
                 .AddChild(new PlaceDeferredUnitsStage(GameContext, this), out var placeDeferredUnits)
                 .AddSibling(nameof(ToMain), ToMain, out string toMainEvent)
                 .Build();
@@ -41,8 +42,10 @@ namespace FDG.Stages
             startingChild = determineNextDeployPlayer;
 
             determineNextDeployPlayer.OnFinish.Bind(chooseUnitToDeploy);
-            // Normal deployment done → place the units a rule set aside (Scout), then exit to main.
-            determineNextDeployPlayer.OnFinishedDeployingAllUnits.Bind(placeDeferredUnits);
+            // Normal deployment done → run the Re-Deployment sub-phase (#197 P21: pick up and re-place units,
+            // before Scout units land so they stay ineligible), then place the set-aside units, then exit.
+            determineNextDeployPlayer.OnFinishedDeployingAllUnits.Bind(reDeployment);
+            reDeployment.OnFinish.Bind(placeDeferredUnits);
             chooseUnitToDeploy.OnFinish.Bind(chooseDeployAction);
             // Holding a unit in Ambush counts as that player's deployment for the turn — no placement,
             // straight back to pick the next player.

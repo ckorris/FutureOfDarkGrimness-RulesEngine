@@ -35,6 +35,8 @@ namespace FDG.Tests
                 "routes the offer to TeleportStage, which runs the 6\" placement (#197).",
             ["Delayed Action"] = "engine-marker: no dispatch entries or abilities; ChooseUnitToActivateStage " +
                 "detects it by name and offers the hold-back (pass-the-turn) option (#197).",
+            ["Re-Deployment"] = "engine-marker: no dispatch entries or abilities; ReDeploymentStage detects " +
+                "it by name to compute the redeploy budget and run the post-deployment sub-phase (#197 P21).",
         };
 
         // All plus the two standalone definitions FDGServer attaches to every unit at army setup —

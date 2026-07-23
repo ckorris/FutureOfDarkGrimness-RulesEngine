@@ -575,6 +575,10 @@ namespace FDG.Ai.Tactician
             {
                 TerrainGrid grid = sharedGrid?.Invoke() ?? TerrainGrid.Build(terrain, baseRadius);
                 path = GridPathfinder.FindPath(grid, terrain, start, goal, baseRadius);
+                // #264 issue 3: no route to the goal is not a reason to walk INTO the wall. Head for
+                // the reachable point closest to it instead - the straight line below remains only
+                // for the case where standing still is genuinely as close as the unit can get.
+                path ??= GridPathfinder.FindPathToNearestReachable(grid, terrain, start, goal, baseRadius);
             }
             path ??= new List<Position> { start, goal };
 

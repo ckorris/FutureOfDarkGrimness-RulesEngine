@@ -87,12 +87,19 @@ namespace FDG.Ai.Tactician
             (1, 1, 1.41421356f), (1, -1, 1.41421356f), (-1, 1, 1.41421356f), (-1, -1, 1.41421356f),
         };
 
+        // #264 issue 3: how far out to look for a stand-in when the goal's own cell is blocked.
+        // A cell is 1", and the blocked region is only inflated by a base radius, so anything a
+        // few cells out is a different goal, not the same one nudged clear.
+        private const int GoalRetargetMaxCellRadius = 4;
+
         /// <summary>
         /// A polyline from <paramref name="start"/> to <paramref name="goal"/> that avoids impassible
         /// terrain (inflated by <paramref name="baseRadiusInches"/>), string-pulled so straight clear
         /// runs collapse to single segments; null when the goal is unreachable. The start cell is never
         /// treated as blocked (a unit standing at a wall's inflation edge must still be able to leave).
-        /// The returned list starts at <paramref name="start"/> and ends at <paramref name="goal"/>.
+        /// The returned list starts at <paramref name="start"/> and ends at <paramref name="goal"/> -
+        /// or, when the goal's own cell is blocked and the goal itself is not legally standable, at
+        /// the nearest cell that is.
         /// </summary>
         public static List<Position>? FindPath(TerrainGrid grid, IReadOnlyList<ITerrain> terrain,
             Position start, Position goal, float baseRadiusInches)
@@ -104,7 +111,15 @@ namespace FDG.Ai.Tactician
 
             (int startCol, int startRow) = grid.ToCell(start);
             (int goalCol, int goalRow) = grid.ToCell(goal);
-            if (grid.IsBlocked(goalCol, goalRow)) return null;
+            // #264 issue 3: the grid tests CELL CENTRES, so a goal a base can legally stand on can
+            // still land in a blocked cell - a point 0.7" past a wall's face is standable but its
+            // cell centre is inside the inflation. Returning null there sent every caller to a
+            // wall-piercing straight line (which also structurally killed the #256 S4 snake, since
+            // the snake follows that same line). Aim at the nearest cell a base CAN centre in and
+            // keep the true goal as the last hop when it is reachable from there.
+            bool retargeted = grid.IsBlocked(goalCol, goalRow);
+            if (retargeted && !TryFindNearestOpenCell(grid, goal, ref goalCol, ref goalRow))
+                return null;
 
             int cells = grid.Cols * grid.Rows;
             var cameFrom = new int[cells];
@@ -160,9 +175,144 @@ namespace FDG.Ai.Tactician
             var waypoints = new List<Position> { start };
             for (int i = 1; i < cellsOnPath.Count - 1; i++)
                 waypoints.Add(grid.CellCenter(cellsOnPath[i] % grid.Cols, cellsOnPath[i] / grid.Cols));
-            waypoints.Add(goal);
+
+            if (!retargeted)
+            {
+                waypoints.Add(goal);
+            }
+            else
+            {
+                // The stand-in cell is where a base can legally centre; the true goal may still be
+                // legally standable just past it, so keep it whenever that last hop is walkable.
+                Position approach = grid.CellCenter(goalCol, goalRow);
+                waypoints.Add(approach);
+                if (SegmentClear(terrain, approach, goal, baseRadiusInches)) waypoints.Add(goal);
+            }
 
             return StringPull(terrain, waypoints, baseRadiusInches);
+        }
+
+        /// <summary>
+        /// The open cell nearest the goal POINT (not the goal cell), searched in expanding rings so
+        /// the answer is deterministic and bounded. False when the goal sits deep inside a piece.
+        /// </summary>
+        private static bool TryFindNearestOpenCell(TerrainGrid grid, Position goal,
+            ref int goalCol, ref int goalRow)
+        {
+            int fromCol = goalCol, fromRow = goalRow;
+            for (int radius = 1; radius <= GoalRetargetMaxCellRadius; radius++)
+            {
+                int bestCol = -1, bestRow = -1;
+                float bestDistanceSq = float.PositiveInfinity;
+                for (int row = fromRow - radius; row <= fromRow + radius; row++)
+                {
+                    for (int col = fromCol - radius; col <= fromCol + radius; col++)
+                    {
+                        // Ring only - the interior was covered by a smaller radius.
+                        if (Math.Abs(row - fromRow) != radius && Math.Abs(col - fromCol) != radius) continue;
+                        if (col < 0 || col >= grid.Cols || row < 0 || row >= grid.Rows) continue;
+                        if (grid.IsBlocked(col, row)) continue;
+
+                        Position centre = grid.CellCenter(col, row);
+                        float dx = centre.x - goal.x, dz = centre.z - goal.z;
+                        float distanceSq = dx * dx + dz * dz;
+                        if (distanceSq >= bestDistanceSq) continue;
+                        bestDistanceSq = distanceSq;
+                        bestCol = col;
+                        bestRow = row;
+                    }
+                }
+                if (bestCol < 0) continue;
+                goalCol = bestCol;
+                goalRow = bestRow;
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// The best available route when <see cref="FindPath"/> finds none (a sealed start pocket, a
+        /// goal walled off entirely): a route to the REACHABLE cell closest to the goal. Null when
+        /// standing still is genuinely the closest the unit can get.
+        /// <para>
+        /// #264 issue 3: the alternative every caller used was the straight line through the wall.
+        /// That is not a degraded route, it is a wrong one - the ladder then halves it into the wall
+        /// face, and the #256 S4 snake, which follows the same line, cannot rescue it either.
+        /// </para>
+        /// </summary>
+        public static List<Position>? FindPathToNearestReachable(TerrainGrid grid,
+            IReadOnlyList<ITerrain> terrain, Position start, Position goal, float baseRadiusInches)
+        {
+            (int startCol, int startRow) = grid.ToCell(start);
+            int cells = grid.Cols * grid.Rows;
+            var cameFrom = new int[cells];
+            var costSoFar = new float[cells];
+            Array.Fill(cameFrom, -1);
+            Array.Fill(costSoFar, float.PositiveInfinity);
+
+            int startIndex = startRow * grid.Cols + startCol;
+            costSoFar[startIndex] = 0f;
+
+            int best = startIndex;
+            float bestDistanceSq = DistanceSq(start, goal);
+
+            // Uniform-cost flood over the open region the unit can actually get to; a few thousand
+            // cells at worst, and only ever reached on the sealed-pocket path.
+            var open = new PriorityQueue<int, float>();
+            open.Enqueue(startIndex, 0f);
+            while (open.TryDequeue(out int current, out float cost))
+            {
+                if (cost > costSoFar[current]) continue;
+                int col = current % grid.Cols;
+                int row = current / grid.Cols;
+
+                foreach ((int dCol, int dRow, float stepCost) in Steps)
+                {
+                    int nextCol = col + dCol;
+                    int nextRow = row + dRow;
+                    if (nextCol < 0 || nextCol >= grid.Cols || nextRow < 0 || nextRow >= grid.Rows) continue;
+                    if (grid.IsBlocked(nextCol, nextRow)) continue;
+                    if (dCol != 0 && dRow != 0
+                        && (grid.IsBlocked(col + dCol, row) || grid.IsBlocked(col, row + dRow))) continue;
+
+                    float multiplier = grid.IsDifficult(nextCol, nextRow) ? DifficultCostMultiplier : 1f;
+                    float newCost = costSoFar[current] + stepCost * multiplier;
+                    int next = nextRow * grid.Cols + nextCol;
+                    if (newCost >= costSoFar[next]) continue;
+
+                    costSoFar[next] = newCost;
+                    cameFrom[next] = current;
+                    open.Enqueue(next, newCost);
+
+                    float distanceSq = DistanceSq(grid.CellCenter(nextCol, nextRow), goal);
+                    if (distanceSq < bestDistanceSq)
+                    {
+                        bestDistanceSq = distanceSq;
+                        best = next;
+                    }
+                }
+            }
+
+            if (best == startIndex) return null;
+
+            var cellsOnPath = new List<int>();
+            for (int index = best; index >= 0; index = cameFrom[index])
+            {
+                cellsOnPath.Add(index);
+                if (index == startIndex) break;
+            }
+            cellsOnPath.Reverse();
+
+            var waypoints = new List<Position> { start };
+            for (int i = 1; i < cellsOnPath.Count; i++)
+                waypoints.Add(grid.CellCenter(cellsOnPath[i] % grid.Cols, cellsOnPath[i] / grid.Cols));
+            return StringPull(terrain, waypoints, baseRadiusInches);
+        }
+
+        private static float DistanceSq(Position a, Position b)
+        {
+            float dx = a.x - b.x, dz = a.z - b.z;
+            return dx * dx + dz * dz;
         }
 
         /// <summary>

@@ -416,6 +416,17 @@ namespace FDG.Stages
             //still Pass. Teleporting out past the standoff restores Pass; teleporting but staying inside it does
             //not. Measured over living models only, against non-allied units.
             IUnit unit = context.ActivatingUnit.GetValue();
+
+            //#029 — an Aircraft MUST make its forced Advance every activation, so it can't Pass without moving.
+            //On a fresh activation the only offered action is Move; Pass only becomes available once the forced
+            //move is done (after which it may decline to shoot). HasAttacked already short-circuited above, so a
+            //unit reaching here that has attacked has necessarily moved - this only gates the pristine aircraft.
+            if (!context.HasMoved && AircraftRules.IsAircraft(unit))
+            {
+                reasonIfCant = "Aircraft must Advance - it cannot pass without moving.";
+                return false;
+            }
+
             if (AnyEnemyWithinStandoff(gameContext, context.ActivatingPlayer(), unit))
             {
                 reasonIfCant = "Within 1\" of an enemy - must charge (or reposition) rather than stand idle.";
@@ -526,6 +537,16 @@ namespace FDG.Stages
             if (context.ActivatingUnit.GetValue().Tokens.HasToken(Rules.Foundation.TokenType.OffTableFromForcedMove))
             {
                 reasonIfCant = "Flew off the table - it redeploys from an edge next round.";
+                return false;
+            }
+
+            // #029: an Aircraft is forced to Advance every activation, and shooting comes AFTER the move
+            // ("you can't move after you shoot"). So on a fresh activation the only offered action is Move -
+            // Shoot stays unavailable until the forced Advance is done. Once it has moved this gate clears and
+            // the normal target/range checks below decide whether it can shoot.
+            if (!context.HasMoved && Rules.Dispatch.AircraftRules.IsAircraft(context.ActivatingUnit.GetValue()))
+            {
+                reasonIfCant = "Aircraft must Advance before it can shoot.";
                 return false;
             }
 

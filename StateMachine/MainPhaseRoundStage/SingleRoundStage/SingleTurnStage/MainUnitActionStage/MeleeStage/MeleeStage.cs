@@ -52,6 +52,7 @@ namespace FDG.Stages
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
                 .AddChild(new ChooseMeleeDefenderStage(GameContext, this), out var chooseMeleeDefender)
                 .AddChild(new ResolveImpactHitsStage(GameContext, this), out var resolveImpact)
+                .AddChild(new ResolveRavageWoundsStage(GameContext, this), out var resolveRavage)
                 .AddChild(new DetermineStrikeOrderStage(GameContext, this), out var determineStrikeOrder)
                 .AddChild(new PileInStage(GameContext, this), out var pileIn)
                 .AddChild(new DetermineInRangeAttackersStage(GameContext, this), out var determineInRangeAttackers)
@@ -77,7 +78,8 @@ namespace FDG.Stages
             chooseMeleeDefender.OnDefenderChosen.Bind(resolveImpact);
             // Nothing has been rolled or moved yet, so this exit must not spend the unit's attack.
             chooseMeleeDefender.BackToChooseAction.Bind(backToChooseEvent);
-            resolveImpact.OnImpactResolved.Bind(determineStrikeOrder); // #042 Impact: charge-contact auto-hits before swings.
+            resolveImpact.OnImpactResolved.Bind(resolveRavage); // #042 Impact: charge-contact auto-hits before swings.
+            resolveRavage.OnRavageResolved.Bind(determineStrikeOrder); // #197 P10 Ravage: charge-contact auto-WOUNDS before swings.
             determineStrikeOrder.OnStrikeOrderDetermined.Bind(pileIn); // #042 Counter: charged unit may strike first.
             pileIn.OnPiledIn.Bind(determineInRangeAttackers);
             determineInRangeAttackers.ToDetermineDefenders.Bind(determineInRangeDefenders);

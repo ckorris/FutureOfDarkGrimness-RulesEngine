@@ -46,6 +46,7 @@ public static class CoreRuleCatalog
         IncreasedShootingRangeAura, RangedShroudingAura, MeleeShroudingAura,
         Unpredictable, UnpredictableFighter, UnpredictableShooter,
         UnpredictableFighterAura, UnpredictableShooterAura,
+        Ravage,
     };
 
     /// <summary>
@@ -554,6 +555,27 @@ public static class CoreRuleCatalog
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
         Description: "On charging into contact, rolls bonus dice that score automatic hits before melee swings.");
+
+    /// <summary>
+    /// Ravage(X): when this unit attacks in melee, each model carrying the rule rolls X dice — every 6+
+    /// deals one DIRECT wound to the defender (no armor save, but Regeneration and Tough still apply),
+    /// resolved BEFORE the normal swings. A passive at <see cref="EHookID.Melee_OnChargeContact"/> (melee is
+    /// only ever entered via Charge) that queues <see cref="RuleOperation.InvokeDealAutoWounds"/>;
+    /// <c>ResolveRavageWoundsStage</c> rolls the pool and feeds the wounds straight into wound assignment,
+    /// skipping the save roll. The per-model scaling (X x living carriers) is folded in
+    /// <see cref="Effect.DealAutoWounds"/>, mirroring Impact's dice-count handling.
+    /// </summary>
+    public static SpecialRuleDefinition Ravage { get; } = new SpecialRuleDefinition("Ravage",
+        new[]
+        {
+            new HookEntry(EHookID.Melee_OnChargeContact,
+                new Condition.Always(),
+                new Effect.DealAutoWounds(new ValueSource.Arg(0), SuccessThreshold: 6),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "When attacking in melee, rolls dice that deal automatic unsaveable wounds before swings.");
 
     /// <summary>
     /// Counter: when this unit is charged, it strikes FIRST — before the charging unit's strikes — and

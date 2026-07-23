@@ -32,6 +32,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(AddRule), "addRule")]
 [JsonDerivedType(typeof(Aura), "aura")]
 [JsonDerivedType(typeof(DealHits), "dealHits")]
+[JsonDerivedType(typeof(DealAutoWounds), "dealAutoWounds")]
 [JsonDerivedType(typeof(Heal), "heal")]
 [JsonDerivedType(typeof(GrantToken), "grantToken")]
 [JsonDerivedType(typeof(ConsumeToken), "consumeToken")]
@@ -279,6 +280,49 @@ public abstract record Effect
         {
             operations.Add(new RuleOperation.InvokeDealHits(
                 ruleInvocation.EffectiveTarget, Count, WithRules, ArmorPenetration));
+        }
+    }
+
+    /// <summary>
+    /// #197 P10 — rolls a pool of dice against the target and deals one DIRECT wound per success (each
+    /// result >= <see cref="SuccessThreshold"/>). Covers Ravage(X) ("roll X dice; for each 6+ the target
+    /// takes one wound") and Crossing Attack(X). Unlike <see cref="DealHits"/>, the wounds bypass the
+    /// armor save entirely — the resolving stage skips the save roll — but remain subject to the defender's
+    /// wound-ignore rolls (Regeneration) and Tough allocation, matching the rulebook "takes a wound".
+    ///
+    /// <see cref="DiceCountPerModel"/> is the rule's per-model X (an <see cref="ValueSource.Arg"/> for the
+    /// numeric rating); the effect multiplies it by the number of living models in the bearer's unit that
+    /// carry this rule (weapon-aware, mirroring <see cref="ReduceImpactDicePerModel"/>), because the source
+    /// text is per model ("when it is THIS MODEL's turn to attack, roll X dice"). There is no output
+    /// attribution to solve — the wounds land on the enemy, not a specific attacker die — so a single pool
+    /// summed across carriers is exact.
+    ///
+    /// SUPPORTED PATHS (not universal, like <see cref="DealHits"/>): the emitted
+    /// <see cref="RuleOperation.InvokeDealAutoWounds"/> is a plain <see cref="RuleOperation"/>, enacted only
+    /// by the stages wired for it — <c>ResolveRavageWoundsStage</c> (melee charge-contact, this slice) and
+    /// the Crossing Attack movement path. Any other hook's generic op application silently drops it.
+    /// </summary>
+    public sealed record DealAutoWounds(ValueSource DiceCountPerModel, int SuccessThreshold = 6) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            // Per-model X: multiply the rating by the living models that actually carry this rule. Weapon
+            // scope counts the models wielding the weapon; unit scope counts every living model. Mirrors
+            // ReduceImpactDicePerModel so a weapon-scoped Ravage (e.g. "Combat Scythes (Ravage(3))") scales
+            // by the scythe-bearers, while a monster's unit-scoped Ravage scales by 1.
+            int carriers = ruleInvocation.Weapon == null || ruleInvocation.Definition == null
+                ? ruleInvocation.Bearer.Models.Count(m => m.GetIsAlive())
+                : ruleInvocation.Bearer.Models.Count(m => m.GetIsAlive()
+                    && m.Weapons.Any(w => w.RuleDefinitions.Any(r => r.Definition == ruleInvocation.Definition)));
+
+            int diceCount = DiceCountPerModel.Resolve(ruleInvocation.Arguments) * carriers;
+            if (diceCount <= 0)
+            {
+                return;
+            }
+
+            operations.Add(new RuleOperation.InvokeDealAutoWounds(
+                ruleInvocation.EffectiveTarget, diceCount, SuccessThreshold));
         }
     }
 

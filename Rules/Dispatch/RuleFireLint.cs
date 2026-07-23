@@ -334,7 +334,9 @@ public static class RuleFireLint
             EHookID.Morale_OnMoraleTestComplete => op is RuleOperation.ApplyReroll { Roll: ERollKind.Morale },
 
             // ReduceImpactDicePerModel folds into the same ChargeImpactHits sink, as a negative dice count.
-            EHookID.Melee_OnChargeContact => op is RuleOperation.ChargeImpactHits,
+            // #197 P10: Ravage queues InvokeDealAutoWounds here, rolled by ResolveRavageWoundsStage.
+            EHookID.Melee_OnChargeContact =>
+                op is RuleOperation.ChargeImpactHits or RuleOperation.InvokeDealAutoWounds,
             EHookID.Melee_OnCounterTrigger => op is RuleOperation.StrikeFirst,
             EHookID.Melee_OnMeleeResolution => op is RuleOperation.ExtraMeleeWoundCount,
             EHookID.Melee_OnPostMelee => op is RuleOperation.InvokeTriggeredMove,

@@ -34,6 +34,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(UnitHasRule), "unitHasRule")]
 [JsonDerivedType(typeof(AllModelsHaveThisRule), "allModelsHaveThisRule")]
 [JsonDerivedType(typeof(TargetHasRule), "targetHasRule")]
+[JsonDerivedType(typeof(WeaponHasRule), "weaponHasRule")]
 [JsonDerivedType(typeof(ActionTypeIs), "actionTypeIs")]
 [JsonDerivedType(typeof(UnmodifiedRollEquals), "unmodifiedRollEquals")]
 [JsonDerivedType(typeof(DistanceGreaterThan), "distanceGreaterThan")]
@@ -139,6 +140,22 @@ public abstract record Condition
             return true;
         }
 
+    }
+
+    /// <summary>
+    /// True if the FIRING weapon carries the named rule - read off <see cref="RuleInvocation.Weapon"/>, so
+    /// it is meaningful only for a weapon-scoped rule (a unit-scoped rule's invocation has no weapon, and
+    /// this returns false). Lets a weapon rule gate on a companion weapon rule: Quick Readjustment ("this
+    /// model ignores the shoot-after-move penalty when using Indirect weapons") is routed onto every weapon
+    /// and fires its +1 only on the weapon that also carries Indirect, cancelling that rule's -1.
+    /// </summary>
+    public sealed record WeaponHasRule(string RuleName) : Condition
+    {
+        // Case-insensitive, matching the resolver (see UnitHasRule).
+        public override bool Evaluate(RuleInvocation invocation) =>
+            invocation.Weapon?.RuleDefinitions.Any(
+                r => string.Equals(r.Definition.Name, RuleName, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(r.RequestedName, RuleName, StringComparison.OrdinalIgnoreCase)) ?? false;
     }
 
     /// <summary>

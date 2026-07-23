@@ -239,6 +239,22 @@ namespace FDG
             //to find out the old.
             float woundsDealt = oldWoundsCount - newWoundsCount;
 
+            // #263 backstop: no attack path should ever reach a unit that is off the table — wounds
+            // landing on one mean a targeting filter upstream is missing (the class of bug where an
+            // Ambush reserve's origin-sitting models got charged in round 1). Checked via the
+            // off-table TOKENS, not GetIsOnBattlefield(): a unit whose last model just died reads as
+            // off-battlefield by position and would warn on every ordinary kill. Warn, don't throw —
+            // a live game should degrade loudly, not crash.
+            if (woundsDealt > 0f
+                && (ReserveRules.IsInReserve(this)
+                    || Tokens.HasToken(TokenType.EmbarkedIn)
+                    || Tokens.HasToken(TokenType.OffTableFromForcedMove)))
+            {
+                RuleDiagnostics.WarnOnce($"off-table-wounds-{ID}",
+                    $"{Name} took {woundsDealt} wound(s) while off the battlefield (reserve/embarked/off-table). " +
+                    "No attack should reach it there - this is an engine targeting bug.");
+            }
+
             float newUnitTotalWounds = RemainingWounds;
             float oldUnitTotalWounds = newUnitTotalWounds + woundsDealt;
 

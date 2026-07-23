@@ -469,9 +469,13 @@ namespace FDG.Stages
                 ? playerTeam.Players
                 : new List<PlayerID> { activatingPlayer };
 
+            // #263: only units actually in play can force a charge — a reserve unit's models sit at the
+            // origin, and without this filter an enemy standing near the table corner was FORCED to
+            // charge a unit that wasn't on the board.
             return gameContext.GameDataStore().GetAllValues<ArmyData>()
                 .Where(a => !alliedPlayers.Contains(a.PlayerID))
                 .SelectMany(a => a.UnitBindings)
+                .Where(enemyUnit => enemyUnit.GetValue().GetIsOnBattlefield())
                 .Any(enemyUnit => UnitCompareUtilities.MinDistanceBetweenUnits(
                         unit, enemyUnit.GetValue(), out _, out _, includeVertical: true)
                     < GameWideConstants.ENEMY_STANDOFF_DISTANCE_INCHES);

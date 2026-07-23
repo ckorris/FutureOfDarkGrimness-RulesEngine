@@ -334,7 +334,9 @@ public static class RuleFireLint
             EHookID.Morale_OnMoraleTestComplete => op is RuleOperation.ApplyReroll { Roll: ERollKind.Morale },
 
             // ReduceImpactDicePerModel folds into the same ChargeImpactHits sink, as a negative dice count.
-            EHookID.Melee_OnChargeContact => op is RuleOperation.ChargeImpactHits,
+            // #197 P10: Ravage queues InvokeDealAutoWounds here, rolled by ResolveRavageWoundsStage.
+            EHookID.Melee_OnChargeContact =>
+                op is RuleOperation.ChargeImpactHits or RuleOperation.InvokeDealAutoWounds,
             EHookID.Melee_OnCounterTrigger => op is RuleOperation.StrikeFirst,
             EHookID.Melee_OnMeleeResolution => op is RuleOperation.ExtraMeleeWoundCount,
             EHookID.Melee_OnPostMelee => op is RuleOperation.InvokeTriggeredMove,
@@ -389,6 +391,12 @@ public static class RuleFireLint
         ExecutableOperation => true,
         RuleOperation.InvokeDealHits => hook is EHookID.Activation_OnPreAttack
             or EHookID.Movement_OnMoveThroughEnemy,
+        // #197 P10 Crossing Attack: an auto-wound ability rolled by CrossingAttackStage at move-through.
+        RuleOperation.InvokeDealAutoWounds => hook is EHookID.Movement_OnMoveThroughEnemy,
+        // #197 P10 Storm of X: an action-choice ability enacted by StormStage (routed from ChooseActionStage).
+        RuleOperation.InvokeStorm => hook is EHookID.Activation_OnActionChoice,
+        // #197 P21 Fanatic: a deploy-time reposition placement DeployUnitStage folds after the executor.
+        RuleOperation.RepositionModels => hook is EHookID.Deployment_OnUnitDeployed,
         RuleOperation.InvokeReactivate => hook is EHookID.Activation_OnNextActivatorRequested,
         _ => false,
     };

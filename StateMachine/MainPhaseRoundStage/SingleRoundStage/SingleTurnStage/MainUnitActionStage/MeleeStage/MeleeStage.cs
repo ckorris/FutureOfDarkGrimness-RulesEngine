@@ -52,6 +52,7 @@ namespace FDG.Stages
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
                 .AddChild(new ChooseMeleeDefenderStage(GameContext, this), out var chooseMeleeDefender)
                 .AddChild(new ResolveImpactHitsStage(GameContext, this), out var resolveImpact)
+                .AddChild(new ResolveRavageWoundsStage(GameContext, this), out var resolveRavage)
                 .AddChild(new DetermineStrikeOrderStage(GameContext, this), out var determineStrikeOrder)
                 .AddChild(new PileInStage(GameContext, this), out var pileIn)
                 .AddChild(new DetermineInRangeAttackersStage(GameContext, this), out var determineInRangeAttackers)
@@ -67,6 +68,7 @@ namespace FDG.Stages
                 .AddChild(new AssignMeleeMoralePenaltyStage(GameContext, this), out var assignMeleeMoralePenalty)
                 .AddChild(new ApplyFatigueStage(GameContext, this), out var applyFatigueStage)
                 .AddChild(new ConsolidateStage(GameContext, this), out var consolidate)
+                .AddChild(new ResolveMeleeReflectStage(GameContext, this), out var resolveReflect)
                 .AddChild(new PostMeleeStage(GameContext, this), out var postMelee)
                 .AddSibling(nameof(OnFinishedMelee), OnFinishedMelee, out string meleeFinishedEvent)
                 .AddSibling(nameof(BackToChooseAction), BackToChooseAction, out string backToChooseEvent)
@@ -77,7 +79,8 @@ namespace FDG.Stages
             chooseMeleeDefender.OnDefenderChosen.Bind(resolveImpact);
             // Nothing has been rolled or moved yet, so this exit must not spend the unit's attack.
             chooseMeleeDefender.BackToChooseAction.Bind(backToChooseEvent);
-            resolveImpact.OnImpactResolved.Bind(determineStrikeOrder); // #042 Impact: charge-contact auto-hits before swings.
+            resolveImpact.OnImpactResolved.Bind(resolveRavage); // #042 Impact: charge-contact auto-hits before swings.
+            resolveRavage.OnRavageResolved.Bind(determineStrikeOrder); // #197 P10 Ravage: charge-contact auto-WOUNDS before swings.
             determineStrikeOrder.OnStrikeOrderDetermined.Bind(pileIn); // #042 Counter: charged unit may strike first.
             pileIn.OnPiledIn.Bind(determineInRangeAttackers);
             determineInRangeAttackers.ToDetermineDefenders.Bind(determineInRangeDefenders);
@@ -102,10 +105,13 @@ namespace FDG.Stages
             rollForMorale.OnMoraleFailed.Bind(assignMeleeMoralePenalty);
             assignMeleeMoralePenalty.OnAssignedPenalty.Bind(applyFatigueStage);
             applyFatigueStage.OnFatigueApplied.Bind(consolidate);
-            // After the melee fully resolves, the charged unit may make its post-melee move (Harassing);
-            // PostMeleeStage fires the Melee_OnPostMelee hook then finishes. The BackToChooseAction exit
-            // (no melee occurred) leaves via backToChooseEvent, bypassing both the move and the attack spend.
-            consolidate.OnConsolidated.Bind(postMelee);
+            // After the melee fully resolves, reflect damage (#197 P11 Retaliate / Deathstrike) is dealt back
+            // at the enemy - one looping batch per bearer - then the charged unit may make its post-melee move
+            // (Harassing); PostMeleeStage fires the Melee_OnPostMelee hook then finishes. The BackToChooseAction
+            // exit (no melee occurred) leaves via backToChooseEvent, bypassing reflect, the move and the spend.
+            consolidate.OnConsolidated.Bind(resolveReflect);
+            resolveReflect.OnBatchDone.Bind(resolveReflect);
+            resolveReflect.OnReflectResolved.Bind(postMelee);
             postMelee.ToFinished.Bind(meleeFinishedEvent);
 
             return dictionary;

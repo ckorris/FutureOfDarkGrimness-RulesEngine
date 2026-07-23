@@ -683,7 +683,7 @@ public sealed class RuleEvaluator
                     TraceLine($"{unit.Name}'s {rule.RequestedName} ability at {context.Hook}: offered");
                 }
 
-                offers.Add(new AbilityOffer(unit, rule.RequestedName, ability));
+                offers.Add(new AbilityOffer(unit, rule.RequestedName, ability, rule.Arguments));
             }
         }
     }
@@ -703,10 +703,10 @@ public sealed class RuleEvaluator
 
         foreach (IUnit target in targets)
         {
-            // Activated-ability args aren't carried on the offer (no corpus ability uses
-            // ValueSource.Arg); thread the bearer's ResolvedRule.Arguments here when one does.
+            // The offer carries the bearing rule's arguments (Crossing Attack's (1)), so an effect reading
+            // ValueSource.Arg resolves against the real value rather than throwing on an empty list.
             var invocation = new RuleInvocation(
-                Hook: null, offer.Bearer, Array.Empty<RuleArgument>(), target, _diceRoller);
+                Hook: null, offer.Bearer, offer.ResolvedArguments, target, _diceRoller);
             offer.Ability.Effect.Apply(invocation, operations);
         }
 

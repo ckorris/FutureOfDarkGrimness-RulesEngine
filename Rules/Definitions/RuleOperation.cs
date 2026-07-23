@@ -322,6 +322,27 @@ public abstract record RuleOperation
         int ArmorPenetration = 0) : RuleOperation;
 
     /// <summary>
+    /// #197 P10 — roll <see cref="DiceCount"/> dice against <see cref="Target"/>; each result at or above
+    /// <see cref="SuccessThreshold"/> deals one DIRECT wound. Resolution of <see cref="Effect.DealAutoWounds"/>
+    /// (Ravage, Crossing Attack). Unlike <see cref="InvokeDealHits"/> the wounds take no armor save — the
+    /// resolving stage feeds them straight into wound assignment — but Regeneration and Tough still apply.
+    /// A plain <see cref="RuleOperation"/>, not an <see cref="ExecutableOperation"/>: enacted stage-side
+    /// because the wound-assignment flow is a child-stage chain, exactly like <see cref="InvokeDealHits"/>.
+    /// </summary>
+    public sealed record InvokeDealAutoWounds(IUnit Target, int DiceCount, int SuccessThreshold) : RuleOperation;
+
+    /// <summary>
+    /// #197 P10 Storm of X — the config for a rolled multi-target hit burst. Resolution of
+    /// <see cref="Effect.StormOfHits"/>. A plain <see cref="RuleOperation"/>, enacted by StormStage: it
+    /// rolls <see cref="PoolDice"/> DECISIVELY, and for each success (>= <see cref="SuccessThreshold"/>) the
+    /// player picks an enemy within <see cref="RangeInches"/> that takes <see cref="HitsPerSuccess"/> hits
+    /// with <see cref="WithRules"/> at <see cref="ArmorPenetration"/>. No target rides the op - the targets
+    /// are chosen per success at resolution.
+    /// </summary>
+    public sealed record InvokeStorm(int PoolDice, int SuccessThreshold, int HitsPerSuccess,
+        IReadOnlyList<string> WithRules, int ArmorPenetration, float RangeInches) : RuleOperation;
+
+    /// <summary>
     /// Restore <see cref="Amount"/> wounds on <see cref="Target"/>. Resolution
     /// of <see cref="Effect.Heal"/>; the <see cref="DiceExpression"/> has already
     /// been rolled by the dispatcher, so <see cref="Amount"/> is concrete — a

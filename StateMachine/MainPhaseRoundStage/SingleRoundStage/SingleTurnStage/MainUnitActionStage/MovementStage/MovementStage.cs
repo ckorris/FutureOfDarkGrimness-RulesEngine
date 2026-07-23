@@ -33,6 +33,7 @@ namespace FDG.Stages
                 .AddChild(new DefinePathStage(GameContext, this), out var definePath)
                 .AddChild(new ApplyNonMovementTerrainEffectsStage(GameContext, this), out var applyEffects)
                 .AddChild(new StrafingStage(GameContext, this), out var strafing)
+                .AddChild(new CrossingAttackStage(GameContext, this), out var crossingAttack)
                 .AddChild(new ExecuteMoveStage(GameContext, this), out var executeMove)
                 .AddSibling(nameof(OnFinishedMovement), OnFinishedMovement, out string onFinishedMovement)
                 .AddSibling(nameof(BackToChooseAction), BackToChooseAction, out string backToChooseEvent)
@@ -45,7 +46,9 @@ namespace FDG.Stages
             // Strafing runs before the move is committed, so move-through detection reads the path from each
             // model's start position; on a strafe it resolves hits, then movement executes.
             applyEffects.OnAppliedNonMovementTerrainEffects.Bind(strafing);
-            strafing.OnStrafeResolved.Bind(executeMove);
+            strafing.OnStrafeResolved.Bind(crossingAttack);
+            // #197 P10 Crossing Attack: same pre-commit move-through window as Strafing, auto-wound flavour.
+            crossingAttack.OnCrossingResolved.Bind(executeMove);
             executeMove.OnMoveExecuted.Bind(onFinishedMovement);
 
             return dictionary;

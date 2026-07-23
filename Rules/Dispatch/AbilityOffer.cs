@@ -1,4 +1,5 @@
 using FDG.Rules.Definitions;
+using FDG.Rules.Foundation;
 
 namespace FDG.Rules.Dispatch
 {
@@ -14,5 +15,14 @@ namespace FDG.Rules.Dispatch
     /// <param name="Bearer">The unit whose rule provides the ability.</param>
     /// <param name="RuleName">The rule the ability came from (display + identity).</param>
     /// <param name="Ability">The full ability — Cost, TargetSelector, Effect, TriggerHook.</param>
-    public sealed record AbilityOffer(IUnit Bearer, string RuleName, ActivatedAbility Ability);
+    /// <param name="Arguments">The bearing rule's per-instance arguments (Crossing Attack's <c>(1)</c>), so
+    /// an ability whose effect reads <see cref="ValueSource.Arg"/> resolves against the real value. Null
+    /// (the default) means none — every argument-less ability, and any granted ability, which cannot carry
+    /// arguments.</param>
+    public sealed record AbilityOffer(IUnit Bearer, string RuleName, ActivatedAbility Ability,
+        IReadOnlyList<RuleArgument>? Arguments = null)
+    {
+        /// <summary> The arguments, normalized to an empty list when none were supplied. </summary>
+        public IReadOnlyList<RuleArgument> ResolvedArguments => Arguments ?? System.Array.Empty<RuleArgument>();
+    }
 }

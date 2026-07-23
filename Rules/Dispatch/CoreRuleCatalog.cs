@@ -46,6 +46,10 @@ public static class CoreRuleCatalog
         IncreasedShootingRangeAura, RangedShroudingAura, MeleeShroudingAura,
         Unpredictable, UnpredictableFighter, UnpredictableShooter,
         UnpredictableFighterAura, UnpredictableShooterAura,
+        Ravage, CrossingAttack,
+        StormOfChange, StormOfLust, StormOfPlague, StormOfWar,
+        Fanatic, ReDeployment,
+        Retaliate, Deathstrike, SelfDestruct,
     };
 
     /// <summary>
@@ -554,6 +558,27 @@ public static class CoreRuleCatalog
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
         Description: "On charging into contact, rolls bonus dice that score automatic hits before melee swings.");
+
+    /// <summary>
+    /// Ravage(X): when this unit attacks in melee, each model carrying the rule rolls X dice — every 6+
+    /// deals one DIRECT wound to the defender (no armor save, but Regeneration and Tough still apply),
+    /// resolved BEFORE the normal swings. A passive at <see cref="EHookID.Melee_OnChargeContact"/> (melee is
+    /// only ever entered via Charge) that queues <see cref="RuleOperation.InvokeDealAutoWounds"/>;
+    /// <c>ResolveRavageWoundsStage</c> rolls the pool and feeds the wounds straight into wound assignment,
+    /// skipping the save roll. The per-model scaling (X x living carriers) is folded in
+    /// <see cref="Effect.DealAutoWounds"/>, mirroring Impact's dice-count handling.
+    /// </summary>
+    public static SpecialRuleDefinition Ravage { get; } = new SpecialRuleDefinition("Ravage",
+        new[]
+        {
+            new HookEntry(EHookID.Melee_OnChargeContact,
+                new Condition.Always(),
+                new Effect.DealAutoWounds(new ValueSource.Arg(0), SuccessThreshold: 6),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "When attacking in melee, rolls dice that deal automatic unsaveable wounds before swings.");
 
     /// <summary>
     /// Counter: when this unit is charged, it strikes FIRST — before the charging unit's strikes — and
@@ -1213,6 +1238,79 @@ public static class CoreRuleCatalog
         Description: "Once per round, if your opponent has more units left to activate than you, this unit " +
                      "may hold back (pass the turn) and activate later instead.");
 
+    /// <summary> Canonical name of the Re-Deployment rule (#197 P21). </summary>
+    public const string ReDeploymentRuleName = "Re-Deployment";
+
+    /// <summary>
+    /// Re-Deployment (#197 P21): "After all other units are deployed (excluding units that were set aside),
+    /// you may remove up to two friendly units from the table and deploy them again. Players alternate in
+    /// placing Re-Deployment units, starting with the player that activates next." An engine marker (no
+    /// dispatch hooks or abilities) - like <see cref="DelayedAction"/>, its effect is a deployment-phase
+    /// sub-stage, not a rule-pipeline op. <c>ReDeploymentStage</c> (after normal deployment, before the
+    /// set-aside Scout placement) detects it by name to compute each player's budget - owner ruling: TWO
+    /// redeploys per Re-Deployment unit owned, stacking - then alternates the players (starting with whoever
+    /// activates next = the head of the deployment roll order) offering each a friendly on-table unit to
+    /// pick up and re-place in its deployment zone. Allowlisted in the catalog fire-lint (a marker with no
+    /// operations).
+    /// </summary>
+    public static SpecialRuleDefinition ReDeployment { get; } = new SpecialRuleDefinition(ReDeploymentRuleName,
+        Array.Empty<HookEntry>(),
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "After deployment, you may pick up and re-place up to two friendly units per unit with " +
+                     "this rule. Players alternate, starting with whoever activates next.");
+
+    /// <summary> Canonical name of the Retaliate rule (#197 P11). </summary>
+    public const string RetaliateRuleName = "Retaliate";
+
+    /// <summary>
+    /// Retaliate(X) (#197 P11): "when this model takes a wound in melee, the attacker takes X hits per wound
+    /// taken." An engine marker (no dispatch hooks or abilities) - its effect is a post-melee reflect,
+    /// resolved stage-side, not through the rule pipeline. <c>ResolveMeleeReflectStage</c> (after the melee
+    /// resolves) counts, per MODEL carrying the rule, the wounds it took this melee - the per-model
+    /// attribution the owner ruled for - and deals X hits per wound back at the attacking unit through the
+    /// real save/wound pipeline. Arg(0) is X. Allowlisted in the catalog fire-lint (a marker with no
+    /// operations, like Transport's capacity marker).
+    /// </summary>
+    public static SpecialRuleDefinition Retaliate { get; } = new SpecialRuleDefinition(RetaliateRuleName,
+        Array.Empty<HookEntry>(),
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "When a model with this rule takes a wound in melee, the attacker takes X hits per wound.");
+
+    /// <summary> Canonical name of the Deathstrike rule (#197 P11). </summary>
+    public const string DeathstrikeRuleName = "Deathstrike";
+
+    /// <summary>
+    /// Deathstrike(X) (#197 P11): "if this model is killed in melee, the attacking unit takes X hits." The
+    /// death-triggered sibling of <see cref="Retaliate"/> - the same post-melee reflect, but keyed on the
+    /// rule-bearing MODEL being killed this melee (X hits per killed model) rather than on wounds taken.
+    /// Marker rule; resolved by <c>ResolveMeleeReflectStage</c>. Arg(0) is X. Allowlisted in the fire-lint.
+    /// </summary>
+    public static SpecialRuleDefinition Deathstrike { get; } = new SpecialRuleDefinition(DeathstrikeRuleName,
+        Array.Empty<HookEntry>(),
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "If a model with this rule is killed in melee, the attacking unit takes X hits.");
+
+    /// <summary> Canonical name of the Self-Destruct rule (#197 P11). </summary>
+    public const string SelfDestructRuleName = "Self-Destruct";
+
+    /// <summary>
+    /// Self-Destruct(X) (#197 P11): "if this model is killed in melee, the attacking unit takes X hits. If
+    /// this model survives melee, after both sides have finished attacking, it is immediately killed, and the
+    /// enemy unit takes X hits." So every rule-bearing model that entered the melee deals X hits at the enemy
+    /// - whether it died fighting or is self-destructed at the end - and any survivor is killed. The
+    /// death-or-self-kill twin of <see cref="Deathstrike"/>; resolved by <c>ResolveMeleeReflectStage</c>,
+    /// which also enacts the self-kill. Marker rule; Arg(0) is X. Allowlisted in the fire-lint.
+    /// </summary>
+    public static SpecialRuleDefinition SelfDestruct { get; } = new SpecialRuleDefinition(SelfDestructRuleName,
+        Array.Empty<HookEntry>(),
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "A model with this rule that fights in melee deals X hits to the enemy; if it survives, " +
+                     "it is then killed.");
+
     /// <summary> Canonical name of the Teleport ability (#197). </summary>
     public const string TeleportRuleName = "Teleport";
 
@@ -1259,6 +1357,27 @@ public static class CoreRuleCatalog
         },
         Valence: EValence.Positive,
         Description: "Once per game, immediately after deploying, this unit may move up to 9\".");
+
+    /// <summary>
+    /// Fanatic (#197 P21): after this unit deploys, it may be PLACED anywhere fully within 9" of its
+    /// position. Vanguard's deploy-hook shape, but a placement rather than a move (the owner's
+    /// reposition-is-a-placement ruling, and the corpus word "placed"): the effect emits a
+    /// <see cref="RuleOperation.RepositionModels"/> that <c>DeployUnitStage</c> folds into a
+    /// per-model-radius <see cref="StageResolution.Requests.PlaceObjectsRequest{T}"/>. Gated
+    /// <see cref="Cost.OncePerGame"/> like Vanguard - deployment happens once, so the gate is naturally
+    /// spent, and it keeps the offer from re-firing on a Scout/Ambush re-placement.
+    /// </summary>
+    public static SpecialRuleDefinition Fanatic { get; } = new SpecialRuleDefinition("Fanatic",
+        Array.Empty<HookEntry>(),
+        new[]
+        {
+            new ActivatedAbility(EHookID.Deployment_OnUnitDeployed, new Cost.OncePerGame(),
+                new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
+                new Effect.RepositionOnDeploy(MaxInches: 9f),
+                new Condition.Always()),
+        },
+        Valence: EValence.Positive,
+        Description: "After deploying, this unit may be placed anywhere fully within 9\" of its position.");
 
     /// <summary>
     /// Harassing: after this unit shoots — or after it is attacked in melee — it may immediately move up
@@ -1595,6 +1714,59 @@ public static class CoreRuleCatalog
         },
         Valence: EValence.Positive,
         Description: "Once per activation, when moving through an enemy unit, it may make a mid-move attack (3 hits).");
+
+    /// <summary>
+    /// Crossing Attack(X) (#197 P10): the auto-wound sibling of Strafing. When this unit moves through an
+    /// enemy unit, once per activation it may pick that enemy and roll X dice - each 6+ deals one DIRECT
+    /// unsaveable wound (Regeneration/Tough still apply). An activated ability at
+    /// <see cref="EHookID.Movement_OnMoveThroughEnemy"/> whose <see cref="Effect.DealAutoWounds"/> queues an
+    /// <see cref="RuleOperation.InvokeDealAutoWounds"/> that CrossingAttackStage rolls and feeds into wound
+    /// assignment, skipping the save. The fly-over passive (like Strafing's) lets the move-through that
+    /// triggers it be legal in the first place.
+    /// </summary>
+    public static SpecialRuleDefinition CrossingAttack { get; } = new SpecialRuleDefinition("Crossing Attack",
+        new[]
+        {
+            new HookEntry(EHookID.Movement_OnMoveThroughEnemy,
+                new Condition.Always(),
+                new Effect.IgnoreEnemyMovementBlock(),
+                ELifetime.ThisActivation),
+        },
+        new[]
+        {
+            new ActivatedAbility(EHookID.Movement_OnMoveThroughEnemy, new Cost.OncePerActivation(),
+                new TargetSelector(1f, 1, 1, ETargetAffinity.Foe, false),
+                new Effect.DealAutoWounds(new ValueSource.Arg(0), SuccessThreshold: 6),
+                new Condition.Always()),
+        },
+        Valence: EValence.Positive,
+        Description: "Once per activation, when moving through an enemy unit, rolls dice that deal automatic unsaveable wounds.");
+
+    /// <summary>
+    /// #197 P10 Storm of X: once per game, when activated before attacking, roll 3 dice - for each 2+ the
+    /// player picks an enemy unit within 12in that takes 3 hits with the storm's rule. Offered in Choose
+    /// Action and resolved by StormStage (decisive pool -> integer target picks -> looping hit batches). The
+    /// four variants differ only by the payload rule / AP: Change=Shred, Lust=Surge, Plague=Bane, War=AP(1).
+    /// </summary>
+    private static SpecialRuleDefinition MakeStorm(string name, string[] withRules, int armorPenetration,
+        string payloadDescription) =>
+        new SpecialRuleDefinition(name,
+            Array.Empty<HookEntry>(),
+            new[]
+            {
+                new ActivatedAbility(EHookID.Activation_OnActionChoice, new Cost.OncePerGame(),
+                    new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
+                    new Effect.StormOfHits(PoolDice: 3, SuccessThreshold: 2, HitsPerSuccess: 3,
+                        WithRules: withRules, ArmorPenetration: armorPenetration, RangeInches: 12f),
+                    new Condition.Always()),
+            },
+            Valence: EValence.Positive,
+            Description: $"Once per game before attacking, roll 3 dice; each 2+ deals 3 hits with {payloadDescription} to an enemy within 12in.");
+
+    public static SpecialRuleDefinition StormOfChange { get; } = MakeStorm("Storm of Change", new[] { "Shred" }, 0, "Shred");
+    public static SpecialRuleDefinition StormOfLust { get; } = MakeStorm("Storm of Lust", new[] { "Surge" }, 0, "Surge");
+    public static SpecialRuleDefinition StormOfPlague { get; } = MakeStorm("Storm of Plague", new[] { "Bane" }, 0, "Bane");
+    public static SpecialRuleDefinition StormOfWar { get; } = MakeStorm("Storm of War", System.Array.Empty<string>(), 1, "AP(1)");
 
     /// <summary>
     /// Strider (#102): the unit ignores the difficult-terrain movement cap — it may cross Difficult terrain

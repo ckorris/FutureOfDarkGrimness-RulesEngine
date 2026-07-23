@@ -113,59 +113,9 @@ namespace FDG.Stages
             OperationApplier.ApplyTokenOperations(operations);
             await OperationExecutor.Execute(operations, new GameOperationServices(GameContext));
 
-            float repositionInches = operations.OfType<RuleOperation.RepositionModels>().Sum(op => op.MaxInches);
-            if (repositionInches > 0f)
-            {
-                await OfferReposition(context, unit, repositionInches);
-            }
-        }
-
-        /// <summary>
-        /// "You MAY place all models ... anywhere fully within Nin of their position." A placement, not a move:
-        /// the request constrains each model to its own radius and to the usual destination legality (zone,
-        /// overlap, cohesion, impassible terrain), but asks nothing of the path. Declining is legal, which is
-        /// what <c>allowCancel</c> buys — and is what the CLI/AI resolvers do by default.
-        /// </summary>
-        private async Task OfferReposition(IUnitActionContext context, IUnit unit, float maxInches)
-        {
-            List<DataBinding<ModelData>> livingModels = context.ActivatingUnit.GetValue().ModelBindings
-                .Where(binding => binding.GetValue().GetIsAlive()).ToList();
-
-            if (livingModels.Count == 0) return;
-
-            GameContext.Log($"{unit.Name} may reposition each model up to {maxInches:0.##}\".");
-
-            var wholeTable = new RectangularZone(0f, GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES,
-                0f, GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES);
-
-            var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID,
-                $"Reposition {unit.Name} (up to {maxInches:0.##}\")",
-                wholeTable, livingModels, allowCancel: true, maxDistanceFromStartInches: maxInches);
-
-            CancellableResult<List<PlacedObjectEntry<ModelData>>> result = await GameContext.PlayerRequester
-                .RequestDecision<PlaceObjectsRequest<ModelData>, CancellableResult<List<PlacedObjectEntry<ModelData>>>>(request);
-
-            if (result is not Selected<List<PlacedObjectEntry<ModelData>>> selected)
-            {
-                GameContext.Log($"{unit.Name} stayed where it was.");
-                return;
-            }
-
-            // Standing still is a legal answer, and the CLI/AI resolvers give it by default - so report what
-            // actually happened rather than claiming a move that never occurred.
-            bool anyMoved = false;
-            foreach (PlacedObjectEntry<ModelData> placement in selected.Value)
-            {
-                ModelData model = placement.Binding.GetValue();
-                if (Position.GetDistance2D(model.Position, placement.Position) > 0.001f) anyMoved = true;
-
-                model.SetPosition(placement.Position);
-                if (placement.Facing.HasValue) model.SetFacing(placement.Facing.Value);
-            }
-
-            GameContext.Log(anyMoved
-                ? $"{unit.Name} repositioned."
-                : $"{unit.Name} held its position.");
+            // "You MAY place all models anywhere fully within Nin of their position" - a placement, not a
+            // move, folded into one prompt for the summed radius. Shared with DeployUnitStage (Fanatic).
+            await RepositionPlacement.OfferFromOperations(GameContext, context.ActivatingUnit.GetValue(), operations);
         }
 
         private async Task<int> AskWhichEffect(IUnitActionContext context, string ruleName, IUnit unit,

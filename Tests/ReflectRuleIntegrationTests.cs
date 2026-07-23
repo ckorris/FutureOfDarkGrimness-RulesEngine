@@ -13,7 +13,7 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // Vertical-slice integration test for #197 P11 reflect damage (Retaliate + Deathstrike), driven through
+    // Vertical-slice integration test for #197 P11 reflect damage (Retaliate + Deathstrike + Self-Destruct), driven through
     // the real ResolveMeleeReflectStage and its save/wound child pipeline. A CombatActionContext is built and
     // its per-model start-wounds snapshot captured (as the melee flow does before the first swing); wounds are
     // then dealt to simulate the melee, and the stage reflects hits back at the enemy. Proves: Retaliate deals
@@ -143,6 +143,44 @@ namespace FDG.Tests
 
             Assert.That(requester.WoundsByUnit.GetValueOrDefault("Berserkers"), Is.EqualTo(2f).Within(0.001f),
                 "per-model attribution: Retaliate(2) x the champion's 1 wound = 2, not 4 (the grunt's wound is ignored).");
+        }
+
+        [Test]
+        public async Task SelfDestruct_Survivor_IsKilled_AndDealsXHits()
+        {
+            var requester = new ReflectRequester();
+            var ctx = new TestGameContext(_store, new FixedFaceDiceRoller(1),
+                ruleResolver: CoreRuleCatalog.CreateResolver(), playerRequester: requester);
+
+            DataBinding<UnitData> attacker = MakeUnit(_attacker, "Raiders", models: 6);
+            DataBinding<UnitData> bomb = MakeUnit(_foe, "Suicide Drone", models: 1,
+                unitRule: (CoreRuleCatalog.SelfDestruct, 3));
+
+            // The drone survives the melee untouched - the survive-branch must then self-kill it.
+            await RunReflect(ctx, attacker, bomb, simulateMelee: () => { /* no wounds */ });
+
+            Assert.That(requester.WoundsByUnit.GetValueOrDefault("Raiders"), Is.EqualTo(3f).Within(0.001f),
+                "a surviving Self-Destruct(3) model deals 3 hits at the enemy.");
+            Assert.That(bomb.GetValue().GetIsAlive(), Is.False,
+                "and is immediately killed after the melee.");
+        }
+
+        [Test]
+        public async Task SelfDestruct_KilledInMelee_DealsXHits_NotDoubled()
+        {
+            var requester = new ReflectRequester();
+            var ctx = new TestGameContext(_store, new FixedFaceDiceRoller(1),
+                ruleResolver: CoreRuleCatalog.CreateResolver(), playerRequester: requester);
+
+            DataBinding<UnitData> attacker = MakeUnit(_attacker, "Raiders", models: 6);
+            DataBinding<UnitData> bomb = MakeUnit(_foe, "Suicide Drone", models: 1,
+                unitRule: (CoreRuleCatalog.SelfDestruct, 3));
+
+            await RunReflect(ctx, attacker, bomb,
+                simulateMelee: () => DealWoundsAcrossModels(bomb, 1)); // killed fighting
+
+            Assert.That(requester.WoundsByUnit.GetValueOrDefault("Raiders"), Is.EqualTo(3f).Within(0.001f),
+                "killed in melee deals its 3 hits once; the self-kill branch doesn't double it.");
         }
 
         // --- helpers ---

@@ -55,7 +55,11 @@ namespace FDG.Stages
         {
             if (_queue == null)
             {
+                // Compute every reflect batch from the melee-end state + snapshot FIRST, then enact any
+                // Self-Destruct self-kill - so the kill can't disturb the wounds-taken a bearer's other rules
+                // (Retaliate/Deathstrike) read off the same models.
                 _queue = BuildBatches(context);
+                await ApplySelfDestruct(context);
             }
 
             if (_queue.Count == 0)
@@ -89,6 +93,48 @@ namespace FDG.Stages
             batches.Add(new ReflectBatch(bearer, target, hits));
         }
 
+        // Self-Destruct's survive-branch: a rule-bearing model that lived through the melee "is immediately
+        // killed" now. Kills each surviving Self-Destruct model of both combatants; if that finishes a unit
+        // off, routes it through the same destruction choke point a melee kill uses (marks cleared, hook
+        // fired), crediting the enemy it fought.
+        private async Task ApplySelfDestruct(ICombatActionContext context)
+        {
+            await SelfDestructBearer(context, context.AttackingUnit, context.DefendingUnit);
+            await SelfDestructBearer(context, context.DefendingUnit, context.AttackingUnit);
+        }
+
+        private async Task SelfDestructBearer(ICombatActionContext context, DataBinding<UnitData> bearerBinding,
+            DataBinding<UnitData> enemyBinding)
+        {
+            UnitData bearer = bearerBinding.GetValue();
+            bool wasAlive = bearer.GetIsAlive();
+            bool killedAny = false;
+
+            foreach (DataBinding<ModelData> modelBinding in bearer.ModelBindings)
+            {
+                ModelData model = modelBinding.GetValue();
+                if (RuleArg(bearer, model, CoreRuleCatalog.SelfDestruct) == null) continue;
+
+                float startRemaining = context.ModelRemainingWoundsAtStart
+                    .GetValueOrDefault(modelBinding.Reference, model.TotalWounds - model.WoundsDealt);
+                float currentRemaining = model.TotalWounds - model.WoundsDealt;
+
+                // Only a SURVIVOR of the melee self-kills; one killed fighting is already dead (and already
+                // counted for its X hits).
+                if (startRemaining > EPS && currentRemaining > EPS)
+                {
+                    model.DealWounds(currentRemaining);
+                    killedAny = true;
+                }
+            }
+
+            if (killedAny && wasAlive && !bearer.GetIsAlive())
+            {
+                GameContext.Log($"{bearer.Name} self-destructs.");
+                await UnitDestructionNotifier.NotifyUnitDestroyed(GameContext, bearer, enemyBinding.GetValue());
+            }
+        }
+
         private float ReflectHits(ICombatActionContext context, UnitData bearer)
         {
             float total = 0f;
@@ -98,7 +144,8 @@ namespace FDG.Stages
 
                 int? retaliateX = RuleArg(bearer, model, CoreRuleCatalog.Retaliate);
                 int? deathstrikeX = RuleArg(bearer, model, CoreRuleCatalog.Deathstrike);
-                if (retaliateX == null && deathstrikeX == null) continue;
+                int? selfDestructX = RuleArg(bearer, model, CoreRuleCatalog.SelfDestruct);
+                if (retaliateX == null && deathstrikeX == null && selfDestructX == null) continue;
 
                 float startRemaining = context.ModelRemainingWoundsAtStart
                     .GetValueOrDefault(modelBinding.Reference, model.TotalWounds - model.WoundsDealt);
@@ -113,6 +160,14 @@ namespace FDG.Stages
                 if (deathstrikeX.HasValue && startRemaining > EPS && currentRemaining <= EPS)
                 {
                     total += deathstrikeX.Value;
+                }
+
+                // Self-Destruct: every rule-bearing model that entered the melee alive deals X - whether it
+                // died fighting or is about to be self-killed (below). Keyed on the START snapshot, so the
+                // self-kill this same resolution performs doesn't change the count.
+                if (selfDestructX.HasValue && startRemaining > EPS)
+                {
+                    total += selfDestructX.Value;
                 }
             }
             return total;

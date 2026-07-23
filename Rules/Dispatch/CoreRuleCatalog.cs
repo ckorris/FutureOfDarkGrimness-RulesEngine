@@ -49,7 +49,7 @@ public static class CoreRuleCatalog
         Ravage, CrossingAttack,
         StormOfChange, StormOfLust, StormOfPlague, StormOfWar,
         Fanatic, ReDeployment,
-        Retaliate, Deathstrike,
+        Retaliate, Deathstrike, SelfDestruct,
     };
 
     /// <summary>
@@ -1292,6 +1292,24 @@ public static class CoreRuleCatalog
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
         Description: "If a model with this rule is killed in melee, the attacking unit takes X hits.");
+
+    /// <summary> Canonical name of the Self-Destruct rule (#197 P11). </summary>
+    public const string SelfDestructRuleName = "Self-Destruct";
+
+    /// <summary>
+    /// Self-Destruct(X) (#197 P11): "if this model is killed in melee, the attacking unit takes X hits. If
+    /// this model survives melee, after both sides have finished attacking, it is immediately killed, and the
+    /// enemy unit takes X hits." So every rule-bearing model that entered the melee deals X hits at the enemy
+    /// - whether it died fighting or is self-destructed at the end - and any survivor is killed. The
+    /// death-or-self-kill twin of <see cref="Deathstrike"/>; resolved by <c>ResolveMeleeReflectStage</c>,
+    /// which also enacts the self-kill. Marker rule; Arg(0) is X. Allowlisted in the fire-lint.
+    /// </summary>
+    public static SpecialRuleDefinition SelfDestruct { get; } = new SpecialRuleDefinition(SelfDestructRuleName,
+        Array.Empty<HookEntry>(),
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "A model with this rule that fights in melee deals X hits to the enemy; if it survives, " +
+                     "it is then killed.");
 
     /// <summary> Canonical name of the Teleport ability (#197). </summary>
     public const string TeleportRuleName = "Teleport";

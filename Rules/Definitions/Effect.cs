@@ -84,7 +84,8 @@ public abstract record Effect
     /// <summary>
     /// Grants the target a numeric modifier of <see cref="Delta"/> to a specific roll
     /// (<see cref="Roll"/>) for the duration given by <see cref="LifetimeScope"/> — the spell/ability
-    /// "+1 to hit" / "-1 to defense rolls" / "-1 to morale" buff or debuff (#033). Unlike
+    /// "+1 to hit" / "-1 to defense rolls" / "-1 to morale" / "-1 to casting rolls" buff or debuff
+    /// (#033; the cast kind is #197 P6's Casting Debuff / Casting Buff). Unlike
     /// <see cref="Effect.RollModifier"/> (a passive, bearer-side modifier on one roll the bearer is
     /// currently making), this is GRANTED to the target as a token the relevant roll stage reads later,
     /// persisting until its lifetime expires (NextTrigger → consumed on the next such roll; ThisRound →

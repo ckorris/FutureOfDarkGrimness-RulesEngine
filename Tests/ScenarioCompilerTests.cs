@@ -5,6 +5,7 @@ using FDG.MessageBus;
 using FDG.Network.Connection;
 using FDG.Players;
 using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 using FDG.SaveLoad;
 using NUnit.Framework;
 
@@ -155,6 +156,36 @@ namespace FDG.Tests
             // 'shaken' (lowercase in the scenario) normalized to the canonical engine ID.
             UnitData guards = UnitByName(store, "Guards");
             Assert.That(guards.Tokens.GetTokenCount(TokenType.Shaken), Is.EqualTo(1));
+        }
+
+        // #167 tooling (found while verifying #197 P6 in play): a granted roll-modifier token is only
+        // worth anything with its StatModifier payload - the roll stages read the delta, so a payload-less
+        // one nets zero and reads as the modifier silently not applying.
+        [Test]
+        public void Compile_RoundTrip_CarriesARollModifierTokensDelta()
+        {
+            ScenarioFile scenario = MakeScenario();
+            scenario.Players[1].Units[0].Tokens!.Add(new ScenarioToken
+            {
+                Type = "castrollmodifier", Count = 1, ClearTrigger = "FirstTrigger", Delta = -1,
+            });
+
+            GameDataStore store = CompileAndRoundTrip(scenario);
+            Token token = UnitByName(store, "Guards").Tokens.GetAllTokens(TokenType.CastRollModifier).Single();
+
+            Assert.That(token.Payload, Is.EqualTo(new TokenPayload.StatModifier(-1)),
+                "the delta must survive compilation AND the save round-trip.");
+            Assert.That(token.ClearTrigger, Is.InstanceOf<TokenClearTrigger.FirstTrigger>());
+        }
+
+        [Test]
+        public void Compile_DeltaOnANonModifierToken_IsRejected()
+        {
+            // Silently dropping it would leave a scenario that looks configured and tests nothing.
+            ScenarioFile scenario = MakeScenario();
+            scenario.Players[1].Units[0].Tokens![0].Delta = 2;
+
+            Assert.That(() => CompileAndRoundTrip(scenario), Throws.TypeOf<ScenarioCompileException>());
         }
 
         [Test]

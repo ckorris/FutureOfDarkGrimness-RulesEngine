@@ -749,6 +749,80 @@ namespace FDG.Tests
                 "the one eligible friendly Caster was offered the assist");
         }
 
+        // #197 P6 — a granted cast-roll modifier (Casting Debuff's -1) shifts the cast THRESHOLD, exactly as
+        // boost and assists do. A fixed face of 4 clears the base 4+ but not the debuffed 5+, so the
+        // self-buff never lands. Pins the fourth roll kind end-to-end through the real CastSpellStage.
+        [Test]
+        public async Task CastSpellStage_GrantedCastDebuff_SpoilsSuccessfulCast()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester(), new FixedDiceRoller(4));
+
+            DataBinding<UnitData> caster = MakeCasterBinding(_player, casterRating: 3, tokens: 1, new Position(10f, 10f));
+            var army = new ArmyData(_player, new List<DataBinding<UnitData>> { caster });
+            army.SetSpells(new[] { SelfBuffSpell("Bless", threshold: 1, grantedRule: "Furious") });
+            _store.Create(army);
+
+            caster.GetValue().Tokens.AddToken(new Token(TokenType.CastRollModifier, 1,
+                new TokenClearTrigger.FirstTrigger(), Payload: new TokenPayload.StatModifier(-1)));
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Assert.That(caster.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant), Is.Empty,
+                "the granted -1 dropped the cast (face 4 vs debuffed 5+) below success - no buff applied");
+            Assert.That(caster.GetValue().Tokens.HasToken(TokenType.CastRollModifier), Is.False,
+                "a 'next time' cast debuff is spent by the attempt, whether or not the cast succeeds");
+        }
+
+        // #197 P6 — the mirror (Casting Buff's +1): a fixed face of 3 fails the base 4+ but clears the
+        // buffed 3+, so the spell lands. Together with the debuff test this proves the sign, not just that
+        // *some* modifier reached the threshold.
+        [Test]
+        public async Task CastSpellStage_GrantedCastBuff_RescuesFailedCast()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester(), new FixedDiceRoller(3));
+
+            DataBinding<UnitData> caster = MakeCasterBinding(_player, casterRating: 3, tokens: 1, new Position(10f, 10f));
+            var army = new ArmyData(_player, new List<DataBinding<UnitData>> { caster });
+            army.SetSpells(new[] { SelfBuffSpell("Bless", threshold: 1, grantedRule: "Furious") });
+            _store.Create(army);
+
+            caster.GetValue().Tokens.AddToken(new Token(TokenType.CastRollModifier, 1,
+                new TokenClearTrigger.FirstTrigger(), Payload: new TokenPayload.StatModifier(+1)));
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Assert.That(caster.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant), Is.Not.Empty,
+                "the granted +1 turned the failed cast (face 3 vs 4+) into a success (3+), applying the buff");
+        }
+
+        // #197 P6 — the carrier token type is per roll kind, so a hit/save/morale modifier never leaks into
+        // the cast roll (and vice versa). Without a dedicated carrier the four kinds would merge in the
+        // container and a Precision Debuff would quietly hinder casting too.
+        [Test]
+        public void GrantedCastModifier_DoesNotMergeWithTheOtherRollKinds()
+        {
+            DataBinding<UnitData> unit = MakeCasterBinding(_player, casterRating: 1, tokens: 0, new Position(5f, 5f));
+            unit.GetValue().Tokens.AddToken(new Token(TokenType.CastRollModifier, 1,
+                new TokenClearTrigger.RoundEnd(), Payload: new TokenPayload.StatModifier(-1)));
+
+            Assert.That(RollModifierTokens.TypeFor(ERollKind.Cast), Is.EqualTo(TokenType.CastRollModifier));
+            Assert.That(GrantedRollModifiers.ConsumeNet(unit.GetValue(), ERollKind.Cast), Is.EqualTo(-1));
+            Assert.That(GrantedRollModifiers.ConsumeNet(unit.GetValue(), ERollKind.Hit), Is.EqualTo(0),
+                "a cast modifier is invisible to the hit roll");
+            Assert.That(GrantedRollModifiers.ConsumeNet(unit.GetValue(), ERollKind.Save), Is.EqualTo(0),
+                "a cast modifier is invisible to the save roll");
+            Assert.That(GrantedRollModifiers.ConsumeNet(unit.GetValue(), ERollKind.Morale), Is.EqualTo(0),
+                "a cast modifier is invisible to the morale test");
+            Assert.That(GrantedRollModifiers.ConsumeNet(unit.GetValue(), ERollKind.Cast), Is.EqualTo(-1),
+                "a duration (ThisRound) cast grant persists across reads - it is swept, not consumed");
+        }
+
         // #103 — an enemy Caster within 18" spends a token to subtract 1 from the cast, spoiling a roll that
         // would otherwise succeed. A fixed face of 4 clears the base 4+ but not the hindered 5+.
         [Test]

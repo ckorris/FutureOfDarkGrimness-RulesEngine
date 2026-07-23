@@ -81,6 +81,7 @@ namespace FDG.Stages
             ERollKind.Hit => "hit rolls",
             ERollKind.Save => "defense rolls",
             ERollKind.Morale => "morale",
+            ERollKind.Cast => "casting rolls",
             _ => "rolls",
         };
 

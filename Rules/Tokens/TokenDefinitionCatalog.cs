@@ -92,6 +92,9 @@ public static class TokenDefinitionCatalog
             new(TokenType.MORALE_ROLL_MODIFIER_ID, "Morale modifier", EValence.Neutral, ETokenProminence.Normal,
                 ValenceSource: EValenceSource.PayloadSign),
 
+            new(TokenType.CAST_ROLL_MODIFIER_ID, "Casting modifier", EValence.Neutral, ETokenProminence.Normal,
+                ValenceSource: EValenceSource.PayloadSign),
+
             new(TokenType.RULE_GRANT_ID, "Granted rule", EValence.Neutral, ETokenProminence.Normal,
                 ValenceSource: EValenceSource.GrantedRule),
 

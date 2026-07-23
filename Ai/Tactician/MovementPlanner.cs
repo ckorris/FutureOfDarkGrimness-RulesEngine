@@ -199,25 +199,22 @@ namespace FDG.Ai.Tactician
             int attempts = 0;
             while (!valid && attempts < MaxBackoffAttempts)
             {
-                // #256 S2: when the re-packed formation's ONLY fault is ending stacked on a friendly,
-                // halving just crawls toward zero (the friendly is still in the way - the WayTooManyInBack
-                // corner pocket). Side-step the pack anchor a few base-widths each way at the SAME step
-                // first; if any offset clears, keep the full advance instead of surrendering it.
-                if (reaimAt != null && step >= MinBackoffStepInches && living.Count > 0
-                    && FriendlyStackingIsSoleObstacle(errors))
-                {
-                    List<ModelMoveEntry>? reaimed = TryLateralReaim(reaimAt, step, living, candidate,
-                        c => Validate(c, out _));
-                    if (reaimed != null) return reaimed;
-                }
+                bool impassiblePresent = errors.Count > 0
+                    && errors.Any(e => e.ErrorReasonType == EErrorReasonType.MovingThroughImpassibleTerrain);
+                bool friendlyPresent = errors.Count > 0
+                    && errors.Any(e => e.ErrorReasonType == EErrorReasonType.EndedOnFriendlyUnit);
 
-                // #256 S4: when the ONLY fault is clipping impassible terrain, the formation is wider
-                // than the corridor the route threads - halving barely helps (the walled pocket's grid
-                // pack needed 0.19" of a 12" budget). Try the on-path snake at the SAME step: valid
-                // wherever the route is clear for one base, at the cost of stretching the formation.
+                // #256 S4 + #264 issue 5: the on-path snake goes FIRST and fires whenever ANY impassible
+                // fault is PRESENT (not only when it is the SOLE fault). The impassible fault is the
+                // structural one - the formation is wider than the corridor the route threads (the walled
+                // pocket's grid pack needed 0.19" of a 12" budget) - and the snake, whose files ride the
+                // route clear-by-construction, is the tool that fixes it. Round-1 density mixes it with an
+                // EndedOnFriendly fault (a friendly parked in the pocket); the old errors.All gate then
+                // stayed shut and the ladder halved to a sub-inch shuffle. The snake re-validates below, so
+                // a co-occurring friendly fault only means it may find no valid arc, never that it returns
+                // an illegal move.
                 if (snakeAt != null && step >= MinBackoffStepInches && living.Count > 0
-                    && errors.Count > 0
-                    && errors.All(e => e.ErrorReasonType == EErrorReasonType.MovingThroughImpassibleTerrain))
+                    && impassiblePresent)
                 {
                     List<ModelMoveEntry> snake = snakeAt(step);
                     // Gate: the head must really thread the corridor (not a degenerate stay), and the
@@ -227,6 +224,23 @@ namespace FDG.Ai.Tactician
                         && ForwardProgress(living, candidate, snake) > MinBackoffStepInches
                         && Validate(snake, out _))
                         return snake;
+                }
+
+                // #256 S2 + #264 issue 5: side-step the pack anchor to clear a friendly parked on the
+                // arrival spot rather than halve toward zero. Fires when friendly-stacking is the SOLE
+                // fault (the original #256 WayTooManyInBack case - all callers, INCLUDING the solo bot),
+                // or - only when a snake exists to have taken the impassible fault first, i.e. the
+                // Tactician - on the friendly RESIDUE of a mixed fault the snake could not thread. The
+                // snakeAt guard on that second arm keeps the solo bot's re-aim gate exactly
+                // FriendlyStackingIsSoleObstacle, so its pinned D1 baseline does not move. TryLateralReaim
+                // re-validates every offset, so widening when it fires cannot submit an illegal move.
+                if (reaimAt != null && step >= MinBackoffStepInches && living.Count > 0
+                    && (FriendlyStackingIsSoleObstacle(errors)
+                        || (snakeAt != null && friendlyPresent && impassiblePresent)))
+                {
+                    List<ModelMoveEntry>? reaimed = TryLateralReaim(reaimAt, step, living, candidate,
+                        c => Validate(c, out _));
+                    if (reaimed != null) return reaimed;
                 }
 
                 step *= 0.5f;

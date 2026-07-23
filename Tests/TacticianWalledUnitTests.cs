@@ -14,9 +14,11 @@ namespace FDG.Tests
     // #264 — a Tactician unit deployed behind a large impassible piece rushed sideways/backwards
     // (or froze) instead of walking around it. These tests pinned the DESIRED behavior for each
     // suspected mechanism and were written RED BY DESIGN, before any fix - the pass/fail metric
-    // agreed up front. All nine are green as of 2026-07-23 and now GUARD the fixes; the
-    // Category("Pending264") tags they carried while red are gone with the last of them.
-    // Issue numbers reference WorkItems/264-tactician-walled-unit-lateral-retreat.md.
+    // agreed up front. The first nine went green across the slice work of 2026-07-23 and now GUARD
+    // the fixes; the Category("Pending264") tags they carried while red are gone with the last of
+    // them. The tenth (MixedFaultsAtFullArc, issue 5) was added when issue 5 was fixed for real -
+    // its earlier pin had gone green only as a slice-3 side effect, so this one reaches the mixed-
+    // error gate directly. Issue numbers reference WorkItems/264-tactician-walled-unit-lateral-retreat.md.
     // Do not "fix" a regression here by weakening an assert - each one encodes a mechanism.
     [TestFixture]
     public class TacticianWalledUnitTests
@@ -259,6 +261,56 @@ namespace FDG.Tests
 
             Assert.That(NetCentroidMove(move, cx, cz), Is.GreaterThanOrEqualTo(2f),
                 "mixed wall + friendly faults must still be rescued, not halved to a shuffle");
+        }
+
+        [Test]
+        public void PlanMoveToward_MixedFaultsAtFullArc_ThreadsWithoutSurrenderingBudget()
+        {
+            // Issue 5, the reachable form. In the pin above, halving eventually separates the two
+            // faults (the grid endpoint climbs past the friendly, leaving pure impassible), so the
+            // snake still fires - at a SHORTER arc. This scene parks the friendly up the corridor at
+            // the far end (near the east wall), so the FULL-BUDGET grid pack carries BOTH faults at
+            // once - its east flank ends on the friendly while the block clips the walls. The old
+            // all-or-nothing gates (S4 needs errors.All impassible, S2 needs errors.All friendly)
+            // both stay shut at the top arc and the ladder halves; the unit still rounds the corner
+            // but surrenders most of its budget (measured: 3.3" of 12"). Firing the snake on the
+            // PRESENCE of the impassible fault threads the corridor at the full arc instead.
+            var unit = MakeUnitAt(_us, 6, Rifle(), i => new Position(20f + (i % 3), 6f + (i / 3)));
+            var living = unit.GetValue().ModelBindings.Where(mb => mb.GetValue().GetIsAlive()).ToList();
+            float cx = living.Average(mb => mb.GetValue().Position.x);   // 21
+            float cz = living.Average(mb => mb.GetValue().Position.z);   // 6.5
+            // A 3"-wide corridor (2" walkable): a single file threads it, the 6-model block does not.
+            _store.Create(new TerrainData(ETerrainType.Impassible, new RectangularZone(6f, 19.5f, 9f, 33f)));
+            _store.Create(new TerrainData(ETerrainType.Impassible, new RectangularZone(22.5f, 36f, 9f, 33f)));
+            var friendly = MakeUnitAt(_us, 1, Rifle(), _ => new Position(22f, 18f)); // up the east side
+
+            // Geometry guard against a vacuous pass: a full-budget straight pack really does carry
+            // BOTH fault types at once (east flank on the friendly, block clipping the walls) - so
+            // this scene exercises the mixed-error gate, not one fault at a time.
+            List<ModelMoveEntry> full = MovementPlanner.BuildCandidate(unit, living, cx, cz,
+                ndx: 0f, ndz: 1f, step: 12f, maxDistanceInches: 12f);
+            MovementUtilities.ValidatePaths(full, _ => new ModelMoveBudget(12f, 12f),
+                new List<EnemyModelFootprint>(), false, false, false,
+                _tableState.Terrain.Objects.ToList(), out List<ReasonForInvalidMove> errors,
+                FriendlyFootprints(friendly), lenientCoherency: true);
+            Assert.That(errors.Select(e => e.ErrorReasonType).Distinct(),
+                Is.SupersetOf(new[]
+                {
+                    EErrorReasonType.MovingThroughImpassibleTerrain,
+                    EErrorReasonType.EndedOnFriendlyUnit,
+                }),
+                "geometry check: the full-budget pack must carry BOTH fault types at once " +
+                $"(got: {string.Join(", ", errors.Select(e => e.ErrorReasonType).Distinct())})");
+
+            List<ModelMoveEntry> move = MovementPlanner.PlanMoveToward(unit, living, _tableState,
+                goal: new Position(21f, 40f), moveBudgetInches: 12f, maxDistanceInches: 12f,
+                budgetFor: _ => new ModelMoveBudget(12f, 12f),
+                canMoveThroughEnemies: false, ignoresDifficultTerrain: false,
+                ignoresImpassibleTerrain: false);
+
+            Assert.That(NetCentroidMove(move, cx, cz), Is.GreaterThanOrEqualTo(6f),
+                "a mixed fault at the full arc must not force the ladder to halve away most of the " +
+                "budget - the snake threads the corridor at the top arc (halving nets only ~3.3\")");
         }
 
         // --- Issue 6: the solo resolver (every Tactician fallback lands here) skirts blocked

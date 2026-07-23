@@ -46,7 +46,7 @@ public static class CoreRuleCatalog
         IncreasedShootingRangeAura, RangedShroudingAura, MeleeShroudingAura,
         Unpredictable, UnpredictableFighter, UnpredictableShooter,
         UnpredictableFighterAura, UnpredictableShooterAura,
-        Ravage,
+        Ravage, CrossingAttack,
     };
 
     /// <summary>
@@ -1617,6 +1617,33 @@ public static class CoreRuleCatalog
         },
         Valence: EValence.Positive,
         Description: "Once per activation, when moving through an enemy unit, it may make a mid-move attack (3 hits).");
+
+    /// <summary>
+    /// Crossing Attack(X) (#197 P10): the auto-wound sibling of Strafing. When this unit moves through an
+    /// enemy unit, once per activation it may pick that enemy and roll X dice - each 6+ deals one DIRECT
+    /// unsaveable wound (Regeneration/Tough still apply). An activated ability at
+    /// <see cref="EHookID.Movement_OnMoveThroughEnemy"/> whose <see cref="Effect.DealAutoWounds"/> queues an
+    /// <see cref="RuleOperation.InvokeDealAutoWounds"/> that CrossingAttackStage rolls and feeds into wound
+    /// assignment, skipping the save. The fly-over passive (like Strafing's) lets the move-through that
+    /// triggers it be legal in the first place.
+    /// </summary>
+    public static SpecialRuleDefinition CrossingAttack { get; } = new SpecialRuleDefinition("Crossing Attack",
+        new[]
+        {
+            new HookEntry(EHookID.Movement_OnMoveThroughEnemy,
+                new Condition.Always(),
+                new Effect.IgnoreEnemyMovementBlock(),
+                ELifetime.ThisActivation),
+        },
+        new[]
+        {
+            new ActivatedAbility(EHookID.Movement_OnMoveThroughEnemy, new Cost.OncePerActivation(),
+                new TargetSelector(1f, 1, 1, ETargetAffinity.Foe, false),
+                new Effect.DealAutoWounds(new ValueSource.Arg(0), SuccessThreshold: 6),
+                new Condition.Always()),
+        },
+        Valence: EValence.Positive,
+        Description: "Once per activation, when moving through an enemy unit, rolls dice that deal automatic unsaveable wounds.");
 
     /// <summary>
     /// Strider (#102): the unit ignores the difficult-terrain movement cap — it may cross Difficult terrain

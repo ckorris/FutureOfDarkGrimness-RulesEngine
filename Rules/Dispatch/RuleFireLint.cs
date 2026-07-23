@@ -391,6 +391,8 @@ public static class RuleFireLint
         ExecutableOperation => true,
         RuleOperation.InvokeDealHits => hook is EHookID.Activation_OnPreAttack
             or EHookID.Movement_OnMoveThroughEnemy,
+        // #197 P10 Crossing Attack: an auto-wound ability rolled by CrossingAttackStage at move-through.
+        RuleOperation.InvokeDealAutoWounds => hook is EHookID.Movement_OnMoveThroughEnemy,
         RuleOperation.InvokeReactivate => hook is EHookID.Activation_OnNextActivatorRequested,
         _ => false,
     };

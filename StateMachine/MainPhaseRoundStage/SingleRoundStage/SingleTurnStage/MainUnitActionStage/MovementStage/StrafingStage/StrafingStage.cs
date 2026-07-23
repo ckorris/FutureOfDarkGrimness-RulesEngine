@@ -66,8 +66,13 @@ namespace FDG.Stages
             }
 
             IUnit mover = context.MovingUnit.GetValue();
+            // Only hit-dealing (Strafing) abilities are ours; #197 P10 Crossing Attack's DealAutoWounds
+            // abilities sit at the same hook and are handled by CrossingAttackStage, so skip them here -
+            // otherwise this stage would prompt and pay their once-per-activation cost, then deal no hits.
             IReadOnlyList<AbilityOffer> offers = GameContext.RuleEvaluator
-                .GatherOffers(new MoveThroughEnemyContext(mover));
+                .GatherOffers(new MoveThroughEnemyContext(mover))
+                .Where(o => o.Ability.Effect is Effect.DealHits)
+                .ToList();
             if (offers.Count == 0)
             {
                 await OnStrafeResolved.Activate(context);

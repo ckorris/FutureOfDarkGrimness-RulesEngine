@@ -50,6 +50,8 @@ namespace FDG.Tests
             public Task SendCommandToSingleClientAsync(ConnectionID clientId, ArraySegment<byte> data, bool isPooled)
                 => Task.CompletedTask;
             public void DisconnectClient(ConnectionID clientId) { }
+
+            public void MarkClientAuthenticated(ConnectionID clientId) { }
             public void Stop() { }
         }
     }

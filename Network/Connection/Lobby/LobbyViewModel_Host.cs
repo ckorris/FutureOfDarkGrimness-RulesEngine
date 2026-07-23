@@ -331,7 +331,11 @@ namespace FDG.Network.Connection.Lobby
 
             Debug.WriteLine($"Received greeting from new client: {greeting.PlayerName}");
 
-            //Assign a player ID to this person. 
+            // The greeting passed every gate — lift this connection's inbound frame cap to the full
+            // size (#266) before it starts sending real payloads (army lists are legitimately large).
+            _host.MarkClientAuthenticated(connectionID);
+
+            //Assign a player ID to this person.
             //TODO: I may have decided to give players their IDs elsewhere but I can't remember, double check that.
             PlayerID newClientPlayerID = new PlayerID(Guid.NewGuid());
             // Send the ID assignment ONLY to the joining connection (QF5). Broadcasting it made every
@@ -373,6 +377,9 @@ namespace FDG.Network.Connection.Lobby
             openSlot.PlayerType = EPlayerType.Network;
             openSlot.PlayerName = greeting.PlayerName;
             openSlot.ConnectionID = connectionID;
+
+            // Accepted into a saved slot — lift the pre-auth frame cap (#266), as in the new-game path.
+            _host.MarkClientAuthenticated(connectionID);
 
             // Adopt the saved slot's PlayerID (not a fresh one) so the client resumes as that player. Sent
             // only to the joining connection (QF5) - see the new-game path for why broadcasting is wrong.

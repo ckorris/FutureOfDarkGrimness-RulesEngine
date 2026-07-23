@@ -16,6 +16,13 @@ namespace FDG.Network
         // (full-state sync being the largest) stay well under this.
         public const int MAX_PAYLOAD_BYTES = 16 * 1024 * 1024; // 16 MB
 
+        // Upper bound on an inbound payload from a connection that has NOT yet passed the join
+        // handshake (#266). A legitimate pre-join client sends exactly one small greeting (#075),
+        // so granting the full 16 MB to an unauthenticated stranger — relevant once a host lists
+        // itself publicly (#264) — is a free memory-pressure attack. The host lifts a connection
+        // to MAX_PAYLOAD_BYTES only after accepting its join.
+        public const int MAX_PREAUTH_PAYLOAD_BYTES = 64 * 1024; // 64 KB
+
         public const int TEMP_PORT = 6389; //TODO Make this specifyable.
 
         // Tunes a freshly connected/accepted socket for WAN turn-based play (QF3):
@@ -72,8 +79,24 @@ namespace FDG.Network
             }
         }
 
-        public static async Task<ArraySegment<byte>> ReadCommandAsync(Stream stream,
+        public static Task<ArraySegment<byte>> ReadCommandAsync(Stream stream,
             CancellationToken cancellationToken = default)
+        {
+            return ReadCommandAsync(stream, static () => MAX_PAYLOAD_BYTES, cancellationToken);
+        }
+
+        /// <summary>
+        /// Reads one frame, rejecting any payload larger than the provider's current value (throws
+        /// <see cref="IOException"/> before renting a buffer). The cap is a provider, not an int,
+        /// because the host lifts a connection from <see cref="MAX_PREAUTH_PAYLOAD_BYTES"/> to
+        /// <see cref="MAX_PAYLOAD_BYTES"/> *while* this call is parked waiting for the next frame
+        /// (#266): the read for frame N+1 starts before frame N's greeting has been processed, so a
+        /// cap captured at call time would judge the first post-accept payload (an army list,
+        /// legitimately large) by the stale pre-auth limit. Evaluated once, after the length prefix
+        /// arrives — which is by TCP ordering after the sender saw the join acceptance.
+        /// </summary>
+        public static async Task<ArraySegment<byte>> ReadCommandAsync(Stream stream,
+            Func<int> maxPayloadBytesProvider, CancellationToken cancellationToken = default)
         {
             //Confirm magic numbers. Not strictly necessary, but early on, this will identify alignment issues immediately.
             byte[] magicNumbersBuffer = new byte[MAGIC_NUMBERS_BYTE_SIZE];
@@ -94,9 +117,10 @@ namespace FDG.Network
 
             int payloadLength = BitConverter.ToInt32(lengthBuffer);
 
-            if (payloadLength < 0 || payloadLength > MAX_PAYLOAD_BYTES)
+            int maxPayloadBytes = maxPayloadBytesProvider();
+            if (payloadLength < 0 || payloadLength > maxPayloadBytes)
             {
-                throw new IOException($"Received invalid payload length: {payloadLength} (must be 0..{MAX_PAYLOAD_BYTES}).");
+                throw new IOException($"Received invalid payload length: {payloadLength} (must be 0..{maxPayloadBytes}).");
             }
 
             byte[] payloadArray = ArrayPool<byte>.Shared.Rent(payloadLength); //Array may be too large.

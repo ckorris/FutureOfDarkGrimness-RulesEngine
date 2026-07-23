@@ -174,6 +174,8 @@ namespace FDG.Tests
 
             public void DisconnectClient(ConnectionID clientId) { }
 
+            public void MarkClientAuthenticated(ConnectionID clientId) { }
+
             public void Stop() { }
 
             internal void ReceiveFromClient(ArraySegment<byte> data) =>

@@ -392,7 +392,13 @@ namespace FDG.Ai.Tactician
             return result;
         }
 
-        private static bool SegmentClear(IReadOnlyList<ITerrain> terrain, Position from, Position to,
+        /// <summary>
+        /// Whether a base of this radius can sweep from <paramref name="from"/> to
+        /// <paramref name="to"/> without touching impassible terrain. The one walkability predicate
+        /// the route machinery shares - routing, per-model leg joins and the score gradient all have
+        /// to agree on what "clear" means, or a move is planned along a line the validator rejects.
+        /// </summary>
+        public static bool SegmentClear(IReadOnlyList<ITerrain> terrain, Position from, Position to,
             float baseRadiusInches)
         {
             var start = new Float2(from.x, from.z);

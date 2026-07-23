@@ -561,20 +561,11 @@ namespace FDG.Ai.Tactician
                 Position previous = entry.Model.GetValue().Position;
                 foreach (Position leg in entry.Positions)
                 {
-                    if (!IsSegmentClear(terrain, previous, leg, baseRadiusInches)) return true;
+                    if (!GridPathfinder.SegmentClear(terrain, previous, leg, baseRadiusInches)) return true;
                     previous = leg;
                 }
             }
             return false;
-        }
-
-        private static bool IsSegmentClear(IReadOnlyList<ITerrain> terrain, Position from, Position to,
-            float baseRadiusInches)
-        {
-            var start = new Float2(from.x, from.z);
-            var end = new Float2(to.x, to.z);
-            return !terrain.Any(t => t.TerrainType.HasFlag(ETerrainType.Impassible)
-                && t.Shape.DoesPathIntersectZone(start, end, baseRadiusInches));
         }
 
         /// <summary>One un-clamped path-following pack at a given arc length (#256's measure loop).</summary>

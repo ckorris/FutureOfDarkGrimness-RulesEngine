@@ -78,21 +78,12 @@ namespace FDG.Ai.Tactician
                 remainingBeyond += segment;
 
                 bestIgnoringTerrain = Math.Min(bestIgnoringTerrain, total);
-                if (SegmentClear(terrain, from, projection, baseRadiusInches))
+                if (GridPathfinder.SegmentClear(terrain, from, projection, baseRadiusInches))
                     best = Math.Min(best, total);
             }
             // Walled off from every part of the route (a sealed pocket): the unconstrained measure
             // is still the least-wrong number available, and it never flatters a forward move.
             return float.IsPositiveInfinity(best) ? bestIgnoringTerrain : best;
-        }
-
-        private static bool SegmentClear(IReadOnlyList<ITerrain> terrain, Position from, Position to,
-            float baseRadiusInches)
-        {
-            var start = new Float2(from.x, from.z);
-            var end = new Float2(to.x, to.z);
-            return !terrain.Any(t => t.TerrainType.HasFlag(ETerrainType.Impassible)
-                && t.Shape.DoesPathIntersectZone(start, end, baseRadiusInches));
         }
 
         private static float Distance(Position a, Position b)

@@ -67,10 +67,12 @@ namespace FDG.Stages
 
         /// <summary>
         /// Fires the Deployment_OnUnitDeployed "when" for the just-deployed unit and offers any
-        /// activated abilities triggered there (Vanguard's reposition). For each offer the owning
-        /// player accepts, the resolved operation queue is enacted through the engine's imperative-op
-        /// executor — the movement subsystem, for a triggered move. First production use of the
-        /// GatherOffers / ResolveAbility / OperationExecutor chain.
+        /// activated abilities triggered there (Vanguard's reposition move; Fanatic's reposition
+        /// placement). For each offer the owning player accepts, the resolved operation queue is enacted:
+        /// imperative ops through the engine's executor (the movement subsystem, for a triggered move) and
+        /// any <see cref="RuleOperation.RepositionModels"/> folded into a placement (shared with
+        /// <c>ActivationStartStage</c>). First production use of the GatherOffers / ResolveAbility /
+        /// OperationExecutor chain.
         /// </summary>
         private async Task OfferPostDeploymentAbilities(UnitData deployedUnit, PlayerID owningPlayer)
         {
@@ -97,6 +99,10 @@ namespace FDG.Stages
                 OperationApplier.ApplyTokenOperations(ops);
 
                 await OperationExecutor.Execute(ops, new GameOperationServices(GameContext));
+
+                // Fanatic emits a RepositionModels op the executor ignores (it is stage-folded, not
+                // executable). Fold it into a within-radius placement, exactly as ActivationStartStage does.
+                await RepositionPlacement.OfferFromOperations(GameContext, deployedUnit, ops);
             }
         }
     }

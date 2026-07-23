@@ -40,6 +40,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(ClearTokenOnRoll), "clearTokenOnRoll")]
 [JsonDerivedType(typeof(GrantTokenOnRoll), "grantTokenOnRoll")]
 [JsonDerivedType(typeof(RepositionAtActivation), "repositionAtActivation")]
+[JsonDerivedType(typeof(RepositionOnDeploy), "repositionOnDeploy")]
 [JsonDerivedType(typeof(TriggeredMove), "triggeredMove")]
 [JsonDerivedType(typeof(Reactivate), "reactivate")]
 [JsonDerivedType(typeof(MultiplyWounds), "multiplyWounds")]
@@ -871,6 +872,24 @@ public abstract record Effect
             }
 
             operations.Add(new RuleOperation.RepositionModels(inches));
+        }
+    }
+
+    /// <summary>
+    /// A FLAT-distance reposition placement, no dice — the deploy-time twin of
+    /// <see cref="RepositionAtActivation"/>. Covers Fanatic (#197 P21): "after this model is deployed, it
+    /// may be placed anywhere fully within <see cref="MaxInches"/>in of its position." Emits the same
+    /// <see cref="RuleOperation.RepositionModels"/> op, so the placement machinery is shared — but folded by
+    /// the deployment stage (<c>DeployUnitStage</c>) rather than <c>ActivationStartStage</c>, since it fires
+    /// at <see cref="Rules.Foundation.EHookID.Deployment_OnUnitDeployed"/>. Flat rather than reusing
+    /// <see cref="RepositionAtActivation"/> with a degenerate die because every <c>DiceExpression</c> rolls
+    /// at least one die; the corpus' deploy reposition is a fixed range.
+    /// </summary>
+    public sealed record RepositionOnDeploy(float MaxInches) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.RepositionModels(MaxInches));
         }
     }
 

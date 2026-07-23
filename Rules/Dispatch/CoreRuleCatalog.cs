@@ -48,6 +48,7 @@ public static class CoreRuleCatalog
         UnpredictableFighterAura, UnpredictableShooterAura,
         Ravage, CrossingAttack,
         StormOfChange, StormOfLust, StormOfPlague, StormOfWar,
+        Fanatic,
     };
 
     /// <summary>
@@ -1282,6 +1283,27 @@ public static class CoreRuleCatalog
         },
         Valence: EValence.Positive,
         Description: "Once per game, immediately after deploying, this unit may move up to 9\".");
+
+    /// <summary>
+    /// Fanatic (#197 P21): after this unit deploys, it may be PLACED anywhere fully within 9" of its
+    /// position. Vanguard's deploy-hook shape, but a placement rather than a move (the owner's
+    /// reposition-is-a-placement ruling, and the corpus word "placed"): the effect emits a
+    /// <see cref="RuleOperation.RepositionModels"/> that <c>DeployUnitStage</c> folds into a
+    /// per-model-radius <see cref="StageResolution.Requests.PlaceObjectsRequest{T}"/>. Gated
+    /// <see cref="Cost.OncePerGame"/> like Vanguard - deployment happens once, so the gate is naturally
+    /// spent, and it keeps the offer from re-firing on a Scout/Ambush re-placement.
+    /// </summary>
+    public static SpecialRuleDefinition Fanatic { get; } = new SpecialRuleDefinition("Fanatic",
+        Array.Empty<HookEntry>(),
+        new[]
+        {
+            new ActivatedAbility(EHookID.Deployment_OnUnitDeployed, new Cost.OncePerGame(),
+                new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
+                new Effect.RepositionOnDeploy(MaxInches: 9f),
+                new Condition.Always()),
+        },
+        Valence: EValence.Positive,
+        Description: "After deploying, this unit may be placed anywhere fully within 9\" of its position.");
 
     /// <summary>
     /// Harassing: after this unit shoots — or after it is attacked in melee — it may immediately move up

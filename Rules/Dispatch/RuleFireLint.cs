@@ -395,6 +395,8 @@ public static class RuleFireLint
         RuleOperation.InvokeDealAutoWounds => hook is EHookID.Movement_OnMoveThroughEnemy,
         // #197 P10 Storm of X: an action-choice ability enacted by StormStage (routed from ChooseActionStage).
         RuleOperation.InvokeStorm => hook is EHookID.Activation_OnActionChoice,
+        // #197 P21 Fanatic: a deploy-time reposition placement DeployUnitStage folds after the executor.
+        RuleOperation.RepositionModels => hook is EHookID.Deployment_OnUnitDeployed,
         RuleOperation.InvokeReactivate => hook is EHookID.Activation_OnNextActivatorRequested,
         _ => false,
     };

@@ -1,4 +1,5 @@
 ﻿using FDG.Data;
+using FDG.Network;
 using Newtonsoft.Json;
 using static FDG.StageHandlerRegistry;
 
@@ -58,7 +59,14 @@ namespace FDG.StageResolution
         private async Task<string> ResolveRequestAsJson_Typed<TRequest, TReply>(string requestJson, IReadableGameDataStore gameDataStore)
             where TRequest : IStageTaskRequest<TReply>
         {
-            TRequest? request = JsonConvert.DeserializeObject<TRequest>(requestJson, gameDataStore.GetJsonSettings()); 
+            // This runs on the CLIENT: requestJson arrived from the host over the wire (only
+            // NetworkedRequestMessageReceiver calls in here), so with the #264 server browser it may
+            // come from a stranger's host. Deserialize through the wire allowlist (#186), not the
+            // store's permissive settings. Serialize the reply the same way so the $type BindToName
+            // written here always matches what the peer's wire binder will accept on the way back —
+            // one source of truth, no drift.
+            JsonSerializerSettings wireSettings = WireJsonSettings.For(gameDataStore);
+            TRequest? request = JsonConvert.DeserializeObject<TRequest>(requestJson, wireSettings);
 
             if (request == null)
             {
@@ -71,7 +79,7 @@ namespace FDG.StageResolution
             // Pass typeof(TReply) so TypeNameHandling.Auto can record the concrete
             // subtype when the declared reply is a polymorphic base
             // (e.g. CancellableResult<T>).
-            string replyAsJson = JsonConvert.SerializeObject(reply.Result, typeof(TReply), gameDataStore.GetJsonSettings());
+            string replyAsJson = JsonConvert.SerializeObject(reply.Result, typeof(TReply), wireSettings);
 
             return replyAsJson;
         }

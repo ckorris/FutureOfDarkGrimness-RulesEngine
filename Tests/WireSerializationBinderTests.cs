@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using FDG;
 using FDG.Data;
 using FDG.Network;
 using FDG.Network.Messages;
@@ -10,6 +11,7 @@ using FDG.Presentation.Beats;
 using FDG.Presentation.Messages;
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
+using FDG.StageResolution;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using NUnit.Framework;
@@ -152,6 +154,71 @@ namespace FDG.Tests
             ArraySegment<byte> frame = CraftFrame(typeof(PresentBeatMessage).ToString(), hostileJson);
 
             Assert.Throws<JsonSerializationException>(() => serializer.DeserializeMessage(frame));
+        }
+
+        // ---- Request-BODY path (StageResolverRegistry.ResolveRequestAsJson) ------------------
+        // The envelope hardening isn't enough: the inner request/reply JSON is deserialized
+        // separately. This is the site a malicious host attacks on a connecting client (#264).
+
+        [Test]
+        public async Task ResolveRequestAsJson_LegitimateRequestBody_StillResolves()
+        {
+            GameDataStore store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var registry = new StageResolverRegistry();
+            registry.RegisterResolver<WireProbeRequest, string>(new WireProbeResolver());
+
+            var request = new WireProbeRequest(new PlayerID(Guid.NewGuid()), new TaskID(Guid.NewGuid()));
+            string requestJson = JsonConvert.SerializeObject(request, store.GetJsonSettings());
+
+            string replyJson = await registry.ResolveRequestAsJson(
+                typeof(WireProbeRequest).FullName!, requestJson, store);
+
+            Assert.That(replyJson, Does.Contain("resolved"));
+        }
+
+        [Test]
+        public void ResolveRequestAsJson_HostileTypeInRequestBody_Throws()
+        {
+            GameDataStore store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var registry = new StageResolverRegistry();
+            registry.RegisterResolver<WireProbeRequest, string>(new WireProbeResolver());
+
+            // A crafted request body naming a framework gadget where a nested polymorphic value
+            // would sit. The store's permissive settings would resolve it; the wire settings the
+            // resolver now uses must refuse it (bubbling out of ResolveRequestAsJson's task).
+            var writer = new DefaultSerializationBinder();
+            writer.BindToName(typeof(FileInfo), out string? assembly, out string? name);
+            string hostileRequestJson =
+                $"{{\"TargetPlayerID\":{{\"ID\":\"{Guid.Empty}\"}},\"TaskID\":{{\"ID\":\"{Guid.Empty}\"}}," +
+                $"\"Payload\":{{\"$type\":\"{name}, {assembly}\",\"fileName\":\"/tmp/x\"}}}}";
+
+            Assert.ThrowsAsync<JsonSerializationException>(async () => await registry.ResolveRequestAsJson(
+                typeof(WireProbeRequest).FullName!, hostileRequestJson, store));
+        }
+
+        private sealed class WireProbeRequest : IStageTaskRequest<string>
+        {
+            public PlayerID TargetPlayerID { get; }
+            public TaskID TaskID { get; }
+            // A polymorphic slot: exactly where an attacker plants a gadget $type. Object-typed so
+            // TypeNameHandling.Auto records the concrete type — the thing the binder must gate.
+            public object? Payload { get; }
+            public string TaskName => "WireProbe";
+
+            [JsonConstructor]
+            public WireProbeRequest(PlayerID targetPlayerID, TaskID taskID, object? payload = null)
+            {
+                TargetPlayerID = targetPlayerID;
+                TaskID = taskID;
+                Payload = payload;
+            }
+
+            public Task<string> Resolve(string resolution) => Task.FromResult(resolution);
+        }
+
+        private sealed class WireProbeResolver : IStageResolver<WireProbeRequest, string>
+        {
+            public Task<string> Resolve(WireProbeRequest context) => Task.FromResult("resolved");
         }
     }
 }

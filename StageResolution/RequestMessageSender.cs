@@ -1,5 +1,6 @@
 ﻿using FDG.Data;
 using FDG.MessageBus;
+using FDG.Network;
 using FDG.Network.Connection;
 using FDG.Network.Messages.StageRequestMessages;
 using FDG.Players;
@@ -72,7 +73,11 @@ namespace FDG.StageResolution
                 throw new InvalidOperationException($"Type {typeof(TReply)} has no full type name.");
             }
 
-            string? requestJson = JsonConvert.SerializeObject(request, _gameDataStore.GetJsonSettings());
+            // Serialize the outbound request with the wire settings so the $type BindToName written
+            // here matches what the receiving client's wire binder will accept (#186) — same reason
+            // the reply body uses them. BindToName is identical to the store binder, so the produced
+            // bytes are unchanged; this is drift-proofing, not a format change.
+            string? requestJson = JsonConvert.SerializeObject(request, WireJsonSettings.For(_gameDataStore));
 
             if (requestJson == null)
             {
@@ -231,7 +236,11 @@ namespace FDG.StageResolution
 
         private void DeserializeAndReturnReply<TReply>(string replyJson, TaskCompletionSource<TReply> replyTask)
         {
-            TReply? reply = JsonConvert.DeserializeObject<TReply>(replyJson, _gameDataStore.GetJsonSettings());
+            // replyJson is attacker-controlled: a networked client computed and sent it. Deserialize
+            // it through the wire allowlist (#186), NOT the store's permissive settings — a reply
+            // body carries polymorphic $type (CancellableResult<T> etc.), which is exactly the RCE
+            // surface the envelope hardening would otherwise leave open here.
+            TReply? reply = JsonConvert.DeserializeObject<TReply>(replyJson, WireJsonSettings.For(_gameDataStore));
 
             // A null reply is a legitimate "cancel / no selection" (e.g. a SelectionRequest's Back button),
             // NOT a deserialization failure — the requesting stage decides how to handle it. Treating null as

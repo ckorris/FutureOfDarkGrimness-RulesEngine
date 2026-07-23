@@ -1,9 +1,36 @@
+using FDG.Data;
 using FDG.SaveLoad;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 
 namespace FDG.Network
 {
+    /// <summary>
+    /// Single source of truth for the JSON settings used on the untrusted network path (#186): the
+    /// store's settings (same converters + <c>TypeNameHandling</c> the full-state sync depends on)
+    /// with the permissive binder replaced by <see cref="WireSerializationBinder"/>. Every wire
+    /// deserialization — the message envelope (<c>MessageSerializer</c>), stage-request bodies
+    /// (<c>StageResolverRegistry</c>), and reply bodies (<c>RequestMessageSender</c>) — must build
+    /// its settings through here, never from <c>GetJsonSettings()</c> directly.
+    /// </summary>
+    public static class WireJsonSettings
+    {
+        public static JsonSerializerSettings For(IReadableGameDataStore gameDataStore)
+        {
+            JsonSerializerSettings storeSettings = gameDataStore.GetJsonSettings();
+            return new JsonSerializerSettings()
+            {
+                TypeNameHandling = storeSettings.TypeNameHandling,
+                Converters = storeSettings.Converters,
+                SerializationBinder = new WireSerializationBinder(),
+                // Explicit rather than inherited-by-default: an inbound frame must not be able to
+                // drive the deserializer past a sane nesting depth (Newtonsoft 13's default is 64;
+                // pinned here so the wire path is unaffected by any future global default change).
+                MaxDepth = 64,
+            };
+        }
+    }
+
     /// <summary>
     /// The <b>wire-path</b> serialization binder (#186): resolves polymorphic <c>$type</c> tokens in
     /// network messages against an allowlist instead of letting Newtonsoft's

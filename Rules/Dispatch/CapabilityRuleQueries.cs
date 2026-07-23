@@ -20,7 +20,7 @@ namespace FDG.Rules.Dispatch
     ///
     /// <para>Every query names the unit's MODELS as participants alongside the unit (#093), so a rule the
     /// #006 hero-merge relocated onto a joined hero's model still counts for the host unit — the same
-    /// accommodation <c>StartOfRoundExtraActionStage.GrantSpellTokens</c> makes when funding a spell pool.
+    /// accommodation <c>StartOfRoundExtraActionStage.GrantRoundStartTokens</c> makes when funding a spell pool.
     /// All are non-logging and side-effect-free: safe to call per-frame while building UI, and safe to call
     /// repeatedly while scanning every unit on the table.</para>
     /// </summary>
@@ -67,6 +67,30 @@ namespace FDG.Rules.Dispatch
         /// </summary>
         public static bool CanReDeploy(IUnit unit, RuleEvaluator evaluator) =>
             Answers<RuleOperation.EnableReDeployment>(unit, evaluator);
+
+        /// <summary>
+        /// The pools <paramref name="unit"/> is currently lending to other friendly casters, each with the
+        /// range it reaches (core <c>Spell Accumulator(X)</c>). Empty for almost every unit. Read by
+        /// <c>SpellPurse</c>, which is the only thing that knows what a borrower may then do with them.
+        ///
+        /// <para>A list rather than a single answer because two lending rules on one unit are two distinct
+        /// offers - unlike two <c>Transport</c> rules, which describe the same hold twice.</para>
+        /// </summary>
+        public static IReadOnlyList<RuleOperation.EnableSpellLending> LentPools(IUnit unit,
+            RuleEvaluator evaluator)
+        {
+            List<RuleOperation.EnableSpellLending>? lent = null;
+            foreach (RuleOperation op in Ask(unit, evaluator))
+            {
+                if (op is RuleOperation.EnableSpellLending lending)
+                {
+                    (lent ??= new List<RuleOperation.EnableSpellLending>()).Add(lending);
+                }
+            }
+
+            return (IReadOnlyList<RuleOperation.EnableSpellLending>?)lent
+                ?? System.Array.Empty<RuleOperation.EnableSpellLending>();
+        }
 
         private static bool Answers<TOperation>(IUnit unit, RuleEvaluator evaluator)
             where TOperation : RuleOperation

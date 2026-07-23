@@ -224,7 +224,7 @@ namespace FDG.Tests
 
         private static void GrantRoundStartTokens(TestRuleHarness harness, IUnit unit)
         {
-            // What StartOfRoundExtraActionStage.GrantSpellTokens does, models included (#093).
+            // What StartOfRoundExtraActionStage.GrantRoundStartTokens does, models included (#093).
             OperationApplier.ApplyTokenOperations(harness.Evaluator.Evaluate(
                 unit, ERuleSeat.Actor, new RoundStartContext(unit), weapon: null, models: unit.Models));
         }

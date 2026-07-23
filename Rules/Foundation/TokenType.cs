@@ -5,6 +5,7 @@ public readonly record struct TokenType(string Id)
     public const string SHAKEN_ID = "Shaken";
     public const string FATIGUED_ID = "Fatigued";
     public const string SPELL_TOKENS_ID = "SpellTokens";
+    public const string ACCUMULATOR_TOKENS_ID = "AccumulatorTokens";
     public const string RULE_GRANT_ID = "RuleGrant";
     public const string ARRIVED_FROM_RESERVE_ID = "ArrivedFromReserve";
     public const string IN_RESERVE_ID = "InReserve";
@@ -39,6 +40,26 @@ public readonly record struct TokenType(string Id)
     public static readonly TokenType Shaken = new(SHAKEN_ID);
     public static readonly TokenType Fatigued = new(FATIGUED_ID);
     public static readonly TokenType SpellTokens = new(SPELL_TOKENS_ID);
+
+    /// <summary>
+    /// A lending pool a unit builds up for OTHER friendly casters to draw on (Spell Accumulator). Spent
+    /// "as if they were their own spell tokens", so functionally identical to
+    /// <see cref="SpellTokens"/> at the point of spending — but a SEPARATE type, and that separation is
+    /// load-bearing rather than tidy-minded:
+    /// <list type="bullet">
+    ///   <item>the rule reads "casters from OTHER friendly units may spend this model's accumulator
+    ///         tokens". An accumulator that is itself a caster (the corpus puts Change Boon on caster
+    ///         units) must not be able to spend its own pool - which is exactly what one shared type
+    ///         would allow;</item>
+    ///   <item>its cap is the rule's ("can't hold more than 6 at once"), not the engine's
+    ///         <c>MAX_SPELL_TOKENS</c>, and the two are free to diverge;</item>
+    ///   <item>holding a lending pool must never make a unit look like a caster to the #103 assist scan
+    ///         or to any other "has spell tokens" test.</item>
+    /// </list>
+    /// Which pools a unit lends, to whom, and how far is not read off this type: it is answered at
+    /// <see cref="EHookID.Lifecycle_OnCapabilityQuery"/> and gathered by <c>SpellPurse</c>.
+    /// </summary>
+    public static readonly TokenType AccumulatorTokens = new(ACCUMULATOR_TOKENS_ID);
     public static readonly TokenType RuleGrant = new (RULE_GRANT_ID);
     public static readonly TokenType HitRollModifier = new(HIT_ROLL_MODIFIER_ID);
     public static readonly TokenType SaveRollModifier = new(SAVE_ROLL_MODIFIER_ID);

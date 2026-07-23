@@ -55,6 +55,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(EnableCasting), "enableCasting")]
 [JsonDerivedType(typeof(EnableTransport), "enableTransport")]
 [JsonDerivedType(typeof(EnableReDeployment), "enableReDeployment")]
+[JsonDerivedType(typeof(EnableSpellLending), "enableSpellLending")]
 [JsonDerivedType(typeof(TargetIndividualModel), "targetIndividualModel")]
 [JsonDerivedType(typeof(RestrictActions), "restrictActions")]
 [JsonDerivedType(typeof(RangeModifier), "rangeModifier")]
@@ -713,6 +714,24 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.EnableReDeployment());
+        }
+    }
+
+    /// <summary>
+    /// The bearer opens its <see cref="Pool"/> to other friendly casters within <see cref="RangeInches"/>,
+    /// who spend those tokens as if they were their own spell tokens. Conferred by <c>Spell Accumulator(X)</c>,
+    /// whose X is how many tokens the pool gains each round (a separate <see cref="GrantToken"/> entry) - the
+    /// range is not argumented in the corpus, hence a plain float here rather than a <see cref="ValueSource"/>.
+    ///
+    /// <para>Authored at <see cref="EHookID.Lifecycle_OnCapabilityQuery"/> like every other capability, which
+    /// is what makes "friendly casters may only use this rule if this unit isn't Shaken" a plain
+    /// <see cref="Condition"/> on the entry rather than a special case in the casting stage.</para>
+    /// </summary>
+    public sealed record EnableSpellLending(TokenType Pool, float RangeInches) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.EnableSpellLending(Pool, RangeInches));
         }
     }
 

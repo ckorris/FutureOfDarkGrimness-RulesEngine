@@ -297,6 +297,7 @@ namespace FDG.SaveLoad
             string[] knownIds =
             {
                 TokenType.SHAKEN_ID, TokenType.FATIGUED_ID, TokenType.SPELL_TOKENS_ID,
+                TokenType.ACCUMULATOR_TOKENS_ID,
                 TokenType.RULE_GRANT_ID, TokenType.ARRIVED_FROM_RESERVE_ID, TokenType.EMBARKED_IN_ID,
                 TokenType.MARK_ID, TokenType.POST_COMBAT_MOVE_USED_ID,
                 TokenType.OFF_TABLE_FROM_FORCED_MOVE_ID, TokenType.LIMITED_SPENT_ID,

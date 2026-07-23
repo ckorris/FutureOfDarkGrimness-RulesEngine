@@ -509,7 +509,9 @@ namespace FDG.Stages
                 return false;
             }
 
-            int tokens = unit.Tokens.GetTokenCount(TokenType.SpellTokens);
+            // The purse (own tokens + nearby friendly Spell Accumulators), so the Cast action is offered
+            // whenever the unit could actually pay - CastSpellStage's picker prices spells the same way.
+            int tokens = SpellPurse.Available(GameContext.TableState, GameContext.RuleEvaluator, unit);
             PlayerID player = context.ActivatingPlayer();
 
             ArmyData army = GameContext.GameDataStore().GetAllValues<ArmyData>()

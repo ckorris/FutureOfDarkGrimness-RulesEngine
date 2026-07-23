@@ -293,9 +293,13 @@ public static class RuleFireLint
 
         return hook switch
         {
-            // CapabilityRuleQueries.CanCast: the capability question. The op is not applied by anything - its
-            // presence in the queue IS the answer - so it is "consumed" wherever it is emitted.
-            EHookID.Lifecycle_OnCapabilityQuery => op is RuleOperation.EnableCasting,
+            // CapabilityRuleQueries: the capability question. These ops are not applied by anything - their
+            // presence in the queue IS the answer - so they are "consumed" wherever they are emitted. Any
+            // op that is NOT a capability answer is still a no-op here, which is the point: this hook is a
+            // question, and emitting (say) a token grant in reply to it does nothing.
+            EHookID.Lifecycle_OnCapabilityQuery => op is RuleOperation.EnableCasting
+                or RuleOperation.EnableTransport or RuleOperation.EnableReDeployment
+                or RuleOperation.EnableSpellLending,
 
             // DetermineHitRollStage: shifts the hit threshold and floors Quality. It never reads a Save delta.
             EHookID.Shooting_OnHitRollModifier =>

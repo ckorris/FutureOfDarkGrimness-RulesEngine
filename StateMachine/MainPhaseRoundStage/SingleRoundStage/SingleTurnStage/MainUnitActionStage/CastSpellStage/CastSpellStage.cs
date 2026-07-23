@@ -97,7 +97,10 @@ namespace FDG.Stages
             // cast from looping forever under a deterministic resolver — the same reason
             // ChooseRangedAttackStage filters weapons to those with a fireable target. Non-castable spells
             // still appear in the picker as disabled rows with the reason (#244).
-            int tokens = caster.Tokens.GetTokenCount(TokenType.SpellTokens);
+            // #197 P23 — the purse, not the unit's own pool: a nearby friendly Spell Accumulator's tokens
+            // are spendable "as if they were their own spell tokens", so they count toward affordability
+            // everywhere an owned token does.
+            int tokens = SpellPurse.Available(GameContext.TableState, GameContext.RuleEvaluator, caster);
             IReadOnlyList<SpellOffer> offer = BuildSpellOffer(context, context.ActivatingUnit, player, tokens);
             if (!offer.Any(o => o.Castable))
             {
@@ -144,7 +147,16 @@ namespace FDG.Stages
             // burns the try exactly as a successful one does. Every cancel path above returns first, so a
             // browsed-and-cancelled spell is not consumed.
             context.RegisterSpellAttempt(chosen.Name);
-            caster.Tokens.RemoveTokens(TokenType.SpellTokens, chosen.Threshold + boost);
+            IReadOnlyList<SpellPurse.Loan> loans = SpellPurse.Spend(GameContext.TableState,
+                GameContext.RuleEvaluator, caster, chosen.Threshold + boost);
+            if (loans.Count > 0)
+            {
+                // Borrowing is worth its own banner: the tokens left someone else's pool, and that player
+                // needs to see it happen rather than notice the shortfall later.
+                await GameContext.Announce(
+                    $"{caster.Name} draws on nearby accumulators to cast {chosen.Name} " +
+                    $"({SpellPurse.Describe(loans)}).", AssistBannerColor);
+            }
             if (boost > 0)
             {
                 await GameContext.Announce(
@@ -364,9 +376,14 @@ namespace FDG.Stages
 
             // How much the roll could still be hindered after the caster commits — enemy Casters in assist
             // range and their tokens — so the picker can gray out boost past the point it can matter.
+            // Each hinderer's whole purse, summed. Deliberately an over-estimate: it assumes every enemy
+            // Caster spends everything, and if two of them can reach one accumulator it counts that pool
+            // twice. Both errors point the same way (the picker grays out boost slightly early) and the
+            // alternative is solving an allocation the enemy hasn't made yet.
             int hinderTokens = FindEligibleAssisters(casterBinding, player)
                 .Where(entry => !entry.friendly)
-                .Sum(entry => entry.unit.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens));
+                .Sum(entry => SpellPurse.Available(GameContext.TableState, GameContext.RuleEvaluator,
+                    entry.unit.GetValue()));
 
             ChooseSpellRequest request = new ChooseSpellRequest(player, casterBinding, tokens,
                 CAST_SUCCESS_THRESHOLD, hinderTokens, options);
@@ -475,14 +492,25 @@ namespace FDG.Stages
             foreach ((DataBinding<UnitData> unitBinding, bool friendly) in FindEligibleAssisters(casterBinding, casterPlayer))
             {
                 IUnit assister = unitBinding.GetValue();
-                int available = assister.Tokens.GetTokenCount(TokenType.SpellTokens);
+
+                // Re-read per assister rather than reusing FindEligibleAssisters' snapshot: an earlier
+                // assister this round may have drained the accumulator they share.
+                int available = SpellPurse.Available(GameContext.TableState, GameContext.RuleEvaluator,
+                    assister);
                 if (available <= 0) continue;
 
                 int spent = await AskAssistCount(unitBinding, casterBinding, friendly, available, spellName);
                 if (spent <= 0) continue;
 
-                assister.Tokens.RemoveTokens(TokenType.SpellTokens, spent);
+                IReadOnlyList<SpellPurse.Loan> loans = SpellPurse.Spend(GameContext.TableState,
+                    GameContext.RuleEvaluator, assister, spent);
                 net += friendly ? spent : -spent;
+
+                if (loans.Count > 0)
+                {
+                    GameContext.Log($"{assister.Name} funds that with borrowed accumulator tokens " +
+                                    $"({SpellPurse.Describe(loans)}).");
+                }
 
                 // Text beat: announce who assisted/hindered and by how much — an on-screen banner plus the
                 // log line, blue for a friendly boost and orange for an enemy disruption (matches the GUI
@@ -519,7 +547,7 @@ namespace FDG.Stages
                 UnitData unit = unitBinding.GetValue();
                 if (!unit.GetIsAlive() || !unit.GetIsOnBattlefield()) continue;
                 if (!SpellTargeting.IsCaster(GameContext, unit)) continue;
-                if (unit.Tokens.GetTokenCount(TokenType.SpellTokens) <= 0) continue;
+                if (SpellPurse.Available(GameContext.TableState, GameContext.RuleEvaluator, unit) <= 0) continue;
 
                 float distance = UnitCompareUtilities.MinDistanceBetweenUnits(
                     castingUnit, unit, out _, out _, includeVertical: true);

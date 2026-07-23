@@ -333,7 +333,7 @@ namespace FDG.Ai.Tactician
             ArmyData? army = SpellValuation.ArmyOf(_tableState, self.PlayerID);
             if (army == null) return null;
 
-            int tokens = self.Tokens.GetTokenCount(TokenType.SpellTokens);
+            int tokens = SpellPurse.Available(_tableState, _evaluator, self);
             RuntimeSpell? best = null;
             float bestValue = 0f; // strictly positive expected value required to bother
             foreach (RuntimeSpell spell in army.Spells)

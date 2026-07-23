@@ -83,6 +83,12 @@ public static class TokenDefinitionCatalog
                 ColorOverride: ETokenColor.Blue,
                 Description: "Spell tokens available to spend on casting this round."),
 
+            // Spell Accumulator's lending pool. No default clear trigger: it carries over between rounds
+            // (the rule caps the total instead of expiring it), so the grant site passes ManualOnly.
+            new(TokenType.ACCUMULATOR_TOKENS_ID, "Accumulator Tokens", EValence.Positive,
+                ETokenProminence.FirstClass, ColorOverride: ETokenColor.Blue,
+                Description: "Accumulator tokens other friendly casters nearby may spend as spell tokens."),
+
             new(TokenType.HIT_ROLL_MODIFIER_ID, "Hit modifier", EValence.Neutral, ETokenProminence.Normal,
                 ValenceSource: EValenceSource.PayloadSign),
 

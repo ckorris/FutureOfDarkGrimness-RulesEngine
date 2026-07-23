@@ -68,7 +68,7 @@ public sealed class RuleEvaluator
         // so a one-shot (NextTrigger) granted rule firing here is projected but never spent. Correct today:
         // 3 of its 4 call sites are read-only queries (TryGet*Defer) that MUST NOT consume, and no corpus
         // rule grants a one-shot buff firing only at a round-start/deployment/activation hook. If one ever
-        // does, add a `consumeGrants` opt-in and set it on the apply site (GrantSpellTokens) only — see #104.
+        // does, add a `consumeGrants` opt-in and set it on the apply site (GrantRoundStartTokens) only — see #104.
         CollectTagged(unit, seat, weapon, models, modelScope, context, tagged, new DedupState(),
             grantsToConsume: null, trace: TraceEnabled);
 

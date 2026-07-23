@@ -250,7 +250,11 @@ namespace FDG.Ai.Tactician
             UnitData self, Position start, List<IUnit> enemies, List<IUnit> friends, float advance,
             bool canMoveThroughEnemies, bool ignoresDifficult, bool ignoresAllTerrain)
         {
-            int tokens = self.Tokens.GetTokenCount(TokenType.SpellTokens);
+            // Priced against the full purse (own tokens + nearby friendly accumulators), matching what
+            // ChooseActionStage will actually allow. Measured from where the unit stands now: moving to set
+            // up the cast can carry it out of an accumulator's range, so the estimate can be optimistic -
+            // acceptable for a candidate generator whose moves the planner scores and may discard anyway.
+            int tokens = SpellPurse.Available(tableState, evaluator, self);
             if (tokens <= 0) return;
 
             ArmyData? army = null;

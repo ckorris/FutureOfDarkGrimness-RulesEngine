@@ -499,6 +499,17 @@ public abstract record RuleOperation
     public sealed record EnableReDeployment : RuleOperation;
 
     /// <summary>
+    /// The bearer lends its <see cref="Pool"/> tokens to OTHER friendly casters within
+    /// <see cref="RangeInches"/>, who spend them as if they were their own spell tokens. Resolution of
+    /// <see cref="Effect.EnableSpellLending"/> (Spell Accumulator). Read by <c>SpellPurse</c>.
+    ///
+    /// <para>The pool rides the operation rather than being assumed by the engine so the two halves of the
+    /// rule - the round-start <see cref="Effect.GrantToken"/> that fills the pool and this entry that opens
+    /// it to borrowers - name the same token type explicitly instead of agreeing by convention.</para>
+    /// </summary>
+    public sealed record EnableSpellLending(TokenType Pool, float RangeInches) : RuleOperation;
+
+    /// <summary>
     /// Re-scope the in-flight attack to a single chosen model in the target unit.
     /// Resolution of <see cref="Effect.TargetIndividualModel"/> (Takedown).
     /// </summary>

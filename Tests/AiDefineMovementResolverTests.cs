@@ -107,6 +107,66 @@ namespace FDG.Tests
         }
 
         [Test]
+        public async Task Resolve_AllEnemiesDead_StandStillAgainstImpassibleWall_ResultIsEngineValid()
+        {
+            // #211: the impassible flavor of the #256 stand-still hole. With every enemy dead, the
+            // resolver's early-out used to answer with an UNVALIDATED StayInPlace reform; for a
+            // casualty-holed unit parked against an impassible piece, the re-pack sweeps a survivor
+            // THROUGH the wall and DefinePathStage faults ("Moves through impassible terrain",
+            // a5-3-gate seed 3001). The stand-still must validate its reform and degrade to the
+            // zero-length hold when the re-pack is blocked.
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var selfPlayer = new PlayerID(System.Guid.NewGuid());
+
+            const float r = 0.551f;
+            const float spacing = 2f * r + 0.1f; // matches CohesiveFormation grid spacing
+            var bindings = new List<DataBinding<ModelData>>();
+            for (int i = 0; i < 5; i++)
+            {
+                var m = new ModelData(r, new List<Weapon>(), new Position(i * spacing, 20f), store);
+                bindings.Add(store.GetDataBinding<ModelData>(store.Create(m)));
+            }
+            // Kill the middle three: survivors at x=0 and x=4.808 (broken, so the stay wants a re-pack
+            // pulling both toward the centroid at x=2.404).
+            foreach (int dead in new[] { 1, 2, 3 })
+                bindings[dead].GetValue().DealWounds(bindings[dead].GetValue().TotalWounds);
+
+            var unitBinding = store.GetDataBinding<UnitData>(store.Create(
+                new UnitData(selfPlayer, "Survivors", 4, 4, bindings)));
+
+            // Impassible wall between the left survivor and its re-pack slot (~x=1.8): the reform's
+            // sweep crosses it, the exact-position hold does not touch it.
+            var wall = new TerrainData(ETerrainType.Impassible, new RectangularZone(0.9f, 1.1f, 19f, 21f));
+            store.Create(wall);
+
+            // No enemy units at all - the early-out path.
+            var tableState = new TableState(store);
+            var resolver = new AiDefineMovementResolver(tableState, selfPlayer);
+            var request = new DefineMovementPathRequest(selfPlayer, "Move", unitBinding,
+                maxAdvanceDistance: 6f, maxRushDistance: 12f, maxDistanceInches: 12f);
+
+            List<ModelMoveEntry> result = Unwrap(await resolver.Resolve(request));
+
+            // Guard against a vacuous pass: the raw (unvalidated) reform really is the faulting move.
+            var living = bindings.Where(b => b.GetValue().GetIsAlive()).ToList();
+            bool rawStayValid = MovementUtilities.ValidatePaths(FDG.Ai.Tactician.MovementPlanner.StayInPlace(unitBinding),
+                _ => new ModelMoveBudget(12f, 12f), new List<EnemyModelFootprint>(),
+                canMoveThroughEnemies: false, ignoresDifficultTerrain: false, ignoresImpassibleTerrain: false,
+                new List<ITerrain> { wall }, out _, null, lenientCoherency: true);
+            Assert.That(rawStayValid, Is.False,
+                "geometry check: the unvalidated reform must actually sweep through the wall");
+
+            // The resolver's answer must pass the stage's exact check (lenient coherency, #159).
+            bool valid = MovementUtilities.ValidatePaths(result,
+                _ => new ModelMoveBudget(12f, 12f), new List<EnemyModelFootprint>(),
+                canMoveThroughEnemies: false, ignoresDifficultTerrain: false, ignoresImpassibleTerrain: false,
+                new List<ITerrain> { wall }, out var errors, null, lenientCoherency: true);
+            Assert.That(valid, Is.True,
+                "a stand-still next to an impassible wall must not re-pack through it: "
+                + string.Join(", ", errors.Select(e => e.ToString())));
+        }
+
+        [Test]
         public async Task Resolve_StraightPathBlockedByImpassible_SkirtsInsteadOfFreezing()
         {
             var store = GameDataStore.GameDataStoreBuilder.GetDefault();

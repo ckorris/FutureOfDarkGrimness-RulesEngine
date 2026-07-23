@@ -64,9 +64,23 @@ namespace FDG.Stages
             foreach (IReadOnlyList<AbilityOffer> ruleOffers in AbilityEffectChoice.GroupByRule(
                          GameContext.RuleEvaluator.GatherOffers(new ActivationStartContext(unit))))
             {
-                // #248: resolving the ability spends its once-per-activation cost and grants a
-                // ThisActivation rule — re-running this stage would double-apply, so the activation can
-                // no longer be backed out of.
+                // A rule offering exactly ONE ability at this hook is a "you MAY use" rule (Speed Feat's
+                // once-per-game boost): offer it with a Yes/No, don't force it - declining saves it for a
+                // later activation. The "pick one effect" rules (Versatile Attack/Defense/Reach, Watchborn)
+                // all offer 2+ abilities and stay a mandatory pick. Mirrors DeployUnitStage's shape.
+                if (ruleOffers.Count == 1)
+                {
+                    AbilityOffer offer = ruleOffers[0];
+                    var question = new YesNoRequest(context.ActivatingPlayer(),
+                        $"Use {offer.RuleName} on {unit.Name}?", defaultAnswer: true);
+                    bool accepted = await GameContext.PlayerRequester
+                        .RequestDecision<YesNoRequest, bool>(question);
+                    if (!accepted) continue;
+                }
+
+                // #248: resolving the ability spends its cost and grants a rule — re-running this stage
+                // would double-apply, so the activation can no longer be backed out of. Only reached once
+                // an optional ability is accepted (declining above leaves the activation pristine).
                 context.MarkIrreversibleAction();
 
                 AbilityEffectChoice.Outcome outcome = await AbilityEffectChoice.Resolve(

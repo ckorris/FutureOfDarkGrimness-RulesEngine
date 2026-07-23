@@ -293,9 +293,9 @@ public static class RuleFireLint
 
         return hook switch
         {
-            // CastingRuleQueries.CanCast: the capability question. The op is not applied by anything - its
+            // CapabilityRuleQueries.CanCast: the capability question. The op is not applied by anything - its
             // presence in the queue IS the answer - so it is "consumed" wherever it is emitted.
-            EHookID.Casting_OnCastCapability => op is RuleOperation.EnableCasting,
+            EHookID.Lifecycle_OnCapabilityQuery => op is RuleOperation.EnableCasting,
 
             // DetermineHitRollStage: shifts the hit threshold and floors Quality. It never reads a Save delta.
             EHookID.Shooting_OnHitRollModifier =>
@@ -498,8 +498,8 @@ public static class RuleFireLint
             case EHookID.Round_OnRoundStart:
                 yield return new RoundStartContext(bearer);
                 break;
-            case EHookID.Casting_OnCastCapability:
-                yield return new CastCapabilityContext(bearer);
+            case EHookID.Lifecycle_OnCapabilityQuery:
+                yield return new CapabilityQueryContext(bearer);
                 break;
             case EHookID.Round_OnRoundEnd:
                 yield return new RoundEndContext(bearer);

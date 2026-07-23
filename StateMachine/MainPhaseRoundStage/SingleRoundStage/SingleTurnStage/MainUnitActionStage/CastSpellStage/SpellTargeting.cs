@@ -55,7 +55,7 @@ namespace FDG.Stages
         /// models as participants exactly as the round-start token grant does.</para>
         /// </summary>
         public static bool IsCaster(IGameContext gameContext, IUnit unit) =>
-            CastingRuleQueries.CanCast(unit, gameContext.RuleEvaluator);
+            CapabilityRuleQueries.CanCast(unit, gameContext.RuleEvaluator);
 
         private static bool MatchesAffinity(ETargetAffinity affinity, DataBinding<UnitData> caster,
             DataBinding<UnitData> candidate, System.Func<PlayerID, bool> isFriendly)

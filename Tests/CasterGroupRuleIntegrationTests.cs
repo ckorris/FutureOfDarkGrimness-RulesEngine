@@ -29,7 +29,7 @@ namespace FDG.Tests
     // The third thing is the capability. Casting used to be detected by testing for the Caster rule by
     // identity, which Caster Group can never satisfy - its X is a live model count, so it cannot even be
     // granted as a Caster (grants carry no arguments). Both rules now answer the
-    // Casting_OnCastCapability question instead, which is what the stages ask.
+    // Lifecycle_OnCapabilityQuery question instead, which is what the stages ask.
     [TestFixture]
     public class CasterGroupRuleIntegrationTests
     {
@@ -40,7 +40,7 @@ namespace FDG.Tests
         private static SpecialRuleDefinition CasterGroup() => new(RuleName,
             new[]
             {
-                new HookEntry(EHookID.Casting_OnCastCapability, new Condition.Always(),
+                new HookEntry(EHookID.Lifecycle_OnCapabilityQuery, new Condition.Always(),
                     new Effect.EnableCasting(), ELifetime.UntilEndOfGame),
                 new HookEntry(EHookID.Round_OnRoundStart, new Condition.Always(),
                     new Effect.GrantToken(TokenType.SpellTokens, new ValueSource.RuleCarrierCount(),
@@ -65,7 +65,7 @@ namespace FDG.Tests
             TestRuleHarness harness = Harness();
             IUnit unit = harness.BuildUnit("P1", 3, RuleName);
 
-            Assert.That(CastingRuleQueries.CanCast(unit, harness.Evaluator), Is.True);
+            Assert.That(CapabilityRuleQueries.CanCast(unit, harness.Evaluator), Is.True);
             Assert.That(unit.RuleDefinitions.Any(rule => rule.Definition == CoreRuleCatalog.Caster), Is.False,
                 "the whole point: it confers casting without BEING Caster, which an identity check missed.");
         }
@@ -77,7 +77,7 @@ namespace FDG.Tests
             IUnit unit = harness.BuildUnit("P1", 1, "Caster");
             harness.AttachRule(unit, CoreRuleCatalog.Caster, new RuleArgument.Int(2));
 
-            Assert.That(CastingRuleQueries.CanCast(unit, harness.Evaluator), Is.True);
+            Assert.That(CapabilityRuleQueries.CanCast(unit, harness.Evaluator), Is.True);
         }
 
         [Test]
@@ -85,7 +85,7 @@ namespace FDG.Tests
         {
             TestRuleHarness harness = Harness();
 
-            Assert.That(CastingRuleQueries.CanCast(harness.BuildUnit("P1", 3), harness.Evaluator), Is.False);
+            Assert.That(CapabilityRuleQueries.CanCast(harness.BuildUnit("P1", 3), harness.Evaluator), Is.False);
         }
 
         [Test]
@@ -98,7 +98,7 @@ namespace FDG.Tests
             IUnit unit = harness.BuildUnit("P1", 3);
             ((ModelData)unit.Models[1]).AttachRuleDefinition(harness.Resolver.Resolve(RuleName));
 
-            Assert.That(CastingRuleQueries.CanCast(unit, harness.Evaluator), Is.True);
+            Assert.That(CapabilityRuleQueries.CanCast(unit, harness.Evaluator), Is.True);
         }
 
         [Test]
@@ -133,17 +133,17 @@ namespace FDG.Tests
             harness.Register(new SpecialRuleDefinition("Conditional Caster",
                 new[]
                 {
-                    new HookEntry(EHookID.Casting_OnCastCapability,
+                    new HookEntry(EHookID.Lifecycle_OnCapabilityQuery,
                         new Condition.Not(new Condition.TokenPresent(TokenType.Shaken)),
                         new Effect.EnableCasting(), ELifetime.UntilEndOfGame),
                 },
                 Array.Empty<ActivatedAbility>()));
 
             IUnit unit = harness.BuildUnit("P1", 1, "Conditional Caster");
-            Assert.That(CastingRuleQueries.CanCast(unit, harness.Evaluator), Is.True);
+            Assert.That(CapabilityRuleQueries.CanCast(unit, harness.Evaluator), Is.True);
 
             harness.SeedToken(unit, TokenType.Shaken);
-            Assert.That(CastingRuleQueries.CanCast(unit, harness.Evaluator), Is.False,
+            Assert.That(CapabilityRuleQueries.CanCast(unit, harness.Evaluator), Is.False,
                 "the capability is re-answered on every ask, so live state gates it.");
         }
 

@@ -221,7 +221,7 @@ namespace FDG.Ai.Tactician
 
             // M12 - a loaded transport routes toward where its CARGO wants to be (v1 proxy: the
             // nearest objective we do not already own outright - the cargo's most common plan).
-            if (TransportUtilities.IsTransport(self)
+            if (TransportUtilities.IsTransport(self, evaluator)
                 && TransportUtilities.GetOccupants(self, tableState.Units.Objects.ToList()).Any())
             {
                 IObjective? destination = tableState.Objectives.Objects

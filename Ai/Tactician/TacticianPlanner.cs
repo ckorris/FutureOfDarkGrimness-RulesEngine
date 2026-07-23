@@ -519,7 +519,7 @@ namespace FDG.Ai.Tactician
                 // A5-6: a loaded transport is worth boat + payload - protect the delivery.
                 float plainValue = TacticalAnalysis.UnitValue(friendly.GetValue());
                 if (plainValue > 0f)
-                    inbound *= TacticalAnalysis.UnitValueWithCargo(friendly.GetValue(), _tableState) / plainValue;
+                    inbound *= TacticalAnalysis.UnitValueWithCargo(friendly.GetValue(), _tableState, _evaluator) / plainValue;
                 float margin = inbound
                     - ValueFraction(exchange.DefenderReturn.ExpectedWounds, nearest.GetValue());
                 if (margin <= wardThreatValue) continue;

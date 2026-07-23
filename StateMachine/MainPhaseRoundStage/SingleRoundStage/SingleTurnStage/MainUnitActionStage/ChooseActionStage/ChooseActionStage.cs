@@ -182,9 +182,14 @@ namespace FDG.Stages
 
                 // #035 — Disembark is a custom action whose effect is movement (place within 6" of the
                 // transport + un-embark), not a token-op, so it routes to DisembarkStage rather than the
-                // generic CustomActionStage. Its name is engine-controlled (never collides) and it needs no
-                // pending-offer stash — DisembarkStage reads the embarked token directly.
-                if (offer.RuleName == CoreRuleCatalog.DisembarkRuleName)
+                // generic CustomActionStage. It needs no pending-offer stash — DisembarkStage reads the
+                // embarked token directly.
+                //
+                // Routed on the ability's EFFECT, not its rule NAME. Effect.Disembark exists for exactly
+                // this purpose (a no-op marker the stage recognises), so matching the name instead was
+                // reading the label off the thing while ignoring the thing — and it silently tied the
+                // routing to one rule, when any rule authoring the effect should route the same way.
+                if (offer.Ability.Effect is Effect.Disembark)
                 {
                     if (!outcomes.ContainsKey(offer.RuleName))
                     {
@@ -197,7 +202,7 @@ namespace FDG.Stages
                 // #035 slice D — Embark is offered only when it's still a move action (the unit hasn't moved
                 // or attacked) AND an engine spatial check finds a friendly transport with room within
                 // move-range (the availability gate can't be a data condition). Routed to EmbarkStage.
-                if (offer.RuleName == CoreRuleCatalog.EmbarkRuleName)
+                if (offer.Ability.Effect is Effect.Embark)
                 {
                     bool canEmbark = !context.HasMoved && !context.HasAttacked
                         && EmbarkStage.GetEmbarkableTransports(GameContext, context.ActivatingUnit.GetValue()).Count > 0;
@@ -215,7 +220,7 @@ namespace FDG.Stages
                 // "before attacking": gated on not-having-attacked here (its once-per-activation is enforced by
                 // the ability's own cost). The offer is stashed like a generic custom action so TeleportStage
                 // can resolve it to pay that cost. Fully layered - does not consume the move.
-                if (offer.RuleName == CoreRuleCatalog.TeleportRuleName)
+                if (offer.Ability.Effect is Effect.Teleport)
                 {
                     if (!context.HasAttacked && !outcomes.ContainsKey(offer.RuleName))
                     {

@@ -474,13 +474,29 @@ public abstract record RuleOperation
     /// </summary>
     public sealed record StrikeFirst : RuleOperation;
 
+    // --- Capabilities ------------------------------------------------------------------------------
+    //
+    // Answers to questions asked at Lifecycle_OnCapabilityQuery, never APPLIED by anything: presence in
+    // the queue IS the capability. Read through CapabilityRuleQueries. See EHookID.Lifecycle_OnCapabilityQuery
+    // for why capabilities are asked for rather than detected by testing for a named rule.
+
     /// <summary>
     /// The bearer can cast spells. Resolution of <see cref="Effect.EnableCasting"/> (Caster, Caster Group).
-    /// Unlike every other operation here this one is never APPLIED — it is the answer to a question
-    /// <c>CastingRuleQueries.CanCast</c> asks at <see cref="Foundation.EHookID.Casting_OnCastCapability"/>,
-    /// and its presence in the queue IS the capability.
     /// </summary>
     public sealed record EnableCasting : RuleOperation;
+
+    /// <summary>
+    /// The bearer can carry friendly units, with room for <see cref="Capacity"/> spaces. Resolution of
+    /// <see cref="Effect.EnableTransport"/> (Transport(X)). Capacity rides the operation because "is a
+    /// transport" and "how big is it" are the same question asked once.
+    /// </summary>
+    public sealed record EnableTransport(int Capacity) : RuleOperation;
+
+    /// <summary>
+    /// The bearer may be re-deployed in the post-deployment pass. Resolution of
+    /// <see cref="Effect.EnableReDeployment"/> (Re-Deployment).
+    /// </summary>
+    public sealed record EnableReDeployment : RuleOperation;
 
     /// <summary>
     /// Re-scope the in-flight attack to a single chosen model in the target unit.

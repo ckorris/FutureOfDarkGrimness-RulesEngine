@@ -95,8 +95,10 @@ namespace FDG.Stages
                 .SelectMany(army => army.UnitBindings)
                 .Count(unit => unit.GetValue().GetIsAlive() && HasReDeployment(unit.GetValue()));
 
-        private static bool HasReDeployment(UnitData unit) =>
-            unit.RuleDefinitions.Any(rule => rule.Definition == CoreRuleCatalog.ReDeployment);
+        // Asks the rule graph for the CAPABILITY rather than testing for the Re-Deployment rule by
+        // identity, so a second rule granting a re-deploy needs no change here.
+        private bool HasReDeployment(UnitData unit) =>
+            CapabilityRuleQueries.CanReDeploy(unit, GameContext.RuleEvaluator);
 
         /// <summary>
         /// Offers the player one of their living, on-table units (that hasn't already been redeployed) to

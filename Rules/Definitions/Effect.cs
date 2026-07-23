@@ -53,6 +53,8 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(ExtraMeleeWoundCount), "extraMeleeWoundCount")]
 [JsonDerivedType(typeof(StrikeFirst), "strikeFirst")]
 [JsonDerivedType(typeof(EnableCasting), "enableCasting")]
+[JsonDerivedType(typeof(EnableTransport), "enableTransport")]
+[JsonDerivedType(typeof(EnableReDeployment), "enableReDeployment")]
 [JsonDerivedType(typeof(TargetIndividualModel), "targetIndividualModel")]
 [JsonDerivedType(typeof(RestrictActions), "restrictActions")]
 [JsonDerivedType(typeof(RangeModifier), "rangeModifier")]
@@ -668,26 +670,49 @@ public abstract record Effect
         }
     }
 
+    // --- Capabilities --------------------------------------------------------------------------
+    //
+    // Authored at EHookID.Lifecycle_OnCapabilityQuery, where an effect is the ANSWER to "what can this
+    // unit do?" rather than something that happens. Each grants no token and mutates nothing: holding a
+    // capability is not a state a unit carries around, it is a question re-answered whenever it is asked,
+    // so the entry's Condition gates it and rule suppression can cancel it.
+    //
+    // The alternative - the engine testing for a named rule - silently excludes any OTHER rule conferring
+    // the same thing, which is exactly how Caster Group (not Caster, and never grantable as one: its X is
+    // a live model count and grants carry no arguments) went uncastable.
+
     /// <summary>
-    /// The bearer can cast spells — authored at
-    /// <see cref="Foundation.EHookID.Casting_OnCastCapability"/>, where it is the answer to
-    /// "may this unit open the cast prompt?" rather than something that happens.
-    ///
-    /// <para>Casting is a CAPABILITY several rules can confer, so the stages ask for it instead of
-    /// testing for a named rule: core <c>Caster(X)</c> confers it, and so does <c>Caster Group</c>,
-    /// which is not <c>Caster</c> and never could be (its X is a live model count, and granted rules
-    /// carry no arguments). Because the hook is evaluated live, an entry's
-    /// <see cref="Condition"/> gates the capability — the shape the corpus needs for the casting-support
-    /// rules whose service is offered "only if this unit isn't Shaken".</para>
-    ///
-    /// Grants no token and mutates nothing: holding the capability is not a state a unit carries around,
-    /// it is a question re-answered whenever it is asked.
+    /// The bearer can cast spells. Conferred by core <c>Caster(X)</c> and by <c>Caster Group</c>.
     /// </summary>
     public sealed record EnableCasting : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.EnableCasting());
+        }
+    }
+
+    /// <summary>
+    /// The bearer can carry friendly units, with room for <see cref="Capacity"/> spaces. Conferred by
+    /// core <c>Transport(X)</c>, whose X is the capacity — hence a <see cref="ValueSource"/> rather than a
+    /// plain int, so the capacity is read off the rule instance like every other argumented rule.
+    /// </summary>
+    public sealed record EnableTransport(ValueSource Capacity) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.EnableTransport(Capacity.Resolve(ruleInvocation)));
+        }
+    }
+
+    /// <summary>
+    /// The bearer may be re-deployed in the post-deployment pass. Conferred by core <c>Re-Deployment</c>.
+    /// </summary>
+    public sealed record EnableReDeployment : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.EnableReDeployment());
         }
     }
 

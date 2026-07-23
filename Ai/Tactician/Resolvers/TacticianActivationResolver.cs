@@ -106,7 +106,7 @@ namespace FDG.Ai.Tactician.Resolvers
             float transportBias = 0f;
             if (TransportUtilities.IsEmbarked(unit))
                 transportBias = TacticianWeights.ActivationEmbarkedCargoBias;
-            else if (TransportUtilities.IsTransport(unit)
+            else if (TransportUtilities.IsTransport(unit, _evaluator)
                 && TransportUtilities.GetOccupants(unit, _tableState.Units.Objects.ToList()).Any())
                 transportBias = TacticianWeights.ActivationLoadedTransportBias;
 

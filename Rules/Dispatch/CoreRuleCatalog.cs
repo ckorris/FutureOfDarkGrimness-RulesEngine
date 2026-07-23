@@ -1139,9 +1139,9 @@ public static class CoreRuleCatalog
                     new TokenClearTrigger.ManualOnly()),
                 ELifetime.UntilEndOfGame),
             // The capability half: funding a pool and being ALLOWED to spend it are separate questions,
-            // and the stages ask this one (CastingRuleQueries.CanCast) rather than testing for this rule
+            // and the stages ask this one (CapabilityRuleQueries.CanCast) rather than testing for this rule
             // by name — so a second caster-conferring rule needs no engine change. See Effect.EnableCasting.
-            new HookEntry(EHookID.Casting_OnCastCapability,
+            new HookEntry(EHookID.Lifecycle_OnCapabilityQuery,
                 new Condition.Always(),
                 new Effect.EnableCasting(),
                 ELifetime.UntilEndOfGame),
@@ -1168,7 +1168,16 @@ public static class CoreRuleCatalog
     /// Unit-scoped (the default).
     /// </summary>
     public static SpecialRuleDefinition Transport { get; } = new SpecialRuleDefinition("Transport",
-        Array.Empty<HookEntry>(),
+        new[]
+        {
+            // Being a transport is a CAPABILITY the stages ask for, not this rule's identity - so a second
+            // rule conferring a hold needs no engine change. The capacity rides the answer because "is it a
+            // transport" and "how big is the hold" are one question. See Effect.EnableTransport.
+            new HookEntry(EHookID.Lifecycle_OnCapabilityQuery,
+                new Condition.Always(),
+                new Effect.EnableTransport(new ValueSource.Arg(0)),
+                ELifetime.UntilEndOfGame),
+        },
         Array.Empty<ActivatedAbility>(),
         EngineArgumentCount: 1,
         Valence: EValence.Positive,
@@ -1261,7 +1270,15 @@ public static class CoreRuleCatalog
     /// operations).
     /// </summary>
     public static SpecialRuleDefinition ReDeployment { get; } = new SpecialRuleDefinition(ReDeploymentRuleName,
-        Array.Empty<HookEntry>(),
+        new[]
+        {
+            // A capability the re-deployment pass asks for rather than testing for this rule. See
+            // Effect.EnableReDeployment.
+            new HookEntry(EHookID.Lifecycle_OnCapabilityQuery,
+                new Condition.Always(),
+                new Effect.EnableReDeployment(),
+                ELifetime.UntilEndOfGame),
+        },
         Array.Empty<ActivatedAbility>(),
         Valence: EValence.Positive,
         Description: "After deployment, you may pick up and re-place up to two friendly units per unit with " +

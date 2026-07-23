@@ -233,10 +233,10 @@ namespace FDG.Ai.Tactician
         /// transport is worth boat + payload - both when choosing what to protect and when choosing
         /// what to shoot (destroying it spills the cargo out Shaken).
         /// </summary>
-        public static float UnitValueWithCargo(IUnit unit, ITableState tableState)
+        public static float UnitValueWithCargo(IUnit unit, ITableState tableState, RuleEvaluator evaluator)
         {
             float value = UnitValue(unit);
-            if (!Rules.Dispatch.TransportUtilities.IsTransport(unit)) return value;
+            if (!Rules.Dispatch.TransportUtilities.IsTransport(unit, evaluator)) return value;
             foreach (IUnit occupant in Rules.Dispatch.TransportUtilities.GetOccupants(
                 unit, tableState.Units.Objects.ToList()))
             {

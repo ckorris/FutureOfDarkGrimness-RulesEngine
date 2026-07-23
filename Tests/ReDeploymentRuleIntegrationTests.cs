@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using FDG.Data;
 using FDG.Players;
+using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Foundation;
 using FDG.Stages;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
@@ -58,6 +60,32 @@ namespace FDG.Tests
             Assert.That(finished, Is.True);
             Assert.That(requester.PromptCount, Is.EqualTo(0), "no Re-Deployment unit, so no sub-phase prompt.");
             Assert.That(requester.PlacementCount, Is.EqualTo(0));
+        }
+
+        [Test]
+        public async Task ARuleOtherThanReDeployment_ThatConfersTheCapability_AlsoGrantsRedeploys()
+        {
+            // The budget is counted from the CAPABILITY, not from the Re-Deployment rule's identity, so a
+            // different rule authoring Effect.EnableReDeployment funds the sub-phase too. Pinned through the
+            // real stage: CapabilityRuleQueries has its own tests, but only this catches the stage being
+            // reverted to a rule-identity check.
+            DataBinding<UnitData> scout = MakeUnit(_playerA, "Pathfinders", reDeployment: false, onTable: true);
+            scout.GetValue().AttachRuleDefinition(new ResolvedRule("Forward Observer",
+                new SpecialRuleDefinition("Forward Observer",
+                    new[]
+                    {
+                        new HookEntry(EHookID.Lifecycle_OnCapabilityQuery, new Condition.Always(),
+                            new Effect.EnableReDeployment(), ELifetime.UntilEndOfGame),
+                    },
+                    Array.Empty<ActivatedAbility>())));
+            MakeUnit(_playerA, "Grunts", reDeployment: false, onTable: true);
+            MakeUnit(_playerA, "Riflemen", reDeployment: false, onTable: true);
+
+            var requester = new ReDeployRequester(pickFirst: true);
+            await RunReDeployment(requester, new[] { (ITeam)_teamA });
+
+            Assert.That(requester.PlacementCount, Is.EqualTo(2),
+                "one unit conferring the capability -> the same budget of two redeploys.");
         }
 
         [Test]

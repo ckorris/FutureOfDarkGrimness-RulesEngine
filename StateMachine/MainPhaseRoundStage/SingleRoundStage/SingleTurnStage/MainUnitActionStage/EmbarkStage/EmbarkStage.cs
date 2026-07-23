@@ -91,9 +91,9 @@ namespace FDG.Stages
             {
                 UnitData transport = binding.GetValue();
                 if (transport.ID == candidate.ID) continue;
-                if (!TransportUtilities.IsTransport(transport)) continue;
+                if (!TransportUtilities.IsTransport(transport, gameContext.RuleEvaluator)) continue;
                 if (!transport.GetIsOnBattlefield()) continue;
-                if (!TransportUtilities.CanUnitEmbark(candidate, transport, allUnits, out _)) continue;
+                if (!TransportUtilities.CanUnitEmbark(candidate, transport, allUnits, gameContext.RuleEvaluator, out _)) continue;
 
                 float distance = UnitCompareUtilities.MinDistanceBetweenUnits(
                     candidate, transport, out _, out _, includeVertical: false);

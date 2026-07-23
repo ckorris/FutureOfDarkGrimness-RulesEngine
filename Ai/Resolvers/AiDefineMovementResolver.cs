@@ -184,8 +184,13 @@ namespace FDG.Ai.Resolvers
         }
 
         // Angle offsets (degrees, both sides) tried when the straight path is blocked, widening outward.
+        // #264 issue 6: capped at +/-60, was +/-100. Past perpendicular a "skirt" is a retreat, and it
+        // was taken at the FULL rush budget - a melee unit walled off from its target lurched 12"
+        // sideways-to-backwards, every activation, which is a large part of what the walled-unit
+        // reports actually looked like on the table. Anything wider than this needs a real route, not
+        // an angle: that is what the Tactician's GridPathfinder is for.
         private static readonly float[] SkirtAngleOffsetsDegrees =
-            { 20f, -20f, 40f, -40f, 60f, -60f, 80f, -80f, 100f, -100f };
+            { 20f, -20f, 40f, -40f, 60f, -60f };
 
         // True if the unit's centroid path (inflated by its base radius) crosses terrain of the given type.
         private static bool CentroidCrossesTerrain(List<ITerrain> terrain, ETerrainType type,

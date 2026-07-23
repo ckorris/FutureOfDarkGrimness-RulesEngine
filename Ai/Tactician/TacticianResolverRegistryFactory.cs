@@ -39,7 +39,7 @@ namespace FDG.Ai.Tactician
             registry.RegisterResolver(new Resolvers.TacticianActionResolver(planner, tableState,
                 new FDG.Ai.Resolvers.AiStringSelectionResolver(tableState, playerID)));
             registry.RegisterResolver(new Resolvers.TacticianMovementResolver(planner, tableState,
-                new FDG.Ai.Resolvers.AiDefineMovementResolver(tableState, playerID)));
+                new FDG.Ai.Resolvers.AiDefineMovementResolver(tableState, playerID), options.DecisionLog));
 
             // A4-3: value-weighted target choice (shooting + melee defender). A5-6 adds cargo-aware
             // target value and the charge-threat factor (tableState).

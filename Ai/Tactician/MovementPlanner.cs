@@ -15,8 +15,12 @@ namespace FDG.Ai.Tactician
     /// macro-action generator (A3c) drive the same machinery. The solo-rules bot's BEHAVIOR is pinned
     /// (plan D1) by its resolver tests plus the 200-game benchmark outcome hashes recorded in the
     /// #191 ledger. #256 deliberately moved that baseline (measure-and-correct budgets, the S2
-    /// re-aim, the S4 snake); the re-pinned 2026-07-22 hashes are 3674C906996F34CC (builtin mirror)
-    /// / CE3DC8150005FF2C (builtin vs builtin-basic), zero faults, reproducible at DOP 16.
+    /// re-aim, the S4 snake); #264 issue 6 moved it again (the solo skirt capped at +/-60 degrees,
+    /// was +/-100 - past perpendicular a skirt is a retreat, and it was taken at the full rush
+    /// budget). The re-pinned 2026-07-23 hashes are F82D5A91B0119955 (builtin mirror, 27/27/146)
+    /// / A7EEB33FD9CEFC6A (builtin vs builtin-basic, 36/25/139), zero faults, zero timeouts,
+    /// reproducible across duplicate runs at DOP 16. The previous pins were 3674C906996F34CC /
+    /// CE3DC8150005FF2C - every hash reference older than this note refers to those.
     /// </para>
     /// </summary>
     public static class MovementPlanner

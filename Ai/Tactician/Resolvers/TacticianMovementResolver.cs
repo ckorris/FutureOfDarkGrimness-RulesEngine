@@ -18,20 +18,26 @@ namespace FDG.Ai.Tactician.Resolvers
         private readonly IMovePlanSource _planner;
         private readonly ITableState _tableState;
         private readonly IStageResolver<DefineMovementPathRequest, CancellableResult<List<ModelMoveEntry>>> _soloFallback;
+        // #216 / #264 issue 6: a silent degradation to solo is the failure mode behind several
+        // walled-unit reports - the unit just looks passive and nothing says why. Null in normal
+        // play; wired to the same analysis sink as the planner's decision table.
+        private readonly Action<string>? _log;
 
         public TacticianMovementResolver(IMovePlanSource planner, ITableState tableState,
-            IStageResolver<DefineMovementPathRequest, CancellableResult<List<ModelMoveEntry>>> soloFallback)
+            IStageResolver<DefineMovementPathRequest, CancellableResult<List<ModelMoveEntry>>> soloFallback,
+            Action<string>? log = null)
         {
             _planner = planner;
             _tableState = tableState;
             _soloFallback = soloFallback;
+            _log = log;
         }
 
         public Task<CancellableResult<List<ModelMoveEntry>>> Resolve(DefineMovementPathRequest request)
         {
             List<ModelMoveEntry>? planned = _planner.TakePlannedMove(request.UnitDataBinding);
             if (planned == null)
-                return _soloFallback.Resolve(request);
+                return DegradeToSolo(request, "no cached plan (Hold/Pass, or the planner had no claim)");
 
             Func<ModelMoveEntry, ModelMoveBudget> budgetFor = entry =>
             {
@@ -67,6 +73,14 @@ namespace FDG.Ai.Tactician.Resolvers
                 return Task.FromResult<CancellableResult<List<ModelMoveEntry>>>(
                     new Selected<List<ModelMoveEntry>>(repaired));
 
+            return DegradeToSolo(request, "the planned move failed this request's per-model re-check "
+                + "and could not be re-planned within its budgets");
+        }
+
+        private Task<CancellableResult<List<ModelMoveEntry>>> DegradeToSolo(
+            DefineMovementPathRequest request, string reason)
+        {
+            _log?.Invoke($"solo-fallback {request.UnitDataBinding.GetValue().Name}: {reason}");
             return _soloFallback.Resolve(request);
         }
 

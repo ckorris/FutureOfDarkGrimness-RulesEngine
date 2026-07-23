@@ -140,6 +140,7 @@ namespace FDG.Ai.Tactician
             }
 
             if (scored != null) LogDecision(scored, best, bestAction);
+            LogIfStuck(candidates);
             if (best == null || bestAction == null) return null;
 
             // Hold-and-shoot / pass need no movement; movement plans are cached for the move request.
@@ -154,6 +155,26 @@ namespace FDG.Ai.Tactician
             }
 
             return bestAction;
+        }
+
+        // #256's stuck detector, filed for #264: when EVERY movement candidate the generator can
+        // build nets under an inch, the unit is WEDGED - a walled pocket, a corner funnel, a friendly
+        // seal - and the symptom on the table is just a unit that looks passive. Say so, so a game
+        // reports this failure class instead of leaving it to be reconstructed from a screenshot.
+        private const float StuckMoveInches = 1f;
+
+        private void LogIfStuck(List<MacroAction> candidates)
+        {
+            if (_decisionLog == null || _activeUnit == null) return;
+
+            UnitData self = _activeUnit.GetValue();
+            Position at = Centroid(self);
+            bool anyRealMove = candidates.Any(c => c.Intent != EMacroIntent.Hold
+                && Distance(at, c.ProjectedCentroid) >= StuckMoveInches);
+            if (anyRealMove) return;
+
+            _decisionLog($"stuck {self.Name} at ({at.x:F1},{at.z:F1}): every movement candidate " +
+                $"nets < {StuckMoveInches:F0} inch");
         }
 
         // One block per Choose Action: the winner line, then the full candidate table (score-desc)

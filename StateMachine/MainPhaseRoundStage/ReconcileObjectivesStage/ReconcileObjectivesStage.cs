@@ -69,7 +69,7 @@ namespace FDG.Stages
             // #100 #13: fire round-end rules for every living unit BEFORE the token sweep below, so
             // tokens that clear at round end are still visible to them and the ManualOnly markers they
             // grant (Fortified Growth's accumulation) survive the sweep. Mirror of the round-start loop
-            // in StartOfRoundExtraActionStage.GrantSpellTokens; units with no round-end rules produce no
+            // in StartOfRoundExtraActionStage.GrantRoundStartTokens; units with no round-end rules produce no
             // operations. Models are passed so a joined hero's model-level rule is still seen (#093).
             foreach (IUnit unit in tableState.Units.Objects.ToList())
             {

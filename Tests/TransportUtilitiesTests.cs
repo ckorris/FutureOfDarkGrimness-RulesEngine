@@ -24,10 +24,16 @@ namespace FDG.Tests
     {
         private GameDataStore _store = null!;
 
+        // Transport capability is now answered by the rule graph rather than by a rule-identity test, so
+        // these need a live evaluator. No resolver: the Transport rule is statically attached, and only
+        // granted-rule read-back needs one.
+        private RuleEvaluator _evaluator = null!;
+
         [SetUp]
         public void SetUp()
         {
             _store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            _evaluator = new RuleEvaluator(new FixedDiceRoller(4));
         }
 
         // --- Identity & capacity -----------------------------------------------------------------
@@ -36,28 +42,28 @@ namespace FDG.Tests
         public void IsTransport_True_WhenUnitCarriesTransportRule()
         {
             UnitData transport = MakeTransport(NewPlayer(), capacity: 6);
-            Assert.That(TransportUtilities.IsTransport(transport), Is.True);
+            Assert.That(TransportUtilities.IsTransport(transport, _evaluator), Is.True);
         }
 
         [Test]
         public void IsTransport_False_ForPlainUnit()
         {
             UnitData plain = MakeUnit(NewPlayer(), modelCount: 5);
-            Assert.That(TransportUtilities.IsTransport(plain), Is.False);
+            Assert.That(TransportUtilities.IsTransport(plain, _evaluator), Is.False);
         }
 
         [Test]
         public void GetCapacity_ReturnsTransportRuleArgZero()
         {
             UnitData transport = MakeTransport(NewPlayer(), capacity: 11);
-            Assert.That(TransportUtilities.GetCapacity(transport), Is.EqualTo(11));
+            Assert.That(TransportUtilities.GetCapacity(transport, _evaluator), Is.EqualTo(11));
         }
 
         [Test]
         public void GetCapacity_Zero_ForNonTransport()
         {
             UnitData plain = MakeUnit(NewPlayer(), modelCount: 3);
-            Assert.That(TransportUtilities.GetCapacity(plain), Is.EqualTo(0));
+            Assert.That(TransportUtilities.GetCapacity(plain, _evaluator), Is.EqualTo(0));
         }
 
         // --- Space cost --------------------------------------------------------------------------
@@ -157,7 +163,7 @@ namespace FDG.Tests
             UnitData transport = MakeTransport(player, capacity: 6);
             UnitData squad = MakeUnit(player, modelCount: 5); // cost 5 <= 6
 
-            bool ok = TransportUtilities.CanUnitEmbark(squad, transport, All(transport, squad), out string reason);
+            bool ok = TransportUtilities.CanUnitEmbark(squad, transport, All(transport, squad), _evaluator, out string reason);
 
             Assert.That(ok, Is.True);
             Assert.That(reason, Is.Empty);
@@ -170,7 +176,7 @@ namespace FDG.Tests
             UnitData transport = MakeTransport(player, capacity: 4);
             UnitData squad = MakeUnit(player, modelCount: 5); // cost 5 > 4
 
-            bool ok = TransportUtilities.CanUnitEmbark(squad, transport, All(transport, squad), out string reason);
+            bool ok = TransportUtilities.CanUnitEmbark(squad, transport, All(transport, squad), _evaluator, out string reason);
 
             Assert.That(ok, Is.False);
             Assert.That(reason, Is.Not.Empty);
@@ -182,7 +188,7 @@ namespace FDG.Tests
             UnitData transport = MakeTransport(NewPlayer(), capacity: 6);
             UnitData enemy = MakeUnit(NewPlayer(), modelCount: 2); // different player
 
-            bool ok = TransportUtilities.CanUnitEmbark(enemy, transport, All(transport, enemy), out string reason);
+            bool ok = TransportUtilities.CanUnitEmbark(enemy, transport, All(transport, enemy), _evaluator, out string reason);
 
             Assert.That(ok, Is.False);
             Assert.That(reason, Is.Not.Empty);
@@ -195,7 +201,7 @@ namespace FDG.Tests
             UnitData notATransport = MakeUnit(player, modelCount: 3);
             UnitData squad = MakeUnit(player, modelCount: 2);
 
-            bool ok = TransportUtilities.CanUnitEmbark(squad, notATransport, All(notATransport, squad), out string reason);
+            bool ok = TransportUtilities.CanUnitEmbark(squad, notATransport, All(notATransport, squad), _evaluator, out string reason);
 
             Assert.That(ok, Is.False);
             Assert.That(reason, Is.Not.Empty);
@@ -212,7 +218,7 @@ namespace FDG.Tests
             TransportUtilities.Embark(squad, transportA);
 
             bool ok = TransportUtilities.CanUnitEmbark(squad, transportB,
-                All(transportA, transportB, squad), out string reason);
+                All(transportA, transportB, squad), _evaluator, out string reason);
 
             Assert.That(ok, Is.False, "a unit already aboard one transport can't embark another.");
             Assert.That(reason, Is.Not.Empty);
@@ -230,10 +236,10 @@ namespace FDG.Tests
             UnitData fits = MakeUnit(player, modelCount: 3);    // cost 3, exactly 3 free -> yes
 
             Assert.That(
-                TransportUtilities.CanUnitEmbark(tooBig, transport, All(transport, aboard, tooBig), out _),
+                TransportUtilities.CanUnitEmbark(tooBig, transport, All(transport, aboard, tooBig), _evaluator, out _),
                 Is.False, "5 spaces don't fit in the 3 left after a Tough(3) passenger.");
             Assert.That(
-                TransportUtilities.CanUnitEmbark(fits, transport, All(transport, aboard, fits), out _),
+                TransportUtilities.CanUnitEmbark(fits, transport, All(transport, aboard, fits), _evaluator, out _),
                 Is.True, "3 spaces fit exactly in the 3 remaining.");
         }
 
@@ -252,7 +258,7 @@ namespace FDG.Tests
             // Tough(6) model would be rejected at the cap-3 limit.
             UnitData squad = MakeHeroJoinedUnit(player, heroTough: 6, gruntToughs: new[] { 3, 3 });
 
-            bool ok = TransportUtilities.CanUnitEmbark(squad, transport, All(transport, squad), out string reason);
+            bool ok = TransportUtilities.CanUnitEmbark(squad, transport, All(transport, squad), _evaluator, out string reason);
 
             Assert.That(ok, Is.True, reason);
             Assert.That(reason, Is.Empty);
@@ -266,7 +272,7 @@ namespace FDG.Tests
             // Hero Tough(7) is over the Hero cap even though there's plenty of room.
             UnitData squad = MakeHeroJoinedUnit(player, heroTough: 7, gruntToughs: new[] { 3 });
 
-            bool ok = TransportUtilities.CanUnitEmbark(squad, transport, All(transport, squad), out string reason);
+            bool ok = TransportUtilities.CanUnitEmbark(squad, transport, All(transport, squad), _evaluator, out string reason);
 
             Assert.That(ok, Is.False);
             Assert.That(reason, Is.Not.Empty);
@@ -280,7 +286,7 @@ namespace FDG.Tests
             // The Hero (Tough 6) is fine, but a grunt at Tough(4) exceeds the non-Hero cap of 3.
             UnitData squad = MakeHeroJoinedUnit(player, heroTough: 6, gruntToughs: new[] { 4 });
 
-            bool ok = TransportUtilities.CanUnitEmbark(squad, transport, All(transport, squad), out string reason);
+            bool ok = TransportUtilities.CanUnitEmbark(squad, transport, All(transport, squad), _evaluator, out string reason);
 
             Assert.That(ok, Is.False, "a single over-cap grunt blocks the whole unit, even with the hero within cap.");
             Assert.That(reason, Is.Not.Empty);
@@ -296,7 +302,7 @@ namespace FDG.Tests
             UnitData squad = MakeUnit(player, modelCount: 1, tough: 6);
             squad.ModelBindings.Add(MakeModelBinding(tough: 1)); // make it multi-model (no solo-hero path)
 
-            bool ok = TransportUtilities.CanUnitEmbark(squad, transport, All(transport, squad), out string reason);
+            bool ok = TransportUtilities.CanUnitEmbark(squad, transport, All(transport, squad), _evaluator, out string reason);
 
             Assert.That(ok, Is.False, "a Tough(6) non-Hero must not borrow the Hero ride cap.");
             Assert.That(reason, Is.Not.Empty);
@@ -311,7 +317,7 @@ namespace FDG.Tests
             // the single-model branch of IsHeroModel.
             UnitData heroUnit = MakeSoloHeroUnit(player, tough: 6);
 
-            bool ok = TransportUtilities.CanUnitEmbark(heroUnit, transport, All(transport, heroUnit), out string reason);
+            bool ok = TransportUtilities.CanUnitEmbark(heroUnit, transport, All(transport, heroUnit), _evaluator, out string reason);
 
             Assert.That(ok, Is.True, reason);
         }
@@ -427,7 +433,7 @@ namespace FDG.Tests
             UnitData squad = MakeUnit(player, modelCount: 2); // cost 2
             TransportUtilities.Embark(squad, transport);
 
-            Assert.That(TransportUtilities.GetRemainingCapacity(transport, All(transport, squad)), Is.EqualTo(4));
+            Assert.That(TransportUtilities.GetRemainingCapacity(transport, All(transport, squad), _evaluator), Is.EqualTo(4));
         }
 
         [Test]
@@ -442,7 +448,7 @@ namespace FDG.Tests
 
             Assert.That(TransportUtilities.IsEmbarked(squad), Is.False);
             Assert.That(TransportUtilities.GetOccupants(transport, All(transport, squad)), Is.Empty);
-            Assert.That(TransportUtilities.GetRemainingCapacity(transport, All(transport, squad)), Is.EqualTo(6));
+            Assert.That(TransportUtilities.GetRemainingCapacity(transport, All(transport, squad), _evaluator), Is.EqualTo(6));
         }
 
         // --- Off-table representation ------------------------------------------------------------

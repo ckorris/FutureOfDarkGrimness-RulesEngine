@@ -23,8 +23,6 @@ namespace FDG.Tests
         {
             ["Hero"] = "engine-marker: no dispatch entries; consumed by HeroJoinResolver/HeroStatRules " +
                 "(join flow, stat substitution).",
-            ["Transport"] = "engine-marker: no dispatch entries; capacity (EngineArgumentCount arg) is " +
-                "read by TransportUtilities.GetCapacity, embark/disembark by their stages.",
             ["Limited"] = "engine-marker: once-per-game weapon gating is enforced by LimitedRules " +
                 "reading the LimitedSpent token, not by dispatch entries.",
             ["Disembark"] = "stage-enacted: Effect.Disembark is a deliberate no-op marker; " +
@@ -35,8 +33,9 @@ namespace FDG.Tests
                 "routes the offer to TeleportStage, which runs the 6\" placement (#197).",
             ["Delayed Action"] = "engine-marker: no dispatch entries or abilities; ChooseUnitToActivateStage " +
                 "detects it by name and offers the hold-back (pass-the-turn) option (#197).",
-            ["Re-Deployment"] = "engine-marker: no dispatch entries or abilities; ReDeploymentStage detects " +
-                "it by name to compute the redeploy budget and run the post-deployment sub-phase (#197 P21).",
+            // Transport and Re-Deployment were here until the capability seam gave each a real entry at
+            // Lifecycle_OnCapabilityQuery: they are no longer detected by name, so they no longer need an
+            // exemption. Their absence is the assertion.
             ["Retaliate"] = "engine-marker: no dispatch entries or abilities; ResolveMeleeReflectStage detects " +
                 "it by name and deals X hits per wound taken back at the attacker (#197 P11).",
             ["Deathstrike"] = "engine-marker: no dispatch entries or abilities; ResolveMeleeReflectStage detects " +

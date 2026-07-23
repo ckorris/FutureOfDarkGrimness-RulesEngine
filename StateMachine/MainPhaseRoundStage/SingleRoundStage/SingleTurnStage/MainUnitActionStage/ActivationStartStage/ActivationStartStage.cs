@@ -5,6 +5,7 @@ using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 using FDG.Utilities;
@@ -16,16 +17,19 @@ namespace FDG.Stages
     /// the first thing that happens in a unit's activation, and resolves the "pick one effect until the end of
     /// the activation" rules the corpus hangs there (Versatile Attack, Watchborn, Versatile Reach).
     ///
-    /// A rule contributes one <see cref="ActivatedAbility"/> per effect, all at this hook, each labelled. This
-    /// stage groups the offers by rule and, when a rule offers more than one, asks the player which via
-    /// <see cref="ChooseAbilityEffectRequest"/> — a mandatory pick, since the rule text says "pick one effect",
-    /// not "you may pick". A rule offering exactly one ability applies it without a prompt: there is nothing
-    /// to choose. The once-per-activation <see cref="Cost"/> is keyed on the rule name, so taking one effect
-    /// spends the gate for its siblings.
+    /// A rule contributes one <see cref="ActivatedAbility"/> per effect, all at this hook, each labelled;
+    /// <see cref="AbilityEffectChoice"/> groups the offers by rule and, when a rule offers more than one, asks
+    /// the player which via <see cref="ChooseAbilityEffectRequest"/> — a mandatory pick, since the rule text
+    /// says "pick one effect", not "you may pick". A rule offering exactly one ability applies it without a
+    /// prompt: there is nothing to choose. The once-per-activation <see cref="Cost"/> is keyed on the rule
+    /// name, so taking one effect spends the gate for its siblings.
     ///
-    /// Each chosen ability's effect is an <see cref="Effect.AddRule"/> with
-    /// <see cref="Rules.Foundation.ELifetime.ThisActivation"/>, granting a helper rule that expires when the
-    /// activation ends.
+    /// Each chosen ability's effect is an <see cref="Effect.AddRule"/> granting a helper rule, usually with
+    /// <see cref="Rules.Foundation.ELifetime.ThisActivation"/> so it expires when the activation ends. The
+    /// exception is Versatile Defense, whose text says "deployed OR activated ... lasts until the units' next
+    /// activation": it is offered here AND at <c>DeployUnitStage</c>, and grants
+    /// <see cref="Rules.Foundation.ELifetime.UntilNextActivation"/> — which is why this stage also opens by
+    /// sweeping the previous grant (see <see cref="ClearUntilNextActivationTokens"/>).
     ///
     /// It also resolves the hook's PASSIVE entries — token grants, executables, and the
     /// reposition-at-activation placement (Wolfborn / Bounding / Rapid Blink), whose operations it sums into a
@@ -51,43 +55,47 @@ namespace FDG.Stages
 
             IUnit unit = context.ActivatingUnit.GetValue();
 
+            ClearUntilNextActivationTokens(unit);
+
             await ResolvePassiveEntries(context, unit);
 
             // Grouped by rule and kept in declaration order, so "pick one effect" means one pick per rule and
             // the option indices line up with the rule's authored ability list.
-            List<IGrouping<string, AbilityOffer>> offersByRule = GameContext.RuleEvaluator
-                .GatherOffers(new ActivationStartContext(unit))
-                .GroupBy(offer => offer.RuleName)
-                .ToList();
-
-            foreach (IGrouping<string, AbilityOffer> ruleOffers in offersByRule)
+            foreach (IReadOnlyList<AbilityOffer> ruleOffers in AbilityEffectChoice.GroupByRule(
+                         GameContext.RuleEvaluator.GatherOffers(new ActivationStartContext(unit))))
             {
-                List<AbilityOffer> options = ruleOffers.ToList();
-
                 // #248: resolving the ability spends its once-per-activation cost and grants a
                 // ThisActivation rule — re-running this stage would double-apply, so the activation can
                 // no longer be backed out of.
                 context.MarkIrreversibleAction();
 
-                AbilityOffer chosen = options.Count == 1
-                    ? options[0]
-                    : options[await AskWhichEffect(context, ruleOffers.Key, unit, options)];
+                AbilityEffectChoice.Outcome outcome = await AbilityEffectChoice.Resolve(
+                    GameContext, context.ActivatingPlayer(), unit, ruleOffers, "for this activation");
 
-                // Self-targeted by construction (the corpus' activation-start effects all buff the bearer),
-                // so no target selection: the bearer is the target.
-                IReadOnlyList<RuleOperation> operations =
-                    GameContext.RuleEvaluator.ResolveAbility(chosen, new List<IUnit> { unit });
-                OperationApplier.ApplyTokenOperations(operations);
-                // Every other ability-offering stage runs the executor too; without it an ability whose effect
-                // is imperative (a triggered move, a fatigue) would be silently dropped here.
-                await OperationExecutor.Execute(operations, new GameOperationServices(GameContext));
-
-                GameContext.Log(options.Count == 1
-                    ? $"{unit.Name}: {chosen.RuleName} applies."
-                    : $"{unit.Name}: {chosen.RuleName} - chose {chosen.Ability.Label}.");
+                GameContext.Log(ruleOffers.Count == 1
+                    ? $"{unit.Name}: {outcome.Chosen.RuleName} applies."
+                    : $"{unit.Name}: {outcome.Chosen.RuleName} - chose {outcome.Chosen.Ability.Label}.");
             }
 
             await OnFinished.Activate(context);
+        }
+
+        /// <summary>
+        /// Retires the <see cref="Rules.Foundation.ELifetime.UntilNextActivation"/> grants this unit is
+        /// carrying — the buff a previous deployment or activation chose, which was live through the
+        /// opponent's turns and dies exactly here (Versatile Defense). Runs BEFORE the offers are gathered
+        /// and before the passive entries, so the unit is clean when it re-picks: without it, choosing the
+        /// other effect this activation would leave the unit holding both.
+        ///
+        /// Only this unit's containers are swept, which is what "the unit's next activation" means —
+        /// another unit's grant is none of this activation's business. Mirrors
+        /// <c>ReconcileEndOfActivationStage</c>, the same sweep at the other end of the activation.
+        /// </summary>
+        private void ClearUntilNextActivationTokens(IUnit unit)
+        {
+            List<ITokenContainer> containers = new List<ITokenContainer> { unit.Tokens };
+            containers.AddRange(unit.Models.Select(model => model.Tokens));
+            new TokenClearService().ClearForHook(EHookID.Activation_OnActivationStart, containers);
         }
 
         /// <summary>
@@ -118,39 +126,5 @@ namespace FDG.Stages
             await RepositionPlacement.OfferFromOperations(GameContext, context.ActivatingUnit.GetValue(), operations);
         }
 
-        private async Task<int> AskWhichEffect(IUnitActionContext context, string ruleName, IUnit unit,
-            IReadOnlyList<AbilityOffer> options)
-        {
-            List<ChooseAbilityEffectRequest.EffectOption> effectOptions = options
-                .Select(offer => new ChooseAbilityEffectRequest.EffectOption(
-                    LabelFor(offer), DescriptionFor(offer)))
-                .ToList();
-
-            ChooseAbilityEffectRequest request = new ChooseAbilityEffectRequest(
-                context.ActivatingPlayer(), $"{unit.Name}: pick one effect for this activation.",
-                ruleName, unit.Name, effectOptions);
-
-            int index = await GameContext.PlayerRequester
-                .RequestDecision<ChooseAbilityEffectRequest, int>(request);
-
-            // A resolver that answers out of range would silently mis-apply an effect; clamp to the first
-            // option (what every resolver's own default already is) rather than throw mid-activation.
-            if (index < 0 || index >= options.Count)
-            {
-                RuleDiagnostics.Warn($"'{ruleName}' effect choice returned index {index}, outside " +
-                    $"0..{options.Count - 1}; defaulting to the first effect.");
-                return 0;
-            }
-
-            return index;
-        }
-
-        // An unlabelled ability in a multi-ability rule is an authoring bug the option list would otherwise
-        // render as a row of blanks; fall back to a positional label so the choice stays usable.
-        private static string LabelFor(AbilityOffer offer) =>
-            string.IsNullOrWhiteSpace(offer.Ability.Label) ? offer.RuleName : offer.Ability.Label;
-
-        private static string DescriptionFor(AbilityOffer offer) =>
-            offer.Ability.Effect is Effect.AddRule addRule ? addRule.RuleName : string.Empty;
     }
 }

@@ -52,6 +52,11 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(ReduceImpactDicePerModel), "reduceImpactDicePerModel")]
 [JsonDerivedType(typeof(ExtraMeleeWoundCount), "extraMeleeWoundCount")]
 [JsonDerivedType(typeof(StrikeFirst), "strikeFirst")]
+[JsonDerivedType(typeof(EnableCasting), "enableCasting")]
+[JsonDerivedType(typeof(EnableTransport), "enableTransport")]
+[JsonDerivedType(typeof(EnableReDeployment), "enableReDeployment")]
+[JsonDerivedType(typeof(EnableSpellLending), "enableSpellLending")]
+[JsonDerivedType(typeof(EnableSpellRelay), "enableSpellRelay")]
 [JsonDerivedType(typeof(TargetIndividualModel), "targetIndividualModel")]
 [JsonDerivedType(typeof(RestrictActions), "restrictActions")]
 [JsonDerivedType(typeof(RangeModifier), "rangeModifier")]
@@ -241,6 +246,11 @@ public abstract record Effect
         ELifetime.ThisActivation => new TokenClearTrigger.ActivationEnd(),
         ELifetime.ThisRound => new TokenClearTrigger.RoundEnd(),
         ELifetime.ThisAttack => new TokenClearTrigger.AttackEnd(),
+        // No dedicated trigger variant: "until my next activation" is exactly "clears when
+        // Activation_OnActivationStart fires for me", which CustomHook already expresses and
+        // TokenClearService.ClearsAtHook already sweeps. ActivationStartStage does the sweeping.
+        ELifetime.UntilNextActivation =>
+            new TokenClearTrigger.CustomHook(EHookID.Activation_OnActivationStart),
         _ => new TokenClearTrigger.ManualOnly(),
     };
 
@@ -318,7 +328,7 @@ public abstract record Effect
                 : ruleInvocation.Bearer.Models.Count(m => m.GetIsAlive()
                     && m.Weapons.Any(w => w.RuleDefinitions.Any(r => r.Definition == ruleInvocation.Definition)));
 
-            int diceCount = DiceCountPerModel.Resolve(ruleInvocation.Arguments) * carriers;
+            int diceCount = DiceCountPerModel.Resolve(ruleInvocation) * carriers;
             if (diceCount <= 0)
             {
                 return;
@@ -397,7 +407,7 @@ public abstract record Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            int count = Count.Resolve(ruleInvocation.Arguments);
+            int count = Count.Resolve(ruleInvocation);
             if (MaxTotal > 0)
             {
                 count = Math.Min(count,
@@ -479,7 +489,7 @@ public abstract record Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.MultiplyWounds(Multiplier.Resolve(ruleInvocation.Arguments)));
+            operations.Add(new RuleOperation.MultiplyWounds(Multiplier.Resolve(ruleInvocation)));
         }
     }
 
@@ -582,7 +592,7 @@ public abstract record Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.SetMaxWounds(Amount.Resolve(ruleInvocation.Arguments)));
+            operations.Add(new RuleOperation.SetMaxWounds(Amount.Resolve(ruleInvocation)));
         }
     }
 
@@ -595,7 +605,7 @@ public abstract record Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.MultiplyHits(Multiplier.Resolve(ruleInvocation.Arguments)));
+            operations.Add(new RuleOperation.MultiplyHits(Multiplier.Resolve(ruleInvocation)));
         }
     }
 
@@ -607,7 +617,7 @@ public abstract record Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.ChargeImpactHits(DiceCount.Resolve(ruleInvocation.Arguments)));
+            operations.Add(new RuleOperation.ChargeImpactHits(DiceCount.Resolve(ruleInvocation)));
         }
     }
 
@@ -644,7 +654,7 @@ public abstract record Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.ExtraMeleeWoundCount(Amount.Resolve(ruleInvocation.Arguments)));
+            operations.Add(new RuleOperation.ExtraMeleeWoundCount(Amount.Resolve(ruleInvocation)));
         }
     }
 
@@ -659,6 +669,88 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.StrikeFirst());
+        }
+    }
+
+    // --- Capabilities --------------------------------------------------------------------------
+    //
+    // Authored at EHookID.Lifecycle_OnCapabilityQuery, where an effect is the ANSWER to "what can this
+    // unit do?" rather than something that happens. Each grants no token and mutates nothing: holding a
+    // capability is not a state a unit carries around, it is a question re-answered whenever it is asked,
+    // so the entry's Condition gates it and rule suppression can cancel it.
+    //
+    // The alternative - the engine testing for a named rule - silently excludes any OTHER rule conferring
+    // the same thing, which is exactly how Caster Group (not Caster, and never grantable as one: its X is
+    // a live model count and grants carry no arguments) went uncastable.
+
+    /// <summary>
+    /// The bearer can cast spells. Conferred by core <c>Caster(X)</c> and by <c>Caster Group</c>.
+    /// </summary>
+    public sealed record EnableCasting : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.EnableCasting());
+        }
+    }
+
+    /// <summary>
+    /// The bearer can carry friendly units, with room for <see cref="Capacity"/> spaces. Conferred by
+    /// core <c>Transport(X)</c>, whose X is the capacity — hence a <see cref="ValueSource"/> rather than a
+    /// plain int, so the capacity is read off the rule instance like every other argumented rule.
+    /// </summary>
+    public sealed record EnableTransport(ValueSource Capacity) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.EnableTransport(Capacity.Resolve(ruleInvocation)));
+        }
+    }
+
+    /// <summary>
+    /// The bearer may be re-deployed in the post-deployment pass. Conferred by core <c>Re-Deployment</c>.
+    /// </summary>
+    public sealed record EnableReDeployment : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.EnableReDeployment());
+        }
+    }
+
+    /// <summary>
+    /// The bearer opens its <see cref="Pool"/> to other friendly casters within <see cref="RangeInches"/>,
+    /// who spend those tokens as if they were their own spell tokens. Conferred by <c>Spell Accumulator(X)</c>,
+    /// whose X is how many tokens the pool gains each round (a separate <see cref="GrantToken"/> entry) - the
+    /// range is not argumented in the corpus, hence a plain float here rather than a <see cref="ValueSource"/>.
+    ///
+    /// <para>Authored at <see cref="EHookID.Lifecycle_OnCapabilityQuery"/> like every other capability, which
+    /// is what makes "friendly casters may only use this rule if this unit isn't Shaken" a plain
+    /// <see cref="Condition"/> on the entry rather than a special case in the casting stage.</para>
+    /// </summary>
+    public sealed record EnableSpellLending(TokenType Pool, float RangeInches) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.EnableSpellLending(Pool, RangeInches));
+        }
+    }
+
+    /// <summary>
+    /// The bearer relays casts for other friendly casters within <see cref="RangeInches"/>: they may cast
+    /// "as if they were in this model's position" and get <see cref="CastRollBonus"/> to the roll when they
+    /// do. Conferred by <c>Spell Conduit</c>. Neither number is argumented in the corpus, hence plain values
+    /// rather than <see cref="ValueSource"/>s.
+    ///
+    /// <para>Authored at <see cref="EHookID.Lifecycle_OnCapabilityQuery"/> like every other capability, so
+    /// "friendly casters may only use this rule if this unit isn't Shaken" is a plain <see cref="Condition"/>
+    /// on the entry - the same shape <c>Spell Accumulator</c> uses for the identical clause.</para>
+    /// </summary>
+    public sealed record EnableSpellRelay(float RangeInches, int CastRollBonus) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.EnableSpellRelay(RangeInches, CastRollBonus));
         }
     }
 
@@ -929,7 +1021,7 @@ public abstract record Effect
         {
             operations.Add(new RuleOperation.InvokeGrantTokenOnRoll(
                 ruleInvocation.EffectiveTarget,
-                new Token(TType, Count.Resolve(ruleInvocation.Arguments), Clear,
+                new Token(TType, Count.Resolve(ruleInvocation), Clear,
                     OwnerUnitID: ruleInvocation.OwnerForEffectiveTarget),
                 MinRoll));
         }

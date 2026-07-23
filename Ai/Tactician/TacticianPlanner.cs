@@ -362,7 +362,7 @@ namespace FDG.Ai.Tactician
             ArmyData? army = SpellValuation.ArmyOf(_tableState, self.PlayerID);
             if (army == null) return null;
 
-            int tokens = self.Tokens.GetTokenCount(TokenType.SpellTokens);
+            int tokens = SpellPurse.Available(_tableState, _evaluator, self);
             RuntimeSpell? best = null;
             float bestValue = 0f; // strictly positive expected value required to bother
             foreach (RuntimeSpell spell in army.Spells)
@@ -557,7 +557,7 @@ namespace FDG.Ai.Tactician
                 // A5-6: a loaded transport is worth boat + payload - protect the delivery.
                 float plainValue = TacticalAnalysis.UnitValue(friendly.GetValue());
                 if (plainValue > 0f)
-                    inbound *= TacticalAnalysis.UnitValueWithCargo(friendly.GetValue(), _tableState) / plainValue;
+                    inbound *= TacticalAnalysis.UnitValueWithCargo(friendly.GetValue(), _tableState, _evaluator) / plainValue;
                 float margin = inbound
                     - ValueFraction(exchange.DefenderReturn.ExpectedWounds, nearest.GetValue());
                 if (margin <= wardThreatValue) continue;

@@ -474,6 +474,53 @@ public abstract record RuleOperation
     /// </summary>
     public sealed record StrikeFirst : RuleOperation;
 
+    // --- Capabilities ------------------------------------------------------------------------------
+    //
+    // Answers to questions asked at Lifecycle_OnCapabilityQuery, never APPLIED by anything: presence in
+    // the queue IS the capability. Read through CapabilityRuleQueries. See EHookID.Lifecycle_OnCapabilityQuery
+    // for why capabilities are asked for rather than detected by testing for a named rule.
+
+    /// <summary>
+    /// The bearer can cast spells. Resolution of <see cref="Effect.EnableCasting"/> (Caster, Caster Group).
+    /// </summary>
+    public sealed record EnableCasting : RuleOperation;
+
+    /// <summary>
+    /// The bearer can carry friendly units, with room for <see cref="Capacity"/> spaces. Resolution of
+    /// <see cref="Effect.EnableTransport"/> (Transport(X)). Capacity rides the operation because "is a
+    /// transport" and "how big is it" are the same question asked once.
+    /// </summary>
+    public sealed record EnableTransport(int Capacity) : RuleOperation;
+
+    /// <summary>
+    /// The bearer may be re-deployed in the post-deployment pass. Resolution of
+    /// <see cref="Effect.EnableReDeployment"/> (Re-Deployment).
+    /// </summary>
+    public sealed record EnableReDeployment : RuleOperation;
+
+    /// <summary>
+    /// The bearer lends its <see cref="Pool"/> tokens to OTHER friendly casters within
+    /// <see cref="RangeInches"/>, who spend them as if they were their own spell tokens. Resolution of
+    /// <see cref="Effect.EnableSpellLending"/> (Spell Accumulator). Read by <c>SpellPurse</c>.
+    ///
+    /// <para>The pool rides the operation rather than being assumed by the engine so the two halves of the
+    /// rule - the round-start <see cref="Effect.GrantToken"/> that fills the pool and this entry that opens
+    /// it to borrowers - name the same token type explicitly instead of agreeing by convention.</para>
+    /// </summary>
+    public sealed record EnableSpellLending(TokenType Pool, float RangeInches) : RuleOperation;
+
+    /// <summary>
+    /// The bearer relays casts for OTHER friendly casters within <see cref="RangeInches"/>: they may
+    /// measure a spell's range and line of sight from the bearer's position instead of their own, and get
+    /// <see cref="CastRollBonus"/> to the cast roll when they do. Resolution of
+    /// <see cref="Effect.EnableSpellRelay"/> (Spell Conduit). Read by <c>SpellRelay</c>.
+    ///
+    /// <para>The bonus rides the operation rather than being a separate entry because "cast from here" and
+    /// "+1 when you do" are one offer - the bonus applies only to a cast that actually used the relay, so
+    /// splitting them would let the bonus apply to a cast made from the caster's own position.</para>
+    /// </summary>
+    public sealed record EnableSpellRelay(float RangeInches, int CastRollBonus) : RuleOperation;
+
     /// <summary>
     /// Re-scope the in-flight attack to a single chosen model in the target unit.
     /// Resolution of <see cref="Effect.TargetIndividualModel"/> (Takedown).

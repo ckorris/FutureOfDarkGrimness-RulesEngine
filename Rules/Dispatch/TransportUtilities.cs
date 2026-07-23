@@ -43,23 +43,20 @@ public static class TransportUtilities
 
     // --- Identity & capacity ---------------------------------------------------------------------
 
-    /// <summary> True if <paramref name="unit"/> carries the Transport rule. </summary>
-    public static bool IsTransport(IUnit unit) =>
-        unit.RuleDefinitions.Any(rule => rule.Definition == CoreRuleCatalog.Transport);
+    /// <summary>
+    /// True if <paramref name="unit"/> can carry friendly units. Asks the rule graph for the CAPABILITY
+    /// rather than testing for the Transport rule by identity, so a second rule conferring a hold needs no
+    /// change here — see <see cref="CapabilityRuleQueries"/>.
+    /// </summary>
+    public static bool IsTransport(IUnit unit, RuleEvaluator evaluator) =>
+        CapabilityRuleQueries.CanTransport(unit, evaluator);
 
     /// <summary>
-    /// The transport's capacity in spaces — the Transport rule's <c>Arg(0)</c>. Returns 0 for a unit
-    /// that is not a transport.
+    /// The transport's capacity in spaces. Returns 0 for a unit that is not a transport, so it doubles as
+    /// the capability test where a caller wants both.
     /// </summary>
-    public static int GetCapacity(IUnit transport)
-    {
-        ResolvedRule? rule = transport.RuleDefinitions.FirstOrDefault(r => r.Definition == CoreRuleCatalog.Transport);
-        if (rule != null && rule.Arguments.Count > 0 && rule.Arguments[0] is RuleArgument.Int capacity)
-        {
-            return capacity.Value;
-        }
-        return 0;
-    }
+    public static int GetCapacity(IUnit transport, RuleEvaluator evaluator) =>
+        CapabilityRuleQueries.TransportCapacity(transport, evaluator);
 
     // --- Space cost ------------------------------------------------------------------------------
 
@@ -98,9 +95,10 @@ public static class TransportUtilities
     /// capacity (accounting for units already aboard). <paramref name="reason"/> describes the first
     /// failure when the result is false; empty on success.
     /// </summary>
-    public static bool CanUnitEmbark(IUnit candidate, IUnit transport, IEnumerable<IUnit> allUnits, out string reason)
+    public static bool CanUnitEmbark(IUnit candidate, IUnit transport, IEnumerable<IUnit> allUnits,
+        RuleEvaluator evaluator, out string reason)
     {
-        if (!IsTransport(transport))
+        if (!IsTransport(transport, evaluator))
         {
             reason = $"{transport.Name} is not a transport.";
             return false;
@@ -129,7 +127,7 @@ public static class TransportUtilities
         }
 
         int cost = GetUnitSpaceCost(candidate);
-        int remaining = GetRemainingCapacity(transport, allUnits);
+        int remaining = GetRemainingCapacity(transport, allUnits, evaluator);
         if (cost > remaining)
         {
             reason = $"{candidate.Name} needs {cost} space(s) but only {remaining} remain.";
@@ -158,8 +156,9 @@ public static class TransportUtilities
         GetOccupants(transport, allUnits).Sum(GetUnitSpaceCost);
 
     /// <summary> Spaces still free on <paramref name="transport"/> = capacity − occupied. </summary>
-    public static int GetRemainingCapacity(IUnit transport, IEnumerable<IUnit> allUnits) =>
-        GetCapacity(transport) - GetOccupiedSpaces(transport, allUnits);
+    public static int GetRemainingCapacity(IUnit transport, IEnumerable<IUnit> allUnits,
+        RuleEvaluator evaluator) =>
+        GetCapacity(transport, evaluator) - GetOccupiedSpaces(transport, allUnits);
 
     // --- State transitions (token writes) --------------------------------------------------------
 

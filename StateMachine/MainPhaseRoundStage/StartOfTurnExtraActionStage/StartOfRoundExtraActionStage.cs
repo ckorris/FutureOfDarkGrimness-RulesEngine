@@ -24,8 +24,9 @@ namespace FDG.Stages
 
             await context.Announce($"Round {context.RoundCount}", new TextColor(120, 200, 255, 255));
 
-            // Caster units replenish their spell tokens at the top of every round (#033), including round 1.
-            await GrantSpellTokens();
+            // Caster units replenish their spell tokens at the top of every round (#033), including round 1;
+            // so does any other rule with a round-start grant (Spell Accumulator's lending pool).
+            await GrantRoundStartTokens();
 
             // Ambush reserves may arrive from round 2 onward; so do Aircraft that flew off the table edge.
             if (context.RoundCount >= 2)
@@ -38,15 +39,21 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// Fires <see cref="EHookID.Round_OnRoundStart"/> for every living unit so Caster(X) grants its X
-        /// <see cref="TokenType.SpellTokens"/> (#033), then clamps each unit's pool to
-        /// <see cref="GameWideConstants.MAX_SPELL_TOKENS"/>. Non-Caster units produce no operations, so they
-        /// gain nothing. Tokens carry over between rounds (ManualOnly clear), which is why the cap is
-        /// enforced here at grant time rather than by a clear trigger. Runs every round (the round loop
-        /// re-enters this stage each round); the resume path skips this stage, so a resumed game does not
-        /// re-grant the round's tokens.
+        /// Fires <see cref="EHookID.Round_OnRoundStart"/> for every living unit and commits whatever it
+        /// produces. In practice that is token replenishment: Caster(X) grants its X
+        /// <see cref="TokenType.SpellTokens"/> (#033) and Spell Accumulator(X) fills its lending pool
+        /// (#197 P23). Units with no round-start rule produce no operations, so they gain nothing.
+        ///
+        /// <para>The <see cref="GameWideConstants.MAX_SPELL_TOKENS"/> clamp afterwards is the spell pool's
+        /// alone: tokens carry over between rounds (ManualOnly clear), so the cap can't be a clear trigger,
+        /// and it is engine-wide rather than any one rule's. A rule with its OWN cap ("can't hold more than
+        /// 6 accumulator tokens at once") states it on its grant via <c>Effect.GrantToken.MaxTotal</c>
+        /// instead, which is why nothing here knows about accumulator tokens.</para>
+        ///
+        /// <para>Runs every round (the round loop re-enters this stage each round); the resume path skips
+        /// this stage, so a resumed game does not re-grant the round's tokens.</para>
         /// </summary>
-        private async Task GrantSpellTokens()
+        private async Task GrantRoundStartTokens()
         {
             foreach (ArmyData army in GameContext.GameDataStore.GetAllValues<ArmyData>().ToList())
             {

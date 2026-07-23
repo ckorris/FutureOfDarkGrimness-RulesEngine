@@ -110,6 +110,9 @@ public static class TokenDisplay
         TokenClearTrigger.FirstTrigger => "next time it applies",
         TokenClearTrigger.UnitDestroyed => "while this unit lives",
         TokenClearTrigger.OwnerDestroyed => "while its source lives",
+        // The one CustomHook the vocabulary names (ELifetime.UntilNextActivation) is worth spelling out;
+        // anything else authored ad hoc keeps the generic phrase.
+        TokenClearTrigger.CustomHook(EHookID.Activation_OnActivationStart) => "until this unit's next activation",
         TokenClearTrigger.CustomHook => "until a later game event",
         _ => "",
     };

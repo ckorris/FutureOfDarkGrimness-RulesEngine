@@ -83,9 +83,9 @@ namespace FDG.Stages
             foreach (DataBinding<UnitData> binding in allBindings)
             {
                 UnitData unit = binding.GetValue();
-                if (!TransportUtilities.IsTransport(unit)) continue;
+                if (!TransportUtilities.IsTransport(unit, GameContext.RuleEvaluator)) continue;
                 if (!unit.GetIsOnBattlefield()) continue;
-                if (!TransportUtilities.CanUnitEmbark(candidate, unit, allUnits, out _)) continue;
+                if (!TransportUtilities.CanUnitEmbark(candidate, unit, allUnits, GameContext.RuleEvaluator, out _)) continue;
 
                 eligible.Add(binding);
             }

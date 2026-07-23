@@ -49,6 +49,25 @@ public enum EHookID
     Lifecycle_OnWoundIgnored = 21,
 
     /// <summary>
+    /// "What can this unit DO?" — the one hook every capability question is asked at. A rule answers by
+    /// emitting an <c>Enable*</c> <see cref="Definitions.RuleOperation"/> (EnableCasting, EnableTransport,
+    /// EnableReDeployment); no emission means no. Read through <c>CapabilityRuleQueries</c>.
+    ///
+    /// <para>A QUESTION, not an event: nothing happens when it fires, and nothing applies what it
+    /// returns. Capabilities used to be detected by testing for a rule by identity — <c>Caster</c>,
+    /// <c>Transport</c>, <c>Re-Deployment</c> — which silently excludes any OTHER rule that confers the
+    /// same thing (<c>Caster Group</c> is not <c>Caster</c> and can never be granted as one, since its X
+    /// is a live model count and grants carry no arguments) and cannot express a capability that depends
+    /// on live state.</para>
+    ///
+    /// <para>One hook rather than one per capability: the operations already discriminate, and a rule
+    /// declaring several capabilities then declares them in one place. Being an ordinary hook, each
+    /// answer respects the entry's <see cref="Definitions.Condition"/> and rule suppression.</para>
+    /// Context: the unit being asked about.
+    /// </summary>
+    Lifecycle_OnCapabilityQuery = 22,
+
+    /// <summary>
     /// The engine is choosing the next unit to activate. Used by rules that offer
     /// re-activation (e.g. Martial Prowess) before the normal pick happens.
     /// Context: candidate units, round number.
@@ -280,4 +299,5 @@ public enum EHookID
     /// Context: caster, spell, targets.
     /// </summary>
     Casting_OnSpellResolved = 132,
+
 }

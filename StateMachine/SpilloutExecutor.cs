@@ -36,7 +36,7 @@ namespace FDG.Stages
         /// </summary>
         public static async Task<int> SpillIfDestroyedTransport(IGameContext gameContext, IUnit dead)
         {
-            if (!TransportUtilities.IsTransport(dead) || !dead.GetIsDead())
+            if (!TransportUtilities.IsTransport(dead, gameContext.RuleEvaluator) || !dead.GetIsDead())
             {
                 return 0;
             }

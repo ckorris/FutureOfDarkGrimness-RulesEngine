@@ -97,8 +97,19 @@ namespace FDG.Stages
             // cast from looping forever under a deterministic resolver — the same reason
             // ChooseRangedAttackStage filters weapons to those with a fireable target. Non-castable spells
             // still appear in the picker as disabled rows with the reason (#244).
-            int tokens = caster.Tokens.GetTokenCount(TokenType.SpellTokens);
-            IReadOnlyList<SpellOffer> offer = BuildSpellOffer(context, context.ActivatingUnit, player, tokens);
+            // #197 P23 — the purse, not the unit's own pool: a nearby friendly Spell Accumulator's tokens
+            // are spendable "as if they were their own spell tokens", so they count toward affordability
+            // everywhere an owned token does.
+            int tokens = SpellPurse.Available(GameContext.TableState, GameContext.RuleEvaluator, caster);
+
+            // #197 P23 — where the cast may originate: the caster's own position, plus any Spell Conduit
+            // relaying for it. Relays come first, so preferring the head of the viable list prefers the
+            // bonus. Computed once and threaded through castability, targeting and the roll.
+            IReadOnlyList<SpellRelay.CastOrigin> origins = SpellRelay.OriginsFor(
+                GameContext.TableState, GameContext.RuleEvaluator, caster);
+
+            IReadOnlyList<SpellOffer> offer = BuildSpellOffer(context, context.ActivatingUnit, player, tokens,
+                origins);
             if (!offer.Any(o => o.Castable))
             {
                 GameContext.Log($"{caster.Name} has no castable spell (none affordable with a legal target).");
@@ -108,30 +119,34 @@ namespace FDG.Stages
 
             // 1. Pick a spell + a #244 self-boost count (or cancel back to Choose Action). The boost is only
             //    committed at step 3, with the cast cost, so cancelling target selection spends nothing.
-            (RuntimeSpell? chosen, int boost) = await PickSpell(context.ActivatingUnit, player, offer, tokens);
+            (RuntimeSpell? chosen, int boost) = await PickSpell(context.ActivatingUnit, player, offer, tokens,
+                origins);
             if (chosen == null)
             {
                 await OnFinished.Activate(context);
                 return;
             }
 
-            // 2. Build the eligible targets and let the player pick (up to the spell's MaxCount).
-            List<DataBinding<UnitData>> candidates = SpellTargeting.GetEligibleTargets(
-                GameContext, context.ActivatingUnit, player, chosen.Target);
-            if (candidates.Count == 0)
+            // 2. Build the eligible targets — the union over every origin — and let the player pick (up to
+            //    the spell's MaxCount), narrowing the viable origins as they do. What comes back is the
+            //    targets AND the origin the cast will actually be made from.
+            var targeting = new RelayedTargeting(this, context.ActivatingUnit, player, chosen, origins);
+            if (targeting.Candidates.Count == 0)
             {
                 GameContext.Log($"{chosen.Name} has no valid target in range or line of sight.");
                 await OnFinished.Activate(context);
                 return;
             }
 
-            IReadOnlyList<DataBinding<UnitData>> targets = await PickTargets(player, chosen, candidates);
+            IReadOnlyList<DataBinding<UnitData>> targets = await PickTargets(player, chosen, targeting);
             if (targets.Count == 0)
             {
                 // Cancelled before meeting the minimum target count — nothing spent.
                 await OnFinished.Activate(context);
                 return;
             }
+
+            SpellRelay.CastOrigin castOrigin = targeting.ChosenOrigin;
 
             // 3. Spend the spell's token cost + the #244 self-boost to attempt (spent whether or not the
             //    cast succeeds). A nonzero boost is announced like a friendly assist so the #103 hinderers
@@ -144,11 +159,29 @@ namespace FDG.Stages
             // burns the try exactly as a successful one does. Every cancel path above returns first, so a
             // browsed-and-cancelled spell is not consumed.
             context.RegisterSpellAttempt(chosen.Name);
-            caster.Tokens.RemoveTokens(TokenType.SpellTokens, chosen.Threshold + boost);
+            IReadOnlyList<SpellPurse.Loan> loans = SpellPurse.Spend(GameContext.TableState,
+                GameContext.RuleEvaluator, caster, chosen.Threshold + boost);
+            if (loans.Count > 0)
+            {
+                // Borrowing is worth its own banner: the tokens left someone else's pool, and that player
+                // needs to see it happen rather than notice the shortfall later.
+                await GameContext.Announce(
+                    $"{caster.Name} draws on nearby accumulators to cast {chosen.Name} " +
+                    $"({SpellPurse.Describe(loans)}).", AssistBannerColor);
+            }
             if (boost > 0)
             {
                 await GameContext.Announce(
                     $"{caster.Name} boosts their own cast of {chosen.Name} (+{boost}).", AssistBannerColor);
+            }
+
+            if (!castOrigin.IsSelf)
+            {
+                // Announced, not merely logged: the relay is why the spell reached and why the roll is
+                // easier, and a player who never sees it happen cannot learn to set it up.
+                await GameContext.Announce(
+                    $"{caster.Name} casts {chosen.Name} through {castOrigin.Unit.Name} " +
+                    $"(+{castOrigin.RollBonus}).", AssistBannerColor);
             }
 
             // 4. #103 — other Caster units within 18" may spend their own tokens to sway the cast: friendly
@@ -162,7 +195,7 @@ namespace FDG.Stages
             // removed by ConsumeNet, duration grants are left for the token sweep. Read after the cost has
             // been spent so a browsed-and-cancelled spell never burns the debuff.
             int granted = GrantedRollModifiers.ConsumeNet(caster, ERollKind.Cast);
-            int netModifier = boost + assist + granted;
+            int netModifier = boost + assist + granted + castOrigin.RollBonus;
 
             // 5. Cast roll: one die, base 4+ succeeds, shifted by boost + assists. RollDecisive so it's a
             //    real outcome under the probabilistic roller; a threshold shift (not a post-roll adjustment)
@@ -182,7 +215,7 @@ namespace FDG.Stages
             // the base 4+ was shifted. Assisters' own contributions were announced as they spent. The result
             // rides an on-screen text beat: blue on success, red on failure. ASCII only (the log font has no
             // em-dash glyph, #151).
-            string breakdown = BuildRollBreakdown(boost, assist, granted);
+            string breakdown = BuildRollBreakdown(boost, assist, granted, castOrigin.RollBonus);
             string tokensSpent = boost > 0
                 ? $"spent {chosen.Threshold + boost} tokens ({chosen.Threshold} cost + {boost} boost)"
                 : $"spent {chosen.Threshold} token{(chosen.Threshold == 1 ? "" : "s")}";
@@ -319,7 +352,8 @@ namespace FDG.Stages
         // #249: already-tried spells are checked first — that one is permanent for the activation, so it
         // outranks the transient "need N tokens" / "no valid target" reasons.
         private IReadOnlyList<SpellOffer> BuildSpellOffer(IUnitActionContext context,
-            DataBinding<UnitData> caster, PlayerID player, int tokens)
+            DataBinding<UnitData> caster, PlayerID player, int tokens,
+            IReadOnlyList<SpellRelay.CastOrigin> origins)
         {
             ArmyData army = GameContext.GameDataStore().GetAllValues<ArmyData>()
                 .FirstOrDefault(a => a.PlayerID == player);
@@ -340,8 +374,11 @@ namespace FDG.Stages
                 {
                     offer.Add(new SpellOffer(spell, false, $"need {spell.Threshold} tokens"));
                 }
-                else if (!SpellTargeting.HasAnyEligibleTarget(GameContext, caster, player, spell.Target))
+                else if (!SpellTargeting.HasAnyEligibleTargetFromAny(GameContext, caster, player,
+                             spell.Target, origins))
                 {
+                    // From ANY origin: a spell the caster cannot reach itself is still castable through a
+                    // relay that can, so gating on the caster's own reach would hide it from the picker.
                     offer.Add(new SpellOffer(spell, false, "no valid target"));
                 }
                 else
@@ -355,7 +392,8 @@ namespace FDG.Stages
         // #244 — one request returns both the spell and the caster's own boost spend. The reply's boost is
         // clamped to what remains after the spell's cost; an out-of-range or non-castable index cancels.
         private async Task<(RuntimeSpell? spell, int boost)> PickSpell(DataBinding<UnitData> casterBinding,
-            PlayerID player, IReadOnlyList<SpellOffer> offer, int tokens)
+            PlayerID player, IReadOnlyList<SpellOffer> offer, int tokens,
+            IReadOnlyList<SpellRelay.CastOrigin> origins)
         {
             List<ChooseSpellRequest.SpellOption> options = offer
                 .Select(o => new ChooseSpellRequest.SpellOption(SpellOptionLabel(o.Spell),
@@ -364,12 +402,25 @@ namespace FDG.Stages
 
             // How much the roll could still be hindered after the caster commits — enemy Casters in assist
             // range and their tokens — so the picker can gray out boost past the point it can matter.
+            // Each hinderer's whole purse, summed. Deliberately an over-estimate: it assumes every enemy
+            // Caster spends everything, and if two of them can reach one accumulator it counts that pool
+            // twice. Both errors point the same way (the picker grays out boost slightly early) and the
+            // alternative is solving an allocation the enemy hasn't made yet.
             int hinderTokens = FindEligibleAssisters(casterBinding, player)
                 .Where(entry => !entry.friendly)
-                .Sum(entry => entry.unit.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens));
+                .Sum(entry => SpellPurse.Available(GameContext.TableState, GameContext.RuleEvaluator,
+                    entry.unit.GetValue()));
+
+            // #197 P23 — tell the picker a relay is in range so the player knows the bonus is on the table
+            // before choosing. Which targets actually get it is stated per row in the target list, where
+            // the answer is definite; here it is only "this exists and here is what it does".
+            IReadOnlyList<ChooseSpellRequest.RelayOption> relays = origins
+                .Where(origin => !origin.IsSelf)
+                .Select(origin => new ChooseSpellRequest.RelayOption(origin.Unit.Name, origin.RollBonus))
+                .ToList();
 
             ChooseSpellRequest request = new ChooseSpellRequest(player, casterBinding, tokens,
-                CAST_SUCCESS_THRESHOLD, hinderTokens, options);
+                CAST_SUCCESS_THRESHOLD, hinderTokens, options, relays);
 
             ChooseSpellReply reply = await GameContext.PlayerRequester
                 .RequestDecision<ChooseSpellRequest, ChooseSpellReply>(request);
@@ -385,12 +436,15 @@ namespace FDG.Stages
             return (spell, boost);
         }
 
-        // "(base 4+, self +1, assists -2, granted -1)" — only the parts that apply; empty when the roll
-        // is unmodified. "granted" is the #197 P6 token delta (Casting Debuff / Casting Buff).
-        private static string BuildRollBreakdown(int boost, int assist, int granted)
+        // "(base 4+, relay +1, self +1, assists -2, granted -1)" — only the parts that apply; empty when the
+        // roll is unmodified. "granted" is the #197 P6 token delta (Casting Debuff / Casting Buff); "relay"
+        // is the #197 P23 Spell Conduit bonus, listed first because it is the one the player did not ask
+        // for by name.
+        private static string BuildRollBreakdown(int boost, int assist, int granted, int relay)
         {
-            if (boost == 0 && assist == 0 && granted == 0) return "";
+            if (boost == 0 && assist == 0 && granted == 0 && relay == 0) return "";
             List<string> parts = new List<string> { $"base {CAST_SUCCESS_THRESHOLD}+" };
+            if (relay != 0) parts.Add($"relay +{relay}");
             if (boost != 0) parts.Add($"self +{boost}");
             if (assist != 0) parts.Add($"assists {(assist > 0 ? "+" : "")}{assist}");
             if (granted != 0) parts.Add($"granted {(granted > 0 ? "+" : "")}{granted}");
@@ -398,15 +452,21 @@ namespace FDG.Stages
         }
 
         private async Task<IReadOnlyList<DataBinding<UnitData>>> PickTargets(PlayerID player, RuntimeSpell spell,
-            List<DataBinding<UnitData>> candidates)
+            RelayedTargeting targeting)
         {
             List<DataBinding<UnitData>> chosen = new List<DataBinding<UnitData>>();
-            List<DataBinding<UnitData>> remaining = new List<DataBinding<UnitData>>(candidates);
 
-            for (int picked = 0; picked < spell.Target.MaxCount && remaining.Count > 0; picked++)
+            for (int picked = 0; picked < spell.Target.MaxCount; picked++)
             {
+                IReadOnlyList<DataBinding<UnitData>> remaining = targeting.Remaining(chosen);
+                if (remaining.Count == 0) break;
+
+                // Each row says which origin the cast would use if that target is picked — "(via Synaptic
+                // Relay, +1)". That is the honest place for it: at spell-pick time the origin is not yet
+                // decided, and this is exactly the information a player needs to aim for the bonus.
                 List<SelectionRequest<UnitData>.ValidOption> validOptions = remaining
-                    .Select(u => new SelectionRequest<UnitData>.ValidOption(u, u.GetValue().Name))
+                    .Select(u => new SelectionRequest<UnitData>.ValidOption(u,
+                        TargetLabel(u, targeting.OriginFor(chosen, u))))
                     .ToList();
 
                 SelectionRequest<UnitData> request = new SelectionRequest<UnitData>(player,
@@ -425,11 +485,20 @@ namespace FDG.Stages
                 }
 
                 chosen.Add(target);
-                remaining.RemoveAll(u => u.Reference.Equals(target.Reference));
             }
 
-            return chosen.Count >= spell.Target.MinCount ? chosen : new List<DataBinding<UnitData>>();
+            if (chosen.Count < spell.Target.MinCount) return new List<DataBinding<UnitData>>();
+
+            targeting.Commit(chosen);
+            return chosen;
         }
+
+        // "Dummies (via Synaptic Relay, +1)" for a relayed target, the plain name for one the caster
+        // reaches itself. ASCII only (#151).
+        private static string TargetLabel(DataBinding<UnitData> target, SpellRelay.CastOrigin origin) =>
+            origin.IsSelf
+                ? target.GetValue().Name
+                : $"{target.GetValue().Name} (via {origin.Unit.Name}, +{origin.RollBonus})";
 
         // #034 single-model targeting: pick one living model in the target unit ("a unit of [1]"). The cast
         // has already succeeded and its tokens are spent, so the pick is mandatory (no cancel) — mirroring
@@ -475,14 +544,25 @@ namespace FDG.Stages
             foreach ((DataBinding<UnitData> unitBinding, bool friendly) in FindEligibleAssisters(casterBinding, casterPlayer))
             {
                 IUnit assister = unitBinding.GetValue();
-                int available = assister.Tokens.GetTokenCount(TokenType.SpellTokens);
+
+                // Re-read per assister rather than reusing FindEligibleAssisters' snapshot: an earlier
+                // assister this round may have drained the accumulator they share.
+                int available = SpellPurse.Available(GameContext.TableState, GameContext.RuleEvaluator,
+                    assister);
                 if (available <= 0) continue;
 
                 int spent = await AskAssistCount(unitBinding, casterBinding, friendly, available, spellName);
                 if (spent <= 0) continue;
 
-                assister.Tokens.RemoveTokens(TokenType.SpellTokens, spent);
+                IReadOnlyList<SpellPurse.Loan> loans = SpellPurse.Spend(GameContext.TableState,
+                    GameContext.RuleEvaluator, assister, spent);
                 net += friendly ? spent : -spent;
+
+                if (loans.Count > 0)
+                {
+                    GameContext.Log($"{assister.Name} funds that with borrowed accumulator tokens " +
+                                    $"({SpellPurse.Describe(loans)}).");
+                }
 
                 // Text beat: announce who assisted/hindered and by how much — an on-screen banner plus the
                 // log line, blue for a friendly boost and orange for an enemy disruption (matches the GUI
@@ -518,8 +598,8 @@ namespace FDG.Stages
                 if (unitBinding.Reference.Equals(casterBinding.Reference)) continue; // not the casting unit
                 UnitData unit = unitBinding.GetValue();
                 if (!unit.GetIsAlive() || !unit.GetIsOnBattlefield()) continue;
-                if (!SpellTargeting.IsCaster(unit)) continue;
-                if (unit.Tokens.GetTokenCount(TokenType.SpellTokens) <= 0) continue;
+                if (!SpellTargeting.IsCaster(GameContext, unit)) continue;
+                if (SpellPurse.Available(GameContext.TableState, GameContext.RuleEvaluator, unit) <= 0) continue;
 
                 float distance = UnitCompareUtilities.MinDistanceBetweenUnits(
                     castingUnit, unit, out _, out _, includeVertical: true);
@@ -547,6 +627,121 @@ namespace FDG.Stages
                 .RequestDecision<CastAssistRequest, int>(request);
 
             return System.Math.Clamp(spent, 0, available);
+        }
+
+        /// <summary>
+        /// #197 P23 — target selection once a <c>Spell Conduit</c> may be relaying the cast. A spell is cast
+        /// from ONE position, so the origin and the target set are a single decision; but a relay origin is
+        /// never worse than the caster's own (it can only add reach, and it adds the bonus), so the origin
+        /// is derived from the targets rather than prompted for.
+        ///
+        /// <para>It works by keeping each origin's eligible set: the player is offered the UNION, and each
+        /// pick narrows the origins to those that still cover everything chosen. <see cref="ChosenOrigin"/>
+        /// is the best survivor. With no relay in range there is one origin and this degrades exactly to the
+        /// old single-list behaviour.</para>
+        /// </summary>
+        private sealed class RelayedTargeting
+        {
+            private readonly List<(SpellRelay.CastOrigin origin, List<DataBinding<UnitData>> targets)> _byOrigin
+                = new List<(SpellRelay.CastOrigin, List<DataBinding<UnitData>>)>();
+
+            public IReadOnlyList<DataBinding<UnitData>> Candidates { get; }
+
+            /// <summary>The origin the cast will be made from. Valid after <see cref="Commit"/>; before
+            /// that it holds the best origin for an empty target set (any relay in range).</summary>
+            public SpellRelay.CastOrigin ChosenOrigin { get; private set; }
+
+            public RelayedTargeting(CastSpellStage stage, DataBinding<UnitData> caster, PlayerID player,
+                RuntimeSpell spell, IReadOnlyList<SpellRelay.CastOrigin> origins)
+            {
+                foreach (SpellRelay.CastOrigin origin in origins)
+                {
+                    List<DataBinding<UnitData>> targets = SpellTargeting.GetEligibleTargets(
+                        stage.GameContext, caster, player, spell.Target, origin.Unit);
+                    if (targets.Count > 0) _byOrigin.Add((origin, targets));
+                }
+
+                // Origins arrive relays-first, so the first entry is already the preferred one; fall back to
+                // the caster's own position when nothing reaches anything (Candidates is then empty and the
+                // caller bails before this matters).
+                ChosenOrigin = _byOrigin.Count > 0 ? _byOrigin[0].origin : origins[origins.Count - 1];
+
+                List<DataBinding<UnitData>> union = new List<DataBinding<UnitData>>();
+                foreach ((_, List<DataBinding<UnitData>> targets) in _byOrigin)
+                {
+                    foreach (DataBinding<UnitData> target in targets)
+                    {
+                        if (!Contains(union, target)) union.Add(target);
+                    }
+                }
+
+                Candidates = union;
+            }
+
+            /// <summary>Targets still pickable given what is already chosen: reachable from some origin that
+            /// covers every earlier pick, and not already picked.</summary>
+            public IReadOnlyList<DataBinding<UnitData>> Remaining(IReadOnlyList<DataBinding<UnitData>> chosen)
+            {
+                List<DataBinding<UnitData>> remaining = new List<DataBinding<UnitData>>();
+                foreach ((_, List<DataBinding<UnitData>> targets) in Viable(chosen))
+                {
+                    foreach (DataBinding<UnitData> target in targets)
+                    {
+                        if (!Contains(chosen, target) && !Contains(remaining, target)) remaining.Add(target);
+                    }
+                }
+
+                return remaining;
+            }
+
+            /// <summary>The origin the cast would use if <paramref name="candidate"/> joined
+            /// <paramref name="chosen"/> — what the target row reports.</summary>
+            public SpellRelay.CastOrigin OriginFor(IReadOnlyList<DataBinding<UnitData>> chosen,
+                DataBinding<UnitData> candidate)
+            {
+                foreach ((SpellRelay.CastOrigin origin, List<DataBinding<UnitData>> targets) in Viable(chosen))
+                {
+                    if (Contains(targets, candidate)) return origin;
+                }
+
+                return ChosenOrigin;
+            }
+
+            /// <summary>Fixes the origin once the target set is final.</summary>
+            public void Commit(IReadOnlyList<DataBinding<UnitData>> chosen)
+            {
+                foreach ((SpellRelay.CastOrigin origin, _) in Viable(chosen))
+                {
+                    ChosenOrigin = origin;
+                    return;
+                }
+            }
+
+            // Origins whose set covers every already-chosen target, in preference order (relays first).
+            private IEnumerable<(SpellRelay.CastOrigin origin, List<DataBinding<UnitData>> targets)> Viable(
+                IReadOnlyList<DataBinding<UnitData>> chosen)
+            {
+                foreach ((SpellRelay.CastOrigin origin, List<DataBinding<UnitData>> targets) in _byOrigin)
+                {
+                    bool covers = true;
+                    foreach (DataBinding<UnitData> already in chosen)
+                    {
+                        if (!Contains(targets, already)) { covers = false; break; }
+                    }
+
+                    if (covers) yield return (origin, targets);
+                }
+            }
+
+            private static bool Contains(IReadOnlyList<DataBinding<UnitData>> list, DataBinding<UnitData> unit)
+            {
+                foreach (DataBinding<UnitData> entry in list)
+                {
+                    if (entry.Reference.Equals(unit.Reference)) return true;
+                }
+
+                return false;
+            }
         }
 
         private static string SpellOptionLabel(RuntimeSpell spell) => $"{spell.Name} ({spell.Threshold})";

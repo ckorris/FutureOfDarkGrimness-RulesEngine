@@ -62,7 +62,7 @@ namespace FDG.Ai.Tactician.Resolvers
                     // cargo out Shaken), and a target that can charge US next activation is worth
                     // killing before one that cannot reach us.
                     float targetValue = _tableState != null
-                        ? TacticalAnalysis.UnitValueWithCargo(target, _tableState)
+                        ? TacticalAnalysis.UnitValueWithCargo(target, _tableState, _evaluator)
                         : TacticalAnalysis.UnitValue(target);
                     bool threatensUs = target.GetMeleeWeapons().Count > 0
                         && TacticalAnalysis.MeleeThreatReach(target,

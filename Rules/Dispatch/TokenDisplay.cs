@@ -138,6 +138,7 @@ public static class TokenDisplay
         type == TokenType.HitRollModifier ? "Hit"
         : type == TokenType.SaveRollModifier ? "Defense"
         : type == TokenType.MoraleRollModifier ? "Morale"
+        : type == TokenType.CastRollModifier ? "Casting"
         : "roll";
 
     private static string RuleDescription(string ruleName, IRuleResolver? rules)

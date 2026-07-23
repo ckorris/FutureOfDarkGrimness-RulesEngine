@@ -22,10 +22,11 @@ public readonly record struct TokenType(string Id)
     public const string HIT_ROLL_MODIFIER_ID = "HitRollModifier";
     public const string SAVE_ROLL_MODIFIER_ID = "SaveRollModifier";
     public const string MORALE_ROLL_MODIFIER_ID = "MoraleRollModifier";
+    public const string CAST_ROLL_MODIFIER_ID = "CastRollModifier";
 
     // Attacker-bonus markers (#100 #14b, the Tag/Target/Spotter family): tokens sitting on an ENEMY
     // unit that make friendly attacks against it better. The bonus kind is the token TYPE (mirroring
-    // the roll-modifier trio above); each marker is worth +1. "Spendable" markers are claimed by the
+    // the roll-modifier family above); each marker is worth +1. "Spendable" markers are claimed by the
     // attacking player before the roll — TargetMarkerSpend prompts how many to remove and each removed
     // marker buys +1 for that roll only. "Persistent" markers are never consumed: every friendly attack
     // gets +count while they sit (the Target family's "friendly units get +X when attacking it").
@@ -42,6 +43,7 @@ public readonly record struct TokenType(string Id)
     public static readonly TokenType HitRollModifier = new(HIT_ROLL_MODIFIER_ID);
     public static readonly TokenType SaveRollModifier = new(SAVE_ROLL_MODIFIER_ID);
     public static readonly TokenType MoraleRollModifier = new(MORALE_ROLL_MODIFIER_ID);
+    public static readonly TokenType CastRollModifier = new(CAST_ROLL_MODIFIER_ID);
     public static readonly TokenType SpendableHitBonus = new(SPENDABLE_HIT_BONUS_ID);
     public static readonly TokenType SpendableApBonus = new(SPENDABLE_AP_BONUS_ID);
     public static readonly TokenType PersistentHitBonus = new(PERSISTENT_HIT_BONUS_ID);

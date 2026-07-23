@@ -301,7 +301,7 @@ namespace FDG.SaveLoad
                 TokenType.MARK_ID, TokenType.POST_COMBAT_MOVE_USED_ID,
                 TokenType.OFF_TABLE_FROM_FORCED_MOVE_ID, TokenType.LIMITED_SPENT_ID,
                 TokenType.HIT_ROLL_MODIFIER_ID, TokenType.SAVE_ROLL_MODIFIER_ID,
-                TokenType.MORALE_ROLL_MODIFIER_ID,
+                TokenType.MORALE_ROLL_MODIFIER_ID, TokenType.CAST_ROLL_MODIFIER_ID,
             };
             string typeId = knownIds.FirstOrDefault(
                 id => string.Equals(id, spec.Type, StringComparison.OrdinalIgnoreCase)) ?? spec.Type;

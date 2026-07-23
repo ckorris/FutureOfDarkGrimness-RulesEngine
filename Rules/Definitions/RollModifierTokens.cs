@@ -16,6 +16,7 @@ namespace FDG.Rules.Definitions
             ERollKind.Hit => TokenType.HitRollModifier,
             ERollKind.Save => TokenType.SaveRollModifier,
             ERollKind.Morale => TokenType.MoraleRollModifier,
+            ERollKind.Cast => TokenType.CastRollModifier,
             // Fail loudly if a new roll kind is added without a carrier token type — a silent fallback
             // here would route the modifier onto hit rolls, a wrong-roll bug that's hard to trace back.
             _ => throw new System.ArgumentOutOfRangeException(nameof(roll), roll,

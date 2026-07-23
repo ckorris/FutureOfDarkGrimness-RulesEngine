@@ -155,7 +155,14 @@ namespace FDG.Stages
             //    Casters add +1 each, enemy Casters subtract 1 each. Their tokens are spent regardless of the
             //    cast's outcome (like the cast cost above). Boost + assists shift the success threshold.
             int assist = await CollectCastAssist(context.ActivatingUnit, player, chosen.Name);
-            int netModifier = boost + assist;
+
+            // #197 P6 — granted cast-roll modifiers (Casting Debuff / Casting Buff): a signed delta the
+            // caster is carrying as a token. Consumed here, once, whether or not the cast succeeds, exactly
+            // as the hit/save/morale sites consume theirs at their own roll; "once" (NextTrigger) grants are
+            // removed by ConsumeNet, duration grants are left for the token sweep. Read after the cost has
+            // been spent so a browsed-and-cancelled spell never burns the debuff.
+            int granted = GrantedRollModifiers.ConsumeNet(caster, ERollKind.Cast);
+            int netModifier = boost + assist + granted;
 
             // 5. Cast roll: one die, base 4+ succeeds, shifted by boost + assists. RollDecisive so it's a
             //    real outcome under the probabilistic roller; a threshold shift (not a post-roll adjustment)
@@ -175,7 +182,7 @@ namespace FDG.Stages
             // the base 4+ was shifted. Assisters' own contributions were announced as they spent. The result
             // rides an on-screen text beat: blue on success, red on failure. ASCII only (the log font has no
             // em-dash glyph, #151).
-            string breakdown = BuildRollBreakdown(boost, assist);
+            string breakdown = BuildRollBreakdown(boost, assist, granted);
             string tokensSpent = boost > 0
                 ? $"spent {chosen.Threshold + boost} tokens ({chosen.Threshold} cost + {boost} boost)"
                 : $"spent {chosen.Threshold} token{(chosen.Threshold == 1 ? "" : "s")}";
@@ -378,13 +385,15 @@ namespace FDG.Stages
             return (spell, boost);
         }
 
-        // "(base 4+, self +1, assists -2)" — only the parts that apply; empty when the roll is unmodified.
-        private static string BuildRollBreakdown(int boost, int assist)
+        // "(base 4+, self +1, assists -2, granted -1)" — only the parts that apply; empty when the roll
+        // is unmodified. "granted" is the #197 P6 token delta (Casting Debuff / Casting Buff).
+        private static string BuildRollBreakdown(int boost, int assist, int granted)
         {
-            if (boost == 0 && assist == 0) return "";
+            if (boost == 0 && assist == 0 && granted == 0) return "";
             List<string> parts = new List<string> { $"base {CAST_SUCCESS_THRESHOLD}+" };
             if (boost != 0) parts.Add($"self +{boost}");
             if (assist != 0) parts.Add($"assists {(assist > 0 ? "+" : "")}{assist}");
+            if (granted != 0) parts.Add($"granted {(granted > 0 ? "+" : "")}{granted}");
             return $" ({string.Join(", ", parts)})";
         }
 

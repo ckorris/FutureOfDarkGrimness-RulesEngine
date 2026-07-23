@@ -34,6 +34,33 @@ namespace FDG.Ai.Tactician
         // Non-charge moves must end >= 1" from enemies (engine standoff rule); aim with slack.
         private const float ApproachStandoffGapInches = 1.1f;
 
+        /// <summary>
+        /// A move allowance for planning (#264 issue 7): how far to plan - the SLOWEST model's cap, so
+        /// the whole unit can make the move - plus each model's OWN cap for validation. Planning at
+        /// the unit scalar and validating everyone against it is what made a joined Slow hero's unit
+        /// fail the movement resolver's per-model re-check on every candidate.
+        /// </summary>
+        private readonly record struct PlanBudget(
+            float Inches, Func<ModelMoveEntry, ModelMoveBudget> PerModel);
+
+        private static Func<ModelMoveEntry, ModelMoveBudget> PerModelCaps(
+            IReadOnlyDictionary<ModelID, (float Advance, float Rush, float Charge)> budgets,
+            EActionType actionType, float fallback) => entry =>
+            {
+                float cap = fallback;
+                if (budgets.TryGetValue(entry.Model.GetValue().ID,
+                        out (float Advance, float Rush, float Charge) budget))
+                {
+                    cap = actionType switch
+                    {
+                        EActionType.Advance => budget.Advance,
+                        EActionType.Charge => budget.Charge,
+                        _ => budget.Rush,
+                    };
+                }
+                return new ModelMoveBudget(cap, cap);
+            };
+
         public static List<MacroAction> Enumerate(RuleEvaluator evaluator, ITableState tableState,
             DataBinding<UnitData> unit, int candidateBudget = DefaultCandidateBudget)
         {
@@ -47,8 +74,23 @@ namespace FDG.Ai.Tactician
 
             if (living.Count == 0) return candidates;
 
-            float advance = TacticalAnalysis.AdvanceDistance(self, evaluator);
-            float rush = TacticalAnalysis.RushDistance(self, evaluator);
+            // #264 issue 7: plan at the SLOWEST model's allowance and validate each model against its
+            // own. The unit scalars take the MAX across models (a joined Fast hero raises the unit's
+            // Rush), so planning at them submits moves the movement resolver's per-model re-check
+            // rejects - and that unit silently plays the solo resolver for the rest of the game.
+            Dictionary<ModelID, (float Advance, float Rush, float Charge)> perModelBudgets =
+                MovementRuleQueries.PerModelMoveBudgets(self, evaluator);
+            float advance = perModelBudgets.Count == 0
+                ? TacticalAnalysis.AdvanceDistance(self, evaluator)
+                : perModelBudgets.Values.Min(b => b.Advance);
+            float rush = perModelBudgets.Count == 0
+                ? TacticalAnalysis.RushDistance(self, evaluator)
+                : perModelBudgets.Values.Min(b => b.Rush);
+            PlanBudget advanceBudget = new PlanBudget(advance,
+                PerModelCaps(perModelBudgets, EActionType.Advance, advance));
+            PlanBudget rushBudget = new PlanBudget(rush,
+                PerModelCaps(perModelBudgets, EActionType.Rush, rush));
+
             bool canMoveThroughEnemies = MovementRuleQueries.CanMoveThroughEnemies(self, evaluator);
             bool ignoresDifficult = MovementRuleQueries.IgnoresDifficultTerrain(self, evaluator);
             bool ignoresAllTerrain = MovementRuleQueries.IgnoresAllTerrain(self, evaluator);
@@ -69,13 +111,13 @@ namespace FDG.Ai.Tactician
             {
                 candidates.Add(Plan(EMacroIntent.AdvanceOnObjective,
                     $"intent=AdvanceOnObjective obj=({objective.Position.x:F0},{objective.Position.z:F0})",
-                    EActionType.Advance, unit, living, tableState, evaluator, objective.Position, advance,
+                    EActionType.Advance, unit, living, tableState, evaluator, objective.Position, advanceBudget,
                     canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain,
                     goalRadius: TacticalAnalysis.ObjectiveSeizureRadiusInches,
                     targetObjective: objective, sharedGrid: sharedGrid));
                 candidates.Add(Plan(EMacroIntent.RushObjective,
                     $"intent=RushObjective obj=({objective.Position.x:F0},{objective.Position.z:F0})",
-                    EActionType.Rush, unit, living, tableState, evaluator, objective.Position, rush,
+                    EActionType.Rush, unit, living, tableState, evaluator, objective.Position, rushBudget,
                     canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain,
                     goalRadius: TacticalAnalysis.ObjectiveSeizureRadiusInches,
                     targetObjective: objective, sharedGrid: sharedGrid));
@@ -100,7 +142,7 @@ namespace FDG.Ai.Tactician
                         Position goal = PointAtDistanceFrom(enemyPos, start, d);
                         candidates.Add(Plan(EMacroIntent.EngageAtRange,
                             $"intent=EngageAtRange band={band} target={enemy.Name} d={d:F1}",
-                            EActionType.Advance, unit, living, tableState, evaluator, goal, advance,
+                            EActionType.Advance, unit, living, tableState, evaluator, goal, advanceBudget,
                             canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain,
                             goalRadius: BandMarginInches, targetEnemy: enemy, band: band, sharedGrid: sharedGrid));
                     }
@@ -111,7 +153,7 @@ namespace FDG.Ai.Tactician
                 {
                     MacroAction charge = BuildCharge(unit, living, tableState, evaluator, self, enemy,
                         start, leadRadius, terrain, enemyFootprints,
-                        canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain);
+                        canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, perModelBudgets);
                     if (charge.Feasibility == EFeasibility.Reachable)
                     {
                         candidates.Add(charge);
@@ -130,7 +172,7 @@ namespace FDG.Ai.Tactician
                         candidates.Add(Plan(EMacroIntent.ChargeToContact,
                             $"intent=ChargeToContact target={enemy.Name} approach",
                             EActionType.Rush, unit, living, tableState, evaluator,
-                            PointAtDistanceFrom(aim, start, standoff), rush,
+                            PointAtDistanceFrom(aim, start, standoff), rushBudget,
                             canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain,
                             goalRadius: 1f, targetEnemy: enemy, sharedGrid: sharedGrid));
                     }
@@ -146,7 +188,7 @@ namespace FDG.Ai.Tactician
                     Distance(threatPos, start) + rush);
                 candidates.Add(Plan(EMacroIntent.FallBack,
                     $"intent=FallBack from={threat.Name}", EActionType.Rush,
-                    unit, living, tableState, evaluator, ClampToTable(away), rush,
+                    unit, living, tableState, evaluator, ClampToTable(away), rushBudget,
                     canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, goalRadius: 1f,
                     targetEnemy: threat, sharedGrid: sharedGrid));
             }
@@ -157,7 +199,7 @@ namespace FDG.Ai.Tactician
             {
                 candidates.Add(Plan(EMacroIntent.SeekCoverFrom,
                     $"intent=SeekCoverFrom from={rankedEnemies[0].Name}", EActionType.Rush,
-                    unit, living, tableState, evaluator, coverGoal, rush,
+                    unit, living, tableState, evaluator, coverGoal, rushBudget,
                     canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, goalRadius: 1f,
                     targetEnemy: rankedEnemies[0], sharedGrid: sharedGrid));
             }
@@ -178,7 +220,7 @@ namespace FDG.Ai.Tactician
                     float laneDx = asset.x - threatPos2.x, laneDz = asset.z - threatPos2.z;
                     candidates.Add(Plan(EMacroIntent.Block,
                         $"intent=Block enemy={threat.Name}", EActionType.Rush,
-                        unit, living, tableState, evaluator, lane, rush,
+                        unit, living, tableState, evaluator, lane, rushBudget,
                         canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, goalRadius: 1f,
                         targetEnemy: threat, formation: MovementPlanner.EFormation.Line,
                         lineAxis: (-laneDz, laneDx), sharedGrid: sharedGrid));
@@ -196,7 +238,7 @@ namespace FDG.Ai.Tactician
                     Position goal = PointAtDistanceFrom(wardPos, Centroid(wardThreat), -2.5f);
                     candidates.Add(Plan(EMacroIntent.Escort,
                         $"intent=Escort ally={ward.Name}", EActionType.Rush,
-                        unit, living, tableState, evaluator, ClampToTable(goal), rush,
+                        unit, living, tableState, evaluator, ClampToTable(goal), rushBudget,
                         canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, goalRadius: 2f,
                         targetAlly: ward, sharedGrid: sharedGrid));
                 }
@@ -208,7 +250,7 @@ namespace FDG.Ai.Tactician
                 Position mass = MeanPosition(friends.Select(Centroid).ToList());
                 candidates.Add(Plan(EMacroIntent.Concentrate,
                     "intent=Concentrate", EActionType.Rush,
-                    unit, living, tableState, evaluator, mass, rush,
+                    unit, living, tableState, evaluator, mass, rushBudget,
                     canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, goalRadius: 3f, sharedGrid: sharedGrid));
             }
 
@@ -217,7 +259,7 @@ namespace FDG.Ai.Tactician
             // A5 verifies whether Cast even permits same-activation movement). Advance, so casting
             // machinery still applies afterward if the engine allows it.
             AddMoveToCast(candidates, unit, living, tableState, evaluator, self, start,
-                enemies, friends, advance, canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain);
+                enemies, friends, advanceBudget, canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain);
 
             // M12 - a loaded transport routes toward where its CARGO wants to be (v1 proxy: the
             // nearest objective we do not already own outright - the cargo's most common plan).
@@ -232,7 +274,7 @@ namespace FDG.Ai.Tactician
                 {
                     candidates.Add(Plan(EMacroIntent.DeliverCargo,
                         $"intent=DeliverCargo obj=({destination.Position.x:F0},{destination.Position.z:F0})",
-                        EActionType.Rush, unit, living, tableState, evaluator, destination.Position, rush,
+                        EActionType.Rush, unit, living, tableState, evaluator, destination.Position, rushBudget,
                         canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain,
                         goalRadius: TacticalAnalysis.ObjectiveSeizureRadiusInches + 3f,
                         targetObjective: destination));
@@ -247,7 +289,7 @@ namespace FDG.Ai.Tactician
         // best target is already in range produce no move (nothing to set up).
         private static void AddMoveToCast(List<MacroAction> candidates, DataBinding<UnitData> unit,
             List<DataBinding<ModelData>> living, ITableState tableState, RuleEvaluator evaluator,
-            UnitData self, Position start, List<IUnit> enemies, List<IUnit> friends, float advance,
+            UnitData self, Position start, List<IUnit> enemies, List<IUnit> friends, PlanBudget advanceBudget,
             bool canMoveThroughEnemies, bool ignoresDifficult, bool ignoresAllTerrain)
         {
             int tokens = self.Tokens.GetTokenCount(TokenType.SpellTokens);
@@ -281,7 +323,7 @@ namespace FDG.Ai.Tactician
                 Position goal = PointAtDistanceFrom(targetPos, start, castRange);
                 candidates.Add(Plan(EMacroIntent.MoveToCast,
                     $"intent=MoveToCast spell={spell.Name} target={target.Name}",
-                    EActionType.Advance, unit, living, tableState, evaluator, goal, advance,
+                    EActionType.Advance, unit, living, tableState, evaluator, goal, advanceBudget,
                     canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, goalRadius: 1f,
                     targetEnemy: wantsEnemy ? target : null,
                     targetAlly: wantsEnemy ? null : target));
@@ -299,10 +341,31 @@ namespace FDG.Ai.Tactician
             List<DataBinding<ModelData>> living, ITableState tableState, RuleEvaluator evaluator,
             UnitData self, IUnit enemy, Position start, float leadRadius,
             List<ITerrain> terrain, List<EnemyModelFootprint> enemyFootprints,
-            bool canMoveThroughEnemies, bool ignoresDifficult, bool ignoresAllTerrain)
+            bool canMoveThroughEnemies, bool ignoresDifficult, bool ignoresAllTerrain,
+            IReadOnlyDictionary<ModelID, (float Advance, float Rush, float Charge)> perModelBudgets)
         {
             float fullChargeReach = TacticalAnalysis.ChargeDistanceAgainst(self, enemy, evaluator);
-            float chargeReach = Math.Max(0f, fullChargeReach - 0.001f);
+            // #264 issue 7: the same per-model split as the move families. The target-conditioned
+            // shrink (Melee Shrouding) is unit-wide, so it comes off every model's own charge - the
+            // composition DefinePathStage uses to build the request's per-model budgets.
+            float chargeShrink = TacticalAnalysis.ChargeBudget(self, evaluator) - fullChargeReach;
+            Func<ModelMoveEntry, ModelMoveBudget> chargeBudgetFor = entry =>
+            {
+                float cap = fullChargeReach;
+                if (perModelBudgets.TryGetValue(entry.Model.GetValue().ID,
+                        out (float Advance, float Rush, float Charge) budget))
+                    cap = Math.Max(0f, budget.Charge - chargeShrink);
+                return new ModelMoveBudget(cap, cap);
+            };
+            // Plan at the slowest model's reach so the whole unit can make the charge.
+            float plannedReach = fullChargeReach;
+            foreach (DataBinding<ModelData> model in living)
+            {
+                if (perModelBudgets.TryGetValue(model.GetValue().ID,
+                        out (float Advance, float Rush, float Charge) budget))
+                    plannedReach = Math.Min(plannedReach, Math.Max(0f, budget.Charge - chargeShrink));
+            }
+            float chargeReach = Math.Max(0f, plannedReach - 0.001f);
             IModel? nearestModel = NearestLivingModel(enemy, start);
             Position enemyPos = nearestModel?.Position ?? Centroid(enemy);
             float contactDistance = leadRadius + (nearestModel?.BaseRadiusInches ?? 0.5f);
@@ -329,7 +392,7 @@ namespace FDG.Ai.Tactician
                 // charge around the friendly instead (feasibility grades by the achieved gap).
                 move = MovementPlanner.ValidateWithBackoff(
                     s => MovementPlanner.BuildCandidate(unit, living, start.x, start.z, ndx, ndz, s, chargeReach),
-                    step, unit, living, _ => new ModelMoveBudget(fullChargeReach, fullChargeReach),
+                    step, unit, living, chargeBudgetFor,
                     enemyFootprints, canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, terrain,
                     MovementPlanner.LiveFriendlyFootprints(tableState, self.PlayerID, self.ID),
                     // #256 S2: side-step around a friendly in the charge lane instead of halving to a stall.
@@ -341,7 +404,7 @@ namespace FDG.Ai.Tactician
                 Position contactGoal = PointAtDistanceFrom(enemyPos, start,
                     contactDistance + MovementPlanner.ChargeContactTargetGapInches);
                 move = MovementPlanner.PlanMoveToward(unit, living, tableState, contactGoal,
-                    chargeReach, chargeReach, _ => new ModelMoveBudget(fullChargeReach, fullChargeReach),
+                    chargeReach, chargeReach, chargeBudgetFor,
                     canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain);
             }
 
@@ -360,7 +423,7 @@ namespace FDG.Ai.Tactician
 
         private static MacroAction Plan(EMacroIntent intent, string rationale, EActionType actionType,
             DataBinding<UnitData> unit, List<DataBinding<ModelData>> living, ITableState tableState,
-            RuleEvaluator evaluator, Position goal, float budget,
+            RuleEvaluator evaluator, Position goal, PlanBudget budget,
             bool canMoveThroughEnemies, bool ignoresDifficult, bool ignoresAllTerrain,
             float goalRadius, IUnit? targetEnemy = null, IObjective? targetObjective = null,
             IUnit? targetAlly = null, ERangeBand? band = null,
@@ -370,10 +433,10 @@ namespace FDG.Ai.Tactician
             // The MOVE takes the float-precision margin; the VALIDATOR keeps the full budget
             // (the ResolverGuide gotcha - giving both the same reduced number makes the first
             // candidate fail its own budget check and the ladder halve a legal move).
-            float safeBudget = Math.Max(0f, budget - 0.001f);
+            float safeBudget = Math.Max(0f, budget.Inches - 0.001f);
             (List<ModelMoveEntry> move, List<Position> route) = MovementPlanner.PlanMoveAlongRoute(
                 unit, living, tableState, goal,
-                safeBudget, safeBudget, _ => new ModelMoveBudget(budget, budget),
+                safeBudget, safeBudget, budget.PerModel,
                 canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, formation, lineAxis, sharedGrid);
 
             Position end = MoveCentroid(move, living);

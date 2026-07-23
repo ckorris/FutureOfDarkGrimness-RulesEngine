@@ -3,6 +3,7 @@ using FDG.Players;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
+using FDG.Rules.Serialization;
 using FDG.SaveLoad;
 using System.Diagnostics;
 
@@ -14,6 +15,10 @@ namespace FDG.GameModel
     /// resolved). Extracted from <see cref="FDGServer"/>'s constructor path (#167) so the scenario
     /// compiler (<see cref="FDG.SaveLoad.ScenarioCompiler"/>) can build the exact same world without
     /// launching a server; FDGServer delegates here, so there is one implementation.
+    /// <para>
+    /// Also holds the one step a RESUME needs from this file: <see cref="RestoreArmyRuleData"/>, which
+    /// redoes the army-file-derived half of <see cref="CreateArmy"/> from data persisted in the save (#095).
+    /// </para>
     /// </summary>
     public static class GameBootstrap
     {
@@ -64,6 +69,55 @@ namespace FDG.GameModel
         }
 
         /// <summary>
+        /// The resume counterpart to the army-load half of <see cref="CreateArmy"/> (#095). Reads back the
+        /// blob each <see cref="ArmyData"/> persisted at army load and redoes the two things a resume
+        /// otherwise loses: registers every army's embedded (#059) rule definitions into the shared
+        /// resolver, then re-resolves each army's spell list (#033) onto it.
+        /// <para>
+        /// Definitions are registered for ALL armies before ANY spells resolve — a spell's
+        /// <c>DealHits.WithRules</c> names weapon rules that may be embedded — and after
+        /// <see cref="BuildRuleResolver"/>'s core-then-slot pass, so a persisted definition wins over a
+        /// same-named core rule exactly as it did in the session that wrote the save.
+        /// </para>
+        /// <para>
+        /// Not re-validated: these definitions already passed <see cref="ArmyListRuleResolution"/>'s
+        /// validation at army load in that session, and a resume must not be able to fail on data the
+        /// original game accepted.
+        /// </para>
+        /// </summary>
+        public static void RestoreArmyRuleData(RuleResolver ruleResolver, IReadWriteableGameDataStore gameDataStore)
+        {
+            if (!gameDataStore.IsTypeAssigned<ArmyData>())
+            {
+                return;
+            }
+
+            List<ArmyData> armies = gameDataStore.GetAllValues<ArmyData>().ToList();
+            List<(ArmyData Army, ArmyRuleDataPersistence.PersistedArmyRuleData Data)> restored = new();
+
+            foreach (ArmyData army in armies)
+            {
+                ArmyRuleDataPersistence.PersistedArmyRuleData? data = army.RestoreRuleData();
+                if (data == null)
+                {
+                    continue;
+                }
+
+                foreach (SpecialRuleDefinition definition in data.RuleDefinitions)
+                {
+                    ruleResolver.RegisterOrReplace(definition);
+                }
+
+                restored.Add((army, data));
+            }
+
+            foreach ((ArmyData army, ArmyRuleDataPersistence.PersistedArmyRuleData data) in restored)
+            {
+                army.SetSpells(ArmyListSpellResolution.ResolveSpells(data.Spells, ruleResolver));
+            }
+        }
+
+        /// <summary>
         /// Builds one player's army from its list file: units (models registered by the UnitData ctor),
         /// unit-level rules attached, #006 hero joins resolved within the army, surviving units + the
         /// <see cref="ArmyData"/> registered in the store, and the army's #033 spell list resolved.
@@ -102,6 +156,10 @@ namespace FDG.GameModel
             // where the rule resolver is live, so a damage spell's weapon rules are pre-resolved for the
             // cast stage.
             armyData.SetSpells(ArmyListSpellResolution.ResolveSpells(armyListFile, ruleResolver));
+
+            // #095: keep the two army-file lists this method just consumed, so RestoreArmyRuleData can
+            // redo both halves on a resume — where this method doesn't run and the file is vestigial.
+            armyData.PersistRuleData(armyListFile.RuleDefinitions, armyListFile.Spells);
 
             DataReference armyDataReference = gameDataStore.Create(armyData);
         }

@@ -19,9 +19,17 @@ namespace FDG.SaveLoad
     public static class ArmyListSpellResolution
     {
         public static IReadOnlyList<RuntimeSpell> ResolveSpells(ArmyListFile armyListFile, IRuleResolver ruleResolver)
+            => ResolveSpells(armyListFile.Spells, ruleResolver);
+
+        /// <summary>
+        /// Resolves a bare spell list, for the #095 resume path: there the army file is vestigial and the
+        /// definitions come from the blob persisted on <see cref="ArmyData"/> instead.
+        /// </summary>
+        public static IReadOnlyList<RuntimeSpell> ResolveSpells(IReadOnlyList<SpellDefinition> definitions,
+            IRuleResolver ruleResolver)
         {
-            List<RuntimeSpell> spells = new List<RuntimeSpell>(armyListFile.Spells.Count);
-            foreach (SpellDefinition definition in armyListFile.Spells)
+            List<RuntimeSpell> spells = new List<RuntimeSpell>(definitions.Count);
+            foreach (SpellDefinition definition in definitions)
             {
                 spells.Add(new RuntimeSpell(definition, ResolveWeaponRules(definition, ruleResolver)));
             }

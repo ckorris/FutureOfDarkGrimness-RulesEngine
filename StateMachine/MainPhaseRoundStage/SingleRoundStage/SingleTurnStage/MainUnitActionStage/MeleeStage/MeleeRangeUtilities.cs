@@ -33,9 +33,15 @@ namespace FDG.Stages
         /// <summary>True if any living model in <paramref name="unit"/> is within melee range of any living
         /// model in <paramref name="enemyUnit"/>. The unit-level gate shared by the Charge-availability
         /// check (<c>ChooseActionStage.GetCanCharge</c>) and defender eligibility
-        /// (<c>ChooseMeleeDefenderStage</c>) — both formerly applied only the horizontal half (#022).</summary>
+        /// (<c>ChooseMeleeDefenderStage</c>) — both formerly applied only the horizontal half (#022).
+        /// Off-battlefield units (#263: in reserve, embarked, or flown off the edge) are in melee range
+        /// of NOTHING, in either direction: a reserve model's stored coordinates still sit at the
+        /// origin, so raw geometry would read an Ambush unit as standing in the table's bottom-left
+        /// corner and let round-1 enemies charge it there.</summary>
         public static bool AreUnitsInMeleeRange(IUnit unit, IUnit enemyUnit)
         {
+            if (!unit.GetIsOnBattlefield() || !enemyUnit.GetIsOnBattlefield()) return false;
+
             foreach (IModel model in unit.Models)
             {
                 if (!model.GetIsAlive()) continue;

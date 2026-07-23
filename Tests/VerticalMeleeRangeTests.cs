@@ -16,6 +16,9 @@ namespace FDG.Tests
     // MeleeRangeUtilities.AreUnitsInMeleeRange — the same cylinder the post-pile-in strike gate uses
     // (covered separately by MeleeInRangeIntegrationTests). These tests pin the unit-level predicate and
     // prove ChooseMeleeDefenderStage no longer offers a vertically-distant enemy as a valid defender.
+    //
+    // Units anchor at x=10, not the origin: a model centred exactly at (0,0) is the engine's
+    // "never placed" marker, and #263 makes such a unit off-battlefield — in melee range of nothing.
     [TestFixture]
     public class VerticalMeleeRangeTests
     {
@@ -34,8 +37,8 @@ namespace FDG.Tests
         [Test]
         public void AreUnitsInMeleeRange_HorizontallyAndVerticallyClose_True()
         {
-            DataBinding<UnitData> a = MakeUnit(new Position(0f, 0f, 0f));
-            DataBinding<UnitData> b = MakeUnit(new Position(1f, 2f, 0f)); // 1" horiz centre, 2" up
+            DataBinding<UnitData> a = MakeUnit(new Position(10f, 0f, 0f));
+            DataBinding<UnitData> b = MakeUnit(new Position(11f, 2f, 0f)); // 1" horiz centre, 2" up
 
             Assert.That(MeleeRangeUtilities.AreUnitsInMeleeRange(a.GetValue(), b.GetValue()), Is.True);
         }
@@ -45,8 +48,8 @@ namespace FDG.Tests
         {
             // The whole point of #022: 1" horizontal centre distance (in range), but 5" up — beyond the
             // 4" vertical reach. No model can strike, so the units are not in melee range.
-            DataBinding<UnitData> a = MakeUnit(new Position(0f, 0f, 0f));
-            DataBinding<UnitData> b = MakeUnit(new Position(1f, 5f, 0f));
+            DataBinding<UnitData> a = MakeUnit(new Position(10f, 0f, 0f));
+            DataBinding<UnitData> b = MakeUnit(new Position(11f, 5f, 0f));
 
             Assert.That(MeleeRangeUtilities.AreUnitsInMeleeRange(a.GetValue(), b.GetValue()), Is.False);
         }
@@ -55,8 +58,8 @@ namespace FDG.Tests
         public void AreUnitsInMeleeRange_VerticalExactlyAtCeiling_True()
         {
             // Boundary: exactly 4" vertical is still in range (the check excludes only > 4").
-            DataBinding<UnitData> a = MakeUnit(new Position(0f, 0f, 0f));
-            DataBinding<UnitData> b = MakeUnit(new Position(1f, 4f, 0f));
+            DataBinding<UnitData> a = MakeUnit(new Position(10f, 0f, 0f));
+            DataBinding<UnitData> b = MakeUnit(new Position(11f, 4f, 0f));
 
             Assert.That(MeleeRangeUtilities.AreUnitsInMeleeRange(a.GetValue(), b.GetValue()), Is.True);
         }
@@ -65,8 +68,8 @@ namespace FDG.Tests
         public void AreUnitsInMeleeRange_HorizontallyTooFar_False()
         {
             // 10" horizontal centre distance (b2b 8.5") — out of range regardless of a 0" vertical gap.
-            DataBinding<UnitData> a = MakeUnit(new Position(0f, 0f, 0f));
-            DataBinding<UnitData> b = MakeUnit(new Position(10f, 0f, 0f));
+            DataBinding<UnitData> a = MakeUnit(new Position(10f, 0f, 0f));
+            DataBinding<UnitData> b = MakeUnit(new Position(20f, 0f, 0f));
 
             Assert.That(MeleeRangeUtilities.AreUnitsInMeleeRange(a.GetValue(), b.GetValue()), Is.False);
         }
@@ -76,8 +79,8 @@ namespace FDG.Tests
         {
             // A corpse sits in base contact; the only living model is 20" away. A wiped/out-of-reach
             // unit must not register as in melee range.
-            DataBinding<UnitData> a = MakeUnit(new Position(0f, 0f, 0f));
-            DataBinding<UnitData> b = MakeUnit(new Position(1f, 0f, 0f), new Position(20f, 0f, 0f));
+            DataBinding<UnitData> a = MakeUnit(new Position(10f, 0f, 0f));
+            DataBinding<UnitData> b = MakeUnit(new Position(11f, 0f, 0f), new Position(30f, 0f, 0f));
 
             ModelData corpse = b.GetValue().ModelBindings[0].GetValue();
             corpse.DealWounds(corpse.TotalWounds);
@@ -89,10 +92,10 @@ namespace FDG.Tests
         [Test]
         public async Task ChooseMeleeDefender_VerticallyDistantEnemy_NotOfferedAndReturnsToChooseAction()
         {
-            // Attacker at origin; the sole enemy is 1" horizontally away but 5" up. With no engageable
+            // The sole enemy is 1" horizontally away from the attacker but 5" up. With no engageable
             // defender the stage routes back to Choose Action instead of attacking.
-            DataBinding<UnitData> attacker = MakeUnit(new Position(0f, 0f, 0f));
-            MakeEnemyArmy(new Position(1f, 5f, 0f));
+            DataBinding<UnitData> attacker = MakeUnit(new Position(10f, 0f, 0f));
+            MakeEnemyArmy(new Position(11f, 5f, 0f));
 
             var (defenderChosen, backToChooseAction) = await RunChooseMeleeDefender(attacker);
 
@@ -104,8 +107,8 @@ namespace FDG.Tests
         public async Task ChooseMeleeDefender_EnemyWithinCylinder_IsChosen()
         {
             // Same horizontal placement, but within the 4" vertical reach — now a valid defender.
-            DataBinding<UnitData> attacker = MakeUnit(new Position(0f, 0f, 0f));
-            MakeEnemyArmy(new Position(1f, 2f, 0f));
+            DataBinding<UnitData> attacker = MakeUnit(new Position(10f, 0f, 0f));
+            MakeEnemyArmy(new Position(11f, 2f, 0f));
 
             var (defenderChosen, backToChooseAction) = await RunChooseMeleeDefender(attacker);
 
@@ -118,8 +121,8 @@ namespace FDG.Tests
         [Test]
         public async Task ChooseMeleeDefender_SingleValidDefender_StillPrompts()
         {
-            DataBinding<UnitData> attacker = MakeUnit(new Position(0f, 0f, 0f));
-            MakeEnemyArmy(new Position(1f, 2f, 0f));
+            DataBinding<UnitData> attacker = MakeUnit(new Position(10f, 0f, 0f));
+            MakeEnemyArmy(new Position(11f, 2f, 0f));
 
             await RunChooseMeleeDefender(attacker);
 
@@ -130,8 +133,8 @@ namespace FDG.Tests
         [Test]
         public async Task ChooseMeleeDefender_PlayerCancels_BacksOutWithoutChoosingDefender()
         {
-            DataBinding<UnitData> attacker = MakeUnit(new Position(0f, 0f, 0f));
-            MakeEnemyArmy(new Position(1f, 2f, 0f));
+            DataBinding<UnitData> attacker = MakeUnit(new Position(10f, 0f, 0f));
+            MakeEnemyArmy(new Position(11f, 2f, 0f));
             _requester.CancelEverything = true;
 
             var (defenderChosen, backToChooseAction) = await RunChooseMeleeDefender(attacker);

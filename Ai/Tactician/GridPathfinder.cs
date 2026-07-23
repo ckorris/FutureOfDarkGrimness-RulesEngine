@@ -364,9 +364,13 @@ namespace FDG.Ai.Tactician
             return (dx + dz) + (1.41421356f - 2f) * Math.Min(dx, dz);
         }
 
-        // Greedy line-of-sight simplification: from each anchor, keep the farthest waypoint reachable
-        // by a clear swept segment. Preserves endpoints; always terminates (worst case advances one).
-        private static List<Position> StringPull(IReadOnlyList<ITerrain> terrain,
+        /// <summary>
+        /// Greedy line-of-sight simplification: from each anchor, keep the farthest waypoint reachable
+        /// by a clear swept segment. Preserves endpoints; always terminates (worst case advances one).
+        /// Public because per-model leg lists get the same treatment (#264 issue 4) - a model that can
+        /// reach a later waypoint directly should not walk the dogleg.
+        /// </summary>
+        public static List<Position> StringPull(IReadOnlyList<ITerrain> terrain,
             List<Position> waypoints, float baseRadiusInches)
         {
             var result = new List<Position> { waypoints[0] };

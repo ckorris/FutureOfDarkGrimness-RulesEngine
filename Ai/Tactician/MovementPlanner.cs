@@ -52,6 +52,13 @@ namespace FDG.Ai.Tactician
         public const int RepackCorrectionAttempts = 8;
         public const float RepackCorrectionSlackInches = 0.01f;
 
+        // #264 issue 4: a bent route whose pack candidate carries the unit less than this fraction of
+        // the requested step has been funnelled, not blocked - the shared-waypoint backtrack ate the
+        // budget inside the builder and the move is VALID, so the backoff ladder never sees it. Half
+        // the budget is the handoff's line ("funnel overhead > half budget"); below it the on-path
+        // snake is tried at the same step and kept only if it genuinely travels further.
+        public const float FunnelStallFraction = 0.5f;
+
         // Aim tuning. A charge targets just inside base contact (still < the validator's contact
         // tolerance, so it reads as engaged, not standoff-band loitering); an advance targets just past
         // the standoff line. A few measure-and-correct passes converge thanks to the ~1:1 step<->gap
@@ -181,7 +188,8 @@ namespace FDG.Ai.Tactician
             bool canMoveThroughEnemies, bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
             List<ITerrain> terrain, IReadOnlyList<EnemyModelFootprint>? friendlies = null,
             Func<float, float, List<ModelMoveEntry>>? reaimAt = null,
-            Func<float, List<ModelMoveEntry>>? snakeAt = null)
+            Func<float, List<ModelMoveEntry>>? snakeAt = null,
+            bool routeBends = false)
         {
             bool Validate(List<ModelMoveEntry> c, out List<ReasonForInvalidMove> errs) =>
                 MovementUtilities.ValidatePaths(c, budgetFor, enemies, canMoveThroughEnemies,
@@ -191,6 +199,27 @@ namespace FDG.Ai.Tactician
             float step = initialStep;
             List<ModelMoveEntry> candidate = candidateAt(step);
             bool valid = Validate(candidate, out List<ReasonForInvalidMove> errors);
+
+            // #264 issue 4: the funnel stall is INVISIBLE to the ladder below, which only rescues
+            // moves that fail validation. BuildPathCandidate prefixes every model with the route's
+            // shared waypoints, so a wide formation hugging a corner has its flank models walk BACK
+            // to waypoint 1; that backtrack sets the worst-model measure, and the builder's own
+            // measure-and-correct loop shrinks the arc for everyone until the move is a valid
+            // 1"-of-12" shuffle. The snake places models ON the route instead of in a geometric pack
+            // around its endpoint, which is the shape a corner actually admits - so when a bent route
+            // produces a near-motionless pack, try it here rather than accepting the shuffle.
+            if (valid && snakeAt != null && routeBends && living.Count > 0
+                && step >= MinBackoffStepInches)
+            {
+                float packed = CentroidTravel(living, candidate);
+                if (packed < FunnelStallFraction * step)
+                {
+                    List<ModelMoveEntry> snake = snakeAt(step);
+                    if (CentroidTravel(living, snake) > packed + MinBackoffStepInches
+                        && Validate(snake, out _))
+                        return snake;
+                }
+            }
 
             int attempts = 0;
             while (!valid && attempts < MaxBackoffAttempts)
@@ -296,6 +325,18 @@ namespace FDG.Ai.Tactician
                 if (forwardProgress >= 0.5f * forwardLength && isValid(candidate)) return candidate;
             }
             return null;
+        }
+
+        /// <summary>How far a candidate carries the unit's centroid, in any direction (#264 issue 4:
+        /// the funnel-stall measure - a direction-relative one is useless when the stalled candidate
+        /// barely moved and so has no meaningful direction).</summary>
+        private static float CentroidTravel(List<DataBinding<ModelData>> living,
+            List<ModelMoveEntry> candidate)
+        {
+            float sx = living.Average(mb => mb.GetValue().Position.x);
+            float sz = living.Average(mb => mb.GetValue().Position.z);
+            (float ex, float ez) = EndCentroid(candidate);
+            return MathF.Sqrt((ex - sx) * (ex - sx) + (ez - sz) * (ez - sz));
         }
 
         /// <summary>
@@ -444,6 +485,29 @@ namespace FDG.Ai.Tactician
                 })
                 .ToList();
 
+            // #264 issue 4: the extra files used to STRADDLE the route (offsets -w/2 and +w/2). A
+            // pathfound route only guarantees one base-width of clearance, so at a wall corner - where
+            // the route grazes the piece by design - the inboard file lands INSIDE the wall and every
+            // arc faults, snake included (measured: 11 models at a corner faulted at 12", 6" and 3",
+            // validating only at a 1.06" shuffle of a 12" rush). Keep the lead file ON the route,
+            // which is clear by construction, and fan the rest to whichever side is actually open.
+            List<ModelMoveEntry>? fallback = null;
+            foreach (float side in new[] { 1f, -1f })
+            {
+                List<ModelMoveEntry> candidate = BuildSnakeToSide(unit, living, order, path,
+                    arcLengthInches, terrain, baseRadiusInches, maxDistanceInches, spacing, files, side);
+                if (files == 1 || !ClipsImpassible(candidate, terrain, baseRadiusInches)) return candidate;
+                fallback ??= candidate;
+            }
+            return fallback ?? StayInPlace(unit);
+        }
+
+        // One side-choice of the snake: file 0 rides the route, file k sits k spacings to `side`.
+        private static List<ModelMoveEntry> BuildSnakeToSide(DataBinding<UnitData> unit,
+            List<DataBinding<ModelData>> living, List<DataBinding<ModelData>> order,
+            List<Position> path, float arcLengthInches, IReadOnlyList<ITerrain> terrain,
+            float baseRadiusInches, float maxDistanceInches, float spacing, int files, float side)
+        {
             float arc = arcLengthInches;
             for (int attempt = 0; attempt < RepackCorrectionAttempts; attempt++)
             {
@@ -463,11 +527,16 @@ namespace FDG.Ai.Tactician
                         float dx = endI.x - prev.x, dz = endI.z - prev.z;
                         float len = MathF.Sqrt(dx * dx + dz * dz);
                         (dx, dz) = len < 1e-6f ? (1f, 0f) : (dx / len, dz / len);
-                        float across = (file - (files - 1) / 2f) * spacing;
+                        float across = file * spacing * side;
                         endI = new Position(endI.x + across * -dz, endI.z + across * dx);
                     }
 
-                    candidate.Add(new ModelMoveEntry(order[i], passedI.Concat(new[] { endI }).ToList()));
+                    // #264 issue 4: join the route where this model actually stands, rather than
+                    // hopping to its first bend - for a rank drawn up across the route's mouth that
+                    // hop grazes the very piece the route detours around.
+                    candidate.Add(new ModelMoveEntry(order[i],
+                        RouteLegsFor(order[i].GetValue().Position, path, passedI,
+                            new List<Position> { endI }, terrain, baseRadiusInches)));
                 }
 
                 float overshoot = MaxModelMove(candidate) - maxDistanceInches;
@@ -476,6 +545,32 @@ namespace FDG.Ai.Tactician
                 if (arc <= 0f) break;
             }
             return StayInPlace(unit);
+        }
+
+        /// <summary>Whether any leg of the candidate sweeps through impassible terrain - the fault the
+        /// snake exists to avoid, cheap to check here without the full validator (#264 issue 4).</summary>
+        private static bool ClipsImpassible(List<ModelMoveEntry> candidate,
+            IReadOnlyList<ITerrain> terrain, float baseRadiusInches)
+        {
+            foreach (ModelMoveEntry entry in candidate)
+            {
+                Position previous = entry.Model.GetValue().Position;
+                foreach (Position leg in entry.Positions)
+                {
+                    if (!IsSegmentClear(terrain, previous, leg, baseRadiusInches)) return true;
+                    previous = leg;
+                }
+            }
+            return false;
+        }
+
+        private static bool IsSegmentClear(IReadOnlyList<ITerrain> terrain, Position from, Position to,
+            float baseRadiusInches)
+        {
+            var start = new Float2(from.x, from.z);
+            var end = new Float2(to.x, to.z);
+            return !terrain.Any(t => t.TerrainType.HasFlag(ETerrainType.Impassible)
+                && t.Shape.DoesPathIntersectZone(start, end, baseRadiusInches));
         }
 
         /// <summary>One un-clamped path-following pack at a given arc length (#256's measure loop).</summary>
@@ -518,8 +613,78 @@ namespace FDG.Ai.Tactician
             if (passed.Count == 0) return destinations;
             return destinations
                 .Select(entry => new ModelMoveEntry(entry.Model,
-                    passed.Concat(entry.Positions).ToList()))
+                    RouteLegsFor(entry.Model.GetValue().Position, path, passed,
+                        entry.Positions, terrain, baseRadiusInches)))
                 .ToList();
+        }
+
+        /// <summary>
+        /// The legs ONE model walks to its destination: onto the route at the point nearest it, then
+        /// the route's waypoints ahead of that join, string-pulled so a model that can reach a later
+        /// waypoint directly does not walk the dogleg.
+        /// <para>
+        /// #264 issue 4: every model used to be prefixed with the SAME traversed-waypoint list, which
+        /// means jumping straight to the route's first bend. For a rank drawn up across the route's
+        /// mouth that hop is both long and, at a wall corner, ILLEGAL - the far-flank model's line to
+        /// the bend grazes the piece the route went around. So the pack was invalid at every arc
+        /// until halving shrank it to nothing, and the #256 S4 snake inherited the same bad hop and
+        /// could not rescue it (measured: pack and snake both faulted at 12", 6" and 3"; the snake
+        /// only validated at a 1.06" shuffle). Joining at the nearest point keeps every leg on or
+        /// alongside the route, where it is clear by construction.
+        /// </para>
+        /// </summary>
+        private static List<Position> RouteLegsFor(Position from, List<Position> path,
+            List<Position> passed, List<Position> tail, IReadOnlyList<ITerrain> terrain,
+            float baseRadiusInches)
+        {
+            if (tail.Count == 0) return new List<Position>(passed);
+
+            (Position join, float joinArc) = NearestPointOnRoute(path, from);
+            var legs = new List<Position> { from, join };
+
+            float arc = 0f;
+            for (int i = 1; i <= passed.Count && i < path.Count; i++)
+            {
+                arc += Dist(path[i - 1], path[i]);
+                if (arc > joinArc + 1e-3f) legs.Add(path[i]);
+            }
+            legs.AddRange(tail);
+
+            List<Position> pulled = GridPathfinder.StringPull(terrain, legs, baseRadiusInches);
+            pulled.RemoveAt(0); // the anchor is the model's own position, not a leg
+            return pulled;
+        }
+
+        /// <summary>The point on the route closest to <paramref name="from"/>, with its arc position
+        /// along the route (#264 issue 4: where a model off the route should join it).</summary>
+        private static (Position Point, float Arc) NearestPointOnRoute(List<Position> path, Position from)
+        {
+            Position best = path[0];
+            float bestArc = 0f;
+            float bestDistanceSq = float.PositiveInfinity;
+            float arcSoFar = 0f;
+
+            for (int i = 1; i < path.Count; i++)
+            {
+                Position a = path[i - 1], b = path[i];
+                float abx = b.x - a.x, abz = b.z - a.z;
+                float lengthSq = abx * abx + abz * abz;
+                float t = lengthSq <= 1e-8f
+                    ? 0f
+                    : Math.Clamp(((from.x - a.x) * abx + (from.z - a.z) * abz) / lengthSq, 0f, 1f);
+                var point = new Position(a.x + t * abx, a.z + t * abz);
+                float dx = point.x - from.x, dz = point.z - from.z;
+                float distanceSq = dx * dx + dz * dz;
+                float segment = MathF.Sqrt(lengthSq);
+                if (distanceSq < bestDistanceSq)
+                {
+                    bestDistanceSq = distanceSq;
+                    best = point;
+                    bestArc = arcSoFar + t * segment;
+                }
+                arcSoFar += segment;
+            }
+            return (best, bestArc);
         }
 
         /// <summary>
@@ -600,7 +765,10 @@ namespace FDG.Ai.Tactician
                 // #256 S4: a formation too wide for the route's corridor falls back to the on-path
                 // snake instead of halving to a crawl (the walled Battle Brothers pocket).
                 arc => BuildSnakeCandidate(unit, living, path, arc, terrain, baseRadius,
-                    maxDistanceInches));
+                    maxDistanceInches),
+                // #264 issue 4: a route with an interior bend is the shape whose shared waypoints
+                // funnel a wide formation into a valid near-stay. A straight route cannot.
+                routeBends: path.Count > 2);
             return (move, path);
         }
 

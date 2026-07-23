@@ -376,9 +376,14 @@ namespace FDG.ArmyBuilding
 
         private static UpgradeOption MapOption(OprOption o, string unitId)
         {
-            // #219: prefer the flat scalar; fall back to this unit's entry in the per-unit `costs` array.
-            // Only genuinely unpriced (neither present) stays CostUnpriced.
-            int? resolvedCost = o.Cost ?? o.Costs?.FirstOrDefault(c => c.UnitId == unitId)?.Cost;
+            // #261: the per-unit `costs` entry WINS; the flat scalar is only a fallback. Both keys are
+            // usually present and they usually disagree (3314 of 8434 (unit, option) pairs across the 47
+            // bundled books), because the same option costs differently on different units - the flat
+            // number is a leftover generic price, and Army Forge itself charges the per-unit one. Reading
+            // flat-first (#219's original order) mispriced 39% of the corpus: e.g. High Elf Fleets'
+            // Anti-Gravity Tank charged 65 for a Hologram Field that Army Forge prices at 30, and 55 for a
+            // 45-point Prism Cannon. Only an option with NEITHER key stays CostUnpriced.
+            int? resolvedCost = o.Costs?.FirstOrDefault(c => c.UnitId == unitId)?.Cost ?? o.Cost;
             var option = new UpgradeOption
             {
                 Id = o.Id ?? o.Uid ?? Guid.NewGuid().ToString("N")[..8],

@@ -132,6 +132,9 @@ public class OprBookImporterTests
     // #219: when OPR omits the flat `cost` scalar, the real price lives in a per-unit `costs` array keyed by
     // unit id - the SAME shared option costs 10 pts on one hero and 5 on another. The importer must read this
     // unit's entry, not treat the option as free. A genuinely uncosted option (no cost, no costs) stays flagged.
+    // #261 extends this with the case #219 never covered: both keys present and DISAGREEING ("holo"), which
+    // is the common shape (3314 of the corpus's 8434 pairs) - and the one the original flat-first order got
+    // wrong. "generic" pins the fallback when a unit has no per-unit entry at all.
     private const string PerUnitCostJson = """
     {
       "name": "Cost Legion", "versionString": "3.5.3",
@@ -145,6 +148,10 @@ public class OprBookImporterTests
             "options":[
               { "id":"pistol", "label":"Master Laser Pistol",
                 "costs":[ {"cost":10,"unitId":"noble"}, {"cost":5,"unitId":"protector"} ] },
+              { "id":"holo", "label":"Hologram Field", "cost":65,
+                "costs":[ {"cost":30,"unitId":"noble"}, {"cost":15,"unitId":"protector"} ] },
+              { "id":"onlynoble", "label":"Noble's Own", "costs":[ {"cost":20,"unitId":"noble"} ] },
+              { "id":"generic", "label":"Generic Only", "cost":40 },
               { "id":"free", "label":"Trinket", "cost":0 },
               { "id":"mystery", "label":"Unknowable" }
             ] }
@@ -530,6 +537,39 @@ public class OprBookImporterTests
         UpgradeOption unpriced = options.Single(o => o.Id == "unpriced");
         Assert.That(unpriced.Cost, Is.EqualTo(0), "we have no number to charge - but see the flag");
         Assert.That(unpriced.CostUnpriced, Is.True, "an ABSENT cost key is 'OPR never published a price'");
+    }
+
+    // #261: OPR publishes BOTH a flat generic `cost` and a per-unit `costs[]` array on most options, and
+    // they usually disagree - the flat number is a leftover generic price, and Army Forge charges the
+    // per-unit one. #219 read flat-first, which mispriced 3314 of the 8434 (unit, option) pairs across the
+    // 47 bundled books (e.g. High Elf Fleets' Anti-Gravity Tank billed 65 for a 30-point Hologram Field).
+    [Test]
+    public void Import_PerUnitCost_BeatsTheFlatGenericCost()
+    {
+        BookFile book = OprBookImporter.Import(PerUnitCostJson, "src", "lic");
+        UpgradeOption Opt(string unitName, string id) =>
+            book.Units.Single(u => u.Name == unitName).Sections.Single().Options.Single(o => o.Id == id);
+
+        Assert.That(Opt("Noble", "holo").Cost, Is.EqualTo(30), "the Noble's own price, not the flat 65");
+        Assert.That(Opt("Protector", "holo").Cost, Is.EqualTo(15), "same option, cheaper on the Protector");
+        Assert.That(Opt("Noble", "holo").CostUnpriced, Is.False);
+    }
+
+    [Test]
+    public void Import_FallsBackToTheFlatCost_WhenThisUnitHasNoPerUnitEntry()
+    {
+        BookFile book = OprBookImporter.Import(PerUnitCostJson, "src", "lic");
+        UpgradeOption Opt(string unitName, string id) =>
+            book.Units.Single(u => u.Name == unitName).Sections.Single().Options.Single(o => o.Id == id);
+
+        // No costs[] at all - the flat number is all there is, on both units.
+        Assert.That(Opt("Noble", "generic").Cost, Is.EqualTo(40));
+        Assert.That(Opt("Protector", "generic").Cost, Is.EqualTo(40));
+
+        // costs[] lists only the Noble, so the Protector falls through - and with no flat cost either it is
+        // genuinely unpriced rather than silently free.
+        Assert.That(Opt("Noble", "onlynoble").Cost, Is.EqualTo(20));
+        Assert.That(Opt("Protector", "onlynoble").CostUnpriced, Is.True);
     }
 
     [Test]

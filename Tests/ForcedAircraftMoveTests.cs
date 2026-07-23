@@ -137,6 +137,110 @@ namespace FDG.Tests
             Assert.That(dest.z, Is.EqualTo(38.7f).Within(0.001f), "flies exactly the chosen distance along its heading.");
         }
 
+        // #029 — an Aircraft is FORCED to Advance every activation, and shooting only happens after moving
+        // ("you can't move after you shoot"). So on a fresh activation Move is the ONLY offered action: Shoot
+        // and Pass are gated until the forced Advance is done. The two tests below drive ChooseActionStage
+        // before and after the move over the same world (Aircraft with a rifle, an enemy sitting in range).
+
+        [Test]
+        public async Task ChooseAction_PristineAircraft_OffersOnlyMove_ShootAndPassGatedUntilItMoves()
+        {
+            var capturer = new CapturingStringSelectionRequester(ChooseActionStage.MOVEMENT_CHOICE_NAME);
+            var (ctx, unitCtx) = BuildAircraftActionWorld(capturer);
+
+            await DriveChooseAction(ctx, unitCtx);
+
+            StringSelectionRequest req = capturer.Captured!;
+            Assert.That(req.ValidOptions, Is.EquivalentTo(new[] { ChooseActionStage.MOVEMENT_CHOICE_NAME }),
+                "a pristine Aircraft must be offered Move and nothing else - it has to Advance first.");
+            Assert.That(req.InvalidOptions.Any(o =>
+                    o.Option == ChooseActionStage.SHOOT_CHOICE_NAME && o.Reason.Contains("Advance")),
+                Is.True, "Shoot is shown disabled until the Aircraft has moved, even with an enemy in range.");
+            Assert.That(req.InvalidOptions.Any(o =>
+                    o.Option == ChooseActionStage.PASS_CHOICE_NAME && o.Reason.Contains("Advance")),
+                Is.True, "Pass is shown disabled until the Aircraft has moved.");
+        }
+
+        [Test]
+        public async Task ChooseAction_AircraftAfterMoving_UnlocksShootAndPass()
+        {
+            var capturer = new CapturingStringSelectionRequester(ChooseActionStage.SHOOT_CHOICE_NAME);
+            var (ctx, unitCtx) = BuildAircraftActionWorld(capturer);
+            unitCtx.RegisterMoveFinished(ForcedAircraftMove.MinDistanceInches); // the forced Advance completed
+
+            await DriveChooseAction(ctx, unitCtx);
+
+            StringSelectionRequest req = capturer.Captured!;
+            Assert.That(req.ValidOptions, Does.Contain(ChooseActionStage.SHOOT_CHOICE_NAME),
+                "once the Aircraft has Advanced it may shoot (enemy is in range).");
+            Assert.That(req.ValidOptions, Does.Contain(ChooseActionStage.PASS_CHOICE_NAME),
+                "once the Aircraft has Advanced it may also decline to shoot and Pass.");
+            Assert.That(req.ValidOptions, Does.Not.Contain(ChooseActionStage.MOVEMENT_CHOICE_NAME),
+                "it has already moved, so Move is spent.");
+        }
+
+        // Direct, LoS-independent statement of the Pass gate (GetCanPass is public).
+        [Test]
+        public void GetCanPass_Aircraft_BlockedUntilMoved_ThenAllowed()
+        {
+            var (ctx, unitCtx) = BuildAircraftActionWorld(new FirstStringRequester(), enemyInRange: false);
+
+            Assert.That(ChooseActionStage.GetCanPass(ctx, unitCtx, out string reason), Is.False,
+                "a pristine Aircraft cannot Pass - it must Advance.");
+            Assert.That(reason, Does.Contain("Advance"));
+
+            unitCtx.RegisterMoveFinished(ForcedAircraftMove.MinDistanceInches);
+            Assert.That(ChooseActionStage.GetCanPass(ctx, unitCtx, out _), Is.True,
+                "after completing its forced Advance the Aircraft may Pass.");
+        }
+
+        private static async Task DriveChooseAction(TriggeredMoveTestContext ctx, UnitActionContext unitCtx)
+        {
+            var stage = new ChooseActionStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.ToMovement.Bind("Move");
+            stage.ToCharge.Bind("Charge");
+            stage.ToShoot.Bind("Shoot");
+            stage.ToCast.Bind("Cast");
+            stage.ToReconcileEndOfActivation.Bind("Done");
+            await stage.Enter(unitCtx);
+        }
+
+        // A one-Aircraft-vs-one-enemy world: teams (needed by the shoot target check), the Aircraft armed with a
+        // 24" rifle, and (by default) an enemy 10" away in clear line of sight. The context is built with the
+        // supplied requester so the caller can capture the ChooseAction menu.
+        private (TriggeredMoveTestContext ctx, UnitActionContext unitCtx) BuildAircraftActionWorld(
+            IPlayerRequestByID requester, bool enemyInRange = true)
+        {
+            var aircraftPlayer = new PlayerID(Guid.NewGuid());
+            var enemyPlayer = new PlayerID(Guid.NewGuid());
+            _store.Create(new TeamData(0, new List<PlayerID> { aircraftPlayer }));
+            _store.Create(new TeamData(1, new List<PlayerID> { enemyPlayer }));
+
+            var rifle = new Weapon("Rifle", rangeInches: 24f, attacks: 1, armorPenetration: 0);
+            var aircraftModel = new ModelData(0.75f, new List<Weapon> { rifle }, new Position(10, 10), _store);
+            var aircraft = new UnitData(aircraftPlayer, "Jet", quality: 4, defense: 4,
+                modelBindings: new List<DataBinding<ModelData>>
+                { _store.GetDataBinding<ModelData>(_store.Create(aircraftModel)) });
+            DataBinding<UnitData> aircraftBinding = _store.GetDataBinding<UnitData>(_store.Create(aircraft));
+            aircraftBinding.GetValue().AttachRuleDefinition(new ResolvedRule("Aircraft", CoreRuleCatalog.Aircraft));
+            _store.Create(new ArmyData(aircraftPlayer, new List<DataBinding<UnitData>> { aircraftBinding }));
+
+            if (enemyInRange)
+            {
+                var enemyModel = new ModelData(0.75f, new List<Weapon>(), new Position(10, 20), _store); // 10" away
+                var enemy = new UnitData(enemyPlayer, "Ground Troop", quality: 4, defense: 4,
+                    modelBindings: new List<DataBinding<ModelData>>
+                    { _store.GetDataBinding<ModelData>(_store.Create(enemyModel)) });
+                DataBinding<UnitData> enemyBinding = _store.GetDataBinding<UnitData>(_store.Create(enemy));
+                _store.Create(new ArmyData(enemyPlayer, new List<DataBinding<UnitData>> { enemyBinding }));
+            }
+
+            var ctx = new TriggeredMoveTestContext(_store, requester);
+            var unitCtx = new UnitActionContext(ctx, aircraftBinding);
+            unitCtx.Reset(aircraftBinding);
+            return (ctx, unitCtx);
+        }
+
         private DataBinding<UnitData> MakeUnit(params Position[] positions)
         {
             var bindings = new List<DataBinding<ModelData>>();

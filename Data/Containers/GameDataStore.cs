@@ -148,6 +148,10 @@ namespace FDG.Data
             return result;
         }
 
+        // NOTE (#186): these settings carry the PERMISSIVE binder (unregistered $type falls back to
+        // assembly-qualified resolution) and are safe only for trusted input: saves and store blobs.
+        // The network path must not use them directly — MessageSerializer clones them and swaps in
+        // WireSerializationBinder. If a new setting is added here, mirror it in that clone.
         public JsonSerializerSettings GetJsonSettings()
         {
             return _jsonConvertSettings;

@@ -29,16 +29,23 @@ namespace FDG.Network.Messages
 
         private JsonSerializerSettings _settings;
 
-        /*
-        private static JsonSerializerSettings _settings = new JsonSerializerSettings()
-        {
-            TypeNameHandling = TypeNameHandling.Auto,
-        };
-        */
-
         public MessageSerializer(IReadableGameDataStore gameDataStore, ITextOutput? textOutput = null)
         {
-            _settings = gameDataStore.GetJsonSettings();
+            // The wire uses the store's settings (same converters, same TypeNameHandling — the
+            // full-state sync depends on that) but with the allowlist binder swapped in (#186): a
+            // received $type may only resolve to a registered stable ID, an engine type, or a
+            // benign collection thereof. Never hand gameDataStore.GetJsonSettings() to the wire
+            // directly — its StableTypeSerializationBinder falls back to resolving arbitrary
+            // assembly-qualified names, which on attacker-controlled input is the classic
+            // Newtonsoft deserialization RCE. (If GetJsonSettings ever gains a new setting,
+            // mirror it here.)
+            JsonSerializerSettings storeSettings = gameDataStore.GetJsonSettings();
+            _settings = new JsonSerializerSettings()
+            {
+                TypeNameHandling = storeSettings.TypeNameHandling,
+                Converters = storeSettings.Converters,
+                SerializationBinder = new WireSerializationBinder(),
+            };
             _textOutput = textOutput ?? new ConsoleTextOutput();
         }
 

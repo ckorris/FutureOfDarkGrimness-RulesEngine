@@ -371,13 +371,19 @@ namespace FDG.Ai.Tactician
             // (the ResolverGuide gotcha - giving both the same reduced number makes the first
             // candidate fail its own budget check and the ladder halve a legal move).
             float safeBudget = Math.Max(0f, budget - 0.001f);
-            List<ModelMoveEntry> move = MovementPlanner.PlanMoveToward(unit, living, tableState, goal,
+            (List<ModelMoveEntry> move, List<Position> route) = MovementPlanner.PlanMoveAlongRoute(
+                unit, living, tableState, goal,
                 safeBudget, safeBudget, _ => new ModelMoveBudget(budget, budget),
                 canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, formation, lineAxis, sharedGrid);
 
             Position end = MoveCentroid(move, living);
-            Position start = Centroid(living, unit.GetValue());
-            float progress = Distance(start, goal) - Distance(end, goal);
+            // #264 issue 1: progress along the ROUTE, not the straight line. A detour around a large
+            // impassible piece closes ~zero straight-line gap - sometimes a negative one - so a
+            // correct move was graded Blocked and lost its family's pruning slot to a worse one.
+            var terrain = tableState.Terrain.Objects.ToList();
+            float baseRadius = living.Count == 0 ? 0.5f : living.Max(mb => mb.GetValue().BaseRadiusInches);
+            float progress = RouteMetrics.Length(route)
+                - RouteMetrics.RemainingFrom(route, end, terrain, baseRadius);
 
             EFeasibility feasibility = Distance(end, goal) <= goalRadius
                 ? EFeasibility.Reachable

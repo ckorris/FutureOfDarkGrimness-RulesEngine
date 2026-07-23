@@ -536,6 +536,25 @@ namespace FDG.Ai.Tactician
             bool canMoveThroughEnemies, bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
             EFormation formation = EFormation.Grid, (float X, float Z)? lineAxis = null,
             Func<TerrainGrid>? sharedGrid = null)
+            => PlanMoveAlongRoute(unit, living, tableState, goal, moveBudgetInches, maxDistanceInches,
+                budgetFor, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain,
+                formation, lineAxis, sharedGrid).Move;
+
+        /// <summary>
+        /// <see cref="PlanMoveToward"/>, additionally handing back the ROUTE it followed (the
+        /// start -> goal polyline, detouring around impassible terrain). Callers that grade how much
+        /// progress a candidate made need route distance, not straight-line distance: rounding a
+        /// large wall closes ~zero straight-line gap and its first leg can point away from the goal
+        /// (#264 issue 1). The route is already computed here, so this costs the caller nothing.
+        /// </summary>
+        public static (List<ModelMoveEntry> Move, List<Position> Route) PlanMoveAlongRoute(
+            DataBinding<UnitData> unit,
+            List<DataBinding<ModelData>> living, ITableState tableState, Position goal,
+            float moveBudgetInches, float maxDistanceInches,
+            Func<ModelMoveEntry, ModelMoveBudget> budgetFor,
+            bool canMoveThroughEnemies, bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
+            EFormation formation = EFormation.Grid, (float X, float Z)? lineAxis = null,
+            Func<TerrainGrid>? sharedGrid = null)
         {
             var terrain = tableState.Terrain.Objects.ToList();
             var enemies = LiveEnemyFootprints(tableState, unit.GetValue().PlayerID);
@@ -565,7 +584,7 @@ namespace FDG.Ai.Tactician
             if (crossesDifficult && !ignoresDifficultTerrain)
                 budget = Math.Min(budget, GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES - 0.001f);
 
-            return ValidateWithBackoff(
+            List<ModelMoveEntry> move = ValidateWithBackoff(
                 arc => BuildPathCandidate(unit, living, path, arc, terrain, baseRadius,
                     maxDistanceInches, formation, lineAxis),
                 budget, unit, living, budgetFor, enemies,
@@ -578,6 +597,7 @@ namespace FDG.Ai.Tactician
                 // snake instead of halving to a crawl (the walled Battle Brothers pocket).
                 arc => BuildSnakeCandidate(unit, living, path, arc, terrain, baseRadius,
                     maxDistanceInches));
+            return (move, path);
         }
 
         /// <summary>

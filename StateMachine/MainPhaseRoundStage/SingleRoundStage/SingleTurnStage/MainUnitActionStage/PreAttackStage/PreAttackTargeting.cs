@@ -67,10 +67,11 @@ namespace FDG.Stages
                         continue;
                     }
 
-                    if (selector.RequiredRule != null
-                        && !candidate.RuleDefinitions.Any(r =>
-                            string.Equals(r.Definition.Name, selector.RequiredRule, StringComparison.OrdinalIgnoreCase)
-                            || string.Equals(r.RequestedName, selector.RequiredRule, StringComparison.OrdinalIgnoreCase)))
+                    // The candidate qualifies if IT or any of its MODELS carries the rule. A joined hero
+                    // keeps its own rules on its model (#006/#093) - Caster is the common case, and the
+                    // round-start token grant already scans models the same way - so a unit-only scan would
+                    // make "pick an enemy with Caster" (#197 P6's Casting Debuff) blind to every hero caster.
+                    if (selector.RequiredRule != null && !HasRule(candidate, selector.RequiredRule))
                     {
                         continue;
                     }
@@ -86,6 +87,17 @@ namespace FDG.Stages
             }
 
             return eligible;
+        }
+
+        // Matches on the canonical name OR the name the book asked for, so a book alias ("Wizard" for
+        // Caster) still satisfies the filter - the same pair the rule-resolution path compares.
+        private static bool HasRule(IUnit unit, string ruleName)
+        {
+            bool Matches(IEnumerable<Rules.Dispatch.ResolvedRule> rules) => rules.Any(r =>
+                string.Equals(r.Definition.Name, ruleName, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(r.RequestedName, ruleName, StringComparison.OrdinalIgnoreCase));
+
+            return Matches(unit.RuleDefinitions) || unit.Models.Any(m => Matches(m.RuleDefinitions));
         }
 
         private static bool AffinityMatches(ETargetAffinity affinity, bool isAllied) => affinity switch

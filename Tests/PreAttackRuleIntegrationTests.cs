@@ -227,6 +227,29 @@ namespace FDG.Tests
                 "only the unit carrying the required rule is a candidate");
         }
 
+        // #197 P6: a joined hero keeps its own rules on its MODEL (#006/#093), so a unit-only RequiredRule
+        // scan is blind to the most common Caster in the corpus - a hero attached to a squad. Casting Debuff
+        // ("pick one enemy within 18\" with Caster") would then never see a hero caster's unit.
+        [Test]
+        public void EligibleTargets_RequiredRule_MatchesARuleCarriedByAJoinedModel()
+        {
+            DataBinding<UnitData> bearer = MakeUnitAt(new Position(1f, 0f), null);
+            DataBinding<UnitData> squadWithHero = MakeUnitAt(new Position(3f, 0f), null);
+            DataBinding<UnitData> plainAlly = MakeUnitAt(new Position(4f, 0f), null);
+
+            // The Caster rating lives on the joined hero's model, not on the host unit.
+            ((ModelData)squadWithHero.GetValue().Models[0]).AttachRuleDefinition(new ResolvedRule("Caster",
+                CoreRuleCatalog.Caster, new RuleArgument[] { new RuleArgument.Int(2) }));
+
+            var ctx = new TriggeredMoveTestContext(_store, new NullPlayerRequester());
+            var selector = new TargetSelector(6f, 1, 1, ETargetAffinity.Friend, false, RequiredRule: "Caster");
+
+            List<DataBinding<UnitData>> eligible = PreAttackTargeting.EligibleTargets(bearer, selector, ctx);
+
+            Assert.That(eligible, Is.EqualTo(new[] { squadWithHero }),
+                "a rule carried by a joined model qualifies its unit, and a unit with neither does not");
+        }
+
         // --- Helpers ---
 
         // A self-targeted pre-attack ability, once per activation, granting the bearer a marker token.

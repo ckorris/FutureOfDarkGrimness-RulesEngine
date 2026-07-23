@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using FDG.Rules.Definitions;
 using FDG.Rules.Foundation;
 
@@ -14,15 +16,21 @@ namespace FDG.Rules.Dispatch.Contexts
     /// began. 0 for shooting and for a non-charge melee swing. See <see cref="IHasAttackOriginDistance"/>:
     /// the "shot or charged from over 9\" away" defensive rules (Changebound, Guarded, ...) gate here, and a
     /// live-distance check can never see a charge because melee resolves in base contact.</param>
+    /// <param name="TerrainPieces">The table's terrain pieces, for terrain-proximity conditions (the
+    /// Grounded family). Null/empty on paths that cannot supply it (AI valuation, synthetic hits); see
+    /// <see cref="IHasTerrain"/>.</param>
     public sealed record HitRollModifierContext(
         IUnit Attacker, IUnit Target, float DistanceInches, bool AttackerMoved = false,
         bool IsMelee = false, bool IsCharging = false, float ChargeOriginDistanceInches = 0f,
-        EUnpredictableBranch UnpredictableBranch = EUnpredictableBranch.None)
+        EUnpredictableBranch UnpredictableBranch = EUnpredictableBranch.None,
+        IReadOnlyList<ITerrain>? TerrainPieces = null)
         : IHookContext, IHasDistance, IHasAttackerMoved, IHasCombatKind, IHasCharging, IHasTarget,
-            IHasAttackOriginDistance, IHasUnpredictableBranch
+            IHasAttackOriginDistance, IHasUnpredictableBranch, IHasTerrain
     {
         public EHookID Hook => EHookID.Shooting_OnHitRollModifier;
 
         public float AttackOriginDistanceInches => IsMelee ? ChargeOriginDistanceInches : DistanceInches;
+
+        public IReadOnlyList<ITerrain> Terrain => TerrainPieces ?? Array.Empty<ITerrain>();
     }
 }

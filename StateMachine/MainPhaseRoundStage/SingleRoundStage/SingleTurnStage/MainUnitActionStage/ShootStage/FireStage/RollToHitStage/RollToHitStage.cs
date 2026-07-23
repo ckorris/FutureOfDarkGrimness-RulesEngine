@@ -87,7 +87,10 @@ namespace FDG.Stages
                 new HitRollCompleteContext(attacker, defender, rollToHitResults, distance, metaData.IsMelee,
                     metaData.IsCharging, IsSpell: false,
                     ChargeOriginDistanceInches: metaData.ChargeOriginDistanceInches,
-                    UnpredictableBranch: metaData.UnpredictableBranch),
+                    UnpredictableBranch: metaData.UnpredictableBranch,
+                    // #197 misc (Grounded family): the terrain-proximity conditions read the bearer's
+                    // models against the live terrain layout.
+                    TerrainPieces: GameContext.TableState.Terrain.Objects.ToList()),
                 // #006 slice F / #093: the attacker batch's living owners contribute their per-model rules
                 // under AllOwners semantics (fires only when every owner shares it), so a joined hero's
                 // Furious/Relentless fire for a hero-only batch and a homogeneous squad's shared per-model

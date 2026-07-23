@@ -49,6 +49,7 @@ public static class CoreRuleCatalog
         Ravage, CrossingAttack,
         StormOfChange, StormOfLust, StormOfPlague, StormOfWar,
         Fanatic, ReDeployment,
+        Retaliate, Deathstrike,
     };
 
     /// <summary>
@@ -1258,6 +1259,39 @@ public static class CoreRuleCatalog
         Valence: EValence.Positive,
         Description: "After deployment, you may pick up and re-place up to two friendly units per unit with " +
                      "this rule. Players alternate, starting with whoever activates next.");
+
+    /// <summary> Canonical name of the Retaliate rule (#197 P11). </summary>
+    public const string RetaliateRuleName = "Retaliate";
+
+    /// <summary>
+    /// Retaliate(X) (#197 P11): "when this model takes a wound in melee, the attacker takes X hits per wound
+    /// taken." An engine marker (no dispatch hooks or abilities) - its effect is a post-melee reflect,
+    /// resolved stage-side, not through the rule pipeline. <c>ResolveMeleeReflectStage</c> (after the melee
+    /// resolves) counts, per MODEL carrying the rule, the wounds it took this melee - the per-model
+    /// attribution the owner ruled for - and deals X hits per wound back at the attacking unit through the
+    /// real save/wound pipeline. Arg(0) is X. Allowlisted in the catalog fire-lint (a marker with no
+    /// operations, like Transport's capacity marker).
+    /// </summary>
+    public static SpecialRuleDefinition Retaliate { get; } = new SpecialRuleDefinition(RetaliateRuleName,
+        Array.Empty<HookEntry>(),
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "When a model with this rule takes a wound in melee, the attacker takes X hits per wound.");
+
+    /// <summary> Canonical name of the Deathstrike rule (#197 P11). </summary>
+    public const string DeathstrikeRuleName = "Deathstrike";
+
+    /// <summary>
+    /// Deathstrike(X) (#197 P11): "if this model is killed in melee, the attacking unit takes X hits." The
+    /// death-triggered sibling of <see cref="Retaliate"/> - the same post-melee reflect, but keyed on the
+    /// rule-bearing MODEL being killed this melee (X hits per killed model) rather than on wounds taken.
+    /// Marker rule; resolved by <c>ResolveMeleeReflectStage</c>. Arg(0) is X. Allowlisted in the fire-lint.
+    /// </summary>
+    public static SpecialRuleDefinition Deathstrike { get; } = new SpecialRuleDefinition(DeathstrikeRuleName,
+        Array.Empty<HookEntry>(),
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "If a model with this rule is killed in melee, the attacking unit takes X hits.");
 
     /// <summary> Canonical name of the Teleport ability (#197). </summary>
     public const string TeleportRuleName = "Teleport";

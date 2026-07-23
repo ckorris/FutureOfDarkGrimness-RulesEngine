@@ -37,6 +37,10 @@ namespace FDG.Tests
                 "detects it by name and offers the hold-back (pass-the-turn) option (#197).",
             ["Re-Deployment"] = "engine-marker: no dispatch entries or abilities; ReDeploymentStage detects " +
                 "it by name to compute the redeploy budget and run the post-deployment sub-phase (#197 P21).",
+            ["Retaliate"] = "engine-marker: no dispatch entries or abilities; ResolveMeleeReflectStage detects " +
+                "it by name and deals X hits per wound taken back at the attacker (#197 P11).",
+            ["Deathstrike"] = "engine-marker: no dispatch entries or abilities; ResolveMeleeReflectStage detects " +
+                "it by name and deals X hits per killed model back at the attacker (#197 P11).",
         };
 
         // All plus the two standalone definitions FDGServer attaches to every unit at army setup —

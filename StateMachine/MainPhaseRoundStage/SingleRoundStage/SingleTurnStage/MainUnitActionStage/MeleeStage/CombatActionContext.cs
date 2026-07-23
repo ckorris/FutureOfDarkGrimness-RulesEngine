@@ -81,6 +81,14 @@ namespace FDG.Stages
 
         public float DefenderRemainingWoundsAtStart { get; }
 
+        /// <summary>
+        /// Per-model remaining wounds captured at the start of the melee (both units), keyed by model
+        /// reference. Empty for a ranged action. Lets a post-melee reflect rule (#197 P11 Retaliate /
+        /// Deathstrike) measure exactly how many wounds each rule-bearing MODEL took, and which were killed,
+        /// by comparing against the current state - the per-model attribution the owner ruled for.
+        /// </summary>
+        public IReadOnlyDictionary<DataReference, float> ModelRemainingWoundsAtStart { get; }
+
         public void AddResult<TResult>(TResult result);
 
         public bool QueryForResult<TResult>(out TResult result);
@@ -148,6 +156,22 @@ namespace FDG.Stages
         public float AttackerRemainingWoundsAtStart { get; private set; }
 
         public float DefenderRemainingWoundsAtStart { get; private set; }
+
+        public IReadOnlyDictionary<DataReference, float> ModelRemainingWoundsAtStart => _modelRemainingWoundsAtStart;
+        private readonly Dictionary<DataReference, float> _modelRemainingWoundsAtStart = new();
+
+        // Snapshots every model's remaining wounds (only in melee - reflect is a melee-only mechanic), keyed
+        // by model reference so a Counter role-swap needs no re-keying. Called once per unit before any swing:
+        // the attacker at construction, the defender when it is set.
+        private void SnapshotModelWounds(DataBinding<UnitData> unit)
+        {
+            if (!_isMelee) return;
+            foreach (DataBinding<ModelData> model in unit.GetValue().ModelBindings)
+            {
+                ModelData m = model.GetValue();
+                _modelRemainingWoundsAtStart[model.Reference] = m.TotalWounds - m.WoundsDealt;
+            }
+        }
 
         public IGameContext GameContext { get; }
 
@@ -230,6 +254,7 @@ namespace FDG.Stages
             }
 
             AttackerRemainingWoundsAtStart = attackingUnit.GetValue().RemainingWounds;
+            SnapshotModelWounds(attackingUnit);
         }
 
         public void AddResult<TResult>(TResult result)
@@ -277,6 +302,7 @@ namespace FDG.Stages
         {
             DefendingUnit = defendingUnit;
             DefenderRemainingWoundsAtStart = DefendingUnit.GetValue().RemainingWounds;
+            SnapshotModelWounds(defendingUnit);
         }
 
         public void SetInRangeAttackers(IReadOnlyList<DataBinding<ModelData>> models)

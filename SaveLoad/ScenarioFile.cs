@@ -108,5 +108,14 @@ namespace FDG.SaveLoad
         /// UnitDestroyed, OwnerDestroyed.
         /// </summary>
         public string ClearTrigger { get; set; } = "ManualOnly";
+
+        /// <summary>
+        /// Optional signed delta for the granted roll-modifier token types (HitRollModifier,
+        /// SaveRollModifier, MoraleRollModifier, CastRollModifier). Without it the token carries no
+        /// payload and the roll stages read a net of zero - so a scenario could place the token but
+        /// never see it apply. Rejected on token types that carry no <c>StatModifier</c> payload,
+        /// rather than being silently dropped.
+        /// </summary>
+        public int? Delta { get; set; }
     }
 }

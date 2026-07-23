@@ -319,7 +319,24 @@ namespace FDG.SaveLoad
                     $"Unit '{unitName}': unknown token clearTrigger '{spec.ClearTrigger}'.")
             };
 
-            return new Token(new TokenType(typeId), spec.Count, trigger);
+            // A granted roll modifier is only worth anything with its delta: the roll stages read the
+            // StatModifier payload, so a payload-less HitRollModifier token nets zero and looks like the
+            // modifier silently not working. Only the four carrier types take one.
+            TokenPayload? payload = null;
+            if (spec.Delta.HasValue)
+            {
+                bool isRollModifier = typeId is TokenType.HIT_ROLL_MODIFIER_ID or TokenType.SAVE_ROLL_MODIFIER_ID
+                    or TokenType.MORALE_ROLL_MODIFIER_ID or TokenType.CAST_ROLL_MODIFIER_ID;
+                if (!isRollModifier)
+                {
+                    throw new ScenarioCompileException($"Unit '{unitName}': token '{spec.Type}' takes no " +
+                        "'delta' - only the roll-modifier tokens (HitRollModifier, SaveRollModifier, " +
+                        "MoraleRollModifier, CastRollModifier) carry a signed modifier.");
+                }
+                payload = new TokenPayload.StatModifier(spec.Delta.Value);
+            }
+
+            return new Token(new TokenType(typeId), spec.Count, trigger, Payload: payload);
         }
 
         /// <summary>

@@ -56,13 +56,6 @@ namespace FDG.Ai.Tactician
         public const int RepackCorrectionAttempts = 8;
         public const float RepackCorrectionSlackInches = 0.01f;
 
-        // #264 issue 4: a bent route whose pack candidate carries the unit less than this fraction of
-        // the requested step has been funnelled, not blocked - the shared-waypoint backtrack ate the
-        // budget inside the builder and the move is VALID, so the backoff ladder never sees it. Half
-        // the budget is the handoff's line ("funnel overhead > half budget"); below it the on-path
-        // snake is tried at the same step and kept only if it genuinely travels further.
-        public const float FunnelStallFraction = 0.5f;
-
         // Aim tuning. A charge targets just inside base contact (still < the validator's contact
         // tolerance, so it reads as engaged, not standoff-band loitering); an advance targets just past
         // the standoff line. A few measure-and-correct passes converge thanks to the ~1:1 step<->gap
@@ -192,8 +185,7 @@ namespace FDG.Ai.Tactician
             bool canMoveThroughEnemies, bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
             List<ITerrain> terrain, IReadOnlyList<EnemyModelFootprint>? friendlies = null,
             Func<float, float, List<ModelMoveEntry>>? reaimAt = null,
-            Func<float, List<ModelMoveEntry>>? snakeAt = null,
-            bool routeBends = false)
+            Func<float, List<ModelMoveEntry>>? snakeAt = null)
         {
             bool Validate(List<ModelMoveEntry> c, out List<ReasonForInvalidMove> errs) =>
                 MovementUtilities.ValidatePaths(c, budgetFor, enemies, canMoveThroughEnemies,
@@ -203,27 +195,6 @@ namespace FDG.Ai.Tactician
             float step = initialStep;
             List<ModelMoveEntry> candidate = candidateAt(step);
             bool valid = Validate(candidate, out List<ReasonForInvalidMove> errors);
-
-            // #264 issue 4: the funnel stall is INVISIBLE to the ladder below, which only rescues
-            // moves that fail validation. BuildPathCandidate prefixes every model with the route's
-            // shared waypoints, so a wide formation hugging a corner has its flank models walk BACK
-            // to waypoint 1; that backtrack sets the worst-model measure, and the builder's own
-            // measure-and-correct loop shrinks the arc for everyone until the move is a valid
-            // 1"-of-12" shuffle. The snake places models ON the route instead of in a geometric pack
-            // around its endpoint, which is the shape a corner actually admits - so when a bent route
-            // produces a near-motionless pack, try it here rather than accepting the shuffle.
-            if (valid && snakeAt != null && routeBends && living.Count > 0
-                && step >= MinBackoffStepInches)
-            {
-                float packed = CentroidTravel(living, candidate);
-                if (packed < FunnelStallFraction * step)
-                {
-                    List<ModelMoveEntry> snake = snakeAt(step);
-                    if (CentroidTravel(living, snake) > packed + MinBackoffStepInches
-                        && Validate(snake, out _))
-                        return snake;
-                }
-            }
 
             int attempts = 0;
             while (!valid && attempts < MaxBackoffAttempts)
@@ -329,18 +300,6 @@ namespace FDG.Ai.Tactician
                 if (forwardProgress >= 0.5f * forwardLength && isValid(candidate)) return candidate;
             }
             return null;
-        }
-
-        /// <summary>How far a candidate carries the unit's centroid, in any direction (#264 issue 4:
-        /// the funnel-stall measure - a direction-relative one is useless when the stalled candidate
-        /// barely moved and so has no meaningful direction).</summary>
-        private static float CentroidTravel(List<DataBinding<ModelData>> living,
-            List<ModelMoveEntry> candidate)
-        {
-            float sx = living.Average(mb => mb.GetValue().Position.x);
-            float sz = living.Average(mb => mb.GetValue().Position.z);
-            (float ex, float ez) = EndCentroid(candidate);
-            return MathF.Sqrt((ex - sx) * (ex - sx) + (ez - sz) * (ez - sz));
         }
 
         /// <summary>
@@ -760,10 +719,7 @@ namespace FDG.Ai.Tactician
                 // #256 S4: a formation too wide for the route's corridor falls back to the on-path
                 // snake instead of halving to a crawl (the walled Battle Brothers pocket).
                 arc => BuildSnakeCandidate(unit, living, path, arc, terrain, baseRadius,
-                    maxDistanceInches),
-                // #264 issue 4: a route with an interior bend is the shape whose shared waypoints
-                // funnel a wide formation into a valid near-stay. A straight route cannot.
-                routeBends: path.Count > 2);
+                    maxDistanceInches));
             return (move, path);
         }
 

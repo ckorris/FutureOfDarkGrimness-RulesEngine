@@ -544,8 +544,13 @@ namespace FDG.Stages
                 return false;
             }
 
+            // Reach is judged from every origin the cast could use (#197 P23 Spell Conduit), matching the
+            // picker: a spell only a relay can reach still makes Cast a real option.
+            IReadOnlyList<SpellRelay.CastOrigin> origins = SpellRelay.OriginsFor(
+                GameContext.TableState, GameContext.RuleEvaluator, unit);
             bool anyCastable = untried.Any(spell => spell.Threshold <= tokens
-                && SpellTargeting.HasAnyEligibleTarget(GameContext, context.ActivatingUnit, player, spell.Target));
+                && SpellTargeting.HasAnyEligibleTargetFromAny(GameContext, context.ActivatingUnit, player,
+                    spell.Target, origins));
             if (!anyCastable)
             {
                 reasonIfCant = "No spell has a target in range.";

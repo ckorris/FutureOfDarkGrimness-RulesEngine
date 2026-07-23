@@ -56,6 +56,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(EnableTransport), "enableTransport")]
 [JsonDerivedType(typeof(EnableReDeployment), "enableReDeployment")]
 [JsonDerivedType(typeof(EnableSpellLending), "enableSpellLending")]
+[JsonDerivedType(typeof(EnableSpellRelay), "enableSpellRelay")]
 [JsonDerivedType(typeof(TargetIndividualModel), "targetIndividualModel")]
 [JsonDerivedType(typeof(RestrictActions), "restrictActions")]
 [JsonDerivedType(typeof(RangeModifier), "rangeModifier")]
@@ -732,6 +733,24 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.EnableSpellLending(Pool, RangeInches));
+        }
+    }
+
+    /// <summary>
+    /// The bearer relays casts for other friendly casters within <see cref="RangeInches"/>: they may cast
+    /// "as if they were in this model's position" and get <see cref="CastRollBonus"/> to the roll when they
+    /// do. Conferred by <c>Spell Conduit</c>. Neither number is argumented in the corpus, hence plain values
+    /// rather than <see cref="ValueSource"/>s.
+    ///
+    /// <para>Authored at <see cref="EHookID.Lifecycle_OnCapabilityQuery"/> like every other capability, so
+    /// "friendly casters may only use this rule if this unit isn't Shaken" is a plain <see cref="Condition"/>
+    /// on the entry - the same shape <c>Spell Accumulator</c> uses for the identical clause.</para>
+    /// </summary>
+    public sealed record EnableSpellRelay(float RangeInches, int CastRollBonus) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.EnableSpellRelay(RangeInches, CastRollBonus));
         }
     }
 

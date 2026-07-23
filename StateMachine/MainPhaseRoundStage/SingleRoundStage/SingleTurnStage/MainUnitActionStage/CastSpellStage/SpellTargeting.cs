@@ -16,9 +16,18 @@ namespace FDG.Stages
     /// </summary>
     public static class SpellTargeting
     {
+        /// <summary>
+        /// The units <paramref name="caster"/> may target with <paramref name="selector"/>. Affinity is
+        /// always judged against the CASTER (a Self- or Friend-affinity spell means the caster's own side
+        /// however the cast is relayed); range and line of sight are measured from
+        /// <paramref name="origin"/>, which defaults to the caster and is a <c>Spell Conduit</c> when one is
+        /// relaying the cast (#197 P23).
+        /// </summary>
         public static List<DataBinding<UnitData>> GetEligibleTargets(IGameContext gameContext,
-            DataBinding<UnitData> caster, PlayerID casterPlayer, TargetSelector selector)
+            DataBinding<UnitData> caster, PlayerID casterPlayer, TargetSelector selector,
+            IUnit? origin = null)
         {
+            IUnit measureFrom = origin ?? caster.GetValue();
             TeamData team = gameContext.GameDataStore().GetAllValues<TeamData>()
                 .FirstOrDefault(t => t.IsPlayerOnTeam(casterPlayer));
             bool IsFriendly(PlayerID p) => team != null ? team.IsPlayerOnTeam(p) : p == casterPlayer;
@@ -33,15 +42,35 @@ namespace FDG.Stages
             foreach (DataBinding<UnitData> unit in allUnits)
             {
                 if (!MatchesAffinity(selector.TargetAffinity, caster, unit, IsFriendly)) continue;
-                if (!WithinRangeAndSight(gameContext, caster, unit, selector, terrain)) continue;
+                if (!WithinRangeAndSight(gameContext, measureFrom, unit, selector, terrain)) continue;
                 candidates.Add(unit);
             }
             return candidates;
         }
 
         public static bool HasAnyEligibleTarget(IGameContext gameContext, DataBinding<UnitData> caster,
-            PlayerID casterPlayer, TargetSelector selector)
-            => GetEligibleTargets(gameContext, caster, casterPlayer, selector).Count > 0;
+            PlayerID casterPlayer, TargetSelector selector, IUnit? origin = null)
+            => GetEligibleTargets(gameContext, caster, casterPlayer, selector, origin).Count > 0;
+
+        /// <summary>
+        /// Whether ANY of <paramref name="origins"/> reaches a legal target — the castability test once a
+        /// relay may be in play, since a spell the caster cannot reach itself is still castable through a
+        /// conduit that can.
+        /// </summary>
+        public static bool HasAnyEligibleTargetFromAny(IGameContext gameContext,
+            DataBinding<UnitData> caster, PlayerID casterPlayer, TargetSelector selector,
+            IReadOnlyList<SpellRelay.CastOrigin> origins)
+        {
+            foreach (SpellRelay.CastOrigin origin in origins)
+            {
+                if (HasAnyEligibleTarget(gameContext, caster, casterPlayer, selector, origin.Unit))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         /// <summary>
         /// True when the unit can cast. Shared by <see cref="ChooseActionStage"/> (gate the Cast action) and
@@ -72,26 +101,31 @@ namespace FDG.Stages
             };
         }
 
-        private static bool WithinRangeAndSight(IGameContext gameContext, DataBinding<UnitData> caster,
+        // Measured from ORIGIN, which is the caster itself unless a Spell Conduit is relaying the cast
+        // (#197 P23) — "may cast spells as if they were in this model's position". Range and line of sight
+        // both move with it, including which models are discounted as blockers: sighting from the relay
+        // means the relay's own models are the ones that cannot block.
+        private static bool WithinRangeAndSight(IGameContext gameContext, IUnit origin,
             DataBinding<UnitData> target, TargetSelector selector, IReadOnlyList<ITerrain> terrain)
         {
             IReadOnlyList<ITerrain> blockers = selector.RequireLineOfSight
-                ? terrain.Concat(LineOfSightUtilities.BuildModelBlockers(gameContext.TableState, caster, target)).ToList()
+                ? terrain.Concat(LineOfSightUtilities.BuildModelBlockers(gameContext.TableState, origin,
+                    (IUnit)target.GetValue())).ToList()
                 : terrain;
 
-            foreach (DataBinding<ModelData> casterModel in caster.GetValue().ModelBindings.Where(m => m.GetValue().GetIsAlive()))
+            foreach (IModel om in origin.Models)
             {
-                ModelData cm = casterModel.GetValue();
-                Position casterPos = cm.PositionBinding.GetValue();
+                if (!om.GetIsAlive()) continue;
+                Position originPos = om.Position;
                 foreach (DataBinding<ModelData> targetModel in target.GetValue().ModelBindings.Where(m => m.GetValue().GetIsAlive()))
                 {
                     ModelData tm = targetModel.GetValue();
                     Position targetPos = tm.PositionBinding.GetValue();
                     float distance = DistanceUtilities.GetBaseToBaseDistanceInches_3D(
-                        casterPos, targetPos, cm.BaseShape, cm.Facing, tm.BaseShape, tm.Facing);
+                        originPos, targetPos, om.BaseShape, om.Facing, tm.BaseShape, tm.Facing);
                     if (distance > selector.RangeInches) continue;
                     if (!selector.RequireLineOfSight) return true;
-                    if (LineOfSightUtilities.HasLineOfSight(casterPos, targetPos, blockers)) return true;
+                    if (LineOfSightUtilities.HasLineOfSight(originPos, targetPos, blockers)) return true;
                 }
             }
             return false;

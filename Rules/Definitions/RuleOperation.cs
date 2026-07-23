@@ -510,6 +510,18 @@ public abstract record RuleOperation
     public sealed record EnableSpellLending(TokenType Pool, float RangeInches) : RuleOperation;
 
     /// <summary>
+    /// The bearer relays casts for OTHER friendly casters within <see cref="RangeInches"/>: they may
+    /// measure a spell's range and line of sight from the bearer's position instead of their own, and get
+    /// <see cref="CastRollBonus"/> to the cast roll when they do. Resolution of
+    /// <see cref="Effect.EnableSpellRelay"/> (Spell Conduit). Read by <c>SpellRelay</c>.
+    ///
+    /// <para>The bonus rides the operation rather than being a separate entry because "cast from here" and
+    /// "+1 when you do" are one offer - the bonus applies only to a cast that actually used the relay, so
+    /// splitting them would let the bonus apply to a cast made from the caster's own position.</para>
+    /// </summary>
+    public sealed record EnableSpellRelay(float RangeInches, int CastRollBonus) : RuleOperation;
+
+    /// <summary>
     /// Re-scope the in-flight attack to a single chosen model in the target unit.
     /// Resolution of <see cref="Effect.TargetIndividualModel"/> (Takedown).
     /// </summary>

@@ -31,6 +31,10 @@ namespace FDG.StageResolution.Requests
         public record SpellOption(string Label, string Description, int Cost, bool Castable,
             string? UnavailableReason);
 
+        /// <summary>One Spell Conduit in range: whose it is and what it adds to the roll when a cast is
+        /// made from its position.</summary>
+        public record RelayOption(string UnitName, int RollBonus);
+
         public PlayerID TargetPlayerID { get; }
         public TaskID TaskID { get; }
         public string TaskName { get; }
@@ -52,6 +56,15 @@ namespace FDG.StageResolution.Requests
         /// <summary>All of the army's spells in stable order. The reply's index points into this list.</summary>
         public IReadOnlyList<SpellOption> Spells { get; }
 
+        /// <summary>
+        /// #197 P23 — the <c>Spell Conduit</c>s currently relaying for this caster, usually empty. There is
+        /// nothing to reply to: the origin is derived from the targets chosen (a relay origin is never worse
+        /// than the caster's own, so there is no decision), and which targets get the bonus is stated on
+        /// each row of the target list. This is here so the picker can say the bonus is available at all,
+        /// which is where a player is deciding whether a spell is worth casting.
+        /// </summary>
+        public IReadOnlyList<RelayOption> RelaysInRange { get; }
+
         /// <summary>The most boost tokens that can possibly matter: enough to reach the 2+ floor (a
         /// natural 1 always fails, so the threshold never drops below 2) plus one per in-range enemy
         /// hinder token. UIs cap the boost picker at min(this, affordable).</summary>
@@ -60,7 +73,8 @@ namespace FDG.StageResolution.Requests
 
         [JsonConstructor]
         public ChooseSpellRequest(PlayerID targetPlayerID, TaskID taskID, DataBinding<UnitData> castingUnit,
-            int availableTokens, int baseThreshold, int hinderTokensInRange, IReadOnlyList<SpellOption> spells)
+            int availableTokens, int baseThreshold, int hinderTokensInRange, IReadOnlyList<SpellOption> spells,
+            IReadOnlyList<RelayOption>? relaysInRange = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -69,13 +83,15 @@ namespace FDG.StageResolution.Requests
             BaseThreshold = baseThreshold;
             HinderTokensInRange = hinderTokensInRange;
             Spells = spells;
+            RelaysInRange = relaysInRange ?? Array.Empty<RelayOption>();
             TaskName = "Choose Spell";
         }
 
         public ChooseSpellRequest(PlayerID targetPlayerID, DataBinding<UnitData> castingUnit,
-            int availableTokens, int baseThreshold, int hinderTokensInRange, IReadOnlyList<SpellOption> spells)
+            int availableTokens, int baseThreshold, int hinderTokensInRange, IReadOnlyList<SpellOption> spells,
+            IReadOnlyList<RelayOption>? relaysInRange = null)
             : this(targetPlayerID, new TaskID(Guid.NewGuid()), castingUnit, availableTokens, baseThreshold,
-                   hinderTokensInRange, spells)
+                   hinderTokensInRange, spells, relaysInRange)
         {
         }
 

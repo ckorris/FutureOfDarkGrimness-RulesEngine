@@ -77,19 +77,29 @@ namespace FDG.Rules.Dispatch
         /// offers - unlike two <c>Transport</c> rules, which describe the same hold twice.</para>
         /// </summary>
         public static IReadOnlyList<RuleOperation.EnableSpellLending> LentPools(IUnit unit,
-            RuleEvaluator evaluator)
+            RuleEvaluator evaluator) => Collect<RuleOperation.EnableSpellLending>(unit, evaluator);
+
+        /// <summary>
+        /// The relays <paramref name="unit"/> is currently offering to other friendly casters - each with
+        /// the range it reaches and the cast-roll bonus it confers (core <c>Spell Conduit</c>). Empty for
+        /// almost every unit. Read by <c>SpellRelay</c>.
+        /// </summary>
+        public static IReadOnlyList<RuleOperation.EnableSpellRelay> RelayOffers(IUnit unit,
+            RuleEvaluator evaluator) => Collect<RuleOperation.EnableSpellRelay>(unit, evaluator);
+
+        private static IReadOnlyList<TOperation> Collect<TOperation>(IUnit unit, RuleEvaluator evaluator)
+            where TOperation : RuleOperation
         {
-            List<RuleOperation.EnableSpellLending>? lent = null;
+            List<TOperation>? found = null;
             foreach (RuleOperation op in Ask(unit, evaluator))
             {
-                if (op is RuleOperation.EnableSpellLending lending)
+                if (op is TOperation match)
                 {
-                    (lent ??= new List<RuleOperation.EnableSpellLending>()).Add(lending);
+                    (found ??= new List<TOperation>()).Add(match);
                 }
             }
 
-            return (IReadOnlyList<RuleOperation.EnableSpellLending>?)lent
-                ?? System.Array.Empty<RuleOperation.EnableSpellLending>();
+            return (IReadOnlyList<TOperation>?)found ?? System.Array.Empty<TOperation>();
         }
 
         private static bool Answers<TOperation>(IUnit unit, RuleEvaluator evaluator)

@@ -63,28 +63,17 @@ namespace FDG.Stages
         {
             List<Loan>? loans = null;
 
-            foreach (IUnit lender in tableState.Units.Objects)
+            foreach (CastSupport.Neighbour neighbour in CastSupport.NeighboursOf(tableState, caster))
             {
-                if (ReferenceEquals(lender, caster) || lender.ID.Equals(caster.ID)) continue;
-                if (!lender.GetIsAlive() || !lender.GetIsOnBattlefield()) continue;
-                if (!IsFriendly(tableState, caster.PlayerID, lender.PlayerID)) continue;
-
-                IReadOnlyList<RuleOperation.EnableSpellLending> pools =
-                    CapabilityRuleQueries.LentPools(lender, evaluator);
-                if (pools.Count == 0) continue;
-
-                // Only pay for the distance once a unit has actually offered something.
-                float distance = UnitCompareUtilities.MinDistanceBetweenUnits(
-                    caster, lender, out _, out _, includeVertical: true);
-
-                foreach (RuleOperation.EnableSpellLending pool in pools)
+                foreach (RuleOperation.EnableSpellLending pool in
+                         CapabilityRuleQueries.LentPools(neighbour.Unit, evaluator))
                 {
-                    if (distance > pool.RangeInches) continue;
+                    if (neighbour.DistanceInches > pool.RangeInches) continue;
 
-                    int count = lender.Tokens.GetTokenCount(pool.Pool);
+                    int count = neighbour.Unit.Tokens.GetTokenCount(pool.Pool);
                     if (count <= 0) continue;
 
-                    (loans ??= new List<Loan>()).Add(new Loan(lender, pool.Pool, count));
+                    (loans ??= new List<Loan>()).Add(new Loan(neighbour.Unit, pool.Pool, count));
                 }
             }
 
@@ -144,18 +133,6 @@ namespace FDG.Stages
             }
 
             return string.Join(", ", parts);
-        }
-
-        // Team-aware friendliness, mirroring SpellTargeting and SpellValuation: teammates count as friendly;
-        // with no registered team, only the player itself does.
-        private static bool IsFriendly(ITableState tableState, PlayerID player, PlayerID other)
-        {
-            foreach (ITeam team in tableState.Teams.Objects)
-            {
-                if (team.IsPlayerOnTeam(player)) return team.IsPlayerOnTeam(other);
-            }
-
-            return player == other;
         }
     }
 }

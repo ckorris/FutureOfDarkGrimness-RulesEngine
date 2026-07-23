@@ -611,13 +611,15 @@ public abstract record Effect
 
     /// <summary>
     /// On a charge, rolls <see cref="DiceCount"/> impact dice (each 2+ a hit) before
-    /// strikes. Covers Impact(X) — the dice count is the rule's argument.
+    /// strikes. Covers Impact(X) — the dice count is the rule's argument — and, with
+    /// <see cref="ArmorPenetration"/> &gt; 0, Heavy Impact ("Impact(X) with hits that have AP(1)").
     /// </summary>
-    public sealed record ChargeImpactHits(ValueSource DiceCount) : Effect
+    public sealed record ChargeImpactHits(ValueSource DiceCount, int ArmorPenetration = 0) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.ChargeImpactHits(DiceCount.Resolve(ruleInvocation)));
+            operations.Add(new RuleOperation.ChargeImpactHits(
+                DiceCount.Resolve(ruleInvocation), ArmorPenetration));
         }
     }
 

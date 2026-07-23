@@ -38,6 +38,39 @@ namespace FDG.Tests
                 "Impact(3) deals 3 auto-hits → 3 wounds, wiping out the 2-wound defender before any swing.");
         }
 
+        // #197 misc - Heavy Impact ("Impact(X) with hits that have AP(1)"). AllOnFaceDiceRoller(4): each
+        // impact die is a 4 (a hit, 2+), each save is a 4. Against defense 4, an AP-0 save of 4 HOLDS
+        // (4 >= 4) but an AP-1 save needs 5 and FAILS - so the only thing separating these two tests is the
+        // AP the impact hits now carry.
+        [Test]
+        public async Task HeavyImpact_HitsCarryAP_TheSaveFailsWhereCoreImpactWouldHold()
+        {
+            var ctx = new WoundTestContext(_store, new CapturingWoundRequester(), new AllOnFaceDiceRoller(4));
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            AttachHeavyImpact(attacker, x: 3);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 5); // 5 wounds, survives 3 wounds
+
+            await RunStage(ctx, attacker, defender);
+
+            Assert.That(defender.RemainingWounds(), Is.EqualTo(2f),
+                "Heavy Impact(3): 3 hits, each save (4) fails against AP(1) -> 3 wounds.");
+        }
+
+        [Test]
+        public async Task CoreImpact_AtTheSameDice_TheSaveHolds()
+        {
+            var ctx = new WoundTestContext(_store, new CapturingWoundRequester(), new AllOnFaceDiceRoller(4));
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            AttachImpact(attacker, x: 3); // AP 0
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 5);
+
+            await RunStage(ctx, attacker, defender);
+
+            Assert.That(defender.RemainingWounds(), Is.EqualTo(5f),
+                "core Impact(3): 3 hits, but each save of 4 holds at AP 0 -> no wounds. The contrast pins " +
+                "that Heavy Impact's extra wounds come from the AP, not the dice.");
+        }
+
         [Test]
         public async Task NoImpact_DefenderUnharmed()
         {
@@ -134,6 +167,22 @@ namespace FDG.Tests
 
         private static void AttachImpact(DataBinding<UnitData> unit, int x) =>
             unit.GetValue().AttachRuleDefinition(new ResolvedRule("Impact", CoreRuleCatalog.Impact,
+                new RuleArgument[] { new RuleArgument.Int(x) }));
+
+        // Heavy Impact ships as supplement data; here it's built inline as its engine shape - core Impact's
+        // charge-contact entry with AP(1) on the impact hits.
+        private static readonly SpecialRuleDefinition HeavyImpactDefinition = new SpecialRuleDefinition(
+            "Heavy Impact",
+            new[]
+            {
+                new HookEntry(EHookID.Melee_OnChargeContact, new Condition.Always(),
+                    new Effect.ChargeImpactHits(new ValueSource.Arg(0), ArmorPenetration: 1),
+                    ELifetime.ThisAttack),
+            },
+            Array.Empty<ActivatedAbility>());
+
+        private static void AttachHeavyImpact(DataBinding<UnitData> unit, int x) =>
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Heavy Impact", HeavyImpactDefinition,
                 new RuleArgument[] { new RuleArgument.Int(x) }));
 
         // Unlike FixedDiceRoller (which models a single die: TotalRolls is always 1), this returns

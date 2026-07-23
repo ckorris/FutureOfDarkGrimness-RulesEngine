@@ -449,16 +449,18 @@ public abstract record RuleOperation
     /// Roll <see cref="DiceCount"/> impact dice (each 2+ a hit) on the charge.
     /// Resolution of <see cref="Effect.ChargeImpactHits"/> (Impact).
     /// </summary>
-    public sealed record ChargeImpactHits(int DiceCount) : SinkOperation<IImpactSink>
+    public sealed record ChargeImpactHits(int DiceCount, int ArmorPenetration = 0) : SinkOperation<IImpactSink>
     {
         public override void ApplyTo(IImpactSink sink)
         {
             sink.AddDice(DiceCount);
+            sink.AddArmorPenetration(ArmorPenetration);
         }
 
         public override string Describe()
         {
-            return $"rolled {DiceCount} impact dice on the charge";
+            string ap = ArmorPenetration > 0 ? $" with AP({ArmorPenetration})" : string.Empty;
+            return $"rolled {DiceCount} impact dice on the charge{ap}";
         }
     }
 

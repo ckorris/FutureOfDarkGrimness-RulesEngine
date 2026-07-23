@@ -332,6 +332,17 @@ public abstract record RuleOperation
     public sealed record InvokeDealAutoWounds(IUnit Target, int DiceCount, int SuccessThreshold) : RuleOperation;
 
     /// <summary>
+    /// #197 P10 Storm of X — the config for a rolled multi-target hit burst. Resolution of
+    /// <see cref="Effect.StormOfHits"/>. A plain <see cref="RuleOperation"/>, enacted by StormStage: it
+    /// rolls <see cref="PoolDice"/> DECISIVELY, and for each success (>= <see cref="SuccessThreshold"/>) the
+    /// player picks an enemy within <see cref="RangeInches"/> that takes <see cref="HitsPerSuccess"/> hits
+    /// with <see cref="WithRules"/> at <see cref="ArmorPenetration"/>. No target rides the op - the targets
+    /// are chosen per success at resolution.
+    /// </summary>
+    public sealed record InvokeStorm(int PoolDice, int SuccessThreshold, int HitsPerSuccess,
+        IReadOnlyList<string> WithRules, int ArmorPenetration, float RangeInches) : RuleOperation;
+
+    /// <summary>
     /// Restore <see cref="Amount"/> wounds on <see cref="Target"/>. Resolution
     /// of <see cref="Effect.Heal"/>; the <see cref="DiceExpression"/> has already
     /// been rolled by the dispatcher, so <see cref="Amount"/> is concrete — a

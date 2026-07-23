@@ -22,6 +22,7 @@ namespace FDG.Stages
         public StageBinding ToDisembark;
         public StageBinding ToEmbark;
         public StageBinding ToTeleport;
+        public StageBinding ToStorm;
         public StageBinding ToReconcileEndOfActivation;
 
         // #248: un-pick the activated unit and return to unit selection. Offered (AllowCancel) only while
@@ -45,6 +46,7 @@ namespace FDG.Stages
             ToDisembark = new StageBinding(this);
             ToEmbark = new StageBinding(this);
             ToTeleport = new StageBinding(this);
+            ToStorm = new StageBinding(this);
             ToReconcileEndOfActivation = new StageBinding(this);
             ToBackOut = new StageBinding(this);
         }
@@ -223,6 +225,25 @@ namespace FDG.Stages
                         {
                             context.SetPendingCustomAction(teleportOffer);
                             return ToTeleport.Activate(context);
+                        });
+                    }
+                    continue;
+                }
+
+                // #197 P10 Storm of X - a rolled multi-target hit burst. Routed to StormStage (like Teleport)
+                // so its decisive pool roll, per-success target picks, and looping hit batches run as real
+                // child pipelines. Detected by effect type (four rule-name variants share it). Available
+                // "before attacking"; its once-per-game gate is the ability's own cost. Fully layered.
+                if (offer.Ability.Effect is Effect.StormOfHits)
+                {
+                    if (!context.HasAttacked && !outcomes.ContainsKey(offer.RuleName))
+                    {
+                        AbilityOffer stormOffer = offer;
+                        validOptions.Add(offer.RuleName);
+                        outcomes.Add(offer.RuleName, () =>
+                        {
+                            context.SetPendingCustomAction(stormOffer);
+                            return ToStorm.Activate(context);
                         });
                     }
                     continue;

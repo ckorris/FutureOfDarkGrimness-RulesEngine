@@ -73,6 +73,10 @@ namespace FDG.Stages
                 // #197 Teleport — a 6" reposition-placement offered in Choose Action; loops back so the unit
                 // re-evaluates its options from the new position (layered, doesn't end the turn).
                 .AddChild(new TeleportStage(GameContext, this), out var teleport)
+                // #197 P10 Storm of X - a once-per-game rolled multi-target hit burst offered in Choose
+                // Action; its per-target batches loop through OnBatchDone (back to itself) until the queue
+                // drains, then OnAllDone returns to the menu. Fully layered like Teleport.
+                .AddChild(new StormStage(GameContext, this), out var storm)
                 .AddSibling(nameof(ToReconcileEndOfActivation), ToReconcileEndOfActivation, out string toReconcileActivationEvent)
                 // #248: the pristine back-out leaves through its own sibling event so no end-of-activation
                 // reconcile runs and nothing marks the unit as activated.
@@ -94,6 +98,11 @@ namespace FDG.Stages
             chooseAction.ToDisembark.Bind(disembark);
             chooseAction.ToEmbark.Bind(embark);
             chooseAction.ToTeleport.Bind(teleport);
+            chooseAction.ToStorm.Bind(storm);
+            // Each resolved batch re-enters StormStage to process the next target; when the queue empties it
+            // exits to the menu. The unit may then still move/attack (Storm is layered, not an attack).
+            storm.OnBatchDone.Bind(storm);
+            storm.OnAllDone.Bind(chooseAction);
             chooseAction.ToReconcileEndOfActivation.Bind(toReconcileActivationEvent);
             chooseAction.ToBackOut.Bind(backedOutEvent);
             movement.OnFinishedMovement.Bind(chooseAction);

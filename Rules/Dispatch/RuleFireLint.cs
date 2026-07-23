@@ -393,6 +393,8 @@ public static class RuleFireLint
             or EHookID.Movement_OnMoveThroughEnemy,
         // #197 P10 Crossing Attack: an auto-wound ability rolled by CrossingAttackStage at move-through.
         RuleOperation.InvokeDealAutoWounds => hook is EHookID.Movement_OnMoveThroughEnemy,
+        // #197 P10 Storm of X: an action-choice ability enacted by StormStage (routed from ChooseActionStage).
+        RuleOperation.InvokeStorm => hook is EHookID.Activation_OnActionChoice,
         RuleOperation.InvokeReactivate => hook is EHookID.Activation_OnNextActivatorRequested,
         _ => false,
     };

@@ -47,6 +47,7 @@ public static class CoreRuleCatalog
         Unpredictable, UnpredictableFighter, UnpredictableShooter,
         UnpredictableFighterAura, UnpredictableShooterAura,
         Ravage, CrossingAttack,
+        StormOfChange, StormOfLust, StormOfPlague, StormOfWar,
     };
 
     /// <summary>
@@ -1644,6 +1645,32 @@ public static class CoreRuleCatalog
         },
         Valence: EValence.Positive,
         Description: "Once per activation, when moving through an enemy unit, rolls dice that deal automatic unsaveable wounds.");
+
+    /// <summary>
+    /// #197 P10 Storm of X: once per game, when activated before attacking, roll 3 dice - for each 2+ the
+    /// player picks an enemy unit within 12in that takes 3 hits with the storm's rule. Offered in Choose
+    /// Action and resolved by StormStage (decisive pool -> integer target picks -> looping hit batches). The
+    /// four variants differ only by the payload rule / AP: Change=Shred, Lust=Surge, Plague=Bane, War=AP(1).
+    /// </summary>
+    private static SpecialRuleDefinition MakeStorm(string name, string[] withRules, int armorPenetration,
+        string payloadDescription) =>
+        new SpecialRuleDefinition(name,
+            Array.Empty<HookEntry>(),
+            new[]
+            {
+                new ActivatedAbility(EHookID.Activation_OnActionChoice, new Cost.OncePerGame(),
+                    new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
+                    new Effect.StormOfHits(PoolDice: 3, SuccessThreshold: 2, HitsPerSuccess: 3,
+                        WithRules: withRules, ArmorPenetration: armorPenetration, RangeInches: 12f),
+                    new Condition.Always()),
+            },
+            Valence: EValence.Positive,
+            Description: $"Once per game before attacking, roll 3 dice; each 2+ deals 3 hits with {payloadDescription} to an enemy within 12in.");
+
+    public static SpecialRuleDefinition StormOfChange { get; } = MakeStorm("Storm of Change", new[] { "Shred" }, 0, "Shred");
+    public static SpecialRuleDefinition StormOfLust { get; } = MakeStorm("Storm of Lust", new[] { "Surge" }, 0, "Surge");
+    public static SpecialRuleDefinition StormOfPlague { get; } = MakeStorm("Storm of Plague", new[] { "Bane" }, 0, "Bane");
+    public static SpecialRuleDefinition StormOfWar { get; } = MakeStorm("Storm of War", System.Array.Empty<string>(), 1, "AP(1)");
 
     /// <summary>
     /// Strider (#102): the unit ignores the difficult-terrain movement cap — it may cross Difficult terrain

@@ -33,6 +33,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(Aura), "aura")]
 [JsonDerivedType(typeof(DealHits), "dealHits")]
 [JsonDerivedType(typeof(DealAutoWounds), "dealAutoWounds")]
+[JsonDerivedType(typeof(StormOfHits), "stormOfHits")]
 [JsonDerivedType(typeof(Heal), "heal")]
 [JsonDerivedType(typeof(GrantToken), "grantToken")]
 [JsonDerivedType(typeof(ConsumeToken), "consumeToken")]
@@ -323,6 +324,29 @@ public abstract record Effect
 
             operations.Add(new RuleOperation.InvokeDealAutoWounds(
                 ruleInvocation.EffectiveTarget, diceCount, SuccessThreshold));
+        }
+    }
+
+    /// <summary>
+    /// #197 P10 Storm of X — a rolled, multi-target hit burst. Once activated, roll <see cref="PoolDice"/>
+    /// dice; for each result >= <see cref="SuccessThreshold"/> the player picks one enemy unit within
+    /// <see cref="RangeInches"/> that takes <see cref="HitsPerSuccess"/> hits carrying <see cref="WithRules"/>
+    /// (Shred / Surge / Bane) at <see cref="ArmorPenetration"/>. Covers Storm of Change/Lust/Plague/War.
+    ///
+    /// The effect carries only the CONFIG - it emits a single <see cref="RuleOperation.InvokeStorm"/>. The
+    /// pool roll, the per-success target picks, and the per-target hit batches are enacted stage-side by
+    /// StormStage, because (a) the pool must be rolled DECISIVELY so the number of target picks is a whole
+    /// number even under the probabilistic roller (you cannot pick a fractional number of targets - the
+    /// #100 dice invariant, resolved as for P15's branch die), and (b) each target's hits run the save/wound
+    /// child-stage pipeline, which only sequences correctly as a real stage loop.
+    /// </summary>
+    public sealed record StormOfHits(int PoolDice, int SuccessThreshold, int HitsPerSuccess,
+        IReadOnlyList<string> WithRules, int ArmorPenetration, float RangeInches) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.InvokeStorm(PoolDice, SuccessThreshold, HitsPerSuccess,
+                WithRules, ArmorPenetration, RangeInches));
         }
     }
 

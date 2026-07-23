@@ -94,7 +94,73 @@ namespace FDG.Ai.Tactician.Resolvers
 
             // The caller clamps into the zone and spiral-searches for a clear block, so a raw aim
             // (the objective's X, our chosen depth) is safe even when the objective is off-zone.
-            return new Position(aim.Position.x, z);
+            return ClearestRouteLane(new Position(aim.Position.x, z), aim.Position, bounds);
+        }
+
+        // #264 issue 8a: how much detour to the aim a lane may carry before it counts as walled off,
+        // and the lateral probe pattern used to find a better one (the zone is 48" wide at most, so
+        // 8 probes each way at 3" reach every part of it).
+        private const float LaneDetourToleranceInches = 4f;
+        private const float LaneProbeStepInches = 3f;
+        private const int LaneProbeCount = 8;
+        // Routes are judged for ONE model base, not the whole block: the question is whether the lane
+        // exists at all, and the block's own legality is the caller's spiral search to settle.
+        private const float LaneProbeRadiusInches = 0.5f;
+
+        /// <summary>
+        /// The deployment lane whose ROUTE to the aim is not walled off, nearest the preferred one.
+        /// <para>
+        /// #264 issue 8a: deployment aimed at objective lanes but only avoided terrain it would
+        /// OVERLAP, so a big unit happily parked in a pocket behind a piece spanning its lane -
+        /// self-trapping on turn zero, which is how Chris's Knight Brothers game started. Scoring the
+        /// lane by path distance vs straight-line distance is the same measure the movement gradient
+        /// uses (#264 issue 1), so deployment and movement now agree about what "toward the marker"
+        /// means. Probes only run when there is impassible terrain to trip over.
+        /// </para>
+        /// </summary>
+        private Position ClearestRouteLane(Position preferred, Position aim, ZoneBounds bounds)
+        {
+            var terrain = _tableState.Terrain.Objects
+                .Where(t => t.TerrainType.HasFlag(ETerrainType.Impassible)).ToList();
+            if (terrain.Count == 0) return preferred;
+
+            TerrainGrid? grid = null;
+            float Detour(Position from)
+            {
+                grid ??= TerrainGrid.Build(terrain, LaneProbeRadiusInches);
+                List<Position>? route = GridPathfinder.FindPath(grid, terrain, from, aim,
+                    LaneProbeRadiusInches);
+                if (route == null) return float.PositiveInfinity; // no lane at all
+                return RouteMetrics.Length(route) - Dist(from, aim);
+            }
+
+            float bestDetour = Detour(preferred);
+            if (bestDetour <= LaneDetourToleranceInches) return preferred;
+
+            Position best = preferred;
+            for (int step = 1; step <= LaneProbeCount; step++)
+            {
+                foreach (float sign in new[] { 1f, -1f })
+                {
+                    float x = Math.Clamp(preferred.x + sign * step * LaneProbeStepInches,
+                        bounds.Left, bounds.Right);
+                    var probe = new Position(x, preferred.z);
+                    float detour = Detour(probe);
+                    if (detour < bestDetour)
+                    {
+                        bestDetour = detour;
+                        best = probe;
+                    }
+                    if (bestDetour <= LaneDetourToleranceInches) return best;
+                }
+            }
+            return best;
+        }
+
+        private static float Dist(Position a, Position b)
+        {
+            float dx = a.x - b.x, dz = a.z - b.z;
+            return MathF.Sqrt(dx * dx + dz * dz);
         }
 
         // A lane must beat the default spread by a real margin before it overrides (score units:

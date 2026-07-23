@@ -11,14 +11,13 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #264 — a Tactician unit deployed behind a large impassible piece rushes sideways/backwards
-    // (or freezes) instead of walking around it. These tests pin the DESIRED behavior for each
-    // suspected mechanism; the ones still marked Category("Pending264") are RED BY DESIGN until
-    // their slice lands - the pass/fail metric agreed before any fix was written. Run the rest of
-    // the suite green with:
-    //   dotnet test --filter TestCategory!=Pending264
-    // A pin loses the category when its fix lands; it then guards that fix in the main suite.
+    // #264 — a Tactician unit deployed behind a large impassible piece rushed sideways/backwards
+    // (or froze) instead of walking around it. These tests pinned the DESIRED behavior for each
+    // suspected mechanism and were written RED BY DESIGN, before any fix - the pass/fail metric
+    // agreed up front. All nine are green as of 2026-07-23 and now GUARD the fixes; the
+    // Category("Pending264") tags they carried while red are gone with the last of them.
     // Issue numbers reference WorkItems/264-tactician-walled-unit-lateral-retreat.md.
+    // Do not "fix" a regression here by weakening an assert - each one encodes a mechanism.
     [TestFixture]
     public class TacticianWalledUnitTests
     {
@@ -117,7 +116,7 @@ namespace FDG.Tests
                 $"retreat (score {fallBackScore:F4}, end ({fallBack.ProjectedCentroid.x:F1},{fallBack.ProjectedCentroid.z:F1}))");
         }
 
-        [Test, Category("Pending264")]
+        [Test]
         public void WalledUnit_ThreeActivations_EscapeTheWallPocket()
         {
             // Issue 8b (+ the integrated 1/2/3 behavior): re-argmaxing from scratch each activation
@@ -151,7 +150,7 @@ namespace FDG.Tests
         // THROUGH the wall; the snake follows the same line, so the #256 S4 rescue is dead exactly
         // when pathfinding fails, and the ladder halves into the wall face - forever.
 
-        [Test, Category("Pending264")]
+        [Test]
         public void PlanMoveToward_GoalCellInsideWallInflation_StillRoundsTheWall()
         {
             // Goal (24, 12.9) sits 0.7" past the wall's far face - legally standable (base edge
@@ -188,7 +187,7 @@ namespace FDG.Tests
         // budget detouring to waypoint 1, the measure-and-correct loop shrinks the arc toward
         // zero, and the whole unit near-stays.
 
-        [Test, Category("Pending264")]
+        [Test]
         public void PlanMoveToward_WideFormationAtWallCorner_KeepsMostOfItsBudget()
         {
             // 11 models in a single 11"-wide rank under the wall, east end at the corner; the
@@ -218,7 +217,7 @@ namespace FDG.Tests
         // A candidate carrying BOTH error types (round-1 density: wall + adjacent friendly)
         // disables both rescues and the ladder halves to a sub-inch shuffle.
 
-        [Test, Category("Pending264")]
+        [Test]
         public void PlanMoveToward_WallAndFriendlyMixedErrors_StillThreadsTheCorridor()
         {
             // The #256 corridor scene (2" gap between walls, 6-model unit south of it) plus one
@@ -266,7 +265,7 @@ namespace FDG.Tests
         // lanes at fixed angles up to +/-100 degrees - PAST perpendicular - at the full rush
         // budget. A melee unit walled off from its target then lurches 12" sideways-to-backwards.
 
-        [Test, Category("Pending264")]
+        [Test]
         public async Task SoloResolver_OnlyWideSkirtAnglesClear_DoesNotRushPastPerpendicular()
         {
             // A tall wall east of the mover blocks every direction within ~80 degrees of the
@@ -298,7 +297,7 @@ namespace FDG.Tests
         // budgets. A joined Slow hero makes every planned move fail the re-check, silently
         // degrading the unit to the solo resolver for the whole game.
 
-        [Test, Category("Pending264")]
+        [Test]
         public async Task PlannedMove_UnitWithASlowModel_IsSubmittedNotSoloFallback()
         {
             _store.Create(new ObjectiveData(new Position(30f, 25f), _store));
@@ -357,7 +356,7 @@ namespace FDG.Tests
         // so a big unit parks squarely behind a wall spanning its lane - the self-trap that set up
         // Chris's game. The chosen center's route to its aim must not carry a huge detour penalty.
 
-        [Test, Category("Pending264")]
+        [Test]
         public async Task Deployment_ObjectiveLaneWalledOff_DoesNotParkInThePocket()
         {
             _store.Create(new ObjectiveData(new Position(24f, 24f), _store));

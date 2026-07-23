@@ -23,7 +23,8 @@ namespace FDG.Network
         // to MAX_PAYLOAD_BYTES only after accepting its join.
         public const int MAX_PREAUTH_PAYLOAD_BYTES = 64 * 1024; // 64 KB
 
-        public const int TEMP_PORT = 6389; //TODO Make this specifyable.
+        // Retained as the engine-internal name; the value is now the single public default (#189).
+        public const int TEMP_PORT = NetworkProtocol.DefaultPort;
 
         // Tunes a freshly connected/accepted socket for WAN turn-based play (QF3):
         // - NoDelay disables Nagle so a small decision frame isn't held waiting to coalesce, which with the

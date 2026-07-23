@@ -8,7 +8,7 @@ namespace FDG.Network.Connection
 {
     public interface INetworkClient
     {
-        Task<bool> ConnectAsync(IPAddress serverIP);
+        Task<bool> ConnectAsync(IPAddress serverIP, int port = NetworkProtocol.DefaultPort);
 
         event Action<ArraySegment<byte>>? OnMessageReceived;
 
@@ -36,14 +36,14 @@ namespace FDG.Network.Connection
 
         public event Action? OnDisconnected;
 
-        public async Task<bool> ConnectAsync(IPAddress serverIP)
+        public async Task<bool> ConnectAsync(IPAddress serverIP, int port = NetworkProtocol.DefaultPort)
         {
             try
             {
                 _cancelTokenSource = new CancellationTokenSource();
                 _tcpClient = new TcpClient();
 
-                await _tcpClient.ConnectAsync(serverIP, CommandProtocol.TEMP_PORT)
+                await _tcpClient.ConnectAsync(serverIP, port)
                     .ConfigureAwait(false);
 
                 // Keepalive + NoDelay, matching the host side (QF3).

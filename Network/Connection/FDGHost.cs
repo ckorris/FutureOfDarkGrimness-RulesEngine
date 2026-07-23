@@ -233,6 +233,17 @@ namespace FDG.Network.Connection
 
             foreach (ClientConnection connection in clientsCopy)
             {
+                // Broadcast only to the greeted/accepted roster (#189): a connection that hasn't
+                // passed the join handshake (a port-scanner, or a client still mid-greet) must not
+                // receive lobby roster, chat, or - once in-game - replicated game state. The
+                // handshake itself uses targeted single-sends, so gating here never starves it.
+                // (IsAuthenticated is set at greeting acceptance, the same #266 flag that lifts the
+                // pre-auth frame cap.)
+                if (!connection.IsAuthenticated)
+                {
+                    continue;
+                }
+
                 try
                 {
                     await WriteLockedAsync(connection, messageBytes)

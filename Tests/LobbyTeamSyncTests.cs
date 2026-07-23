@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using FDG.Ai;
 using FDG.Data;
 using FDG.EngineInterface;
+using FDG.Network;
 using FDG.Network.Connection;
 using FDG.Network.Connection.Lobby;
 using FDG.Players;
@@ -189,7 +190,7 @@ namespace FDG.Tests
             public event Action<ArraySegment<byte>>? OnMessageReceived;
             public event Action? OnDisconnected;
 
-            public Task<bool> ConnectAsync(IPAddress serverIP) => Task.FromResult(true);
+            public Task<bool> ConnectAsync(IPAddress serverIP, int port = NetworkProtocol.DefaultPort) => Task.FromResult(true);
 
             public Task SendCommandToHost(ArraySegment<byte> command, bool isPooled)
             {

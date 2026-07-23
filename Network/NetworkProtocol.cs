@@ -28,6 +28,14 @@ namespace FDG.Network
         /// </summary>
         public const int Version = 4;
 
+        /// <summary>
+        /// The default TCP port the host listens on and the client connects to when the player
+        /// doesn't override it (#189). Public (unlike the engine-internal former
+        /// <c>CommandProtocol.TEMP_PORT</c>) so the application layer - host/client modals, the
+        /// #264 public-listing service - shares one source of truth instead of restating 6389.
+        /// </summary>
+        public const int DefaultPort = 6389;
+
         private static string? _localTypeMapHash;
 
         /// <summary>

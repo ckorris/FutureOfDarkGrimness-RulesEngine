@@ -213,5 +213,60 @@ namespace FDG.Tests
             Assert.That(winner, Is.SameAs(received.Task), "The authenticated large frame never arrived.");
             Assert.That(await received.Task, Is.EqualTo(payload.Length));
         }
+
+        // ---- Broadcast gating (#189) --------------------------------------------------------
+        // SendCommandToAllAsync must reach only greeted/accepted (authenticated) connections, so a
+        // scanner or still-greeting client never sees roster / chat / replicated game state.
+
+        /// <summary>True if a framed broadcast payload arrives on this client within the window.</summary>
+        private static async Task<bool> ReceivesBroadcastAsync(TcpClient client, int timeoutMs = 2000)
+        {
+            try
+            {
+                using var timeout = new CancellationTokenSource(timeoutMs);
+                ArraySegment<byte> payload = await CommandProtocol.ReadCommandAsync(client.GetStream(), timeout.Token);
+                return payload.Count > 0;
+            }
+            catch (OperationCanceledException) { return false; }
+            catch (Exception) { return false; }
+        }
+
+        [Test]
+        public async Task Broadcast_UnauthenticatedConnection_ReceivesNothing()
+        {
+            int port = await StartHostAsync(maxConnections: 8, maxPerIp: 8, TrackRoster);
+
+            using var client = new TcpClient();
+            await client.ConnectAsync(IPAddress.Loopback, port);
+            await WaitForConnectionCountAsync(1); // connected, but never greeted -> not authenticated
+
+            byte[] payload = new byte[64];
+            await _host!.SendCommandToAllAsync(new ArraySegment<byte>(payload), isPooled: false);
+
+            Assert.That(await ReceivesBroadcastAsync(client), Is.False,
+                "An un-greeted connection must not receive broadcasts (#189).");
+        }
+
+        [Test]
+        public async Task Broadcast_AuthenticatedConnection_Receives()
+        {
+            var connectionIdSource = new TaskCompletionSource<ConnectionID>(TaskCreationOptions.RunContinuationsAsynchronously);
+            int port = await StartHostAsync(maxConnections: 8, maxPerIp: 8, TrackRoster);
+            // Attach after the readiness probe so the captured id is the test client's.
+            _host!.OnNewClientConnected += id => connectionIdSource.TrySetResult(id);
+
+            using var client = new TcpClient();
+            await client.ConnectAsync(IPAddress.Loopback, port);
+
+            Task idWinner = await Task.WhenAny(connectionIdSource.Task, Task.Delay(5000));
+            Assert.That(idWinner, Is.SameAs(connectionIdSource.Task), "Host never reported the connection.");
+            _host.MarkClientAuthenticated(await connectionIdSource.Task);
+
+            byte[] payload = new byte[64];
+            await _host.SendCommandToAllAsync(new ArraySegment<byte>(payload), isPooled: false);
+
+            Assert.That(await ReceivesBroadcastAsync(client), Is.True,
+                "An authenticated roster member must receive broadcasts (#189).");
+        }
     }
 }

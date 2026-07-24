@@ -1,5 +1,6 @@
 
 using FDG.Data;
+using FDG.Presentation.Beats;
 
 namespace FDG.Stages
 {
@@ -17,7 +18,7 @@ namespace FDG.Stages
 
         public override async Task Enter(IGameContext context)
         {
-            await context.Announce("Deployment");
+            await context.Announce("Deployment", tier: EBannerTier.Headline);
 
             await base.Enter(context);
         }

@@ -21,7 +21,15 @@ namespace FDG.Presentation
         // first fraction "rolling", the rest settled), so players can read the dice — and now the
         // settled "what it means" summary line too, so a touch longer.
         public static readonly TimeSpan DiceRoll     = TimeSpan.FromMilliseconds(1800);
-        public static readonly TimeSpan Banner      = TimeSpan.FromMilliseconds(1300);
+        // #275 banner tiers. A Headline stops the game for its full duration; the two lower tiers are
+        // held beats that pace only a lead-in, so the game carries on while they finish on screen.
+        // Toast pauses nothing at all -- it is meant to ride along with whatever else is playing.
+        public static readonly TimeSpan Banner            = TimeSpan.FromMilliseconds(1300);
+        public static readonly TimeSpan BannerNotice      = TimeSpan.FromMilliseconds(900);
+        public static readonly TimeSpan BannerNoticeLeadIn = TimeSpan.FromMilliseconds(300);
+        // Longer than a Notice despite being smaller: a toast is read out of the corner of the eye
+        // while the eye is busy elsewhere, so it needs to stay up rather than to stay loud.
+        public static readonly TimeSpan BannerToast       = TimeSpan.FromMilliseconds(2200);
         // A volley = a weapon group's weapons all firing once, simultaneously; a weapon's Attacks
         // value is how many volleys it fires, played one after another. Total time scales with the
         // volley count (not shots-per-volley, which fire together), capped so it stays prompt.

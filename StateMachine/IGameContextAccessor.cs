@@ -31,17 +31,25 @@ namespace FDG
         }
 
         /// <summary>
-        /// Announce a beat to the player: shows a big flashing banner (<see cref="BannerBeat"/>) AND
+        /// Announce a beat to the player: flashes an on-screen banner (<see cref="BannerBeat"/>) AND
         /// writes the same text to the regular log, both in <paramref name="color"/> (white by
         /// default). Manually called, like <see cref="Log"/> — not automatic per stage. Awaitable so
         /// the engine paces the banner before continuing.
+        ///
+        /// <para>
+        /// <paramref name="tier"/> (#275) decides how loud that is. It deliberately defaults to
+        /// <see cref="EBannerTier.Notice"/>, not <see cref="EBannerTier.Headline"/>: a new
+        /// announcement should have to ask to stop the game, because when everything is a headline
+        /// nothing is. Reach for <see cref="EBannerTier.Toast"/> freely — it costs the player no time
+        /// at all, which is the point of having it.
+        /// </para>
         /// </summary>
         public static Task Announce(this IGameContextAccessor contextAccessor, string text,
-            TextColor? color = null, CancellationToken ct = default)
+            TextColor? color = null, EBannerTier tier = EBannerTier.Notice, CancellationToken ct = default)
         {
             TextColor resolved = color ?? TextColor.White;
             contextAccessor.Log(text, resolved);
-            return contextAccessor.GameContext.Presenter.Present(new BannerBeat(text, resolved), ct);
+            return contextAccessor.GameContext.Presenter.Present(new BannerBeat(text, resolved, tier), ct);
         }
 
         public static ITextOutput TextOutput(this IGameContextAccessor contextAccessor)

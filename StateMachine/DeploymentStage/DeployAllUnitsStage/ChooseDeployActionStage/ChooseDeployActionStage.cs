@@ -1,4 +1,5 @@
 using FDG.Data;
+using FDG.Presentation.Beats;
 using FDG.Rules.Dispatch;
 using FDG.StageResolution.Requests;
 
@@ -49,7 +50,7 @@ namespace FDG.Stages
 
                     context.Log($"{deployingUnit.Name} embarked {transport.Name} at deployment.");
                     await context.Announce($"{deployingUnit.Name} embarked {transport.Name}.",
-                        new TextColor(255, 170, 60, 255));
+                        new TextColor(255, 170, 60, 255), EBannerTier.Toast);
 
                     // Set aside, not placed: clear the current unit (as DeployUnitStage does after placing)
                     // and skip the placement stage, going back to choose the next player.

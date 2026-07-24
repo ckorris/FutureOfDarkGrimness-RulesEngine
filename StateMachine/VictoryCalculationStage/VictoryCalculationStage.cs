@@ -1,4 +1,6 @@
 
+using FDG.Presentation.Beats;
+
 namespace FDG.Stages
 {
 
@@ -102,7 +104,8 @@ namespace FDG.Stages
                 }
 
                 GameResult result = GameResult.ForWin(winnerIds, winnerNames, finalScores, roundsPlayed);
-                await context.Announce(result.Message, new TextColor(255, 215, 0, 255));
+                await context.Announce(result.Message, new TextColor(255, 215, 0, 255),
+                    EBannerTier.Headline);
                 GameContext.NotifyGameCompleted(result);
             }
         }
@@ -111,7 +114,7 @@ namespace FDG.Stages
             int roundsPlayed)
         {
             GameResult result = GameResult.ForTie(finalScores, roundsPlayed);
-            await context.Announce(result.Message);
+            await context.Announce(result.Message, tier: EBannerTier.Headline);
             GameContext.NotifyGameCompleted(result);
         }
 

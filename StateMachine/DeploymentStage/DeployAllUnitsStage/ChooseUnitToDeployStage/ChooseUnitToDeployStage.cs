@@ -1,5 +1,6 @@
 
 
+using FDG.Presentation.Beats;
 using System.Linq;
 using FDG.Data;
 using FDG.Rules.Definitions;
@@ -126,7 +127,7 @@ namespace FDG.Stages
                         Rules.Dispatch.ReserveRules.PlaceInReserve(chosenUnit.GetValue());
                         context.Log($"{chosenUnit.GetValue().Name} held in {ruleName}.");
                         await context.Announce($"{chosenUnit.GetValue().Name} held in {ruleName}.",
-                            new TextColor(255, 170, 60, 255));
+                            new TextColor(255, 170, 60, 255), EBannerTier.Toast);
                         await OnDeferred.Activate(context);
                         return;
                     }

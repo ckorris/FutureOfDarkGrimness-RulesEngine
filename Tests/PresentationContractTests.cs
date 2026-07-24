@@ -187,5 +187,76 @@ namespace FDG.Tests
             Assert.That(textOut.Entries[0].Color, Is.EqualTo(TextColor.White));
             Assert.That(((BannerBeat)sink.Beats[0]).Color, Is.EqualTo(TextColor.White));
         }
+
+        // ---- #275 banner tiers: prominence, and whether the engine actually waits ----
+
+        [Test]
+        public async Task Announce_DefaultsToNotice_SoANewCallSiteCannotAccidentallyStopTheGame()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var sink = new RecordingPresentationSink();
+            var ctx = new TestGameContext(store, new FixedDiceRoller(4),
+                textOutput: new RecordingTextOutput(),
+                presenter: new LocalPresenter(sink, new InstantPresentationClock()));
+
+            await ctx.Announce("Alice deploys first");
+
+            Assert.That(((BannerBeat)sink.Beats[0]).Tier, Is.EqualTo(EBannerTier.Notice),
+                "the cheap default must be the tier that does NOT halt play");
+        }
+
+        [Test]
+        public async Task Announce_PassesTheRequestedTierThrough()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var sink = new RecordingPresentationSink();
+            var ctx = new TestGameContext(store, new FixedDiceRoller(4),
+                textOutput: new RecordingTextOutput(),
+                presenter: new LocalPresenter(sink, new InstantPresentationClock()));
+
+            await ctx.Announce("Round 3", tier: EBannerTier.Headline);
+            await ctx.Announce("Warriors embarked Rhino.", tier: EBannerTier.Toast);
+
+            Assert.That(((BannerBeat)sink.Beats[0]).Tier, Is.EqualTo(EBannerTier.Headline));
+            Assert.That(((BannerBeat)sink.Beats[1]).Tier, Is.EqualTo(EBannerTier.Toast));
+        }
+
+        [Test]
+        public void BannerTier_DecidesWhetherTheBeatIsHeld()
+        {
+            var color = new TextColor(1, 2, 3, 255);
+
+            var headline = new BannerBeat("Deployment", color, EBannerTier.Headline);
+            var notice   = new BannerBeat("Alice deploys first", color, EBannerTier.Notice);
+            var toast    = new BannerBeat("Warriors embarked Rhino.", color, EBannerTier.Toast);
+
+            Assert.That(headline.Held, Is.False, "only a Headline stops play for its full duration");
+            Assert.That(notice.Held, Is.True);
+            Assert.That(toast.Held, Is.True);
+
+            Assert.That(new BannerBeat("legacy", color).Tier, Is.EqualTo(EBannerTier.Headline),
+                "an untiered beat reads as the pre-#275 behavior");
+        }
+
+        [Test]
+        public async Task LowerTiers_PaceOnlyTheirLeadIn_SoPlayContinuesUnderThem()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var clock = new FakePresentationClock();
+            var ctx = new TestGameContext(store, new FixedDiceRoller(4),
+                textOutput: new RecordingTextOutput(),
+                presenter: new LocalPresenter(new RecordingPresentationSink(), clock));
+
+            await ctx.Announce("Deployment", tier: EBannerTier.Headline);
+            await ctx.Announce("Alice deploys first", tier: EBannerTier.Notice);
+            await ctx.Announce("Warriors embarked Rhino.", tier: EBannerTier.Toast);
+
+            Assert.That(clock.Waits, Is.EqualTo(new[]
+            {
+                PresentationDurations.Banner,             // Headline: the whole thing
+                PresentationDurations.BannerNoticeLeadIn, // Notice: a brief hitch, then on with the game
+                TimeSpan.Zero,                            // Toast: costs the player no time at all
+            }));
+        }
     }
 }

@@ -163,16 +163,19 @@ namespace FDG.Stages
                 GameContext.RuleEvaluator, caster, chosen.Threshold + boost);
             if (loans.Count > 0)
             {
-                // Borrowing is worth its own banner: the tokens left someone else's pool, and that player
-                // needs to see it happen rather than notice the shortfall later.
+                // Borrowing is worth surfacing: the tokens left someone else's pool, and that player
+                // needs to see it happen rather than notice the shortfall later. A toast, though -- it
+                // is one of up to four lines of cast bookkeeping that precede the roll everyone is
+                // actually waiting on, and stacking pauses in front of that roll is what #275 fixed.
                 await GameContext.Announce(
                     $"{caster.Name} draws on nearby accumulators to cast {chosen.Name} " +
-                    $"({SpellPurse.Describe(loans)}).", AssistBannerColor);
+                    $"({SpellPurse.Describe(loans)}).", AssistBannerColor, EBannerTier.Toast);
             }
             if (boost > 0)
             {
                 await GameContext.Announce(
-                    $"{caster.Name} boosts their own cast of {chosen.Name} (+{boost}).", AssistBannerColor);
+                    $"{caster.Name} boosts their own cast of {chosen.Name} (+{boost}).", AssistBannerColor,
+                    EBannerTier.Toast);
             }
 
             if (!castOrigin.IsSelf)
@@ -181,7 +184,7 @@ namespace FDG.Stages
                 // easier, and a player who never sees it happen cannot learn to set it up.
                 await GameContext.Announce(
                     $"{caster.Name} casts {chosen.Name} through {castOrigin.Unit.Name} " +
-                    $"(+{castOrigin.RollBonus}).", AssistBannerColor);
+                    $"(+{castOrigin.RollBonus}).", AssistBannerColor, EBannerTier.Toast);
             }
 
             // 4. #103 — other Caster units within 18" may spend their own tokens to sway the cast: friendly
@@ -652,13 +655,15 @@ namespace FDG.Stages
                                     $"({SpellPurse.Describe(loans)}).");
                 }
 
-                // Text beat: announce who assisted/hindered and by how much — an on-screen banner plus the
+                // Text beat: announce who assisted/hindered and by how much — an on-screen toast plus the
                 // log line, blue for a friendly boost and orange for an enemy disruption (matches the GUI
                 // highlight). Only fires when a Caster actually spends (declines skip via the guard above).
+                // Toast because this loop runs once per nearby Caster: a table with four of them would
+                // otherwise stack four full pauses before the cast roll.
                 await GameContext.Announce(
                     $"{assister.Name} {(friendly ? "assists" : "hinders")} {casterName}'s cast of {spellName} " +
                     $"({(friendly ? "+" : "-")}{spent}).",
-                    friendly ? AssistBannerColor : HinderBannerColor);
+                    friendly ? AssistBannerColor : HinderBannerColor, EBannerTier.Toast);
             }
             return new CastAssistResult(net, boostTokens, hinderTokens, boostSources, hinderSources);
         }

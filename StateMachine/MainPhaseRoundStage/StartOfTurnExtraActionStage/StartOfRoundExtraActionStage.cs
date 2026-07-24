@@ -1,4 +1,5 @@
 using FDG.Data;
+using FDG.Presentation.Beats;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
@@ -22,7 +23,8 @@ namespace FDG.Stages
         {
             context.LogDebug($"Entered {nameof(StartOfRoundExtraActionStage)}.");
 
-            await context.Announce($"Round {context.RoundCount}", new TextColor(120, 200, 255, 255));
+            await context.Announce($"Round {context.RoundCount}", new TextColor(120, 200, 255, 255),
+                EBannerTier.Headline);
 
             // Caster units replenish their spell tokens at the top of every round (#033), including round 1;
             // so does any other rule with a round-start grant (Spell Accumulator's lending pool).

@@ -83,7 +83,10 @@ namespace FDG.Stages
                 IReadOnlyList<TransportUtilities.SpilloutModelRoll> rolls =
                     TransportUtilities.ApplySpilloutEffects(occupantUnit, gameContext.DiceRoller);
 
-                await gameContext.Announce($"{occupantUnit.Name} spills out - Shaken!", ShakenBannerColor);
+                // Per-occupant detail under the wreck Notice above: one per unit that was aboard, so it
+                // rides along with the spillout placement rather than pausing once per occupant.
+                await gameContext.Announce($"{occupantUnit.Name} spills out - Shaken!", ShakenBannerColor,
+                    EBannerTier.Toast);
                 await PresentSpilloutRolls(gameContext, occupantUnit, rolls);
             }
 

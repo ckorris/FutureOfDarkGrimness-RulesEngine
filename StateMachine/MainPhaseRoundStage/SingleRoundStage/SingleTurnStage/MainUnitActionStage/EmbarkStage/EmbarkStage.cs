@@ -1,4 +1,5 @@
 using FDG.Data;
+using FDG.Presentation.Beats;
 using FDG.Rules.Dispatch;
 using FDG.StageResolution.Requests;
 using FDG.Utilities;
@@ -62,7 +63,8 @@ namespace FDG.Stages
             }
 
             context.Log($"{unit.Name} embarked {transport.Name}.");
-            await context.Announce($"{unit.Name} embarked {transport.Name}.", new TextColor(120, 200, 255, 255));
+            await context.Announce($"{unit.Name} embarked {transport.Name}.", new TextColor(120, 200, 255, 255),
+                EBannerTier.Toast);
 
             // Boarding consumes the unit's move action and puts it inside — the activation is over.
             await OnEmbarked.Activate(context);

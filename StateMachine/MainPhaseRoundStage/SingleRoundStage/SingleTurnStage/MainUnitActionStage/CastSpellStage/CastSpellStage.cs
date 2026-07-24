@@ -187,7 +187,8 @@ namespace FDG.Stages
             // 4. #103 — other Caster units within 18" may spend their own tokens to sway the cast: friendly
             //    Casters add +1 each, enemy Casters subtract 1 each. Their tokens are spent regardless of the
             //    cast's outcome (like the cast cost above). Boost + assists shift the success threshold.
-            int assist = await CollectCastAssist(context.ActivatingUnit, player, chosen.Name);
+            CastAssistResult assistResult = await CollectCastAssist(context.ActivatingUnit, player, chosen.Name);
+            int assist = assistResult.Net;
 
             // #197 P6 — granted cast-roll modifiers (Casting Debuff / Casting Buff): a signed delta the
             // caster is carrying as a token. Consumed here, once, whether or not the cast succeeds, exactly
@@ -196,6 +197,13 @@ namespace FDG.Stages
             // been spent so a browsed-and-cancelled spell never burns the debuff.
             int granted = GrantedRollModifiers.ConsumeNet(caster, ERollKind.Cast);
             int netModifier = boost + assist + granted + castOrigin.RollBonus;
+
+            // #274 — the caster's own models, reused by every spell visual below.
+            List<Position> casterPositions = AttackBeatPositions.AlivePlaced(context.ActivatingUnit);
+
+            // #274 — every token spend that swayed this roll, shown as one boost beat and one hinder
+            // beat immediately before the die is cast, so the odds visibly move before the result.
+            await PresentAssistVisuals(chosen.Name, casterPositions, boost, assistResult);
 
             // 5. Cast roll: one die, base 4+ succeeds, shifted by boost + assists. RollDecisive so it's a
             //    real outcome under the probabilistic roller; a threshold shift (not a post-roll adjustment)
@@ -224,11 +232,20 @@ namespace FDG.Stages
             if (!success)
             {
                 await GameContext.Announce($"{caster.Name} failed to cast {chosen.Name}: {rollDesc}.", CastFailColor);
+                // #274 — the spell guttering out on the caster. Always plays on a failure.
+                await PresentSpellVisual(ESpellVisual.CastFailure, casterPositions, chosen.Name);
                 await OnFinished.Activate(context);
                 return;
             }
 
             await GameContext.Announce($"{caster.Name} cast {chosen.Name}: {rollDesc}.", CastSuccessColor);
+
+            // #274 — the spell taking hold on the caster, then washing over everything it was aimed
+            // at. Emitted here, before any of the three effect paths below, so the target landing
+            // always follows the caster's success immediately: on the damage path the child pipeline's
+            // own attack/dice/wound beats then play out the damage the landing depicted.
+            await PresentSpellVisual(ESpellVisual.CastSuccess, casterPositions, chosen.Name);
+            await PresentTargetVisuals(chosen, targets);
 
             // 6a. Damage spell → resolve each chosen target through the looped child pipeline.
             if (chosen.Effect is Effect.DealHits dealHits)
@@ -273,6 +290,56 @@ namespace FDG.Stages
             }
             GameContext.Log($"{chosen.Name} affected {targets.Count} unit(s).");
             await OnFinished.Activate(context);
+        }
+
+        // #274 — one spell visual at a set of model positions. A unit whose models are all dead or
+        // still in reserve yields no positions; the beat is dropped rather than emitted placeless
+        // (an empty beat would pace real time for nothing to draw).
+        private async Task PresentSpellVisual(ESpellVisual visual, IReadOnlyList<Position> positions,
+            string spellName, IReadOnlyList<Position> sources = null, int magnitude = 0)
+        {
+            if (positions.Count == 0) return;
+            await GameContext.Presenter.Present(
+                new SpellEffectBeat(visual, positions, spellName, sources, magnitude));
+        }
+
+        // #274 — the spell landing on each chosen target, in one beat carrying every target model so
+        // a multi-target spell lands on all of them together (the front-end staggers them cosmetically
+        // within the beat's envelope). Which variant plays is the spell's disposition, not the
+        // target's allegiance: an Any-affinity heal cast on an enemy is still a boon for them.
+        private async Task PresentTargetVisuals(RuntimeSpell spell, IReadOnlyList<DataBinding<UnitData>> targets)
+        {
+            List<Position> positions = new List<Position>();
+            foreach (DataBinding<UnitData> target in targets)
+            {
+                positions.AddRange(AttackBeatPositions.AlivePlaced(target));
+            }
+
+            ESpellVisual visual = SpellDisposition.IsBeneficial(spell)
+                ? ESpellVisual.TargetBoon
+                : ESpellVisual.TargetBane;
+            await PresentSpellVisual(visual, positions, spell.Name);
+        }
+
+        // #274 — the token spends that moved the odds, batched into at most two beats (one per
+        // direction) right before the roll. The caster's own #244 boost joins the boost beat with no
+        // source of its own: it is a spend on the same side of the same roll, and the front-end draws
+        // the pulse alone when there is nothing to stream from.
+        private async Task PresentAssistVisuals(string spellName, IReadOnlyList<Position> casterPositions,
+            int selfBoost, CastAssistResult assists)
+        {
+            int boostTokens = selfBoost + assists.BoostTokens;
+            if (boostTokens > 0)
+            {
+                await PresentSpellVisual(ESpellVisual.AssistBoost, casterPositions, spellName,
+                    assists.BoostSources, boostTokens);
+            }
+
+            if (assists.HinderTokens > 0)
+            {
+                await PresentSpellVisual(ESpellVisual.AssistHinder, casterPositions, spellName,
+                    assists.HinderSources, assists.HinderTokens);
+            }
         }
 
         protected override SpellDamageRunContext GetNewChildContext(IUnitActionContext contextSelf)
@@ -531,16 +598,25 @@ namespace FDG.Stages
                 .RequestDecision<SelectionRequest<ModelData>, DataBinding<ModelData>>(request);
         }
 
+        // #274 — what CollectCastAssist gathered: the net roll modifier the roll actually uses, plus who
+        // spent on each side and how much, for the batched assist visuals. Positions are captured as the
+        // assisters commit; the roll only ever reads Net.
+        private readonly record struct CastAssistResult(int Net, int BoostTokens, int HinderTokens,
+            IReadOnlyList<Position> BoostSources, IReadOnlyList<Position> HinderSources);
+
         // #103 — offer every eligible Caster within 18" the chance to spend tokens on this cast, sum the
         // result into a net roll modifier (friendly +1/token, enemy -1/token) and spend the tokens. Friendly
         // helpers declare first — the casting side commits support, then the enemy responds. Tokens are spent
-        // whether or not the cast then succeeds, matching the cast cost. Returns 0 when no one assists, so a
-        // game with no nearby Casters sees no prompts and no behaviour change.
-        private async Task<int> CollectCastAssist(DataBinding<UnitData> casterBinding, PlayerID casterPlayer,
-            string spellName)
+        // whether or not the cast then succeeds, matching the cast cost. Returns a zero net when no one
+        // assists, so a game with no nearby Casters sees no prompts and no behaviour change.
+        private async Task<CastAssistResult> CollectCastAssist(DataBinding<UnitData> casterBinding,
+            PlayerID casterPlayer, string spellName)
         {
             string casterName = casterBinding.GetValue().Name;
             int net = 0;
+            int boostTokens = 0, hinderTokens = 0;
+            List<Position> boostSources = new List<Position>();
+            List<Position> hinderSources = new List<Position>();
             foreach ((DataBinding<UnitData> unitBinding, bool friendly) in FindEligibleAssisters(casterBinding, casterPlayer))
             {
                 IUnit assister = unitBinding.GetValue();
@@ -558,6 +634,18 @@ namespace FDG.Stages
                     GameContext.RuleEvaluator, assister, spent);
                 net += friendly ? spent : -spent;
 
+                // #274 — record the spender for the batched visual played just before the roll.
+                if (friendly)
+                {
+                    boostTokens += spent;
+                    boostSources.AddRange(AttackBeatPositions.AlivePlaced(unitBinding));
+                }
+                else
+                {
+                    hinderTokens += spent;
+                    hinderSources.AddRange(AttackBeatPositions.AlivePlaced(unitBinding));
+                }
+
                 if (loans.Count > 0)
                 {
                     GameContext.Log($"{assister.Name} funds that with borrowed accumulator tokens " +
@@ -572,7 +660,7 @@ namespace FDG.Stages
                     $"({(friendly ? "+" : "-")}{spent}).",
                     friendly ? AssistBannerColor : HinderBannerColor);
             }
-            return net;
+            return new CastAssistResult(net, boostTokens, hinderTokens, boostSources, hinderSources);
         }
 
         // Living, on-battlefield Caster units (other than the caster) that hold at least one spell token and

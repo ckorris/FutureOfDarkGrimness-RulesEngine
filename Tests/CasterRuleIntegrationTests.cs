@@ -1042,6 +1042,182 @@ namespace FDG.Tests
                 "the settled summary states the outcome");
         }
 
+        // #274 — a successful cast emits the caster's success visual and then, immediately after it,
+        // the per-target landing. Order is the feature: the target effect has to read as a consequence
+        // of the cast, so nothing may come between them.
+        [Test]
+        public async Task CastSpellStage_Success_EmitsCastSuccessThenTargetVisual()
+        {
+            var sink = new RecordingPresentationSink();
+            var requester = new CannedAssistRequester(tokensPerAssister: 0);
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedDiceRoller(5), sink);
+
+            DataBinding<UnitData> caster = MakeCasterBinding(_player, casterRating: 3, tokens: 3, new Position(10f, 10f));
+            var army = new ArmyData(_player, new List<DataBinding<UnitData>> { caster });
+            army.SetSpells(new[] { SelfBuffSpell("Bless", threshold: 1, grantedRule: "Furious") });
+            _store.Create(army);
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            List<SpellEffectBeat> spells = sink.Beats.OfType<SpellEffectBeat>().ToList();
+            Assert.That(spells.Select(b => b.Visual), Is.EqualTo(new[]
+            {
+                ESpellVisual.CastSuccess, ESpellVisual.TargetBoon,
+            }), "the caster's success, then the landing on its target, back to back");
+            Assert.That(spells[0].Positions, Is.Not.Empty, "the success plays on the caster's models");
+            Assert.That(spells[0].SpellName, Is.EqualTo("Bless"));
+            // A Self-affinity buff targets the caster, so both beats land on the same models.
+            Assert.That(spells[1].Positions, Has.Count.EqualTo(spells[0].Positions.Count));
+        }
+
+        // #274 — a failed cast emits the failure visual on the caster and NO target visual: nothing
+        // landed, so nothing may animate on the targets.
+        [Test]
+        public async Task CastSpellStage_Failure_EmitsCastFailure_AndNoTargetVisual()
+        {
+            var sink = new RecordingPresentationSink();
+            var requester = new CannedAssistRequester(tokensPerAssister: 0);
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedDiceRoller(2), sink);
+
+            DataBinding<UnitData> caster = MakeCasterBinding(_player, casterRating: 3, tokens: 3, new Position(10f, 10f));
+            var army = new ArmyData(_player, new List<DataBinding<UnitData>> { caster });
+            army.SetSpells(new[] { SelfBuffSpell("Bless", threshold: 1, grantedRule: "Furious") });
+            _store.Create(army);
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            List<SpellEffectBeat> spells = sink.Beats.OfType<SpellEffectBeat>().ToList();
+            Assert.That(spells.Select(b => b.Visual), Is.EqualTo(new[] { ESpellVisual.CastFailure }),
+                "a failed cast shows only the caster guttering out");
+        }
+
+        // #274 — a damage spell is aimed at an enemy, so the landing plays the BANE variant.
+        [Test]
+        public async Task CastSpellStage_DamageSpell_EmitsBaneVisualOnTheTarget()
+        {
+            var sink = new RecordingPresentationSink();
+            var requester = new CannedAssistRequester(tokensPerAssister: 0);
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedDiceRoller(5), sink);
+
+            DataBinding<UnitData> caster = MakeCasterBinding(_player, casterRating: 3, tokens: 3, new Position(10f, 10f));
+            var army = new ArmyData(_player, new List<DataBinding<UnitData>> { caster });
+            army.SetSpells(new[] { DamageSpell("Bolt", threshold: 1, hits: 2, armorPenetration: 0) });
+            _store.Create(army);
+
+            var enemyPlayer = new PlayerID(System.Guid.NewGuid());
+            DataBinding<UnitData> victim = MakeCasterBinding(enemyPlayer, casterRating: 0, tokens: 0, new Position(14f, 10f));
+            _store.Create(new ArmyData(enemyPlayer, new List<DataBinding<UnitData>> { victim }));
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            List<SpellEffectBeat> spells = sink.Beats.OfType<SpellEffectBeat>().ToList();
+            Assert.That(spells.Select(b => b.Visual), Is.EqualTo(new[]
+            {
+                ESpellVisual.CastSuccess, ESpellVisual.TargetBane,
+            }), "a Foe-affinity damage spell lands as a bane, not a boon");
+            Assert.That(spells[1].Positions[0].x, Is.EqualTo(14f).Within(0.0001f),
+                "the landing plays on the TARGET's models, not the caster's");
+        }
+
+        // #274 — every token spend that moved the odds shows before the roll, batched one beat per
+        // direction: the enemy hinder streams from the enemy caster, the #244 self-boost has no source
+        // unit to stream from, and both precede the cast outcome.
+        [Test]
+        public async Task CastSpellStage_AssistAndSelfBoost_EmitBatchedVisualsBeforeTheOutcome()
+        {
+            var sink = new RecordingPresentationSink();
+            var requester = new CannedAssistRequester(tokensPerAssister: 2, boostTokens: 1);
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedDiceRoller(5), sink);
+
+            DataBinding<UnitData> caster = MakeCasterBinding(_player, casterRating: 3, tokens: 3, new Position(10f, 10f));
+            var army = new ArmyData(_player, new List<DataBinding<UnitData>> { caster });
+            army.SetSpells(new[] { SelfBuffSpell("Bless", threshold: 1, grantedRule: "Furious") });
+            _store.Create(army);
+
+            var enemyPlayer = new PlayerID(System.Guid.NewGuid());
+            DataBinding<UnitData> enemyCaster =
+                MakeCasterBinding(enemyPlayer, casterRating: 3, tokens: 2, new Position(12f, 10f));
+            _store.Create(new ArmyData(enemyPlayer, new List<DataBinding<UnitData>> { enemyCaster }));
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            List<SpellEffectBeat> spells = sink.Beats.OfType<SpellEffectBeat>().ToList();
+            Assert.That(spells.Select(b => b.Visual), Is.EqualTo(new[]
+            {
+                ESpellVisual.AssistBoost, ESpellVisual.AssistHinder,
+                ESpellVisual.CastSuccess, ESpellVisual.TargetBoon,
+            }), "both spends resolve before the roll's outcome is shown");
+
+            SpellEffectBeat boost = spells[0];
+            Assert.That(boost.Magnitude, Is.EqualTo(1), "the #244 self-boost of 1 token");
+            Assert.That(boost.Sources, Is.Empty,
+                "a self-boost has no second unit to stream from - the front-end draws the pulse alone");
+
+            SpellEffectBeat hinder = spells[1];
+            Assert.That(hinder.Magnitude, Is.EqualTo(2), "the enemy caster spent both its tokens");
+            Assert.That(hinder.Sources, Is.Not.Empty, "the hinder streams from the enemy caster");
+            Assert.That(hinder.Sources[0].x, Is.EqualTo(12f).Within(0.0001f));
+            Assert.That(hinder.Positions[0].x, Is.EqualTo(10f).Within(0.0001f),
+                "streams run INTO the caster, which is where Positions points");
+        }
+
+        // #274 — no spend, no assist beat. A quiet cast must not pay for two beats' worth of pacing.
+        [Test]
+        public async Task CastSpellStage_NoAssistOrBoost_EmitsNoAssistVisuals()
+        {
+            var sink = new RecordingPresentationSink();
+            var requester = new CannedAssistRequester(tokensPerAssister: 0, boostTokens: 0);
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedDiceRoller(5), sink);
+
+            DataBinding<UnitData> caster = MakeCasterBinding(_player, casterRating: 3, tokens: 3, new Position(10f, 10f));
+            var army = new ArmyData(_player, new List<DataBinding<UnitData>> { caster });
+            army.SetSpells(new[] { SelfBuffSpell("Bless", threshold: 1, grantedRule: "Furious") });
+            _store.Create(army);
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Assert.That(sink.Beats.OfType<SpellEffectBeat>()
+                    .Any(b => b.Visual is ESpellVisual.AssistBoost or ESpellVisual.AssistHinder),
+                Is.False, "nothing was spent to sway the roll, so nothing animates for it");
+        }
+
+        // #274 — the disposition classifier: affinity decides, and only an Any-affinity spell falls
+        // through to the effect. The common "enemy gets a bad rule" shape is the case effect-kind
+        // alone would get wrong.
+        [Test]
+        public void SpellDisposition_AffinityDecides_EffectOnlyBreaksTheAnyTie()
+        {
+            var addRule = new Effect.AddRule("Slow", ELifetime.NextTrigger);
+            var dealHits = new Effect.DealHits(2, System.Array.Empty<string>());
+
+            Assert.That(SpellDisposition.IsBeneficial(ETargetAffinity.Friend, addRule), Is.True);
+            Assert.That(SpellDisposition.IsBeneficial(ETargetAffinity.Self, addRule), Is.True);
+            Assert.That(SpellDisposition.IsBeneficial(ETargetAffinity.Foe, addRule), Is.False,
+                "a debuff on an enemy is a bane even though AddRule looks like a buff");
+            Assert.That(SpellDisposition.IsBeneficial(ETargetAffinity.Foe, dealHits), Is.False);
+
+            Assert.That(SpellDisposition.IsBeneficial(ETargetAffinity.Any, addRule), Is.True,
+                "Any-affinity falls through to the effect, which is not inherently hostile");
+            Assert.That(SpellDisposition.IsBeneficial(ETargetAffinity.Any, dealHits), Is.False);
+            Assert.That(SpellDisposition.IsBeneficial(ETargetAffinity.Any,
+                new Effect.MoraleTestThen(new Effect.ApplyFatigue())), Is.False);
+        }
+
         private static RuntimeSpell SelfBuffSpell(string name, int threshold, string grantedRule) =>
             new RuntimeSpell(
                 new SpellDefinition(name, threshold,

@@ -277,6 +277,60 @@ namespace FDG.Tests
             Assert.That(result.DefenderPositions[1].x, Is.EqualTo(2f).Within(0.0001f));
         }
 
+        // #274: the spell visuals are chosen host-side (disposition, who assisted, how much), so the
+        // variant, both position sets and the magnitude must ride the wire or a networked client
+        // renders the wrong effect — or none.
+        [Test]
+        public void SpellEffectBeat_SurvivesWireRoundTrip_PreservingVariantPositionsAndMagnitude()
+        {
+            var original = new SpellEffectBeat(ESpellVisual.AssistHinder,
+                new List<Position> { new Position(10f, 12f), new Position(11f, 12f) },
+                "Doom Bolt",
+                new List<Position> { new Position(30f, 40f) },
+                magnitude: 3);
+
+            PresentationBeat result = RoundTrip(original);
+
+            Assert.That(result, Is.TypeOf<SpellEffectBeat>());
+            var spell = (SpellEffectBeat)result;
+            Assert.That(spell.Visual, Is.EqualTo(ESpellVisual.AssistHinder));
+            Assert.That(spell.SpellName, Is.EqualTo("Doom Bolt"));
+            Assert.That(spell.Magnitude, Is.EqualTo(3), "tokens spent scale the effect front-end-side");
+            Assert.That(spell.Positions, Has.Count.EqualTo(2));
+            Assert.That(spell.Positions[1].x, Is.EqualTo(11f).Within(0.0001f));
+            Assert.That(spell.Sources, Has.Count.EqualTo(1));
+            Assert.That(spell.Sources[0].z, Is.EqualTo(40f).Within(0.0001f));
+            Assert.That(spell.NominalDuration, Is.EqualTo(PresentationDurations.SpellAssist));
+        }
+
+        [Test]
+        public void SpellEffectBeat_OmittedSources_RoundTripAsEmpty_NotNull()
+        {
+            // A cast outcome (and a pure #244 self-boost) has no source unit. The front-end indexes
+            // Sources directly, so it must come back empty rather than null.
+            var original = new SpellEffectBeat(ESpellVisual.CastSuccess,
+                new List<Position> { new Position(5f, 5f) }, "Bless");
+
+            var spell = (SpellEffectBeat)RoundTrip(original);
+            Assert.That(spell.Sources, Is.Not.Null);
+            Assert.That(spell.Sources, Is.Empty);
+            Assert.That(spell.Magnitude, Is.EqualTo(0));
+            Assert.That(spell.NominalDuration, Is.EqualTo(PresentationDurations.SpellCast));
+        }
+
+        [Test]
+        public void SpellEffectBeat_TargetVariants_UseTheTargetDuration()
+        {
+            var boon = new SpellEffectBeat(ESpellVisual.TargetBoon,
+                new List<Position> { new Position(1f, 1f) }, "Mend");
+            var bane = new SpellEffectBeat(ESpellVisual.TargetBane,
+                new List<Position> { new Position(1f, 1f) }, "Curse");
+
+            Assert.That(boon.NominalDuration, Is.EqualTo(PresentationDurations.SpellTarget));
+            Assert.That(bane.NominalDuration, Is.EqualTo(PresentationDurations.SpellTarget));
+            Assert.That(boon.Text, Is.Null, "purely visual - the cast banners already narrate it");
+        }
+
         [Test]
         public void BannerBeat_SurvivesWireRoundTrip_PreservingTextAndColor()
         {

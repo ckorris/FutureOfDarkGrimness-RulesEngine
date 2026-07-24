@@ -17,6 +17,12 @@ namespace FDG.Presentation
         // paces in full, so N kills read as a rapid-fire "BE-BE-BE-BEEW" instead of N serial deaths.
         public static readonly TimeSpan CasualtyStagger = TimeSpan.FromMilliseconds(150);
         public static readonly TimeSpan Saves        = TimeSpan.FromMilliseconds(350);
+        // #274 spell visuals. The cast outcome is the beat of the whole action, so it gets the most
+        // room; the per-target landing follows it immediately and is kept shorter so a multi-target
+        // spell doesn't drag. Assists are batched into at most two beats right before the roll.
+        public static readonly TimeSpan SpellCast   = TimeSpan.FromMilliseconds(700);
+        public static readonly TimeSpan SpellTarget = TimeSpan.FromMilliseconds(650);
+        public static readonly TimeSpan SpellAssist = TimeSpan.FromMilliseconds(600);
         // Long enough that the result lingers after the faces lock (the front-end spends only the
         // first fraction "rolling", the rest settled), so players can read the dice — and now the
         // settled "what it means" summary line too, so a touch longer.

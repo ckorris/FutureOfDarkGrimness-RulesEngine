@@ -83,8 +83,13 @@ namespace FDG.GameModel
         /// state from the save and resumes the state machine in the main phase. The player slots map
         /// (re-crewed) players to the saved <see cref="PlayerID"/>s.
         /// </summary>
+        /// <param name="lobbySettings">The resume lobby's settings, when a lobby launched this. Only the
+        /// fields <see cref="GameSettings.WithResumeOverridesFrom"/> names are taken from it - the save
+        /// stays authoritative for everything that is already spent or would change the rules mid-game.
+        /// Omitted (headless resume, the --scenario launch) means the save's settings verbatim.</param>
         public FDGServer(IReadWriteableGameDataStore loadedGameDataStore, IMessageBusHost messageBusHost,
-            PlayerSlot[] playerSlots, IPresentationClock? presentationClock = null)
+            PlayerSlot[] playerSlots, IPresentationClock? presentationClock = null,
+            GameSettings? lobbySettings = null)
         {
             Debug.WriteLine($"Started {nameof(FDGServer)} (resume).");
 
@@ -113,7 +118,17 @@ namespace FDG.GameModel
             // nothing - and re-resolve the spell lists, which are [JsonIgnore] on ArmyData.
             GameBootstrap.RestoreArmyRuleData(ruleResolver, loadedGameDataStore);
 
-            BuildContextAndLaunch(progress.Settings, applyCreationRules: false, resumeProgress: progress);
+            // #265: fold in the resume lobby's re-pickable settings, and write them straight back onto the
+            // progress record. The rolling save point rewrites that record from GameContext.Settings at
+            // every activation boundary anyway, so this only closes the window before the first one - a
+            // save taken immediately after resuming would otherwise still carry the old value.
+            GameSettings settings = lobbySettings.HasValue
+                ? progress.Settings.WithResumeOverridesFrom(lobbySettings.Value)
+                : progress.Settings;
+            progress.Settings = settings;
+            GameProgressUtilities.WriteProgress(loadedGameDataStore, progress);
+
+            BuildContextAndLaunch(settings, applyCreationRules: false, resumeProgress: progress);
         }
 
         private void BuildContextAndLaunch(GameSettings gameSettings, bool applyCreationRules, GameProgressData? resumeProgress)

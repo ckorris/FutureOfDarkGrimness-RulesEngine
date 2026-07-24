@@ -631,8 +631,10 @@ namespace FDG.Network.Connection.Lobby
 
             // Resume on the GUI host animates just like a new game — give it a real-time clock so the
             // presentation beats play at a presentable tempo (without it the beats run instantly).
+            // #265: the save owns the settings on resume, except the few a resume lobby may re-pick
+            // (the table background) - see GameSettings.WithResumeOverridesFrom.
             FDGServer server = new FDGServer(_gameDataStore, _messageBus, playerSlots,
-                new RealtimePresentationClock());
+                new RealtimePresentationClock(), _gameSettings);
             server.OnGameEnded += HandleServerGameEnded;
 
             if (gameModel != null)

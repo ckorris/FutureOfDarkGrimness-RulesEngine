@@ -61,6 +61,24 @@ namespace FDG
         /// </summary>
         public ETableBackground TableBackground;
 
+        /// <summary>
+        /// The saved settings a resumed game launches with, with the handful of fields a resume lobby
+        /// is allowed to re-pick taken from <paramref name="lobbySettings"/> (#265).
+        ///
+        /// <para>Today that is <see cref="TableBackground"/> and nothing else. Everything else is
+        /// either already spent (army points, terrain and objective placement all happened during the
+        /// saved game's setup) or would change the rules of a game in progress (randomness, dice seed,
+        /// turn style, the cover house rules) - so the save stays authoritative for them, whatever the
+        /// lobby panel happens to be showing. Adding a field here is a deliberate decision, not a
+        /// default: it must be safe to change mid-game.</para>
+        /// </summary>
+        public GameSettings WithResumeOverridesFrom(GameSettings lobbySettings)
+        {
+            GameSettings merged = this;
+            merged.TableBackground = lobbySettings.TableBackground;
+            return merged;
+        }
+
         public static GameSettings GetDefault()
         {
             return new GameSettings()

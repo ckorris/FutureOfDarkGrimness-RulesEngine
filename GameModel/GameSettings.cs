@@ -52,6 +52,15 @@ namespace FDG
         /// </summary>
         public string? TerrainLayoutPath;
 
+        /// <summary>
+        /// Cosmetic table surface the front end paints under the terrain (#265). Purely visual - no
+        /// rule reads it - but it is a lobby setting rather than a local preference so every player at
+        /// the table sees the same board, and it rides the save so a resumed game looks like the one
+        /// that was put down. Default (and the value a pre-#265 save deserializes to) is
+        /// <see cref="ETableBackground.Forest"/>, which is the board every existing game was played on.
+        /// </summary>
+        public ETableBackground TableBackground;
+
         public static GameSettings GetDefault()
         {
             return new GameSettings()
@@ -65,8 +74,24 @@ namespace FDG
                 ObjectivePlacementMode = EObjectivePlacementMode.AutoPlaced,
                 TerrainPlacementMode = ETerrainPlacementMode.AutoFromLayout,
                 TerrainLayoutPath = null,
+                TableBackground = ETableBackground.Forest,
             };
         }
+    }
+
+    /// <summary>
+    /// The table's cosmetic surface (#265). Front-end only: the renderer maps each value to a felt
+    /// colour, grid tint, edge trim, and mottling pattern. Forest is first so it is both the default
+    /// and what <c>default(GameSettings)</c> / a pre-#265 save resolves to.
+    /// </summary>
+    public enum ETableBackground
+    {
+        Forest,
+        Desert,
+        Ice,
+        MarsLike,
+        Urban,
+        Barren,
     }
 
     public enum ERandomnessType

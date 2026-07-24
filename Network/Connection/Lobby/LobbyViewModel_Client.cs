@@ -50,6 +50,7 @@ namespace FDG.Network.Connection.Lobby
         public IObservable<ERandomnessType> RandomnessTypeObservable => _settings_RandomnessType;
         public IObservable<ETurnStyle> TurnStyleObservable => _settings_TurnMethod;
         public IObservable<bool> CoverProximityExceptionsObservable => _settings_CoverProximityExceptions;
+        public IObservable<ETableBackground> TableBackgroundObservable => _settings_TableBackground;
 
         public string ServerName => _serverName.Value;
 
@@ -73,6 +74,8 @@ namespace FDG.Network.Connection.Lobby
 
         public bool CoverProximityExceptions => _settings_CoverProximityExceptions.Value;
 
+        public ETableBackground TableBackground => _settings_TableBackground.Value;
+
         private BehaviorSubject<string> _serverName;
 
         private ReplaySubject<LobbyChatMessage> _chatMessagesSubject;
@@ -88,6 +91,7 @@ namespace FDG.Network.Connection.Lobby
         private BehaviorSubject<ERandomnessType> _settings_RandomnessType;
         private BehaviorSubject<ETurnStyle> _settings_TurnMethod;
         private BehaviorSubject<bool> _settings_CoverProximityExceptions;
+        private BehaviorSubject<ETableBackground> _settings_TableBackground;
 
         private PlayerID? _thisPlayerID = null;
         private string _thisPlayerName;
@@ -144,6 +148,8 @@ namespace FDG.Network.Connection.Lobby
             _settings_TurnMethod = new BehaviorSubject<ETurnStyle>(ETurnStyle.Standard);
             // #201: default-on mirrors GameSettings; the host's first LobbyGameSettingsUpdate corrects it.
             _settings_CoverProximityExceptions = new BehaviorSubject<bool>(true);
+            // #265: same deal - Forest until the host's first settings update lands.
+            _settings_TableBackground = new BehaviorSubject<ETableBackground>(ETableBackground.Forest);
 
             //Init empty player list. The host should update us.
             _playerInfos = new BehaviorSubject<IReadOnlyList<LobbyPlayerInfoSummary>>(new List<LobbyPlayerInfoSummary>());
@@ -290,6 +296,10 @@ namespace FDG.Network.Connection.Lobby
             {
                 _settings_CoverProximityExceptions.OnNext(gameSettingsUpdate.GameSettings.CoverProximityExceptionsEnabled);
             }
+            if (_settings_TableBackground.Value != gameSettingsUpdate.GameSettings.TableBackground)
+            {
+                _settings_TableBackground.OnNext(gameSettingsUpdate.GameSettings.TableBackground);
+            }
         }
 
         private void OnLaunchGameMessageReceived(LaunchGameMessage launchGameMessage)
@@ -352,6 +362,11 @@ namespace FDG.Network.Connection.Lobby
         public void SetCoverProximityExceptions(bool enabled)
         {
             throw new InvalidOperationException("Tried to set cover proximity exceptions when not the host.");
+        }
+
+        public void SetTableBackground(ETableBackground background)
+        {
+            throw new InvalidOperationException("Tried to set the table background when not the host.");
         }
 
         public bool CheckCanModifyPlayerIDInfo(PlayerID playerID)

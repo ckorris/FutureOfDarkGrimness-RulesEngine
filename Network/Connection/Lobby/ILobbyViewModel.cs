@@ -56,6 +56,8 @@ namespace FDG.Network.Connection.Lobby
         IObservable<ETurnStyle> TurnStyleObservable { get; }
         /// <summary>#201 cover proximity house rules toggle (default on) - see <see cref="GameSettings.CoverProximityExceptions"/>.</summary>
         IObservable<bool> CoverProximityExceptionsObservable { get; }
+        /// <summary>#265 cosmetic table surface - see <see cref="GameSettings.TableBackground"/>.</summary>
+        IObservable<ETableBackground> TableBackgroundObservable { get; }
 
         string ServerName { get; }
 
@@ -78,6 +80,8 @@ namespace FDG.Network.Connection.Lobby
         ETurnStyle TurnStyle { get; }
 
         bool CoverProximityExceptions { get; }
+
+        ETableBackground TableBackground { get; }
 
         bool CheckCanModifyPlayerIDInfo(PlayerID playerID);
 
@@ -123,6 +127,8 @@ namespace FDG.Network.Connection.Lobby
         void SetTurnStyle(ETurnStyle turnStyle);
 
         void SetCoverProximityExceptions(bool enabled);
+
+        void SetTableBackground(ETableBackground background);
 
         bool TryLaunchGame(out string? failReason);
 

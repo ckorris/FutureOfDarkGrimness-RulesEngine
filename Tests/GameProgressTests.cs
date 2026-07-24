@@ -30,6 +30,7 @@ namespace FDG.Tests
                 ObjectivePlacementMode = EObjectivePlacementMode.PlayerPlaced,
                 TerrainPlacementMode = ETerrainPlacementMode.LoadFromFile,
                 TerrainLayoutPath = "layouts/ruins.json",
+                TableBackground = ETableBackground.Ice,
             };
 
             var progress = new GameProgressData(
@@ -67,6 +68,26 @@ namespace FDG.Tests
             Assert.That(result.Settings.ObjectivePlacementMode, Is.EqualTo(EObjectivePlacementMode.PlayerPlaced));
             Assert.That(result.Settings.TerrainPlacementMode, Is.EqualTo(ETerrainPlacementMode.LoadFromFile));
             Assert.That(result.Settings.TerrainLayoutPath, Is.EqualTo("layouts/ruins.json"));
+            Assert.That(result.Settings.TableBackground, Is.EqualTo(ETableBackground.Ice));
+        }
+
+        /// <summary>
+        /// #265: a save written before the table background existed has no such field in its JSON, so it
+        /// must deserialize to Forest - the board every one of those games was actually played on - and
+        /// not to some other value that would change how a resumed game looks.
+        /// </summary>
+        [Test]
+        public void PreTableBackgroundSave_ResumesOnForest()
+        {
+            var settings = new GameSettings
+            {
+                ArmyPoints = 2000,
+                TerrainPlacementMode = ETerrainPlacementMode.AutoFromLayout,
+            };
+
+            Assert.That(settings.TableBackground, Is.EqualTo(ETableBackground.Forest),
+                "the field's default (absent from old JSON) must be the original green board");
+            Assert.That(GameSettings.GetDefault().TableBackground, Is.EqualTo(ETableBackground.Forest));
         }
 
         [Test]

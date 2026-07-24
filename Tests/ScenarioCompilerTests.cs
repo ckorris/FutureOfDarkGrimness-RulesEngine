@@ -115,6 +115,28 @@ namespace FDG.Tests
             => store.GetAllValues<UnitData>().Single(u => u.Name == name);
 
         [Test]
+        public void Compile_Background_IsCaseInsensitiveAndRidesTheSave()
+        {
+            ScenarioFile scenario = MakeScenario();
+            scenario.Settings.Background = "marslike";
+
+            GameDataStore store = CompileAndRoundTrip(scenario);
+
+            Assert.That(GameProgressUtilities.TryGetProgress(store)!.Settings.TableBackground,
+                Is.EqualTo(ETableBackground.MarsLike));
+        }
+
+        [Test]
+        public void Compile_UnknownBackground_Throws()
+        {
+            ScenarioFile scenario = MakeScenario();
+            scenario.Settings.Background = "Swamp";
+
+            var ex = Assert.Throws<ScenarioCompileException>(() => CompileAndRoundTrip(scenario));
+            Assert.That(ex!.Message, Does.Contain("Swamp"));
+        }
+
+        [Test]
         public void Compile_RoundTrip_RestoresProgressCursorAndSettings()
         {
             GameDataStore store = CompileAndRoundTrip(MakeScenario());
@@ -125,6 +147,8 @@ namespace FDG.Tests
             Assert.That(progress!.Stage, Is.EqualTo(EResumeStage.MainPhase));
             Assert.That(progress.RoundCount, Is.EqualTo(2));
             Assert.That(progress.Settings.RandomnessType, Is.EqualTo(ERandomnessType.Probabilistic));
+            // #265: no "background" in the scenario means the default green board.
+            Assert.That(progress.Settings.TableBackground, Is.EqualTo(ETableBackground.Forest));
 
             // ActivePlayer = 1 (team 1): active team first in the order, cursor parked at the end so
             // the resume's first TryAdvance (which starts at index + 1, wrapping) lands on it.

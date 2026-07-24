@@ -21,6 +21,7 @@ public sealed class RuleValidator
 {
     private const string CONDITION_MEMBER_NAME = "Condition";
     private const string EFFECT_MEMBER_NAME = "Effect";
+    private const string AVAILABLE_WHEN_MEMBER_NAME = "AvailableWhen";
 
     // #183 — Subject-seat hooks where a unit-targeted defensive rule must gate on
     // Condition.AllModelsHaveThisRule. These are the attack-interaction hooks whose Subject participant
@@ -73,6 +74,37 @@ public sealed class RuleValidator
         return violations;
     }
 
+    /// <summary>
+    /// #267 — the AUTHORING check: everything <see cref="Validate"/> covers, plus the whole-unit-ability
+    /// all-models gate (<see cref="CheckUnitWideSelfEffectGate"/>).
+    ///
+    /// <para>Deliberately separate from <see cref="Validate"/>, which is the army-LOAD gate and hard-fails
+    /// the whole load. Supplement definitions travel inside saved <c>.fdgarmy</c> files, so folding the new
+    /// check into the load gate would make every army file exported before this change fail to open. New
+    /// data cannot get past this one: it runs at supplement validation, at book-embed time, and over the
+    /// core catalog + shipped supplement in the test suite.</para>
+    /// </summary>
+    public IReadOnlyList<RuleViolation> ValidateAuthoring(SpecialRuleDefinition rule)
+    {
+        var violations = new List<RuleViolation>(Validate(rule));
+
+        foreach (HookEntry entry in rule.Passive)
+        {
+            // A passive entry's effect applies to the bearer, so it is always "self-targeted".
+            CheckUnitWideSelfEffectGate(rule, entry.HookID, entry.Effect, entry.Condition,
+                targetsSelf: true, CONDITION_MEMBER_NAME, violations);
+        }
+
+        foreach (ActivatedAbility ability in rule.Activated)
+        {
+            CheckUnitWideSelfEffectGate(rule, ability.TriggerHook, ability.Effect, ability.AvailableWhen,
+                ability.TargetSelector.TargetAffinity == ETargetAffinity.Self,
+                AVAILABLE_WHEN_MEMBER_NAME, violations);
+        }
+
+        return violations;
+    }
+
     private static void Check(string ruleName, EHookID hook, string member,
         IReadOnlyCollection<Type> required, IReadOnlyCollection<Type> provided, List<RuleViolation> violations)
     {
@@ -105,6 +137,42 @@ public sealed class RuleValidator
             "AllModelsHaveThisRule - RAW, the unit benefits only if every model has the rule, and per-model " +
             "dispatch would otherwise let a lone joined hero's copy fire for the whole unit"));
     }
+
+    // #267 — a Unit-scoped rule that repositions or re-activates the WHOLE bearer unit must gate on
+    // AllModelsHaveThisRule. The rulebook convention is that a unit-wide ability works only if every model
+    // has it, and per-model dispatch means a single joined hero carrying Teleport would otherwise let the
+    // entire unit teleport. This is the activated-ability sibling of the #183 defensive-rule gate above,
+    // which only covers passive Subject-seat entries and so never saw Teleport / Fanatic / Wolfborn.
+    private static void CheckUnitWideSelfEffectGate(SpecialRuleDefinition rule, EHookID hook, Effect effect,
+        Condition condition, bool targetsSelf, string member, List<RuleViolation> violations)
+    {
+        if (rule.Scope != ERuleScope.Unit
+            || !targetsSelf
+            || !IsWholeUnitSelfEffect(effect, hook)
+            || GatesOnAllModels(condition))
+        {
+            return;
+        }
+
+        violations.Add(new RuleViolation(rule.Name, hook, member, MissingCapability: null,
+            "a rule that repositions or re-activates the WHOLE bearer unit must gate on " +
+            "AllModelsHaveThisRule - RAW the unit gets the ability only if every model has it, and per-model " +
+            "dispatch would otherwise let one joined hero's copy move or reactivate the entire unit"));
+    }
+
+    // The effects that move or re-activate every model of the bearer unit at once.
+    private static bool IsWholeUnitSelfEffect(Effect effect, EHookID hook) => effect switch
+    {
+        Effect.Teleport => true,
+        Effect.RepositionAtActivation => true,
+        Effect.RepositionOnDeploy => true,
+        Effect.Reactivate => true,
+        // TriggeredMove is shared with the Harassing family (a 3-6" nudge after shooting or being attacked),
+        // which is a different class of rule and out of scope here. Only the pre-game Scout/Vanguard
+        // reposition - a self-targeted triggered move at the deploy hook - is covered.
+        Effect.TriggeredMove => hook == EHookID.Deployment_OnUnitDeployed,
+        _ => false,
+    };
 
     // True if AllModelsHaveThisRule appears in a CONJUNCTIVE position (top-level or inside an And chain),
     // so it actually gates. Under an Or/Not it wouldn't, so those don't count.

@@ -86,6 +86,12 @@ namespace FDG.SaveLoad
         /// scenario replays identically in either randomness mode.
         /// </summary>
         public int? DiceSeed { get; set; }
+
+        /// <summary>
+        /// Cosmetic table surface (#265): Forest (default), Desert, Ice, MarsLike, Urban, Barren.
+        /// Matches the lobby's Battlefield dropdown; no rule reads it.
+        /// </summary>
+        public string? Background { get; set; }
     }
 
     public class ScenarioPlayer

@@ -163,6 +163,17 @@ namespace FDG.SaveLoad
                     $"Unknown randomness '{scenarioSettings.Randomness}' (use Probabilistic or Realistic).")
             };
             settings.DiceSeed = scenarioSettings.DiceSeed;
+            if (!string.IsNullOrWhiteSpace(scenarioSettings.Background))
+            {
+                if (!Enum.TryParse(scenarioSettings.Background.Trim(), ignoreCase: true,
+                        out ETableBackground background) || !Enum.IsDefined(background))
+                {
+                    throw new ScenarioCompileException(
+                        $"Unknown background '{scenarioSettings.Background}' (use " +
+                        $"{string.Join(", ", Enum.GetNames<ETableBackground>())}).");
+                }
+                settings.TableBackground = background;
+            }
             return settings;
         }
 

@@ -7,6 +7,7 @@ using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
+using FDG.SaveLoad;
 using FDG.Stages;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
@@ -69,6 +70,67 @@ namespace FDG.Tests
             var offers = ctx.RuleEvaluator.GatherOffers(new ActionChoiceContext(unit.GetValue()));
 
             Assert.That(offers.Any(o => o.RuleName == CoreRuleCatalog.TeleportRuleName), Is.False);
+        }
+
+        // --- #267 all-models gate ---
+
+        [Test]
+        public void GatherOffers_HeroWithTeleportJoinsASquadWithout_TeleportNotOffered()
+        {
+            // The reported bug: a hero carrying Teleport joined a squad that doesn't have it, and Teleport
+            // was offered - which teleports EVERY model in the combined unit, the whole squad included.
+            var ctx = new TriggeredMoveTestContext(_store, new NullPlayerRequester());
+            DataBinding<UnitData> unit = MakeUnitWithJoinedHero(heroHasTeleport: true, hostHasTeleport: false);
+
+            var offers = ctx.RuleEvaluator.GatherOffers(new ActionChoiceContext(unit.GetValue()));
+
+            Assert.That(offers.Any(o => o.RuleName == CoreRuleCatalog.TeleportRuleName), Is.False,
+                "the unit teleports as a whole, so it may only do so when every model has the rule.");
+        }
+
+        [Test]
+        public void GatherOffers_HeroWithoutTeleportJoinsASquadWithIt_TeleportNotOffered()
+        {
+            // The other direction: the hero breaks the squad's own Teleport, because the hero would be
+            // carried along by a placement it has no rule entitling it to.
+            var ctx = new TriggeredMoveTestContext(_store, new NullPlayerRequester());
+            DataBinding<UnitData> unit = MakeUnitWithJoinedHero(heroHasTeleport: false, hostHasTeleport: true);
+
+            var offers = ctx.RuleEvaluator.GatherOffers(new ActionChoiceContext(unit.GetValue()));
+
+            Assert.That(offers.Any(o => o.RuleName == CoreRuleCatalog.TeleportRuleName), Is.False);
+        }
+
+        [Test]
+        public void GatherOffers_BothHeroAndSquadHaveTeleport_StillOffered()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new NullPlayerRequester());
+            DataBinding<UnitData> unit = MakeUnitWithJoinedHero(heroHasTeleport: true, hostHasTeleport: true);
+
+            var offers = ctx.RuleEvaluator.GatherOffers(new ActionChoiceContext(unit.GetValue()));
+
+            Assert.That(offers.Any(o => o.RuleName == CoreRuleCatalog.TeleportRuleName), Is.True,
+                "the gate must not break the legitimate case - every model has Teleport here.");
+        }
+
+        [Test]
+        public void GatherOffers_TeleportGrantedToTheUnit_StillOffered_EvenWithAHeroThatLacksIt()
+        {
+            // Teleport Aura says "this model AND ITS UNIT get Teleport", and it lands as a unit-level
+            // RuleGrant token. AllModelsHaveThisRule counts a unit grant for EVERY living model, hero
+            // included, so the gate must not kill the aura. The token is added directly here (the way
+            // AllModelsRuleGateIntegrationTests grants Stealth) rather than by firing the aura's
+            // Lifecycle_OnUnitCreated hook - the grant is the state under test, not how it got there.
+            var ctx = new TriggeredMoveTestContext(_store, new NullPlayerRequester(),
+                ruleResolver: CoreRuleCatalog.CreateResolver());
+            DataBinding<UnitData> unit = MakeUnitWithJoinedHero(heroHasTeleport: false, hostHasTeleport: false);
+            unit.GetValue().Tokens.AddToken(new Token(TokenType.RuleGrant, 1, new TokenClearTrigger.ManualOnly(),
+                Payload: new TokenPayload.RuleGrant(CoreRuleCatalog.TeleportRuleName, ELifetime.UntilEndOfGame)));
+
+            var offers = ctx.RuleEvaluator.GatherOffers(new ActionChoiceContext(unit.GetValue()));
+
+            Assert.That(offers.Any(o => o.RuleName == CoreRuleCatalog.TeleportRuleName), Is.True,
+                "a unit-wide grant covers every model, so the all-models gate passes.");
         }
 
         // --- ChooseActionStage routing ---
@@ -206,6 +268,52 @@ namespace FDG.Tests
 
             _store.Create(new ArmyData(_player, new List<DataBinding<UnitData>> { binding }));
             return binding;
+        }
+
+        // #267 — a 3-model host with a Hero merged into it, each side optionally carrying Teleport (or the
+        // hero carrying Teleport Aura, which grants it to the whole unit). Mirrors
+        // AllModelsRuleGateIntegrationTests' merge harness.
+        private DataBinding<UnitData> MakeUnitWithJoinedHero(bool heroHasTeleport, bool hostHasTeleport,
+            SpecialRuleDefinition? heroAura = null)
+        {
+            UnitData host = MakeBareUnit("Blink Squad", 3);
+            if (hostHasTeleport)
+            {
+                host.AttachRuleDefinition(new ResolvedRule(CoreRuleCatalog.TeleportRuleName, CoreRuleCatalog.Teleport));
+            }
+
+            UnitData hero = MakeBareUnit("Blink Captain", 1);
+            hero.AttachRuleDefinition(new ResolvedRule("Hero", CoreRuleCatalog.Hero));
+            if (heroHasTeleport)
+            {
+                hero.AttachRuleDefinition(new ResolvedRule(CoreRuleCatalog.TeleportRuleName, CoreRuleCatalog.Teleport));
+            }
+            if (heroAura != null)
+            {
+                hero.AttachRuleDefinition(new ResolvedRule(heroAura.Name, heroAura));
+            }
+
+            HeroJoinResolver.Apply(new List<(UnitFileEntry, UnitData)>
+            {
+                (new UnitFileEntry { Id = "host" }, host),
+                (new UnitFileEntry { JoinsUnitId = "host" }, hero),
+            });
+
+            DataBinding<UnitData> binding = _store.GetDataBinding<UnitData>(_store.Create(host));
+            _store.Create(new ArmyData(_player, new List<DataBinding<UnitData>> { binding }));
+            return binding;
+        }
+
+        private UnitData MakeBareUnit(string name, int modelCount)
+        {
+            var modelBindings = new List<DataBinding<ModelData>>(modelCount);
+            for (int i = 0; i < modelCount; i++)
+            {
+                var model = new ModelData(0.5f, new List<Weapon>(), new Position(10f + i, 10f), _store);
+                modelBindings.Add(_store.GetDataBinding<ModelData>(_store.Create(model)));
+            }
+
+            return new UnitData(_player, name, quality: 4, defense: 4, modelBindings: modelBindings);
         }
     }
 }

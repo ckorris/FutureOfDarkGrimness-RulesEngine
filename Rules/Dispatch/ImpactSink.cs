@@ -5,6 +5,7 @@ namespace FDG.Rules.Dispatch;
 public sealed class ImpactSink : IImpactSink
 {
     private int _totalDice;
+    private int _armorPenetration;
 
     /// <summary>
     /// Write face (called by operations): adds <paramref name="count"/> impact dice to the total.
@@ -13,6 +14,20 @@ public sealed class ImpactSink : IImpactSink
     {
         _totalDice += count;
     }
+
+    /// <summary>
+    /// Write face: the impact hits' AP, folded as a MAX across sources (see <see cref="IImpactSink"/>).
+    /// </summary>
+    public void AddArmorPenetration(int armorPenetration)
+    {
+        if (armorPenetration > _armorPenetration)
+        {
+            _armorPenetration = armorPenetration;
+        }
+    }
+
+    /// <summary> Read face (the charge-contact stage): the AP the impact hits carry (0 for core Impact). </summary>
+    public int ArmorPenetration => _armorPenetration;
 
     /// <summary>
     /// Applies every charge-impact operation in <paramref name="operations"/> to this sink.

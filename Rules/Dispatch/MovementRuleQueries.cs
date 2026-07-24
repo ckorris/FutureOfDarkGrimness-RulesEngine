@@ -181,6 +181,41 @@ namespace FDG.Rules.Dispatch
             return maxRush;
         }
 
+        /// <summary>
+        /// Each living model's own (Advance, Rush, Charge) allowance, folding that model's rules on
+        /// top of the unit's - the same accumulation <c>MovementActionContext</c> performs to fill a
+        /// request's <c>ModelMoveBudgets</c> (#093).
+        /// <para>
+        /// Exposed for the Tactician (#264 issue 7), which plans moves BEFORE the movement request
+        /// exists. The unit scalars take the MAX across models (a joined Fast hero raises the unit's
+        /// Rush), so a plan built at them can exceed a Slow model's own cap - and the movement
+        /// resolver's per-model re-check then rejects EVERY planned move, silently degrading that
+        /// unit to the solo resolver for the rest of the game.
+        /// </para>
+        /// </summary>
+        public static Dictionary<ModelID, (float Advance, float Rush, float Charge)> PerModelMoveBudgets(
+            IUnit unit, RuleEvaluator evaluator)
+        {
+            var budgets = new Dictionary<ModelID, (float, float, float)>();
+            foreach (IModel model in unit.Models)
+            {
+                if (!model.GetIsAlive())
+                {
+                    continue;
+                }
+
+                MovementModifierSink sink = new MovementModifierSink();
+                AccumulateModelMovementRules(unit, model, evaluator, EActionType.Advance, GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES, sink);
+                AccumulateModelMovementRules(unit, model, evaluator, EActionType.Rush, GameWideConstants.RUSH_DISTANCE_INCHES, sink);
+                AccumulateModelMovementRules(unit, model, evaluator, EActionType.Charge, GameWideConstants.CHARGE_DISTANCE_INCHES, sink);
+                budgets[model.ID] = (
+                    GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES + sink.Net(EActionType.Advance),
+                    GameWideConstants.RUSH_DISTANCE_INCHES + sink.Net(EActionType.Rush),
+                    GameWideConstants.CHARGE_DISTANCE_INCHES + sink.Net(EActionType.Charge));
+            }
+            return budgets;
+        }
+
         private static void AccumulateMovementRules(IUnit unit, RuleEvaluator evaluator, EActionType action,
             float baseDistance, MovementModifierSink sink)
         {

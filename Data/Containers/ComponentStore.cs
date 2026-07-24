@@ -11,6 +11,10 @@ namespace FDG.Data
 
         void CreateFromReference(DataReference existingReference, object initialValue);
 
+        /// <summary>Whole-store-snapshot counterpart of <see cref="CreateFromReference"/>; adopts the
+        /// entry's generation instead of requiring it to follow on from this store's (#270).</summary>
+        void CreateFromReplay(DataReference existingReference, object initialValue);
+
         void SetValue(DataReference reference, object newValue);
 
         object? GetValueUntyped(DataReference reference);
@@ -127,11 +131,67 @@ namespace FDG.Data
             _capacity = newCapacity;
         }
 
+        /// <summary>
+        /// Creates at a foreign reference from the LIVE incremental stream (a network add message),
+        /// where this store is expected to be in step with the sender: the generation must be exactly
+        /// the next one for that slot, and anything else means a message was missed or arrived out of
+        /// order. Rebuilding a whole store from a snapshot goes through
+        /// <see cref="CreateFromReplay"/> instead, which has no such expectation.
+        /// </summary>
         public void CreateFromReference(DataReference existingReference, object initialValue)
         {
-            //A negative index can never be valid. A high index is fine — this path replays foreign
-            //references (save load / network sync) whose source store may have grown past ours, so
-            //grow to fit rather than reject. EnsureCapacity throws if the index is implausibly large.
+            T typedInitValue = ValidateForeignCreate(existingReference, initialValue);
+
+            //The live stream is sequential, so the sender's generation must be exactly one ahead of
+            //ours: further ahead means we missed a create, at-or-behind means this is a stale message.
+            if (_generations[existingReference.Index] < existingReference.Generation - 1)
+            {
+                throw new InvalidDataReferenceAssignmentException(existingReference, EInvalidReason.FutureGeneration);
+            }
+
+            if(_generations[existingReference.Index] >= existingReference.Generation)
+            {
+                throw new InvalidDataReferenceAssignmentException(existingReference, EInvalidReason.OutdatedGeneration);
+            }
+
+            Occupy(existingReference, typedInitValue);
+        }
+
+        /// <summary>
+        /// Creates at a foreign reference while REBUILDING this store from a whole-store snapshot (a
+        /// save file, or the join-time catch-up sync) - see <see cref="FDG.SaveLoad.StoreReplay"/>.
+        ///
+        /// <para>#270: unlike the live path above, this adopts whatever generation the entry carries
+        /// instead of requiring it to follow on from ours. A slot that was recycled during the session
+        /// (destroyed, then refilled by <see cref="Create"/>) is at generation 2 or more, while a store
+        /// rebuilt from scratch starts every slot at 0 - so demanding "exactly one ahead" rejected the
+        /// entry as <see cref="EInvalidReason.FutureGeneration"/> and made the whole snapshot
+        /// unloadable. The generation is a stale-reference guard between a live sender and receiver; it
+        /// says nothing about a snapshot, whose references are internally consistent by construction
+        /// (every binding pointing at that slot carries the same generation). Adopting it preserves
+        /// those bindings, which is exactly what a faithful rebuild needs.</para>
+        ///
+        /// <para>The invariants that DO mean something here are kept: a real index, the right type, a
+        /// slot not already filled by this same replay, and a generation from a live
+        /// <see cref="Create"/> (which pre-increments, so 1 or more - 0 is an unset/null reference).</para>
+        /// </summary>
+        public void CreateFromReplay(DataReference existingReference, object initialValue)
+        {
+            T typedInitValue = ValidateForeignCreate(existingReference, initialValue);
+
+            if (existingReference.Generation < 1)
+            {
+                throw new InvalidDataReferenceAssignmentException(existingReference, EInvalidReason.OutdatedGeneration);
+            }
+
+            Occupy(existingReference, typedInitValue);
+        }
+
+        // The checks both foreign-create paths share, plus the cast. Grows to fit first: a high index is
+        // fine — these paths replay references whose source store may have grown past ours. A negative
+        // index can never be valid, and EnsureCapacity throws if the index is implausibly large.
+        private T ValidateForeignCreate(DataReference existingReference, object initialValue)
+        {
             if(existingReference.Index < 0)
             {
                 throw new InvalidDataReferenceAssignmentException(existingReference, EInvalidReason.IndexExceedsCapacity);
@@ -149,29 +209,22 @@ namespace FDG.Data
                 throw new InvalidDataReferenceAssignmentException(existingReference, EInvalidReason.IndexAlreadyAssigned);
             }
 
-            if (_generations[existingReference.Index] < existingReference.Generation - 1)
+            if (initialValue is not T typedInitValue)
             {
-                throw new InvalidDataReferenceAssignmentException(existingReference, EInvalidReason.FutureGeneration);
-            }
-
-            if(_generations[existingReference.Index] >= existingReference.Generation)
-            {
-                throw new InvalidDataReferenceAssignmentException(existingReference, EInvalidReason.OutdatedGeneration);
-            }
-
-            T typedInitValue = (T)initialValue;
-
-            if(typedInitValue == null)
-            {
-                throw new ArgumentException($"Passed in an object to {typeof(ComponentStore<T>)} that could not be " + 
+                throw new ArgumentException($"Passed in an object to {typeof(ComponentStore<T>)} that could not be " +
                     $"converted to a {typeof(T)}.");
             }
 
-            _used[existingReference.Index] = true;
-            _generations[existingReference.Index] = existingReference.Generation;
-            _data[existingReference.Index] = (T)initialValue;
+            return typedInitValue;
+        }
 
-            OnComponentAdded?.Invoke(existingReference, typedInitValue);
+        private void Occupy(DataReference reference, T value)
+        {
+            _used[reference.Index] = true;
+            _generations[reference.Index] = reference.Generation;
+            _data[reference.Index] = value;
+
+            OnComponentAdded?.Invoke(reference, value);
         }
 
         public bool Destroy(DataReference reference)

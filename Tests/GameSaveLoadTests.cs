@@ -109,6 +109,51 @@ namespace FDG.Tests
             Assert.DoesNotThrow(() => GameSaveSerializer.Load(json));
         }
 
+        // #270 — a slot that was destroyed and refilled during the session carries generation 2, and a
+        // store rebuilt from scratch starts every generation at 0. Replay used to reject the entry as
+        // FutureGeneration, which made the whole save unloadable. Every resume path recycles slots this
+        // way (LobbyViewModel_Host.LaunchResume and ScenarioLauncher both re-crew PlayerSlotInfo), so
+        // before this any game that was resumed and then saved again could never be opened.
+        [Test]
+        public void Store_WithARecycledSlot_StillRoundTrips()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var player = new PlayerID(Guid.NewGuid());
+
+            DataReference first = store.Create(new TeamData(0, new List<PlayerID> { player }));
+            store.Destroy(first);
+            DataReference refilled = store.Create(new TeamData(7, new List<PlayerID> { player }));
+
+            Assert.That(refilled.Index, Is.EqualTo(first.Index), "the slot should be reused");
+            Assert.That(refilled.Generation, Is.GreaterThan(first.Generation), "and its generation bumped");
+
+            GameDataStore loaded = GameSaveSerializer.Load(GameSaveSerializer.Save(store));
+
+            TeamData restored = loaded.GetValue<TeamData>(refilled);
+            Assert.That(restored.TeamNumber, Is.EqualTo(7), "the live value survives, at its own generation");
+            Assert.That(loaded.GetAllValues<TeamData>().Count(), Is.EqualTo(1), "and the destroyed one stays gone");
+        }
+
+        // The same store, saved twice over: the second save must load too, so a session can be resumed,
+        // saved, resumed and saved again without ever becoming unopenable.
+        [Test]
+        public void RecycledSlot_SurvivesRepeatedSaveLoadCycles()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var player = new PlayerID(Guid.NewGuid());
+            DataReference slot = store.Create(new TeamData(0, new List<PlayerID> { player }));
+
+            for (int cycle = 1; cycle <= 3; cycle++)
+            {
+                store.Destroy(slot);
+                slot = store.Create(new TeamData(cycle, new List<PlayerID> { player }));
+                store = GameSaveSerializer.Load(GameSaveSerializer.Save(store));
+
+                Assert.That(store.GetValue<TeamData>(slot).TeamNumber, Is.EqualTo(cycle),
+                    $"cycle {cycle}: generation {slot.Generation} must replay into a fresh store");
+            }
+        }
+
         [Test]
         public void Load_WrongVersion_Throws()
         {

@@ -41,6 +41,7 @@ namespace FDG.Network.Connection.Lobby
         public IObservable<ERandomnessType> RandomnessTypeObservable => _settings_RandomnessType;
         public IObservable<ETurnStyle> TurnStyleObservable => _settings_TurnMethod;
         public IObservable<bool> CoverProximityExceptionsObservable => _settings_CoverProximityExceptions;
+        public IObservable<ETableBackground> TableBackgroundObservable => _settings_TableBackground;
 
         public string ServerName => _serverName.Value;
 
@@ -64,6 +65,8 @@ namespace FDG.Network.Connection.Lobby
 
         public bool CoverProximityExceptions => _settings_CoverProximityExceptions.Value;
 
+        public ETableBackground TableBackground => _settings_TableBackground.Value;
+
         private BehaviorSubject<string> _serverName;
 
         private ReplaySubject<LobbyChatMessage> _chatMessagesSubject;
@@ -80,6 +83,7 @@ namespace FDG.Network.Connection.Lobby
         private BehaviorSubject<ERandomnessType> _settings_RandomnessType;
         private BehaviorSubject<ETurnStyle> _settings_TurnMethod;
         private BehaviorSubject<bool> _settings_CoverProximityExceptions;
+        private BehaviorSubject<ETableBackground> _settings_TableBackground;
 
         private INetworkHost _host;
 
@@ -139,6 +143,7 @@ namespace FDG.Network.Connection.Lobby
             _settings_RandomnessType = new BehaviorSubject<ERandomnessType>(_gameSettings.RandomnessType);
             _settings_TurnMethod = new BehaviorSubject<ETurnStyle>(_gameSettings.TurnStyle);
             _settings_CoverProximityExceptions = new BehaviorSubject<bool>(_gameSettings.CoverProximityExceptionsEnabled);
+            _settings_TableBackground = new BehaviorSubject<ETableBackground>(_gameSettings.TableBackground);
 
             _playerInfos = new BehaviorSubject<IReadOnlyList<LobbyPlayerInfoSummary>>(new List<LobbyPlayerInfoSummary>());
 
@@ -196,6 +201,7 @@ namespace FDG.Network.Connection.Lobby
             _settings_RandomnessType = new BehaviorSubject<ERandomnessType>(_gameSettings.RandomnessType);
             _settings_TurnMethod = new BehaviorSubject<ETurnStyle>(_gameSettings.TurnStyle);
             _settings_CoverProximityExceptions = new BehaviorSubject<bool>(_gameSettings.CoverProximityExceptionsEnabled);
+            _settings_TableBackground = new BehaviorSubject<ETableBackground>(_gameSettings.TableBackground);
 
             _playerInfos = new BehaviorSubject<IReadOnlyList<LobbyPlayerInfoSummary>>(new List<LobbyPlayerInfoSummary>());
 
@@ -632,8 +638,10 @@ namespace FDG.Network.Connection.Lobby
 
             // Resume on the GUI host animates just like a new game — give it a real-time clock so the
             // presentation beats play at a presentable tempo (without it the beats run instantly).
+            // #265: the save owns the settings on resume, except the few a resume lobby may re-pick
+            // (the table background) - see GameSettings.WithResumeOverridesFrom.
             FDGServer server = new FDGServer(_gameDataStore, _messageBus, playerSlots,
-                new RealtimePresentationClock());
+                new RealtimePresentationClock(), _gameSettings);
             server.OnGameEnded += HandleServerGameEnded;
 
             if (gameModel != null)
@@ -941,6 +949,20 @@ namespace FDG.Network.Connection.Lobby
             _settings_CoverProximityExceptions.OnNext(enabled);
             _gameSettings.CoverProximityExceptions = enabled;
             _messageBus.SendCommandToAllAsync(new LobbyGameSettingsUpdate(_gameSettings));
+        }
+
+        public void SetTableBackground(ETableBackground background)
+        {
+            if (Enum.IsDefined(background))
+            {
+                _settings_TableBackground.OnNext(background);
+                _gameSettings.TableBackground = background;
+                _messageBus.SendCommandToAllAsync(new LobbyGameSettingsUpdate(_gameSettings));
+            }
+            else
+            {
+                _settings_TableBackground.OnNext(_settings_TableBackground.Value);
+            }
         }
 
         public bool CheckCanModifyPlayerIDInfo(PlayerID playerID)

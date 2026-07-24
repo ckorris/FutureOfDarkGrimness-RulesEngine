@@ -44,6 +44,12 @@ namespace FDG.Ai.Tactician
         // Other friendlies inside each enemy's threat envelope (alternative targets that dilute
         // its volley) - endpoint-independent, computed lazily per activation.
         private readonly Dictionary<DataReference, int> _envelopeSharers = new();
+        // #264 issue 1: one WALKING route per objective, from this activation's start - the gradient
+        // measures against it instead of straight-line distance. Both are activation-scoped: the
+        // routes start at the unit's current centroid, and the grid only depends on the terrain and
+        // the unit's base size. One A* per objective, one grid build, per activation.
+        private readonly Dictionary<(float X, float Z), List<Position>> _objectiveRoutes = new();
+        private TerrainGrid? _routeGrid;
 
         /// <summary>The unit whose activation is being planned (null between activations).</summary>
         public DataBinding<UnitData>? ActiveUnit => _activeUnit;
@@ -67,6 +73,8 @@ namespace FDG.Ai.Tactician
             _screenLaneComputed = false;
             _markerContestable.Clear();
             _envelopeSharers.Clear();
+            _objectiveRoutes.Clear();
+            _routeGrid = null;
         }
 
         /// <summary>
@@ -132,6 +140,7 @@ namespace FDG.Ai.Tactician
             }
 
             if (scored != null) LogDecision(scored, best, bestAction);
+            LogIfStuck(candidates);
             if (best == null || bestAction == null) return null;
 
             // Hold-and-shoot / pass need no movement; movement plans are cached for the move request.
@@ -146,6 +155,26 @@ namespace FDG.Ai.Tactician
             }
 
             return bestAction;
+        }
+
+        // #256's stuck detector, filed for #264: when EVERY movement candidate the generator can
+        // build nets under an inch, the unit is WEDGED - a walled pocket, a corner funnel, a friendly
+        // seal - and the symptom on the table is just a unit that looks passive. Say so, so a game
+        // reports this failure class instead of leaving it to be reconstructed from a screenshot.
+        private const float StuckMoveInches = 1f;
+
+        private void LogIfStuck(List<MacroAction> candidates)
+        {
+            if (_decisionLog == null || _activeUnit == null) return;
+
+            UnitData self = _activeUnit.GetValue();
+            Position at = Centroid(self);
+            bool anyRealMove = candidates.Any(c => c.Intent != EMacroIntent.Hold
+                && Distance(at, c.ProjectedCentroid) >= StuckMoveInches);
+            if (anyRealMove) return;
+
+            _decisionLog($"stuck {self.Name} at ({at.x:F1},{at.z:F1}): every movement candidate " +
+                $"nets < {StuckMoveInches:F0} inch");
         }
 
         // One block per Choose Action: the winner line, then the full candidate table (score-desc)
@@ -449,14 +478,23 @@ namespace FDG.Ai.Tactician
             float urgency = ObjectiveUrgency(_tableState.Progress.RoundCount ?? 1,
                 _tableState.Progress.TotalRounds);
 
-            return TacticianWeights.MoveDamage * offense
+            float substantive =
+                   TacticianWeights.MoveDamage * offense
                  - TacticianWeights.MoveRetaliation * retaliation
                  + urgency * TacticianWeights.MoveObjective * objectiveDelta
                  // A5-8: the gradient is deadline-scaled per objective INSIDE ObjectiveApproach.
                  + TacticianWeights.MoveObjectiveApproach * objectiveApproach
                  + TacticianWeights.MoveApproach * approach
-                 + TacticianWeights.MoveScreen * ScreenValue(end)
-                 + (candidate.Feasibility == EFeasibility.Reachable ? TacticianWeights.MoveReachableBonus : 0f);
+                 + TacticianWeights.MoveScreen * ScreenValue(end);
+
+            // #264 issue 2: the reachable bonus is a TIE-BREAK between candidates that are already
+            // worth something ("if two plans are worth the same, take the one that actually gets
+            // there"), never a reason to do a worthless thing. Ungated it made every trivially
+            // reachable goal - FallBack, Concentrate, SeekCover, Block - collect a flat 0.05 that a
+            // real detour's substantive terms could not match, so it decided WHICH bad candidate
+            // won and a walled unit rushed backwards to the table edge.
+            bool tieBreak = candidate.Feasibility == EFeasibility.Reachable && substantive > 0f;
+            return substantive + (tieBreak ? TacticianWeights.MoveReachableBonus : 0f);
         }
 
         /// <summary>Round scaling for the objective terms (#191 A5-4): ~0.66 in round 1 rising to
@@ -598,17 +636,45 @@ namespace FDG.Ai.Tactician
                     && projection.ProjectedOwner.Value == self.PlayerID;
                 if (ours) continue;
 
-                float gapNow = Distance(now, projection.Objective.Position) - onIt;
+                // #264 issue 1: WALKING distance, not straight-line - behind a large impassible
+                // piece the two diverge by the whole detour, and the straight-line version paid a
+                // correct first leg ~nothing (or charged it, when rounding the wall transiently
+                // grows the Euclidean gap). It also makes the deadline slack honest: a marker 17"
+                // away down a 30" route is one move further out than it looks.
+                (List<Position> route, List<ITerrain> terrain, float baseRadius) =
+                    RouteToObjective(now, projection.Objective.Position);
+                float gapNow = RouteMetrics.Length(route) - onIt;
                 if (gapNow <= 0f) continue; // already there: ObjectiveDelta pays, not the gradient
                 float slack = movesLeft - gapNow / speed;
                 if (slack < HopelessSlackRounds) continue;
                 float urgency = Math.Clamp(1.3f - DeadlineDecayPerSlackRound * (slack - 0.25f),
                     baseline, 1.3f);
 
-                float gapEnd = Math.Max(0f, Distance(end, projection.Objective.Position) - onIt);
+                float gapEnd = Math.Max(0f,
+                    RouteMetrics.RemainingFrom(route, end, terrain, baseRadius) - onIt);
                 best = Math.Max(best, urgency * Math.Clamp((gapNow - gapEnd) / gapNow, 0f, 1f));
             }
             return best;
+        }
+
+        // The route this unit would walk from its activation start to a marker, cached per marker.
+        // Falls back to the straight segment when no route exists, which restores the pre-#264
+        // Euclidean measure for that objective rather than inventing a number.
+        private (List<Position> Route, List<ITerrain> Terrain, float BaseRadius) RouteToObjective(
+            Position now, Position marker)
+        {
+            var terrain = _tableState.Terrain.Objects.ToList();
+            List<IModel> alive = _activeUnit!.GetValue().Models.Where(m => m.GetIsAlive()).ToList();
+            float baseRadius = alive.Count == 0 ? 0.5f : alive.Max(m => m.BaseRadiusInches);
+
+            (float X, float Z) key = (marker.x, marker.z);
+            if (!_objectiveRoutes.TryGetValue(key, out List<Position>? route))
+            {
+                route = RouteMetrics.Route(terrain,
+                    () => _routeGrid ??= TerrainGrid.Build(terrain, baseRadius), now, marker, baseRadius);
+                _objectiveRoutes[key] = route;
+            }
+            return (route, terrain, baseRadius);
         }
 
         private (float Margin, float Reach) MeleeApproachAgainst(DataBinding<UnitData> enemyBinding)

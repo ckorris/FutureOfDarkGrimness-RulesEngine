@@ -209,8 +209,24 @@ namespace FDG.Data
 
         public void CreateFromReferenceAndJson(DataReference reference, string initValueAsJson)
         {
+            IComponentStore store = _componentStores[reference.TypeID];
+            store.CreateFromReference(reference, DeserializeForReference(reference, initValueAsJson));
+        }
+
+        /// <summary>
+        /// Snapshot-rebuild counterpart of <see cref="CreateFromReferenceAndJson"/> (#270): same
+        /// deserialization, but the entry's generation is adopted rather than required to follow on from
+        /// this store's, so a recycled slot replays. Used by <see cref="FDG.SaveLoad.StoreReplay"/>.
+        /// </summary>
+        public void CreateFromReplayJson(DataReference reference, string initValueAsJson)
+        {
+            IComponentStore store = _componentStores[reference.TypeID];
+            store.CreateFromReplay(reference, DeserializeForReference(reference, initValueAsJson));
+        }
+
+        private object DeserializeForReference(DataReference reference, string initValueAsJson)
+        {
             Type objectType = _registeredTypes[reference.TypeID.ID];
-            //object? deserializedValue = JsonConvert.DeserializeObject(initValueAsJson, objectType, _jsonConverters, );
             object? deserializedValue = JsonConvert.DeserializeObject(initValueAsJson, objectType, _jsonConvertSettings);
 
             if (deserializedValue == null)
@@ -218,8 +234,7 @@ namespace FDG.Data
                 throw new ArgumentException($"Passed in Json could not be deserialized.");
             }
 
-            IComponentStore store = _componentStores[reference.TypeID];
-            store.CreateFromReference(reference, deserializedValue);
+            return deserializedValue;
         }
 
         public bool Destroy(DataReference reference)

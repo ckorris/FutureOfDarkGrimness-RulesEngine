@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using FDG.Rules.Definitions;
 using FDG.Rules.Foundation;
 
@@ -22,13 +24,16 @@ namespace FDG.Rules.Dispatch.Contexts
     /// <param name="ChargeOriginDistanceInches">How far the defender was when the charging unit's
     /// activation began, i.e. where the charge was declared from. 0 for shooting and for a melee swing
     /// that isn't a charge. See <see cref="IHasAttackOriginDistance"/>.</param>
+    /// <param name="TerrainPieces">The table's terrain pieces, for terrain-proximity conditions (the
+    /// Grounded family). Null/empty on paths that cannot supply it; see <see cref="IHasTerrain"/>.</param>
     public sealed record HitRollCompleteContext(
         IUnit Attacker, IUnit Target, IDiceResults UnmodifiedHitRolls,
         float DistanceInches = 0f, bool IsMelee = false, bool IsCharging = false, bool IsSpell = false,
         float ChargeOriginDistanceInches = 0f,
-        EUnpredictableBranch UnpredictableBranch = EUnpredictableBranch.None)
+        EUnpredictableBranch UnpredictableBranch = EUnpredictableBranch.None,
+        IReadOnlyList<ITerrain>? TerrainPieces = null)
         : IHookContext, IHasUnmodifiedHitRolls, IHasDistance, IHasCombatKind, IHasCharging, IHasTarget,
-            IHasIsSpell, IHasAttackOriginDistance, IHasUnpredictableBranch
+            IHasIsSpell, IHasAttackOriginDistance, IHasUnpredictableBranch, IHasTerrain
     {
         public EHookID Hook => EHookID.Shooting_OnHitRollComplete;
 
@@ -36,5 +41,7 @@ namespace FDG.Rules.Dispatch.Contexts
         // this attack come from" in melee — the charge's declared distance is. Shooting launches from
         // where the shooter stands, so the two coincide.
         public float AttackOriginDistanceInches => IsMelee ? ChargeOriginDistanceInches : DistanceInches;
+
+        public IReadOnlyList<ITerrain> Terrain => TerrainPieces ?? Array.Empty<ITerrain>();
     }
 }

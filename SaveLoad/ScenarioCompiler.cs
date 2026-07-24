@@ -108,6 +108,8 @@ namespace FDG.SaveLoad
 
             CreateObjectives(scenario, store);
 
+            CreateTerrain(scenario, store);
+
             WriteProgress(scenario, settings, store, slots, unitsPerPlayer, activatedUnits);
 
             return store;
@@ -161,6 +163,17 @@ namespace FDG.SaveLoad
                     $"Unknown randomness '{scenarioSettings.Randomness}' (use Probabilistic or Realistic).")
             };
             settings.DiceSeed = scenarioSettings.DiceSeed;
+            if (!string.IsNullOrWhiteSpace(scenarioSettings.Background))
+            {
+                if (!Enum.TryParse(scenarioSettings.Background.Trim(), ignoreCase: true,
+                        out ETableBackground background) || !Enum.IsDefined(background))
+                {
+                    throw new ScenarioCompileException(
+                        $"Unknown background '{scenarioSettings.Background}' (use " +
+                        $"{string.Join(", ", Enum.GetNames<ETableBackground>())}).");
+                }
+                settings.TableBackground = background;
+            }
             return settings;
         }
 
@@ -411,6 +424,106 @@ namespace FDG.SaveLoad
 
             foreach (Position position in positions)
                 store.Create(new ObjectiveData(position, store));
+        }
+
+        /// <summary>
+        /// Synthesizes the scenario's terrain pieces (#264 enabling slice on the #167 umbrella),
+        /// mirroring the live PlaceTerrainStage construction: a shape built at its center, rotation
+        /// wrapped around the AABB center via <see cref="Stages.TerrainTemplateUtilities"/>, stored
+        /// as a plain <see cref="TerrainData"/>. Terrain rules (movement sweeps, cover, LoS) then
+        /// see scenario terrain exactly as they see player-placed terrain.
+        /// </summary>
+        private static void CreateTerrain(ScenarioFile scenario, GameDataStore store)
+        {
+            if (scenario.Terrain == null) return;
+
+            for (int i = 0; i < scenario.Terrain.Count; i++)
+            {
+                ScenarioTerrain spec = scenario.Terrain[i];
+                string what = $"terrain {i}";
+
+                ETerrainType type = ParseTerrainType(spec.Type, what);
+                IZone shape = BuildTerrainShape(spec, what);
+                if (spec.HeightInches < 0f)
+                    throw new ScenarioCompileException($"{what}: heightInches must be >= 0.");
+
+                store.Create(new TerrainData(type, shape, spec.HeightInches));
+            }
+        }
+
+        private static ETerrainType ParseTerrainType(string spec, string what)
+        {
+            if (string.IsNullOrWhiteSpace(spec))
+                throw new ScenarioCompileException(
+                    $"{what}: no type. Combine {TerrainTypeNames()} with '|' or ','.");
+
+            ETerrainType combined = ETerrainType.None;
+            foreach (string part in spec.Split('|', ','))
+            {
+                string name = part.Trim();
+                if (name.Length == 0) continue;
+                if (!Enum.TryParse(name, ignoreCase: true, out ETerrainType flag)
+                    || flag == ETerrainType.None)
+                {
+                    throw new ScenarioCompileException(
+                        $"{what}: unknown terrain type '{name}'. Known: {TerrainTypeNames()}.");
+                }
+                combined |= flag;
+            }
+
+            if (combined == ETerrainType.None)
+                throw new ScenarioCompileException(
+                    $"{what}: no type. Combine {TerrainTypeNames()} with '|' or ','.");
+            return combined;
+        }
+
+        private static string TerrainTypeNames() => string.Join(", ",
+            Enum.GetValues<ETerrainType>().Where(t => t != ETerrainType.None));
+
+        private static IZone BuildTerrainShape(ScenarioTerrain spec, string what)
+        {
+            if (spec.Center == null || spec.Center.Length != 2)
+                throw new ScenarioCompileException($"{what}: 'center' must be an [x, z] pair.");
+            float cx = spec.Center[0];
+            float cz = spec.Center[1];
+
+            switch (spec.Shape.Trim().ToLowerInvariant())
+            {
+                case "rectangle":
+                case "rect":
+                {
+                    if (spec.Diameter.HasValue)
+                        throw new ScenarioCompileException(
+                            $"{what}: 'diameter' is for circles - a rectangle takes 'size': [width, depth].");
+                    if (spec.Size == null || spec.Size.Length != 2)
+                        throw new ScenarioCompileException(
+                            $"{what}: a rectangle needs 'size': [width, depth].");
+                    if (spec.Size[0] <= 0f || spec.Size[1] <= 0f)
+                        throw new ScenarioCompileException($"{what}: size values must be > 0.");
+
+                    float halfW = spec.Size[0] / 2f;
+                    float halfD = spec.Size[1] / 2f;
+                    IZone rect = new RectangularZone(cx - halfW, cx + halfW, cz - halfD, cz + halfD);
+                    // Rotation around the piece's own center, same wrapper the live placement uses.
+                    return Stages.TerrainTemplateUtilities.Rotate(rect, spec.RotationDegrees);
+                }
+                case "circle":
+                {
+                    if (spec.Size != null)
+                        throw new ScenarioCompileException(
+                            $"{what}: 'size' is for rectangles - a circle takes 'diameter'.");
+                    if (spec.RotationDegrees != 0f)
+                        throw new ScenarioCompileException(
+                            $"{what}: rotationDegrees on a circle does nothing - remove it.");
+                    if (!(spec.Diameter > 0f))
+                        throw new ScenarioCompileException($"{what}: a circle needs 'diameter' > 0.");
+
+                    return new CircularZone(cx, cz, spec.Diameter.Value / 2f);
+                }
+                default:
+                    throw new ScenarioCompileException(
+                        $"{what}: unknown shape '{spec.Shape}' (use Rectangle or Circle).");
+            }
         }
 
         private static void WriteProgress(ScenarioFile scenario, GameSettings settings, GameDataStore store,

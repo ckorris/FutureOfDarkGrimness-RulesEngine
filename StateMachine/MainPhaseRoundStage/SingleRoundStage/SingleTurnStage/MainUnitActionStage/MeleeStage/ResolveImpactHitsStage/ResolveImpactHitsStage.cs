@@ -30,6 +30,9 @@ namespace FDG.Stages
         // the child metadata. Only meaningful between Enter and the child pipeline running.
         private float _impactHitCount;
 
+        // #197 misc (Heavy Impact): the AP the impact hits carry (0 for core Impact), read off the sink.
+        private int _impactArmorPenetration;
+
         public ResolveImpactHitsStage(IGameContext gameContext, IStateMachineLayer<ICombatActionContext> parent)
             : base(gameContext, parent)
         {
@@ -53,6 +56,7 @@ namespace FDG.Stages
 
             ImpactSink impact = new ImpactSink();
             impact.ApplyFrom(operations);
+            _impactArmorPenetration = impact.ArmorPenetration;
 
             if (impact.TotalDice <= 0)
             {
@@ -83,10 +87,11 @@ namespace FDG.Stages
 
         protected override ICombatMetadata GetNewChildContext(ICombatActionContext contextSelf)
         {
-            // Impact hits come from a weaponless charge — model them as a synthetic AP-0 attack so the
-            // shared save/wound stages can consume them. The histogram face is cosmetic (only TotalRolls
-            // matters downstream).
-            Weapon impactWeapon = new Weapon("Impact", rangeInches: 0f, attacks: 0, armorPenetration: 0);
+            // Impact hits come from a weaponless charge — model them as a synthetic attack so the shared
+            // save/wound stages can consume them. Core Impact is AP 0; Heavy Impact carries AP(1), read off
+            // the sink (#197 misc). The histogram face is cosmetic (only TotalRolls matters downstream).
+            Weapon impactWeapon = new Weapon("Impact", rangeInches: 0f, attacks: 0,
+                armorPenetration: _impactArmorPenetration);
 
             CombatMetadata metadata = new CombatMetadata(GameContext, contextSelf.AttackingUnit,
                 contextSelf.DefendingUnit, impactWeapon, weaponCount: 1, isMelee: true);

@@ -10,4 +10,12 @@ namespace FDG.Rules.Definitions;
 public interface IImpactSink
 {
     void AddDice(int count);
+
+    /// <summary>
+    /// #197 misc (Heavy Impact): the AP the impact hits carry. Core Impact contributes 0; Heavy Impact
+    /// contributes 1. Folded as a MAX across sources (the single impact pool cannot separate per-source AP),
+    /// so a unit that somehow carried both would apply the higher AP to every impact hit - an edge case no
+    /// corpus unit hits (Heavy Impact replaces Impact rather than stacking).
+    /// </summary>
+    void AddArmorPenetration(int armorPenetration);
 }

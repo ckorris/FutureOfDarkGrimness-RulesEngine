@@ -28,7 +28,8 @@ namespace FDG.Rules.Dispatch;
 ///         here would only blur attribution when helper rules share a hook.</item>
 ///   <item>Composition-gated conditions are pre-satisfied from the condition tree itself:
 ///         <see cref="Condition.UnitHasRule"/>/<see cref="Condition.TargetHasRule"/> attach a stub
-///         rule of that name, <see cref="Condition.TokenPresent"/> seeds the tokens. Only
+///         rule of that name (<see cref="Condition.WeaponHasRule"/> onto the lint weapon),
+///         <see cref="Condition.TokenPresent"/> seeds the tokens. Only
 ///         positive-polarity leaves are satisfied — under <see cref="Condition.Not"/> the default
 ///         empty state already satisfies the leaf.</item>
 ///   <item>Activated abilities go through the real <see cref="RuleEvaluator.GatherOffers"/> (so an
@@ -45,6 +46,12 @@ public static class RuleFireLint
 {
     private const float FarInches = 1000f;
     private const float NearInches = 0.5f;
+
+    // #197 misc (Grounded family): a cover piece over the lint bearers' origin (their models sit at
+    // Position()), so the terrain-proximity condition ("most models within 1in of terrain") has a hit
+    // context that satisfies it and the Grounded rules prove fireable.
+    private static readonly IReadOnlyList<ITerrain> OriginTerrain =
+        new ITerrain[] { new TerrainData(ETerrainType.Cover, new CircularZone(new Float2(0f, 0f), 5f)) };
 
     // #197 (P15): the hit/save context variants cover every Unpredictable branch so both arms of an
     // Unpredictable rule (HitBonus at hook 72, ApBonus at hook 73) find a context that satisfies them.
@@ -451,6 +458,13 @@ public static class RuleFireLint
             case Condition.TargetHasRule targetHas when positive:
                 AttachStubRule(world.Other, targetHas.RuleName);
                 break;
+            case Condition.WeaponHasRule weaponHas when positive && world.Weapon != null:
+                // WeaponHasRule reads the FIRING weapon; give the lint weapon the named companion rule
+                // (Quick Readjustment's +1 gates on the weapon also carrying Indirect).
+                world.Weapon.AttachRuleDefinition(new ResolvedRule(weaponHas.RuleName,
+                    new SpecialRuleDefinition(weaponHas.RuleName, Array.Empty<HookEntry>(),
+                        Array.Empty<ActivatedAbility>())));
+                break;
             case Condition.TokenPresent token when positive:
                 SeedTokens(world.Bearer, token.TType, token.MinCount);
                 break;
@@ -562,6 +576,9 @@ public static class RuleFireLint
                     yield return new HitRollModifierContext(attacker, defender, distance, moved,
                         isMelee, isCharging, chargeOrigin, branch);
                 }
+                // #197 misc: one terrain-populated variant for the Grounded family (not distance-gated).
+                yield return new HitRollModifierContext(attacker, defender, FarInches,
+                    TerrainPieces: OriginTerrain);
                 break;
             case EHookID.Shooting_OnHitRollComplete:
                 // chargeOrigin varies independently of the live distance: a melee swing is always resolved in
@@ -579,6 +596,9 @@ public static class RuleFireLint
                         distance, isMelee, isCharging, IsSpell: false,
                         ChargeOriginDistanceInches: chargeOrigin, UnpredictableBranch: branch);
                 }
+                // #197 misc: one terrain-populated variant for the Grounded family (not distance-gated).
+                yield return new HitRollCompleteContext(attacker, defender, OneOfEachFace(), FarInches,
+                    TerrainPieces: OriginTerrain);
                 break;
             case EHookID.Shooting_OnSaveRollModifier:
                 yield return new CoverIgnoreContext(attacker);

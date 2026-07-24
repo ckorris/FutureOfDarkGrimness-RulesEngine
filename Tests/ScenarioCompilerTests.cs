@@ -115,6 +115,28 @@ namespace FDG.Tests
             => store.GetAllValues<UnitData>().Single(u => u.Name == name);
 
         [Test]
+        public void Compile_Background_IsCaseInsensitiveAndRidesTheSave()
+        {
+            ScenarioFile scenario = MakeScenario();
+            scenario.Settings.Background = "marslike";
+
+            GameDataStore store = CompileAndRoundTrip(scenario);
+
+            Assert.That(GameProgressUtilities.TryGetProgress(store)!.Settings.TableBackground,
+                Is.EqualTo(ETableBackground.MarsLike));
+        }
+
+        [Test]
+        public void Compile_UnknownBackground_Throws()
+        {
+            ScenarioFile scenario = MakeScenario();
+            scenario.Settings.Background = "Swamp";
+
+            var ex = Assert.Throws<ScenarioCompileException>(() => CompileAndRoundTrip(scenario));
+            Assert.That(ex!.Message, Does.Contain("Swamp"));
+        }
+
+        [Test]
         public void Compile_RoundTrip_RestoresProgressCursorAndSettings()
         {
             GameDataStore store = CompileAndRoundTrip(MakeScenario());
@@ -125,6 +147,8 @@ namespace FDG.Tests
             Assert.That(progress!.Stage, Is.EqualTo(EResumeStage.MainPhase));
             Assert.That(progress.RoundCount, Is.EqualTo(2));
             Assert.That(progress.Settings.RandomnessType, Is.EqualTo(ERandomnessType.Probabilistic));
+            // #265: no "background" in the scenario means the default green board.
+            Assert.That(progress.Settings.TableBackground, Is.EqualTo(ETableBackground.Forest));
 
             // ActivePlayer = 1 (team 1): active team first in the order, cursor parked at the end so
             // the resume's first TryAdvance (which starts at index + 1, wrapping) lands on it.
@@ -216,6 +240,109 @@ namespace FDG.Tests
             UnitData brute = UnitByName(store, "Brute");
             Assert.That(brute.RuleDefinitions.Select(r => r.RequestedName),
                 Does.Contain("Tough(3)"), "Army-list rules must survive into the loaded save.");
+        }
+
+        // #264 enabling slice (#167 terrain facet): scenario terrain must come out of the save
+        // round-trip as real TerrainData with working geometry — the movement/cover/LoS rules all
+        // query the zone shapes, so the probes below are the behavior, not a serialization detail.
+        [Test]
+        public void Compile_RoundTrip_CreatesTerrainPieces()
+        {
+            ScenarioFile scenario = MakeScenario();
+            scenario.Terrain = new()
+            {
+                new ScenarioTerrain
+                {
+                    Type = "Blocking|Impassible", Shape = "Rectangle",
+                    Center = new[] { 24f, 11f }, Size = new[] { 20f, 2f }, HeightInches = 4f,
+                },
+                new ScenarioTerrain
+                {
+                    Type = "Cover, Difficult", Shape = "Circle",
+                    Center = new[] { 30f, 30f }, Diameter = 8f,
+                },
+            };
+
+            GameDataStore store = CompileAndRoundTrip(scenario);
+            List<TerrainData> terrain = store.GetAllValues<TerrainData>().ToList();
+            Assert.That(terrain, Has.Count.EqualTo(2));
+
+            TerrainData wall = terrain.Single(t => t.TerrainType.HasFlag(ETerrainType.Impassible));
+            Assert.That(wall.TerrainType, Is.EqualTo(ETerrainType.Blocking | ETerrainType.Impassible));
+            Assert.That(wall.HeightInches, Is.EqualTo(4f));
+            Assert.That(wall.IsPointWithinZone(new Float2(24f, 11f)), Is.True, "wall center");
+            Assert.That(wall.IsPointWithinZone(new Float2(33.5f, 11f)), Is.True, "inside right end");
+            Assert.That(wall.IsPointWithinZone(new Float2(34.5f, 11f)), Is.False, "past right end");
+            Assert.That(wall.IsPointWithinZone(new Float2(24f, 12.5f)), Is.False, "past depth");
+
+            TerrainData forest = terrain.Single(t => t.TerrainType.HasFlag(ETerrainType.Cover));
+            Assert.That(forest.TerrainType, Is.EqualTo(ETerrainType.Cover | ETerrainType.Difficult));
+            Assert.That(forest.IsPointWithinZone(new Float2(33.9f, 30f)), Is.True, "inside radius");
+            Assert.That(forest.IsPointWithinZone(new Float2(34.1f, 30f)), Is.False, "outside radius");
+        }
+
+        [Test]
+        public void Compile_RoundTrip_RotatedRectangleKeepsItsRotation()
+        {
+            ScenarioFile scenario = MakeScenario();
+            scenario.Terrain = new()
+            {
+                new ScenarioTerrain
+                {
+                    Type = "Impassible", Shape = "Rect",
+                    Center = new[] { 24f, 24f }, Size = new[] { 10f, 2f }, RotationDegrees = 90f,
+                },
+            };
+
+            TerrainData wall = CompileAndRoundTrip(scenario).GetAllValues<TerrainData>().Single();
+            // Rotated 90 degrees, the 10" axis runs along z (sign-agnostic probe).
+            Assert.That(wall.IsPointWithinZone(new Float2(24f, 28f)), Is.True, "long axis now along z");
+            Assert.That(wall.IsPointWithinZone(new Float2(28f, 24f)), Is.False, "long axis no longer along x");
+        }
+
+        [Test]
+        public void Compile_InvalidTerrain_FailsWithClearMessages()
+        {
+            ArmyListFile[] armies = { MakeShooterArmy(), MakeDefenderArmy() };
+
+            ScenarioFile Terrain(ScenarioTerrain piece)
+            {
+                ScenarioFile s = MakeScenario();
+                s.Terrain = new() { piece };
+                return s;
+            }
+
+            Assert.That(Assert.Throws<ScenarioCompileException>(() => ScenarioCompiler.Compile(Terrain(
+                    new ScenarioTerrain { Type = "Lava", Shape = "Circle", Center = new[] { 5f, 5f }, Diameter = 4f }),
+                    armies))!.Message,
+                Does.Contain("Impassible"), "Unknown types must list the known flag names.");
+
+            Assert.Throws<ScenarioCompileException>(() => ScenarioCompiler.Compile(Terrain(
+                new ScenarioTerrain { Type = "Cover", Shape = "Hexagon", Center = new[] { 5f, 5f } }), armies));
+
+            Assert.Throws<ScenarioCompileException>(() => ScenarioCompiler.Compile(Terrain(
+                new ScenarioTerrain { Type = "Cover", Shape = "Rectangle", Center = new[] { 5f, 5f } }), armies));
+
+            Assert.Throws<ScenarioCompileException>(() => ScenarioCompiler.Compile(Terrain(
+                new ScenarioTerrain
+                {
+                    Type = "Cover", Shape = "Rectangle",
+                    Center = new[] { 5f, 5f }, Size = new[] { 4f, 0f },
+                }), armies));
+
+            Assert.Throws<ScenarioCompileException>(() => ScenarioCompiler.Compile(Terrain(
+                new ScenarioTerrain { Type = "Cover", Shape = "Circle", Center = new[] { 5f, 5f } }), armies));
+
+            // Silent no-ops are rejected loudly: rotation on a circle does nothing.
+            Assert.Throws<ScenarioCompileException>(() => ScenarioCompiler.Compile(Terrain(
+                new ScenarioTerrain
+                {
+                    Type = "Cover", Shape = "Circle",
+                    Center = new[] { 5f, 5f }, Diameter = 4f, RotationDegrees = 45f,
+                }), armies));
+
+            Assert.Throws<ScenarioCompileException>(() => ScenarioCompiler.Compile(Terrain(
+                new ScenarioTerrain { Type = "Cover", Shape = "Circle", Diameter = 4f }), armies));
         }
 
         [Test]

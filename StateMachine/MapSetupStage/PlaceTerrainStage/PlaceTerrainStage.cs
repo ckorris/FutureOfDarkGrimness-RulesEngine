@@ -171,7 +171,9 @@ namespace FDG.Stages
 
             int totalPieces = Math.Clamp(context.GameContext.Settings.TerrainPieceCount, 0, MaxAlternatingPieceCount);
             if (totalPieces == 0) return;
-            var pool = DefaultTerrainPool.Get().Pieces;
+            // #268: the picker offers the full palette (the auto layout's pieces plus the palette-only
+            // templates, mostly small impassible objects), not just what AutoFromLayout would place.
+            var pool = DefaultTerrainPool.GetPalette();
 
             if (pool.Count == 0)
             {

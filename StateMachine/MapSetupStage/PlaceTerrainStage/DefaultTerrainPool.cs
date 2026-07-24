@@ -3,21 +3,32 @@ using FDG.SaveLoad;
 namespace FDG.Stages
 {
     /// <summary>
-    /// Built-in terrain pool. Templates only — design-time positions are ignored;
-    /// only the dimensions + type matter. Used by AutoFromLayout (verbatim) and by
-    /// Alternating (as the pool the player picks from). Externalization to a JSON
-    /// asset is tracked under #044.
+    /// Built-in terrain. Two distinct things live here (#268):
+    ///
+    /// <list type="bullet">
+    ///   <item><see cref="Get"/> — the AUTO LAYOUT. AutoFromLayout places these pieces verbatim at their
+    ///     design-time positions, so this list defines how a generated map actually looks. Adding to it
+    ///     makes every auto map denser, which is why the palette below is separate.</item>
+    ///   <item><see cref="GetPalette"/> — the TEMPLATE PALETTE the Alternating-mode picker offers. Only
+    ///     shape/size/type matter here, not position: <see cref="TerrainTemplateUtilities.TranslateToCenter"/>
+    ///     moves the shape to wherever the player clicks. It is a superset of the auto layout.</item>
+    /// </list>
+    ///
+    /// Externalization to a JSON asset is tracked under #044; a lobby picker for which layout file feeds
+    /// each mode is #049.
     /// </summary>
     public static class DefaultTerrainPool
     {
+        // Type shorthands. Blocking|Impassible = blocks movement AND line of sight (a building you can
+        // neither enter nor shoot through). Impassible alone = blocks movement only, so a unit must go
+        // around it but can still shoot over it.
+        private const ETerrainType Solid   = ETerrainType.Blocking | ETerrainType.Impassible;
+        private const ETerrainType Blocker = ETerrainType.Impassible;
+        private const ETerrainType Woods   = ETerrainType.Cover | ETerrainType.Difficult;
+
         /// <summary>
-        /// Returns the default terrain layout.
-        /// <para>
-        /// AutoFromLayout places these pieces verbatim at their design-time positions.
-        /// Alternating mode uses them as placement templates — only shape/size matters,
-        /// not the design-time position, because <see cref="TerrainTemplateUtilities.TranslateToCenter"/>
-        /// repositions the shape to wherever the player clicks.
-        /// </para>
+        /// The default auto layout, placed verbatim by AutoFromLayout. Unchanged by #268 on purpose:
+        /// widening the player's choice of pieces should not silently change how generated maps play.
         /// </summary>
         public static TerrainLayoutFile Get() => new TerrainLayoutFile
         {
@@ -27,27 +38,31 @@ namespace FDG.Stages
                 // Center building — blocking + impassible.
                 new TerrainPieceEntry
                 {
-                    TerrainType = ETerrainType.Blocking | ETerrainType.Impassible,
+                    Name = "Central building",
+                    TerrainType = Solid,
                     Shape = new RectangularZone(33, 39, 22, 26),
                     HeightInches = 4f,
                 },
                 // Forest, left-center — cover + difficult.
                 new TerrainPieceEntry
                 {
-                    TerrainType = ETerrainType.Cover | ETerrainType.Difficult,
+                    Name = "Forest",
+                    TerrainType = Woods,
                     Shape = new CircularZone(20, 24, 5),
                     HeightInches = 0f,
                 },
                 // Forest, right-center — cover + difficult.
                 new TerrainPieceEntry
                 {
-                    TerrainType = ETerrainType.Cover | ETerrainType.Difficult,
+                    Name = "Forest",
+                    TerrainType = Woods,
                     Shape = new CircularZone(52, 24, 5),
                     HeightInches = 0f,
                 },
                 // Sandbags, near team-1 line — cover.
                 new TerrainPieceEntry
                 {
+                    Name = "Sandbag line",
                     TerrainType = ETerrainType.Cover,
                     Shape = new RectangularZone(28, 36, 12, 13),
                     HeightInches = 0f,
@@ -55,6 +70,7 @@ namespace FDG.Stages
                 // Sandbags, near team-2 line — cover.
                 new TerrainPieceEntry
                 {
+                    Name = "Sandbag line",
                     TerrainType = ETerrainType.Cover,
                     Shape = new RectangularZone(36, 44, 35, 36),
                     HeightInches = 0f,
@@ -62,6 +78,7 @@ namespace FDG.Stages
                 // Mine field — dangerous.
                 new TerrainPieceEntry
                 {
+                    Name = "Mine field",
                     TerrainType = ETerrainType.Dangerous,
                     Shape = new RectangularZone(8, 14, 30, 36),
                     HeightInches = 0f,
@@ -69,6 +86,7 @@ namespace FDG.Stages
                 // Rubble — difficult.
                 new TerrainPieceEntry
                 {
+                    Name = "Rubble",
                     TerrainType = ETerrainType.Difficult,
                     Shape = new RectangularZone(58, 66, 12, 18),
                     HeightInches = 0f,
@@ -82,7 +100,8 @@ namespace FDG.Stages
                 // Rocky outcrop, top-left — L-shape.
                 new TerrainPieceEntry
                 {
-                    TerrainType = ETerrainType.Blocking | ETerrainType.Impassible,
+                    Name = "Rocky outcrop",
+                    TerrainType = Solid,
                     Shape = new CompositeZone(new List<IZone>
                     {
                         new RectangularZone(6, 13, 6, 8),    // horizontal arm
@@ -93,7 +112,8 @@ namespace FDG.Stages
                 // Wreckage, top-center — T-shape.
                 new TerrainPieceEntry
                 {
-                    TerrainType = ETerrainType.Blocking | ETerrainType.Impassible,
+                    Name = "Wreckage",
+                    TerrainType = Solid,
                     Shape = new CompositeZone(new List<IZone>
                     {
                         new RectangularZone(42, 50, 6, 8),   // cross bar
@@ -104,7 +124,8 @@ namespace FDG.Stages
                 // Crater rim, top-right — U-shape opening upward.
                 new TerrainPieceEntry
                 {
-                    TerrainType = ETerrainType.Blocking | ETerrainType.Impassible,
+                    Name = "Crater rim",
+                    TerrainType = Solid,
                     Shape = new CompositeZone(new List<IZone>
                     {
                         new RectangularZone(58, 60, 5, 11),  // left arm
@@ -116,7 +137,8 @@ namespace FDG.Stages
                 // Tank traps, bottom-left — plus/cross.
                 new TerrainPieceEntry
                 {
-                    TerrainType = ETerrainType.Blocking | ETerrainType.Impassible,
+                    Name = "Tank trap cluster",
+                    TerrainType = Solid,
                     Shape = new CompositeZone(new List<IZone>
                     {
                         new RectangularZone(8, 14, 40, 42),  // horizontal
@@ -127,7 +149,8 @@ namespace FDG.Stages
                 // Collapsed wall, bottom-right — stepped Z.
                 new TerrainPieceEntry
                 {
-                    TerrainType = ETerrainType.Blocking | ETerrainType.Impassible,
+                    Name = "Collapsed wall",
+                    TerrainType = Solid,
                     Shape = new CompositeZone(new List<IZone>
                     {
                         new RectangularZone(56, 61, 38, 40), // top step
@@ -138,5 +161,82 @@ namespace FDG.Stages
                 },
             }
         };
+
+        /// <summary>
+        /// The Alternating-mode picker's palette: the auto layout's pieces plus <see cref="ExtraTemplates"/>.
+        /// The picker scales its thumbnails to the largest piece and scrolls, so the list length is free.
+        /// </summary>
+        public static IReadOnlyList<TerrainPieceEntry> GetPalette()
+        {
+            var palette = new List<TerrainPieceEntry>(Get().Pieces);
+            palette.AddRange(ExtraTemplates());
+            return palette;
+        }
+
+        /// <summary>
+        /// #268 — palette-only templates. The bulk are SMALL impassible objects, which the built-in set was
+        /// short of: every impassible piece in the auto layout is a 6-11" compound, so there was nothing to
+        /// break up a firing lane with. Ordered small-to-large within each group.
+        ///
+        /// <para><see cref="ETerrainType.Elevated"/> is deliberately unused: the flag is declared but no
+        /// engine code reads it today, so a piece carrying it would look meaningful and do nothing.</para>
+        /// </summary>
+        private static IEnumerable<TerrainPieceEntry> ExtraTemplates()
+        {
+            // --- Small solid obstacles: block movement AND sight ---
+
+            yield return Piece("Standing stone", Solid, new CircularZone(0, 0, 0.75f), 4f);
+            yield return Piece("Boulder", Solid, new CircularZone(0, 0, 1.25f), 2.5f);
+            yield return Piece("Watchtower", Solid, new RectangularZone(0, 2, 0, 2), 7f);
+            yield return Piece("Wrecked vehicle", Solid, new RectangularZone(0, 3, 0, 1.5f), 2f);
+            yield return Piece("Shipping container", Solid, new RectangularZone(0, 4, 0, 2), 2.5f);
+            yield return Piece("Bunker", Solid, new RectangularZone(0, 3, 0, 3), 3f);
+            yield return Piece("Wall segment", Solid, new RectangularZone(0, 3, 0, 0.75f), 2.5f);
+            yield return Piece("Long wall", Solid, new RectangularZone(0, 6, 0, 0.75f), 2.5f);
+
+            // Corner wall — two thin arms, for tucking a unit behind.
+            yield return Piece("Corner wall", Solid, new CompositeZone(new List<IZone>
+            {
+                new RectangularZone(0, 4, 0, 0.75f),
+                new RectangularZone(0, 0.75f, 0, 4),
+            }), 2.5f);
+
+            // Rock cluster — three boulders, an irregular small blocker.
+            yield return Piece("Rock cluster", Solid, new CompositeZone(new List<IZone>
+            {
+                new CircularZone(1.2f, 1.2f, 1.2f),
+                new CircularZone(3.2f, 2.0f, 0.9f),
+                new CircularZone(2.0f, 3.4f, 0.8f),
+            }), 2.5f);
+
+            // --- Impassible but NOT blocking: go around it, shoot over it ---
+
+            yield return Piece("Tank traps", Blocker, new RectangularZone(0, 5, 0, 1), 0.5f);
+            yield return Piece("Water pool", Blocker, new CircularZone(0, 0, 2f), 0f);
+
+            // --- Other cover / movement terrain, for variety ---
+
+            yield return Piece("Copse", Woods, new CircularZone(0, 0, 2.5f), 0f);
+            yield return Piece("Ruined building", Woods, new RectangularZone(0, 5, 0, 4), 0f);
+            yield return Piece("Sandbag corner", ETerrainType.Cover, new CompositeZone(new List<IZone>
+            {
+                new RectangularZone(0, 5, 0, 0.75f),
+                new RectangularZone(0, 0.75f, 0, 5),
+            }), 0f);
+            yield return Piece("Crater", ETerrainType.Cover | ETerrainType.Difficult, new CircularZone(0, 0, 2f), 0f);
+            yield return Piece("Marsh", ETerrainType.Difficult, new CircularZone(0, 0, 3f), 0f);
+            yield return Piece("Stream", ETerrainType.Difficult, new RectangularZone(0, 8, 0, 1.5f), 0f);
+            yield return Piece("Barbed wire", ETerrainType.Dangerous | ETerrainType.Difficult,
+                new RectangularZone(0, 5, 0, 1), 0f);
+        }
+
+        private static TerrainPieceEntry Piece(string name, ETerrainType type, IZone shape, float heightInches) =>
+            new TerrainPieceEntry
+            {
+                Name = name,
+                TerrainType = type,
+                Shape = shape,
+                HeightInches = heightInches,
+            };
     }
 }

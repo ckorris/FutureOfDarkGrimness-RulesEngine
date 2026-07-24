@@ -34,6 +34,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(UnitHasRule), "unitHasRule")]
 [JsonDerivedType(typeof(AllModelsHaveThisRule), "allModelsHaveThisRule")]
 [JsonDerivedType(typeof(TargetHasRule), "targetHasRule")]
+[JsonDerivedType(typeof(WeaponHasRule), "weaponHasRule")]
 [JsonDerivedType(typeof(ActionTypeIs), "actionTypeIs")]
 [JsonDerivedType(typeof(UnmodifiedRollEquals), "unmodifiedRollEquals")]
 [JsonDerivedType(typeof(DistanceGreaterThan), "distanceGreaterThan")]
@@ -45,6 +46,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(Or), "or")]
 [JsonDerivedType(typeof(Not), "not")]
 [JsonDerivedType(typeof(AfterMoving), "afterMoving")]
+[JsonDerivedType(typeof(MostModelsWithinInchesOfTerrain), "mostModelsWithinInchesOfTerrain")]
 [JsonDerivedType(typeof(IsMelee), "isMelee")]
 [JsonDerivedType(typeof(IsCharging), "isCharging")]
 [JsonDerivedType(typeof(IsNotSpell), "isNotSpell")]
@@ -141,6 +143,22 @@ public abstract record Condition
     }
 
     /// <summary>
+    /// True if the FIRING weapon carries the named rule - read off <see cref="RuleInvocation.Weapon"/>, so
+    /// it is meaningful only for a weapon-scoped rule (a unit-scoped rule's invocation has no weapon, and
+    /// this returns false). Lets a weapon rule gate on a companion weapon rule: Quick Readjustment ("this
+    /// model ignores the shoot-after-move penalty when using Indirect weapons") is routed onto every weapon
+    /// and fires its +1 only on the weapon that also carries Indirect, cancelling that rule's -1.
+    /// </summary>
+    public sealed record WeaponHasRule(string RuleName) : Condition
+    {
+        // Case-insensitive, matching the resolver (see UnitHasRule).
+        public override bool Evaluate(RuleInvocation invocation) =>
+            invocation.Weapon?.RuleDefinitions.Any(
+                r => string.Equals(r.Definition.Name, RuleName, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(r.RequestedName, RuleName, StringComparison.OrdinalIgnoreCase)) ?? false;
+    }
+
+    /// <summary>
     /// True if the target (defender, charged unit, spell target, etc.) has the
     /// named rule. Used for "vs. units with rule X" effects.
     /// </summary>
@@ -203,6 +221,36 @@ public abstract record Condition
         protected override bool EvaluateCore(IHasAttackOriginDistance context)
         {
             return context.AttackOriginDistanceInches > DistanceInches;
+        }
+    }
+
+    /// <summary>
+    /// True when a strict majority of the BEARER unit's living models are within <see cref="DistanceInches"/>
+    /// of any terrain piece. The Grounded family - "if a unit where all models have this rule has most of
+    /// them within 1in of terrain, they get +1 to defense / +1 to hit / enemies get -1 to hit" - pairs this
+    /// with <see cref="AllModelsHaveThisRule"/> under an <see cref="And"/>.
+    ///
+    /// Reads <see cref="RuleInvocation.Bearer"/> directly (like <see cref="AllModelsHaveThisRule"/>) rather
+    /// than a capability context field, because the fact is about the FIRING unit and the same hook context
+    /// serves both the attacker and the defender seat. The terrain LIST comes from the context
+    /// (<see cref="IHasTerrain"/>, table-level and seat-independent); a context that cannot supply it carries
+    /// an empty list, so the rule conservatively does not fire there.
+    /// </summary>
+    public sealed record MostModelsWithinInchesOfTerrain(float DistanceInches) : Condition
+    {
+        public override IReadOnlyCollection<Type> RequiredCapabilities => [typeof(IHasTerrain)];
+
+        public override bool Evaluate(RuleInvocation invocation)
+        {
+            if (invocation.Hook is not IHasTerrain terrainContext)
+            {
+                throw new InvalidOperationException(
+                    $"{nameof(MostModelsWithinInchesOfTerrain)} requires {nameof(IHasTerrain)}, but the " +
+                    $"firing context ({invocation.Hook?.GetType().Name ?? "null"}) does not provide it.");
+            }
+
+            return TerrainProximityQueries.MostModelsWithinInches(
+                invocation.Bearer, terrainContext.Terrain, DistanceInches);
         }
     }
 

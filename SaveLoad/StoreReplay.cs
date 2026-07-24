@@ -47,7 +47,10 @@ namespace FDG.SaveLoad
                 {
                     try
                     {
-                        store.CreateFromReferenceAndJson(pair.DataReference, pair.JsonValue);
+                        // #270: the snapshot path, which adopts each entry's generation - a slot recycled
+                        // during the session (destroyed, then refilled) is past generation 1, and this
+                        // store starts every slot at 0.
+                        store.CreateFromReplayJson(pair.DataReference, pair.JsonValue);
                     }
                     catch (Exception ex)
                     {

@@ -296,7 +296,11 @@ namespace FDG.ArmyBuilding
                     continue;
                 }
 
-                foreach (RuleViolation violation in validator.Validate(definition))
+                // #265: the AUTHORING validator - Validate()'s load-gate checks plus the whole-unit-ability
+                // all-models gate. Supplement definitions are hand-written here, so an ungated Teleport /
+                // reposition must be caught at the source rather than at load, where old saved armies that
+                // embed a pre-gate copy still have to open.
+                foreach (RuleViolation violation in validator.ValidateAuthoring(definition))
                 {
                     problems.Add($"'{definition.Name}' at {violation.Hook}: {violation.Describe()}.");
                 }

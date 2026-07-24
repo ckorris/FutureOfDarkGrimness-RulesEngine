@@ -116,6 +116,47 @@ namespace FDG.Tests
             Assert.That(result.Outcome, Is.Not.EqualTo(EGameOutcome.Fault), result.Message);
         }
 
+        // #270 — the reported shape: resume a save, save again, and reopen it. Every resume path re-crews
+        // the slots (destroy + recreate PlayerSlotInfo, which advances that slot's generation), so before
+        // #270 the second file could not be opened at all: "Store replay stalled ... FutureGeneration".
+        [Test]
+        public void SaveTakenFromAResumedGame_LoadsAgain()
+        {
+            GameDataStore store = ScenarioCompiler.Compile(MakeScenario(),
+                new[] { MakeArmy("Reds"), MakeArmy("Blues") });
+            store = GameSaveSerializer.Load(GameSaveSerializer.Save(store));
+
+            // Exactly what LobbyViewModel_Host.LaunchResume and ScenarioLauncher do before resuming.
+            List<PlayerSlotInfo> savedInfos = store.GetAllValues<PlayerSlotInfo>()
+                .OrderBy(info => info.SlotID).ToList();
+            foreach (DataReference oldInfo in store.GetAllDataReferences<PlayerSlotInfo>().ToList())
+                store.Destroy(oldInfo);
+
+            var bus = new InProcessBus();
+            var slots = new PlayerSlot[savedInfos.Count];
+            for (int i = 0; i < savedInfos.Count; i++)
+            {
+                slots[i] = new PlayerSlot(i, savedInfos[i].TeamNumber, savedInfos[i].PlayerID, new ArmyListFile(), store);
+                var aiGame = new FDGGame_AsLocal(store, bus);
+                slots[i].AssignPlayerController(AiResolverRegistryFactory.CreateSoloRulesController(
+                    $"AI {i}", savedInfos[i].PlayerID, aiGame, seed: 5150, slotID: slots[i].SlotID));
+            }
+
+            GameSettings lobby = GameSettings.GetDefault();
+            lobby.TableBackground = ETableBackground.Barren;
+            _ = new FDGServer(store, bus, slots, presentationClock: null, lobbySettings: lobby);
+
+            GameDataStore reopened = null!;
+            Assert.DoesNotThrow(() => reopened = GameSaveSerializer.Load(GameSaveSerializer.Save(store)),
+                "a save taken from a resumed game must reopen");
+
+            // And it is the resumed game, not a wreck: the slots and the re-picked background survive.
+            Assert.That(reopened.GetAllValues<PlayerSlotInfo>().Count(), Is.EqualTo(savedInfos.Count),
+                "one slot per player, no duplicates from the re-crew");
+            Assert.That(GameProgressUtilities.TryGetProgress(reopened)!.Settings.TableBackground,
+                Is.EqualTo(ETableBackground.Barren));
+        }
+
         // Compiles a round-1 save (background Ice, Realistic dice seeded 5150), resumes it with the given
         // lobby settings, and reports the progress record's settings both immediately after the resume
         // constructor returns and once the game has played out. Mirrors ResumeRoundCountTests.ResumeAndPlay.

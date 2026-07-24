@@ -102,5 +102,76 @@ namespace FDG.Tests
 
             Assert.Catch<System.Exception>(() => store.CreateFromReference(bad, 1));
         }
+
+        // ──────────────────────────────────────────────────────────────────────
+        // #270 — the two foreign-create paths, and how they differ
+        // ──────────────────────────────────────────────────────────────────────
+
+        // The LIVE stream is sequential, so a generation further ahead than the next one means a create
+        // was missed. That guard is the reason the live path exists separately; it must stay.
+        [Test]
+        public void CreateFromReference_GenerationTooFarAhead_StillRejected()
+        {
+            ComponentStore<int> store = new ComponentStore<int>(4, Type);
+
+            DataReference skipped = new DataReference { TypeID = Type, Index = 0, Generation = 3 };
+
+            // The assignment exception is private to ComponentStore, so assert on the reason it reports.
+            var ex = Assert.Catch<System.Exception>(() => store.CreateFromReference(skipped, 1));
+            Assert.That(ex!.Message, Does.Contain(EInvalidReason.FutureGeneration.ToString()));
+        }
+
+        // A SNAPSHOT carries whatever generation each slot had reached, and this store starts at 0.
+        // Rejecting that made every save of a resumed game unloadable.
+        [Test]
+        public void CreateFromReplay_AdoptsAGenerationFromARecycledSlot()
+        {
+            ComponentStore<int> store = new ComponentStore<int>(4, Type);
+
+            DataReference recycled = new DataReference { TypeID = Type, Index = 0, Generation = 3 };
+
+            Assert.DoesNotThrow(() => store.CreateFromReplay(recycled, 42));
+            Assert.That(store.IsValid(recycled, out _), Is.True, "the entry's own generation is adopted");
+            Assert.That(store.GetValue(recycled), Is.EqualTo(42));
+
+            // Adopted, not flattened: a stale reference to the same slot is still stale afterwards.
+            DataReference stale = new DataReference { TypeID = Type, Index = 0, Generation = 1 };
+            Assert.That(store.IsValid(stale, out EInvalidReason reason), Is.False);
+            Assert.That(reason, Is.EqualTo(EInvalidReason.OutdatedGeneration));
+        }
+
+        // Everything that still means something on the replay path.
+        [Test]
+        public void CreateFromReplay_KeepsTheInvariantsThatMatter()
+        {
+            ComponentStore<int> store = new ComponentStore<int>(4, Type);
+
+            DataReference negative = new DataReference { TypeID = Type, Index = -1, Generation = 1 };
+            Assert.Catch<System.Exception>(() => store.CreateFromReplay(negative, 1), "negative index");
+
+            DataReference wrongType = new DataReference { TypeID = new TypeID(2), Index = 0, Generation = 1 };
+            Assert.Catch<System.Exception>(() => store.CreateFromReplay(wrongType, 1), "another type's reference");
+
+            // Generation 0 is an unset/null reference - Create pre-increments, so live entries start at 1.
+            DataReference unset = new DataReference { TypeID = Type, Index = 1, Generation = 0 };
+            Assert.Catch<System.Exception>(() => store.CreateFromReplay(unset, 1), "generation 0");
+
+            DataReference good = new DataReference { TypeID = Type, Index = 2, Generation = 5 };
+            store.CreateFromReplay(good, 1);
+            Assert.Catch<System.Exception>(() => store.CreateFromReplay(good, 2),
+                "the same slot twice in one replay");
+        }
+
+        [Test]
+        public void CreateFromReplay_IndexBeyondCapacity_GrowsToFit()
+        {
+            ComponentStore<int> store = new ComponentStore<int>(4, Type);
+
+            DataReference foreign = new DataReference { TypeID = Type, Index = 500, Generation = 4 };
+
+            Assert.DoesNotThrow(() => store.CreateFromReplay(foreign, 42));
+            Assert.That(store.Capacity, Is.GreaterThan(500));
+            Assert.That(store.GetValue(foreign), Is.EqualTo(42));
+        }
     }
 }

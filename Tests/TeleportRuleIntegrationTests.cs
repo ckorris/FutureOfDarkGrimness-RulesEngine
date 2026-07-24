@@ -72,7 +72,7 @@ namespace FDG.Tests
             Assert.That(offers.Any(o => o.RuleName == CoreRuleCatalog.TeleportRuleName), Is.False);
         }
 
-        // --- #265 all-models gate ---
+        // --- #267 all-models gate ---
 
         [Test]
         public void GatherOffers_HeroWithTeleportJoinsASquadWithout_TeleportNotOffered()
@@ -270,7 +270,7 @@ namespace FDG.Tests
             return binding;
         }
 
-        // #265 — a 3-model host with a Hero merged into it, each side optionally carrying Teleport (or the
+        // #267 — a 3-model host with a Hero merged into it, each side optionally carrying Teleport (or the
         // hero carrying Teleport Aura, which grants it to the whole unit). Mirrors
         // AllModelsRuleGateIntegrationTests' merge harness.
         private DataBinding<UnitData> MakeUnitWithJoinedHero(bool heroHasTeleport, bool hostHasTeleport,

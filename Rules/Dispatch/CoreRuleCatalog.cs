@@ -1357,7 +1357,7 @@ public static class CoreRuleCatalog
             new ActivatedAbility(EHookID.Activation_OnActionChoice, new Cost.OncePerActivation(),
                 new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
                 new Effect.Teleport(),
-                // #265: the whole unit teleports, so the whole unit must have the rule. Without this a hero
+                // #267: the whole unit teleports, so the whole unit must have the rule. Without this a hero
                 // carrying Teleport who joins a squad that lacks it teleports the entire squad.
                 new Condition.AllModelsHaveThisRule()),
         },
@@ -1379,7 +1379,7 @@ public static class CoreRuleCatalog
             new ActivatedAbility(EHookID.Deployment_OnUnitDeployed, new Cost.OncePerGame(),
                 new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
                 new Effect.TriggeredMove(MaxInches: 9f, IsOptional: true),
-                // #265: the post-deploy move carries every model, so every model must have Vanguard.
+                // #267: the post-deploy move carries every model, so every model must have Vanguard.
                 new Condition.AllModelsHaveThisRule()),
         },
         Valence: EValence.Positive,
@@ -1401,7 +1401,7 @@ public static class CoreRuleCatalog
             new ActivatedAbility(EHookID.Deployment_OnUnitDeployed, new Cost.OncePerGame(),
                 new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
                 new Effect.RepositionOnDeploy(MaxInches: 9f),
-                // #265: the whole unit is re-placed, so the whole unit must have Fanatic.
+                // #267: the whole unit is re-placed, so the whole unit must have Fanatic.
                 new Condition.AllModelsHaveThisRule()),
         },
         Valence: EValence.Positive,
@@ -1702,7 +1702,7 @@ public static class CoreRuleCatalog
             new ActivatedAbility(EHookID.Activation_OnNextActivatorRequested, new Cost.OncePerGame(),
                 new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
                 new Effect.Reactivate(),
-                // #265: the extra activation belongs to the whole unit, so every model must have the rule.
+                // #267: the extra activation belongs to the whole unit, so every model must have the rule.
                 new Condition.AllModelsHaveThisRule()),
         },
         Valence: EValence.Positive,

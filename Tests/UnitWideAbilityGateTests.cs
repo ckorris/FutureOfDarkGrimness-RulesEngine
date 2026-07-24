@@ -7,7 +7,7 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #265 — a rule that repositions or re-activates the WHOLE bearer unit must gate on
+    // #267 — a rule that repositions or re-activates the WHOLE bearer unit must gate on
     // AllModelsHaveThisRule, or a single joined hero carrying it hands the ability to a unit that doesn't
     // have it. Teleport shipped ungated (a hero with Teleport joined to a squad without it teleported the
     // whole squad); Vanguard, Fanatic and Martial Prowess had the same shape, and RuleValidator's #183 gate

@@ -75,7 +75,7 @@ public sealed class RuleValidator
     }
 
     /// <summary>
-    /// #265 — the AUTHORING check: everything <see cref="Validate"/> covers, plus the whole-unit-ability
+    /// #267 — the AUTHORING check: everything <see cref="Validate"/> covers, plus the whole-unit-ability
     /// all-models gate (<see cref="CheckUnitWideSelfEffectGate"/>).
     ///
     /// <para>Deliberately separate from <see cref="Validate"/>, which is the army-LOAD gate and hard-fails
@@ -138,7 +138,7 @@ public sealed class RuleValidator
             "dispatch would otherwise let a lone joined hero's copy fire for the whole unit"));
     }
 
-    // #265 — a Unit-scoped rule that repositions or re-activates the WHOLE bearer unit must gate on
+    // #267 — a Unit-scoped rule that repositions or re-activates the WHOLE bearer unit must gate on
     // AllModelsHaveThisRule. The rulebook convention is that a unit-wide ability works only if every model
     // has it, and per-model dispatch means a single joined hero carrying Teleport would otherwise let the
     // entire unit teleport. This is the activated-ability sibling of the #183 defensive-rule gate above,

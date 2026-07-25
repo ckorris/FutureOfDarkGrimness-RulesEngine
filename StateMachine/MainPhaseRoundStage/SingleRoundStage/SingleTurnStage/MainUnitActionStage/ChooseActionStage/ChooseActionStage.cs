@@ -1,3 +1,4 @@
+using FDG.Presentation.Beats;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
@@ -14,6 +15,9 @@ namespace FDG.Stages
 
     public class ChooseActionStage : StageBase<IUnitActionContext>
     {
+        // The amber the Shaken banners use (MoraleUtilities' / SpilloutExecutor's copies are private).
+        private static readonly TextColor ShakenRecoveryBannerColor = new TextColor(255, 170, 60, 255);
+
         public StageBinding ToMovement;
         public StageBinding ToCharge;
         public StageBinding ToShoot;
@@ -72,7 +76,11 @@ namespace FDG.Stages
             {
                 IUnit activatingUnit = context.ActivatingUnit.GetValue();
                 activatingUnit.Tokens.RemoveTokens(TokenType.Shaken);
-                GameContext.Log($"{activatingUnit.Name} is Shaken - staying idle this activation and recovering.");
+                // #278: recovery gets a Toast (tier-2) banner, not just a log line — amber, matching the
+                // Shaken banners it bookends. Announce logs the same text, so the log record is kept.
+                await GameContext.Announce(
+                    $"{activatingUnit.Name} is Shaken - stays idle this activation and recovers.",
+                    ShakenRecoveryBannerColor, EBannerTier.Toast);
                 await ToReconcileEndOfActivation.Activate(context);
                 return;
             }

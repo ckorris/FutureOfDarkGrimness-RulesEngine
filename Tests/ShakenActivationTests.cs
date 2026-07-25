@@ -1,4 +1,6 @@
 using FDG.Data;
+using FDG.Presentation;
+using FDG.Presentation.Beats;
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
 using FDG.Stages;
@@ -36,6 +38,25 @@ namespace FDG.Tests
             Assert.That(reconciled, Is.True, "a Shaken unit should skip straight to end-of-activation.");
             Assert.That(unit.GetValue().Tokens.HasToken(TokenType.Shaken), Is.False,
                 "it recovers — the Shaken token clears at the end of its idle activation.");
+        }
+
+        // #278: the idle-and-recover activation announces itself with a Toast (tier-2) banner, not just
+        // a log line — recoveries were invisible on the banner layer.
+        [Test]
+        public async Task ShakenRecovery_PresentsToastBanner()
+        {
+            var sink = new RecordingPresentationSink();
+            _ctx = new TestGameContext(_store, new FixedDiceRoller(4),
+                presenter: new LocalPresenter(sink, new InstantPresentationClock()));
+            var unit = MakeUnit(new Position(0, 0));
+            MakeShaken(unit);
+
+            await RunChooseAction(NewActivation(unit));
+
+            BannerBeat? banner = sink.Beats.OfType<BannerBeat>().SingleOrDefault();
+            Assert.That(banner, Is.Not.Null, "recovering from Shaken presents a banner beat.");
+            Assert.That(banner!.Tier, Is.EqualTo(EBannerTier.Toast), "the recovery banner is a Toast (tier 2).");
+            Assert.That(banner.BannerText, Does.Contain("recovers"));
         }
 
         // The recover-or-keep decision reads the activation-start snapshot, NOT the action flags. This

@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using FDG.Data;
+using FDG.Presentation;
+using FDG.Presentation.Beats;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
@@ -104,14 +106,45 @@ namespace FDG.Tests
                 "Across 40 seeds a 4+ recovery must sometimes pass and sometimes fail.");
         }
 
+        // #278: a successful recovery announces itself with a Toast (tier-2) banner after the die beat.
+        [Test]
+        public async Task ASuccessfulClear_PresentsAToastBanner()
+        {
+            var sink = new RecordingPresentationSink();
+            (World world, IUnit unit) = ShakenUnit(new FixedDiceRoller(4), sink);
+
+            await OperationExecutor.Execute(
+                new[] { new RuleOperation.InvokeClearTokenOnRoll(unit, TokenType.Shaken, 4) },
+                new GameOperationServices(world.Context));
+
+            BannerBeat? banner = sink.Beats.OfType<BannerBeat>().SingleOrDefault();
+            Assert.That(banner, Is.Not.Null, "shedding Shaken presents a banner beat.");
+            Assert.That(banner!.Tier, Is.EqualTo(EBannerTier.Toast), "the recovery banner is a Toast (tier 2).");
+            Assert.That(banner.BannerText, Does.Contain("no longer Shaken"));
+        }
+
+        [Test]
+        public async Task AFailedClear_PresentsNoBanner()
+        {
+            var sink = new RecordingPresentationSink();
+            (World world, IUnit unit) = ShakenUnit(new FixedDiceRoller(3), sink);
+
+            await OperationExecutor.Execute(
+                new[] { new RuleOperation.InvokeClearTokenOnRoll(unit, TokenType.Shaken, 4) },
+                new GameOperationServices(world.Context));
+
+            Assert.That(sink.Beats.OfType<BannerBeat>().Any(), Is.False,
+                "a failed recovery keeps its die beat but earns no banner.");
+        }
+
         private static IReadOnlyList<RuleOperation> Ops(TestRuleHarness harness, IUnit unit) =>
             harness.Evaluate(unit, ERuleSeat.Actor, new RoundStartContext(unit));
 
         private static (World, IUnit) ShakenUnit(int dieFace) => ShakenUnit(new FixedDiceRoller(dieFace));
 
-        private static (World, IUnit) ShakenUnit(IDiceRoller roller)
+        private static (World, IUnit) ShakenUnit(IDiceRoller roller, IPresentationSink? sink = null)
         {
-            var world = World.Build(roller);
+            var world = World.Build(roller, sink);
             IUnit unit = world.Unit.GetValue();
             unit.Tokens.AddToken(new Token(TokenType.Shaken, 1, new TokenClearTrigger.ManualOnly()));
             return (world, unit);
@@ -123,10 +156,11 @@ namespace FDG.Tests
             public TestGameContext Context = null!;
             public DataBinding<UnitData> Unit = null!;
 
-            public static World Build(IDiceRoller roller)
+            public static World Build(IDiceRoller roller, IPresentationSink? sink = null)
             {
                 var store = GameDataStore.GameDataStoreBuilder.GetDefault();
-                var context = new TestGameContext(store, roller);
+                var context = new TestGameContext(store, roller, presenter: sink == null
+                    ? null : new LocalPresenter(sink, new InstantPresentationClock()));
                 var player = new PlayerID(Guid.NewGuid());
 
                 var model = new ModelData(baseRadiusInches: 0.5f, weapons: new List<Weapon>(),

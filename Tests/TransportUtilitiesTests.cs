@@ -584,7 +584,7 @@ namespace FDG.Tests
             UnitData squad = MakeUnit(player, modelCount: 3, tough: 2);
             TransportUtilities.Embark(squad, transport);
 
-            TransportUtilities.ApplySpilloutEffects(squad, new FixedDiceRoller(4)); // safe roll
+            TransportUtilities.ApplySpilloutEffects(squad, new FixedFaceDiceRoller(4)); // safe roll
 
             Assert.That(TransportUtilities.IsEmbarked(squad), Is.False,
                 "a spilled-out unit is no longer aboard the destroyed transport.");
@@ -598,7 +598,7 @@ namespace FDG.Tests
             UnitData squad = MakeUnit(player, modelCount: 3, tough: 2);
             TransportUtilities.Embark(squad, transport);
 
-            TransportUtilities.ApplySpilloutEffects(squad, new FixedDiceRoller(4));
+            TransportUtilities.ApplySpilloutEffects(squad, new FixedFaceDiceRoller(4));
 
             Assert.That(squad.Tokens.HasToken(TokenType.Shaken), Is.True);
         }
@@ -611,7 +611,7 @@ namespace FDG.Tests
             UnitData squad = MakeUnit(player, modelCount: 3, tough: 2); // 6 wounds total
             TransportUtilities.Embark(squad, transport);
 
-            TransportUtilities.ApplySpilloutEffects(squad, new FixedDiceRoller(1)); // every model rolls a 1
+            TransportUtilities.ApplySpilloutEffects(squad, new FixedFaceDiceRoller(1)); // every model rolls a 1
 
             Assert.That(squad.RemainingWounds, Is.EqualTo(3f),
                 "each of the three models takes one dangerous-terrain wound.");
@@ -625,7 +625,7 @@ namespace FDG.Tests
             UnitData squad = MakeUnit(player, modelCount: 3, tough: 2); // 6 wounds total
             TransportUtilities.Embark(squad, transport);
 
-            TransportUtilities.ApplySpilloutEffects(squad, new FixedDiceRoller(4)); // no 1s
+            TransportUtilities.ApplySpilloutEffects(squad, new FixedFaceDiceRoller(4)); // no 1s
 
             Assert.That(squad.RemainingWounds, Is.EqualTo(6f), "a safe dangerous-terrain roll deals no wounds.");
         }

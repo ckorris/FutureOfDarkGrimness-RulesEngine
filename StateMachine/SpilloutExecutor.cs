@@ -18,8 +18,9 @@ namespace FDG.Stages
     /// The flow itself is unchanged from slice E: each occupant is placed within 6" of the wreck
     /// (an interactive <see cref="PlaceObjectsRequest{T}"/> over a <see cref="CircularZone"/> —
     /// the wreck's models are dead but retain their last positions, so the zone is valid), then
-    /// takes the destruction consequences — un-embark, Shaken, and a per-model dangerous-terrain
-    /// test — via <see cref="TransportUtilities.ApplySpilloutEffects"/>. "Immediate, mid-resolution"
+    /// takes the destruction consequences — un-embark, Shaken, and a batched dangerous-terrain
+    /// test (one die per living model, rolled as a single row) — via
+    /// <see cref="TransportUtilities.ApplySpilloutEffects"/>. "Immediate, mid-resolution"
     /// (decided with the user): the spillout resolves as part of whatever killed the transport,
     /// before play continues. The common case (not a transport, or nobody aboard) is a cheap no-op.
     /// </summary>
@@ -77,11 +78,11 @@ namespace FDG.Stages
                     if (placement.Facing.HasValue) placement.Binding.GetValue().SetFacing(placement.Facing.Value);
                 }
 
-                // Un-embark + Shaken + a per-model dangerous-terrain test (the deterministic core, unit-tested
+                // Un-embark + Shaken + the batched dangerous-terrain test (the deterministic core, unit-tested
                 // in slice A). Run after placement so the dangerous test rolls for the now-on-table models; the
-                // returned rolls drive the presentation below.
-                IReadOnlyList<TransportUtilities.SpilloutModelRoll> rolls =
-                    TransportUtilities.ApplySpilloutEffects(occupantUnit, gameContext.DiceRoller);
+                // returned batch drives the presentation below.
+                TransportUtilities.SpilloutRollResult rolls = TransportUtilities.ApplySpilloutEffects(
+                    occupantUnit, gameContext.DiceRoller, gameContext.Settings.RandomnessType);
 
                 // Per-occupant detail under the wreck Notice above: one per unit that was aboard, so it
                 // rides along with the spillout placement rather than pausing once per occupant.
@@ -93,23 +94,26 @@ namespace FDG.Stages
             return occupants.Count;
         }
 
-        // Present each occupant model's dangerous-terrain test in lockstep with the visuals: the d6 (2+ safe,
-        // a 1 wounds — the same beat MovementExecutor uses for dangerous terrain), then a hurt flinch or a
-        // death animation for a model the test wounded. Sound falls out via PresentationSoundCues.CueFor.
+        // Present the occupant's dangerous-terrain test as ONE row of dice (2+ safe, a 1 wounds — the same
+        // batched beat MovementExecutor uses for dangerous terrain), then a hurt flinch or a death animation
+        // per model the test wounded. Sound falls out via PresentationSoundCues.CueFor.
         private static async Task PresentSpilloutRolls(IGameContext gameContext, UnitData occupant,
-            IReadOnlyList<TransportUtilities.SpilloutModelRoll> rolls)
+            TransportUtilities.SpilloutRollResult result)
         {
-            foreach (TransportUtilities.SpilloutModelRoll r in rolls)
-            {
-                float[] faces = new float[6];
-                faces[r.Roll - 1] = 1f;
-                await gameContext.Presenter.Present(new DiceRolledBeat(faces, sideMin: 1, successThreshold: 2,
-                    gameContext.Settings.RandomnessType, "Dangerous Terrain", r.Wounded ? "1 wound!" : "Safe"));
+            if (!result.AnyTested) return;
 
-                if (r.Died)
-                    await gameContext.Presenter.Present(new ModelDiedBeat(r.Model, occupant.ID, occupant.Name, r.Position));
-                else if (r.Wounded)
-                    await gameContext.Presenter.Present(new ModelWoundedBeat(r.Model, r.Position));
+            string summary = result.Wounds <= 0f
+                ? "All safe"
+                : $"{result.Wounds:0.##} wound{(result.Wounds == 1f ? "" : "s")}!";
+            await gameContext.Presenter.Present(DiceRolledBeat.From(result.Roll!, successThreshold: 2,
+                gameContext.Settings.RandomnessType, "Dangerous Terrain", summary));
+
+            foreach (TransportUtilities.SpilloutCasualty c in result.Casualties)
+            {
+                if (c.Died)
+                    await gameContext.Presenter.Present(new ModelDiedBeat(c.Model, occupant.ID, occupant.Name, c.Position));
+                else
+                    await gameContext.Presenter.Present(new ModelWoundedBeat(c.Model, c.Position));
             }
         }
 

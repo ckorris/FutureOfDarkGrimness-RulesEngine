@@ -190,25 +190,52 @@ public static class TransportUtilities
         Position.GetDistance2D(modelPosition, transportPosition) <= MaxTransportRangeInches;
 
     /// <summary>
-    /// One occupant model's dangerous-terrain test during spillout, returned by
-    /// <see cref="ApplySpilloutEffects"/> so the stage can present it (a d6 beat, then a hurt/death beat).
-    /// This is Rules-layer data only — the beats themselves are emitted stage-side, since the Rules layer
-    /// holds no presenter (the same return-then-present split as <c>MovementExecutor.DangerousTerrainResult</c>).
-    /// <paramref name="Died"/> is the model's state after the test (a 1 that took its last wound).
+    /// One occupant model the spillout dangerous-terrain test wounded, returned inside
+    /// <see cref="SpilloutRollResult"/> so the stage can present it (a hurt flinch or a death animation
+    /// after the batched d6 beat). This is Rules-layer data only — the beats themselves are emitted
+    /// stage-side, since the Rules layer holds no presenter.
+    /// <paramref name="Died"/> is the model's state after the wound (a 1 that took its last wound).
     /// </summary>
-    public readonly record struct SpilloutModelRoll(ModelID Model, Position Position, int Roll, bool Wounded, bool Died);
+    public readonly record struct SpilloutCasualty(ModelID Model, Position Position, bool Died);
+
+    /// <summary>
+    /// The batched spillout dangerous-terrain test: the single roll (one d6 per living occupant model),
+    /// how many models tested, total wounds dealt (fractional under the probabilistic roller), and the
+    /// wounded models (empty in probabilistic mode, where wounds spread as an expectation). The same
+    /// shape as <c>MovementExecutor.DangerousTerrainResult</c>, plus the per-model casualties the
+    /// spillout presentation animates.
+    /// </summary>
+    public readonly struct SpilloutRollResult
+    {
+        public readonly IDiceResults? Roll;
+        public readonly int ModelCount;
+        public readonly float Wounds;
+        public readonly IReadOnlyList<SpilloutCasualty> Casualties;
+        public SpilloutRollResult(IDiceResults? roll, int modelCount, float wounds,
+            IReadOnlyList<SpilloutCasualty> casualties)
+        {
+            Roll = roll; ModelCount = modelCount; Wounds = wounds; Casualties = casualties;
+        }
+        public bool AnyTested => ModelCount > 0 && Roll != null;
+        public static SpilloutRollResult None =>
+            new SpilloutRollResult(null, 0, 0f, Array.Empty<SpilloutCasualty>());
+    }
 
     /// <summary>
     /// The deterministic consequences a transport's destruction inflicts on one occupant once it has been
     /// placed: it is no longer embarked (the <see cref="TokenType.EmbarkedIn"/> link is cut), it becomes
-    /// Shaken, and every living model takes a dangerous-terrain test (a decisive d6 via
-    /// <paramref name="diceRoller"/>; a roll of 1 deals one wound). The placement itself — the owner
-    /// choosing where, within 6" of the wreck — is the stage's interactive part and is NOT done here; this
-    /// is the slice of spillout that is deterministic given the dice, so it can be unit-tested ahead of the
-    /// mid-combat orchestration. Returns each model's roll so the stage can present it (dice + hurt/death
-    /// beats); the return is otherwise inert (callers that only want the state change can ignore it).
+    /// Shaken, and every living model takes a dangerous-terrain test (a roll of 1 deals one wound). The
+    /// tests all roll together in ONE batch via <paramref name="diceRoller"/> — a single row of dice
+    /// instead of a die per model — mirroring <c>MovementExecutor.ApplyDangerousTerrainEffects</c>;
+    /// batching is also what lets the probabilistic roller yield the expected number of 1s, which N
+    /// separate decisive rolls could not. The placement itself — the owner choosing where, within 6" of
+    /// the wreck — is the stage's interactive part and is NOT done here; this is the slice of spillout
+    /// that is deterministic given the dice, so it can be unit-tested ahead of the mid-combat
+    /// orchestration. Returns the batch so the stage can present it (one dice beat + hurt/death beats);
+    /// the return is otherwise inert (callers that only want the state change can ignore it).
     /// </summary>
-    public static IReadOnlyList<SpilloutModelRoll> ApplySpilloutEffects(IUnit occupant, IDiceRoller diceRoller)
+    public static SpilloutRollResult ApplySpilloutEffects(IUnit occupant, IDiceRoller diceRoller,
+        ERandomnessType randomness = ERandomnessType.Realistic)
     {
         Disembark(occupant);
 
@@ -220,28 +247,38 @@ public static class TransportUtilities
         shakenClear.AddRange(occupant.Models.Select(model => model.Tokens));
         new TokenClearService().ClearForHook(EHookID.Morale_OnShakenApplied, shakenClear);
 
-        List<SpilloutModelRoll> rolls = new List<SpilloutModelRoll>();
-        foreach (IModel model in occupant.Models)
+        List<IModel> testers = occupant.Models.Where(model => model.GetIsAlive()).ToList();
+        if (testers.Count == 0) return SpilloutRollResult.None;
+
+        // One batched roll: N d6 at once. Realistic -> N concrete dice; probabilistic -> the N-die
+        // distribution (expected 1s).
+        IDiceResults roll = diceRoller.Roll(6, testers.Count);
+        float ones = roll.At(1); // 1s are wounds (fractional under the probabilistic roller)
+
+        List<SpilloutCasualty> casualties = new List<SpilloutCasualty>();
+        float woundsDealt;
+        if (randomness == ERandomnessType.Probabilistic)
         {
-            if (!model.GetIsAlive()) continue;
-
-            // Decisive per-model die — one concrete face even under the probabilistic roller (cf. #090).
-            IDiceResults roll = diceRoller.RollDecisive(6);
-
-            // Faces start at SideMin (1), not 0 — find the one that came up (for the presented d6 beat).
-            int rollValue = roll.SideMin;
-            for (int v = roll.SideMin; v <= roll.SideMax; v++)
-                if (roll.At(v) > 0f) { rollValue = v; break; }
-
-            bool wounded = roll.At(1) > 0f;
-            if (wounded)
-            {
-                model.DealWounds(1f);
-            }
-
-            rolls.Add(new SpilloutModelRoll(model.ID, model.Position, rollValue, wounded, model.GetIsDead()));
+            // Spread the expected wounds evenly — each model carried its own 1/6 chance of a 1.
+            float perModel = ones / testers.Count;
+            foreach (IModel model in testers)
+                model.DealWounds(perModel);
+            woundsDealt = ones;
         }
-        return rolls;
+        else
+        {
+            // Realistic: a whole number of 1s came up; deal one wound apiece to that many models.
+            int wounds = (int)MathF.Round(ones);
+            for (int i = 0; i < wounds && i < testers.Count; i++)
+            {
+                IModel model = testers[i];
+                model.DealWounds(1f);
+                casualties.Add(new SpilloutCasualty(model.ID, model.Position, model.GetIsDead()));
+            }
+            woundsDealt = wounds;
+        }
+
+        return new SpilloutRollResult(roll, testers.Count, woundsDealt, casualties);
     }
 
     // --- Effective position (opt-in seam) --------------------------------------------------------

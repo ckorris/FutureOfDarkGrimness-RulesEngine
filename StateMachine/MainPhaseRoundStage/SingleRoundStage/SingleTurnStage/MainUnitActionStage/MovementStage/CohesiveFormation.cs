@@ -40,51 +40,23 @@ namespace FDG.Stages
 
             // Assign each model to a row-major cell (nearest coarse-grid slot), keeping the packing close to
             // the models' current relative layout so per-model moves stay small. The coarse grid only fixes
-            // the arrangement; actual positions are recomputed with per-model spacing below.
+            // the arrangement; actual positions are recomputed with per-model spacing in LayoutOffsets (#277).
             DataBinding<ModelData>[] cellModels = AssignModelsToCells(models, cols, rows, centerX, centerZ);
 
-            // Per-row height (tallest model's Z extent) and width (edge-to-edge sum of X extents), then stack
-            // the rows and centre the whole block on (centerX, centerZ).
-            const float gap = 0.1f;
-            var rowHalfHeight = new float[rows];
-            var rowWidth = new float[rows];
-            for (int row = 0; row < rows; row++)
-            {
-                float maxHalfZ = 0f, width = 0f;
-                int countInRow = 0;
-                for (int col = 0; col < cols; col++)
-                {
-                    int k = row * cols + col;
-                    if (k >= n) break;
-                    var (hx, hz) = BaseShapeGeometry.FootprintHalfExtents(cellModels[k].GetValue().BaseShape, cellModels[k].GetValue().Facing);
-                    if (hz > maxHalfZ) maxHalfZ = hz;
-                    width += 2f * hx;
-                    countInRow++;
-                }
-                rowHalfHeight[row] = maxHalfZ;
-                rowWidth[row] = width + (countInRow - 1) * gap;
-            }
+            var rowCounts = new int[rows];
+            for (int row = 0; row < rows; row++) rowCounts[row] = Math.Min(cols, n - row * cols);
 
-            float totalHeight = (rows - 1) * gap;
-            for (int row = 0; row < rows; row++) totalHeight += 2f * rowHalfHeight[row];
+            var halfXs = new float[n];
+            var halfZs = new float[n];
+            for (int k = 0; k < n; k++)
+                (halfXs[k], halfZs[k]) = BaseShapeGeometry.FootprintHalfExtents(
+                    cellModels[k].GetValue().BaseShape, cellModels[k].GetValue().Facing);
 
+            var offsets = FormationLibrary.LayoutOffsets(halfXs, halfZs, rowCounts, gap: 0.1f);
             var entries = new List<ModelMoveEntry>(n);
-            float zCursor = centerZ + totalHeight / 2f; // top edge; rows laid downward
-            for (int row = 0; row < rows; row++)
-            {
-                float rowCenterZ = zCursor - rowHalfHeight[row];
-                float xCursor = centerX - rowWidth[row] / 2f; // left edge
-                for (int col = 0; col < cols; col++)
-                {
-                    int k = row * cols + col;
-                    if (k >= n) break;
-                    var (hx, _) = BaseShapeGeometry.FootprintHalfExtents(cellModels[k].GetValue().BaseShape, cellModels[k].GetValue().Facing);
-                    entries.Add(new ModelMoveEntry(cellModels[k],
-                        new List<Position> { new Position(xCursor + hx, rowCenterZ) }));
-                    xCursor += 2f * hx + gap;
-                }
-                zCursor -= 2f * rowHalfHeight[row] + gap;
-            }
+            for (int k = 0; k < n; k++)
+                entries.Add(new ModelMoveEntry(cellModels[k],
+                    new List<Position> { new Position(centerX + offsets[k].dx, centerZ + offsets[k].dz) }));
             return entries;
         }
 

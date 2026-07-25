@@ -89,6 +89,42 @@ namespace FDG.Tests
                 "morale keys on taking wounds — a targeted unit that lost none doesn't test, even at half.");
         }
 
+        // #278: the playtest-reported case, driven through the REAL save chain. A unit already at half
+        // gets HIT, but every save passes — zero wounds reach the unit, so no morale test fires.
+        // AlreadyAtHalf_TargetedButUnwounded_NoTest pins the same predicate but fakes "all saved" by
+        // dealing no wounds; this one runs RollToSave -> AssignWounds -> ApplyWounds for real and proves
+        // the saved volley leaves RemainingWounds at the baseline. The die face is 3: it passes the 2+
+        // saves but would FAIL the Quality-4 morale test, so a wrongly-taken test would show as Shaken.
+        [Test]
+        public async Task AlreadyAtHalf_HitButEverySavePasses_NoTest()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var ctx = new TestGameContext(store, new FixedFaceDiceRoller(3));
+            var attacker = MakeUnit(store, "Attacker", modelCount: 3, new Position(0, 0));
+            var defender = MakeUnit(store, "Defender", modelCount: 4, new Position(10, 0));
+            KillModels(defender, 2);                    // at half BEFORE the volley
+            var combat = new CombatActionContext(ctx, attacker, isMelee: false);
+            combat.RegisterAttackedDefender(defender);  // targeted: snapshot taken at half
+            float baseline = defender.GetValue().RemainingWounds;
+
+            // The per-weapon tail: 3 hits landed, saving on 2+ (every rolled 3 passes).
+            var weapon = new Weapon("Test Rifle", rangeInches: 24f, attacks: 1, armorPenetration: 0);
+            var metadata = new CombatMetadata(ctx, attacker, defender, weapon, weaponCount: 3);
+            metadata.AddResult(new DetermineSaveRollNeededResults(new List<PendingSaveRolls>
+                { new PendingSaveRolls(RulesHarness.TestDice.Faces(3, 3, 3), saveNeeded: 2) }));
+            await RunCombatStage(new RollToSaveStage<ICombatMetadata>(ctx, new NoOpLayer<ICombatMetadata>()), metadata);
+            await RunCombatStage(new AssignWoundsStage<ICombatMetadata>(ctx, new NoOpLayer<ICombatMetadata>()), metadata);
+            await RunCombatStage(new ApplyWoundsStage<ICombatMetadata>(ctx, new NoOpLayer<ICombatMetadata>()), metadata);
+
+            Assert.That(defender.GetValue().RemainingWounds, Is.EqualTo(baseline).Within(0.001f),
+                "every hit was saved - no wounds reached the unit.");
+
+            await RunResolve(combat);
+
+            Assert.That(IsShaken(defender), Is.False,
+                "an all-saved volley deals no wounds, so a unit at half takes no morale test.");
+        }
+
         [Test]
         public async Task DestroyedOutright_NoTestNoError()
         {
@@ -161,6 +197,14 @@ namespace FDG.Tests
 
         private static bool IsShaken(DataBinding<UnitData> unit) =>
             unit.GetValue().Tokens.HasToken(Rules.Foundation.TokenType.Shaken);
+
+        private static async Task RunCombatStage<TResult, TStage>(
+            CombatStage<TResult, TStage, ICombatMetadata> stage, CombatMetadata metadata)
+            where TStage : CombatStage<TResult, TStage, ICombatMetadata>
+        {
+            stage.NextStage.Bind("done");
+            await stage.Enter(metadata);
+        }
 
         private static async Task<bool> RunResolve(CombatActionContext combat)
         {

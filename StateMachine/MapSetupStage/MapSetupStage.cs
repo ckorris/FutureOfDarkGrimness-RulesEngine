@@ -1,3 +1,5 @@
+using FDG.Presentation.Beats;
+
 namespace FDG.Stages
 {
     public class MapSetupStage : ParentStage<IGameContext, IMapSetupContext>
@@ -9,7 +11,7 @@ namespace FDG.Stages
 
         public override async Task Enter(IGameContext context)
         {
-            await context.Announce("Map Setup");
+            await context.Announce("Map Setup", tier: EBannerTier.Headline);
             await base.Enter(context);
         }
 

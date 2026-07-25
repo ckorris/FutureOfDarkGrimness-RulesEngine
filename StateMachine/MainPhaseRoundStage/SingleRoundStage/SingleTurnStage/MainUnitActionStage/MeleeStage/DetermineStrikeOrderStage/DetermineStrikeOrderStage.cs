@@ -49,7 +49,7 @@ namespace FDG.Stages
                 // Announce (banner + log) that the charged unit gets the first swing thanks to Counter,
                 // before the role swap makes it so.
                 await GameContext.Announce(
-                    $"{defender.Name} counters the charge — strikes first!", CounterBannerColor);
+                    $"{defender.Name} counters the charge - strikes first!", CounterBannerColor);
                 context.SwapCombatRoles();
             }
 

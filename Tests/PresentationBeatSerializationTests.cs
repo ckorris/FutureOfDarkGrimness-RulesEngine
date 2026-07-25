@@ -346,6 +346,27 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void BannerBeat_TierSurvivesWireRoundTrip_WithItsPacingContract()
+        {
+            // #275: the tier has to cross the wire, or a networked client would draw and pace every
+            // announcement as a full-size Headline while the host treats it as a passing toast.
+            var original = new BannerBeat("Warriors embarked Rhino.", new TextColor(120, 200, 255, 255),
+                EBannerTier.Toast);
+
+            var banner = (BannerBeat)RoundTrip(original);
+
+            Assert.That(banner.Tier, Is.EqualTo(EBannerTier.Toast));
+            Assert.That(banner.Held, Is.True, "the pacing contract rides the tier, so it round-trips with it");
+            Assert.That(banner.HoldLeadIn, Is.EqualTo(TimeSpan.Zero));
+            Assert.That(banner.NominalDuration, Is.EqualTo(PresentationDurations.BannerToast));
+
+            var notice = (BannerBeat)RoundTrip(
+                new BannerBeat("Alice deploys first", TextColor.White, EBannerTier.Notice));
+            Assert.That(notice.Tier, Is.EqualTo(EBannerTier.Notice));
+            Assert.That(notice.HoldLeadIn, Is.EqualTo(PresentationDurations.BannerNoticeLeadIn));
+        }
+
+        [Test]
         public void DiceRolledBeat_Probabilistic_RoundTrip_PreservesFractionsAndMode()
         {
             // 5 dice spread evenly: 5/6 per face. Successes for 4+ = three faces * 0.8333…

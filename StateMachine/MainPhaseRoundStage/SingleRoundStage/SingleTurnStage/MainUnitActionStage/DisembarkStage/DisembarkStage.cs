@@ -1,4 +1,5 @@
 using FDG.Data;
+using FDG.Presentation.Beats;
 using FDG.Rules.Dispatch;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
@@ -90,7 +91,8 @@ namespace FDG.Stages
             context.RegisterMoveFinished(0f);
 
             GameContext.Log($"{unit.Name} disembarked {transport.Name}.");
-            await context.Announce($"{unit.Name} disembarked {transport.Name}.", new TextColor(120, 200, 255, 255));
+            await context.Announce($"{unit.Name} disembarked {transport.Name}.", new TextColor(120, 200, 255, 255),
+                EBannerTier.Toast);
 
             await OnFinished.Activate(context);
         }

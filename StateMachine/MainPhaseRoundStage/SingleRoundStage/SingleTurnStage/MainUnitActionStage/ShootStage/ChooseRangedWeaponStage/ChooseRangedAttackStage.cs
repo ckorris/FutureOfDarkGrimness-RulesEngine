@@ -77,6 +77,21 @@ namespace FDG.Stages
             context.RegisterAttackedDefender(rangedAttackChoice.TargetUnit);
             GameContext.Log($"Chose weapon: {chosenWeapon.Name}. Count: {weaponCount}.");
 
+            // #276: only the copies carried by models that can actually shoot the chosen target fire —
+            // GDF checks range and line of sight per model, and the option builder above already computed
+            // exactly that (modelsThatCanShoot, the same truth the targeting UI shows). The pooled
+            // weapon count includes every living carrier, so cap it here before the roll. Eligible == 0
+            // can't normally happen (such targets are unselectable); if it does, leave the count alone
+            // rather than firing a zero-dice attack.
+            int eligibleCount = CountEligibleCopies(weaponOptions, chosenWeapon, rangedAttackChoice.TargetUnit);
+            if (eligibleCount > 0 && eligibleCount < weaponCount)
+            {
+                context.TrimPendingAttack(eligibleCount);
+                GameContext.Log($"{eligibleCount} of {weaponCount} {chosenWeapon.Name} copies have " +
+                    "line of sight and range - the rest hold fire.");
+                weaponCount = eligibleCount;
+            }
+
             // #157: a weapon whose attack re-scopes to a single chosen model (Takedown) fires its copies as
             // SEPARATE single-shot attacks so each shot picks its own victim (each sniper chooses a model),
             // instead of one pick funnelling the whole volley. FireStage then loops once per queued shot.
@@ -180,6 +195,29 @@ namespace FDG.Stages
                     option.WeaponTargetStats[i] = stats with { UnselectableReason = "Already fired (Limited)." };
                 }
             }
+        }
+
+        // #276: how many copies of the chosen weapon sit on models that can shoot the chosen target,
+        // read from the already-built option stats. A model carrying several copies contributes each
+        // of them (same as the pooled count it caps). Internal for tests.
+        internal static int CountEligibleCopies(List<WeaponOption> weaponOptions, Weapon chosenWeapon,
+            DataBinding<UnitData> targetUnit)
+        {
+            WeaponOption? option = weaponOptions.FirstOrDefault(o => o.Weapon.Name == chosenWeapon.Name);
+            WeaponTargetStats? stats = option?.WeaponTargetStats
+                .FirstOrDefault(s => s.TargetUnit.Reference.Equals(targetUnit.Reference));
+            if (stats == null) return 0;
+
+            var comparer = new WeaponComparer();
+            int copies = 0;
+            foreach (DataBinding<ModelData> model in stats.modelsThatCanShoot)
+            {
+                foreach (Weapon weapon in model.Weapons())
+                {
+                    if (comparer.Equals(weapon, chosenWeapon)) copies++;
+                }
+            }
+            return copies;
         }
 
         private static bool HasAnyFireableOption(List<WeaponOption> weaponOptions)

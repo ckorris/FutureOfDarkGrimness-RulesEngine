@@ -74,6 +74,11 @@ namespace FDG.Stages
         /// picks its own individual target (Takedown / Sniper). No-op unless exactly one attack is queued.</summary>
         public void SplitPendingAttackIntoSingleShots();
 
+        /// <summary>#276: cap the just-queued attack's weapon count at <paramref name="maxCount"/> — the
+        /// copies carried by models that can actually shoot the chosen target (range + line of sight).
+        /// No-op unless exactly one attack is queued or when the cap wouldn't lower the count.</summary>
+        public void TrimPendingAttack(int maxCount);
+
         /// <summary>Drop any queued attacks — the burst's target died mid-way, the leftover shots fizzle (#157).</summary>
         public void ClearPendingAttacks();
 
@@ -178,7 +183,10 @@ namespace FDG.Stages
         // The attack(s) set up by SetAttackWeapon and consumed one per FireStage/SwingMeleeWeaponStage
         // entry. Normally holds a single (weapon, count) batch; SplitPendingAttackIntoSingleShots (#157)
         // turns a Takedown batch into N single-shot entries so each shot picks its own victim.
-        private readonly Queue<(Weapon Weapon, int Count)> _pendingAttacks = new Queue<(Weapon, int)>();
+        // BurstIndex is the entry's position within that split burst (0 for unsplit attacks) — carried
+        // into CombatMetadata so the attack beat can fire each shot from a different carrier (#276).
+        private readonly Queue<(Weapon Weapon, int Count, int BurstIndex)> _pendingAttacks
+            = new Queue<(Weapon, int, int)>();
 
         public bool HasPendingAttack => _pendingAttacks.Count > 0;
 
@@ -280,7 +288,7 @@ namespace FDG.Stages
 
             _alreadyUsedWeapons.TryAdd(weaponToConsume, weaponCount);
 
-            _pendingAttacks.Enqueue((weaponToConsume, weaponCount));
+            _pendingAttacks.Enqueue((weaponToConsume, weaponCount, 0));
         }
 
         public void SplitPendingAttackIntoSingleShots()
@@ -289,11 +297,20 @@ namespace FDG.Stages
             // means the caller is mid-burst and splitting would corrupt the queue.
             if (_pendingAttacks.Count != 1) return;
 
-            (Weapon weapon, int count) = _pendingAttacks.Dequeue();
+            (Weapon weapon, int count, _) = _pendingAttacks.Dequeue();
             for (int i = 0; i < count; i++)
             {
-                _pendingAttacks.Enqueue((weapon, 1));
+                _pendingAttacks.Enqueue((weapon, 1, i));
             }
+        }
+
+        public void TrimPendingAttack(int maxCount)
+        {
+            // Same single-batch window as the split above: only ever called right after SetAttackWeapon.
+            if (_pendingAttacks.Count != 1 || maxCount <= 0) return;
+
+            (Weapon weapon, int count, int burstIndex) = _pendingAttacks.Dequeue();
+            _pendingAttacks.Enqueue((weapon, Math.Min(count, maxCount), burstIndex));
         }
 
         public void ClearPendingAttacks() => _pendingAttacks.Clear();
@@ -347,12 +364,13 @@ namespace FDG.Stages
             }
 
             // Don't clear DefendingUnit — OfferStrikeBackStage needs it after this call.
-            (Weapon weapon, int count) = _pendingAttacks.Dequeue();
+            (Weapon weapon, int count, int burstIndex) = _pendingAttacks.Dequeue();
 
             return new CombatMetadata(gameContext, AttackingUnit,
                 DefendingUnit, weapon, count, _attackerMoved, _isMelee, _isCharging,
                 chargeOriginDistanceInches: ChargeOriginDistanceAgainstDefender(),
-                unpredictableBranch: ResolveUnpredictableBranch());
+                unpredictableBranch: ResolveUnpredictableBranch(),
+                burstShotIndex: burstIndex);
         }
 
         // #197 (P15): roll the Unpredictable die once per attack action, then reuse it for every weapon of

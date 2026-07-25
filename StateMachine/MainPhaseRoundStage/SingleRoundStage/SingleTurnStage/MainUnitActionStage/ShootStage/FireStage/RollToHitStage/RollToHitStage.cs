@@ -43,16 +43,12 @@ namespace FDG.Stages
             IDiceResults failedResults = rollToHitResults.SubsetBelow(hitRollNeeded);
 
             // Show the attack — tracers (ranged) or a clash (melee) — playing WHILE the dice that
-            // resolve it tumble (#238). Fire from the actual weapon-carrying models so a mixed unit
-            // shows the right source.
-            List<Position> attackerPositions = AttackBeatPositions.FiringModels(metaData.AttackingUnit, metaData.WeaponType);
-            // Ranged: only models a shooter can actually see, so tracers spread across the targetable
-            // defenders without ever depicting a shot at an unhittable one. Melee is adjacent — LoS is
-            // moot and the clash just snaps to the nearest model.
-            List<Position> targetPositions = metaData.IsMelee
-                ? AttackBeatPositions.AlivePlaced(metaData.DefendingUnit)
-                : AttackBeatPositions.VisibleTargets(GameContext.TableState,
-                    metaData.AttackingUnit, metaData.DefendingUnit, metaData.WeaponType);
+            // resolve it tumble (#238). #276: endpoints are truthful — shots fire only from carriers
+            // that can actually strike (LoS + range / melee range), capped at the rolled weapon count
+            // (a #157 split shot fires ONE beam, from a different sniper each shot), and a Takedown
+            // shot's tracer aims at its picked model.
+            (List<Position> attackerPositions, List<Position> targetPositions) =
+                AttackBeatPositions.Endpoints(GameContext.TableState, metaData, GameContext.RuleEvaluator);
             if (attackerPositions.Count > 0 && targetPositions.Count > 0)
             {
                 // Each volley fires every weapon at once; the weapon's Attacks is the volley count.

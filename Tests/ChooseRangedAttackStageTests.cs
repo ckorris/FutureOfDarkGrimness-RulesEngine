@@ -543,6 +543,88 @@ namespace FDG.Tests
             Assert.That(requester.Captured, Is.Null, "the stage agrees: nothing to offer");
         }
 
+        // ── #276: only models that can shoot the chosen target contribute attack dice ─────────────
+        // GDF checks range and line of sight per model; the pooled weapon count used to fire every
+        // living copy as long as ANY model could see the target.
+
+        [Test]
+        public async Task Enter_OccludedCarrier_TrimsWeaponCountToEligibleShooters()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var requester = new CapturingRangedRequester
+            {
+                Reply = req =>
+                {
+                    var opt = req.WeaponOptions.Single();
+                    var target = opt.WeaponTargetStats.First(t => t.UnselectableReason == null);
+                    return new Selected<RangedAttackChoice>(new RangedAttackChoice(opt.Weapon, target.TargetUnit));
+                }
+            };
+            var ctx = new TestGameContextWithRequester(store, requester);
+            var attackerPlayer = new PlayerID(Guid.NewGuid());
+            var enemyPlayer = new PlayerID(Guid.NewGuid());
+            store.Create(new TeamData(0, new List<PlayerID> { attackerPlayer }));
+            store.Create(new TeamData(1, new List<PlayerID> { enemyPlayer }));
+
+            // Wall x 8..12, z 3..7 blocks the z=5 fire lane; the z=12 carrier sees past it.
+            store.Create(new TerrainData(ETerrainType.Blocking, new RectangularZone(8, 12, 3, 7)));
+            var blocked = MakeModel(store, new Position(1, 5), Rifle());
+            var clear = MakeModel(store, new Position(1, 12), Rifle());
+            var attackerUnit = MakeUnit(store, attackerPlayer, "Squad", new[] { blocked, clear });
+            store.Create(new ArmyData(attackerPlayer, new List<DataBinding<UnitData>> { attackerUnit }));
+            var enemyUnit = MakeUnit(store, enemyPlayer, "Enemy",
+                new[] { MakeModel(store, new Position(21, 5)) });
+            store.Create(new ArmyData(enemyPlayer, new List<DataBinding<UnitData>> { enemyUnit }));
+
+            var combatCtx = new CombatActionContext(ctx, attackerUnit, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+            await stage.Enter(combatCtx);
+
+            Assert.That(combatCtx.HasPendingAttack, Is.True, "the shot was committed");
+            ICombatMetadata metadata = combatCtx.ConsumeAttackIntoContext(ctx);
+            Assert.That(metadata.WeaponCount, Is.EqualTo(1),
+                "the occluded carrier's rifle must not add attack dice - only the model with line of sight fires");
+        }
+
+        [Test]
+        public async Task Enter_AllCarriersClear_KeepsFullWeaponCount()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var requester = new CapturingRangedRequester
+            {
+                Reply = req =>
+                {
+                    var opt = req.WeaponOptions.Single();
+                    var target = opt.WeaponTargetStats.First(t => t.UnselectableReason == null);
+                    return new Selected<RangedAttackChoice>(new RangedAttackChoice(opt.Weapon, target.TargetUnit));
+                }
+            };
+            var ctx = new TestGameContextWithRequester(store, requester);
+            var attackerPlayer = new PlayerID(Guid.NewGuid());
+            var enemyPlayer = new PlayerID(Guid.NewGuid());
+            store.Create(new TeamData(0, new List<PlayerID> { attackerPlayer }));
+            store.Create(new TeamData(1, new List<PlayerID> { enemyPlayer }));
+
+            var attackerUnit = MakeUnit(store, attackerPlayer, "Squad", new[]
+            {
+                MakeModel(store, new Position(1, 5), Rifle()),
+                MakeModel(store, new Position(1, 12), Rifle()),
+            });
+            store.Create(new ArmyData(attackerPlayer, new List<DataBinding<UnitData>> { attackerUnit }));
+            var enemyUnit = MakeUnit(store, enemyPlayer, "Enemy",
+                new[] { MakeModel(store, new Position(21, 5)) });
+            store.Create(new ArmyData(enemyPlayer, new List<DataBinding<UnitData>> { enemyUnit }));
+
+            var combatCtx = new CombatActionContext(ctx, attackerUnit, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+            await stage.Enter(combatCtx);
+
+            ICombatMetadata metadata = combatCtx.ConsumeAttackIntoContext(ctx);
+            Assert.That(metadata.WeaponCount, Is.EqualTo(2), "both carriers can shoot - nothing is trimmed");
+        }
+
         private static void BindAllStageEvents(ChooseRangedAttackStage stage)
         {
             stage.OnChoseWeapon.Bind("test-on-chose-weapon");

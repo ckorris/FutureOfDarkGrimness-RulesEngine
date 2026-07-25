@@ -140,6 +140,37 @@ namespace FDG.Tests
             Assert.That(combat.HasPendingAttack, Is.False, "nothing left queued after the single consume");
         }
 
+        // ── #276: trimmed volleys and burst indices ──────────────────────────────────────────────────
+
+        [Test]
+        public void TrimmedTakedownVolley_SplitsOnlyEligibleShots_WithBurstIndices()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 3, weaponName: "Sniper Rifle");
+            AttachTakedown(attacker);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 3);
+            var ctx = new WoundTestContext(_store, new CannedModelSelectionRequester(defender.ModelBindings()[0]));
+
+            var combat = new CombatActionContext(ctx, attacker, isMelee: false);
+            combat.SetAttackWeapon(combat.AvailableWeapons.Keys.Single(), out int weaponCount);
+            combat.SetDefender(defender);
+            Assert.That(weaponCount, Is.EqualTo(3));
+
+            // The stage trims to the eligible-shooter count (one sniper is occluded, say), THEN splits.
+            combat.TrimPendingAttack(2);
+            combat.SplitPendingAttackIntoSingleShots();
+
+            var burstIndices = new List<int>();
+            while (combat.HasPendingAttack)
+            {
+                ICombatMetadata metadata = combat.ConsumeAttackIntoContext(ctx);
+                Assert.That(metadata.WeaponCount, Is.EqualTo(1), "each split shot fires a single copy");
+                burstIndices.Add(metadata.BurstShotIndex);
+            }
+
+            Assert.That(burstIndices, Is.EqualTo(new[] { 0, 1 }),
+                "the trimmed volley fires only the eligible shots, each tagged with its burst position");
+        }
+
         [Test]
         public async Task DeadDefenderMidVolley_RemainingShotsFizzle()
         {

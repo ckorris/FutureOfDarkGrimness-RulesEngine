@@ -45,6 +45,12 @@ namespace FDG
         /// AP/save hook (73) gate on the SAME die.</summary>
         public EUnpredictableBranch UnpredictableBranch { get; }
 
+        /// <summary>#276: this attack's position within a #157 split burst (a Takedown volley fires its
+        /// copies as separate single-shot attacks); 0 for ordinary unsplit attacks. Presentation only —
+        /// the attack beat rotates the firing model by it so each split shot animates from a different
+        /// carrier instead of all of them at once.</summary>
+        public int BurstShotIndex => 0;
+
         //TODO: Next value can replace everything after?
         public void AddResult<TResult>(TResult result);
 
@@ -75,6 +81,8 @@ namespace FDG
 
         public EUnpredictableBranch UnpredictableBranch { get; private set; }
 
+        public int BurstShotIndex { get; private set; }
+
 
         private QueryableResults _queryableResults = new QueryableResults();
 
@@ -82,7 +90,8 @@ namespace FDG
             DataBinding<UnitData> defendingUnit, IWeapon weaponType, int weaponCount,
             bool attackerMoved = false, bool isMelee = false, bool isCharging = false, bool isSpell = false,
             float chargeOriginDistanceInches = 0f,
-            EUnpredictableBranch unpredictableBranch = EUnpredictableBranch.None)
+            EUnpredictableBranch unpredictableBranch = EUnpredictableBranch.None,
+            int burstShotIndex = 0)
         {
             GameContext = gameContext;
             AttackingUnit = attackingUnit;
@@ -95,6 +104,7 @@ namespace FDG
             IsSpell = isSpell;
             ChargeOriginDistanceInches = chargeOriginDistanceInches;
             UnpredictableBranch = unpredictableBranch;
+            BurstShotIndex = burstShotIndex;
         }
 
         public void AddResult<TResult>(TResult result)

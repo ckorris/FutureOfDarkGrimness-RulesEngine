@@ -137,8 +137,8 @@ public class ListValidatorTests
     [Test]
     public void CombinedPairsAndPlainSquads_ShareOneCopyGroup()
     {
-        // Two pairs + two plain squads = four squads of the same unit - over the cap; the
-        // " (Combined)" name suffix must not split the group.
+        // Two pairs + two plain squads = four squads of the same unit - over the cap; merged
+        // pairs keep the plain unit name, so they fall into the same copy group naturally.
         var issues = Check(DemoBook.Build(), List(100000,
             Warriors("a"), Combined("b", "a"), Warriors("c"), Combined("d", "c"),
             Warriors("e"), Warriors("f")));

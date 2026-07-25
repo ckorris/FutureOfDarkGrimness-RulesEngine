@@ -88,6 +88,22 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void LegacyCombinedSuffix_GroupsWithPlainSquads()
+        {
+            // Army files compiled before 2026-07-24 carry the old "X (Combined)" merge suffix;
+            // such an entry must still count into the same copy group as plain "X" squads.
+            ArmyListFile army = Army(2000,
+                Unit("Warriors", 100),
+                Unit("Warriors", 100),
+                Unit("Warriors", 100),
+                Unit("Warriors (Combined)", 200));
+
+            IReadOnlyList<string> warnings = ForceOrgValidator.Validate(army);
+
+            Assert.That(warnings, Has.Exactly(1).Contains("Too many copies of \"Warriors\""));
+        }
+
+        [Test]
         public void BlankNamedUnits_DoNotCountAsDuplicates()
         {
             // Four unnamed (incomplete) entries must not read as 4 copies of the same unit.

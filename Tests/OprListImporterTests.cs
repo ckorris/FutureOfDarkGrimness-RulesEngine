@@ -214,7 +214,7 @@ public class OprListImporterTests
         ArmyListFile army = Import().Army;
 
         UnitFileEntry grunts = army.Units.Single(u => u.Name.StartsWith("Grunts"));
-        Assert.That(grunts.Name, Is.EqualTo("Grunts (Combined)"));
+        Assert.That(grunts.Name, Is.EqualTo("Grunts"), "a merged pair keeps the plain unit name - no (Combined) suffix");
         Assert.That(grunts.ModelCount, Is.EqualTo(10));
         Assert.That(grunts.PointCost, Is.EqualTo(320));
         Assert.That(grunts.Id, Is.EqualTo("SelHostA")); // the host half survives under its own handle

@@ -86,8 +86,6 @@ namespace FDG.ArmyBuilding
                 foreach (SpecialRuleEntry rule in absorbed.SpecialRules)
                     if (!host.SpecialRules.Contains(rule))
                         host.SpecialRules.Add(rule);
-                if (!host.Name.EndsWith(" (Combined)", StringComparison.Ordinal))
-                    host.Name += " (Combined)";
 
                 army.Units.Remove(absorbed);
 

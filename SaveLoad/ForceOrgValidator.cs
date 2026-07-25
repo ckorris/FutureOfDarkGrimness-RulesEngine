@@ -39,11 +39,12 @@ namespace FDG.SaveLoad
                 warnings.Add($"Too many Heroes: {heroCount} (max {heroAllowance} at {army.PointsLimit} pts; 1 per {POINTS_PER_HERO}).");
             }
 
-            // Copy cap — no more than 3 SQUADS of any same-named unit. A merged combined pair (one
-            // "X (Combined)" entry) is ONE squad toward the cap (Chris, 2026-07-10: doubled-up
-            // squads must not count twice), and it shares its group with plain "X" squads - hence
-            // the suffix strip. Blank names are skipped, since several half-built (unnamed)
-            // entries shouldn't read as duplicates of each other.
+            // Copy cap — no more than 3 SQUADS of any same-named unit. A merged combined pair
+            // is ONE squad toward the cap (Chris, 2026-07-10: doubled-up squads must not count
+            // twice). The compiler no longer suffixes merged names (Chris, 2026-07-24), but army
+            // files written before then still contain "X (Combined)" entries - the suffix strip
+            // keeps those grouping with plain "X" squads. Blank names are skipped, since several
+            // half-built (unnamed) entries shouldn't read as duplicates of each other.
             foreach (IGrouping<string, UnitFileEntry> group in army.Units
                 .Where(u => !string.IsNullOrWhiteSpace(u.Name))
                 .GroupBy(u => BaseUnitName(u.Name), StringComparer.Ordinal)
@@ -62,8 +63,9 @@ namespace FDG.SaveLoad
             return warnings;
         }
 
-        /// <summary>The copy-cap group key: the unit's name with the compiler's " (Combined)"
-        /// merge suffix stripped, so a combined pair groups with plain squads of the same unit.</summary>
+        /// <summary>The copy-cap group key: the unit's name with the legacy " (Combined)" merge
+        /// suffix stripped (written by pre-2026-07-24 compiles/imports), so an old file's combined
+        /// pair still groups with plain squads of the same unit.</summary>
         private static string BaseUnitName(string name) =>
             name.EndsWith(" (Combined)", StringComparison.Ordinal)
                 ? name[..^" (Combined)".Length]

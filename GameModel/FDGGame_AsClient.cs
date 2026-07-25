@@ -9,6 +9,7 @@ using FDG.Players;
 using FDG.Presentation;
 using FDG.Presentation.Messages;
 using FDG.StageResolution;
+using FDG.StageResolution.Previews;
 using FDG.TextInterface;
 
 namespace FDG.GameModel
@@ -24,6 +25,10 @@ namespace FDG.GameModel
         public IPlayerMessageUI? PlayerMessageUI { get; private set; }
 
         public IPresentationSink? PresentationSink { get; private set; }
+
+        public IPreviewChannel PreviewChannel { get; }
+
+        public IPreviewFeed PreviewFeed { get; }
 
         //private IReadableGameDataStore _gameDataStore;
 
@@ -56,6 +61,10 @@ namespace FDG.GameModel
 
             _dataUpdateReceiver = new GameDataUpdateReceiver(_gameDataStore, messageBusClient);
             _dataUpdateReceiver.RequestAllCurrentData();
+
+            // #277 preview sharing: publish via the host relay; receive everyone else's.
+            PreviewChannel = new PreviewChannel(messageBusClient);
+            PreviewFeed = new PreviewFeed(messageBusClient, new List<PlayerID> { thisPlayerID });
         }
 
         public void AssignInterfaces(ILogMessageUI? logMessageUI, IPlayerMessageUI? playerMessageUI,

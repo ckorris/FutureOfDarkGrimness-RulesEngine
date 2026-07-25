@@ -4,6 +4,7 @@ using FDG.MessageBus;
 using FDG.Network.Messages;
 using FDG.Presentation;
 using FDG.StageResolution;
+using FDG.StageResolution.Previews;
 using FDG.TextInterface;
 
 namespace FDG.GameModel
@@ -20,6 +21,9 @@ namespace FDG.GameModel
 
         public IPresentationSink? PresentationSink { get; private set; }
 
+        public IPreviewChannel PreviewChannel { get; }
+
+        public IPreviewFeed PreviewFeed { get; }
 
         private IMessageBusClient _messageBusClient;
 
@@ -38,11 +42,16 @@ namespace FDG.GameModel
 
 
         public FDGGame_AsLocal(IReadableGameDataStore gameDataStore, IMessageBusClient messageBusClient)
-        { 
+        {
             _gameDataStore = gameDataStore;
             TableState = new TableState(gameDataStore);
 
             _messageBusClient = messageBusClient;
+
+            // #277 preview sharing. The feed holds the LIVE local-player list (populated later via
+            // AddLocalPlayerID) so it filters every local player, however many join before launch.
+            PreviewChannel = new PreviewChannel(messageBusClient);
+            PreviewFeed = new PreviewFeed(messageBusClient, _localPlayerIDs);
         }
 
         public void AddLocalPlayerID(PlayerID playerID)

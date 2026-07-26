@@ -13,8 +13,17 @@ namespace FDG
         /// <summary>No objectives owned, or two or more teams tied at the top summed score.</summary>
         Tie,
 
-        /// <summary>The game did not reach victory calculation (player disconnect, engine fault).</summary>
+        /// <summary>The game did not reach victory calculation because of an engine fault.</summary>
         Fault,
+
+        /// <summary>
+        /// The game did not reach victory calculation because a player's connection dropped (#187). Split
+        /// from <see cref="Fault"/> because the store is known-good here — the state machine unwound
+        /// cleanly — so the host can write a recovery save the game can be resumed from, whereas a
+        /// <see cref="Fault"/> store may be mid-corruption. A dropped player is also a normal event to
+        /// report, not a bug to file.
+        /// </summary>
+        Disconnect,
     }
 
     /// <summary>
@@ -68,6 +77,15 @@ namespace FDG
         /// <summary>A game that never reached victory calculation. <paramref name="message"/> must be ASCII.</summary>
         public static GameResult ForFault(string message) =>
             new(EGameOutcome.Fault, null, null, Array.Empty<PlayerID>(),
+                Array.Empty<PlayerObjectiveScore>(), 0, message);
+
+        /// <summary>
+        /// A game ended by a player disconnecting (#187). Same shape as <see cref="ForFault"/> — no winner,
+        /// no scores — but the distinct outcome tells the host this store is worth saving for recovery.
+        /// <paramref name="message"/> must be ASCII.
+        /// </summary>
+        public static GameResult ForDisconnect(string message) =>
+            new(EGameOutcome.Disconnect, null, null, Array.Empty<PlayerID>(),
                 Array.Empty<PlayerObjectiveScore>(), 0, message);
 
         // "Alpha" / "Alpha and Bravo" / "Alpha, Bravo and Charlie". ASCII only.

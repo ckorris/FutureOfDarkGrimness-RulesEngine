@@ -110,6 +110,8 @@ namespace FDG.Network.Connection.Lobby
 
         public event Action<string>? OnGameEnded;
 
+        public event Action<GameResult>? OnGameCompleted;
+
         private GameSettings _gameSettings = GameSettings.GetDefault();
 
         IReadWriteableGameDataStore _gameDataStore;
@@ -669,6 +671,7 @@ namespace FDG.Network.Connection.Lobby
             FDGServer server = new FDGServer(_gameDataStore, _messageBus, playerSlots,
                 new RealtimePresentationClock(), _gameSettings);
             server.OnGameEnded += HandleServerGameEnded;
+            server.OnGameCompleted += HandleServerGameCompleted;
 
             if (gameModel != null)
             {
@@ -686,6 +689,15 @@ namespace FDG.Network.Connection.Lobby
         {
             OnGameEnded?.Invoke(result);
             _ = _messageBus.SendCommandToAllAsync(new GameEndedMessage(result));
+        }
+
+        // The structured half of the same end-of-game signal, raised by FDGServer immediately before
+        // OnGameEnded (engine thread). Forwarded synchronously and NOT mirrored over the wire (host-side
+        // record; clients get the prose). #187's recovery save hangs off this: the front end serializes
+        // the still-intact store here, before the game-over card starts any teardown.
+        private void HandleServerGameCompleted(GameResult result)
+        {
+            OnGameCompleted?.Invoke(result);
         }
 
         private string? ValidateLaunchSettings()
@@ -797,6 +809,7 @@ namespace FDG.Network.Connection.Lobby
             FDGServer server = new FDGServer(_gameDataStore, _messageBus, _gameSettings, playerSlots,
                 new RealtimePresentationClock());
             server.OnGameEnded += HandleServerGameEnded;
+            server.OnGameCompleted += HandleServerGameCompleted;
 
             if (gameModel != null) //Dedicated server really doesn't need to do this.
             {

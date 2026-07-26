@@ -10,9 +10,12 @@ namespace FDG.Tests
     {
         private readonly Dictionary<Type, List<Delegate>> _handlers = new();
 
-#pragma warning disable CS0067 // No real connections in-process; required by IMessageBusHost.
         public event Action<ConnectionID>? OnClientDisconnected;
-#pragma warning restore CS0067
+
+        // There are no real connections in-process, so a test drives this by hand (#187): it is the
+        // signal RequestMessageSender listens on to fail a dropped player's decision requests.
+        internal void SimulateClientDisconnected(ConnectionID connectionID) =>
+            OnClientDisconnected?.Invoke(connectionID);
 
         public void RegisterForMessageEvent<T>(Action<T> handler) => Add(typeof(T), handler);
         public void DeregisterForMessageEvent<T>(Action<T> handler) => Remove(typeof(T), handler);

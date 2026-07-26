@@ -260,11 +260,12 @@ namespace FDG.GameModel
             catch (RequestMessageSender.PlayerDisconnectedException disconnect)
             {
                 // A player leaving mid-game is a normal event, not an engine fault: end the game with a
-                // plain message and no alarming stack dump. Full mid-game recovery (auto-save + rejoin) is
-                // work item #187.
+                // plain message and no alarming stack dump. The Disconnect outcome (#187) tells the host
+                // this store is intact and worth writing a recovery save from — the state machine has
+                // finished unwinding here, so this is the most quiescent the store ever is mid-game.
                 string message = DescribePlayerLeft(_playerSlotManager, disconnect.PlayerID);
                 Console.WriteLine($"Game ended: {message}");
-                RaiseGameCompleted(GameResult.ForFault(message));
+                RaiseGameCompleted(GameResult.ForDisconnect(message));
             }
             catch (Exception ex)
             {

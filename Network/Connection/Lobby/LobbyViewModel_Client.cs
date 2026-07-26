@@ -108,6 +108,10 @@ namespace FDG.Network.Connection.Lobby
         // fire the return-to-menu flow twice or overwrite a real result with "connection lost" (QF8).
         private int _gameEndedRaised;
 
+        // Dispose is reached from several app paths (lobby back, game exit, view-model replacement, failed
+        // join), so it must be idempotent (#279).
+        private bool _isDisposed;
+
         // Completes once the host accepts (result null) or rejects (result = readable reason) the join (#075).
         // ClientModal awaits this before navigating to the lobby, so a build-mismatch rejection shows in the
         // connect modal instead of half-joining.
@@ -208,10 +212,33 @@ namespace FDG.Network.Connection.Lobby
         // Only the host can launch, so the client never has a launch gate to show.
         public IReadOnlyList<string> ValidateArmiesForLaunch() => Array.Empty<string>();
 
+        // Full network teardown (#279). Before this, Dispose left every handler except chat registered and
+        // never closed the TCP connection, so a client that backed out of a lobby stayed on the host's
+        // roster forever as a ghost player slot.
         public void Dispose()
         {
+            if (_isDisposed)
+            {
+                return;
+            }
+            _isDisposed = true;
+
+            _messageBusClient.DeregisterForMessageEvent<LobbyPlayerIDAssignment>(OnPlayerIDAssignmentReceived);
             _messageBusClient.DeregisterForMessageEvent<LobbyChatMessage>(OnChatMessageReceived);
+            _messageBusClient.DeregisterForMessageEvent<LobbyServerNameMessage>(OnServerNameUpdateReceived);
+            _messageBusClient.DeregisterForMessageEvent<LobbyPlayerListUpdate>(OnPlayerListUpdateReceived);
+            _messageBusClient.DeregisterForMessageEvent<LaunchGameMessage>(OnLaunchGameMessageReceived);
+            _messageBusClient.DeregisterForMessageEvent<LobbyGameSettingsUpdate>(OnGameSettingsUpdateReceived);
+            _messageBusClient.DeregisterForMessageEvent<GameEndedMessage>(OnGameEndedMessageReceived);
+            _messageBusClient.DeregisterForMessageEvent<LobbyJoinRejectedMessage>(OnJoinRejectedReceived);
+            _messageBusClient.Dispose(); //Detaches the bus from the network client's receive event.
+
+            //Unhook BEFORE disconnecting: a deliberate teardown must not surface as "connection to the
+            //host was lost" (QF8) on our own way out.
             _networkClient.OnDisconnected -= OnHostConnectionLost;
+
+            //Actually close the connection, so the host sees the disconnect and frees our roster slot.
+            _networkClient.Disconnect();
         }
 
         // The host's connection dropped (crash / quit / network loss). Treat it as a game-end so the client

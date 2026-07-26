@@ -122,6 +122,10 @@ namespace FDG.Network.Connection.Lobby
         // the store is mid-game, so a late joiner has nothing valid to become.
         private bool _isLaunched;
 
+        // Dispose is reached from several app paths (lobby back, game exit, view-model replacement), so it
+        // must be idempotent (#279).
+        private bool _isDisposed;
+
         public LobbyViewModel_Host(string hostPlayerName, string serverName, string? password, INetworkHost host)
         {
             _gameDataStore = GameDataStore.GameDataStoreBuilder.GetDefault();
@@ -535,11 +539,33 @@ namespace FDG.Network.Connection.Lobby
             UpdateInfoSummariesFromFullList();
         }
 
+        // Full network teardown (#279). Before this, Dispose only detached the chat relay: the greeting
+        // handler stayed registered and the host kept listening, so an abandoned lobby kept accepting
+        // joins as a half-alive zombie while the replacement lobby's FDGHost silently failed to bind the
+        // port - the host UI showed nobody joining, client chat vanished (relay deregistered), and
+        // never-removed roster entries piled up as ghost player slots.
         public void Dispose()
         {
+            if (_isDisposed)
+            {
+                return;
+            }
+            _isDisposed = true;
+
+            _messageBus.DeregisterForMessageEvent<LobbyChatMessage>(OnLocalChatMessageReceived);
             _messageBus.DeregisterForMessageEvent<LobbyChatMessage_FromClient>(OnChatMessageReceived);
+            _messageBus.DeregisterForConnectionMessageEvent<NewLobbyClientGreeting>(OnReceiveNewClientGreeting);
+            _messageBus.DeregisterForMessageEvent<ArmyListUpdateMessage>(OnArmyListFileUpdateReceived);
+            _messageBus.DeregisterForMessageEvent<PlayerColorUpdateMessage>(OnPlayerColorUpdateReceived);
+            _messageBus.DeregisterForMessageEvent<PlayerTeamUpdateMessage>(OnPlayerTeamUpdateReceived);
+            _messageBus.Dispose(); //Detaches the bus from the host's receive/disconnect events.
+
             _host.OnNewClientConnected -= OnNewClientConnected;
             _host.OnClientDisconnected -= OnClientDisconnected;
+
+            //The lobby owns its listener 1:1 in every current flow, so disposing the lobby releases the
+            //port and drops every connected client (their side surfaces it as a lost host - QF8).
+            _host.Stop();
         }
 
         public bool TryLaunchGame(out string? failReason)

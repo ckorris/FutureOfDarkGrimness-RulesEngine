@@ -17,13 +17,17 @@ namespace FDG.MessageBus
         // without depending on INetworkHost directly (#076).
         public event Action<ConnectionID>? OnClientDisconnected;
 
+        // Kept so Dispose can detach it again (#279); an anonymous lambda can't be unsubscribed.
+        private readonly Action<ConnectionID> _disconnectForwarder;
+
         internal MessageBusHost_Networked(INetworkHost networkHost, IReadableGameDataStore gameDataStore)
         {
             _networkHost = networkHost;
             _messageRegistrar = new MessageRegistrar();
             _messageSerializer = new MessageSerializer(gameDataStore);
+            _disconnectForwarder = connectionID => OnClientDisconnected?.Invoke(connectionID);
             _networkHost.OnMessageReceived += OnMessageBytesReceived;
-            _networkHost.OnClientDisconnected += connectionID => OnClientDisconnected?.Invoke(connectionID);
+            _networkHost.OnClientDisconnected += _disconnectForwarder;
         }
 
         public void RegisterForMessageEvent<T>(Action<T> onMessageReceived)
@@ -98,6 +102,7 @@ namespace FDG.MessageBus
             if (_networkHost != null)
             {
                 _networkHost.OnMessageReceived -= OnMessageBytesReceived;
+                _networkHost.OnClientDisconnected -= _disconnectForwarder;
             }
         }
     }

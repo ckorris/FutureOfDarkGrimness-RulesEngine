@@ -91,7 +91,14 @@ namespace FDG.Stages
             {
                 if (entry.Positions.Count == 0) continue;
                 for (int i = 0; i < entry.Positions.Count; i++)
+                {
                     entry.Model.GetValue().SetPosition(entry.Positions[i]);
+                    // #283: apply per-waypoint facings when the entry carries them (the GUI's group-mode
+                    // rotation), same contract as MovementExecutor. Entries without facings keep the
+                    // model's resting facing (CLI/AI resolvers).
+                    if (entry.Facings != null && i < entry.Facings.Count)
+                        entry.Model.GetValue().SetFacing(entry.Facings[i]);
+                }
             }
         }
     }

@@ -81,6 +81,31 @@ namespace FDG.Tests
         }
 
         [Test]
+        public async Task EntriesCarryFacings_AppliedToModels()
+        {
+            // #283: the GUI's group-mode rotation reaches the executed consolidation through per-waypoint
+            // facings on the entries; ApplyMovements must set them (entries without facings keep resting).
+            var (ctx, combat, requester, attacker, _) = BuildBattlefield(
+                attackerPositions: new[] { new Position(0, 0) },
+                defenderPositions: new[] { new Position(2, 0) });
+            requester.Reply = req => req.UnitDataBinding.GetValue().ModelBindings
+                .Where(mb => mb.GetValue().GetIsAlive())
+                .Select(mb =>
+                {
+                    var m = mb.GetValue();
+                    return new ModelMoveEntry(mb,
+                        new List<Position> { new Position(m.Position.x, m.Position.z - 0.5f) },
+                        new List<Float2> { new Float2(1f, 0f) });
+                }).ToList();
+
+            await RunConsolidate(ctx, combat);
+
+            Float2 facing = attacker.GetValue().ModelBindings[0].GetValue().Facing;
+            Assert.That(facing.X, Is.EqualTo(1f).Within(1e-4f), "the entry's facing was applied");
+            Assert.That(facing.Y, Is.EqualTo(0f).Within(1e-4f));
+        }
+
+        [Test]
         public async Task PlayerDeclines_NoModelMoves()
         {
             var (ctx, combat, requester, attacker, _) = BuildBattlefield(

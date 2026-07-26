@@ -41,6 +41,47 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void WaypointFacings_PerWaypointOffsets_ApplyAtTheirOwnWaypoints()
+        {
+            var start = new Position(0f, 0f);
+            var waypoints = new List<Position> { new Position(0f, 3f), new Position(3f, 3f) };
+
+            // #282: the second waypoint was placed after a +90 deg rotation; the first was placed unrotated
+            // and must stay that way.
+            var facings = MovementFacingUtilities.WaypointFacings(start, waypoints, new Float2(0f, 1f),
+                new List<float> { 0f, MathF.PI / 2f });
+
+            Assert.That(facings[0].X, Is.EqualTo(0f).Within(1e-4f));
+            Assert.That(facings[0].Y, Is.EqualTo(1f).Within(1e-4f), "first waypoint keeps its unrotated travel facing");
+            Assert.That(facings[1].X, Is.EqualTo(0f).Within(1e-4f), "travel +X rotated +90 deg -> +Z");
+            Assert.That(facings[1].Y, Is.EqualTo(1f).Within(1e-4f));
+        }
+
+        [Test]
+        public void RotateInPlaceFacings_RotatesBaseFacingPerWaypoint_IgnoringTravel()
+        {
+            // #283 (consolidation): the model keeps its own facing, rotated by each waypoint's offset -
+            // travel direction plays no part.
+            var facings = MovementFacingUtilities.RotateInPlaceFacings(new Float2(0f, 1f),
+                new List<float> { 0f, MathF.PI / 2f });
+
+            Assert.That(facings[0].X, Is.EqualTo(0f).Within(1e-4f));
+            Assert.That(facings[0].Y, Is.EqualTo(1f).Within(1e-4f), "unrotated step keeps the base facing");
+            Assert.That(facings[1].X, Is.EqualTo(-1f).Within(1e-4f), "+Z base facing rotated +90 deg -> -X");
+            Assert.That(facings[1].Y, Is.EqualTo(0f).Within(1e-4f));
+        }
+
+        [Test]
+        public void WaypointFacings_PerWaypointOffsets_CountMismatchThrows()
+        {
+            var start = new Position(0f, 0f);
+            var waypoints = new List<Position> { new Position(0f, 3f), new Position(3f, 3f) };
+
+            Assert.Throws<ArgumentException>(() => MovementFacingUtilities.WaypointFacings(
+                start, waypoints, new Float2(0f, 1f), new List<float> { 0f }));
+        }
+
+        [Test]
         public void WaypointFacings_ZeroLengthHold_KeepsPriorFacing()
         {
             var start = new Position(0f, 0f);

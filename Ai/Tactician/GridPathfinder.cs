@@ -5,8 +5,10 @@ namespace FDG.Ai.Tactician
     /// <summary>
     /// Terrain occupancy over the table at a coarse cell size, inflated by a base radius so a cell is
     /// "blocked" when a model base CENTERED there would touch impassible terrain (#191 A3b - matches
-    /// the swept-path validator's Minkowski inflation). Built per query; measured cheap (a few
-    /// thousand point tests), revisit only with profiler evidence (plan G6).
+    /// the swept-path validator's Minkowski inflation). Get instances through
+    /// <see cref="TerrainGridCache"/> unless the terrain set is transient: "built per query" was
+    /// measured cheap on sparse maps, but the profiler evidence plan G6 asked for arrived with the
+    /// #268 dense palettes - per-activation rebuilds were ~half a horde game's total CPU.
     /// </summary>
     public sealed class TerrainGrid
     {
@@ -75,6 +77,39 @@ namespace FDG.Ai.Tactician
 
         public Position CellCenter(int col, int row) =>
             new Position((col + 0.5f) * CellSizeInches, (row + 0.5f) * CellSizeInches);
+    }
+
+    /// <summary>
+    /// Per-game memo for <see cref="TerrainGrid.Build"/> (#191 perf pass): the grid depends only on
+    /// the terrain set, the base radius and the Strider flag, yet every activation rebuilt it at
+    /// least twice (the planner's route grid and the generator's shared grid) - a handful of
+    /// distinct (radius, flag) pairs cover a whole game. Keyed on the table state so concurrent
+    /// FdgLab games never share entries; the terrain COUNT rides in the key, so a piece added or
+    /// removed mid-game gets a fresh grid while a piece MOVED in place would not - nothing moves
+    /// terrain today, revisit the key if something ever does.
+    /// </summary>
+    public static class TerrainGridCache
+    {
+        private sealed class Entry
+        {
+            public readonly Dictionary<(float Radius, bool IgnoreDifficult, int Count), TerrainGrid> Grids = new();
+        }
+
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ITableState, Entry> PerGame = new();
+
+        public static TerrainGrid Get(ITableState tableState, IReadOnlyList<ITerrain> terrain,
+            float baseRadiusInches, bool ignoreDifficultTerrain = false)
+        {
+            Entry entry = PerGame.GetOrCreateValue(tableState);
+            (float, bool, int) key = (baseRadiusInches, ignoreDifficultTerrain, terrain.Count);
+            lock (entry.Grids)
+            {
+                if (entry.Grids.TryGetValue(key, out TerrainGrid? grid)) return grid;
+                grid = TerrainGrid.Build(terrain, baseRadiusInches, ignoreDifficultTerrain);
+                entry.Grids[key] = grid;
+                return grid;
+            }
+        }
     }
 
     /// <summary>

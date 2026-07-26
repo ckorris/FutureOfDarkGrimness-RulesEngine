@@ -526,9 +526,47 @@ namespace FDG.Stages
                 .Where(t => t.TerrainType.HasFlag(ETerrainType.Impassible))
                 .ToList());
 
-        private static bool DoesPathCrossTerrainPieces(ModelMoveEntry move, List<ITerrain> pieces)
+        /// <summary>Where a flagged path actually collides, for the preview's "show me why" feedback: the
+        /// terrain piece, the path segment (by index), the sweep's oriented facing, and the model's centre at
+        /// first contact. A collision is often nowhere near the node being placed — a pivot at an earlier
+        /// waypoint, or a manual rotation offset re-orienting the whole committed path, can make a segment the
+        /// player already placed collide — so "invalid" alone reads as an inexplicable red flag on open ground.</summary>
+        public readonly struct TerrainCrossing
         {
-            if (pieces.Count == 0 || move.Positions.Count == 0) return false;
+            public readonly ITerrain Piece;
+            /// <summary>Index into <see cref="ModelMoveEntry.Positions"/> of the segment that collides (its
+            /// start is the previous waypoint, or the model's current position for index 0).</summary>
+            public readonly int SegmentIndex;
+            public readonly Float2 SegmentStart;
+            public readonly Float2 SegmentEnd;
+            /// <summary>The travel facing the swept base used for this segment (offset-adjusted, #150).</summary>
+            public readonly Float2 Facing;
+            /// <summary>The model's centre when its swept footprint first touches the piece — the segment
+            /// start itself when the re-oriented base already overlaps before travelling.</summary>
+            public readonly Float2 ContactCentre;
+
+            public TerrainCrossing(ITerrain piece, int segmentIndex, Float2 segmentStart, Float2 segmentEnd,
+                Float2 facing, Float2 contactCentre)
+            {
+                Piece = piece; SegmentIndex = segmentIndex; SegmentStart = segmentStart; SegmentEnd = segmentEnd;
+                Facing = facing; ContactCentre = contactCentre;
+            }
+        }
+
+        /// <summary>Detailed sibling of <see cref="DoesPathCrossImpassibleTerrain"/>: the first impassible
+        /// collision along the path (walking segments in order), or null when the path is clear. Same swept-base
+        /// test, so it flags exactly when the boolean does.</summary>
+        public static TerrainCrossing? FindFirstImpassibleCrossing(ModelMoveEntry move, IEnumerable<ITerrain> terrain)
+            => FindFirstTerrainCrossing(move, terrain
+                .Where(t => t.TerrainType.HasFlag(ETerrainType.Impassible))
+                .ToList());
+
+        private static bool DoesPathCrossTerrainPieces(ModelMoveEntry move, List<ITerrain> pieces)
+            => FindFirstTerrainCrossing(move, pieces) != null;
+
+        private static TerrainCrossing? FindFirstTerrainCrossing(ModelMoveEntry move, List<ITerrain> pieces)
+        {
+            if (pieces.Count == 0 || move.Positions.Count == 0) return null;
 
             var model = move.Model.GetValue();
             IBaseShape baseShape = model.BaseShape;
@@ -544,13 +582,23 @@ namespace FDG.Stages
                 Float2 facing = SegmentFacing(move, i, restingFacing);
                 foreach (ITerrain piece in pieces)
                 {
-                    if (SweptBaseGeometry.DoesSweptBaseIntersectZone(piece.Shape, segmentStart, segmentEnd, baseShape, facing))
-                        return true;
+                    if (!SweptBaseGeometry.DoesSweptBaseIntersectZone(piece.Shape, segmentStart, segmentEnd, baseShape, facing))
+                        continue;
+                    // The centre at first touch: known-clear travel along the segment (0 when the base
+                    // already overlaps at the segment start - the pivot/offset re-orientation case).
+                    float entry = SweptBaseGeometry.MaxTravelBeforeZoneIntersection(
+                        piece.Shape, segmentStart, segmentEnd, baseShape, facing);
+                    float dx = segmentEnd.X - segmentStart.X, dz = segmentEnd.Y - segmentStart.Y;
+                    float len = MathF.Sqrt(dx * dx + dz * dz);
+                    Float2 contact = len > 0f
+                        ? new Float2(segmentStart.X + dx / len * entry, segmentStart.Y + dz / len * entry)
+                        : segmentStart;
+                    return new TerrainCrossing(piece, i, segmentStart, segmentEnd, facing, contact);
                 }
                 segmentStart = segmentEnd;
             }
 
-            return false;
+            return null;
         }
 
         /// <summary>Safety margin the difficult-terrain preview clamp keeps below the exact limits — both the

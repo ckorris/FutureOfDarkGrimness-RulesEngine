@@ -87,6 +87,64 @@ namespace FDG.Tests
                 "with no travel facings the resting +X facing sweeps the long axis into the band");
         }
 
+        // The detailed finder behind the preview's "show me why" overlay: same verdict as the boolean, plus
+        // WHICH piece, WHICH segment, and the centre at first contact - so the resolver can point at the
+        // collision instead of leaving a red flag on visibly open ground.
+        [Test]
+        public void FindFirstCrossing_ReportsPieceSegmentAndContact()
+        {
+            DataBinding<ModelData> model = MakeModel(new Position(0f, 0f), restFacing: new Float2(0f, 1f));
+            var move = TravelMove(model, new Position(3f, 0f));
+            List<ITerrain> band = ImpassibleBand();
+
+            MovementUtilities.TerrainCrossing? crossing =
+                MovementUtilities.FindFirstImpassibleCrossing(move, band);
+
+            Assert.That(crossing, Is.Not.Null);
+            Assert.That(crossing!.Value.Piece, Is.SameAs(band[0]));
+            Assert.That(crossing.Value.SegmentIndex, Is.EqualTo(0));
+            // Facing +X leads with the 3" half-height, so the footprint first touches the X=4 band edge
+            // when the centre reaches X=1 (bisection-accurate contact point).
+            Assert.That(crossing.Value.ContactCentre.X, Is.EqualTo(1f).Within(0.02f));
+            Assert.That(crossing.Value.ContactCentre.Y, Is.EqualTo(0f).Within(0.02f));
+        }
+
+        // The TankCantMakeCorner mechanism: the manual rotation offset re-orients the WHOLE committed path,
+        // so adding a node (or turning the hand) late in a path can make an EARLIER, already-green segment
+        // collide with a piece it used to skirt. The finder must attribute the collision to that earlier
+        // segment - the player's cursor is nowhere near it.
+        [Test]
+        public void FindFirstCrossing_LateRotationOffset_FlagsTheEarlierSegment()
+        {
+            // 1"x6" base (0.5" half-width, 3" half-height) driving +Z past a pillar at X 2..3. Facing along
+            // travel, the footprint reaches only X=0.5 - segment 1 skirts the pillar cleanly. A 45deg manual
+            // offset swings the 3" half-height toward the pillar (reach = 0.5cos45 + 3sin45 ~ 2.47") - the
+            // same first segment now collides.
+            DataBinding<ModelData> model = MakeModel(new Position(0f, 0f), restFacing: new Float2(0f, 1f));
+            var pillar = new List<ITerrain>
+                { new TerrainData(ETerrainType.Impassible, new RectangularZone(2f, 3f, 0f, 4f)) };
+            var waypoints = new List<Position> { new Position(0f, 6f), new Position(0f, 12f) };
+
+            ModelMoveEntry straight = OffsetMove(model, waypoints, offsetRadians: 0f);
+            Assert.That(MovementUtilities.FindFirstImpassibleCrossing(straight, pillar), Is.Null,
+                "facing along travel, the path skirts the pillar");
+
+            ModelMoveEntry rotated = OffsetMove(model, waypoints, offsetRadians: MathF.PI / 4f);
+            MovementUtilities.TerrainCrossing? crossing =
+                MovementUtilities.FindFirstImpassibleCrossing(rotated, pillar);
+
+            Assert.That(crossing, Is.Not.Null, "the 45deg hand offset swings the long axis into the pillar");
+            Assert.That(crossing!.Value.SegmentIndex, Is.EqualTo(0),
+                "the collision is on the EARLIER segment, not the one being placed");
+        }
+
+        private ModelMoveEntry OffsetMove(DataBinding<ModelData> model, List<Position> waypoints, float offsetRadians)
+        {
+            List<Float2> facings = MovementFacingUtilities.WaypointFacings(
+                model.GetValue().Position, waypoints, model.GetValue().Facing, offsetRadians);
+            return new ModelMoveEntry(model, waypoints, facings);
+        }
+
         private static List<EnemyModelFootprint> NoEnemies() => new List<EnemyModelFootprint>();
 
         // A single-waypoint move whose facing follows the direction of travel (the GUI resolver's default).

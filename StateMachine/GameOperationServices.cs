@@ -15,6 +15,9 @@ namespace FDG.Stages
     /// </summary>
     public class GameOperationServices : IOperationServices
     {
+        // The amber the Shaken banners use (MoraleUtilities' / SpilloutExecutor's copies are private).
+        private static readonly TextColor RecoveryBannerColor = new TextColor(255, 170, 60, 255);
+
         private readonly IGameContext _gameContext;
 
         public GameOperationServices(IGameContext gameContext)
@@ -114,7 +117,10 @@ namespace FDG.Stages
                 unit.Tokens.RemoveTokens(tokenType);
             }
 
-            _gameContext.Log($"{unit.Name} rolled {face} to shed {tokenType} on a {minRoll}+ - " +
+            // The catalog display name, not the TokenType record itself — interpolating the record
+            // prints its structural form ("TokenType { Id = Shaken }") in player-facing text.
+            string tokenName = TokenDefinitionCatalog.Lookup(tokenType).Name;
+            _gameContext.Log($"{unit.Name} rolled {face} to shed {tokenName} on a {minRoll}+ - " +
                 (cleared ? "recovered." : "no effect."));
 
             // The beat's histogram is exactly the roll that happened: one die, on the face it showed.
@@ -122,8 +128,16 @@ namespace FDG.Stages
             perSide[face - 1] = 1f;
 
             await _gameContext.Presenter.Present(DiceRolledBeat.From(new DiceResults(perSide), minRoll,
-                _gameContext.Settings.RandomnessType, $"Recover from {tokenType}",
-                cleared ? "recovered" : "still " + tokenType));
+                _gameContext.Settings.RandomnessType, $"Recover from {tokenName}",
+                cleared ? "recovered" : "still " + tokenName));
+
+            // #278: shedding the token deserves a Toast (tier-2) banner beyond the die itself — amber,
+            // matching the Shaken-family banners (this path is Steadfast-style Shaken recovery today).
+            if (cleared)
+            {
+                await _gameContext.Announce($"{unit.Name} recovers - no longer {tokenName}!",
+                    RecoveryBannerColor, EBannerTier.Toast);
+            }
         }
 
         public async Task GrantTokenOnRoll(IUnit unit, Rules.Tokens.Token token, int minRoll)

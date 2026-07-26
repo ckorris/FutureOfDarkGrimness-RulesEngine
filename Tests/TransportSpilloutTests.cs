@@ -126,8 +126,8 @@ namespace FDG.Tests
         }
 
         // #096 facet 2: the spillout narrates itself with presentation beats (was log-only). A destroyed
-        // transport with a doomed occupant plays a wreck banner, the occupant's Shaken banner, a per-model
-        // dangerous-terrain d6, and a death animation for a model the test kills.
+        // transport with a doomed occupant plays a wreck banner, the occupant's Shaken banner, the batched
+        // dangerous-terrain dice row, and a death animation for a model the test kills.
         [Test]
         public async Task DestroyedTransport_PresentsSpilloutBeats()
         {
@@ -138,7 +138,7 @@ namespace FDG.Tests
 
             var sink = new RecordingPresentationSink();
             // Every model rolls a 1 → the dangerous test wounds it; the 1-wound occupant model dies.
-            await RunSpilloutCapturing(transport, new FixedDiceRoller(1), sink);
+            await RunSpilloutCapturing(transport, new FixedFaceDiceRoller(1), sink);
 
             var banners = sink.Beats.OfType<BannerBeat>().ToList();
             Assert.That(banners.Any(b => b.BannerText.Contains("destroyed")), Is.True, "a wreck banner is presented.");
@@ -149,8 +149,10 @@ namespace FDG.Tests
                 "a model killed by the dangerous test animates its death.");
         }
 
+        // The dangerous-terrain test rolls as ONE batched row (a die per living model, a single
+        // DiceRolledBeat) instead of one beat per model — per-model beats made big spillouts crawl.
         [Test]
-        public async Task SpilloutSafeRoll_PresentsDicePerModel_ButNoCasualtyBeat()
+        public async Task Spillout_PresentsOneBatchedDiceBeat_SafeRollHasNoCasualtyBeats()
         {
             DataBinding<UnitData> transport = MakeTransport("Rhino", capacity: 6, new Position(10f, 10f));
             DataBinding<UnitData> occupant = MakeUnit(_player, "Grunts", 2, new Position(0f, 0f));
@@ -158,9 +160,11 @@ namespace FDG.Tests
             transport.GetValue().Models[0].DealWounds(1f);
 
             var sink = new RecordingPresentationSink();
-            await RunSpilloutCapturing(transport, new FixedDiceRoller(4), sink); // 4 = safe, no wounds
+            await RunSpilloutCapturing(transport, new FixedFaceDiceRoller(4), sink); // 4 = safe, no wounds
 
-            Assert.That(sink.Beats.OfType<DiceRolledBeat>().Count(), Is.EqualTo(2), "one dangerous-terrain die per living model.");
+            var diceBeats = sink.Beats.OfType<DiceRolledBeat>().ToList();
+            Assert.That(diceBeats.Count, Is.EqualTo(1), "the whole unit's dangerous-terrain test is one batched dice row.");
+            Assert.That(diceBeats[0].FaceCounts.Sum(), Is.EqualTo(2f), "the single beat carries one die per living model.");
             Assert.That(sink.Beats.OfType<ModelDiedBeat>().Any(), Is.False, "a safe roll kills no one.");
             Assert.That(sink.Beats.OfType<ModelWoundedBeat>().Any(), Is.False);
         }

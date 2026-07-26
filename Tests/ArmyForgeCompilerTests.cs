@@ -307,7 +307,8 @@ public class ArmyForgeCompilerTests
         BuiltArmyFile army = ListCompiler.Compile(book, list);
 
         Assert.That(army.Units, Has.Count.EqualTo(2), "the pair merged; gunners untouched");
-        UnitFileEntry combined = army.Units.Single(u => u.Name.Contains("Combined"));
+        UnitFileEntry combined = army.Units.Single(u => u.Name.StartsWith("Vanguard Warriors"));
+        Assert.That(combined.Name, Is.EqualTo("Vanguard Warriors"), "the merged pair keeps the plain unit name");
         Assert.That(combined.ModelCount, Is.EqualTo(10));
         Assert.That(combined.PointCost, Is.EqualTo(65 + 65 + 5), "both copies' base cost plus B's plasma");
         Assert.That(Wpn(combined, "Rifle").Quantity, Is.EqualTo(9), "5 + (5 − 1 replaced)");

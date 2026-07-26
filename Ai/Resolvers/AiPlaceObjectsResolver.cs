@@ -205,15 +205,22 @@ namespace FDG.Ai.Resolvers
             float startCx = Math.Clamp(preferredCx, MathF.Min(cxMin, cxMax), MathF.Max(cxMin, cxMax));
             float startCz = Math.Clamp(preferredCz, MathF.Min(czMin, czMax), MathF.Max(czMin, czMax));
 
+            // Best-so-far, so a zone with no legal spot still yields the least-bad centre the sweep saw
+            // rather than an unchecked clamped guess (see BlockPenalty).
+            var bestCentre = new Position(startCx, startCz);
+            float bestPenalty = float.PositiveInfinity;
+
             foreach (float cz in CandidateAxis(startCz, czMin, czMax, spacingZ))
                 foreach (float cx in CandidateAxis(startCx, cxMin, cxMax, spacingX))
                 {
                     var center = new Position(cx, cz);
-                    if (BlockIsValid(center, zone, radius, cols, spacingX, spacingZ, gridWidth, gridHeight, count, existing, enemies, minEnemyDist))
-                        return center;
+                    float penalty = BlockPenalty(center, zone, radius, cols, spacingX, spacingZ, gridWidth,
+                        gridHeight, count, existing, enemies, minEnemyDist);
+                    if (penalty <= 0f) return center;   // fully legal: unchanged fast path
+                    if (penalty < bestPenalty) { bestPenalty = penalty; bestCentre = center; }
                 }
 
-            return new Position(startCx, startCz);
+            return bestCentre;
         }
 
         // Values from `start` outward (start, +step, -step, +2step, …), clamped to [min,max]; if the range is
@@ -252,6 +259,12 @@ namespace FDG.Ai.Resolvers
                 (MathF.Abs(preferredCx - cxMax), cxMax, cxMax, czMin, czMax, new Float2(-1f, 0f)),  // right → face −X
             };
 
+            // Best-so-far across every edge, with the facing that goes with it.
+            var bestCentre = new Position(
+                Math.Clamp(preferredCx, MathF.Min(cxMin, cxMax), MathF.Max(cxMin, cxMax)), czMin);
+            Float2 bestFacing = new Float2(0f, 1f);
+            float bestPenalty = float.PositiveInfinity;
+
             foreach (var edge in edges.OrderBy(e => e.dist))
             {
                 float startCx = Math.Clamp(preferredCx, MathF.Min(edge.exMin, edge.exMax), MathF.Max(edge.exMin, edge.exMax));
@@ -260,36 +273,82 @@ namespace FDG.Ai.Resolvers
                     foreach (float cx in CandidateAxis(startCx, edge.exMin, edge.exMax, spacingX))
                     {
                         var centre = new Position(cx, cz);
-                        if (BlockIsValid(centre, zone, radius, cols, spacingX, spacingZ, gridWidth, gridHeight, count, existing, enemies, minEnemyDist))
+                        float penalty = BlockPenalty(centre, zone, radius, cols, spacingX, spacingZ, gridWidth,
+                            gridHeight, count, existing, enemies, minEnemyDist);
+                        if (penalty <= 0f)                      // fully legal: unchanged fast path
                         {
                             inwardFacing = edge.facing;
                             return centre;
                         }
+                        if (penalty < bestPenalty)
+                        {
+                            bestPenalty = penalty;
+                            bestCentre = centre;
+                            bestFacing = edge.facing;
+                        }
                     }
             }
 
-            // No clear spot on any edge — intact block on the bottom edge at the clamped preferred lane
-            // (cramped but touching and never scattered, matching the non-edge fallback's philosophy).
-            inwardFacing = new Float2(0f, 1f);
-            return new Position(
-                Math.Clamp(preferredCx, MathF.Min(cxMin, cxMax), MathF.Max(cxMin, cxMax)),
-                czMin);
+            // No clear spot on any edge — the least-bad centre the sweep saw, still an intact block (cramped
+            // but touching and never scattered, matching the non-edge fallback's philosophy). Previously this
+            // returned a clamped bottom-edge guess that no check had ever looked at, which is how an allied
+            // block got deployed on top of another one.
+            inwardFacing = bestFacing;
+            return bestCentre;
         }
 
         private bool BlockIsValid(Position center, IBoundedZone zone, float radius, int cols, float spacingX, float spacingZ,
             float gridWidth, float gridHeight, int count, List<(Position pos, float radius)> existing,
             List<Position> enemies, float minEnemyDist)
+            => BlockPenalty(center, zone, radius, cols, spacingX, spacingZ, gridWidth, gridHeight, count,
+                   existing, enemies, minEnemyDist) <= 0f;
+
+        /// <summary>
+        /// How badly a candidate centre breaks placement legality; 0 means fully legal (what
+        /// <see cref="BlockIsValid"/> reports). Used to pick the LEAST-BAD centre when the zone has no legal
+        /// spot left at all, instead of the blind clamped guess the fallbacks used to return.
+        /// <para>
+        /// That blind guess is how a Retributors block ended up deployed INSIDE an allied Saurian Guardians
+        /// block (2026-07-26 save, 9 overlapping bases, worst 0.63"): a shared 2v2 deployment zone fills up,
+        /// every swept centre fails, and the fallback placed the block without consulting a single check.
+        /// Overlap depth dominates the score, so a cramped-but-separated spot always beats an interpenetrating
+        /// one; zone and terrain violations are weighted far heavier still, since leaving the zone or standing
+        /// in a building is worse than being tightly packed.
+        /// </para>
+        /// </summary>
+        private float BlockPenalty(Position center, IBoundedZone zone, float radius, int cols, float spacingX,
+            float spacingZ, float gridWidth, float gridHeight, int count,
+            List<(Position pos, float radius)> existing, List<Position> enemies, float minEnemyDist)
         {
+            const float OutOfZonePenalty = 1000f;
+            const float TerrainPenalty = 1000f;
+            const float EnemySpacingPenalty = 10f;
+
+            float penalty = 0f;
             foreach (Position p in BuildGrid(center, cols, spacingX, spacingZ, gridWidth, gridHeight, count))
             {
                 // The whole base must fit in the zone (footprint, not just the centre) — so no base pokes past a
                 // zone edge, and since deployment zones are flush with the table edge, none goes off the table.
-                if (!PlacementUtilities.IsBaseWithinZone(p, radius, zone)) return false;
-                if (OverlapsExisting(p, radius, existing)) return false;
-                if (PlacementUtilities.OverlapsImpassibleTerrain(p, radius, _impassibleTerrain)) return false;
-                if (TooCloseToEnemy(p, enemies, minEnemyDist)) return false;
+                if (!PlacementUtilities.IsBaseWithinZone(p, radius, zone)) penalty += OutOfZonePenalty;
+                penalty += OverlapDepth(p, radius, existing);
+                if (PlacementUtilities.OverlapsImpassibleTerrain(p, radius, _impassibleTerrain)) penalty += TerrainPenalty;
+                if (TooCloseToEnemy(p, enemies, minEnemyDist)) penalty += EnemySpacingPenalty;
             }
-            return true;
+            return penalty;
+        }
+
+        /// <summary>Total interpenetration (inches) between a base at <paramref name="p"/> and everything
+        /// already on the table; 0 when it touches nothing. The continuous form of
+        /// <see cref="OverlapsExisting"/>, so "barely clipping one model" ranks better than "buried in four".</summary>
+        private static float OverlapDepth(Position p, float r, List<(Position pos, float radius)> existing)
+        {
+            float depth = 0f;
+            foreach (var (ep, er) in existing)
+            {
+                float gap = Dist(p, ep) - (r + er);
+                if (gap < 0f) depth += -gap;
+            }
+            return depth;
         }
 
         private List<Position> GetEnemyPositions(PlayerID self)
@@ -297,7 +356,9 @@ namespace FDG.Ai.Resolvers
             var positions = new List<Position>();
             foreach (var unit in _tableState.Units.Objects)
             {
-                if (unit.PlayerID == self) continue;
+                // Team-aware: an ALLY is not an enemy, so an Ambush arrival is not pushed away from its
+                // own side's models by MinDistanceFromEnemiesInches.
+                if (ITeamExtensions.AreAllied(_tableState.Teams.Objects, self, unit.PlayerID)) continue;
                 foreach (var model in unit.Models)
                 {
                     if (model is ModelData md && md.GetIsAlive() && (md.Position.x != 0f || md.Position.z != 0f))
@@ -328,6 +389,9 @@ namespace FDG.Ai.Resolvers
             foreach (var model in _tableState.Models.Objects)
             {
                 if (offTable.Contains(model)) continue;
+                // Casualties are removed from play - a dead model's base must not keep blocking placement
+                // from wherever it happened to die (the invisible-wall the player can't see or explain).
+                if (!model.GetIsAlive()) continue;
                 var pos = model.Position;
                 if (pos.x == 0f && pos.z == 0f) continue;
                 // Circumscribing radius so the placing block keeps clear of an existing rectangular base at any

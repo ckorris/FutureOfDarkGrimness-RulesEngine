@@ -391,6 +391,177 @@ namespace FDG.Tests
             }
         }
 
+        // The same shape with room to spare: here a fully legal centre EXISTS, so the block must find it and
+        // touch nothing at all. Guards the ordinary path the penalty refactor now routes through.
+        [Test]
+        public async Task ZoneWithRoom_DeploysClearOfAnAlliedBlock()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var me = new PlayerID(System.Guid.NewGuid());
+            var ally = new PlayerID(System.Guid.NewGuid());
+            store.Create(new TeamData(1, new List<PlayerID> { me, ally }));
+
+            var zone = new RectangularZone(10f, 44f, 34f, 46f);
+            var allyModels = new List<DataBinding<ModelData>>();
+            for (int i = 0; i < 6; i++)
+            {
+                var p = new Position(12f + (i % 3) * 2.2f, 39f + (i / 3) * 2.2f);
+                var m = new ModelData(0.5f, new List<Weapon>(), p, store);
+                allyModels.Add(store.GetDataBinding<ModelData>(store.Create(m)));
+            }
+            var allyUnit = new UnitData(ally, "Saurian Guardians", 4, 4, allyModels);
+            store.Create(allyUnit);
+            store.Create(new ArmyData(ally, new List<DataBinding<UnitData>>
+                { store.GetDataBinding<UnitData>(store.Create(allyUnit)) }));
+
+            var placing = new List<DataBinding<ModelData>>();
+            for (int i = 0; i < 5; i++)
+            {
+                var m = new ModelData(0.5f, new List<Weapon>(), new Position(0f, 0f), store);
+                placing.Add(store.GetDataBinding<ModelData>(store.Create(m)));
+            }
+            store.Create(new UnitData(me, "Retributors", 4, 4, placing));
+
+            var tableState = new TableState(store);
+            var resolver = new AiPlaceObjectsResolver<ModelData>(tableState);
+            List<PlacedObjectEntry<ModelData>> result = Unwrap(await resolver.Resolve(
+                new PlaceObjectsRequest<ModelData>(me, "Deploy", zone, placing)));
+
+            foreach (PlacedObjectEntry<ModelData> entry in result)
+            {
+                float r = entry.Binding.GetValue().BaseRadiusInches;
+                foreach (DataBinding<ModelData> occupied in allyModels)
+                {
+                    ModelData other = occupied.GetValue();
+                    float dx = entry.Position.x - other.Position.x;
+                    float dz = entry.Position.z - other.Position.z;
+                    float gap = MathF.Sqrt(dx * dx + dz * dz) - (r + other.BaseRadiusInches);
+                    Assert.That(gap, Is.GreaterThanOrEqualTo(0f),
+                        $"with room available, a deployed model at ({entry.Position.x:F1},{entry.Position.z:F1}) " +
+                        $"must not touch an ALLIED model at ({other.Position.x:F1},{other.Position.z:F1})");
+                }
+            }
+        }
+
+
+        // When a deployment zone has NO legal centre left, both block finders used to return a clamped
+        // guess that no check had ever looked at - so the block could land in the densest corner and bury
+        // itself in whatever was already there. The sweep now keeps the least-bad centre it saw
+        // (BlockPenalty) and returns that. Measured on this scene: the blind guess landed at (0.5,43.0)
+        // buried 0.82"; the least-bad centre lands at (33.5,45.2), 0.24".
+        //
+        // NOTE: this is NOT the cause of the YellowDeployedOverGreen overlap - that save's zone was 72x9
+        // and nowhere near full, and old/new code place identically there. That root cause is still open.
+        [Test]
+        public async Task FullZone_FallbackPicksLeastOverlappingCentre_NotABlindGuess()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var me = new PlayerID(System.Guid.NewGuid());
+            var ally = new PlayerID(System.Guid.NewGuid());
+            store.Create(new TeamData(1, new List<PlayerID> { me, ally }));
+
+            // Every centre overlaps something, but by wildly different amounts: the bottom is packed
+            // shoulder-to-shoulder, the top is sparse. A fallback that consults the checks finds the top.
+            var zone = new RectangularZone(0f, 40f, 39f, 48f);
+            var occ = new List<DataBinding<ModelData>>();
+            for (float z = 39.5f; z < 43.5f; z += 1.1f)
+                for (float x = 0.6f; x < 39.5f; x += 1.1f)
+                    occ.Add(store.GetDataBinding<ModelData>(store.Create(
+                        new ModelData(0.5f, new List<Weapon>(), new Position(x, z), store))));
+            for (float z = 44.5f; z < 47.5f; z += 2.6f)
+                for (float x = 1.5f; x < 39.5f; x += 2.6f)
+                    occ.Add(store.GetDataBinding<ModelData>(store.Create(
+                        new ModelData(0.5f, new List<Weapon>(), new Position(x, z), store))));
+            var allyUnit = new UnitData(ally, "Crowd", 4, 4, occ);
+            store.Create(allyUnit);
+            store.Create(new ArmyData(ally, new List<DataBinding<UnitData>>
+                { store.GetDataBinding<UnitData>(store.Create(allyUnit)) }));
+
+            var placing = new List<DataBinding<ModelData>>();
+            for (int i = 0; i < 5; i++)
+                placing.Add(store.GetDataBinding<ModelData>(store.Create(
+                    new ModelData(0.5f, new List<Weapon>(), new Position(0f, 0f), store))));
+            store.Create(new UnitData(me, "Newcomer", 4, 4, placing));
+
+            var resolver = new AiPlaceObjectsResolver<ModelData>(new TableState(store));
+            var result = Unwrap(await resolver.Resolve(
+                new PlaceObjectsRequest<ModelData>(me, "Deploy", zone, placing)));
+
+            float worst = 0f;
+            foreach (PlacedObjectEntry<ModelData> e in result)
+                foreach (DataBinding<ModelData> o in occ)
+                {
+                    ModelData om = o.GetValue();
+                    float dx = e.Position.x - om.Position.x, dz = e.Position.z - om.Position.z;
+                    worst = MathF.Max(worst, 1.0f - MathF.Sqrt(dx * dx + dz * dz));
+                }
+
+            Assert.That(worst, Is.GreaterThan(0f),
+                "scene check: this zone must have no legal centre, or the fallback is never exercised");
+            Assert.That(worst, Is.LessThan(0.4f),
+                $"a full zone must yield the least-overlapping centre the sweep saw, not a blind clamped " +
+                $"guess (worst interpenetration {worst:F2}in; the blind guess measured 0.82in)");
+        }
+
+        // Dead models must not act as invisible occupants: casualties aren't drawn, so if they still
+        // repelled placement, the spot where models died would become an inexplicable no-place region
+        // (seen live as an Ambush drop flagged red on visibly empty ground). The unit keeps one SURVIVOR
+        // so it still reads on-battlefield - a fully wiped unit is already excluded wholesale by the
+        // GetIsOnBattlefield occupancy filter; the per-model leak is corpses of a unit that still lives.
+        // Same scene placed with and without the corpses must come out identical.
+        [Test]
+        public async Task DeadModels_DoNotBlockPlacement()
+        {
+            async Task<List<Position>> PlaceWith(bool corpses)
+            {
+                var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+                var me = new PlayerID(System.Guid.NewGuid());
+
+                var zone = new RectangularZone(20f, 40f, 20f, 28f);
+
+                // The survivor stands well clear of the zone centre and exists in BOTH runs, so any
+                // placement difference is attributable to the corpses alone.
+                var fallenModels = new List<DataBinding<ModelData>>();
+                var survivor = new ModelData(0.5f, new List<Weapon>(), new Position(38f, 26f), store);
+                fallenModels.Add(store.GetDataBinding<ModelData>(store.Create(survivor)));
+                if (corpses)
+                {
+                    // Dead squadmates right where the sweep wants to put the newcomers (the zone's
+                    // left-centre - where the corpse-free control run measurably lands).
+                    for (int i = 0; i < 5; i++)
+                    {
+                        var m = new ModelData(0.5f, new List<Weapon>(), new Position(20f + i, 24f), store);
+                        m.DealWounds(m.TotalWounds);
+                        fallenModels.Add(store.GetDataBinding<ModelData>(store.Create(m)));
+                    }
+                }
+                store.Create(new UnitData(me, "Fallen", 4, 4, fallenModels));
+
+                var placing = new List<DataBinding<ModelData>>();
+                for (int i = 0; i < 3; i++)
+                    placing.Add(store.GetDataBinding<ModelData>(store.Create(
+                        new ModelData(0.5f, new List<Weapon>(), new Position(0f, 0f), store))));
+                store.Create(new UnitData(me, "Newcomer", 4, 4, placing));
+
+                var resolver = new AiPlaceObjectsResolver<ModelData>(new TableState(store));
+                var result = Unwrap(await resolver.Resolve(
+                    new PlaceObjectsRequest<ModelData>(me, "Deploy", zone, placing)));
+                return result.Select(e => e.Position).ToList();
+            }
+
+            List<Position> with = await PlaceWith(corpses: true);
+            List<Position> without = await PlaceWith(corpses: false);
+
+            Assert.That(with.Count, Is.EqualTo(without.Count));
+            for (int i = 0; i < with.Count; i++)
+            {
+                Assert.That(with[i].x, Is.EqualTo(without[i].x).Within(0.001f),
+                    $"model {i} shifted by corpses - dead models must not be occupants");
+                Assert.That(with[i].z, Is.EqualTo(without[i].z).Within(0.001f),
+                    $"model {i} shifted by corpses - dead models must not be occupants");
+            }
+        }
+
         // The AI resolver never cancels a placement.
         private static List<PlacedObjectEntry<ModelData>> Unwrap(
             CancellableResult<List<PlacedObjectEntry<ModelData>>> result)

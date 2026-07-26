@@ -366,7 +366,8 @@ namespace FDG.Ai.Tactician.Resolvers
             int count = 0;
             foreach (IUnit unit in _tableState.Units.Objects)
             {
-                if (unit.PlayerID == us || !unit.GetIsOnBattlefield()) continue;
+                if (ITeamExtensions.AreAllied(_tableState.Teams.Objects, us, unit.PlayerID)
+                    || !unit.GetIsOnBattlefield()) continue;
                 foreach (IModel model in unit.Models)
                 {
                     if (!model.GetIsAlive()) continue;

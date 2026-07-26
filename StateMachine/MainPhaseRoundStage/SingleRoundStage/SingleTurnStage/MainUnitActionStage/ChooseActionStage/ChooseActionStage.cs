@@ -1,3 +1,4 @@
+using FDG.Data;
 using FDG.Presentation.Beats;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
@@ -209,18 +210,44 @@ namespace FDG.Stages
                     continue;
                 }
 
-                // #035 slice D — Embark is offered only when it's still a move action (the unit hasn't moved
-                // or attacked) AND an engine spatial check finds a friendly transport with room within
-                // move-range (the availability gate can't be a data condition). Routed to EmbarkStage.
+                // #035 slice D / #097 — Embark's availability is spatial, so the gate is engine code rather
+                // than a data condition. Boarding is the END of an entering move ("units may enter ... by
+                // using any move action"), not a teleport: it is offered from contact only, and the approach
+                // is an ordinary Move. So unlike every other action here, having MOVED does not disqualify
+                // the unit — the move it just made IS the entering move. Attacking still does.
+                //
+                // A transport further off is listed GREYED with a "move up first" reason rather than
+                // omitted, so the option stays discoverable from across the table: without it a player 5"
+                // from their Rhino would see no Embark entry at all and no hint that walking over produces
+                // one. The hint's reach is the unit's own Rush — the furthest it could close this activation.
                 if (offer.Ability.Effect is Effect.Embark)
                 {
-                    bool canEmbark = !context.HasMoved && !context.HasAttacked
-                        && EmbarkStage.GetEmbarkableTransports(GameContext, context.ActivatingUnit.GetValue()).Count > 0;
+                    if (context.HasAttacked || outcomes.ContainsKey(offer.RuleName)) continue;
 
-                    if (canEmbark && !outcomes.ContainsKey(offer.RuleName))
+                    UnitData self = context.ActivatingUnit.GetValue();
+
+                    List<DataBinding<UnitData>> boardable = EmbarkStage.GetEmbarkableTransports(
+                        GameContext, self, TransportUtilities.EmbarkContactDistanceInches);
+                    if (boardable.Count > 0)
                     {
                         validOptions.Add(offer.RuleName);
                         outcomes.Add(offer.RuleName, () => ToEmbark.Activate(context));
+                        continue;
+                    }
+
+                    List<DataBinding<UnitData>> withinReach = EmbarkStage.GetEmbarkableTransports(
+                        GameContext, self,
+                        MovementRuleQueries.EffectiveMaxRushDistance(self, GameContext.RuleEvaluator));
+                    if (withinReach.Count > 0)
+                    {
+                        // Two different situations, and the difference matters to the player: one is an
+                        // instruction, the other is an explanation. A unit that moved up and stopped an inch
+                        // short must not just watch the entry disappear with no account of why.
+                        string transportName = withinReach[0].GetValue().Name;
+                        invalidOptions.Add(new StringSelectionRequest.InvalidOption(offer.RuleName,
+                            context.HasMoved
+                                ? $"Not in contact with {transportName}, and the move is spent."
+                                : $"Move into contact with {transportName} first."));
                     }
                     continue;
                 }

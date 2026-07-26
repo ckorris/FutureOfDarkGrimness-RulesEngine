@@ -13,12 +13,19 @@ namespace FDG.Stages
     /// moved to origin), and ends the activation — boarding uses the unit's move action and puts it inside,
     /// from where it can't act this turn.
     ///
-    /// The "within move-range of a friendly transport with room" eligibility is spatial, so it lives here in
+    /// The "friendly transport with room, close enough to board" eligibility is spatial, so it lives here in
     /// engine code (<see cref="GetEmbarkableTransports"/>) — shared with <see cref="ChooseActionStage"/>,
     /// which calls it to gate whether the Embark action surfaces at all (the same way Charge is gated by
-    /// enemy-in-range). The simplification (set-aside if a transport is within Advance distance, no real path
-    /// drawn) mirrors <see cref="DisembarkStage"/>'s Advance-equivalent placement; a real move-into-contact
-    /// (and embark-via-Rush/Charge) is deferred.
+    /// enemy-in-range).
+    ///
+    /// #097 replaced slice D's "set aside if a transport is within Advance distance" shortcut with the
+    /// faithful reading of "units may enter ... by using any move action": boarding is the END of an
+    /// entering move, offered only from contact
+    /// (<see cref="TransportUtilities.EmbarkContactDistanceInches"/>). The approach is an ordinary Move, so
+    /// a unit crossing 10" to board Rushes there along a real path that terrain, enemy footprints,
+    /// dangerous-terrain tests and the move-through rules (Strafing, Crossing Attack) all see — none of
+    /// which a teleporting set-aside could. <see cref="ChooseActionStage"/> keeps the action discoverable
+    /// from further off by listing it greyed with a "move into contact first" reason.
     /// </summary>
     public class EmbarkStage : StageBase<IUnitActionContext>
     {
@@ -36,7 +43,8 @@ namespace FDG.Stages
         {
             UnitData unit = context.ActivatingUnit.GetValue();
 
-            List<DataBinding<UnitData>> transports = GetEmbarkableTransports(GameContext, unit);
+            List<DataBinding<UnitData>> transports = GetEmbarkableTransports(GameContext, unit,
+                TransportUtilities.EmbarkContactDistanceInches);
             if (transports.Count == 0)
             {
                 // Defensive: ChooseActionStage only offers Embark when this is non-empty, but if state moved
@@ -71,12 +79,17 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// Friendly transports on the table that <paramref name="candidate"/> could board this activation:
-        /// full embark eligibility (transport identity, same player, ride caps, remaining capacity) via
-        /// <see cref="TransportUtilities.CanUnitEmbark"/>, restricted to deployed transports within the
-        /// unit's move-shoot (Advance) distance. Shared with <see cref="ChooseActionStage"/>'s Embark gate.
+        /// Friendly transports on the table that <paramref name="candidate"/> is eligible to board: full
+        /// embark eligibility (transport identity, same player, ride caps, remaining capacity) via
+        /// <see cref="TransportUtilities.CanUnitEmbark"/>, restricted to deployed transports within
+        /// <paramref name="maxDistanceInches"/> base-to-base.
+        ///
+        /// The distance is a parameter because <see cref="ChooseActionStage"/> asks the same question at two
+        /// ranges (#097): at <see cref="TransportUtilities.EmbarkContactDistanceInches"/> for "can board
+        /// now", and at the unit's Rush distance for "could reach one if it moved first" — the greyed hint.
         /// </summary>
-        public static List<DataBinding<UnitData>> GetEmbarkableTransports(IGameContext gameContext, UnitData candidate)
+        public static List<DataBinding<UnitData>> GetEmbarkableTransports(IGameContext gameContext,
+            UnitData candidate, float maxDistanceInches)
         {
             List<DataBinding<UnitData>> allBindings = new List<DataBinding<UnitData>>();
             foreach (ArmyData army in gameContext.GameDataStore.GetAllValues<ArmyData>())
@@ -85,8 +98,6 @@ namespace FDG.Stages
             }
 
             List<IUnit> allUnits = allBindings.Select(binding => (IUnit)binding.GetValue()).ToList();
-
-            candidate.GetMobility(out float moveShootDistanceInches, out _);
 
             List<DataBinding<UnitData>> eligible = new List<DataBinding<UnitData>>();
             foreach (DataBinding<UnitData> binding in allBindings)
@@ -99,7 +110,7 @@ namespace FDG.Stages
 
                 float distance = UnitCompareUtilities.MinDistanceBetweenUnits(
                     candidate, transport, out _, out _, includeVertical: false);
-                if (distance > moveShootDistanceInches) continue;
+                if (!distance.LessThanOrAlmostEqual(maxDistanceInches)) continue;
 
                 eligible.Add(binding);
             }

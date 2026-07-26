@@ -175,6 +175,18 @@ namespace FDG.Stages
             IUnit self = activatingUnit.GetValue();
             PlayerID owner = self.PlayerID;
 
+            // #097: an embarked unit's models sit at the origin, so measuring from them records the distance
+            // from the table corner — which for a unit that disembarks and charges made every "charges an
+            // enemy over 9in away" rule (#197) read garbage. At activation start the unit is physically
+            // inside its transport, so the transport's geometry is what the charge is declared from.
+            IUnit measureFrom = self;
+            if (TransportUtilities.GetTransportId(self) is UnitID transportId)
+            {
+                UnitData? transport = GameContext.GameDataStore().GetAllValues<UnitData>()
+                    .FirstOrDefault(unit => unit.ID == transportId);
+                if (transport != null) measureFrom = transport;
+            }
+
             TeamData? ownerTeam = GameContext.GameDataStore().GetAllValues<TeamData>()
                 .FirstOrDefault(t => t.IsPlayerOnTeam(owner));
             IReadOnlyList<PlayerID> alliedPlayers = ownerTeam != null
@@ -192,7 +204,7 @@ namespace FDG.Stages
                     // Same measurement the charge/melee gates use: living model to living model, closest pair,
                     // including the vertical component.
                     _distanceAtActivationStart[enemy.ID] = UnitCompareUtilities.MinDistanceBetweenUnits(
-                        self, enemy, out _, out _, includeVertical: true);
+                        measureFrom, enemy, out _, out _, includeVertical: true);
                 }
             }
         }

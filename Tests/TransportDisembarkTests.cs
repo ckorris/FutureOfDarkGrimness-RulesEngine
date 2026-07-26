@@ -73,7 +73,7 @@ namespace FDG.Tests
         }
 
         [Test]
-        public async Task DisembarkStage_PlacesUnembarksAndCountsAsAdvance()
+        public async Task DisembarkStage_PlacesUnembarksAndSpendsTheMove()
         {
             var requester = new CannedPlaceRequester(new Position(12f, 10f)); // within 6" of the transport at (10,10)
             var ctx = new TriggeredMoveTestContext(_store, requester);
@@ -90,9 +90,89 @@ namespace FDG.Tests
 
             Assert.That(TransportUtilities.IsEmbarked(squad.GetValue()), Is.False, "the unit is no longer embarked.");
             Assert.That(squad.GetValue().GetIsOnBattlefield(), Is.True, "its models are now on the table.");
-            Assert.That(unitCtx.HasMoved, Is.True, "disembarking is the unit's move (Advance-equivalent).");
-            Assert.That(unitCtx.MoveDistance, Is.EqualTo(0f), "an Advance with 0 measured distance keeps shooting available.");
+            Assert.That(unitCtx.HasMoved, Is.True, "exiting IS the unit's move action - it can't move again.");
+            // #097: slice C recorded a flat 0 here, which let a unit whose Advance is shorter than the 6"
+            // leash hop the full distance out and still shoot. The exit reports what it actually covered.
+            Assert.That(unitCtx.MoveDistance, Is.EqualTo(2f).Within(0.001f),
+                "the drop is 2\" from the transport, and that is the distance the exit spent.");
             Assert.That(finished, Is.True, "loops back to Choose Action.");
+        }
+
+        // #097: the distance is the FURTHEST model's, matching MovementUtilities.GetMaxMoveDistance's
+        // max-over-models convention - one model lagging by the hull doesn't buy the squad a shot.
+        [Test]
+        public async Task DisembarkStage_RecordsTheFurthestModelsDrop()
+        {
+            var requester = new PerModelPlaceRequester(new Position(11f, 10f), new Position(15.5f, 10f));
+            var ctx = new TriggeredMoveTestContext(_store, requester);
+            DataBinding<UnitData> transport = MakeTransport("Rhino", capacity: 6, deployed: true);
+            DataBinding<UnitData> squad = MakeSquadWithDisembark("Grunts", modelCount: 2);
+            TransportUtilities.Embark(squad.GetValue(), transport.GetValue());
+
+            var unitCtx = NewActivation(ctx, squad);
+            var stage = new DisembarkStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Assert.That(unitCtx.MoveDistance, Is.EqualTo(5.5f).Within(0.001f),
+                "1\" and 5.5\" drops from the transport - the exit cost is the 5.5\".");
+        }
+
+        // #097 pins what the Choose Action flow already allowed but nothing asserted: the exit spends the
+        // MOVE, not the attack, so a unit that lands next to an enemy may charge straight out of the hatch.
+        // (Charge is a separate menu action here, gated on melee range rather than on having moved.)
+        [Test]
+        public async Task Disembark_ThenCharge_IsOfferedWhenTheDropLandsInMeleeRange()
+        {
+            // Drop at (12,10); the enemy sits at (13,10), so the squad lands in base contact with it.
+            var requester = new PlaceThenChooseRequester(new Position(12f, 10f),
+                ChooseActionStage.CHARGE_CHOICE_NAME);
+            var ctx = new TriggeredMoveTestContext(_store, requester);
+            DataBinding<UnitData> transport = MakeTransport("Rhino", capacity: 6, deployed: true);
+            DataBinding<UnitData> squad = MakeSquadWithDisembark("Grunts", modelCount: 2,
+                new Weapon("Blade", rangeInches: 0f, attacks: 1, armorPenetration: 0));
+            MakeEnemy("Cultists", x: 13f, z: 10f);
+            TransportUtilities.Embark(squad.GetValue(), transport.GetValue());
+
+            var unitCtx = NewActivation(ctx, squad);
+            var disembark = new DisembarkStage(ctx, new NoOpLayer<IUnitActionContext>());
+            disembark.OnFinished.Bind("OnFinished");
+            await disembark.Enter(unitCtx);
+
+            bool routedToCharge = false;
+            var chooseAction = new ChooseActionStage(ctx, new NoOpLayer<IUnitActionContext>());
+            chooseAction.ToCharge.Bind("ToCharge");
+            chooseAction.ToCharge.OnWillActivate += _ => routedToCharge = true;
+            await chooseAction.Enter(unitCtx);
+
+            Assert.That(requester.OfferedOptions, Does.Contain(ChooseActionStage.CHARGE_CHOICE_NAME),
+                "the 6\" exit put a model in melee range, so Charge is live.");
+            Assert.That(requester.OfferedOptions, Does.Not.Contain(ChooseActionStage.MOVEMENT_CHOICE_NAME),
+                "but the move is spent - the leash is the whole of the exit.");
+            Assert.That(routedToCharge, Is.True, "choosing Charge routes to MeleeStage.");
+        }
+
+        // #097: an embarked unit's models sit at the origin, so snapshotting the charge-declaration
+        // geometry off them measured from the table corner - garbage for every #197 "charges an enemy over
+        // 9in away" rule the moment the unit disembarked and charged. It measures from the transport, which
+        // is where the unit physically is when its activation begins.
+        [Test]
+        public void ActivationStart_EmbarkedUnit_MeasuresChargeOriginFromItsTransport()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new NullPlayerRequester());
+            DataBinding<UnitData> transport = MakeTransport("Rhino", capacity: 6, deployed: true); // (10,10)
+            DataBinding<UnitData> squad = MakeSquadWithDisembark("Grunts", modelCount: 2);
+            DataBinding<UnitData> enemy = MakeEnemy("Cultists", x: 30f, z: 10f);
+            TransportUtilities.Embark(squad.GetValue(), transport.GetValue());
+
+            var unitCtx = NewActivation(ctx, squad);
+
+            Assert.That(unitCtx.TryGetActivationStartDistanceTo(enemy.GetValue().ID, out float distance),
+                Is.True);
+            Assert.That(distance, Is.EqualTo(19f).Within(0.01f),
+                "20\" centre-to-centre from the transport, less the two 0.5\" bases.");
+            Assert.That(distance, Is.LessThan(30f),
+                "and emphatically not the ~30.6\" the at-origin models would have reported.");
         }
 
         // Nothing is repositioned until the placements come back, so cancelling the prompt must leave the
@@ -149,13 +229,28 @@ namespace FDG.Tests
             return unitCtx;
         }
 
+        // An enemy unit (its own player, so it is never screened out as an ally) parked on the table.
+        private DataBinding<UnitData> MakeEnemy(string name, float x, float z)
+        {
+            var model = new ModelData(0.5f, new List<Weapon>(), new Position(x, z), _store);
+            DataBinding<ModelData> modelBinding = _store.GetDataBinding<ModelData>(_store.Create(model));
+
+            var enemyPlayer = new PlayerID(Guid.NewGuid());
+            var unit = new UnitData(enemyPlayer, name, quality: 4, defense: 4,
+                modelBindings: new List<DataBinding<ModelData>> { modelBinding });
+            DataBinding<UnitData> binding = _store.GetDataBinding<UnitData>(_store.Create(unit));
+            _store.Create(new ArmyData(enemyPlayer, new List<DataBinding<UnitData>> { binding }));
+            return binding;
+        }
+
         // A squad that carries the universal Disembark ability FDGServer attaches to every unit at army-load.
-        private DataBinding<UnitData> MakeSquadWithDisembark(string name, int modelCount)
+        private DataBinding<UnitData> MakeSquadWithDisembark(string name, int modelCount,
+            params Weapon[] weapons)
         {
             var modelBindings = new List<DataBinding<ModelData>>();
             for (int i = 0; i < modelCount; i++)
             {
-                var model = new ModelData(0.5f, new List<Weapon>(), new Position(0f, 0f), _store);
+                var model = new ModelData(0.5f, new List<Weapon>(weapons), new Position(0f, 0f), _store);
                 modelBindings.Add(_store.GetDataBinding<ModelData>(_store.Create(model)));
             }
 
@@ -190,6 +285,12 @@ namespace FDG.Tests
         private readonly string _choice;
         public IReadOnlyList<string> OfferedOptions { get; private set; } = new List<string>();
 
+        // #097: the greyed entries too, with their reasons — an option can be deliberately present-but-
+        // unavailable (Embark's "move into contact first" hint), which OfferedOptions alone can't tell
+        // apart from the option being absent entirely.
+        public IReadOnlyList<StringSelectionRequest.InvalidOption> OfferedInvalidOptions { get; private set; }
+            = new List<StringSelectionRequest.InvalidOption>();
+
         public RecordingActionRequester(string choice) => _choice = choice;
 
         public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
@@ -198,6 +299,7 @@ namespace FDG.Tests
             if (request is StringSelectionRequest selection)
             {
                 OfferedOptions = selection.ValidOptions;
+                OfferedInvalidOptions = selection.InvalidOptions;
                 return Task.FromResult((TReply)(object)_choice);
             }
             throw new InvalidOperationException("Unexpected request type: " + request.GetType());
@@ -224,6 +326,65 @@ namespace FDG.Tests
                     .ToList();
                 return Task.FromResult((TReply)(object)new Selected<List<PlacedObjectEntry<ModelData>>>(placements));
             }
+            throw new InvalidOperationException("Unexpected request type: " + request.GetType());
+        }
+    }
+
+    // Answers a PlaceObjectsRequest by dealing the given positions out to the models in order (the last
+    // one repeats if there are more models than positions), so a test can spread a squad's drop.
+    internal sealed class PerModelPlaceRequester : IPlayerRequestByID
+    {
+        private readonly Position[] _positions;
+
+        public PerModelPlaceRequester(params Position[] positions) => _positions = positions;
+
+        public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
+            where TRequest : IStageTaskRequest<TReply>
+        {
+            if (request is PlaceObjectsRequest<ModelData> place)
+            {
+                List<PlacedObjectEntry<ModelData>> placements = place.ModelsToPlace
+                    .Select((binding, index) => new PlacedObjectEntry<ModelData>(
+                        binding, _positions[Math.Min(index, _positions.Length - 1)]))
+                    .ToList();
+                return Task.FromResult((TReply)(object)new Selected<List<PlacedObjectEntry<ModelData>>>(placements));
+            }
+            throw new InvalidOperationException("Unexpected request type: " + request.GetType());
+        }
+    }
+
+    // Answers a disembark placement with a fixed spot, then records and answers the action menu that
+    // follows — so one context can drive DisembarkStage and the ChooseActionStage after it.
+    internal sealed class PlaceThenChooseRequester : IPlayerRequestByID
+    {
+        private readonly Position _at;
+        private readonly string _choice;
+
+        public IReadOnlyList<string> OfferedOptions { get; private set; } = new List<string>();
+
+        public PlaceThenChooseRequester(Position at, string choice)
+        {
+            _at = at;
+            _choice = choice;
+        }
+
+        public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
+            where TRequest : IStageTaskRequest<TReply>
+        {
+            if (request is PlaceObjectsRequest<ModelData> place)
+            {
+                List<PlacedObjectEntry<ModelData>> placements = place.ModelsToPlace
+                    .Select(binding => new PlacedObjectEntry<ModelData>(binding, _at))
+                    .ToList();
+                return Task.FromResult((TReply)(object)new Selected<List<PlacedObjectEntry<ModelData>>>(placements));
+            }
+
+            if (request is StringSelectionRequest selection)
+            {
+                OfferedOptions = selection.ValidOptions;
+                return Task.FromResult((TReply)(object)_choice);
+            }
+
             throw new InvalidOperationException("Unexpected request type: " + request.GetType());
         }
     }

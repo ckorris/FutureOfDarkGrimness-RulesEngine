@@ -76,6 +76,16 @@ namespace FDG.Stages
 
             List<PlacedObjectEntry<ModelData>> placements = ((Selected<List<PlacedObjectEntry<ModelData>>>)result).Value;
 
+            // #097: how far the exit actually carried the unit — the furthest drop from the transport,
+            // mirroring MovementUtilities.GetMaxMoveDistance's max-over-models convention. Measured before
+            // the models are repositioned, but it only reads the answers, so order doesn't matter.
+            float distanceMoved = 0f;
+            foreach (PlacedObjectEntry<ModelData> placement in placements)
+            {
+                float fromTransport = Position.GetDistance2D(placement.Position, transportPosition);
+                if (fromTransport > distanceMoved) distanceMoved = fromTransport;
+            }
+
             foreach (PlacedObjectEntry<ModelData> placement in placements)
             {
                 placement.Binding.GetValue().SetPosition(placement.Position);
@@ -86,11 +96,18 @@ namespace FDG.Stages
             // Disembark ability stops being offered since its AvailableWhen = TokenPresent(EmbarkedIn)).
             TransportUtilities.Disembark(unit);
 
-            // Disembarking IS the unit's move action (Advance-equivalent): it may still Shoot but not move
-            // again. MoveDistance 0 keeps shooting available (GetCanShoot gates on move distance).
-            context.RegisterMoveFinished(0f);
+            // Disembarking IS the unit's move action, and the 6" leash is the whole of it ("units may
+            // enter/exit by using any move action, but must stay fully within 6\" of it when exiting") — so
+            // the unit may still Shoot or Charge, but not move again.
+            //
+            // #097: the REAL distance, not the 0f slice C recorded. GetCanShoot gates on it, so a unit whose
+            // Advance is shorter than the leash — anything Slow — now has to choose: hop the full 6" out and
+            // forgo shooting (the exit was a Rush), or stay inside its Advance and shoot (the exit was an
+            // Advance). Recording 0 silently handed it both. A normal 6" Advance is unaffected: the leash
+            // and the advance-and-shoot cap are the same number, and the compare is margin-tolerant.
+            context.RegisterMoveFinished(distanceMoved);
 
-            GameContext.Log($"{unit.Name} disembarked {transport.Name}.");
+            GameContext.Log($"{unit.Name} disembarked {transport.Name}, moving {distanceMoved:0.#} inches.");
             await context.Announce($"{unit.Name} disembarked {transport.Name}.", new TextColor(120, 200, 255, 255),
                 EBannerTier.Toast);
 

@@ -130,6 +130,13 @@ namespace FDG.Network.Connection.Lobby
         // as the host. Fires on the network read-loop thread.
         public event Action<string>? OnGameEnded;
 
+        // Never raised on a client: the structured result is host-side only (it is built by FDGServer,
+        // which a client doesn't have, and deliberately never crosses the wire). Declared to satisfy
+        // ILobbyViewModel; the client's game-end signal is the prose OnGameEnded above.
+#pragma warning disable CS0067
+        public event Action<GameResult>? OnGameCompleted;
+#pragma warning restore CS0067
+
         public LobbyViewModel_Client(string thisPlayerName, INetworkClient networkclient, string? password = null)
         {
              _gameDataStore = GameDataStore.GameDataStoreBuilder.GetDefault();

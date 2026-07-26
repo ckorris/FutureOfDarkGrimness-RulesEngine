@@ -216,9 +216,10 @@ namespace FDG.GameModel
 
             if (weapons.Count == 0)
             {
-                RuleDiagnostics.Warn(
+                RuleDiagnostics.WarnDropped(new RuleDrop(ruleEntry.PrintableName, $"unit '{unitData.Name}'",
+                    ERuleDropReason.NoWeaponsToAttach,
                     $"Skipping weapon rule '{ruleEntry.PrintableName}' on unit '{unitData.Name}': " +
-                    "it is granted at unit level but the unit carries no weapons to attach it to.");
+                    "it is granted at unit level but the unit carries no weapons to attach it to."));
                 return;
             }
 

@@ -38,6 +38,11 @@ namespace FDG.GameModel
         private IReadWriteableGameDataStore _gameDataStore;
         private IMessageBusHost _messageBusHost;
         private GameDataUpdateSender _synchronizer;
+
+        // #190: re-broadcasts a unit's/model's owning entry whenever its in-place TokenContainer mutates, so
+        // mid-game token changes reach remote clients (they otherwise only saw the join snapshot's tokens).
+        // Held only for ownership/lifetime; nothing else reads it (it lives on its store subscriptions).
+        private TokenChangeBroadcaster _tokenChangeBroadcaster;
         private PlayerSlotManager _playerSlotManager;
         private GameContext _gameContext;
         private StateMachine<IGameContext> _stateMachine;
@@ -68,6 +73,9 @@ namespace FDG.GameModel
             _messageBusHost = messageBusHost;
             _presentationClock = presentationClock;
             _synchronizer = new GameDataUpdateSender(gameDataStore, messageBusHost);
+
+            // #190: constructed BEFORE CreateArmies so it hooks every unit/model as it is created.
+            _tokenChangeBroadcaster = new TokenChangeBroadcaster(gameDataStore);
 
             //For players/player slots, work backwards from here to create what you need to send updates to players,
             //then what you need to make that thing, then what you need for that, etc. until you lead back to these args.
@@ -102,6 +110,11 @@ namespace FDG.GameModel
             _messageBusHost = messageBusHost;
             _presentationClock = presentationClock;
             _synchronizer = new GameDataUpdateSender(loadedGameDataStore, messageBusHost);
+
+            // #190: the store is already populated on resume, so this hooks every loaded unit/model via its
+            // enumerate-existing pass (OnCreated already fired before this helper existed).
+            _tokenChangeBroadcaster = new TokenChangeBroadcaster(loadedGameDataStore);
+
             _playerSlotManager = new PlayerSlotManager(playerSlots);
 
             GameProgressData? progress = GameProgressUtilities.TryGetProgress(loadedGameDataStore);
@@ -260,11 +273,12 @@ namespace FDG.GameModel
             catch (RequestMessageSender.PlayerDisconnectedException disconnect)
             {
                 // A player leaving mid-game is a normal event, not an engine fault: end the game with a
-                // plain message and no alarming stack dump. Full mid-game recovery (auto-save + rejoin) is
-                // work item #187.
+                // plain message and no alarming stack dump. The Disconnect outcome (#187) tells the host
+                // this store is intact and worth writing a recovery save from — the state machine has
+                // finished unwinding here, so this is the most quiescent the store ever is mid-game.
                 string message = DescribePlayerLeft(_playerSlotManager, disconnect.PlayerID);
                 Console.WriteLine($"Game ended: {message}");
-                RaiseGameCompleted(GameResult.ForFault(message));
+                RaiseGameCompleted(GameResult.ForDisconnect(message));
             }
             catch (Exception ex)
             {

@@ -41,6 +41,18 @@ namespace FDG.Network.Connection.Lobby
         /// </summary>
         event Action<string>? OnGameEnded;
 
+        /// <summary>
+        /// The structured end-of-game record (#192), forwarded from
+        /// <see cref="GameModel.FDGServer.OnGameCompleted"/>. Fires on the engine thread immediately
+        /// BEFORE <see cref="OnGameEnded"/>, so a handler still sees the game's state as it ended — that
+        /// ordering is what lets the front end write a recovery save on
+        /// <see cref="EGameOutcome.Disconnect"/> (#187) before anything tears the game down.
+        ///
+        /// Host only, like <see cref="SaveGameToJson"/>: a client has no FDGServer and only receives the
+        /// result prose over the wire, so its implementation never raises this.
+        /// </summary>
+        event Action<GameResult>? OnGameCompleted;
+
         IObservable<string> ServerNameObservable { get; }
 
         IObservable<LobbyChatMessage> ChatMessagesObservable { get; }

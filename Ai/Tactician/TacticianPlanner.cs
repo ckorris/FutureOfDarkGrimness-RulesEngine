@@ -49,6 +49,9 @@ namespace FDG.Ai.Tactician
         // routes start at the unit's current centroid, and the grid only depends on the terrain and
         // the unit's base size. One A* per objective, one grid build, per activation.
         private readonly Dictionary<(float X, float Z), List<Position>> _objectiveRoutes = new();
+        // The same, per ENEMY, for the melee approach gradient (issue 1's melee half). Keyed by the
+        // enemy rather than its centroid because that centroid is fixed for the activation anyway.
+        private readonly Dictionary<DataReference, List<Position>> _enemyRoutes = new();
         private TerrainGrid? _routeGrid;
 
         /// <summary>The unit whose activation is being planned (null between activations).</summary>
@@ -74,6 +77,7 @@ namespace FDG.Ai.Tactician
             _markerContestable.Clear();
             _envelopeSharers.Clear();
             _objectiveRoutes.Clear();
+            _enemyRoutes.Clear();
             _routeGrid = null;
         }
 
@@ -430,14 +434,39 @@ namespace FDG.Ai.Tactician
                 if (meleeCapable)
                 {
                     (float margin, float reach) = MeleeApproachAgainst(enemyBinding);
-                    float gapNow = Distance(now, enemyPos) - reach;
+                    // #264 issue 1, the MELEE half (slice 1 fixed the objective half and deferred
+                    // this one): WALKING distance, not straight-line. Behind a large impassible
+                    // piece the two diverge by the whole detour, and a correct first leg can
+                    // LENGTHEN the straight-line gap - so the single term that pays a melee unit
+                    // for crossing the table paid zero exactly when the crossing was hardest, and
+                    // retreat/hold won the argmax by default.
+                    (List<Position> route, List<ITerrain> routeTerrain, float routeRadius) =
+                        RouteToEnemy(now, enemyBinding, enemyPos);
+                    float routeLength = RouteMetrics.Length(route);
+                    // Only a real DETOUR switches the measure. With a clear lane the route IS the
+                    // straight segment, and there straight-line distance is the EXACT answer while
+                    // RemainingFrom's project-onto-the-route approximation is not - it charges
+                    // lateral displacement as distance not closed, so a flanking step reads as a
+                    // wasted one. (RemainingFrom exists to avoid an A* per candidate; it is worth
+                    // its error only where the detour it approximates actually exists.) Gating here
+                    // keeps this slice strictly additive: scoring is untouched wherever no
+                    // impassible piece stands between the unit and its target - measured, not
+                    // assumed, by the bit-identical no-terrain benchmark in the ledger.
+                    bool detours = routeLength > Distance(now, enemyPos) + 0.01f;
+                    float gapNow = (detours ? routeLength : Distance(now, enemyPos)) - reach;
                     if (margin > 0f && gapNow > 1f)
                     {
-                        float gapEnd = Math.Max(0f, endDistance - reach);
+                        float gapEnd = Math.Max(0f, (detours
+                            ? RouteMetrics.RemainingFrom(route, end, routeTerrain, routeRadius)
+                            : endDistance) - reach);
                         // A5-6 (Chris): charging beats being charged. No credit for walking INSIDE
                         // the enemy's own threat reach (charge budget + the 2" melee cylinder,
                         // +1.5" centroid slack) - the approach stages at their line and takes the
                         // charge on OUR next activation instead of eating theirs.
+                        // The stage gap stays a STRAIGHT-line quantity: it models weapon threat,
+                        // which does not walk around walls. Clamping a route gap from below with it
+                        // is conservative in the right direction - route distance is never shorter
+                        // than straight-line, so the floor can only hold the approach back.
                         if (enemy.GetMeleeWeapons().Count > 0)
                         {
                             float stageGap = Math.Max(0f,
@@ -673,6 +702,26 @@ namespace FDG.Ai.Tactician
                 route = RouteMetrics.Route(terrain,
                     () => _routeGrid ??= TerrainGrid.Build(terrain, baseRadius), now, marker, baseRadius);
                 _objectiveRoutes[key] = route;
+            }
+            return (route, terrain, baseRadius);
+        }
+
+        // The route this unit would walk from its activation start to an enemy, cached per enemy -
+        // the melee twin of RouteToObjective, sharing its grid. One A* per enemy per activation, and
+        // only for enemies whose straight lane is actually blocked (RouteMetrics.Route short-circuits
+        // a clear lane to the segment, so an open table pays nothing).
+        private (List<Position> Route, List<ITerrain> Terrain, float BaseRadius) RouteToEnemy(
+            Position now, DataBinding<UnitData> enemyBinding, Position enemyPos)
+        {
+            var terrain = _tableState.Terrain.Objects.ToList();
+            List<IModel> alive = _activeUnit!.GetValue().Models.Where(m => m.GetIsAlive()).ToList();
+            float baseRadius = alive.Count == 0 ? 0.5f : alive.Max(m => m.BaseRadiusInches);
+
+            if (!_enemyRoutes.TryGetValue(enemyBinding.Reference, out List<Position>? route))
+            {
+                route = RouteMetrics.Route(terrain,
+                    () => _routeGrid ??= TerrainGrid.Build(terrain, baseRadius), now, enemyPos, baseRadius);
+                _enemyRoutes[enemyBinding.Reference] = route;
             }
             return (route, terrain, baseRadius);
         }

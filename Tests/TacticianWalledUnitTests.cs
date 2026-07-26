@@ -431,6 +431,57 @@ namespace FDG.Tests
                 $"{detourPenalty:F1}\" detour - the unit deployed into the wall pocket");
         }
 
+        // --- Issue 1, the MELEE half (deferred from slice 1, folded in 2026-07-25). Slice 1 made
+        // ObjectiveApproach measure walking distance; its twin - the planner's melee APPROACH term,
+        // the only reason a unit outside charge reach has to close - kept measuring the charge gap
+        // in a straight line. Behind a wall that pays ~nothing for the correct detour, so on the
+        // marker-free half of the board a melee army still had no gradient to cross it.
+
+        private DataBinding<UnitData> MakeWalledMeleeScene()
+        {
+            // Wall x 14..34, z 10..12; 11 blades packed 4-wide at (~24,~7); an enemy gunline at
+            // (~24,26) beyond it. NO objectives on the table on purpose: the melee approach term is
+            // then the only substantive gradient, so this pin cannot pass on slice 1's objective fix.
+            _store.Create(new TerrainData(ETerrainType.Impassible, new RectangularZone(14f, 34f, 10f, 12f)));
+            var unit = MakeUnitAt(_us, 11, Blade(),
+                i => new Position(22.4f + (i % 4) * 1.1f, 6f + (i / 4) * 1.1f));
+            MakeUnitAt(_them, 5, Rifle(),
+                i => new Position(24f + (i % 2) * 1.1f, 26f + (i / 2) * 1.1f));
+            return unit;
+        }
+
+        [Test]
+        public void WalledMeleeUnit_ApproachingItsTarget_OutscoresFullDistanceRetreat()
+        {
+            DataBinding<UnitData> unit = MakeWalledMeleeScene();
+            var planner = new TacticianPlanner(_tableState, _evaluator);
+            planner.BeginActivation(unit);
+            List<MacroAction> candidates = MacroActionGenerator.Enumerate(_evaluator, _tableState, unit);
+
+            MacroAction approach = candidates.First(c => c.Intent == EMacroIntent.ChargeToContact);
+            MacroAction fallBack = candidates.First(c => c.Intent == EMacroIntent.FallBack);
+
+            // Geometry guard: this scene must actually exercise the divergence, so a later refactor
+            // cannot make the pin vacuously true. The detour closes real walking distance while
+            // closing almost no straight-line distance - the whole mechanism in two numbers.
+            Position start = Centroid(unit);
+            var enemyPos = new Position(24.55f, 26f + 1.1f / 2f);
+            float routeClosed = PathDistance(start, enemyPos) - PathDistance(approach.ProjectedCentroid, enemyPos);
+            float straightClosed = Distance(start, enemyPos) - Distance(approach.ProjectedCentroid, enemyPos);
+            Assert.That(routeClosed, Is.GreaterThan(4f * straightClosed),
+                $"scene check: the approach must close far more ROUTE distance ({routeClosed:F1}\") " +
+                $"than straight-line distance ({straightClosed:F1}\") - otherwise this pin is not " +
+                "measuring the walled-gradient divergence at all");
+
+            float approachScore = planner.Score(approach);
+            float fallBackScore = planner.Score(fallBack);
+            Assert.That(approachScore, Is.GreaterThan(fallBackScore),
+                $"closing on the only enemy worth charging (score {approachScore:F4}, end " +
+                $"({approach.ProjectedCentroid.x:F1},{approach.ProjectedCentroid.z:F1})) must beat a " +
+                $"full-distance retreat (score {fallBackScore:F4}, end " +
+                $"({fallBack.ProjectedCentroid.x:F1},{fallBack.ProjectedCentroid.z:F1}))");
+        }
+
         // --- helpers --------------------------------------------------------------------------------
 
         private static Weapon Rifle() => new Weapon("Rifle", rangeInches: 24f, attacks: 1, armorPenetration: 0);

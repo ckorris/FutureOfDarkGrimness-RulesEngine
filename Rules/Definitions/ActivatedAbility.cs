@@ -4,7 +4,7 @@ namespace FDG.Rules.Definitions;
 
 /// <summary>
 /// A player-triggered ability or spell. Offered to the player when the engine
-/// fires the <see cref="TriggerHook"/> hook (typical: <see cref="EHookID.Activation_OnPreAttack"/>
+/// fires the <see cref="TriggerHook"/> hook (typical: <see cref="EHookID.Activation_OnBeforeAttackAction"/>
 /// for "before attacking, you may use this"). If the player accepts and can
 /// pay the <see cref="Cost"/>, the engine resolves <see cref="TargetSelector"/>
 /// to ask the player to pick target(s), then queues the <see cref="Effect"/>

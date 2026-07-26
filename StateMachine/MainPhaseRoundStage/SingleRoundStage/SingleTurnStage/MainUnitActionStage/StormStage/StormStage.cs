@@ -118,7 +118,7 @@ namespace FDG.Stages
         private async Task<DataBinding<UnitData>?> PickTarget(IUnitActionContext context, TargetSelector selector,
             int ordinal, int total)
         {
-            List<DataBinding<UnitData>> eligible = PreAttackTargeting.EligibleTargets(
+            List<DataBinding<UnitData>> eligible = AbilityTargeting.EligibleTargets(
                 context.ActivatingUnit, selector, GameContext);
             if (eligible.Count == 0)
             {

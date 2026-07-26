@@ -6,6 +6,7 @@ using FDG.Data;
 using FDG.Players;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
 using FDG.Stages;
@@ -15,17 +16,18 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #100 #2, slice 2a — the dedicated pre-attack stage. It fires Activation_OnPreAttack once the unit
-    // has committed to an attack action, offers the SELF-targeted pre-attack abilities a rule contributes,
-    // resolves the chosen one (paying its cost), and hands off to the real attack via OnFinished — layered,
-    // so it never consumes the move/attack. Cross-unit (Friend/Foe) targeting is slice 2b. Probed with a
-    // trivial once-per-activation self-buff that grants a marker token.
+    // "Before attacking" activated abilities (authored at Activation_OnBeforeAttackAction) are menu actions:
+    // ChooseActionStage lists each by name, and BeforeAttackActionStage resolves the ONE the player picked
+    // (stashed on the context) - target select + effect - then loops back, layered, without consuming the
+    // move/attack. This exercises the stage directly (a single stashed offer); the menu-side gating - offered
+    // even when the unit cannot attack, filtered out when it has no eligible target - lives in
+    // BeforeAttackActionMenuTests. Cross-unit (Friend/Foe) targeting and the DealHits (Breath Attack)
+    // save->wound pipeline are covered here too.
     [TestFixture]
-    public class PreAttackRuleIntegrationTests
+    public class BeforeAttackActionRuleIntegrationTests
     {
         private const string RuleName = "Self Buff";
         private const string FriendRuleName = "Friend Buff";
-        private const string FoeRuleName = "Foe Mark";
 
         private GameDataStore _store = null!;
         private PlayerID _player;
@@ -38,81 +40,52 @@ namespace FDG.Tests
         }
 
         [Test]
-        public async Task PreAttackStage_OffersSelfBuff_ResolvesAndPaysCost_Layered()
+        public async Task ResolvesSelfBuff_PaysCost_AndIsLayered()
         {
-            var ctx = new TriggeredMoveTestContext(_store, new CannedStringChoiceRequester(RuleName));
+            var ctx = new TriggeredMoveTestContext(_store, new NullPlayerRequester());
             (_, TokenType marker) = MakeSelfBuffRule();
             DataBinding<UnitData> unit = MakeUnit(withBuff: true);
             UnitActionContext unitCtx = NewActivation(ctx, unit);
+            StashOffer(ctx, unitCtx, unit);
 
-            bool finished = false;
-            var stage = new PreAttackStage(ctx, new NoOpLayer<IUnitActionContext>(), EActionType.Hold);
-            stage.OnFinished.Bind("OnFinished");
-            stage.OnFinished.OnWillActivate += _ => finished = true;
-            await stage.Enter(unitCtx);
+            bool finished = await RunStage(ctx, unitCtx);
 
             Assert.That(unit.GetValue().Tokens.HasToken(marker), Is.True,
                 "the chosen self-buff's effect (a token grant) was applied to the bearer");
             Assert.That(unit.GetValue().Tokens.HasToken(new TokenType("AbilityUsed:" + RuleName)), Is.True,
                 "the once-per-activation cost marker was paid");
-            Assert.That(finished, Is.True, "the stage hands off to the attack via OnFinished");
-            Assert.That(unitCtx.HasMoved, Is.False, "pre-attack abilities are layered — no move consumed");
-            Assert.That(unitCtx.HasAttacked, Is.False, "pre-attack abilities are layered — no attack consumed");
+            Assert.That(finished, Is.True, "the stage loops back via OnFinished");
+            Assert.That(unitCtx.HasMoved, Is.False, "before-attack abilities are layered — no move consumed");
+            Assert.That(unitCtx.HasAttacked, Is.False, "before-attack abilities are layered — no attack consumed");
+            Assert.That(unitCtx.PendingCustomAction, Is.Null, "the pending offer is cleared after resolving");
         }
 
         [Test]
-        public async Task PreAttackStage_PlayerDeclines_NoEffect_StillProceeds()
+        public async Task NoPendingOffer_ReturnsToMenuWithoutPrompting()
         {
-            var ctx = new TriggeredMoveTestContext(_store, new CannedStringChoiceRequester(PreAttackStage.DONE_CHOICE));
-            (_, TokenType marker) = MakeSelfBuffRule();
-            DataBinding<UnitData> unit = MakeUnit(withBuff: true);
-            UnitActionContext unitCtx = NewActivation(ctx, unit);
-
-            bool finished = false;
-            var stage = new PreAttackStage(ctx, new NoOpLayer<IUnitActionContext>(), EActionType.Hold);
-            stage.OnFinished.Bind("OnFinished");
-            stage.OnFinished.OnWillActivate += _ => finished = true;
-            await stage.Enter(unitCtx);
-
-            Assert.That(unit.GetValue().Tokens.HasToken(marker), Is.False, "declining applies nothing");
-            Assert.That(finished, Is.True, "declining still hands off to the attack");
-        }
-
-        [Test]
-        public async Task PreAttackStage_NoAbilities_ProceedsWithoutPrompting()
-        {
-            // No pre-attack ability on the unit → no offers → no request issued. The NullPlayerRequester
-            // would throw if the stage asked anything, so reaching OnFinished proves it didn't.
+            // Defensive: entered with nothing stashed → straight back to Choose Action, no request issued.
+            // The NullPlayerRequester would throw if the stage asked anything.
             var ctx = new TriggeredMoveTestContext(_store, new NullPlayerRequester());
             DataBinding<UnitData> unit = MakeUnit(withBuff: false);
             UnitActionContext unitCtx = NewActivation(ctx, unit);
 
-            bool finished = false;
-            var stage = new PreAttackStage(ctx, new NoOpLayer<IUnitActionContext>(), EActionType.Charge);
-            stage.OnFinished.Bind("OnFinished");
-            stage.OnFinished.OnWillActivate += _ => finished = true;
-            await stage.Enter(unitCtx);
+            bool finished = await RunStage(ctx, unitCtx);
 
-            Assert.That(finished, Is.True, "no offers → straight to the attack");
+            Assert.That(finished, Is.True, "no pending offer → straight back to the menu");
         }
 
-        // --- Slice 2b: cross-unit targeting ---
-
         [Test]
-        public async Task PreAttackStage_FriendAbility_AppliesToTheChosenAlly_NotTheBearer()
+        public async Task FriendAbility_AppliesToTheChosenAlly_NotTheBearer()
         {
             (SpecialRuleDefinition friendDef, TokenType marker) = MakeFriendBuffRule();
             DataBinding<UnitData> bearer = MakeUnitAt(new Position(1f, 0f), friendDef);
             DataBinding<UnitData> ally = MakeUnitAt(new Position(5f, 0f), null); // friendly (same player), within 12"
 
-            var ctx = new TriggeredMoveTestContext(_store, new CannedPreAttackRequester(FriendRuleName, ally));
+            var ctx = new TriggeredMoveTestContext(_store, new CannedTargetRequester(ally));
             UnitActionContext unitCtx = NewActivation(ctx, bearer);
+            StashOffer(ctx, unitCtx, bearer);
 
-            bool finished = false;
-            var stage = new PreAttackStage(ctx, new NoOpLayer<IUnitActionContext>(), EActionType.Hold);
-            stage.OnFinished.Bind("OnFinished");
-            stage.OnFinished.OnWillActivate += _ => finished = true;
-            await stage.Enter(unitCtx);
+            bool finished = await RunStage(ctx, unitCtx);
 
             Assert.That(ally.GetValue().Tokens.HasToken(marker), Is.True, "the buff landed on the chosen ally");
             Assert.That(bearer.GetValue().Tokens.HasToken(marker), Is.False, "and not on the bearer");
@@ -122,49 +95,25 @@ namespace FDG.Tests
         }
 
         [Test]
-        public async Task PreAttackStage_FoeAbilityWithNoEnemiesInRange_NotOffered()
-        {
-            // A "pick an enemy" ability with no enemy on the table has no eligible target, so it is filtered
-            // out of the menu and no request is issued (NullPlayerRequester would throw if one were).
-            (SpecialRuleDefinition foeDef, _) = MakeFoeMarkRule();
-            DataBinding<UnitData> bearer = MakeUnitAt(new Position(1f, 0f), foeDef);
-
-            var ctx = new TriggeredMoveTestContext(_store, new NullPlayerRequester());
-            UnitActionContext unitCtx = NewActivation(ctx, bearer);
-
-            bool finished = false;
-            var stage = new PreAttackStage(ctx, new NoOpLayer<IUnitActionContext>(), EActionType.Charge);
-            stage.OnFinished.Bind("OnFinished");
-            stage.OnFinished.OnWillActivate += _ => finished = true;
-            await stage.Enter(unitCtx);
-
-            Assert.That(finished, Is.True, "no valid targets → not offered → straight to the attack");
-        }
-
-        [Test]
-        public async Task PreAttackStage_CancelTargetSelection_NothingApplied_StillProceeds()
+        public async Task CancelTargetSelection_NothingApplied_StillReturnsToMenu()
         {
             (SpecialRuleDefinition friendDef, TokenType marker) = MakeFriendBuffRule();
             DataBinding<UnitData> bearer = MakeUnitAt(new Position(1f, 0f), friendDef);
             DataBinding<UnitData> ally = MakeUnitAt(new Position(5f, 0f), null);
 
-            // Picks the ability, then cancels the target selection (target = null → Cancelled).
-            var ctx = new TriggeredMoveTestContext(_store, new CannedPreAttackRequester(FriendRuleName, target: null));
+            // Cancels the target selection (target = null → Cancelled).
+            var ctx = new TriggeredMoveTestContext(_store, new CannedTargetRequester(target: null));
             UnitActionContext unitCtx = NewActivation(ctx, bearer);
+            StashOffer(ctx, unitCtx, bearer);
 
-            bool finished = false;
-            var stage = new PreAttackStage(ctx, new NoOpLayer<IUnitActionContext>(), EActionType.Hold);
-            stage.OnFinished.Bind("OnFinished");
-            stage.OnFinished.OnWillActivate += _ => finished = true;
-            await stage.Enter(unitCtx);
+            bool finished = await RunStage(ctx, unitCtx);
 
             Assert.That(ally.GetValue().Tokens.HasToken(marker), Is.False, "cancelling applies nothing");
             Assert.That(bearer.GetValue().Tokens.HasToken(new TokenType("AbilityUsed:" + FriendRuleName)), Is.False,
                 "and pays no cost");
-            Assert.That(finished, Is.True, "but the stage still proceeds to the attack");
+            Assert.That(finished, Is.True, "but the stage still loops back to the menu");
+            Assert.That(unitCtx.PendingCustomAction, Is.Null, "the abandoned offer is cleared");
         }
-
-        // --- Slice 2e: representative catalog rules end-to-end ---
 
         // Furious Buff (real catalog rule): used before attacking, it grants the chosen ally a one-shot
         // Furious — a RuleGrant token with a FirstTrigger clear, which the read-back fires and 2c consumes.
@@ -174,11 +123,10 @@ namespace FDG.Tests
             DataBinding<UnitData> bearer = MakeUnitAt(new Position(1f, 0f), CoreRuleCatalog.FuriousBuff);
             DataBinding<UnitData> ally = MakeUnitAt(new Position(3f, 0f), null);
 
-            var ctx = new TriggeredMoveTestContext(_store, new CannedPreAttackRequester("Furious Buff", ally));
+            var ctx = new TriggeredMoveTestContext(_store, new CannedTargetRequester(ally));
             UnitActionContext unitCtx = NewActivation(ctx, bearer);
-            var stage = new PreAttackStage(ctx, new NoOpLayer<IUnitActionContext>(), EActionType.Charge);
-            stage.OnFinished.Bind("OnFinished");
-            await stage.Enter(unitCtx);
+            StashOffer(ctx, unitCtx, bearer);
+            await RunStage(ctx, unitCtx);
 
             bool oneShotFurious = ally.GetValue().Tokens.GetAllTokens(TokenType.RuleGrant).Any(t =>
                 t.Payload is TokenPayload.RuleGrant rg && rg.RuleName == "Furious"
@@ -197,16 +145,15 @@ namespace FDG.Tests
             ally.GetValue().Models[0].DealWounds(2);   // 2 of 3 taken
             Assert.That(ally.GetValue().Models[0].WoundsDealt, Is.EqualTo(2f), "precondition: 2 wounds taken");
 
-            var ctx = new TriggeredMoveTestContext(_store, new CannedPreAttackRequester("Mend", ally));
+            var ctx = new TriggeredMoveTestContext(_store, new CannedTargetRequester(ally));
             UnitActionContext unitCtx = NewActivation(ctx, bearer);
-            var stage = new PreAttackStage(ctx, new NoOpLayer<IUnitActionContext>(), EActionType.Hold);
-            stage.OnFinished.Bind("OnFinished");
-            await stage.Enter(unitCtx);
+            StashOffer(ctx, unitCtx, bearer);
+            await RunStage(ctx, unitCtx);
 
             Assert.That(ally.GetValue().Models[0].WoundsDealt, Is.EqualTo(0f), "Mend healed the wounded ally");
         }
 
-        // --- Targeting filters ---
+        // --- Targeting filters (AbilityTargeting) ---
 
         // #153 supplement: TargetSelector.RequiredRule restricts candidates to units carrying the named
         // rule (Re-Position Artillery's "pick one friendly within 6\" with Artillery").
@@ -221,15 +168,14 @@ namespace FDG.Tests
             var selector = new TargetSelector(6f, 1, 1, ETargetAffinity.Friend, false,
                 RequiredRule: "artillery"); // case-insensitive, like Condition.UnitHasRule
 
-            List<DataBinding<UnitData>> eligible = PreAttackTargeting.EligibleTargets(bearer, selector, ctx);
+            List<DataBinding<UnitData>> eligible = AbilityTargeting.EligibleTargets(bearer, selector, ctx);
 
             Assert.That(eligible, Is.EqualTo(new[] { artilleryAlly }),
                 "only the unit carrying the required rule is a candidate");
         }
 
         // #197 P6: a joined hero keeps its own rules on its MODEL (#006/#093), so a unit-only RequiredRule
-        // scan is blind to the most common Caster in the corpus - a hero attached to a squad. Casting Debuff
-        // ("pick one enemy within 18\" with Caster") would then never see a hero caster's unit.
+        // scan is blind to the most common Caster in the corpus - a hero attached to a squad.
         [Test]
         public void EligibleTargets_RequiredRule_MatchesARuleCarriedByAJoinedModel()
         {
@@ -244,137 +190,141 @@ namespace FDG.Tests
             var ctx = new TriggeredMoveTestContext(_store, new NullPlayerRequester());
             var selector = new TargetSelector(6f, 1, 1, ETargetAffinity.Friend, false, RequiredRule: "Caster");
 
-            List<DataBinding<UnitData>> eligible = PreAttackTargeting.EligibleTargets(bearer, selector, ctx);
+            List<DataBinding<UnitData>> eligible = AbilityTargeting.EligibleTargets(bearer, selector, ctx);
 
             Assert.That(eligible, Is.EqualTo(new[] { squadWithHero }),
                 "a rule carried by a joined model qualifies its unit, and a unit with neither does not");
         }
 
-        // --- Helpers ---
+        // --- DealHits (Breath Attack shape) resolves through the save->wound pipeline ---
 
-        // A self-targeted pre-attack ability, once per activation, granting the bearer a marker token.
-        // Audit BUG-1 — a DealHits pre-attack ability (Breath Attack shape) must actually deal its hits
-        // through the save->wound pipeline, not silently no-op after paying its cost. AP(6) pushes the
-        // defense-4 save to 10, so the face-4 saves all fail: 3 hits kill the 3-model enemy.
-        // (FixedFaceDiceRoller, not FixedDiceRoller — the latter collapses the 3 save rolls to one.)
+        // Audit BUG-1 — a DealHits before-attack ability must actually deal its hits through the save->wound
+        // pipeline, not silently no-op after paying its cost. AP(6) pushes the defense-4 save to 10, so the
+        // face-4 saves all fail: 3 hits kill the 3-model enemy. (FixedFaceDiceRoller, not FixedDiceRoller.)
         [Test]
         public async Task DealHitsAbility_ResolvesHitsThroughSaveAndWoundPipeline()
         {
             DataBinding<UnitData> enemy = MakeEnemyUnitAt(new Position(3f, 0f), modelCount: 3);
-            var requester = new DealHitsPreAttackRequester("Breath", enemy);
-            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedFaceDiceRoller(4));
+            var ctx = new TriggeredMoveTestContext(_store, new DealHitsTargetRequester(enemy),
+                new FixedFaceDiceRoller(4));
 
-            var breath = new SpecialRuleDefinition("Breath", Array.Empty<HookEntry>(), new[]
-            {
-                new ActivatedAbility(
-                    EHookID.Activation_OnPreAttack, new Cost.OncePerActivation(),
-                    new TargetSelector(6f, 1, 1, ETargetAffinity.Foe, false),
-                    new Effect.DealHits(3, Array.Empty<string>(), ArmorPenetration: 6),
-                    new Condition.Always()),
-            });
-            DataBinding<UnitData> unit = MakeUnitAt(new Position(0f, 0f), breath);
-
+            DataBinding<UnitData> unit = MakeUnitAt(new Position(0f, 0f), MakeDealHitsRule(baseHits: 3,
+                withRules: Array.Empty<string>()));
             UnitActionContext unitCtx = NewActivation(ctx, unit);
-            bool finished = false;
-            var stage = new PreAttackStage(ctx, new NoOpLayer<IUnitActionContext>(), EActionType.Hold);
-            stage.OnFinished.Bind("OnFinished");
-            stage.OnFinished.OnWillActivate += _ => finished = true;
-            await stage.Enter(unitCtx);
+            StashOffer(ctx, unitCtx, unit);
+
+            bool finished = await RunStage(ctx, unitCtx);
 
             Assert.That(enemy.GetValue().GetIsAlive(), Is.False,
                 "3 hits at AP(6) auto-fail every save and kill the 3-model enemy - the ability must deal " +
                 "real damage, not just log that it was used");
-            Assert.That(finished, Is.True, "the pipeline hands off to the attack via OnFinished");
+            Assert.That(finished, Is.True, "the pipeline loops back via OnFinished");
             Assert.That(unit.GetValue().Tokens.HasToken(new TokenType("AbilityUsed:Breath")), Is.True,
                 "the once-per-activation cost gate closed");
         }
 
         // #164 — a DealHits ability's WithRules must fold exactly as a fired volley's weapon rules do.
-        // Blast(3) turns the ability's single hit into 3 (capped at the target's living-model count), so a
-        // 3-model enemy is wiped; before this the names were dropped and only one model died. AP(6) pushes
-        // the defense-4 save past 6 so every hit converts, isolating the hit COUNT as the thing under test.
+        // Blast(3) turns the ability's single hit into 3 (capped at the target's living-model count).
         [Test]
         public async Task DealHitsAbility_WithBlast_MultipliesHitsThroughTheSharedFold()
         {
             DataBinding<UnitData> enemy = MakeEnemyUnitAt(new Position(3f, 0f), modelCount: 3);
             var resolver = new RuleResolver();
             resolver.Register(CoreRuleCatalog.Blast);
-            var ctx = new TriggeredMoveTestContext(_store, new DealHitsPreAttackRequester("Breath", enemy),
+            var ctx = new TriggeredMoveTestContext(_store, new DealHitsTargetRequester(enemy),
                 new FixedFaceDiceRoller(4), ruleResolver: resolver);
 
             DataBinding<UnitData> unit = MakeUnitAt(new Position(0f, 0f),
                 MakeDealHitsRule(baseHits: 1, withRules: new[] { "Blast(3)" }));
 
-            await RunPreAttack(ctx, unit);
+            await RunDealHits(ctx, unit);
 
             Assert.That(LivingModels(enemy), Is.EqualTo(0),
                 "Blast(3) must multiply the ability's 1 hit to 3 - the WithRules names have to reach the " +
                 "synthetic weapon and fold at the hit-complete hook, not be dropped");
         }
 
-        // The control that makes the test above mean something: the SAME ability without Blast kills exactly
-        // one model. If both tests passed with WithRules ignored, the one above would be asserting nothing.
+        // The control: the SAME ability without Blast kills exactly one model.
         [Test]
         public async Task DealHitsAbility_WithoutBlast_DealsOnlyItsBaseHits()
         {
             DataBinding<UnitData> enemy = MakeEnemyUnitAt(new Position(3f, 0f), modelCount: 3);
             var resolver = new RuleResolver();
             resolver.Register(CoreRuleCatalog.Blast);
-            var ctx = new TriggeredMoveTestContext(_store, new DealHitsPreAttackRequester("Breath", enemy),
+            var ctx = new TriggeredMoveTestContext(_store, new DealHitsTargetRequester(enemy),
                 new FixedFaceDiceRoller(4), ruleResolver: resolver);
 
             DataBinding<UnitData> unit = MakeUnitAt(new Position(0f, 0f),
                 MakeDealHitsRule(baseHits: 1, withRules: Array.Empty<string>()));
 
-            await RunPreAttack(ctx, unit);
+            await RunDealHits(ctx, unit);
 
             Assert.That(LivingModels(enemy), Is.EqualTo(2),
                 "with no WithRules the ability deals its bare 1 hit - the multiply must come from Blast, " +
                 "not from the fold itself");
         }
 
-        // A missing resolver (bare harness / pre-rehydration resume) must degrade to AP-only rather than
-        // throw: the ability still deals its base hits, it just gets no weapon rules.
+        // A missing resolver (bare harness / pre-rehydration resume) must degrade to AP-only rather than throw.
         [Test]
         public async Task DealHitsAbility_WithBlastButNoResolver_StillDealsBaseHits()
         {
             DataBinding<UnitData> enemy = MakeEnemyUnitAt(new Position(3f, 0f), modelCount: 3);
-            var ctx = new TriggeredMoveTestContext(_store, new DealHitsPreAttackRequester("Breath", enemy),
+            var ctx = new TriggeredMoveTestContext(_store, new DealHitsTargetRequester(enemy),
                 new FixedFaceDiceRoller(4));
 
             DataBinding<UnitData> unit = MakeUnitAt(new Position(0f, 0f),
                 MakeDealHitsRule(baseHits: 1, withRules: new[] { "Blast(3)" }));
 
-            await RunPreAttack(ctx, unit);
+            await RunDealHits(ctx, unit);
 
             Assert.That(LivingModels(enemy), Is.EqualTo(2),
                 "no resolver - Blast cannot resolve, so the ability falls back to its base hits instead of " +
                 "throwing mid-activation");
         }
 
-        // A Breath-Attack-shaped Foe ability dealing baseHits at AP(6), optionally 'with' weapon rules.
-        private static SpecialRuleDefinition MakeDealHitsRule(int baseHits, IReadOnlyList<string> withRules)
-            => new SpecialRuleDefinition("Breath", Array.Empty<HookEntry>(), new[]
-            {
-                new ActivatedAbility(
-                    EHookID.Activation_OnPreAttack, new Cost.OncePerActivation(),
-                    new TargetSelector(6f, 1, 1, ETargetAffinity.Foe, false),
-                    new Effect.DealHits(baseHits, withRules, ArmorPenetration: 6),
-                    new Condition.Always()),
-            });
+        // --- Helpers ---
 
-        private static async Task RunPreAttack(TriggeredMoveTestContext ctx, DataBinding<UnitData> unit)
+        // Gathers the (single) before-attack offer the unit carries and stashes it, exactly as
+        // ChooseActionStage does when the player picks the ability from the menu.
+        private static void StashOffer(IGameContext ctx, UnitActionContext unitCtx, DataBinding<UnitData> unit)
+        {
+            AbilityOffer offer = ctx.RuleEvaluator.GatherOffers(
+                new BeforeAttackActionContext(unit.GetValue()))[0];
+            unitCtx.SetPendingCustomAction(offer);
+        }
+
+        private static async Task<bool> RunStage(IGameContext ctx, UnitActionContext unitCtx)
+        {
+            bool finished = false;
+            var stage = new BeforeAttackActionStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            stage.OnFinished.OnWillActivate += _ => finished = true;
+            await stage.Enter(unitCtx);
+            return finished;
+        }
+
+        private static async Task RunDealHits(TriggeredMoveTestContext ctx, DataBinding<UnitData> unit)
         {
             UnitActionContext unitCtx = NewActivation(ctx, unit);
-            var stage = new PreAttackStage(ctx, new NoOpLayer<IUnitActionContext>(), EActionType.Hold);
-            stage.OnFinished.Bind("OnFinished");
-            await stage.Enter(unitCtx);
+            StashOffer(ctx, unitCtx, unit);
+            await RunStage(ctx, unitCtx);
         }
 
         private static int LivingModels(DataBinding<UnitData> unit)
             => unit.GetValue().Models.Count(model => model.GetIsAlive());
 
-        // An enemy-player unit within pre-attack targeting range.
+        // A Breath-Attack-shaped Foe ability dealing baseHits at AP(6), optionally 'with' weapon rules.
+        private static SpecialRuleDefinition MakeDealHitsRule(int baseHits, IReadOnlyList<string> withRules)
+            => new SpecialRuleDefinition("Breath", Array.Empty<HookEntry>(), new[]
+            {
+                new ActivatedAbility(
+                    EHookID.Activation_OnBeforeAttackAction, new Cost.OncePerActivation(),
+                    new TargetSelector(6f, 1, 1, ETargetAffinity.Foe, false),
+                    new Effect.DealHits(baseHits, withRules, ArmorPenetration: 6),
+                    new Condition.Always()),
+            });
+
+        // An enemy-player unit within before-attack targeting range.
         private DataBinding<UnitData> MakeEnemyUnitAt(Position position, int modelCount)
         {
             var enemyPlayer = new PlayerID(Guid.NewGuid());
@@ -392,11 +342,12 @@ namespace FDG.Tests
             return binding;
         }
 
+        // A self-targeted before-attack ability, once per activation, granting the bearer a marker token.
         private static (SpecialRuleDefinition def, TokenType marker) MakeSelfBuffRule()
         {
-            var marker = new TokenType("PreAttackBuffFired");
+            var marker = new TokenType("BeforeAttackBuffFired");
             var ability = new ActivatedAbility(
-                EHookID.Activation_OnPreAttack, new Cost.OncePerActivation(),
+                EHookID.Activation_OnBeforeAttackAction, new Cost.OncePerActivation(),
                 new TargetSelector(0f, 1, 1, ETargetAffinity.Self, false),
                 new Effect.GrantToken(marker, new ValueSource.Literal(1), new TokenClearTrigger.ManualOnly()),
                 new Condition.Always());
@@ -404,29 +355,16 @@ namespace FDG.Tests
             return (def, marker);
         }
 
-        // A Friend-targeted pre-attack ability: pick one friendly unit within 12" and grant it a marker.
+        // A Friend-targeted before-attack ability: pick one friendly unit within 12" and grant it a marker.
         private static (SpecialRuleDefinition def, TokenType marker) MakeFriendBuffRule()
         {
             var marker = new TokenType("FriendBuffFired");
             var ability = new ActivatedAbility(
-                EHookID.Activation_OnPreAttack, new Cost.OncePerActivation(),
+                EHookID.Activation_OnBeforeAttackAction, new Cost.OncePerActivation(),
                 new TargetSelector(12f, 1, 1, ETargetAffinity.Friend, false),
                 new Effect.GrantToken(marker, new ValueSource.Literal(1), new TokenClearTrigger.ManualOnly()),
                 new Condition.Always());
             var def = new SpecialRuleDefinition(FriendRuleName, Array.Empty<HookEntry>(), new[] { ability });
-            return (def, marker);
-        }
-
-        // A Foe-targeted pre-attack ability: pick one enemy unit within 18" and mark it.
-        private static (SpecialRuleDefinition def, TokenType marker) MakeFoeMarkRule()
-        {
-            var marker = new TokenType("FoeMarkFired");
-            var ability = new ActivatedAbility(
-                EHookID.Activation_OnPreAttack, new Cost.OncePerActivation(),
-                new TargetSelector(18f, 1, 1, ETargetAffinity.Foe, false),
-                new Effect.GrantToken(marker, new ValueSource.Literal(1), new TokenClearTrigger.ManualOnly()),
-                new Condition.Always());
-            var def = new SpecialRuleDefinition(FoeRuleName, Array.Empty<HookEntry>(), new[] { ability });
             return (def, marker);
         }
 
@@ -479,27 +417,40 @@ namespace FDG.Tests
         }
     }
 
-    // CannedPreAttackRequester plus the wound-assignment half a DealHits ability's save->wound pipeline
-    // raises (auto-filled, StrafeRequester-style).
-    internal sealed class DealHitsPreAttackRequester : IPlayerRequestByID
+    // Answers the one request a stashed before-attack ability issues: the CancellableSelectionRequest for
+    // the target (returns the given target as Selected, or Cancelled when target is null).
+    internal sealed class CannedTargetRequester : IPlayerRequestByID
     {
-        private readonly string _abilityChoice;
-        private readonly DataBinding<UnitData> _target;
+        private readonly DataBinding<UnitData>? _target;
 
-        public DealHitsPreAttackRequester(string abilityChoice, DataBinding<UnitData> target)
-        {
-            _abilityChoice = abilityChoice;
-            _target = target;
-        }
+        public CannedTargetRequester(DataBinding<UnitData>? target) => _target = target;
 
         public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
             where TRequest : IStageTaskRequest<TReply>
         {
-            if (request is StringSelectionRequest)
+            if (request is CancellableSelectionRequest<UnitData>)
             {
-                return Task.FromResult((TReply)(object)_abilityChoice);
+                CancellableResult<DataBinding<UnitData>> result = _target != null
+                    ? new Selected<DataBinding<UnitData>>(_target)
+                    : new Cancelled<DataBinding<UnitData>>();
+                return Task.FromResult((TReply)(object)result);
             }
 
+            throw new InvalidOperationException("Unexpected request type: " + request.GetType());
+        }
+    }
+
+    // A DealHits before-attack ability issues the target selection plus the wound-assignment its save->wound
+    // pipeline raises (auto-filled, StrafeRequester-style).
+    internal sealed class DealHitsTargetRequester : IPlayerRequestByID
+    {
+        private readonly DataBinding<UnitData> _target;
+
+        public DealHitsTargetRequester(DataBinding<UnitData> target) => _target = target;
+
+        public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
+            where TRequest : IStageTaskRequest<TReply>
+        {
             if (request is CancellableSelectionRequest<UnitData>)
             {
                 CancellableResult<DataBinding<UnitData>> result = new Selected<DataBinding<UnitData>>(_target);
@@ -510,40 +461,6 @@ namespace FDG.Tests
             {
                 var result = new AssignWoundsResults(woundRequest.UnitReceivingWounds, woundRequest.TotalWoundsToAssign);
                 result.AutoFill();
-                return Task.FromResult((TReply)(object)result);
-            }
-
-            throw new InvalidOperationException("Unexpected request type: " + request.GetType());
-        }
-    }
-
-    // Answers the two requests a pre-attack ability resolution issues: the StringSelectionRequest menu
-    // (returns the ability name) and the CancellableSelectionRequest for the target (returns the given
-    // target as Selected, or Cancelled when target is null).
-    internal sealed class CannedPreAttackRequester : IPlayerRequestByID
-    {
-        private readonly string _abilityChoice;
-        private readonly DataBinding<UnitData>? _target;
-
-        public CannedPreAttackRequester(string abilityChoice, DataBinding<UnitData>? target)
-        {
-            _abilityChoice = abilityChoice;
-            _target = target;
-        }
-
-        public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
-            where TRequest : IStageTaskRequest<TReply>
-        {
-            if (request is StringSelectionRequest)
-            {
-                return Task.FromResult((TReply)(object)_abilityChoice);
-            }
-
-            if (request is CancellableSelectionRequest<UnitData>)
-            {
-                CancellableResult<DataBinding<UnitData>> result = _target != null
-                    ? new Selected<DataBinding<UnitData>>(_target)
-                    : new Cancelled<DataBinding<UnitData>>();
                 return Task.FromResult((TReply)(object)result);
             }
 

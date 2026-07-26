@@ -10,11 +10,11 @@ namespace FDG.Stages
     /// <summary>
     /// #100 #2 — resolves an ability's <see cref="TargetSelector"/> into the units the acting unit may
     /// pick: applies the affinity, range, line-of-sight, and required-token filters. This is the first code
-    /// to actually READ a TargetSelector (the record was inert before #2). <see cref="PreAttackStage"/>
+    /// to actually READ a TargetSelector (the record was inert before #2). <see cref="BeforeAttackActionStage"/>
     /// uses it both to decide whether an ability has enough valid targets to offer and to populate the
     /// target-selection request.
     /// </summary>
-    public static class PreAttackTargeting
+    public static class AbilityTargeting
     {
         /// <summary>
         /// The units <paramref name="actingUnit"/> may pick for an ability with <paramref name="selector"/>.

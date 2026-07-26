@@ -2076,7 +2076,8 @@ public static class CoreRuleCatalog
     public static SpecialRuleDefinition UnpredictableShooterAura { get; } =
         UnitAura("Unpredictable Shooter Aura", UnpredictableShooterRuleName);
 
-    // Pre-attack activated abilities (PreAttackStage offers them at Activation_OnPreAttack) -------------
+    // Before-attack activated abilities (ChooseActionStage offers them at Activation_OnBeforeAttackAction
+    // as menu actions; BeforeAttackActionStage resolves the chosen one) ---------------------------------
 
     /// <summary>
     /// Furious Buff (#100 #2e): once per activation, before attacking, the bearer picks one friendly unit
@@ -2088,7 +2089,7 @@ public static class CoreRuleCatalog
         Array.Empty<HookEntry>(),
         new[]
         {
-            new ActivatedAbility(EHookID.Activation_OnPreAttack, new Cost.OncePerActivation(),
+            new ActivatedAbility(EHookID.Activation_OnBeforeAttackAction, new Cost.OncePerActivation(),
                 new TargetSelector(12f, 1, 1, ETargetAffinity.Friend, false),
                 new Effect.AddRule("Furious", ELifetime.NextTrigger),
                 new Condition.Always()),
@@ -2106,7 +2107,7 @@ public static class CoreRuleCatalog
         Array.Empty<HookEntry>(),
         new[]
         {
-            new ActivatedAbility(EHookID.Activation_OnPreAttack, new Cost.OncePerActivation(),
+            new ActivatedAbility(EHookID.Activation_OnBeforeAttackAction, new Cost.OncePerActivation(),
                 new TargetSelector(3f, 1, 1, ETargetAffinity.Friend, false),
                 new Effect.Heal(new DiceExpression.D3()),
                 new Condition.Always()),

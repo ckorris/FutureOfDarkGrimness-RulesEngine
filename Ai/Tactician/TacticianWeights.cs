@@ -53,6 +53,16 @@ namespace FDG.Ai.Tactician
         // the enemy's pick is approximate, and being wrong about "they'll shoot the other guy"
         // costs a whole unit.
         public const float RetaliationShareFloor = 0.25f;
+
+        // ADDED 2026-07-26 (#191 idea 2, arriving pressure): enemies currently too far to answer
+        // (zero priced retaliation) but one projected rush from threatening the endpoint next
+        // round. Priced from a deterministic one-step projection - rush toward the nearest
+        // attractive goal (a marker their side does not own, or one of our units) - at a
+        // fraction of the real retaliation weight: it is a forecast, not a threat in being.
+        // Projected MELEE pressure is skipped when we WANT that fight (positive melee margin
+        // against the arriver): its approach is an opportunity, and the staged charge must not
+        // be penalized for standing its ground.
+        public const float MoveProjectedThreat = 0.15f;
         public const float MoveObjective = 0.75f;
         public const float MoveReachableBonus = 0.05f;
 

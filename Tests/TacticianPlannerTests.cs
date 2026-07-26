@@ -535,6 +535,60 @@ namespace FDG.Tests
                 + "of the priced volley than a worthless one of the same headcount");
         }
 
+        [Test]
+        public void ArrivingPressure_PricesAnEnemyTwoMovesOut()
+        {
+            // #191 idea 2: an enemy outside every current threat envelope priced NOTHING, so a
+            // camping spot that will be inside a horde's charge reach next round scored the same
+            // as one that stays clear. The projection term must discriminate: same shooters, same
+            // Hold, the nearer (but still currently-unthreatening) horde must cost strictly more.
+            float HoldScoreWithHordeAt(float x)
+            {
+                SetUp();
+                var campers = MakeUnit(_us, 5, Rifle(), atX: 20f, atZ: 24f);
+                MakeUnit(_them, 8, Blade(attacks: 3), atX: x, atZ: 24f);
+                _planner.BeginActivation(campers);
+                List<MacroAction> candidates = MacroActionGenerator.Enumerate(
+                    new RuleEvaluator(new ProbabilisticDiceRoller()), _tableState, campers);
+                return _planner.Score(candidates.First(c => c.Intent == EMacroIntent.Hold));
+            }
+
+            // 26" out: beyond rifle range (24) and melee threat (14), but one 12" rush away from
+            // covering the camp. 66" out: the projected step still leaves it harmless.
+            float hordeArriving = HoldScoreWithHordeAt(46f);
+            float hordeDistant = HoldScoreWithHordeAt(86f);
+
+            Assert.That(hordeArriving, Is.LessThan(hordeDistant - 0.005f),
+                "a spot inside next round's projected charge reach must price arriving pressure");
+        }
+
+        [Test]
+        public void ArrivingMeleePressure_IsAnOpportunityForAWillingBrawler()
+        {
+            // The staging exemption: a melee unit with a positive exchange margin against the
+            // arriver WANTS that fight - pricing the arrival as a threat would penalize standing
+            // its ground exactly where charging-beats-being-charged staging puts it.
+            // The arriver hits hard enough that pricing it would move the score, but still LOSES
+            // the exchange to us (fragile save): our margin is positive, so we want it to come.
+            float HoldScoreWithRaidersAt(float x)
+            {
+                SetUp();
+                var brawlers = MakeUnit(_us, 8, Blade(attacks: 4), atX: 20f, atZ: 24f,
+                    quality: 3, defense: 2);
+                MakeUnit(_them, 6, Blade(attacks: 3), atX: x, atZ: 24f, quality: 4, defense: 5);
+                _planner.BeginActivation(brawlers);
+                List<MacroAction> candidates = MacroActionGenerator.Enumerate(
+                    new RuleEvaluator(new ProbabilisticDiceRoller()), _tableState, brawlers);
+                return _planner.Score(candidates.First(c => c.Intent == EMacroIntent.Hold));
+            }
+
+            float raidersArriving = HoldScoreWithRaidersAt(46f);
+            float raidersDistant = HoldScoreWithRaidersAt(86f);
+
+            Assert.That(raidersArriving, Is.EqualTo(raidersDistant).Within(0.005f),
+                "melee arrivers a winning brawler would happily charge are not a threat to price");
+        }
+
         private void SetRound(int round)
         {
             var progress = new GameProgressData(EResumeStage.MainPhase, round,

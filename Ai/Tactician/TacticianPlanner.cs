@@ -45,6 +45,11 @@ namespace FDG.Ai.Tactician
         // at their current positions) - the one-ply reply the retaliation term prices against.
         // Endpoint-independent, computed lazily per activation.
         private readonly Dictionary<DataReference, float> _enemyAltTarget = new();
+        // Where each enemy will plausibly stand after its next activation (one rush toward its
+        // nearest attractive goal) + its longest effective weapon range against us - both feed
+        // the arriving-pressure term. Endpoint-independent, computed lazily per activation.
+        private readonly Dictionary<DataReference, Position> _enemyProjected = new();
+        private readonly Dictionary<DataReference, float> _enemyMaxRange = new();
         // #264 issue 1: one WALKING route per objective, from this activation's start - the gradient
         // measures against it instead of straight-line distance. Both are activation-scoped: the
         // routes start at the unit's current centroid, and the grid only depends on the terrain and
@@ -80,6 +85,8 @@ namespace FDG.Ai.Tactician
             _screenLaneComputed = false;
             _markerContestable.Clear();
             _enemyAltTarget.Clear();
+            _enemyProjected.Clear();
+            _enemyMaxRange.Clear();
             _objectiveRoutes.Clear();
             _enemyRoutes.Clear();
             _routeGrid = null;
@@ -405,6 +412,7 @@ namespace FDG.Ai.Tactician
             float offense = 0f;
             float retaliation = 0f;
             float approach = 0f;
+            float projectedThreat = 0f;
             foreach (DataBinding<UnitData> enemyBinding in EnemyBindings(self.PlayerID))
             {
                 UnitData enemy = enemyBinding.GetValue();
@@ -510,6 +518,33 @@ namespace FDG.Ai.Tactician
                         incomingValue / (incomingValue + alt));
                     retaliation = Math.Max(retaliation, incomingValue * share);
                 }
+                // Arriving pressure (#191 idea 2): an enemy too far to answer THIS round prices
+                // nothing above, but one projected rush can put the endpoint inside its threat
+                // NEXT round. Only enemies the current term ignored are priced (no double count),
+                // at the low MoveProjectedThreat weight - a forecast, not a threat in being.
+                // Projected melee from an enemy we would happily charge (positive margin) is an
+                // opportunity, not a threat - the staged charge must not be penalized for
+                // standing its ground.
+                else
+                {
+                    Position projected = ProjectedEnemyPosition(enemyBinding);
+                    float projDistance = Distance(end, projected);
+                    float projReach = Math.Max(1f,
+                        projDistance - TacticalAnalysis.AdvanceDistance(enemy, _evaluator));
+                    float projValue = projReach > EnemyMaxRangeAgainstUs(enemyBinding) ? 0f
+                        : ValueFraction(CombatMath.EstimateShooting(_evaluator, enemyBinding,
+                                _activeUnit, new AttackContext(projReach, AttackerMoved: true))
+                            .ExpectedWounds, self);
+                    if (enemy.GetMeleeWeapons().Count > 0
+                        && MeleeApproachAgainst(enemyBinding).Margin <= 0f
+                        && TacticalAnalysis.MeleeThreatReach(enemy, self, _evaluator) >= projDistance - 1f)
+                    {
+                        projValue = Math.Max(projValue, 0.5f * ValueFraction(CombatMath.EstimateMelee(
+                                _evaluator, enemyBinding, _activeUnit).AttackerAttack.ExpectedWounds,
+                            self));
+                    }
+                    projectedThreat = Math.Max(projectedThreat, projValue);
+                }
             }
 
             float objectiveDelta = ObjectiveDelta(self, end);
@@ -522,6 +557,7 @@ namespace FDG.Ai.Tactician
             float substantive =
                    TacticianWeights.MoveDamage * offense
                  - TacticianWeights.MoveRetaliation * retaliation
+                 - TacticianWeights.MoveProjectedThreat * projectedThreat
                  + urgency * TacticianWeights.MoveObjective * objectiveDelta
                  // A5-8: the gradient is deadline-scaled per objective INSIDE ObjectiveApproach.
                  + TacticianWeights.MoveObjectiveApproach * objectiveApproach
@@ -878,6 +914,55 @@ namespace FDG.Ai.Tactician
             }
             _enemyAltTarget[enemyBinding.Reference] = best;
             return best;
+        }
+
+        // Where this enemy will plausibly stand after its next activation: one rush-budget step
+        // toward its nearest attractive goal - a marker its side does not own, or one of our
+        // units. Deliberately a crude, deterministic proxy (it prices ARRIVING pressure, not a
+        // prediction of play), and endpoint-independent so one projection serves the activation.
+        private Position ProjectedEnemyPosition(DataBinding<UnitData> enemyBinding)
+        {
+            if (_enemyProjected.TryGetValue(enemyBinding.Reference, out Position cached)) return cached;
+
+            UnitData enemy = enemyBinding.GetValue();
+            Position at = Centroid(enemy);
+            Position? goal = null;
+            float bestDistance = float.MaxValue;
+            foreach (IObjective objective in _tableState.Objectives.Objects)
+            {
+                if (objective.OwnerID.HasValue && objective.OwnerID.Value == enemy.PlayerID) continue;
+                float d = Distance(at, objective.Position);
+                if (d < bestDistance) { bestDistance = d; goal = objective.Position; }
+            }
+            foreach (DataBinding<UnitData> friendly in FriendlyBindings(_activeUnit!.GetValue().PlayerID))
+            {
+                Position p = Centroid(friendly.GetValue());
+                float d = Distance(at, p);
+                if (d < bestDistance) { bestDistance = d; goal = p; }
+            }
+
+            Position result = at;
+            if (goal != null && bestDistance > 0.01f)
+            {
+                float step = Math.Min(
+                    TacticalAnalysis.RushDistance(enemy, _evaluator), bestDistance);
+                result = new Position(at.x + (goal.Value.x - at.x) / bestDistance * step,
+                    at.z + (goal.Value.z - at.z) / bestDistance * step);
+            }
+            _enemyProjected[enemyBinding.Reference] = result;
+            return result;
+        }
+
+        // Longest effective weapon range this enemy has against the active unit - the cheap
+        // precheck that keeps the arriving-pressure term from paying a CombatMath estimate for
+        // every distant enemy at every candidate endpoint.
+        private float EnemyMaxRangeAgainstUs(DataBinding<UnitData> enemyBinding)
+        {
+            if (_enemyMaxRange.TryGetValue(enemyBinding.Reference, out float cached)) return cached;
+            float range = TacticalAnalysis.MaxWeaponRange(
+                enemyBinding.GetValue(), _activeUnit!.GetValue(), _evaluator);
+            _enemyMaxRange[enemyBinding.Reference] = range;
+            return range;
         }
 
         private bool AnyEnemyOffBattlefield(PlayerID us)

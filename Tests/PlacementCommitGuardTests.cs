@@ -6,7 +6,7 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #282: the commit-time overlap check behind every mandatory model placement (deploy, re-deploy,
+    // #284 (was #282 pre-reconciliation-27): the commit-time overlap check behind every mandatory model placement (deploy, re-deploy,
     // Scout, Ambush arrival, spillout). The stages used to commit whatever a resolver returned - the
     // engine gate checked only zone containment - so a resolver-side failure could silently deploy one
     // unit inside another (the YellowDeployedOverGreen save). The guard must pass clean placements

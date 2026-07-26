@@ -6,7 +6,7 @@ using FDG.StageResolution.Requests;
 namespace FDG.Stages
 {
     /// <summary>
-    /// #282 - the commit-time overlap check for mandatory model placements. The placement stages
+    /// #284 (was #282 pre-reconciliation-27) - the commit-time overlap check for mandatory model placements. The placement stages
     /// (deploy, re-deploy, Scout, Ambush arrival, transport spillout) used to commit whatever a
     /// resolver returned - <c>DeploymentSelection.ValidatePosition</c> checks only zone containment -
     /// so any upstream failure (the YellowDeployedOverGreen save: a second AI block deployed

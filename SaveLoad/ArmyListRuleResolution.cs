@@ -62,18 +62,11 @@ namespace FDG.SaveLoad
         public static ResolvedRule? ResolveForScope(IRuleResolver ruleResolver, SpecialRuleEntry ruleEntry,
             ERuleScope attachmentScope, string ownerDescription)
         {
-            ResolvedRule? resolved = ResolveAnyScope(ruleResolver, ruleEntry, ownerDescription);
-            if (resolved == null)
+            ResolvedRule? resolved = ResolveOrDescribeDrop(ruleResolver, ruleEntry, attachmentScope,
+                ownerDescription, out RuleDrop? drop);
+            if (drop != null)
             {
-                return null;
-            }
-
-            if (resolved.Definition.Scope != attachmentScope)
-            {
-                RuleDiagnostics.Warn(
-                    $"Skipping special rule '{ruleEntry.PrintableName}' on {ownerDescription}: " +
-                    $"it is a {resolved.Definition.Scope}-scoped rule and can't attach at {attachmentScope} scope.");
-                return null;
+                RuleDiagnostics.WarnDropped(drop.Value);
             }
 
             return resolved;
@@ -94,11 +87,34 @@ namespace FDG.SaveLoad
         public static ResolvedRule? ResolveAnyScope(IRuleResolver ruleResolver, SpecialRuleEntry ruleEntry,
             string ownerDescription)
         {
+            ResolvedRule? resolved = ResolveOrDescribeDrop(ruleResolver, ruleEntry, attachmentScope: null,
+                ownerDescription, out RuleDrop? drop);
+            if (drop != null)
+            {
+                RuleDiagnostics.WarnDropped(drop.Value);
+            }
+
+            return resolved;
+        }
+
+        /// <summary>
+        /// The single classification ladder behind <see cref="ResolveForScope"/> /
+        /// <see cref="ResolveAnyScope"/>, WITHOUT the warning side effect: resolves the name, checks
+        /// argument arity, then (when <paramref name="attachmentScope"/> is non-null) gates on scope.
+        /// On failure returns null and describes why in <paramref name="drop"/>; the live attachment
+        /// paths raise it through <see cref="RuleDiagnostics.WarnDropped"/>, while
+        /// <see cref="ArmyRuleAudit"/> (#168) collects it silently — sharing this ladder is what keeps
+        /// the army-builder audit from drifting out of sync with what actually attaches at launch.
+        /// </summary>
+        public static ResolvedRule? ResolveOrDescribeDrop(IRuleResolver ruleResolver, SpecialRuleEntry ruleEntry,
+            ERuleScope? attachmentScope, string ownerDescription, out RuleDrop? drop)
+        {
             (string lookupName, IReadOnlyList<RuleArgument> arguments) = DescribeRuleEntry(ruleEntry);
 
             if (!ruleResolver.TryResolve(lookupName, out ResolvedRule resolved))
             {
-                RuleDiagnostics.Warn(
+                drop = new RuleDrop(ruleEntry.PrintableName, ownerDescription,
+                    ERuleDropReason.Unimplemented,
                     $"Skipping unimplemented special rule '{ruleEntry.PrintableName}' on {ownerDescription}.");
                 return null;
             }
@@ -106,13 +122,24 @@ namespace FDG.SaveLoad
             int maxArgIndex = RuleArgumentArity.MaxReferencedArgIndex(resolved.Definition);
             if (maxArgIndex >= arguments.Count)
             {
-                RuleDiagnostics.Warn(
+                drop = new RuleDrop(ruleEntry.PrintableName, ownerDescription,
+                    ERuleDropReason.MissingArgument,
                     $"Skipping special rule '{ruleEntry.PrintableName}' on {ownerDescription}: " +
                     $"its effects read Arg({maxArgIndex}) but the entry supplies only {arguments.Count} " +
                     "argument(s) - a numeric value is likely missing from the army-list reference.");
                 return null;
             }
 
+            if (attachmentScope != null && resolved.Definition.Scope != attachmentScope)
+            {
+                drop = new RuleDrop(ruleEntry.PrintableName, ownerDescription,
+                    ERuleDropReason.WrongScope,
+                    $"Skipping special rule '{ruleEntry.PrintableName}' on {ownerDescription}: " +
+                    $"it is a {resolved.Definition.Scope}-scoped rule and can't attach at {attachmentScope} scope.");
+                return null;
+            }
+
+            drop = null;
             return new ResolvedRule(ruleEntry.PrintableName, resolved.Definition, arguments);
         }
 

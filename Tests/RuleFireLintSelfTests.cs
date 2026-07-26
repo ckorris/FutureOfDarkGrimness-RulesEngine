@@ -139,7 +139,7 @@ namespace FDG.Tests
             // silently dropped — exactly how BUG-1 shipped (InvokeDealHits at pre-attack, pre-fix).
             var rule = new SpecialRuleDefinition("Lint Dropped Op", NoEntries, new List<ActivatedAbility>
             {
-                new(EHookID.Activation_OnPreAttack, new Cost.OncePerActivation(), AnySelector(),
+                new(EHookID.Activation_OnBeforeAttackAction, new Cost.OncePerActivation(), AnySelector(),
                     new Effect.Reactivate(), new Condition.Always()),
             });
 

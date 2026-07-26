@@ -15,7 +15,7 @@ namespace FDG.Stages
     /// promote AP on the natural 6s, and the defender's own save modifiers / AP reduction fold in.
     ///
     /// <para>Three call sites share this: a damage spell (<see cref="ResolveSpellDamageStage"/>), a
-    /// pre-attack activated ability (<see cref="PreAttackStage"/> — Breath Attack), and Strafing
+    /// before-attack activated ability (<see cref="BeforeAttackActionStage"/> — Breath Attack), and Strafing
     /// (<see cref="StrafingStage"/>). Before this existed only the spell path ran the fold; the other two
     /// synthesized a raw <see cref="RollToHitResults"/> from the bare hit count, so an ability authored as
     /// <c>DealHits(1, with: Blast(3))</c> silently dealt one hit instead of three.</para>

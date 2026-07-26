@@ -230,13 +230,13 @@ namespace FDG.Tests
             ops.HasOperation<RuleOperation.ApplyRollModifier>(op => op.Roll == ERollKind.Save && op.Delta == -4);
         }
 
-        // 07 — Mend: at OnPreAttack the caster is offered the ability, carrying its cost.
+        // 07 — Mend: at OnBeforeAttackAction the caster is offered the ability, carrying its cost.
         [Test]
-        public void Mend_OnPreAttack_OffersAbilityWithCost()
+        public void Mend_OnBeforeAttackAction_OffersAbilityWithCost()
         {
             var harness = new TestRuleHarness();
             var mend = new ActivatedAbility(
-                TriggerHook: EHookID.Activation_OnPreAttack,
+                TriggerHook: EHookID.Activation_OnBeforeAttackAction,
                 Cost: new Cost.SpellTokens(1),
                 TargetSelector: new TargetSelector(RangeInches: 6f, MinCount: 1, MaxCount: 1,
                     ETargetAffinity.Friend, RequireLineOfSight: false),
@@ -247,7 +247,7 @@ namespace FDG.Tests
             IUnit caster = harness.BuildUnit("P1", modelCount: 1, "Mend");
             harness.SeedToken(caster, TokenType.SpellTokens, count: 2);
 
-            var offers = harness.OfferAbilities(new PreAttackContext(caster, EActionType.Hold));
+            var offers = harness.OfferAbilities(new BeforeAttackActionContext(caster));
 
             offers.HasOffer("Mend", o => o.Ability.Cost is Cost.SpellTokens);
         }
@@ -257,7 +257,7 @@ namespace FDG.Tests
         public void Mend_WhenAccepted_HealsTargetModel()
         {
             var harness = new TestRuleHarness();
-            var mend = new ActivatedAbility(EHookID.Activation_OnPreAttack, new Cost.SpellTokens(1),
+            var mend = new ActivatedAbility(EHookID.Activation_OnBeforeAttackAction, new Cost.SpellTokens(1),
                 new TargetSelector(6f, 1, 1, ETargetAffinity.Friend, false),
                 new Effect.Heal(new DiceExpression.D3()), new Condition.Always());
             harness.Register(new SpecialRuleDefinition("Mend", Array.Empty<HookEntry>(), new[] { mend }));
@@ -275,7 +275,7 @@ namespace FDG.Tests
         public void SpellAdvancedSight_WhenCast_AppliesNextTimeBuffToTargets()
         {
             var harness = new TestRuleHarness();
-            var spell = new ActivatedAbility(EHookID.Activation_OnPreAttack, new Cost.SpellTokens(2),
+            var spell = new ActivatedAbility(EHookID.Activation_OnBeforeAttackAction, new Cost.SpellTokens(2),
                 new TargetSelector(12f, 1, 2, ETargetAffinity.Friend, false),
                 new Effect.AddRule("Advanced Sight", ELifetime.NextTrigger), new Condition.Always());
             harness.Register(new SpecialRuleDefinition("Advanced Sight", Array.Empty<HookEntry>(), new[] { spell }));
@@ -368,7 +368,7 @@ namespace FDG.Tests
         {
             var harness = new TestRuleHarness();
             var markType = new TokenType("UnstoppableMark");
-            var ability = new ActivatedAbility(EHookID.Activation_OnPreAttack, new Cost.OncePerActivation(),
+            var ability = new ActivatedAbility(EHookID.Activation_OnBeforeAttackAction, new Cost.OncePerActivation(),
                 new TargetSelector(18f, 1, 1, ETargetAffinity.Foe, RequireLineOfSight: true),
                 new Effect.GrantToken(markType, new ValueSource.Literal(1), new TokenClearTrigger.OwnerDestroyed()), new Condition.Always());
             harness.Register(new SpecialRuleDefinition("Unstoppable Mark", Array.Empty<HookEntry>(), new[] { ability }));

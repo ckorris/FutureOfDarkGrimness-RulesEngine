@@ -27,6 +27,7 @@ namespace FDG.Stages
         public StageBinding ToEmbark;
         public StageBinding ToTeleport;
         public StageBinding ToStorm;
+        public StageBinding ToBeforeAttackAction;
         public StageBinding ToReconcileEndOfActivation;
 
         // #248: un-pick the activated unit and return to unit selection. Offered (AllowCancel) only while
@@ -51,6 +52,7 @@ namespace FDG.Stages
             ToEmbark = new StageBinding(this);
             ToTeleport = new StageBinding(this);
             ToStorm = new StageBinding(this);
+            ToBeforeAttackAction = new StageBinding(this);
             ToReconcileEndOfActivation = new StageBinding(this);
             ToBackOut = new StageBinding(this);
         }
@@ -283,6 +285,51 @@ namespace FDG.Stages
                     context.SetPendingCustomAction(capturedOffer);
                     return ToCustomAction.Activate(context);
                 });
+            }
+
+            // "Before attacking" activated abilities (Piercing Spotter, Regeneration Buff, Precision Fighting
+            // Mark, Mend, Breath Attack, ...): authored at Activation_OnBeforeAttackAction, each surfaces as
+            // its OWN menu action - like Cast - so it can be used even when the unit cannot attack anything.
+            // "Before attacking" means the window closes once the unit attacks: gated on !HasAttacked here
+            // (moving does NOT close it). Only offered when the ability has enough eligible targets to fire
+            // (a "pick an enemy" ability with no enemy in range isn't shown). Routes to
+            // BeforeAttackActionStage, which resolves the one chosen ability and loops back here WITHOUT
+            // setting HasMoved/HasAttacked (layered), so a used ability drops off via its own once-per-X cost.
+            if (!context.HasAttacked)
+            {
+                IReadOnlyList<AbilityOffer> beforeAttackOffers = GameContext.RuleEvaluator
+                    .GatherOffers(new BeforeAttackActionContext(context.ActivatingUnit.GetValue()));
+
+                foreach (AbilityOffer offer in beforeAttackOffers)
+                {
+                    if (AbilityTargeting.EligibleTargets(context.ActivatingUnit, offer.Ability.TargetSelector,
+                            GameContext).Count < offer.Ability.TargetSelector.MinCount)
+                    {
+                        continue;
+                    }
+
+                    bool collides = offer.RuleName == MOVEMENT_CHOICE_NAME
+                        || offer.RuleName == CHARGE_CHOICE_NAME
+                        || offer.RuleName == SHOOT_CHOICE_NAME
+                        || (isCaster && offer.RuleName == CAST_CHOICE_NAME)
+                        || offer.RuleName == PASS_CHOICE_NAME
+                        || outcomes.ContainsKey(offer.RuleName);
+
+                    if (collides)
+                    {
+                        GameContext.Log($"Before-attack ability '{offer.RuleName}' collides with an existing " +
+                            "action name and was skipped.");
+                        continue;
+                    }
+
+                    AbilityOffer capturedOffer = offer;
+                    validOptions.Add(offer.RuleName);
+                    outcomes.Add(offer.RuleName, () =>
+                    {
+                        context.SetPendingCustomAction(capturedOffer);
+                        return ToBeforeAttackAction.Activate(context);
+                    });
+                }
             }
 
             // If no real action survived the gating above, the only thing left would be Pass — there's no

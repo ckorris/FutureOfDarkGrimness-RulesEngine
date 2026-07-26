@@ -1,6 +1,5 @@
 
 using System.Collections.Generic;
-using FDG.Rules.Definitions;
 
 namespace FDG.Stages
 {
@@ -60,12 +59,12 @@ namespace FDG.Stages
                 .AddChild(new MovementStage(GameContext, this), out var movement)
                 .AddChild(new MeleeStage(GameContext, this), out var melee)
                 .AddChild(new ShootStage(GameContext, this), out var shoot)
-                // #100 #2 — a pre-attack stage sits on each attack edge, firing Activation_OnPreAttack
-                // and offering pre-attack abilities before the real attack resolves. One per action type
-                // so each reports the right kind to the hook (Charge exact; the shoot edge uses Hold —
-                // there is no Shoot action type — which no corpus pre-attack ability gates on).
-                .AddChild(new PreAttackStage(GameContext, this, EActionType.Charge), out var preAttackMelee)
-                .AddChild(new PreAttackStage(GameContext, this, EActionType.Hold), out var preAttackShoot)
+                // "Before attacking" activated abilities (Piercing Spotter, Regeneration Buff, Precision
+                // Fighting Mark, Mend, Breath Attack, ...) are offered in Choose Action as their own menu
+                // actions (gated on !HasAttacked), NOT as a prompt after committing to an attack - so they
+                // can be used even when the unit cannot attack anything. This stage resolves the one chosen
+                // ability (target select + token ops + the DealHits save/wound pipeline) and loops back.
+                .AddChild(new BeforeAttackActionStage(GameContext, this), out var beforeAttackAction)
                 .AddChild(new CustomActionStage(GameContext, this), out var customAction)
                 .AddChild(new CastSpellStage(GameContext, this), out var castSpell)
                 .AddChild(new DisembarkStage(GameContext, this), out var disembark)
@@ -87,12 +86,12 @@ namespace FDG.Stages
             activationStart.OnFinished.Bind(chooseAction);
 
             chooseAction.ToMovement.Bind(movement);
-            // #100 #2 — route the attack edges through the pre-attack stage, which hands off to the real
-            // attack on finish. Layered (no HasMoved/HasAttacked), so the downstream attack is unchanged.
-            chooseAction.ToCharge.Bind(preAttackMelee);
-            chooseAction.ToShoot.Bind(preAttackShoot);
-            preAttackMelee.OnFinished.Bind(melee);
-            preAttackShoot.OnFinished.Bind(shoot);
+            chooseAction.ToCharge.Bind(melee);
+            chooseAction.ToShoot.Bind(shoot);
+            // "Before attacking" abilities are now menu actions; the chosen one resolves and loops back to
+            // Choose Action, layered (no HasMoved/HasAttacked), so the unit may still move/attack after.
+            chooseAction.ToBeforeAttackAction.Bind(beforeAttackAction);
+            beforeAttackAction.OnFinished.Bind(chooseAction);
             chooseAction.ToCustomAction.Bind(customAction);
             chooseAction.ToCast.Bind(castSpell);
             chooseAction.ToDisembark.Bind(disembark);

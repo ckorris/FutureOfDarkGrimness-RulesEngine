@@ -197,7 +197,7 @@ namespace FDG.Tests
             harness.Register(CoreRuleCatalog.Mend);
             IUnit unit = harness.BuildUnit("P1", 1, "Mend");
 
-            IReadOnlyList<AbilityOffer> offers = harness.OfferAbilities(new PreAttackContext(unit, EActionType.Hold));
+            IReadOnlyList<AbilityOffer> offers = harness.OfferAbilities(new BeforeAttackActionContext(unit));
 
             Assert.That(offers, Has.Count.EqualTo(1));
             Assert.That(offers[0].Ability.Label, Is.Empty);

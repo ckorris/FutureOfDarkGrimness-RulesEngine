@@ -249,15 +249,16 @@ public static class RuleFireLint
 
     /// <summary>
     /// The hooks whose stages call <see cref="RuleEvaluator.GatherOffers"/>. An ability authored at any
-    /// other hook is dead data. Sources: ChooseActionStage, PreAttackStage, StrafingStage,
-    /// DeterminePlayerTurnStage, DeployUnitStage, ActivationStartStage — update BOTH this set and
+    /// other hook is dead data. Sources: ChooseActionStage (which offers both the action-choice and the
+    /// before-attack abilities), BeforeAttackActionStage, StrafingStage, DeterminePlayerTurnStage,
+    /// DeployUnitStage, ActivationStartStage — update BOTH this set and
     /// <see cref="IsOpHandledAtAbilityHook"/> when a stage gains an offer site.
     /// </summary>
     private static readonly IReadOnlyList<EHookID> AbilityOfferingHooks = new[]
     {
         EHookID.Activation_OnActivationStart,
         EHookID.Activation_OnActionChoice,
-        EHookID.Activation_OnPreAttack,
+        EHookID.Activation_OnBeforeAttackAction,
         EHookID.Activation_OnNextActivatorRequested,
         EHookID.Movement_OnMoveThroughEnemy,
         EHookID.Deployment_OnUnitDeployed,
@@ -404,7 +405,7 @@ public static class RuleFireLint
             or RuleOperation.ConsumeTokensFromUnit or RuleOperation.ConsumeTokensFromModel
             or RuleOperation.InvokeHeal => true,
         ExecutableOperation => true,
-        RuleOperation.InvokeDealHits => hook is EHookID.Activation_OnPreAttack
+        RuleOperation.InvokeDealHits => hook is EHookID.Activation_OnBeforeAttackAction
             or EHookID.Movement_OnMoveThroughEnemy,
         // #197 P10 Crossing Attack: an auto-wound ability rolled by CrossingAttackStage at move-through.
         RuleOperation.InvokeDealAutoWounds => hook is EHookID.Movement_OnMoveThroughEnemy,
@@ -540,11 +541,8 @@ public static class RuleFireLint
             case EHookID.Activation_OnActionChoice:
                 yield return new ActionChoiceContext(bearer);
                 break;
-            case EHookID.Activation_OnPreAttack:
-                foreach (EActionType action in Enum.GetValues<EActionType>())
-                {
-                    yield return new PreAttackContext(bearer, action);
-                }
+            case EHookID.Activation_OnBeforeAttackAction:
+                yield return new BeforeAttackActionContext(bearer);
                 break;
             case EHookID.Movement_OnMoveActionDeclared:
                 foreach (EActionType action in Enum.GetValues<EActionType>())

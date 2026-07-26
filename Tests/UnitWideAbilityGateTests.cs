@@ -118,7 +118,7 @@ namespace FDG.Tests
             var support = new SpecialRuleDefinition("Test Artillery Order", NoPassive,
                 new[]
                 {
-                    new ActivatedAbility(EHookID.Activation_OnPreAttack, new Cost.OncePerActivation(),
+                    new ActivatedAbility(EHookID.Activation_OnBeforeAttackAction, new Cost.OncePerActivation(),
                         new TargetSelector(6f, 1, 1, ETargetAffinity.Friend, false),
                         new Effect.TriggeredMove(MaxInches: 9f, IsOptional: true),
                         new Condition.Always()),

@@ -23,13 +23,6 @@ namespace FDG.Ai.Resolvers
             if (request.Instructions == "Choose Action")
                 return Task.FromResult(ChooseAction(request.ValidOptions));
 
-            // Pre-attack abilities (#100 #2): the AI doesn't yet reason about when a buff / mark / debuff is
-            // worth spending, so it skips them (picks Done) rather than firing one blindly on an arbitrary
-            // target. Same conservative stance as the Ambush "always deploy normally" default below; a real
-            // policy (buff self / nearest, mark nearest enemy) is a future refinement.
-            if (request.ValidOptions.Contains(PreAttackStage.DONE_CHOICE))
-                return Task.FromResult(PreAttackStage.DONE_CHOICE);
-
             // Ambush hold-or-deploy: the AI's reserve placement isn't tactical (it drops the unit at the
             // first legal row from a table edge, ignoring objectives and the enemy), so holding only
             // strands the unit. Always deploy normally instead until reserve placement is smarter.
@@ -41,6 +34,10 @@ namespace FDG.Ai.Resolvers
         }
 
         // Priority: Charge > Move (to set up a shoot later) > Shoot (only if enemies in range) > Pass.
+        // "Before attacking" abilities (buffs / marks / Mend) now appear here as their own named options,
+        // but the AI doesn't yet reason about when one is worth spending, so it never prefers them: it picks
+        // a known action or Pass, only touching an ability name via the options[0] fallback (when neither an
+        // attack nor Pass is offered). A real "buff self / mark nearest" policy is a future refinement.
         // The fallback MUST stay within ValidOptions: returning Pass when it isn't offered -- e.g. the
         // unit rushed and now "must engage", leaving only Cast or a forced action -- faults
         // ChooseActionStage ("Request option was Pass, but that wasn't an option"). ValidOptions is

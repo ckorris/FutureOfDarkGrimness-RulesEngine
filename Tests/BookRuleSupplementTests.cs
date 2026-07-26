@@ -188,7 +188,7 @@ namespace FDG.Tests
                     new List<HookEntry>(),
                     new List<ActivatedAbility>
                     {
-                        new ActivatedAbility(EHookID.Activation_OnPreAttack, new Cost.OncePerActivation(),
+                        new ActivatedAbility(EHookID.Activation_OnBeforeAttackAction, new Cost.OncePerActivation(),
                             new TargetSelector(12f, 1, 1, ETargetAffinity.Friend, false),
                             new Effect.AddRule("Stealth", ELifetime.NextTrigger),
                             new Condition.Always()),

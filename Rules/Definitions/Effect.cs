@@ -282,10 +282,10 @@ public abstract record Effect
     /// offensive-spell hit-count in the corpus is fixed — no rule-data randomness on the count itself.
     ///
     /// SUPPORTED PATHS (not universal): the emitted <see cref="RuleOperation.InvokeDealHits"/> is only
-    /// executed by the three stages wired for it — spells (CastSpellStage), Strafing, and pre-attack
-    /// abilities (PreAttackStage). It is NOT an <see cref="ExecutableOperation"/>, so any other hook's
-    /// generic op application silently drops it. <see cref="WithRules"/> is honored only on the spell
-    /// path (pre-resolved at army load); Strafing and pre-attack warn and skip it.
+    /// executed by the three stages wired for it — spells (CastSpellStage), Strafing, and before-attack
+    /// abilities (BeforeAttackActionStage). It is NOT an <see cref="ExecutableOperation"/>, so any other
+    /// hook's generic op application silently drops it. <see cref="WithRules"/> is honored only on the spell
+    /// path (pre-resolved at army load); Strafing and before-attack warn and skip it.
     /// </summary>
     public sealed record DealHits(int Count, IReadOnlyList<string> WithRules, int ArmorPenetration = 0) : Effect
     {

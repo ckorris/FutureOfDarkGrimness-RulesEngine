@@ -89,12 +89,13 @@ public enum EHookID
     Activation_OnActionChoice = 32,
 
     /// <summary>
-    /// The unit has chosen an attack action, before targets and weapons are resolved.
-    /// Trigger point for activated abilities like Mend, Re-Position Artillery,
-    /// Unstoppable Mark, Precision Fighting Mark.
-    /// Context: unit, action type.
+    /// The engine is offering the activation's action menu and the unit has not yet attacked.
+    /// Trigger point for "before attacking" activated abilities like Mend, Re-Position Artillery,
+    /// Unstoppable Mark, Precision Fighting Mark - each surfaces as its own menu action (like Cast),
+    /// usable even when the unit cannot attack anything, and no longer available once it has attacked.
+    /// Context: unit.
     /// </summary>
-    Activation_OnPreAttack = 33,
+    Activation_OnBeforeAttackAction = 33,
 
     /// <summary>
     /// The activation is completing, before the stage machine transitions. Used for

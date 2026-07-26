@@ -258,7 +258,7 @@ public abstract record RuleOperation
     /// <para>Deliberately NOT an <see cref="ExecutableOperation"/>: several of these can fire at once (a Rapid
     /// Blink unit that also has Rapid Blink Boost emits two), and executing each would prompt the player twice.
     /// <c>ActivationStartStage</c> sums them into a single placement instead — the same "the stage folds it"
-    /// shape <c>PreAttackStage</c> uses for DealHits.</para>
+    /// shape <c>BeforeAttackActionStage</c> uses for DealHits.</para>
     /// </summary>
     public sealed record RepositionModels(float MaxInches) : RuleOperation;
 

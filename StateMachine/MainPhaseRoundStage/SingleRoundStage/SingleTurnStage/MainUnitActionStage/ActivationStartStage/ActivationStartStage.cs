@@ -34,7 +34,7 @@ namespace FDG.Stages
     /// It also resolves the hook's PASSIVE entries — token grants, executables, and the
     /// reposition-at-activation placement (Wolfborn / Bounding / Rapid Blink), whose operations it sums into a
     /// single prompt. It never runs a child pipeline, which is why it can be a leaf stage rather than a
-    /// ParentStage like <c>PreAttackStage</c>.
+    /// ParentStage like <c>BeforeAttackActionStage</c>.
     ///
     /// Runs exactly once per activation: it is <c>MainUnitActionStage</c>'s starting child, and every loop
     /// back from Movement/Melee/Shoot returns to <c>ChooseActionStage</c>, not here.

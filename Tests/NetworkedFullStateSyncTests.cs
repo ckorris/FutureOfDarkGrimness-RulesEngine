@@ -11,6 +11,8 @@ using FDG.Network.Synchronization;
 using FDG.Players;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 using NUnit.Framework;
 
 namespace FDG.Tests
@@ -70,6 +72,66 @@ namespace FDG.Tests
                 "The unit's model binding must resolve against the synced ModelData.");
             Assert.That(clientUnit.RuleDefinitions.Select(r => r.Definition.Name), Does.Contain("Stealth"),
                 "[JsonIgnore] special rules must be rehydrated on the client, not silently dropped.");
+        }
+
+        /// <summary>
+        /// #190 regression: mid-game token changes must reach a joined client. Tokens live in an in-place
+        /// TokenContainer field on UnitData/ModelData, so before TokenChangeBroadcaster nothing re-Set the
+        /// owning entry on a token change and the client's tokens stayed frozen at the join snapshot - the
+        /// "Fatigued never clears" field report. Covers add, count-change (unit) and add + removal (model),
+        /// removal being the case that report actually hit.
+        /// </summary>
+        [Test]
+        public void TokenChanges_AfterJoin_ReplicateToClient()
+        {
+            var hostStore = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var clientStore = GameDataStore.GameDataStoreBuilder.GetDefault();
+
+            var (hostBus, clientBus) = ConnectLoopback(hostStore, clientStore);
+
+            var sender = new GameDataUpdateSender(hostStore, hostBus);
+            // Constructed before the unit/model exist, exactly as FDGServer's new-game path does, so it hooks
+            // them on creation.
+            var tokenBroadcaster = new TokenChangeBroadcaster(hostStore);
+
+            var model = new ModelData(baseRadiusInches: 0.5f, weapons: new List<Weapon>(),
+                initialPosition: new Position(5, 5), gameDataStore: hostStore);
+            DataReference modelRef = hostStore.Create(model);
+
+            var unit = new UnitData(Player, "Warriors", quality: 4, defense: 4,
+                modelBindings: new List<DataBinding<ModelData>> { hostStore.GetDataBinding<ModelData>(modelRef) });
+            DataReference unitRef = hostStore.Create(unit);
+
+            var receiver = new GameDataUpdateReceiver(clientStore, clientBus);
+            receiver.RequestAllCurrentData();
+
+            // Baseline: the join snapshot carried no tokens.
+            Assert.That(clientStore.GetValue<UnitData>(unitRef).Tokens.HasToken(TokenType.Shaken), Is.False,
+                "Precondition: the unit starts with no Shaken token on the client.");
+
+            // Add on the host -> client sees it (OnTokenAdded).
+            hostStore.GetValue<UnitData>(unitRef).Tokens
+                .AddToken(new Token(TokenType.Shaken, 1, new TokenClearTrigger.RoundEnd()));
+            Assert.That(clientStore.GetValue<UnitData>(unitRef).Tokens.HasToken(TokenType.Shaken), Is.True,
+                "A token added on the host after join must replicate to the client.");
+            Assert.That(clientStore.GetValue<UnitData>(unitRef).Tokens.GetTokenCount(TokenType.Shaken), Is.EqualTo(1));
+
+            // Stack another -> client sees the new count (OnTokenCountChanged).
+            hostStore.GetValue<UnitData>(unitRef).Tokens
+                .AddToken(new Token(TokenType.Shaken, 1, new TokenClearTrigger.RoundEnd()));
+            Assert.That(clientStore.GetValue<UnitData>(unitRef).Tokens.GetTokenCount(TokenType.Shaken), Is.EqualTo(2),
+                "A token count change on the host must replicate to the client.");
+
+            // Model-level token add -> client sees it (covers the ModelData hook path).
+            hostStore.GetValue<ModelData>(modelRef).Tokens
+                .AddToken(new Token(TokenType.Fatigued, 1, new TokenClearTrigger.RoundEnd()));
+            Assert.That(clientStore.GetValue<ModelData>(modelRef).Tokens.HasToken(TokenType.Fatigued), Is.True,
+                "A model-level token added on the host must replicate to the client.");
+
+            // Removal on the host -> client clears it (OnTokenRemoved) - the "never clears" case.
+            hostStore.GetValue<ModelData>(modelRef).Tokens.RemoveTokens(TokenType.Fatigued);
+            Assert.That(clientStore.GetValue<ModelData>(modelRef).Tokens.HasToken(TokenType.Fatigued), Is.False,
+                "A token removed on the host must clear on the client (the stale-Fatigued field report).");
         }
 
         // Wires two networked message buses to each other with a synchronous in-process loopback that

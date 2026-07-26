@@ -504,6 +504,37 @@ namespace FDG.Tests
                 "friends inside the enemy's threat envelope must dilute the priced retaliation");
         }
 
+        [Test]
+        public void Retaliation_PricesTheEnemysBestReply_NotAHeadcountDiscount()
+        {
+            // One-ply reply (#191): the old dilution divided the priced volley by how MANY
+            // friendlies shared the envelope; the enemy actually picks its single best target.
+            // Same geometry, same sharer COUNT - a fat fragile alternative target must discount
+            // our retaliation strictly more than a worthless armored one.
+            float ScoreForwardWith(Action addAlternativeTarget)
+            {
+                SetUp(); // fresh board per case: only the alternative target differs
+                var brawlers = MakeUnit(_us, 5, Blade(attacks: 3), atX: 20f, atZ: 24f);
+                MakeUnit(_them, 10, Rifle(), atX: 44f, atZ: 24f);
+                addAlternativeTarget();
+                _planner.BeginActivation(brawlers);
+                List<MacroAction> candidates = MacroActionGenerator.Enumerate(
+                    new RuleEvaluator(new ProbabilisticDiceRoller()), _tableState, brawlers);
+                MacroAction forward = candidates
+                    .OrderBy(c => Distance(c.ProjectedCentroid, new Position(44f, 24f))).First();
+                return _planner.Score(forward);
+            }
+
+            float withArmoredChaff = ScoreForwardWith(() =>
+                MakeUnit(_us, 3, Unarmed(), atX: 24f, atZ: 30f, quality: 6, defense: 2));
+            float withFatTarget = ScoreForwardWith(() =>
+                MakeUnit(_us, 10, Rifle(), atX: 24f, atZ: 30f, quality: 3, defense: 6));
+
+            Assert.That(withFatTarget, Is.GreaterThan(withArmoredChaff + 0.01f),
+                "the enemy's reply goes to its best target - a fat alternative must absorb more "
+                + "of the priced volley than a worthless one of the same headcount");
+        }
+
         private void SetRound(int round)
         {
             var progress = new GameProgressData(EResumeStage.MainPhase, round,

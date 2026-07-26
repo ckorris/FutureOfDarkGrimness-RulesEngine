@@ -41,9 +41,10 @@ namespace FDG.Ai.Tactician
         // Whether any enemy can still reach the marker before game end, per objective (keyed by
         // marker position) - endpoint-independent, computed lazily per activation.
         private readonly Dictionary<(float X, float Z), bool> _markerContestable = new();
-        // Other friendlies inside each enemy's threat envelope (alternative targets that dilute
-        // its volley) - endpoint-independent, computed lazily per activation.
-        private readonly Dictionary<DataReference, int> _envelopeSharers = new();
+        // Each enemy's best alternative target among our OTHER friendlies (value-weighted damage
+        // at their current positions) - the one-ply reply the retaliation term prices against.
+        // Endpoint-independent, computed lazily per activation.
+        private readonly Dictionary<DataReference, float> _enemyAltTarget = new();
         // #264 issue 1: one WALKING route per objective, from this activation's start - the gradient
         // measures against it instead of straight-line distance. Both are activation-scoped: the
         // routes start at the unit's current centroid, and the grid only depends on the terrain and
@@ -78,7 +79,7 @@ namespace FDG.Ai.Tactician
             _screenLane = null;
             _screenLaneComputed = false;
             _markerContestable.Clear();
-            _envelopeSharers.Clear();
+            _enemyAltTarget.Clear();
             _objectiveRoutes.Clear();
             _enemyRoutes.Clear();
             _routeGrid = null;
@@ -496,13 +497,19 @@ namespace FDG.Ai.Tactician
                     incomingValue = Math.Max(incomingValue, 0.5f * ValueFraction(
                         CombatMath.EstimateMelee(_evaluator, enemyBinding, _activeUnit).AttackerAttack.ExpectedWounds, self));
                 }
-                // Focus-fire dilution (Chris's games 1-3 - the recurring "melee slides sideways /
-                // garrison won't advance" mechanism): this enemy's volley lands on ONE target per
-                // activation, so with friends inside the same threat envelope the expected share
-                // of it shrinks. Pricing the full volley onto every unit made flooding a gunline
-                // unpriceable - nobody could afford to be the one who closes.
-                retaliation = Math.Max(retaliation, incomingValue
-                    / (1f + TacticianWeights.RetaliationDilutionPerSharer * EnvelopeSharers(enemyBinding)));
+                // One-ply reply (#191, replaces the 2026-07-11 per-sharer dilution): this enemy's
+                // volley lands on ONE target per activation, and it picks that target
+                // adversarially - so what we pay is our share of its best reply, not a headcount
+                // discount. ours/(ours + best-alternative) generalizes the old divisor: alone we
+                // pay full price, behind a fatter target we pay near the floor, and a juicy unit
+                // can no longer hide behind chaff that a count-based dilution priced the same.
+                if (incomingValue > 0f)
+                {
+                    float alt = BestAlternativeTargetValue(enemyBinding);
+                    float share = Math.Max(TacticianWeights.RetaliationShareFloor,
+                        incomingValue / (incomingValue + alt));
+                    retaliation = Math.Max(retaliation, incomingValue * share);
+                }
             }
 
             float objectiveDelta = ObjectiveDelta(self, end);
@@ -838,27 +845,39 @@ namespace FDG.Ai.Tactician
             return contestable;
         }
 
-        // Friendlies OTHER than the active unit whose current position sits inside this enemy's
-        // threat envelope (advance + weapon reach, or charge reach, per ThreatRangeAgainst) -
-        // the alternative targets that dilute the volley the retaliation term prices. Candidate-
-        // independent (friends are where they are), so one count serves the whole activation.
-        private int EnvelopeSharers(DataBinding<UnitData> enemyBinding)
+        // The most value-weighted damage this enemy could put on any friendly OTHER than the
+        // active unit next activation, at the friendlies' current positions - the alternative
+        // reply the retaliation share is measured against. Mirrors the incoming computation in
+        // Score (shooting at post-advance reach; melee margin at half weight when the friendly is
+        // inside charge threat) so the two sides of the share are the same currency. Candidate-
+        // independent (friends are where they are), so one pass serves the whole activation.
+        private float BestAlternativeTargetValue(DataBinding<UnitData> enemyBinding)
         {
-            if (_envelopeSharers.TryGetValue(enemyBinding.Reference, out int cached)) return cached;
+            if (_enemyAltTarget.TryGetValue(enemyBinding.Reference, out float cached)) return cached;
 
             UnitData enemy = enemyBinding.GetValue();
             Position enemyPos = Centroid(enemy);
-            int count = 0;
+            float best = 0f;
             foreach (DataBinding<UnitData> friendlyBinding in FriendlyBindings(_activeUnit!.GetValue().PlayerID))
             {
                 if (friendlyBinding.Reference.Equals(_activeUnit.Reference)) continue;
                 UnitData friendly = friendlyBinding.GetValue();
-                if (Distance(enemyPos, Centroid(friendly))
-                    <= TacticalAnalysis.ThreatRangeAgainst(enemy, friendly, _evaluator))
-                    count++;
+                float d = Distance(enemyPos, Centroid(friendly));
+                float reach = Math.Max(1f, d - TacticalAnalysis.AdvanceDistance(enemy, _evaluator));
+                float value = ValueFraction(CombatMath.EstimateShooting(_evaluator, enemyBinding,
+                        friendlyBinding, new AttackContext(reach, AttackerMoved: true)).ExpectedWounds,
+                    friendly);
+                if (enemy.GetMeleeWeapons().Count > 0
+                    && TacticalAnalysis.MeleeThreatReach(enemy, friendly, _evaluator) >= d - 1f)
+                {
+                    value = Math.Max(value, 0.5f * ValueFraction(CombatMath.EstimateMelee(
+                        _evaluator, enemyBinding, friendlyBinding).AttackerAttack.ExpectedWounds,
+                        friendly));
+                }
+                best = Math.Max(best, value);
             }
-            _envelopeSharers[enemyBinding.Reference] = count;
-            return count;
+            _enemyAltTarget[enemyBinding.Reference] = best;
+            return best;
         }
 
         private bool AnyEnemyOffBattlefield(PlayerID us)

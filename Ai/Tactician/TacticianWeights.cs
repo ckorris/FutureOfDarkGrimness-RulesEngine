@@ -44,13 +44,15 @@ namespace FDG.Ai.Tactician
         // Exposure still prices (0.45 x a full volley beats most gradients) but no longer
         // dominates the reason a melee army exists: crossing the table.
         public const float MoveRetaliation = 0.45f;
-        // ADDED 2026-07-11 (Chris's hand games 1-3 - melee sliding sideways, freed garrisons that
-        // still would not advance): every unit priced each enemy's FULL volley onto itself, so
-        // flooding a gunline was unpriceable - nobody could afford to be the one who closes. Each
-        // enemy's retaliation now divides by 1 + this x (OTHER friendlies inside its threat
-        // envelope). Half-weight rather than the uniform-targeting 1/N because the enemy picks
-        // its target adversarially, not uniformly.
-        public const float RetaliationDilutionPerSharer = 0.5f;
+        // REPLACED 2026-07-26 (#191 one-ply reply): the per-sharer dilution divisor priced the
+        // enemy's volley by HEADCOUNT - two units in the envelope halved the bill no matter which
+        // of them the enemy would actually shoot. Each enemy now models its best single reply:
+        // we pay incoming x ours/(ours + best-alternative-target-value), so a juicy unit cannot
+        // hide behind chaff and chaff pays little when a fatter target already shares the
+        // envelope. The floor keeps a residual price on every exposed endpoint - our model of
+        // the enemy's pick is approximate, and being wrong about "they'll shoot the other guy"
+        // costs a whole unit.
+        public const float RetaliationShareFloor = 0.25f;
         public const float MoveObjective = 0.75f;
         public const float MoveReachableBonus = 0.05f;
 

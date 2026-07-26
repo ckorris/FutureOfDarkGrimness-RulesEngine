@@ -2,11 +2,28 @@ namespace FDG.Ai.Tactician
 {
     /// <summary>
     /// Every tunable scalar in the Tactician's greedy policy, in one place (#191 A4 - "weights are
-    /// named constants in one file; tuning is benchmark-driven and recorded"). Change these only
-    /// with a benchmark run attached to the commit.
+    /// named constants in one file; tuning is benchmark-driven and recorded"). Change the committed
+    /// defaults only with a benchmark run attached to the commit. The float fields are STATIC, not
+    /// const, so the FdgLab tuning harness can override them at process start (--weights, #191
+    /// automated tuning); they are process-global and must never change once games are running -
+    /// the committed defaults remain the shipped policy.
     /// </summary>
     public static class TacticianWeights
     {
+        /// <summary>
+        /// Sets a weight by field name (the FdgLab --weights plumbing). False for an unknown name
+        /// or a non-float field. Call before any game starts - weights are process-global and read
+        /// live by every planner.
+        /// </summary>
+        public static bool TrySet(string name, float value)
+        {
+            System.Reflection.FieldInfo? field = typeof(TacticianWeights).GetField(name,
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+            if (field == null || field.FieldType != typeof(float) || field.IsLiteral) return false;
+            field.SetValue(null, value);
+            return true;
+        }
+
         // --- Activation-order urgency (A4-1) -------------------------------------------------------
         // score = KillOpportunity * (best value-weighted damage the unit can deal this activation)
         //       + ObjectiveFlip   * (it can reach and change an objective this activation)
@@ -18,14 +35,14 @@ namespace FDG.Ai.Tactician
         // objective terms were flat bonuses (2.0-2.5) while damage terms are value-FRACTIONS
         // (~0.0-0.5), so every unit rushed objectives and nothing ever fought back. One scale now:
         // a flip is worth a strong exchange, not ten of them.
-        public const float ActivationKillOpportunity = 1.0f;
-        public const float ActivationObjectiveFlip = 0.75f;
-        public const float ActivationUnderThreat = 0.75f;
+        public static float ActivationKillOpportunity = 1.0f;
+        public static float ActivationObjectiveFlip = 0.75f;
+        public static float ActivationUnderThreat = 0.75f;
 
         // A5-6 (Chris): the round's delivery is boat-then-payload - a loaded transport acts early
         // (drive before the cargo decides) and embarked cargo acts late (after the boat has moved).
-        public const float ActivationLoadedTransportBias = 0.5f;
-        public const float ActivationEmbarkedCargoBias = -0.5f;
+        public static float ActivationLoadedTransportBias = 0.5f;
+        public static float ActivationEmbarkedCargoBias = -0.5f;
 
         // --- Action + movement choice (A4-2) --------------------------------------------------------
         // score = MoveDamage * (value-weighted damage from the endpoint; melee margin for charges)
@@ -35,7 +52,7 @@ namespace FDG.Ai.Tactician
         // Objectives dominate deliberately: they decide the winner (house invariant), and the
         // baseline showed tie-heavy games from objective-blind play.
 
-        public const float MoveDamage = 1.0f;
+        public static float MoveDamage = 1.0f;
         // RETUNED 0.6 -> 0.45 (2026-07-10, Chris's hand-played game 1: "melee staying back"):
         // against a HUMAN gunline that holds its line, 0.6 x incoming swamped every forward term
         // for fragile units - his save showed Winged Grunts preferring FallBack (0.059) over
@@ -43,7 +60,7 @@ namespace FDG.Ai.Tactician
         // benchmark opponent advances into the horde, which masked the crossing problem entirely.
         // Exposure still prices (0.45 x a full volley beats most gradients) but no longer
         // dominates the reason a melee army exists: crossing the table.
-        public const float MoveRetaliation = 0.45f;
+        public static float MoveRetaliation = 0.45f;
         // REPLACED 2026-07-26 (#191 one-ply reply): the per-sharer dilution divisor priced the
         // enemy's volley by HEADCOUNT - two units in the envelope halved the bill no matter which
         // of them the enemy would actually shoot. Each enemy now models its best single reply:
@@ -52,7 +69,7 @@ namespace FDG.Ai.Tactician
         // envelope. The floor keeps a residual price on every exposed endpoint - our model of
         // the enemy's pick is approximate, and being wrong about "they'll shoot the other guy"
         // costs a whole unit.
-        public const float RetaliationShareFloor = 0.25f;
+        public static float RetaliationShareFloor = 0.25f;
 
         // ADDED 2026-07-26 (#191 idea 2, arriving pressure): enemies currently too far to answer
         // (zero priced retaliation) but one projected rush from threatening the endpoint next
@@ -62,7 +79,7 @@ namespace FDG.Ai.Tactician
         // Projected MELEE pressure is skipped when we WANT that fight (positive melee margin
         // against the arriver): its approach is an opportunity, and the staged charge must not
         // be penalized for standing its ground.
-        public const float MoveProjectedThreat = 0.15f;
+        public static float MoveProjectedThreat = 0.15f;
 
         // --- Risk posture (#191 idea 3) -------------------------------------------------------------
         // ADDED 2026-07-26: the projected objective differential, round-scaled, tilts the risk
@@ -71,10 +88,10 @@ namespace FDG.Ai.Tactician
         // boost (up to 1 + Boost) - the losing side buys variance. Ahead: retaliation prices UP
         // by the same relief slope - the winning side protects the lead and runs out the clock.
         // Round-scaled because an early deficit is deployment noise, a late one is the game.
-        public const float PostureRetaliationRelief = 0.35f;
-        public const float PostureObjectiveBoost = 0.3f;
-        public const float MoveObjective = 0.75f;
-        public const float MoveReachableBonus = 0.05f;
+        public static float PostureRetaliationRelief = 0.35f;
+        public static float PostureObjectiveBoost = 0.3f;
+        public static float MoveObjective = 0.75f;
+        public static float MoveReachableBonus = 0.05f;
 
         // ADDED 2026-07-10 after the second gate failure (mirror avg 25.4% - ledger entry): melee
         // armies collapsed because a one-step score gives units outside charge reach no reason to
@@ -82,7 +99,7 @@ namespace FDG.Ai.Tactician
         // exchange margin-if-reached x the fraction of the charge gap this move closes; 0.75 keeps
         // a completed approach worth less than the actual charge (MoveDamage 1.0), so real charges
         // still dominate when reachable.
-        public const float MoveApproach = 0.75f;
+        public static float MoveApproach = 0.75f;
 
         // ADDED 2026-07-10 (A5-3) from the a5-2-gate loss reading: ObjectiveDelta only pays ON the
         // marker, so a unit two moves out had NO reason to close - the same greedy-horizon hole as
@@ -90,7 +107,7 @@ namespace FDG.Ai.Tactician
         // (every exchange negative + retaliation punishes proximity => Hold/Pass) and conceded the
         // marker race in round 4. Approach pays a fraction of the gap closed toward the nearest
         // objective we do not already own; below MoveObjective so ARRIVING still dominates.
-        public const float MoveObjectiveApproach = 0.4f;
+        public static float MoveObjectiveApproach = 0.4f;
 
         // --- Anti-horde play (A5-4: screening + mob breaking + round-scaled objectives) -------------
         // From the 49%-cell loss reading: elite gunlines got CAUGHT holding markers in the horde's
@@ -99,10 +116,10 @@ namespace FDG.Ai.Tactician
         // squarely the endpoint sits on the threat->ward lane; there is deliberately NO eligibility
         // gate - the retaliation term already charges each unit personally for absorbing the
         // charge, so a Tough tank or an emptied transport screens cheaply and a caster never does.
-        public const float MoveScreen = 0.8f;
+        public static float MoveScreen = 0.8f;
         // Pushing a unit below half strength is worth extra beyond the wounds: half-strength
         // morale tests rout whole mobs (the engine's own mechanic - break the horde, don't shave it).
-        public const float MoraleBreakBonus = 1.3f;
+        public static float MoraleBreakBonus = 1.3f;
 
         // A5-8 (Chris): a landed charge also DEGRADES the target's next volley - it still shoots
         // on its own activation, but with fewer models and chargers obscuring lanes - so a charge
@@ -111,7 +128,7 @@ namespace FDG.Ai.Tactician
         // the target's activation). Cheap durable chaff pays little retaliation for the exchange,
         // which is exactly the tarpit role; the charger's own forgone shooting needs no term
         // because the argmax already weighs the charge against its own Hold/shoot candidates.
-        public const float ChargeTarpitPerWound = 0.04f;
+        public static float ChargeTarpitPerWound = 0.04f;
 
         // A5-8 (Chris): Ambush arrivals aim BEHIND a vulnerable enemy unit, not at a marker -
         // "in real games they'll always pop up right behind a unit that they'll do lots of
@@ -119,7 +136,7 @@ namespace FDG.Ai.Tactician
         // value (a quarter of a reference-100 unit) and the exchange is net-positive after
         // retaliation; otherwise fall back to the most winnable objective. Arrivals cannot
         // seize markers the round they land anyway, so the strike costs no scoring tempo.
-        public const float AmbushStrikeMinDamageValue = 0.25f;
+        public static float AmbushStrikeMinDamageValue = 0.25f;
 
         // --- Casting (A5) ---------------------------------------------------------------------------
         // A cast is layered (it never ends the activation), so the planner casts whenever the net
@@ -127,8 +144,8 @@ namespace FDG.Ai.Tactician
         // small opportunity cost per token burned (the attempt spends them win or lose). Non-damage
         // effects (buffs, debuffs, forced moves) price a flat fraction of the target's value - the
         // documented A5 placeholder; anticipatory buff valuation arrives with Phase C's evaluator.
-        public const float CastEffectStaticFraction = 0.2f;
-        public const float CastTokenValue = 0.02f;
+        public static float CastEffectStaticFraction = 0.2f;
+        public static float CastTokenValue = 0.02f;
         // Assist (#103): one token shifts the caster's 4+ one face = 1/6 of the spell's value,
         // boosting a friend or denying an enemy alike (the solo bot always declines). Spend while
         // that beats the token cost, capped per request so one cast never drains a whole pool.
@@ -137,19 +154,19 @@ namespace FDG.Ai.Tactician
         // --- Target choice (A4-3) -------------------------------------------------------------------
         // Shooting/melee targets score by value-weighted damage; finishing a unit off is worth extra
         // (a dead unit stops acting; a wounded one does not).
-        public const float ShootingKillBonus = 1.5f;
-        public const float MeleeKillBonus = 1.5f;
+        public static float ShootingKillBonus = 1.5f;
+        public static float MeleeKillBonus = 1.5f;
 
         // --- Transports + snipers (A5-6, Chris's review pass) ---------------------------------------
         // Cargo bails when the boat could lose this fraction of its remaining wounds to one enemy
         // activation - a transport destroyed with a unit inside spills it out Shaken.
-        public const float TransportEvacuationFraction = 0.5f;
+        public static float TransportEvacuationFraction = 0.5f;
         // Takedown/single-model spell picks: prefer the model whose removal hurts - weapon output,
         // plus a bonus for models carrying their own rules (a joined hero's rules live on its MODEL
         // after the #006 merge, so this is the hero-sniping signal).
-        public const float SnipeSpecialModelBonus = 1.5f;
+        public static float SnipeSpecialModelBonus = 1.5f;
         // Shooting prefers targets that can charge US next activation - kill the thing about to
         // eat you before the thing that cannot reach you.
-        public const float ShootThreatFactor = 1.25f;
+        public static float ShootThreatFactor = 1.25f;
     }
 }

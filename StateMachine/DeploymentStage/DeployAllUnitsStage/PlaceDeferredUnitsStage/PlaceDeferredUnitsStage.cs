@@ -39,8 +39,9 @@ namespace FDG.Stages
                 var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID, "Place Scout Unit",
                     forwardZone, unit.ModelBindings);
 
-                List<PlacedObjectEntry<ModelData>> placements = await PlacementRequesting
-                    .RequestMandatoryPlacement(GameContext.PlayerRequester, request);
+                // #282: commit-time overlap check, same as normal deployment.
+                List<PlacedObjectEntry<ModelData>> placements = await PlacementCommitGuard
+                    .RequestClearPlacement(GameContext, request);
 
                 foreach (PlacedObjectEntry<ModelData> placement in placements)
                 {

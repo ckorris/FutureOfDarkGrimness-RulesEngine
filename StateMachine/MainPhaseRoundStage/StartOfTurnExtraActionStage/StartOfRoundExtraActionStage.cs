@@ -154,8 +154,9 @@ namespace FDG.Stages
                 wholeTable, unit.ModelBindings, minDistanceFromEnemiesInches: minDistanceFromEnemies,
                 mustTouchTableEdge: mustTouchTableEdge);
 
-            List<PlacedObjectEntry<ModelData>> placements = await PlacementRequesting
-                .RequestMandatoryPlacement(GameContext.PlayerRequester, request);
+            // #282: commit-time overlap check - an Ambush arrival must not land inside another unit.
+            List<PlacedObjectEntry<ModelData>> placements = await PlacementCommitGuard
+                .RequestClearPlacement(GameContext, request);
 
             foreach (PlacedObjectEntry<ModelData> placement in placements)
             {

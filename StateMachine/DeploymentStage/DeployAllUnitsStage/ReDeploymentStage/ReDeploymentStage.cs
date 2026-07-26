@@ -144,8 +144,9 @@ namespace FDG.Stages
             var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID, $"Re-Deploy {unit.Name}",
                 zone, unit.ModelBindings);
 
-            List<PlacedObjectEntry<ModelData>> placements = await PlacementRequesting
-                .RequestMandatoryPlacement(GameContext.PlayerRequester, request);
+            // #282: commit-time overlap check, same as first deployment.
+            List<PlacedObjectEntry<ModelData>> placements = await PlacementCommitGuard
+                .RequestClearPlacement(GameContext, request);
 
             foreach (PlacedObjectEntry<ModelData> placement in placements)
             {

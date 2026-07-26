@@ -44,8 +44,10 @@ namespace FDG.Stages
             var placeObjectsRequest = new PlaceObjectsRequest<ModelData>(currentPlayerID, "Place Unit Models",
                 deploymentZone.GetValue(), deployingUnit.ModelBindings);
 
-            List<PlacedObjectEntry<ModelData>> modelPositions = await PlacementRequesting
-                .RequestMandatoryPlacement(GameContext.PlayerRequester, placeObjectsRequest);
+            // #282: request + commit-time overlap check, so a resolver-side failure can't
+            // silently deploy one unit inside another.
+            List<PlacedObjectEntry<ModelData>> modelPositions = await PlacementCommitGuard
+                .RequestClearPlacement(GameContext, placeObjectsRequest);
 
             //Actually place the objects.
             foreach(PlacedObjectEntry<ModelData> entry in modelPositions)

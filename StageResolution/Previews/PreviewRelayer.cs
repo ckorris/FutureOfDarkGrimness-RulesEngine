@@ -6,7 +6,7 @@ using FDG.Players;
 namespace FDG.StageResolution.Previews
 {
     /// <summary>
-    /// Host-side relay for remote clients' preview submissions (#277): validates that the sending
+    /// Host-side relay for remote clients' preview submissions (#280): validates that the sending
     /// connection actually owns the claimed player (a client cannot draw ghosts in another player's
     /// name), applies flood and size caps (the stream is mouse-driven and a broadcast amplifies to
     /// every client), then re-broadcasts as the authoritative <see cref="StagePreviewMessage"/>.

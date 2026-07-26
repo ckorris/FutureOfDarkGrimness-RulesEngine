@@ -1,7 +1,7 @@
 namespace FDG.StageResolution.Previews
 {
     /// <summary>
-    /// Publish side of live decision-preview sharing (#277): while a player's stage request is
+    /// Publish side of live decision-preview sharing (#280): while a player's stage request is
     /// unresolved, their front end pushes the transient state its resolver is showing (ghost
     /// models, planned paths) so every other player watches the decision take shape instead of a
     /// frozen board. The engine transports the payload opaquely as a (type name, JSON) pair - what

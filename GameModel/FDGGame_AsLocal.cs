@@ -48,7 +48,7 @@ namespace FDG.GameModel
 
             _messageBusClient = messageBusClient;
 
-            // #277 preview sharing. The feed holds the LIVE local-player list (populated later via
+            // #280 preview sharing. The feed holds the LIVE local-player list (populated later via
             // AddLocalPlayerID) so it filters every local player, however many join before launch.
             PreviewChannel = new PreviewChannel(messageBusClient);
             PreviewFeed = new PreviewFeed(messageBusClient, _localPlayerIDs);

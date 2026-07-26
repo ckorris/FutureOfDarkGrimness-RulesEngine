@@ -1,7 +1,7 @@
 namespace FDG.Network.Messages.StagePreviewMessages
 {
     /// <summary>
-    /// Client -> host: a remote player's live decision preview (#277) - the transient state their
+    /// Client -> host: a remote player's live decision preview (#280) - the transient state their
     /// active resolver is showing (ghost models, planned paths), shared so the other players watch
     /// the move take shape instead of a frozen board. The payload is an opaque (type name, JSON)
     /// pair: the engine transports it; only the front end knows how to build or draw one.

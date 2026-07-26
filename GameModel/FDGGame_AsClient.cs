@@ -62,7 +62,7 @@ namespace FDG.GameModel
             _dataUpdateReceiver = new GameDataUpdateReceiver(_gameDataStore, messageBusClient);
             _dataUpdateReceiver.RequestAllCurrentData();
 
-            // #277 preview sharing: publish via the host relay; receive everyone else's.
+            // #280 preview sharing: publish via the host relay; receive everyone else's.
             PreviewChannel = new PreviewChannel(messageBusClient);
             PreviewFeed = new PreviewFeed(messageBusClient, new List<PlayerID> { thisPlayerID });
         }

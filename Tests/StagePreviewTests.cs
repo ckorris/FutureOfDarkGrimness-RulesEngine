@@ -10,7 +10,7 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #277 live decision-preview sharing: channel routing (host-capable bus broadcasts directly,
+    // #280 live decision-preview sharing: channel routing (host-capable bus broadcasts directly,
     // client bus submits for relay), relayer validation (connection ownership, size, rate), and
     // feed semantics (latest-wins per slot, local filter, clear + last-task-resolved expiry).
     [TestFixture]

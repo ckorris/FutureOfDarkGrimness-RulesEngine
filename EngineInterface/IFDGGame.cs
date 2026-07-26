@@ -21,7 +21,7 @@ namespace FDG.EngineInterface
         IPresentationSink? PresentationSink { get; }
 
         /// <summary>
-        /// Publish side of live decision-preview sharing (#277): the front end pushes its active
+        /// Publish side of live decision-preview sharing (#280): the front end pushes its active
         /// resolver's transient state (ghost models, planned paths) here so other players watch the
         /// decision take shape. Available from construction (property, not AssignInterfaces) - the
         /// bus exists at ctor time, and the GUI wires its publisher separately from the resolver
@@ -30,7 +30,7 @@ namespace FDG.EngineInterface
         IPreviewChannel PreviewChannel { get; }
 
         /// <summary>
-        /// Receive side of #277: latest preview state of every other (non-local) player, for the
+        /// Receive side of #280: latest preview state of every other (non-local) player, for the
         /// renderer to draw. Same lifecycle rationale as <see cref="PreviewChannel"/>.
         /// </summary>
         IPreviewFeed PreviewFeed { get; }

@@ -42,7 +42,7 @@ namespace FDG.GameModel
         private GameContext _gameContext;
         private StateMachine<IGameContext> _stateMachine;
 
-        // #277: validates + re-broadcasts remote clients' live decision previews. Held only for
+        // #280: validates + re-broadcasts remote clients' live decision previews. Held only for
         // ownership/lifetime clarity - nothing else reads it (it lives on its bus registrations).
         private PreviewRelayer _previewRelayer;
 
@@ -153,7 +153,7 @@ namespace FDG.GameModel
             RequestMessageSender requestMessageSender = new RequestMessageSender(_messageBusHost, _gameDataStore,
                 _playerSlotManager, textOutput);
 
-            // #277: relay remote clients' live decision previews (ghosts / planned paths) to every
+            // #280: relay remote clients' live decision previews (ghosts / planned paths) to every
             // player. Runs on both the new-game and resume paths, GUI and headless hosts alike.
             _previewRelayer = new PreviewRelayer(_messageBusHost, _playerSlotManager, textOutput);
 

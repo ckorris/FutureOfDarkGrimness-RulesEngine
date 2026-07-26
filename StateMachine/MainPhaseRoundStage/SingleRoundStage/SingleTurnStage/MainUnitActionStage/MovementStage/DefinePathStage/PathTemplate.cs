@@ -19,6 +19,10 @@ namespace FDG
 
         private Dictionary<DataBinding<ModelData>, List<Position>> _paths = new Dictionary<DataBinding<ModelData>, List<Position>>();
 
+        // #282: the manual facing offset (radians) each waypoint was placed with, 1:1 with _paths. Captured
+        // at AddStep so a rotation made later in the plan never re-orients already-committed waypoints.
+        private Dictionary<DataBinding<ModelData>, List<float>> _facingOffsets = new Dictionary<DataBinding<ModelData>, List<float>>();
+
         public IUnit Unit => _unit.GetValue();
 
         public float MaxAdvanceDistance => _maxAdvanceDistance;
@@ -39,6 +43,7 @@ namespace FDG
                 .Where(model => model.GetIsAlive()))
             {
                 _paths.Add(model, new List<Position>());
+                _facingOffsets.Add(model, new List<float>());
             }
         }
 
@@ -48,13 +53,14 @@ namespace FDG
             return MovementUtilities.ValidatePaths(resultsList, _maxDistanceInches, out invalidReasons);
         }
 
-        public void AddStep(IModel model, Position nextStep)
+        public void AddStep(IModel model, Position nextStep, float facingOffsetRadians = 0f)
         {
             DataBinding<ModelData> modelData = _paths.Keys.First(m => m.GetValue() == model);
 
             MovementUtilities.AssertModelInUnit(_unit, modelData);
 
             _paths[modelData].Add(nextStep);
+            _facingOffsets[modelData].Add(facingOffsetRadians);
         }
 
         public void RemoveLastStep(IModel model)
@@ -71,6 +77,7 @@ namespace FDG
             }
 
             modelSteps.RemoveAt(modelSteps.Count - 1);
+            _facingOffsets[modelData].RemoveAt(_facingOffsets[modelData].Count - 1);
         }
 
         public void ClearModelSteps(IModel model)
@@ -81,6 +88,7 @@ namespace FDG
             MovementUtilities.AssertModelInUnit(_unit, modelData);
 
             _paths[modelData].Clear();
+            _facingOffsets[modelData].Clear();
         }
 
         public void ClearAllSteps()
@@ -88,6 +96,10 @@ namespace FDG
             foreach (List<Position> path in _paths.Values)
             {
                 path.Clear();
+            }
+            foreach (List<float> offsets in _facingOffsets.Values)
+            {
+                offsets.Clear();
             }
         }
 
@@ -125,13 +137,21 @@ namespace FDG
         }
 
         /// <summary>
+        /// The facing offset each of this model's committed waypoints was placed with (#282), 1:1 with its path.
+        /// </summary>
+        public IReadOnlyList<float> GetModelFacingOffsets(IModel model)
+        {
+            return _facingOffsets.First(kvp => kvp.Key.GetValue() == model).Value;
+        }
+
+        /// <summary>
         /// Builds the per-model move entries. When <paramref name="travelDirectionFacing"/> is set (#150), each
         /// entry carries a per-waypoint facing: the direction of travel into that waypoint (so the model turns
-        /// through corners), rotated by the model's manual offset from <paramref name="facingOffsets"/> if any.
-        /// Off by default, so validation and non-facing callers (e.g. consolidation) are unchanged.
+        /// through corners), rotated by the manual offset that waypoint was placed with (#282 - captured by
+        /// AddStep, so a late rotation never re-orients earlier waypoints). Off by default, so validation and
+        /// non-facing callers (e.g. consolidation) are unchanged.
         /// </summary>
-        public List<ModelMoveEntry> GetResultsAsList(IReadOnlyDictionary<IModel, float>? facingOffsets = null,
-            bool travelDirectionFacing = false)
+        public List<ModelMoveEntry> GetResultsAsList(bool travelDirectionFacing = false)
         {
             List<ModelMoveEntry> results = new List<ModelMoveEntry>(_paths.Count);
             foreach(KeyValuePair< DataBinding<ModelData>, List<Position>> kvp in _paths)
@@ -140,8 +160,8 @@ namespace FDG
                 if (travelDirectionFacing && kvp.Value.Count > 0)
                 {
                     IModel model = kvp.Key.GetValue();
-                    float offset = facingOffsets != null && facingOffsets.TryGetValue(model, out float o) ? o : 0f;
-                    facings = MovementFacingUtilities.WaypointFacings(model.Position, kvp.Value, model.Facing, offset);
+                    facings = MovementFacingUtilities.WaypointFacings(model.Position, kvp.Value, model.Facing,
+                        _facingOffsets[kvp.Key]);
                 }
                 results.Add(new ModelMoveEntry(kvp.Key, kvp.Value, facings));
             }

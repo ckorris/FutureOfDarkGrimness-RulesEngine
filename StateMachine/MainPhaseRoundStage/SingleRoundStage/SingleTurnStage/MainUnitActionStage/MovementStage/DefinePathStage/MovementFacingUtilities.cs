@@ -29,5 +29,33 @@ namespace FDG
             }
             return facings;
         }
+
+        /// <summary>
+        /// Per-waypoint variant (#282): each waypoint carries the manual offset it was placed with, so a
+        /// rotation made later in the plan never re-orients segments already committed. Offsets pair 1:1
+        /// with waypoints.
+        /// </summary>
+        public static List<Float2> WaypointFacings(Position start, IReadOnlyList<Position> waypoints,
+            Float2 fallbackFacing, IReadOnlyList<float> offsetsRadians)
+        {
+            if (offsetsRadians.Count != waypoints.Count)
+                throw new ArgumentException(
+                    $"Expected one offset per waypoint ({waypoints.Count}), got {offsetsRadians.Count}.",
+                    nameof(offsetsRadians));
+
+            var facings = new List<Float2>(waypoints.Count);
+            Float2 dir = fallbackFacing;
+            Position from = start;
+            for (int i = 0; i < waypoints.Count; i++)
+            {
+                float dx = waypoints[i].x - from.x, dz = waypoints[i].z - from.z;
+                float len = MathF.Sqrt(dx * dx + dz * dz);
+                if (len > 1e-4f) dir = new Float2(dx / len, dz / len); // else keep the prior direction (a hold)
+                float cos = MathF.Cos(offsetsRadians[i]), sin = MathF.Sin(offsetsRadians[i]);
+                facings.Add(new Float2(dir.X * cos - dir.Y * sin, dir.X * sin + dir.Y * cos));
+                from = waypoints[i];
+            }
+            return facings;
+        }
     }
 }

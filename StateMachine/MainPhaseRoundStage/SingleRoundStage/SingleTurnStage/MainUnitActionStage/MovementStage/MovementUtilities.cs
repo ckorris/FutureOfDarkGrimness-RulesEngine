@@ -446,7 +446,7 @@ namespace FDG.Stages
 
                 var model = move.Model.GetValue();
                 IBaseShape baseShape = model.BaseShape;
-                Float2 facing = model.Facing;
+                Float2 restingFacing = model.Facing;
                 Position startPos = model.PositionBinding.GetValue();
                 Float2 segmentStart = new Float2(startPos.x, startPos.z);
 
@@ -460,6 +460,12 @@ namespace FDG.Stages
                     // already sitting within its base radius of impassable terrain self-flags even on a hold,
                     // which defeats the AI's hold-in-place fallback and crashes DefinePathStage (no valid move).
                     if (IsZeroLengthSegment(segmentStart, segmentEnd)) continue;
+
+                    // Sweep at the facing the model will HAVE while traversing this segment - its per-waypoint
+                    // travel facing (#150), the same oriented base the ghost drew and the executor turns to - not
+                    // its pre-move resting facing. For a large non-square base the orientation changes which
+                    // footprint the swept test uses, so a frozen resting facing disagreed with what the player saw.
+                    Float2 facing = SegmentFacing(move, i, restingFacing);
 
                     foreach (ITerrain piece in impassable)
                     {
@@ -487,6 +493,13 @@ namespace FDG.Stages
             float dx = b.X - a.X, dz = b.Y - a.Y;
             return dx * dx + dz * dz < ZERO_MOVE_EPSILON_SQ;
         }
+
+        // The base's orientation while traversing the segment that ENDS at Positions[i]: the move's per-waypoint
+        // travel facing (#150, Facings[i]), so the swept-footprint terrain tests use the same oriented base the
+        // ghost drew and the executor will turn the model to. Falls back to the model's pre-move resting facing
+        // when the move carries no per-waypoint facings (AI moves, consolidation, aircraft - Facings is null).
+        private static Float2 SegmentFacing(ModelMoveEntry move, int i, Float2 fallback)
+            => move.Facings != null && i < move.Facings.Count ? move.Facings[i] : fallback;
 
         public static bool DoesPathCrossDangerousTerrain(ModelMoveEntry move, IEnumerable<ITerrain> terrain)
             => DoesPathCrossTerrainPieces(move, terrain
@@ -519,7 +532,7 @@ namespace FDG.Stages
 
             var model = move.Model.GetValue();
             IBaseShape baseShape = model.BaseShape;
-            Float2 facing = model.Facing;
+            Float2 restingFacing = model.Facing;
             Position startPos = model.PositionBinding.GetValue();
             Float2 segmentStart = new Float2(startPos.x, startPos.z);
 
@@ -527,6 +540,8 @@ namespace FDG.Stages
             {
                 Float2 segmentEnd = new Float2(move.Positions[i].x, move.Positions[i].z);
                 if (IsZeroLengthSegment(segmentStart, segmentEnd)) continue; // a hold doesn't cross terrain
+                // Per-waypoint travel facing (#150); see ValidateMovingThroughImpassibleTerrain for the rationale.
+                Float2 facing = SegmentFacing(move, i, restingFacing);
                 foreach (ITerrain piece in pieces)
                 {
                     if (SweptBaseGeometry.DoesSweptBaseIntersectZone(piece.Shape, segmentStart, segmentEnd, baseShape, facing))

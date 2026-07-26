@@ -50,6 +50,9 @@ namespace FDG.Ai.Tactician
         // the arriving-pressure term. Endpoint-independent, computed lazily per activation.
         private readonly Dictionary<DataReference, Position> _enemyProjected = new();
         private readonly Dictionary<DataReference, float> _enemyMaxRange = new();
+        // Round-scaled projected-objective deficit in [-1, 1] (positive = losing the race) -
+        // the risk-posture tilt. Endpoint-independent, computed lazily per activation.
+        private float? _posture;
         // #264 issue 1: one WALKING route per objective, from this activation's start - the gradient
         // measures against it instead of straight-line distance. Both are activation-scoped: the
         // routes start at the unit's current centroid, and the grid only depends on the terrain and
@@ -87,6 +90,7 @@ namespace FDG.Ai.Tactician
             _enemyAltTarget.Clear();
             _enemyProjected.Clear();
             _enemyMaxRange.Clear();
+            _posture = null;
             _objectiveRoutes.Clear();
             _enemyRoutes.Clear();
             _routeGrid = null;
@@ -554,13 +558,21 @@ namespace FDG.Ai.Tactician
             float urgency = ObjectiveUrgency(_tableState.Progress.RoundCount ?? 1,
                 _tableState.Progress.TotalRounds);
 
+            // Risk posture (#191 idea 3): behind on projected markers late, risks get cheaper
+            // and flips more valuable - the losing side must buy variance; ahead, retaliation
+            // prices UP by the same slope and the lead is protected. The objective boost is
+            // behind-only: being ahead is no reason to stop playing the markers.
+            float posture = Posture();
+            float riskScale = 1f - TacticianWeights.PostureRetaliationRelief * posture;
+            float objectiveScale = 1f + TacticianWeights.PostureObjectiveBoost * Math.Max(0f, posture);
+
             float substantive =
                    TacticianWeights.MoveDamage * offense
-                 - TacticianWeights.MoveRetaliation * retaliation
-                 - TacticianWeights.MoveProjectedThreat * projectedThreat
-                 + urgency * TacticianWeights.MoveObjective * objectiveDelta
+                 - riskScale * TacticianWeights.MoveRetaliation * retaliation
+                 - riskScale * TacticianWeights.MoveProjectedThreat * projectedThreat
+                 + objectiveScale * urgency * TacticianWeights.MoveObjective * objectiveDelta
                  // A5-8: the gradient is deadline-scaled per objective INSIDE ObjectiveApproach.
-                 + TacticianWeights.MoveObjectiveApproach * objectiveApproach
+                 + objectiveScale * TacticianWeights.MoveObjectiveApproach * objectiveApproach
                  + TacticianWeights.MoveApproach * approach
                  + TacticianWeights.MoveScreen * ScreenValue(end);
 
@@ -914,6 +926,31 @@ namespace FDG.Ai.Tactician
             }
             _enemyAltTarget[enemyBinding.Reference] = best;
             return best;
+        }
+
+        // The projected-objective deficit (best-placed opponent minus us), half a point of tilt
+        // per marker, clamped to [-1, 1] and scaled by round progress: an early deficit is
+        // deployment noise, a late one is the game. Positive = we are losing the race.
+        private float Posture()
+        {
+            if (_posture.HasValue) return _posture.Value;
+
+            PlayerID us = _activeUnit!.GetValue().PlayerID;
+            int ours = 0;
+            var byPlayer = new Dictionary<PlayerID, int>();
+            foreach (ObjectiveProjection projection in TacticalAnalysis.ProjectObjectives(_tableState))
+            {
+                if (!projection.ProjectedOwner.HasValue) continue;
+                PlayerID owner = projection.ProjectedOwner.Value;
+                if (owner == us) ours++;
+                else byPlayer[owner] = byPlayer.TryGetValue(owner, out int n) ? n + 1 : 1;
+            }
+            int bestOpponent = byPlayer.Count == 0 ? 0 : byPlayer.Values.Max();
+
+            int round = _tableState.Progress.RoundCount ?? 1;
+            float roundFraction = (float)round / Math.Max(1, _tableState.Progress.TotalRounds);
+            _posture = Math.Clamp((bestOpponent - ours) * 0.5f, -1f, 1f) * roundFraction;
+            return _posture.Value;
         }
 
         // Where this enemy will plausibly stand after its next activation: one rush-budget step

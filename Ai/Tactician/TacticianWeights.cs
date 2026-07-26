@@ -63,6 +63,16 @@ namespace FDG.Ai.Tactician
         // against the arriver): its approach is an opportunity, and the staged charge must not
         // be penalized for standing its ground.
         public const float MoveProjectedThreat = 0.15f;
+
+        // --- Risk posture (#191 idea 3) -------------------------------------------------------------
+        // ADDED 2026-07-26: the projected objective differential, round-scaled, tilts the risk
+        // budget - 1-vs-3 on markers late must not score like 3-vs-1. Behind: retaliation and
+        // arriving pressure discount (down to 1 - Relief at full deficit) and objective terms
+        // boost (up to 1 + Boost) - the losing side buys variance. Ahead: retaliation prices UP
+        // by the same relief slope - the winning side protects the lead and runs out the clock.
+        // Round-scaled because an early deficit is deployment noise, a late one is the game.
+        public const float PostureRetaliationRelief = 0.35f;
+        public const float PostureObjectiveBoost = 0.3f;
         public const float MoveObjective = 0.75f;
         public const float MoveReachableBonus = 0.05f;
 

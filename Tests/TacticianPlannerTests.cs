@@ -589,6 +589,48 @@ namespace FDG.Tests
                 "melee arrivers a winning brawler would happily charge are not a threat to price");
         }
 
+        [Test]
+        public void BehindOnObjectivesLate_ARiskyGrabPricesBetterThanWhenLevel()
+        {
+            // #191 idea 3: 1-vs-3 late scored identically to 3-vs-1, so a losing bot played the
+            // same safe game as a winning one. Same guarded neutral marker, same rush onto it -
+            // the board where we are two markers down (round 4) must price the grab strictly
+            // higher than the board where the race is level.
+            float GrabScore(bool level)
+            {
+                SetUp();
+                SetRound(4);
+                foreach (float z in new[] { 40f, 10f })
+                {
+                    var theirsMarker = new ObjectiveData(new Position(70f, z), _store);
+                    theirsMarker.SetOwner(_them);
+                    _store.Create(theirsMarker);
+                    if (level)
+                    {
+                        var oursMarker = new ObjectiveData(new Position(5f, z), _store);
+                        oursMarker.SetOwner(_us);
+                        _store.Create(oursMarker);
+                    }
+                }
+                _store.Create(new ObjectiveData(new Position(30f, 24f), _store)); // the prize
+                var grabbers = MakeUnit(_us, 3, Rifle(), atX: 20f, atZ: 24f);
+                MakeUnit(_them, 5, Rifle(), atX: 40f, atZ: 24f); // guns covering the prize
+                _planner.BeginActivation(grabbers);
+                List<MacroAction> candidates = MacroActionGenerator.Enumerate(
+                    new RuleEvaluator(new ProbabilisticDiceRoller()), _tableState, grabbers);
+                MacroAction grab = candidates
+                    .Where(c => c.Intent is EMacroIntent.RushObjective or EMacroIntent.AdvanceOnObjective)
+                    .OrderBy(c => Distance(c.ProjectedCentroid, new Position(30f, 24f))).First();
+                return _planner.Score(grab);
+            }
+
+            float behind = GrabScore(level: false);
+            float levelRace = GrabScore(level: true);
+
+            Assert.That(behind, Is.GreaterThan(levelRace + 0.005f),
+                "two markers down in the final round, the same guarded grab must be worth the risk");
+        }
+
         private void SetRound(int round)
         {
             var progress = new GameProgressData(EResumeStage.MainPhase, round,

@@ -31,6 +31,23 @@ namespace FDG
         }
 
         /// <summary>
+        /// Rotate-in-place variant (#215/#283): each waypoint keeps <paramref name="baseFacing"/> rotated by
+        /// the offset it was placed with - consolidation's semantic, where the wheel turns the unit without
+        /// it facing its direction of travel.
+        /// </summary>
+        public static List<Float2> RotateInPlaceFacings(Float2 baseFacing, IReadOnlyList<float> offsetsRadians)
+        {
+            var facings = new List<Float2>(offsetsRadians.Count);
+            for (int i = 0; i < offsetsRadians.Count; i++)
+            {
+                float cos = MathF.Cos(offsetsRadians[i]), sin = MathF.Sin(offsetsRadians[i]);
+                facings.Add(new Float2(baseFacing.X * cos - baseFacing.Y * sin,
+                                       baseFacing.X * sin + baseFacing.Y * cos));
+            }
+            return facings;
+        }
+
+        /// <summary>
         /// Per-waypoint variant (#282): each waypoint carries the manual offset it was placed with, so a
         /// rotation made later in the plan never re-orients segments already committed. Offsets pair 1:1
         /// with waypoints.

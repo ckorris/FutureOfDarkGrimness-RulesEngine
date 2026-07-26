@@ -28,7 +28,7 @@ namespace FDG.Tests
             pt.AddStep(m, new Position(0f, 3f));                            // placed unrotated, travel +Z
             pt.AddStep(m, new Position(3f, 3f), MathF.PI / 2f);             // placed after a +90 deg turn, travel +X
 
-            List<ModelMoveEntry> results = pt.GetResultsAsList(travelDirectionFacing: true);
+            List<ModelMoveEntry> results = pt.GetResultsAsList(EPathFacingDerivation.TravelDirection);
             ModelMoveEntry entry = results.Find(e => e.Model.GetValue() == m);
 
             Assert.That(entry.Facings, Is.Not.Null);
@@ -54,10 +54,34 @@ namespace FDG.Tests
             IReadOnlyList<float> offsets = pt.GetModelFacingOffsets(m);
             Assert.That(offsets, Is.EqualTo(new[] { 0f, 0f }), "the undone waypoint's offset went with it");
 
-            List<ModelMoveEntry> results = pt.GetResultsAsList(travelDirectionFacing: true);
+            List<ModelMoveEntry> results = pt.GetResultsAsList(EPathFacingDerivation.TravelDirection);
             ModelMoveEntry entry = results.Find(e => e.Model.GetValue() == m);
             Assert.That(entry.Facings![1].X, Is.EqualTo(0f).Within(1e-4f));
             Assert.That(entry.Facings![1].Y, Is.EqualTo(1f).Within(1e-4f), "travel +Z, no leftover rotation");
+        }
+
+        [Test]
+        public void GetResultsAsList_RotateInPlace_KeepsBaseFacingRotatedByEachStoredOffset()
+        {
+            DataBinding<ModelData> model = MakeModel();
+            DataBinding<UnitData> unit = MakeUnit(model);
+            var pt = new PathTemplate(unit, 6f, 12f);
+            IModel m = model.GetValue();
+            m.SetFacing(new Float2(0f, 1f));
+
+            // #283 (consolidation): travel goes +Z then +X, but the facing must ignore travel entirely -
+            // it is the model's own facing rotated by the offset each step was committed with.
+            pt.AddStep(m, new Position(0f, 1f));
+            pt.AddStep(m, new Position(1f, 1f), MathF.PI / 2f);
+
+            List<ModelMoveEntry> results = pt.GetResultsAsList(EPathFacingDerivation.RotateInPlace);
+            ModelMoveEntry entry = results.Find(e => e.Model.GetValue() == m);
+
+            Assert.That(entry.Facings, Is.Not.Null);
+            Assert.That(entry.Facings![0].X, Is.EqualTo(0f).Within(1e-4f));
+            Assert.That(entry.Facings![0].Y, Is.EqualTo(1f).Within(1e-4f), "unrotated step keeps the model's facing");
+            Assert.That(entry.Facings![1].X, Is.EqualTo(-1f).Within(1e-4f), "+Z facing rotated +90 deg -> -X, not the +X travel");
+            Assert.That(entry.Facings![1].Y, Is.EqualTo(0f).Within(1e-4f));
         }
 
         [Test]

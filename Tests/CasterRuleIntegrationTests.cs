@@ -1279,6 +1279,130 @@ namespace FDG.Tests
             Assert.That(statMod, Does.Contain("+1 to hit rolls").And.Contain("friendly"));
         }
 
+        // ── #285: the effect report ────────────────────────────────────────────────────────────────────
+        // A successful cast used to announce only the ROLL; what the spell actually did was left to the
+        // log. Every non-damage path now emits one Notice-tier banner naming the effect and the units it
+        // landed on. (The damage path is deliberately excluded: its attack/dice/wound beats narrate it.)
+
+        // Past tense, with the affected units folded in — the report, not the picker's advertisement.
+        [Test]
+        public void SpellText_DescribeApplied_NamesTheEffectAndTheTargets()
+        {
+            Assert.That(SpellText.DescribeApplied("Bless",
+                    new Effect.AddRule("Rending", ELifetime.ThisRound), new[] { "Knight Brothers" }),
+                Is.EqualTo("Bless grants Rending to Knight Brothers (this round)"));
+
+            Assert.That(SpellText.DescribeApplied("Deep Hypnosis",
+                    new Effect.TriggeredMove(MaxInches: 6f, IsOptional: false), new[] { "Heavy Gunners" }),
+                Is.EqualTo("Deep Hypnosis moved Heavy Gunners up to 6\""));
+
+            Assert.That(SpellText.DescribeApplied("Guidance",
+                    new Effect.StatModifier(ERollKind.Hit, 1, ELifetime.NextTrigger), new[] { "Warriors" }),
+                Is.EqualTo("Guidance gives Warriors +1 to hit rolls (next time)"));
+
+            Assert.That(SpellText.DescribeApplied("Terror", new Effect.ApplyFatigue(), new[] { "Grunts" }),
+                Is.EqualTo("Terror left Grunts fatigued"));
+        }
+
+        [Test]
+        public void SpellText_JoinNames_ReadsAsASentenceForAnyTargetCount()
+        {
+            Assert.That(SpellText.JoinNames(new[] { "A" }), Is.EqualTo("A"));
+            Assert.That(SpellText.JoinNames(new[] { "A", "B" }), Is.EqualTo("A and B"));
+            Assert.That(SpellText.JoinNames(new[] { "A", "B", "C" }), Is.EqualTo("A, B and C"));
+        }
+
+        // A conditional spell reports ONE line for the whole cast, whatever mix of passes and fails it got.
+        [Test]
+        public void SpellText_DescribeConditionalApplied_ReportsBothOutcomesInOneLine()
+        {
+            var onFail = new Effect.ApplyFatigue();
+
+            Assert.That(SpellText.DescribeConditionalApplied("Terrifying Fury", onFail,
+                    failedNames: System.Array.Empty<string>(), passedNames: new[] { "Warriors" }),
+                Is.EqualTo("Terrifying Fury: Warriors passed the morale test - no effect"));
+
+            Assert.That(SpellText.DescribeConditionalApplied("Terrifying Fury", onFail,
+                    failedNames: new[] { "Grunts" }, passedNames: System.Array.Empty<string>()),
+                Is.EqualTo("Terrifying Fury left Grunts fatigued (morale test failed)"));
+
+            Assert.That(SpellText.DescribeConditionalApplied("Terrifying Fury", onFail,
+                    failedNames: new[] { "Grunts" }, passedNames: new[] { "Warriors" }),
+                Is.EqualTo("Terrifying Fury left Grunts fatigued (morale test failed); Warriors passed"));
+        }
+
+        [Test]
+        public async Task CastSpellStage_BuffSpell_AnnouncesWhatTheEffectDid()
+        {
+            var sink = new RecordingPresentationSink();
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester(), presentationSink: sink);
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
+                new[] { BuffSpell("Bless", threshold: 1, grantedRule: "Furious") }, new Position(10f, 10f));
+
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(NewActivation(ctx, caster));
+
+            AssertEffectBanner(sink, "Bless grants Furious to Wizards (next time).");
+        }
+
+        // The conditional path's banner is emitted once, after every target has tested — not per target.
+        [Test]
+        public async Task CastSpellStage_ConditionalSpell_AnnouncesTheOutcomeOnce()
+        {
+            var sink = new RecordingPresentationSink();
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester(),
+                new FixedFaceDiceRoller(4), presentationSink: sink);
+
+            RuntimeSpell fury = new RuntimeSpell(
+                new SpellDefinition("Terrifying Fury", 1,
+                    new TargetSelector(18f, 1, 1, ETargetAffinity.Foe, RequireLineOfSight: false),
+                    new Effect.MoraleTestThen(new Effect.ApplyFatigue())),
+                System.Array.Empty<ResolvedRule>());
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
+                new[] { fury }, new Position(10f, 10f));
+            // Quality 6 with a fixed face of 4: the cast passes (4 >= 4), the morale test fails (4 < 6).
+            MakeEnemyUnit(new PlayerID(System.Guid.NewGuid()), new Position(12f, 10f), quality: 6);
+
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(NewActivation(ctx, caster));
+
+            AssertEffectBanner(sink, "Terrifying Fury left Grunts fatigued (morale test failed).");
+        }
+
+        // A failed cast never reaches an effect, so it must not report one.
+        [Test]
+        public async Task CastSpellStage_FailedCast_AnnouncesNoEffect()
+        {
+            var sink = new RecordingPresentationSink();
+            // A fixed face of 1 fails the clamped 2+ floor, so the cast never lands.
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester(),
+                new FixedFaceDiceRoller(1), presentationSink: sink);
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
+                new[] { BuffSpell("Bless", threshold: 1, grantedRule: "Furious") }, new Position(10f, 10f));
+
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(NewActivation(ctx, caster));
+
+            Assert.That(sink.Beats.OfType<BannerBeat>().Any(b => b.BannerText.Contains("grants Furious")),
+                Is.False, "a failed cast has no effect to report");
+        }
+
+        // The effect report is matched by its exact text rather than by tier: the cast result itself and
+        // any morale banner the spell triggers are Notices too, so tier alone does not identify it. The
+        // count assertion is the load-bearing one - a multi-target spell must report ONCE, not per target.
+        private static void AssertEffectBanner(RecordingPresentationSink sink, string expectedText)
+        {
+            var matching = sink.Beats.OfType<BannerBeat>().Where(b => b.BannerText == expectedText).ToList();
+            Assert.That(matching, Has.Count.EqualTo(1),
+                $"exactly one effect report per cast; saw: " +
+                string.Join(" | ", sink.Beats.OfType<BannerBeat>().Select(b => b.BannerText)));
+            Assert.That(matching[0].Tier, Is.EqualTo(EBannerTier.Notice),
+                "the effect report is a Notice - it should not stop play a second time for one spell");
+        }
+
         private static UnitActionContext NewActivation(IGameContext ctx, DataBinding<UnitData> unit)
         {
             UnitActionContext unitCtx = new UnitActionContext(ctx, unit);

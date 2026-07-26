@@ -64,6 +64,10 @@ namespace FDG.Stages
         private static readonly TextColor CastSuccessColor = new TextColor(77, 153, 255, 255);
         private static readonly TextColor CastFailColor = new TextColor(220, 40, 40, 255);
 
+        // #285 effect-report color: violet, distinct from the blue cast-result line above so "the spell
+        // went off" and "here is what it did" don't read as one repeated announcement.
+        private static readonly TextColor EffectBannerColor = new TextColor(178, 132, 255, 255);
+
         // The damage run set up in Enter (synthetic weapon + chosen targets + base hits + any single-model
         // pick) and handed to the looped child pipeline by GetNewChildContext. Null on the buff path, which
         // applies its effect inline and never enters the children.
@@ -292,9 +296,23 @@ namespace FDG.Stages
             {
                 await ApplyEffectToTarget(caster, chosen.Effect, target);
             }
+            // #285 — say what the spell DID, not just that it went off. The cast banner above reports the
+            // roll; without this the buff/debuff/move/mark paths announce nothing at all and the player has
+            // to infer the effect from token chips.
+            await AnnounceEffect(SpellText.DescribeApplied(chosen.Name, chosen.Effect, TargetNames(targets)));
             GameContext.Log($"{chosen.Name} affected {targets.Count} unit(s).");
             await OnFinished.Activate(context);
         }
+
+        // #285 — the effect report. A Notice (tier 1): it is worth reading, but the cast Headline already
+        // stopped play once for this spell and a second full-stop for its consequence is what #275 set out
+        // to remove. ASCII only (CLAUDE.md) - the composers never emit anything above U+00FF.
+        private async Task AnnounceEffect(string text) =>
+            await GameContext.Announce($"{text}.", EffectBannerColor, EBannerTier.Notice);
+
+        // The unit names an effect banner reports, in the order the player picked them.
+        private static IReadOnlyList<string> TargetNames(IEnumerable<DataBinding<UnitData>> targets) =>
+            targets.Select(t => t.GetValue().Name).ToList();
 
         // #274 — one spell visual at a set of model positions. A unit whose models are all dead or
         // still in reserve yields no positions; the beat is dropped rather than emitted placeless
@@ -358,6 +376,11 @@ namespace FDG.Stages
         private async Task ResolveConditionalSpell(IUnit caster, RuntimeSpell spell,
             Effect.MoraleTestThen conditional, IReadOnlyList<DataBinding<UnitData>> targets)
         {
+            // #285 — collected rather than announced per target, so a multi-target conditional spell
+            // reports its outcome as ONE banner instead of a pile of them mid-resolution.
+            List<string> failed = new List<string>();
+            List<string> passed = new List<string>();
+
             foreach (DataBinding<UnitData> target in targets)
             {
                 UnitData targetUnit = target.GetValue();
@@ -367,12 +390,17 @@ namespace FDG.Stages
                 if (outcome.Passed)
                 {
                     GameContext.Log($"{targetUnit.Name} passed {spell.Name}'s morale test - no effect.");
+                    passed.Add(targetUnit.Name);
                     continue;
                 }
 
                 GameContext.Log($"{targetUnit.Name} failed {spell.Name}'s morale test.");
+                failed.Add(targetUnit.Name);
                 await ApplyEffectToTarget(caster, conditional.OnFailure, target);
             }
+
+            await AnnounceEffect(SpellText.DescribeConditionalApplied(
+                spell.Name, conditional.OnFailure, failed, passed));
         }
 
         // Applies one spell effect to one target by running the effect's polymorphic Apply against a

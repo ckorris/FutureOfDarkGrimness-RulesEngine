@@ -706,7 +706,8 @@ namespace FDG.Ai.Tactician
                     && t.Shape.DoesPathIntersectZone(new Float2(start.x, start.z),
                         new Float2(goal.x, goal.z), baseRadius)))
             {
-                TerrainGrid grid = sharedGrid?.Invoke() ?? TerrainGrid.Build(terrain, baseRadius);
+                TerrainGrid grid = sharedGrid?.Invoke()
+                    ?? TerrainGrid.Build(terrain, baseRadius, ignoresDifficultTerrain);
                 path = GridPathfinder.FindPath(grid, terrain, start, goal, baseRadius);
                 // #264 issue 3: no route to the goal is not a reason to walk INTO the wall. Head for
                 // the reachable point closest to it instead - the straight line below remains only

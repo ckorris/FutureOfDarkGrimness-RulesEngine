@@ -104,7 +104,10 @@ namespace FDG.Ai.Tactician
             float leadRadius = living.Max(mb => mb.GetValue().BaseRadiusInches);
             // One terrain grid for the whole enumeration (built only if some candidate needs it).
             TerrainGrid? cachedGrid = null;
-            Func<TerrainGrid> sharedGrid = () => cachedGrid ??= TerrainGrid.Build(terrain, leadRadius);
+            // Strider: no difficult multiplier in the router, so the shared grid matches the score
+            // gradient's view of this unit (TacticianPlanner.UnitRoute).
+            Func<TerrainGrid> sharedGrid = () =>
+                cachedGrid ??= TerrainGrid.Build(terrain, leadRadius, ignoresDifficult);
 
             // M2/M3 - objectives, both budgets (rush reaches farther; ranking keeps the useful one).
             foreach (IObjective objective in tableState.Objectives.Objects)

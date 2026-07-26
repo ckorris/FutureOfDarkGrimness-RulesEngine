@@ -53,6 +53,9 @@ namespace FDG.Ai.Tactician
         // enemy rather than its centroid because that centroid is fixed for the activation anyway.
         private readonly Dictionary<DataReference, List<Position>> _enemyRoutes = new();
         private TerrainGrid? _routeGrid;
+        // Strider / Flying, read once per activation (see UnitRoute).
+        private bool? _ignoresAllTerrain;
+        private bool? _ignoresDifficultTerrain;
 
         /// <summary>The unit whose activation is being planned (null between activations).</summary>
         public DataBinding<UnitData>? ActiveUnit => _activeUnit;
@@ -79,6 +82,8 @@ namespace FDG.Ai.Tactician
             _objectiveRoutes.Clear();
             _enemyRoutes.Clear();
             _routeGrid = null;
+            _ignoresAllTerrain = null;
+            _ignoresDifficultTerrain = null;
         }
 
         /// <summary>
@@ -699,8 +704,7 @@ namespace FDG.Ai.Tactician
             (float X, float Z) key = (marker.x, marker.z);
             if (!_objectiveRoutes.TryGetValue(key, out List<Position>? route))
             {
-                route = RouteMetrics.Route(terrain,
-                    () => _routeGrid ??= TerrainGrid.Build(terrain, baseRadius), now, marker, baseRadius);
+                route = UnitRoute(terrain, now, marker, baseRadius);
                 _objectiveRoutes[key] = route;
             }
             return (route, terrain, baseRadius);
@@ -719,12 +723,42 @@ namespace FDG.Ai.Tactician
 
             if (!_enemyRoutes.TryGetValue(enemyBinding.Reference, out List<Position>? route))
             {
-                route = RouteMetrics.Route(terrain,
-                    () => _routeGrid ??= TerrainGrid.Build(terrain, baseRadius), now, enemyPos, baseRadius);
+                route = UnitRoute(terrain, now, enemyPos, baseRadius);
                 _enemyRoutes[enemyBinding.Reference] = route;
             }
             return (route, terrain, baseRadius);
         }
+
+        /// <summary>
+        /// The route THIS unit walks, honouring its own terrain-ignoring rules - the gradient must
+        /// price the path the unit actually takes, not the one a footslogger would.
+        /// <para>
+        /// Flying (<see cref="ETerrainIgnoreScope.AllTerrain"/>) crosses impassible terrain, so its
+        /// route is the straight segment and no grid is ever built: measuring an aircraft's approach
+        /// around a wall it flies over charged it for a detour it never makes, which on the melee side
+        /// also tripped the detour gate into the route measure when the straight line was exact.
+        /// Strider (<see cref="ETerrainIgnoreScope.DifficultOnly"/>) still routes around walls but must
+        /// not pay the router's difficult multiplier for ground it crosses at full speed - otherwise
+        /// the score steers it around mud it should walk straight through, and disagrees with the move
+        /// planner about where "toward the goal" lies.
+        /// </para>
+        /// </summary>
+        private List<Position> UnitRoute(List<ITerrain> terrain, Position from, Position to,
+            float baseRadius)
+        {
+            if (IgnoresAllTerrain) return new List<Position> { from, to };
+            return RouteMetrics.Route(terrain,
+                () => _routeGrid ??= TerrainGrid.Build(terrain, baseRadius, IgnoresDifficultTerrain),
+                from, to, baseRadius);
+        }
+
+        // Terrain-ignoring rules are unit-wide and fixed for the activation, so they are read once
+        // (the evaluator walk is not free) and reused by every route and candidate.
+        private bool IgnoresAllTerrain => _ignoresAllTerrain ??=
+            MovementRuleQueries.IgnoresAllTerrain(_activeUnit!.GetValue(), _evaluator);
+
+        private bool IgnoresDifficultTerrain => _ignoresDifficultTerrain ??=
+            MovementRuleQueries.IgnoresDifficultTerrain(_activeUnit!.GetValue(), _evaluator);
 
         private (float Margin, float Reach) MeleeApproachAgainst(DataBinding<UnitData> enemyBinding)
         {

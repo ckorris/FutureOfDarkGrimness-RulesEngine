@@ -26,7 +26,15 @@ namespace FDG.Ai.Tactician
             _difficult = difficult;
         }
 
+        /// <param name="ignoreDifficultTerrain">
+        /// Strider (<see cref="ETerrainIgnoreScope.DifficultOnly"/>): leave difficult cells unmarked so
+        /// the router stops paying <see cref="GridPathfinder"/>'s difficult multiplier for ground this
+        /// unit crosses at full speed. Impassible blocking is unaffected - Strider does not walk
+        /// through walls. Flying units want no grid at all (their route is the straight line), so they
+        /// are handled by their callers, not here.
+        /// </param>
         public static TerrainGrid Build(IReadOnlyList<ITerrain> terrain, float baseRadiusInches,
+            bool ignoreDifficultTerrain = false,
             float tableWidthInches = GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES,
             float tableHeightInches = GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES)
         {
@@ -38,7 +46,8 @@ namespace FDG.Ai.Tactician
             foreach (ITerrain piece in terrain)
             {
                 bool isImpassible = piece.TerrainType.HasFlag(ETerrainType.Impassible);
-                bool isDifficult = piece.TerrainType.HasFlag(ETerrainType.Difficult);
+                bool isDifficult = piece.TerrainType.HasFlag(ETerrainType.Difficult)
+                    && !ignoreDifficultTerrain;
                 if (!isImpassible && !isDifficult) continue;
 
                 for (int row = 0; row < rows; row++)

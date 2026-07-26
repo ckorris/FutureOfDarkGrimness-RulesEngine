@@ -2,7 +2,9 @@ using FDG.Ai.Resolvers;
 using FDG.Ai.Tactician;
 using FDG.Ai.Tactician.Resolvers;
 using FDG.Data;
+using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Foundation;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 using FDG.Stages;
@@ -480,6 +482,105 @@ namespace FDG.Tests
                 $"({approach.ProjectedCentroid.x:F1},{approach.ProjectedCentroid.z:F1})) must beat a " +
                 $"full-distance retreat (score {fallBackScore:F4}, end " +
                 $"({fallBack.ProjectedCentroid.x:F1},{fallBack.ProjectedCentroid.z:F1}))");
+        }
+
+        // --- The route gradient must price the path THIS unit walks. Both route helpers built their
+        // grid and their detour blind to the mover's own terrain-ignoring rules, so an aircraft was
+        // charged for flying around a wall it flies over, and a Strider unit was steered around mud
+        // it crosses at full speed. Found while auditing the melee-half fix (2026-07-25).
+
+        [Test]
+        public void FlyingUnit_ApproachGradient_IgnoresTheWallItFliesOver()
+        {
+            // The enemy sits in a three-sided pocket. On foot that is a ~4x detour out and around;
+            // flying it is a short hop over the front wall. A single wall is NOT enough to pin this:
+            // there the flyer still lands inside charge reach, both measures saturate the approach
+            // fraction at 1.0, and the bug is invisible. The pocket is what separates them.
+            _store.Create(new TerrainData(ETerrainType.Impassible, new RectangularZone(10f, 38f, 20f, 22f)));
+            _store.Create(new TerrainData(ETerrainType.Impassible, new RectangularZone(10f, 12f, 20f, 34f)));
+            _store.Create(new TerrainData(ETerrainType.Impassible, new RectangularZone(36f, 38f, 20f, 34f)));
+            var unit = MakeUnitAt(_us, 5, Blade(),
+                i => new Position(22.4f + (i % 3) * 1.1f, 6f + (i / 3) * 1.1f));
+            MakeUnitAt(_them, 5, Rifle(),
+                i => new Position(24f + (i % 2) * 1.1f, 28f + (i / 2) * 1.1f));
+            GrantIgnoreTerrain(unit, ETerrainIgnoreScope.AllTerrain);
+            var planner = new TacticianPlanner(_tableState, _evaluator);
+            planner.BeginActivation(unit);
+            List<MacroAction> candidates = MacroActionGenerator.Enumerate(_evaluator, _tableState, unit);
+
+            MacroAction approach = candidates.First(c => c.Intent == EMacroIntent.ChargeToContact);
+            MacroAction fallBack = candidates.First(c => c.Intent == EMacroIntent.FallBack);
+            var enemyPos = new Position(24.55f, 28f + 1.1f / 2f);
+            Position start = Centroid(unit);
+
+            // Guard: a walking unit really would face a detour here, so the two measures genuinely
+            // diverge and this pin is exercising the flag rather than passing for a trivial reason.
+            Assert.That(PathDistance(start, enemyPos), Is.GreaterThan(Distance(start, enemyPos) + 4f),
+                "scene check: a walking unit would face a real detour to this enemy");
+            // The generator already plans a flyer's MOVE straight (ignoresAllTerrain), so the
+            // endpoint is correct either way - only the SCORE reveals the bug, which is why this
+            // asserts on the gradient and not on where the unit ends up.
+            Assert.That(Distance(start, enemyPos) - Distance(approach.ProjectedCentroid, enemyPos),
+                Is.GreaterThan(1f), "scene check: the flyer's planned move does close straight-line distance");
+
+            float approachScore = planner.Score(approach);
+            float fallBackScore = planner.Score(fallBack);
+            Assert.That(approachScore, Is.GreaterThan(fallBackScore),
+                $"a flyer's approach must be graded on the straight line it actually flies, not on the " +
+                $"ground detour around a wall it flies over (approach {approachScore:F4}, " +
+                $"retreat {fallBackScore:F4})");
+        }
+
+        [Test]
+        public void StriderGrid_ChargesNoDifficultPenalty_UnlikeAPlainUnitsGrid()
+        {
+            // Strider crosses difficult ground at full speed, so its router must not pay the 2x
+            // difficult multiplier and steer around mud it walks straight through.
+            //
+            // Pinned at the GRID, deliberately, because the routed GEOMETRY cannot show it today:
+            // GridPathfinder.StringPull re-tests each shortcut with SegmentClear, which checks
+            // Impassible ONLY - so any bend the A* makes to dodge difficult ground is pulled straight
+            // back through it whenever the direct line is impassible-clear. DifficultCostMultiplier
+            // therefore only survives where impassible terrain forces the bend anyway. That is a
+            // pre-existing limitation, filed separately; this pin guards the half within reach, so
+            // the flag is already correct if StringPull is ever made difficult-aware.
+            var terrain = new List<ITerrain>
+            {
+                new TerrainData(ETerrainType.Difficult, new RectangularZone(20f, 28f, 18f, 26f)),
+                new TerrainData(ETerrainType.Impassible, new RectangularZone(4f, 12f, 18f, 26f)),
+            };
+
+            TerrainGrid plain = TerrainGrid.Build(terrain, 0.5f);
+            TerrainGrid strider = TerrainGrid.Build(terrain, 0.5f, ignoreDifficultTerrain: true);
+
+            (int col, int row) inBand = (24, 22);   // inside the difficult rectangle
+            (int col, int row) inWall = (8, 22);    // inside the impassible rectangle
+
+            Assert.That(plain.IsDifficult(inBand.col, inBand.row), Is.True,
+                "scene check: this cell must be difficult for a plain unit, or the pin proves nothing");
+            Assert.That(strider.IsDifficult(inBand.col, inBand.row), Is.False,
+                "Strider must not be charged the router's difficult multiplier");
+            Assert.That(strider.IsBlocked(inWall.col, inWall.row), Is.True,
+                "Strider ignores DIFFICULT only - impassible terrain must still block it");
+        }
+
+        // Movement terrain-ignoring is a UNIT-scope rule (SpecialRuleDefinition's default), and
+        // MovementRuleQueries asks with RuleParticipant.Actor(unit), which carries no model list -
+        // so the evaluator's per-model path never runs. Attach at the unit, the seat that fires.
+        private static void GrantIgnoreTerrain(DataBinding<UnitData> unit, ETerrainIgnoreScope scope)
+        {
+            string name = scope == ETerrainIgnoreScope.AllTerrain ? "Flying" : "Strider";
+            var definition = new SpecialRuleDefinition(name,
+                new[]
+                {
+                    new HookEntry(EHookID.Movement_OnMoveThroughTerrain,
+                        new Condition.Always(),
+                        new Effect.IgnoreTerrainEffects(scope),
+                        ELifetime.ThisActivation),
+                },
+                Array.Empty<ActivatedAbility>());
+
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule(name, definition));
         }
 
         // --- helpers --------------------------------------------------------------------------------

@@ -40,6 +40,13 @@ namespace FDG.Presentation.Beats
         /// <summary>Faces at or above this count as successes.</summary>
         public int SuccessThreshold { get; }
 
+        /// <summary>
+        /// The SHAPE of <see cref="FaceCounts"/>, not the game's randomness setting — which vocabulary
+        /// the front-end must use to draw this particular roll. Usually they agree, but a DECISIVE roll
+        /// (<see cref="IDiceRoller.RollDecisive"/>) commits to concrete faces even under the probabilistic
+        /// roller, so it is <see cref="ERandomnessType.Realistic"/> regardless of the setting — see
+        /// <see cref="FromDecisive"/> (#289).
+        /// </summary>
         public ERandomnessType Mode { get; }
 
         /// <summary>Short context for display, e.g. "Roll to Hit", "Roll to Save" — the "what for"
@@ -152,5 +159,23 @@ namespace FDG.Presentation.Beats
             return new DiceRolledBeat(faceCounts, min, successThreshold, mode, label, resultSummary, held,
                 category, context, modifierTags, procTags);
         }
+
+        /// <summary>
+        /// #289 — a beat for a roll made with <see cref="IDiceRoller.RollDecisive"/>. Such a roll yields
+        /// whole, concrete faces in BOTH roller modes (that is the whole point of the decisive path: a
+        /// morale pass/fail or an objective count cannot be averaged), so the beat always declares
+        /// <see cref="ERandomnessType.Realistic"/> and the front-end draws real dice. Emitting these with
+        /// the game's <c>Settings.RandomnessType</c> instead made a probabilistic game show an
+        /// expected-value bar for a die that had genuinely been rolled.
+        ///
+        /// <para>Deliberately not inferred front-end side from "the counts happen to be integral":
+        /// a probabilistic pool can land on whole numbers by coincidence, so only the roll site knows.</para>
+        /// </summary>
+        public static DiceRolledBeat FromDecisive(IDiceResults results, int successThreshold,
+            string label, string? resultSummary = null, bool held = false,
+            ERollBeatCategory category = ERollBeatCategory.Misc, string? context = null,
+            IReadOnlyList<string>? modifierTags = null, IReadOnlyList<string>? procTags = null)
+            => From(results, successThreshold, ERandomnessType.Realistic, label, resultSummary, held,
+                category, context, modifierTags, procTags);
     }
 }

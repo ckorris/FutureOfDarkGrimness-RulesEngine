@@ -124,11 +124,12 @@ namespace FDG.Stages
                 (cleared ? "recovered." : "no effect."));
 
             // The beat's histogram is exactly the roll that happened: one die, on the face it showed.
+            // #289: FromDecisive, so a probabilistic game still draws that die instead of a success bar.
             float[] perSide = new float[IDiceRollerExtensions.DEFAULT_SIDE_COUNT];
             perSide[face - 1] = 1f;
 
-            await _gameContext.Presenter.Present(DiceRolledBeat.From(new DiceResults(perSide), minRoll,
-                _gameContext.Settings.RandomnessType, $"Recover from {tokenName}",
+            await _gameContext.Presenter.Present(DiceRolledBeat.FromDecisive(new DiceResults(perSide), minRoll,
+                $"Recover from {tokenName}",
                 cleared ? "recovered" : "still " + tokenName));
 
             // #278: shedding the token deserves a Toast (tier-2) banner beyond the die itself — amber,
@@ -158,8 +159,8 @@ namespace FDG.Stages
             float[] perSide = new float[IDiceRollerExtensions.DEFAULT_SIDE_COUNT];
             perSide[face - 1] = 1f;
 
-            await _gameContext.Presenter.Present(DiceRolledBeat.From(new DiceResults(perSide), minRoll,
-                _gameContext.Settings.RandomnessType, $"Place {label}",
+            await _gameContext.Presenter.Present(DiceRolledBeat.FromDecisive(new DiceResults(perSide), minRoll,
+                $"Place {label}",
                 placed ? "marker placed" : "no effect"));
         }
 

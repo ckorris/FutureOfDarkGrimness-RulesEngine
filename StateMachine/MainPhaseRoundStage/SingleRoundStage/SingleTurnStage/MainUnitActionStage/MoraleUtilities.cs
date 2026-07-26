@@ -80,8 +80,10 @@ namespace FDG.Stages
             bool passedInitial = initialRoll.AtOrAbove(rollNeeded) >= 1f;
             // Name the unit under test: a shoot action can now roll morale for several defenders in a row,
             // so an anonymous "Morale Test" banner leaves the player guessing which one is being tested.
-            await gameContext.Presenter.Present(DiceRolledBeat.From(initialRoll, rollNeeded,
-                gameContext.Settings.RandomnessType, $"{testingUnit.Name} - Morale Test",
+            // #289: FromDecisive, not the game's randomness setting - the die above is a real, concrete
+            // face in either roller mode, so the front-end must draw a die rather than a probability bar.
+            await gameContext.Presenter.Present(DiceRolledBeat.FromDecisive(initialRoll, rollNeeded,
+                $"{testingUnit.Name} - Morale Test",
                 passedInitial ? "Passed" : "Failed",
                 modifierTags: ComposeMoraleTags(baseRollNeeded, named, grantedNet)));
             if (passedInitial)
@@ -98,8 +100,8 @@ namespace FDG.Stages
             {
                 IDiceResults reroll = gameContext.DiceRoller.RollDecisive();
                 bool passedReroll = reroll.AtOrAbove(FEARLESS_REROLL_PASSES_ON) >= 1f;
-                await gameContext.Presenter.Present(DiceRolledBeat.From(reroll, FEARLESS_REROLL_PASSES_ON,
-                    gameContext.Settings.RandomnessType, $"{testingUnit.Name} - Fearless Re-roll",
+                await gameContext.Presenter.Present(DiceRolledBeat.FromDecisive(reroll, FEARLESS_REROLL_PASSES_ON,
+                    $"{testingUnit.Name} - Fearless Re-roll",
                     passedReroll ? "Passed" : "Failed"));
                 if (passedReroll)
                 {

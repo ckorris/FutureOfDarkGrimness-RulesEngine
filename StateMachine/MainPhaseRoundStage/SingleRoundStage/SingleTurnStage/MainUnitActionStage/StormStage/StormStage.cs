@@ -93,8 +93,10 @@ namespace FDG.Stages
                 if (face >= config.SuccessThreshold) successes++;
             }
 
-            await GameContext.Presenter.Present(DiceRolledBeat.From(new DiceResults(faces), config.SuccessThreshold,
-                GameContext.Settings.RandomnessType, offer.RuleName, $"{successes} success(es)",
+            // #289: FromDecisive - every die above committed to a real face in either roller mode, so the
+            // pool draws as dice rather than an expected-value bar.
+            await GameContext.Presenter.Present(DiceRolledBeat.FromDecisive(new DiceResults(faces),
+                config.SuccessThreshold, offer.RuleName, $"{successes} success(es)",
                 category: ERollBeatCategory.Offense, context: unit.Name));
             GameContext.Log($"{unit.Name}'s {offer.RuleName}: rolled {config.PoolDice} dice -> {successes} success(es).");
 

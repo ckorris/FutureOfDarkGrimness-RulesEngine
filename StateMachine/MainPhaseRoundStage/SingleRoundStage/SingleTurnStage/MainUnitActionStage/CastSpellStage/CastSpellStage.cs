@@ -218,9 +218,10 @@ namespace FDG.Stages
             bool success = castRoll.AtOrAbove(threshold) >= 1f;
 
             // #233 — show the die itself: tumbling roll with the shifted threshold, settling into a short
-            // outcome summary. The banner below carries the full math.
-            await GameContext.Presenter.Present(DiceRolledBeat.From(castRoll, threshold,
-                GameContext.Settings.RandomnessType, "Roll to Cast", success ? "Cast!" : "Failed"));
+            // outcome summary. The banner below carries the full math. #289: FromDecisive - the cast die is
+            // one concrete face in either roller mode, so it draws as a die, never an expected-value bar.
+            await GameContext.Presenter.Present(DiceRolledBeat.FromDecisive(castRoll, threshold,
+                "Roll to Cast", success ? "Cast!" : "Failed"));
 
             // Spell out the roll so the boost/assist math is visible: what came up, what it needed, and how
             // the base 4+ was shifted. Assisters' own contributions were announced as they spent. The result

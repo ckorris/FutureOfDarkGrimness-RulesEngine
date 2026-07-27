@@ -52,6 +52,24 @@ namespace FDG.Tests
 
             Assert.That(beat.NominalDuration, Is.EqualTo(PresentationDurations.UnitMove));
             Assert.That(beat.Text, Is.EqualTo("Warriors moves."));
+            Assert.That(beat.Toughness, Is.EqualTo(1),
+                "#294: an ordinary model weighs 1 - the default must not read as a monster");
+        }
+
+        // #294: the front-end's footfall voice pitches down with the beat's weight proxy, so a
+        // nonsensical Tough would mistune it (0 or negative would divide the pitch curve by <= 0).
+        [Test]
+        public void UnitMovedBeat_ToughnessFloorsAtOne()
+        {
+            var moves = new List<ModelMove>
+            {
+                new ModelMove(new ModelID(Guid.NewGuid()), new List<Position> { new Position(0f, 0f) }),
+            };
+
+            Assert.That(new UnitMovedBeat(new UnitID(Guid.NewGuid()), "Warriors", moves,
+                PresentationDurations.UnitMove, toughness: 0).Toughness, Is.EqualTo(1));
+            Assert.That(new UnitMovedBeat(new UnitID(Guid.NewGuid()), "Warriors", moves,
+                PresentationDurations.UnitMove, toughness: -3).Toughness, Is.EqualTo(1));
         }
 
         [Test]
@@ -68,7 +86,7 @@ namespace FDG.Tests
                         new Position(1f, 2f), new Position(1f, 5f), new Position(4f, 5f),
                     }),
                 },
-                TimeSpan.FromMilliseconds(900));
+                TimeSpan.FromMilliseconds(900), toughness: 6);
 
             PresentationBeat result = RoundTrip(original);
 
@@ -78,6 +96,8 @@ namespace FDG.Tests
             Assert.That(moved.UnitName, Is.EqualTo("Warriors"));
             Assert.That(moved.NominalDuration, Is.EqualTo(TimeSpan.FromMilliseconds(900)),
                 "carried duration must round-trip so distance-based pacing survives the wire");
+            Assert.That(moved.Toughness, Is.EqualTo(6),
+                "#294: the weight proxy must survive the wire or networked clients mistune footfalls");
             Assert.That(moved.Moves, Has.Count.EqualTo(1));
             ModelMove m = moved.Moves[0];
             Assert.That(m.Model, Is.EqualTo(modelId));

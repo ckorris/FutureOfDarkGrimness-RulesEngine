@@ -16,17 +16,27 @@ namespace FDG.Presentation.Beats
         public string UnitName { get; }
         public IReadOnlyList<ModelMove> Moves { get; }
 
+        /// <summary>
+        /// #294: the heaviest moving model's max wounds — Tough(X), or 1 for an ordinary model. A
+        /// weight proxy, carried for the same reason as <see cref="AttackBeat.ArmorPenetration"/>:
+        /// the front-end scales presentation by it (footfall pitch and pacing) without having to
+        /// re-derive rules state, and a networked client gets it with the beat.
+        /// </summary>
+        public int Toughness { get; }
+
         // Carried (not a constant) so move pacing can later vary by distance / action type
         // (Advance vs Rush vs Charge) without changing this type or the renderer. Serializes as a
         // property so it survives the wire; the get-only override is set via the constructor.
         public override TimeSpan NominalDuration { get; }
 
-        public UnitMovedBeat(UnitID unit, string unitName, IReadOnlyList<ModelMove> moves, TimeSpan nominalDuration)
+        public UnitMovedBeat(UnitID unit, string unitName, IReadOnlyList<ModelMove> moves,
+            TimeSpan nominalDuration, int toughness = 1)
         {
             Unit = unit;
             UnitName = unitName;
             Moves = moves;
             NominalDuration = nominalDuration;
+            Toughness = Math.Max(1, toughness);
         }
 
         public override string? Text => $"{UnitName} moves.";

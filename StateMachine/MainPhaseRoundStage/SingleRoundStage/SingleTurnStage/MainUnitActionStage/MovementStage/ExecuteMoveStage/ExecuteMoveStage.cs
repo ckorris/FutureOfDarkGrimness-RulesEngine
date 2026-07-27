@@ -30,6 +30,10 @@ namespace FDG.Stages
             // authoritative position is the final waypoint.
             UnitData movingUnit = context.MovingUnit.GetValue();
             List<ModelMove> moves = new List<ModelMove>(paths.Count);
+            // #294: the heaviest model actually on the move, for the beat's weight proxy. Read off
+            // the moving models rather than the unit so a joined Tough hero sets the tone only while
+            // it is one of the models moving.
+            int toughness = 1;
             foreach (ModelMoveEntry entry in paths)
             {
                 if (entry.Positions.Count == 0) continue;
@@ -39,6 +43,9 @@ namespace FDG.Stages
                 waypoints.Add(model.Position);       // start
                 waypoints.AddRange(entry.Positions); // through to destination
                 moves.Add(new ModelMove(model.ID, waypoints));
+
+                int modelTough = (int)MathF.Round(model.TotalWounds);
+                if (modelTough > toughness) toughness = modelTough;
             }
 
             MovementExecutor.CommitPositions(paths);
@@ -62,7 +69,7 @@ namespace FDG.Stages
                 }
 
                 await GameContext.Presenter.Present(new UnitMovedBeat(movingUnit.ID, movingUnit.Name, moves,
-                    PresentationDurations.ForMoveDistance(longestPath)));
+                    PresentationDurations.ForMoveDistance(longestPath), toughness));
             }
 
             // #153: the move is resolved — spend one-shot (NextTrigger) grants that keyed on this move.

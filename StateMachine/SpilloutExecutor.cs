@@ -69,7 +69,7 @@ namespace FDG.Stages
 
                 var request = new PlaceObjectsRequest<ModelData>(occupantUnit.PlayerID,
                     $"Spill out {occupantUnit.Name} (within 6\" of the wreck)", zone, livingModels);
-                // #282: commit-time overlap check - spilled cargo must not land inside another unit.
+                // #284 (was #282 pre-reconciliation-27): commit-time overlap check - spilled cargo must not land inside another unit.
                 List<PlacedObjectEntry<ModelData>> placements = await PlacementCommitGuard
                     .RequestClearPlacement(gameContext, request);
 

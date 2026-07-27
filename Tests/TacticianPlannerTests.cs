@@ -504,6 +504,133 @@ namespace FDG.Tests
                 "friends inside the enemy's threat envelope must dilute the priced retaliation");
         }
 
+        [Test]
+        public void Retaliation_PricesTheEnemysBestReply_NotAHeadcountDiscount()
+        {
+            // One-ply reply (#191): the old dilution divided the priced volley by how MANY
+            // friendlies shared the envelope; the enemy actually picks its single best target.
+            // Same geometry, same sharer COUNT - a fat fragile alternative target must discount
+            // our retaliation strictly more than a worthless armored one.
+            float ScoreForwardWith(Action addAlternativeTarget)
+            {
+                SetUp(); // fresh board per case: only the alternative target differs
+                var brawlers = MakeUnit(_us, 5, Blade(attacks: 3), atX: 20f, atZ: 24f);
+                MakeUnit(_them, 10, Rifle(), atX: 44f, atZ: 24f);
+                addAlternativeTarget();
+                _planner.BeginActivation(brawlers);
+                List<MacroAction> candidates = MacroActionGenerator.Enumerate(
+                    new RuleEvaluator(new ProbabilisticDiceRoller()), _tableState, brawlers);
+                MacroAction forward = candidates
+                    .OrderBy(c => Distance(c.ProjectedCentroid, new Position(44f, 24f))).First();
+                return _planner.Score(forward);
+            }
+
+            float withArmoredChaff = ScoreForwardWith(() =>
+                MakeUnit(_us, 3, Unarmed(), atX: 24f, atZ: 30f, quality: 6, defense: 2));
+            float withFatTarget = ScoreForwardWith(() =>
+                MakeUnit(_us, 10, Rifle(), atX: 24f, atZ: 30f, quality: 3, defense: 6));
+
+            Assert.That(withFatTarget, Is.GreaterThan(withArmoredChaff + 0.01f),
+                "the enemy's reply goes to its best target - a fat alternative must absorb more "
+                + "of the priced volley than a worthless one of the same headcount");
+        }
+
+        [Test]
+        public void ArrivingPressure_PricesAnEnemyTwoMovesOut()
+        {
+            // #191 idea 2: an enemy outside every current threat envelope priced NOTHING, so a
+            // camping spot that will be inside a horde's charge reach next round scored the same
+            // as one that stays clear. The projection term must discriminate: same shooters, same
+            // Hold, the nearer (but still currently-unthreatening) horde must cost strictly more.
+            float HoldScoreWithHordeAt(float x)
+            {
+                SetUp();
+                var campers = MakeUnit(_us, 5, Rifle(), atX: 20f, atZ: 24f);
+                MakeUnit(_them, 8, Blade(attacks: 3), atX: x, atZ: 24f);
+                _planner.BeginActivation(campers);
+                List<MacroAction> candidates = MacroActionGenerator.Enumerate(
+                    new RuleEvaluator(new ProbabilisticDiceRoller()), _tableState, campers);
+                return _planner.Score(candidates.First(c => c.Intent == EMacroIntent.Hold));
+            }
+
+            // 26" out: beyond rifle range (24) and melee threat (14), but one 12" rush away from
+            // covering the camp. 66" out: the projected step still leaves it harmless.
+            float hordeArriving = HoldScoreWithHordeAt(46f);
+            float hordeDistant = HoldScoreWithHordeAt(86f);
+
+            Assert.That(hordeArriving, Is.LessThan(hordeDistant - 0.005f),
+                "a spot inside next round's projected charge reach must price arriving pressure");
+        }
+
+        [Test]
+        public void ArrivingMeleePressure_IsAnOpportunityForAWillingBrawler()
+        {
+            // The staging exemption: a melee unit with a positive exchange margin against the
+            // arriver WANTS that fight - pricing the arrival as a threat would penalize standing
+            // its ground exactly where charging-beats-being-charged staging puts it.
+            // The arriver hits hard enough that pricing it would move the score, but still LOSES
+            // the exchange to us (fragile save): our margin is positive, so we want it to come.
+            float HoldScoreWithRaidersAt(float x)
+            {
+                SetUp();
+                var brawlers = MakeUnit(_us, 8, Blade(attacks: 4), atX: 20f, atZ: 24f,
+                    quality: 3, defense: 2);
+                MakeUnit(_them, 6, Blade(attacks: 3), atX: x, atZ: 24f, quality: 4, defense: 5);
+                _planner.BeginActivation(brawlers);
+                List<MacroAction> candidates = MacroActionGenerator.Enumerate(
+                    new RuleEvaluator(new ProbabilisticDiceRoller()), _tableState, brawlers);
+                return _planner.Score(candidates.First(c => c.Intent == EMacroIntent.Hold));
+            }
+
+            float raidersArriving = HoldScoreWithRaidersAt(46f);
+            float raidersDistant = HoldScoreWithRaidersAt(86f);
+
+            Assert.That(raidersArriving, Is.EqualTo(raidersDistant).Within(0.005f),
+                "melee arrivers a winning brawler would happily charge are not a threat to price");
+        }
+
+        [Test]
+        public void BehindOnObjectivesLate_ARiskyGrabPricesBetterThanWhenLevel()
+        {
+            // #191 idea 3: 1-vs-3 late scored identically to 3-vs-1, so a losing bot played the
+            // same safe game as a winning one. Same guarded neutral marker, same rush onto it -
+            // the board where we are two markers down (round 4) must price the grab strictly
+            // higher than the board where the race is level.
+            float GrabScore(bool level)
+            {
+                SetUp();
+                SetRound(4);
+                foreach (float z in new[] { 40f, 10f })
+                {
+                    var theirsMarker = new ObjectiveData(new Position(70f, z), _store);
+                    theirsMarker.SetOwner(_them);
+                    _store.Create(theirsMarker);
+                    if (level)
+                    {
+                        var oursMarker = new ObjectiveData(new Position(5f, z), _store);
+                        oursMarker.SetOwner(_us);
+                        _store.Create(oursMarker);
+                    }
+                }
+                _store.Create(new ObjectiveData(new Position(30f, 24f), _store)); // the prize
+                var grabbers = MakeUnit(_us, 3, Rifle(), atX: 20f, atZ: 24f);
+                MakeUnit(_them, 5, Rifle(), atX: 40f, atZ: 24f); // guns covering the prize
+                _planner.BeginActivation(grabbers);
+                List<MacroAction> candidates = MacroActionGenerator.Enumerate(
+                    new RuleEvaluator(new ProbabilisticDiceRoller()), _tableState, grabbers);
+                MacroAction grab = candidates
+                    .Where(c => c.Intent is EMacroIntent.RushObjective or EMacroIntent.AdvanceOnObjective)
+                    .OrderBy(c => Distance(c.ProjectedCentroid, new Position(30f, 24f))).First();
+                return _planner.Score(grab);
+            }
+
+            float behind = GrabScore(level: false);
+            float levelRace = GrabScore(level: true);
+
+            Assert.That(behind, Is.GreaterThan(levelRace + 0.005f),
+                "two markers down in the final round, the same guarded grab must be worth the risk");
+        }
+
         private void SetRound(int round)
         {
             var progress = new GameProgressData(EResumeStage.MainPhase, round,

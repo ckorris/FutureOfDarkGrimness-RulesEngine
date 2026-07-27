@@ -81,7 +81,8 @@ namespace FDG.Ai.Resolvers
 
             foreach (var unit in _tableState.Units.Objects)
             {
-                if (unit.PlayerID == _playerID) continue;
+                // #294: team-aware - a 2v2 teammate in range must not read as a shootable enemy.
+                if (ITeamExtensions.AreAllied(_tableState.Teams.Objects, _playerID, unit.PlayerID)) continue;
                 foreach (var model in unit.Models)
                 {
                     if (model is not ModelData md || !md.GetIsAlive()) continue;

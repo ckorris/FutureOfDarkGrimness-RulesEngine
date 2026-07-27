@@ -818,15 +818,21 @@ namespace FDG.Ai.Tactician
         /// <summary>
         /// Living enemy model footprints tagged with a per-unit key (so the validator can tell which
         /// models share an enemy unit); Aircraft marked uncontactable (#029); reserve-parked models at
-        /// (0,0) excluded by convention.
+        /// (0,0) excluded by convention. Team-aware (#294), matching the authoritative
+        /// <see cref="MovementUtilities.GetEnemyModelFootprints"/> - the old player-based split put a
+        /// 2v2 TEAMMATE's models in BOTH lists, so ally bases carried the enemy 1" standoff and
+        /// no-move-through on top of their real friendly end-overlap constraint.
         /// </summary>
         public static List<EnemyModelFootprint> LiveEnemyFootprints(ITableState tableState, PlayerID playerID)
         {
+            ITeam? team = tableState.Teams.Objects.FirstOrDefault(t => t.Players.Contains(playerID));
+            IReadOnlyList<PlayerID> allied = team != null ? team.Players : new List<PlayerID> { playerID };
+
             var footprints = new List<EnemyModelFootprint>();
             int unitKey = 0;
             foreach (var unit in tableState.Units.Objects)
             {
-                if (unit.PlayerID == playerID) continue;
+                if (allied.Contains(unit.PlayerID)) continue;
                 bool uncontactable = Rules.Dispatch.AircraftRules.IsAircraft(unit);
                 bool anyLiving = false;
                 foreach (var model in unit.Models)

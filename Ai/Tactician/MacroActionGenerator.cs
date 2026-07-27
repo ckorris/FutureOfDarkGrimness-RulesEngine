@@ -271,7 +271,8 @@ namespace FDG.Ai.Tactician
             {
                 IObjective? destination = tableState.Objectives.Objects
                     .OrderBy(o => Distance(o.Position, start))
-                    .FirstOrDefault(o => !o.OwnerID.HasValue || o.OwnerID.Value != self.PlayerID)
+                    .FirstOrDefault(o => !o.OwnerID.HasValue
+                        || !TacticalAnalysis.AreAllied(tableState, self.PlayerID, o.OwnerID.Value))
                     ?? tableState.Objectives.Objects.OrderBy(o => Distance(o.Position, start)).FirstOrDefault();
                 if (destination != null)
                 {
@@ -624,14 +625,19 @@ namespace FDG.Ai.Tactician
             enemy.Models.Where(m => m.GetIsAlive())
                 .OrderBy(m => Distance(m.Position, from)).FirstOrDefault();
 
+        // #294: team-aware sides - the targeted families (bands, charges, fallback, block) must not
+        // aim at a 2v2 teammate, and escort/concentrate/block should treat the teammate's units as
+        // the assets they are. AreAllied with no team == same player, so 1v1 is unchanged.
         private static List<IUnit> LivingEnemies(ITableState tableState, PlayerID self) =>
             tableState.Units.Objects
-                .Where(u => u.PlayerID != self && u.Models.Any(m => m.GetIsAlive()))
+                .Where(u => !TacticalAnalysis.AreAllied(tableState, self, u.PlayerID)
+                    && u.Models.Any(m => m.GetIsAlive()))
                 .ToList();
 
         private static List<IUnit> LivingFriends(ITableState tableState, UnitData self) =>
             tableState.Units.Objects
-                .Where(u => u.PlayerID == self.PlayerID && !ReferenceEquals(u, self)
+                .Where(u => TacticalAnalysis.AreAllied(tableState, self.PlayerID, u.PlayerID)
+                    && !ReferenceEquals(u, self)
                     && u.Models.Any(m => m.GetIsAlive()))
                 .ToList();
     }

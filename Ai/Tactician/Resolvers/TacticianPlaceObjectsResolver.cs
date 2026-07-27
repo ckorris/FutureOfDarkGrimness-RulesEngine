@@ -214,7 +214,8 @@ namespace FDG.Ai.Tactician.Resolvers
             var enemies = new List<DataBinding<UnitData>>();
             foreach (IArmy army in _tableState.Armies.Objects)
             {
-                if (army.PlayerID == request.TargetPlayerID || army is not ArmyData data) continue;
+                if (TacticalAnalysis.AreAllied(_tableState, request.TargetPlayerID, army.PlayerID)
+                    || army is not ArmyData data) continue; // #294: never ambush-strike a teammate
                 foreach (DataBinding<UnitData> unit in data.UnitBindings)
                     if (unit.GetValue().GetIsAlive() && unit.GetValue().GetIsOnBattlefield())
                         enemies.Add(unit);

@@ -57,7 +57,8 @@ namespace FDG.Ai.Tactician
         {
             foreach (IArmy army in tableState.Armies.Objects)
             {
-                if (army.PlayerID == us || army is not ArmyData data) continue;
+                if (TacticalAnalysis.AreAllied(tableState, us, army.PlayerID)
+                    || army is not ArmyData data) continue; // #294: teammates are not matchup targets
                 foreach (DataBinding<UnitData> unit in data.UnitBindings)
                     if (unit.GetValue().GetIsAlive())
                         yield return unit;

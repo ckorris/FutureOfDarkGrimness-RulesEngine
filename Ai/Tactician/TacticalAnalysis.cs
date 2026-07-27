@@ -29,6 +29,29 @@ namespace FDG.Ai.Tactician
         /// <summary>Mirror of ReconcileObjectivesStage.SeizureRadiusInches (private there; pinned by test).</summary>
         public const float ObjectiveSeizureRadiusInches = 3f;
 
+        // --- Sides (#294) -----------------------------------------------------------------------
+
+        /// <summary>
+        /// Team-aware "same side" for the AI's enemy/friendly splits (#294): the Tactician priced a
+        /// 2v2 TEAMMATE's whole army as hostile - retaliation from allied guns, FallBack from the
+        /// highest-value ally, kite bands off allied shooters - because every enumeration was a raw
+        /// PlayerID comparison. With no registered team a player is allied only with itself, so
+        /// every 1v1 path (and benchmark) is identical by construction.
+        /// </summary>
+        public static bool AreAllied(ITableState tableState, PlayerID a, PlayerID b) =>
+            ITeamExtensions.AreAllied(tableState.Teams.Objects, a, b);
+
+        /// <summary>
+        /// Whether the marker's projected owner is on <paramref name="player"/>'s side - the "ours"
+        /// the objective terms should use: victory pools objectives per TEAM (#257), so a
+        /// teammate-held marker is not one to march onto (two allied players in range contest it
+        /// back to NEUTRAL under ReconcileObjectivesStage's per-player rules).
+        /// </summary>
+        public static bool IsProjectedOwnerAllied(ITableState tableState,
+            ObjectiveProjection projection, PlayerID player) =>
+            projection.ProjectedOwner.HasValue
+            && AreAllied(tableState, player, projection.ProjectedOwner.Value);
+
         // --- Mobility / threat ------------------------------------------------------------------
 
         /// <summary>How far the unit may move and still shoot (Advance), movement rules included.</summary>

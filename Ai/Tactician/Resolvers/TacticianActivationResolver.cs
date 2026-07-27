@@ -40,9 +40,12 @@ namespace FDG.Ai.Tactician.Resolvers
 
             DataBinding<UnitData> best = request.ValidOptions[0].Option;
             float bestScore = float.NegativeInfinity;
+            IReadOnlyDictionary<DataReference, float> frontline = FrontlineFractions(request.ValidOptions);
             foreach (SelectionRequest<UnitData>.ValidOption option in request.ValidOptions)
             {
-                float score = Urgency(option.Option);
+                float score = Urgency(option.Option)
+                    + TacticianWeights.ActivationFrontlineBias
+                        * frontline.GetValueOrDefault(option.Option.Reference);
                 if (score > bestScore)
                 {
                     bestScore = score;
@@ -51,6 +54,61 @@ namespace FDG.Ai.Tactician.Resolvers
             }
             _planner?.BeginActivation(best);
             return Task.FromResult(best);
+        }
+
+        /// <summary>
+        /// #294 front-first ordering (Chris's crowded-game remedy): each option's position along the
+        /// axis from our unactivated mass toward the enemy mass, normalized to [0,1] across the
+        /// options (rearmost 0, frontmost 1). When the real urgency terms are flat - the crowded
+        /// round-1 shape - this makes the front rank move first and clear lanes for what's behind.
+        /// </summary>
+        private IReadOnlyDictionary<DataReference, float> FrontlineFractions(
+            IReadOnlyList<SelectionRequest<UnitData>.ValidOption> options)
+        {
+            var result = new Dictionary<DataReference, float>();
+            if (options.Count < 2) return result;
+
+            PlayerID us = options[0].Option.GetValue().PlayerID;
+            float enemyX = 0f, enemyZ = 0f;
+            int enemies = 0;
+            foreach (DataBinding<UnitData> enemy in EnemyBindings(us))
+            {
+                Position p = Centroid(enemy.GetValue());
+                enemyX += p.x; enemyZ += p.z; enemies++;
+            }
+            if (enemies == 0) return result;
+
+            var centroids = new List<(DataReference Reference, Position At)>();
+            float ownX = 0f, ownZ = 0f;
+            foreach (SelectionRequest<UnitData>.ValidOption option in options)
+            {
+                // Embarked/reserve units sit at the (0,0) sentinel - leave them out of the axis and
+                // normalization (they read fraction 0; the cargo bias already orders them late).
+                if (!option.Option.GetValue().GetIsOnBattlefield()) continue;
+                Position p = Centroid(option.Option.GetValue());
+                centroids.Add((option.Option.Reference, p));
+                ownX += p.x; ownZ += p.z;
+            }
+            if (centroids.Count < 2) return result;
+            float dirX = enemyX / enemies - ownX / centroids.Count;
+            float dirZ = enemyZ / enemies - ownZ / centroids.Count;
+            float length = MathF.Sqrt(dirX * dirX + dirZ * dirZ);
+            if (length < 0.001f) return result;
+            dirX /= length; dirZ /= length;
+
+            float min = float.MaxValue, max = float.MinValue;
+            var projections = new List<(DataReference Reference, float Along)>();
+            foreach ((DataReference reference, Position at) in centroids)
+            {
+                float along = at.x * dirX + at.z * dirZ;
+                projections.Add((reference, along));
+                min = Math.Min(min, along);
+                max = Math.Max(max, along);
+            }
+            if (max - min < 0.001f) return result;
+            foreach ((DataReference reference, float along) in projections)
+                result[reference] = (along - min) / (max - min);
+            return result;
         }
 
         /// <summary>
@@ -89,8 +147,9 @@ namespace FDG.Ai.Tactician.Resolvers
             float flip = 0f;
             foreach (ObjectiveProjection projection in TacticalAnalysis.ProjectObjectives(_tableState))
             {
-                bool oursAlready = projection.ProjectedOwner.HasValue
-                    && projection.ProjectedOwner.Value == unit.PlayerID;
+                // #294: a TEAMMATE-held marker is not one to flip (reaching it contests our own side).
+                bool oursAlready = TacticalAnalysis.IsProjectedOwnerAllied(
+                    _tableState, projection, unit.PlayerID);
                 if (oursAlready) continue;
                 float distanceTo = TacticalAnalysis.MinBaseEdgeDistanceToPoint(unit, projection.Objective.Position);
                 if (distanceTo <= rush + TacticalAnalysis.ObjectiveSeizureRadiusInches)
@@ -124,11 +183,13 @@ namespace FDG.Ai.Tactician.Resolvers
             return Math.Min(1f, expectedWounds / remaining) * TacticalAnalysis.UnitValue(target) / 100f;
         }
 
+        // #294: team-aware - the urgency terms must not price a 2v2 teammate as kill or threat.
         private IEnumerable<DataBinding<UnitData>> EnemyBindings(PlayerID us)
         {
             foreach (IArmy army in _tableState.Armies.Objects)
             {
-                if (army.PlayerID == us || army is not ArmyData data) continue;
+                if (TacticalAnalysis.AreAllied(_tableState, us, army.PlayerID)
+                    || army is not ArmyData data) continue;
                 foreach (DataBinding<UnitData> unit in data.UnitBindings)
                     if (unit.GetValue().Models.Any(m => m.GetIsAlive())
                         && unit.GetValue().GetIsOnBattlefield())

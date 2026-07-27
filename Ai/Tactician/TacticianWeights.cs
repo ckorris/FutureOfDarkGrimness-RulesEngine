@@ -44,6 +44,15 @@ namespace FDG.Ai.Tactician
         public static float ActivationLoadedTransportBias = 0.5f;
         public static float ActivationEmbarkedCargoBias = -0.5f;
 
+        // ADDED 2026-07-27 (#294, Chris's own crowded-game remedy: "activate the things in front
+        // first, and move in a way that clears a path for whatever is behind"): a small bonus by
+        // the unit's FORWARD PERCENTILE among this activation's valid options (0 = rearmost,
+        // 1 = frontmost along the axis toward the enemy mass). Deliberately below every real
+        // urgency signal - it only decides order when kill/flip/threat are flat, which is exactly
+        // the crowded round-1 shape where rear units otherwise activate into sealed lanes and
+        // drift sideways (the #256/#264 stuck-mob reports).
+        public static float ActivationFrontlineBias = 0.1f;
+
         // --- Action + movement choice (A4-2) --------------------------------------------------------
         // score = MoveDamage * (value-weighted damage from the endpoint; melee margin for charges)
         //       - MoveRetaliation * (best value-weighted damage an enemy can put on the endpoint)
@@ -92,6 +101,17 @@ namespace FDG.Ai.Tactician
         public static float PostureObjectiveBoost = 0.3f;
         public static float MoveObjective = 0.75f;
         public static float MoveReachableBonus = 0.05f;
+
+        // ADDED 2026-07-27 (#294, Chris: "you want a ball of units on the objective... close
+        // behind is helpful for replacing the units in front of it when they die"): fraction of a
+        // full marker step paid for ending in the SUPPORT band around a relevant marker (past the
+        // on-marker ring, within one move of stepping in). What it buys: a unit whose lane to the
+        // marker is jammed with friendlies still walks up and stacks behind the ball instead of
+        // wandering off to a trivially reachable side goal - the crowded-game drift. Rides
+        // ObjectiveDelta, so the round/posture scaling applies unchanged; on-marker (+1) always
+        // dominates. On an ally-held marker the band starts where the ally-contest penalty ends,
+        // so the pair reads "surround your teammate's marker, never step on it".
+        public static float MoveObjectiveSupport = 0.3f;
 
         // ADDED 2026-07-10 after the second gate failure (mirror avg 25.4% - ledger entry): melee
         // armies collapsed because a one-step score gives units outside charge reach no reason to

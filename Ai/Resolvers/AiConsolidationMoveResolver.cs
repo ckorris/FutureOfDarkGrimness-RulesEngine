@@ -100,6 +100,12 @@ namespace FDG.Ai.Resolvers
             }).ToList();
         }
 
+
+        // #294: team-aware "enemy" - with the old PlayerID split a 2v2 consolidation could pull
+        // toward a TEAMMATE's models. With no registered team this is exactly "not my player".
+        private bool IsEnemy(PlayerID other) =>
+            !ITeamExtensions.AreAllied(_tableState.Teams.Objects, _playerID, other);
+
         // Living enemy model footprints, tagged per-unit. Mirrors MovementUtilities.GetEnemyModelFootprints
         // but reads from ITableState (the AI resolver's view).
         private List<EnemyModelFootprint> GetLiveEnemyFootprints()
@@ -108,7 +114,7 @@ namespace FDG.Ai.Resolvers
             int unitKey = 0;
             foreach (var unit in _tableState.Units.Objects)
             {
-                if (unit.PlayerID == _playerID) continue;
+                if (!IsEnemy(unit.PlayerID)) continue;
                 bool uncontactable = FDG.Rules.Dispatch.AircraftRules.IsAircraft(unit); // #029
                 bool anyLiving = false;
                 foreach (var model in unit.Models)
@@ -130,7 +136,7 @@ namespace FDG.Ai.Resolvers
             float nearestSq = float.MaxValue;
             foreach (var u in _tableState.Units.Objects)
             {
-                if (u.PlayerID == _playerID) continue;
+                if (!IsEnemy(u.PlayerID)) continue;
                 foreach (var m in u.Models)
                 {
                     if (!m.GetIsAlive()) continue;
@@ -150,7 +156,7 @@ namespace FDG.Ai.Resolvers
             float nearestSq = float.MaxValue;
             foreach (var u in _tableState.Units.Objects)
             {
-                if (u.PlayerID == _playerID) continue;
+                if (!IsEnemy(u.PlayerID)) continue;
                 foreach (var m in u.Models)
                 {
                     if (!m.GetIsAlive()) continue;

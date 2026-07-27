@@ -274,6 +274,13 @@ namespace FDG.Stages
                     individualModel = await PickIndividualModel(player, chosen.Name, targets[0]);
                 }
 
+                // #285 — the damage path reports too, so every successful cast says what it does. Emitted
+                // HERE (after any single-model pick, before the child pipeline) rather than after the
+                // damage resolves: the stage hands off to the children and returns, so there is no
+                // after. That is also why this one line is present tense - it announces the incoming
+                // hits and their type, and the pipeline's own dice/wound beats then play them out.
+                await AnnounceEffect(SpellText.DescribeApplied(chosen.Name, dealHits, TargetNames(targets)));
+
                 _pendingRun = new SpellDamageRunContext(context.ActivatingUnit, spellWeapon, dealHits.Count,
                     targets, individualModel);
 

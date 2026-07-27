@@ -25,14 +25,7 @@ namespace FDG.Stages
             switch (effect)
             {
                 case Effect.DealHits dealHits:
-                {
-                    string text = $"{dealHits.Count} hit{Plural(dealHits.Count)}";
-                    List<string> modifiers = new List<string>();
-                    if (dealHits.ArmorPenetration > 0) modifiers.Add($"AP({dealHits.ArmorPenetration})");
-                    modifiers.AddRange(dealHits.WithRules);
-                    if (modifiers.Count > 0) text += $" ({string.Join(", ", modifiers)})";
-                    return text;
-                }
+                    return $"{dealHits.Count} hit{Plural(dealHits.Count)}{DescribeHitModifiers(dealHits)}";
                 case Effect.AddRule addRule:
                     return $"grants {addRule.RuleName} ({DescribeLifetime(addRule.Scope)})";
                 case Effect.StatModifier statMod:
@@ -89,7 +82,12 @@ namespace FDG.Stages
             switch (effect)
             {
                 case Effect.DealHits dealHits:
-                    return $"dealt {dealHits.Count} hit{Plural(dealHits.Count)} to {targets}";
+                    // Present tense, unlike its siblings: the damage banner is emitted BEFORE the child
+                    // pipeline rolls the hits, so "dealt" would claim an outcome that has not happened.
+                    // The type rides along ("(AP(1), Rending)") - the same modifier list the picker shows,
+                    // because "3 hits" alone does not tell the player what is about to land.
+                    return $"deals {dealHits.Count} hit{Plural(dealHits.Count)}" +
+                           $"{DescribeHitModifiers(dealHits)} to {targets}";
                 case Effect.AddRule addRule:
                     return $"grants {addRule.RuleName} to {targets} ({DescribeLifetime(addRule.Scope)})";
                 case Effect.StatModifier statMod:
@@ -112,6 +110,19 @@ namespace FDG.Stages
                 default:
                     return $"affected {targets}";
             }
+        }
+
+        /// <summary>
+        /// What KIND of hits a damage spell deals: " (AP(1), Rending)", or "" for plain hits. Shared by
+        /// the picker's advertisement and the #285 result banner so the player is told the same thing
+        /// twice in the same words.
+        /// </summary>
+        private static string DescribeHitModifiers(Effect.DealHits dealHits)
+        {
+            List<string> modifiers = new List<string>();
+            if (dealHits.ArmorPenetration > 0) modifiers.Add($"AP({dealHits.ArmorPenetration})");
+            modifiers.AddRange(dealHits.WithRules);
+            return modifiers.Count > 0 ? $" ({string.Join(", ", modifiers)})" : "";
         }
 
         /// <summary>"X", "X and Y", "X, Y and Z" - internal for tests.</summary>

@@ -1304,6 +1304,26 @@ namespace FDG.Tests
                 Is.EqualTo("Terror left Grunts fatigued"));
         }
 
+        // A damage spell reports how many hits and OF WHAT TYPE - "3 hits" alone doesn't tell the player
+        // what is about to land on them. Present tense: this banner precedes the dice, unlike its siblings.
+        [Test]
+        public void SpellText_DescribeApplied_DamageSpell_CarriesTheHitCountAndType()
+        {
+            Assert.That(SpellText.DescribeApplied("Bolt",
+                    new Effect.DealHits(3, new[] { "Rending" }, ArmorPenetration: 1), new[] { "Grunts" }),
+                Is.EqualTo("Bolt deals 3 hits (AP(1), Rending) to Grunts"));
+
+            Assert.That(SpellText.DescribeApplied("Spark",
+                    new Effect.DealHits(1, System.Array.Empty<string>()), new[] { "Grunts" }),
+                Is.EqualTo("Spark deals 1 hit to Grunts"),
+                "plain hits carry no modifier parenthetical, and one hit is singular");
+
+            Assert.That(SpellText.DescribeApplied("Storm",
+                    new Effect.DealHits(2, System.Array.Empty<string>(), ArmorPenetration: 2),
+                    new[] { "Grunts", "Warriors" }),
+                Is.EqualTo("Storm deals 2 hits (AP(2)) to Grunts and Warriors"));
+        }
+
         [Test]
         public void SpellText_JoinNames_ReadsAsASentenceForAnyTargetCount()
         {
@@ -1369,6 +1389,51 @@ namespace FDG.Tests
             await stage.Enter(NewActivation(ctx, caster));
 
             AssertEffectBanner(sink, "Terrifying Fury left Grunts fatigued (morale test failed).");
+        }
+
+        // The damage path reports too, so every successful cast says what it does. It is announced before
+        // the child pipeline (the stage hands off and returns, so there is no "after"), which is exactly
+        // where the player needs it: the dice that follow are then read as this spell's hits.
+        [Test]
+        public async Task CastSpellStage_DamageSpell_AnnouncesTheIncomingHits()
+        {
+            var sink = new RecordingPresentationSink();
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester(), presentationSink: sink);
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
+                new[] { DamageSpell("Bolt", threshold: 2, hits: 3, armorPenetration: 1) },
+                new Position(10f, 10f));
+            MakeEnemyUnit(new PlayerID(System.Guid.NewGuid()), new Position(12f, 10f));
+
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(NewActivation(ctx, caster));
+
+            AssertEffectBanner(sink, "Bolt deals 3 hits (AP(1)) to Grunts.");
+        }
+
+        // ...and it lands before the pipeline's own dice, so the roll is already attributed when it plays.
+        [Test]
+        public async Task CastSpellStage_DamageSpell_AnnouncesBeforeTheDamageDice()
+        {
+            var sink = new RecordingPresentationSink();
+            var ctx = new TriggeredMoveTestContext(_store, new CannedCastRequester(), presentationSink: sink);
+            DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 2,
+                new[] { DamageSpell("Bolt", threshold: 2, hits: 1, armorPenetration: 3) },
+                new Position(10f, 10f));
+            MakeEnemyUnit(new PlayerID(System.Guid.NewGuid()), new Position(12f, 10f));
+
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(NewActivation(ctx, caster));
+
+            int bannerIndex = sink.Beats.FindIndex(b =>
+                b is BannerBeat banner && banner.BannerText.StartsWith("Bolt deals"));
+            // The cast roll's own die comes earlier; the damage dice are whatever follows the banner.
+            int damageDiceIndex = sink.Beats.FindIndex(bannerIndex + 1, b => b is DiceRolledBeat);
+
+            Assert.That(bannerIndex, Is.GreaterThanOrEqualTo(0), "the damage path announces its effect");
+            Assert.That(damageDiceIndex, Is.GreaterThan(bannerIndex),
+                "the announcement precedes the damage it describes");
         }
 
         // A failed cast never reaches an effect, so it must not report one.

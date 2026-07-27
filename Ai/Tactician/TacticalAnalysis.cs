@@ -9,9 +9,10 @@ namespace FDG.Ai.Tactician
 {
     /// <summary>
     /// One objective's projected end-of-round state: who would own it if the round ended now.
-    /// <see cref="ProjectedOwner"/> follows ReconcileObjectivesStage's rules - exactly one player in
-    /// range seizes; more than one contests it back to neutral; nobody in range leaves the CURRENT
-    /// owner in place (objectives are sticky).
+    /// <see cref="ProjectedOwner"/> follows ReconcileObjectivesStage's rules (team-aware since
+    /// #297): exactly one SIDE in range holds it (sticky toward the current owner, else the
+    /// side's deterministic representative); opposing sides contest it back to neutral; nobody
+    /// in range leaves the CURRENT owner in place (objectives are sticky).
     /// </summary>
     public sealed record ObjectiveProjection(
         IObjective Objective,
@@ -138,8 +139,10 @@ namespace FDG.Ai.Tactician
         /// <summary>
         /// Projects every objective's end-of-round owner from current positions - the exact
         /// ReconcileObjectivesStage rules: living models' base edges within 3", excluding Shaken
-        /// units, units that arrived from reserve this round, and Aircraft; exactly one player in
-        /// range seizes, several contest to neutral, none leaves the current owner.
+        /// units, units that arrived from reserve this round, and Aircraft; ownership resolves
+        /// per SIDE via <see cref="ITeamExtensions.ReconcileObjectiveOwner"/> (#297 - allied
+        /// players guarding one marker hold it, only opposing sides contest it to neutral),
+        /// none in range leaves the current owner.
         /// </summary>
         public static List<ObjectiveProjection> ProjectObjectives(ITableState tableState)
         {
@@ -147,9 +150,8 @@ namespace FDG.Ai.Tactician
             foreach (IObjective objective in tableState.Objectives.Objects)
             {
                 List<PlayerID> nearby = PlayersNearObjective(tableState, objective.Position);
-                PlayerID? projected = nearby.Count == 1 ? nearby[0]
-                    : nearby.Count > 1 ? null
-                    : objective.OwnerID;
+                PlayerID? projected = ITeamExtensions.ReconcileObjectiveOwner(
+                    tableState.Teams.Objects, objective.OwnerID, nearby);
                 projections.Add(new ObjectiveProjection(objective, projected, nearby));
             }
             return projections;

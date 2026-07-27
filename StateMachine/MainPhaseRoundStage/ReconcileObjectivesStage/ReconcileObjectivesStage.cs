@@ -46,23 +46,30 @@ namespace FDG.Stages
             {
                 var nearbyPlayers = PlayersNearObjective(objective, tableState.Models.Objects, modelToUnit);
 
-                if (nearbyPlayers.Count == 1)
+                // #297: team-aware - allied players guarding a marker together hold it for their
+                // side instead of contesting it to neutral (victory already pools per team, #257).
+                PlayerID? resolved = ITeamExtensions.ReconcileObjectiveOwner(
+                    tableState.Teams.Objects, objective.OwnerID, nearbyPlayers);
+
+                if (nearbyPlayers.Count == 0)
                 {
-                    var seizer = nearbyPlayers.First();
-                    objective.SetOwner(seizer);
-                    GameContext.Log($"  Objective seized by player {seizer.ID}.");
+                    string ownerDesc = objective.OwnerID.HasValue
+                        ? $"player {objective.OwnerID.Value.ID}"
+                        : "neutral";
+                    GameContext.Log($"  Objective uncontested - remains {ownerDesc}.");
                 }
-                else if (nearbyPlayers.Count > 1)
+                else if (!resolved.HasValue)
                 {
                     objective.SetOwner(null);
                     GameContext.Log($"  Objective contested - becomes neutral.");
                 }
                 else
                 {
-                    string ownerDesc = objective.OwnerID.HasValue
-                        ? $"player {objective.OwnerID.Value.ID}"
-                        : "neutral";
-                    GameContext.Log($"  Objective uncontested - remains {ownerDesc}.");
+                    // Unconditional SetOwner + "seized" wording even when the owner is unchanged -
+                    // exactly what the old per-player branch did for a solely-held marker, so 1v1
+                    // logs (and anything keying on them) are bit-identical.
+                    objective.SetOwner(resolved.Value);
+                    GameContext.Log($"  Objective seized by player {resolved.Value.ID}.");
                 }
             }
 

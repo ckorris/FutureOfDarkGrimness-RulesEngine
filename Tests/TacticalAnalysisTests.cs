@@ -114,6 +114,23 @@ namespace FDG.Tests
             Assert.That(TacticalAnalysis.ProjectObjectives(_tableState).Single().ProjectedOwner, Is.Null);
         }
 
+        // #297: the projection mirrors the team-aware reconcile - two ALLIED players in range hold
+        // the marker for their side (sticky toward the current owner) instead of contesting it.
+        [Test]
+        public void Projection_TwoAlliedPlayersInRange_SideHoldsMarker()
+        {
+            var objective = MakeObjective(new Position(10f, 10f));
+            var a = MakeUnit(1, null, atX: 11f, atZ: 10f);
+            var b = MakeUnit(1, null, atX: 9f, atZ: 10f);
+            _store.Create(new TeamData(0, new List<PlayerID>
+                { a.GetValue().PlayerID, b.GetValue().PlayerID }));
+            objective.GetValue().SetOwner(b.GetValue().PlayerID);
+
+            Assert.That(TacticalAnalysis.ProjectObjectives(_tableState).Single().ProjectedOwner,
+                Is.EqualTo(b.GetValue().PlayerID),
+                "allied players sharing the marker keep it with its current on-side owner.");
+        }
+
         [Test]
         public void Projection_NobodyInRange_OwnerIsSticky()
         {

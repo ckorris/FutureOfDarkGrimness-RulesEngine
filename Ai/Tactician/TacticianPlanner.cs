@@ -736,8 +736,8 @@ namespace FDG.Ai.Tactician
             float best = 0f;
             foreach (ObjectiveProjection projection in TacticalAnalysis.ProjectObjectives(_tableState))
             {
-                // #296: an ALLY-held marker is not a gradient target either - closing on it ends in
-                // contesting our own side's marker to neutral.
+                // #296: an ALLY-held marker is not a gradient target - it is already the side's
+                // marker (#297 team-aware reconcile), exactly like one we hold ourselves.
                 if (TacticalAnalysis.IsProjectedOwnerAllied(_tableState, projection, self.PlayerID))
                     continue;
 
@@ -849,10 +849,9 @@ namespace FDG.Ai.Tactician
 
         // +1 for each objective the endpoint newly holds/contests for us, -1 for a held objective the
         // move walks away from with nobody left on it. "Ours" is TEAM-owned (#296): victory pools
-        // objectives per team (#257), while the engine's seizure is per-player and two allied players
-        // in range contest a marker back to NEUTRAL - so an ally-held marker is one to stay OFF, and
-        // a marker we are pointlessly contesting against our own teammate is one to step off of.
-        // Both team terms are unreachable in a 1v1 (no ally exists to hold or share a marker).
+        // objectives per team (#257), and since #297 the engine's reconcile is team-aware too -
+        // allied players guarding one marker HOLD it for their side (no ally-contest penalty or
+        // step-off bonus needed any more; joining a teammate's marker is simply worth nothing extra).
         private float ObjectiveDelta(UnitData self, Position end)
         {
             float delta = 0f;
@@ -869,9 +868,11 @@ namespace FDG.Ai.Tactician
                 bool endOnIt = endDist <= TacticalAnalysis.ObjectiveSeizureRadiusInches + 1.5f;
 
                 if (!projectedOurs && endOnIt) delta += 1f;
-                // A marker an ALLY (not us) holds outright: joining it turns it neutral at reconcile.
-                if (projectedOurs && !projectedMine && !weAreOnItNow && endOnIt) delta -= 1f;
+                // Walking off a marker we hold: only priced when no TEAMMATE stays in range to keep
+                // holding it for the side (#297) and an enemy can still reach it before game end.
                 if (projectedMine && weAreOnItNow && !endOnIt
+                    && !projection.PlayersInRange.Any(p => !p.Equals(self.PlayerID)
+                        && TacticalAnalysis.AreAllied(_tableState, self.PlayerID, p))
                     && MarkerContestable(projection.Objective.Position))
                     delta -= 1f;
                 // #296 support ball (Chris): close behind a marker is worth a fraction - the unit
@@ -883,14 +884,6 @@ namespace FDG.Ai.Tactician
                 if (endInSupportBand
                     && (!projectedOurs || MarkerContestable(projection.Objective.Position)))
                     delta += TacticianWeights.MoveObjectiveSupport;
-                // Already contesting a marker AGAINST ONLY OUR OWN SIDE (projected neutral, every
-                // player in range allied, an ally left behind when we go): stepping off returns it
-                // to the teammate - a full marker regained for the team.
-                if (!projection.ProjectedOwner.HasValue && weAreOnItNow && !endOnIt
-                    && projection.PlayersInRange.Count > 1
-                    && projection.PlayersInRange.All(p =>
-                        TacticalAnalysis.AreAllied(_tableState, self.PlayerID, p)))
-                    delta += 1f;
             }
             return delta;
         }

@@ -146,6 +146,79 @@ namespace FDG.Tests
                 "the Aircraft can't contest, so the ground enemy seizes uncontested.");
         }
 
+        // --- #297: objectives are held per SIDE - allied players guarding one marker do not
+        // contest it to neutral (victory pools per team, #257; the old per-player rule had two
+        // teammates on a marker un-score it for their own side).
+
+        [Test]
+        public async Task ReconcileObjectivesStage_TwoAlliedPlayersNearby_TeamHoldsMarker()
+        {
+            var a = new PlayerID(Guid.NewGuid());
+            var b = new PlayerID(Guid.NewGuid());
+            _store.Create(new TeamData(0, new List<PlayerID> { a, b }));
+            var objective = CreateObjective(new Position(5, 5));
+            CreateUnit(a, modelPosition: new Position(5.0f, 5));
+            CreateUnit(b, modelPosition: new Position(5.5f, 5));
+
+            await RunReconcileOnce();
+
+            Assert.That(objective.OwnerID, Is.EqualTo(a),
+                "allied players sharing a marker hold it for their side (first-registered in range), not neutral.");
+        }
+
+        [Test]
+        public async Task ReconcileObjectivesStage_AlliedPlayersNearby_CurrentOwnerOnSideKeepsMarker()
+        {
+            var a = new PlayerID(Guid.NewGuid());
+            var b = new PlayerID(Guid.NewGuid());
+            _store.Create(new TeamData(0, new List<PlayerID> { a, b }));
+            var objective = CreateObjective(new Position(5, 5));
+            objective.SetOwner(b); // b seized it earlier; a walks up alongside
+            CreateUnit(a, modelPosition: new Position(5.0f, 5));
+            CreateUnit(b, modelPosition: new Position(5.5f, 5));
+
+            await RunReconcileOnce();
+
+            Assert.That(objective.OwnerID, Is.EqualTo(b),
+                "ownership is sticky within the side - the original seizer keeps the marker.");
+        }
+
+        [Test]
+        public async Task ReconcileObjectivesStage_AlliedAndEnemyNearby_BecomesNeutral()
+        {
+            var a = new PlayerID(Guid.NewGuid());
+            var b = new PlayerID(Guid.NewGuid());
+            var enemy = new PlayerID(Guid.NewGuid());
+            _store.Create(new TeamData(0, new List<PlayerID> { a, b }));
+            _store.Create(new TeamData(1, new List<PlayerID> { enemy }));
+            var objective = CreateObjective(new Position(5, 5));
+            CreateUnit(a, modelPosition: new Position(5.0f, 5));
+            CreateUnit(b, modelPosition: new Position(5.5f, 5));
+            CreateUnit(enemy, modelPosition: new Position(4.5f, 5));
+
+            await RunReconcileOnce();
+
+            Assert.That(objective.OwnerID, Is.Null,
+                "opposing sides on the same marker still contest it to neutral.");
+        }
+
+        [Test]
+        public async Task ReconcileObjectivesStage_TeammateGuardsAbsentOwnersMarker_OwnerKeepsIt()
+        {
+            var a = new PlayerID(Guid.NewGuid());
+            var b = new PlayerID(Guid.NewGuid());
+            _store.Create(new TeamData(0, new List<PlayerID> { a, b }));
+            var objective = CreateObjective(new Position(5, 5));
+            objective.SetOwner(a); // a seized it, then moved on; b stands guard
+            CreateUnit(b, modelPosition: new Position(5.0f, 5));
+            CreateUnit(a, modelPosition: new Position(30, 30));
+
+            await RunReconcileOnce();
+
+            Assert.That(objective.OwnerID, Is.EqualTo(a),
+                "a teammate guarding the marker keeps it with its original owner.");
+        }
+
         // Helpers
 
         private static void MarkArrivedThisRound(UnitData unit) =>

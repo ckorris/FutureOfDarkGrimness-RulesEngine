@@ -147,7 +147,7 @@ namespace FDG.Ai.Tactician.Resolvers
             float flip = 0f;
             foreach (ObjectiveProjection projection in TacticalAnalysis.ProjectObjectives(_tableState))
             {
-                // #296: a TEAMMATE-held marker is not one to flip (reaching it contests our own side).
+                // #296: a TEAMMATE-held marker is already the side's (#297) - nothing to flip.
                 bool oursAlready = TacticalAnalysis.IsProjectedOwnerAllied(
                     _tableState, projection, unit.PlayerID);
                 if (oursAlready) continue;

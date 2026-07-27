@@ -44,7 +44,7 @@ namespace FDG.Ai.Tactician
         public static float ActivationLoadedTransportBias = 0.5f;
         public static float ActivationEmbarkedCargoBias = -0.5f;
 
-        // ADDED 2026-07-27 (#294, Chris's own crowded-game remedy: "activate the things in front
+        // ADDED 2026-07-27 (#296, Chris's own crowded-game remedy: "activate the things in front
         // first, and move in a way that clears a path for whatever is behind"): a small bonus by
         // the unit's FORWARD PERCENTILE among this activation's valid options (0 = rearmost,
         // 1 = frontmost along the axis toward the enemy mass). Deliberately below every real
@@ -102,7 +102,7 @@ namespace FDG.Ai.Tactician
         public static float MoveObjective = 0.75f;
         public static float MoveReachableBonus = 0.05f;
 
-        // ADDED 2026-07-27 (#294, Chris: "you want a ball of units on the objective... close
+        // ADDED 2026-07-27 (#296, Chris: "you want a ball of units on the objective... close
         // behind is helpful for replacing the units in front of it when they die"): fraction of a
         // full marker step paid for ending in the SUPPORT band around a relevant marker (past the
         // on-marker ring, within one move of stepping in). What it buys: a unit whose lane to the

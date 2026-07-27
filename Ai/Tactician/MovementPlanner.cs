@@ -818,7 +818,7 @@ namespace FDG.Ai.Tactician
         /// <summary>
         /// Living enemy model footprints tagged with a per-unit key (so the validator can tell which
         /// models share an enemy unit); Aircraft marked uncontactable (#029); reserve-parked models at
-        /// (0,0) excluded by convention. Team-aware (#294), matching the authoritative
+        /// (0,0) excluded by convention. Team-aware (#296), matching the authoritative
         /// <see cref="MovementUtilities.GetEnemyModelFootprints"/> - the old player-based split put a
         /// 2v2 TEAMMATE's models in BOTH lists, so ally bases carried the enemy 1" standoff and
         /// no-move-through on top of their real friendly end-overlap constraint.

@@ -625,7 +625,7 @@ namespace FDG.Ai.Tactician
             enemy.Models.Where(m => m.GetIsAlive())
                 .OrderBy(m => Distance(m.Position, from)).FirstOrDefault();
 
-        // #294: team-aware sides - the targeted families (bands, charges, fallback, block) must not
+        // #296: team-aware sides - the targeted families (bands, charges, fallback, block) must not
         // aim at a 2v2 teammate, and escort/concentrate/block should treat the teammate's units as
         // the assets they are. AreAllied with no team == same player, so 1v1 is unchanged.
         private static List<IUnit> LivingEnemies(ITableState tableState, PlayerID self) =>

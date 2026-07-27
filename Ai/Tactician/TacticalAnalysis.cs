@@ -29,10 +29,10 @@ namespace FDG.Ai.Tactician
         /// <summary>Mirror of ReconcileObjectivesStage.SeizureRadiusInches (private there; pinned by test).</summary>
         public const float ObjectiveSeizureRadiusInches = 3f;
 
-        // --- Sides (#294) -----------------------------------------------------------------------
+        // --- Sides (#296) -----------------------------------------------------------------------
 
         /// <summary>
-        /// Team-aware "same side" for the AI's enemy/friendly splits (#294): the Tactician priced a
+        /// Team-aware "same side" for the AI's enemy/friendly splits (#296): the Tactician priced a
         /// 2v2 TEAMMATE's whole army as hostile - retaliation from allied guns, FallBack from the
         /// highest-value ally, kite bands off allied shooters - because every enumeration was a raw
         /// PlayerID comparison. With no registered team a player is allied only with itself, so

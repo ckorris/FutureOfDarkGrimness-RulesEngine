@@ -57,7 +57,7 @@ namespace FDG.Ai.Tactician.Resolvers
         }
 
         /// <summary>
-        /// #294 front-first ordering (Chris's crowded-game remedy): each option's position along the
+        /// #296 front-first ordering (Chris's crowded-game remedy): each option's position along the
         /// axis from our unactivated mass toward the enemy mass, normalized to [0,1] across the
         /// options (rearmost 0, frontmost 1). When the real urgency terms are flat - the crowded
         /// round-1 shape - this makes the front rank move first and clear lanes for what's behind.
@@ -147,7 +147,7 @@ namespace FDG.Ai.Tactician.Resolvers
             float flip = 0f;
             foreach (ObjectiveProjection projection in TacticalAnalysis.ProjectObjectives(_tableState))
             {
-                // #294: a TEAMMATE-held marker is not one to flip (reaching it contests our own side).
+                // #296: a TEAMMATE-held marker is not one to flip (reaching it contests our own side).
                 bool oursAlready = TacticalAnalysis.IsProjectedOwnerAllied(
                     _tableState, projection, unit.PlayerID);
                 if (oursAlready) continue;
@@ -183,7 +183,7 @@ namespace FDG.Ai.Tactician.Resolvers
             return Math.Min(1f, expectedWounds / remaining) * TacticalAnalysis.UnitValue(target) / 100f;
         }
 
-        // #294: team-aware - the urgency terms must not price a 2v2 teammate as kill or threat.
+        // #296: team-aware - the urgency terms must not price a 2v2 teammate as kill or threat.
         private IEnumerable<DataBinding<UnitData>> EnemyBindings(PlayerID us)
         {
             foreach (IArmy army in _tableState.Armies.Objects)

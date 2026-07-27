@@ -355,7 +355,7 @@ namespace FDG.Ai.Tactician
             foreach (ObjectiveProjection projection in TacticalAnalysis.ProjectObjectives(_tableState))
             {
                 bool ours = TacticalAnalysis.IsProjectedOwnerAllied(
-                    _tableState, projection, self.PlayerID); // #294: team-owned = ours
+                    _tableState, projection, self.PlayerID); // #296: team-owned = ours
                 if (!ours && Distance(here, projection.Objective.Position)
                         <= cargoReach + TacticalAnalysis.ObjectiveSeizureRadiusInches)
                     return true;
@@ -603,7 +603,7 @@ namespace FDG.Ai.Tactician
             (Position threatPos, Position wardPos, float wardThreatValue)? lane = ScreenLane();
             if (lane == null) return 0f;
 
-            // #294: a screen stands BETWEEN the threat and the ward. DistanceToSegment clamps to the
+            // #296: a screen stands BETWEEN the threat and the ward. DistanceToSegment clamps to the
             // endpoints, so a spot BEHIND the ward (or the threat) within 5" still measured as
             // on-lane and collected the credit - which paid a backward "screen" that screens nothing
             // (the crowded-2v2 round-1 FallBack winner). Interior of the segment only.
@@ -693,7 +693,7 @@ namespace FDG.Ai.Tactician
             return Distance(p, new Position(a.x + t * abx, a.z + t * abz));
         }
 
-        // #294: FRIENDS are the whole team, not just this player's own army - a teammate's units
+        // #296: FRIENDS are the whole team, not just this player's own army - a teammate's units
         // are wards to screen, alternative targets the enemy might prefer, and mass to concentrate on.
         private IEnumerable<DataBinding<UnitData>> FriendlyBindings(PlayerID us)
         {
@@ -736,7 +736,7 @@ namespace FDG.Ai.Tactician
             float best = 0f;
             foreach (ObjectiveProjection projection in TacticalAnalysis.ProjectObjectives(_tableState))
             {
-                // #294: an ALLY-held marker is not a gradient target either - closing on it ends in
+                // #296: an ALLY-held marker is not a gradient target either - closing on it ends in
                 // contesting our own side's marker to neutral.
                 if (TacticalAnalysis.IsProjectedOwnerAllied(_tableState, projection, self.PlayerID))
                     continue;
@@ -848,7 +848,7 @@ namespace FDG.Ai.Tactician
         }
 
         // +1 for each objective the endpoint newly holds/contests for us, -1 for a held objective the
-        // move walks away from with nobody left on it. "Ours" is TEAM-owned (#294): victory pools
+        // move walks away from with nobody left on it. "Ours" is TEAM-owned (#296): victory pools
         // objectives per team (#257), while the engine's seizure is per-player and two allied players
         // in range contest a marker back to NEUTRAL - so an ally-held marker is one to stay OFF, and
         // a marker we are pointlessly contesting against our own teammate is one to step off of.
@@ -874,7 +874,7 @@ namespace FDG.Ai.Tactician
                 if (projectedMine && weAreOnItNow && !endOnIt
                     && MarkerContestable(projection.Objective.Position))
                     delta -= 1f;
-                // #294 support ball (Chris): close behind a marker is worth a fraction - the unit
+                // #296 support ball (Chris): close behind a marker is worth a fraction - the unit
                 // stacks up to replace the front when it dies instead of drifting to a side goal.
                 // Own/ally-held markers only pay while an enemy can still reach them (no late-game
                 // loitering around a safe marker - the garrison-release rationale).
@@ -971,7 +971,7 @@ namespace FDG.Ai.Tactician
         // The projected-objective deficit (best-placed opposing SIDE minus ours), half a point of
         // tilt per marker, clamped to [-1, 1] and scaled by round progress: an early deficit is
         // deployment noise, a late one is the game. Positive = we are losing the race.
-        // #294: tallied per TEAM - victory pools teammates' markers (#257), so a 2v2 posture that
+        // #296: tallied per TEAM - victory pools teammates' markers (#257), so a 2v2 posture that
         // counted the teammate as an opponent read "losing" while the team was ahead.
         private float Posture()
         {
@@ -1020,7 +1020,7 @@ namespace FDG.Ai.Tactician
             {
                 if (objective.OwnerID.HasValue
                     && TacticalAnalysis.AreAllied(_tableState, enemy.PlayerID, objective.OwnerID.Value))
-                    continue; // #294: a marker the enemy's SIDE holds is no goal of theirs
+                    continue; // #296: a marker the enemy's SIDE holds is no goal of theirs
                 float d = Distance(at, objective.Position);
                 if (d < bestDistance) { bestDistance = d; goal = objective.Position; }
             }
@@ -1107,7 +1107,7 @@ namespace FDG.Ai.Tactician
             }
         }
 
-        // #294: ENEMIES are the players not allied with us - in a 2v2 the old PlayerID comparison
+        // #296: ENEMIES are the players not allied with us - in a 2v2 the old PlayerID comparison
         // put the teammate's 3k army in every threat/retaliation/approach term.
         private IEnumerable<DataBinding<UnitData>> EnemyBindings(PlayerID us)
         {

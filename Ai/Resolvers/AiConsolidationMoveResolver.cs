@@ -101,7 +101,7 @@ namespace FDG.Ai.Resolvers
         }
 
 
-        // #294: team-aware "enemy" - with the old PlayerID split a 2v2 consolidation could pull
+        // #296: team-aware "enemy" - with the old PlayerID split a 2v2 consolidation could pull
         // toward a TEAMMATE's models. With no registered team this is exactly "not my player".
         private bool IsEnemy(PlayerID other) =>
             !ITeamExtensions.AreAllied(_tableState.Teams.Objects, _playerID, other);

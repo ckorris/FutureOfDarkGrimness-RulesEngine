@@ -356,49 +356,105 @@ namespace FDG.SaveLoad
         /// <summary>
         /// Rows any unit the scenario didn't place inside its team's deployment band, mirroring the
         /// engine's single-turn tester: teams get the near/far bands (extra teams spread between),
-        /// teammates get parallel rows, models line up along +X. Scenario-central units are expected
-        /// to be placed explicitly; this keeps the JSON down to the units that matter.
+        /// models line up along +X. Rows WRAP at the table's east margin and stack backward toward
+        /// the team's own edge - slot order front-to-back - so a full-size unlisted army packs into
+        /// its band instead of marching off the table (the original placer assumed a handful of
+        /// unlisted units and never wrapped; a 3k army rowed to x~184 on a 72" table, where the
+        /// #291 bounds rule then pins every model). Scenario-central units are still expected to be
+        /// placed explicitly; this keeps the JSON down to the units that matter.
         /// </summary>
         private static void AutoPlaceUnplacedUnits(PlayerSlot[] slots, List<List<DataBinding<UnitData>>> unitsPerPlayer)
         {
             List<int> teamNumbers = slots.Select(s => s.TeamNumber).Distinct().OrderBy(t => t).ToList();
             float tableH = GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES;
+            float tableW = GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES;
             float nearZ = GameWideConstants.DEPLOYMENT_DISTANCE_INCHES;
             float bandSpan = tableH - 2f * nearZ;
+            const float sideMargin = 2f;
+            const float modelGap = 0.2f;  // base-edge gap between row neighbours (cohesion-safe, per the 0.1" gotcha)
+            const float unitGap = 2f;     // gap between units sharing a row
+            const float rowGap = 0.3f;    // base-edge clearance between adjacent rows
+            const float edgeMargin = 0.5f; // keep wrapped rows on the table
 
-            for (int p = 0; p < slots.Length; p++)
+            foreach (int teamNumber in teamNumbers)
             {
-                int teamIndex = teamNumbers.IndexOf(slots[p].TeamNumber);
-                float teamZ = teamNumbers.Count == 1
+                int teamIndex = teamNumbers.IndexOf(teamNumber);
+                float frontZ = teamNumbers.Count == 1
                     ? nearZ
                     : nearZ + bandSpan * teamIndex / (teamNumbers.Count - 1);
+                // Rows stack AWAY from the table center (toward the team's own edge), front row on
+                // the band's forward line - the shape a hand deployment produces.
+                float towardOwnEdge = frontZ < tableH / 2f ? -1f : 1f;
+                Float2 facing = frontZ < tableH / 2f ? new Float2(0f, 1f) : new Float2(0f, -1f);
 
-                // Parallel rows for teammates, nudged toward the table center so they stay in-band.
-                int indexWithinTeam = 0;
-                for (int q = 0; q < p; q++)
-                    if (slots[q].TeamNumber == slots[p].TeamNumber) indexWithinTeam++;
-                float rowZ = teamZ + (teamZ < tableH / 2f ? -3f : 3f) * indexWithinTeam;
+                // Pass 1: pack models into rows (x positions now, z per row later). A unit starts a
+                // fresh row when it cannot fit in the current one's remaining width (it stays whole
+                // for cohesion); only a unit wider than a full row wraps mid-unit.
+                var rows = new List<(List<(DataBinding<ModelData> Model, float X)> Placements, float MaxRadius)>();
+                List<(DataBinding<ModelData> Model, float X)>? row = null;
+                float rowMaxRadius = 0f;
+                float x = float.MaxValue; // forces the first model to open a row
 
-                Float2 facing = rowZ < tableH / 2f ? new Float2(0f, 1f) : new Float2(0f, -1f);
-
-                float x = 2f;
-                foreach (DataBinding<UnitData> unitBinding in unitsPerPlayer[p])
+                void CloseRow()
                 {
-                    UnitData unit = unitBinding.GetValue();
-                    if (unit.GetIsOnBattlefield())
-                        continue; // The scenario placed it.
+                    if (row != null && row.Count > 0) rows.Add((row, rowMaxRadius));
+                    row = new List<(DataBinding<ModelData>, float)>();
+                    rowMaxRadius = 0f;
+                    x = sideMargin;
+                }
 
-                    foreach (DataBinding<ModelData> modelBinding in unit.ModelBindings)
+                for (int p = 0; p < slots.Length; p++)
+                {
+                    if (slots[p].TeamNumber != teamNumber) continue;
+                    foreach (DataBinding<UnitData> unitBinding in unitsPerPlayer[p])
                     {
-                        ModelData model = modelBinding.GetValue();
-                        float radius = model.BaseShape.CircumscribedRadiusInches;
-                        x += radius;
-                        model.SetPosition(new Position(x, rowZ));
-                        model.SetFacing(facing);
-                        x += radius + 0.2f;
-                    }
+                        UnitData unit = unitBinding.GetValue();
+                        if (unit.GetIsOnBattlefield())
+                            continue; // The scenario placed it.
 
-                    x += 2f; // Gap between units.
+                        float unitWidth = unit.ModelBindings.Sum(mb =>
+                            2f * mb.GetValue().BaseShape.CircumscribedRadiusInches + modelGap) - modelGap;
+                        if (row == null || (x > sideMargin && x + unitWidth > tableW - sideMargin))
+                            CloseRow();
+
+                        foreach (DataBinding<ModelData> modelBinding in unit.ModelBindings)
+                        {
+                            float radius = modelBinding.GetValue().BaseShape.CircumscribedRadiusInches;
+                            if (x + 2f * radius > tableW - sideMargin)
+                                CloseRow(); // a unit wider than a whole row wraps mid-unit
+                            x += radius;
+                            row!.Add((modelBinding, x));
+                            rowMaxRadius = Math.Max(rowMaxRadius, radius);
+                            x += radius + modelGap;
+                        }
+
+                        x += unitGap;
+                    }
+                }
+                if (row != null && row.Count > 0) rows.Add((row, rowMaxRadius));
+                if (rows.Count == 0) continue;
+
+                // Pass 2: assign row z, front row on the band line, each following row behind it by
+                // the two rows' radii plus clearance. If the stack runs off the table edge, shift
+                // the whole block toward the center - a slightly deep deployment beats an off-table one.
+                var rowZ = new float[rows.Count];
+                rowZ[0] = frontZ;
+                for (int i = 1; i < rows.Count; i++)
+                    rowZ[i] = rowZ[i - 1] + towardOwnEdge
+                        * (rows[i - 1].MaxRadius + rows[i].MaxRadius + rowGap);
+                float overflow = towardOwnEdge < 0f
+                    ? Math.Max(0f, edgeMargin + rows[^1].MaxRadius - rowZ[^1])
+                    : Math.Min(0f, tableH - edgeMargin - rows[^1].MaxRadius - rowZ[^1]);
+                for (int i = 0; i < rows.Count; i++)
+                    rowZ[i] += overflow;
+
+                for (int i = 0; i < rows.Count; i++)
+                {
+                    foreach ((DataBinding<ModelData> modelBinding, float modelX) in rows[i].Placements)
+                    {
+                        modelBinding.GetValue().SetPosition(new Position(modelX, rowZ[i]));
+                        modelBinding.GetValue().SetFacing(facing);
+                    }
                 }
             }
         }

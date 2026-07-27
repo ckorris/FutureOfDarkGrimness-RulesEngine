@@ -67,7 +67,8 @@ namespace FDG.Stages
             invalidOptions.Sort((a, b) => string.CompareOrdinal(a.Option, b.Option));
 
             StringSelectionRequest request = new StringSelectionRequest(context.AttackingUnit.PlayerID(),
-                "Choose weapon:", validOptions.Select(option => option.Item1).ToList(), invalidOptions);
+                "Choose weapon:", validOptions.Select(option => option.Item1).ToList(), invalidOptions,
+                BuildRuleDescriptions(validOptions));
 
             string chosenWeaponStatsName = await GameContext.PlayerRequester
                 .RequestDecision<StringSelectionRequest, string>(request);
@@ -78,6 +79,36 @@ namespace FDG.Stages
             GameContext.Log($"Chose weapon: {chosenWeapon.Name}. Count: {weaponCount}.");
 
             await OnChosen.Activate(context);
+        }
+
+        /// <summary>
+        /// #298: the option label lists a weapon's special rules by NAME only, which is no help at the moment
+        /// the choice is made - "Deadly(3)" and "Rending" are the whole reason to prefer one weapon over
+        /// another. Each option gets one line per documented rule ("Name - what it does") as its
+        /// <see cref="StringSelectionRequest.OptionDescriptions"/> entry; front ends already render that as
+        /// subtext (GUI) or an indented line (CLI). Weapons whose rules carry no description are simply
+        /// absent from the map - a name with nothing to say adds no information the label doesn't have.
+        /// Returns null when no option has anything to describe, which is the common plain-weapon case.
+        /// </summary>
+        private static Dictionary<string, string>? BuildRuleDescriptions(List<(string Label, Weapon Weapon)> options)
+        {
+            Dictionary<string, string> descriptions = new Dictionary<string, string>();
+
+            foreach ((string label, Weapon weapon) in options)
+            {
+                List<string> lines = new List<string>();
+                foreach (ResolvedRule rule in weapon.RuleDefinitions)
+                {
+                    if (string.IsNullOrWhiteSpace(rule.Definition.Description)) continue;
+                    lines.Add($"{rule.RequestedName} - {rule.Definition.Description}");
+                }
+
+                // Indexer, not Add: two weapons can share a label (the stats-name keying this stage
+                // already TODOs above), and a duplicate key must not throw mid-melee.
+                if (lines.Count > 0) descriptions[label] = string.Join("\n", lines);
+            }
+
+            return descriptions.Count > 0 ? descriptions : null;
         }
     }
 }

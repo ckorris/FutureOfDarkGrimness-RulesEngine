@@ -19,6 +19,17 @@ namespace FDG.Stages
         public float MaxChargeDistance { get; }
 
         /// <summary>
+        /// The largest Advance budget any living model of the unit has - the unit scalar, or a joined
+        /// hero's own larger one (#093). This is the allowance the "did it advance?" question has to be
+        /// asked against, because the recorded move distance is the MAX across models
+        /// (<c>MovementUtilities.GetMaxMoveDistance</c>): comparing a hero's 8" against the unit's 6"
+        /// scalar would call a legal advance a rush. Handed to
+        /// <c>IUnitActionContext.RegisterMoveFinished</c> so the shoot gate can use the allowance that was
+        /// actually in force (#290).
+        /// </summary>
+        public float MaxModelAdvanceDistance { get; }
+
+        /// <summary>
         /// This model's own Advance/Rush/Charge budget (#093): the unit base + unit movement rules + that
         /// model's OWN movement rules (a joined hero's Fast/Slow). Equals the unit-wide scalars for every
         /// model of a unit with no per-model movement rules. Returns false (and the unit scalars) when the
@@ -72,6 +83,20 @@ namespace FDG.Stages
             get
             {
                 return _canMove ? _maxChargeDistance : 0f;
+            }
+        }
+
+        public float MaxModelAdvanceDistance
+        {
+            get
+            {
+                if (!_canMove) return 0f;
+                float max = _maxAdvanceDistance;
+                foreach (ModelBudget budget in _modelBudgets.Values)
+                {
+                    if (budget.Advance > max) max = budget.Advance;
+                }
+                return max;
             }
         }
 

@@ -166,7 +166,7 @@ namespace FDG.Tests
         {
             var capturer = new CapturingStringSelectionRequester(ChooseActionStage.SHOOT_CHOICE_NAME);
             var (ctx, unitCtx) = BuildAircraftActionWorld(capturer);
-            unitCtx.RegisterMoveFinished(ForcedAircraftMove.MinDistanceInches); // the forced Advance completed
+            unitCtx.RegisterMoveFinished(ForcedAircraftMove.MinDistanceInches, GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES); // the forced Advance completed
 
             await DriveChooseAction(ctx, unitCtx);
 
@@ -189,7 +189,7 @@ namespace FDG.Tests
                 "a pristine Aircraft cannot Pass - it must Advance.");
             Assert.That(reason, Does.Contain("Advance"));
 
-            unitCtx.RegisterMoveFinished(ForcedAircraftMove.MinDistanceInches);
+            unitCtx.RegisterMoveFinished(ForcedAircraftMove.MinDistanceInches, GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES);
             Assert.That(ChooseActionStage.GetCanPass(ctx, unitCtx, out _), Is.True,
                 "after completing its forced Advance the Aircraft may Pass.");
         }

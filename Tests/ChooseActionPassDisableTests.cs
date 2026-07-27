@@ -44,7 +44,7 @@ namespace FDG.Tests
         public void GetCanPass_MovedFar_ButNoEnemyNearby_True()
         {
             var (ctx, unitCtx) = Build();
-            unitCtx.RegisterMoveFinished(GameWideConstants.RUSH_DISTANCE_INCHES + 8f);
+            unitCtx.RegisterMoveFinished(GameWideConstants.RUSH_DISTANCE_INCHES + 8f, GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES);
 
             bool canPass = ChooseActionStage.GetCanPass(ctx, unitCtx, out string reason);
 

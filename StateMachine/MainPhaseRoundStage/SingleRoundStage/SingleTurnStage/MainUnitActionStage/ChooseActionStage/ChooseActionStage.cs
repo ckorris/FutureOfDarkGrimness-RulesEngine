@@ -676,19 +676,23 @@ namespace FDG.Stages
             }
 
             // The advance-and-shoot cap must include the unit's movement rules (Fast/Quick/Rapid Advance/...)
-            // so a unit that legally advanced past the base 6" isn't wrongly blocked from shooting. GetMobility
-            // is stubbed (returns the base only); this mirrors the distance MovementActionContext actually
-            // granted the move, so the shoot gate agrees with what the move resolver allowed.
-            float moveShootDistanceInches = Rules.Dispatch.MovementRuleQueries.EffectiveMoveShootDistance(
-                context.ActivatingUnit.GetValue(), GameContext.RuleEvaluator);
-
+            // so a unit that legally advanced past the base 6" isn't wrongly blocked from shooting.
+            //
+            // #290: the allowance is the one RECORDED when the move resolved, not a fresh query. Re-deriving
+            // it here asks "what could this unit advance right now", which is a different question the moment
+            // a one-shot (NextTrigger) granted movement rule is involved: ExecuteMoveStage spends the grant as
+            // the move resolves, so a Slow unit that legally advanced 8" under a granted Rapid Advance was
+            // measured against its un-granted 4" and told it had rushed. The move context is the only place
+            // that knows the number the move was actually authorised against.
+            //
             // Aircraft only ever Advance — a forced 30-36" straight-line move — and may shoot after it, so the
             // normal advance-and-shoot distance cap (which distinguishes Advance from Rush) doesn't apply (#029).
             bool isAircraft = Rules.Dispatch.AircraftRules.IsAircraft(context.ActivatingUnit.GetValue());
-            if (!isAircraft && context.MoveDistance.LessThanOrAlmostEqual(moveShootDistanceInches) == false)
+            if (!isAircraft && context.HasMoved
+                && context.MoveDistance.LessThanOrAlmostEqual(context.MoveShootAllowance) == false)
             {
                 reasonIfCant = $"Moved {context.MoveDistance} inches, when max to move and shoot for {context.ActivatingUnit.GetValue().Name} " +
-                    $" is {moveShootDistanceInches}.";
+                    $" is {context.MoveShootAllowance}.";
                 return false;
             }
 

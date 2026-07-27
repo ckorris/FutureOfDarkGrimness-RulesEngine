@@ -58,7 +58,7 @@ namespace FDG.Tests
             _requester.ReplyOption = ChooseActionStage.PASS_CHOICE_NAME;
 
             var (_, backedOut, _, reconciled) = await RunChooseAction(unit,
-                context => context.RegisterMoveFinished(1f));
+                context => context.RegisterMoveFinished(1f, GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES));
 
             Assert.That(_requester.LastActionRequest, Is.Not.Null);
             Assert.That(_requester.LastActionRequest!.AllowCancel, Is.False,

@@ -195,7 +195,7 @@ namespace FDG.Tests
             DataBinding<UnitData> caster = MakeCasterUnit(casterRating: 3, tokens: 3,
                 new[] { Spell("Zap", threshold: 1, ETargetAffinity.Friend) }, new Position(10f, 10f));
             UnitActionContext unitCtx = NewActivation(ctx, caster);
-            unitCtx.RegisterMoveFinished(3f);
+            unitCtx.RegisterMoveFinished(3f, GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES);
 
             var stage = new ChooseActionStage(ctx, new NoOpLayer<IUnitActionContext>());
             stage.ToReconcileEndOfActivation.Bind("Pass");

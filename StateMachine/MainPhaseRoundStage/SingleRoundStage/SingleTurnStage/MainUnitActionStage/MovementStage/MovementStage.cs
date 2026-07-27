@@ -66,7 +66,10 @@ namespace FDG.Stages
             {
                 throw new InvalidOperationException($"Indicated that the unit didn't move at the end of {nameof(MovementStage)}.");
             }
-            selfContext.RegisterMoveFinished(distance);
+            // #290: the allowance is taken from the MOVE context, which computed it while every rule that
+            // authorised the move was still granted. ExecuteMoveStage spends one-shot movement grants when
+            // the move resolves, so the shoot gate can no longer re-derive this number for itself.
+            selfContext.RegisterMoveFinished(distance, childContext.MaxModelAdvanceDistance);
         }
     }
 }

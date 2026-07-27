@@ -105,7 +105,11 @@ namespace FDG.Stages
             // forgo shooting (the exit was a Rush), or stay inside its Advance and shoot (the exit was an
             // Advance). Recording 0 silently handed it both. A normal 6" Advance is unaffected: the leash
             // and the advance-and-shoot cap are the same number, and the compare is margin-tolerant.
-            context.RegisterMoveFinished(distanceMoved);
+            // #290: the exit is not a MovementStage move, so there is no move context to take the allowance
+            // from - and nothing on this path consumes a movement grant, so querying it live here is the
+            // value that was in force. (Same number GetCanShoot used to derive for itself.)
+            context.RegisterMoveFinished(distanceMoved,
+                MovementRuleQueries.EffectiveMoveShootDistance(unit, GameContext.RuleEvaluator));
 
             GameContext.Log($"{unit.Name} disembarked {transport.Name}, moving {distanceMoved:0.#} inches.");
             await context.Announce($"{unit.Name} disembarked {transport.Name}.", new TextColor(120, 200, 255, 255),

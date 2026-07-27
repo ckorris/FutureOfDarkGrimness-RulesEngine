@@ -17,6 +17,18 @@ namespace FDG.Stages
 
         public float MoveDistance { get;}
 
+        /// <summary>
+        /// #290 — the Advance allowance that was IN FORCE for this activation's move, captured when the
+        /// move resolved. The shoot gate has to compare against this rather than re-deriving the
+        /// allowance from the unit's live rules, because a one-shot (NextTrigger) granted movement rule -
+        /// Robot Legions' "Inspiring Bots" granting Rapid Advance, say - is spent by
+        /// <c>ExecuteMoveStage</c> the moment the move resolves. Re-deriving afterwards asks "what could
+        /// this unit advance NOW", gets the smaller un-granted number, and calls the legal advance a rush.
+        ///
+        /// <para>0 until the unit moves; only meaningful when <see cref="HasMoved"/>.</para>
+        /// </summary>
+        public float MoveShootAllowance { get; }
+
         public bool HasAttacked { get; }
 
         /// <summary>
@@ -52,7 +64,10 @@ namespace FDG.Stages
         /// </summary>
         public bool TryGetActivationStartDistanceTo(UnitID enemyUnit, out float distanceInches);
 
-        public void RegisterMoveFinished(float distance);
+        /// <param name="advanceAllowanceInches">The Advance budget that was in force for this move -
+        /// see <see cref="MoveShootAllowance"/>. Callers must pass the value they computed BEFORE the move
+        /// resolved, never a fresh query afterwards.</param>
+        public void RegisterMoveFinished(float distance, float advanceAllowanceInches);
 
         public void RegisterAttackedFinished();
 
@@ -95,6 +110,8 @@ namespace FDG.Stages
 
         public float MoveDistance { get; private set; } = 0f;
 
+        public float MoveShootAllowance { get; private set; } = 0f;
+
         public bool HasAttacked { get; private set; }
 
         public bool StartedActivationShaken { get; private set; }
@@ -126,10 +143,11 @@ namespace FDG.Stages
             PendingCustomAction = null;
         }
 
-        public void RegisterMoveFinished(float distance)
+        public void RegisterMoveFinished(float distance, float advanceAllowanceInches)
         {
             HasMoved = true;
             MoveDistance = distance;
+            MoveShootAllowance = advanceAllowanceInches;
         }
 
         public void RegisterAttackedFinished()
@@ -157,6 +175,7 @@ namespace FDG.Stages
             ActivatingUnit = activatingUnit;
             HasMoved = false;
             MoveDistance = 0f;
+            MoveShootAllowance = 0f;
             HasAttacked = false;
             IrreversibleActionTaken = false;
             PendingCustomAction = null;

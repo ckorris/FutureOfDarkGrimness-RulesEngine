@@ -147,7 +147,7 @@ namespace FDG.Tests
             DataBinding<UnitData> squad = MakeSquad("Grunts", modelCount: 2, x: 10f, z: 10f);
 
             var unitCtx = NewActivation(ctx, squad);
-            unitCtx.RegisterMoveFinished(GameWideConstants.RUSH_DISTANCE_INCHES); // rushed into contact
+            unitCtx.RegisterMoveFinished(GameWideConstants.RUSH_DISTANCE_INCHES, GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES); // rushed into contact
 
             bool routedToEmbark = false;
             var stage = new ChooseActionStage(ctx, new NoOpLayer<IUnitActionContext>());
@@ -176,7 +176,7 @@ namespace FDG.Tests
             MakeEnemy("Cultists", x: 12.5f, z: 10f);
 
             var unitCtx = NewActivation(ctx, squad);
-            unitCtx.RegisterMoveFinished(6f); // move already spent, and it didn't reach
+            unitCtx.RegisterMoveFinished(6f, GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES); // move already spent, and it didn't reach
 
             var stage = new ChooseActionStage(ctx, new NoOpLayer<IUnitActionContext>());
             stage.ToEmbark.Bind("ToEmbark");
@@ -260,7 +260,7 @@ namespace FDG.Tests
             DataBinding<UnitData> squad = MakeSquad("Grunts", modelCount: 2, x: 10f, z: 10f); // no transport in range
 
             var unitCtx = NewActivation(ctx, squad);
-            unitCtx.RegisterMoveFinished(0f);   // already moved
+            unitCtx.RegisterMoveFinished(0f, GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES);   // already moved
             unitCtx.RegisterAttackedFinished(); // already attacked
 
             bool ended = false;

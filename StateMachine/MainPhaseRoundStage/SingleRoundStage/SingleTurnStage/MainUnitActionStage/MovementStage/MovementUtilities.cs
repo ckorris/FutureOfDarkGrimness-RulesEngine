@@ -35,6 +35,7 @@ namespace FDG.Stages
             //standoff check is a no-op here, preserving these callers' existing behavior.
             ValidateMovingThroughEnemyUnits(moves, Array.Empty<EnemyModelFootprint>(), canMoveThroughEnemies: false, ref errors);
             ValidateCoherency(moves, ref errors);
+            ValidateEndsOnTable(moves, ref errors);
 
             return errors.Count == 0;
         }
@@ -64,6 +65,7 @@ namespace FDG.Stages
             ValidateMovingThroughEnemyUnits(moves, enemies, canMoveThroughEnemies, ref errors);
             ValidateCoherency(moves, ref errors);
             ValidateEndsOnFriendly(moves, AsReadOnly(friendlyFootprints), ref errors);
+            ValidateEndsOnTable(moves, ref errors);
 
             return errors.Count == 0;
         }
@@ -138,6 +140,7 @@ namespace FDG.Stages
                 ValidateCoherency(moves, ref errors);
             ValidateChargeReach(moves, move => budgetFor(move).MaxRushDistance, enemies, ref errors);
             ValidateEndsOnFriendly(moves, AsReadOnly(friendlyFootprints), ref errors);
+            ValidateEndsOnTable(moves, ref errors);
 
             return errors.Count == 0;
         }
@@ -168,6 +171,7 @@ namespace FDG.Stages
             ValidateMovingThroughEnemyUnits(moves, enemies, canMoveThroughEnemies, ref errors);
             ValidateCoherencyNotWorsened(moves, ref errors);
             ValidateEndsOnFriendly(moves, AsReadOnly(friendlyFootprints), ref errors);
+            ValidateEndsOnTable(moves, ref errors);
 
             return errors.Count == 0;
         }
@@ -874,6 +878,112 @@ namespace FDG.Stages
             }
         }
 
+        // #291 — float slack on the table edge, so a model deliberately parked flush against it isn't
+        // rejected by sub-thousandth rounding in the footprint corners.
+        private const float TABLE_EDGE_EPSILON_INCHES = 0.001f;
+
+        /// <summary>
+        /// #291 — no model may end a move with any part of its base off the table. Measured against the
+        /// model's TRUE oriented footprint (corners plus the Minkowski rounding), not a bounding circle:
+        /// a vehicle on a 4"x2" rectangular base must be able to sit flush along an edge with its long
+        /// side parallel to it, which a circumscribing-radius test would forbid by over an inch.
+        ///
+        /// <para>This was missing entirely — the movement validator had no table-bounds rule at all, and
+        /// the only thing keeping models on the board was the GUI refusing clicks outside it, which
+        /// constrains a model's CENTRE. That is why the symptom showed up on vehicles: a big base
+        /// overhangs the edge long before its centre leaves the table.</para>
+        ///
+        /// <para>Like <see cref="ValidateEndsOnFriendly"/> and <see cref="ValidateCoherencyNotWorsened"/>,
+        /// this is a "not worsened" rule rather than an absolute one. A model that somehow already
+        /// overhangs (an older save, a forced move, a future bug) must not be frozen in place by a
+        /// validator that rejects every move it can make — a move that reduces the overhang, or removes
+        /// it, is always legal. In normal play nothing starts off the table and the rule is simply
+        /// "stay on the board".</para>
+        /// </summary>
+        private static void ValidateEndsOnTable(List<ModelMoveEntry> moves,
+            ref List<ReasonForInvalidMove> reasonsForInvalidMove)
+        {
+            foreach (ModelMoveEntry move in moves)
+            {
+                if (move.Positions.Count == 0) continue;
+
+                ModelData model = move.Model.GetValue();
+                Position end = move.Positions[move.Positions.Count - 1];
+                // #282: a path carries a facing per waypoint; the end facing is the one the base rests at.
+                Float2 endFacing = move.Facings != null && move.Facings.Count > 0
+                    ? move.Facings[move.Facings.Count - 1]
+                    : model.Facing;
+
+                float endOverhang = OverhangInches(model.BaseShape, end, endFacing);
+                if (endOverhang <= TABLE_EDGE_EPSILON_INCHES) continue;
+
+                float startOverhang = OverhangInches(model.BaseShape,
+                    model.PositionBinding.GetValue(), model.Facing);
+                if (endOverhang <= startOverhang + TABLE_EDGE_EPSILON_INCHES) continue;
+
+                reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.EndedOffTable, move.Model));
+            }
+        }
+
+        /// <summary>
+        /// How far the furthest part of <paramref name="shape"/> - placed at <paramref name="centre"/>
+        /// facing <paramref name="facing"/> - sticks out past the table bounds, in inches. 0 when the whole
+        /// base is on the table. Internal for tests.
+        /// </summary>
+        internal static float OverhangInches(IBaseShape shape, Position centre, Float2 facing)
+        {
+            float w = GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES;
+            float h = GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES;
+
+            BaseFootprint footprint = shape.Footprint(centre, facing);
+            float worst = 0f;
+            foreach (Float2 corner in footprint.Corners)
+            {
+                // The rounding radius inflates every hull corner, so the extreme point on each axis is the
+                // corner plus (or minus) the rounding. A circle is one corner rounded by its radius.
+                // Footprint corners are world-space (X, Y) = the table's (x, z) plane.
+                worst = MathF.Max(worst, footprint.Rounding - corner.X);          // past the left edge
+                worst = MathF.Max(worst, corner.X + footprint.Rounding - w);      // past the right edge
+                worst = MathF.Max(worst, footprint.Rounding - corner.Y);          // past the near edge
+                worst = MathF.Max(worst, corner.Y + footprint.Rounding - h);      // past the far edge
+            }
+            return worst;
+        }
+
+        /// <summary>
+        /// #291 — the furthest a model may travel along (<paramref name="dirX"/>, <paramref name="dirZ"/>)
+        /// from <paramref name="from"/> without ending further off the table than it started, capped at
+        /// <paramref name="allowedInches"/>. The move resolvers call this so the ghost stops AT the edge
+        /// instead of proposing a path <see cref="ValidateEndsOnTable"/> would reject — the same
+        /// "the preview can never propose an invalid move" discipline the terrain and enemy clamps follow.
+        ///
+        /// <para>Solved by bisection rather than analytically: it has to hold for any
+        /// <see cref="IBaseShape"/> at any facing, and the predicate (<see cref="OverhangInches"/>) is
+        /// cheap enough to sample. Direction is assumed normalised.</para>
+        /// </summary>
+        public static float ClampTravelToTable(Position from, float dirX, float dirZ, float allowedInches,
+            IBaseShape shape, Float2 facing)
+        {
+            if (allowedInches <= 0f) return allowedInches;
+
+            // Matching the validator: a model that already overhangs may keep that much overhang, so the
+            // budget it is measured against is its own starting state, not zero.
+            float budget = OverhangInches(shape, from, facing) + TABLE_EDGE_EPSILON_INCHES;
+
+            bool Fits(float t) => OverhangInches(shape,
+                new Position(from.x + dirX * t, from.z + dirZ * t), facing) <= budget;
+
+            if (Fits(allowedInches)) return allowedInches;
+
+            float low = 0f, high = allowedInches;
+            for (int i = 0; i < 24; i++)   // ~1e-7" on a 48" table: far finer than anything visible
+            {
+                float mid = (low + high) * 0.5f;
+                if (Fits(mid)) low = mid; else high = mid;
+            }
+            return low;
+        }
+
         // Float slack on the cohesion limits so a move that lands a model exactly on the 1"/9" boundary
         // isn't rejected by sub-thousandth rounding in the 3D base-to-base distance.
         private const float COHESION_EPSILON_INCHES = 0.001f;
@@ -1059,6 +1169,8 @@ namespace FDG.Stages
                     return $"A model moved beyond Rush range, but no model ends within {GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL}\" of an enemy";
                 case EErrorReasonType.EndedOnFriendlyUnit:
                     return "Ends stacked on top of a friendly unit";
+                case EErrorReasonType.EndedOffTable:
+                    return "Ends with part of its base off the table";
                 default:
                     throw new ArgumentOutOfRangeException();
             }
@@ -1091,7 +1203,9 @@ namespace FDG.Stages
         TooFarFromAllUnitModels,
         ChargeRangeRequiresMeleeReach,
         EndedTooCloseToEnemy,
-        EndedOnFriendlyUnit
+        EndedOnFriendlyUnit,
+        /// <summary>#291 - part of the model's base would end past the table edge.</summary>
+        EndedOffTable
     }
 
     /// <summary>

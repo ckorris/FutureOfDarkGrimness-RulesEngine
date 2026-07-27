@@ -47,8 +47,8 @@ namespace FDG.Tests
         public async Task AttackerWiped_NoRequestFiredAndStageExits()
         {
             var (ctx, combat, requester, attacker, _) = BuildBattlefield(
-                attackerPositions: new[] { new Position(0, 0) },
-                defenderPositions: new[] { new Position(2, 0) });
+                attackerPositions: new[] { new Position(20, 20) },
+                defenderPositions: new[] { new Position(22, 20) });
             KillAll(attacker);
 
             bool consolidated = await RunConsolidate(ctx, combat);
@@ -60,9 +60,11 @@ namespace FDG.Tests
         [Test]
         public async Task PlayerCommitsDelta_AllAliveModelsMoveByDelta()
         {
+            // #291: mid-table, not the (0,0) corner - a base centred on the corner is half off the board,
+            // and moving further out is now (correctly) an invalid move.
             var (ctx, combat, requester, attacker, _) = BuildBattlefield(
-                attackerPositions: new[] { new Position(0, 0), new Position(0, 1) },
-                defenderPositions: new[] { new Position(5, 0) });
+                attackerPositions: new[] { new Position(20, 20), new Position(20, 21) },
+                defenderPositions: new[] { new Position(25, 20) });
             // Disengage cap is 1"; pick 0.5" in -z direction.
             requester.Reply = req => req.UnitDataBinding.GetValue().ModelBindings
                 .Where(mb => mb.GetValue().GetIsAlive())
@@ -76,8 +78,8 @@ namespace FDG.Tests
             await RunConsolidate(ctx, combat);
 
             var positions = attacker.GetValue().ModelBindings.Select(mb => mb.GetValue().Position).ToList();
-            Assert.That(positions[0].z, Is.EqualTo(-0.5f).Within(0.0001f));
-            Assert.That(positions[1].z, Is.EqualTo(0.5f).Within(0.0001f));
+            Assert.That(positions[0].z, Is.EqualTo(19.5f).Within(0.0001f));
+            Assert.That(positions[1].z, Is.EqualTo(20.5f).Within(0.0001f));
         }
 
         [Test]
@@ -86,8 +88,8 @@ namespace FDG.Tests
             // #283: the GUI's group-mode rotation reaches the executed consolidation through per-waypoint
             // facings on the entries; ApplyMovements must set them (entries without facings keep resting).
             var (ctx, combat, requester, attacker, _) = BuildBattlefield(
-                attackerPositions: new[] { new Position(0, 0) },
-                defenderPositions: new[] { new Position(2, 0) });
+                attackerPositions: new[] { new Position(20, 20) },
+                defenderPositions: new[] { new Position(22, 20) });
             requester.Reply = req => req.UnitDataBinding.GetValue().ModelBindings
                 .Where(mb => mb.GetValue().GetIsAlive())
                 .Select(mb =>

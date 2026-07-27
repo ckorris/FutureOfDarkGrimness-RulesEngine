@@ -64,7 +64,7 @@ namespace FDG.Stages
         private static readonly TextColor CastSuccessColor = new TextColor(77, 153, 255, 255);
         private static readonly TextColor CastFailColor = new TextColor(220, 40, 40, 255);
 
-        // #285 effect-report color: violet, distinct from the blue cast-result line above so "the spell
+        // #293 effect-report color: violet, distinct from the blue cast-result line above so "the spell
         // went off" and "here is what it did" don't read as one repeated announcement.
         private static readonly TextColor EffectBannerColor = new TextColor(178, 132, 255, 255);
 
@@ -274,7 +274,7 @@ namespace FDG.Stages
                     individualModel = await PickIndividualModel(player, chosen.Name, targets[0]);
                 }
 
-                // #285 — the damage path reports too, so every successful cast says what it does. Emitted
+                // #293 — the damage path reports too, so every successful cast says what it does. Emitted
                 // HERE (after any single-model pick, before the child pipeline) rather than after the
                 // damage resolves: the stage hands off to the children and returns, so there is no
                 // after. That is also why this one line is present tense - it announces the incoming
@@ -303,7 +303,7 @@ namespace FDG.Stages
             {
                 await ApplyEffectToTarget(caster, chosen.Effect, target);
             }
-            // #285 — say what the spell DID, not just that it went off. The cast banner above reports the
+            // #293 — say what the spell DID, not just that it went off. The cast banner above reports the
             // roll; without this the buff/debuff/move/mark paths announce nothing at all and the player has
             // to infer the effect from token chips.
             await AnnounceEffect(SpellText.DescribeApplied(chosen.Name, chosen.Effect, TargetNames(targets)));
@@ -311,7 +311,7 @@ namespace FDG.Stages
             await OnFinished.Activate(context);
         }
 
-        // #285 — the effect report. A Notice (tier 1): it is worth reading, but the cast Headline already
+        // #293 — the effect report. A Notice (tier 1): it is worth reading, but the cast Headline already
         // stopped play once for this spell and a second full-stop for its consequence is what #275 set out
         // to remove. ASCII only (CLAUDE.md) - the composers never emit anything above U+00FF.
         private async Task AnnounceEffect(string text) =>
@@ -383,7 +383,7 @@ namespace FDG.Stages
         private async Task ResolveConditionalSpell(IUnit caster, RuntimeSpell spell,
             Effect.MoraleTestThen conditional, IReadOnlyList<DataBinding<UnitData>> targets)
         {
-            // #285 — collected rather than announced per target, so a multi-target conditional spell
+            // #293 — collected rather than announced per target, so a multi-target conditional spell
             // reports its outcome as ONE banner instead of a pile of them mid-resolution.
             List<string> failed = new List<string>();
             List<string> passed = new List<string>();

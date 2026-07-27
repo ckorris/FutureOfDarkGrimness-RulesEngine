@@ -47,7 +47,7 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// #285 — what a resolved spell DID, for the result banner. The picker's
+        /// #293 — what a resolved spell DID, for the result banner. The picker's
         /// <see cref="Describe"/> is a spell's advertisement ("grants Rending (this round) - one friendly
         /// unit within 12&quot;"); this is the report ("Bless grants Rending to Knight Brothers (this
         /// round)"), naming the units it actually landed on. ASCII only (CLAUDE.md).
@@ -56,7 +56,7 @@ namespace FDG.Stages
             => $"{spellName} {AppliedPhrase(effect, JoinNames(targetNames))}";
 
         /// <summary>
-        /// #285 — the report for a <see cref="Effect.MoraleTestThen"/> spell, whose targets each took a
+        /// #293 — the report for a <see cref="Effect.MoraleTestThen"/> spell, whose targets each took a
         /// morale test and only the failures were affected. One line for the whole spell, so a
         /// multi-target cast is a single banner rather than one per unit.
         /// </summary>
@@ -114,7 +114,7 @@ namespace FDG.Stages
 
         /// <summary>
         /// What KIND of hits a damage spell deals: " (AP(1), Rending)", or "" for plain hits. Shared by
-        /// the picker's advertisement and the #285 result banner so the player is told the same thing
+        /// the picker's advertisement and the #293 result banner so the player is told the same thing
         /// twice in the same words.
         /// </summary>
         private static string DescribeHitModifiers(Effect.DealHits dealHits)

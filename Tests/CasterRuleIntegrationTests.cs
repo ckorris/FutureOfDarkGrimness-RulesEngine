@@ -1279,7 +1279,7 @@ namespace FDG.Tests
             Assert.That(statMod, Does.Contain("+1 to hit rolls").And.Contain("friendly"));
         }
 
-        // ── #285: the effect report ────────────────────────────────────────────────────────────────────
+        // ── #293: the effect report ────────────────────────────────────────────────────────────────────
         // A successful cast used to announce only the ROLL; what the spell actually did was left to the
         // log. Every non-damage path now emits one Notice-tier banner naming the effect and the units it
         // landed on. (The damage path is deliberately excluded: its attack/dice/wound beats narrate it.)

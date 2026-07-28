@@ -104,12 +104,20 @@ namespace FDG.Stages
                     if (!TryGetLaterRoundDefer(unit, out RuleOperation.DeferDeployment defer)) continue;
                     if (roundCount < defer.MinArrivalRound) continue;
 
-                    bool bringOn = await GameContext.PlayerRequester.RequestDecision<YesNoRequest, bool>(
-                        new YesNoRequest(unit.PlayerID, $"Deploy {unit.Name} from Ambush this round?", defaultAnswer: true));
+                    // A mandatory arrival (Ambush Re-Deployment's return leg) is placed, not offered -
+                    // the owner ruled the unit MUST come back at the next round start. Only the spot is
+                    // the player's to choose.
+                    bool bringOn = defer.MandatoryArrival
+                        || await GameContext.PlayerRequester.RequestDecision<YesNoRequest, bool>(
+                            new YesNoRequest(unit.PlayerID, $"Deploy {unit.Name} from Ambush this round?",
+                                defaultAnswer: true));
 
                     if (!bringOn) continue;
 
                     await PlaceFromReserve(unit, defer.PlacementRangeInches);   // clears the reserve state
+                    // The pending-return marker (if this arrival IS the Ambush Re-Deployment return) is
+                    // spent by arriving; a plain Ambush unit never carries it, so this is a safe no-op.
+                    unit.Tokens.RemoveTokens(TokenType.PendingAmbushArrival);
                     // A unit that arrives from reserve can't seize or contest objectives the round it
                     // arrives. Mark it so ReconcileObjectivesStage excludes its models from this round's
                     // objective check; the RoundEnd clear trigger sweeps the marker after that check.

@@ -59,6 +59,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(EnableSpellRelay), "enableSpellRelay")]
 [JsonDerivedType(typeof(RepelAmbushers), "repelAmbushers")]
 [JsonDerivedType(typeof(AmbushBeacon), "ambushBeacon")]
+[JsonDerivedType(typeof(AmbushRedeploy), "ambushRedeploy")]
 [JsonDerivedType(typeof(TargetIndividualModel), "targetIndividualModel")]
 [JsonDerivedType(typeof(RestrictActions), "restrictActions")]
 [JsonDerivedType(typeof(RangeModifier), "rangeModifier")]
@@ -790,6 +791,22 @@ public abstract record Effect
     }
 
     /// <summary>
+    /// The bearer removes itself from the table at the end of its activation and redeploys as if it had
+    /// Ambush at the start of the next round (#197 P22, <c>Ambush Re-Deployment</c>). Executable: the
+    /// removal drops any objective the bearer's side holds within 1", parks the models off-table in
+    /// reserve, and stamps <see cref="Rules.Foundation.TokenType.PendingAmbushArrival"/> — which the
+    /// rule's own token-gated <see cref="DeferDeployment"/> entry reads, so the round-start arrival
+    /// pass finds the return leg without a special case.
+    /// </summary>
+    public sealed record AmbushRedeploy : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.InvokeAmbushRedeploy(ruleInvocation.Bearer));
+        }
+    }
+
+    /// <summary>
     /// Resolves the attack against a single chosen model in the target unit, as if
     /// it were a unit of one. Covers Takedown. Structural targeting change with no
     /// numeric parameter; the "resolved first, before other weapons" ordering is a
@@ -901,11 +918,13 @@ public abstract record Effect
     public sealed record DeferDeployment(
         EDeferTiming Timing = EDeferTiming.AfterNormalDeployment,
         float PlacementRangeInches = 0f,
-        int MinArrivalRound = 2) : Effect
+        int MinArrivalRound = 2,
+        bool MandatoryArrival = false) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.DeferDeployment(Timing, PlacementRangeInches, MinArrivalRound));
+            operations.Add(new RuleOperation.DeferDeployment(Timing, PlacementRangeInches, MinArrivalRound,
+                MandatoryArrival));
         }
     }
 

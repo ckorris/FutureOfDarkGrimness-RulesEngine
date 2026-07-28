@@ -145,6 +145,11 @@ public static class TokenDefinitionCatalog
 
             new(TokenType.OFF_TABLE_FROM_FORCED_MOVE_ID, "Off table (forced move)", EValence.Neutral,
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.ManualOnly()),
+
+            // ManualOnly: the pending return must survive the round-end sweep until the unit arrives.
+            new(TokenType.PENDING_AMBUSH_ARRIVAL_ID, "Redeploying (Ambush)", EValence.Neutral,
+                ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.ManualOnly(),
+                Description: "This unit removed itself (Ambush Re-Deployment) and returns from Ambush at the start of the next round."),
         };
 
         var dict = new Dictionary<string, TokenDefinition>(StringComparer.Ordinal);

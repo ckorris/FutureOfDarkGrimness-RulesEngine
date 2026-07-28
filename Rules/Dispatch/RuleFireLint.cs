@@ -262,6 +262,9 @@ public static class RuleFireLint
         EHookID.Activation_OnNextActivatorRequested,
         EHookID.Movement_OnMoveThroughEnemy,
         EHookID.Deployment_OnUnitDeployed,
+        // #197 P22: ReconcileEndOfActivationStage offers "when this unit ends its activation" abilities
+        // (Ambush Re-Deployment) before its token sweep.
+        EHookID.Activation_OnEndOfActivation,
     };
 
     /// <summary>
@@ -538,6 +541,9 @@ public static class RuleFireLint
                 break;
             case EHookID.Activation_OnActivationStart:
                 yield return new ActivationStartContext(bearer);
+                break;
+            case EHookID.Activation_OnEndOfActivation:
+                yield return new ActivationEndContext(bearer);
                 break;
             case EHookID.Activation_OnActionChoice:
                 yield return new ActionChoiceContext(bearer);

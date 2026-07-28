@@ -49,4 +49,13 @@ public interface IOperationServices
     /// marker", #100 #14b). Same decisive-roll requirement as <see cref="ClearTokenOnRoll"/>.
     /// </summary>
     Task GrantTokenOnRoll(IUnit unit, Rules.Tokens.Token token, int minRoll);
+
+    /// <summary>
+    /// Remove <paramref name="unit"/> from the table for a mandatory Ambush return next round
+    /// (#197 P22 Ambush Re-Deployment): drop any objective its side holds within 1" of its living
+    /// models, park the models off-table in reserve, and stamp
+    /// <see cref="Rules.Foundation.TokenType.PendingAmbushArrival"/> so the rule's token-gated defer
+    /// entry carries the return leg. Resolution of <see cref="RuleOperation.InvokeAmbushRedeploy"/>.
+    /// </summary>
+    Task RedeployAsAmbush(IUnit unit);
 }

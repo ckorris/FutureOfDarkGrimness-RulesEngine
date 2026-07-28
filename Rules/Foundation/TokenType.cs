@@ -15,6 +15,7 @@ public readonly record struct TokenType(string Id)
     public const string DELAYED_ACTION_USED_ID = "DelayedActionUsed";
     public const string OFF_TABLE_FROM_FORCED_MOVE_ID = "OffTableFromForcedMove";
     public const string LIMITED_SPENT_ID = "LimitedSpent";
+    public const string PENDING_AMBUSH_ARRIVAL_ID = "PendingAmbushArrival";
 
     // Granted numeric roll modifiers (#033 stat-modifier primitive): a spell/ability grants the bearer a
     // signed delta to a specific roll for a duration. The roll kind is the token TYPE (so different rolls
@@ -110,6 +111,15 @@ public readonly record struct TokenType(string Id)
     /// the round-end sweep and last the whole game). Count = times fired (1 for plain Limited; X-ready).
     /// </summary>
     public static readonly TokenType LimitedSpent = new(LIMITED_SPENT_ID);
+
+    /// <summary>
+    /// #197 P22 Ambush Re-Deployment: the unit removed itself at the end of an activation and MUST
+    /// redeploy as if it had Ambush at the start of the next round (owner-ruled mandatory,
+    /// 2026-07-28). The rule's <c>deferDeployment</c> entry is gated on this token, so the arrival
+    /// pass finds a defer for the reserved unit exactly while the return is pending; cleared on
+    /// arrival. ManualOnly - it must survive the round-end sweep between removal and return.
+    /// </summary>
+    public static readonly TokenType PendingAmbushArrival = new(PENDING_AMBUSH_ARRIVAL_ID);
 
     /// <summary>
     /// Marks a unit that is currently embarked inside a Transport (#035). A <b>cross-unit</b> token:

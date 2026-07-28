@@ -263,6 +263,20 @@ public abstract record RuleOperation
     public sealed record RepositionModels(float MaxInches) : RuleOperation;
 
     /// <summary>
+    /// Remove <see cref="Unit"/> from the table at the end of its activation for a mandatory Ambush
+    /// return next round (#197 P22 Ambush Re-Deployment). Resolution of
+    /// <see cref="Effect.AmbushRedeploy"/>; the whole removal (objective drop, reserve state, pending
+    /// token, announcement) lives behind <see cref="IOperationServices.RedeployAsAmbush"/>.
+    /// </summary>
+    public sealed record InvokeAmbushRedeploy(IUnit Unit) : ExecutableOperation
+    {
+        public override Task Execute(IOperationServices services)
+        {
+            return services.RedeployAsAmbush(Unit);
+        }
+    }
+
+    /// <summary>
     /// Roll one die against <see cref="MinRoll"/> and, on a pass, strip every <see cref="TType"/> token from
     /// <see cref="Unit"/>. Resolution of <see cref="Effect.ClearTokenOnRoll"/> — the round-start Shaken
     /// recovery. Executable, not a sink fold: the roll reads live dice and the removal is imperative.
@@ -626,7 +640,9 @@ public abstract record RuleOperation
     /// distance from enemy units the unit must arrive. <see cref="MinArrivalRound"/> (#197 P22,
     /// <see cref="EDeferTiming.LaterRound"/> only) is the earliest round the reserve may be brought
     /// on: 2 for core Ambush, 1 for Rapid Ambush ("may be deployed at the start of any round,
-    /// including the first"). Resolution of <see cref="Effect.DeferDeployment"/>.
+    /// including the first"). <see cref="MandatoryArrival"/> makes the arrival pass PLACE the unit
+    /// rather than offer it (Ambush Re-Deployment's return leg - owner-ruled mandatory next round,
+    /// 2026-07-28). Resolution of <see cref="Effect.DeferDeployment"/>.
     ///
     /// Stays a plain <see cref="RuleOperation"/> — NOT an <see cref="ExecutableOperation"/>: it is a
     /// marker the deployment subsystem <em>reads</em> (a query, like <see cref="RuleOperation.SuppressRule"/>) to decide
@@ -636,7 +652,8 @@ public abstract record RuleOperation
     public sealed record DeferDeployment(
         EDeferTiming Timing = EDeferTiming.AfterNormalDeployment,
         float PlacementRangeInches = 0f,
-        int MinArrivalRound = 2) : RuleOperation;
+        int MinArrivalRound = 2,
+        bool MandatoryArrival = false) : RuleOperation;
 }
 
 /// <summary>

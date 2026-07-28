@@ -165,6 +165,47 @@ namespace FDG.Stages
                 placed ? "marker placed" : "no effect"));
         }
 
+        public async Task RedeployAsAmbush(IUnit unit)
+        {
+            // "Dropping any objectives it might hold within 1\"" - held means seized by this unit's SIDE
+            // (#297: objectives belong to a side), within 1" of a living model measured base-edge to
+            // marker centre, the same footprint measure ReconcileObjectivesStage uses for seizing.
+            foreach (IObjective objective in _gameContext.TableState.Objectives.Objects)
+            {
+                if (objective.OwnerID == null) continue;
+                if (!ITeamExtensions.AreAllied(_gameContext.TableState.Teams.Objects,
+                        objective.OwnerID.Value, unit.PlayerID))
+                {
+                    continue;
+                }
+
+                bool held = unit.Models.Any(model => model.GetIsAlive()
+                    && BaseShapeGeometry.SurfaceDistanceToPoint2D(
+                        model.BaseShape, model.Position, model.Facing, objective.Position) <= 1f);
+                if (!held) continue;
+
+                objective.SetOwner(null);
+                _gameContext.Log($"{unit.Name} drops the objective it was holding.");
+            }
+
+            // Off the table: reserve is explicit unit state (#202), and the models park at the unplaced
+            // sentinel so their stale positions can't block placements or catch line-of-sight scans.
+            foreach (IModel model in unit.Models)
+            {
+                if (model is ModelData modelData)
+                {
+                    modelData.SetPosition(new Position());
+                }
+            }
+
+            Rules.Dispatch.ReserveRules.PlaceInReserve(unit);
+            unit.Tokens.AddToken(TokenDefinitionCatalog.Create(
+                Rules.Foundation.TokenType.PendingAmbushArrival));
+
+            await _gameContext.Announce(
+                $"{unit.Name} slips away - it redeploys from Ambush next round!", RecoveryBannerColor);
+        }
+
         private DataBinding<UnitData> ResolveUnitBinding(IUnit unit)
         {
             foreach (ArmyData army in _gameContext.GameDataStore.GetAllValues<ArmyData>())

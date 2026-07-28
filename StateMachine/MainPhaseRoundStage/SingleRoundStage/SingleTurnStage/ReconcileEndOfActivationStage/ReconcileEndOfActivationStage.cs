@@ -1,5 +1,9 @@
+using FDG.Rules.Dispatch;
+using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
+using FDG.StageResolution;
+using FDG.StageResolution.Requests;
 
 namespace FDG.Stages
 {
@@ -31,6 +35,16 @@ namespace FDG.Stages
             if (context.ActivatedUnit != null)
             {
                 IUnit unit = context.ActivatedUnit.GetValue();
+
+                // #197 P22: "when this unit ends its activation" abilities (Ambush Re-Deployment's
+                // self-removal), offered BEFORE the token sweep so the moment is still "the end of the
+                // activation" rather than the bookkeeping after it. A unit wiped out during its own
+                // activation (a melee strike-back) has no end-of-activation choices to make.
+                if (unit.GetIsAlive())
+                {
+                    await OfferEndOfActivationAbilities(unit);
+                }
+
                 List<ITokenContainer> containers = new List<ITokenContainer> { unit.Tokens };
                 containers.AddRange(unit.Models.Select(model => model.Tokens));
                 new TokenClearService().ClearForHook(EHookID.Activation_OnEndOfActivation, containers);
@@ -41,6 +55,39 @@ namespace FDG.Stages
                 GameProgressUtilities.SetActivatingUnit(GameContext.GameDataStore, null);
 
             await OnFinished.Activate(context);
+        }
+
+        /// <summary>
+        /// The end-of-activation ability seam (#197 P22), mirroring <see cref="ActivationStartStage"/>'s
+        /// shape: offers grouped by rule via <see cref="AbilityEffectChoice"/>, a single-ability rule
+        /// asked as an optional Yes/No, a multi-ability rule a mandatory pick. One deliberate
+        /// difference: the Yes/No DEFAULTS TO NO. At activation start the lone optional ability is a
+        /// buff (Speed Feat) and the aggressive default suits the EOF/AI fallback; here the only corpus
+        /// ability is Ambush Re-Deployment's once-per-game self-REMOVAL with a mandatory return, which
+        /// an auto-accepting default would fire on every AI unit's first activation.
+        /// </summary>
+        private async Task OfferEndOfActivationAbilities(IUnit unit)
+        {
+            foreach (IReadOnlyList<AbilityOffer> ruleOffers in AbilityEffectChoice.GroupByRule(
+                         GameContext.RuleEvaluator.GatherOffers(new ActivationEndContext(unit))))
+            {
+                if (ruleOffers.Count == 1)
+                {
+                    AbilityOffer offer = ruleOffers[0];
+                    var question = new YesNoRequest(unit.PlayerID,
+                        $"Use {offer.RuleName} on {unit.Name}?", defaultAnswer: false);
+                    bool accepted = await GameContext.PlayerRequester
+                        .RequestDecision<YesNoRequest, bool>(question);
+                    if (!accepted) continue;
+                }
+
+                AbilityEffectChoice.Outcome outcome = await AbilityEffectChoice.Resolve(
+                    GameContext, unit.PlayerID, unit, ruleOffers, "as this activation ends");
+
+                GameContext.Log(ruleOffers.Count == 1
+                    ? $"{unit.Name}: {outcome.Chosen.RuleName} applies."
+                    : $"{unit.Name}: {outcome.Chosen.RuleName} - chose {outcome.Chosen.Ability.Label}.");
+            }
         }
     }
 }

@@ -8,6 +8,8 @@ using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
+using FDG.StageResolution;
+using FDG.StageResolution.Requests;
 
 namespace FDG.Stages
 {
@@ -177,6 +179,44 @@ namespace FDG.Stages
             await gameContext.Presenter.Present(
                 new BannerBeat($"{unitBinding.GetValue().Name} fails morale - Shaken!", ShakenBannerColor,
                     EBannerTier.Notice));
+
+            // #197 P17c Reinforcement: "when a unit where all models have this rule is Shaken ... you may
+            // remove it from the table as destroyed and place a new copy ..." - the offer rides the
+            // Shaken moment itself.
+            await OfferShakenTriggeredRules(gameContext, unitBinding.GetValue());
+        }
+
+        /// <summary>
+        /// #197 P17c: evaluates the newly-Shaken unit at <see cref="EHookID.Morale_OnShakenApplied"/> and
+        /// offers any <see cref="RuleOperation.InvokeReinforce"/> it produces as one Yes/No (default yes -
+        /// the EOF/AI fallback trades a Shaken unit for a fresh copy). Token operations apply
+        /// unconditionally, mirroring the destruction seam's shape.
+        /// </summary>
+        private static async Task OfferShakenTriggeredRules(IGameContext gameContext, IUnit unit)
+        {
+            IReadOnlyList<RuleOperation> ops = gameContext.RuleEvaluator.EvaluateAll(
+                new ShakenAppliedContext(unit),
+                RuleParticipant.Actor(unit, models: unit.Models));
+            if (ops.Count == 0)
+            {
+                return;
+            }
+
+            OperationApplier.ApplyTokenOperations(ops);
+
+            if (ops.OfType<RuleOperation.InvokeReinforce>().Any())
+            {
+                bool accepted = await gameContext.PlayerRequester
+                    .RequestDecision<YesNoRequest, bool>(new YesNoRequest(unit.PlayerID,
+                        $"{unit.Name} is Shaken - remove it as destroyed and reinforce next round?",
+                        defaultAnswer: true));
+                if (!accepted)
+                {
+                    return;
+                }
+            }
+
+            await OperationExecutor.Execute(ops, new GameOperationServices(gameContext));
         }
 
         /// <summary>

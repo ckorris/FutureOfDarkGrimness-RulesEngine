@@ -30,10 +30,14 @@ namespace FDG.Stages
             // so does any other rule with a round-start grant (Spell Accumulator's lending pool).
             await GrantRoundStartTokens();
 
-            // Ambush reserves may arrive from round 2 onward; so do Aircraft that flew off the table edge.
+            // Ambush reserves may arrive from each unit's own earliest round (#197 P22: core Ambush
+            // round 2, Rapid Ambush "including the first"); Aircraft that flew off the table edge
+            // return from round 2. Reinforcement copies land AFTER the ambushers, per their own text
+            // ("at the beginning of the next round after Ambushers have been deployed").
+            await BringOnReserves(context.RoundCount);
+            await PlaceReinforcements();
             if (context.RoundCount >= 2)
             {
-                await BringOnReserves();
                 await RedeployOffTableAircraft();
             }
 
@@ -86,9 +90,10 @@ namespace FDG.Stages
         /// <summary>
         /// Offers each still-reserved Ambush unit (kept off-table by DeferDeployment(LaterRound) and
         /// never placed during deployment) to its owner this round; on accept, places it anywhere over
-        /// its rule's range from enemy units via the normal PlaceObjectsRequest flow.
+        /// its rule's range from enemy units via the normal PlaceObjectsRequest flow. Each unit's own
+        /// <c>MinArrivalRound</c> gates when it is first offered (#197 P22 Rapid Ambush).
         /// </summary>
-        private async Task BringOnReserves()
+        private async Task BringOnReserves(int roundCount)
         {
             foreach (ArmyData army in GameContext.GameDataStore.GetAllValues<ArmyData>().ToList())
             {
@@ -99,19 +104,73 @@ namespace FDG.Stages
                     if (!unit.GetIsAlive()) continue;
                     if (!ReserveRules.IsInReserve(unit)) continue;
                     if (!TryGetLaterRoundDefer(unit, out RuleOperation.DeferDeployment defer)) continue;
+                    if (roundCount < defer.MinArrivalRound) continue;
 
-                    bool bringOn = await GameContext.PlayerRequester.RequestDecision<YesNoRequest, bool>(
-                        new YesNoRequest(unit.PlayerID, $"Deploy {unit.Name} from Ambush this round?", defaultAnswer: true));
+                    // A mandatory arrival (Ambush Re-Deployment's return leg) is placed, not offered -
+                    // the owner ruled the unit MUST come back at the next round start. Only the spot is
+                    // the player's to choose.
+                    bool bringOn = defer.MandatoryArrival
+                        || await GameContext.PlayerRequester.RequestDecision<YesNoRequest, bool>(
+                            new YesNoRequest(unit.PlayerID, $"Deploy {unit.Name} from Ambush this round?",
+                                defaultAnswer: true));
 
                     if (!bringOn) continue;
 
                     await PlaceFromReserve(unit, defer.PlacementRangeInches);   // clears the reserve state
+                    // The pending-return marker (if this arrival IS the Ambush Re-Deployment return) is
+                    // spent by arriving; a plain Ambush unit never carries it, so this is a safe no-op.
+                    unit.Tokens.RemoveTokens(TokenType.PendingAmbushArrival);
                     // A unit that arrives from reserve can't seize or contest objectives the round it
                     // arrives. Mark it so ReconcileObjectivesStage excludes its models from this round's
                     // objective check; the RoundEnd clear trigger sweeps the marker after that check.
                     unit.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.ArrivedFromReserve));
 
                     await GameContext.Announce($"{unit.Name} arrives from Ambush!", new TextColor(255, 170, 60, 255));
+                }
+            }
+        }
+
+        /// <summary>
+        /// #197 P17c: places every queued Reinforcement copy (held in reserve with
+        /// <see cref="TokenType.PendingReinforcementArrival"/> by the reinforce service) "fully within
+        /// 12\" of any table edge". MANDATORY - the "you may" was spent at the removal, so only the
+        /// spot is the player's - and running right after <see cref="BringOnReserves"/> is the rule's
+        /// own "after Ambushers have been deployed". The ArrivedFromReserve stamp IS the rule's
+        /// "can't seize or contest objectives on the round they deploy".
+        /// </summary>
+        private async Task PlaceReinforcements()
+        {
+            foreach (ArmyData army in GameContext.GameDataStore.GetAllValues<ArmyData>().ToList())
+            {
+                foreach (DataBinding<UnitData> unitBinding in army.UnitBindings.ToList())
+                {
+                    UnitData unit = unitBinding.GetValue();
+
+                    if (!unit.GetIsAlive()) continue;
+                    if (!ReserveRules.IsInReserve(unit)) continue;
+                    if (!unit.Tokens.HasToken(TokenType.PendingReinforcementArrival)) continue;
+
+                    var zone = new TableEdgeBandZone(GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES,
+                        GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES, bandWidthInches: 12f);
+                    var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID,
+                        "Place Reinforcements", zone, unit.ModelBindings);
+                    List<PlacedObjectEntry<ModelData>> placements = await PlacementCommitGuard
+                        .RequestClearPlacement(GameContext, request);
+                    foreach (PlacedObjectEntry<ModelData> placement in placements)
+                    {
+                        placement.Binding.GetValue().SetPosition(placement.Position);
+                        if (placement.Facing.HasValue)
+                        {
+                            placement.Binding.GetValue().SetFacing(placement.Facing.Value);
+                        }
+                    }
+
+                    ReserveRules.ClearReserve(unit);
+                    unit.Tokens.RemoveTokens(TokenType.PendingReinforcementArrival);
+                    unit.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.ArrivedFromReserve));
+
+                    await GameContext.Announce($"{unit.Name} arrives as reinforcements!",
+                        new TextColor(255, 170, 60, 255));
                 }
             }
         }
@@ -150,9 +209,22 @@ namespace FDG.Stages
             var wholeTable = new RectangularZone(0f, GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES,
                 0f, GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES);
 
+            // #197 P22: an AMBUSH arrival (enemy-distance constrained) also answers to relational rules -
+            // enemy Repel Ambushers keep-outs and friendly Ambush Beacon waivers, snapshotted into discs
+            // here so every resolver judges the same constraint set through PlacementDistanceRules. The
+            // Aircraft off-table redeploy (minDistance 0) is not "using Ambush" and gets neither.
+            IReadOnlyList<PlacementDisc> keepOut = Array.Empty<PlacementDisc>();
+            IReadOnlyList<PlacementDisc> waivers = Array.Empty<PlacementDisc>();
+            if (minDistanceFromEnemies > 0f)
+            {
+                keepOut = AmbushArrivalRules.KeepOutDiscs(unit, GameContext.TableState, GameContext.RuleEvaluator);
+                waivers = AmbushArrivalRules.WaiverDiscs(unit, GameContext.TableState, GameContext.RuleEvaluator);
+            }
+
             var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID, taskName,
                 wholeTable, unit.ModelBindings, minDistanceFromEnemiesInches: minDistanceFromEnemies,
-                mustTouchTableEdge: mustTouchTableEdge);
+                mustTouchTableEdge: mustTouchTableEdge,
+                enemyKeepOutDiscs: keepOut, enemyDistanceWaiverDiscs: waivers);
 
             // #282: commit-time overlap check - an Ambush arrival must not land inside another unit.
             List<PlacedObjectEntry<ModelData>> placements = await PlacementCommitGuard

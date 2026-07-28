@@ -262,6 +262,9 @@ public static class RuleFireLint
         EHookID.Activation_OnNextActivatorRequested,
         EHookID.Movement_OnMoveThroughEnemy,
         EHookID.Deployment_OnUnitDeployed,
+        // #197 P22: ReconcileEndOfActivationStage offers "when this unit ends its activation" abilities
+        // (Ambush Re-Deployment) before its token sweep.
+        EHookID.Activation_OnEndOfActivation,
     };
 
     /// <summary>
@@ -307,7 +310,8 @@ public static class RuleFireLint
             // question, and emitting (say) a token grant in reply to it does nothing.
             EHookID.Lifecycle_OnCapabilityQuery => op is RuleOperation.EnableCasting
                 or RuleOperation.EnableTransport or RuleOperation.EnableReDeployment
-                or RuleOperation.EnableSpellLending or RuleOperation.EnableSpellRelay,
+                or RuleOperation.EnableSpellLending or RuleOperation.EnableSpellRelay
+                or RuleOperation.RepelAmbushers or RuleOperation.AmbushBeacon,
 
             // DetermineHitRollStage: shifts the hit threshold and floors Quality. It never reads a Save delta.
             EHookID.Shooting_OnHitRollModifier =>
@@ -380,6 +384,14 @@ public static class RuleFireLint
 
             // Activation_OnEndOfActivation carries token lifecycle only.
             EHookID.Activation_OnEndOfActivation => IsTokenOrExecutable(op),
+
+            // #197 P17b: UnitDestructionNotifier applies token ops and executes executables (Split's
+            // spawn, Reinforcement's queue - each behind its Yes/No) at the dead unit's own destruction hook.
+            EHookID.Lifecycle_OnSelfDestroyed => IsTokenOrExecutable(op),
+
+            // #197 P17c: MoraleUtilities evaluates the newly-Shaken unit the same way (Reinforcement's
+            // Shaken arm).
+            EHookID.Morale_OnShakenApplied => IsTokenOrExecutable(op),
 
             _ => false,
         };
@@ -537,6 +549,15 @@ public static class RuleFireLint
                 break;
             case EHookID.Activation_OnActivationStart:
                 yield return new ActivationStartContext(bearer);
+                break;
+            case EHookID.Activation_OnEndOfActivation:
+                yield return new ActivationEndContext(bearer);
+                break;
+            case EHookID.Lifecycle_OnSelfDestroyed:
+                yield return new SelfDestroyedContext(bearer);
+                break;
+            case EHookID.Morale_OnShakenApplied:
+                yield return new ShakenAppliedContext(bearer);
                 break;
             case EHookID.Activation_OnActionChoice:
                 yield return new ActionChoiceContext(bearer);

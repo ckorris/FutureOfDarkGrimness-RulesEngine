@@ -174,6 +174,9 @@ namespace FDG.ArmyBuilding
                     case SpecialRuleEntry_CoreNumeric numeric:
                         names.Add(numeric.Name);
                         break;
+                    case SpecialRuleEntry_Text text:
+                        names.Add(text.Name);
+                        break;
                     case SpecialRuleEntry_Alias alias:
                         names.Add(alias.Name);
                         AddRuleEntries(names, new[] { alias.AliasedRule });

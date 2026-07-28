@@ -102,6 +102,27 @@ public class OprBookImporterTests
         Assert.That(grunts.Rules, Has.One.EqualTo(new SpecialRuleEntry_CoreNumeric("Tough", 3)));
     }
 
+    // #197 P17: a NON-numeric rating is a TEXT argument (Spawn's "Spores [5]" names the unit it places),
+    // kept as a coreText entry - flattening it to the bare name is how Spawn shipped dead.
+    [Test]
+    public void Import_KeepsATextRating_AsATextEntry()
+    {
+        const string json = """
+        {
+          "name": "Spawners", "versionString": "9.9",
+          "units": [
+            { "id": "u1", "name": "Beast", "size": 1, "cost": 100, "quality": 4, "defense": 4,
+              "weapons": [], "rules": [ {"name":"Spawn","rating":"Spores [5]"} ], "items": [], "upgrades": [] }
+          ]
+        }
+        """;
+
+        BookFile book = OprBookImporter.Import(json, "src", "lic");
+
+        Assert.That(book.Units.Single().Rules.Single(),
+            Is.EqualTo(new SpecialRuleEntry_Text("Spawn", "Spores [5]")));
+    }
+
     [Test]
     public void Import_MapsUnitItems_WithNameAndRules()
     {

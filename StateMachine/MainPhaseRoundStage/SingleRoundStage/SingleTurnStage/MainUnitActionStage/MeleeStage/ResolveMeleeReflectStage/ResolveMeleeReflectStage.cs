@@ -108,7 +108,11 @@ namespace FDG.Stages
         {
             UnitData bearer = bearerBinding.GetValue();
             bool wasAlive = bearer.GetIsAlive();
-            bool killedAny = false;
+
+            // Collected, not applied inline: a model that dies with no ModelDiedBeat simply vanishes,
+            // because the front-end hides anything dead in state that has no death animation registered.
+            // CasualtyPresentation lands each lethal wound and plays its death in the same instant.
+            List<PendingModelWound> pending = new List<PendingModelWound>();
 
             foreach (DataBinding<ModelData> modelBinding in bearer.ModelBindings)
             {
@@ -123,10 +127,12 @@ namespace FDG.Stages
                 // counted for its X hits).
                 if (startRemaining > EPS && currentRemaining > EPS)
                 {
-                    model.DealWounds(currentRemaining);
-                    killedAny = true;
+                    pending.Add(new PendingModelWound(model, currentRemaining));
                 }
             }
+
+            bool killedAny = pending.Count > 0;
+            await CasualtyPresentation.ApplyAndPresent(GameContext, pending, bearer.ID, bearer.Name);
 
             if (killedAny && wasAlive && !bearer.GetIsAlive())
             {

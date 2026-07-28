@@ -145,6 +145,22 @@ public static class TokenDefinitionCatalog
 
             new(TokenType.OFF_TABLE_FROM_FORCED_MOVE_ID, "Off table (forced move)", EValence.Neutral,
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.ManualOnly()),
+
+            // ManualOnly: the pending return must survive the round-end sweep until the unit arrives.
+            new(TokenType.PENDING_AMBUSH_ARRIVAL_ID, "Redeploying (Ambush)", EValence.Neutral,
+                ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.ManualOnly(),
+                Description: "This unit removed itself (Ambush Re-Deployment) and returns from Ambush at the start of the next round."),
+
+            // ManualOnly: pool adoption owns removal (#197 P17 mid-round creations).
+            new(TokenType.JOINS_ROUND_IN_PROGRESS_ID, "Joins round in progress", EValence.Neutral,
+                ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.ManualOnly()),
+
+            // #197 P17c Reinforcement: the spent gate on the original, the pending marker on its copy.
+            new(TokenType.REINFORCEMENT_SPENT_ID, "Reinforcement spent", EValence.Neutral,
+                ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.ManualOnly()),
+            new(TokenType.PENDING_REINFORCEMENT_ARRIVAL_ID, "Reinforcements inbound", EValence.Neutral,
+                ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.ManualOnly(),
+                Description: "A fresh copy of this unit deploys within 12\" of any table edge at the start of the next round."),
         };
 
         var dict = new Dictionary<string, TokenDefinition>(StringComparer.Ordinal);

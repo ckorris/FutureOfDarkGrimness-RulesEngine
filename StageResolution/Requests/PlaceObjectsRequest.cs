@@ -56,11 +56,31 @@ namespace FDG.StageResolution.Requests
         /// </summary>
         public bool AllowCancel { get; }
 
+        /// <summary>
+        /// #197 P22: additional per-source enemy keep-out regions a placed model must land strictly
+        /// outside of, on top of <see cref="MinDistanceFromEnemiesInches"/> (Repel Ambushers: 12" around
+        /// each living model of a repelling enemy unit). Built by <c>AmbushArrivalRules</c> at request
+        /// build; empty for every non-Ambush placement. Judge legality through
+        /// <see cref="PlacementDistanceRules"/>, never by reading this list alone — the waiver discs
+        /// below can override it.
+        /// </summary>
+        public IReadOnlyList<PlacementDisc> EnemyKeepOutDiscs { get; }
+
+        /// <summary>
+        /// #197 P22: regions inside which a placed model ignores EVERY enemy-distance restriction — both
+        /// <see cref="MinDistanceFromEnemiesInches"/> and <see cref="EnemyKeepOutDiscs"/> (Ambush Beacon:
+        /// 6" around each living model of a friendly beacon unit; owner-ruled per-model and
+        /// overrides-both, 2026-07-28). Zone containment, overlap, cohesion and terrain still apply.
+        /// </summary>
+        public IReadOnlyList<PlacementDisc> EnemyDistanceWaiverDiscs { get; }
+
         [JsonConstructor]
         public PlaceObjectsRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
             IBoundedZone deploymentZone, IReadOnlyList<DataBinding<T>> modelsToPlace,
             float minDistanceFromEnemiesInches = 0f, bool mustTouchTableEdge = false, bool allowCancel = false,
-            float maxDistanceFromStartInches = 0f)
+            float maxDistanceFromStartInches = 0f,
+            IReadOnlyList<PlacementDisc>? enemyKeepOutDiscs = null,
+            IReadOnlyList<PlacementDisc>? enemyDistanceWaiverDiscs = null)
         {
             MaxDistanceFromStartInches = maxDistanceFromStartInches;
             TargetPlayerID = targetPlayerID;
@@ -71,12 +91,16 @@ namespace FDG.StageResolution.Requests
             MinDistanceFromEnemiesInches = minDistanceFromEnemiesInches;
             MustTouchTableEdge = mustTouchTableEdge;
             AllowCancel = allowCancel;
+            EnemyKeepOutDiscs = enemyKeepOutDiscs ?? Array.Empty<PlacementDisc>();
+            EnemyDistanceWaiverDiscs = enemyDistanceWaiverDiscs ?? Array.Empty<PlacementDisc>();
         }
 
         public PlaceObjectsRequest(PlayerID targetPlayerID, string taskName,
             IBoundedZone deploymentZone, IReadOnlyList<DataBinding<T>> modelsToPlace,
             float minDistanceFromEnemiesInches = 0f, bool mustTouchTableEdge = false, bool allowCancel = false,
-            float maxDistanceFromStartInches = 0f)
+            float maxDistanceFromStartInches = 0f,
+            IReadOnlyList<PlacementDisc>? enemyKeepOutDiscs = null,
+            IReadOnlyList<PlacementDisc>? enemyDistanceWaiverDiscs = null)
         {
             MaxDistanceFromStartInches = maxDistanceFromStartInches;
             TargetPlayerID = targetPlayerID;
@@ -86,6 +110,8 @@ namespace FDG.StageResolution.Requests
             MinDistanceFromEnemiesInches = minDistanceFromEnemiesInches;
             MustTouchTableEdge = mustTouchTableEdge;
             AllowCancel = allowCancel;
+            EnemyKeepOutDiscs = enemyKeepOutDiscs ?? Array.Empty<PlacementDisc>();
+            EnemyDistanceWaiverDiscs = enemyDistanceWaiverDiscs ?? Array.Empty<PlacementDisc>();
         }
 
         public Task<CancellableResult<List<PlacedObjectEntry<T>>>> Resolve(CancellableResult<List<PlacedObjectEntry<T>>> resolution)

@@ -49,4 +49,43 @@ public interface IOperationServices
     /// marker", #100 #14b). Same decisive-roll requirement as <see cref="ClearTokenOnRoll"/>.
     /// </summary>
     Task GrantTokenOnRoll(IUnit unit, Rules.Tokens.Token token, int minRoll);
+
+    /// <summary>
+    /// Remove <paramref name="unit"/> from the table for a mandatory Ambush return next round
+    /// (#197 P22 Ambush Re-Deployment): drop any objective its side holds within 1" of its living
+    /// models, park the models off-table in reserve, and stamp
+    /// <see cref="Rules.Foundation.TokenType.PendingAmbushArrival"/> so the rule's token-gated defer
+    /// entry carries the return leg. Resolution of <see cref="RuleOperation.InvokeAmbushRedeploy"/>.
+    /// </summary>
+    Task RedeployAsAmbush(IUnit unit);
+
+    /// <summary>
+    /// Build a new unit from <paramref name="placer"/>'s army's auxiliary spec named
+    /// <paramref name="specName"/> (#197 P17 Spawn/Split), register it with the army, let the owner
+    /// place it fully within <paramref name="radiusInches"/> of <paramref name="placer"/>, and mark
+    /// it to join the round in progress (owner-ruled 2026-07-28: a mid-round creation may activate
+    /// this round). A name matching no spec warns and does nothing — the rule fired, but the army
+    /// carries nothing to place.
+    /// </summary>
+    Task SpawnUnit(IUnit placer, string specName, float radiusInches);
+
+    /// <summary>
+    /// #197 P17c Reinforcement: stamp <paramref name="unit"/>'s spent gate, build a fresh full-strength
+    /// copy of it WITHOUT the rule named <paramref name="sourceRuleName"/> ("this rule doesn't apply to
+    /// the new copy"), hold the copy in reserve for a mandatory arrival within 12" of any table edge at
+    /// the next round start (after Ambushers), and — when the trigger was the Shaken arm, i.e. the unit
+    /// is still alive — remove the original from the table as destroyed.
+    /// Resolution of <see cref="RuleOperation.InvokeReinforce"/>.
+    /// </summary>
+    Task ReinforceUnit(IUnit unit, string? sourceRuleName);
+
+    /// <summary>
+    /// #197 P17d Reanimation: roll one die per wound <paramref name="unit"/> is missing (dead models
+    /// included; the fractional-wound tail under the probabilistic roller is floored), each
+    /// <paramref name="minRoll"/>+ restoring one wound — wounded living models topped up first, then
+    /// dead models revived at one wound each and auto-placed in coherency beside a living model.
+    /// Decisive dice, one presentation beat for the whole pool.
+    /// Resolution of <see cref="RuleOperation.InvokeRestoreWounds"/>.
+    /// </summary>
+    Task RestoreWounds(IUnit unit, int minRoll);
 }

@@ -28,6 +28,14 @@ namespace FDG.SaveLoad
                 {
                     return new SpecialRuleEntry_CoreNumeric(name, value);
                 }
+
+                // #197 P17: a non-numeric parenthetical is a TEXT argument (Spawn(Spores [5])) — but only
+                // when the paren hugs the name. A space before it is the rule-NAME-with-parenthetical
+                // convention ("Versatile Attack (Piercing)"), which must keep resolving as one name.
+                if (inner.Length > 0 && open > 0 && text[open - 1] != ' ')
+                {
+                    return new SpecialRuleEntry_Text(name, inner);
+                }
             }
 
             return new SpecialRuleEntry_Core(text);

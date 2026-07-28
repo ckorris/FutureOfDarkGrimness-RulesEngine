@@ -48,7 +48,81 @@ namespace FDG.ArmyBuilding
 
             MergeCombinedUnits(list, army);
 
+            CompileAuxiliaryUnits(book, army);
+
             return army;
+        }
+
+        // #197 P17: the rules whose TEXT argument names a unit spec the bearer places mid-game
+        // ("Spawn(Spores [5])", "Split(Changelings [10])"). Kept as a plain set - only two rules do this
+        // today; a third is a one-line addition here, and definition-declared metadata can replace the
+        // set when the vocabulary genuinely grows.
+        private static readonly HashSet<string> AuxiliarySpecRuleNames =
+            new(StringComparer.OrdinalIgnoreCase) { "Spawn", "Split" };
+
+        /// <summary>
+        /// Compiles the auxiliary unit specs the army's Spawn/Split rules name into
+        /// <see cref="ArmyListFile.AuxiliaryUnits"/>, keyed by the rule's exact text argument
+        /// ("Spores [5]" -> the book's Spores unit compiled at 5 models, zero points, no upgrades).
+        /// Recursive with a seen-guard: a spawned unit can itself carry Split (Change Horrors ->
+        /// Lesser Change Horrors -> Changelings), and each link's target must ship too. A text naming
+        /// no book unit is skipped - army load's own diagnostics warn when the rule then fires with
+        /// nothing to place.
+        /// </summary>
+        private static void CompileAuxiliaryUnits(BookFile book, BuiltArmyFile army)
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var pending = new Queue<string>();
+
+            void EnqueueSpecsNamedBy(UnitFileEntry unit)
+            {
+                foreach (SpecialRuleEntry rule in unit.SpecialRules)
+                {
+                    if (rule is SpecialRuleEntry_Text text
+                        && AuxiliarySpecRuleNames.Contains(text.Name)
+                        && seen.Add(text.TextValue))
+                    {
+                        pending.Enqueue(text.TextValue);
+                    }
+                }
+            }
+
+            foreach (UnitFileEntry unit in army.Units) EnqueueSpecsNamedBy(unit);
+
+            while (pending.Count > 0)
+            {
+                string specText = pending.Dequeue();
+                (string targetName, int? count) = ParseAuxSpecText(specText);
+
+                RosterUnit? roster = book.Units.FirstOrDefault(
+                    u => string.Equals(u.Name, targetName, StringComparison.OrdinalIgnoreCase));
+                if (roster == null) continue;
+
+                UnitFileEntry aux = CompileUnitDetailed(book,
+                    new BuilderUnit { RosterUnitId = roster.Id }).Unit;
+                aux.Id = specText;        // the runtime lookup key IS the rule's argument text
+                aux.ModelCount = count ?? aux.ModelCount;
+                aux.PointCost = 0;        // placed by a rule, not bought
+                aux.JoinsUnitId = null;
+
+                (army.AuxiliaryUnits ??= new List<UnitFileEntry>()).Add(aux);
+                EnqueueSpecsNamedBy(aux);
+            }
+        }
+
+        // "Spores [5]" -> ("Spores", 5); a bare "Spores" -> ("Spores", null) = the roster's base size.
+        private static (string Name, int? Count) ParseAuxSpecText(string specText)
+        {
+            string text = specText.Trim();
+            int open = text.LastIndexOf('[');
+            int close = text.EndsWith("]", StringComparison.Ordinal) ? text.Length - 1 : -1;
+            if (open > 0 && close > open
+                && int.TryParse(text.Substring(open + 1, close - open - 1), out int count))
+            {
+                return (text.Substring(0, open).Trim(), count);
+            }
+
+            return (text, null);
         }
 
         // #107 combined squads (decision 8, 2026-07-02): a BuilderUnit with CombinedWithId folds into its

@@ -57,6 +57,12 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(EnableReDeployment), "enableReDeployment")]
 [JsonDerivedType(typeof(EnableSpellLending), "enableSpellLending")]
 [JsonDerivedType(typeof(EnableSpellRelay), "enableSpellRelay")]
+[JsonDerivedType(typeof(RepelAmbushers), "repelAmbushers")]
+[JsonDerivedType(typeof(AmbushBeacon), "ambushBeacon")]
+[JsonDerivedType(typeof(AmbushRedeploy), "ambushRedeploy")]
+[JsonDerivedType(typeof(SpawnUnit), "spawnUnit")]
+[JsonDerivedType(typeof(ReinforceUnit), "reinforceUnit")]
+[JsonDerivedType(typeof(RestoreWounds), "restoreWounds")]
 [JsonDerivedType(typeof(TargetIndividualModel), "targetIndividualModel")]
 [JsonDerivedType(typeof(RestrictActions), "restrictActions")]
 [JsonDerivedType(typeof(RangeModifier), "rangeModifier")]
@@ -757,6 +763,122 @@ public abstract record Effect
     }
 
     /// <summary>
+    /// Enemy Ambush arrivals must set up over <see cref="DistanceInches"/> from the bearer's unit
+    /// (#197 P22, <c>Repel Ambushers</c>: "enemy units using Ambush must be set up over 12\" away from
+    /// this model's unit"). A capability answer, not an event: the reserve-arrival pass asks every
+    /// on-table unit what it does to an arriving Ambusher and folds the answers into the placement
+    /// request's keep-out discs, so the entry's <see cref="Condition"/> gates it live and suppression
+    /// applies.
+    /// </summary>
+    public sealed record RepelAmbushers(float DistanceInches) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.RepelAmbushers(DistanceInches));
+        }
+    }
+
+    /// <summary>
+    /// FRIENDLY Ambush arrivals within <see cref="RangeInches"/> of the bearer ignore every
+    /// enemy-distance restriction — the core over-9" rule and any <see cref="RepelAmbushers"/> keep-away
+    /// alike (#197 P22, <c>Ambush Beacon</c>; owner sign-off 2026-07-28: the waiver is judged per
+    /// arriving MODEL, and overrides both restriction kinds). Same capability shape as
+    /// <see cref="RepelAmbushers"/>, folded into the placement request's waiver discs.
+    /// </summary>
+    public sealed record AmbushBeacon(float RangeInches) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.AmbushBeacon(RangeInches));
+        }
+    }
+
+    /// <summary>
+    /// The bearer removes itself from the table at the end of its activation and redeploys as if it had
+    /// Ambush at the start of the next round (#197 P22, <c>Ambush Re-Deployment</c>). Executable: the
+    /// removal drops any objective the bearer's side holds within 1", parks the models off-table in
+    /// reserve, and stamps <see cref="Rules.Foundation.TokenType.PendingAmbushArrival"/> — which the
+    /// rule's own token-gated <see cref="DeferDeployment"/> entry reads, so the round-start arrival
+    /// pass finds the return leg without a special case.
+    /// </summary>
+    public sealed record AmbushRedeploy : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.InvokeAmbushRedeploy(ruleInvocation.Bearer));
+        }
+    }
+
+    /// <summary>
+    /// The bearer places a NEW unit within <see cref="RadiusInches"/> of itself (#197 P17: Spawn's
+    /// "place a new unit of X fully within 6\" of it"; Split reuses the shape at the destruction
+    /// seam). WHICH unit is the rule instance's text argument — Spawn("Spores [5]") — naming an
+    /// auxiliary unit spec the army carries (<c>ArmyListFile.AuxiliaryUnits</c>, compiled from the
+    /// book or hand-authored). Executable: the creation, army registration, placement prompt and
+    /// same-round activation adoption all live behind <see cref="IOperationServices.SpawnUnit"/>.
+    /// A missing/wrong-kind argument warns and produces nothing rather than throwing mid-stage.
+    /// </summary>
+    public sealed record SpawnUnit(float RadiusInches = 6f) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            if (ruleInvocation.Arguments.Count == 0)
+            {
+                // No diagnostics from the Definitions layer (RuleDiagnostics lives in Dispatch); the
+                // service warns when it can't find the spec, which covers the observable outcome.
+                return;
+            }
+
+            // A Str argument is the shipped shape; an Int (e.g. the lint's generic seed) stringifies,
+            // so a synthesized firing still proves the executable is produced and consumed.
+            string specName = ruleInvocation.Arguments[0] switch
+            {
+                RuleArgument.Str str => str.Value,
+                RuleArgument.Int intArg => intArg.Value.ToString(),
+                _ => string.Empty,
+            };
+
+            operations.Add(new RuleOperation.InvokeSpawnUnit(ruleInvocation.Bearer, specName, RadiusInches));
+        }
+    }
+
+    /// <summary>
+    /// The bearer is removed from the table as destroyed and a fresh full-strength copy of it deploys
+    /// within 12\" of any table edge at the start of the next round, after Ambushers (#197 P17c,
+    /// <c>Reinforcement</c>). Authored at BOTH trigger moments — the bearer's own destruction
+    /// (<see cref="Rules.Foundation.EHookID.Lifecycle_OnSelfDestroyed"/>) and the Shaken application
+    /// (<see cref="Rules.Foundation.EHookID.Morale_OnShakenApplied"/>) — each gated on the
+    /// ReinforcementSpent token's absence, so accepting once (which kills the original, landing on the
+    /// destruction seam) cannot re-prompt. Carries the firing rule's name so the copy is built WITHOUT
+    /// it ("this rule doesn't apply to the new copy").
+    /// </summary>
+    public sealed record ReinforceUnit : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.InvokeReinforce(ruleInvocation.Bearer,
+                ruleInvocation.Definition?.Name));
+        }
+    }
+
+    /// <summary>
+    /// The bearer rolls one die per wound it is missing (dead models included) and each
+    /// <see cref="MinRoll"/>+ restores one wound (#197 P17d, <c>Reanimation</c>). Owner-ruled
+    /// 2026-07-28: successes top up wounded LIVING models first, then revive dead ones at one wound
+    /// each (a just-revived Tough model is then the wounded living model the next success tops up),
+    /// and revived models auto-place in coherency beside a living model — no per-die prompts. The
+    /// roll is DECISIVE (the ClearTokenOnRoll/Storm precedent): each die's outcome is binary, so a
+    /// histogram would want to restore fractions of a model.
+    /// </summary>
+    public sealed record RestoreWounds(int MinRoll = 5) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.InvokeRestoreWounds(ruleInvocation.Bearer, MinRoll));
+        }
+    }
+
+    /// <summary>
     /// Resolves the attack against a single chosen model in the target unit, as if
     /// it were a unit of one. Covers Takedown. Structural targeting change with no
     /// numeric parameter; the "resolved first, before other weapons" ordering is a
@@ -867,11 +989,14 @@ public abstract record Effect
     /// </summary>
     public sealed record DeferDeployment(
         EDeferTiming Timing = EDeferTiming.AfterNormalDeployment,
-        float PlacementRangeInches = 0f) : Effect
+        float PlacementRangeInches = 0f,
+        int MinArrivalRound = 2,
+        bool MandatoryArrival = false) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.DeferDeployment(Timing, PlacementRangeInches));
+            operations.Add(new RuleOperation.DeferDeployment(Timing, PlacementRangeInches, MinArrivalRound,
+                MandatoryArrival));
         }
     }
 

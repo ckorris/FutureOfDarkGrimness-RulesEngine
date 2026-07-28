@@ -227,7 +227,13 @@ namespace FDG.Ai.Tactician.Resolvers
             float bestNet = 0f;
             foreach (DataBinding<UnitData> victim in enemies)
             {
-                Position spot = SpotBehind(victim, enemies, clearance);
+                // #197 P22: a Repel Ambushers victim pushes the arrival further out - aim past ITS
+                // keep-away, not the generic clearance, or the spot is illegal before the spiral
+                // search even starts and the "right behind it" strike drifts wherever the search
+                // shoves it.
+                float victimClearance = Math.Max(clearance,
+                    CapabilityRuleQueries.AmbushRepelDistance(victim.GetValue(), _evaluator) + 0.6f);
+                Position spot = SpotBehind(victim, enemies, victimClearance);
                 float distance = MathF.Sqrt(DistSq(spot, Centroid(victim.GetValue())));
 
                 float damage = 0f;

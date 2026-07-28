@@ -15,6 +15,10 @@ public readonly record struct TokenType(string Id)
     public const string DELAYED_ACTION_USED_ID = "DelayedActionUsed";
     public const string OFF_TABLE_FROM_FORCED_MOVE_ID = "OffTableFromForcedMove";
     public const string LIMITED_SPENT_ID = "LimitedSpent";
+    public const string PENDING_AMBUSH_ARRIVAL_ID = "PendingAmbushArrival";
+    public const string JOINS_ROUND_IN_PROGRESS_ID = "JoinsRoundInProgress";
+    public const string REINFORCEMENT_SPENT_ID = "ReinforcementSpent";
+    public const string PENDING_REINFORCEMENT_ARRIVAL_ID = "PendingReinforcementArrival";
 
     // Granted numeric roll modifiers (#033 stat-modifier primitive): a spell/ability grants the bearer a
     // signed delta to a specific roll for a duration. The roll kind is the token TYPE (so different rolls
@@ -110,6 +114,41 @@ public readonly record struct TokenType(string Id)
     /// the round-end sweep and last the whole game). Count = times fired (1 for plain Limited; X-ready).
     /// </summary>
     public static readonly TokenType LimitedSpent = new(LIMITED_SPENT_ID);
+
+    /// <summary>
+    /// #197 P22 Ambush Re-Deployment: the unit removed itself at the end of an activation and MUST
+    /// redeploy as if it had Ambush at the start of the next round (owner-ruled mandatory,
+    /// 2026-07-28). The rule's <c>deferDeployment</c> entry is gated on this token, so the arrival
+    /// pass finds a defer for the reserved unit exactly while the return is pending; cleared on
+    /// arrival. ManualOnly - it must survive the round-end sweep between removal and return.
+    /// </summary>
+    public static readonly TokenType PendingAmbushArrival = new(PENDING_AMBUSH_ARRIVAL_ID);
+
+    /// <summary>
+    /// #197 P17: a unit created MID-ROUND (Spawn/Split) that may still activate this round
+    /// (owner-ruled 2026-07-28). The per-round activation pool snapshots at round start, so the
+    /// creation service stamps this and <c>SingleRoundContext.AdoptMidRoundUnits</c> — run at the
+    /// pool's own query seams, which is what lets the destruction-seam path reach it too — folds the
+    /// unit in and clears the token. The round-start snapshot also sweeps strays, so a token that
+    /// somehow survives to the next round grants nothing twice. ManualOnly: adoption owns removal.
+    /// </summary>
+    public static readonly TokenType JoinsRoundInProgress = new(JOINS_ROUND_IN_PROGRESS_ID);
+
+    /// <summary>
+    /// #197 P17c Reinforcement: the ORIGINAL unit accepted its reinforcement (its copy is queued), so
+    /// the rule must not fire again — above all when the Shaken arm's removal-as-destroyed lands on the
+    /// destruction seam, where the rule's own destroyed-arm entry would otherwise re-prompt. Both
+    /// authored entries gate on this token's absence; the service also guards. ManualOnly.
+    /// </summary>
+    public static readonly TokenType ReinforcementSpent = new(REINFORCEMENT_SPENT_ID);
+
+    /// <summary>
+    /// #197 P17c: the COPY a Reinforcement queued, held in reserve until
+    /// <c>StartOfRoundExtraActionStage</c> places it "at the beginning of the next round after
+    /// Ambushers have been deployed" — mandatorily (the "you may" was spent at removal), within 12" of
+    /// any table edge. Cleared on arrival. ManualOnly — it must survive the round-end sweep.
+    /// </summary>
+    public static readonly TokenType PendingReinforcementArrival = new(PENDING_REINFORCEMENT_ARRIVAL_ID);
 
     /// <summary>
     /// Marks a unit that is currently embarked inside a Transport (#035). A <b>cross-unit</b> token:

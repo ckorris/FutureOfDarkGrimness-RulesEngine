@@ -154,6 +154,8 @@ namespace FDG.SaveLoad
             {
                 case SpecialRuleEntry_CoreNumeric numeric:
                     return (numeric.Name, new RuleArgument[] { new RuleArgument.Int(numeric.NumericValue) });
+                case SpecialRuleEntry_Text text:
+                    return (text.Name, new RuleArgument[] { new RuleArgument.Str(text.TextValue) });
                 case SpecialRuleEntry_Alias alias:
                     return DescribeRuleEntry(alias.AliasedRule);
                 case SpecialRuleEntry_Core core:

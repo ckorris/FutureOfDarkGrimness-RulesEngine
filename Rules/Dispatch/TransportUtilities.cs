@@ -203,35 +203,39 @@ public static class TransportUtilities
         Position.GetDistance2D(modelPosition, transportPosition) <= MaxTransportRangeInches;
 
     /// <summary>
-    /// One occupant model the spillout dangerous-terrain test wounded, returned inside
-    /// <see cref="SpilloutRollResult"/> so the stage can present it (a hurt flinch or a death animation
-    /// after the batched d6 beat). This is Rules-layer data only — the beats themselves are emitted
-    /// stage-side, since the Rules layer holds no presenter.
-    /// <paramref name="Died"/> is the model's state after the wound (a 1 that took its last wound).
+    /// One occupant model the spillout dangerous-terrain test owes a wound to, returned inside
+    /// <see cref="SpilloutRollResult"/> so the stage can land it and present it (a hurt flinch or a death
+    /// animation after the batched d6 beat). This is Rules-layer data only — the wound is NOT applied
+    /// here and the beats are emitted stage-side, since the Rules layer holds no presenter.
     /// </summary>
-    public readonly record struct SpilloutCasualty(ModelID Model, Position Position, bool Died);
+    public readonly record struct SpilloutWound(IModel Model, float Wounds);
 
     /// <summary>
     /// The batched spillout dangerous-terrain test: the single roll (one d6 per living occupant model),
-    /// how many models tested, total wounds dealt (fractional under the probabilistic roller), and the
-    /// wounded models (empty in probabilistic mode, where wounds spread as an expectation). The same
-    /// shape as <c>MovementExecutor.DangerousTerrainResult</c>, plus the per-model casualties the
-    /// spillout presentation animates.
+    /// how many models tested, total wounds rolled (fractional under the probabilistic roller), and the
+    /// per-model wounds still PENDING. The same shape as <c>MovementExecutor.DangerousTerrainResult</c>.
+    /// <para>
+    /// The wounds are deliberately left unapplied: the stage lands each one as it presents that model's
+    /// casualty beat, so the front-end never sees a model dead in state with no death beat registered.
+    /// Applying them here instead is what used to make spilled-out models blink out at placement and
+    /// then pop back in seconds later to play their death animation.
+    /// </para>
     /// </summary>
     public readonly struct SpilloutRollResult
     {
         public readonly IDiceResults? Roll;
         public readonly int ModelCount;
         public readonly float Wounds;
-        public readonly IReadOnlyList<SpilloutCasualty> Casualties;
+        /// <summary>The wounds this test owes, NOT yet applied.</summary>
+        public readonly IReadOnlyList<SpilloutWound> PendingWounds;
         public SpilloutRollResult(IDiceResults? roll, int modelCount, float wounds,
-            IReadOnlyList<SpilloutCasualty> casualties)
+            IReadOnlyList<SpilloutWound> pendingWounds)
         {
-            Roll = roll; ModelCount = modelCount; Wounds = wounds; Casualties = casualties;
+            Roll = roll; ModelCount = modelCount; Wounds = wounds; PendingWounds = pendingWounds;
         }
         public bool AnyTested => ModelCount > 0 && Roll != null;
         public static SpilloutRollResult None =>
-            new SpilloutRollResult(null, 0, 0f, Array.Empty<SpilloutCasualty>());
+            new SpilloutRollResult(null, 0, 0f, Array.Empty<SpilloutWound>());
     }
 
     /// <summary>
@@ -244,8 +248,10 @@ public static class TransportUtilities
     /// separate decisive rolls could not. The placement itself — the owner choosing where, within 6" of
     /// the wreck — is the stage's interactive part and is NOT done here; this is the slice of spillout
     /// that is deterministic given the dice, so it can be unit-tested ahead of the mid-combat
-    /// orchestration. Returns the batch so the stage can present it (one dice beat + hurt/death beats);
-    /// the return is otherwise inert (callers that only want the state change can ignore it).
+    /// orchestration. Returns the batch for the stage to present (one dice beat + hurt/death beats);
+    /// the dangerous-terrain WOUNDS in it are pending, not applied — a caller that only wants the state
+    /// change must land them itself (<c>CasualtyPresentation.ApplyOnly</c>). Un-embark and Shaken are
+    /// applied here as before.
     /// </summary>
     public static SpilloutRollResult ApplySpilloutEffects(IUnit occupant, IDiceRoller diceRoller,
         ERandomnessType randomness = ERandomnessType.Realistic)
@@ -268,30 +274,29 @@ public static class TransportUtilities
         IDiceResults roll = diceRoller.Roll(6, testers.Count);
         float ones = roll.At(1); // 1s are wounds (fractional under the probabilistic roller)
 
-        List<SpilloutCasualty> casualties = new List<SpilloutCasualty>();
-        float woundsDealt;
+        List<SpilloutWound> pending = new List<SpilloutWound>();
+        float woundsRolled;
         if (randomness == ERandomnessType.Probabilistic)
         {
             // Spread the expected wounds evenly — each model carried its own 1/6 chance of a 1.
             float perModel = ones / testers.Count;
-            foreach (IModel model in testers)
-                model.DealWounds(perModel);
-            woundsDealt = ones;
+            if (perModel > 0f)
+            {
+                foreach (IModel model in testers)
+                    pending.Add(new SpilloutWound(model, perModel));
+            }
+            woundsRolled = ones;
         }
         else
         {
-            // Realistic: a whole number of 1s came up; deal one wound apiece to that many models.
+            // Realistic: a whole number of 1s came up; one wound apiece to that many models.
             int wounds = (int)MathF.Round(ones);
             for (int i = 0; i < wounds && i < testers.Count; i++)
-            {
-                IModel model = testers[i];
-                model.DealWounds(1f);
-                casualties.Add(new SpilloutCasualty(model.ID, model.Position, model.GetIsDead()));
-            }
-            woundsDealt = wounds;
+                pending.Add(new SpilloutWound(testers[i], 1f));
+            woundsRolled = wounds;
         }
 
-        return new SpilloutRollResult(roll, testers.Count, woundsDealt, casualties);
+        return new SpilloutRollResult(roll, testers.Count, woundsRolled, pending);
     }
 
     // --- Effective position (opt-in seam) --------------------------------------------------------

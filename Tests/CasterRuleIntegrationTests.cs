@@ -1040,6 +1040,8 @@ namespace FDG.Tests
                 "the beat carries the boost-shifted threshold, not the base 4+");
             Assert.That(castBeats[0].ResultSummary, Is.EqualTo("Cast!"),
                 "the settled summary states the outcome");
+            Assert.That(castBeats[0].Category, Is.EqualTo(ERollBeatCategory.Magic),
+                "the cast attempt is its own category - the front-end colors it apart from attacks and saves");
         }
 
         // #274 — a successful cast emits the caster's success visual and then, immediately after it,

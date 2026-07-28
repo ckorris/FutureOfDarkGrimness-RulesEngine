@@ -263,6 +263,61 @@ public abstract record RuleOperation
     public sealed record RepositionModels(float MaxInches) : RuleOperation;
 
     /// <summary>
+    /// Remove <see cref="Unit"/> from the table at the end of its activation for a mandatory Ambush
+    /// return next round (#197 P22 Ambush Re-Deployment). Resolution of
+    /// <see cref="Effect.AmbushRedeploy"/>; the whole removal (objective drop, reserve state, pending
+    /// token, announcement) lives behind <see cref="IOperationServices.RedeployAsAmbush"/>.
+    /// </summary>
+    public sealed record InvokeAmbushRedeploy(IUnit Unit) : ExecutableOperation
+    {
+        public override Task Execute(IOperationServices services)
+        {
+            return services.RedeployAsAmbush(Unit);
+        }
+    }
+
+    /// <summary>
+    /// Place a new unit built from the placer's army's auxiliary spec named <see cref="SpecName"/>,
+    /// fully within <see cref="RadiusInches"/> of <see cref="Placer"/> (#197 P17 Spawn/Split).
+    /// Resolution of <see cref="Effect.SpawnUnit"/>.
+    /// </summary>
+    public sealed record InvokeSpawnUnit(IUnit Placer, string SpecName, float RadiusInches)
+        : ExecutableOperation
+    {
+        public override Task Execute(IOperationServices services)
+        {
+            return services.SpawnUnit(Placer, SpecName, RadiusInches);
+        }
+    }
+
+    /// <summary>
+    /// Remove <see cref="Unit"/> as destroyed (if it isn't already) and queue a fresh copy — built
+    /// without the rule named <see cref="SourceRuleName"/> — for a mandatory arrival within 12" of any
+    /// table edge at the next round start, after Ambushers (#197 P17c Reinforcement). Resolution of
+    /// <see cref="Effect.ReinforceUnit"/>.
+    /// </summary>
+    public sealed record InvokeReinforce(IUnit Unit, string? SourceRuleName) : ExecutableOperation
+    {
+        public override Task Execute(IOperationServices services)
+        {
+            return services.ReinforceUnit(Unit, SourceRuleName);
+        }
+    }
+
+    /// <summary>
+    /// Roll one die per wound <see cref="Unit"/> is missing; each <see cref="MinRoll"/>+ restores one
+    /// (#197 P17d Reanimation - wounds-first, revives auto-placed in coherency). Resolution of
+    /// <see cref="Effect.RestoreWounds"/>.
+    /// </summary>
+    public sealed record InvokeRestoreWounds(IUnit Unit, int MinRoll) : ExecutableOperation
+    {
+        public override Task Execute(IOperationServices services)
+        {
+            return services.RestoreWounds(Unit, MinRoll);
+        }
+    }
+
+    /// <summary>
     /// Roll one die against <see cref="MinRoll"/> and, on a pass, strip every <see cref="TType"/> token from
     /// <see cref="Unit"/>. Resolution of <see cref="Effect.ClearTokenOnRoll"/> — the round-start Shaken
     /// recovery. Executable, not a sink fold: the roll reads live dice and the removal is imperative.
@@ -524,6 +579,20 @@ public abstract record RuleOperation
     public sealed record EnableSpellRelay(float RangeInches, int CastRollBonus) : RuleOperation;
 
     /// <summary>
+    /// Enemy Ambush arrivals must set up over <see cref="DistanceInches"/> from the bearer's unit.
+    /// Resolution of <see cref="Effect.RepelAmbushers"/> (Repel Ambushers). Read by
+    /// <c>AmbushArrivalRules</c>, which turns it into keep-out discs on the arrival placement request.
+    /// </summary>
+    public sealed record RepelAmbushers(float DistanceInches) : RuleOperation;
+
+    /// <summary>
+    /// Friendly Ambush arrivals within <see cref="RangeInches"/> of the bearer ignore enemy-distance
+    /// restrictions. Resolution of <see cref="Effect.AmbushBeacon"/> (Ambush Beacon). Read by
+    /// <c>AmbushArrivalRules</c>, which turns it into waiver discs on the arrival placement request.
+    /// </summary>
+    public sealed record AmbushBeacon(float RangeInches) : RuleOperation;
+
+    /// <summary>
     /// Re-scope the in-flight attack to a single chosen model in the target unit.
     /// Resolution of <see cref="Effect.TargetIndividualModel"/> (Takedown).
     /// </summary>
@@ -609,7 +678,12 @@ public abstract record RuleOperation
     /// <see cref="Timing"/>. <see cref="PlacementRangeInches"/> is interpreted per timing:
     /// for <see cref="EDeferTiming.AfterNormalDeployment"/> (Scout) it's how far the deployment
     /// zone extends forward; for <see cref="EDeferTiming.LaterRound"/> (Ambush) it's the minimum
-    /// distance from enemy units the unit must arrive. Resolution of <see cref="Effect.DeferDeployment"/>.
+    /// distance from enemy units the unit must arrive. <see cref="MinArrivalRound"/> (#197 P22,
+    /// <see cref="EDeferTiming.LaterRound"/> only) is the earliest round the reserve may be brought
+    /// on: 2 for core Ambush, 1 for Rapid Ambush ("may be deployed at the start of any round,
+    /// including the first"). <see cref="MandatoryArrival"/> makes the arrival pass PLACE the unit
+    /// rather than offer it (Ambush Re-Deployment's return leg - owner-ruled mandatory next round,
+    /// 2026-07-28). Resolution of <see cref="Effect.DeferDeployment"/>.
     ///
     /// Stays a plain <see cref="RuleOperation"/> — NOT an <see cref="ExecutableOperation"/>: it is a
     /// marker the deployment subsystem <em>reads</em> (a query, like <see cref="RuleOperation.SuppressRule"/>) to decide
@@ -618,7 +692,9 @@ public abstract record RuleOperation
     /// </summary>
     public sealed record DeferDeployment(
         EDeferTiming Timing = EDeferTiming.AfterNormalDeployment,
-        float PlacementRangeInches = 0f) : RuleOperation;
+        float PlacementRangeInches = 0f,
+        int MinArrivalRound = 2,
+        bool MandatoryArrival = false) : RuleOperation;
 }
 
 /// <summary>

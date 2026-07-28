@@ -8,6 +8,7 @@ namespace FDG.SaveLoad
     [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
     [JsonDerivedType(typeof(SpecialRuleEntry_Core), "core")]
     [JsonDerivedType(typeof(SpecialRuleEntry_CoreNumeric), "coreNumeric")]
+    [JsonDerivedType(typeof(SpecialRuleEntry_Text), "coreText")]
     [JsonDerivedType(typeof(SpecialRuleEntry_Alias), "alias")]
     public abstract record SpecialRuleEntry([property: JsonIgnore] string PrintableName);
 
@@ -24,6 +25,16 @@ namespace FDG.SaveLoad
     /// </summary>
     public record SpecialRuleEntry_CoreNumeric(string Name, int NumericValue)
         : SpecialRuleEntry($"{Name}({NumericValue})");
+
+    /// <summary>
+    /// #197 P17: a rule whose value is TEXT rather than a number — Alien Hives' "Spawn(Spores [5])",
+    /// Wormhole Daemons' "Split(Changelings [10])" — where the text names the auxiliary unit spec the
+    /// rule places. Resolves with a <see cref="FDG.Rules.Foundation.RuleArgument.Str"/> argument; the
+    /// OPR importer emits it for any non-numeric, non-empty rating instead of silently flattening the
+    /// rule to its bare name (which is how Spawn shipped dead).
+    /// </summary>
+    public record SpecialRuleEntry_Text(string Name, string TextValue)
+        : SpecialRuleEntry($"{Name}({TextValue})");
 
 
     /// <summary>

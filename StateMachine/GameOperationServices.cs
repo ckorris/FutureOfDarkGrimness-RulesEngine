@@ -92,9 +92,10 @@ namespace FDG.Stages
                     + string.Join(", ", errors.Select(e => e.ToString())));
             }
 
-            // Present the dangerous-terrain roll, same as the normal-move stage — a triggered move
-            // (Vanguard, forced move, etc.) that crosses dangerous terrain shows the roll, not just the wound.
-            await MovementExecutor.PresentDangerousTerrainRolls(_gameContext, dangerResult);
+            // Land the dangerous-terrain test now the models are in place, same as the normal-move stage —
+            // a triggered move (Vanguard, forced move, etc.) that crosses dangerous terrain shows the roll
+            // and animates its casualties, not just the wound.
+            await MovementExecutor.ResolveDangerousTerrain(_gameContext, dangerResult);
         }
 
         public Task ApplyFatigue(IUnit unit)
@@ -162,6 +163,332 @@ namespace FDG.Stages
             await _gameContext.Presenter.Present(DiceRolledBeat.FromDecisive(new DiceResults(perSide), minRoll,
                 $"Place {label}",
                 placed ? "marker placed" : "no effect"));
+        }
+
+        public async Task RedeployAsAmbush(IUnit unit)
+        {
+            // "Dropping any objectives it might hold within 1\"" - held means seized by this unit's SIDE
+            // (#297: objectives belong to a side), within 1" of a living model measured base-edge to
+            // marker centre, the same footprint measure ReconcileObjectivesStage uses for seizing.
+            foreach (IObjective objective in _gameContext.TableState.Objectives.Objects)
+            {
+                if (objective.OwnerID == null) continue;
+                if (!ITeamExtensions.AreAllied(_gameContext.TableState.Teams.Objects,
+                        objective.OwnerID.Value, unit.PlayerID))
+                {
+                    continue;
+                }
+
+                bool held = unit.Models.Any(model => model.GetIsAlive()
+                    && BaseShapeGeometry.SurfaceDistanceToPoint2D(
+                        model.BaseShape, model.Position, model.Facing, objective.Position) <= 1f);
+                if (!held) continue;
+
+                objective.SetOwner(null);
+                _gameContext.Log($"{unit.Name} drops the objective it was holding.");
+            }
+
+            // Off the table: reserve is explicit unit state (#202), and the models park at the unplaced
+            // sentinel so their stale positions can't block placements or catch line-of-sight scans.
+            foreach (IModel model in unit.Models)
+            {
+                if (model is ModelData modelData)
+                {
+                    modelData.SetPosition(new Position());
+                }
+            }
+
+            Rules.Dispatch.ReserveRules.PlaceInReserve(unit);
+            unit.Tokens.AddToken(TokenDefinitionCatalog.Create(
+                Rules.Foundation.TokenType.PendingAmbushArrival));
+
+            await _gameContext.Announce(
+                $"{unit.Name} slips away - it redeploys from Ambush next round!", RecoveryBannerColor);
+        }
+
+        public async Task SpawnUnit(IUnit placer, string specName, float radiusInches)
+        {
+            // The placer's own army carries the spec (each player's Spawn names its own book's units).
+            DataBinding<ArmyData>? armyBinding = FindArmyBindingOf(placer);
+            ArmyData? army = armyBinding?.GetValue();
+
+            // The compiler keys a spec by the rule's exact argument text in `Id`; `Name` stays the unit's
+            // display name ("Spores", not "Spores [5]"). A hand-authored file may key on either.
+            SaveLoad.UnitFileEntry? spec = army?.RestoreRuleData()?.AuxiliaryUnits?
+                .FirstOrDefault(entry =>
+                    string.Equals(entry.Id, specName, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(entry.Name, specName, StringComparison.OrdinalIgnoreCase));
+            if (armyBinding == null || army == null || spec == null)
+            {
+                Rules.Dispatch.RuleDiagnostics.Warn($"{placer.Name} tried to place '{specName}', but its " +
+                    "army carries no auxiliary unit spec by that name - nothing spawns. (A Forge-compiled " +
+                    "army embeds these; a hand-authored one lists them under 'auxiliaryUnits'.)");
+                return;
+            }
+
+            // Build through the same path a deploying unit takes (ctor registers the models; rules attach
+            // via GameBootstrap's helper; creation-time rules - Tough's max wounds, auras - apply the same
+            // way FDGServer applies them at launch). The evaluator's resolver is the shared in-game one.
+            Rules.Dispatch.IRuleResolver resolver = _gameContext.RuleEvaluator.RuleResolver
+                ?? new Rules.Dispatch.RuleResolver();
+            var persisted = army.RestoreRuleData();
+            var unit = new UnitData(placer.PlayerID, spec, _gameContext.GameDataStore, resolver,
+                persisted?.DefaultRangedEffectSet, persisted?.DefaultMeleeEffectSet);
+            GameModel.GameBootstrap.AttachRulesFromArmyList(unit, spec, resolver);
+            Rules.Dispatch.UnitCreationRules.Apply(unit, _gameContext.RuleEvaluator);
+
+            DataReference unitReference = _gameContext.GameDataStore.Create(unit);
+            DataBinding<UnitData> unitBinding =
+                _gameContext.GameDataStore.GetDataBinding<UnitData>(unitReference);
+
+            // Register with the army AND re-Set it through the store, so the grown binding list rides the
+            // ordinary update broadcast to networked clients (the unit itself replicated on Create above).
+            army.UnitBindings.Add(unitBinding);
+            _gameContext.GameDataStore.SetValue(armyBinding.Reference, army);
+
+            // "Fully within N of it": a circular zone around the placer, resolved through the normal
+            // placement flow (overlap/cohesion/terrain checks included) with the #282 commit guard.
+            Position center = PlacerCenter(placer);
+            var zone = new CircularZone(new Float2(center.x, center.z), radiusInches);
+            var request = new PlaceObjectsRequest<ModelData>(placer.PlayerID, "Place Spawned Unit",
+                zone, unit.ModelBindings);
+            List<PlacedObjectEntry<ModelData>> placements = await PlacementCommitGuard
+                .RequestClearPlacement(_gameContext, request);
+            foreach (PlacedObjectEntry<ModelData> placement in placements)
+            {
+                placement.Binding.GetValue().SetPosition(placement.Position);
+                if (placement.Facing.HasValue)
+                {
+                    placement.Binding.GetValue().SetFacing(placement.Facing.Value);
+                }
+            }
+
+            // Owner-ruled 2026-07-28: a mid-round creation may activate this round. The round context
+            // adopts units carrying this marker at its own query seams and clears it.
+            unit.Tokens.AddToken(TokenDefinitionCatalog.Create(
+                Rules.Foundation.TokenType.JoinsRoundInProgress));
+
+            await _gameContext.Announce($"{placer.Name} spawns {unit.Name}!", RecoveryBannerColor);
+        }
+
+        public async Task ReinforceUnit(IUnit unit, string? sourceRuleName)
+        {
+            // Belt-and-braces with the authored not(tokenPresent) gate: once spent, never again.
+            if (unit.Tokens.HasToken(Rules.Foundation.TokenType.ReinforcementSpent))
+            {
+                return;
+            }
+
+            // Stamp BEFORE the removal below lands on the destruction seam, where the rule's own
+            // destroyed-arm entry would otherwise fire a second prompt.
+            unit.Tokens.AddToken(TokenDefinitionCatalog.Create(
+                Rules.Foundation.TokenType.ReinforcementSpent));
+
+            DataBinding<ArmyData>? armyBinding = FindArmyBindingOf(unit);
+            if (armyBinding == null)
+            {
+                Rules.Dispatch.RuleDiagnostics.Warn(
+                    $"{unit.Name} triggered Reinforcement but belongs to no registered army - no copy queued.");
+                return;
+            }
+
+            // A fresh full-strength copy: new models from the originals' shapes and weapon profiles
+            // (wounds reset by construction; Tough's max wounds re-derive via the creation rules), the
+            // unit's rules re-attached MINUS the firing rule ("this rule doesn't apply to the new copy"),
+            // per-model rules (#093 joined-hero relocations) carried over the same way.
+            var modelBindings = new List<DataBinding<ModelData>>();
+            foreach (IModel model in unit.Models)
+            {
+                if (model is not ModelData source) continue;
+                var copyModel = new ModelData(source.BaseShape, new List<Weapon>(source.Weapons),
+                    new Position(), _gameContext.GameDataStore);
+                foreach (Rules.Dispatch.ResolvedRule rule in source.RuleDefinitions)
+                {
+                    copyModel.AttachRuleDefinition(rule);
+                }
+
+                modelBindings.Add(_gameContext.GameDataStore.GetDataBinding<ModelData>(
+                    _gameContext.GameDataStore.Create(copyModel)));
+            }
+
+            var copy = new UnitData(unit.PlayerID, unit.Name, unit.Quality, unit.Defense, modelBindings);
+            foreach (Rules.Dispatch.ResolvedRule rule in unit.RuleDefinitions)
+            {
+                if (string.Equals(rule.Definition.Name, sourceRuleName ?? string.Empty,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                copy.AttachRuleDefinition(rule);
+            }
+
+            Rules.Dispatch.UnitCreationRules.Apply(copy, _gameContext.RuleEvaluator);
+
+            DataReference copyReference = _gameContext.GameDataStore.Create(copy);
+            DataBinding<UnitData> copyBinding =
+                _gameContext.GameDataStore.GetDataBinding<UnitData>(copyReference);
+
+            // Off-table until the next round start places it (after Ambushers) - reserve is the state,
+            // the pending token is what the arrival pass looks for.
+            Rules.Dispatch.ReserveRules.PlaceInReserve(copy);
+            copy.Tokens.AddToken(TokenDefinitionCatalog.Create(
+                Rules.Foundation.TokenType.PendingReinforcementArrival));
+
+            ArmyData army = armyBinding.GetValue();
+            army.UnitBindings.Add(copyBinding);
+            _gameContext.GameDataStore.SetValue(armyBinding.Reference, army);
+
+            await _gameContext.Announce(
+                $"{unit.Name} falls back - reinforcements arrive at the start of the next round!",
+                RecoveryBannerColor);
+
+            // The Shaken arm: "remove it from the table as destroyed". The destroyed arm arrives here
+            // with the unit already dead, so this is a no-op there.
+            if (unit.GetIsAlive())
+            {
+                foreach (IModel model in unit.Models)
+                {
+                    if (model is ModelData alive && alive.GetIsAlive())
+                    {
+                        alive.DealWounds(alive.TotalWounds);
+                    }
+                }
+
+                await UnitDestructionNotifier.NotifyUnitDestroyed(_gameContext, unit, killer: null);
+            }
+        }
+
+        public async Task RestoreWounds(IUnit unit, int minRoll)
+        {
+            // One die per missing wound, dead models included. The probabilistic roller leaves
+            // fractional wounds dealt; the pool floors them (conservative - a 0.4-wound scratch earns
+            // no die), keeping token/dice counts integral without int-locking a roll-derived value.
+            float missing = unit.Models.Sum(model => model.WoundsDealt);
+            int pool = (int)missing;
+            if (pool <= 0)
+            {
+                return;
+            }
+
+            // Decisive faces, never a histogram: each die's outcome is binary (a wound is restored or
+            // it is not) - the ClearTokenOnRoll/Storm precedent.
+            float[] perSide = new float[IDiceRollerExtensions.DEFAULT_SIDE_COUNT];
+            int successes = 0;
+            for (int i = 0; i < pool; i++)
+            {
+                int face = _gameContext.DiceRoller.RollDecisiveFace();
+                perSide[face - 1] += 1f;
+                if (face >= minRoll)
+                {
+                    successes++;
+                }
+            }
+
+            int healed = 0, revived = 0;
+            for (int i = 0; i < successes; i++)
+            {
+                // Wounds first (owner-ruled): top up the first wounded LIVING model. A model revived
+                // below is then itself the wounded living model the next success tops up, so revives
+                // proceed one at a time and fill before the next body returns.
+                ModelData? wounded = unit.Models.OfType<ModelData>()
+                    .FirstOrDefault(m => m.GetIsAlive() && m.WoundsDealt > 0.999f);
+                if (wounded != null)
+                {
+                    wounded.DealWounds(-1f);
+                    healed++;
+                    continue;
+                }
+
+                ModelData? corpse = unit.Models.OfType<ModelData>().FirstOrDefault(m => !m.GetIsAlive());
+                if (corpse == null)
+                {
+                    break; // fully healed - surplus successes are wasted, per the wording's cap
+                }
+
+                corpse.DealWounds(-(1f - (corpse.TotalWounds - corpse.WoundsDealt)));
+                PlaceRevivedInCoherency(unit, corpse);
+                revived++;
+            }
+
+            _gameContext.Log($"{unit.Name}: Reanimation rolled {pool} dice, {successes} at {minRoll}+ - " +
+                $"restored {healed} wound{(healed == 1 ? "" : "s")}, revived {revived} " +
+                $"model{(revived == 1 ? "" : "s")}.");
+            await _gameContext.Presenter.Present(DiceRolledBeat.FromDecisive(new DiceResults(perSide),
+                minRoll, "Reanimation",
+                successes > 0 ? $"restored {successes}" : "no effect"));
+        }
+
+        // A revived model returns beside the unit's first living model (base-to-base 0.1", eight
+        // angles, widening rings) - the wording's "may only be restored if they can be placed in
+        // coherency with non-restored models", auto-placed per the owner's call. The last-resort
+        // anchor-stack mirrors the deploy resolvers' CohesiveFallback: never lose the model, movement
+        // re-packs overlap.
+        private void PlaceRevivedInCoherency(IUnit unit, ModelData revived)
+        {
+            ModelData? anchor = unit.Models.OfType<ModelData>()
+                .FirstOrDefault(m => m.GetIsAlive() && !ReferenceEquals(m, revived));
+            if (anchor == null)
+            {
+                return;
+            }
+
+            var occupants = new List<(Position pos, IBaseShape shape, Float2 facing)>();
+            foreach (IModel model in _gameContext.TableState.Models.Objects)
+            {
+                if (model is not ModelData other || !other.GetIsAlive()) continue;
+                if (ReferenceEquals(other, revived)) continue;
+                Position p = other.Position;
+                if (p.x == 0f && p.z == 0f) continue;
+                occupants.Add((p, other.BaseShape, other.Facing));
+            }
+
+            float anchorR = anchor.BaseShape.CircumscribedRadiusInches;
+            float ownR = revived.BaseShape.CircumscribedRadiusInches;
+            for (float distance = anchorR + ownR + 0.1f; distance <= anchorR + ownR + 2f; distance += 0.6f)
+            {
+                for (int step = 0; step < 8; step++)
+                {
+                    float angle = step * MathF.PI / 4f;
+                    var candidate = new Position(anchor.Position.x + distance * MathF.Cos(angle),
+                        anchor.Position.z + distance * MathF.Sin(angle));
+                    if (candidate.x < ownR || candidate.z < ownR
+                        || candidate.x > GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES - ownR
+                        || candidate.z > GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES - ownR)
+                    {
+                        continue;
+                    }
+
+                    bool clear = occupants.All(o => !BaseShapeGeometry.AreColliding(
+                        revived.BaseShape, candidate, revived.Facing, o.shape, o.pos, o.facing));
+                    if (clear)
+                    {
+                        revived.SetPosition(candidate);
+                        return;
+                    }
+                }
+            }
+
+            revived.SetPosition(anchor.Position);
+        }
+
+        private DataBinding<ArmyData>? FindArmyBindingOf(IUnit unit)
+        {
+            return _gameContext.GameDataStore.GetAllDataBindings<ArmyData>()
+                .FirstOrDefault(b => b.GetValue().UnitBindings
+                    .Any(u => u.GetValue().ID.Equals(unit.ID)));
+        }
+
+        // The point a spawn's "within N\" of it" measures from: the placer's first living model (the
+        // corpus carriers are single models; for a squad the first living model is the deterministic pick).
+        private static Position PlacerCenter(IUnit placer)
+        {
+            foreach (IModel model in placer.Models)
+            {
+                if (model.GetIsAlive()) return model.Position;
+            }
+
+            return placer.Models.Count > 0 ? placer.Models[0].Position : new Position();
         }
 
         private DataBinding<UnitData> ResolveUnitBinding(IUnit unit)

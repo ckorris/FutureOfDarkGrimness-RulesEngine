@@ -34,7 +34,7 @@ namespace FDG.Stages
             // e.g. Strafing) so they reset for its next activation.
             if (context.ActivatedUnit != null)
             {
-                IUnit unit = context.ActivatedUnit.GetValue();
+                UnitData unit = context.ActivatedUnit.GetValue();
 
                 // #197 P22: "when this unit ends its activation" abilities (Ambush Re-Deployment's
                 // self-removal), offered BEFORE the token sweep so the moment is still "the end of the
@@ -62,16 +62,22 @@ namespace FDG.Stages
         /// shape: offers grouped by rule via <see cref="AbilityEffectChoice"/>, a single-ability rule
         /// asked as an optional Yes/No, a multi-ability rule a mandatory pick. One deliberate
         /// difference: the Yes/No DEFAULTS TO NO. At activation start the lone optional ability is a
-        /// buff (Speed Feat) and the aggressive default suits the EOF/AI fallback; here the only corpus
-        /// ability is Ambush Re-Deployment's once-per-game self-REMOVAL with a mandatory return, which
-        /// an auto-accepting default would fire on every AI unit's first activation.
+        /// buff (Speed Feat) and the aggressive default suits the EOF/AI fallback; here the corpus
+        /// ability it guards is Ambush Re-Deployment's once-per-game self-REMOVAL with a mandatory return,
+        /// which an auto-accepting default would fire on every AI unit's first activation.
+        ///
+        /// <para>#197 Dash: an ability whose effect is itself a cancellable placement SKIPS that Yes/No —
+        /// the placement is the "you may", and asking twice would both double-prompt the player and (with
+        /// the default-NO above) hide the rule from every automated resolver. See
+        /// <see cref="RepositionPlacement.IsCancellablePlacement"/> for the principle.</para>
         /// </summary>
-        private async Task OfferEndOfActivationAbilities(IUnit unit)
+        private async Task OfferEndOfActivationAbilities(UnitData unit)
         {
             foreach (IReadOnlyList<AbilityOffer> ruleOffers in AbilityEffectChoice.GroupByRule(
                          GameContext.RuleEvaluator.GatherOffers(new ActivationEndContext(unit))))
             {
-                if (ruleOffers.Count == 1)
+                if (ruleOffers.Count == 1
+                    && !RepositionPlacement.IsCancellablePlacement(ruleOffers[0].Ability.Effect))
                 {
                     AbilityOffer offer = ruleOffers[0];
                     var question = new YesNoRequest(unit.PlayerID,
@@ -87,6 +93,10 @@ namespace FDG.Stages
                 GameContext.Log(ruleOffers.Count == 1
                     ? $"{unit.Name}: {outcome.Chosen.RuleName} applies."
                     : $"{unit.Name}: {outcome.Chosen.RuleName} - chose {outcome.Chosen.Ability.Label}.");
+
+                // "You MAY place all models anywhere fully within Nin of their position" - the same fold
+                // ActivationStartStage and DeployUnitStage do, at the third of the rule family's triggers.
+                await RepositionPlacement.OfferFromOperations(GameContext, unit, outcome.Operations);
             }
         }
     }

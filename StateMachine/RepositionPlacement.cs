@@ -79,5 +79,19 @@ namespace FDG.Stages
             float inches = operations.OfType<RuleOperation.RepositionModels>().Sum(op => op.MaxInches);
             return Offer(gameContext, unit, inches);
         }
+
+        /// <summary>
+        /// Whether <paramref name="effect"/> resolves into a placement offered through <see cref="Offer"/>,
+        /// i.e. one that ASKS ITS OWN cancellable question. An offering stage uses this to decide whether an
+        /// optional ("you MAY") ability still needs a Yes/No gate in front of it: the Yes/No exists to make an
+        /// irreversible ability optional, and an ability that already lets the player decline at the placement
+        /// does not need to be asked twice (#197 Dash, owner-signed-off 2026-07-28).
+        ///
+        /// <para>Only <c>ReconcileEndOfActivationStage</c> consults this today. <c>DeployUnitStage</c> keeps
+        /// its unconditional Yes/No for Vanguard and Fanatic: that prompting is shipped behaviour its tests
+        /// pin, and changing it was out of scope for the Dash slice. Recorded rather than silently unified.</para>
+        /// </summary>
+        public static bool IsCancellablePlacement(Effect effect) =>
+            effect is Effect.RepositionAtActivation or Effect.RepositionOnDeploy;
     }
 }

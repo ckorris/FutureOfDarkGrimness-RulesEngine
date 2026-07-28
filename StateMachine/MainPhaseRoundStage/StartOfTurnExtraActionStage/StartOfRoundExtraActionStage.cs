@@ -30,10 +30,12 @@ namespace FDG.Stages
             // so does any other rule with a round-start grant (Spell Accumulator's lending pool).
             await GrantRoundStartTokens();
 
-            // Ambush reserves may arrive from round 2 onward; so do Aircraft that flew off the table edge.
+            // Ambush reserves may arrive from each unit's own earliest round (#197 P22: core Ambush
+            // round 2, Rapid Ambush "including the first"); Aircraft that flew off the table edge
+            // return from round 2.
+            await BringOnReserves(context.RoundCount);
             if (context.RoundCount >= 2)
             {
-                await BringOnReserves();
                 await RedeployOffTableAircraft();
             }
 
@@ -86,9 +88,10 @@ namespace FDG.Stages
         /// <summary>
         /// Offers each still-reserved Ambush unit (kept off-table by DeferDeployment(LaterRound) and
         /// never placed during deployment) to its owner this round; on accept, places it anywhere over
-        /// its rule's range from enemy units via the normal PlaceObjectsRequest flow.
+        /// its rule's range from enemy units via the normal PlaceObjectsRequest flow. Each unit's own
+        /// <c>MinArrivalRound</c> gates when it is first offered (#197 P22 Rapid Ambush).
         /// </summary>
-        private async Task BringOnReserves()
+        private async Task BringOnReserves(int roundCount)
         {
             foreach (ArmyData army in GameContext.GameDataStore.GetAllValues<ArmyData>().ToList())
             {
@@ -99,6 +102,7 @@ namespace FDG.Stages
                     if (!unit.GetIsAlive()) continue;
                     if (!ReserveRules.IsInReserve(unit)) continue;
                     if (!TryGetLaterRoundDefer(unit, out RuleOperation.DeferDeployment defer)) continue;
+                    if (roundCount < defer.MinArrivalRound) continue;
 
                     bool bringOn = await GameContext.PlayerRequester.RequestDecision<YesNoRequest, bool>(
                         new YesNoRequest(unit.PlayerID, $"Deploy {unit.Name} from Ambush this round?", defaultAnswer: true));

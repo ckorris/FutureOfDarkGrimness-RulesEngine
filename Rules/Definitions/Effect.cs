@@ -900,11 +900,12 @@ public abstract record Effect
     /// </summary>
     public sealed record DeferDeployment(
         EDeferTiming Timing = EDeferTiming.AfterNormalDeployment,
-        float PlacementRangeInches = 0f) : Effect
+        float PlacementRangeInches = 0f,
+        int MinArrivalRound = 2) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.DeferDeployment(Timing, PlacementRangeInches));
+            operations.Add(new RuleOperation.DeferDeployment(Timing, PlacementRangeInches, MinArrivalRound));
         }
     }
 

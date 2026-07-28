@@ -139,11 +139,12 @@ namespace FDG.Stages
         // checks to decide who it offers to bring on.)
         private string GetUnavailableReason(UnitData unit)
         {
-            if (Rules.Dispatch.ReserveRules.IsInReserve(unit) && TryGetLaterRoundDefer(unit, out _))
+            if (Rules.Dispatch.ReserveRules.IsInReserve(unit)
+                && TryGetLaterRoundDefer(unit, out RuleOperation.DeferDeployment defer))
             {
                 int round = GameProgressUtilities.TryGetProgress(GameContext.GameDataStore)?.RoundCount ?? 1;
-                return round < 2
-                    ? "Reserve - arrives round 2."
+                return round < defer.MinArrivalRound
+                    ? $"Reserve - arrives round {defer.MinArrivalRound}."
                     : "In Ambush reserve.";
             }
 

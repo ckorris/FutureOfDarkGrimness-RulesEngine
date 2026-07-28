@@ -623,7 +623,10 @@ public abstract record RuleOperation
     /// <see cref="Timing"/>. <see cref="PlacementRangeInches"/> is interpreted per timing:
     /// for <see cref="EDeferTiming.AfterNormalDeployment"/> (Scout) it's how far the deployment
     /// zone extends forward; for <see cref="EDeferTiming.LaterRound"/> (Ambush) it's the minimum
-    /// distance from enemy units the unit must arrive. Resolution of <see cref="Effect.DeferDeployment"/>.
+    /// distance from enemy units the unit must arrive. <see cref="MinArrivalRound"/> (#197 P22,
+    /// <see cref="EDeferTiming.LaterRound"/> only) is the earliest round the reserve may be brought
+    /// on: 2 for core Ambush, 1 for Rapid Ambush ("may be deployed at the start of any round,
+    /// including the first"). Resolution of <see cref="Effect.DeferDeployment"/>.
     ///
     /// Stays a plain <see cref="RuleOperation"/> — NOT an <see cref="ExecutableOperation"/>: it is a
     /// marker the deployment subsystem <em>reads</em> (a query, like <see cref="RuleOperation.SuppressRule"/>) to decide
@@ -632,7 +635,8 @@ public abstract record RuleOperation
     /// </summary>
     public sealed record DeferDeployment(
         EDeferTiming Timing = EDeferTiming.AfterNormalDeployment,
-        float PlacementRangeInches = 0f) : RuleOperation;
+        float PlacementRangeInches = 0f,
+        int MinArrivalRound = 2) : RuleOperation;
 }
 
 /// <summary>

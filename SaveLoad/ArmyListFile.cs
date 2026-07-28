@@ -38,6 +38,18 @@ namespace FDG.SaveLoad
         public string? DefaultMeleeEffectSet { get; set; }
 
         /// <summary>
+        /// #197 P17: unit specs this army can PLACE mid-game but which do not deploy with it — the
+        /// targets of Spawn("Spores [5]") / Split("Changelings [10]"), keyed by the rule's exact text
+        /// argument (each entry's Name IS that text). Compiled from the book by <c>ListCompiler</c>
+        /// (the Forge path) or hand-authored; consumed at runtime by the unit-creation service via the
+        /// army's persisted rule data. Null for almost every army and omitted from the file then, so
+        /// existing files round-trip unchanged.
+        /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        [Newtonsoft.Json.JsonProperty(NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public List<UnitFileEntry>? AuxiliaryUnits { get; set; }
+
+        /// <summary>
         /// Special-rule definitions that travel embedded with this army (#059). Registered into the
         /// game's rule resolver — core-first, then these, override-by-name — when the army loads, so a
         /// template's own/overriding rules are available before its units resolve their rule names.

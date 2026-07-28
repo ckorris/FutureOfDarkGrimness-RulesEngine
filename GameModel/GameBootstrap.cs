@@ -159,7 +159,11 @@ namespace FDG.GameModel
 
             // #095: keep the two army-file lists this method just consumed, so RestoreArmyRuleData can
             // redo both halves on a resume — where this method doesn't run and the file is vestigial.
-            armyData.PersistRuleData(armyListFile.RuleDefinitions, armyListFile.Spells);
+            // #197 P17: the auxiliary unit specs + effect-set keys ride along, so the unit-creation
+            // service (Spawn/Split) can build a new unit mid-game and on a resumed game alike.
+            armyData.PersistRuleData(armyListFile.RuleDefinitions, armyListFile.Spells,
+                armyListFile.AuxiliaryUnits, armyListFile.DefaultRangedEffectSet,
+                armyListFile.DefaultMeleeEffectSet);
 
             DataReference armyDataReference = gameDataStore.Create(armyData);
         }
@@ -178,7 +182,11 @@ namespace FDG.GameModel
         //into RuleParticipant.Actor). Wargear that names a specific weapon ("upgrade all Pulse Rifles
         //with a Drone Controller") never reaches this path — ListCompiler lands those rules directly on
         //the named weapon, so a Reliable rifle does not make its owner's melee taser hit on 2+.
-        private static void AttachRulesFromArmyList(UnitData unitData, UnitFileEntry unitEntry, IRuleResolver ruleResolver)
+        //
+        //Public since #197 P17: the mid-game unit-creation service (Spawn/Split) builds a unit from an
+        //auxiliary UnitFileEntry through exactly this path, so a spawned unit's rules attach the same
+        //way a deployed one's do.
+        public static void AttachRulesFromArmyList(UnitData unitData, UnitFileEntry unitEntry, IRuleResolver ruleResolver)
         {
             foreach (SpecialRuleEntry ruleEntry in unitEntry.SpecialRules)
             {

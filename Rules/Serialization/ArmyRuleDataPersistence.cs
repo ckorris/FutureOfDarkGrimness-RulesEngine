@@ -28,14 +28,24 @@ namespace FDG.Rules.Serialization
     /// </summary>
     public static class ArmyRuleDataPersistence
     {
+        // AuxiliaryUnits + the effect-set keys arrived with #197 P17 (the unit-creation service builds a
+        // spawned unit mid-game, where the army FILE is long gone). Nullable with null defaults so a
+        // pre-P17 blob deserializes; readers treat null as "none".
         public sealed record PersistedArmyRuleData(List<SpecialRuleDefinition> RuleDefinitions,
-            List<SpellDefinition> Spells);
+            List<SpellDefinition> Spells,
+            List<FDG.SaveLoad.UnitFileEntry>? AuxiliaryUnits = null,
+            string? DefaultRangedEffectSet = null,
+            string? DefaultMeleeEffectSet = null);
 
         public static string Serialize(IReadOnlyList<SpecialRuleDefinition> ruleDefinitions,
-            IReadOnlyList<SpellDefinition> spells)
+            IReadOnlyList<SpellDefinition> spells,
+            IReadOnlyList<FDG.SaveLoad.UnitFileEntry>? auxiliaryUnits = null,
+            string? defaultRangedEffectSet = null, string? defaultMeleeEffectSet = null)
         {
             PersistedArmyRuleData data = new PersistedArmyRuleData(
-                new List<SpecialRuleDefinition>(ruleDefinitions), new List<SpellDefinition>(spells));
+                new List<SpecialRuleDefinition>(ruleDefinitions), new List<SpellDefinition>(spells),
+                auxiliaryUnits?.Count > 0 ? new List<FDG.SaveLoad.UnitFileEntry>(auxiliaryUnits) : null,
+                defaultRangedEffectSet, defaultMeleeEffectSet);
 
             return JsonSerializer.Serialize(data, RuleJson.Options);
         }

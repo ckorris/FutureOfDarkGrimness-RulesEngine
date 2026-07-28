@@ -60,6 +60,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(RepelAmbushers), "repelAmbushers")]
 [JsonDerivedType(typeof(AmbushBeacon), "ambushBeacon")]
 [JsonDerivedType(typeof(AmbushRedeploy), "ambushRedeploy")]
+[JsonDerivedType(typeof(SpawnUnit), "spawnUnit")]
 [JsonDerivedType(typeof(TargetIndividualModel), "targetIndividualModel")]
 [JsonDerivedType(typeof(RestrictActions), "restrictActions")]
 [JsonDerivedType(typeof(RangeModifier), "rangeModifier")]
@@ -803,6 +804,39 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.InvokeAmbushRedeploy(ruleInvocation.Bearer));
+        }
+    }
+
+    /// <summary>
+    /// The bearer places a NEW unit within <see cref="RadiusInches"/> of itself (#197 P17: Spawn's
+    /// "place a new unit of X fully within 6\" of it"; Split reuses the shape at the destruction
+    /// seam). WHICH unit is the rule instance's text argument — Spawn("Spores [5]") — naming an
+    /// auxiliary unit spec the army carries (<c>ArmyListFile.AuxiliaryUnits</c>, compiled from the
+    /// book or hand-authored). Executable: the creation, army registration, placement prompt and
+    /// same-round activation adoption all live behind <see cref="IOperationServices.SpawnUnit"/>.
+    /// A missing/wrong-kind argument warns and produces nothing rather than throwing mid-stage.
+    /// </summary>
+    public sealed record SpawnUnit(float RadiusInches = 6f) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            if (ruleInvocation.Arguments.Count == 0)
+            {
+                // No diagnostics from the Definitions layer (RuleDiagnostics lives in Dispatch); the
+                // service warns when it can't find the spec, which covers the observable outcome.
+                return;
+            }
+
+            // A Str argument is the shipped shape; an Int (e.g. the lint's generic seed) stringifies,
+            // so a synthesized firing still proves the executable is produced and consumed.
+            string specName = ruleInvocation.Arguments[0] switch
+            {
+                RuleArgument.Str str => str.Value,
+                RuleArgument.Int intArg => intArg.Value.ToString(),
+                _ => string.Empty,
+            };
+
+            operations.Add(new RuleOperation.InvokeSpawnUnit(ruleInvocation.Bearer, specName, RadiusInches));
         }
     }
 

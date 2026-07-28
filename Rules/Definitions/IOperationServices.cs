@@ -58,4 +58,14 @@ public interface IOperationServices
     /// entry carries the return leg. Resolution of <see cref="RuleOperation.InvokeAmbushRedeploy"/>.
     /// </summary>
     Task RedeployAsAmbush(IUnit unit);
+
+    /// <summary>
+    /// Build a new unit from <paramref name="placer"/>'s army's auxiliary spec named
+    /// <paramref name="specName"/> (#197 P17 Spawn/Split), register it with the army, let the owner
+    /// place it fully within <paramref name="radiusInches"/> of <paramref name="placer"/>, and mark
+    /// it to join the round in progress (owner-ruled 2026-07-28: a mid-round creation may activate
+    /// this round). A name matching no spec warns and does nothing — the rule fired, but the army
+    /// carries nothing to place.
+    /// </summary>
+    Task SpawnUnit(IUnit placer, string specName, float radiusInches);
 }

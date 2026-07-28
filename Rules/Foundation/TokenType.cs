@@ -16,6 +16,7 @@ public readonly record struct TokenType(string Id)
     public const string OFF_TABLE_FROM_FORCED_MOVE_ID = "OffTableFromForcedMove";
     public const string LIMITED_SPENT_ID = "LimitedSpent";
     public const string PENDING_AMBUSH_ARRIVAL_ID = "PendingAmbushArrival";
+    public const string JOINS_ROUND_IN_PROGRESS_ID = "JoinsRoundInProgress";
 
     // Granted numeric roll modifiers (#033 stat-modifier primitive): a spell/ability grants the bearer a
     // signed delta to a specific roll for a duration. The roll kind is the token TYPE (so different rolls
@@ -120,6 +121,16 @@ public readonly record struct TokenType(string Id)
     /// arrival. ManualOnly - it must survive the round-end sweep between removal and return.
     /// </summary>
     public static readonly TokenType PendingAmbushArrival = new(PENDING_AMBUSH_ARRIVAL_ID);
+
+    /// <summary>
+    /// #197 P17: a unit created MID-ROUND (Spawn/Split) that may still activate this round
+    /// (owner-ruled 2026-07-28). The per-round activation pool snapshots at round start, so the
+    /// creation service stamps this and <c>SingleRoundContext.AdoptMidRoundUnits</c> — run at the
+    /// pool's own query seams, which is what lets the destruction-seam path reach it too — folds the
+    /// unit in and clears the token. The round-start snapshot also sweeps strays, so a token that
+    /// somehow survives to the next round grants nothing twice. ManualOnly: adoption owns removal.
+    /// </summary>
+    public static readonly TokenType JoinsRoundInProgress = new(JOINS_ROUND_IN_PROGRESS_ID);
 
     /// <summary>
     /// Marks a unit that is currently embarked inside a Transport (#035). A <b>cross-unit</b> token:

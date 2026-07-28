@@ -266,15 +266,19 @@ namespace FDG.ArmyBuilding
         {
             foreach (OprRule r in rules ?? new())
             {
-                if (r.Name == "AP" && r.Rating is int ap) weapon.ArmorPenetration = ap;
+                if (r.Name == "AP" && int.TryParse(r.Rating, out int ap)) weapon.ArmorPenetration = ap;
                 else weapon.SpecialRules.Add(MapRule(r));
             }
         }
 
+        // #197 P17: a non-numeric, non-empty rating is a TEXT argument (Spawn(Spores [5])); flattening
+        // it to the bare name is how Spawn shipped dead.
         private static SpecialRuleEntry MapRule(OprRule r) =>
-            r.Rating is int rating
+            int.TryParse(r.Rating, out int rating)
                 ? new SpecialRuleEntry_CoreNumeric(r.Name ?? "Rule", rating)
-                : new SpecialRuleEntry_Core(r.Name ?? "Rule");
+                : !string.IsNullOrWhiteSpace(r.Rating)
+                    ? new SpecialRuleEntry_Text(r.Name ?? "Rule", r.Rating!.Trim())
+                    : new SpecialRuleEntry_Core(r.Name ?? "Rule");
 
         // #197 (Darkborn): OPR reuses the bare name "Darkborn" for two mechanically different rules across
         // armies -- Dark Brothers' is the defensive debuff (enemies get -4" range / -2" charge vs this unit),
@@ -791,7 +795,9 @@ namespace FDG.ArmyBuilding
         private sealed class OprRule
         {
             public string? Name { get; set; }
-            public int? Rating { get; set; }
+            // #197 P17: a rating can be text ("Spores [5]" on Spawn/Split), so it reads as a string;
+            // numeric ratings arrive as "3" via LooseStringConverter and parse back out in MapRule.
+            public string? Rating { get; set; }
         }
 
         private sealed class OprPackage
@@ -848,7 +854,8 @@ namespace FDG.ArmyBuilding
             public int? Count { get; set; }
             public int? Range { get; set; }
             public int? Attacks { get; set; }
-            public int? Rating { get; set; }
+            // String for the same reason as OprRule.Rating (#197 P17) — gains feed MapRule verbatim.
+            public string? Rating { get; set; }
             public List<OprRule>? SpecialRules { get; set; }
             public List<OprGain>? Content { get; set; }
         }

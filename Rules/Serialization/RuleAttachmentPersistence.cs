@@ -25,10 +25,14 @@ namespace FDG.Rules.Serialization
     /// </summary>
     public static class RuleAttachmentPersistence
     {
-        // Mirrors ResolvedRule but with arguments flattened to ints — RuleArgument.Int is the only variant
-        // today. A non-Int argument would silently lose data, so Serialize hard-fails on one instead.
+        // Mirrors ResolvedRule. Arguments used to be flattened to ints (RuleArgument.Int was the only
+        // variant); #197 P17 added Str, so `Arguments` now carries every kind as a one-of record.
+        // `IntArguments` stays so a pre-P17 blob still deserializes — a NEW blob writes both, with
+        // `Arguments` authoritative on read.
+        public sealed record PersistedArgument(int? IntValue = null, string? StrValue = null);
+
         public sealed record PersistedResolvedRule(string RequestedName, SpecialRuleDefinition Definition,
-            List<int> IntArguments);
+            List<int> IntArguments, List<PersistedArgument>? Arguments = null);
 
         public static string Serialize(IReadOnlyList<ResolvedRule> rules)
         {
@@ -37,21 +41,28 @@ namespace FDG.Rules.Serialization
             foreach (ResolvedRule rule in rules)
             {
                 List<int> intArguments = new List<int>(rule.Arguments.Count);
+                List<PersistedArgument> arguments = new List<PersistedArgument>(rule.Arguments.Count);
                 foreach (RuleArgument argument in rule.Arguments)
                 {
-                    if (argument is RuleArgument.Int intArgument)
+                    switch (argument)
                     {
-                        intArguments.Add(intArgument.Value);
-                    }
-                    else
-                    {
-                        throw new NotSupportedException(
-                            $"Rule '{rule.RequestedName}' carries a non-Int argument " +
-                            $"({argument.GetType().Name}); persisting it for save/load resume is not yet supported.");
+                        case RuleArgument.Int intArgument:
+                            intArguments.Add(intArgument.Value);
+                            arguments.Add(new PersistedArgument(IntValue: intArgument.Value));
+                            break;
+                        case RuleArgument.Str strArgument:
+                            arguments.Add(new PersistedArgument(StrValue: strArgument.Value));
+                            break;
+                        default:
+                            throw new NotSupportedException(
+                                $"Rule '{rule.RequestedName}' carries an argument kind " +
+                                $"({argument.GetType().Name}) this persistence does not know; " +
+                                "extend PersistedArgument before shipping the new kind.");
                     }
                 }
 
-                persisted.Add(new PersistedResolvedRule(rule.RequestedName, rule.Definition, intArguments));
+                persisted.Add(new PersistedResolvedRule(rule.RequestedName, rule.Definition, intArguments,
+                    arguments));
             }
 
             return JsonSerializer.Serialize(persisted, RuleJson.Options);
@@ -70,9 +81,16 @@ namespace FDG.Rules.Serialization
 
             foreach (PersistedResolvedRule entry in persisted)
             {
-                IReadOnlyList<RuleArgument> arguments = entry.IntArguments
-                    .Select(value => (RuleArgument)new RuleArgument.Int(value))
-                    .ToList();
+                // `Arguments` is authoritative when present; a pre-P17 blob only has the int list.
+                IReadOnlyList<RuleArgument> arguments = entry.Arguments != null
+                    ? entry.Arguments
+                        .Select(a => a.StrValue != null
+                            ? (RuleArgument)new RuleArgument.Str(a.StrValue)
+                            : new RuleArgument.Int(a.IntValue ?? 0))
+                        .ToList()
+                    : entry.IntArguments
+                        .Select(value => (RuleArgument)new RuleArgument.Int(value))
+                        .ToList();
                 rules.Add(new ResolvedRule(entry.RequestedName, entry.Definition, arguments));
             }
 

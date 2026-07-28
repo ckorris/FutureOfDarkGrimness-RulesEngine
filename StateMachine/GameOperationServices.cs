@@ -206,6 +206,85 @@ namespace FDG.Stages
                 $"{unit.Name} slips away - it redeploys from Ambush next round!", RecoveryBannerColor);
         }
 
+        public async Task SpawnUnit(IUnit placer, string specName, float radiusInches)
+        {
+            // The placer's own army carries the spec (each player's Spawn names its own book's units).
+            DataBinding<ArmyData>? armyBinding = _gameContext.GameDataStore.GetAllDataBindings<ArmyData>()
+                .FirstOrDefault(b => b.GetValue().UnitBindings
+                    .Any(u => u.GetValue().ID.Equals(placer.ID)));
+            ArmyData? army = armyBinding?.GetValue();
+
+            // The compiler keys a spec by the rule's exact argument text in `Id`; `Name` stays the unit's
+            // display name ("Spores", not "Spores [5]"). A hand-authored file may key on either.
+            SaveLoad.UnitFileEntry? spec = army?.RestoreRuleData()?.AuxiliaryUnits?
+                .FirstOrDefault(entry =>
+                    string.Equals(entry.Id, specName, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(entry.Name, specName, StringComparison.OrdinalIgnoreCase));
+            if (armyBinding == null || army == null || spec == null)
+            {
+                Rules.Dispatch.RuleDiagnostics.Warn($"{placer.Name} tried to place '{specName}', but its " +
+                    "army carries no auxiliary unit spec by that name - nothing spawns. (A Forge-compiled " +
+                    "army embeds these; a hand-authored one lists them under 'auxiliaryUnits'.)");
+                return;
+            }
+
+            // Build through the same path a deploying unit takes (ctor registers the models; rules attach
+            // via GameBootstrap's helper; creation-time rules - Tough's max wounds, auras - apply the same
+            // way FDGServer applies them at launch). The evaluator's resolver is the shared in-game one.
+            Rules.Dispatch.IRuleResolver resolver = _gameContext.RuleEvaluator.RuleResolver
+                ?? new Rules.Dispatch.RuleResolver();
+            var persisted = army.RestoreRuleData();
+            var unit = new UnitData(placer.PlayerID, spec, _gameContext.GameDataStore, resolver,
+                persisted?.DefaultRangedEffectSet, persisted?.DefaultMeleeEffectSet);
+            GameModel.GameBootstrap.AttachRulesFromArmyList(unit, spec, resolver);
+            Rules.Dispatch.UnitCreationRules.Apply(unit, _gameContext.RuleEvaluator);
+
+            DataReference unitReference = _gameContext.GameDataStore.Create(unit);
+            DataBinding<UnitData> unitBinding =
+                _gameContext.GameDataStore.GetDataBinding<UnitData>(unitReference);
+
+            // Register with the army AND re-Set it through the store, so the grown binding list rides the
+            // ordinary update broadcast to networked clients (the unit itself replicated on Create above).
+            army.UnitBindings.Add(unitBinding);
+            _gameContext.GameDataStore.SetValue(armyBinding.Reference, army);
+
+            // "Fully within N of it": a circular zone around the placer, resolved through the normal
+            // placement flow (overlap/cohesion/terrain checks included) with the #282 commit guard.
+            Position center = PlacerCenter(placer);
+            var zone = new CircularZone(new Float2(center.x, center.z), radiusInches);
+            var request = new PlaceObjectsRequest<ModelData>(placer.PlayerID, "Place Spawned Unit",
+                zone, unit.ModelBindings);
+            List<PlacedObjectEntry<ModelData>> placements = await PlacementCommitGuard
+                .RequestClearPlacement(_gameContext, request);
+            foreach (PlacedObjectEntry<ModelData> placement in placements)
+            {
+                placement.Binding.GetValue().SetPosition(placement.Position);
+                if (placement.Facing.HasValue)
+                {
+                    placement.Binding.GetValue().SetFacing(placement.Facing.Value);
+                }
+            }
+
+            // Owner-ruled 2026-07-28: a mid-round creation may activate this round. The round context
+            // adopts units carrying this marker at its own query seams and clears it.
+            unit.Tokens.AddToken(TokenDefinitionCatalog.Create(
+                Rules.Foundation.TokenType.JoinsRoundInProgress));
+
+            await _gameContext.Announce($"{placer.Name} spawns {unit.Name}!", RecoveryBannerColor);
+        }
+
+        // The point a spawn's "within N\" of it" measures from: the placer's first living model (the
+        // corpus carriers are single models; for a squad the first living model is the deterministic pick).
+        private static Position PlacerCenter(IUnit placer)
+        {
+            foreach (IModel model in placer.Models)
+            {
+                if (model.GetIsAlive()) return model.Position;
+            }
+
+            return placer.Models.Count > 0 ? placer.Models[0].Position : new Position();
+        }
+
         private DataBinding<UnitData> ResolveUnitBinding(IUnit unit)
         {
             foreach (ArmyData army in _gameContext.GameDataStore.GetAllValues<ArmyData>())

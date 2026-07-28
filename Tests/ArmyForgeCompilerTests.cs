@@ -167,6 +167,49 @@ public class ArmyForgeCompilerTests
 
     private static WeaponFileEntry Wpn(string name, int qty = 1) => new() { Name = name, Quantity = qty, Attacks = 1 };
 
+    // #197 P17: a Spawn/Split TEXT argument names another book unit; the compiler embeds that unit as
+    // an auxiliary spec (keyed by the exact argument text in Id, sized by the [n], zero points), and
+    // recurses so a Split chain's every link ships (Change Horrors -> Lesser Horrors -> Changelings).
+    [Test]
+    public void SpawnAndSplitTargets_CompileIntoAuxiliarySpecs_Recursively()
+    {
+        var horrors = new RosterUnit
+        {
+            Id = "h", Name = "Change Horrors", BaseModelCount = 5, MinModels = 5, MaxModels = 5,
+            BasePointCost = 100,
+            Rules = { new SpecialRuleEntry_Text("Split", "Lesser Horrors [5]") },
+        };
+        var lesser = new RosterUnit
+        {
+            Id = "l", Name = "Lesser Horrors", BaseModelCount = 10, MinModels = 10, MaxModels = 10,
+            BasePointCost = 60,
+            Rules = { new SpecialRuleEntry_Text("Split", "Changelings [10]") },
+        };
+        var changelings = new RosterUnit
+        {
+            Id = "c", Name = "Changelings", BaseModelCount = 10, MinModels = 10, MaxModels = 10,
+            BasePointCost = 30,
+        };
+        var book = new BookFile { Name = "T", Units = { horrors, lesser, changelings } };
+        var list = new BuilderList
+        {
+            PointsLimit = 100000,
+            Units = { new BuilderUnit { RosterUnitId = "h" } },   // only the head of the chain is bought
+        };
+
+        var army = ListCompiler.Compile(book, list);
+
+        Assert.That(army.AuxiliaryUnits, Is.Not.Null.And.Count.EqualTo(2),
+            "both links of the Split chain ship as auxiliary specs");
+        UnitFileEntry lesserSpec = army.AuxiliaryUnits!.Single(u => u.Id == "Lesser Horrors [5]");
+        Assert.That(lesserSpec.Name, Is.EqualTo("Lesser Horrors"), "display name stays clean");
+        Assert.That(lesserSpec.ModelCount, Is.EqualTo(5), "the [5] overrides the roster's base size");
+        Assert.That(lesserSpec.PointCost, Is.EqualTo(0), "placed by a rule, not bought");
+        Assert.That(lesserSpec.SpecialRules.OfType<SpecialRuleEntry_Text>().Single().TextValue,
+            Is.EqualTo("Changelings [10]"), "the aux unit keeps its own Split argument");
+        Assert.That(army.AuxiliaryUnits.Single(u => u.Id == "Changelings [10]").ModelCount, Is.EqualTo(10));
+    }
+
     private static UnitFileEntry CompileOne(RosterUnit unit, params UpgradeChoice[] choices)
     {
         var book = new BookFile { Name = "T", Units = { unit } };

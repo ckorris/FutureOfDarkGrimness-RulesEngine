@@ -33,9 +33,12 @@ namespace FDG
         /// <summary>Records the army file's rule definitions and spells for <see cref="RestoreRuleData"/>
         /// to read back after a save/load resume. Called at army load, where the file is still in hand.</summary>
         public void PersistRuleData(IReadOnlyList<SpecialRuleDefinition> ruleDefinitions,
-            IReadOnlyList<SpellDefinition> spells)
+            IReadOnlyList<SpellDefinition> spells,
+            IReadOnlyList<SaveLoad.UnitFileEntry>? auxiliaryUnits = null,
+            string? defaultRangedEffectSet = null, string? defaultMeleeEffectSet = null)
         {
-            _armyRuleDataJson = ArmyRuleDataPersistence.Serialize(ruleDefinitions, spells);
+            _armyRuleDataJson = ArmyRuleDataPersistence.Serialize(ruleDefinitions, spells,
+                auxiliaryUnits, defaultRangedEffectSet, defaultMeleeEffectSet);
         }
 
         /// <summary>The persisted army-file data, or null when this army carries none (built outside army

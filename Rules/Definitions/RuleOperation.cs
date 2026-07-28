@@ -277,6 +277,20 @@ public abstract record RuleOperation
     }
 
     /// <summary>
+    /// Place a new unit built from the placer's army's auxiliary spec named <see cref="SpecName"/>,
+    /// fully within <see cref="RadiusInches"/> of <see cref="Placer"/> (#197 P17 Spawn/Split).
+    /// Resolution of <see cref="Effect.SpawnUnit"/>.
+    /// </summary>
+    public sealed record InvokeSpawnUnit(IUnit Placer, string SpecName, float RadiusInches)
+        : ExecutableOperation
+    {
+        public override Task Execute(IOperationServices services)
+        {
+            return services.SpawnUnit(Placer, SpecName, RadiusInches);
+        }
+    }
+
+    /// <summary>
     /// Roll one die against <see cref="MinRoll"/> and, on a pass, strip every <see cref="TType"/> token from
     /// <see cref="Unit"/>. Resolution of <see cref="Effect.ClearTokenOnRoll"/> — the round-start Shaken
     /// recovery. Executable, not a sink fold: the roll reads live dice and the removal is imperative.

@@ -345,7 +345,7 @@ namespace FDG.ArmyBuilding
                 warn($"Weapon '{weapon.Name}' has attacksMultiplier {m} (unsupported) - attacks left at {weapon.Attacks}.");
             foreach (OprListRule rule in w.SpecialRules ?? new())
             {
-                if (rule.Name == "AP" && rule.Rating is int ap) weapon.ArmorPenetration = ap;
+                if (rule.Name == "AP" && int.TryParse(rule.Rating, out int ap)) weapon.ArmorPenetration = ap;
                 else weapon.SpecialRules.Add(MapRule(rule, bookName));
             }
             return weapon;
@@ -353,9 +353,12 @@ namespace FDG.ArmyBuilding
 
         private static SpecialRuleEntry MapRule(OprListRule rule, string bookName)
         {
-            SpecialRuleEntry entry = rule.Rating is int rating
+            // #197 P17: same text-rating handling as the book importer (Spawn(Spores [5])).
+            SpecialRuleEntry entry = int.TryParse(rule.Rating, out int rating)
                 ? new SpecialRuleEntry_CoreNumeric(rule.Name ?? "Rule", rating)
-                : new SpecialRuleEntry_Core(rule.Name ?? "Rule");
+                : !string.IsNullOrWhiteSpace(rule.Rating)
+                    ? new SpecialRuleEntry_Text(rule.Name ?? "Rule", rule.Rating!.Trim())
+                    : new SpecialRuleEntry_Core(rule.Name ?? "Rule");
             // Same army-context disambiguation the book importer applies (#197 Darkborn).
             return OprBookImporter.Disambiguate(bookName, entry);
         }
@@ -449,7 +452,8 @@ namespace FDG.ArmyBuilding
         private sealed class OprListRule
         {
             public string? Name { get; set; }
-            public int? Rating { get; set; }
+            // String for the same reason as the book importer's OprRule.Rating (#197 P17).
+            public string? Rating { get; set; }
         }
 
         private sealed class OprLoadoutEntry
@@ -460,7 +464,7 @@ namespace FDG.ArmyBuilding
             public int? Range { get; set; }
             public int? Attacks { get; set; }
             public int? AttacksMultiplier { get; set; }
-            public int? Rating { get; set; }            // rule-typed entries
+            public string? Rating { get; set; }         // rule-typed entries (#197 P17: can be text)
             public List<OprListRule>? SpecialRules { get; set; }
             public List<OprLoadoutEntry>? Content { get; set; }
         }

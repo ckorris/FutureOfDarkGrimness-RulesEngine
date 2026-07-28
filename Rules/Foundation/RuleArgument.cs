@@ -7,13 +7,17 @@ namespace FDG.Rules.Foundation;
 /// army-specific rules. Effects and conditions read an argument by index.
 ///
 /// Closed sum type, same pattern as <see cref="Definitions.Effect"/> and
-/// <see cref="Definitions.Condition"/>. Only <see cref="Int"/> is needed today
-/// (every core-book argument is an integer); other value kinds — e.g. a
-/// <c>Str</c> case for Alien Hives' Spawn(unit-type) — are one-line additions
-/// when a rule first needs them. Pure data; serializes to a JSON array element.
+/// <see cref="Definitions.Condition"/>. Pure data; serializes to a JSON array element.
 /// </summary>
 public abstract record RuleArgument
 {
-    /// <summary> An integer argument — the only kind any core-book rule uses. </summary>
+    /// <summary> An integer argument — the kind every core-book rule uses. </summary>
     public sealed record Int(int Value) : RuleArgument;
+
+    /// <summary>
+    /// A text argument — the growth this type's doc anticipated, arrived with #197 P17:
+    /// <c>Spawn(Spores [5])</c> / <c>Split(Changelings [10])</c> name the auxiliary unit spec the
+    /// bearer places, and that name is data on the rule instance like any other argument.
+    /// </summary>
+    public sealed record Str(string Value) : RuleArgument;
 }

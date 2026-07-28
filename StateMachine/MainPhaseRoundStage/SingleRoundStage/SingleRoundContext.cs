@@ -164,6 +164,7 @@ namespace FDG.Stages
 
         public bool DoesAnyTeamHaveRemainingActivations()
         {
+            AdoptMidRoundUnits();
             foreach (ITeam team in GameContext.TableState.Teams.Objects)
             {
                 if (DoesTeamHaveRemainingActivations(team))
@@ -177,6 +178,7 @@ namespace FDG.Stages
 
         public bool DoesTeamHaveRemainingActivations(ITeam team)
         {
+            AdoptMidRoundUnits();
             foreach (PlayerID playerID in team.Players)
             {
                 if (DoesPlayerHaveRemainingActivations(playerID))
@@ -190,7 +192,43 @@ namespace FDG.Stages
 
         public bool DoesPlayerHaveRemainingActivations(PlayerID playerID)
         {
+            AdoptMidRoundUnits();
             return _unactivatedUnits[playerID].Where(unit => unit.GetValue().GetIsAlive()).Count() > 0;
+        }
+
+        /// <summary>
+        /// #197 P17: folds units created MID-ROUND (Spawn/Split — marked
+        /// <see cref="Rules.Foundation.TokenType.JoinsRoundInProgress"/> by the creation service) into
+        /// their owner's pool, so they may activate this round (owner-ruled 2026-07-28). Runs at this
+        /// context's own query seams rather than at the creation site, because a creation can fire from
+        /// code that cannot see the round context (the destruction seam a Split rides). Clears the
+        /// marker; the round-start snapshot sweeps strays so nothing ever joins twice.
+        /// </summary>
+        private void AdoptMidRoundUnits()
+        {
+            foreach (ArmyData army in GameContext.GameDataStore().GetAllValues<ArmyData>())
+            {
+                foreach (DataBinding<UnitData> unitBinding in army.UnitBindings)
+                {
+                    UnitData unit = unitBinding.GetValue();
+                    if (!unit.Tokens.HasToken(Rules.Foundation.TokenType.JoinsRoundInProgress))
+                    {
+                        continue;
+                    }
+
+                    unit.Tokens.RemoveTokens(Rules.Foundation.TokenType.JoinsRoundInProgress);
+                    if (!unit.GetIsAlive())
+                    {
+                        continue;
+                    }
+
+                    if (_unactivatedUnits.TryGetValue(unit.PlayerID, out List<DataBinding<UnitData>>? pool)
+                        && !pool.Contains(unitBinding))
+                    {
+                        pool.Add(unitBinding);
+                    }
+                }
+            }
         }
 
         private void SetUnactivatedUnits()
@@ -212,6 +250,14 @@ namespace FDG.Stages
                         playerUnits.AddRange(army.UnitBindings.Where(unit =>
                             unit.GetValue().GetIsAlive()
                             && (unit.GetValue().GetIsOnBattlefield() || TransportUtilities.IsEmbarked(unit.GetValue()))));
+
+                        // #197 P17: this fresh scan already includes every living unit, so a leftover
+                        // mid-round join marker grants nothing here — sweep it.
+                        foreach (DataBinding<UnitData> unit in army.UnitBindings)
+                        {
+                            unit.GetValue().Tokens.RemoveTokens(
+                                Rules.Foundation.TokenType.JoinsRoundInProgress);
+                        }
                     }
                     _unactivatedUnits[playerID] = playerUnits;
                 }

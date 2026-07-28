@@ -150,6 +150,10 @@ public static class TokenDefinitionCatalog
             new(TokenType.PENDING_AMBUSH_ARRIVAL_ID, "Redeploying (Ambush)", EValence.Neutral,
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.ManualOnly(),
                 Description: "This unit removed itself (Ambush Re-Deployment) and returns from Ambush at the start of the next round."),
+
+            // ManualOnly: pool adoption owns removal (#197 P17 mid-round creations).
+            new(TokenType.JOINS_ROUND_IN_PROGRESS_ID, "Joins round in progress", EValence.Neutral,
+                ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.ManualOnly()),
         };
 
         var dict = new Dictionary<string, TokenDefinition>(StringComparer.Ordinal);

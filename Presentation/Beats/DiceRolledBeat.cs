@@ -6,14 +6,20 @@ namespace FDG.Presentation.Beats
     /// <summary>
     /// What a <see cref="DiceRolledBeat"/> is rolled FOR, at the coarse level the front-end
     /// color-codes (#245): an offensive roll (to-hit), a defensive roll (saves, regeneration,
-    /// Bane re-rolls), or anything else (morale, objectives, dangerous terrain). Serializes so a
-    /// networked client colors the panel the same way.
+    /// Bane re-rolls), a cast roll, or anything else (morale, objectives, dangerous terrain).
+    /// Serializes so a networked client colors the panel the same way.
     /// </summary>
+    /// <remarks>
+    /// Only the cast attempt itself is <see cref="Magic"/>. A spell's damage roll is
+    /// <see cref="Offense"/> and the save against it is <see cref="Defense"/>, same as any other
+    /// attack - the category tracks what the die decides, not what produced it.
+    /// </remarks>
     public enum ERollBeatCategory
     {
         Misc = 0,
         Offense = 1,
         Defense = 2,
+        Magic = 3,
     }
 
     /// <summary>

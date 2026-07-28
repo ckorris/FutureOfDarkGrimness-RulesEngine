@@ -4,7 +4,7 @@ using FDG.Utilities;
 namespace FDG.Stages
 {
     /// <summary>
-    /// #299 - the per-player accounting for "Alternating: Points" terrain placement. Deals the game's
+    /// #301 - the per-player accounting for "Alternating: Points" terrain placement. Deals the game's
     /// total terrain points into fixed per-player allotments up front, then tracks spend and debt as
     /// turns run. Pure state + arithmetic (no requests, no table access) so the rules are unit-testable
     /// without driving <see cref="PlaceTerrainStage"/>; the affordability rules themselves live on

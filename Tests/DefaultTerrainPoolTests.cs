@@ -110,7 +110,7 @@ namespace FDG.Tests
         [Test]
         public void Palette_IsSortedByCost_AndOffersEachTemplateOnce()
         {
-            // #299: the picker lists cheap pieces first (stable within a tier) and offers each distinct
+            // #301: the picker lists cheap pieces first (stable within a tier) and offers each distinct
             // template once - the auto layout's two Forests / two Sandbag lines differ only by their
             // baked-in positions, which mean nothing for a template the player positions on click.
             IReadOnlyList<TerrainPieceEntry> palette = DefaultTerrainPool.GetPalette();
@@ -132,7 +132,7 @@ namespace FDG.Tests
         [Test]
         public void EveryPalettePiece_HasAPositivePointCost()
         {
-            // #299 Alternating: Points - every built-in piece carries an explicit cost (1-3 today; the
+            // #301 Alternating: Points - every built-in piece carries an explicit cost (1-3 today; the
             // exact values are a balance knob, so only the floor is pinned). A 0 would fall back to
             // TerrainPointsBudget.CostOf's floor of 1, but the data should say what it means.
             foreach (TerrainPieceEntry piece in DefaultTerrainPool.GetPalette())

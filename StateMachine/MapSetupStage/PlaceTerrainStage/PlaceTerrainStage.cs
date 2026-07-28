@@ -15,7 +15,7 @@ namespace FDG.Stages
     ///   <item><c>Alternating</c> ("Alternating: One Per"): loops <see cref="GameSettings.TerrainPieceCount"/>
     ///     times, alternating teams in the order chosen by <see cref="RollForFirstTerrainPlacementStage"/>,
     ///     asking each active player to place one piece via <see cref="PlaceOneTerrainRequest"/>.</item>
-    ///   <item><c>AlternatingPoints</c> ("Alternating: Points", #299): same alternation, but pieces cost
+    ///   <item><c>AlternatingPoints</c> ("Alternating: Points", #301): same alternation, but pieces cost
     ///     <see cref="TerrainPieceEntry.Points"/> and each turn spends
     ///     <see cref="GameSettings.TerrainPointsPerTurn"/> from the player's pre-dealt share of
     ///     <see cref="GameSettings.TerrainPointsTotal"/> (see <see cref="TerrainPointsLedger"/>).</item>
@@ -28,10 +28,10 @@ namespace FDG.Stages
         /// <summary>Inclusive upper bound on the Alternating-mode piece count, per #002 Decisions.</summary>
         public const int MaxAlternatingPieceCount = 30;
 
-        /// <summary>Inclusive upper bound on the Alternating: Points total (#299). 60 points of 1-cost fences is ~60 pieces - well past any sane board.</summary>
+        /// <summary>Inclusive upper bound on the Alternating: Points total (#301). 60 points of 1-cost fences is ~60 pieces - well past any sane board.</summary>
         public const int MaxPointsTotal = 60;
 
-        /// <summary>Inclusive upper bound on the Alternating: Points per-turn spend (#299).</summary>
+        /// <summary>Inclusive upper bound on the Alternating: Points per-turn spend (#301).</summary>
         public const int MaxPointsPerTurn = 6;
 
         /// <summary>
@@ -409,7 +409,7 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// #299 safety valve: whether ANY currently-playable template has a legal spot (2" grid, 0/90
+        /// #301 safety valve: whether ANY currently-playable template has a legal spot (2" grid, 0/90
         /// degree rotations - deliberately conservative; a piece that only fits at 45 degrees on a
         /// near-full table forfeits a little early rather than re-prompting forever). Cheap in normal
         /// play: the scan early-outs at the first legal cell.

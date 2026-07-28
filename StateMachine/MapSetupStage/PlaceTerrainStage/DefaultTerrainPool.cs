@@ -178,7 +178,7 @@ namespace FDG.Stages
         /// The Alternating-mode picker's palette: the auto layout's pieces plus <see cref="ExtraTemplates"/>.
         /// The picker scales its thumbnails to the largest piece and scrolls, so the list length is free.
         ///
-        /// <para>#299: sorted by point cost (cheap first; ties keep the curated order) and offered once
+        /// <para>#301: sorted by point cost (cheap first; ties keep the curated order) and offered once
         /// per distinct TEMPLATE - the auto layout contributes two Forests and two Sandbag lines that
         /// differ only by their baked-in positions, which mean nothing for a template the player
         /// positions anyway.</para>

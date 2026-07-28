@@ -22,7 +22,7 @@ namespace FDG
         public int TerrainPieceCount;
 
         /// <summary>
-        /// #299 Alternating: Points - the shared budget of terrain points the players place between
+        /// #301 Alternating: Points - the shared budget of terrain points the players place between
         /// them. Dealt out at phase start in placing order, <see cref="TerrainPointsPerTurn"/> at a
         /// time, until it runs out (so the last chunk may be partial and early players may get one
         /// more chunk than late ones). Read only in
@@ -31,7 +31,7 @@ namespace FDG
         public int TerrainPointsTotal;
 
         /// <summary>
-        /// #299 Alternating: Points - how many terrain points a player spends on each of their
+        /// #301 Alternating: Points - how many terrain points a player spends on each of their
         /// placement turns. A piece costing more can still open a turn; the difference is taken from
         /// the player's next turn(s) as debt (see <see cref="Stages.TerrainPointsLedger"/>).
         /// </summary>
@@ -154,7 +154,7 @@ namespace FDG
         LoadFromFile,
 
         /// <summary>
-        /// #299 "Alternating: Points" - roll-off + alternating placement like <see cref="Alternating"/>
+        /// #301 "Alternating: Points" - roll-off + alternating placement like <see cref="Alternating"/>
         /// ("Alternating: One Per" in the UI), but each piece costs its <see cref="SaveLoad.TerrainPieceEntry.Points"/>
         /// and a turn spends <see cref="GameSettings.TerrainPointsPerTurn"/> points (one big piece or
         /// several small ones) until <see cref="GameSettings.TerrainPointsTotal"/> is exhausted.

@@ -7,7 +7,7 @@ using static FDG.Tests.TestArmies;
 
 namespace FDG.Tests
 {
-    // #299 "Alternating: Points" - the stage loop end to end: a fresh AI-vs-AI game with the mode
+    // #301 "Alternating: Points" - the stage loop end to end: a fresh AI-vs-AI game with the mode
     // enabled must run the terrain roll-off, deal the allotments, alternate turns through the budget
     // loop (server-side affordability validation included) and terminate. The arithmetic itself is
     // pinned in TerrainPointsLedgerTests; this pins that the loop actually drives a real game.

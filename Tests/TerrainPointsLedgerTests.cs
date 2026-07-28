@@ -9,7 +9,7 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #299 "Alternating: Points" - the dealing, spend, debt and affordability rules behind the mode,
+    // #301 "Alternating: Points" - the dealing, spend, debt and affordability rules behind the mode,
     // tested off the pure ledger (no stage, no requests). The affordability copy is asserted verbatim
     // where the design fixed it ("Playing this piece will take 1 point from your next turn").
     [TestFixture]
@@ -251,7 +251,7 @@ namespace FDG.Tests
         [Test]
         public void TerrainPieceEntry_WithoutPointsInItsJson_DefaultsToOne()
         {
-            // Layout files written before #299 have no Points field - every piece prices at the minimum.
+            // Layout files written before #301 have no Points field - every piece prices at the minimum.
             var entry = JsonConvert.DeserializeObject<TerrainPieceEntry>(
                 "{\"Name\":\"Old fence\",\"HeightInches\":1.0}");
 

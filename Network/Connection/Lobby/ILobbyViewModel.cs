@@ -61,9 +61,9 @@ namespace FDG.Network.Connection.Lobby
 
         IObservable<int> ArmyPointsObservable { get; }
         IObservable<int> TerrainPieceCountObservable { get; }
-        /// <summary>#299 Alternating: Points - see <see cref="GameSettings.TerrainPointsTotal"/>.</summary>
+        /// <summary>#301 Alternating: Points - see <see cref="GameSettings.TerrainPointsTotal"/>.</summary>
         IObservable<int> TerrainPointsTotalObservable { get; }
-        /// <summary>#299 Alternating: Points - see <see cref="GameSettings.TerrainPointsPerTurn"/>.</summary>
+        /// <summary>#301 Alternating: Points - see <see cref="GameSettings.TerrainPointsPerTurn"/>.</summary>
         IObservable<int> TerrainPointsPerTurnObservable { get; }
         IObservable<ETerrainPlacementMode> TerrainPlacementModeObservable { get; }
         IObservable<string?> TerrainLayoutPathObservable { get; }

@@ -61,10 +61,10 @@ namespace FDG.Ai.Resolvers
         }
 
         /// <summary>
-        /// #299 points mode: only templates the budget allows, preferring debt-free picks so the dumb
+        /// #301 points mode: only templates the budget allows, preferring debt-free picks so the dumb
         /// AI never borrows from its next turn (it falls back to debt-eligible picks only if a custom
         /// pool has nothing it can afford outright). One Per mode: the whole pool, in pool order, so
-        /// the RNG consumption — and therefore seeded determinism — is unchanged from before #299.
+        /// the RNG consumption — and therefore seeded determinism — is unchanged from before #301.
         /// </summary>
         private static IReadOnlyList<int> CandidateIndices(PlaceOneTerrainRequest request)
         {

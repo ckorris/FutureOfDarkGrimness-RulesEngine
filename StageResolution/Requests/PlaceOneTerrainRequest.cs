@@ -60,7 +60,7 @@ namespace FDG.StageResolution.Requests
         public float TableHeightInches { get; }
 
         /// <summary>
-        /// #299 - the requesting player's point state in "Alternating: Points" mode; null in every
+        /// #301 - the requesting player's point state in "Alternating: Points" mode; null in every
         /// other mode. Resolvers evaluate each pool entry against it (cost via
         /// <see cref="TerrainPointsBudget.CostOf"/>) for graying, warnings and the header lines.
         /// </summary>

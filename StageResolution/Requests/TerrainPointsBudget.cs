@@ -4,7 +4,7 @@ using Newtonsoft.Json;
 namespace FDG.StageResolution.Requests
 {
     /// <summary>
-    /// #299 - snapshot of the requesting player's terrain-point state for one
+    /// #301 - snapshot of the requesting player's terrain-point state for one
     /// "Alternating: Points" placement request. Rides <see cref="PlaceOneTerrainRequest.PointsBudget"/>
     /// (null in every other placement mode). All affordability rules and their player-facing copy are
     /// composed HERE so the GUI picker, the CLI menu, the AI resolver and the stage's authoritative

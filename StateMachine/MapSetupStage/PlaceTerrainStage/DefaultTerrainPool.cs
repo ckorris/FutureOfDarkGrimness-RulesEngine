@@ -177,12 +177,30 @@ namespace FDG.Stages
         /// <summary>
         /// The Alternating-mode picker's palette: the auto layout's pieces plus <see cref="ExtraTemplates"/>.
         /// The picker scales its thumbnails to the largest piece and scrolls, so the list length is free.
+        ///
+        /// <para>#299: sorted by point cost (cheap first; ties keep the curated order) and offered once
+        /// per distinct TEMPLATE - the auto layout contributes two Forests and two Sandbag lines that
+        /// differ only by their baked-in positions, which mean nothing for a template the player
+        /// positions anyway.</para>
         /// </summary>
         public static IReadOnlyList<TerrainPieceEntry> GetPalette()
         {
             var palette = new List<TerrainPieceEntry>(Get().Pieces);
             palette.AddRange(ExtraTemplates());
-            return palette;
+            return palette
+                .DistinctBy(TemplateKey)
+                .OrderBy(p => p.Points)   // OrderBy is stable, so equal-cost pieces keep their order
+                .ToList();
+        }
+
+        /// <summary>
+        /// Identity of a template for de-duplication: everything a placed copy inherits except the
+        /// authored position (name, type, footprint AABB, height, cost).
+        /// </summary>
+        private static (string, ETerrainType, float, float, float, int) TemplateKey(TerrainPieceEntry p)
+        {
+            (float lx, float hx, float ly, float hy) = p.Shape.GetAABB();
+            return (p.Name, p.TerrainType, MathF.Round(hx - lx, 2), MathF.Round(hy - ly, 2), p.HeightInches, p.Points);
         }
 
         /// <summary>

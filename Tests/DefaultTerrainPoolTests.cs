@@ -108,6 +108,28 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void Palette_IsSortedByCost_AndOffersEachTemplateOnce()
+        {
+            // #299: the picker lists cheap pieces first (stable within a tier) and offers each distinct
+            // template once - the auto layout's two Forests / two Sandbag lines differ only by their
+            // baked-in positions, which mean nothing for a template the player positions on click.
+            IReadOnlyList<TerrainPieceEntry> palette = DefaultTerrainPool.GetPalette();
+
+            for (int i = 1; i < palette.Count; i++)
+            {
+                Assert.That(palette[i].Points, Is.GreaterThanOrEqualTo(palette[i - 1].Points),
+                    $"'{palette[i].Name}' is listed out of cost order.");
+            }
+
+            var keys = palette.Select(p =>
+            {
+                (float lx, float hx, float ly, float hy) = p.Shape.GetAABB();
+                return (p.Name, p.TerrainType, System.MathF.Round(hx - lx, 2), System.MathF.Round(hy - ly, 2));
+            }).ToList();
+            Assert.That(keys, Is.Unique, "the picker must not offer the same template twice.");
+        }
+
+        [Test]
         public void EveryPalettePiece_HasAPositivePointCost()
         {
             // #299 Alternating: Points - every built-in piece carries an explicit cost (1-3 today; the

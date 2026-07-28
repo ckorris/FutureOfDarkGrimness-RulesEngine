@@ -61,6 +61,10 @@ namespace FDG.Network.Connection.Lobby
 
         IObservable<int> ArmyPointsObservable { get; }
         IObservable<int> TerrainPieceCountObservable { get; }
+        /// <summary>#299 Alternating: Points - see <see cref="GameSettings.TerrainPointsTotal"/>.</summary>
+        IObservable<int> TerrainPointsTotalObservable { get; }
+        /// <summary>#299 Alternating: Points - see <see cref="GameSettings.TerrainPointsPerTurn"/>.</summary>
+        IObservable<int> TerrainPointsPerTurnObservable { get; }
         IObservable<ETerrainPlacementMode> TerrainPlacementModeObservable { get; }
         IObservable<string?> TerrainLayoutPathObservable { get; }
         IObservable<EObjectivePlacementMode> ObjectivePlacementModeObservable { get; }
@@ -80,6 +84,10 @@ namespace FDG.Network.Connection.Lobby
         int ArmyPoints { get; }
 
         int TerrainCount { get; }
+
+        int TerrainPointsTotal { get; }
+
+        int TerrainPointsPerTurn { get; }
 
         ETerrainPlacementMode TerrainPlacementMode { get; }
 
@@ -127,6 +135,10 @@ namespace FDG.Network.Connection.Lobby
         void SetArmyPoints(int armyPoints);
 
         void SetTerrainCount(int terrainCount);
+
+        void SetTerrainPointsTotal(int points);
+
+        void SetTerrainPointsPerTurn(int points);
 
         void SetTerrainPlacementMode(ETerrainPlacementMode mode);
 

@@ -108,6 +108,19 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void EveryPalettePiece_HasAPositivePointCost()
+        {
+            // #299 Alternating: Points - every built-in piece carries an explicit cost (1-3 today; the
+            // exact values are a balance knob, so only the floor is pinned). A 0 would fall back to
+            // TerrainPointsBudget.CostOf's floor of 1, but the data should say what it means.
+            foreach (TerrainPieceEntry piece in DefaultTerrainPool.GetPalette())
+            {
+                Assert.That(piece.Points, Is.GreaterThanOrEqualTo(1),
+                    $"'{piece.Name}' has no point cost for Alternating: Points mode.");
+            }
+        }
+
+        [Test]
         public void EveryPalettePiece_PlacesLegally_ThroughTheRealPlacementPath()
         {
             // The end-to-end check that matters: rotate + translate-to-centre exactly as PlaceTerrainStage

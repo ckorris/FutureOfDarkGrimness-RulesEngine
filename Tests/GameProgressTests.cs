@@ -25,6 +25,8 @@ namespace FDG.Tests
             {
                 ArmyPoints = 1500,
                 TerrainPieceCount = 12,
+                TerrainPointsTotal = 24,
+                TerrainPointsPerTurn = 4,
                 RandomnessType = ERandomnessType.Probabilistic,
                 TurnStyle = ETurnStyle.BoltAction,
                 ObjectivePlacementMode = EObjectivePlacementMode.PlayerPlaced,
@@ -63,6 +65,8 @@ namespace FDG.Tests
 
             Assert.That(result.Settings.ArmyPoints, Is.EqualTo(1500));
             Assert.That(result.Settings.TerrainPieceCount, Is.EqualTo(12));
+            Assert.That(result.Settings.TerrainPointsTotal, Is.EqualTo(24));
+            Assert.That(result.Settings.TerrainPointsPerTurn, Is.EqualTo(4));
             Assert.That(result.Settings.RandomnessType, Is.EqualTo(ERandomnessType.Probabilistic));
             Assert.That(result.Settings.TurnStyle, Is.EqualTo(ETurnStyle.BoltAction));
             Assert.That(result.Settings.ObjectivePlacementMode, Is.EqualTo(EObjectivePlacementMode.PlayerPlaced));

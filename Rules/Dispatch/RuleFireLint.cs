@@ -385,6 +385,10 @@ public static class RuleFireLint
             // Activation_OnEndOfActivation carries token lifecycle only.
             EHookID.Activation_OnEndOfActivation => IsTokenOrExecutable(op),
 
+            // #197 P17b: UnitDestructionNotifier applies token ops and executes executables (Split's
+            // spawn, behind its Yes/No) at the dead unit's own destruction hook.
+            EHookID.Lifecycle_OnSelfDestroyed => IsTokenOrExecutable(op),
+
             _ => false,
         };
     }
@@ -544,6 +548,9 @@ public static class RuleFireLint
                 break;
             case EHookID.Activation_OnEndOfActivation:
                 yield return new ActivationEndContext(bearer);
+                break;
+            case EHookID.Lifecycle_OnSelfDestroyed:
+                yield return new SelfDestroyedContext(bearer);
                 break;
             case EHookID.Activation_OnActionChoice:
                 yield return new ActionChoiceContext(bearer);

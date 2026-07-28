@@ -42,6 +42,12 @@ namespace FDG.Stages
             }
             new TokenClearService().ClearForDestroyedOwner(dead.ID, containers);
 
+            // #197 P17b: the dead unit's OWN destruction-triggered rules (Split), before the
+            // killer-attribution early-return so a rout or dangerous-terrain death still fires them.
+            // "Before removing the last model": the dead models' positions are still live here, which is
+            // what gives the placement its centre.
+            await FireSelfDestroyedRules(gameContext, dead);
+
             if (killer == null)
             {
                 return;
@@ -54,6 +60,40 @@ namespace FDG.Stages
                 // hero's own per-model rule at the unit-destroyed hook would still be seen; AnyOwner unions them.
                 RuleParticipant.Subject(dead, models: dead.Models));
             OperationApplier.ApplyTokenOperations(ops);
+            await OperationExecutor.Execute(ops, new GameOperationServices(gameContext));
+        }
+
+        /// <summary>
+        /// #197 P17b: evaluates the dead unit at <see cref="EHookID.Lifecycle_OnSelfDestroyed"/>. Token
+        /// operations apply unconditionally; a spawn (Split's "you MAY place a new unit of X") is one
+        /// Yes/No for the owner, then all operations execute together. Models are passed so a joined
+        /// hero's per-model rule is seen, mirroring the killer-seat evaluation below.
+        /// </summary>
+        private static async Task FireSelfDestroyedRules(IGameContext gameContext, IUnit dead)
+        {
+            IReadOnlyList<RuleOperation> ops = gameContext.RuleEvaluator.EvaluateAll(
+                new SelfDestroyedContext(dead),
+                RuleParticipant.Actor(dead, models: dead.Models));
+            if (ops.Count == 0)
+            {
+                return;
+            }
+
+            OperationApplier.ApplyTokenOperations(ops);
+
+            if (ops.OfType<RuleOperation.InvokeSpawnUnit>().Any())
+            {
+                bool accepted = await gameContext.PlayerRequester
+                    .RequestDecision<StageResolution.Requests.YesNoRequest, bool>(
+                        new StageResolution.Requests.YesNoRequest(dead.PlayerID,
+                            $"{dead.Name} is destroyed - use Split to place its successor?",
+                            defaultAnswer: true));
+                if (!accepted)
+                {
+                    return;
+                }
+            }
+
             await OperationExecutor.Execute(ops, new GameOperationServices(gameContext));
         }
     }

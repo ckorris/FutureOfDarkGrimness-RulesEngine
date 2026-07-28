@@ -68,6 +68,16 @@ public enum EHookID
     Lifecycle_OnCapabilityQuery = 22,
 
     /// <summary>
+    /// #197 P17: the bearer itself was just fully destroyed — fired by <c>UnitDestructionNotifier</c>
+    /// for EVERY alive-to-dead transition, killer or not (a rout or dangerous-terrain death still
+    /// counts), which is what separates it from <see cref="Shooting_OnUnitDestroyed"/> (the KILLER's
+    /// hook, requiring an attributable killer). Fired "before removing the last model": positions are
+    /// still live, so Split's "place a new unit of X fully within 6\" of it" has a centre to measure
+    /// from. Context: the destroyed unit.
+    /// </summary>
+    Lifecycle_OnSelfDestroyed = 23,
+
+    /// <summary>
     /// The engine is choosing the next unit to activate. Used by rules that offer
     /// re-activation (e.g. Martial Prowess) before the normal pick happens.
     /// Context: candidate units, round number.

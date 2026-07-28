@@ -32,19 +32,22 @@ namespace FDG.Stages
             public readonly float Wounds;
             /// <summary>The wounds this test owes, NOT yet applied. Landed by <see cref="ResolveDangerousTerrain"/>.</summary>
             public readonly IReadOnlyList<PendingModelWound> PendingWounds;
-            public readonly UnitID Unit;
-            public readonly string UnitName;
+            /// <summary>
+            /// The unit that tested. Carried as the unit itself (not just its ID) because
+            /// <see cref="ResolveDangerousTerrain"/> needs it for the destruction seam when the test wipes
+            /// the unit out, not only for the casualty beats. Null only on <see cref="None"/>.
+            /// </summary>
+            public readonly IUnit? Unit;
 
             public DangerousTerrainResult(IDiceResults? roll, int modelCount, float wounds,
-                IReadOnlyList<PendingModelWound> pendingWounds, UnitID unit, string unitName)
+                IReadOnlyList<PendingModelWound> pendingWounds, IUnit? unit)
             {
                 Roll = roll; ModelCount = modelCount; Wounds = wounds;
-                PendingWounds = pendingWounds; Unit = unit; UnitName = unitName;
+                PendingWounds = pendingWounds; Unit = unit;
             }
-            public bool AnyTested => ModelCount > 0 && Roll != null;
+            public bool AnyTested => ModelCount > 0 && Roll != null && Unit != null;
             public static DangerousTerrainResult None =>
-                new DangerousTerrainResult(null, 0, 0f, Array.Empty<PendingModelWound>(),
-                    default, string.Empty);
+                new DangerousTerrainResult(null, 0, 0f, Array.Empty<PendingModelWound>(), null);
         }
 
         /// <summary>
@@ -115,7 +118,7 @@ namespace FDG.Stages
             }
 
             gameContext.Log($"{unitName}: {testers.Count} model(s) tested dangerous terrain - {woundsRolled:0.##} wound(s) dealt.");
-            return new DangerousTerrainResult(roll, testers.Count, woundsRolled, pending, unit.ID, unitName);
+            return new DangerousTerrainResult(roll, testers.Count, woundsRolled, pending, unit);
         }
 
         /// <summary>
@@ -165,21 +168,36 @@ namespace FDG.Stages
         /// move shows the same sequence the player sees on a normal move.
         /// <para>
         /// Called AFTER the move has been animated, so a casualty falls at the destination it walked to.
-        /// Dangerous terrain deals wounds but is NOT a morale-test source, so no morale test is run here.
+        /// Dangerous terrain deals wounds but is NOT a morale-test source, so no morale test is run here —
+        /// but a test that wipes the unit out IS a destruction, and goes through the destruction seam.
         /// </para>
         /// </summary>
         public static async Task ResolveDangerousTerrain(IGameContext gameContext,
             DangerousTerrainResult result)
         {
             if (!result.AnyTested) return;
+            IUnit unit = result.Unit!;
+
             string summary = result.Wounds <= 0f
                 ? "All safe"
                 : $"{result.Wounds:0.##} wound{(result.Wounds == 1f ? "" : "s")}";
             await gameContext.Presenter.Present(DiceRolledBeat.From(result.Roll!, successThreshold: 2,
                 gameContext.Settings.RandomnessType, "Dangerous Terrain", summary));
 
+            bool wasAlive = unit.GetIsAlive();
+
             await CasualtyPresentation.ApplyAndPresent(gameContext, result.PendingWounds,
-                result.Unit, result.UnitName);
+                unit.ID, unit.Name);
+
+            // Dangerous terrain can finish a unit off, and that death is a destruction like any other:
+            // the dead unit's OwnerDestroyed marks on OTHER units have to clear, and if it was a Transport
+            // its cargo has to spill rather than stay embarked in a wreck that no longer exists (the #169
+            // ghost state, reachable through terrain). Killer-less, so the Shooting_OnUnitDestroyed hook
+            // correctly stays silent - there is no attacker to credit.
+            if (wasAlive && !unit.GetIsAlive())
+            {
+                await UnitDestructionNotifier.NotifyUnitDestroyed(gameContext, unit, killer: null);
+            }
         }
 
         /// <summary>

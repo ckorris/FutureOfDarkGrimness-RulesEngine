@@ -117,7 +117,20 @@ namespace FDG.Stages
 
             List<PendingModelWound> pending = result.PendingWounds
                 .Select(w => new PendingModelWound(w.Model, w.Wounds)).ToList();
+
+            bool wasAlive = occupant.GetIsAlive();
+
             await CasualtyPresentation.ApplyAndPresent(gameContext, pending, occupant.ID, occupant.Name);
+
+            // The spillout's own dangerous test can finish off a battered occupant. That is a destruction
+            // like any other and takes the same seam: its OwnerDestroyed marks clear, and an occupant that
+            // was itself a Transport spills the cargo it was carrying. Killer-less, like every other
+            // dangerous-terrain death. Re-entrant into SpillOccupants only for a carrier-inside-a-carrier,
+            // which terminates because each level needs a distinct unit to die.
+            if (wasAlive && !occupant.GetIsAlive())
+            {
+                await UnitDestructionNotifier.NotifyUnitDestroyed(gameContext, occupant, killer: null);
+            }
         }
 
         // A destroyed transport's models are all dead but retain their last positions — read the wreck spot.

@@ -217,7 +217,89 @@ namespace FDG.Tests
                 "no model plays its death animation more than once.");
         }
 
+        // #299: a batched dangerous-terrain test that wipes a unit out is a DESTRUCTION, and has to take the
+        // same seam every other death does. It didn't: the wounds landed and nothing notified, so a Transport
+        // killed by terrain left its cargo embarked in a wreck that no longer existed - the #169 ghost state,
+        // reached through terrain instead of through a killer.
+        [Test]
+        public async Task TransportKilledByDangerousTerrain_SpillsOccupants()
+        {
+            DataBinding<UnitData> transport = MakeTransport("Rhino", capacity: 6, new Position(0f, 0f));
+            DataBinding<UnitData> occupant = MakeUnit(_player, "Grunts", 2, new Position(0f, 0f));
+            TransportUtilities.Embark(occupant.GetValue(), transport.GetValue());
+            Assert.That(transport.GetValue().GetIsAlive(), Is.True, "precondition: the transport drives in alive.");
+
+            // Its one model crosses the minefield and rolls a 1 - one wound, which is all it has.
+            await RunDangerousCrossing(transport, new FixedFaceDiceRoller(1));
+
+            Assert.That(transport.GetValue().GetIsDead(), Is.True, "the terrain test destroys the transport.");
+            Assert.That(TransportUtilities.IsEmbarked(occupant.GetValue()), Is.False,
+                "the cargo spills out instead of being stranded aboard a destroyed transport.");
+            Assert.That(occupant.GetValue().Tokens.HasToken(TokenType.Shaken), Is.True,
+                "a unit that spills from a terrain-killed wreck is Shaken like any other.");
+        }
+
+        // The negative half: a test the unit SURVIVES must not fire the destruction seam at all.
+        [Test]
+        public async Task TransportSurvivingDangerousTerrain_KeepsItsCargo()
+        {
+            DataBinding<UnitData> transport = MakeTransport("Rhino", capacity: 6, new Position(0f, 0f));
+            transport.GetValue().Models[0].SetMaxWounds(3); // takes the wound and drives on
+            DataBinding<UnitData> occupant = MakeUnit(_player, "Grunts", 2, new Position(0f, 0f));
+            TransportUtilities.Embark(occupant.GetValue(), transport.GetValue());
+
+            await RunDangerousCrossing(transport, new FixedFaceDiceRoller(1));
+
+            Assert.That(transport.GetValue().GetIsAlive(), Is.True, "a Tough(3) transport survives one wound.");
+            Assert.That(TransportUtilities.IsEmbarked(occupant.GetValue()), Is.True,
+                "a surviving transport keeps its passengers - no spurious destruction.");
+        }
+
+        // The spillout's OWN dangerous test can finish off a battered occupant, and that death takes the seam
+        // too. Proven through the re-entrant case it enables: a carrier inside a carrier. The outer wreck
+        // spills the middle unit, the middle unit's terrain test kills it, and its cargo spills in turn
+        // rather than being stranded a second time.
+        [Test]
+        public async Task OccupantKilledBySpilloutTest_SpillsItsOwnCargo()
+        {
+            DataBinding<UnitData> outer = MakeTransport("Land Ship", capacity: 6, new Position(10f, 10f));
+            DataBinding<UnitData> middle = MakeTransport("Rhino", capacity: 6, new Position(0f, 0f)); // 1 model, 1 wound
+            DataBinding<UnitData> cargo = MakeUnit(_player, "Grunts", 2, new Position(0f, 0f));
+
+            TransportUtilities.Embark(cargo.GetValue(), middle.GetValue());
+            TransportUtilities.Embark(middle.GetValue(), outer.GetValue());
+            outer.GetValue().Models[0].DealWounds(1f); // destroy the outer transport
+
+            // Every die is a 1, so the middle transport dies to the spillout's own dangerous test.
+            await RunSpilloutCapturing(outer, new FixedFaceDiceRoller(1), new RecordingPresentationSink());
+
+            Assert.That(middle.GetValue().GetIsDead(), Is.True,
+                "the middle transport is killed by the dangerous test it took on spilling out.");
+            Assert.That(TransportUtilities.IsEmbarked(cargo.GetValue()), Is.False,
+                "its own cargo spills rather than being stranded in the second wreck.");
+        }
+
         // --- helpers ---
+
+        // Roll a dangerous-terrain test for the unit's models and land it, exactly as the movement flow does
+        // (ApplyNonMovementTerrainEffectsStage rolls -> ExecuteMoveStage resolves after the move beat).
+        private async Task RunDangerousCrossing(DataBinding<UnitData> unit, IDiceRoller roller)
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CannedPlaceRequester(new Position(10f, 10f)), roller);
+            var danger = new List<ITerrain>
+            {
+                new TerrainData(ETerrainType.Dangerous, new RectangularZone(3, 5, -2, 2)),
+            };
+            var paths = unit.GetValue().ModelBindings
+                .Select(m => new StageResolution.Requests.ModelMoveEntry(m,
+                    new List<Position> { new Position(8f, 0f) })) // start (0,0) -> through the zone
+                .ToList();
+
+            MovementExecutor.DangerousTerrainResult rolled =
+                MovementExecutor.RollDangerousTerrain(ctx, paths, danger, unit.GetValue());
+            MovementExecutor.CommitPositions(paths);
+            await MovementExecutor.ResolveDangerousTerrain(ctx, rolled);
+        }
 
         // Records each beat together with a caller-supplied snapshot of game state taken at the moment
         // the beat was emitted - which is what lets a test assert ORDERING between authoritative state

@@ -291,6 +291,20 @@ public abstract record RuleOperation
     }
 
     /// <summary>
+    /// Remove <see cref="Unit"/> as destroyed (if it isn't already) and queue a fresh copy — built
+    /// without the rule named <see cref="SourceRuleName"/> — for a mandatory arrival within 12" of any
+    /// table edge at the next round start, after Ambushers (#197 P17c Reinforcement). Resolution of
+    /// <see cref="Effect.ReinforceUnit"/>.
+    /// </summary>
+    public sealed record InvokeReinforce(IUnit Unit, string? SourceRuleName) : ExecutableOperation
+    {
+        public override Task Execute(IOperationServices services)
+        {
+            return services.ReinforceUnit(Unit, SourceRuleName);
+        }
+    }
+
+    /// <summary>
     /// Roll one die against <see cref="MinRoll"/> and, on a pass, strip every <see cref="TType"/> token from
     /// <see cref="Unit"/>. Resolution of <see cref="Effect.ClearTokenOnRoll"/> — the round-start Shaken
     /// recovery. Executable, not a sink fold: the roll reads live dice and the removal is imperative.

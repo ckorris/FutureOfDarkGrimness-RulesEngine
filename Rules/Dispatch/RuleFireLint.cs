@@ -386,8 +386,12 @@ public static class RuleFireLint
             EHookID.Activation_OnEndOfActivation => IsTokenOrExecutable(op),
 
             // #197 P17b: UnitDestructionNotifier applies token ops and executes executables (Split's
-            // spawn, behind its Yes/No) at the dead unit's own destruction hook.
+            // spawn, Reinforcement's queue - each behind its Yes/No) at the dead unit's own destruction hook.
             EHookID.Lifecycle_OnSelfDestroyed => IsTokenOrExecutable(op),
+
+            // #197 P17c: MoraleUtilities evaluates the newly-Shaken unit the same way (Reinforcement's
+            // Shaken arm).
+            EHookID.Morale_OnShakenApplied => IsTokenOrExecutable(op),
 
             _ => false,
         };
@@ -551,6 +555,9 @@ public static class RuleFireLint
                 break;
             case EHookID.Lifecycle_OnSelfDestroyed:
                 yield return new SelfDestroyedContext(bearer);
+                break;
+            case EHookID.Morale_OnShakenApplied:
+                yield return new ShakenAppliedContext(bearer);
                 break;
             case EHookID.Activation_OnActionChoice:
                 yield return new ActionChoiceContext(bearer);

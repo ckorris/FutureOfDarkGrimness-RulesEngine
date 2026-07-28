@@ -17,6 +17,8 @@ public readonly record struct TokenType(string Id)
     public const string LIMITED_SPENT_ID = "LimitedSpent";
     public const string PENDING_AMBUSH_ARRIVAL_ID = "PendingAmbushArrival";
     public const string JOINS_ROUND_IN_PROGRESS_ID = "JoinsRoundInProgress";
+    public const string REINFORCEMENT_SPENT_ID = "ReinforcementSpent";
+    public const string PENDING_REINFORCEMENT_ARRIVAL_ID = "PendingReinforcementArrival";
 
     // Granted numeric roll modifiers (#033 stat-modifier primitive): a spell/ability grants the bearer a
     // signed delta to a specific roll for a duration. The roll kind is the token TYPE (so different rolls
@@ -131,6 +133,22 @@ public readonly record struct TokenType(string Id)
     /// somehow survives to the next round grants nothing twice. ManualOnly: adoption owns removal.
     /// </summary>
     public static readonly TokenType JoinsRoundInProgress = new(JOINS_ROUND_IN_PROGRESS_ID);
+
+    /// <summary>
+    /// #197 P17c Reinforcement: the ORIGINAL unit accepted its reinforcement (its copy is queued), so
+    /// the rule must not fire again — above all when the Shaken arm's removal-as-destroyed lands on the
+    /// destruction seam, where the rule's own destroyed-arm entry would otherwise re-prompt. Both
+    /// authored entries gate on this token's absence; the service also guards. ManualOnly.
+    /// </summary>
+    public static readonly TokenType ReinforcementSpent = new(REINFORCEMENT_SPENT_ID);
+
+    /// <summary>
+    /// #197 P17c: the COPY a Reinforcement queued, held in reserve until
+    /// <c>StartOfRoundExtraActionStage</c> places it "at the beginning of the next round after
+    /// Ambushers have been deployed" — mandatorily (the "you may" was spent at removal), within 12" of
+    /// any table edge. Cleared on arrival. ManualOnly — it must survive the round-end sweep.
+    /// </summary>
+    public static readonly TokenType PendingReinforcementArrival = new(PENDING_REINFORCEMENT_ARRIVAL_ID);
 
     /// <summary>
     /// Marks a unit that is currently embarked inside a Transport (#035). A <b>cross-unit</b> token:

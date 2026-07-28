@@ -61,6 +61,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(AmbushBeacon), "ambushBeacon")]
 [JsonDerivedType(typeof(AmbushRedeploy), "ambushRedeploy")]
 [JsonDerivedType(typeof(SpawnUnit), "spawnUnit")]
+[JsonDerivedType(typeof(ReinforceUnit), "reinforceUnit")]
 [JsonDerivedType(typeof(TargetIndividualModel), "targetIndividualModel")]
 [JsonDerivedType(typeof(RestrictActions), "restrictActions")]
 [JsonDerivedType(typeof(RangeModifier), "rangeModifier")]
@@ -837,6 +838,25 @@ public abstract record Effect
             };
 
             operations.Add(new RuleOperation.InvokeSpawnUnit(ruleInvocation.Bearer, specName, RadiusInches));
+        }
+    }
+
+    /// <summary>
+    /// The bearer is removed from the table as destroyed and a fresh full-strength copy of it deploys
+    /// within 12\" of any table edge at the start of the next round, after Ambushers (#197 P17c,
+    /// <c>Reinforcement</c>). Authored at BOTH trigger moments — the bearer's own destruction
+    /// (<see cref="Rules.Foundation.EHookID.Lifecycle_OnSelfDestroyed"/>) and the Shaken application
+    /// (<see cref="Rules.Foundation.EHookID.Morale_OnShakenApplied"/>) — each gated on the
+    /// ReinforcementSpent token's absence, so accepting once (which kills the original, landing on the
+    /// destruction seam) cannot re-prompt. Carries the firing rule's name so the copy is built WITHOUT
+    /// it ("this rule doesn't apply to the new copy").
+    /// </summary>
+    public sealed record ReinforceUnit : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.InvokeReinforce(ruleInvocation.Bearer,
+                ruleInvocation.Definition?.Name));
         }
     }
 

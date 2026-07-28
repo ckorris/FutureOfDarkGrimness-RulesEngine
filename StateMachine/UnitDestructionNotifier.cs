@@ -81,20 +81,43 @@ namespace FDG.Stages
 
             OperationApplier.ApplyTokenOperations(ops);
 
-            if (ops.OfType<RuleOperation.InvokeSpawnUnit>().Any())
+            // Each "you may" family is its own Yes/No; a declined family's operations are dropped, the
+            // rest execute. (No corpus unit carries both Split and Reinforcement, but the seam shouldn't
+            // couple their answers if one ever does.)
+            var toExecute = new List<RuleOperation>(ops.Count);
+            foreach (RuleOperation op in ops)
             {
-                bool accepted = await gameContext.PlayerRequester
-                    .RequestDecision<StageResolution.Requests.YesNoRequest, bool>(
-                        new StageResolution.Requests.YesNoRequest(dead.PlayerID,
-                            $"{dead.Name} is destroyed - use Split to place its successor?",
-                            defaultAnswer: true));
-                if (!accepted)
+                switch (op)
                 {
-                    return;
+                    case RuleOperation.InvokeSpawnUnit:
+                        if (await Ask(gameContext, dead,
+                                $"{dead.Name} is destroyed - use Split to place its successor?"))
+                        {
+                            toExecute.Add(op);
+                        }
+
+                        break;
+                    case RuleOperation.InvokeReinforce:
+                        if (await Ask(gameContext, dead,
+                                $"{dead.Name} is destroyed - queue a Reinforcement copy for the next round?"))
+                        {
+                            toExecute.Add(op);
+                        }
+
+                        break;
+                    default:
+                        toExecute.Add(op);
+                        break;
                 }
             }
 
-            await OperationExecutor.Execute(ops, new GameOperationServices(gameContext));
+            await OperationExecutor.Execute(toExecute, new GameOperationServices(gameContext));
+        }
+
+        private static Task<bool> Ask(IGameContext gameContext, IUnit unit, string question)
+        {
+            return gameContext.PlayerRequester.RequestDecision<StageResolution.Requests.YesNoRequest, bool>(
+                new StageResolution.Requests.YesNoRequest(unit.PlayerID, question, defaultAnswer: true));
         }
     }
 }

@@ -68,4 +68,14 @@ public interface IOperationServices
     /// carries nothing to place.
     /// </summary>
     Task SpawnUnit(IUnit placer, string specName, float radiusInches);
+
+    /// <summary>
+    /// #197 P17c Reinforcement: stamp <paramref name="unit"/>'s spent gate, build a fresh full-strength
+    /// copy of it WITHOUT the rule named <paramref name="sourceRuleName"/> ("this rule doesn't apply to
+    /// the new copy"), hold the copy in reserve for a mandatory arrival within 12" of any table edge at
+    /// the next round start (after Ambushers), and — when the trigger was the Shaken arm, i.e. the unit
+    /// is still alive — remove the original from the table as destroyed.
+    /// Resolution of <see cref="RuleOperation.InvokeReinforce"/>.
+    /// </summary>
+    Task ReinforceUnit(IUnit unit, string? sourceRuleName);
 }

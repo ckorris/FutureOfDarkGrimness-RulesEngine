@@ -32,8 +32,10 @@ namespace FDG.Stages
 
             // Ambush reserves may arrive from each unit's own earliest round (#197 P22: core Ambush
             // round 2, Rapid Ambush "including the first"); Aircraft that flew off the table edge
-            // return from round 2.
+            // return from round 2. Reinforcement copies land AFTER the ambushers, per their own text
+            // ("at the beginning of the next round after Ambushers have been deployed").
             await BringOnReserves(context.RoundCount);
+            await PlaceReinforcements();
             if (context.RoundCount >= 2)
             {
                 await RedeployOffTableAircraft();
@@ -124,6 +126,51 @@ namespace FDG.Stages
                     unit.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.ArrivedFromReserve));
 
                     await GameContext.Announce($"{unit.Name} arrives from Ambush!", new TextColor(255, 170, 60, 255));
+                }
+            }
+        }
+
+        /// <summary>
+        /// #197 P17c: places every queued Reinforcement copy (held in reserve with
+        /// <see cref="TokenType.PendingReinforcementArrival"/> by the reinforce service) "fully within
+        /// 12\" of any table edge". MANDATORY - the "you may" was spent at the removal, so only the
+        /// spot is the player's - and running right after <see cref="BringOnReserves"/> is the rule's
+        /// own "after Ambushers have been deployed". The ArrivedFromReserve stamp IS the rule's
+        /// "can't seize or contest objectives on the round they deploy".
+        /// </summary>
+        private async Task PlaceReinforcements()
+        {
+            foreach (ArmyData army in GameContext.GameDataStore.GetAllValues<ArmyData>().ToList())
+            {
+                foreach (DataBinding<UnitData> unitBinding in army.UnitBindings.ToList())
+                {
+                    UnitData unit = unitBinding.GetValue();
+
+                    if (!unit.GetIsAlive()) continue;
+                    if (!ReserveRules.IsInReserve(unit)) continue;
+                    if (!unit.Tokens.HasToken(TokenType.PendingReinforcementArrival)) continue;
+
+                    var zone = new TableEdgeBandZone(GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES,
+                        GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES, bandWidthInches: 12f);
+                    var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID,
+                        "Place Reinforcements", zone, unit.ModelBindings);
+                    List<PlacedObjectEntry<ModelData>> placements = await PlacementCommitGuard
+                        .RequestClearPlacement(GameContext, request);
+                    foreach (PlacedObjectEntry<ModelData> placement in placements)
+                    {
+                        placement.Binding.GetValue().SetPosition(placement.Position);
+                        if (placement.Facing.HasValue)
+                        {
+                            placement.Binding.GetValue().SetFacing(placement.Facing.Value);
+                        }
+                    }
+
+                    ReserveRules.ClearReserve(unit);
+                    unit.Tokens.RemoveTokens(TokenType.PendingReinforcementArrival);
+                    unit.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.ArrivedFromReserve));
+
+                    await GameContext.Announce($"{unit.Name} arrives as reinforcements!",
+                        new TextColor(255, 170, 60, 255));
                 }
             }
         }

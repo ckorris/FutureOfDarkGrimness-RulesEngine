@@ -209,9 +209,7 @@ namespace FDG.Stages
         public async Task SpawnUnit(IUnit placer, string specName, float radiusInches)
         {
             // The placer's own army carries the spec (each player's Spawn names its own book's units).
-            DataBinding<ArmyData>? armyBinding = _gameContext.GameDataStore.GetAllDataBindings<ArmyData>()
-                .FirstOrDefault(b => b.GetValue().UnitBindings
-                    .Any(u => u.GetValue().ID.Equals(placer.ID)));
+            DataBinding<ArmyData>? armyBinding = FindArmyBindingOf(placer);
             ArmyData? army = armyBinding?.GetValue();
 
             // The compiler keys a spec by the rule's exact argument text in `Id`; `Name` stays the unit's
@@ -271,6 +269,101 @@ namespace FDG.Stages
                 Rules.Foundation.TokenType.JoinsRoundInProgress));
 
             await _gameContext.Announce($"{placer.Name} spawns {unit.Name}!", RecoveryBannerColor);
+        }
+
+        public async Task ReinforceUnit(IUnit unit, string? sourceRuleName)
+        {
+            // Belt-and-braces with the authored not(tokenPresent) gate: once spent, never again.
+            if (unit.Tokens.HasToken(Rules.Foundation.TokenType.ReinforcementSpent))
+            {
+                return;
+            }
+
+            // Stamp BEFORE the removal below lands on the destruction seam, where the rule's own
+            // destroyed-arm entry would otherwise fire a second prompt.
+            unit.Tokens.AddToken(TokenDefinitionCatalog.Create(
+                Rules.Foundation.TokenType.ReinforcementSpent));
+
+            DataBinding<ArmyData>? armyBinding = FindArmyBindingOf(unit);
+            if (armyBinding == null)
+            {
+                Rules.Dispatch.RuleDiagnostics.Warn(
+                    $"{unit.Name} triggered Reinforcement but belongs to no registered army - no copy queued.");
+                return;
+            }
+
+            // A fresh full-strength copy: new models from the originals' shapes and weapon profiles
+            // (wounds reset by construction; Tough's max wounds re-derive via the creation rules), the
+            // unit's rules re-attached MINUS the firing rule ("this rule doesn't apply to the new copy"),
+            // per-model rules (#093 joined-hero relocations) carried over the same way.
+            var modelBindings = new List<DataBinding<ModelData>>();
+            foreach (IModel model in unit.Models)
+            {
+                if (model is not ModelData source) continue;
+                var copyModel = new ModelData(source.BaseShape, new List<Weapon>(source.Weapons),
+                    new Position(), _gameContext.GameDataStore);
+                foreach (Rules.Dispatch.ResolvedRule rule in source.RuleDefinitions)
+                {
+                    copyModel.AttachRuleDefinition(rule);
+                }
+
+                modelBindings.Add(_gameContext.GameDataStore.GetDataBinding<ModelData>(
+                    _gameContext.GameDataStore.Create(copyModel)));
+            }
+
+            var copy = new UnitData(unit.PlayerID, unit.Name, unit.Quality, unit.Defense, modelBindings);
+            foreach (Rules.Dispatch.ResolvedRule rule in unit.RuleDefinitions)
+            {
+                if (string.Equals(rule.Definition.Name, sourceRuleName ?? string.Empty,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                copy.AttachRuleDefinition(rule);
+            }
+
+            Rules.Dispatch.UnitCreationRules.Apply(copy, _gameContext.RuleEvaluator);
+
+            DataReference copyReference = _gameContext.GameDataStore.Create(copy);
+            DataBinding<UnitData> copyBinding =
+                _gameContext.GameDataStore.GetDataBinding<UnitData>(copyReference);
+
+            // Off-table until the next round start places it (after Ambushers) - reserve is the state,
+            // the pending token is what the arrival pass looks for.
+            Rules.Dispatch.ReserveRules.PlaceInReserve(copy);
+            copy.Tokens.AddToken(TokenDefinitionCatalog.Create(
+                Rules.Foundation.TokenType.PendingReinforcementArrival));
+
+            ArmyData army = armyBinding.GetValue();
+            army.UnitBindings.Add(copyBinding);
+            _gameContext.GameDataStore.SetValue(armyBinding.Reference, army);
+
+            await _gameContext.Announce(
+                $"{unit.Name} falls back - reinforcements arrive at the start of the next round!",
+                RecoveryBannerColor);
+
+            // The Shaken arm: "remove it from the table as destroyed". The destroyed arm arrives here
+            // with the unit already dead, so this is a no-op there.
+            if (unit.GetIsAlive())
+            {
+                foreach (IModel model in unit.Models)
+                {
+                    if (model is ModelData alive && alive.GetIsAlive())
+                    {
+                        alive.DealWounds(alive.TotalWounds);
+                    }
+                }
+
+                await UnitDestructionNotifier.NotifyUnitDestroyed(_gameContext, unit, killer: null);
+            }
+        }
+
+        private DataBinding<ArmyData>? FindArmyBindingOf(IUnit unit)
+        {
+            return _gameContext.GameDataStore.GetAllDataBindings<ArmyData>()
+                .FirstOrDefault(b => b.GetValue().UnitBindings
+                    .Any(u => u.GetValue().ID.Equals(unit.ID)));
         }
 
         // The point a spawn's "within N\" of it" measures from: the placer's first living model (the

@@ -1,6 +1,7 @@
 using FDG.Presentation.Beats;
 using FDG.Data;
 using FDG.Rules.Definitions;
+using FDG.Rules.Dispatch;
 using FDG.Rules.Tokens;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
@@ -102,6 +103,45 @@ namespace FDG.Stages
         {
             FatigueUtilities.ApplyFatigued(unit);
             return Task.CompletedTask;
+        }
+
+        // #197: the non-spell home for Effect.MoraleTestThen (Mind Control, Fatigue Debuff). Same two
+        // halves CastSpellStage's multi-target version runs - the rule-aware morale test, then the
+        // on-failure effect - but for ONE target and with its own log line, since a unit rule announces
+        // itself rather than riding a spell banner.
+        //
+        // The on-failure effect is resolved against the failing unit as both bearer and target, then its
+        // operations are applied AND executed: the corpus consequences are a token grant (fatigue) and an
+        // imperative move, and the two filters are disjoint, so running both is safe for either.
+        public async Task MoraleTestThen(IUnit bearer, IUnit unit, Effect onFailure)
+        {
+            // The test needs the concrete unit (MoraleUtilities mutates Shaken/Routed state on it); every
+            // live IUnit in play is a UnitData, and a non-UnitData caller is a programming error, not a
+            // game state - so this warns and no-ops rather than throwing mid-stage.
+            if (unit is not UnitData unitData)
+            {
+                RuleDiagnostics.Warn($"MoraleTestThen on '{unit.Name}', which is not a live unit; skipped.");
+                return;
+            }
+
+            MoraleUtilities.MoraleTestOutcome outcome = await MoraleUtilities.TakeMoraleTest(
+                _gameContext, unitData, HeroStatRules.GetMoraleQuality(unitData));
+
+            if (outcome.Passed)
+            {
+                _gameContext.Log($"{unit.Name} passed the morale test - no effect.");
+                return;
+            }
+
+            _gameContext.Log($"{unit.Name} failed the morale test.");
+
+            List<RuleOperation> operations = new List<RuleOperation>();
+            onFailure.Apply(
+                new RuleInvocation(null, bearer, System.Array.Empty<Rules.Foundation.RuleArgument>(),
+                    unit, _gameContext.DiceRoller),
+                operations);
+            OperationApplier.ApplyTokenOperations(operations);
+            await OperationExecutor.Execute(operations, this);
         }
 
         public async Task ClearTokenOnRoll(IUnit unit, Rules.Foundation.TokenType tokenType, int minRoll)

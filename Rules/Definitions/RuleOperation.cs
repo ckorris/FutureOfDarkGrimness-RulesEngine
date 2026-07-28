@@ -354,6 +354,34 @@ public abstract record RuleOperation
         }
     }
 
+    /// <summary>
+    /// <see cref="Unit"/> takes a morale test; on a FAIL, <see cref="OnFailure"/> is applied to it.
+    /// Resolution of <see cref="Effect.MoraleTestThen"/> outside spell casting (#197).
+    ///
+    /// <para>The test is live async state (it can prompt, and it reads rule-aware morale quality), which is
+    /// why this is an <see cref="ExecutableOperation"/> rather than something a stage folds. Being an
+    /// executable is the whole point: every ability-offering stage already runs
+    /// <c>OperationExecutor</c>, so the rule works at all of them instead of only where a stage was taught
+    /// about it - the gap that made <c>Effect.MoraleTestThen</c> a silent no-op for unit rules.</para>
+    ///
+    /// <para><c>CastSpellStage</c> deliberately does NOT go through here: it resolves the same effect over
+    /// SEVERAL targets and reports one aggregated banner (#293), which per-target executables would
+    /// fragment. It special-cases the effect before <c>Apply</c> is ever called, so nothing double-runs.</para>
+    /// </summary>
+    public sealed record InvokeMoraleTestThen(IUnit Bearer, IUnit Unit, Effect OnFailure)
+        : ExecutableOperation
+    {
+        public override Task Execute(IOperationServices services)
+        {
+            return services.MoraleTestThen(Bearer, Unit, OnFailure);
+        }
+
+        public override string Describe()
+        {
+            return "took a morale test";
+        }
+    }
+
     public sealed record InvokeApplyFatigue(IUnit Unit) : ExecutableOperation
     {
         public override Task Execute(IOperationServices services)

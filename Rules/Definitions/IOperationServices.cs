@@ -34,6 +34,14 @@ public interface IOperationServices
     Task ApplyFatigue(IUnit unit);
 
     /// <summary>
+    /// <paramref name="unit"/> takes a morale test; on a FAIL, <paramref name="onFailure"/> is applied to
+    /// it. Backs <see cref="RuleOperation.InvokeMoraleTestThen"/> (#197 Mind Control / Fatigue Debuff).
+    /// <paramref name="onFailure"/> is a flat token-or-executable effect - a damage consequence would need
+    /// the child pipeline, which no corpus rule asks for.
+    /// </summary>
+    Task MoraleTestThen(IUnit bearer, IUnit unit, Effect onFailure);
+
+    /// <summary>
     /// Roll one die for <paramref name="unit"/>; on <paramref name="minRoll"/>+ remove every
     /// <paramref name="tokenType"/> token it holds. Resolution of
     /// <see cref="RuleOperation.InvokeClearTokenOnRoll"/> (round-start Shaken recovery). The implementation

@@ -1063,6 +1063,12 @@ public abstract record Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
+            // Both units travel with the operation: the on-failure effect is resolved with the RULE'S
+            // OWNER as bearer and the failing unit as target, which is what routes Mind Control's forced
+            // move to the controlling player rather than to the victim (Effect.TriggeredMove reads
+            // Bearer.PlayerID). CastSpellStage's spell path passes the caster for the same reason.
+            operations.Add(new RuleOperation.InvokeMoraleTestThen(
+                ruleInvocation.Bearer, ruleInvocation.EffectiveTarget, OnFailure));
         }
     }
 

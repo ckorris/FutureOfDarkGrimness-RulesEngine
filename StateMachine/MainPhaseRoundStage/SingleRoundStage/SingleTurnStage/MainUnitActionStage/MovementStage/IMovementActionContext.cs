@@ -53,6 +53,17 @@ namespace FDG.Stages
 
         /// <summary>Record that the move was abandoned before a path was submitted.</summary>
         public void RegisterMoveCancelled();
+
+        /// <summary>
+        /// The dangerous-terrain test <c>ApplyNonMovementTerrainEffectsStage</c> rolled, whose wounds are
+        /// still PENDING. Landed and animated by <c>ExecuteMoveStage</c> after the move beat, so a
+        /// casualty falls at the destination it walked to rather than blinking out of the start line
+        /// while the unit is still standing there. <c>None</c> when nothing tested.
+        /// </summary>
+        public MovementExecutor.DangerousTerrainResult PendingDangerousTerrain { get; }
+
+        /// <summary>Record the rolled-but-unapplied dangerous-terrain test for <c>ExecuteMoveStage</c>.</summary>
+        public void RegisterDangerousTerrainRoll(MovementExecutor.DangerousTerrainResult result);
     }
 
     public class MovementActionContext : IMovementActionContext
@@ -101,6 +112,12 @@ namespace FDG.Stages
         }
 
         public List<ITerrain> RelevantTerrain { get; private set; }
+
+        public MovementExecutor.DangerousTerrainResult PendingDangerousTerrain { get; private set; }
+            = MovementExecutor.DangerousTerrainResult.None;
+
+        public void RegisterDangerousTerrainRoll(MovementExecutor.DangerousTerrainResult result)
+            => PendingDangerousTerrain = result;
 
         private bool _canMove;
         private float _maxAdvanceDistance;

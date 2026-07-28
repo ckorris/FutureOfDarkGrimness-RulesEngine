@@ -72,6 +72,13 @@ namespace FDG.Stages
                     PresentationDurations.ForMoveDistance(longestPath), toughness));
             }
 
+            // Now that the models have arrived, land the dangerous-terrain test ApplyNonMovementTerrainEffects
+            // rolled on the way in: the batched dice, then each wound with its death/flinch animation at the
+            // model's destination. Deferred to here (rather than applied at roll time) so a casualty completes
+            // its move and falls where it stopped, and so no model is ever dead in state without its death
+            // beat already enqueued — which is what made dangerous-terrain casualties disappear silently.
+            await MovementExecutor.ResolveDangerousTerrain(GameContext, context.PendingDangerousTerrain);
+
             // #153: the move is resolved — spend one-shot (NextTrigger) grants that keyed on this move.
             // Declaration-time budget projection and path-validation queries are read-only, so a granted
             // movement rule (Shock Speed's +2"/+4") or terrain rule (counts-as Difficult/Dangerous) stays

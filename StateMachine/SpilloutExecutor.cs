@@ -79,9 +79,10 @@ namespace FDG.Stages
                     if (placement.Facing.HasValue) placement.Binding.GetValue().SetFacing(placement.Facing.Value);
                 }
 
-                // Un-embark + Shaken + the batched dangerous-terrain test (the deterministic core, unit-tested
-                // in slice A). Run after placement so the dangerous test rolls for the now-on-table models; the
-                // returned batch drives the presentation below.
+                // Un-embark + Shaken + the batched dangerous-terrain ROLL (the deterministic core, unit-tested
+                // in slice A). Run after placement so the dangerous test rolls for the now-on-table models. The
+                // wounds it rolls are left pending and landed by the presentation below, one at a time, so every
+                // model stands on the table until its own death animation plays.
                 TransportUtilities.SpilloutRollResult rolls = TransportUtilities.ApplySpilloutEffects(
                     occupantUnit, gameContext.DiceRoller, gameContext.Settings.RandomnessType);
 
@@ -96,8 +97,13 @@ namespace FDG.Stages
         }
 
         // Present the occupant's dangerous-terrain test as ONE row of dice (2+ safe, a 1 wounds — the same
-        // batched beat MovementExecutor uses for dangerous terrain), then a hurt flinch or a death animation
-        // per model the test wounded. Sound falls out via PresentationSoundCues.CueFor.
+        // batched beat MovementExecutor uses for dangerous terrain), then LAND each pending wound, its hurt
+        // flinch or death animation playing as the wound lands. Sound falls out via PresentationSoundCues.CueFor.
+        //
+        // The wounds are applied here rather than back in ApplySpilloutEffects on purpose: the front-end hides
+        // any model that is dead in state with no death beat registered, so applying them before the dice beat
+        // left the casualties invisible for the whole roll and then made them reappear to die. Every model now
+        // survives placement intact, the roll is read, and only then do the casualties drop.
         private static async Task PresentSpilloutRolls(IGameContext gameContext, UnitData occupant,
             TransportUtilities.SpilloutRollResult result)
         {
@@ -109,13 +115,9 @@ namespace FDG.Stages
             await gameContext.Presenter.Present(DiceRolledBeat.From(result.Roll!, successThreshold: 2,
                 gameContext.Settings.RandomnessType, "Dangerous Terrain", summary));
 
-            foreach (TransportUtilities.SpilloutCasualty c in result.Casualties)
-            {
-                if (c.Died)
-                    await gameContext.Presenter.Present(new ModelDiedBeat(c.Model, occupant.ID, occupant.Name, c.Position));
-                else
-                    await gameContext.Presenter.Present(new ModelWoundedBeat(c.Model, c.Position));
-            }
+            List<PendingModelWound> pending = result.PendingWounds
+                .Select(w => new PendingModelWound(w.Model, w.Wounds)).ToList();
+            await CasualtyPresentation.ApplyAndPresent(gameContext, pending, occupant.ID, occupant.Name);
         }
 
         // A destroyed transport's models are all dead but retain their last positions — read the wreck spot.

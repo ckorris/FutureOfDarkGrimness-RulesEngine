@@ -5,6 +5,7 @@ using FDG.Data;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
+using FDG.Stages;
 using NUnit.Framework;
 
 namespace FDG.Tests
@@ -611,7 +612,16 @@ namespace FDG.Tests
             UnitData squad = MakeUnit(player, modelCount: 3, tough: 2); // 6 wounds total
             TransportUtilities.Embark(squad, transport);
 
-            TransportUtilities.ApplySpilloutEffects(squad, new FixedFaceDiceRoller(1)); // every model rolls a 1
+            // The roll leaves its wounds PENDING (the stage lands them one at a time so each casualty can
+            // animate as it falls), so landing them is part of what this asserts.
+            TransportUtilities.SpilloutRollResult rolls =
+                TransportUtilities.ApplySpilloutEffects(squad, new FixedFaceDiceRoller(1)); // every model rolls a 1
+
+            Assert.That(squad.RemainingWounds, Is.EqualTo(6f),
+                "the roll alone wounds nobody - every model is still whole until the wounds are landed.");
+
+            CasualtyPresentation.ApplyOnly(rolls.PendingWounds
+                .Select(w => new PendingModelWound(w.Model, w.Wounds)).ToList());
 
             Assert.That(squad.RemainingWounds, Is.EqualTo(3f),
                 "each of the three models takes one dangerous-terrain wound.");
@@ -625,7 +635,12 @@ namespace FDG.Tests
             UnitData squad = MakeUnit(player, modelCount: 3, tough: 2); // 6 wounds total
             TransportUtilities.Embark(squad, transport);
 
-            TransportUtilities.ApplySpilloutEffects(squad, new FixedFaceDiceRoller(4)); // no 1s
+            TransportUtilities.SpilloutRollResult rolls =
+                TransportUtilities.ApplySpilloutEffects(squad, new FixedFaceDiceRoller(4)); // no 1s
+
+            Assert.That(rolls.PendingWounds, Is.Empty, "a safe roll owes nobody a wound.");
+            CasualtyPresentation.ApplyOnly(rolls.PendingWounds
+                .Select(w => new PendingModelWound(w.Model, w.Wounds)).ToList());
 
             Assert.That(squad.RemainingWounds, Is.EqualTo(6f), "a safe dangerous-terrain roll deals no wounds.");
         }

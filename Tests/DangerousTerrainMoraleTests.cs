@@ -103,7 +103,9 @@ namespace FDG.Tests
             var stage = new ApplyNonMovementTerrainEffectsStage(ctx, new NoOpLayer<IMovementActionContext>());
             stage.OnAppliedNonMovementTerrainEffects.Bind("done");
             var terrain = new List<ITerrain> { new TerrainData(ETerrainType.Dangerous, DangerZone) };
-            await stage.Enter(new StubMovementContext(ctx, unit, paths, terrain));
+            var movCtx = new StubMovementContext(ctx, unit, paths, terrain);
+            await stage.Enter(movCtx);
+            await MovementExecutor.ResolveDangerousTerrain(ctx, movCtx.PendingDangerousTerrain);
 
             Assert.That(unit.GetValue().Models.Count(m => m.GetIsAlive()), Is.EqualTo(3),
                 "fractional wounds from the probabilistic batch don't kill a 1-wound model.");
@@ -114,7 +116,10 @@ namespace FDG.Tests
 
         // Helpers
 
-        private Task RunStage(DataBinding<UnitData> unit, List<ModelMoveEntry> paths, int dieValue)
+        // The stage rolls the batch; ExecuteMoveStage lands it after the move beat (so a casualty falls at
+        // its destination instead of vanishing off the start line). Both halves run here, which is what the
+        // real movement flow does, so these assertions stay about the wounds and the morale consequence.
+        private async Task RunStage(DataBinding<UnitData> unit, List<ModelMoveEntry> paths, int dieValue)
         {
             // FixedFaceDiceRoller honors rollCount so the single batched Roll(6, N) reports N dice on the
             // fixed face (FixedDiceRoller collapses every batch to a single die).
@@ -123,7 +128,8 @@ namespace FDG.Tests
             stage.OnAppliedNonMovementTerrainEffects.Bind("done");
             var terrain = new List<ITerrain> { new TerrainData(ETerrainType.Dangerous, DangerZone) };
             var movCtx = new StubMovementContext(ctx, unit, paths, terrain);
-            return stage.Enter(movCtx);
+            await stage.Enter(movCtx);
+            await MovementExecutor.ResolveDangerousTerrain(ctx, movCtx.PendingDangerousTerrain);
         }
 
         private DataBinding<ModelData> MakeModel(Position initialPosition)

@@ -21,32 +21,49 @@ namespace FDG.Stages
     public static class MovementExecutor
     {
         /// <summary>The batched dangerous-terrain test result: the single roll (one d6 per testing model),
-        /// how many models tested, and total wounds dealt (fractional under the probabilistic roller).
-        /// Returned so the (async) caller can present one dice beat for the whole batch.</summary>
+        /// how many models tested, total wounds rolled (fractional under the probabilistic roller), the
+        /// per-model wounds still PENDING, and who is testing. Returned so the (async) caller can present
+        /// one dice beat for the whole batch and then land the wounds - see
+        /// <see cref="ResolveDangerousTerrain"/>.</summary>
         public readonly struct DangerousTerrainResult
         {
             public readonly IDiceResults? Roll;
             public readonly int ModelCount;
             public readonly float Wounds;
-            public DangerousTerrainResult(IDiceResults? roll, int modelCount, float wounds)
+            /// <summary>The wounds this test owes, NOT yet applied. Landed by <see cref="ResolveDangerousTerrain"/>.</summary>
+            public readonly IReadOnlyList<PendingModelWound> PendingWounds;
+            public readonly UnitID Unit;
+            public readonly string UnitName;
+
+            public DangerousTerrainResult(IDiceResults? roll, int modelCount, float wounds,
+                IReadOnlyList<PendingModelWound> pendingWounds, UnitID unit, string unitName)
             {
                 Roll = roll; ModelCount = modelCount; Wounds = wounds;
+                PendingWounds = pendingWounds; Unit = unit; UnitName = unitName;
             }
             public bool AnyTested => ModelCount > 0 && Roll != null;
-            public static DangerousTerrainResult None => new DangerousTerrainResult(null, 0, 0f);
+            public static DangerousTerrainResult None =>
+                new DangerousTerrainResult(null, 0, 0f, Array.Empty<PendingModelWound>(),
+                    default, string.Empty);
         }
 
         /// <summary>
         /// Every model whose path crosses dangerous terrain takes a test; they all roll together in ONE
         /// batch (a wound on a 1). Batching is what lets the probabilistic roller work properly here -- a
         /// single N-die roll yields the expected number of 1s, which N separate decisive rolls could not.
-        /// Returns the batch so the (async) caller can present one dice beat; out-of-band callers that
-        /// don't present simply ignore the return.
+        /// <para>
+        /// Rolls only: the wounds come back PENDING and are landed later by
+        /// <see cref="ResolveDangerousTerrain"/>, after the move has been animated, so a casualty falls
+        /// at its destination instead of vanishing from the start line. Rolling here keeps the dice draw
+        /// in its original place in the seeded stream. Out-of-band callers that only want the state
+        /// change can land the batch with <see cref="CasualtyPresentation.ApplyOnly"/>.
+        /// </para>
         /// </summary>
-        public static DangerousTerrainResult ApplyDangerousTerrainEffects(IGameContext gameContext,
-            IReadOnlyList<ModelMoveEntry> paths, IEnumerable<ITerrain> relevantTerrain, string unitName,
+        public static DangerousTerrainResult RollDangerousTerrain(IGameContext gameContext,
+            IReadOnlyList<ModelMoveEntry> paths, IEnumerable<ITerrain> relevantTerrain, IUnit unit,
             bool ignoresDangerousTerrain = false, bool countsAsInDangerousTerrain = false)
         {
+            string unitName = unit.Name;
             // Flying (AllTerrain scope) ignores Dangerous-terrain effects entirely — no roll, no wounds —
             // including a "counts as in Dangerous Terrain" grant (ignoring the real effect ignores the
             // counted-as one).
@@ -75,26 +92,30 @@ namespace FDG.Stages
             IDiceResults roll = gameContext.DiceRoller.Roll(6, testers.Count);
             float ones = roll.At(1); // 1s are wounds (fractional under the probabilistic roller)
 
-            float woundsDealt;
+            List<PendingModelWound> pending = new List<PendingModelWound>();
+            float woundsRolled;
             if (gameContext.Settings.RandomnessType == ERandomnessType.Probabilistic)
             {
                 // Spread the expected wounds evenly -- each model carried its own 1/6 chance of a 1.
                 float perModel = ones / testers.Count;
-                foreach (ModelMoveEntry move in testers)
-                    move.Model.GetValue().DealWounds(perModel);
-                woundsDealt = ones;
+                if (perModel > 0f)
+                {
+                    foreach (ModelMoveEntry move in testers)
+                        pending.Add(new PendingModelWound(move.Model.GetValue(), perModel));
+                }
+                woundsRolled = ones;
             }
             else
             {
-                // Realistic: a whole number of 1s came up; deal one wound apiece to that many models.
+                // Realistic: a whole number of 1s came up; one wound apiece to that many models.
                 int wounds = (int)MathF.Round(ones);
                 for (int i = 0; i < wounds && i < testers.Count; i++)
-                    testers[i].Model.GetValue().DealWounds(1);
-                woundsDealt = wounds;
+                    pending.Add(new PendingModelWound(testers[i].Model.GetValue(), 1f));
+                woundsRolled = wounds;
             }
 
-            gameContext.Log($"{unitName}: {testers.Count} model(s) tested dangerous terrain - {woundsDealt:0.##} wound(s) dealt.");
-            return new DangerousTerrainResult(roll, testers.Count, woundsDealt);
+            gameContext.Log($"{unitName}: {testers.Count} model(s) tested dangerous terrain - {woundsRolled:0.##} wound(s) dealt.");
+            return new DangerousTerrainResult(roll, testers.Count, woundsRolled, pending, unit.ID, unitName);
         }
 
         /// <summary>
@@ -121,29 +142,33 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// The full move sequence for an out-of-band move: apply dangerous-terrain effects, then
-        /// commit positions. Mirrors the normal flow's
-        /// <c>ApplyNonMovementTerrainEffectsStage</c> → <c>ExecuteMoveStage</c> order. Returns the
-        /// dangerous-terrain rolls so the caller can present them (<see cref="PresentDangerousTerrainRolls"/>) —
-        /// the normal flow presents from its stage, so the out-of-band caller must too.
+        /// The full move sequence for an out-of-band move: roll the dangerous-terrain test, then commit
+        /// positions. Mirrors the normal flow's <c>ApplyNonMovementTerrainEffectsStage</c> →
+        /// <c>ExecuteMoveStage</c> order. The wounds come back PENDING; the caller lands and animates
+        /// them with <see cref="ResolveDangerousTerrain"/> once the models are where they end up — the
+        /// normal flow resolves from its stage, so the out-of-band caller must too.
         /// </summary>
         public static DangerousTerrainResult Commit(IGameContext gameContext, IReadOnlyList<ModelMoveEntry> paths,
-            IEnumerable<ITerrain> relevantTerrain, string unitName, bool ignoresDangerousTerrain = false)
+            IEnumerable<ITerrain> relevantTerrain, IUnit unit, bool ignoresDangerousTerrain = false)
         {
             DangerousTerrainResult result =
-                ApplyDangerousTerrainEffects(gameContext, paths, relevantTerrain, unitName, ignoresDangerousTerrain);
+                RollDangerousTerrain(gameContext, paths, relevantTerrain, unit, ignoresDangerousTerrain);
             CommitPositions(paths);
             return result;
         }
 
         /// <summary>
-        /// Presents the whole dangerous-terrain batch as a single <see cref="DiceRolledBeat"/> (one d6 per
-        /// testing model: 2+ safe/green, a 1 a wound). Shared by the normal-move stage and the out-of-band
-        /// (triggered) move so a Vanguard / forced move shows the same roll the player sees on a normal move.
-        /// Dangerous terrain deals wounds but is NOT a morale-test source, so this presents the roll only —
-        /// no morale test is run here.
+        /// Lands a rolled dangerous-terrain batch: the whole roll as a single <see cref="DiceRolledBeat"/>
+        /// (one d6 per testing model: 2+ safe/green, a 1 a wound), then the wounds themselves, each
+        /// model's death or flinch animating as its wound lands (<see cref="CasualtyPresentation"/>).
+        /// Shared by the normal-move stage and the out-of-band (triggered) move so a Vanguard / forced
+        /// move shows the same sequence the player sees on a normal move.
+        /// <para>
+        /// Called AFTER the move has been animated, so a casualty falls at the destination it walked to.
+        /// Dangerous terrain deals wounds but is NOT a morale-test source, so no morale test is run here.
+        /// </para>
         /// </summary>
-        public static async Task PresentDangerousTerrainRolls(IGameContext gameContext,
+        public static async Task ResolveDangerousTerrain(IGameContext gameContext,
             DangerousTerrainResult result)
         {
             if (!result.AnyTested) return;
@@ -152,6 +177,9 @@ namespace FDG.Stages
                 : $"{result.Wounds:0.##} wound{(result.Wounds == 1f ? "" : "s")}";
             await gameContext.Presenter.Present(DiceRolledBeat.From(result.Roll!, successThreshold: 2,
                 gameContext.Settings.RandomnessType, "Dangerous Terrain", summary));
+
+            await CasualtyPresentation.ApplyAndPresent(gameContext, result.PendingWounds,
+                result.Unit, result.UnitName);
         }
 
         /// <summary>
@@ -186,7 +214,7 @@ namespace FDG.Stages
             }
 
             // Flying ignores Dangerous terrain too (same AllTerrain scope as the impassible waiver above).
-            dangerResult = Commit(gameContext, paths, relevantTerrain, unit.GetValue().Name, ignoresDangerousTerrain: ignoresAllTerrain);
+            dangerResult = Commit(gameContext, paths, relevantTerrain, unit.GetValue(), ignoresDangerousTerrain: ignoresAllTerrain);
             return true;
         }
     }

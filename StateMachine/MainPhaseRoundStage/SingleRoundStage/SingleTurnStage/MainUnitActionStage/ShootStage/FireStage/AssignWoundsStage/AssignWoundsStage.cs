@@ -53,19 +53,23 @@ namespace FDG.Stages
                 // hero regenerates, and the trace shows the gate deciding while grunts live.
                 RuleParticipant.Subject(defender, models: HeroStatRules.LivingModels(defender)));
 
-            // #042 save-reroll rules (Bane): the defender re-rolls unmodified-6 saves, turning saved 6s
-            // into possible failures. Re-roll each successful group's natural-6 count and add the new
-            // failures to the wound total — done BEFORE Deadly multiplies, since it finalizes the saves.
+            // #042 save-reroll rules (Bane): the defender re-rolls its highest unmodified saves, turning
+            // saved dice into possible failures. The threshold is normally the unmodified max (6); a Boost
+            // variant widens it to 5-6 (#197). Re-roll each successful group's qualifying count and add the
+            // new failures to the wound total — done BEFORE Deadly multiplies, since it finalizes the saves.
             RerollSink rerollSink = new RerollSink();
             rerollSink.ApplyFrom(saveCompleteOperations);
-            if (rerollSink.RerollSavesOnUnmodifiedMax)
+            if (rerollSink.RerollSavesAtOrAbove is int rerollFrom)
             {
                 foreach (SuccessfulSaveInfo saved in rollToSaveResults.SuccessfulSaveList)
                 {
-                    float naturalMax = saved.Rolls.At(saved.Rolls.SideMax);
-                    if (naturalMax <= 0f) continue;
+                    // Clamped to the die's own faces: an authored threshold above SideMax would otherwise
+                    // silently re-roll nothing, and one below SideMin would re-roll the whole group.
+                    int threshold = System.Math.Clamp(rerollFrom, saved.Rolls.SideMin, saved.Rolls.SideMax);
+                    float qualifying = saved.Rolls.AtOrAbove(threshold);
+                    if (qualifying <= 0f) continue;
                     int saveNeeded = DiceUtilities.ClampSuccessRollNeeded(saved.RollNeededInfo.SaveNeeded);
-                    IDiceResults rerollResult = GameContext.DiceRoller.Roll(naturalMax);
+                    IDiceResults rerollResult = GameContext.DiceRoller.Roll(qualifying);
                     float newWounds = rerollResult.Below(saveNeeded);
                     totalWoundsDealt += newWounds;
                     await GameContext.Presenter.Present(DiceRolledBeat.From(rerollResult, saveNeeded,

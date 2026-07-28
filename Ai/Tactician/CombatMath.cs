@@ -294,7 +294,7 @@ namespace FDG.Ai.Tactician
 
             float totalWounds = 0f;
             float[] combinedSaveFaces = new float[IDiceRollerExtensions.DEFAULT_SIDE_COUNT];
-            var savedGroups = new List<(float NaturalMaxSaves, int SaveNeeded)>();
+            var savedGroups = new List<(IDiceResults Saved, int SaveNeeded)>();
 
             foreach (SuccessfulHitInfo hits in groups)
             {
@@ -303,7 +303,7 @@ namespace FDG.Ai.Tactician
                 totalWounds += saveRolls.Below(saveNeeded);
 
                 IDiceResults saved = saveRolls.SubsetAtOrAbove(saveNeeded);
-                savedGroups.Add((saved.At(saved.SideMax), saveNeeded));
+                savedGroups.Add((saved, saveNeeded));
                 for (int face = saveRolls.SideMin; face <= saveRolls.SideMax; face++)
                     combinedSaveFaces[face - 1] += saveRolls.At(face);
             }
@@ -317,12 +317,16 @@ namespace FDG.Ai.Tactician
 
             var reroll = new RerollSink();
             reroll.ApplyFrom(saveCompleteOps);
-            if (reroll.RerollSavesOnUnmodifiedMax)
+            // Mirrors AssignWoundsStage: the reroll threshold is the unmodified max (6) unless a Boost
+            // variant widened it to 5-6, and the same clamp keeps an out-of-range authoring honest.
+            if (reroll.RerollSavesAtOrAbove is int rerollFrom)
             {
-                foreach ((float naturalMax, int saveNeeded) in savedGroups)
+                foreach ((IDiceResults saved, int saveNeeded) in savedGroups)
                 {
-                    if (naturalMax <= 0f) continue;
-                    totalWounds += Dice.Roll(naturalMax).Below(saveNeeded);
+                    int threshold = System.Math.Clamp(rerollFrom, saved.SideMin, saved.SideMax);
+                    float qualifying = saved.AtOrAbove(threshold);
+                    if (qualifying <= 0f) continue;
+                    totalWounds += Dice.Roll(qualifying).Below(saveNeeded);
                 }
             }
 

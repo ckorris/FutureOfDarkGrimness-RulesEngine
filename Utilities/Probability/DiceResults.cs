@@ -72,11 +72,16 @@ public struct DiceResults : IDiceResults
 
     
 
+    // Both bounds are face values and BOTH need the SideMin offset to index _perSideValues. The upper
+    // bound used to be used raw (`i < highestRoll`), which is accidentally right for a full die - where
+    // SideMin is 1, so `i < highestRoll` == `i <= highestRoll - 1` - and wrong for every SUBSET, whose
+    // SideMin is its lowest kept face. On a SubsetAtOrAbove(4) of a d6 the array holds 3 entries while the
+    // loop ran to i < 6, so any range query over a subset either over-counted or threw IndexOutOfRange.
+    // Surfaced by #197's reroll-threshold work, which is the first caller to ask AtOrAbove of a subset.
     private float TotalWithinRange(int lowestRoll, int highestRoll)
     {
         float total = 0;
-        //for (int i = lowestRoll - 1; i < highestRoll; i++)
-        for (int i = lowestRoll - SideMin; i < highestRoll; i++)
+        for (int i = lowestRoll - SideMin; i <= highestRoll - SideMin; i++)
         {
             total += _perSideValues[i];
         }

@@ -359,6 +359,119 @@ namespace FDG.Stages
             }
         }
 
+        public async Task RestoreWounds(IUnit unit, int minRoll)
+        {
+            // One die per missing wound, dead models included. The probabilistic roller leaves
+            // fractional wounds dealt; the pool floors them (conservative - a 0.4-wound scratch earns
+            // no die), keeping token/dice counts integral without int-locking a roll-derived value.
+            float missing = unit.Models.Sum(model => model.WoundsDealt);
+            int pool = (int)missing;
+            if (pool <= 0)
+            {
+                return;
+            }
+
+            // Decisive faces, never a histogram: each die's outcome is binary (a wound is restored or
+            // it is not) - the ClearTokenOnRoll/Storm precedent.
+            float[] perSide = new float[IDiceRollerExtensions.DEFAULT_SIDE_COUNT];
+            int successes = 0;
+            for (int i = 0; i < pool; i++)
+            {
+                int face = _gameContext.DiceRoller.RollDecisiveFace();
+                perSide[face - 1] += 1f;
+                if (face >= minRoll)
+                {
+                    successes++;
+                }
+            }
+
+            int healed = 0, revived = 0;
+            for (int i = 0; i < successes; i++)
+            {
+                // Wounds first (owner-ruled): top up the first wounded LIVING model. A model revived
+                // below is then itself the wounded living model the next success tops up, so revives
+                // proceed one at a time and fill before the next body returns.
+                ModelData? wounded = unit.Models.OfType<ModelData>()
+                    .FirstOrDefault(m => m.GetIsAlive() && m.WoundsDealt > 0.999f);
+                if (wounded != null)
+                {
+                    wounded.DealWounds(-1f);
+                    healed++;
+                    continue;
+                }
+
+                ModelData? corpse = unit.Models.OfType<ModelData>().FirstOrDefault(m => !m.GetIsAlive());
+                if (corpse == null)
+                {
+                    break; // fully healed - surplus successes are wasted, per the wording's cap
+                }
+
+                corpse.DealWounds(-(1f - (corpse.TotalWounds - corpse.WoundsDealt)));
+                PlaceRevivedInCoherency(unit, corpse);
+                revived++;
+            }
+
+            _gameContext.Log($"{unit.Name}: Reanimation rolled {pool} dice, {successes} at {minRoll}+ - " +
+                $"restored {healed} wound{(healed == 1 ? "" : "s")}, revived {revived} " +
+                $"model{(revived == 1 ? "" : "s")}.");
+            await _gameContext.Presenter.Present(DiceRolledBeat.FromDecisive(new DiceResults(perSide),
+                minRoll, "Reanimation",
+                successes > 0 ? $"restored {successes}" : "no effect"));
+        }
+
+        // A revived model returns beside the unit's first living model (base-to-base 0.1", eight
+        // angles, widening rings) - the wording's "may only be restored if they can be placed in
+        // coherency with non-restored models", auto-placed per the owner's call. The last-resort
+        // anchor-stack mirrors the deploy resolvers' CohesiveFallback: never lose the model, movement
+        // re-packs overlap.
+        private void PlaceRevivedInCoherency(IUnit unit, ModelData revived)
+        {
+            ModelData? anchor = unit.Models.OfType<ModelData>()
+                .FirstOrDefault(m => m.GetIsAlive() && !ReferenceEquals(m, revived));
+            if (anchor == null)
+            {
+                return;
+            }
+
+            var occupants = new List<(Position pos, IBaseShape shape, Float2 facing)>();
+            foreach (IModel model in _gameContext.TableState.Models.Objects)
+            {
+                if (model is not ModelData other || !other.GetIsAlive()) continue;
+                if (ReferenceEquals(other, revived)) continue;
+                Position p = other.Position;
+                if (p.x == 0f && p.z == 0f) continue;
+                occupants.Add((p, other.BaseShape, other.Facing));
+            }
+
+            float anchorR = anchor.BaseShape.CircumscribedRadiusInches;
+            float ownR = revived.BaseShape.CircumscribedRadiusInches;
+            for (float distance = anchorR + ownR + 0.1f; distance <= anchorR + ownR + 2f; distance += 0.6f)
+            {
+                for (int step = 0; step < 8; step++)
+                {
+                    float angle = step * MathF.PI / 4f;
+                    var candidate = new Position(anchor.Position.x + distance * MathF.Cos(angle),
+                        anchor.Position.z + distance * MathF.Sin(angle));
+                    if (candidate.x < ownR || candidate.z < ownR
+                        || candidate.x > GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES - ownR
+                        || candidate.z > GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES - ownR)
+                    {
+                        continue;
+                    }
+
+                    bool clear = occupants.All(o => !BaseShapeGeometry.AreColliding(
+                        revived.BaseShape, candidate, revived.Facing, o.shape, o.pos, o.facing));
+                    if (clear)
+                    {
+                        revived.SetPosition(candidate);
+                        return;
+                    }
+                }
+            }
+
+            revived.SetPosition(anchor.Position);
+        }
+
         private DataBinding<ArmyData>? FindArmyBindingOf(IUnit unit)
         {
             return _gameContext.GameDataStore.GetAllDataBindings<ArmyData>()

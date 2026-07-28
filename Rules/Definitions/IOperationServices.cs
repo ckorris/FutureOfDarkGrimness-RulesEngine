@@ -78,4 +78,14 @@ public interface IOperationServices
     /// Resolution of <see cref="RuleOperation.InvokeReinforce"/>.
     /// </summary>
     Task ReinforceUnit(IUnit unit, string? sourceRuleName);
+
+    /// <summary>
+    /// #197 P17d Reanimation: roll one die per wound <paramref name="unit"/> is missing (dead models
+    /// included; the fractional-wound tail under the probabilistic roller is floored), each
+    /// <paramref name="minRoll"/>+ restoring one wound — wounded living models topped up first, then
+    /// dead models revived at one wound each and auto-placed in coherency beside a living model.
+    /// Decisive dice, one presentation beat for the whole pool.
+    /// Resolution of <see cref="RuleOperation.InvokeRestoreWounds"/>.
+    /// </summary>
+    Task RestoreWounds(IUnit unit, int minRoll);
 }

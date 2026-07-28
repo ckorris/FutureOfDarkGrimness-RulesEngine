@@ -305,6 +305,19 @@ public abstract record RuleOperation
     }
 
     /// <summary>
+    /// Roll one die per wound <see cref="Unit"/> is missing; each <see cref="MinRoll"/>+ restores one
+    /// (#197 P17d Reanimation - wounds-first, revives auto-placed in coherency). Resolution of
+    /// <see cref="Effect.RestoreWounds"/>.
+    /// </summary>
+    public sealed record InvokeRestoreWounds(IUnit Unit, int MinRoll) : ExecutableOperation
+    {
+        public override Task Execute(IOperationServices services)
+        {
+            return services.RestoreWounds(Unit, MinRoll);
+        }
+    }
+
+    /// <summary>
     /// Roll one die against <see cref="MinRoll"/> and, on a pass, strip every <see cref="TType"/> token from
     /// <see cref="Unit"/>. Resolution of <see cref="Effect.ClearTokenOnRoll"/> — the round-start Shaken
     /// recovery. Executable, not a sink fold: the roll reads live dice and the removal is imperative.

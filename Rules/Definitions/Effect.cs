@@ -62,6 +62,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(AmbushRedeploy), "ambushRedeploy")]
 [JsonDerivedType(typeof(SpawnUnit), "spawnUnit")]
 [JsonDerivedType(typeof(ReinforceUnit), "reinforceUnit")]
+[JsonDerivedType(typeof(RestoreWounds), "restoreWounds")]
 [JsonDerivedType(typeof(TargetIndividualModel), "targetIndividualModel")]
 [JsonDerivedType(typeof(RestrictActions), "restrictActions")]
 [JsonDerivedType(typeof(RangeModifier), "rangeModifier")]
@@ -857,6 +858,23 @@ public abstract record Effect
         {
             operations.Add(new RuleOperation.InvokeReinforce(ruleInvocation.Bearer,
                 ruleInvocation.Definition?.Name));
+        }
+    }
+
+    /// <summary>
+    /// The bearer rolls one die per wound it is missing (dead models included) and each
+    /// <see cref="MinRoll"/>+ restores one wound (#197 P17d, <c>Reanimation</c>). Owner-ruled
+    /// 2026-07-28: successes top up wounded LIVING models first, then revive dead ones at one wound
+    /// each (a just-revived Tough model is then the wounded living model the next success tops up),
+    /// and revived models auto-place in coherency beside a living model — no per-die prompts. The
+    /// roll is DECISIVE (the ClearTokenOnRoll/Storm precedent): each die's outcome is binary, so a
+    /// histogram would want to restore fractions of a model.
+    /// </summary>
+    public sealed record RestoreWounds(int MinRoll = 5) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.InvokeRestoreWounds(ruleInvocation.Bearer, MinRoll));
         }
     }
 

@@ -57,6 +57,8 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(EnableReDeployment), "enableReDeployment")]
 [JsonDerivedType(typeof(EnableSpellLending), "enableSpellLending")]
 [JsonDerivedType(typeof(EnableSpellRelay), "enableSpellRelay")]
+[JsonDerivedType(typeof(RepelAmbushers), "repelAmbushers")]
+[JsonDerivedType(typeof(AmbushBeacon), "ambushBeacon")]
 [JsonDerivedType(typeof(TargetIndividualModel), "targetIndividualModel")]
 [JsonDerivedType(typeof(RestrictActions), "restrictActions")]
 [JsonDerivedType(typeof(RangeModifier), "rangeModifier")]
@@ -753,6 +755,37 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.EnableSpellRelay(RangeInches, CastRollBonus));
+        }
+    }
+
+    /// <summary>
+    /// Enemy Ambush arrivals must set up over <see cref="DistanceInches"/> from the bearer's unit
+    /// (#197 P22, <c>Repel Ambushers</c>: "enemy units using Ambush must be set up over 12\" away from
+    /// this model's unit"). A capability answer, not an event: the reserve-arrival pass asks every
+    /// on-table unit what it does to an arriving Ambusher and folds the answers into the placement
+    /// request's keep-out discs, so the entry's <see cref="Condition"/> gates it live and suppression
+    /// applies.
+    /// </summary>
+    public sealed record RepelAmbushers(float DistanceInches) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.RepelAmbushers(DistanceInches));
+        }
+    }
+
+    /// <summary>
+    /// FRIENDLY Ambush arrivals within <see cref="RangeInches"/> of the bearer ignore every
+    /// enemy-distance restriction — the core over-9" rule and any <see cref="RepelAmbushers"/> keep-away
+    /// alike (#197 P22, <c>Ambush Beacon</c>; owner sign-off 2026-07-28: the waiver is judged per
+    /// arriving MODEL, and overrides both restriction kinds). Same capability shape as
+    /// <see cref="RepelAmbushers"/>, folded into the placement request's waiver discs.
+    /// </summary>
+    public sealed record AmbushBeacon(float RangeInches) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.AmbushBeacon(RangeInches));
         }
     }
 

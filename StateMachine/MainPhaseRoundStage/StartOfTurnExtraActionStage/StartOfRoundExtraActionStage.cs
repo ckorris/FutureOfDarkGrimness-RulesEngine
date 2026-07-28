@@ -150,9 +150,22 @@ namespace FDG.Stages
             var wholeTable = new RectangularZone(0f, GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES,
                 0f, GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES);
 
+            // #197 P22: an AMBUSH arrival (enemy-distance constrained) also answers to relational rules -
+            // enemy Repel Ambushers keep-outs and friendly Ambush Beacon waivers, snapshotted into discs
+            // here so every resolver judges the same constraint set through PlacementDistanceRules. The
+            // Aircraft off-table redeploy (minDistance 0) is not "using Ambush" and gets neither.
+            IReadOnlyList<PlacementDisc> keepOut = Array.Empty<PlacementDisc>();
+            IReadOnlyList<PlacementDisc> waivers = Array.Empty<PlacementDisc>();
+            if (minDistanceFromEnemies > 0f)
+            {
+                keepOut = AmbushArrivalRules.KeepOutDiscs(unit, GameContext.TableState, GameContext.RuleEvaluator);
+                waivers = AmbushArrivalRules.WaiverDiscs(unit, GameContext.TableState, GameContext.RuleEvaluator);
+            }
+
             var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID, taskName,
                 wholeTable, unit.ModelBindings, minDistanceFromEnemiesInches: minDistanceFromEnemies,
-                mustTouchTableEdge: mustTouchTableEdge);
+                mustTouchTableEdge: mustTouchTableEdge,
+                enemyKeepOutDiscs: keepOut, enemyDistanceWaiverDiscs: waivers);
 
             // #282: commit-time overlap check - an Ambush arrival must not land inside another unit.
             List<PlacedObjectEntry<ModelData>> placements = await PlacementCommitGuard

@@ -87,6 +87,44 @@ namespace FDG.Rules.Dispatch
         public static IReadOnlyList<RuleOperation.EnableSpellRelay> RelayOffers(IUnit unit,
             RuleEvaluator evaluator) => Collect<RuleOperation.EnableSpellRelay>(unit, evaluator);
 
+        /// <summary>
+        /// How far enemy Ambush arrivals must set up from <paramref name="unit"/> — 0 for the near-universal
+        /// case of a unit with no repelling rule (#197 P22, <c>Repel Ambushers</c>). Several conferring
+        /// rules take the LARGEST distance, not the sum: two repel rules describe the same keep-away twice.
+        /// </summary>
+        public static float AmbushRepelDistance(IUnit unit, RuleEvaluator evaluator)
+        {
+            float distance = 0f;
+            foreach (RuleOperation op in Ask(unit, evaluator))
+            {
+                if (op is RuleOperation.RepelAmbushers repel && repel.DistanceInches > distance)
+                {
+                    distance = repel.DistanceInches;
+                }
+            }
+
+            return distance;
+        }
+
+        /// <summary>
+        /// The range within which <paramref name="unit"/> lets friendly Ambush arrivals ignore
+        /// enemy-distance restrictions — 0 for a unit that is no beacon (#197 P22, <c>Ambush Beacon</c>).
+        /// Largest-wins, like <see cref="AmbushRepelDistance"/>.
+        /// </summary>
+        public static float AmbushBeaconRange(IUnit unit, RuleEvaluator evaluator)
+        {
+            float range = 0f;
+            foreach (RuleOperation op in Ask(unit, evaluator))
+            {
+                if (op is RuleOperation.AmbushBeacon beacon && beacon.RangeInches > range)
+                {
+                    range = beacon.RangeInches;
+                }
+            }
+
+            return range;
+        }
+
         private static IReadOnlyList<TOperation> Collect<TOperation>(IUnit unit, RuleEvaluator evaluator)
             where TOperation : RuleOperation
         {

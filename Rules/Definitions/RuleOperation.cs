@@ -524,6 +524,20 @@ public abstract record RuleOperation
     public sealed record EnableSpellRelay(float RangeInches, int CastRollBonus) : RuleOperation;
 
     /// <summary>
+    /// Enemy Ambush arrivals must set up over <see cref="DistanceInches"/> from the bearer's unit.
+    /// Resolution of <see cref="Effect.RepelAmbushers"/> (Repel Ambushers). Read by
+    /// <c>AmbushArrivalRules</c>, which turns it into keep-out discs on the arrival placement request.
+    /// </summary>
+    public sealed record RepelAmbushers(float DistanceInches) : RuleOperation;
+
+    /// <summary>
+    /// Friendly Ambush arrivals within <see cref="RangeInches"/> of the bearer ignore enemy-distance
+    /// restrictions. Resolution of <see cref="Effect.AmbushBeacon"/> (Ambush Beacon). Read by
+    /// <c>AmbushArrivalRules</c>, which turns it into waiver discs on the arrival placement request.
+    /// </summary>
+    public sealed record AmbushBeacon(float RangeInches) : RuleOperation;
+
+    /// <summary>
     /// Re-scope the in-flight attack to a single chosen model in the target unit.
     /// Resolution of <see cref="Effect.TargetIndividualModel"/> (Takedown).
     /// </summary>

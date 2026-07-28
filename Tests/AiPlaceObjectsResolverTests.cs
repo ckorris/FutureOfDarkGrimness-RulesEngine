@@ -20,8 +20,10 @@ namespace FDG.Tests
             var selfPlayer = new PlayerID(System.Guid.NewGuid());
             var enemyPlayer = new PlayerID(System.Guid.NewGuid());
 
-            // Enemy model parked mid-table.
-            var enemyPos = new Position(36f, 24f);
+            // Enemy model parked ON the AI's natural landing spot (the fan-out lane starts at the left
+            // edge, mid-height), so only the enemy-distance check explains a distant placement. At
+            // mid-table the test passed even with the check deleted - geometry, not enforcement.
+            var enemyPos = new Position(1f, 24f);
             var enemyModel = new ModelData(0.5f, new List<Weapon>(), enemyPos, store);
             var enemyBinding = store.GetDataBinding<ModelData>(store.Create(enemyModel));
             var enemyUnit = new UnitData(enemyPlayer, "Enemies", 4, 4, new List<DataBinding<ModelData>> { enemyBinding });
@@ -56,6 +58,52 @@ namespace FDG.Tests
                 float dist = MathF.Sqrt(dx * dx + dz * dz);
                 Assert.That(dist, Is.GreaterThanOrEqualTo(minDist),
                     $"AI deep-strike placement must stay {minDist}\" from enemies (was {dist:F1}\").");
+            }
+        }
+
+        // #197 P22: a Repel Ambushers keep-out disc (larger than the flat 9" rule) must push the AI's
+        // arrival placement outside it - the disc reaches BlockPenalty through PlacementDistanceRules.
+        [Test]
+        public async Task PlacesAllModelsOutsideAKeepOutDisc()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var selfPlayer = new PlayerID(System.Guid.NewGuid());
+            var enemyPlayer = new PlayerID(System.Guid.NewGuid());
+
+            // On the AI's natural landing spot (see PlacesAllModelsOverMinDistanceFromEnemies), so the
+            // disc - not geometry - is what pushes the arrival out.
+            var enemyPos = new Position(1f, 24f);
+            var enemyModel = new ModelData(0.5f, new List<Weapon>(), enemyPos, store);
+            var enemyBinding = store.GetDataBinding<ModelData>(store.Create(enemyModel));
+            store.Create(new UnitData(enemyPlayer, "Repellers", 4, 4,
+                new List<DataBinding<ModelData>> { enemyBinding }));
+
+            var placing = new List<DataBinding<ModelData>>();
+            for (int i = 0; i < 2; i++)
+            {
+                var m = new ModelData(0.5f, new List<Weapon>(), new Position(0f, 0f), store);
+                placing.Add(store.GetDataBinding<ModelData>(store.Create(m)));
+            }
+            store.Create(new UnitData(selfPlayer, "Shifters", 4, 4, placing));
+
+            var resolver = new AiPlaceObjectsResolver<ModelData>(new TableState(store));
+            var wholeTable = new RectangularZone(0f, GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES,
+                0f, GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES);
+            const float repelRadius = 16f; // deliberately larger than the flat 9", so only the disc explains the distance
+            var request = new PlaceObjectsRequest<ModelData>(selfPlayer, "Ambush Deploy", wholeTable,
+                placing, minDistanceFromEnemiesInches: 9f,
+                enemyKeepOutDiscs: new[] { new PlacementDisc(enemyPos, repelRadius) });
+
+            List<PlacedObjectEntry<ModelData>> result = Unwrap(await resolver.Resolve(request));
+
+            Assert.That(result, Has.Count.EqualTo(2));
+            foreach (PlacedObjectEntry<ModelData> entry in result)
+            {
+                float dx = entry.Position.x - enemyPos.x;
+                float dz = entry.Position.z - enemyPos.z;
+                float dist = MathF.Sqrt(dx * dx + dz * dz);
+                Assert.That(dist, Is.GreaterThanOrEqualTo(repelRadius),
+                    $"the AI must respect the Repel keep-out disc, not just the flat rule (was {dist:F1}\").");
             }
         }
 

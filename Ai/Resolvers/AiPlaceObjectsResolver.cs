@@ -32,6 +32,11 @@ namespace FDG.Ai.Resolvers
         //Snapshot of impassible terrain for the current Resolve call; models can't be placed overlapping it.
         private IReadOnlyList<ITerrain> _impassibleTerrain = System.Array.Empty<ITerrain>();
 
+        // #197 P22: the request being resolved, so BlockPenalty can judge enemy distance through
+        // PlacementDistanceRules (flat min-distance + Repel keep-out discs + Beacon waivers) instead of
+        // re-implementing the combination logic here.
+        private PlaceObjectsRequest<T>? _activeRequest;
+
         public AiPlaceObjectsResolver(ITableState tableState)
         {
             _tableState = tableState;
@@ -66,6 +71,7 @@ namespace FDG.Ai.Resolvers
         {
             var zone = request.DeploymentZone;
             ZoneBounds bounds = zone.Bounds;
+            _activeRequest = request;
             _impassibleTerrain = _tableState.Terrain.Objects
                 .Where(t => t.TerrainType.HasFlag(ETerrainType.Impassible))
                 .ToList();
@@ -332,7 +338,13 @@ namespace FDG.Ai.Resolvers
                 if (!PlacementUtilities.IsBaseWithinZone(p, radius, zone)) penalty += OutOfZonePenalty;
                 penalty += OverlapDepth(p, radius, existing);
                 if (PlacementUtilities.OverlapsImpassibleTerrain(p, radius, _impassibleTerrain)) penalty += TerrainPenalty;
-                if (TooCloseToEnemy(p, enemies, minEnemyDist)) penalty += EnemySpacingPenalty;
+                // #197 P22: the one enemy-distance read — flat min-distance, Repel keep-out discs and
+                // Beacon waivers judged together by the shared authority.
+                if (_activeRequest != null
+                    && PlacementDistanceRules.ViolatesEnemyDistance(_activeRequest, p, enemies))
+                {
+                    penalty += EnemySpacingPenalty;
+                }
             }
             return penalty;
         }
@@ -366,13 +378,6 @@ namespace FDG.Ai.Resolvers
                 }
             }
             return positions;
-        }
-
-        private static bool TooCloseToEnemy(Position p, List<Position> enemies, float minDist)
-        {
-            foreach (var e in enemies)
-                if (Dist(p, e) < minDist) return true;
-            return false;
         }
 
         private IEnumerable<(Position, float)> GetTableOccupants()

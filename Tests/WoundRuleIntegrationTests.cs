@@ -306,14 +306,17 @@ namespace FDG.Tests
         // diceRoller defaults to a fixed 4 (Deadly tests don't roll); the wound-ignore tests inject a
         // ProbabilisticDiceRoller so Regeneration's per-wound roll is deterministic and fractional. Pass a
         // presenter (e.g. RecordingPresenter) to assert which beats a stage emits; defaults to a no-op sink.
+        // ruleResolver is optional and defaults to null, matching the bare-evaluator default: granted-rule
+        // read-back no-ops without one. Tests that grant a rule by token (#197 P20's one-shot Unwieldy)
+        // pass a resolver carrying that definition.
         public WoundTestContext(GameDataStore store, IPlayerRequestByID requester, IDiceRoller? diceRoller = null,
-            IPresenter? presenter = null)
+            IPresenter? presenter = null, IRuleResolver? ruleResolver = null)
         {
             GameDataStore = store;
             TableState = new TableState(store);
             PlayerRequester = requester;
             DiceRoller = diceRoller ?? new FixedDiceRoller(4);
-            RuleEvaluator = new RuleEvaluator(DiceRoller);
+            RuleEvaluator = new RuleEvaluator(DiceRoller, ruleResolver: ruleResolver);
             Presenter = presenter ?? new LocalPresenter(null, new InstantPresentationClock());
         }
 

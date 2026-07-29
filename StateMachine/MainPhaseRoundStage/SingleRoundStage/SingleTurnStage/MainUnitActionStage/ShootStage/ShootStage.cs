@@ -1,5 +1,6 @@
 
 using System.Collections.Generic;
+using FDG.Utilities;
 
 namespace FDG.Stages
 {
@@ -25,8 +26,19 @@ namespace FDG.Stages
 
         protected override ICombatActionContext GetNewChildContext(IUnitActionContext contextSelf)
         {
+            // #197 P20: re-derive the same narrowing the shoot gate applied. A unit that moved past its
+            // advance-and-shoot allowance without Quick Shot of its own only got here because some enemy
+            // carries a Quick Shot mark, so it may shoot marked units only.
+            bool overMoveShootCap = contextSelf.HasMoved
+                && !Rules.Dispatch.AircraftRules.IsAircraft(contextSelf.ActivatingUnit.GetValue())
+                && contextSelf.MoveDistance.LessThanOrAlmostEqual(contextSelf.MoveShootAllowance) == false;
+            bool markedTargetsOnly = overMoveShootCap
+                && !Rules.Dispatch.ShootAfterRushRules.CanShootAfterRush(
+                    contextSelf.ActivatingUnit.GetValue(), GameContext.RuleEvaluator);
+
             return new CombatActionContext(contextSelf.GameContext, contextSelf.ActivatingUnit,
-                isMelee: false, attackerMoved: contextSelf.HasMoved);
+                isMelee: false, attackerMoved: contextSelf.HasMoved,
+                markedTargetsOnly: markedTargetsOnly);
         }
 
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<ICombatActionContext> startingChild)

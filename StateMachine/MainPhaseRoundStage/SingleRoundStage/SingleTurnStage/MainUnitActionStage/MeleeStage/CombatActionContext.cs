@@ -45,6 +45,15 @@ namespace FDG.Stages
         /// <summary>Record that the defender struck back this melee. Idempotent.</summary>
         public void RegisterDefenderStruckBack();
 
+        /// <summary>
+        /// #197 P20: this shoot action is only legal because an enemy carries a Quick Shot mark ("friendly
+        /// units get Quick Shot AGAINST it once"), so only marked units may be shot. Decided once by
+        /// <c>ChooseActionStage</c>'s shoot gate - which is the only place that knows how far the unit
+        /// moved - and carried here so <c>ChooseRangedAttackStage</c> narrows its target list the same way.
+        /// Always false in melee and for any shot taken without rushing.
+        /// </summary>
+        public bool MarkedTargetsOnly { get; }
+
         public IReadOnlyDictionary<Weapon, int> AvailableWeapons { get; }
         public IReadOnlyDictionary<Weapon, int> AlreadyUsedWeapons { get; }
 
@@ -148,6 +157,8 @@ namespace FDG.Stages
 
         public void RegisterDefenderStruckBack() => DefenderStruckBack = true;
 
+        public bool MarkedTargetsOnly { get; }
+
         public IReadOnlyList<DataBinding<ModelData>> InRangeAttackingModels { get; private set; }
             = new List<DataBinding<ModelData>>();
 
@@ -241,11 +252,13 @@ namespace FDG.Stages
 
 
         public CombatActionContext(IGameContext gameContext, DataBinding<UnitData> attackingUnit, bool isMelee,
-            bool attackerMoved = false, bool isCharging = false, IUnitActionContext? activationContext = null)
+            bool attackerMoved = false, bool isCharging = false, IUnitActionContext? activationContext = null,
+            bool markedTargetsOnly = false)
         {
             GameContext = gameContext;
             AttackingUnit = attackingUnit;
             ChargingUnit = isCharging ? attackingUnit : null;
+            MarkedTargetsOnly = markedTargetsOnly;
             _attackerMoved = attackerMoved;
             _isMelee = isMelee;
             _isCharging = isCharging;

@@ -92,7 +92,7 @@ namespace FDG.Stages
 
             bool canMove = GetCanMove(context, out string cantMoveReason);
             bool canCharge = GetCanCharge(context, out string cantChargeReason);
-            bool canShoot = GetCanShoot(context, out string cantShootReason);
+            bool canShoot = GetCanShoot(GameContext, context, out string cantShootReason);
             bool canPass = GetCanPass(GameContext, context, out string cantPassReason);
 
             // #033 — a unit with Caster(X) gets a "Cast" action whenever its army has an affordable spell.
@@ -643,7 +643,11 @@ namespace FDG.Stages
             return true;
         }
 
-        private bool GetCanShoot(IUnitActionContext context, out string reasonIfCant)
+        // Public + static like its sibling GetCanPass: the shoot gate is the whole of #197 P20's Quick
+        // Shot, and a rushed unit with nothing else to do never reaches the menu (zero valid options
+        // auto-pass), so there is no menu to read the answer out of.
+        public static bool GetCanShoot(IGameContext gameContext, IUnitActionContext context,
+            out string reasonIfCant)
         {
             if (TransportUtilities.IsEmbarked(context.ActivatingUnit.GetValue()))
             {
@@ -688,13 +692,18 @@ namespace FDG.Stages
             // Aircraft only ever Advance — a forced 30-36" straight-line move — and may shoot after it, so the
             // normal advance-and-shoot distance cap (which distinguishes Advance from Rush) doesn't apply (#029).
             bool isAircraft = Rules.Dispatch.AircraftRules.IsAircraft(context.ActivatingUnit.GetValue());
-            if (!isAircraft && context.HasMoved
-                && context.MoveDistance.LessThanOrAlmostEqual(context.MoveShootAllowance) == false)
-            {
-                reasonIfCant = $"Moved {context.MoveDistance} inches, when max to move and shoot for {context.ActivatingUnit.GetValue().Name} " +
-                    $" is {context.MoveShootAllowance}.";
-                return false;
-            }
+            bool overMoveShootCap = !isAircraft && context.HasMoved
+                && context.MoveDistance.LessThanOrAlmostEqual(context.MoveShootAllowance) == false;
+
+            // #197 P20 Quick Shot: "this model may shoot after using Rush actions" waives the cap outright.
+            // Quick Shot MARK is the same permission bound to one enemy ("friendly units get Quick Shot
+            // AGAINST it once"), so it does not waive the cap - it narrows the target list to marked units,
+            // and the shot is only possible at all if one of those is fireable. markedTargetsOnly threads
+            // that narrowing into the shared target-gating pipeline below, which is also what the shoot
+            // STAGE runs (#200: the action gate and the stage must never disagree).
+            bool markedTargetsOnly = overMoveShootCap
+                && !Rules.Dispatch.ShootAfterRushRules.CanShootAfterRush(
+                    context.ActivatingUnit.GetValue(), gameContext.RuleEvaluator);
 
             if (context.ActivatingUnit.GetValue().GetRangedWeapons().Count == 0)
             {
@@ -702,8 +711,15 @@ namespace FDG.Stages
                 return false;
             }
 
-            if (!ChooseRangedAttackStage.HasAnyFireableTarget(context.ActivatingUnit, context.GameContext))
+            if (!ChooseRangedAttackStage.HasAnyFireableTarget(context.ActivatingUnit, context.GameContext,
+                    markedTargetsOnly))
             {
+                if (markedTargetsOnly)
+                {
+                    reasonIfCant = $"Moved {context.MoveDistance} inches, when max to move and shoot for " +
+                        $"{context.ActivatingUnit.GetValue().Name}  is {context.MoveShootAllowance}.";
+                    return false;
+                }
                 reasonIfCant = "No enemies in range or line of sight.";
                 return false;
             }

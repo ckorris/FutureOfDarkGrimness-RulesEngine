@@ -570,6 +570,27 @@ public abstract record RuleOperation
     /// </summary>
     public sealed record StrikeFirst : RuleOperation;
 
+    /// <summary>
+    /// The bearer's strikes come AFTER the unit it charged - the mirror of <see cref="StrikeFirst"/>, seen
+    /// from the charger's side. Resolution of <see cref="Effect.StrikeLast"/> (#197 P20 Unwieldy, "strikes
+    /// last when charging"). Read by <c>DetermineStrikeOrderStage</c>, which performs the SAME role swap
+    /// either op asks for: a charger that strikes last and a defender that strikes first describe one
+    /// outcome, so the two compose rather than cancelling.
+    /// </summary>
+    public sealed record StrikeLast : RuleOperation;
+
+    /// <summary>
+    /// The bearer may shoot even after a move too long to normally allow it - "may shoot after using Rush
+    /// actions" (#197 P20 Quick Shot). Read by <c>ChooseActionStage.GetCanShoot</c>, which waives the
+    /// advance-and-shoot distance cap when it is present. Resolution of <see cref="Effect.ShootAfterRush"/>.
+    /// <para>
+    /// A permission, not a distance: it deliberately does NOT raise the unit's Advance allowance, which is
+    /// what an <see cref="ApplyMovementBonus"/> would do. Those differ - a bigger Advance also changes what
+    /// counts as an Advance for every other rule that asks.
+    /// </para>
+    /// </summary>
+    public sealed record AllowShootAfterRush : RuleOperation;
+
     // --- Capabilities ------------------------------------------------------------------------------
     //
     // Answers to questions asked at Lifecycle_OnCapabilityQuery, never APPLIED by anything: presence in

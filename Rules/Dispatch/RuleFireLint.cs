@@ -358,11 +358,17 @@ public static class RuleFireLint
             // #197 P10: Ravage queues InvokeDealAutoWounds here, rolled by ResolveRavageWoundsStage.
             EHookID.Melee_OnChargeContact =>
                 op is RuleOperation.ChargeImpactHits or RuleOperation.InvokeDealAutoWounds,
-            EHookID.Melee_OnCounterTrigger => op is RuleOperation.StrikeFirst,
+            // #197 P20: DetermineStrikeOrderStage performs the same role swap for either op - a defender
+            // that strikes first (Counter) and a charger that strikes last (Unwieldy) are one outcome.
+            EHookID.Melee_OnCounterTrigger =>
+                op is RuleOperation.StrikeFirst or RuleOperation.StrikeLast,
             EHookID.Melee_OnMeleeResolution => op is RuleOperation.ExtraMeleeWoundCount,
             EHookID.Melee_OnPostMelee => op is RuleOperation.InvokeTriggeredMove,
 
-            EHookID.Activation_OnActionChoice => op is RuleOperation.RestrictActions,
+            // #197 P20: ChooseActionStage reads AllowShootAfterRush at the same hook it reads RestrictActions
+            // - both are answers to "what may this unit do this activation".
+            EHookID.Activation_OnActionChoice =>
+                op is RuleOperation.RestrictActions or RuleOperation.AllowShootAfterRush,
 
             // UnitCreationRules applies the token grants (auras) and folds SetMaxWounds (Tough).
             EHookID.Lifecycle_OnUnitCreated =>

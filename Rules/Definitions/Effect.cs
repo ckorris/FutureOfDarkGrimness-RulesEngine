@@ -53,6 +53,8 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(ReduceImpactDicePerModel), "reduceImpactDicePerModel")]
 [JsonDerivedType(typeof(ExtraMeleeWoundCount), "extraMeleeWoundCount")]
 [JsonDerivedType(typeof(StrikeFirst), "strikeFirst")]
+[JsonDerivedType(typeof(StrikeLast), "strikeLast")]
+[JsonDerivedType(typeof(ShootAfterRush), "shootAfterRush")]
 [JsonDerivedType(typeof(EnableCasting), "enableCasting")]
 [JsonDerivedType(typeof(EnableTransport), "enableTransport")]
 [JsonDerivedType(typeof(EnableReDeployment), "enableReDeployment")]
@@ -709,6 +711,36 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.StrikeFirst());
+        }
+    }
+
+    /// <summary>
+    /// The bearer's strikes come after those of the unit it charged - Unwieldy's "strikes last when
+    /// charging" (#197 P20). Authored at <see cref="EHookID.Melee_OnCounterTrigger"/> on the ACTOR seat,
+    /// where <see cref="StrikeFirst"/> sits on the Subject seat: the two describe the same swapped melee
+    /// from opposite sides, so a charger with this and a defender with Counter still swap exactly once.
+    /// "When charging" needs no condition - the hook only fires for a charge.
+    /// </summary>
+    public sealed record StrikeLast : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.StrikeLast());
+        }
+    }
+
+    /// <summary>
+    /// The bearer may shoot after a move that would normally forbid it - Quick Shot's "may shoot after
+    /// using Rush actions" (#197 P20). Authored at <see cref="EHookID.Activation_OnActionChoice"/>, the
+    /// hook <c>ChooseActionStage</c> already fires to collect <see cref="RestrictActions"/>; the shoot gate
+    /// waives its advance-and-shoot distance cap when the op is present. Modelled as a PERMISSION rather
+    /// than a movement bonus on purpose - see <see cref="RuleOperation.AllowShootAfterRush"/>.
+    /// </summary>
+    public sealed record ShootAfterRush : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.AllowShootAfterRush());
         }
     }
 

@@ -35,7 +35,8 @@ namespace FDG.Stages
             List<WeaponOption> weaponOptions = BuildWeaponOptions(context.AttackingUnit, context.AvailableWeapons,
                 context.GameContext, terrainSnapshot, context.AttackedDefenderRefs);
 
-            ApplyTargetGating(weaponOptions, context.AttackingUnit, context.GameContext);
+            ApplyTargetGating(weaponOptions, context.AttackingUnit, context.GameContext,
+                context.MarkedTargetsOnly);
 
             if (!HasAnyFireableOption(weaponOptions))
             {
@@ -126,7 +127,7 @@ namespace FDG.Stages
         /// priority weapon that locks out the unit's other weapons ("fire the empty rocket first").
         /// </summary>
         private static void ApplyTargetGating(List<WeaponOption> weaponOptions,
-            DataBinding<UnitData> attackingUnit, IGameContext gameContext)
+            DataBinding<UnitData> attackingUnit, IGameContext gameContext, bool markedTargetsOnly)
         {
             // #032 Limited: a weapon may only be fired once per game. Exclude any Limited weapon whose
             // every living carrier has already fired it (per-model token), so it's no longer offered.
@@ -137,6 +138,42 @@ namespace FDG.Stages
             // after Limited gating: a Deadly weapon with no valid target - or one already spent - must
             // not lock out the rest.
             ApplyDeadlyFirstGating(weaponOptions, attackingUnit, gameContext);
+
+            // #197 P20: when the only thing permitting this shot is a Quick Shot mark on some enemy, the
+            // permission is target-bound - every unmarked target becomes unselectable.
+            ApplyQuickShotMarkGating(weaponOptions, gameContext, markedTargetsOnly);
+        }
+
+        /// <summary>
+        /// #197 P20 Quick Shot Mark: "pick one enemy unit, which friendly units get Quick Shot AGAINST
+        /// once". A unit that Rushed and has no Quick Shot of its own may still shoot - but only the marked
+        /// enemy, otherwise the mark would license a free shot at anything and never even be claimed
+        /// (the mark is only spent when the attack lands on the unit carrying it).
+        /// </summary>
+        private static void ApplyQuickShotMarkGating(List<WeaponOption> weaponOptions,
+            IGameContext gameContext, bool markedTargetsOnly)
+        {
+            if (!markedTargetsOnly) return;
+
+            IRuleResolver? resolver = gameContext.RuleEvaluator.RuleResolver;
+
+            foreach (WeaponOption option in weaponOptions)
+            {
+                for (int i = 0; i < option.WeaponTargetStats.Count; i++)
+                {
+                    WeaponTargetStats stats = option.WeaponTargetStats[i];
+                    if (stats.UnselectableReason != null) continue;
+                    if (ShootAfterRushRules.MarkGrantsShootAfterRush(stats.TargetUnit.GetValue(), resolver))
+                    {
+                        continue;
+                    }
+
+                    option.WeaponTargetStats[i] = stats with
+                    {
+                        UnselectableReason = "Rushed - only a Quick Shot marked target may be shot.",
+                    };
+                }
+            }
         }
 
         private static void ApplyDeadlyFirstGating(List<WeaponOption> weaponOptions,
@@ -235,7 +272,8 @@ namespace FDG.Stages
         /// weapon has both line of sight and range). Used by ChooseActionStage to gray out
         /// Shoot when there is nothing to shoot at.
         /// </summary>
-        public static bool HasAnyFireableTarget(DataBinding<UnitData> attackingUnit, IGameContext gameContext)
+        public static bool HasAnyFireableTarget(DataBinding<UnitData> attackingUnit, IGameContext gameContext,
+            bool markedTargetsOnly = false)
         {
             UnitData unitValue = attackingUnit.GetValue();
             List<Weapon> rangedWeapons = unitValue.GetRangedWeapons();
@@ -255,7 +293,7 @@ namespace FDG.Stages
 
             // The stage's own gating pipeline, verbatim (#200): the gate must answer exactly what the
             // stage will conclude, or a deterministic AI ping-pongs between Choose Action and Shoot.
-            ApplyTargetGating(options, attackingUnit, gameContext);
+            ApplyTargetGating(options, attackingUnit, gameContext, markedTargetsOnly);
             return HasAnyFireableOption(options);
         }
 

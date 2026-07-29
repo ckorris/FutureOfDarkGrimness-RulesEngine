@@ -232,11 +232,13 @@ public abstract record RuleOperation
     }
 
     /// <summary>
-    /// Re-enter the activation flow for <see cref="Unit"/> this round.
+    /// Re-enter the activation flow for <see cref="Unit"/> this round, clearing its Fatigued token first
+    /// when <see cref="ClearsFatigue"/> (#197 Inquisitorial Agent's "stops being fatigued when activated
+    /// for the second time"; Martial Prowess grants the activation alone).
     /// Resolution of <see cref="Effect.Reactivate"/>. Depends on the engine
     /// exposing re-activation as a callable primitive.
     /// </summary>
-    public sealed record InvokeReactivate(IUnit Unit) : RuleOperation;
+    public sealed record InvokeReactivate(IUnit Unit, bool ClearsFatigue = false) : RuleOperation;
 
     /// <summary>
     /// Reduce the incoming attack's weapon armor penetration by <see cref="Amount"/> (floored at 0 by

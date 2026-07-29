@@ -40,9 +40,15 @@ public readonly record struct TokenType(string Id)
     public const string PERSISTENT_HIT_BONUS_ID = "PersistentHitBonusMarker";
     public const string PERSISTENT_AP_BONUS_ID = "PersistentApBonusMarker";
 
+    // #197 Inquisitorial Agent: stamped on a unit that spent a quota-gated reactivation this round, so the
+    // army-wide "only up to one third of them per round" cap can count the uses. Cleared at round end -
+    // the cap is per round, while the unit's own once-per-game gate is a separate, permanent marker.
+    public const string REACTIVATED_THIS_ROUND_ID = "ReactivatedThisRound";
+
 
     public static readonly TokenType Shaken = new(SHAKEN_ID);
     public static readonly TokenType Fatigued = new(FATIGUED_ID);
+    public static readonly TokenType ReactivatedThisRound = new(REACTIVATED_THIS_ROUND_ID);
     public static readonly TokenType SpellTokens = new(SPELL_TOKENS_ID);
 
     /// <summary>

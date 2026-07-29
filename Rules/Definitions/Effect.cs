@@ -525,17 +525,25 @@ public abstract record Effect
     }
 
     /// <summary>
-    /// Triggers a second activation of the bearer this round. Engine primitive
-    /// the Martial Prowess rule invokes. Currently no parameters because
-    /// self-reactivation is the only case in the corpus; could grow a
-    /// <c>UnitID Target</c> parameter if a future rule reactivates a different
-    /// unit.
+    /// Triggers a second activation of the bearer this round. The engine primitive behind Martial Prowess
+    /// ("once per game, this unit may activate a second time") and #197's Inquisitorial Agent, which is the
+    /// same activation plus two riders:
+    /// <list type="bullet">
+    /// <item><see cref="ClearsFatigue"/> — "stops being fatigued when activated for the second time".
+    /// Martial Prowess says no such thing, so it stays off by default.</item>
+    /// <item><see cref="ArmyRoundQuotaDivisor"/> — "only up to one third of the units in the army with this
+    /// rule at the beginning of the game (rounding up) may use it in a single round". 0 means no quota.
+    /// Enforced by <c>DeterminePlayerTurnStage</c>, the one site that offers reactivations and the only
+    /// layer with the whole army in hand: neither the Cost seam nor a Condition can see past one unit.</item>
+    /// </list>
+    /// Could still grow a <c>UnitID Target</c> if a future rule reactivates a DIFFERENT unit (#197 P19).
     /// </summary>
-    public sealed record Reactivate : Effect
+    public sealed record Reactivate(bool ClearsFatigue = false, int ArmyRoundQuotaDivisor = 0) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.InvokeReactivate(ruleInvocation.EffectiveTarget));
+            operations.Add(new RuleOperation.InvokeReactivate(
+                ruleInvocation.EffectiveTarget, ClearsFatigue));
         }
     }
 

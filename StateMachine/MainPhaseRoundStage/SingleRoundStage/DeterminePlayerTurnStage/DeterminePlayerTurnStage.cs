@@ -2,6 +2,8 @@ using FDG.Data;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
+using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 using FDG.StageResolution.Requests;
 
 namespace FDG.Stages
@@ -91,6 +93,16 @@ namespace FDG.Stages
 
                 foreach (AbilityOffer offer in GameContext.RuleEvaluator.GatherOffers(hookContext))
                 {
+                    // #197 Inquisitorial Agent: "only up to one third of the units in the army with this
+                    // rule at the beginning of the game (rounding up) may use it in a single round". The
+                    // unit's own once-per-game gate is already paid by its Cost; this is the ARMY's cap,
+                    // and it is checked before the player is asked so a full quota is silently unavailable
+                    // rather than offered and then refused.
+                    if (!ArmyRoundQuotaAllows(playerID, offer))
+                    {
+                        continue;
+                    }
+
                     var question = new YesNoRequest(playerID,
                         $"Reactivate {unit.GetValue().Name} with {offer.RuleName}?",
                         defaultAnswer: true);
@@ -120,10 +132,71 @@ namespace FDG.Stages
             OperationApplier.ApplyTokenOperations(ops);
             await OperationExecutor.Execute(ops, new GameOperationServices(GameContext));
 
-            if (ops.OfType<RuleOperation.InvokeReactivate>().Any())
+            RuleOperation.InvokeReactivate? reactivate =
+                ops.OfType<RuleOperation.InvokeReactivate>().FirstOrDefault();
+            if (reactivate == null)
             {
-                context.ReinstateUnitForActivation(unit);
+                return;
             }
+
+            // #197: "stops being fatigued when activated for the second time" - cleared BEFORE the unit
+            // re-enters the pool, so the melee it is about to fight sees a fresh unit. Martial Prowess
+            // carries no such clause and leaves the token alone.
+            if (reactivate.ClearsFatigue)
+            {
+                unit.GetValue().Tokens.RemoveTokens(TokenType.Fatigued);
+                GameContext.Log($"{unit.GetValue().Name} stops being fatigued for its second activation.");
+            }
+
+            // The army-wide per-round counter. Stamped on acceptance rather than on the offer, so a
+            // declined offer costs the army nothing. Round-end cleared: the cap is per round, while the
+            // unit's own once-per-game marker (granted by the Cost) is permanent.
+            unit.GetValue().Tokens.AddToken(
+                TokenDefinitionCatalog.Create(TokenType.ReactivatedThisRound));
+
+            context.ReinstateUnitForActivation(unit);
+        }
+
+        /// <summary>
+        /// #197 Inquisitorial Agent's army-wide cap: at most ceil(roster / divisor) units may take a second
+        /// activation from this rule in one round, where roster is the number of units in the army carrying
+        /// the rule AT THE BEGINNING OF THE GAME.
+        /// <para>
+        /// That game-start count needs no snapshot: <c>ArmyData.UnitBindings</c> is append-only — a
+        /// destroyed unit stays in the list, marked not-alive — so counting every binding whose rules carry
+        /// the offered ability yields exactly the starting roster, casualties included. (A rule that CREATES
+        /// units mid-game could inflate it; no book pairs one with this rule, and the shipped-data test
+        /// pins that.) Matching is on the ability itself rather than a rule name, so an army-flavored
+        /// rename counts the same way.
+        /// </para>
+        /// Abilities with no declared quota (Martial Prowess) are always allowed.
+        /// </summary>
+        private bool ArmyRoundQuotaAllows(PlayerID playerID, AbilityOffer offer)
+        {
+            if (offer.Ability.Effect is not Effect.Reactivate { ArmyRoundQuotaDivisor: > 0 } reactivate)
+            {
+                return true;
+            }
+
+            List<UnitData> armyUnits = GameContext.GameDataStore.GetAllValues<ArmyData>()
+                .Where(army => army.IsOwnedBy(playerID))
+                .SelectMany(army => army.UnitBindings)
+                .Select(binding => binding.GetValue())
+                .ToList();
+
+            int roster = armyUnits.Count(unit => unit.RuleDefinitions
+                .Any(rule => rule.Definition.Activated.Contains(offer.Ability)));
+            int usedThisRound = armyUnits.Count(unit => unit.Tokens.HasToken(TokenType.ReactivatedThisRound));
+
+            int allowed = (roster + reactivate.ArmyRoundQuotaDivisor - 1) / reactivate.ArmyRoundQuotaDivisor;
+            if (usedThisRound < allowed)
+            {
+                return true;
+            }
+
+            GameContext.LogDebug($"{offer.RuleName}: {usedThisRound} of {roster} units have already used a " +
+                $"second activation this round (limit {allowed}) - not offered.");
+            return false;
         }
     }
 }

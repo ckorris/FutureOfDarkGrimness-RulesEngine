@@ -79,6 +79,14 @@ public static class TokenDefinitionCatalog
                 DefaultClearTrigger: new TokenClearTrigger.RoundEnd(),
                 Description: "Fatigued - hits only on unmodified 6s in melee for the rest of the round."),
 
+            // #197 Inquisitorial Agent's per-round army quota counter. Normal prominence: it explains why
+            // a sibling unit is no longer being offered its second activation, which is otherwise invisible.
+            new(TokenType.REACTIVATED_THIS_ROUND_ID, "Reactivated", EValence.Positive,
+                ETokenProminence.Normal,
+                DefaultClearTrigger: new TokenClearTrigger.RoundEnd(),
+                Description: "Activated a second time this round - counts against its army's per-round " +
+                             "limit on second activations."),
+
             new(TokenType.SPELL_TOKENS_ID, "Spell Tokens", EValence.Positive, ETokenProminence.FirstClass,
                 ColorOverride: ETokenColor.Blue,
                 Description: "Spell tokens available to spend on casting this round."),

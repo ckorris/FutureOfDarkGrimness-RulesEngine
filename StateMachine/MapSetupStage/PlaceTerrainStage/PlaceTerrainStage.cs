@@ -1,4 +1,5 @@
 using System.Linq;
+using FDG.Presentation.Beats;
 using FDG.SaveLoad;
 using FDG.StageResolution.Requests;
 using FDG.Utilities;
@@ -11,9 +12,13 @@ namespace FDG.Stages
     /// <list type="bullet">
     ///   <item><c>AutoFromLayout</c>: dumps the built-in <see cref="DefaultTerrainPool"/> verbatim.</item>
     ///   <item><c>LoadFromFile</c>: dumps <see cref="GameSettings.TerrainLayoutPath"/> verbatim.</item>
-    ///   <item><c>Alternating</c>: loops <see cref="GameSettings.TerrainPieceCount"/> times, alternating
-    ///     teams in the order chosen by <see cref="RollForFirstTerrainPlacementStage"/>, asking each
-    ///     active player to place one piece via <see cref="PlaceOneTerrainRequest"/>.</item>
+    ///   <item><c>Alternating</c> ("Alternating: One Per"): loops <see cref="GameSettings.TerrainPieceCount"/>
+    ///     times, alternating teams in the order chosen by <see cref="RollForFirstTerrainPlacementStage"/>,
+    ///     asking each active player to place one piece via <see cref="PlaceOneTerrainRequest"/>.</item>
+    ///   <item><c>AlternatingPoints</c> ("Alternating: Points", #301): same alternation, but pieces cost
+    ///     <see cref="TerrainPieceEntry.Points"/> and each turn spends
+    ///     <see cref="GameSettings.TerrainPointsPerTurn"/> from the player's pre-dealt share of
+    ///     <see cref="GameSettings.TerrainPointsTotal"/> (see <see cref="TerrainPointsLedger"/>).</item>
     /// </list>
     /// </summary>
     public class PlaceTerrainStage : StageBase<IMapSetupContext>
@@ -23,24 +28,36 @@ namespace FDG.Stages
         /// <summary>Inclusive upper bound on the Alternating-mode piece count, per #002 Decisions.</summary>
         public const int MaxAlternatingPieceCount = 30;
 
-        /// <summary>
-        /// True if the terrain phase should be skipped entirely (no roll, no placement).
-        /// Currently triggers only when Alternating mode is paired with a count of 0;
-        /// AutoFromLayout / LoadFromFile have their own pool/file that already may be empty.
-        /// </summary>
-        public static bool ShouldSkipTerrainPhase(GameSettings settings) =>
-            settings.TerrainPlacementMode == ETerrainPlacementMode.Alternating
-            && settings.TerrainPieceCount <= 0;
+        /// <summary>Inclusive upper bound on the Alternating: Points total (#301). 60 points of 1-cost fences is ~60 pieces - well past any sane board.</summary>
+        public const int MaxPointsTotal = 60;
+
+        /// <summary>Inclusive upper bound on the Alternating: Points per-turn spend (#301).</summary>
+        public const int MaxPointsPerTurn = 6;
 
         /// <summary>
-        /// True only when players actually take turns placing terrain — Alternating mode with a positive piece
-        /// count, the one case the terrain roll-off's alternation order is used. Automatic modes
-        /// (AutoFromLayout / LoadFromFile) place terrain without player turns, so the roll-off ("who places
-        /// terrain first") is meaningless and is skipped, going straight to the objective phase.
+        /// True if the terrain phase should be skipped entirely (no roll, no placement).
+        /// Triggers only when an alternating mode is paired with a count/total of 0;
+        /// AutoFromLayout / LoadFromFile have their own pool/file that already may be empty.
         /// </summary>
-        public static bool NeedsTerrainRollOff(GameSettings settings) =>
-            settings.TerrainPlacementMode == ETerrainPlacementMode.Alternating
-            && settings.TerrainPieceCount > 0;
+        public static bool ShouldSkipTerrainPhase(GameSettings settings) => settings.TerrainPlacementMode switch
+        {
+            ETerrainPlacementMode.Alternating => settings.TerrainPieceCount <= 0,
+            ETerrainPlacementMode.AlternatingPoints => settings.TerrainPointsTotal <= 0,
+            _ => false,
+        };
+
+        /// <summary>
+        /// True only when players actually take turns placing terrain — an alternating mode with a positive
+        /// piece count / point total, the cases the terrain roll-off's alternation order is used. Automatic
+        /// modes (AutoFromLayout / LoadFromFile) place terrain without player turns, so the roll-off ("who
+        /// places terrain first") is meaningless and is skipped, going straight to the objective phase.
+        /// </summary>
+        public static bool NeedsTerrainRollOff(GameSettings settings) => settings.TerrainPlacementMode switch
+        {
+            ETerrainPlacementMode.Alternating => settings.TerrainPieceCount > 0,
+            ETerrainPlacementMode.AlternatingPoints => settings.TerrainPointsTotal > 0,
+            _ => false,
+        };
 
         public PlaceTerrainStage(IGameContext gameContext, IStateMachineLayer<IMapSetupContext> parent)
             : base(gameContext, parent)
@@ -54,7 +71,7 @@ namespace FDG.Stages
 
             if (ShouldSkipTerrainPhase(context.GameContext.Settings))
             {
-                context.Log("  Terrain count is 0; skipping terrain placement.");
+                context.Log("  Terrain count / point total is 0; skipping terrain placement.");
                 await OnTerrainPlaced.Activate(context);
                 return;
             }
@@ -71,6 +88,10 @@ namespace FDG.Stages
 
                 case ETerrainPlacementMode.Alternating:
                     await RunAlternatingPlacement(context);
+                    break;
+
+                case ETerrainPlacementMode.AlternatingPoints:
+                    await RunPointsPlacement(context);
                     break;
 
                 default:
@@ -245,6 +266,185 @@ namespace FDG.Stages
 
                 context.LogDebug($"  Resolver returned invalid placement ({validity}); re-prompting.");
             }
+        }
+
+        /// <summary>Amber, matching the Shaken-family warning Toasts.</summary>
+        private static readonly TextColor PointsNoticeColor = new TextColor(240, 200, 90, 255);
+
+        private async Task RunPointsPlacement(IMapSetupContext context)
+        {
+            if (context.TerrainPlacementTeamOrder is not IReadOnlyList<ITeam> teamOrder)
+                throw new InvalidOperationException(
+                    $"{nameof(PlaceTerrainStage)} entered AlternatingPoints mode before {nameof(IMapSetupContext.TerrainPlacementTeamOrder)} was set.");
+
+            int totalPoints = Math.Clamp(context.GameContext.Settings.TerrainPointsTotal, 0, MaxPointsTotal);
+            int perTurn = Math.Clamp(context.GameContext.Settings.TerrainPointsPerTurn, 1, MaxPointsPerTurn);
+            if (totalPoints == 0) return;
+
+            var pool = DefaultTerrainPool.GetPalette();
+            if (pool.Count == 0)
+            {
+                context.Log("  Default pool is empty; no terrain will be placed.");
+                return;
+            }
+
+            var ledger = new TerrainPointsLedger(teamOrder, totalPoints, perTurn);
+            foreach (ITeam team in teamOrder)
+                foreach (PlayerID player in team.Players)
+                    context.Log($"  {context.GetPlayerName(player)} will place {ledger.AllotmentOf(player)} of the {totalPoints} terrain points.");
+
+            var cursor = new TeamPlayerAlternationCursor(teamOrder);
+            while (true)
+            {
+                PlayerID placer = cursor.GetCurrentPlayerID();
+                if (ledger.HasPointsRemaining(placer))
+                    await RunPointsTurn(context, ledger, placer, pool);
+
+                if (!cursor.TryAdvance(ledger.TeamHasPointsRemaining, ledger.HasPointsRemaining, out _, out _))
+                    break;
+            }
+        }
+
+        private async Task RunPointsTurn(IMapSetupContext context, TerrainPointsLedger ledger,
+            PlayerID placer, IReadOnlyList<TerrainPieceEntry> pool)
+        {
+            float tableW = GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES;
+            float tableH = GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES;
+            string name = context.GetPlayerName(placer);
+
+            TerrainPointsLedger.Turn turn = ledger.BeginTurn(placer);
+            if (turn.BudgetRemaining <= 0)
+            {
+                // Deep debt from an earlier over-budget piece consumed the whole turn.
+                context.Log($"  {name}'s terrain turn is skipped ({turn.DebtPaidThisTurn} points of debt paid).");
+                await context.Announce(
+                    $"{name}'s terrain turn is skipped - debt from an earlier piece used its points",
+                    PointsNoticeColor, EBannerTier.Toast);
+                return;
+            }
+
+            while (turn.BudgetRemaining > 0)
+            {
+                if (!AnyPlayableTemplateFits(turn.Snapshot(), pool, tableW, tableH, context))
+                {
+                    int forfeited = ledger.RemainingOf(placer);
+                    ledger.ForfeitRemaining(placer);
+                    context.Log($"  No affordable terrain piece fits anywhere; {name} forfeits {forfeited} points.");
+                    await context.Announce(
+                        $"No affordable terrain piece fits on the table - {name} forfeits {TerrainPointsBudget.Pts(forfeited)}",
+                        PointsNoticeColor, EBannerTier.Toast);
+                    return;
+                }
+
+                TerrainPlacementResult result = await RequestPointsPlacementWithValidation(
+                    context, placer, turn, pool, tableW, tableH);
+
+                TerrainPieceEntry template = pool[result.TemplateIndex];
+                int cost = TerrainPointsBudget.CostOf(template);
+                IZone rotated = TerrainTemplateUtilities.Rotate(template.Shape, result.RotationDegrees);
+                IZone placedShape = TerrainTemplateUtilities.TranslateToCenter(rotated, result.Center);
+
+                context.GameContext.GameDataStore.Create(
+                    new TerrainData(template.TerrainType, placedShape, template.HeightInches));
+
+                turn.RecordPlacement(cost);
+                context.Log($"  {name} placed {template.Name} for {TerrainPointsBudget.Pts(cost)} " +
+                    $"({ledger.RemainingOf(placer)} of {ledger.AllotmentOf(placer)} left, debt {ledger.DebtOf(placer)}).");
+            }
+
+            if (!ledger.HasPointsRemaining(placer))
+            {
+                await context.Announce($"{name} has placed all {ledger.AllotmentOf(placer)} of their terrain points",
+                    PointsNoticeColor, EBannerTier.Toast);
+            }
+        }
+
+        private async Task<TerrainPlacementResult> RequestPointsPlacementWithValidation(
+            IMapSetupContext context, PlayerID placer, TerrainPointsLedger.Turn turn,
+            IReadOnlyList<TerrainPieceEntry> pool, float tableW, float tableH)
+        {
+            while (true)
+            {
+                TerrainPointsBudget budget = turn.Snapshot();
+                var request = new PlaceOneTerrainRequest(
+                    targetPlayerID: placer,
+                    taskName: $"Place terrain - {budget.AllotmentRemaining} of {budget.AllotmentTotal} points left",
+                    piecesPlaced: 0,
+                    totalPieces: 0,
+                    pool: pool,
+                    tableWidthInches: tableW,
+                    tableHeightInches: tableH,
+                    pointsBudget: budget);
+
+                TerrainPlacementResult result = await context.GameContext.PlayerRequester
+                    .RequestDecision<PlaceOneTerrainRequest, TerrainPlacementResult>(request);
+
+                if (result.TemplateIndex < 0 || result.TemplateIndex >= pool.Count)
+                {
+                    context.LogDebug($"  Resolver returned out-of-range template index {result.TemplateIndex}; re-prompting.");
+                    continue;
+                }
+
+                // The budget check is authoritative here - the resolvers' graying is advisory.
+                TerrainPieceAffordability verdict = budget.Evaluate(TerrainPointsBudget.CostOf(pool[result.TemplateIndex]));
+                if (!verdict.Playable)
+                {
+                    context.LogDebug($"  Resolver picked an unaffordable template ({verdict.BlockedReason}); re-prompting.");
+                    continue;
+                }
+
+                IZone rotatedCandidate = TerrainTemplateUtilities.Rotate(
+                    pool[result.TemplateIndex].Shape, result.RotationDegrees);
+                IZone candidateShape = TerrainTemplateUtilities.TranslateToCenter(rotatedCandidate, result.Center);
+
+                var validity = TerrainPlacementValidator.Check(
+                    candidateShape, tableW, tableH,
+                    context.GameContext.TableState.Terrain.Objects);
+
+                if (validity == TerrainPlacementValidity.Valid)
+                    return result;
+
+                context.LogDebug($"  Resolver returned invalid placement ({validity}); re-prompting.");
+            }
+        }
+
+        /// <summary>
+        /// #301 safety valve: whether ANY currently-playable template has a legal spot (2" grid, 0/90
+        /// degree rotations - deliberately conservative; a piece that only fits at 45 degrees on a
+        /// near-full table forfeits a little early rather than re-prompting forever). Cheap in normal
+        /// play: the scan early-outs at the first legal cell.
+        /// </summary>
+        private static bool AnyPlayableTemplateFits(TerrainPointsBudget budget,
+            IReadOnlyList<TerrainPieceEntry> pool, float tableW, float tableH, IMapSetupContext context)
+        {
+            const float StepInches = 2f;
+            var existing = context.GameContext.TableState.Terrain.Objects;
+
+            foreach (TerrainPieceEntry entry in pool)
+            {
+                if (!budget.Evaluate(TerrainPointsBudget.CostOf(entry)).Playable) continue;
+
+                foreach (float rotation in new[] { 0f, 90f })
+                {
+                    IZone rotated = TerrainTemplateUtilities.Rotate(entry.Shape, rotation);
+                    (float lx, float hx, float ly, float hy) = rotated.GetAABB();
+                    float halfW = (hx - lx) * 0.5f;
+                    float halfH = (hy - ly) * 0.5f;
+
+                    for (float x = halfW; x <= tableW - halfW; x += StepInches)
+                    {
+                        for (float y = halfH; y <= tableH - halfH; y += StepInches)
+                        {
+                            IZone candidate = TerrainTemplateUtilities.TranslateToCenter(rotated, new Float2(x, y));
+                            if (TerrainPlacementValidator.Check(candidate, tableW, tableH, existing)
+                                == TerrainPlacementValidity.Valid)
+                                return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
         }
     }
 }

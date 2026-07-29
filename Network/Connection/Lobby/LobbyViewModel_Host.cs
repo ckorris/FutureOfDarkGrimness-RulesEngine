@@ -35,6 +35,8 @@ namespace FDG.Network.Connection.Lobby
 
         public IObservable<int> ArmyPointsObservable => _settings_ArmyPoints;
         public IObservable<int> TerrainPieceCountObservable => _settings_TerrainPieceCount;
+        public IObservable<int> TerrainPointsTotalObservable => _settings_TerrainPointsTotal;
+        public IObservable<int> TerrainPointsPerTurnObservable => _settings_TerrainPointsPerTurn;
         public IObservable<ETerrainPlacementMode> TerrainPlacementModeObservable => _settings_TerrainPlacementMode;
         public IObservable<string?> TerrainLayoutPathObservable => _settings_TerrainLayoutPath;
         public IObservable<EObjectivePlacementMode> ObjectivePlacementModeObservable => _settings_ObjectivePlacementMode;
@@ -52,6 +54,10 @@ namespace FDG.Network.Connection.Lobby
         public int ArmyPoints => _settings_ArmyPoints.Value;
 
         public int TerrainCount => _settings_TerrainPieceCount.Value;
+
+        public int TerrainPointsTotal => _settings_TerrainPointsTotal.Value;
+
+        public int TerrainPointsPerTurn => _settings_TerrainPointsPerTurn.Value;
 
         public ETerrainPlacementMode TerrainPlacementMode => _settings_TerrainPlacementMode.Value;
 
@@ -77,6 +83,8 @@ namespace FDG.Network.Connection.Lobby
 
         private BehaviorSubject<int> _settings_ArmyPoints;
         private BehaviorSubject<int> _settings_TerrainPieceCount;
+        private BehaviorSubject<int> _settings_TerrainPointsTotal;
+        private BehaviorSubject<int> _settings_TerrainPointsPerTurn;
         private BehaviorSubject<ETerrainPlacementMode> _settings_TerrainPlacementMode;
         private BehaviorSubject<string?> _settings_TerrainLayoutPath;
         private BehaviorSubject<EObjectivePlacementMode> _settings_ObjectivePlacementMode;
@@ -143,6 +151,8 @@ namespace FDG.Network.Connection.Lobby
 
             _settings_ArmyPoints = new BehaviorSubject<int>(_gameSettings.ArmyPoints);
             _settings_TerrainPieceCount = new BehaviorSubject<int>(_gameSettings.TerrainPieceCount);
+            _settings_TerrainPointsTotal = new BehaviorSubject<int>(_gameSettings.TerrainPointsTotal);
+            _settings_TerrainPointsPerTurn = new BehaviorSubject<int>(_gameSettings.TerrainPointsPerTurn);
             _settings_TerrainPlacementMode = new BehaviorSubject<ETerrainPlacementMode>(_gameSettings.TerrainPlacementMode);
             _settings_TerrainLayoutPath = new BehaviorSubject<string?>(_gameSettings.TerrainLayoutPath);
             _settings_ObjectivePlacementMode = new BehaviorSubject<EObjectivePlacementMode>(_gameSettings.ObjectivePlacementMode);
@@ -201,6 +211,8 @@ namespace FDG.Network.Connection.Lobby
 
             _settings_ArmyPoints = new BehaviorSubject<int>(_gameSettings.ArmyPoints);
             _settings_TerrainPieceCount = new BehaviorSubject<int>(_gameSettings.TerrainPieceCount);
+            _settings_TerrainPointsTotal = new BehaviorSubject<int>(_gameSettings.TerrainPointsTotal);
+            _settings_TerrainPointsPerTurn = new BehaviorSubject<int>(_gameSettings.TerrainPointsPerTurn);
             _settings_TerrainPlacementMode = new BehaviorSubject<ETerrainPlacementMode>(_gameSettings.TerrainPlacementMode);
             _settings_TerrainLayoutPath = new BehaviorSubject<string?>(_gameSettings.TerrainLayoutPath);
             _settings_ObjectivePlacementMode = new BehaviorSubject<EObjectivePlacementMode>(_gameSettings.ObjectivePlacementMode);
@@ -709,6 +721,13 @@ namespace FDG.Network.Connection.Lobby
                         return $"Terrain piece count ({_gameSettings.TerrainPieceCount}) must be between 0 and 30.";
                     break;
 
+                case ETerrainPlacementMode.AlternatingPoints:
+                    if (_gameSettings.TerrainPointsTotal < 0 || _gameSettings.TerrainPointsTotal > Stages.PlaceTerrainStage.MaxPointsTotal)
+                        return $"Terrain points total ({_gameSettings.TerrainPointsTotal}) must be between 0 and {Stages.PlaceTerrainStage.MaxPointsTotal}.";
+                    if (_gameSettings.TerrainPointsPerTurn < 1 || _gameSettings.TerrainPointsPerTurn > Stages.PlaceTerrainStage.MaxPointsPerTurn)
+                        return $"Terrain points per turn ({_gameSettings.TerrainPointsPerTurn}) must be between 1 and {Stages.PlaceTerrainStage.MaxPointsPerTurn}.";
+                    break;
+
                 case ETerrainPlacementMode.LoadFromFile:
                     if (string.IsNullOrWhiteSpace(_gameSettings.TerrainLayoutPath))
                         return "Terrain mode is 'Load From File' but no layout file was chosen.";
@@ -913,6 +932,35 @@ namespace FDG.Network.Connection.Lobby
             else
             {
                 _settings_TerrainPieceCount.OnNext(_settings_TerrainPieceCount.Value);
+            }
+        }
+
+        public void SetTerrainPointsTotal(int points)
+        {
+            // 0 is legal - it skips the terrain phase, the same as a One Per count of 0.
+            if (points >= 0 && points <= Stages.PlaceTerrainStage.MaxPointsTotal)
+            {
+                _settings_TerrainPointsTotal.OnNext(points);
+                _gameSettings.TerrainPointsTotal = points;
+                _messageBus.SendCommandToAllAsync(new LobbyGameSettingsUpdate(_gameSettings));
+            }
+            else
+            {
+                _settings_TerrainPointsTotal.OnNext(_settings_TerrainPointsTotal.Value);
+            }
+        }
+
+        public void SetTerrainPointsPerTurn(int points)
+        {
+            if (points >= 1 && points <= Stages.PlaceTerrainStage.MaxPointsPerTurn)
+            {
+                _settings_TerrainPointsPerTurn.OnNext(points);
+                _gameSettings.TerrainPointsPerTurn = points;
+                _messageBus.SendCommandToAllAsync(new LobbyGameSettingsUpdate(_gameSettings));
+            }
+            else
+            {
+                _settings_TerrainPointsPerTurn.OnNext(_settings_TerrainPointsPerTurn.Value);
             }
         }
 

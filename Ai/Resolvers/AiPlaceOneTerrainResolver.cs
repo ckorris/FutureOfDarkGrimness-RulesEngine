@@ -34,11 +34,12 @@ namespace FDG.Ai.Resolvers
                 throw new InvalidOperationException($"{nameof(AiPlaceOneTerrainResolver)} received empty pool.");
 
             var existing = _tableState.Terrain.Objects.ToList();
+            IReadOnlyList<int> candidates = CandidateIndices(request);
 
             // Try repeatedly: random template, random rotation (45° steps), random center, accept if valid.
             for (int attempt = 0; attempt < MaxAttempts; attempt++)
             {
-                int templateIndex = _rng.Next(request.Pool.Count);
+                int templateIndex = candidates[_rng.Next(candidates.Count)];
                 float rotationDeg = _rng.Next(8) * 45f;
                 TerrainPieceEntry template = request.Pool[templateIndex];
 
@@ -56,7 +57,34 @@ namespace FDG.Ai.Resolvers
             // Fell through — likely a very crowded table. Find the smallest template
             // and brute-force a grid search; if even that fails, the engine's
             // re-prompt loop will catch the resulting invalid result.
-            return Task.FromResult(GridSearchFallback(request, existing));
+            return Task.FromResult(GridSearchFallback(request, candidates, existing));
+        }
+
+        /// <summary>
+        /// #301 points mode: only templates the budget allows, preferring debt-free picks so the dumb
+        /// AI never borrows from its next turn (it falls back to debt-eligible picks only if a custom
+        /// pool has nothing it can afford outright). One Per mode: the whole pool, in pool order, so
+        /// the RNG consumption — and therefore seeded determinism — is unchanged from before #301.
+        /// </summary>
+        private static IReadOnlyList<int> CandidateIndices(PlaceOneTerrainRequest request)
+        {
+            var all = Enumerable.Range(0, request.Pool.Count).ToList();
+            if (request.PointsBudget is not TerrainPointsBudget budget)
+                return all;
+
+            var debtFree = new List<int>();
+            var playable = new List<int>();
+            foreach (int i in all)
+            {
+                var verdict = budget.Evaluate(TerrainPointsBudget.CostOf(request.Pool[i]));
+                if (!verdict.Playable) continue;
+                playable.Add(i);
+                if (verdict.DebtIncurred == 0) debtFree.Add(i);
+            }
+
+            if (debtFree.Count > 0) return debtFree;
+            if (playable.Count > 0) return playable;
+            return all;  // Nothing affordable — shouldn't happen (the stage skips such turns); let the re-prompt loop sort it out.
         }
 
         /// <summary>Random table-interior point that keeps the template's footprint inside the table.</summary>
@@ -84,12 +112,13 @@ namespace FDG.Ai.Resolvers
             return ((hx - lx) * 0.5f, (hy - ly) * 0.5f);
         }
 
-        private TerrainPlacementResult GridSearchFallback(PlaceOneTerrainRequest request, List<ITerrain> existing)
+        private TerrainPlacementResult GridSearchFallback(PlaceOneTerrainRequest request,
+            IReadOnlyList<int> candidates, List<ITerrain> existing)
         {
             const float StepInches = 2f;
 
             // Smallest template first — most likely to fit somewhere.
-            var templatesBySize = Enumerable.Range(0, request.Pool.Count)
+            var templatesBySize = candidates
                 .OrderBy(i => FootprintArea(request.Pool[i].Shape))
                 .ToList();
 

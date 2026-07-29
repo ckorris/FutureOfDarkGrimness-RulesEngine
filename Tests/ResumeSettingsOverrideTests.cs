@@ -25,6 +25,8 @@ namespace FDG.Tests
             {
                 ArmyPoints = 1500,
                 TerrainPieceCount = 12,
+                TerrainPointsTotal = 24,
+                TerrainPointsPerTurn = 4,
                 TerrainPlacementMode = ETerrainPlacementMode.LoadFromFile,
                 TerrainLayoutPath = "layouts/ruins.json",
                 ObjectivePlacementMode = EObjectivePlacementMode.PlayerPlaced,
@@ -40,6 +42,8 @@ namespace FDG.Tests
             {
                 ArmyPoints = 3000,
                 TerrainPieceCount = 20,
+                TerrainPointsTotal = 30,
+                TerrainPointsPerTurn = 3,
                 TerrainPlacementMode = ETerrainPlacementMode.Alternating,
                 TerrainLayoutPath = "layouts/other.json",
                 ObjectivePlacementMode = EObjectivePlacementMode.AutoPlaced,
@@ -56,6 +60,8 @@ namespace FDG.Tests
 
             Assert.That(merged.ArmyPoints, Is.EqualTo(1500));
             Assert.That(merged.TerrainPieceCount, Is.EqualTo(12));
+            Assert.That(merged.TerrainPointsTotal, Is.EqualTo(24));
+            Assert.That(merged.TerrainPointsPerTurn, Is.EqualTo(4));
             Assert.That(merged.TerrainPlacementMode, Is.EqualTo(ETerrainPlacementMode.LoadFromFile));
             Assert.That(merged.TerrainLayoutPath, Is.EqualTo("layouts/ruins.json"));
             Assert.That(merged.ObjectivePlacementMode, Is.EqualTo(EObjectivePlacementMode.PlayerPlaced));

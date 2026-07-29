@@ -49,7 +49,7 @@ namespace FDG.StageResolution.Requests
         /// <summary>Pieces already placed before this request (0-based for the next one).</summary>
         public int PiecesPlaced { get; }
 
-        /// <summary>Total pieces to place this game.</summary>
+        /// <summary>Total pieces to place this game. 0 in points mode, where no piece count is fixed up front.</summary>
         public int TotalPieces { get; }
 
         /// <summary>Template pool the player chooses from. The same pool is sent every turn — duplicates are allowed and templates do not deplete.</summary>
@@ -59,10 +59,17 @@ namespace FDG.StageResolution.Requests
 
         public float TableHeightInches { get; }
 
+        /// <summary>
+        /// #301 - the requesting player's point state in "Alternating: Points" mode; null in every
+        /// other mode. Resolvers evaluate each pool entry against it (cost via
+        /// <see cref="TerrainPointsBudget.CostOf"/>) for graying, warnings and the header lines.
+        /// </summary>
+        public TerrainPointsBudget? PointsBudget { get; }
+
         [JsonConstructor]
         public PlaceOneTerrainRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
             int piecesPlaced, int totalPieces, IReadOnlyList<TerrainPieceEntry> pool,
-            float tableWidthInches, float tableHeightInches)
+            float tableWidthInches, float tableHeightInches, TerrainPointsBudget? pointsBudget = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -72,13 +79,14 @@ namespace FDG.StageResolution.Requests
             Pool = pool;
             TableWidthInches = tableWidthInches;
             TableHeightInches = tableHeightInches;
+            PointsBudget = pointsBudget;
         }
 
         public PlaceOneTerrainRequest(PlayerID targetPlayerID, string taskName,
             int piecesPlaced, int totalPieces, IReadOnlyList<TerrainPieceEntry> pool,
-            float tableWidthInches, float tableHeightInches)
+            float tableWidthInches, float tableHeightInches, TerrainPointsBudget? pointsBudget = null)
             : this(targetPlayerID, new TaskID(Guid.NewGuid()), taskName,
-                   piecesPlaced, totalPieces, pool, tableWidthInches, tableHeightInches)
+                   piecesPlaced, totalPieces, pool, tableWidthInches, tableHeightInches, pointsBudget)
         { }
 
         public Task<TerrainPlacementResult> Resolve(TerrainPlacementResult resolution) => Task.FromResult(resolution);

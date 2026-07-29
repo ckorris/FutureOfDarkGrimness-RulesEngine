@@ -31,5 +31,13 @@ namespace FDG.SaveLoad
         public IZone Shape { get; set; } = null!;
 
         public float HeightInches { get; set; }
+
+        /// <summary>
+        /// #301 - what the piece costs in "Alternating: Points" terrain placement. 1-3 across the
+        /// built-in palette today (roughly footprint x how strongly the type shapes play), but not
+        /// hard-capped - a future monster piece may cost more. Defaults to 1 so layouts written
+        /// before this field price every piece at the minimum; ignored by every other placement mode.
+        /// </summary>
+        public int Points { get; set; } = 1;
     }
 }

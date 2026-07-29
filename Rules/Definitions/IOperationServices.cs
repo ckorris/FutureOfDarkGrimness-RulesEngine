@@ -96,4 +96,13 @@ public interface IOperationServices
     /// Resolution of <see cref="RuleOperation.InvokeRestoreWounds"/>.
     /// </summary>
     Task RestoreWounds(IUnit unit, int minRoll);
+
+    /// <summary>
+    /// #197 P8: <paramref name="unit"/> takes a dangerous-terrain test on the spot, without moving —
+    /// one batched d6 per living model, a wound on a 1, landed through the same dice beat, casualty
+    /// animation and destruction seam a real terrain crossing uses. A target that ignores all terrain
+    /// (Flying) takes no test at all, matching what it would suffer walking through the real thing.
+    /// Resolution of <see cref="RuleOperation.InvokeDangerousTerrainTest"/>.
+    /// </summary>
+    Task ForceDangerousTerrainTest(IUnit unit);
 }

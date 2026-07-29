@@ -287,10 +287,20 @@ namespace FDG.ArmyBuilding
         // to neither, so all references were dead. Only the importer has the owning-army context needed to
         // route the bare name to the right variant, so it does the disambiguation once, at import time, keyed
         // on the OPR army name -- a re-import stays correct rather than reintroducing the dead bare name.
+        //
+        // #197 P8 (Dangerous Terrain Debuff): the same reuse, six armies wide. Four books say "pick one
+        // enemy unit within 18" IN LINE OF SIGHT, which counts as being in Dangerous Terrain once (next
+        // time the effect would apply)" - a deferred debuff that only bites when the victim next moves.
+        // Lust Disciples and War Disciples say "pick one enemy unit within 18" [no line of sight], which
+        // must IMMEDIATELY take a Dangerous Terrain test" - it lands on the spot, move or no move. Only
+        // the minority variant is renamed: the bare name keeps the corpus wording for 12 of the 14
+        // references, and one of the two must diverge from its own book either way.
         private static readonly Dictionary<(string Army, string Rule), string> AmbiguousRuleNames = new()
         {
             [("Dark Brothers", "Darkborn")] = "Darkborn (Defensive)",
             [("Dark Prime Brothers", "Darkborn")] = "Darkborn (Offensive)",
+            [("Lust Disciples", "Dangerous Terrain Debuff")] = "Dangerous Terrain Debuff (Immediate)",
+            [("War Disciples", "Dangerous Terrain Debuff")] = "Dangerous Terrain Debuff (Immediate)",
         };
 
         private static void DisambiguateAmbiguousRuleNames(BookFile book)

@@ -105,6 +105,30 @@ namespace FDG.Stages
             return Task.CompletedTask;
         }
 
+        // #197 P8: the immediate arm of Dangerous Terrain Debuff - the victim tests where it stands, no
+        // move involved. Rolls through the same batched primitive a real crossing uses and lands the
+        // wounds through the same dice beat / casualty / destruction seam, so a unit killed by a forced
+        // test dies exactly like one killed walking into a minefield.
+        //
+        // Flying (the AllTerrain ignore scope) waives the test outright, per the owner ruling: the roll
+        // is skipped rather than rolled-and-discarded, so the seeded dice stream is untouched and a
+        // realistic-mode replay stays identical. It is logged, because a rule that visibly fires and then
+        // does nothing is the exact confusion the trace channel exists to prevent.
+        public async Task ForceDangerousTerrainTest(IUnit unit)
+        {
+            bool ignoresDangerousTerrain = Rules.Dispatch.MovementRuleQueries.IgnoresAllTerrain(
+                unit, _gameContext.RuleEvaluator);
+            if (ignoresDangerousTerrain)
+            {
+                _gameContext.Log($"{unit.Name} ignores all terrain, so it takes no dangerous terrain test.");
+                return;
+            }
+
+            MovementExecutor.DangerousTerrainResult result =
+                MovementExecutor.RollForcedDangerousTerrain(_gameContext, unit);
+            await MovementExecutor.ResolveDangerousTerrain(_gameContext, result);
+        }
+
         // #197: the non-spell home for Effect.MoraleTestThen (Mind Control, Fatigue Debuff). Same two
         // halves CastSpellStage's multi-target version runs - the rule-aware morale test, then the
         // on-failure effect - but for ONE target and with its own log line, since a unit rule announces

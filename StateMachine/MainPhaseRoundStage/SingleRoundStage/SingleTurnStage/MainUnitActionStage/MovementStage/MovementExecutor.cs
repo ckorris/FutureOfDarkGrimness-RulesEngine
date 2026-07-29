@@ -66,7 +66,6 @@ namespace FDG.Stages
             IReadOnlyList<ModelMoveEntry> paths, IEnumerable<ITerrain> relevantTerrain, IUnit unit,
             bool ignoresDangerousTerrain = false, bool countsAsInDangerousTerrain = false)
         {
-            string unitName = unit.Name;
             // Flying (AllTerrain scope) ignores Dangerous-terrain effects entirely — no roll, no wounds —
             // including a "counts as in Dangerous Terrain" grant (ignoring the real effect ignores the
             // counted-as one).
@@ -80,18 +79,51 @@ namespace FDG.Stages
             // its path actually crosses — so the no-dangerous-on-table early-out doesn't apply.
             if (dangerous.Count == 0 && !countsAsInDangerousTerrain) return DangerousTerrainResult.None;
 
-            List<ModelMoveEntry> testers = new List<ModelMoveEntry>();
+            List<IModel> testers = new List<IModel>();
             foreach (ModelMoveEntry move in paths)
             {
                 if (move.Positions.Count == 0) continue;
                 if (!countsAsInDangerousTerrain
                     && !MovementUtilities.DoesPathCrossDangerousTerrain(move, dangerous)) continue;
-                testers.Add(move);
+                testers.Add(move.Model.GetValue());
             }
+
+            return RollBatch(gameContext, testers, unit);
+        }
+
+        /// <summary>
+        /// A dangerous-terrain test forced on <paramref name="unit"/> without any move: every LIVING model
+        /// tests, wherever it stands. The immediate arm of #197 P8's Dangerous Terrain Debuff
+        /// ("pick one enemy unit within 18\", which must immediately take a Dangerous Terrain test") —
+        /// distinct from the deferred "counts as being in Dangerous Terrain once" arm, which rides the
+        /// unit's next move through <see cref="RollDangerousTerrain"/> instead.
+        /// <para>
+        /// Same waiver as a real crossing: a Flying target (the AllTerrain ignore scope)
+        /// takes no test at all. Owner-ruled 2026-07-28 — one rule for all three dangerous-terrain paths
+        /// beats a debuff that ignores what every other terrain effect honours. Strider is DifficultOnly
+        /// and so does NOT waive it, exactly as when it walks through the real thing.
+        /// </para>
+        /// Rolls only; the caller lands the wounds with <see cref="ResolveDangerousTerrain"/>.
+        /// </summary>
+        public static DangerousTerrainResult RollForcedDangerousTerrain(IGameContext gameContext, IUnit unit,
+            bool ignoresDangerousTerrain = false)
+        {
+            if (ignoresDangerousTerrain) return DangerousTerrainResult.None;
+
+            List<IModel> testers = unit.Models.Where(model => model.GetIsAlive()).ToList();
+            return RollBatch(gameContext, testers, unit);
+        }
+
+        /// <summary>
+        /// The batched roll shared by the move-driven and forced tests: ONE roll of N d6 for N testing
+        /// models, a wound per 1. Batching is what lets the probabilistic roller work here — a single
+        /// N-die roll yields the expected number of 1s, which N separate decisive rolls could not.
+        /// </summary>
+        private static DangerousTerrainResult RollBatch(IGameContext gameContext, IReadOnlyList<IModel> testers,
+            IUnit unit)
+        {
             if (testers.Count == 0) return DangerousTerrainResult.None;
 
-            // One batched roll: N d6 at once. Realistic -> N concrete dice; probabilistic -> the N-die
-            // distribution (expected 1s).
             IDiceResults roll = gameContext.DiceRoller.Roll(6, testers.Count);
             float ones = roll.At(1); // 1s are wounds (fractional under the probabilistic roller)
 
@@ -103,8 +135,8 @@ namespace FDG.Stages
                 float perModel = ones / testers.Count;
                 if (perModel > 0f)
                 {
-                    foreach (ModelMoveEntry move in testers)
-                        pending.Add(new PendingModelWound(move.Model.GetValue(), perModel));
+                    foreach (IModel tester in testers)
+                        pending.Add(new PendingModelWound(tester, perModel));
                 }
                 woundsRolled = ones;
             }
@@ -113,11 +145,11 @@ namespace FDG.Stages
                 // Realistic: a whole number of 1s came up; one wound apiece to that many models.
                 int wounds = (int)MathF.Round(ones);
                 for (int i = 0; i < wounds && i < testers.Count; i++)
-                    pending.Add(new PendingModelWound(testers[i].Model.GetValue(), 1f));
+                    pending.Add(new PendingModelWound(testers[i], 1f));
                 woundsRolled = wounds;
             }
 
-            gameContext.Log($"{unitName}: {testers.Count} model(s) tested dangerous terrain - {woundsRolled:0.##} wound(s) dealt.");
+            gameContext.Log($"{unit.Name}: {testers.Count} model(s) tested dangerous terrain - {woundsRolled:0.##} wound(s) dealt.");
             return new DangerousTerrainResult(roll, testers.Count, woundsRolled, pending, unit);
         }
 

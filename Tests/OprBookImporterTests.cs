@@ -249,6 +249,47 @@ public class OprBookImporterTests
         Assert.That(book.Units.Single().Rules, Has.One.EqualTo(new SpecialRuleEntry_Core("Darkborn")));
     }
 
+    // #197 P8: the same reuse, six armies wide. Four books say the picked enemy "counts as being in
+    // Dangerous Terrain once (next time the effect would apply)"; Lust Disciples and War Disciples say it
+    // "must immediately take a Dangerous Terrain test" - a different mechanic that lands whether or not
+    // the victim ever moves. Only the minority variant is renamed, so the majority keeps the corpus
+    // wording. All 14 corpus references sit on a wargear item gained from an upgrade, which is the site
+    // this fixture uses.
+    private const string TerrainDebuffJson = """
+    {
+      "name": "%ARMY%", "versionString": "1.0",
+      "units": [
+        { "id": "u1", "name": "Sorcerer", "size": 1, "cost": 50, "quality": 3, "defense": 3,
+          "upgrades": ["P1"] }
+      ],
+      "upgradePackages": [
+        { "uid": "P1", "sections": [
+          { "id":"s1", "label":"Upgrade with", "variant":"upgrade", "affects":{"type":"all"},
+            "options":[ { "id":"o1", "label":"Summoned Tendrils", "cost":35, "gains":[
+              {"type":"ArmyBookItem","name":"Summoned Tendrils",
+               "content":[{"type":"ArmyBookRule","name":"Dangerous Terrain Debuff"}]}
+            ] } ] }
+        ] }
+      ]
+    }
+    """;
+
+    [TestCase("Lust Disciples", "Dangerous Terrain Debuff (Immediate)")]
+    [TestCase("War Disciples", "Dangerous Terrain Debuff (Immediate)")]
+    [TestCase("Change Disciples", "Dangerous Terrain Debuff")]
+    [TestCase("Havoc Brothers", "Dangerous Terrain Debuff")]
+    [TestCase("Plague Disciples", "Dangerous Terrain Debuff")]
+    [TestCase("Goblin Reclaimers", "Dangerous Terrain Debuff")]
+    public void Import_DisambiguatesDangerousTerrainDebuff_ByArmy(string army, string expected)
+    {
+        BookFile book = OprBookImporter.Import(TerrainDebuffJson.Replace("%ARMY%", army), "src", "lic");
+
+        ItemEntry item = book.Units.Single().Sections.Single().Options.Single().ItemsGained.Single();
+
+        Assert.That(item.Rules, Has.One.EqualTo(new SpecialRuleEntry_Core(expected)),
+            $"{army} prints the {(expected.EndsWith("(Immediate)") ? "immediate" : "deferred")} wording");
+    }
+
     // Every bases variant observed in the real books: round number, round oval "WxH", round "none" with a
     // square fallback, both empty, and the field absent entirely.
     private const string BasesJson = """

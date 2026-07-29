@@ -82,6 +82,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(TokenScaledRollModifier), "tokenScaledRollModifier")]
 [JsonDerivedType(typeof(TokenScaledReduceArmorPenetration), "tokenScaledReduceArmorPenetration")]
 [JsonDerivedType(typeof(CountAsInTerrain), "countAsInTerrain")]
+[JsonDerivedType(typeof(DangerousTerrainTest), "dangerousTerrainTest")]
 [JsonDerivedType(typeof(PerHitSaveModifier), "perHitSaveModifier")]
 
 public abstract record Effect
@@ -1221,6 +1222,25 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.CountAsInTerrain(Terrain));
+        }
+    }
+
+    /// <summary>
+    /// The target takes a dangerous-terrain test immediately, standing still — one d6 per living model,
+    /// a wound on a 1 — rather than the next time it moves. The immediate arm of #197 P8's Dangerous
+    /// Terrain Debuff, which two books (Lust Disciples, War Disciples) word as "must immediately take a
+    /// Dangerous Terrain test" where the other four say "counts as being in Dangerous Terrain once".
+    /// <para>
+    /// Deliberately NOT modelled as <see cref="CountAsInTerrain"/> with an immediate trigger: that arm
+    /// only bites if the victim moves, so a unit that holds still would shrug the debuff off entirely,
+    /// inverting the rule. A Flying target still waives it, per the shared terrain-ignore rule.
+    /// </para>
+    /// </summary>
+    public sealed record DangerousTerrainTest : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.InvokeDangerousTerrainTest(ruleInvocation.EffectiveTarget));
         }
     }
 

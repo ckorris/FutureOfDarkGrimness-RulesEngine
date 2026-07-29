@@ -713,6 +713,26 @@ public abstract record RuleOperation
     public sealed record CountAsInTerrain(ECountAsTerrain Terrain) : RuleOperation;
 
     /// <summary>
+    /// <see cref="Unit"/> takes a dangerous-terrain test right now, standing still: one d6 per living
+    /// model, a wound on a 1. Resolution of <see cref="Effect.DangerousTerrainTest"/> (#197 P8, the
+    /// immediate arm of Dangerous Terrain Debuff).
+    /// <para>
+    /// An <see cref="ExecutableOperation"/> rather than a stage-folded op because it deals wounds and
+    /// can destroy the unit — it needs the async presentation + destruction seam that
+    /// <c>MovementExecutor.ResolveDangerousTerrain</c> already owns, which is exactly what the executor
+    /// pass gives it. Unlike <see cref="CountAsInTerrain"/> (which arms the target's NEXT move), this
+    /// lands whether or not the target ever moves.
+    /// </para>
+    /// </summary>
+    public sealed record InvokeDangerousTerrainTest(IUnit Unit) : ExecutableOperation
+    {
+        public override Task Execute(IOperationServices services)
+        {
+            return services.ForceDangerousTerrainTest(Unit);
+        }
+    }
+
+    /// <summary>
     /// Remove the bearer from the normal deployment pool for later placement, governed by
     /// <see cref="Timing"/>. <see cref="PlacementRangeInches"/> is interpreted per timing:
     /// for <see cref="EDeferTiming.AfterNormalDeployment"/> (Scout) it's how far the deployment

@@ -28,6 +28,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(PassFailedMoraleTest), "passFailedMoraleTest")]
 [JsonDerivedType(typeof(AddExtraHit), "addExtraHit")]
 [JsonDerivedType(typeof(AddExtraWound), "addExtraWound")]
+[JsonDerivedType(typeof(SelfWoundOnUnmodifiedRoll), "selfWoundOnUnmodifiedRoll")]
 [JsonDerivedType(typeof(MovementBonus), "movementBonus")]
 [JsonDerivedType(typeof(IgnoreRule), "ignoreRule")]
 [JsonDerivedType(typeof(AddRule), "addRule")]
@@ -191,6 +192,26 @@ public abstract record Effect
         protected override void ApplyCore(IHasUnmodifiedHitRolls context, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.InsertExtraHits(context.UnmodifiedHitRolls.At(OnRollValue) * Count));
+        }
+    }
+
+    /// <summary>
+    /// The attacking unit takes <see cref="Count"/> wounds for each of its own dice that came up an
+    /// unmodified <see cref="OnRollValue"/> — the punitive mirror of <see cref="Effect.AddExtraHit"/>,
+    /// reading the same hit histogram. Covers #197 Hazardous ("this weapon's unit takes one wound on
+    /// unmodified rolls of 1 to hit").
+    /// <para>
+    /// The wounds land after the attack fully resolves and cannot be saved or ignored — see
+    /// <c>CasualtyPresentation.ApplyUnitWounds</c> for both rulings.
+    /// </para>
+    /// </summary>
+    public sealed record SelfWoundOnUnmodifiedRoll(int OnRollValue, int Count = 1)
+        : CapabilityEffect<IHasUnmodifiedHitRolls>
+    {
+        protected override void ApplyCore(IHasUnmodifiedHitRolls context, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.InflictSelfWounds(
+                context.UnmodifiedHitRolls.At(OnRollValue) * Count));
         }
     }
 

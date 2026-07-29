@@ -209,41 +209,9 @@ namespace FDG.Stages
                 gameContext.Settings.RandomnessType, "No Retreat",
                 wounds > 0f ? $"{wounds:0.##} wound{(wounds == 1f ? "" : "s")}" : "Unscathed"));
 
-            bool wasAlive = unit.GetIsAlive();
-            await CasualtyPresentation.ApplyAndPresent(gameContext, SpreadWounds(unit, wounds),
-                unit.ID, unit.Name);
-
-            // Self-inflicted, but a destruction like any other: OwnerDestroyed marks on other units have to
-            // clear and a wrecked Transport has to spill its cargo. Killer-less, so no attacker is credited.
-            if (wasAlive && !unit.GetIsAlive())
-            {
-                await UnitDestructionNotifier.NotifyUnitDestroyed(gameContext, unit, killer: null);
-            }
-        }
-
-        /// <summary>
-        /// Fills living models front-to-back, each absorbing up to its own remaining wounds - the way
-        /// damage removes models, not the per-model spread a dangerous-terrain test uses (there every model
-        /// rolls its own die; here one pool is owed by the unit). Surplus beyond the unit's total is
-        /// dropped rather than wrapping.
-        /// </summary>
-        private static List<PendingModelWound> SpreadWounds(IUnit unit, float wounds)
-        {
-            var pending = new List<PendingModelWound>();
-            float remaining = wounds;
-            foreach (IModel model in unit.Models)
-            {
-                if (remaining <= 0f) break;
-                if (!model.GetIsAlive()) continue;
-
-                float capacity = model.TotalWounds - model.WoundsDealt;
-                float take = Math.Min(capacity, remaining);
-                if (take <= 0f) continue;
-
-                pending.Add(new PendingModelWound(model, take));
-                remaining -= take;
-            }
-            return pending;
+            // The spread, the casualty animations and the destruction seam are the shared unit-owes-a-pool
+            // path (#197 Hazardous rides the same one).
+            await CasualtyPresentation.ApplyUnitWounds(gameContext, unit, wounds);
         }
 
         // #245: the morale beat's modifier chips - base quality plus each named morale modifier and any

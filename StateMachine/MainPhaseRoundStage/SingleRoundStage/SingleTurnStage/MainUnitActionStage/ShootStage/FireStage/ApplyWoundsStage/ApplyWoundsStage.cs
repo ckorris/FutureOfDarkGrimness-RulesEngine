@@ -90,7 +90,35 @@ namespace FDG.Stages
                 }
             }
 
+            await ApplySelfWounds(metaData);
+
             await onFinished(new ApplyWoundsResults(modelsKilled));
+        }
+
+        /// <summary>
+        /// #197 Hazardous: the ATTACKER's own overheat, counted at hit-roll-complete and carried on
+        /// <see cref="RollToHitResults.SelfWounds"/>. Applied here — the last stage of every attack chain
+        /// that rolls to hit — so the attack the models paid for has fully resolved first (owner-ruled
+        /// 2026-07-29), and never in <c>RollToHitStage</c> itself, whose continuation after
+        /// <c>onFinished</c> is unreachable.
+        /// <para>
+        /// Chains with no hit roll (Ravage, Impact hits, spell damage) carry no such result and skip this
+        /// entirely. The wounds are unignorable by construction: <c>ApplyUnitWounds</c> bypasses the save
+        /// and wound-ignore pipeline, matching dangerous terrain and No Retreat.
+        /// </para>
+        /// </summary>
+        private async Task ApplySelfWounds(ICombatMetadata metaData)
+        {
+            if (!metaData.QueryForResult(out RollToHitResults hitResults) || hitResults.SelfWounds <= 0f)
+            {
+                return;
+            }
+
+            UnitData attacker = metaData.AttackingUnit.GetValue();
+            GameContext.Log($"{attacker.Name} takes {hitResults.SelfWounds:0.##} " +
+                $"wound{(hitResults.SelfWounds == 1f ? "" : "s")} from its own {metaData.WeaponType.Name}.");
+
+            await CasualtyPresentation.ApplyUnitWounds(GameContext, attacker, hitResults.SelfWounds);
         }
     }
 }

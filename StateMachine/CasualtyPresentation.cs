@@ -77,6 +77,67 @@ namespace FDG.Stages
         }
 
         /// <summary>
+        /// Deal <paramref name="wounds"/> wounds owed by the UNIT as a whole: fill living models
+        /// front-to-back, each absorbing up to its own remaining wounds, present every casualty through
+        /// <see cref="ApplyAndPresent"/>, and fire the destruction seam if the unit dies of it. Surplus
+        /// beyond the unit's total capacity is dropped rather than wrapping.
+        ///
+        /// <para>
+        /// This is the shape a rule takes when the unit owes a POOL of wounds, as opposed to the
+        /// dangerous-terrain shape where every model rolls its own die and wounds land where they fell.
+        /// Callers so far: No Retreat's failed-morale conversion (#197 P7) and Hazardous's overheat
+        /// (#197). The <paramref name="wounds"/> total stays FRACTIONAL — it comes off a histogram, and a
+        /// roll-derived wound total is never int-locked (only dice-POOL sizes are floored).
+        /// </para>
+        ///
+        /// <para>
+        /// By construction this bypasses saves and the wound-ignore pipeline: self-inflicted damage is
+        /// not an attack, so there is no save to roll and no Regeneration read — the same treatment
+        /// dangerous terrain already gets. Owner-ruled 2026-07-29 for Hazardous, whose corpus text does
+        /// not say "can't be ignored", on consistency with every other self-harm path in the engine.
+        /// </para>
+        /// </summary>
+        public static async Task ApplyUnitWounds(IGameContext gameContext, IUnit unit, float wounds)
+        {
+            if (wounds <= 0f) return;
+
+            bool wasAlive = unit.GetIsAlive();
+            await ApplyAndPresent(gameContext, SpreadWounds(unit, wounds), unit.ID, unit.Name);
+
+            // Self-inflicted, but a destruction like any other: OwnerDestroyed marks on other units have
+            // to clear and a wrecked Transport has to spill its cargo. Killer-less, so no attacker is
+            // credited.
+            if (wasAlive && !unit.GetIsAlive())
+            {
+                await UnitDestructionNotifier.NotifyUnitDestroyed(gameContext, unit, killer: null);
+            }
+        }
+
+        /// <summary>
+        /// Fills living models front-to-back, each absorbing up to its own remaining wounds - the way
+        /// damage removes models, not the per-model spread a dangerous-terrain test uses (there every
+        /// model rolls its own die; here one pool is owed by the unit).
+        /// </summary>
+        private static List<PendingModelWound> SpreadWounds(IUnit unit, float wounds)
+        {
+            var pending = new List<PendingModelWound>();
+            float remaining = wounds;
+            foreach (IModel model in unit.Models)
+            {
+                if (remaining <= 0f) break;
+                if (!model.GetIsAlive()) continue;
+
+                float capacity = model.TotalWounds - model.WoundsDealt;
+                float take = Math.Min(capacity, remaining);
+                if (take <= 0f) continue;
+
+                pending.Add(new PendingModelWound(model, take));
+                remaining -= take;
+            }
+            return pending;
+        }
+
+        /// <summary>
         /// Apply the batch with no presentation at all - for out-of-band callers (tests, headless
         /// state-only paths) that want the state change without a presenter. Same alive-before guard.
         /// </summary>

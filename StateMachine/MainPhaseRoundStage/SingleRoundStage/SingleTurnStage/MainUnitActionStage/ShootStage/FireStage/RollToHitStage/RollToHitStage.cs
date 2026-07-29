@@ -180,6 +180,14 @@ namespace FDG.Stages
             // "Shielded +1" / "Thrust -1" / "Fortified AP-1" instead of an anonymous net number.
             results.SaveModifierTags = ComposeSaveModifierTags(named);
 
+            // #197 Hazardous: the attacker's own unmodified 1s wound it. Counted here, where the UNMODIFIED
+            // histogram is in hand, and CARRIED to ApplyWoundsStage - the last stage of every chain that
+            // has a hit roll (shooting, melee swings, Strafing) - which applies it once the target's wounds
+            // have landed. Owner-ruled 2026-07-29: the shot the models paid for resolves first, and the
+            // attacking unit is never torn down while later stages of its own attack are still running.
+            // The player learns of it at the moment of the roll, via the proc chip on the to-hit beat above.
+            results.SelfWounds = operations.OfType<RuleOperation.InflictSelfWounds>().Sum(op => op.Wounds);
+
             await onFinished(results);
         }
 
@@ -200,6 +208,12 @@ namespace FDG.Stages
                     case RuleOperation.ApplyPerHitSaveModifier perHit when perHit.Delta != 0:
                         // A negative save delta raises the threshold - display as the AP it plays as.
                         tags.Add($"{RollTags.NameOr(ruleName, "AP")} AP+{-perHit.Delta:0.##} on {perHit.OnRollValue}s");
+                        break;
+                    // #197 Hazardous: the self-wound is applied after the attack resolves, but it is the
+                    // 1s on THIS roll that caused it, so the chip belongs on this beat.
+                    case RuleOperation.InflictSelfWounds self when self.Wounds > 0f:
+                        tags.Add($"{RollTags.NameOr(ruleName, "self-wound")} {self.Wounds:0.##} " +
+                            $"self-wound{(self.Wounds == 1f ? "" : "s")}");
                         break;
                 }
             }

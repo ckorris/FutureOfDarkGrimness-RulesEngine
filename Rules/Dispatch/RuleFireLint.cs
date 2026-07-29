@@ -325,7 +325,9 @@ public static class RuleFireLint
                     or RuleOperation.InsertExtraHits
                     or RuleOperation.MultiplyHits
                     or RuleOperation.ApplyPerHitSaveModifier
-                    or RuleOperation.ReduceArmorPenetration,
+                    or RuleOperation.ReduceArmorPenetration
+                    // #197 Hazardous: RollToHitStage sums these and wounds the attacker after the attack.
+                    or RuleOperation.InflictSelfWounds,
 
             // SightRuleQueries reads the attacker's weapon-sight flags off CoverIgnoreContext.
             EHookID.Shooting_OnSaveRollModifier =>

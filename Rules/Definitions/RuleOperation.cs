@@ -248,6 +248,21 @@ public abstract record RuleOperation
     public sealed record ReduceArmorPenetration(int Amount) : RuleOperation;
 
     /// <summary>
+    /// The ATTACKING unit takes <see cref="Wounds"/> wounds from its own attack (#197 Hazardous's
+    /// overheat). Resolution of <see cref="Effect.SelfWoundOnUnmodifiedRoll"/>; <c>RollToHitStage</c> sums
+    /// these and applies the total AFTER the attack has fully resolved, so the shot the models paid for
+    /// completes before the weapon bites back. <see cref="Wounds"/> is a float for the same reason
+    /// <see cref="InsertExtraHits"/>'s count is: it comes off the hit histogram's face count.
+    /// <para>
+    /// Deliberately NOT an <see cref="ExecutableOperation"/>: the stage that fires this hook already holds
+    /// the attacker and is async, so it applies the wounds directly — exactly how it consumes
+    /// <see cref="ReduceArmorPenetration"/>. The moment a second hook needs to self-wound, this earns an
+    /// <c>IOperationServices</c> member and becomes executable.
+    /// </para>
+    /// </summary>
+    public sealed record InflictSelfWounds(float Wounds) : RuleOperation;
+
+    /// <summary>
     /// Apply <see cref="Delta"/> to the defender's save roll, but only for the hits that came up an
     /// unmodified <see cref="OnRollValue"/> (Rending / Crack AP-on-6). Resolution of
     /// <see cref="Effect.PerHitSaveModifier"/>; <c>RollToHitStage</c> / <c>ResolveSpellDamageStage</c>

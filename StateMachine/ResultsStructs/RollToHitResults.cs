@@ -24,12 +24,22 @@ namespace FDG
         // when no such rule fired.
         public List<string>? SaveModifierTags;
 
+        // #197 Hazardous: wounds the ATTACKING unit owes for its own unmodified 1s, counted at
+        // hit-roll-complete (where the unmodified histogram is in hand) and applied by ApplyWoundsStage
+        // once the target's wounds have landed - owner-ruled 2026-07-29. Carried rather than applied on the
+        // spot because a combat stage's continuation after onFinished() never runs: the transition into the
+        // next stage is effectively a tail call, so anything written after it is dead code in play. (It
+        // LOOKS live under a test layer whose ExecuteTransition returns immediately - which is exactly how
+        // the first cut of this rule passed its tests and did nothing in a real game.) 0 when none fired.
+        public float SelfWounds;
+
         public RollToHitResults(List<SuccessfulHitInfo> successfulHits, List<FailedHitInfo> failedHitList)
         {
             SuccessfulHitList = successfulHits;
             FailedHitList = failedHitList;
             SaveModifier = 0;
             ArmorPenetrationReduction = 0;
+            SelfWounds = 0f;
         }
     }
 }

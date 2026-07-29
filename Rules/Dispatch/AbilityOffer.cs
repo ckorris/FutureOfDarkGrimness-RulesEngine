@@ -19,8 +19,12 @@ namespace FDG.Rules.Dispatch
     /// an ability whose effect reads <see cref="ValueSource.Arg"/> resolves against the real value. Null
     /// (the default) means none — every argument-less ability, and any granted ability, which cannot carry
     /// arguments.</param>
+    /// <param name="Weapon">The WEAPON whose rules offered this ability (#197 Strafing), or null when the
+    /// offer came from the unit, a model, or a token grant. Threaded into the <see cref="RuleInvocation"/>
+    /// at resolution so an effect can act with the carrying weapon — Strafing's "attack it with THIS
+    /// weapon" has no other way to know which of the bearer's weapons is speaking.</param>
     public sealed record AbilityOffer(IUnit Bearer, string RuleName, ActivatedAbility Ability,
-        IReadOnlyList<RuleArgument>? Arguments = null)
+        IReadOnlyList<RuleArgument>? Arguments = null, IWeapon? Weapon = null)
     {
         /// <summary> The arguments, normalized to an empty list when none were supplied. </summary>
         public IReadOnlyList<RuleArgument> ResolvedArguments => Arguments ?? System.Array.Empty<RuleArgument>();

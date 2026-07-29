@@ -128,20 +128,23 @@ namespace FDG.Tests
             Assert.That(mover.GetValue().Tokens.HasToken(UsedMarker), Is.False, "declining spends nothing");
         }
 
-        // Isolation: a unit carrying BOTH Strafing (DealHits) and Crossing Attack (DealAutoWounds) at the
-        // same hook - each stage claims only its own op type, so neither double-offers or double-charges.
+        // Isolation: a unit carrying BOTH Strafing and Crossing Attack at the same hook - each stage claims
+        // only its own op type, so neither double-offers or double-charges. #197 re-scoped Strafing to the
+        // weapon and changed its effect to AttackWithThisWeapon; the split is what still matters.
         [Test]
         public void Dispatch_StrafingAndCrossing_SplitByEffectType()
         {
             var ctx = new WoundTestContext(_store, new NullPlayerRequester());
             DataBinding<UnitData> mover = MakeMover("Skimmers", crossingX: 1, new Position(0f, 0f));
-            mover.GetValue().AttachRuleDefinition(new ResolvedRule("Strafing", CoreRuleCatalog.Strafing));
+            var bombs = new Weapon("Bombs", rangeInches: 0f, attacks: 1, armorPenetration: 0);
+            bombs.AttachRuleDefinition(new ResolvedRule("Strafing", CoreRuleCatalog.Strafing));
+            mover.GetValue().ModelBindings[0].GetValue().Weapons.Add(bombs);
 
             IReadOnlyList<AbilityOffer> offers = ctx.RuleEvaluator.GatherOffers(
                 new MoveThroughEnemyContext(mover.GetValue()));
 
-            Assert.That(offers.Count(o => o.Ability.Effect is Effect.DealHits), Is.EqualTo(1),
-                "StrafingStage's filter claims exactly the Strafing (DealHits) ability");
+            Assert.That(offers.Count(o => o.Ability.Effect is Effect.AttackWithThisWeapon), Is.EqualTo(1),
+                "StrafingStage's filter claims exactly the Strafing (AttackWithThisWeapon) ability");
             Assert.That(offers.Count(o => o.Ability.Effect is Effect.DealAutoWounds), Is.EqualTo(1),
                 "CrossingAttackStage's filter claims exactly the Crossing Attack (DealAutoWounds) ability");
         }

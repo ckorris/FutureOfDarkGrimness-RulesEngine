@@ -271,8 +271,9 @@ public static class RuleFireLint
     /// Whether the stage offering abilities at <paramref name="hook"/> actually executes
     /// <paramref name="op"/>. Every offering stage runs <see cref="OperationApplier"/> (token grants /
     /// consumes / heal) and <see cref="OperationExecutor"/> (any <see cref="ExecutableOperation"/>);
-    /// <see cref="RuleOperation.InvokeDealHits"/> only resolves on the pre-attack and strafing child
-    /// pipelines, and <see cref="RuleOperation.InvokeReactivate"/> only in DeterminePlayerTurnStage.
+    /// <see cref="RuleOperation.InvokeDealHits"/> only resolves on the pre-attack child pipeline,
+    /// <see cref="RuleOperation.InvokeWeaponAttack"/> only on the strafing one, and
+    /// <see cref="RuleOperation.InvokeReactivate"/> only in DeterminePlayerTurnStage.
     /// </summary>
     /// <summary>
     /// Whether the stage that fires <paramref name="hook"/> actually READS <paramref name="op"/>. The
@@ -417,8 +418,12 @@ public static class RuleFireLint
             or RuleOperation.ConsumeTokensFromUnit or RuleOperation.ConsumeTokensFromModel
             or RuleOperation.InvokeHeal => true,
         ExecutableOperation => true,
-        RuleOperation.InvokeDealHits => hook is EHookID.Activation_OnBeforeAttackAction
-            or EHookID.Movement_OnMoveThroughEnemy,
+        // Move-through dropped from this list in #197: StrafingStage used to resolve a fixed-hit-count
+        // ability there, and now resolves InvokeWeaponAttack instead. Nothing reads a DealHits at that hook
+        // any more, so claiming it is handled would hide exactly the silent no-op this lint exists to catch.
+        RuleOperation.InvokeDealHits => hook is EHookID.Activation_OnBeforeAttackAction,
+        // #197 Strafing: an attack-with-the-carrying-weapon ability run by StrafingStage at move-through.
+        RuleOperation.InvokeWeaponAttack => hook is EHookID.Movement_OnMoveThroughEnemy,
         // #197 P10 Crossing Attack: an auto-wound ability rolled by CrossingAttackStage at move-through.
         RuleOperation.InvokeDealAutoWounds => hook is EHookID.Movement_OnMoveThroughEnemy,
         // #197 P10 Storm of X: an action-choice ability enacted by StormStage (routed from ChooseActionStage).

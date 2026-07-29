@@ -444,7 +444,10 @@ namespace FDG.Ai.Tactician
             foreach (IModel model in unit.Models)
             {
                 if (!model.GetIsAlive() || dead.Contains(model)) continue;
-                weapons.AddRange(model.Weapons.Where(weapon => weapon.IsMelee()));
+                // #197 Strafing: strafe-only weapons never swing (mirrors GetMeleeWeapons, which the
+                // full-strength batch above goes through).
+                weapons.AddRange(model.Weapons.Where(weapon =>
+                    weapon.IsMelee() && !StrafingRules.IsStrafeOnly(weapon)));
             }
             return Batch(weapons);
         }

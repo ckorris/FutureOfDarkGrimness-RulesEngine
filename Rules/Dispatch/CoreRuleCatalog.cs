@@ -1711,38 +1711,46 @@ public static class CoreRuleCatalog
     // Mid-move attack primitive (StrafingStage offer -> save+wound sub-pipeline) ---
 
     /// <summary>
-    /// Strafing: when this unit moves through an enemy unit, once per activation it may make a mid-move
-    /// attack against that enemy (3 hits). An activated ability offered at
-    /// <see cref="EHookID.Movement_OnMoveThroughEnemy"/>; accepting it queues an
-    /// <see cref="RuleOperation.InvokeDealHits"/> that StrafingStage reads to resolve the hits through the
-    /// shared save+wound stages.
+    /// Strafing (#197): "Once per activation, when this model moves through enemy units, pick one of them
+    /// and attack it with this weapon as if it was shooting. This weapon may only be used in this way."
+    /// An activated ability at <see cref="EHookID.Movement_OnMoveThroughEnemy"/>; accepting it queues an
+    /// <see cref="RuleOperation.InvokeWeaponAttack"/> that StrafingStage resolves by running the real
+    /// shooting chain with the carrying weapon.
     ///
-    /// Like Martial Prowess, the deal-hits operation is applied stage-side rather than through the
-    /// <c>IOperationServices</c> seam: the save/wound resolution is a child-stage pipeline, and the engine's
-    /// fire-and-forget stage transitions only sequence correctly when that pipeline runs as a real child of
-    /// the movement stage (the way Impact's hits run as a child of the melee stage) — not when driven from a
-    /// service call that would return before the AssignWounds request is answered.
+    /// <para><b>Weapon-scoped</b>, which is what the whole corpus says: all 12 references sit on bomb
+    /// weapons, and the attack is made *with* that weapon, so the rule cannot be modelled at unit scope
+    /// without inventing a hit count. Its 12 references were dead as a scope mismatch until this slice.
+    /// The "may only be used in this way" clause is enforced by <see cref="StrafingRules"/>, which keeps
+    /// the weapon out of the shooting and melee pools — a live restriction, since every corpus bomb has
+    /// range 0 and would otherwise be swung as a melee weapon.</para>
+    ///
+    /// <para><b>No fly-over permission.</b> The source rule grants none — it says "when this model moves
+    /// through enemy units", presupposing a unit that already can. Every corpus carrier has Aircraft or
+    /// Flying (the one footslogger, Saurian's Gecko Champion, gets Flying from the same Pterodactyl item
+    /// that grants the bomb), and both emit <see cref="Effect.IgnoreEnemyMovementBlock"/> at unit scope.
+    /// A weapon-scoped passive would not be read by <c>MovementRuleQueries.CanMoveThroughEnemies</c>
+    /// anyway. StrafingStage warns once if a bearer turns up without the capability, since the ability
+    /// could then never trigger.</para>
+    ///
+    /// <para>Like Martial Prowess, the attack operation is applied stage-side rather than through the
+    /// <c>IOperationServices</c> seam: the hit/save/wound resolution is a child-stage pipeline, and the
+    /// engine's fire-and-forget stage transitions only sequence correctly when that pipeline runs as a real
+    /// child of the movement stage (the way Impact's hits run as a child of the melee stage) — not when
+    /// driven from a service call that would return before the AssignWounds request is answered.</para>
     /// </summary>
     public static SpecialRuleDefinition Strafing { get; } = new SpecialRuleDefinition("Strafing",
-        new[]
-        {
-            // The fly-over permission: a Strafing unit may path through enemy bases (it still may not end on
-            // one). Read by MovementRuleQueries.CanMoveThroughEnemies; without it #011's validator would block
-            // the very move-through that triggers the ability below.
-            new HookEntry(EHookID.Movement_OnMoveThroughEnemy,
-                new Condition.Always(),
-                new Effect.IgnoreEnemyMovementBlock(),
-                ELifetime.ThisActivation),
-        },
+        Array.Empty<HookEntry>(),
         new[]
         {
             new ActivatedAbility(EHookID.Movement_OnMoveThroughEnemy, new Cost.OncePerActivation(),
                 new TargetSelector(1f, 1, 1, ETargetAffinity.Foe, false),
-                new Effect.DealHits(Count: 3, WithRules: Array.Empty<string>()),
+                new Effect.AttackWithThisWeapon(),
                 new Condition.Always()),
         },
+        ERuleScope.Weapon,
         Valence: EValence.Positive,
-        Description: "Once per activation, when moving through an enemy unit, it may make a mid-move attack (3 hits).");
+        Description: "Once per activation, when moving through enemy units, pick one and attack it with " +
+            "this weapon as if shooting. This weapon may only be used in this way.");
 
     /// <summary>
     /// Crossing Attack(X) (#197 P10): the auto-wound sibling of Strafing. When this unit moves through an

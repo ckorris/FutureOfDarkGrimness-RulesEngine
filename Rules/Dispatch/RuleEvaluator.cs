@@ -577,7 +577,7 @@ public sealed class RuleEvaluator
         // relocated it onto the hero model. AnyOwner — any model bringing an ability offers it; the `seen`
         // set keys each distinct ability (definition + ability) so an ability carried by both the unit and
         // a model (or by several models) is offered once, not once per carrier.
-        var seen = new HashSet<(SpecialRuleDefinition, ActivatedAbility)>();
+        var seen = new HashSet<(SpecialRuleDefinition, ActivatedAbility, string?)>();
         GatherOffersFromRules(unit.RuleDefinitions, unit, context, offers, seen);
         foreach (IModel model in unit.Models)
         {
@@ -585,6 +585,20 @@ public sealed class RuleEvaluator
             {
                 GatherOffersFromRules(model.RuleDefinitions, unit, context, offers, seen);
             }
+        }
+
+        // #197 Strafing: a WEAPON's rules offer abilities too — Strafing's mid-move attack is made with the
+        // weapon carrying the rule, so the rule can only live at weapon scope, and the passive side has read
+        // weapon rules since #027 while this side did not. The offer records the weapon (see AbilityOffer)
+        // so "attack it with THIS weapon" knows which one is speaking.
+        //
+        // Deduped BY WEAPON NAME, the same identity the shooting and melee weapon pools use: one Weapon
+        // instance exists per model that carries it, so a five-model unit with the same bomb would otherwise
+        // offer the ability five times. Two DIFFERENTLY named weapons both offer, and the ability's own cost
+        // gate decides how many may actually be used.
+        foreach (IWeapon weapon in DistinctWeaponsByName(unit))
+        {
+            GatherOffersFromRules(weapon.RuleDefinitions, unit, context, offers, seen, weapon);
         }
 
         // #197 P5a: a GRANTED rule's abilities are offered too, mirroring CollectGrantedRules on the passive
@@ -639,8 +653,27 @@ public sealed class RuleEvaluator
         return granted;
     }
 
+    /// <summary>
+    /// The living models' weapons, one per distinct name. Weapons are per-model instances, so the same
+    /// bomb on five models is five objects; name is the identity the shooting and melee pools already
+    /// group by (see <c>ChooseRangedAttackStage.HasAnyFireableTarget</c>).
+    /// </summary>
+    private static IEnumerable<IWeapon> DistinctWeaponsByName(IUnit unit)
+    {
+        var seenNames = new HashSet<string>(StringComparer.Ordinal);
+        foreach (IModel model in unit.Models)
+        {
+            if (!model.GetIsAlive()) continue;
+            foreach (IWeapon weapon in model.Weapons)
+            {
+                if (seenNames.Add(weapon.Name)) yield return weapon;
+            }
+        }
+    }
+
     private void GatherOffersFromRules(IReadOnlyList<ResolvedRule> rules, IUnit unit, IHookContext context,
-        List<AbilityOffer> offers, HashSet<(SpecialRuleDefinition, ActivatedAbility)> seen)
+        List<AbilityOffer> offers, HashSet<(SpecialRuleDefinition, ActivatedAbility, string?)> seen,
+        IWeapon? carryingWeapon = null)
     {
         foreach (ResolvedRule rule in rules)
         {
@@ -651,7 +684,7 @@ public sealed class RuleEvaluator
             // CHOICE ("when a unit where all models have this rule is deployed or activated, pick one
             // effect") rather than on the effect, which is why nothing surfaced it before.
             var invocation = new RuleInvocation(context, unit, rule.Arguments, DiceRoller: _diceRoller,
-                Definition: rule.Definition);
+                Weapon: carryingWeapon, Definition: rule.Definition);
 
             foreach (ActivatedAbility ability in rule.Definition.Activated)
             {
@@ -680,7 +713,7 @@ public sealed class RuleEvaluator
                     continue;
                 }
 
-                if (!seen.Add((rule.Definition, ability)))
+                if (!seen.Add((rule.Definition, ability, carryingWeapon?.Name)))
                 {
                     continue;
                 }
@@ -690,7 +723,8 @@ public sealed class RuleEvaluator
                     TraceLine($"{unit.Name}'s {rule.RequestedName} ability at {context.Hook}: offered");
                 }
 
-                offers.Add(new AbilityOffer(unit, rule.RequestedName, ability, rule.Arguments));
+                offers.Add(new AbilityOffer(unit, rule.RequestedName, ability, rule.Arguments,
+                    carryingWeapon));
             }
         }
     }
@@ -711,9 +745,10 @@ public sealed class RuleEvaluator
         foreach (IUnit target in targets)
         {
             // The offer carries the bearing rule's arguments (Crossing Attack's (1)), so an effect reading
-            // ValueSource.Arg resolves against the real value rather than throwing on an empty list.
+            // ValueSource.Arg resolves against the real value rather than throwing on an empty list, and
+            // the offering weapon (#197 Strafing), so "attack it with THIS weapon" has one.
             var invocation = new RuleInvocation(
-                Hook: null, offer.Bearer, offer.ResolvedArguments, target, _diceRoller);
+                Hook: null, offer.Bearer, offer.ResolvedArguments, target, _diceRoller, offer.Weapon);
             offer.Ability.Effect.Apply(invocation, operations);
         }
 

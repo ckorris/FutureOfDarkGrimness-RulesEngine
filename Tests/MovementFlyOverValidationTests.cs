@@ -73,10 +73,10 @@ namespace FDG.Tests
         }
 
         [Test]
-        public void CanMoveThroughEnemies_TrueForStrafingUnit()
+        public void CanMoveThroughEnemies_TrueForFlyingUnit()
         {
             var ctx = new WoundTestContext(_store, new NullPlayerRequester());
-            DataBinding<UnitData> unit = MakeUnit(withStrafing: true);
+            DataBinding<UnitData> unit = MakeUnit(CoreRuleCatalog.Flying);
 
             Assert.That(MovementRuleQueries.CanMoveThroughEnemies(unit.GetValue(), ctx.RuleEvaluator), Is.True);
         }
@@ -85,7 +85,23 @@ namespace FDG.Tests
         public void CanMoveThroughEnemies_FalseForPlainUnit()
         {
             var ctx = new WoundTestContext(_store, new NullPlayerRequester());
-            DataBinding<UnitData> unit = MakeUnit(withStrafing: false);
+            DataBinding<UnitData> unit = MakeUnit(rule: null);
+
+            Assert.That(MovementRuleQueries.CanMoveThroughEnemies(unit.GetValue(), ctx.RuleEvaluator), Is.False);
+        }
+
+        // #197: Strafing used to grant the fly-over itself, which the source rule never did - "when this
+        // model moves through enemy units" presupposes a unit that already can, and every corpus carrier has
+        // Flying or Aircraft. It is now weapon-scoped and ability-only, so it cannot and must not answer this
+        // unit-level query; StrafingStage warns if a bearer turns up without the capability.
+        [Test]
+        public void CanMoveThroughEnemies_FalseForAStrafingWeaponAlone()
+        {
+            var ctx = new WoundTestContext(_store, new NullPlayerRequester());
+            DataBinding<UnitData> unit = MakeUnit(rule: null);
+            var bombs = new Weapon("Bombs", rangeInches: 0f, attacks: 1, armorPenetration: 0);
+            bombs.AttachRuleDefinition(new ResolvedRule("Strafing", CoreRuleCatalog.Strafing));
+            unit.GetValue().ModelBindings[0].GetValue().Weapons.Add(bombs);
 
             Assert.That(MovementRuleQueries.CanMoveThroughEnemies(unit.GetValue(), ctx.RuleEvaluator), Is.False);
         }
@@ -110,14 +126,14 @@ namespace FDG.Tests
             return _store.GetDataBinding<ModelData>(_store.Create(modelData));
         }
 
-        private DataBinding<UnitData> MakeUnit(bool withStrafing)
+        private DataBinding<UnitData> MakeUnit(SpecialRuleDefinition? rule)
         {
             var modelBindings = new List<DataBinding<ModelData>> { MakeModel(new Position(0, 0)) };
             var unit = new UnitData(new PlayerID(System.Guid.NewGuid()), "TestUnit",
                 quality: 4, defense: 4, modelBindings: modelBindings);
             DataBinding<UnitData> binding = _store.GetDataBinding<UnitData>(_store.Create(unit));
-            if (withStrafing)
-                binding.GetValue().AttachRuleDefinition(new ResolvedRule("Strafing", CoreRuleCatalog.Strafing));
+            if (rule != null)
+                binding.GetValue().AttachRuleDefinition(new ResolvedRule(rule.Name, rule));
             return binding;
         }
     }

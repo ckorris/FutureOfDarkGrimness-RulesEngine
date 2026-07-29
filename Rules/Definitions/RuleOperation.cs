@@ -405,6 +405,17 @@ public abstract record RuleOperation
         int ArmorPenetration = 0) : RuleOperation;
 
     /// <summary>
+    /// #197 Strafing — attack <see cref="Target"/> with <see cref="Weapon"/> as if shooting it. Resolution
+    /// of <see cref="Effect.AttackWithThisWeapon"/>. Carries no hit count, AP or rule list: the weapon IS
+    /// the payload, so StrafingStage runs the real shooting chain (hit roll at the bearer's Quality, then
+    /// cover, save and wounds) instead of seeding synthetic hits the way <see cref="InvokeDealHits"/> does.
+    /// A plain <see cref="RuleOperation"/>, not an <see cref="ExecutableOperation"/>, for the same reason:
+    /// that chain is a child-stage pipeline. <see cref="Weapon"/> is null when the bearing rule was not
+    /// weapon-scoped, which the stage reports rather than guessing a weapon.
+    /// </summary>
+    public sealed record InvokeWeaponAttack(IUnit Target, IWeapon? Weapon) : RuleOperation;
+
+    /// <summary>
     /// #197 P10 — roll <see cref="DiceCount"/> dice against <see cref="Target"/>; each result at or above
     /// <see cref="SuccessThreshold"/> deals one DIRECT wound. Resolution of <see cref="Effect.DealAutoWounds"/>
     /// (Ravage, Crossing Attack). Unlike <see cref="InvokeDealHits"/> the wounds take no armor save — the

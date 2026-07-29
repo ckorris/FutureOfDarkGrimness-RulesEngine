@@ -9,10 +9,14 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #090 regression test for the Strafing fly-over fix: the WHOLE point is that a Strafing unit can again
-    // path through an enemy in a real game. Before #090, DefinePathStage's #011 enemy-check rejected the
-    // very move-through that triggers Strafing (the StrafingRuleIntegrationTests passed only because they
-    // bypass DefinePathStage). This drives the real stage end-to-end.
+    // #090 regression test for the fly-over fix: the WHOLE point is that a flying unit can again path
+    // through an enemy in a real game. Before #090, DefinePathStage's #011 enemy-check rejected the very
+    // move-through that triggers Strafing (the StrafingRuleIntegrationTests passed only because they bypass
+    // DefinePathStage). This drives the real stage end-to-end.
+    //
+    // #197 moved the capability off Strafing and onto Flying, where the source rules put it - Strafing is
+    // weapon-scoped and ability-only now, and the movement hook does not read weapon rules. The mover here
+    // is therefore a Flying one; what it proves is unchanged.
     [TestFixture]
     public class MovementFlyOverIntegrationTests
     {
@@ -22,9 +26,9 @@ namespace FDG.Tests
         public void SetUp() => _store = GameDataStore.GameDataStoreBuilder.GetDefault();
 
         [Test]
-        public async Task StrafingUnit_PathsThroughEnemy_DefinePathStageAccepts()
+        public async Task FlyingUnit_PathsThroughEnemy_DefinePathStageAccepts()
         {
-            DataBinding<UnitData> mover = MakeUnit(withStrafing: true, new Position(0f, 0f));
+            DataBinding<UnitData> mover = MakeUnit(withFlying: true, new Position(0f, 0f));
             MakeEnemy(new Position(5f, 0f)); // directly on the (0,0)→(10,0) path
 
             // Should complete without throwing — the fly-over permission waives the pass-through block.
@@ -34,7 +38,7 @@ namespace FDG.Tests
         [Test]
         public void PlainUnit_PathsThroughEnemy_DefinePathStageRejects()
         {
-            DataBinding<UnitData> mover = MakeUnit(withStrafing: false, new Position(0f, 0f));
+            DataBinding<UnitData> mover = MakeUnit(withFlying: false, new Position(0f, 0f));
             MakeEnemy(new Position(5f, 0f));
 
             Assert.That(async () => await RunDefinePath(mover, new Position(10f, 0f)),
@@ -56,7 +60,7 @@ namespace FDG.Tests
             await stage.Enter(moveContext);
         }
 
-        private DataBinding<UnitData> MakeUnit(bool withStrafing, params Position[] positions)
+        private DataBinding<UnitData> MakeUnit(bool withFlying, params Position[] positions)
         {
             var modelBindings = new List<DataBinding<ModelData>>();
             foreach (Position pos in positions)
@@ -66,8 +70,8 @@ namespace FDG.Tests
             var unit = new UnitData(new PlayerID(System.Guid.NewGuid()), "Mover",
                 quality: 4, defense: 4, modelBindings: modelBindings);
             DataBinding<UnitData> binding = _store.GetDataBinding<UnitData>(_store.Create(unit));
-            if (withStrafing)
-                binding.GetValue().AttachRuleDefinition(new ResolvedRule("Strafing", CoreRuleCatalog.Strafing));
+            if (withFlying)
+                binding.GetValue().AttachRuleDefinition(new ResolvedRule("Flying", CoreRuleCatalog.Flying));
             _store.Create(new ArmyData(binding.GetValue().PlayerID, new List<DataBinding<UnitData>> { binding }));
             return binding;
         }

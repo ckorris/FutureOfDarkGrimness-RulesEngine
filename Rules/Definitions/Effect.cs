@@ -32,6 +32,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(AddRule), "addRule")]
 [JsonDerivedType(typeof(Aura), "aura")]
 [JsonDerivedType(typeof(DealHits), "dealHits")]
+[JsonDerivedType(typeof(AttackWithThisWeapon), "attackWithThisWeapon")]
 [JsonDerivedType(typeof(DealAutoWounds), "dealAutoWounds")]
 [JsonDerivedType(typeof(StormOfHits), "stormOfHits")]
 [JsonDerivedType(typeof(Heal), "heal")]
@@ -288,10 +289,12 @@ public abstract record Effect
     /// offensive-spell hit-count in the corpus is fixed — no rule-data randomness on the count itself.
     ///
     /// SUPPORTED PATHS (not universal): the emitted <see cref="RuleOperation.InvokeDealHits"/> is only
-    /// executed by the three stages wired for it — spells (CastSpellStage), Strafing, and before-attack
-    /// abilities (BeforeAttackActionStage). It is NOT an <see cref="ExecutableOperation"/>, so any other
-    /// hook's generic op application silently drops it. <see cref="WithRules"/> is honored only on the spell
-    /// path (pre-resolved at army load); Strafing and before-attack warn and skip it.
+    /// executed by the two stages wired for it — spells (CastSpellStage) and before-attack abilities
+    /// (BeforeAttackActionStage). It is NOT an <see cref="ExecutableOperation"/>, so any other hook's
+    /// generic op application silently drops it. <see cref="WithRules"/> is honored only on the spell path
+    /// (pre-resolved at army load); before-attack warns and skips it. (StrafingStage was a third path until
+    /// #197 re-authored Strafing onto <see cref="AttackWithThisWeapon"/> — a mid-move fixed-hit-count
+    /// ability now has no stage to run it, and the fire-lint reports one as unhandled.)
     /// </summary>
     public sealed record DealHits(int Count, IReadOnlyList<string> WithRules, int ArmorPenetration = 0) : Effect
     {
@@ -299,6 +302,34 @@ public abstract record Effect
         {
             operations.Add(new RuleOperation.InvokeDealHits(
                 ruleInvocation.EffectiveTarget, Count, WithRules, ArmorPenetration));
+        }
+    }
+
+    /// <summary>
+    /// #197 Strafing — attacks the target with the WEAPON THAT CARRIES THE RULE, as if it were shooting:
+    /// "pick one of them and attack it with this weapon as if it was shooting". Unlike
+    /// <see cref="DealHits"/>, which delivers a fixed hit count on a synthetic weapon, this carries no
+    /// payload at all — the weapon's own profile (Attacks, AP, Blast, Deadly, Shred, ...) and the bearer's
+    /// Quality supply everything, because the corpus rule adds nothing of its own.
+    ///
+    /// Only meaningful on a WEAPON-scoped rule: the weapon travels on
+    /// <see cref="RuleInvocation.Weapon"/>, which <c>RuleEvaluator.ResolveAbility</c> fills from the
+    /// offering weapon. A unit-scoped rule using this effect has no weapon to attack with, so the emitted
+    /// operation carries a null one and the resolving stage warns and skips rather than guessing which of
+    /// the bearer's weapons was meant.
+    ///
+    /// SUPPORTED PATHS (not universal, like <see cref="DealHits"/>): the emitted
+    /// <see cref="RuleOperation.InvokeWeaponAttack"/> is a plain <see cref="RuleOperation"/> enacted only by
+    /// StrafingStage, whose child chain IS the shooting pipeline. It is not an
+    /// <see cref="ExecutableOperation"/> for the same reason DealHits isn't: the hit/save/wound resolution
+    /// is a child-stage chain, which only sequences correctly as a real child of the movement stage.
+    /// </summary>
+    public sealed record AttackWithThisWeapon : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.InvokeWeaponAttack(
+                ruleInvocation.EffectiveTarget, ruleInvocation.Weapon));
         }
     }
 

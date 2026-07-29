@@ -25,6 +25,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(StatModifier), "statModifier")]
 [JsonDerivedType(typeof(RollModifier), "rollModifier")]
 [JsonDerivedType(typeof(Reroll), "reroll")]
+[JsonDerivedType(typeof(PassFailedMoraleTest), "passFailedMoraleTest")]
 [JsonDerivedType(typeof(AddExtraHit), "addExtraHit")]
 [JsonDerivedType(typeof(AddExtraWound), "addExtraWound")]
 [JsonDerivedType(typeof(MovementBonus), "movementBonus")]
@@ -145,6 +146,24 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.ApplyPerHitSaveModifier(OnRollValue, Delta));
+        }
+    }
+
+    /// <summary>
+    /// A failed morale test counts as passed instead, and the unit then rolls as many dice as the wounds
+    /// it would take to destroy it, taking one UNIGNORABLE wound per result at or below
+    /// <see cref="SelfWoundOnRollAtMost"/>. Covers #197 P7's No Retreat family.
+    /// <para>
+    /// Authored at <see cref="EHookID.Morale_OnMoraleTestComplete"/>. The wounds bypass Regeneration and
+    /// every other wound-ignore by construction: they are applied straight through the casualty seam
+    /// rather than through the save/ignore pipeline, exactly as dangerous terrain's are.
+    /// </para>
+    /// </summary>
+    public sealed record PassFailedMoraleTest(int SelfWoundOnRollAtMost) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.PassMoraleTest(SelfWoundOnRollAtMost));
         }
     }
 

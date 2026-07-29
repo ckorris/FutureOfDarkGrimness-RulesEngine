@@ -352,7 +352,9 @@ public static class RuleFireLint
             EHookID.Movement_OnMoveThroughEnemy => op is RuleOperation.IgnoreEnemyMovementBlock,
 
             EHookID.Morale_OnPreMoraleTest => op is RuleOperation.ApplyRollModifier { Roll: ERollKind.Morale },
-            EHookID.Morale_OnMoraleTestComplete => op is RuleOperation.ApplyReroll { Roll: ERollKind.Morale },
+            // #197 P7: MoraleUtilities also reads a PassMoraleTest here (No Retreat's failure conversion).
+            EHookID.Morale_OnMoraleTestComplete =>
+                op is RuleOperation.ApplyReroll { Roll: ERollKind.Morale } or RuleOperation.PassMoraleTest,
 
             // ReduceImpactDicePerModel folds into the same ChargeImpactHits sink, as a negative dice count.
             // #197 P10: Ravage queues InvokeDealAutoWounds here, rolled by ResolveRavageWoundsStage.

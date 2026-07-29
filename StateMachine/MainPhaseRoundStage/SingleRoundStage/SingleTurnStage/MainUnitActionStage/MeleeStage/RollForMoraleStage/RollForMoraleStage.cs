@@ -37,8 +37,11 @@ namespace FDG.Stages
                 return;
             }
 
+            // failureCausesShakenOrRout: the melee-loss test Shakens, or Routs a loser at half
+            // strength - the two outcomes #197 P7's No Retreat is worded for.
             MoraleUtilities.MoraleTestOutcome outcome = await MoraleUtilities.TakeMoraleTest(
-                GameContext, testingUnit, determineMoraleSaveNeededResult.RollNeeded);
+                GameContext, testingUnit, determineMoraleSaveNeededResult.RollNeeded,
+                failureCausesShakenOrRout: true);
 
             if (outcome.Passed)
             {

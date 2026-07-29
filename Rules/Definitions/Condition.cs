@@ -33,6 +33,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(Always), "always")]
 [JsonDerivedType(typeof(UnitHasRule), "unitHasRule")]
 [JsonDerivedType(typeof(AllModelsHaveThisRule), "allModelsHaveThisRule")]
+[JsonDerivedType(typeof(MostModelsHaveThisRule), "mostModelsHaveThisRule")]
 [JsonDerivedType(typeof(TargetHasRule), "targetHasRule")]
 [JsonDerivedType(typeof(WeaponHasRule), "weaponHasRule")]
 [JsonDerivedType(typeof(ActionTypeIs), "actionTypeIs")]
@@ -140,6 +141,57 @@ public abstract record Condition
             return true;
         }
 
+    }
+
+    /// <summary>
+    /// True if MOST living models in the bearer's unit carry the firing rule - the "when a unit where most
+    /// models have this rule ..." wording (#197 P7 No Retreat), as distinct from
+    /// <see cref="AllModelsHaveThisRule"/>'s "where all models". Same ownership semantics in every other
+    /// respect (per-model rules, a joined hero's exclusion from the host's static rules, unit-held grants
+    /// counting for everyone), so the two answer the same question at different thresholds.
+    /// <para>
+    /// "Most" is a strict majority of LIVING models - the same shape <see cref="TargetMajorityHasTough"/>
+    /// uses. A unit with none alive is not a majority of anything, so it answers false rather than
+    /// vacuously true; that matters here because the rules using it fire on morale, which a wiped-out unit
+    /// never takes anyway.
+    /// </para>
+    /// </summary>
+    public sealed record MostModelsHaveThisRule : Condition
+    {
+        public override bool Evaluate(RuleInvocation invocation)
+        {
+            SpecialRuleDefinition? definition = invocation.Definition;
+            if (definition == null)
+            {
+                return true; // no rule identity to check — mirrors AllModelsHaveThisRule
+            }
+
+            IUnit unit = invocation.Bearer;
+            ModelID? heroModelId = unit.JoinedHeroModelId;
+            bool unitStatic = unit.RuleDefinitions.Any(r => r.Definition == definition);
+            bool unitGranted = RuleGrantQueries.UnitHasGrantedRule(unit, definition);
+
+            int living = 0;
+            int carriers = 0;
+            foreach (IModel model in unit.Models)
+            {
+                if (!model.GetIsAlive())
+                {
+                    continue;
+                }
+
+                living++;
+                bool isJoinedHero = heroModelId is ModelID hid && model.ID == hid;
+                if (model.RuleDefinitions.Any(r => r.Definition == definition)
+                    || unitGranted
+                    || (!isJoinedHero && unitStatic))
+                {
+                    carriers++;
+                }
+            }
+
+            return living > 0 && carriers * 2 > living;
+        }
     }
 
     /// <summary>

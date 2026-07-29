@@ -74,6 +74,20 @@ public abstract record RuleOperation
     }
 
     /// <summary>
+    /// A failed morale test counts as PASSED, at the price of a self-inflicted wound pool: as many dice as
+    /// the wounds it would take to destroy the unit, each result at or below
+    /// <see cref="SelfWoundOnRollAtMost"/> dealing one wound that cannot be ignored. Resolution of
+    /// <see cref="Effect.PassFailedMoraleTest"/> (#197 P7 No Retreat).
+    /// <para>
+    /// Read by <c>MoraleUtilities.TakeMoraleTest</c> rather than folded by a sink, because BOTH halves have
+    /// to happen at one point in the sequence: the conversion is only correct after every other rescue has
+    /// been exhausted (a Fearless re-roll is free, so it goes first), and the wounds must not be dealt at
+    /// all if one of those rescues succeeded. The op carries its own price so the two can never drift apart.
+    /// </para>
+    /// </summary>
+    public sealed record PassMoraleTest(int SelfWoundOnRollAtMost) : RuleOperation;
+
+    /// <summary>
     /// Re-roll dice in the current <see cref="Roll"/> matching
     /// <see cref="Condition"/>. Resolution of <see cref="Effect.Reroll"/>.
     /// </summary>

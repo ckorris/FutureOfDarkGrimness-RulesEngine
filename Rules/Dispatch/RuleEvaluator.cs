@@ -76,9 +76,18 @@ public sealed class RuleEvaluator
         // (an attacker's Unstoppable cancelling a defender's Regeneration) only exists once the
         // participants are combined in EvaluateAll. So here every produced op is logged and
         // returned as-is, including any SuppressRule (the queue-level tests assert on it).
-        foreach (TaggedOperation t in tagged)
+        //
+        // EXCEPT the capability question (#197 Instinctive surfaced it): CapabilityRuleQueries is
+        // documented non-logging — its answers are read per-frame and per-menu, never applied — yet
+        // every Ask through here logged "X's Caster applied an effect" per query. Harmless noise while
+        // only a few rules answered; the compelled-attack capability is asked at every action menu and
+        // both target choosers, which turned it into a spam stream. The question is not an event.
+        if (context is not Contexts.CapabilityQueryContext)
         {
-            Log(t);
+            foreach (TaggedOperation t in tagged)
+            {
+                Log(t);
+            }
         }
 
         return tagged.Select(t => t.Op).ToList();

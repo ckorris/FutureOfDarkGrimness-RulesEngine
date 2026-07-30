@@ -403,6 +403,37 @@ namespace FDG.Tests
                 "the resolvers read this to enforce the destination (slice 3)");
         }
 
+        // ── Slice 3: the resolver-side destination check (request data + table geometry, no IGameContext) ─
+
+        [Test]
+        public async Task DestinationCheck_AgreesWithTheGates_OnAllThreeOutcomes()
+        {
+            var requester = new CapturingMoveRequester();
+            var ctx = new TestGameContext(_store, new FixedDiceRoller(4), playerRequester: requester);
+            DataBinding<UnitData> mob = MakeCompelledShooter(atX: 10f);
+            MakeEnemy("Far", atX: 38f); // ~28": in range after a ~4.3" advance; in melee after ~27"
+
+            // Capture a real request (budgets, profiles, overrides) by driving DefinePathStage.
+            var movementCtx = new MovementActionContext(ctx, mob, mustEndAbleToAttackRule: RULE_NAME);
+            var stage = new DefinePathStage(ctx, new NoOpLayer<IMovementActionContext>());
+            stage.OnPathDefined.Bind("test-defined");
+            stage.BackToChooseAction.Bind("test-back");
+            await stage.Enter(movementCtx);
+            DefineMovementPathRequest request = requester.Captured!;
+
+            List<ModelMoveEntry> Move(float dx) => mob.GetValue().ModelBindings
+                .Select(mb => new ModelMoveEntry(mb, new List<Position>
+                    { new Position(mb.GetValue().Position.x + dx, mb.GetValue().Position.z) }))
+                .ToList();
+
+            Assert.That(CompelledMoveDestinationCheck.EndsAbleToAttack(ctx.TableState, request, Move(5f)),
+                Is.True, "a 5in advance ends in rifle range - compliant");
+            Assert.That(CompelledMoveDestinationCheck.EndsAbleToAttack(ctx.TableState, request, Move(1f)),
+                Is.False, "a 1in shuffle ends out of range of everything - non-compliant");
+            Assert.That(CompelledMoveDestinationCheck.EndsAbleToAttack(ctx.TableState, request, Move(10f)),
+                Is.False, "10in is a RUSH - in range but unable to shoot, and not in melee range: non-compliant");
+        }
+
         // ── The authored shape (mirrors what ships in the supplement) ────────────────────────────────────
 
         private static SpecialRuleDefinition Definition() => new SpecialRuleDefinition(RULE_NAME,

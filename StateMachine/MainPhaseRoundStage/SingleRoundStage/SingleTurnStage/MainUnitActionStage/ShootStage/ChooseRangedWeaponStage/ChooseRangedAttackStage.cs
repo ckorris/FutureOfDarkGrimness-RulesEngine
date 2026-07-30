@@ -142,6 +142,68 @@ namespace FDG.Stages
             // #197 P20: when the only thing permitting this shot is a Quick Shot mark on some enemy, the
             // permission is target-bound - every unmarked target becomes unselectable.
             ApplyQuickShotMarkGating(weaponOptions, gameContext, markedTargetsOnly);
+
+            // #197 Instinctive: a compelled unit's shot must go to the closest valid target. Runs LAST so
+            // "valid" means what survived every gate above - if the closest enemy is spent-Limited-only,
+            // Deadly-locked or unmarked, the compulsion falls on the closest target the unit may actually
+            // shoot, never on one it may not.
+            ApplyClosestTargetGating(weaponOptions, attackingUnit, gameContext);
+        }
+
+        /// <summary>
+        /// #197 Instinctive: "it must immediately attack the closest valid target". When the attacker
+        /// answers the compelled-attack capability query, every fireable target that is not (within a
+        /// float tolerance) the closest fireable one becomes unselectable, so the request the resolver
+        /// receives - human or AI - simply has no non-compliant option (the P20 Quick Shot pattern).
+        /// Unit-level closest: one enemy is "the" target for the whole shoot action; a weapon that cannot
+        /// reach it holds fire. Ties within tolerance all stay selectable - the rule names one closest,
+        /// and when geometry offers two the pick is the player's.
+        /// </summary>
+        private static void ApplyClosestTargetGating(List<WeaponOption> weaponOptions,
+            DataBinding<UnitData> attackingUnit, IGameContext gameContext)
+        {
+            string? source = Rules.Dispatch.CapabilityRuleQueries.MustAttackClosestSource(
+                attackingUnit.GetValue(), gameContext.RuleEvaluator);
+            if (source == null) return;
+
+            // One distance per enemy unit (living-model minimum, the standard measure), shared across the
+            // per-weapon rows. Only genuinely fireable rows compete for "closest".
+            Dictionary<DataReference, float> distanceByTarget = new Dictionary<DataReference, float>();
+            float closest = float.MaxValue;
+            foreach (WeaponOption option in weaponOptions)
+            {
+                foreach (WeaponTargetStats stats in option.WeaponTargetStats)
+                {
+                    if (stats.UnselectableReason != null || stats.modelsThatCanShoot.Count == 0) continue;
+                    if (!distanceByTarget.TryGetValue(stats.TargetUnit.Reference, out float distance))
+                    {
+                        distance = UnitCompareUtilities.MinDistanceBetweenUnits(attackingUnit.GetValue(),
+                            stats.TargetUnit.GetValue(), out _, out _, includeVertical: false);
+                        distanceByTarget[stats.TargetUnit.Reference] = distance;
+                    }
+                    if (distance < closest) closest = distance;
+                }
+            }
+
+            if (closest == float.MaxValue) return; // nothing fireable - nothing to narrow
+
+            foreach (WeaponOption option in weaponOptions)
+            {
+                for (int i = 0; i < option.WeaponTargetStats.Count; i++)
+                {
+                    WeaponTargetStats stats = option.WeaponTargetStats[i];
+                    // Rows that are already unselectable keep their more specific reason, and rows with no
+                    // shooters are unfireable anyway - overwriting either would tell the player the wrong why.
+                    if (stats.UnselectableReason != null || stats.modelsThatCanShoot.Count == 0) continue;
+                    if (distanceByTarget[stats.TargetUnit.Reference] > closest + 0.001f)
+                    {
+                        option.WeaponTargetStats[i] = stats with
+                        {
+                            UnselectableReason = $"{source} - must attack the closest target.",
+                        };
+                    }
+                }
+            }
         }
 
         /// <summary>

@@ -133,6 +133,27 @@ namespace FDG.Rules.Dispatch
             return range;
         }
 
+        /// <summary>
+        /// The alias-aware display name of the rule compelling <paramref name="unit"/> to attack the
+        /// closest valid target (#197 Instinctive), or null when it is not compelled - the near-universal
+        /// case. Read by <c>ChooseActionStage</c> (the menu restriction), <c>ChooseRangedAttackStage</c>
+        /// and <c>ChooseMeleeDefenderStage</c> (the target narrowing); the name feeds the player-facing
+        /// "why can't I pick this" reasons, mirroring <see cref="SightRuleQueries.CoverIgnoreSource"/>.
+        /// The models ride along like every capability query, so the answer respects the authored
+        /// <see cref="Condition.AllModelsHaveThisRule"/> gate (a joined hero without the rule frees the
+        /// unit) rather than re-implementing it here.
+        /// </summary>
+        public static string? MustAttackClosestSource(IUnit unit, RuleEvaluator evaluator)
+        {
+            foreach ((RuleOperation op, string ruleName) in evaluator.EvaluateAllNamed(
+                         new CapabilityQueryContext(unit),
+                         RuleParticipant.Actor(unit, weapon: null, models: unit.Models)))
+            {
+                if (op is RuleOperation.CompelClosestTarget) return ruleName;
+            }
+            return null;
+        }
+
         private static IReadOnlyList<TOperation> Collect<TOperation>(IUnit unit, RuleEvaluator evaluator)
             where TOperation : RuleOperation
         {

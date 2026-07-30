@@ -74,6 +74,37 @@ namespace FDG.Stages
                 }
             }
 
+            // #197 Instinctive: a compelled unit's charge must land on the closest valid defender. The
+            // narrowing happens here - before the request is issued - so every resolver, human or AI,
+            // simply has no non-compliant option (the same shape as the ranged chooser's gating). Ties
+            // within the float tolerance all stay valid; the choice among equals is the player's.
+            string? compelSource = Rules.Dispatch.CapabilityRuleQueries.MustAttackClosestSource(
+                context.AttackingUnit.GetValue(), GameContext.RuleEvaluator);
+            if (compelSource != null && validDefenders.Count > 1)
+            {
+                float closest = float.MaxValue;
+                Dictionary<DataBinding<UnitData>, float> distances = new Dictionary<DataBinding<UnitData>, float>();
+                foreach (CancellableSelectionRequest<UnitData>.ValidOption option in validDefenders)
+                {
+                    float distance = UnitCompareUtilities.MinDistanceBetweenUnits(
+                        context.AttackingUnit.GetValue(), option.Option.GetValue(), out _, out _,
+                        includeVertical: false);
+                    distances[option.Option] = distance;
+                    if (distance < closest) closest = distance;
+                }
+
+                for (int i = validDefenders.Count - 1; i >= 0; i--)
+                {
+                    if (distances[validDefenders[i].Option] > closest + 0.001f)
+                    {
+                        invalidDefenders.Add(new CancellableSelectionRequest<UnitData>.InvalidOption(
+                            validDefenders[i].Option, validDefenders[i].Name,
+                            $"{compelSource} - must attack the closest target."));
+                        validDefenders.RemoveAt(i);
+                    }
+                }
+            }
+
             async Task ChooseDefender(DataBinding<UnitData> defender)
             {
                 //Set the defender on the context.

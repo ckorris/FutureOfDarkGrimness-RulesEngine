@@ -123,11 +123,36 @@ namespace FDG.Stages
                 }
             }
 
+            // #197 Instinctive — the compelled-attack capability: when the unit CAN attack from where it
+            // stands, attacking is all it may do. "Must immediately attack" (owner ruling 2026-07-30,
+            // strict): Move, Pass, Cast and every ability action drop out of the menu until the attack is
+            // taken; both attack kinds stay offered when both apply (the rule does not force which). The
+            // check re-runs every time this stage is entered, so a unit that was NOT able at activation
+            // start and moves into range is bound at its next visit - the compulsion cannot be dodged by
+            // walking out of range. Once the unit HAS attacked, canShoot/canCharge are false (their gates
+            // read HasAttacked) and the menu is normal again. The target half of the compulsion - WHICH
+            // enemy - lives in the choosers (ApplyTargetGating / ChooseMeleeDefenderStage), narrowed
+            // before the request is issued so the AI complies by construction (the P20 pattern).
+            string? compelSource = Rules.Dispatch.CapabilityRuleQueries.MustAttackClosestSource(
+                context.ActivatingUnit.GetValue(), GameContext.RuleEvaluator);
+            bool compelledToAttackNow = compelSource != null && (canShoot || canCharge);
+            if (compelledToAttackNow)
+            {
+                string mustAttackReason = $"{compelSource} - must attack the closest target first.";
+                if (canMove) { canMove = false; cantMoveReason = mustAttackReason; }
+                if (canPass) { canPass = false; cantPassReason = mustAttackReason; }
+                if (canCast) { canCast = false; cantCastReason = mustAttackReason; }
+            }
+
             // #010 — special rules contribute custom actions (e.g. a Caster's spell) by carrying an
             // ActivatedAbility that triggers at this hook. GatherOffers returns one offer per affordable,
-            // available such ability; each surfaces below as its own action.
-            IReadOnlyList<AbilityOffer> customActionOffers = GameContext.RuleEvaluator
-                .GatherOffers(new ActionChoiceContext(context.ActivatingUnit.GetValue()));
+            // available such ability; each surfaces below as its own action. A unit compelled to attack
+            // (#197 Instinctive, above) gets none of them - the menu is the attack, so the offers are not
+            // gathered at all rather than greyed one by one.
+            IReadOnlyList<AbilityOffer> customActionOffers = compelledToAttackNow
+                ? Array.Empty<AbilityOffer>()
+                : GameContext.RuleEvaluator.GatherOffers(
+                    new ActionChoiceContext(context.ActivatingUnit.GetValue()));
 
             List<string> validOptions = new List<string>();
             List<StringSelectionRequest.InvalidOption> invalidOptions = new List<StringSelectionRequest.InvalidOption>();
@@ -322,7 +347,7 @@ namespace FDG.Stages
             // (a "pick an enemy" ability with no enemy in range isn't shown). Routes to
             // BeforeAttackActionStage, which resolves the one chosen ability and loops back here WITHOUT
             // setting HasMoved/HasAttacked (layered), so a used ability drops off via its own once-per-X cost.
-            if (!context.HasAttacked)
+            if (!context.HasAttacked && !compelledToAttackNow)
             {
                 IReadOnlyList<AbilityOffer> beforeAttackOffers = GameContext.RuleEvaluator
                     .GatherOffers(new BeforeAttackActionContext(context.ActivatingUnit.GetValue()));

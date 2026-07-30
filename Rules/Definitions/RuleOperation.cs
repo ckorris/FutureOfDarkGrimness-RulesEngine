@@ -732,6 +732,14 @@ public abstract record RuleOperation
     public sealed record EnableBuffRelay(float RangeInches) : RuleOperation;
 
     /// <summary>
+    /// The bearer must attack when able, and its attack must go to the closest valid target. Resolution of
+    /// <see cref="Effect.CompelClosestTarget"/> (#197 Instinctive). A capability answer - never applied;
+    /// read by <c>CapabilityRuleQueries.MustAttackClosestSource</c> for the action menu and both target
+    /// choosers.
+    /// </summary>
+    public sealed record CompelClosestTarget : RuleOperation;
+
+    /// <summary>
     /// Enemy Ambush arrivals must set up over <see cref="DistanceInches"/> from the bearer's unit.
     /// Resolution of <see cref="Effect.RepelAmbushers"/> (Repel Ambushers). Read by
     /// <c>AmbushArrivalRules</c>, which turns it into keep-out discs on the arrival placement request.

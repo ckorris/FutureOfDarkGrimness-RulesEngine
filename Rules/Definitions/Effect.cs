@@ -65,6 +65,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(EnableSpellLending), "enableSpellLending")]
 [JsonDerivedType(typeof(EnableSpellRelay), "enableSpellRelay")]
 [JsonDerivedType(typeof(EnableBuffRelay), "enableBuffRelay")]
+[JsonDerivedType(typeof(CompelClosestTarget), "compelClosestTarget")]
 [JsonDerivedType(typeof(RepelAmbushers), "repelAmbushers")]
 [JsonDerivedType(typeof(AmbushBeacon), "ambushBeacon")]
 [JsonDerivedType(typeof(AmbushRedeploy), "ambushRedeploy")]
@@ -1021,6 +1022,27 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.EnableBuffRelay(RangeInches));
+        }
+    }
+
+    /// <summary>
+    /// #197 Instinctive — the bearer is COMPELLED to attack: when it can shoot or charge it must (no
+    /// idling, no non-attack actions first), and its attack must go to the closest valid target. A
+    /// capability answer at <see cref="EHookID.Lifecycle_OnCapabilityQuery"/>: <c>ChooseActionStage</c>
+    /// restricts the action menu, <c>ChooseRangedAttackStage</c> and <c>ChooseMeleeDefenderStage</c>
+    /// narrow their target lists, and the resolvers inherit the narrowed requests by construction (the
+    /// P20 Quick Shot marks pattern). The "+1 to hit for that attack" rider is NOT this effect — it is
+    /// authored as ordinary <see cref="RollModifier"/> entries on the same rule, so the compulsion and
+    /// the buff stay separately testable.
+    ///
+    /// <para>Authored with <see cref="Condition.AllModelsHaveThisRule"/> per the #267 convention: the
+    /// compulsion binds the WHOLE unit's action, so a joined hero without the rule frees the unit.</para>
+    /// </summary>
+    public sealed record CompelClosestTarget : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.CompelClosestTarget());
         }
     }
 

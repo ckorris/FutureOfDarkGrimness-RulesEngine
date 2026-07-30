@@ -316,7 +316,8 @@ public static class RuleFireLint
                 or RuleOperation.EnableTransport or RuleOperation.EnableReDeployment
                 or RuleOperation.EnableSpellLending or RuleOperation.EnableSpellRelay
                 or RuleOperation.EnableBuffRelay
-                or RuleOperation.RepelAmbushers or RuleOperation.AmbushBeacon,
+                or RuleOperation.RepelAmbushers or RuleOperation.AmbushBeacon
+                or RuleOperation.CompelClosestTarget,
 
             // DetermineHitRollStage: shifts the hit threshold and floors Quality. It never reads a Save delta.
             EHookID.Shooting_OnHitRollModifier =>

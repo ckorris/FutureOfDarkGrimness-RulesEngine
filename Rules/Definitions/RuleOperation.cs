@@ -553,6 +553,25 @@ public abstract record RuleOperation
     }
 
     /// <summary>
+    /// Set the bearer unit's Defense stat to <see cref="Defense"/>+. Resolution of
+    /// <see cref="Effect.SetDefense"/> (Armor). Folded by <c>DefenseSetSink</c> at unit creation
+    /// and written onto the unit's Defense — a whole-unit creation-time stat, like
+    /// <see cref="SetMaxWounds"/>.
+    /// </summary>
+    public sealed record SetDefense(int Defense) : SinkOperation<IDefenseSetSink>
+    {
+        public override void ApplyTo(IDefenseSetSink sink)
+        {
+            sink.SetTo(Defense);
+        }
+
+        public override string Describe()
+        {
+            return $"set Defense to {Defense}+";
+        }
+    }
+
+    /// <summary>
     /// Multiply the in-flight hit count by <see cref="Multiplier"/> (the hit-roll stage
     /// caps the result at the target's model count, and applies it after hit-injection
     /// rules — "after other rules"). Resolution of <see cref="Effect.MultiplyHits"/> (Blast).

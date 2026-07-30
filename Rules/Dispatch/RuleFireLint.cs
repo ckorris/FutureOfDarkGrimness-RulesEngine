@@ -374,9 +374,10 @@ public static class RuleFireLint
             EHookID.Activation_OnActionChoice =>
                 op is RuleOperation.RestrictActions or RuleOperation.AllowShootAfterRush,
 
-            // UnitCreationRules applies the token grants (auras) and folds SetMaxWounds (Tough).
+            // UnitCreationRules applies the token grants (auras) and folds SetMaxWounds (Tough) and
+            // SetDefense (Armor).
             EHookID.Lifecycle_OnUnitCreated =>
-                op is RuleOperation.SetMaxWounds || IsTokenOrExecutable(op),
+                op is RuleOperation.SetMaxWounds or RuleOperation.SetDefense || IsTokenOrExecutable(op),
 
             EHookID.Deployment_OnPreDeploymentSelect => op is RuleOperation.DeferDeployment,
 

@@ -32,6 +32,18 @@ public static class UnitCreationRules
         MaxWoundsSink maxWounds = new MaxWoundsSink();
         maxWounds.ApplyFrom(operations);
 
+        // #197 Armor(X): a defense-set rule replaces the unit's Defense stat outright (a literal SET,
+        // not a floor). Written here, at creation, so every downstream reader — the save stages,
+        // impact/reflect synthetic paths, HeroStatRules.GetSaveDefense, and the AI's CombatMath — sees
+        // the set value with no per-path folding. A joined hero's own Armor is the join resolver's
+        // job (its standalone unit never passes through here); this write covers the HOST unit's stat.
+        DefenseSetSink defenseSet = new DefenseSetSink();
+        defenseSet.ApplyFrom(operations);
+        if (defenseSet.HasSet && unit is UnitData unitStats)
+        {
+            unitStats.Defense = defenseSet.Defense;
+        }
+
         // #006: a joined hero keeps its OWN max wounds (its Tough), not the host unit's. The hero's
         // standalone unit is never registered, so the creation-rules pass never runs for it directly —
         // its wound count rides on the host's HeroAttachment and is applied to the hero model here.

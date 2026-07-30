@@ -50,6 +50,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(QualityFloor), "qualityFloor")]
 [JsonDerivedType(typeof(IgnoreWoundOnRoll), "ignoreWoundOnRoll")]
 [JsonDerivedType(typeof(SetMaxWounds), "setMaxWounds")]
+[JsonDerivedType(typeof(SetDefense), "setDefense")]
 [JsonDerivedType(typeof(MultiplyHits), "multiplyHits")]
 [JsonDerivedType(typeof(ChargeImpactHits), "chargeImpactHits")]
 [JsonDerivedType(typeof(ReduceImpactDicePerModel), "reduceImpactDicePerModel")]
@@ -681,6 +682,23 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.SetMaxWounds(Amount.Resolve(ruleInvocation)));
+        }
+    }
+
+    /// <summary>
+    /// The bearer unit counts as having Defense <see cref="Defense"/>+ in place of its own Defense
+    /// stat. Covers Armor(X) — the value is the rule's argument (<c>Arg(0)</c>). A literal SET, not
+    /// a floor (owner-ruled 2026-07-29): it replaces the base stat even where the base was better,
+    /// though no current corpus site worsens. Per-roll modifiers (AP, cover, Shielded) still stack
+    /// on the set base. Fires at <see cref="Foundation.EHookID.Lifecycle_OnUnitCreated"/>, Tough's
+    /// seam, so every save path — volleys, melee, impact, reflect, synthetic hits, and the AI's
+    /// CombatMath mirror — reads the set value through the unit's Defense stat.
+    /// </summary>
+    public sealed record SetDefense(ValueSource Defense) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.SetDefense(Defense.Resolve(ruleInvocation)));
         }
     }
 

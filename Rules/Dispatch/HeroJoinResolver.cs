@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using FDG.Rules.Definitions;
 using FDG.Rules.Foundation;
 using FDG.SaveLoad;
 
@@ -101,7 +102,8 @@ public static class HeroJoinResolver
             ModelData heroModel = hero.ModelBindings[0].GetValue();
             ModelID heroModelId = heroModel.ID;
             int heroWounds = hasTough ? tough : IModel.DEFAULT_WOUND_COUNT;
-            host.AttachHero(new HeroAttachment(heroModelId, hero.Quality, hero.Defense, heroWounds), hero.ModelBindings);
+            host.AttachHero(new HeroAttachment(heroModelId, hero.Quality, ResolveJoinedHeroDefense(hero), heroWounds),
+                hero.ModelBindings);
 
             // #006 slice F: carry the hero's own unit-scoped rules onto the hero MODEL, so they fire for the
             // hero alone (Furious/Relentless/Thrust) rather than the whole host unit. The Hero marker stays
@@ -141,5 +143,38 @@ public static class HeroJoinResolver
 
         value = 0;
         return false;
+    }
+
+    /// <summary>
+    /// The Defense the attachment should carry for a joining hero: its creation-time defense set
+    /// (Armor(X), #197) if it has one, else its own stat. The hero's standalone unit never passes
+    /// through <see cref="UnitCreationRules"/> — the join consumes it first — so the set must be
+    /// baked in here, the same way <c>heroWounds</c> bakes in Tough. Matched by effect shape
+    /// (a <see cref="Effect.SetDefense"/> at <see cref="EHookID.Lifecycle_OnUnitCreated"/>), not by
+    /// rule name, so a book alias can't dodge it; folded through the same sink as the creation
+    /// applicator (best of several, literal SET over the base stat). Conditions are not evaluated,
+    /// matching <see cref="TryGetToughValue"/>'s argument-only read — creation-time entries are
+    /// authored <c>Condition.Always</c>.
+    /// </summary>
+    private static int ResolveJoinedHeroDefense(UnitData hero)
+    {
+        DefenseSetSink defenseSet = new DefenseSetSink();
+        foreach (ResolvedRule rule in hero.RuleDefinitions)
+        {
+            foreach (HookEntry entry in rule.Definition.Passive)
+            {
+                if (entry.HookID != EHookID.Lifecycle_OnUnitCreated || entry.Effect is not Effect.SetDefense set)
+                {
+                    continue;
+                }
+
+                List<RuleOperation> operations = new List<RuleOperation>();
+                set.Apply(new RuleInvocation(Hook: null, Bearer: hero, Arguments: rule.Arguments,
+                    Definition: rule.Definition), operations);
+                defenseSet.ApplyFrom(operations);
+            }
+        }
+
+        return defenseSet.HasSet ? defenseSet.Defense : hero.Defense;
     }
 }

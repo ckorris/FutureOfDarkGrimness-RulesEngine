@@ -162,7 +162,7 @@ namespace FDG.Tests
             Attach(attacker, CoreRuleCatalog.Unpredictable);
 
             EUnpredictableBranch branch = UnpredictableBranchResolver.Resolve(
-                attacker.GetValue(), isMelee: false, new FixedDiceRoller(5));
+                attacker.GetValue(), MakeUnit(DefenderPos).GetValue(), isMelee: false, new FixedDiceRoller(5));
 
             Assert.That(branch, Is.EqualTo(EUnpredictableBranch.HitBonus), "a 5 is in the 4-6 (+1 to hit) band.");
         }
@@ -174,7 +174,7 @@ namespace FDG.Tests
             Attach(attacker, CoreRuleCatalog.Unpredictable);
 
             EUnpredictableBranch branch = UnpredictableBranchResolver.Resolve(
-                attacker.GetValue(), isMelee: false, new FixedDiceRoller(2));
+                attacker.GetValue(), MakeUnit(DefenderPos).GetValue(), isMelee: false, new FixedDiceRoller(2));
 
             Assert.That(branch, Is.EqualTo(EUnpredictableBranch.ApBonus), "a 2 is in the 1-3 (AP) band.");
         }
@@ -185,7 +185,7 @@ namespace FDG.Tests
             DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
             // A roller that throws if asked for a face - proves no die is consumed when the rule is absent.
             EUnpredictableBranch branch = UnpredictableBranchResolver.Resolve(
-                attacker.GetValue(), isMelee: false, new ThrowingDiceRoller());
+                attacker.GetValue(), MakeUnit(DefenderPos).GetValue(), isMelee: false, new ThrowingDiceRoller());
 
             Assert.That(branch, Is.EqualTo(EUnpredictableBranch.None),
                 "no Unpredictable rule -> None, and no die is rolled (the seeded stream is untouched).");
@@ -198,7 +198,7 @@ namespace FDG.Tests
             Attach(attacker, CoreRuleCatalog.UnpredictableFighter);
 
             EUnpredictableBranch branch = UnpredictableBranchResolver.Resolve(
-                attacker.GetValue(), isMelee: false, new ThrowingDiceRoller());
+                attacker.GetValue(), MakeUnit(DefenderPos).GetValue(), isMelee: false, new ThrowingDiceRoller());
 
             Assert.That(branch, Is.EqualTo(EUnpredictableBranch.None),
                 "Unpredictable Fighter does not apply to a shooting attack, so no die is rolled.");
@@ -215,11 +215,96 @@ namespace FDG.Tests
                 Payload: new TokenPayload.RuleGrant(CoreRuleCatalog.UnpredictableFighterRuleName, ELifetime.Aura)));
 
             EUnpredictableBranch branch = UnpredictableBranchResolver.Resolve(
-                attacker.GetValue(), isMelee: true, new FixedDiceRoller(5));
+                attacker.GetValue(), MakeUnit(DefenderPos).GetValue(), isMelee: true, new FixedDiceRoller(5));
 
             Assert.That(branch, Is.EqualTo(EUnpredictableBranch.HitBonus),
                 "an aura-granted Unpredictable Fighter must trigger the roll in melee.");
         }
+
+        // --- #197 Unpredictable Marks: the rule arrives via a mark on the DEFENDER ---
+
+        [Test]
+        public void Resolver_DetectsDefenderMark()
+        {
+            // "Unpredictable Fighter Mark": the mark sits on the TARGET and is only claimed onto the
+            // attacker at the hit stage - after this action-level roll. The resolver must scan the
+            // defender's marks, or the mark-granted rule could never see a branch and both arms would
+            // gate themselves out (the pre-slice failure mode).
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(DefenderPos);
+            MarkDefender(defender, CoreRuleCatalog.UnpredictableFighterRuleName);
+
+            EUnpredictableBranch branch = UnpredictableBranchResolver.Resolve(
+                attacker.GetValue(), defender.GetValue(), isMelee: true, new FixedDiceRoller(5));
+
+            Assert.That(branch, Is.EqualTo(EUnpredictableBranch.HitBonus),
+                "a defender-side Unpredictable Fighter mark triggers the roll for a melee attack.");
+        }
+
+        [Test]
+        public void Resolver_DefenderMark_WrongCombatKind_IsNotApplicable()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(DefenderPos);
+            MarkDefender(defender, CoreRuleCatalog.UnpredictableShooterRuleName);
+
+            EUnpredictableBranch branch = UnpredictableBranchResolver.Resolve(
+                attacker.GetValue(), defender.GetValue(), isMelee: true, new ThrowingDiceRoller());
+
+            Assert.That(branch, Is.EqualTo(EUnpredictableBranch.None),
+                "a Shooter mark does not apply to a melee swing, so no die is rolled.");
+        }
+
+        [Test]
+        public void Resolver_DefenderMark_NonUnpredictableRule_DoesNotRoll()
+        {
+            // The defender scan must key on the GRANTED RULE, not on mark presence: an ordinary mark
+            // family member (Bane, Rending, Precision ...) on the target is not an Unpredictable source.
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(DefenderPos);
+            MarkDefender(defender, "Bane");
+
+            EUnpredictableBranch branch = UnpredictableBranchResolver.Resolve(
+                attacker.GetValue(), defender.GetValue(), isMelee: true, new ThrowingDiceRoller());
+
+            Assert.That(branch, Is.EqualTo(EUnpredictableBranch.None),
+                "a non-Unpredictable mark must not consume a die.");
+        }
+
+        [Test]
+        public async Task MarkedDefender_EndToEnd_BranchAndClaimCompose()
+        {
+            // The full composition that was broken: the REAL CombatActionContext resolves the branch off
+            // the defender's mark at action level, then DetermineHitRollStage claims the mark into an
+            // attacker grant whose +1-to-hit arm reads that same branch. Either half alone leaves the
+            // hit roll unchanged at quality 4.
+            var ctx = new TestGameContext(_store, new FixedDiceRoller(5),
+                ruleResolver: CoreRuleCatalog.CreateResolver());
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos, MeleeWeapon("Axe"));
+            DataBinding<UnitData> defender = MakeUnit(DefenderPos);
+            MarkDefender(defender, CoreRuleCatalog.UnpredictableFighterRuleName);
+
+            var combat = new CombatActionContext(ctx, attacker, isMelee: true);
+            combat.SetDefender(defender);
+            combat.SetAttackWeapon(attacker.GetValue().GetMeleeWeapons().Single(), out _);
+            ICombatMetadata metadata = combat.ConsumeAttackIntoContext(ctx);
+
+            Assert.That(metadata.UnpredictableBranch, Is.EqualTo(EUnpredictableBranch.HitBonus),
+                "the action-level roll (a 5) fires off the defender's mark alone.");
+
+            var layer = new NoOpLayer<ICombatMetadata>();
+            var stage = new DetermineHitRollStage<ICombatMetadata>(ctx, layer);
+            stage.NextStage.Bind("done");
+            await stage.Enter(metadata);
+
+            Assert.That(metadata.QueryForResult(out DetermineHitRollResults result), Is.True);
+            Assert.That(result.HitRollNeeded, Is.EqualTo(3),
+                "the claimed mark's Unpredictable Fighter reads the branch: quality 4 improves to 3.");
+        }
+
+        private static void MarkDefender(DataBinding<UnitData> unit, string ruleName) =>
+            unit.GetValue().Tokens.AddToken(new Token(TokenType.Mark, 1, new TokenClearTrigger.ManualOnly(),
+                Payload: new TokenPayload.RuleGrant(ruleName, ELifetime.ThisAttack)));
 
         // --- once per attack ACTION, shared across weapons (Option A), via the real CombatActionContext ---
 

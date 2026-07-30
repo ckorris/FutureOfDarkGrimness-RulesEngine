@@ -16,19 +16,20 @@ namespace FDG.Rules.Dispatch
     /// modifier" on a threshold roll. A die is consumed ONLY when an applicable rule is present, so the seeded
     /// dice stream (#193) is untouched for the vast majority of attacks that have no Unpredictable rule.
     ///
-    /// Detection spans native rules (unit + per-model) AND aura-granted rules (RuleGrant tokens), so
-    /// "Unpredictable Fighter Aura" (which confers "Unpredictable Fighter") triggers the roll too. The Mark
-    /// variants are out of scope: a mark grants Unpredictable at the hit-roll hook, after this action-level
-    /// roll has already happened.
+    /// Detection spans native rules (unit + per-model), aura-granted rules (RuleGrant tokens), and - #197
+    /// Unpredictable Marks - a Mark token on the DEFENDER whose payload grants an applicable Unpredictable
+    /// rule. The mark is claimed (converted into an attacker-side grant) only at the hit stage's
+    /// ClaimTargetMarks, AFTER this action-level roll, so without the defender scan a mark-granted
+    /// Unpredictable could never see a branch and both of its arms would gate themselves out.
     /// </summary>
     public static class UnpredictableBranchResolver
     {
         // 4-6 -> +1 to hit; 1-3 -> AP(+1).
         private const int HIT_BONUS_MIN_FACE = 4;
 
-        public static EUnpredictableBranch Resolve(IUnit attacker, bool isMelee, IDiceRoller diceRoller)
+        public static EUnpredictableBranch Resolve(IUnit attacker, IUnit defender, bool isMelee, IDiceRoller diceRoller)
         {
-            if (!AttackerHasApplicableRule(attacker, isMelee))
+            if (!AttackerHasApplicableRule(attacker, isMelee) && !DefenderMarkGrantsApplicableRule(defender, isMelee))
             {
                 return EUnpredictableBranch.None;
             }
@@ -37,29 +38,50 @@ namespace FDG.Rules.Dispatch
             return face >= HIT_BONUS_MIN_FACE ? EUnpredictableBranch.HitBonus : EUnpredictableBranch.ApBonus;
         }
 
-        private static bool AttackerHasApplicableRule(IUnit attacker, bool isMelee)
+        // "Unpredictable" fires on any attack; the Fighter/Shooter variants fire only on their combat kind.
+        private static bool Applies(string name, bool isMelee)
         {
-            // "Unpredictable" fires on any attack; the Fighter/Shooter variants fire only on their combat kind.
             string kindName = isMelee
                 ? CoreRuleCatalog.UnpredictableFighterRuleName
                 : CoreRuleCatalog.UnpredictableShooterRuleName;
 
-            bool Applies(string name) =>
-                name == CoreRuleCatalog.UnpredictableRuleName || name == kindName;
+            return name == CoreRuleCatalog.UnpredictableRuleName || name == kindName;
+        }
 
-            if (attacker.RuleDefinitions.Any(r => Applies(r.Definition.Name)))
+        private static bool AttackerHasApplicableRule(IUnit attacker, bool isMelee)
+        {
+            if (attacker.RuleDefinitions.Any(r => Applies(r.Definition.Name, isMelee)))
             {
                 return true;
             }
 
-            if (attacker.Models.Any(m => m.RuleDefinitions.Any(r => Applies(r.Definition.Name))))
+            if (attacker.Models.Any(m => m.RuleDefinitions.Any(r => Applies(r.Definition.Name, isMelee))))
             {
                 return true;
             }
 
             foreach (Token token in attacker.Tokens.GetAllTokens(TokenType.RuleGrant))
             {
-                if (token.Payload is TokenPayload.RuleGrant grant && Applies(grant.RuleName))
+                if (token.Payload is TokenPayload.RuleGrant grant && Applies(grant.RuleName, isMelee))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// #197 Unpredictable Marks: a mark on the target ("the first friendly attack against it counts as
+        /// having Unpredictable Fighter/Shooter") grants the rule to the ATTACKER, but only when the hit
+        /// stage claims it - after this action-level roll. Scanning the defender's marks here is what lets
+        /// the branch exist by the time the claimed grant's arms read it.
+        /// </summary>
+        private static bool DefenderMarkGrantsApplicableRule(IUnit defender, bool isMelee)
+        {
+            foreach (Token token in defender.Tokens.GetAllTokens(TokenType.Mark))
+            {
+                if (token.Payload is TokenPayload.RuleGrant grant && Applies(grant.RuleName, isMelee))
                 {
                     return true;
                 }

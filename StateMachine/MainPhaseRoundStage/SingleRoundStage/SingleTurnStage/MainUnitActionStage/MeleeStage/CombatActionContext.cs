@@ -388,11 +388,13 @@ namespace FDG.Stages
 
         // #197 (P15): roll the Unpredictable die once per attack action, then reuse it for every weapon of
         // the action (cached). UnpredictableBranchResolver rolls only when the attacker carries an applicable
-        // rule, so a die is not consumed - and the seeded stream is not shifted - for ordinary attacks.
+        // rule - or the DEFENDER carries an Unpredictable-granting mark, which the hit stage will claim onto
+        // the attacker after this point - so a die is not consumed, and the seeded stream is not shifted,
+        // for ordinary attacks.
         private EUnpredictableBranch ResolveUnpredictableBranch()
         {
             _unpredictableBranch ??= UnpredictableBranchResolver.Resolve(
-                AttackingUnit.GetValue(), _isMelee, GameContext.DiceRoller);
+                AttackingUnit.GetValue(), DefendingUnit.GetValue(), _isMelee, GameContext.DiceRoller);
             return _unpredictableBranch.Value;
         }
 

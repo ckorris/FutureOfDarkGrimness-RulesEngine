@@ -265,6 +265,9 @@ public static class RuleFireLint
         // #197 P22: ReconcileEndOfActivationStage offers "when this unit ends its activation" abilities
         // (Ambush Re-Deployment) before its token sweep.
         EHookID.Activation_OnEndOfActivation,
+        // #197 P16: ResolveExtraAttackStage offers "make one extra attack" abilities (Takedown Strike /
+        // Shot) once the attacker and its target are fixed - in the shoot chain and in both melee ones.
+        EHookID.Combat_OnAttackWindow,
     };
 
     /// <summary>
@@ -440,6 +443,8 @@ public static class RuleFireLint
         RuleOperation.InvokeDealAutoWounds => hook is EHookID.Movement_OnMoveThroughEnemy,
         // #197 P10 Storm of X: an action-choice ability enacted by StormStage (routed from ChooseActionStage).
         RuleOperation.InvokeStorm => hook is EHookID.Activation_OnActionChoice,
+        // #197 P16 Takedown Strike / Shot: an extra attack run by ResolveExtraAttackStage at the attack window.
+        RuleOperation.InvokeExtraAttack => hook is EHookID.Combat_OnAttackWindow,
         // #197 P21 Fanatic: a deploy-time reposition placement DeployUnitStage folds after the executor.
         // #197 Dash: the same fold at the end of an activation (ReconcileEndOfActivationStage).
         RuleOperation.RepositionModels => hook is EHookID.Deployment_OnUnitDeployed
@@ -601,6 +606,14 @@ public static class RuleFireLint
                 break;
             case EHookID.Shooting_OnShootTargetsSelected:
                 yield return new ShootTargetsSelectedContext(attacker, defender);
+                break;
+            case EHookID.Combat_OnAttackWindow:
+                // #197 P16: both combat kinds, because the two rules at this hook are separated by nothing
+                // else - Takedown Strike gates on IsMelee, Takedown Shot on its negation.
+                foreach (bool isMelee in new[] { false, true })
+                {
+                    yield return new AttackWindowContext(attacker, defender, isMelee);
+                }
                 break;
             case EHookID.Shooting_OnHitRollModifier:
                 foreach (float distance in new[] { NearInches, FarInches })

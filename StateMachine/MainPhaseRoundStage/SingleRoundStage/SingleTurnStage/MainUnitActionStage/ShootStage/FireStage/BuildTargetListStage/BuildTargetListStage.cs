@@ -31,16 +31,19 @@ namespace FDG.Stages
 
             BuildTargetListResults results = new BuildTargetListResults(targets);
 
-            // #042 targets-selected rules (Takedown): the shooter may pick one model in the target unit
+            // #042 targets-selected rules (Takedown): the attacker may pick one model in the target unit
             // and resolve the attack against just it ("a unit of [1]"). Fire OnShootTargetsSelected for
             // the attacker; if TargetIndividualModel is queued, ask the attacker to pick a living model
-            // and stash it for AssignWoundsStage to confine wound allocation. Shooting only — the hook is
-            // a shooting "when" and melee reuses this stage. The hit/save resolution is unchanged; only
-            // the wound recipients are restricted (LoS/cover-ignore facet deferred — see Appendix C).
-            if (!metaData.IsMelee)
-            {
-                await MaybePickIndividualTarget(metaData);
-            }
+            // and stash it for AssignWoundsStage to confine wound allocation. The hit/save resolution is
+            // unchanged; only the wound recipients are restricted.
+            //
+            // #197 P16: this used to be gated to shooting, on the grounds that the hook is a shooting
+            // "when" and melee reuses this stage. Takedown Strike carries Takedown into MELEE - picking the
+            // victim out of the enemy unit is the whole point of an assassin - so the gate is gone (owner
+            // ruling 2026-07-30). Nothing else changes behaviour: no melee weapon in any bundled book
+            // carries Takedown (pinned by ExtraAttackShippedDataTests), so the only attack this newly
+            // reaches is the synthetic profile ResolveExtraAttackStage builds.
+            await MaybePickIndividualTarget(metaData);
 
             await onFinished(results);
         }

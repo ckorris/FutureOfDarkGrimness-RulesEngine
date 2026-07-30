@@ -447,6 +447,19 @@ public abstract record RuleOperation
     public sealed record InvokeWeaponAttack(IUnit Target, IWeapon? Weapon) : RuleOperation;
 
     /// <summary>
+    /// #197 P16 — make one extra attack against <see cref="Target"/> with a weapon the rule authored rather
+    /// than one the bearer carries: <see cref="Attacks"/> dice at <see cref="ArmorPenetration"/> carrying
+    /// <see cref="WithRules"/>. Resolution of <see cref="Effect.ExtraAttack"/> (Takedown Strike / Shot).
+    /// The rule names are still unresolved here, exactly as on <see cref="InvokeDealHits"/>: an ability can
+    /// be conferred at runtime, so it has no army-load site, and the resolving stage builds the synthetic
+    /// weapon through the evaluator's shared resolver. A plain <see cref="RuleOperation"/>, not an
+    /// <see cref="ExecutableOperation"/>, for the same reason <see cref="InvokeWeaponAttack"/> is: the
+    /// hit-to-wound resolution is a child-stage pipeline.
+    /// </summary>
+    public sealed record InvokeExtraAttack(IUnit Target, string WeaponName, int Attacks,
+        int ArmorPenetration, IReadOnlyList<string> WithRules) : RuleOperation;
+
+    /// <summary>
     /// #197 P10 — roll <see cref="DiceCount"/> dice against <see cref="Target"/>; each result at or above
     /// <see cref="SuccessThreshold"/> deals one DIRECT wound. Resolution of <see cref="Effect.DealAutoWounds"/>
     /// (Ravage, Crossing Attack). Unlike <see cref="InvokeDealHits"/> the wounds take no armor save — the

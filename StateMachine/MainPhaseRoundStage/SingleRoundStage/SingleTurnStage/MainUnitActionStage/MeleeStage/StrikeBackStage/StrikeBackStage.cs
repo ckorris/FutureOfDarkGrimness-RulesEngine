@@ -41,6 +41,7 @@ namespace FDG.Stages
             OnAttackerKilled = new StageBinding(this);
 
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
+                .AddChild(new ResolveMeleeExtraAttackStage(GameContext, this), out var resolveExtraAttack)
                 .AddChild(new ChooseMeleeWeaponStage(GameContext, this), out var chooseMeleeWeapon)
                 .AddChild(new SwingMeleeWeaponStage(GameContext, this), out var swingMeleeWeapon)
                 .AddChild(new DetermineCanKeepSwingingStage(GameContext, this), out var determineCanKeepSwinging)
@@ -48,8 +49,11 @@ namespace FDG.Stages
                 .AddSibling(nameof(OnAttackerKilled), OnAttackerKilled, out string onAttackerKilledEvent)
                 .Build();
 
-            startingChild = chooseMeleeWeapon;
+            // #197 P16: "when it's this model's turn to attack in melee" is true of the striker-back too, so
+            // the extra-attack window opens here as well - on this context, whose roles are already reversed.
+            startingChild = resolveExtraAttack;
 
+            resolveExtraAttack.OnExtraAttackResolved.Bind(chooseMeleeWeapon);
             chooseMeleeWeapon.OnChosen.Bind(swingMeleeWeapon);
             swingMeleeWeapon.FinishedSwinging.Bind(determineCanKeepSwinging);
             determineCanKeepSwinging.ReturnToChooseWeapon.Bind(chooseMeleeWeapon);

@@ -50,6 +50,7 @@ namespace FDG.Stages
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
                 .AddChild(new ChooseRangedAttackStage(GameContext, this), out var chooseRangedWeapon)
                 //.AddChild(new ChooseRangedTargetStage(GameContext, this), out var chooseRangedTarget)
+                .AddChild(new ResolveRangedExtraAttackStage(GameContext, this), out var resolveExtraAttack)
                 .AddChild(new FireStage(GameContext, this), out var fire)
                 .AddChild(new DetermineMorePendingShotsStage(GameContext, this), out var morePendingShots)
                 .AddChild(new ResolveRangedMoraleStage(GameContext, this), out var resolveRangedMorale)
@@ -61,7 +62,11 @@ namespace FDG.Stages
 
             startingChild = chooseRangedWeapon;
 
-            chooseRangedWeapon.OnChoseWeapon.Bind(fire);
+            // #197 P16: the extra-attack window opens between the weapon/target choice and the volley, so a
+            // Takedown Shot lands "against the target" of a shot whose range and line of sight are already
+            // validated. Its own once-per-game cost keeps it from re-offering on a later weapon this action.
+            chooseRangedWeapon.OnChoseWeapon.Bind(resolveExtraAttack);
+            resolveExtraAttack.OnExtraAttackResolved.Bind(fire);
             chooseRangedWeapon.BackToChooseAction.Bind(backToChooseEvent);
             // Both shoot exits — "fired all weapons" and "no further valid shots" — converge on
             // ResolveRangedMoraleStage and then PostShootStage, so morale is tested once and the

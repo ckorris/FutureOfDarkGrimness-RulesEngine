@@ -57,6 +57,7 @@ namespace FDG.Stages
                 .AddChild(new PileInStage(GameContext, this), out var pileIn)
                 .AddChild(new DetermineInRangeAttackersStage(GameContext, this), out var determineInRangeAttackers)
                 .AddChild(new DetermineInRangeDefendersStage(GameContext, this), out var determineInRangeDefenders)
+                .AddChild(new ResolveMeleeExtraAttackStage(GameContext, this), out var resolveExtraAttack)
                 .AddChild(new ChooseMeleeWeaponStage(GameContext, this), out var chooseMeleeWeapon)
                 .AddChild(new SwingMeleeWeaponStage(GameContext, this), out var swingMeleeWeaponStage)
                 .AddChild(new DetermineCanKeepSwingingStage(GameContext, this), out var determineCanKeepSwinging)
@@ -88,7 +89,11 @@ namespace FDG.Stages
             // skip the swing but follow the same applyFatigue → consolidate → finish path as a defender
             // killed mid-swing, so the charger still consolidates.
             determineInRangeAttackers.OnNoAttackersInRange.Bind(applyFatigueStage);
-            determineInRangeDefenders.ToChooseMeleeWeapons.Bind(chooseMeleeWeapon);
+            // #197 P16: the extra-attack window opens once contact is settled and before the first swing, so
+            // a Takedown Strike is offered exactly once per melee for whoever swings first - not once per
+            // weapon, which is why the swing loop below returns to chooseMeleeWeapon and not to here.
+            determineInRangeDefenders.ToChooseMeleeWeapons.Bind(resolveExtraAttack);
+            resolveExtraAttack.OnExtraAttackResolved.Bind(chooseMeleeWeapon);
             chooseMeleeWeapon.OnChosen.Bind(swingMeleeWeaponStage);
             swingMeleeWeaponStage.FinishedSwinging.Bind(determineCanKeepSwinging);
             determineCanKeepSwinging.ReturnToChooseWeapon.Bind(chooseMeleeWeapon);

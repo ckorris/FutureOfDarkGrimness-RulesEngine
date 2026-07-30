@@ -264,6 +264,21 @@ public enum EHookID
     Melee_OnPostMelee = 103,
 
     /// <summary>
+    /// #197 P16: the attacker and its target are both fixed and no dice have been rolled - the last moment
+    /// at which an EXTRA attack can be injected into the action. Fires in both combat kinds, hence the
+    /// <c>Combat_</c> family: before the shooting volley (target already chosen and range/LoS-validated),
+    /// before the charger's swings, and again before the defender's strike-back, so "when it's this model's
+    /// turn to attack" covers every direction of a melee. The offer site for Takedown Strike / Takedown Shot.
+    ///
+    /// <para>An ABILITY hook, unlike its passive neighbours: the stage that fires it (ResolveExtraAttackStage)
+    /// gathers offers and runs the injected attack as a real child pipeline. Distinct from
+    /// <see cref="Activation_OnBeforeAttackAction"/>, whose abilities are menu actions taken instead of
+    /// attacking and therefore have no target or contact yet.</para>
+    /// Context: attacker, the chosen defender, combat kind.
+    /// </summary>
+    Combat_OnAttackWindow = 110,
+
+    /// <summary>
     /// About to take a morale test, before rolling. Trigger for Courage Aura's +1
     /// to morale tests and other modifiers.
     /// Context: unit, source (melee or wounds), modifier stack.

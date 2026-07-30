@@ -90,6 +90,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(CountAsInTerrain), "countAsInTerrain")]
 [JsonDerivedType(typeof(DangerousTerrainTest), "dangerousTerrainTest")]
 [JsonDerivedType(typeof(PerHitSaveModifier), "perHitSaveModifier")]
+[JsonDerivedType(typeof(ExtraAttack), "extraAttack")]
 
 public abstract record Effect
 {
@@ -375,6 +376,40 @@ public abstract record Effect
         {
             operations.Add(new RuleOperation.InvokeWeaponAttack(
                 ruleInvocation.EffectiveTarget, ruleInvocation.Weapon));
+        }
+    }
+
+    /// <summary>
+    /// #197 P16 — injects ONE extra attack, made with a weapon profile the rule itself authors, into the
+    /// action the bearer is already taking. Covers Takedown Strike ("once per game, when it's this model's
+    /// turn to attack in melee, it may make one attack at Quality 2+ with AP(2), Deadly(3), and Takedown")
+    /// and Takedown Shot (the same, "when this model shoots ... against the target").
+    ///
+    /// <para>The profile is the whole payload: <see cref="Attacks"/> dice at <see cref="ArmorPenetration"/>,
+    /// carrying <see cref="WithRules"/> - and every rider those two rules state is ALREADY a weapon rule, so
+    /// none of them needs vocabulary of its own. "At Quality 2+" is <c>Reliable</c>
+    /// (<see cref="QualityFloor"/>, folded by minimum, so a worse-shooting bearer is lifted to 2+ and a 2+
+    /// bearer is unchanged); "Deadly(3)" and "Takedown" are themselves. Names carry their arguments, parsed
+    /// the way a spell's <see cref="DealHits.WithRules"/> are.</para>
+    ///
+    /// <para>Distinct from <see cref="AttackWithThisWeapon"/> (Strafing), which attacks with a weapon the
+    /// bearer actually carries, and from <see cref="DealHits"/>, which delivers a fixed hit count with no
+    /// roll to hit. This one rolls to hit, so the attack is a real attack: its hits fold through Rending /
+    /// Surge, its wounds through Deadly and Tough, and its Takedown pick confines them to one model.</para>
+    ///
+    /// <para>SUPPORTED PATHS (not universal, like <see cref="DealHits"/>): the emitted
+    /// <see cref="RuleOperation.InvokeExtraAttack"/> is a plain <see cref="RuleOperation"/>, enacted only by
+    /// <c>ResolveExtraAttackStage</c> at <see cref="EHookID.Combat_OnAttackWindow"/>, because the
+    /// hit/save/wound resolution is a child-stage chain. Any other hook's generic op application drops it,
+    /// and <c>RuleFireLint</c> reports it as unhandled there.</para>
+    /// </summary>
+    public sealed record ExtraAttack(string WeaponName, int Attacks, int ArmorPenetration,
+        IReadOnlyList<string> WithRules) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.InvokeExtraAttack(ruleInvocation.EffectiveTarget,
+                WeaponName, Attacks, ArmorPenetration, WithRules));
         }
     }
 

@@ -63,6 +63,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(EnableReDeployment), "enableReDeployment")]
 [JsonDerivedType(typeof(EnableSpellLending), "enableSpellLending")]
 [JsonDerivedType(typeof(EnableSpellRelay), "enableSpellRelay")]
+[JsonDerivedType(typeof(EnableBuffRelay), "enableBuffRelay")]
 [JsonDerivedType(typeof(RepelAmbushers), "repelAmbushers")]
 [JsonDerivedType(typeof(AmbushBeacon), "ambushBeacon")]
 [JsonDerivedType(typeof(AmbushRedeploy), "ambushRedeploy")]
@@ -889,6 +890,25 @@ public abstract record Effect
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.EnableSpellRelay(RangeInches, CastRollBonus));
+        }
+    }
+
+    /// <summary>
+    /// The bearer relays non-spell friendly picks for other friendly units within <see cref="RangeInches"/>:
+    /// an activated ability that picks friendly units may pick as if the user stood in the bearer's position
+    /// (#197, <c>Extended Buff Range</c> — the HDF radios; 12" relay leg + the ability's own 12" makes the
+    /// audit's "across 24\""). The spell twin is <see cref="EnableSpellRelay"/>; this one confers no roll
+    /// bonus, and it is read by <c>AbilityTargeting</c> rather than <c>SpellRelay</c>.
+    ///
+    /// <para>Authored at <see cref="EHookID.Lifecycle_OnCapabilityQuery"/> like every other capability, so a
+    /// wording gate (Conduit's "isn't Shaken") would be a plain <see cref="Condition"/> on the entry - the
+    /// corpus rule carries none.</para>
+    /// </summary>
+    public sealed record EnableBuffRelay(float RangeInches) : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.EnableBuffRelay(RangeInches));
         }
     }
 

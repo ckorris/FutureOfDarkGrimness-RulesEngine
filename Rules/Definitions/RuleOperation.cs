@@ -689,6 +689,14 @@ public abstract record RuleOperation
     public sealed record EnableSpellRelay(float RangeInches, int CastRollBonus) : RuleOperation;
 
     /// <summary>
+    /// The bearer relays non-spell friendly picks for OTHER friendly units within <see cref="RangeInches"/>:
+    /// their friendly-targeting activated abilities may measure from the bearer's position instead of their
+    /// own. Resolution of <see cref="Effect.EnableBuffRelay"/> (#197 Extended Buff Range). Read by
+    /// <c>AbilityTargeting</c>.
+    /// </summary>
+    public sealed record EnableBuffRelay(float RangeInches) : RuleOperation;
+
+    /// <summary>
     /// Enemy Ambush arrivals must set up over <see cref="DistanceInches"/> from the bearer's unit.
     /// Resolution of <see cref="Effect.RepelAmbushers"/> (Repel Ambushers). Read by
     /// <c>AmbushArrivalRules</c>, which turns it into keep-out discs on the arrival placement request.

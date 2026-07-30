@@ -36,6 +36,8 @@ namespace FDG.Stages
                 ? gameContext.TableState.Terrain.Objects.ToList()
                 : null;
 
+            IReadOnlyList<IUnit> relays = BuffRelaysInReach(actingUnit, selector, allied, gameContext);
+
             List<DataBinding<UnitData>> eligible = new List<DataBinding<UnitData>>();
 
             foreach (ArmyData army in gameContext.GameDataStore.GetAllValues<ArmyData>())
@@ -54,9 +56,13 @@ namespace FDG.Stages
                         continue;
                     }
 
+                    // #197 Extended Buff Range: a candidate out of the ability's own reach may still be
+                    // picked "as if the user were in the relay's position" - the relay relaxes RANGE only;
+                    // every other filter below applies to the candidate unchanged.
                     float distance = UnitCompareUtilities.MinDistanceBetweenUnits(actingUnit.GetValue(),
                         candidate, out IModel? nearActing, out IModel? nearCandidate, includeVertical: false);
-                    if (distance > selector.RangeInches)
+                    if (distance > selector.RangeInches
+                        && !ReachableViaRelay(relays, candidate, selector.RangeInches))
                     {
                         continue;
                     }
@@ -87,6 +93,72 @@ namespace FDG.Stages
             }
 
             return eligible;
+        }
+
+        /// <summary>
+        /// #197 Extended Buff Range: the OTHER friendly units whose <see cref="Rules.Definitions.RuleOperation.EnableBuffRelay"/>
+        /// offer reaches the acting unit right now - each is a position the pick may be measured from.
+        /// Only a FRIENDLY pick can be relayed (the rule relays "buffs"), and only a sight-free one: a
+        /// relay lends position, not eyes, and no corpus Friend-pick requires line of sight, so the
+        /// combination is gated out rather than guessed at (grow on demand).
+        /// </summary>
+        private static IReadOnlyList<IUnit> BuffRelaysInReach(DataBinding<UnitData> actingUnit,
+            TargetSelector selector, IReadOnlyList<PlayerID> allied, IGameContext gameContext)
+        {
+            if (selector.TargetAffinity != ETargetAffinity.Friend || selector.RequireLineOfSight)
+            {
+                return Array.Empty<IUnit>();
+            }
+
+            List<IUnit>? relays = null;
+            UnitData actor = actingUnit.GetValue();
+
+            foreach (ArmyData army in gameContext.GameDataStore.GetAllValues<ArmyData>())
+            {
+                if (!allied.Contains(army.PlayerID))
+                {
+                    continue;
+                }
+
+                foreach (DataBinding<UnitData> binding in army.UnitBindings)
+                {
+                    UnitData other = binding.GetValue();
+
+                    // "Another friendly unit": never the acting unit itself, and never one off the table.
+                    if (ReferenceEquals(other, actor) || other.ID.Equals(actor.ID)) continue;
+                    if (!other.GetIsAlive() || !other.GetIsOnBattlefield()) continue;
+
+                    float distance = UnitCompareUtilities.MinDistanceBetweenUnits(actor, other,
+                        out _, out _, includeVertical: false);
+
+                    foreach (Rules.Definitions.RuleOperation.EnableBuffRelay offer in
+                             Rules.Dispatch.CapabilityRuleQueries.BuffRelayOffers(other, gameContext.RuleEvaluator))
+                    {
+                        if (distance <= offer.RangeInches)
+                        {
+                            (relays ??= new List<IUnit>()).Add(other);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            return (IReadOnlyList<IUnit>?)relays ?? Array.Empty<IUnit>();
+        }
+
+        private static bool ReachableViaRelay(IReadOnlyList<IUnit> relays, UnitData candidate,
+            float rangeInches)
+        {
+            foreach (IUnit relay in relays)
+            {
+                if (UnitCompareUtilities.MinDistanceBetweenUnits(relay, candidate,
+                        out _, out _, includeVertical: false) <= rangeInches)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         // Matches on the canonical name OR the name the book asked for, so a book alias ("Wizard" for

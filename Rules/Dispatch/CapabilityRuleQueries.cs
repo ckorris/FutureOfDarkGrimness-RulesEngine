@@ -88,6 +88,14 @@ namespace FDG.Rules.Dispatch
             RuleEvaluator evaluator) => Collect<RuleOperation.EnableSpellRelay>(unit, evaluator);
 
         /// <summary>
+        /// The non-spell pick relays <paramref name="unit"/> is currently offering to other friendly units -
+        /// each with the range it reaches (#197 <c>Extended Buff Range</c>). Empty for almost every unit.
+        /// Read by <c>AbilityTargeting</c>, the ability twin of <see cref="RelayOffers"/>.
+        /// </summary>
+        public static IReadOnlyList<RuleOperation.EnableBuffRelay> BuffRelayOffers(IUnit unit,
+            RuleEvaluator evaluator) => Collect<RuleOperation.EnableBuffRelay>(unit, evaluator);
+
+        /// <summary>
         /// How far enemy Ambush arrivals must set up from <paramref name="unit"/> — 0 for the near-universal
         /// case of a unit with no repelling rule (#197 P22, <c>Repel Ambushers</c>). Several conferring
         /// rules take the LARGEST distance, not the sum: two repel rules describe the same keep-away twice.

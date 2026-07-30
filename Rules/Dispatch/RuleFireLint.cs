@@ -312,6 +312,7 @@ public static class RuleFireLint
             EHookID.Lifecycle_OnCapabilityQuery => op is RuleOperation.EnableCasting
                 or RuleOperation.EnableTransport or RuleOperation.EnableReDeployment
                 or RuleOperation.EnableSpellLending or RuleOperation.EnableSpellRelay
+                or RuleOperation.EnableBuffRelay
                 or RuleOperation.RepelAmbushers or RuleOperation.AmbushBeacon,
 
             // DetermineHitRollStage: shifts the hit threshold and floors Quality. It never reads a Save delta.

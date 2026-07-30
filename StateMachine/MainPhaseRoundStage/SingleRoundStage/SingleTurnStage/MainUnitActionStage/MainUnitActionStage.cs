@@ -55,6 +55,10 @@ namespace FDG.Stages
                 // until the end of the activation" rules resolve before an action is chosen. Only ever entered
                 // as the starting child; every loop-back below returns to ChooseAction, so it runs once.
                 .AddChild(new ActivationStartStage(GameContext, this), out var activationStart)
+                // #197 Surprise Attack — "the first time this unit is activated, pick one enemy within 6in
+                // in LoS and roll X dice". Mandatory, so it sits between activation start and the menu
+                // rather than being offered as an action; a unit without the rule passes straight through.
+                .AddChild(new SurpriseAttackStage(GameContext, this), out var surpriseAttack)
                 .AddChild(new ChooseActionStage(GameContext, this), out var chooseAction)
                 .AddChild(new MovementStage(GameContext, this), out var movement)
                 .AddChild(new MeleeStage(GameContext, this), out var melee)
@@ -83,7 +87,10 @@ namespace FDG.Stages
                 .Build();
 
             startingChild = activationStart;
-            activationStart.OnFinished.Bind(chooseAction);
+            // The burst (if any) resolves before the unit chooses what to do, so its 6in is measured from
+            // where the activation started. Every loop-back below returns to ChooseAction, so it runs once.
+            activationStart.OnFinished.Bind(surpriseAttack);
+            surpriseAttack.OnFinished.Bind(chooseAction);
 
             chooseAction.ToMovement.Bind(movement);
             chooseAction.ToCharge.Bind(melee);

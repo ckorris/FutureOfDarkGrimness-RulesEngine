@@ -37,6 +37,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(AttackWithThisWeapon), "attackWithThisWeapon")]
 [JsonDerivedType(typeof(DealAutoWounds), "dealAutoWounds")]
 [JsonDerivedType(typeof(StormOfHits), "stormOfHits")]
+[JsonDerivedType(typeof(DealPooledHits), "dealPooledHits")]
 [JsonDerivedType(typeof(Heal), "heal")]
 [JsonDerivedType(typeof(GrantToken), "grantToken")]
 [JsonDerivedType(typeof(ConsumeToken), "consumeToken")]
@@ -477,6 +478,46 @@ public abstract record Effect
         {
             operations.Add(new RuleOperation.InvokeStorm(PoolDice, SuccessThreshold, HitsPerSuccess,
                 WithRules, ArmorPenetration, RangeInches));
+        }
+    }
+
+    /// <summary>
+    /// #197 Surprise Attack — rolls a pool of dice against one chosen target and turns each success (a
+    /// result >= <see cref="SuccessThreshold"/>) into one HIT at <see cref="ArmorPenetration"/>. Covers
+    /// "pick one enemy unit within 6in in line of sight, and roll X dice. For each 2+ it takes one hit
+    /// with AP(1)."
+    ///
+    /// The hit-pool sibling of <see cref="DealAutoWounds"/>: where that effect's successes are DIRECT
+    /// wounds that skip the armor save, these are ordinary hits and run the full save -> wound pipeline.
+    /// And unlike <see cref="StormOfHits"/> — whose pool must be rolled DECISIVELY because each success
+    /// picks a target, and you cannot pick a fractional target — the successes here are a hit COUNT, so
+    /// they stay fractional under the probabilistic roller (the #100 dice invariant).
+    ///
+    /// <see cref="DiceCount"/> is the rule's X (a <see cref="ValueSource.Arg"/> for the numeric rating).
+    /// The range and the line-of-sight requirement ride the ability's own <c>TargetSelector</c> rather
+    /// than this effect, which carries only the pool itself. There is deliberately no <c>WithRules</c>
+    /// list: no corpus pool pairs its hits with Shred/Blast/Surge today — add one here, as
+    /// <see cref="DealHits"/> has, when one does.
+    ///
+    /// SUPPORTED PATHS (not universal, like <see cref="DealHits"/>): the emitted
+    /// <see cref="RuleOperation.InvokeDealPooledHits"/> is a plain <see cref="RuleOperation"/>, enacted
+    /// only by <c>SurpriseAttackStage</c> at <see cref="EHookID.Activation_OnActivationStart"/>, because
+    /// the hits resolve through a child-stage chain. Any other hook's generic op application drops it,
+    /// and <c>RuleFireLint</c> reports it as unhandled there.
+    /// </summary>
+    public sealed record DealPooledHits(ValueSource DiceCount, int SuccessThreshold, int ArmorPenetration)
+        : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            int diceCount = DiceCount.Resolve(ruleInvocation);
+            if (diceCount <= 0)
+            {
+                return;
+            }
+
+            operations.Add(new RuleOperation.InvokeDealPooledHits(ruleInvocation.EffectiveTarget,
+                diceCount, SuccessThreshold, ArmorPenetration));
         }
     }
 

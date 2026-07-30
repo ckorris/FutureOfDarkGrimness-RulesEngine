@@ -42,7 +42,21 @@ namespace FDG.Stages
         public static Result Resolve(IGameContext gameContext, IUnit attacker, IUnit target,
             int baseHits, Weapon weapon, bool isSpell)
         {
-            IDiceResults rolled = gameContext.DiceRoller.Roll(baseHits);
+            return ResolveRolled(gameContext, attacker, target, gameContext.DiceRoller.Roll(baseHits),
+                weapon, isSpell);
+        }
+
+        /// <summary>
+        /// The same fold over hits that are ALREADY rolled — a pool whose successes are the hits (#197
+        /// Surprise Attack: "roll X dice, for each 2+ it takes one hit"). The caller keeps its own success
+        /// sub-histogram, so the fractional hit count survives the probabilistic roller instead of being
+        /// int-locked into a <paramref name="rolled"/>-sized batch. Everything downstream is identical to
+        /// the scalar entry point above: the faces feed the on-6 rules, the defender participates, and the
+        /// per-AP split partitions the same dice.
+        /// </summary>
+        public static Result ResolveRolled(IGameContext gameContext, IUnit attacker, IUnit target,
+            IDiceResults rolled, Weapon weapon, bool isSpell)
+        {
             float distance = UnitCompareUtilities.MinDistanceBetweenUnits(attacker, target, out _, out _,
                 includeVertical: false);
 

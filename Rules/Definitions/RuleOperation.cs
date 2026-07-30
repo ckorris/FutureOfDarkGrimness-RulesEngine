@@ -492,6 +492,17 @@ public abstract record RuleOperation
         IReadOnlyList<string> WithRules, int ArmorPenetration, float RangeInches) : RuleOperation;
 
     /// <summary>
+    /// #197 Surprise Attack — roll <see cref="DiceCount"/> dice at <see cref="Target"/>; each result >=
+    /// <see cref="SuccessThreshold"/> is one HIT at <see cref="ArmorPenetration"/>. Resolution of
+    /// <see cref="Effect.DealPooledHits"/>. A plain <see cref="RuleOperation"/>, enacted by
+    /// SurpriseAttackStage, which rolls the pool and feeds the successes into the shared save -> wound
+    /// pipeline. The success count is never int-locked: it is the hit total, which stays fractional under
+    /// the probabilistic roller.
+    /// </summary>
+    public sealed record InvokeDealPooledHits(IUnit Target, int DiceCount, int SuccessThreshold,
+        int ArmorPenetration) : RuleOperation;
+
+    /// <summary>
     /// Restore <see cref="Amount"/> wounds on <see cref="Target"/>. Resolution
     /// of <see cref="Effect.Heal"/>; the <see cref="DiceExpression"/> has already
     /// been rolled by the dispatcher, so <see cref="Amount"/> is concrete — a

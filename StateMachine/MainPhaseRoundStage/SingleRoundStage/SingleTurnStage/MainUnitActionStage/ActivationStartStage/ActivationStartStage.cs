@@ -31,6 +31,12 @@ namespace FDG.Stages
     /// <see cref="Rules.Foundation.ELifetime.UntilNextActivation"/> — which is why this stage also opens by
     /// sweeping the previous grant (see <see cref="ClearUntilNextActivationTokens"/>).
     ///
+    /// One family of offers at this hook is deliberately NOT resolved here: a <see cref="Effect.DealPooledHits"/>
+    /// ability (#197 Surprise Attack) deals hits through a save/wound child chain, which a leaf stage cannot
+    /// run, so <c>SurpriseAttackStage</c> - the very next stage - gathers and resolves it instead. Filtering
+    /// it out below is what stops it being consumed twice (the ChooseActionStage-routes-Storm shape, moved
+    /// one stage earlier).
+    ///
     /// It also resolves the hook's PASSIVE entries — token grants, executables, and the
     /// reposition-at-activation placement (Wolfborn / Bounding / Rapid Blink), whose operations it sums into a
     /// single prompt. It never runs a child pipeline, which is why it can be a leaf stage rather than a
@@ -62,7 +68,8 @@ namespace FDG.Stages
             // Grouped by rule and kept in declaration order, so "pick one effect" means one pick per rule and
             // the option indices line up with the rule's authored ability list.
             foreach (IReadOnlyList<AbilityOffer> ruleOffers in AbilityEffectChoice.GroupByRule(
-                         GameContext.RuleEvaluator.GatherOffers(new ActivationStartContext(unit))))
+                         GameContext.RuleEvaluator.GatherOffers(new ActivationStartContext(unit))
+                             .Where(offer => offer.Ability.Effect is not Effect.DealPooledHits)))
             {
                 // A rule offering exactly ONE ability at this hook is a "you MAY use" rule (Speed Feat's
                 // once-per-game boost): offer it with a Yes/No, don't force it - declining saves it for a

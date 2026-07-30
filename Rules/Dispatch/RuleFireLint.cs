@@ -443,6 +443,8 @@ public static class RuleFireLint
         RuleOperation.InvokeDealAutoWounds => hook is EHookID.Movement_OnMoveThroughEnemy,
         // #197 P10 Storm of X: an action-choice ability enacted by StormStage (routed from ChooseActionStage).
         RuleOperation.InvokeStorm => hook is EHookID.Activation_OnActionChoice,
+        // #197 Surprise Attack: the first-activation hit pool, rolled by SurpriseAttackStage.
+        RuleOperation.InvokeDealPooledHits => hook is EHookID.Activation_OnActivationStart,
         // #197 P16 Takedown Strike / Shot: an extra attack run by ResolveExtraAttackStage at the attack window.
         RuleOperation.InvokeExtraAttack => hook is EHookID.Combat_OnAttackWindow,
         // #197 P21 Fanatic: a deploy-time reposition placement DeployUnitStage folds after the executor.

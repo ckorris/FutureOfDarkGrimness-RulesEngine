@@ -41,6 +41,7 @@ namespace FDG.Stages
             OnAttackerKilled = new StageBinding(this);
 
             Dictionary<string, Transition> dictionary = new TransitionSetBuilder(this)
+                .AddChild(new ResolveRavageWoundsStage(GameContext, this), out var resolveRavage)
                 .AddChild(new ResolveMeleeExtraAttackStage(GameContext, this), out var resolveExtraAttack)
                 .AddChild(new ChooseMeleeWeaponStage(GameContext, this), out var chooseMeleeWeapon)
                 .AddChild(new SwingMeleeWeaponStage(GameContext, this), out var swingMeleeWeapon)
@@ -49,10 +50,16 @@ namespace FDG.Stages
                 .AddSibling(nameof(OnAttackerKilled), OnAttackerKilled, out string onAttackerKilledEvent)
                 .Build();
 
+            // #197 P10 Ravage: "when attacking in melee" is true of the striker-back too, so its auto-wounds
+            // land before its own swings - on this context, whose roles are already reversed, so the Actor
+            // seat is the unit striking back and the wounds go at the unit that swung first. The parent's
+            // copy runs after the strike-order swap, so between the two every combatant that swings rolls
+            // its Ravage exactly once. Ahead of the P16 window below because the wounds precede the swings.
+            startingChild = resolveRavage;
+
             // #197 P16: "when it's this model's turn to attack in melee" is true of the striker-back too, so
             // the extra-attack window opens here as well - on this context, whose roles are already reversed.
-            startingChild = resolveExtraAttack;
-
+            resolveRavage.OnRavageResolved.Bind(resolveExtraAttack);
             resolveExtraAttack.OnExtraAttackResolved.Bind(chooseMeleeWeapon);
             chooseMeleeWeapon.OnChosen.Bind(swingMeleeWeapon);
             swingMeleeWeapon.FinishedSwinging.Bind(determineCanKeepSwinging);

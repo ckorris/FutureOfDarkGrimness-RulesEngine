@@ -80,9 +80,13 @@ namespace FDG.Stages
             chooseMeleeDefender.OnDefenderChosen.Bind(resolveImpact);
             // Nothing has been rolled or moved yet, so this exit must not spend the unit's attack.
             chooseMeleeDefender.BackToChooseAction.Bind(backToChooseEvent);
-            resolveImpact.OnImpactResolved.Bind(resolveRavage); // #042 Impact: charge-contact auto-hits before swings.
-            resolveRavage.OnRavageResolved.Bind(determineStrikeOrder); // #197 P10 Ravage: charge-contact auto-WOUNDS before swings.
-            determineStrikeOrder.OnStrikeOrderDetermined.Bind(pileIn); // #042 Counter: charged unit may strike first.
+            resolveImpact.OnImpactResolved.Bind(determineStrikeOrder); // #042 Impact: charge-contact auto-hits before swings.
+            determineStrikeOrder.OnStrikeOrderDetermined.Bind(resolveRavage); // #042 Counter: charged unit may strike first.
+            // #197 P10 Ravage is "when attacking in melee", not "when charging", so it resolves immediately
+            // before the swings of whoever is about to swing - which is why it sits AFTER the strike-order
+            // swap (a Counter/Unwieldy melee puts the charged unit here) and has a twin inside
+            // StrikeBackStage for the second combatant. Each unit therefore rolls its dice exactly once.
+            resolveRavage.OnRavageResolved.Bind(pileIn);
             pileIn.OnPiledIn.Bind(determineInRangeAttackers);
             determineInRangeAttackers.ToDetermineDefenders.Bind(determineInRangeDefenders);
             // #017: no in-range attacker (e.g. the defender was wiped by Impact hits before the swing) →

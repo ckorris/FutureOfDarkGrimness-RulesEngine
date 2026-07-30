@@ -21,8 +21,17 @@ namespace FDG.Stages
     /// <see cref="Effect.DealAutoWounds"/> effect (X x living carriers), and this stage sums the emitted
     /// <see cref="RuleOperation.InvokeDealAutoWounds"/> dice and rolls one pool.
     ///
-    /// DEFERRED: a Ravage unit that is CHARGED does not roll on its strike-back — only the charger triggers
-    /// this stage, mirroring Impact's charge-only scope. Recorded in the #197 ledger, not silently dropped.
+    /// Ravage is worded "when attacking in melee", NOT "when charging" (that is Impact), so the stage is
+    /// wired ONCE PER SWINGING UNIT rather than once per melee: <see cref="MeleeStage"/> runs it after
+    /// <see cref="DetermineStrikeOrderStage"/> — so a Counter/Unwieldy swap puts the CHARGED unit in the
+    /// Actor seat, which is who is about to swing — and <see cref="StrikeBackStage"/> runs a twin on its
+    /// own reversed context. Every combatant that swings therefore rolls its Ravage exactly once,
+    /// immediately before its own swings, and neither placement can double-roll the same unit.
+    ///
+    /// Note this is a second live evaluation of <see cref="EHookID.Melee_OnChargeContact"/> in one melee,
+    /// and <c>EvaluateAll</c> spends one-shot (NextTrigger) grants. Harmless for every rule at the hook
+    /// today (Impact, Heavy Impact, Counter's reduction and Ravage are all permanent, ThisAttack entries),
+    /// but a future NextTrigger grant of Impact would be consumed here without being rolled.
     /// </summary>
     public class ResolveRavageWoundsStage : ParentStage<ICombatActionContext, ICombatMetadata>
     {

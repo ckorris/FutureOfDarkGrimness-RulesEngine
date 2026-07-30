@@ -43,6 +43,29 @@ namespace FDG.Stages
         public void ClearPendingCustomAction();
 
         /// <summary>
+        /// #197 Instinctive slice 2 - a pre-validated move the player accepted as an auto-resolve option
+        /// ("move into range and attack"). Set by <see cref="ChooseActionStage"/> before routing to
+        /// MovementStage; consumed (and cleared) by <c>MovementStage.GetNewChildContext</c> so
+        /// <c>DefinePathStage</c> submits it directly instead of raising the path request. Null in every
+        /// ordinary move.
+        /// </summary>
+        public IReadOnlyList<StageResolution.Requests.ModelMoveEntry>? PendingPlannedMove { get; }
+
+        public void SetPendingPlannedMove(IReadOnlyList<StageResolution.Requests.ModelMoveEntry> entries);
+
+        public void ClearPendingPlannedMove();
+
+        /// <summary>
+        /// #197 Instinctive slice 2 - when non-null, a compelled unit is taking a MANUAL move that must
+        /// end able to attack (the rule named here is the reason shown to the player). Threaded onto the
+        /// movement request so the resolvers can enforce the destination; recomputed by
+        /// <see cref="ChooseActionStage"/> on every menu visit.
+        /// </summary>
+        public string? MoveMustEndAbleToAttackSource { get; }
+
+        public void SetMoveMustEndAbleToAttack(string? sourceRuleName);
+
+        /// <summary>
         /// Whether the unit was Shaken at the instant this activation began (snapshotted in
         /// <see cref="Reset"/>). This is the signal that decides Shaken recovery: a unit Shaken
         /// at activation start must idle this activation and recover, whereas a unit that becomes
@@ -141,6 +164,25 @@ namespace FDG.Stages
         public void ClearPendingCustomAction()
         {
             PendingCustomAction = null;
+        }
+
+        public IReadOnlyList<StageResolution.Requests.ModelMoveEntry>? PendingPlannedMove { get; private set; }
+
+        public void SetPendingPlannedMove(IReadOnlyList<StageResolution.Requests.ModelMoveEntry> entries)
+        {
+            PendingPlannedMove = entries;
+        }
+
+        public void ClearPendingPlannedMove()
+        {
+            PendingPlannedMove = null;
+        }
+
+        public string? MoveMustEndAbleToAttackSource { get; private set; }
+
+        public void SetMoveMustEndAbleToAttack(string? sourceRuleName)
+        {
+            MoveMustEndAbleToAttackSource = sourceRuleName;
         }
 
         public void RegisterMoveFinished(float distance, float advanceAllowanceInches)

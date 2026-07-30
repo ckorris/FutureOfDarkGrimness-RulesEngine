@@ -236,6 +236,173 @@ namespace FDG.Tests
                 "'+1 to hit rolls for THAT attack' - the unit's own shot and charge swing, never its strike-back");
         }
 
+        // ── Slice 2: the move-to-attack half ─────────────────────────────────────────────────────────────
+
+        [Test]
+        public void Planner_EnemyJustBeyondRifleRange_FindsAnAdvanceThatEnablesTheShot()
+        {
+            var ctx = new TestGameContext(_store, new FixedDiceRoller(4));
+            DataBinding<UnitData> mob = MakeCompelledShooter(atX: 10f);
+            MakeEnemy("Far", atX: 38f); // ~28" - rifle is 24", advance is 6"
+
+            CompelledAttackMovePlanner.EnablingMoves moves =
+                CompelledAttackMovePlanner.FindEnablingMoves(ctx, mob);
+
+            Assert.That(moves.ShootMove, Is.Not.Null, "a ~4.3in advance brings the enemy into range");
+            Assert.That(moves.ChargeMove, Is.Null, "27in to contact is far beyond the 12in charge cap");
+            Assert.That(CompelledAttackMovePlanner.WouldEndAbleToAttack(ctx, mob, moves.ShootMove!,
+                GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES), Is.True,
+                "the found move satisfies the same predicate the resolvers enforce");
+            Assert.That(mob.GetValue().Models.First().Position.x, Is.EqualTo(10f).Within(0.01f),
+                "the probe restored the real positions - detection must not move anything");
+        }
+
+        [Test]
+        public void Planner_MeleeOnlyUnit_FindsAMoveIntoChargeContact()
+        {
+            var ctx = new TestGameContext(_store, new FixedDiceRoller(4));
+            DataBinding<UnitData> freaks = MakeCompelledBrawler(atX: 10f);
+            MakeEnemy("Prey", atX: 18f); // 8" away - inside the 12" charge cap
+
+            CompelledAttackMovePlanner.EnablingMoves moves =
+                CompelledAttackMovePlanner.FindEnablingMoves(ctx, freaks);
+
+            Assert.That(moves.ChargeMove, Is.Not.Null, "a ~6in move ends in the melee cylinder");
+            Assert.That(moves.ShootMove, Is.Null, "no ranged weapons - no shoot-enabling move exists");
+            Assert.That(CompelledAttackMovePlanner.WouldEndAbleToAttack(ctx, freaks, moves.ChargeMove!,
+                GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES), Is.True);
+        }
+
+        [Test]
+        public void Planner_EnemyOutOfAllReach_FindsNothing()
+        {
+            var ctx = new TestGameContext(_store, new FixedDiceRoller(4));
+            DataBinding<UnitData> mob = MakeCompelledShooter(atX: 10f);
+            MakeEnemy("Distant", atX: 100f); // 90" - no move enables anything
+
+            CompelledAttackMovePlanner.EnablingMoves moves =
+                CompelledAttackMovePlanner.FindEnablingMoves(ctx, mob);
+
+            Assert.That(moves.ShootMove, Is.Null);
+            Assert.That(moves.ChargeMove, Is.Null);
+        }
+
+        [Test]
+        public void Planner_WouldEndAbleToAttack_RejectsAMoveThatEndsShort()
+        {
+            var ctx = new TestGameContext(_store, new FixedDiceRoller(4));
+            DataBinding<UnitData> mob = MakeCompelledShooter(atX: 10f);
+            MakeEnemy("Far", atX: 38f);
+
+            List<ModelMoveEntry> tooShort = mob.GetValue().ModelBindings
+                .Select(mb => new ModelMoveEntry(mb, new List<Position>
+                    { new Position(mb.GetValue().Position.x + 1f, mb.GetValue().Position.z) }))
+                .ToList();
+
+            Assert.That(CompelledAttackMovePlanner.WouldEndAbleToAttack(ctx, mob, tooShort,
+                GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES), Is.False,
+                "1in toward a 28in-away enemy leaves it out of range - the predicate must say so");
+        }
+
+        [Test]
+        public async Task ChooseAction_MoveCanEnableTheAttack_AutoOptionOffered_PassBarred()
+        {
+            var requester = new RecordingActionRequester(ChooseActionStage.MOVEMENT_CHOICE_NAME);
+            var ctx = new TestGameContext(_store, new FixedDiceRoller(4), playerRequester: requester);
+            DataBinding<UnitData> mob = MakeCompelledShooter(atX: 10f);
+            MakeEnemy("Far", atX: 38f);
+
+            UnitActionContext unitCtx = await DriveChooseAction(ctx, mob, bindMove: true);
+
+            Assert.That(requester.OfferedOptions,
+                Does.Contain(RULE_NAME + ChooseActionStage.COMPELLED_MOVE_AND_SHOOT_SUFFIX),
+                "the planner's found move surfaces as its own auto-resolve action");
+            Assert.That(requester.OfferedOptions, Does.Contain(ChooseActionStage.MOVEMENT_CHOICE_NAME),
+                "the manual Move stays available (requirement-flagged, enforced by the resolvers)");
+            Assert.That(requester.OfferedInvalidOptions
+                    .Single(o => o.Option == ChooseActionStage.PASS_CHOICE_NAME).Reason,
+                Does.Contain(RULE_NAME), "idling is barred while a move could enable the attack");
+            Assert.That(unitCtx.MoveMustEndAbleToAttackSource, Is.EqualTo(RULE_NAME),
+                "the manual move carries the requirement to the movement request");
+        }
+
+        [Test]
+        public async Task ChooseAction_NoEnablingMoveExists_PassStaysAvailable()
+        {
+            // The livelock guard: barred idling is only legal while a REAL alternative exists. With every
+            // enemy out of reach the planner finds nothing, so the unit acts freely.
+            var requester = new RecordingActionRequester(ChooseActionStage.PASS_CHOICE_NAME);
+            var ctx = new TestGameContext(_store, new FixedDiceRoller(4), playerRequester: requester);
+            DataBinding<UnitData> mob = MakeCompelledShooter(atX: 10f);
+            MakeEnemy("Distant", atX: 100f);
+
+            UnitActionContext unitCtx = await DriveChooseAction(ctx, mob, bindPass: true);
+
+            Assert.That(requester.OfferedOptions, Does.Contain(ChooseActionStage.PASS_CHOICE_NAME));
+            Assert.That(unitCtx.MoveMustEndAbleToAttackSource, Is.Null,
+                "no obligation - an ordinary move must not be destination-restricted");
+        }
+
+        [Test]
+        public async Task ChooseAction_AutoOptionChosen_StashesThePlannedMove_AndRoutesToMovement()
+        {
+            string label = RULE_NAME + ChooseActionStage.COMPELLED_MOVE_AND_SHOOT_SUFFIX;
+            var requester = new RecordingActionRequester(label);
+            var ctx = new TestGameContext(_store, new FixedDiceRoller(4), playerRequester: requester);
+            DataBinding<UnitData> mob = MakeCompelledShooter(atX: 10f);
+            MakeEnemy("Far", atX: 38f);
+
+            UnitActionContext unitCtx = await DriveChooseAction(ctx, mob, bindMove: true);
+
+            Assert.That(unitCtx.PendingPlannedMove, Is.Not.Null,
+                "accepting the auto option hands the planner's validated move to the movement flow");
+        }
+
+        [Test]
+        public async Task DefinePathStage_PlannedMove_IsSubmittedWithoutRaisingTheRequest()
+        {
+            // A requester that THROWS on any request: proves the planned move bypasses the prompt, and
+            // fails fast (not a hang) if a regression falls through to it.
+            var ctx = new TestGameContext(_store, new FixedDiceRoller(4),
+                playerRequester: new ThrowingRequester());
+            DataBinding<UnitData> mob = MakeCompelledShooter(atX: 10f);
+            MakeEnemy("Far", atX: 38f);
+
+            CompelledAttackMovePlanner.EnablingMoves moves =
+                CompelledAttackMovePlanner.FindEnablingMoves(ctx, mob);
+            var movementCtx = new MovementActionContext(ctx, mob, plannedMove: moves.ShootMove);
+
+            bool pathDefined = false;
+            var stage = new DefinePathStage(ctx, new NoOpLayer<IMovementActionContext>());
+            stage.OnPathDefined.Bind("test-defined");
+            stage.OnPathDefined.OnWillActivate += _ => pathDefined = true;
+            stage.BackToChooseAction.Bind("test-back");
+            await stage.Enter(movementCtx);
+
+            Assert.That(pathDefined, Is.True, "the pre-validated move is submitted directly");
+            Assert.That(movementCtx.TryGetPaths(out _), Is.True);
+        }
+
+        [Test]
+        public async Task DefinePathStage_ManualCompelledMove_RequestCarriesTheRuleName()
+        {
+            var requester = new CapturingMoveRequester();
+            var ctx = new TestGameContext(_store, new FixedDiceRoller(4), playerRequester: requester);
+            DataBinding<UnitData> mob = MakeCompelledShooter(atX: 10f);
+            MakeEnemy("Far", atX: 38f);
+
+            var movementCtx = new MovementActionContext(ctx, mob, mustEndAbleToAttackRule: RULE_NAME);
+
+            var stage = new DefinePathStage(ctx, new NoOpLayer<IMovementActionContext>());
+            stage.OnPathDefined.Bind("test-defined");
+            stage.BackToChooseAction.Bind("test-back");
+            await stage.Enter(movementCtx);
+
+            Assert.That(requester.Captured, Is.Not.Null);
+            Assert.That(requester.Captured!.MustEndAbleToAttackRule, Is.EqualTo(RULE_NAME),
+                "the resolvers read this to enforce the destination (slice 3)");
+        }
+
         // ── The authored shape (mirrors what ships in the supplement) ────────────────────────────────────
 
         private static SpecialRuleDefinition Definition() => new SpecialRuleDefinition(RULE_NAME,
@@ -262,8 +429,8 @@ namespace FDG.Tests
 
         // ── Drivers ──────────────────────────────────────────────────────────────────────────────────────
 
-        private async Task DriveChooseAction(IGameContext ctx, DataBinding<UnitData> unit,
-            bool bindShoot = false, bool bindCharge = false, bool bindPass = false)
+        private async Task<UnitActionContext> DriveChooseAction(IGameContext ctx, DataBinding<UnitData> unit,
+            bool bindShoot = false, bool bindCharge = false, bool bindPass = false, bool bindMove = false)
         {
             var unitCtx = new UnitActionContext(ctx, unit);
             unitCtx.Reset(unit);
@@ -272,7 +439,9 @@ namespace FDG.Tests
             if (bindShoot) stage.ToShoot.Bind("test-shoot");
             if (bindCharge) stage.ToCharge.Bind("test-charge");
             if (bindPass) stage.ToReconcileEndOfActivation.Bind("test-pass");
+            if (bindMove) stage.ToMovement.Bind("test-move");
             await stage.Enter(unitCtx);
+            return unitCtx;
         }
 
         private async Task DriveShootChooser(IGameContext ctx, DataBinding<UnitData> unit)
@@ -364,6 +533,30 @@ namespace FDG.Tests
                     Captured = ranged;
                     return Task.FromResult((TReply)(object)(CancellableResult<ChooseRangedAttackRequest.RangedAttackChoice>)
                         new Cancelled<ChooseRangedAttackRequest.RangedAttackChoice>());
+                }
+                throw new InvalidOperationException("Unexpected request: " + request.GetType());
+            }
+        }
+
+        private sealed class ThrowingRequester : IPlayerRequestByID
+        {
+            public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
+                where TRequest : IStageTaskRequest<TReply>
+                => throw new InvalidOperationException("No request should have been raised: " + request.GetType());
+        }
+
+        private sealed class CapturingMoveRequester : IPlayerRequestByID
+        {
+            public DefineMovementPathRequest? Captured { get; private set; }
+
+            public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
+                where TRequest : IStageTaskRequest<TReply>
+            {
+                if (request is DefineMovementPathRequest move)
+                {
+                    Captured = move;
+                    return Task.FromResult((TReply)(object)(CancellableResult<List<ModelMoveEntry>>)
+                        new Cancelled<List<ModelMoveEntry>>());
                 }
                 throw new InvalidOperationException("Unexpected request: " + request.GetType());
             }

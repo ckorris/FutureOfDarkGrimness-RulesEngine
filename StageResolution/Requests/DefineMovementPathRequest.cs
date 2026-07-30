@@ -77,6 +77,17 @@ namespace FDG.StageResolution.Requests
         /// </summary>
         public bool AllowCancel { get; }
 
+        /// <summary>
+        /// #197 Instinctive slice 2 - when non-null, this move is a COMPELLED unit's manual move and must
+        /// end able to attack: within melee range of an enemy, or (when the move fits the Advance
+        /// allowance) with some enemy fireable. The value is the compelling rule's display name, for the
+        /// resolver's player-facing rejection message. Enforced resolver-side via
+        /// <c>CompelledAttackMovePlanner.WouldEndAbleToAttack</c>; the stage stays graceful on a
+        /// non-compliant reply (the compulsion simply re-evaluates at the next action menu), so a resolver
+        /// that ignores this field degrades the rule rather than faulting the game. Null everywhere else.
+        /// </summary>
+        public string? MustEndAbleToAttackRule { get; }
+
         [JsonConstructor]
         public DefineMovementPathRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
             DataBinding<UnitData> unitDataBinding, float maxAdvanceDistance, float maxRushDistance, float maxDistanceInches,
@@ -84,7 +95,7 @@ namespace FDG.StageResolution.Requests
             bool ignoresDifficultTerrain = false, bool ignoresImpassibleTerrain = false,
             IReadOnlyList<WeaponRangeOverride>? weaponRangeOverrides = null,
             IReadOnlyList<ModelMoveBudgetInfo>? modelMoveBudgets = null,
-            bool allowCancel = false)
+            bool allowCancel = false, string? mustEndAbleToAttackRule = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -100,6 +111,7 @@ namespace FDG.StageResolution.Requests
             WeaponRangeOverrides = weaponRangeOverrides ?? new List<WeaponRangeOverride>();
             ModelMoveBudgets = modelMoveBudgets ?? new List<ModelMoveBudgetInfo>();
             AllowCancel = allowCancel;
+            MustEndAbleToAttackRule = mustEndAbleToAttackRule;
         }
 
         public DefineMovementPathRequest(PlayerID targetPlayerID,  string taskName,
@@ -108,7 +120,7 @@ namespace FDG.StageResolution.Requests
             bool ignoresDifficultTerrain = false, bool ignoresImpassibleTerrain = false,
             IReadOnlyList<WeaponRangeOverride>? weaponRangeOverrides = null,
             IReadOnlyList<ModelMoveBudgetInfo>? modelMoveBudgets = null,
-            bool allowCancel = false)
+            bool allowCancel = false, string? mustEndAbleToAttackRule = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = new TaskID(Guid.NewGuid());
@@ -124,6 +136,7 @@ namespace FDG.StageResolution.Requests
             WeaponRangeOverrides = weaponRangeOverrides ?? new List<WeaponRangeOverride>();
             ModelMoveBudgets = modelMoveBudgets ?? new List<ModelMoveBudgetInfo>();
             AllowCancel = allowCancel;
+            MustEndAbleToAttackRule = mustEndAbleToAttackRule;
         }
 
         /// <summary>

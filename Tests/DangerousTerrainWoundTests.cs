@@ -337,6 +337,10 @@ namespace FDG.Tests
 
         public MovementExecutor.DangerousTerrainResult PendingDangerousTerrain { get; private set; }
             = MovementExecutor.DangerousTerrainResult.None;
+
+        public IReadOnlyList<ModelMoveEntry>? PlannedMove => null;
+
+        public string? MustEndAbleToAttackRule => null;
         public void RegisterDangerousTerrainRoll(MovementExecutor.DangerousTerrainResult result)
             => PendingDangerousTerrain = result;
     }

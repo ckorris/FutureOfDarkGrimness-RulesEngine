@@ -38,6 +38,7 @@ namespace FDG.Stages
                 return;
             }
 
+
             // #029: a defender's Melee-Shrouding-style charge penalty shrinks how far the charger may move to
             // reach it. A charge's target isn't pinned until the move ends, so apply the worst case among
             // enemies actually in charge reach — conservative, but never lets an over-long charge through.
@@ -69,7 +70,28 @@ namespace FDG.Stages
                 context.MaxAdvanceDistance, context.MaxRushDistance, hardCap,
                 WeaponSightProfileBuilder.For(context.MovingUnit.GetValue(), context.GameContext.RuleEvaluator),
                 canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, BuildRangeOverrides(context),
-                perModelBudgets, allowCancel: true);
+                perModelBudgets, allowCancel: true,
+                mustEndAbleToAttackRule: context.MustEndAbleToAttackRule);
+
+            // #197 Instinctive slice 2: the player accepted the planner's auto-resolve move ("move into
+            // range and attack"), already validated when it was found. Submit it without raising the path
+            // request - re-validated with the same call a resolver reply gets, and a planned move that no
+            // longer validates falls through to the ordinary prompt rather than faulting (the #200
+            // discipline: never compel what cannot complete).
+            if (context.PlannedMove != null)
+            {
+                List<ModelMoveEntry> planned = context.PlannedMove.ToList();
+                if (ValidateAgainstBudgets(context, pathRequest, planned, canMoveThroughEnemies,
+                        ignoresDifficultTerrain, ignoresImpassibleTerrain, out _))
+                {
+                    GameContext.Log($"{context.MovingUnit.GetValue().Name} takes the compelled move.");
+                    context.SubmitValidPathTemplate(planned);
+                    await OnPathDefined.Activate(context);
+                    return;
+                }
+                GameContext.Log($"{context.MovingUnit.GetValue().Name}: the planned compelled move no " +
+                    "longer validates - choose the path manually.");
+            }
 
             CancellableResult<List<ModelMoveEntry>> pathResult = await context.PlayerRequester()
                 .RequestDecision<DefineMovementPathRequest, CancellableResult<List<ModelMoveEntry>>>(pathRequest);
@@ -86,29 +108,9 @@ namespace FDG.Stages
 
             List<ModelMoveEntry> movements = ((Selected<List<ModelMoveEntry>>)pathResult).Value;
 
-            List<EnemyModelFootprint> enemyFootprints = MovementUtilities.GetEnemyModelFootprints(context.MovingUnit, context.GameContext);
-            // #205: friendly models are obstacles for the END-of-move check - a unit may pass through them but
-            // may not end stacked on them. The authoritative guard the AI resolvers were missing.
-            List<EnemyModelFootprint> friendlyFootprints = MovementUtilities.GetFriendlyModelFootprints(context.MovingUnit, context.GameContext);
-
-            // #093: validate each model against its OWN budget — the same per-model budgets the request
-            // carried to the resolver, so the move preview and the authoritative check agree exactly.
-            //
-            // #159: coherency is validated LENIENTLY here (lenientCoherency: true). This is a deliberate
-            // deviation from the strict tabletop rule, where a unit must always end its move in coherency.
-            // On tabletop, a unit left broken by a mid-unit casualty and hemmed in by enemy bases is a
-            // situation two players resolve by agreement (nudge a model, accept a token overlap, etc.). We
-            // have no such negotiation channel: every response must be deterministically legal or the stage
-            // throws and the game ends on a fault (#159). The lenient rule only ever relaxes for a unit that
-            // is ALREADY out of coherency at the start of its move — it can then hold or pull together, but
-            // never scatter further (see ValidateCoherencyNotWorsened). A unit that starts coherent is held
-            // to the exact same strict 1"/9" limits as before, so normal play is unchanged.
-            if(MovementUtilities.ValidatePaths(movements,
-                entry => { var (_, rush, maxDist) = pathRequest.BudgetFor(entry.Model.GetValue().ID);
-                           return new ModelMoveBudget(rush, maxDist); },
-                enemyFootprints, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain,
-                context.RelevantTerrain, out List<ReasonForInvalidMove> invalidReasons,
-                friendlyFootprints, lenientCoherency: true) == false)
+            if(ValidateAgainstBudgets(context, pathRequest, movements, canMoveThroughEnemies,
+                ignoresDifficultTerrain, ignoresImpassibleTerrain,
+                out List<ReasonForInvalidMove> invalidReasons) == false)
             {
                 StringBuilder sb = new StringBuilder(invalidReasons[0].ToString());
                 for(int i = 1; i < invalidReasons.Count; i++)
@@ -123,6 +125,41 @@ namespace FDG.Stages
             context.SubmitValidPathTemplate(movements);
 
             await OnPathDefined.Activate(context);
+        }
+
+        /// <summary>
+        /// The authoritative move validation, shared by the resolver-reply check and the #197 planned-move
+        /// submit so the two can never diverge.
+        ///
+        /// #093: each model is validated against its OWN budget - the same per-model budgets the request
+        /// carried to the resolver, so the move preview and this check agree exactly.
+        ///
+        /// #159: coherency is validated LENIENTLY (lenientCoherency: true). This is a deliberate deviation
+        /// from the strict tabletop rule, where a unit must always end its move in coherency. On tabletop, a
+        /// unit left broken by a mid-unit casualty and hemmed in by enemy bases is a situation two players
+        /// resolve by agreement (nudge a model, accept a token overlap, etc.). We have no such negotiation
+        /// channel: every response must be deterministically legal or the stage throws and the game ends on
+        /// a fault. The lenient rule only ever relaxes for a unit that is ALREADY out of coherency at the
+        /// start of its move - it can then hold or pull together, but never scatter further (see
+        /// ValidateCoherencyNotWorsened). A unit that starts coherent is held to the exact same strict
+        /// 1"/9" limits as before, so normal play is unchanged.
+        /// </summary>
+        private static bool ValidateAgainstBudgets(IMovementActionContext context,
+            DefineMovementPathRequest pathRequest, List<ModelMoveEntry> movements,
+            bool canMoveThroughEnemies, bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
+            out List<ReasonForInvalidMove> invalidReasons)
+        {
+            List<EnemyModelFootprint> enemyFootprints = MovementUtilities.GetEnemyModelFootprints(context.MovingUnit, context.GameContext);
+            // #205: friendly models are obstacles for the END-of-move check - a unit may pass through them but
+            // may not end stacked on them. The authoritative guard the AI resolvers were missing.
+            List<EnemyModelFootprint> friendlyFootprints = MovementUtilities.GetFriendlyModelFootprints(context.MovingUnit, context.GameContext);
+
+            return MovementUtilities.ValidatePaths(movements,
+                entry => { var (_, rush, maxDist) = pathRequest.BudgetFor(entry.Model.GetValue().ID);
+                           return new ModelMoveBudget(rush, maxDist); },
+                enemyFootprints, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain,
+                context.RelevantTerrain, out invalidReasons,
+                friendlyFootprints, lenientCoherency: true);
         }
 
         // #029: turn an Aircraft's Advance into a forced straight-line move along its fixed heading (the facing

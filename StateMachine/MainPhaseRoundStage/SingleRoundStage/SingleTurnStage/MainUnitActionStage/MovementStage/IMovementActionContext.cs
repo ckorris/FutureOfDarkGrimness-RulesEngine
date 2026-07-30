@@ -64,20 +64,6 @@ namespace FDG.Stages
 
         /// <summary>Record the rolled-but-unapplied dangerous-terrain test for <c>ExecuteMoveStage</c>.</summary>
         public void RegisterDangerousTerrainRoll(MovementExecutor.DangerousTerrainResult result);
-
-        /// <summary>
-        /// #197 Instinctive slice 2 - a pre-validated move handed down from the action menu (the accepted
-        /// auto-resolve option). When non-null, <c>DefinePathStage</c> submits it directly instead of
-        /// raising the path request. Null in every ordinary move.
-        /// </summary>
-        public IReadOnlyList<ModelMoveEntry>? PlannedMove { get; }
-
-        /// <summary>
-        /// #197 Instinctive slice 2 - when non-null, this manual move must end able to attack, and the
-        /// named rule is why. Rides <c>DefineMovementPathRequest.MustEndAbleToAttackRule</c> so the
-        /// resolvers enforce the destination.
-        /// </summary>
-        public string? MustEndAbleToAttackRule { get; }
     }
 
     public class MovementActionContext : IMovementActionContext
@@ -146,18 +132,11 @@ namespace FDG.Stages
         private List<ModelMoveEntry> _paths;
 
 
-        public IReadOnlyList<ModelMoveEntry>? PlannedMove { get; }
-
-        public string? MustEndAbleToAttackRule { get; }
-
-        public MovementActionContext(IGameContext gameContext, DataBinding<UnitData> movingUnit,
-            IReadOnlyList<ModelMoveEntry>? plannedMove = null, string? mustEndAbleToAttackRule = null)
+        public MovementActionContext(IGameContext gameContext, DataBinding<UnitData> movingUnit)
         {
             GameContext = gameContext;
 
             MovingUnit = movingUnit;
-            PlannedMove = plannedMove;
-            MustEndAbleToAttackRule = mustEndAbleToAttackRule;
 
             MovementContextPrecursor precursor = MovementContextPrecursor.GetDefault(gameContext);
 

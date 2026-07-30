@@ -70,28 +70,7 @@ namespace FDG.Stages
                 context.MaxAdvanceDistance, context.MaxRushDistance, hardCap,
                 WeaponSightProfileBuilder.For(context.MovingUnit.GetValue(), context.GameContext.RuleEvaluator),
                 canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, BuildRangeOverrides(context),
-                perModelBudgets, allowCancel: true,
-                mustEndAbleToAttackRule: context.MustEndAbleToAttackRule);
-
-            // #197 Instinctive slice 2: the player accepted the planner's auto-resolve move ("move into
-            // range and attack"), already validated when it was found. Submit it without raising the path
-            // request - re-validated with the same call a resolver reply gets, and a planned move that no
-            // longer validates falls through to the ordinary prompt rather than faulting (the #200
-            // discipline: never compel what cannot complete).
-            if (context.PlannedMove != null)
-            {
-                List<ModelMoveEntry> planned = context.PlannedMove.ToList();
-                if (ValidateAgainstBudgets(context, pathRequest, planned, canMoveThroughEnemies,
-                        ignoresDifficultTerrain, ignoresImpassibleTerrain, out _))
-                {
-                    GameContext.Log($"{context.MovingUnit.GetValue().Name} takes the compelled move.");
-                    context.SubmitValidPathTemplate(planned);
-                    await OnPathDefined.Activate(context);
-                    return;
-                }
-                GameContext.Log($"{context.MovingUnit.GetValue().Name}: the planned compelled move no " +
-                    "longer validates - choose the path manually.");
-            }
+                perModelBudgets, allowCancel: true);
 
             CancellableResult<List<ModelMoveEntry>> pathResult = await context.PlayerRequester()
                 .RequestDecision<DefineMovementPathRequest, CancellableResult<List<ModelMoveEntry>>>(pathRequest);

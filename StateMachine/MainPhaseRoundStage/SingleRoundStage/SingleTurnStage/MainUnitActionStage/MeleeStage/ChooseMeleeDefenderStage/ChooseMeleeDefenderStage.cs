@@ -78,7 +78,7 @@ namespace FDG.Stages
             // narrowing happens here - before the request is issued - so every resolver, human or AI,
             // simply has no non-compliant option (the same shape as the ranged chooser's gating). Ties
             // within the float tolerance all stay valid; the choice among equals is the player's.
-            string? compelSource = Rules.Dispatch.CapabilityRuleQueries.MustAttackClosestSource(
+            string? compelSource = Rules.Dispatch.CapabilityRuleQueries.IsCompelledToAttackClosest(
                 context.AttackingUnit.GetValue(), GameContext.RuleEvaluator);
             if (compelSource != null && validDefenders.Count > 1)
             {

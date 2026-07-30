@@ -134,14 +134,16 @@ namespace FDG.Rules.Dispatch
         }
 
         /// <summary>
-        /// The alias-aware display name of the rule compelling <paramref name="unit"/> to attack the
-        /// closest valid target (#197 Instinctive), or null when it is not compelled - the near-universal
-        /// case. Read by <c>ChooseActionStage</c> (the menu restriction), <c>ChooseRangedAttackStage</c>
-        /// and <c>ChooseMeleeDefenderStage</c> (the target narrowing); the name feeds the player-facing
-        /// "why can't I pick this" reasons, mirroring <see cref="SightRuleQueries.CoverIgnoreSource"/>.
-        /// The models ride along like every capability query, so the answer respects the authored
-        /// <see cref="Condition.AllModelsHaveThisRule"/> gate (a joined hero without the rule frees the
-        /// unit) rather than re-implementing it here.
+        /// The alias-aware display name of the rule that COULD compel <paramref name="unit"/> to attack
+        /// the closest valid target (#197 Instinctive), or null when it carries no such rule - the
+        /// near-universal case. The models ride along like every capability query, so the answer respects
+        /// the authored <see cref="Condition.AllModelsHaveThisRule"/> gate (a joined hero without the rule
+        /// frees the unit) rather than re-implementing it here.
+        ///
+        /// <para>This is the CAPABILITY, not the live obligation: the rule only binds "when this model is
+        /// activated" AND it could attack then, which <c>ChooseActionStage</c> decides once and records as
+        /// <see cref="TokenType.CompelledToAttack"/>. Callers deciding whether to RESTRICT something must
+        /// use <see cref="IsCompelledToAttackClosest"/>; this one only supplies the display name.</para>
         /// </summary>
         public static string? MustAttackClosestSource(IUnit unit, RuleEvaluator evaluator)
         {
@@ -153,6 +155,19 @@ namespace FDG.Rules.Dispatch
             }
             return null;
         }
+
+        /// <summary>
+        /// The live obligation (#197 Instinctive): is <paramref name="unit"/> compelled to attack the
+        /// closest valid target during THIS activation? True only when <c>ChooseActionStage</c> found it
+        /// able to shoot or charge at the moment it activated and stamped
+        /// <see cref="TokenType.CompelledToAttack"/> - a unit that could not attack then walks into range
+        /// and attacks freely, which is what "when this model is activated" means (owner clarification
+        /// 2026-07-31). Returns the compelling rule's display name for the player-facing reason, or null.
+        /// </summary>
+        public static string? IsCompelledToAttackClosest(IUnit unit, RuleEvaluator evaluator)
+            => unit.Tokens.HasToken(TokenType.CompelledToAttack)
+                ? MustAttackClosestSource(unit, evaluator)
+                : null;
 
         private static IReadOnlyList<TOperation> Collect<TOperation>(IUnit unit, RuleEvaluator evaluator)
             where TOperation : RuleOperation

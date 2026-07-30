@@ -21,13 +21,7 @@ namespace FDG.Stages
 
         protected override IMovementActionContext GetNewChildContext(IUnitActionContext contextSelf)
         {
-            // #197 Instinctive slice 2: an accepted auto-resolve move (pre-validated by the planner) and/or
-            // the manual-move attack requirement ride down into the movement flow. The planned move is
-            // consumed here so a later ordinary Move cannot accidentally replay it.
-            IReadOnlyList<StageResolution.Requests.ModelMoveEntry>? planned = contextSelf.PendingPlannedMove;
-            contextSelf.ClearPendingPlannedMove();
-            return new MovementActionContext(GameContext, contextSelf.ActivatingUnit, planned,
-                contextSelf.MoveMustEndAbleToAttackSource);
+            return new MovementActionContext(GameContext, contextSelf.ActivatingUnit);
         }
 
         protected override Dictionary<string, Transition> PopulateTransitions(out StageBase<IMovementActionContext> startingChild)

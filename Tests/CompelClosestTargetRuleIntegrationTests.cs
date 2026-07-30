@@ -15,17 +15,22 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // Vertical-slice integration test for #197 Instinctive's compelled-attack primitive (slice 1: the
-    // from-here half): "When this model is activated, if it is able to shoot/charge an enemy unit, then it
-    // must immediately attack the closest valid target and gets +1 to hit rolls for that attack."
+    // Vertical-slice integration test for #197 Instinctive's compelled-attack primitive: "When this model
+    // is activated, if it is able to shoot/charge an enemy unit, then it must immediately attack the
+    // closest valid target and gets +1 to hit rolls for that attack."
     //
-    // The mechanism is rule-agnostic - Effect.CompelClosestTarget answers the capability query, and three
-    // sites read it: ChooseActionStage collapses the menu to the attack actions while one is possible
-    // (owner ruling 2026-07-30, strict "must immediately attack"), and the two target choosers narrow their
-    // lists to the closest VALID target before the request is issued, so every resolver - human or AI -
-    // simply has no non-compliant option (the P20 Quick Shot marks pattern). The +1 rider is ordinary
-    // authored data (RollModifier entries); what this file pins about it is the condition combo: it rides
-    // the unit's own shot and its charge swing, never its strike-back ("+1 for THAT attack").
+    // The mechanism is rule-agnostic. Effect.CompelClosestTarget answers the capability query ("carries
+    // such a rule"), but the LIVE obligation is decided once, when the unit activates: ChooseActionStage
+    // stamps TokenType.CompelledToAttack if the unit could attack at that moment, and everything
+    // downstream reads the token. A unit that could not attack then is untouched for the whole activation
+    // - it moves and attacks normally, free target, no bonus (owner's rules clarification 2026-07-31; the
+    // first cut re-derived the compulsion per menu visit and got this backwards).
+    //
+    // While compelled: the menu collapses to the attack actions (both kinds when both apply - the rule
+    // compels the target, not which attack), and the two choosers narrow to the closest VALID target
+    // before the request is issued, so every resolver - human or AI - has no non-compliant option (the P20
+    // Quick Shot marks pattern). The +1 rider is authored data gated on the same token plus the combat
+    // kind, so it rides the compelled shot and charge swing, never a strike-back ("+1 for THAT attack").
     [TestFixture]
     public class CompelClosestTargetRuleIntegrationTests
     {
@@ -110,11 +115,10 @@ namespace FDG.Tests
         }
 
         [Test]
-        public async Task ChooseAction_NothingAttackable_ActsFreely()
+        public async Task ChooseAction_NothingAttackableAtActivation_ActsFreely()
         {
-            // Slice 1 boundary: with no attack possible from here, the unit is unconstrained. (The
-            // move-to-attack extension - "if a move could enable one, it must make it" - is the next
-            // slice; this pins that the compulsion alone never strands a unit with no legal option.)
+            // "WHEN THIS MODEL IS ACTIVATED, if it is able to shoot/charge": unable at activation means
+            // the rule does nothing at all this activation - a normal move, a normal attack.
             var requester = new RecordingActionRequester(ChooseActionStage.PASS_CHOICE_NAME);
             var ctx = new TestGameContext(_store, new FixedDiceRoller(4), playerRequester: requester);
             DataBinding<UnitData> mob = MakeCompelledShooter(atX: 10f);
@@ -124,6 +128,68 @@ namespace FDG.Tests
 
             Assert.That(requester.OfferedOptions, Does.Contain(ChooseActionStage.MOVEMENT_CHOICE_NAME));
             Assert.That(requester.OfferedOptions, Does.Contain(ChooseActionStage.PASS_CHOICE_NAME));
+            Assert.That(mob.GetValue().Tokens.HasToken(TokenType.CompelledToAttack), Is.False,
+                "no obligation was stamped, so nothing downstream restricts this activation");
+        }
+
+        // The clarification's whole point (owner, 2026-07-31): the condition is read at ACTIVATION, not
+        // continuously. A unit that could not attack when it activated, then MOVED into range, attacks
+        // like any other unit - free target choice, and no +1. Re-deriving the compulsion per menu visit
+        // (the first cut) got this backwards, so this is the pin that keeps it fixed.
+        [Test]
+        public async Task ChooseAction_MovedIntoRangeAfterActivating_IsNotCompelled()
+        {
+            var requester = new RecordingActionRequester(ChooseActionStage.PASS_CHOICE_NAME);
+            var ctx = new TestGameContext(_store, new FixedDiceRoller(4), playerRequester: requester);
+            DataBinding<UnitData> mob = MakeCompelledShooter(atX: 10f);
+            DataBinding<UnitData> near = MakeEnemy("Near", atX: 90f);
+            DataBinding<UnitData> far = MakeEnemy("Far", atX: 95f);
+
+            // Activation 1: nothing in range, so no obligation is stamped.
+            UnitActionContext unitCtx = await DriveChooseAction(ctx, mob, bindPass: true);
+            Assert.That(mob.GetValue().Tokens.HasToken(TokenType.CompelledToAttack), Is.False);
+
+            // Now it moves and both enemies are in range - the menu must NOT collapse, and the shot must
+            // not be narrowed to the closest. TRANSLATE the models (keeping their z spread) rather than
+            // stacking them on one point: stacked, the near enemy's base occludes the far one for every
+            // model, the far row becomes unfireable on its own merits, and the target-gating assertion
+            // below would pass no matter what the gate did.
+            foreach (IModel model in mob.GetValue().Models)
+            {
+                ((ModelData)model).SetPosition(new Position(model.Position.x + 65f, model.Position.z));
+            }
+            unitCtx.RegisterMoveFinished(6f, 6f);
+
+            var second = new RecordingActionRequester(ChooseActionStage.SHOOT_CHOICE_NAME);
+            var ctx2 = new TestGameContext(_store, new FixedDiceRoller(4), playerRequester: second);
+            var stage = new ChooseActionStage(ctx2, new NoOpLayer<IUnitActionContext>());
+            stage.ToShoot.Bind("test-shoot");
+            await stage.Enter(unitCtx);
+
+            Assert.That(second.OfferedOptions, Does.Contain(ChooseActionStage.PASS_CHOICE_NAME),
+                "it moved into range under its own steam - the rule never bound, so idling is still legal");
+            Assert.That(mob.GetValue().Tokens.HasToken(TokenType.CompelledToAttack), Is.False,
+                "and no obligation appears late");
+
+            var shootRequester = new CapturingShootRequester();
+            var ctx3 = new TestGameContext(_store, new FixedDiceRoller(4), playerRequester: shootRequester);
+            await DriveShootChooser(ctx3, mob);
+            Assert.That(ReasonFor(shootRequester, far), Is.Null,
+                "the farther target stays selectable: an uncompelled unit picks freely");
+        }
+
+        [Test]
+        public async Task ChooseAction_CompelledAtActivation_StampsTheObligation_ForTheChoosers()
+        {
+            var requester = new RecordingActionRequester(ChooseActionStage.SHOOT_CHOICE_NAME);
+            var ctx = new TestGameContext(_store, new FixedDiceRoller(4), playerRequester: requester);
+            DataBinding<UnitData> mob = MakeCompelledShooter(atX: 10f);
+            MakeEnemy("Near", atX: 15f);
+
+            await DriveChooseAction(ctx, mob, bindShoot: true);
+
+            Assert.That(mob.GetValue().Tokens.HasToken(TokenType.CompelledToAttack), Is.True,
+                "the decision outlives the menu - the target choosers and the +1 rider both read it");
         }
 
         [Test]
@@ -148,6 +214,7 @@ namespace FDG.Tests
             var requester = new CapturingShootRequester();
             var ctx = new TestGameContext(_store, new FixedDiceRoller(4), playerRequester: requester);
             DataBinding<UnitData> mob = MakeCompelledShooter(atX: 10f);
+            Compel(mob);
             DataBinding<UnitData> near = MakeEnemy("Near", atX: 16f); // 6"
             DataBinding<UnitData> far = MakeEnemy("Far", atX: 22f);   // 12"
 
@@ -168,6 +235,7 @@ namespace FDG.Tests
             var requester = new CapturingShootRequester();
             var ctx = new TestGameContext(_store, new FixedDiceRoller(4), playerRequester: requester);
             DataBinding<UnitData> mob = MakeCompelledShooter(atX: 10f);
+            Compel(mob);
             DataBinding<UnitData> hidden = MakeEnemy("Hidden", atX: 16f);  // 6" but behind the wall
             DataBinding<UnitData> visible = MakeEnemy("Visible", atX: 22f, atZ: 30f); // ~15.6", open
             _store.Create(new TerrainData(ETerrainType.Blocking, new RectangularZone(13f, 14f, 8f, 12f)));
@@ -203,6 +271,7 @@ namespace FDG.Tests
             var requester = new CapturingMeleeRequester();
             var ctx = new TestGameContext(_store, new FixedDiceRoller(4), playerRequester: requester);
             DataBinding<UnitData> mob = MakeCompelledBrawler(atX: 10f);
+            Compel(mob);
             DataBinding<UnitData> close = MakeEnemy("Close", atX: 11.2f);   // 0.2" base to base
             DataBinding<UnitData> nearEdge = MakeEnemy("Edge", atX: 12.6f); // 1.6" - in range, farther
 
@@ -223,6 +292,7 @@ namespace FDG.Tests
         {
             var ctx = new TestGameContext(_store, new FixedDiceRoller(4));
             DataBinding<UnitData> mob = MakeCompelledShooter(atX: 10f);
+            Compel(mob);
             DataBinding<UnitData> enemy = MakeEnemy("Enemy", atX: 15f);
 
             IReadOnlyList<RuleOperation> ops = ctx.RuleEvaluator.EvaluateAll(
@@ -236,202 +306,23 @@ namespace FDG.Tests
                 "'+1 to hit rolls for THAT attack' - the unit's own shot and charge swing, never its strike-back");
         }
 
-        // ── Slice 2: the move-to-attack half ─────────────────────────────────────────────────────────────
-
         [Test]
-        public void Planner_EnemyJustBeyondRifleRange_FindsAnAdvanceThatEnablesTheShot()
+        public void Rider_WithoutTheObligation_NoBonus()
         {
+            // The control the clarification demands: a unit that HAS Instinctive but was not compelled
+            // this activation (it walked into range) shoots at its ordinary Quality.
             var ctx = new TestGameContext(_store, new FixedDiceRoller(4));
-            DataBinding<UnitData> mob = MakeCompelledShooter(atX: 10f);
-            MakeEnemy("Far", atX: 38f); // ~28" - rifle is 24", advance is 6"
+            DataBinding<UnitData> mob = MakeCompelledShooter(atX: 10f); // rule attached, token NOT stamped
+            DataBinding<UnitData> enemy = MakeEnemy("Enemy", atX: 15f);
 
-            CompelledAttackMovePlanner.EnablingMoves moves =
-                CompelledAttackMovePlanner.FindEnablingMoves(ctx, mob);
+            IReadOnlyList<RuleOperation> ops = ctx.RuleEvaluator.EvaluateAll(
+                new HitRollModifierContext(mob.GetValue(), enemy.GetValue(), 5f, AttackerMoved: true,
+                    IsMelee: false, IsCharging: false),
+                RuleParticipant.Actor(mob.GetValue(), null, mob.GetValue().Models));
 
-            Assert.That(moves.ShootMove, Is.Not.Null, "a ~4.3in advance brings the enemy into range");
-            Assert.That(moves.ChargeMove, Is.Null, "27in to contact is far beyond the 12in charge cap");
-            Assert.That(CompelledAttackMovePlanner.WouldEndAbleToAttack(ctx, mob, moves.ShootMove!,
-                GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES), Is.True,
-                "the found move satisfies the same predicate the resolvers enforce");
-            Assert.That(mob.GetValue().Models.First().Position.x, Is.EqualTo(10f).Within(0.01f),
-                "the probe restored the real positions - detection must not move anything");
-        }
-
-        [Test]
-        public void Planner_MeleeOnlyUnit_FindsAMoveIntoChargeContact()
-        {
-            var ctx = new TestGameContext(_store, new FixedDiceRoller(4));
-            DataBinding<UnitData> freaks = MakeCompelledBrawler(atX: 10f);
-            MakeEnemy("Prey", atX: 18f); // 8" away - inside the 12" charge cap
-
-            CompelledAttackMovePlanner.EnablingMoves moves =
-                CompelledAttackMovePlanner.FindEnablingMoves(ctx, freaks);
-
-            Assert.That(moves.ChargeMove, Is.Not.Null, "a ~6in move ends in the melee cylinder");
-            Assert.That(moves.ShootMove, Is.Null, "no ranged weapons - no shoot-enabling move exists");
-            Assert.That(CompelledAttackMovePlanner.WouldEndAbleToAttack(ctx, freaks, moves.ChargeMove!,
-                GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES), Is.True);
-        }
-
-        [Test]
-        public void Planner_EnemyOutOfAllReach_FindsNothing()
-        {
-            var ctx = new TestGameContext(_store, new FixedDiceRoller(4));
-            DataBinding<UnitData> mob = MakeCompelledShooter(atX: 10f);
-            MakeEnemy("Distant", atX: 100f); // 90" - no move enables anything
-
-            CompelledAttackMovePlanner.EnablingMoves moves =
-                CompelledAttackMovePlanner.FindEnablingMoves(ctx, mob);
-
-            Assert.That(moves.ShootMove, Is.Null);
-            Assert.That(moves.ChargeMove, Is.Null);
-        }
-
-        [Test]
-        public void Planner_WouldEndAbleToAttack_RejectsAMoveThatEndsShort()
-        {
-            var ctx = new TestGameContext(_store, new FixedDiceRoller(4));
-            DataBinding<UnitData> mob = MakeCompelledShooter(atX: 10f);
-            MakeEnemy("Far", atX: 38f);
-
-            List<ModelMoveEntry> tooShort = mob.GetValue().ModelBindings
-                .Select(mb => new ModelMoveEntry(mb, new List<Position>
-                    { new Position(mb.GetValue().Position.x + 1f, mb.GetValue().Position.z) }))
-                .ToList();
-
-            Assert.That(CompelledAttackMovePlanner.WouldEndAbleToAttack(ctx, mob, tooShort,
-                GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES), Is.False,
-                "1in toward a 28in-away enemy leaves it out of range - the predicate must say so");
-        }
-
-        [Test]
-        public async Task ChooseAction_MoveCanEnableTheAttack_AutoOptionOffered_PassBarred()
-        {
-            var requester = new RecordingActionRequester(ChooseActionStage.MOVEMENT_CHOICE_NAME);
-            var ctx = new TestGameContext(_store, new FixedDiceRoller(4), playerRequester: requester);
-            DataBinding<UnitData> mob = MakeCompelledShooter(atX: 10f);
-            MakeEnemy("Far", atX: 38f);
-
-            UnitActionContext unitCtx = await DriveChooseAction(ctx, mob, bindMove: true);
-
-            Assert.That(requester.OfferedOptions,
-                Does.Contain(RULE_NAME + ChooseActionStage.COMPELLED_MOVE_AND_SHOOT_SUFFIX),
-                "the planner's found move surfaces as its own auto-resolve action");
-            Assert.That(requester.OfferedOptions, Does.Contain(ChooseActionStage.MOVEMENT_CHOICE_NAME),
-                "the manual Move stays available (requirement-flagged, enforced by the resolvers)");
-            Assert.That(requester.OfferedInvalidOptions
-                    .Single(o => o.Option == ChooseActionStage.PASS_CHOICE_NAME).Reason,
-                Does.Contain(RULE_NAME), "idling is barred while a move could enable the attack");
-            Assert.That(unitCtx.MoveMustEndAbleToAttackSource, Is.EqualTo(RULE_NAME),
-                "the manual move carries the requirement to the movement request");
-        }
-
-        [Test]
-        public async Task ChooseAction_NoEnablingMoveExists_PassStaysAvailable()
-        {
-            // The livelock guard: barred idling is only legal while a REAL alternative exists. With every
-            // enemy out of reach the planner finds nothing, so the unit acts freely.
-            var requester = new RecordingActionRequester(ChooseActionStage.PASS_CHOICE_NAME);
-            var ctx = new TestGameContext(_store, new FixedDiceRoller(4), playerRequester: requester);
-            DataBinding<UnitData> mob = MakeCompelledShooter(atX: 10f);
-            MakeEnemy("Distant", atX: 100f);
-
-            UnitActionContext unitCtx = await DriveChooseAction(ctx, mob, bindPass: true);
-
-            Assert.That(requester.OfferedOptions, Does.Contain(ChooseActionStage.PASS_CHOICE_NAME));
-            Assert.That(unitCtx.MoveMustEndAbleToAttackSource, Is.Null,
-                "no obligation - an ordinary move must not be destination-restricted");
-        }
-
-        [Test]
-        public async Task ChooseAction_AutoOptionChosen_StashesThePlannedMove_AndRoutesToMovement()
-        {
-            string label = RULE_NAME + ChooseActionStage.COMPELLED_MOVE_AND_SHOOT_SUFFIX;
-            var requester = new RecordingActionRequester(label);
-            var ctx = new TestGameContext(_store, new FixedDiceRoller(4), playerRequester: requester);
-            DataBinding<UnitData> mob = MakeCompelledShooter(atX: 10f);
-            MakeEnemy("Far", atX: 38f);
-
-            UnitActionContext unitCtx = await DriveChooseAction(ctx, mob, bindMove: true);
-
-            Assert.That(unitCtx.PendingPlannedMove, Is.Not.Null,
-                "accepting the auto option hands the planner's validated move to the movement flow");
-        }
-
-        [Test]
-        public async Task DefinePathStage_PlannedMove_IsSubmittedWithoutRaisingTheRequest()
-        {
-            // A requester that THROWS on any request: proves the planned move bypasses the prompt, and
-            // fails fast (not a hang) if a regression falls through to it.
-            var ctx = new TestGameContext(_store, new FixedDiceRoller(4),
-                playerRequester: new ThrowingRequester());
-            DataBinding<UnitData> mob = MakeCompelledShooter(atX: 10f);
-            MakeEnemy("Far", atX: 38f);
-
-            CompelledAttackMovePlanner.EnablingMoves moves =
-                CompelledAttackMovePlanner.FindEnablingMoves(ctx, mob);
-            var movementCtx = new MovementActionContext(ctx, mob, plannedMove: moves.ShootMove);
-
-            bool pathDefined = false;
-            var stage = new DefinePathStage(ctx, new NoOpLayer<IMovementActionContext>());
-            stage.OnPathDefined.Bind("test-defined");
-            stage.OnPathDefined.OnWillActivate += _ => pathDefined = true;
-            stage.BackToChooseAction.Bind("test-back");
-            await stage.Enter(movementCtx);
-
-            Assert.That(pathDefined, Is.True, "the pre-validated move is submitted directly");
-            Assert.That(movementCtx.TryGetPaths(out _), Is.True);
-        }
-
-        [Test]
-        public async Task DefinePathStage_ManualCompelledMove_RequestCarriesTheRuleName()
-        {
-            var requester = new CapturingMoveRequester();
-            var ctx = new TestGameContext(_store, new FixedDiceRoller(4), playerRequester: requester);
-            DataBinding<UnitData> mob = MakeCompelledShooter(atX: 10f);
-            MakeEnemy("Far", atX: 38f);
-
-            var movementCtx = new MovementActionContext(ctx, mob, mustEndAbleToAttackRule: RULE_NAME);
-
-            var stage = new DefinePathStage(ctx, new NoOpLayer<IMovementActionContext>());
-            stage.OnPathDefined.Bind("test-defined");
-            stage.BackToChooseAction.Bind("test-back");
-            await stage.Enter(movementCtx);
-
-            Assert.That(requester.Captured, Is.Not.Null);
-            Assert.That(requester.Captured!.MustEndAbleToAttackRule, Is.EqualTo(RULE_NAME),
-                "the resolvers read this to enforce the destination (slice 3)");
-        }
-
-        // ── Slice 3: the resolver-side destination check (request data + table geometry, no IGameContext) ─
-
-        [Test]
-        public async Task DestinationCheck_AgreesWithTheGates_OnAllThreeOutcomes()
-        {
-            var requester = new CapturingMoveRequester();
-            var ctx = new TestGameContext(_store, new FixedDiceRoller(4), playerRequester: requester);
-            DataBinding<UnitData> mob = MakeCompelledShooter(atX: 10f);
-            MakeEnemy("Far", atX: 38f); // ~28": in range after a ~4.3" advance; in melee after ~27"
-
-            // Capture a real request (budgets, profiles, overrides) by driving DefinePathStage.
-            var movementCtx = new MovementActionContext(ctx, mob, mustEndAbleToAttackRule: RULE_NAME);
-            var stage = new DefinePathStage(ctx, new NoOpLayer<IMovementActionContext>());
-            stage.OnPathDefined.Bind("test-defined");
-            stage.BackToChooseAction.Bind("test-back");
-            await stage.Enter(movementCtx);
-            DefineMovementPathRequest request = requester.Captured!;
-
-            List<ModelMoveEntry> Move(float dx) => mob.GetValue().ModelBindings
-                .Select(mb => new ModelMoveEntry(mb, new List<Position>
-                    { new Position(mb.GetValue().Position.x + dx, mb.GetValue().Position.z) }))
-                .ToList();
-
-            Assert.That(CompelledMoveDestinationCheck.EndsAbleToAttack(ctx.TableState, request, Move(5f)),
-                Is.True, "a 5in advance ends in rifle range - compliant");
-            Assert.That(CompelledMoveDestinationCheck.EndsAbleToAttack(ctx.TableState, request, Move(1f)),
-                Is.False, "a 1in shuffle ends out of range of everything - non-compliant");
-            Assert.That(CompelledMoveDestinationCheck.EndsAbleToAttack(ctx.TableState, request, Move(10f)),
-                Is.False, "10in is a RUSH - in range but unable to shoot, and not in melee range: non-compliant");
+            Assert.That(ops.OfType<RuleOperation.ApplyRollModifier>().Where(op => op.Roll == ERollKind.Hit)
+                .Sum(op => op.Delta), Is.EqualTo(0),
+                "'+1 for THAT attack' - an uncompelled attack is not that attack");
         }
 
         // ── The authored shape (mirrors what ships in the supplement) ────────────────────────────────────
@@ -442,15 +333,15 @@ namespace FDG.Tests
                 // The compulsion: a capability answer, gated on the whole unit carrying the rule (#267).
                 new HookEntry(EHookID.Lifecycle_OnCapabilityQuery, new Condition.AllModelsHaveThisRule(),
                     new Effect.CompelClosestTarget(), ELifetime.UntilEndOfGame),
-                // The rider, split by combat kind: the unit's own shot always qualifies (its shot IS the
-                // compelled attack while the rule binds), the melee swing only when charging - a
-                // strike-back is not "that attack".
+                // The rider: "+1 to hit rolls FOR THAT ATTACK" - the compelled attack only, so both
+                // entries gate on the obligation token as well as the combat kind. The unit's own shot
+                // qualifies; the melee swing only when charging (a strike-back is not "that attack").
                 new HookEntry(EHookID.Shooting_OnHitRollModifier,
-                    new Condition.And(new Condition.AllModelsHaveThisRule(),
+                    new Condition.And(new Condition.TokenPresent(TokenType.CompelledToAttack),
                         new Condition.Not(new Condition.IsMelee())),
                     new Effect.RollModifier(ERollKind.Hit, 1), ELifetime.UntilEndOfGame),
                 new HookEntry(EHookID.Shooting_OnHitRollModifier,
-                    new Condition.And(new Condition.AllModelsHaveThisRule(),
+                    new Condition.And(new Condition.TokenPresent(TokenType.CompelledToAttack),
                         new Condition.And(new Condition.IsMelee(), new Condition.IsCharging())),
                     new Effect.RollModifier(ERollKind.Hit, 1), ELifetime.UntilEndOfGame),
             },
@@ -505,6 +396,12 @@ namespace FDG.Tests
             unit.GetValue().AttachRuleDefinition(new ResolvedRule(RULE_NAME, Definition()));
             return unit;
         }
+
+        // Stamps the obligation ChooseActionStage would have stamped at activation, for the tests that
+        // drive a stage BELOW the menu (the choosers, the rider).
+        private static void Compel(DataBinding<UnitData> unit) =>
+            unit.GetValue().Tokens.AddToken(new Rules.Tokens.Token(TokenType.CompelledToAttack, 1,
+                new TokenClearTrigger.ActivationEnd()));
 
         private DataBinding<UnitData> MakeCompelledBrawler(float atX)
         {
@@ -564,30 +461,6 @@ namespace FDG.Tests
                     Captured = ranged;
                     return Task.FromResult((TReply)(object)(CancellableResult<ChooseRangedAttackRequest.RangedAttackChoice>)
                         new Cancelled<ChooseRangedAttackRequest.RangedAttackChoice>());
-                }
-                throw new InvalidOperationException("Unexpected request: " + request.GetType());
-            }
-        }
-
-        private sealed class ThrowingRequester : IPlayerRequestByID
-        {
-            public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
-                where TRequest : IStageTaskRequest<TReply>
-                => throw new InvalidOperationException("No request should have been raised: " + request.GetType());
-        }
-
-        private sealed class CapturingMoveRequester : IPlayerRequestByID
-        {
-            public DefineMovementPathRequest? Captured { get; private set; }
-
-            public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
-                where TRequest : IStageTaskRequest<TReply>
-            {
-                if (request is DefineMovementPathRequest move)
-                {
-                    Captured = move;
-                    return Task.FromResult((TReply)(object)(CancellableResult<List<ModelMoveEntry>>)
-                        new Cancelled<List<ModelMoveEntry>>());
                 }
                 throw new InvalidOperationException("Unexpected request: " + request.GetType());
             }

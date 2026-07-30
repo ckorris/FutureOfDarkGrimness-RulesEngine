@@ -42,12 +42,6 @@ namespace FDG.Stages
         public const string CAST_CHOICE_NAME = "Cast";
         public const string PASS_CHOICE_NAME = "Pass";
 
-        // #197 Instinctive slice 2 - the auto-resolve options for a compelled move-to-attack, labelled
-        // "<rule><suffix>" so the display self-attributes ("Instinctive: move into charge range").
-        // Constants so tests and AI resolvers can match the label without duplicating the wording.
-        public const string COMPELLED_MOVE_AND_CHARGE_SUFFIX = ": move into charge range";
-        public const string COMPELLED_MOVE_AND_SHOOT_SUFFIX = ": move into shooting range";
-
         public ChooseActionStage(IGameContext gameContext, IStateMachineLayer<IUnitActionContext> parent) : base(gameContext, parent)
         {
             ToMovement = new StageBinding(this);
@@ -129,18 +123,37 @@ namespace FDG.Stages
                 }
             }
 
-            // #197 Instinctive — the compelled-attack capability: when the unit CAN attack from where it
-            // stands, attacking is all it may do. "Must immediately attack" (owner ruling 2026-07-30,
-            // strict): Move, Pass, Cast and every ability action drop out of the menu until the attack is
-            // taken; both attack kinds stay offered when both apply (the rule does not force which). The
-            // check re-runs every time this stage is entered, so a unit that was NOT able at activation
-            // start and moves into range is bound at its next visit - the compulsion cannot be dodged by
-            // walking out of range. Once the unit HAS attacked, canShoot/canCharge are false (their gates
-            // read HasAttacked) and the menu is normal again. The target half of the compulsion - WHICH
-            // enemy - lives in the choosers (ApplyTargetGating / ChooseMeleeDefenderStage), narrowed
-            // before the request is issued so the AI complies by construction (the P20 pattern).
-            string? compelSource = Rules.Dispatch.CapabilityRuleQueries.MustAttackClosestSource(
-                context.ActivatingUnit.GetValue(), GameContext.RuleEvaluator);
+            // #197 Instinctive — "WHEN THIS MODEL IS ACTIVATED, if it is able to shoot/charge an enemy
+            // unit, then it must immediately attack the closest valid target". The condition is read ONCE,
+            // on this stage's first visit of the activation (which is the moment of activation: the only
+            // stages before it are ActivationStart and the Surprise Attack burst). If the unit could not
+            // attack then, it is unconstrained for the whole activation - it moves and attacks normally,
+            // even if the move brings an enemy into range. That is the owner's rules clarification of
+            // 2026-07-31, and it is why the decision is STAMPED rather than re-derived: re-checking each
+            // menu visit would compel a unit the rule never touched.
+            //
+            // While compelled: Move, Pass, Cast and every ability action drop out until the attack is
+            // taken; BOTH attack kinds stay offered when both apply - the rule compels the target, not
+            // which kind of attack. Once the unit has attacked, canShoot/canCharge are false (their gates
+            // read HasAttacked) so the menu is normal again. The target half - WHICH enemy - lives in the
+            // choosers, narrowed before the request is issued so the AI complies by construction (P20).
+            IUnit compelCandidate = context.ActivatingUnit.GetValue();
+            if (!context.HasMoved && !context.HasAttacked
+                && !compelCandidate.Tokens.HasToken(TokenType.CompelledToAttack)
+                && (canShoot || canCharge)
+                && Rules.Dispatch.CapabilityRuleQueries.MustAttackClosestSource(
+                       compelCandidate, GameContext.RuleEvaluator) != null)
+            {
+                // Cleared at end of activation; its presence is what the choosers and the authored +1
+                // rider both read, so a unit that merely HAS the rule gets neither.
+                compelCandidate.Tokens.AddToken(new Rules.Tokens.Token(TokenType.CompelledToAttack, 1,
+                    new TokenClearTrigger.ActivationEnd()));
+            }
+
+            string? compelSource = compelCandidate.Tokens.HasToken(TokenType.CompelledToAttack)
+                ? Rules.Dispatch.CapabilityRuleQueries.MustAttackClosestSource(
+                    compelCandidate, GameContext.RuleEvaluator)
+                : null;
             bool compelledToAttackNow = compelSource != null && (canShoot || canCharge);
             if (compelledToAttackNow)
             {
@@ -150,35 +163,12 @@ namespace FDG.Stages
                 if (canCast) { canCast = false; cantCastReason = mustAttackReason; }
             }
 
-            // #197 Instinctive slice 2 - the move-to-attack half (owner design 2026-07-30): a compelled
-            // unit that CANNOT attack from here, but for which a valid move exists that would let it, must
-            // take such a move. The planner returns CONCRETE validated moves (never a bare "yes"), each
-            // offered as its own auto-resolve action; the manual Move stays available but is flagged so
-            // the resolvers require a destination that ends able to attack. Pass/Cast are barred while the
-            // obligation stands. HasMoved gates all of this off (canMove is false then), so a unit whose
-            // manual move ended non-compliant is simply free again next visit - degraded, never deadlocked.
-            context.SetMoveMustEndAbleToAttack(null);
-            CompelledAttackMovePlanner.EnablingMoves enablingMoves = default;
-            bool compelledToMove = false;
-            if (compelSource != null && !compelledToAttackNow && canMove)
-            {
-                enablingMoves = CompelledAttackMovePlanner.FindEnablingMoves(GameContext, context.ActivatingUnit);
-                compelledToMove = enablingMoves.ShootMove != null || enablingMoves.ChargeMove != null;
-                if (compelledToMove)
-                {
-                    string mustMoveReason = $"{compelSource} - must move to attack the closest target.";
-                    if (canPass) { canPass = false; cantPassReason = mustMoveReason; }
-                    if (canCast) { canCast = false; cantCastReason = mustMoveReason; }
-                    context.SetMoveMustEndAbleToAttack(compelSource);
-                }
-            }
-
             // #010 — special rules contribute custom actions (e.g. a Caster's spell) by carrying an
             // ActivatedAbility that triggers at this hook. GatherOffers returns one offer per affordable,
             // available such ability; each surfaces below as its own action. A unit compelled to attack
             // (#197 Instinctive, above) gets none of them - the menu is the attack, so the offers are not
             // gathered at all rather than greyed one by one.
-            IReadOnlyList<AbilityOffer> customActionOffers = compelledToAttackNow || compelledToMove
+            IReadOnlyList<AbilityOffer> customActionOffers = compelledToAttackNow
                 ? Array.Empty<AbilityOffer>()
                 : GameContext.RuleEvaluator.GatherOffers(
                     new ActionChoiceContext(context.ActivatingUnit.GetValue()));
@@ -196,33 +186,6 @@ namespace FDG.Stages
             else
             {
                 invalidOptions.Add(new StringSelectionRequest.InvalidOption(MOVEMENT_CHOICE_NAME, cantMoveReason));
-            }
-
-            // #197 Instinctive slice 2: the planner's auto-resolve options - each is a concrete validated
-            // move the player may take with one pick instead of hunting for a compliant destination by
-            // hand. Offered alongside the (requirement-flagged) manual Move; when both attack kinds are
-            // enabled by a move, both are offered and the pick decides.
-            if (enablingMoves.ChargeMove != null)
-            {
-                string label = compelSource + COMPELLED_MOVE_AND_CHARGE_SUFFIX;
-                List<StageResolution.Requests.ModelMoveEntry> plannedCharge = enablingMoves.ChargeMove;
-                validOptions.Add(label);
-                outcomes.Add(label, () =>
-                {
-                    context.SetPendingPlannedMove(plannedCharge);
-                    return ToMovement.Activate(context);
-                });
-            }
-            if (enablingMoves.ShootMove != null)
-            {
-                string label = compelSource + COMPELLED_MOVE_AND_SHOOT_SUFFIX;
-                List<StageResolution.Requests.ModelMoveEntry> plannedShoot = enablingMoves.ShootMove;
-                validOptions.Add(label);
-                outcomes.Add(label, () =>
-                {
-                    context.SetPendingPlannedMove(plannedShoot);
-                    return ToMovement.Activate(context);
-                });
             }
 
             if(canCharge)
@@ -403,7 +366,7 @@ namespace FDG.Stages
             // (a "pick an enemy" ability with no enemy in range isn't shown). Routes to
             // BeforeAttackActionStage, which resolves the one chosen ability and loops back here WITHOUT
             // setting HasMoved/HasAttacked (layered), so a used ability drops off via its own once-per-X cost.
-            if (!context.HasAttacked && !compelledToAttackNow && !compelledToMove)
+            if (!context.HasAttacked && !compelledToAttackNow)
             {
                 IReadOnlyList<AbilityOffer> beforeAttackOffers = GameContext.RuleEvaluator
                     .GatherOffers(new BeforeAttackActionContext(context.ActivatingUnit.GetValue()));

@@ -151,8 +151,8 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// #197 Instinctive: "it must immediately attack the closest valid target". When the attacker
-        /// answers the compelled-attack capability query, every fireable target that is not (within a
+        /// #197 Instinctive: "it must immediately attack the closest valid target". When the attacker is
+        /// under the live compulsion (stamped at activation), every fireable target that is not (within a
         /// float tolerance) the closest fireable one becomes unselectable, so the request the resolver
         /// receives - human or AI - simply has no non-compliant option (the P20 Quick Shot pattern).
         /// Unit-level closest: one enemy is "the" target for the whole shoot action; a weapon that cannot
@@ -162,7 +162,7 @@ namespace FDG.Stages
         private static void ApplyClosestTargetGating(List<WeaponOption> weaponOptions,
             DataBinding<UnitData> attackingUnit, IGameContext gameContext)
         {
-            string? source = Rules.Dispatch.CapabilityRuleQueries.MustAttackClosestSource(
+            string? source = Rules.Dispatch.CapabilityRuleQueries.IsCompelledToAttackClosest(
                 attackingUnit.GetValue(), gameContext.RuleEvaluator);
             if (source == null) return;
 

@@ -65,6 +65,16 @@ public readonly record struct TokenType(string Id)
     public const string ACTIVATED_OUT_OF_ORDER_ID = "ActivatedOutOfOrder";
     public const string ACTIVATED_THIS_ROUND_ID = "ActivatedThisRound";
 
+    // #197 Instinctive: "WHEN THIS MODEL IS ACTIVATED, if it is able to shoot/charge ... it must
+    // immediately attack the closest valid target and gets +1 to hit for that attack." The condition is
+    // read ONCE, when the unit activates - a unit that could not attack then is unconstrained for the
+    // whole activation, even if its ordinary move brings an enemy into range. That decision has to
+    // outlive the menu (the target choosers and the +1 rider both need it, and both run later), so
+    // ChooseActionStage stamps this token on its first visit of a compelled activation and it clears at
+    // end of activation. Its presence is the whole answer: the choosers gate on it, and the rider is
+    // authored as Condition.TokenPresent over it, so a unit that merely HAS the rule gets nothing.
+    public const string COMPELLED_TO_ATTACK_ID = "CompelledToAttack";
+
 
     public static readonly TokenType Shaken = new(SHAKEN_ID);
     public static readonly TokenType Fatigued = new(FATIGUED_ID);
@@ -72,6 +82,7 @@ public readonly record struct TokenType(string Id)
     public static readonly TokenType ActivatesNext = new(ACTIVATES_NEXT_ID);
     public static readonly TokenType ActivatedOutOfOrder = new(ACTIVATED_OUT_OF_ORDER_ID);
     public static readonly TokenType ActivatedThisRound = new(ACTIVATED_THIS_ROUND_ID);
+    public static readonly TokenType CompelledToAttack = new(COMPELLED_TO_ATTACK_ID);
     public static readonly TokenType SpellTokens = new(SPELL_TOKENS_ID);
 
     /// <summary>

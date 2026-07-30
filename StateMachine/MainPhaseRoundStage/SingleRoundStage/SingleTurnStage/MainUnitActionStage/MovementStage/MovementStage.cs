@@ -1,3 +1,5 @@
+using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 
 namespace FDG.Stages
 {
@@ -70,6 +72,17 @@ namespace FDG.Stages
             // authorised the move was still granted. ExecuteMoveStage spends one-shot movement grants when
             // the move resolves, so the shoot gate can no longer re-derive this number for itself.
             selfContext.RegisterMoveFinished(distance, childContext.MaxModelAdvanceDistance);
+
+            // #197 Mobile Artillery: the same fact, but round-scoped and on the UNIT, so a rule can read it
+            // from the far side of the table during someone else's activation (HasMoved above is
+            // per-activation and only legible to the mover's own stages). This is the one seam a declared
+            // move has actually resolved at - the back-out returned above, so a cancelled move never
+            // stamps. Idempotent: a second move in the same round finds the token already there.
+            IUnit movedUnit = selfContext.ActivatingUnit.GetValue();
+            if (!movedUnit.Tokens.HasToken(TokenType.MovedThisRound))
+            {
+                movedUnit.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.MovedThisRound));
+            }
         }
     }
 }

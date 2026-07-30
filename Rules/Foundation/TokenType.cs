@@ -75,6 +75,21 @@ public readonly record struct TokenType(string Id)
     // authored as Condition.TokenPresent over it, so a unit that merely HAS the rule gets nothing.
     public const string COMPELLED_TO_ATTACK_ID = "CompelledToAttack";
 
+    // #197 Mobile Artillery's defensive arm: "as long as this unit hasn't moved during the ROUND, enemies
+    // shooting it from over 9in get -2 to hit". Named for the FACT, not the rule, like the P19 family.
+    //
+    // Round-persistent because none of the existing "did it move" state can answer this question at the
+    // seam that asks it. The hit hook fires during the ENEMY's activation, where UnitActionContext.HasMoved
+    // is per-activation and about the ACTING unit, and Condition.AfterMoving reads the attacker, not the
+    // bearer. So the fact is stamped on the unit itself and read as Not(TokenPresent(...)).
+    //
+    // Stamped at the one seam where a declared move has actually resolved (MovementStage's reconcile, next
+    // to RegisterMoveFinished, which a backed-out move never reaches). Deliberately NOT stamped by a
+    // Charge: charging requires the unit to already BE within melee range, so a charge is never itself a
+    // move - whatever brought it into range was, and that stamped this. A unit that starts its activation
+    // in contact and charges without moving has genuinely not moved, and keeps the bonus.
+    public const string MOVED_THIS_ROUND_ID = "MovedThisRound";
+
 
     public static readonly TokenType Shaken = new(SHAKEN_ID);
     public static readonly TokenType Fatigued = new(FATIGUED_ID);
@@ -83,6 +98,7 @@ public readonly record struct TokenType(string Id)
     public static readonly TokenType ActivatedOutOfOrder = new(ACTIVATED_OUT_OF_ORDER_ID);
     public static readonly TokenType ActivatedThisRound = new(ACTIVATED_THIS_ROUND_ID);
     public static readonly TokenType CompelledToAttack = new(COMPELLED_TO_ATTACK_ID);
+    public static readonly TokenType MovedThisRound = new(MOVED_THIS_ROUND_ID);
     public static readonly TokenType SpellTokens = new(SPELL_TOKENS_ID);
 
     /// <summary>

@@ -1,5 +1,8 @@
+using System.Linq;
 using FDG.Data;
 using FDG.Players;
+using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 using FDG.Stages;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
@@ -70,6 +73,59 @@ namespace FDG.Tests
                 "the player-chosen Move action offers a Back button; a rule-triggered move does not.");
         }
 
+        // ── #197 Mobile Artillery: the round-scoped MovedThisRound stamp ────────────────────────────────
+
+        // The rule's defensive arm is Not(TokenPresent(MovedThisRound)), read during the ENEMY's activation,
+        // so the fact has to be stamped on the UNIT when a move resolves - not inferred from the mover's own
+        // per-activation context, which nothing outside that activation can see. Driven through the REAL
+        // MovementStage so the seam under test is the production reconcile, not a hand-rolled equivalent.
+        [Test]
+        public async Task ResolvedMove_StampsMovedThisRound()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new ResolvingMoveRequester(3f), new FixedDiceRoller(4));
+            DataBinding<UnitData> unit = MakeUnit(ctx, new Position(10f, 10f));
+            Assert.That(unit.GetValue().Tokens.HasToken(TokenType.MovedThisRound), Is.False,
+                "precondition: a unit that has not moved carries nothing.");
+
+            await RunMovement(ctx, unit);
+
+            Assert.That(unit.GetValue().Tokens.HasToken(TokenType.MovedThisRound), Is.True,
+                "a resolved move must be legible to a rule reading the unit from the other side of the table.");
+        }
+
+        // The back-out shares this seam (the reconcile runs on every exit), so a cancelled move must not
+        // stamp - otherwise mis-clicking Move would silently switch off an artillery piece's defensive bonus
+        // for the whole round without it having moved an inch.
+        [Test]
+        public async Task CancelledMove_DoesNotStampMovedThisRound()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new CancellingMoveRequester(), new FixedDiceRoller(4));
+            DataBinding<UnitData> unit = MakeUnit(ctx, new Position(10f, 10f));
+
+            await RunMovement(ctx, unit);
+
+            Assert.That(unit.GetValue().Tokens.HasToken(TokenType.MovedThisRound), Is.False,
+                "a move that never happened leaves the unit as if it had held.");
+        }
+
+        // The token is round-scoped, not game-scoped: it must come off in the round-end sweep, or an
+        // artillery piece that moved once would never get its bonus back.
+        [Test]
+        public void MovedThisRound_ClearsAtRoundEnd()
+        {
+            Assert.That(TokenDefinitionCatalog.Lookup(TokenType.MovedThisRound).DefaultClearTrigger,
+                Is.InstanceOf<TokenClearTrigger.RoundEnd>(),
+                "'hasn't moved during the ROUND' - the window reopens next round.");
+        }
+
+        private static async Task RunMovement(IGameContext ctx, DataBinding<UnitData> unit)
+        {
+            var movement = new MovementStage(ctx, new NoOpLayer<IUnitActionContext>());
+            movement.BackToChooseAction.Bind("backToChooseAction");
+            movement.OnFinishedMovement.Bind("finishedMovement");
+            await movement.Enter(new UnitActionContext(ctx, unit));
+        }
+
         private DataBinding<UnitData> MakeUnit(IGameContext ctx, Position position)
         {
             var model = new ModelData(
@@ -114,4 +170,29 @@ namespace FDG.Tests
     }
 
     internal sealed class CancelledMoveSentinel : System.Exception { }
+
+    // Answers the path prompt with a straight move of the given length for every model, so the whole
+    // MovementStage chain resolves and its reconcile runs.
+    internal sealed class ResolvingMoveRequester : IPlayerRequestByID
+    {
+        private readonly float _distanceInches;
+        public ResolvingMoveRequester(float distanceInches) => _distanceInches = distanceInches;
+
+        public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
+            where TRequest : IStageTaskRequest<TReply>
+        {
+            if (request is DefineMovementPathRequest move)
+            {
+                List<ModelMoveEntry> entries = move.UnitDataBinding.GetValue().ModelBindings
+                    .Where(m => m.GetValue().GetIsAlive())
+                    .Select(m => new ModelMoveEntry(m, new List<Position>
+                    {
+                        new Position(m.GetValue().Position.x + _distanceInches, m.GetValue().Position.z),
+                    }))
+                    .ToList();
+                return Task.FromResult((TReply)(object)new Selected<List<ModelMoveEntry>>(entries));
+            }
+            throw new System.InvalidOperationException("Unexpected request type: " + request.GetType());
+        }
+    }
 }

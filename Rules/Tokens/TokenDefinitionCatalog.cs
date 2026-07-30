@@ -107,6 +107,14 @@ public static class TokenDefinitionCatalog
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd(),
                 Description: "Has already activated this round."),
 
+            // #197 Mobile Artillery. Normal, not Invisible: it is the only visible explanation for why an
+            // artillery piece is suddenly easier to shoot this round, and the player who needs to read it
+            // is the OWNER deciding whether to stay put. RoundEnd - the rule's window is the round.
+            new(TokenType.MOVED_THIS_ROUND_ID, "Moved", EValence.Neutral, ETokenProminence.Normal,
+                DefaultClearTrigger: new TokenClearTrigger.RoundEnd(),
+                Description: "Has moved this round - rules that reward holding position are switched off " +
+                             "until the round ends."),
+
             new(TokenType.SPELL_TOKENS_ID, "Spell Tokens", EValence.Positive, ETokenProminence.FirstClass,
                 ColorOverride: ETokenColor.Blue,
                 Description: "Spell tokens available to spend on casting this round."),

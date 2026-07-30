@@ -11,7 +11,8 @@ namespace FDG.Ai.Tactician.Resolvers
     /// once the spell's minimum target count is met (see
     /// <see cref="TacticianPlanner.TryChooseSpellTarget"/>). Deploy-order picks hold
     /// matchup-sensitive units back (#191 A5-9, Chris's option 2): generalists deploy early,
-    /// counters deploy late when more of the enemy layout is visible. Every other unit
+    /// counters deploy late when more of the enemy layout is visible. #197 Surprise Attack's
+    /// first-activation burst picks the enemy its hit pool is expected to hurt most. Every other unit
     /// selection (embark picks, ...) is the unmodified solo resolver (G3 fallback).
     /// </summary>
     public class TacticianUnitSelectionResolver
@@ -45,6 +46,18 @@ namespace FDG.Ai.Tactician.Resolvers
                     out DataBinding<UnitData>? choice))
             {
                 return Task.FromResult(choice!);
+            }
+
+            // #197 Surprise Attack: the mandatory first-activation burst target, priced by expected
+            // damage. Same discriminator shape as the spell branch above, keyed on the stage's own
+            // instruction constant rather than a duplicated literal.
+            if (request.Instructions != null
+                && request.Instructions.StartsWith(Stages.SurpriseAttackStage.PICK_INSTRUCTION_PREFIX,
+                    StringComparison.Ordinal)
+                && _planner.TryChooseBurstTarget(request.Instructions, request.ValidOptions,
+                    out DataBinding<UnitData>? burstTarget))
+            {
+                return Task.FromResult(burstTarget!);
             }
 
             if (request.Instructions == DeployOrderInstructions

@@ -313,6 +313,96 @@ namespace FDG.Ai.Tactician
             return true;
         }
 
+        /// <summary>
+        /// #197 Surprise Attack: which enemy the first-activation hit pool should fall on. Scored the
+        /// same way <see cref="SpellValuation.TargetValue"/> scores a damage spell - the FRACTION of the
+        /// target's remaining wounds the burst is expected to remove, weighted by what the target is
+        /// worth - so a burst that wipes a small elite beats one that scratches a big cheap block.
+        ///
+        /// <para>Deliberately simple: no positional or objective context, no "save it for later" (the
+        /// burst is mandatory and this is the only activation it can happen on). The pool's config is
+        /// read off the ACTIVE unit's own rule, since a burst can only be resolving during its bearer's
+        /// activation; false (fall back to the solo bot's first option) if it cannot be found.</para>
+        /// </summary>
+        public bool TryChooseBurstTarget(string instructions,
+            IReadOnlyList<SelectionRequest<UnitData>.ValidOption> options,
+            out DataBinding<UnitData>? choice)
+        {
+            choice = null;
+            if (_activeUnit == null || options.Count == 0) return false;
+            if (!instructions.StartsWith(SurpriseAttackStage.PICK_INSTRUCTION_PREFIX, StringComparison.Ordinal))
+                return false;
+
+            string ruleName = instructions[SurpriseAttackStage.PICK_INSTRUCTION_PREFIX.Length..];
+            if (!TryFindPool(ruleName, out Effect.DealPooledHits? pool, out int diceCount)) return false;
+
+            DataBinding<UnitData>? best = null;
+            float bestValue = float.NegativeInfinity;
+            foreach (SelectionRequest<UnitData>.ValidOption option in options)
+            {
+                UnitData candidate = option.Option.GetValue();
+                AttackEstimate estimate = CombatMath.EstimatePooledHits(_evaluator, _activeUnit,
+                    option.Option, ruleName, diceCount, pool!.SuccessThreshold, pool.ArmorPenetration);
+
+                float fraction = Math.Min(1f, estimate.ExpectedWounds / Math.Max(1f, candidate.RemainingWounds));
+                float value = fraction * TacticalAnalysis.UnitValue(candidate) / 100f;
+                if (best == null || value > bestValue)
+                {
+                    bestValue = value;
+                    best = option.Option;
+                }
+            }
+
+            choice = best;
+            return true;
+        }
+
+        /// <summary>
+        /// The active unit's pooled-hit ability, with its dice count resolved against the bearing rule's
+        /// arguments (Surprise Attack(5) -> 5). Matches the rule the prompt names; falls back to the only
+        /// pooled-hit rule the unit carries when the name does not match, so a display-name change cannot
+        /// silently downgrade the AI to first-option picking. Scans models too - a joined hero keeps its
+        /// rules on its own model (#093).
+        /// </summary>
+        private bool TryFindPool(string ruleName, out Effect.DealPooledHits? pool, out int diceCount)
+        {
+            pool = null;
+            diceCount = 0;
+            if (_activeUnit == null) return false;
+
+            IUnit bearer = _activeUnit.GetValue();
+            var found = new List<(ResolvedRule Rule, Effect.DealPooledHits Pool)>();
+
+            foreach (ResolvedRule rule in bearer.RuleDefinitions
+                         .Concat(bearer.Models.Where(model => model.GetIsAlive())
+                             .SelectMany(model => model.RuleDefinitions)))
+            {
+                foreach (ActivatedAbility ability in rule.Definition.Activated)
+                {
+                    if (ability.Effect is Effect.DealPooledHits pooled)
+                    {
+                        found.Add((rule, pooled));
+                    }
+                }
+            }
+
+            if (found.Count == 0) return false;
+
+            (ResolvedRule Rule, Effect.DealPooledHits Pool) match = found
+                .FirstOrDefault(entry => string.Equals(entry.Rule.RequestedName, ruleName,
+                    StringComparison.OrdinalIgnoreCase));
+            if (match.Pool == null)
+            {
+                if (found.Count > 1) return false;
+                match = found[0];
+            }
+
+            pool = match.Pool;
+            diceCount = match.Pool.DiceCount.Resolve(new RuleInvocation(Hook: null, bearer,
+                match.Rule.Arguments, Definition: match.Rule.Definition));
+            return diceCount > 0;
+        }
+
         // A5-5 disembark timing: the transport has ARRIVED when a marker we do not own outright,
         // or an enemy the cargo would beat in melee, is within the cargo's reach after the 6"
         // placement. Otherwise keep riding (M12 DeliverCargo is still driving the boat there).

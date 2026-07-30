@@ -127,6 +127,33 @@ namespace FDG.Ai.Tactician
         }
 
         /// <summary>
+        /// Expected result of a rolled hit pool (<see cref="Effect.DealPooledHits"/>, #197 Surprise
+        /// Attack) landing on the defender: <paramref name="diceCount"/> dice, each result at or above
+        /// <paramref name="successThreshold"/> becoming one hit at <paramref name="armorPenetration"/>,
+        /// resolved through the same save/wound mirror <see cref="EstimateSpellDamage"/> uses. The pool
+        /// is rolled on the probabilistic roller, so the expected hit count is fractional exactly as
+        /// SurpriseAttackStage's is - this prices the same arithmetic the stage will perform.
+        /// </summary>
+        public static AttackEstimate EstimatePooledHits(RuleEvaluator evaluator,
+            DataBinding<UnitData> attacker, DataBinding<UnitData> defender, string label,
+            int diceCount, int successThreshold, int armorPenetration)
+        {
+            if (diceCount <= 0) return AttackEstimate.Zero;
+
+            Weapon burstWeapon = new Weapon(label, rangeInches: 0f, attacks: 0,
+                armorPenetration: armorPenetration);
+
+            float hits = Dice.Roll(diceCount)
+                .SubsetAtOrAbove(DiceUtilities.ClampSuccessRollNeeded(successThreshold)).TotalRolls;
+
+            var notes = new List<string>();
+            float wounds = ResolveSaves(evaluator, attacker.GetValue(), defender.GetValue(), burstWeapon,
+                SingleGroup(hits), apReduction: 0, wholeAttackSaveModifier: 0,
+                coverBonus: 0, isMelee: false, notes);
+            return Finish(wounds, defender, notes);
+        }
+
+        /// <summary>
         /// Expected result of a full melee exchange, attacker charging the defender. Sequencing mirrors
         /// MeleeStage: impact hits first, then Counter's strike-first swap (which also strips the
         /// charge from the charger's swings - the engine's charger loses IsCharging after the swap),

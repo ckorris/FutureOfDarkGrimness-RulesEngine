@@ -3,6 +3,7 @@ using FDG.Ai.Tactician.Resolvers;
 using FDG.Data;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Foundation;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 using FDG.Utilities;
@@ -164,6 +165,91 @@ namespace FDG.Tests
             var chosen = await resolver.Resolve(request);
             Assert.That(chosen.Reference, Is.EqualTo(heavy.Reference),
                 "snipe the melter carrier, not whoever stands first in line");
+        }
+
+        // #197 Surprise Attack: the first-activation burst is mandatory and single-target, so the only
+        // decision the AI gets is WHICH enemy - priced by expected damage rather than list order.
+
+        [Test]
+        public async Task BurstTarget_PrefersTheSoftTarget_OverTheArmoredOneListedFirst()
+        {
+            var assassin = MakeBurstCarrier(dice: 5);
+            var armored = MakeUnit(_them, 1, Blade(), atX: 24f, atZ: 20f, defense: 2, woundsPerModel: 12);
+            var soft = MakeUnit(_them, 5, Blade(), atX: 20f, atZ: 24f, defense: 5);
+
+            DataBinding<UnitData> chosen = await ResolveBurstPick(assassin, ("Armored", armored), ("Soft", soft));
+
+            Assert.That(chosen.Reference, Is.EqualTo(soft.Reference),
+                "AP(1) barely dents a Defense 2+ hull and shreds a 5+ squad - the armored unit is listed " +
+                "first, so first-option picking would take it");
+        }
+
+        [Test]
+        public async Task BurstTarget_BreaksTheTie_OnWhatTheTargetIsWorth()
+        {
+            // Same defense and the same remaining wounds, so the burst removes the same FRACTION of each -
+            // the values tie on damage alone and list order would decide. What separates them is output:
+            // one squad carries melters, the other sticks. Pinning this is what stops the scoring from
+            // silently degrading to "most wounds removed", which is not the same question.
+            var assassin = MakeBurstCarrier(dice: 5);
+            var militia = MakeUnit(_them, 5, Blade(attacks: 1), atX: 24f, atZ: 20f, defense: 5);
+            var melters = MakeUnit(_them, 5, new Weapon("Melter", 12f, 3, 4), atX: 20f, atZ: 24f, defense: 5);
+
+            DataBinding<UnitData> chosen = await ResolveBurstPick(assassin, ("Militia", militia), ("Melters", melters));
+
+            Assert.That(chosen.Reference, Is.EqualTo(melters.Reference),
+                "equal damage either way, so the burst goes where the removed models are worth more");
+        }
+
+        [Test]
+        public async Task BurstTarget_WithoutTheRule_FallsBackToTheSoloPick()
+        {
+            // The discriminator (and the pool lookup behind it) must fail SAFE: an active unit with no
+            // pooled-hit rule leaves the request to the solo bot rather than throwing or guessing.
+            var plain = MakeUnit(_us, 1, Blade(), atX: 20f, atZ: 20f);
+            var first = MakeUnit(_them, 5, Blade(), atX: 24f, atZ: 20f, defense: 5);
+            var second = MakeUnit(_them, 1, Blade(), atX: 20f, atZ: 24f, defense: 2, woundsPerModel: 12);
+
+            DataBinding<UnitData> chosen = await ResolveBurstPick(plain, ("First", first), ("Second", second));
+
+            Assert.That(chosen.Reference, Is.EqualTo(first.Reference), "the solo resolver's first option");
+        }
+
+        private async Task<DataBinding<UnitData>> ResolveBurstPick(DataBinding<UnitData> carrier,
+            params (string Name, DataBinding<UnitData> Unit)[] options)
+        {
+            var planner = new TacticianPlanner(_tableState, _evaluator);
+            planner.BeginActivation(carrier);
+
+            var request = new SelectionRequest<UnitData>(_us,
+                FDG.Stages.SurpriseAttackStage.PICK_INSTRUCTION_PREFIX + BurstRuleName,
+                options.Select(o => new SelectionRequest<UnitData>.ValidOption(o.Unit, o.Name)).ToList(),
+                Array.Empty<SelectionRequest<UnitData>.InvalidOption>(), allowCancel: false);
+
+            var resolver = new TacticianUnitSelectionResolver(planner,
+                new FDG.Ai.Resolvers.AiSelectionResolver<UnitData>());
+            return await resolver.Resolve(request);
+        }
+
+        private const string BurstRuleName = "Surprise Attack(5)";
+
+        // A unit carrying the shipped rule's shape: X dice from the rule's argument, 2+, AP(1).
+        private DataBinding<UnitData> MakeBurstCarrier(int dice)
+        {
+            var carrier = MakeUnit(_us, 1, Blade(), atX: 20f, atZ: 20f);
+            var definition = new SpecialRuleDefinition("Surprise Attack",
+                Array.Empty<HookEntry>(),
+                new[]
+                {
+                    new ActivatedAbility(EHookID.Activation_OnActivationStart, new Cost.OncePerGame(),
+                        new TargetSelector(6f, 1, 1, ETargetAffinity.Foe, RequireLineOfSight: true),
+                        new Effect.DealPooledHits(new ValueSource.Arg(0), SuccessThreshold: 2,
+                            ArmorPenetration: 1),
+                        new Condition.Always()),
+                });
+            carrier.GetValue().AttachRuleDefinition(new ResolvedRule(BurstRuleName, definition,
+                new Rules.Foundation.RuleArgument[] { new Rules.Foundation.RuleArgument.Int(dice) }));
+            return carrier;
         }
 
         // --- fixtures ---------------------------------------------------------------------------

@@ -40,6 +40,13 @@ namespace FDG.Stages
     /// </summary>
     public class SurpriseAttackStage : ParentStage<IUnitActionContext, ICombatMetadata>
     {
+        /// <summary>
+        /// The target pick's instruction prefix, with the rule's name appended. Leading (rather than
+        /// trailing) so it is a stable discriminator: <c>TacticianUnitSelectionResolver</c> keys the AI's
+        /// value-weighted pick on it, exactly as it keys spell targets and deploy order on theirs.
+        /// </summary>
+        public const string PICK_INSTRUCTION_PREFIX = "Pick the enemy unit hit by ";
+
         /// <summary> The burst resolved (or there was none); continue to the action menu. </summary>
         public StageBinding OnFinished;
 
@@ -152,7 +159,7 @@ namespace FDG.Stages
 
             SelectionRequest<UnitData> request = new SelectionRequest<UnitData>(
                 context.ActivatingPlayer(),
-                $"{offer.RuleName} - pick the enemy unit that takes the hits",
+                PICK_INSTRUCTION_PREFIX + offer.RuleName,
                 valid, new List<SelectionRequest<UnitData>.InvalidOption>(), allowCancel: false);
 
             return await GameContext.PlayerRequester

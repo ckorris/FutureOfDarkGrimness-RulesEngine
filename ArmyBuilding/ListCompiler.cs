@@ -262,11 +262,26 @@ namespace FDG.ArmyBuilding
             // holding. One copy of each distinct weapon profile per application is the aggregate format's
             // expression of "this model's attacks": round-robin hands the marked copies to a model at
             // load, and the batcher already rolls a rule-bearing copy as its own volley (#027).
+            //
+            // The marked copy is then RENAMED ("Hand Weapon (Sergeant)"): the ranged-attack chooser keys
+            // its weapon pool by NAME and assumes uniqueness (#209's deterministic ordering leans on it) -
+            // a same-name split faults the shoot stage, found in this slice's play probe. Unique names
+            // keep that invariant true, and the row/log attribution ("Chose weapon: Rifle (Sergeant)")
+            // is what the player wants to see anyway.
             foreach ((SpecialRuleEntry rule, int applications) in championMarks)
             {
                 foreach (string weaponName in unit.Weapons.Select(w => w.Name).Distinct().ToList())
                 {
                     AttachRuleToWeapons(unit.Weapons, weaponName, rule, applications);
+                }
+
+                string suffix = $" ({rule.PrintableName})";
+                foreach (WeaponFileEntry weapon in unit.Weapons)
+                {
+                    if (weapon.SpecialRules.Contains(rule) && !weapon.Name.EndsWith(suffix, StringComparison.Ordinal))
+                    {
+                        weapon.Name += suffix;
+                    }
                 }
             }
 

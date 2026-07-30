@@ -65,18 +65,20 @@ namespace FDG.Tests
 
             foreach (string name in new[] { "Fireballs", "Hand Weapon" })
             {
-                List<WeaponFileEntry> copies = unit.Weapons.Where(w => w.Name == name).ToList();
-                Assert.That(copies, Has.Count.EqualTo(2), $"{name}: the stack splits marked/unmarked");
-
-                WeaponFileEntry marked = copies.Single(w => w.SpecialRules.Count > 0);
+                WeaponFileEntry marked = unit.Weapons.Single(w => w.Name == $"{name} (Sergeant)");
                 Assert.That(marked.Quantity, Is.EqualTo(1), $"{name}: exactly one copy is the sergeant's");
                 Assert.That(marked.SpecialRules.Single().PrintableName, Is.EqualTo("Sergeant"));
-                Assert.That(copies.Single(w => w.SpecialRules.Count == 0).Quantity, Is.EqualTo(4),
+                Assert.That(unit.Weapons.Single(w => w.Name == name).Quantity, Is.EqualTo(4),
                     $"{name}: the other four models' copies are untouched");
             }
 
             Assert.That(unit.SpecialRules.Select(r => r.PrintableName), Does.Not.Contain("Sergeant"),
                 "unit-level fold would spread the rule across every copy - the over-grant this exists to stop");
+
+            // The rename is load-bearing, not cosmetic: the ranged-attack chooser keys its weapon pool by
+            // NAME and faults on a duplicate ("An item with the same key has already been added"), found
+            // in this slice's play probe. Every compiled name must stay unique.
+            Assert.That(unit.Weapons.Select(w => w.Name), Is.Unique);
         }
 
         [Test]
@@ -90,8 +92,8 @@ namespace FDG.Tests
 
             Assert.That(unit.Weapons.Any(w => w.Name == "Hand Weapon"), Is.False, "the replace ran");
 
-            List<WeaponFileEntry> axes = unit.Weapons.Where(w => w.Name == "Great Axe").ToList();
-            Assert.That(axes.Single(w => w.SpecialRules.Count > 0).Quantity, Is.EqualTo(1),
+            WeaponFileEntry markedAxe = unit.Weapons.Single(w => w.Name == "Great Axe (Sergeant)");
+            Assert.That(markedAxe.Quantity, Is.EqualTo(1),
                 "the sergeant attacks with the axe he was handed, and the mark survived the swap");
         }
 
@@ -102,7 +104,7 @@ namespace FDG.Tests
             UnitFileEntry unit = Compile(DaemonWarriors(),
                 new UpgradeChoice { SectionId = "champions", OptionId = "sergeant", Count = 2 });
 
-            WeaponFileEntry marked = unit.Weapons.Single(w => w.Name == "Fireballs" && w.SpecialRules.Count > 0);
+            WeaponFileEntry marked = unit.Weapons.Single(w => w.Name == "Fireballs (Sergeant)");
             Assert.That(marked.Quantity, Is.EqualTo(2), "two champions, two marked copies");
         }
 
@@ -152,8 +154,10 @@ namespace FDG.Tests
             // The marked copy is its own hit batch: exactly one model rolls it, so the extra-hit fold
             // reads that model's dice alone - the joined-hero mechanism, reused.
             IWeapon marked = all.First(w => w.RuleDefinitions.Any(r => r.Definition.Name == "Sergeant"));
+            Assert.That(marked.Name, Does.EndWith("(Sergeant)"),
+                "the rename travels through load - the shoot chooser's name-keyed pool depends on it");
             Assert.That(HeroStatRules.LivingWeaponBatchOwners(unit, marked), Has.Count.EqualTo(1));
-            IWeapon plain = all.First(w => w.Name == marked.Name && w.RuleDefinitions.Count == 0);
+            IWeapon plain = all.First(w => w.Name == "Fireballs" && w.RuleDefinitions.Count == 0);
             Assert.That(HeroStatRules.LivingWeaponBatchOwners(unit, plain), Has.Count.EqualTo(4));
         }
 

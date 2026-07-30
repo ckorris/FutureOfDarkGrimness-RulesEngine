@@ -2,6 +2,8 @@
 
 using FDG.Data;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 using FDG.Utilities;
 
 namespace FDG.Stages
@@ -114,6 +116,14 @@ namespace FDG.Stages
                 throw new ArgumentOutOfRangeException($"Unit not found as unactivated when marking activated: {activatedUnit.GetValue().Name}");
             }
 
+            // #197 P19: the same fact, on the unit. The pool stays authoritative - this is the readable
+            // half, for the code that cannot see the round context (an ability's targeting deciding which
+            // friendly units "haven't activated yet", including an ALLY's, which no per-player pool a turn
+            // context carries would cover). Stamped and cleared in lockstep here and in
+            // ReinstateUnitForActivation, the only two places the pool moves.
+            activatedUnit.GetValue().Tokens.AddToken(
+                TokenDefinitionCatalog.Create(TokenType.ActivatedThisRound));
+
             //If we've removed the last living unit from the list, mark that player as finished.
             if (_unactivatedUnits[playerID].Where(unit => unit.GetValue().GetIsAlive()).Count() == 0)
             {
@@ -152,6 +162,9 @@ namespace FDG.Stages
             {
                 _unactivatedUnits[playerID].Add(unit);
             }
+
+            // Back in the pool means "has not activated" again - the lockstep half of MarkUnitAsActivated.
+            unit.GetValue().Tokens.RemoveTokens(TokenType.ActivatedThisRound);
         }
 
         public void CleanDeadUnitsFromUnactivated()

@@ -450,6 +450,8 @@ public static class RuleFireLint
         RuleOperation.RepositionModels => hook is EHookID.Deployment_OnUnitDeployed
             or EHookID.Activation_OnEndOfActivation,
         RuleOperation.InvokeReactivate => hook is EHookID.Activation_OnNextActivatorRequested,
+        // #197 P19: the out-of-order activation grant, applied by ReconcileEndOfActivationStage.
+        RuleOperation.InvokeActivateUnitNext => hook is EHookID.Activation_OnEndOfActivation,
         _ => false,
     };
 

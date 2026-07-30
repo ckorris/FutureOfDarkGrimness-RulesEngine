@@ -28,7 +28,27 @@ namespace FDG.Stages
         public override async Task Enter(ISingleTurnContext context)
         {
             context.LogDebug("Entered Choose Unit to Activate stage.");
-    
+
+            // #197 P19 turn-order override: a unit flagged to take the next activation is not a choice -
+            // something else already made it. Skips the menu AND the Delayed Action offer below, because
+            // both are ways of deciding what happens next and that decision is already made.
+            DataBinding<UnitData>? activatingNext = context.PlayerUnactivatedUnits
+                .FirstOrDefault(unit => unit.GetValue().GetIsAlive()
+                    && unit.GetValue().Tokens.HasToken(TokenType.ActivatesNext));
+            if (activatingNext != null && activatingNext != default)
+            {
+                UnitData forced = activatingNext.GetValue();
+                forced.Tokens.RemoveTokens(TokenType.ActivatesNext);
+                // Records HOW it activated, so an anti-chain clause can be authored as a condition rather
+                // than coded here (Coordinate's "may not be used if this unit was activated via Coordinate").
+                forced.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.ActivatedOutOfOrder));
+
+                context.Log($"{forced.Name} activates out of the normal turn order.");
+                context.ChooseUnitToActivate(activatingNext);
+                await ToMainUnitAction.Activate(context);
+                return;
+            }
+
             //Find all units.
             List<SelectionRequest<UnitData>.ValidOption> validOptions = new List<SelectionRequest<UnitData>.ValidOption>();
             List<SelectionRequest<UnitData>.InvalidOption> invalidOptions = new List<SelectionRequest<UnitData>.InvalidOption>();

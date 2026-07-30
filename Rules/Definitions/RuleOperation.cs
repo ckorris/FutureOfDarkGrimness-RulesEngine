@@ -241,6 +241,17 @@ public abstract record RuleOperation
     public sealed record InvokeReactivate(IUnit Unit, bool ClearsFatigue = false) : RuleOperation;
 
     /// <summary>
+    /// #197 P19 — <see cref="Target"/> takes the next activation, ahead of the normal team alternation.
+    /// Resolution of <see cref="Effect.ActivateUnitNext"/>. Distinct from <see cref="InvokeReactivate"/>,
+    /// which re-adds an already-activated unit to the pool as a later choice; this one reorders an
+    /// activation that was already owed. A plain <see cref="RuleOperation"/> rather than an
+    /// <see cref="ExecutableOperation"/>: the round's activation state is not reachable through the
+    /// <c>IOperationServices</c> seam, so the enacting stage applies it (as reactivation and
+    /// DeferDeployment are).
+    /// </summary>
+    public sealed record InvokeActivateUnitNext(IUnit Target) : RuleOperation;
+
+    /// <summary>
     /// Reduce the incoming attack's weapon armor penetration by <see cref="Amount"/> (floored at 0 by
     /// the save stage). Resolution of <see cref="Effect.ReduceArmorPenetration"/>; <c>RollToHitStage</c>
     /// sums these and carries the total to <c>DetermineSaveRollsNeededStage</c>, which clamps the weapon AP.

@@ -45,10 +45,33 @@ public readonly record struct TokenType(string Id)
     // the cap is per round, while the unit's own once-per-game gate is a separate, permanent marker.
     public const string REACTIVATED_THIS_ROUND_ID = "ReactivatedThisRound";
 
+    // #197 P19 - the turn-order primitive, deliberately named for the MECHANISM rather than for any rule
+    // that uses it (Coordinate is the first, and the engine never mentions it).
+    //
+    // ACTIVATES_NEXT sits on a unit that takes the NEXT activation, ahead of the normal team alternation:
+    // DeterminePlayerTurnStage points the cursor at its owner instead of advancing, and
+    // ChooseUnitToActivateStage activates it without a menu. The pool stays authoritative - a flag on a
+    // unit that is not actually unactivated is ignored - so a stale token can only ever be a no-op.
+    //
+    // ACTIVATED_OUT_OF_ORDER records that an activation was GRANTED that way. It exists so an anti-chain
+    // clause is authored as data (Not(TokenPresent(...))) rather than coded: Coordinate's "may not be used
+    // if this unit was activated via Coordinate" is exactly that condition.
+    //
+    // ACTIVATED_THIS_ROUND is the plain fact "this unit has already activated this round", which was
+    // previously derivable ONLY from the round context's pool - unreachable from a rule, an ability's
+    // targeting, or any stage below the round layer. Stamped and cleared in lockstep with the pool by
+    // SingleRoundContext (MarkUnitAsActivated / ReinstateUnitForActivation).
+    public const string ACTIVATES_NEXT_ID = "ActivatesNext";
+    public const string ACTIVATED_OUT_OF_ORDER_ID = "ActivatedOutOfOrder";
+    public const string ACTIVATED_THIS_ROUND_ID = "ActivatedThisRound";
+
 
     public static readonly TokenType Shaken = new(SHAKEN_ID);
     public static readonly TokenType Fatigued = new(FATIGUED_ID);
     public static readonly TokenType ReactivatedThisRound = new(REACTIVATED_THIS_ROUND_ID);
+    public static readonly TokenType ActivatesNext = new(ACTIVATES_NEXT_ID);
+    public static readonly TokenType ActivatedOutOfOrder = new(ACTIVATED_OUT_OF_ORDER_ID);
+    public static readonly TokenType ActivatedThisRound = new(ACTIVATED_THIS_ROUND_ID);
     public static readonly TokenType SpellTokens = new(SPELL_TOKENS_ID);
 
     /// <summary>

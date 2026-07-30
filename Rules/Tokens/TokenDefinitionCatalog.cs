@@ -87,6 +87,26 @@ public static class TokenDefinitionCatalog
                 Description: "Activated a second time this round - counts against its army's per-round " +
                              "limit on second activations."),
 
+            // #197 P19 turn-order primitive. "Activates next" is shown (Normal): it is the only visible
+            // explanation for why the alternation is about to skip a player, and the player it favours may
+            // not be the one who granted it. ManualOnly - it is consumed by the activation it causes, and a
+            // RoundEnd sweep would be the wrong owner of that lifetime; the round-end clear below is only
+            // the safety net for a flag that somehow never got spent.
+            new(TokenType.ACTIVATES_NEXT_ID, "Activates next", EValence.Positive, ETokenProminence.Normal,
+                DefaultClearTrigger: new TokenClearTrigger.RoundEnd(),
+                Description: "Takes the next activation, ahead of the normal turn order."),
+
+            // Invisible: it explains nothing the player can act on, and exists for the anti-chain condition.
+            new(TokenType.ACTIVATED_OUT_OF_ORDER_ID, "Activated out of order", EValence.Neutral,
+                ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd(),
+                Description: "This activation was granted by another unit rather than taken in turn."),
+
+            // Invisible: "has activated" is already conveyed by the activation UI itself; this token is the
+            // machine-readable half, kept in lockstep with the round's unactivated pool.
+            new(TokenType.ACTIVATED_THIS_ROUND_ID, "Activated", EValence.Neutral,
+                ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd(),
+                Description: "Has already activated this round."),
+
             new(TokenType.SPELL_TOKENS_ID, "Spell Tokens", EValence.Positive, ETokenProminence.FirstClass,
                 ColorOverride: ETokenColor.Blue,
                 Description: "Spell tokens available to spend on casting this round."),

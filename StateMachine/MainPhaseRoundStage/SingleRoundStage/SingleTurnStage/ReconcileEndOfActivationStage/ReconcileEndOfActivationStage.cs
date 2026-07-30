@@ -1,3 +1,6 @@
+using FDG.Data;
+using FDG.Presentation.Beats;
+using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
@@ -42,7 +45,7 @@ namespace FDG.Stages
                 // activation (a melee strike-back) has no end-of-activation choices to make.
                 if (unit.GetIsAlive())
                 {
-                    await OfferEndOfActivationAbilities(unit);
+                    await OfferEndOfActivationAbilities(context.ActivatedUnit);
                 }
 
                 List<ITokenContainer> containers = new List<ITokenContainer> { unit.Tokens };
@@ -60,28 +63,45 @@ namespace FDG.Stages
         /// <summary>
         /// The end-of-activation ability seam (#197 P22), mirroring <see cref="ActivationStartStage"/>'s
         /// shape: offers grouped by rule via <see cref="AbilityEffectChoice"/>, a single-ability rule
-        /// asked as an optional Yes/No, a multi-ability rule a mandatory pick. One deliberate
-        /// difference: the Yes/No DEFAULTS TO NO. At activation start the lone optional ability is a
-        /// buff (Speed Feat) and the aggressive default suits the EOF/AI fallback; here the corpus
-        /// ability it guards is Ambush Re-Deployment's once-per-game self-REMOVAL with a mandatory return,
-        /// which an auto-accepting default would fire on every AI unit's first activation.
+        /// asked as an optional Yes/No, a multi-ability rule a mandatory pick.
         ///
-        /// <para>#197 Dash: an ability whose effect is itself a cancellable placement SKIPS that Yes/No —
-        /// the placement is the "you may", and asking twice would both double-prompt the player and (with
-        /// the default-NO above) hide the rule from every automated resolver. See
+        /// <para><b>The Yes/No defaults to YES</b> (owner ruling, 2026-07-30). It defaulted to NO until
+        /// then, on the grounds that the ability it guarded was Ambush Re-Deployment's once-per-game
+        /// self-REMOVAL and an auto-accepting default would fire it on every AI unit's first activation.
+        /// The ruling reverses that reasoning: the rules offered here are paid-for one-shots, and a default
+        /// of NO meant every AI and every EOF/automated resolver declined them every time — an army paying
+        /// points for an ability only a human could ever use, and a human never seeing the mechanic played
+        /// against them. A simple AI use of an interesting rule beats a sophisticated non-use of it.</para>
+        ///
+        /// <para>#197 Dash: an ability whose effect is itself a cancellable placement SKIPS the Yes/No —
+        /// the placement is the "you may", and asking twice would double-prompt the player. See
         /// <see cref="RepositionPlacement.IsCancellablePlacement"/> for the principle.</para>
+        ///
+        /// <para>#197 P19: this is also the first end-of-activation ability with a real TARGET, so a
+        /// non-Self selector is resolved here rather than through <see cref="AbilityEffectChoice"/>, which
+        /// is self-targeted by construction.</para>
         /// </summary>
-        private async Task OfferEndOfActivationAbilities(UnitData unit)
+        private async Task OfferEndOfActivationAbilities(DataBinding<UnitData> bearer)
         {
+            UnitData unit = bearer.GetValue();
             foreach (IReadOnlyList<AbilityOffer> ruleOffers in AbilityEffectChoice.GroupByRule(
                          GameContext.RuleEvaluator.GatherOffers(new ActivationEndContext(unit))))
             {
+                // #197 P19: a targeted ability resolves against a unit the player picks, and is skipped
+                // entirely when nothing is eligible - offering "activate another unit" with no other unit
+                // left to activate would spend the offer on nothing.
+                if (ruleOffers.Count == 1 && ruleOffers[0].Ability.Effect is Effect.ActivateUnitNext)
+                {
+                    await OfferActivateUnitNext(bearer, ruleOffers[0]);
+                    continue;
+                }
+
                 if (ruleOffers.Count == 1
                     && !RepositionPlacement.IsCancellablePlacement(ruleOffers[0].Ability.Effect))
                 {
                     AbilityOffer offer = ruleOffers[0];
                     var question = new YesNoRequest(unit.PlayerID,
-                        $"Use {offer.RuleName} on {unit.Name}?", defaultAnswer: false);
+                        $"Use {offer.RuleName} on {unit.Name}?", defaultAnswer: true);
                     bool accepted = await GameContext.PlayerRequester
                         .RequestDecision<YesNoRequest, bool>(question);
                     if (!accepted) continue;
@@ -98,6 +118,88 @@ namespace FDG.Stages
                 // ActivationStartStage and DeployUnitStage do, at the third of the rule family's triggers.
                 await RepositionPlacement.OfferFromOperations(GameContext, unit, outcome.Operations);
             }
+        }
+
+        /// <summary>
+        /// #197 P19 — the out-of-order activation grant. Picks an eligible target, resolves the ability
+        /// against it, and turns the resulting <see cref="RuleOperation.InvokeActivateUnitNext"/> into the
+        /// flag <c>DeterminePlayerTurnStage</c> and <c>ChooseUnitToActivateStage</c> read.
+        ///
+        /// <para>Eligibility is the selector's (affinity, range, line of sight) narrowed by two facts the
+        /// selector cannot express: not the bearer itself ("ANOTHER friendly unit") and not a unit that has
+        /// already activated. The latter reads <see cref="TokenType.ActivatedThisRound"/> rather than a
+        /// pool, which is what lets an ALLY's unit qualify - no per-player pool reachable from here covers
+        /// another player's units.</para>
+        /// </summary>
+        private async Task OfferActivateUnitNext(DataBinding<UnitData> bearer, AbilityOffer offer)
+        {
+            UnitData unit = bearer.GetValue();
+
+            List<DataBinding<UnitData>> eligible = AbilityTargeting
+                .EligibleTargets(bearer, offer.Ability.TargetSelector, GameContext)
+                .Where(candidate => candidate != bearer
+                    && candidate.GetValue().GetIsAlive()
+                    && !candidate.GetValue().Tokens.HasToken(TokenType.ActivatedThisRound)
+                    && !candidate.GetValue().Tokens.HasToken(TokenType.ActivatesNext))
+                .ToList();
+
+            if (eligible.Count == 0)
+            {
+                GameContext.LogDebug($"{offer.RuleName}: no unactivated friendly unit in range - not offered.");
+                return;
+            }
+
+            var options = eligible
+                .Select(candidate => new CancellableSelectionRequest<UnitData>.ValidOption(
+                    candidate, DescribeCandidate(unit, candidate)))
+                .ToList();
+
+            var request = new CancellableSelectionRequest<UnitData>(unit.PlayerID,
+                $"{offer.RuleName}: pick a friendly unit to activate next (or cancel)",
+                options, System.Array.Empty<CancellableSelectionRequest<UnitData>.InvalidOption>());
+
+            CancellableResult<DataBinding<UnitData>> reply = await GameContext.PlayerRequester
+                .RequestDecision<CancellableSelectionRequest<UnitData>, CancellableResult<DataBinding<UnitData>>>(
+                    request);
+
+            if (reply is not Selected<DataBinding<UnitData>> selected)
+            {
+                return;
+            }
+
+            // Resolved only AFTER the pick, so cancelling costs nothing.
+            IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator
+                .ResolveAbility(offer, new[] { (IUnit)selected.Value.GetValue() });
+            OperationApplier.ApplyTokenOperations(ops);
+            await OperationExecutor.Execute(ops, new GameOperationServices(GameContext));
+
+            RuleOperation.InvokeActivateUnitNext? grant =
+                ops.OfType<RuleOperation.InvokeActivateUnitNext>().FirstOrDefault();
+            if (grant == null)
+            {
+                return;
+            }
+
+            UnitData target = selected.Value.GetValue();
+            target.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.ActivatesNext));
+
+            // The turn order is about to skip a player, and the beneficiary may not be the player who
+            // granted it - which is exactly the kind of surprise a banner exists for. Notice, not Headline:
+            // worth reading, not worth stopping the game for.
+            string whose = target.PlayerID == unit.PlayerID
+                ? string.Empty
+                : $" ({GameContext.GetPlayerName(target.PlayerID)} controls it)";
+            await GameContext.Announce($"{offer.RuleName}: {target.Name} activates next{whose}",
+                new TextColor(130, 220, 130, 255), EBannerTier.Notice);
+        }
+
+        /// <summary>An ally's unit is labelled with its owner, since the picker is choosing across armies.</summary>
+        private string DescribeCandidate(UnitData bearer, DataBinding<UnitData> candidate)
+        {
+            UnitData value = candidate.GetValue();
+            return value.PlayerID == bearer.PlayerID
+                ? value.Name
+                : $"{value.Name} ({GameContext.GetPlayerName(value.PlayerID)})";
         }
     }
 }

@@ -38,6 +38,41 @@ namespace FDG.Utilities
         }
 
         /// <summary>
+        /// Points the cursor directly at <paramref name="playerID"/> instead of advancing, for the cases
+        /// where something other than the alternation decides who acts next (#197 P19: a unit flagged to
+        /// take the next activation - which may belong to an ALLY, so both the team index and that team's
+        /// player index move). Returns false and leaves the cursor untouched if the player is on no team in
+        /// this cursor's order, so a caller can fall back to a normal advance.
+        /// </summary>
+        public bool PointAt(PlayerID playerID)
+        {
+            for (int teamIndex = 0; teamIndex < TeamOrder.Count; teamIndex++)
+            {
+                IReadOnlyList<PlayerID> players = TeamOrder[teamIndex].Players;
+                int playerIndex = -1;
+                for (int i = 0; i < players.Count; i++)
+                {
+                    if (players[i] == playerID)
+                    {
+                        playerIndex = i;
+                        break;
+                    }
+                }
+
+                if (playerIndex < 0)
+                {
+                    continue;
+                }
+
+                CurrentTeamIndex = teamIndex;
+                CurrentPlayerIndexPerTeam[TeamOrder[teamIndex]] = playerIndex;
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// Advances the cursor to the next (team, player) that still has work to do,
         /// alternating teams and round-robining within each team. Returns false if
         /// no team has remaining work, in which case the cursor is unchanged.

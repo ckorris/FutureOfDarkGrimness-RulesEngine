@@ -43,7 +43,15 @@ namespace FDG.Stages
                     GameProgressUtilities.Capture(context, GameContext.Settings, EResumeStage.MainPhase));
             }
 
-            if(context.TryAdvanceToNextPlayer(out ITeam? nextTeam, out PlayerID? nextPlayerID) == false)
+            // #197 P19 turn-order override: a unit flagged to take the next activation displaces the normal
+            // alternation, and the cursor goes to ITS OWNER - who may be an ally, so that player resolves
+            // the activation with their own controller rather than the granting player driving it.
+            PlayerID? nextPlayerID = FindPlayerWithUnitActivatingNext(context);
+            if (nextPlayerID != null)
+            {
+                context.Cursor.PointAt(nextPlayerID.Value);
+            }
+            else if (context.TryAdvanceToNextPlayer(out ITeam? _, out nextPlayerID) == false)
             {
                 context.Log("No players left to activate. Ending round.");
                 await OnNoPlayersLeft.Activate(context);
@@ -63,6 +71,33 @@ namespace FDG.Stages
             await OfferReactivations(context, nextPlayerID!.Value);
 
             await OnDeterminedPlayerTurn.Activate(context);
+        }
+
+        /// <summary>
+        /// #197 P19: the owner of a living, on-table unit that is flagged to take the next activation, or
+        /// null when nothing is flagged and the alternation should proceed normally.
+        ///
+        /// <para>The POOL stays authoritative: a flag is honoured only for a unit that is genuinely still
+        /// unactivated, so a marker left behind by a unit that died, was removed from the table, or somehow
+        /// already activated degrades to "no override" instead of stalling the round on a unit that can
+        /// never be picked. That is also what makes the marker safe to read after a resume.</para>
+        /// </summary>
+        private static PlayerID? FindPlayerWithUnitActivatingNext(ISingleRoundContext context)
+        {
+            foreach (KeyValuePair<PlayerID, List<DataBinding<UnitData>>> pool in context.UnactivatedUnits)
+            {
+                foreach (DataBinding<UnitData> unit in pool.Value)
+                {
+                    UnitData value = unit.GetValue();
+                    if (value.GetIsAlive() && value.GetIsOnBattlefield()
+                        && value.Tokens.HasToken(TokenType.ActivatesNext))
+                    {
+                        return pool.Key;
+                    }
+                }
+            }
+
+            return null;
         }
 
         /// <summary>

@@ -91,6 +91,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(DangerousTerrainTest), "dangerousTerrainTest")]
 [JsonDerivedType(typeof(PerHitSaveModifier), "perHitSaveModifier")]
 [JsonDerivedType(typeof(ExtraAttack), "extraAttack")]
+[JsonDerivedType(typeof(ActivateUnitNext), "activateUnitNext")]
 
 public abstract record Effect
 {
@@ -596,6 +597,41 @@ public abstract record Effect
     /// </list>
     /// Could still grow a <c>UnitID Target</c> if a future rule reactivates a DIFFERENT unit (#197 P19).
     /// </summary>
+    /// <summary>
+    /// #197 P19 — the TARGET takes the next activation, ahead of the normal team alternation. The engine
+    /// primitive behind Coordinate ("at the end of this unit's activation, another friendly unit within 12"
+    /// that hasn't activated yet may be activated immediately"), and named for the mechanism rather than for
+    /// that rule: nothing in the engine knows Coordinate exists.
+    ///
+    /// <para>Deliberately NOT <see cref="Reactivate"/>, which is a different mechanic wearing a similar
+    /// name. Reactivate re-adds an ALREADY-ACTIVATED unit to the pool so it appears as a CHOICE later;
+    /// this takes a unit that has NOT activated and makes it the next activation, now. Reactivate grants an
+    /// extra activation; this one only reorders the ones already owed, so the acting side gains tempo, not
+    /// activation count.</para>
+    ///
+    /// <para>The effect writes a flag rather than driving the flow itself: the emitted
+    /// <see cref="RuleOperation.InvokeActivateUnitNext"/> is turned into a
+    /// <see cref="Foundation.TokenType.ActivatesNext"/> marker on the target, which
+    /// <c>DeterminePlayerTurnStage</c> and <c>ChooseUnitToActivateStage</c> read on their way past. That
+    /// indirection is what lets the target belong to a DIFFERENT PLAYER (an ally in a team game): the
+    /// alternation cursor is simply pointed at the flagged unit's owner, so the ally resolves that
+    /// activation with their own controller rather than the granting player driving someone else's unit.
+    /// It is also why the grant survives a save/load — the rolling save point is written at the top of
+    /// DeterminePlayerTurnStage, i.e. AFTER the grant, and unit tokens persist while stage-local state
+    /// would not.</para>
+    ///
+    /// <para>SUPPORTED PATHS (not universal): the operation is enacted only by
+    /// <c>ReconcileEndOfActivationStage</c>, which owns the target pick as well; any other hook's generic
+    /// op application drops it, and <c>RuleFireLint</c> reports it as unhandled there.</para>
+    /// </summary>
+    public sealed record ActivateUnitNext : Effect
+    {
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            operations.Add(new RuleOperation.InvokeActivateUnitNext(ruleInvocation.EffectiveTarget));
+        }
+    }
+
     public sealed record Reactivate(bool ClearsFatigue = false, int ArmyRoundQuotaDivisor = 0) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)

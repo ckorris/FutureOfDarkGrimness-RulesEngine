@@ -207,6 +207,7 @@ namespace FDG.ArmyBuilding
             // on 2+. Everything placed that way is recorded here so the rule-bundle fold below skips it.
             HashSet<string> weaponScopedNames = WeaponScopedRuleNames(book);
             HashSet<(string Item, SpecialRuleEntry Rule)> placedOnWeapons = new();
+            List<(SpecialRuleEntry Rule, int Applications)> championMarks = new();
 
             // Apply in the book's section order, not click order — a later section may target weapons an
             // earlier one grants (e.g. "Replace one Shard Carbine" after "Replace all ... with Shard Carbines"),
@@ -246,11 +247,26 @@ namespace FDG.ArmyBuilding
 
                     case UpgradeVariant.Upgrade:
                     case UpgradeVariant.PickN:
-                        AddGains(unit, items, option, applications);
+                        AddGains(unit, items, option, applications,
+                            skipRules: CollectChampionMarks(section, option, applications, weaponScopedNames,
+                                championMarks));
                         // Only non-Replace variants: a Replace has already removed its targets above, so
                         // there is no weapon left to attach to.
                         PlaceTargetedWeaponRules(unit, section, option, applications, weaponScopedNames, placedOnWeapons);
                         break;
+                }
+            }
+
+            // #197 Sergeant: champion marks attach AFTER every section has applied - a later "Replace all
+            // Hand Weapons" must not eat the mark; the champion attacks with whatever the unit ends up
+            // holding. One copy of each distinct weapon profile per application is the aggregate format's
+            // expression of "this model's attacks": round-robin hands the marked copies to a model at
+            // load, and the batcher already rolls a rule-bearing copy as its own volley (#027).
+            foreach ((SpecialRuleEntry rule, int applications) in championMarks)
+            {
+                foreach (string weaponName in unit.Weapons.Select(w => w.Name).Distinct().ToList())
+                {
+                    AttachRuleToWeapons(unit.Weapons, weaponName, rule, applications);
                 }
             }
 
@@ -398,15 +414,44 @@ namespace FDG.ArmyBuilding
             return Math.Min(desired, section.Affects == UpgradeAffects.All ? availableMax : availableMin);
         }
 
-        private static void AddGains(UnitFileEntry unit, List<ItemEntry> items, UpgradeOption option, int applications)
+        private static void AddGains(UnitFileEntry unit, List<ItemEntry> items, UpgradeOption option,
+            int applications, List<SpecialRuleEntry>? skipRules = null)
         {
             foreach (WeaponFileEntry w in option.WeaponsGained)
                 AddWeapon(unit.Weapons, w, applications);
             foreach (SpecialRuleEntry r in option.RulesGained)
-                if (!unit.SpecialRules.Contains(r))
+                if (!unit.SpecialRules.Contains(r) && (skipRules == null || !skipRules.Contains(r)))
                     unit.SpecialRules.Add(r);
             foreach (ItemEntry it in option.ItemsGained)
                 AddItem(items, it, applications);
+        }
+
+        /// <summary>
+        /// #197 Sergeant: a WEAPON-scoped rule gained from a targets-less per-model section ("Upgrade up to
+        /// three models with one: Sergeant") is a champion upgrade - it scopes to the bought model's own
+        /// attacks, so it must never reach <c>unit.SpecialRules</c>, where army-load would spread it across
+        /// every weapon copy (the whole-pool over-grant the per-model wording forbids). Such rules are
+        /// recorded on <paramref name="marks"/> for the post-section attach and returned so
+        /// <see cref="AddGains"/> skips them. Affects-All sections keep the unit-wide fold: "every model
+        /// gets it" IS the whole pool. Corpus census 2026-07-29: Sergeant's 12 sites are the only occupants
+        /// of this shape.
+        /// </summary>
+        private static List<SpecialRuleEntry>? CollectChampionMarks(UpgradeSection section, UpgradeOption option,
+            int applications, HashSet<string> weaponScopedNames,
+            List<(SpecialRuleEntry Rule, int Applications)> marks)
+        {
+            if (section.Targets.Count > 0 || section.Affects == UpgradeAffects.All) return null;
+
+            List<SpecialRuleEntry>? collected = null;
+            foreach (SpecialRuleEntry rule in option.RulesGained)
+            {
+                if (!weaponScopedNames.Contains(RuleLookupName(rule))) continue;
+
+                marks.Add((rule, applications));
+                (collected ??= new List<SpecialRuleEntry>()).Add(rule);
+            }
+
+            return collected;
         }
 
         /// <summary>How many times a Replace with these targets can apply — the MIN across targets of matched

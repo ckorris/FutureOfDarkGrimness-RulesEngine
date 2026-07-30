@@ -261,6 +261,9 @@ public static class TransportUtilities
         // Mirrors MoraleUtilities.ApplyShaken (which takes a DataBinding<UnitData> in the stage layer) —
         // inlined to avoid a Rules→Stages dependency. That includes the became-Shaken token clear
         // (#100 #13, Fortified Growth's lose-all-markers) — keep in sync with ClearShakenTriggeredTokens.
+        // What it deliberately does NOT do is fire the Morale_OnShakenApplied hook: that needs a player
+        // prompt, so SpilloutExecutor makes the offer (MoraleUtilities.OfferShakenTriggeredRules) once the
+        // occupant has been placed and its dangerous-terrain test has landed.
         occupant.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.Shaken));
         List<ITokenContainer> shakenClear = new List<ITokenContainer> { occupant.Tokens };
         shakenClear.AddRange(occupant.Models.Select(model => model.Tokens));

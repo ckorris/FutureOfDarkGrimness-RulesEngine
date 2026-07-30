@@ -294,8 +294,12 @@ namespace FDG.Stages
         /// offers any <see cref="RuleOperation.InvokeReinforce"/> it produces as one Yes/No (default yes -
         /// the EOF/AI fallback trades a Shaken unit for a fresh copy). Token operations apply
         /// unconditionally, mirroring the destruction seam's shape.
+        ///
+        /// Public because the failed-morale path above is not the only way a unit becomes Shaken: a
+        /// destroyed transport's cargo is Shaken by <see cref="SpilloutExecutor"/>, which calls this
+        /// directly (its own Shaken application lives in the Rules layer, which cannot reach a stage).
         /// </summary>
-        private static async Task OfferShakenTriggeredRules(IGameContext gameContext, IUnit unit)
+        public static async Task OfferShakenTriggeredRules(IGameContext gameContext, IUnit unit)
         {
             IReadOnlyList<RuleOperation> ops = gameContext.RuleEvaluator.EvaluateAll(
                 new ShakenAppliedContext(unit),

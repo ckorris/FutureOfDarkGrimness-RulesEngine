@@ -148,6 +148,112 @@ namespace FDG.Tests
                 "'can't seize or contest objectives on the round they deploy'");
         }
 
+        // ── The transport-spillout arm (was DEFERRED; shipped 2026-07-30) ────────────────────────────────
+
+        // A destroyed transport Shakens its cargo, and that is a real Shaken - so the Shaken arm fires for
+        // a spilled-out unit exactly as it does after a failed morale test. The gap was structural, not
+        // conditional: TransportUtilities.ApplySpilloutEffects sets the token from the Rules layer, which
+        // cannot reach a stage, so nobody ever evaluated Morale_OnShakenApplied on that path.
+        [Test]
+        public async Task SpilledOutOfADestroyedTransport_OffersTheShakenArm()
+        {
+            (DataBinding<UnitData> stalkers, DataBinding<ArmyData> army) = MakeArmy();
+            DataBinding<UnitData> transport = MakeTransport("Rhino", capacity: 6, new Position(10f, 10f));
+            TransportUtilities.Embark(stalkers.GetValue(), transport.GetValue());
+            transport.GetValue().ModelBindings[0].GetValue().DealWounds(
+                transport.GetValue().ModelBindings[0].GetValue().TotalWounds);
+
+            var requester = new ReinforceRequester { Accept = true };
+            int spilled = await SpilloutExecutor.SpillIfDestroyedTransport(Ctx(requester), transport.GetValue());
+
+            Assert.That(spilled, Is.EqualTo(1), "precondition: the cargo actually spilled out.");
+            Assert.That(stalkers.GetValue().Tokens.HasToken(TokenType.Shaken), Is.True,
+                "precondition: spilling out Shakens the occupant.");
+            Assert.That(requester.YesNoAsked, Is.EqualTo(1),
+                "and being Shaken that way must offer Reinforcement - one prompt, like every other " +
+                "Shaken moment.");
+            Assert.That(stalkers.GetValue().GetIsAlive(), Is.False, "'remove it from the table as destroyed'");
+            Assert.That(army.GetValue().UnitBindings, Has.Count.EqualTo(2), "the copy registered");
+            Assert.That(army.GetValue().UnitBindings[1].GetValue().Tokens
+                .HasToken(TokenType.PendingReinforcementArrival), Is.True);
+        }
+
+        // Declining leaves the spilled unit on the table, Shaken, with its choice unspent - the same
+        // save-it-for-later semantics the morale path has.
+        [Test]
+        public async Task SpilledOut_Declined_KeepsTheUnitAndTheChoice()
+        {
+            (DataBinding<UnitData> stalkers, DataBinding<ArmyData> army) = MakeArmy();
+            DataBinding<UnitData> transport = MakeTransport("Rhino", capacity: 6, new Position(10f, 10f));
+            TransportUtilities.Embark(stalkers.GetValue(), transport.GetValue());
+            transport.GetValue().ModelBindings[0].GetValue().DealWounds(
+                transport.GetValue().ModelBindings[0].GetValue().TotalWounds);
+
+            var requester = new ReinforceRequester { Accept = false };
+            await SpilloutExecutor.SpillIfDestroyedTransport(Ctx(requester), transport.GetValue());
+
+            Assert.That(requester.YesNoAsked, Is.EqualTo(1));
+            Assert.That(stalkers.GetValue().GetIsAlive(), Is.True, "declining keeps the spilled unit");
+            Assert.That(army.GetValue().UnitBindings, Has.Count.EqualTo(1), "and queues no copy");
+            Assert.That(stalkers.GetValue().Tokens.HasToken(TokenType.ReinforcementSpent), Is.False,
+                "a decline saves the choice for the unit's eventual destruction, it does not spend it");
+        }
+
+        // The no-double-prompt guard for the path where BOTH arms are in play: the spillout's
+        // dangerous-terrain test finishes off the occupant, so the destroyed arm fires inside
+        // PresentSpilloutRolls and the Shaken offer follows in the same pass. Exactly one prompt.
+        // Every model rolls a 1 (a wound apiece) and each Stalker is on its last wound, so the unit dies.
+        //
+        // Measured honestly (mutation-checked): what makes this one prompt is the rule's own
+        // Not(TokenPresent(ReinforcementSpent)) gate, which holds whichever arm reaches it first - moving
+        // the offer ahead of the wounds still passes. The alive-gate and the after-the-wounds placement in
+        // SpilloutExecutor are therefore a correctness/presentation choice (don't evaluate Shaken rules on
+        // a corpse, don't remove a unit and then animate wounds on it), NOT what this test pins.
+        [Test]
+        public async Task SpilloutThatKillsTheOccupant_PromptsOnceViaTheDestroyedArm()
+        {
+            (DataBinding<UnitData> stalkers, DataBinding<ArmyData> army) = MakeArmy();
+            DataBinding<UnitData> transport = MakeTransport("Rhino", capacity: 6, new Position(10f, 10f));
+            TransportUtilities.Embark(stalkers.GetValue(), transport.GetValue());
+            transport.GetValue().ModelBindings[0].GetValue().DealWounds(
+                transport.GetValue().ModelBindings[0].GetValue().TotalWounds);
+
+            var requester = new ReinforceRequester { Accept = true };
+            var ctx = new TriggeredMoveTestContext(_store, requester, new AllOnesDiceRoller(),
+                ruleResolver: _resolver);
+            await SpilloutExecutor.SpillIfDestroyedTransport(ctx, transport.GetValue());
+
+            Assert.That(stalkers.GetValue().GetIsAlive(), Is.False,
+                "precondition: the dangerous-terrain test wiped the spilled unit.");
+            Assert.That(requester.YesNoAsked, Is.EqualTo(1),
+                "ONE prompt: the destroyed arm fired inside the spillout and spent the gate, so the " +
+                "Shaken offer must not add a second.");
+            Assert.That(army.GetValue().UnitBindings, Has.Count.EqualTo(2), "exactly one copy queued");
+        }
+
+        private DataBinding<UnitData> MakeTransport(string name, int capacity, Position pos)
+        {
+            var model = new ModelData(0.5f, new List<Weapon>(), pos, _store);
+            var binding = _store.GetDataBinding<UnitData>(_store.Create(new UnitData(_player, name,
+                quality: 4, defense: 4,
+                modelBindings: new List<DataBinding<ModelData>>
+                    { _store.GetDataBinding<ModelData>(_store.Create(model)) })));
+            binding.GetValue().AttachRuleDefinition(new ResolvedRule(TransportUtilities.TransportRuleName,
+                CoreRuleCatalog.Transport, new RuleArgument[] { new RuleArgument.Int(capacity) }));
+            return binding;
+        }
+
+        // Every die a 1: the batched spillout dangerous-terrain test wounds every model.
+        private sealed class AllOnesDiceRoller : IDiceRoller
+        {
+            public IDiceResults Roll(int sideCount, float rollCount)
+            {
+                float[] perSide = new float[sideCount];
+                perSide[0] = rollCount;
+                return new DiceResults(perSide);
+            }
+        }
+
         private TriggeredMoveTestContext Ctx(IPlayerRequestByID requester) =>
             new(_store, requester, ruleResolver: _resolver);
 

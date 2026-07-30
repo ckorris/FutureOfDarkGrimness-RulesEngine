@@ -91,6 +91,21 @@ namespace FDG.Stages
                 await gameContext.Announce($"{occupantUnit.Name} spills out - Shaken!", ShakenBannerColor,
                     EBannerTier.Toast);
                 await PresentSpilloutRolls(gameContext, occupantUnit, rolls);
+
+                // #197 P17c: the spillout Shaken is a real Shaken, so rules that trigger on the moment fire
+                // here too - above all Reinforcement's "when this unit is Shaken ... you may remove it as
+                // destroyed and place a copy". ApplySpilloutEffects sets the token from the Rules layer,
+                // which cannot reach a stage, so the offer has to be made from this side.
+                //
+                // AFTER the dangerous-terrain wounds land, and only for a survivor, on purpose: a test that
+                // finishes the occupant off has already gone through the destruction seam inside
+                // PresentSpilloutRolls, where the SAME rule's destroyed arm fires and stamps
+                // ReinforcementSpent. Offering first would either double-prompt or remove the unit and then
+                // wound the wreckage.
+                if (occupantUnit.GetIsAlive())
+                {
+                    await MoraleUtilities.OfferShakenTriggeredRules(gameContext, occupantUnit);
+                }
             }
 
             return occupants.Count;

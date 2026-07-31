@@ -40,6 +40,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(DealPooledHits), "dealPooledHits")]
 [JsonDerivedType(typeof(Heal), "heal")]
 [JsonDerivedType(typeof(GrantToken), "grantToken")]
+[JsonDerivedType(typeof(GrantTokenToKiller), "grantTokenToKiller")]
 [JsonDerivedType(typeof(ConsumeToken), "consumeToken")]
 [JsonDerivedType(typeof(ClearTokenOnRoll), "clearTokenOnRoll")]
 [JsonDerivedType(typeof(GrantTokenOnRoll), "grantTokenOnRoll")]
@@ -583,6 +584,58 @@ public abstract record Effect
                 ruleInvocation.EffectiveTarget,
                 new Token(TType, count, Clear,
                     OwnerUnitID: ruleInvocation.OwnerForEffectiveTarget)));
+        }
+    }
+
+    /// <summary>
+    /// <see cref="GrantToken"/>'s cross-unit twin: the tokens land on the unit that KILLED the bearer,
+    /// not on the bearer. #197 Vengeance ("place N markers on the unit that destroyed this one; friendly
+    /// units get +N to hit against it"), authored at
+    /// <see cref="EHookID.Shooting_OnUnitDestroyed"/> in the <see cref="ERuleSeat.Subject"/> seat.
+    ///
+    /// <para>A separate effect rather than a recipient flag on <see cref="GrantToken"/>: the passive path
+    /// never sets <see cref="RuleInvocation.Target"/>, so "somewhere other than the bearer" has no general
+    /// answer — it has to come from the firing context, and only this one context offers a killer. If a
+    /// second "act on the other participant" passive rule ever appears, that is the point to generalize
+    /// (a recipient <c>ValueSource</c>-style selector), not before.</para>
+    ///
+    /// <para>The token is stamped with the bearer as owner, and the clear trigger is the author's:
+    /// Vengeance uses <see cref="TokenClearTrigger.ManualOnly"/>, since the marker must outlive the unit
+    /// that placed it — an <see cref="TokenClearTrigger.OwnerDestroyed"/> marker here would be a
+    /// contradiction, its owner being dead by construction.</para>
+    /// </summary>
+    public sealed record GrantTokenToKiller(TokenType TType, ValueSource Count, TokenClearTrigger Clear,
+        int MaxTotal = 0) : Effect
+    {
+        public override IReadOnlyCollection<Type> RequiredCapabilities => [typeof(IHasKillerUnit)];
+
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            // Not a CapabilityEffect<IHasKillerUnit> only because that base hands ApplyCore the context
+            // alone: the count is a ValueSource (needs the whole invocation) and the owner stamp needs the
+            // bearer. Same contract, same throw — an effect authored at a hook whose context can't answer
+            // is a data bug, and the validator catches it before play (BookRuleSupplement.ValidateAll).
+            if (ruleInvocation.Hook is not IHasKillerUnit killerContext)
+            {
+                throw new InvalidOperationException(
+                    $"{nameof(GrantTokenToKiller)} requires {nameof(IHasKillerUnit)}, but the firing " +
+                    $"context ({ruleInvocation.Hook?.GetType().Name ?? "none"}) does not provide it.");
+            }
+
+            IUnit killer = killerContext.KillerUnit;
+            int count = Count.Resolve(ruleInvocation);
+            if (MaxTotal > 0)
+            {
+                count = Math.Min(count, MaxTotal - killer.Tokens.GetTokenCount(TType));
+            }
+
+            if (count <= 0)
+            {
+                return;
+            }
+
+            operations.Add(new RuleOperation.GrantTokenToUnit(
+                killer, new Token(TType, count, Clear, OwnerUnitID: ruleInvocation.Bearer.ID)));
         }
     }
 

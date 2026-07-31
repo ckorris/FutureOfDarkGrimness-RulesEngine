@@ -183,7 +183,16 @@ public abstract record RuleOperation
     /// Resolution of <see cref="Effect.GrantToken"/> targeting a unit, and the
     /// per-unit-mate expansion of <see cref="Effect.Aura"/>.
     /// </summary>
-    public sealed record GrantTokenToUnit(IUnit Unit, Token TokenToGrant) : RuleOperation;
+    public sealed record GrantTokenToUnit(IUnit Unit, Token TokenToGrant) : RuleOperation
+    {
+        // Names the RECIPIENT. A self-grant reads slightly redundantly ("Warriors' Caster Group placed
+        // 3x Spell tokens on Warriors"), which is the price of the cross-unit cases being legible at all:
+        // #197 Vengeance marks the unit that killed the bearer, and "applied an effect" hid which unit
+        // the marker landed on - the one thing a player needs from that line.
+        public override string Describe() =>
+            $"placed {TokenToGrant.Count}x {TokenDefinitionCatalog.Lookup(TokenToGrant.Type).Name} " +
+            $"on {Unit.Name}";
+    }
 
     /// <summary>
     /// Add <see cref="TokenToGrant"/> to <see cref="Model"/>'s token container.

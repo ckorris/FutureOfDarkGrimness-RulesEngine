@@ -1,7 +1,12 @@
+using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Foundation;
 using FDG.Rules.Serialization;
 using Newtonsoft.Json;
+using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 
@@ -76,6 +81,108 @@ namespace FDG
             }
 
             return true;
+        }
+    }
+
+    /// <summary>
+    /// #306: a stable, orderable string identifying a weapon PROFILE — name plus stat line plus the
+    /// multiset of rules it carries (each rule's canonical definition name and its arguments).
+    /// <para>
+    /// The invariant that makes this usable as a dictionary key: <b>two weapons share a key exactly
+    /// when <see cref="WeaponComparer"/> calls them equal</b>. The weapon pool
+    /// (<see cref="WeaponPool.GroupByProfile"/>) dedupes by that comparer, so one pool entry is one key
+    /// and the choosers can key their maps here without a collision. Before this existed both choosers
+    /// keyed by bare <c>Weapon.Name</c>, and a unit carrying two same-named weapons with different
+    /// profiles — a partial upgrade buying Precise for one of three rifles — faulted the state machine
+    /// on <c>Dictionary.Add</c> mid-activation.
+    /// </para>
+    /// <para>
+    /// Ordinal sorting on this key is <i>name-primary</i>: the field separator is below every printable
+    /// character, so ordering by key is byte-identical to the old <c>OrderBy(Weapon.Name)</c> whenever
+    /// names are unique, and merely breaks the tie deterministically when they are not. That is what
+    /// #209's same-seed replay needs — a total order that no hash code can perturb.
+    /// </para>
+    /// Rule ordering does not affect the key (the rule signatures are sorted), matching the comparer's
+    /// order-insensitive rule comparison. The alias a rule was authored under does not affect it either:
+    /// the canonical <see cref="SpecialRuleDefinition.Name"/> is used, because the comparer identifies
+    /// rules by definition and treats two aliases of one rule as the same weapon.
+    /// </summary>
+    public static class WeaponProfileKey
+    {
+        /// <summary>Separates the key's top-level fields. Below every printable character, so ordinal
+        /// sorting on the key orders by name first. Public so tests can split a key apart.</summary>
+        public const char FieldSeparator = '\u0001';
+
+        private const char RuleSeparator = '\u0002';
+        private const char ArgumentSeparator = '\u0003';
+
+        public static string For(IWeapon weapon)
+        {
+            List<string> ruleSignatures = new List<string>(weapon.RuleDefinitions.Count);
+            foreach (ResolvedRule rule in weapon.RuleDefinitions)
+            {
+                StringBuilder signature = new StringBuilder(rule.Definition.Name);
+                foreach (RuleArgument argument in rule.Arguments)
+                {
+                    signature.Append(ArgumentSeparator).Append(argument switch
+                    {
+                        RuleArgument.Int intArgument =>
+                            intArgument.Value.ToString(CultureInfo.InvariantCulture),
+                        RuleArgument.Str stringArgument => stringArgument.Value,
+                        // A kind added later still keys deterministically off its record ToString rather
+                        // than silently collapsing two attachments into one profile.
+                        _ => argument.ToString(),
+                    });
+                }
+                ruleSignatures.Add(signature.ToString());
+            }
+
+            // Sorted, so the key is a multiset — the comparer's HaveSameRules is order-insensitive.
+            ruleSignatures.Sort(StringComparer.Ordinal);
+
+            // "R" round-trips the float exactly, so two ranges compare equal here precisely when they
+            // compare equal with == in the comparer (ranges are finite and non-negative in practice).
+            return string.Join(FieldSeparator,
+                weapon.Name,
+                weapon.RangeInches.ToString("R", CultureInfo.InvariantCulture),
+                weapon.Attacks.ToString(CultureInfo.InvariantCulture),
+                weapon.ArmorPenetration.ToString(CultureInfo.InvariantCulture),
+                string.Join(RuleSeparator, ruleSignatures));
+        }
+    }
+
+    /// <summary>
+    /// Builds the (weapon -> how many copies the unit carries) pool that every combat stage works from.
+    /// </summary>
+    public static class WeaponPool
+    {
+        /// <summary>
+        /// Groups weapons by PROFILE: one entry per distinct <see cref="WeaponProfileKey"/> — equivalently,
+        /// per <see cref="WeaponComparer"/> equivalence class — keyed by the first instance seen of that
+        /// profile and valued by how many copies were passed in. The weapon lists that feed this hold one
+        /// instance per carrying model, so duplicates are the normal case, and a unit carrying two
+        /// same-named weapons with different rules yields two entries rather than one merged (or a fault).
+        /// </summary>
+        public static ConcurrentDictionary<Weapon, int> GroupByProfile(IEnumerable<Weapon> weapons)
+        {
+            ConcurrentDictionary<Weapon, int> weaponsAndCounts = new ConcurrentDictionary<Weapon, int>();
+            Dictionary<string, Weapon> firstOfProfile = new Dictionary<string, Weapon>(StringComparer.Ordinal);
+
+            foreach (Weapon weapon in weapons)
+            {
+                string key = WeaponProfileKey.For(weapon);
+                if (firstOfProfile.TryGetValue(key, out Weapon? representative))
+                {
+                    weaponsAndCounts[representative]++;
+                }
+                else
+                {
+                    firstOfProfile[key] = weapon;
+                    weaponsAndCounts[weapon] = 1;
+                }
+            }
+
+            return weaponsAndCounts;
         }
     }
 

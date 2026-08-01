@@ -24,10 +24,15 @@ namespace FDG.Stages
             IReadOnlyDictionary<Weapon, int> availableWeapons = new ConcurrentDictionary<Weapon, int>(context.AvailableWeapons);
             IReadOnlyDictionary<Weapon, int> unavailableWeapons = new ConcurrentDictionary<Weapon, int>(context.AlreadyUsedWeapons);
 
-            //TODO: Since we don't store weapons in bindings, we're hackedly using their stats names, which have no
-            //protection against identical names.
+            // The option's LABEL is its identity on this wire (StringSelectionRequest carries strings, and
+            // the reply is one of them), so two weapons that render identically would be one option and
+            // the second would be unpickable. #306: labels are made unique before they go out - see
+            // BuildUniqueLabel - which is the protection the old "no protection against identical names"
+            // TODO here was asking for. Assigned over a profile-key-ordered pass so the disambiguation is
+            // deterministic (#209), then sorted by label for display exactly as before.
             List<(string, Weapon)> validOptions = new List<(string, Weapon)>();
             List<StringSelectionRequest.InvalidOption> invalidOptions = new List<StringSelectionRequest.InvalidOption>();
+            HashSet<string> usedLabels = new HashSet<string>(StringComparer.Ordinal);
 
             // #028: Deadly (wound-multiplier) weapons must strike before the unit's other weapons, so a clump
             // removes whole models before normal wounds spread. While an un-used Deadly weapon is available,
@@ -38,9 +43,9 @@ namespace FDG.Stages
                 .ToHashSet();
             bool gateNonDeadly = priorityWeapons.Count > 0;
 
-            foreach(KeyValuePair<Weapon, int> kvp in availableWeapons)
+            foreach(KeyValuePair<Weapon, int> kvp in InProfileOrder(availableWeapons))
             {
-                string label = kvp.Key.GetWeaponNameAndStats(kvp.Value);
+                string label = BuildUniqueLabel(kvp.Key, kvp.Value, usedLabels);
                 if (gateNonDeadly && !priorityWeapons.Contains(kvp.Key))
                 {
                     invalidOptions.Add(new StringSelectionRequest.InvalidOption(label,
@@ -52,9 +57,10 @@ namespace FDG.Stages
                 }
             }
 
-            foreach(KeyValuePair<Weapon, int> kvp in unavailableWeapons)
+            foreach(KeyValuePair<Weapon, int> kvp in InProfileOrder(unavailableWeapons))
             {
-                invalidOptions.Add(new StringSelectionRequest.InvalidOption(kvp.Key.GetWeaponNameAndStats(kvp.Value),
+                invalidOptions.Add(new StringSelectionRequest.InvalidOption(
+                    BuildUniqueLabel(kvp.Key, kvp.Value, usedLabels),
                     "The unit has already attacked with this weapon."));
             }
 
@@ -73,12 +79,44 @@ namespace FDG.Stages
             string chosenWeaponStatsName = await GameContext.PlayerRequester
                 .RequestDecision<StringSelectionRequest, string>(request);
 
+            // Labels are unique by construction (#306), so this maps back to exactly one weapon.
             Weapon chosenWeapon = validOptions.First(option => option.Item1 == chosenWeaponStatsName).Item2;
 
             context.SetAttackWeapon(chosenWeapon, out int weaponCount);
             GameContext.Log($"Chose weapon: {chosenWeapon.Name}. Count: {weaponCount}.");
 
             await OnChosen.Activate(context);
+        }
+
+        /// <summary>
+        /// #306: pool dictionaries are keyed by the Weapon reference type, so their enumeration order is
+        /// identity-hash-dependent (the #209 defect). Walking them in profile-key order makes the pass
+        /// deterministic, which matters because <see cref="BuildUniqueLabel"/> hands out its
+        /// disambiguating suffixes in the order it sees things.
+        /// </summary>
+        private static IEnumerable<KeyValuePair<Weapon, int>> InProfileOrder(
+            IReadOnlyDictionary<Weapon, int> weapons)
+        {
+            return weapons.OrderBy(kvp => WeaponProfileKey.For(kvp.Key), StringComparer.Ordinal);
+        }
+
+        /// <summary>
+        /// #306: the weapon's datasheet line, made unique across the whole request. Normally it already is
+        /// - a rule's requested name carries its argument ("Deadly(3)"), so profiles that differ read
+        /// differently - but nothing GUARANTEED it, and this label is the option's identity on the wire:
+        /// two weapons rendering the same string collapse into one option, and picking it binds whichever
+        /// was listed first. A numbered suffix keeps the mapping one-to-one in that last-resort case.
+        /// </summary>
+        private static string BuildUniqueLabel(Weapon weapon, int count, HashSet<string> usedLabels)
+        {
+            string label = weapon.GetWeaponNameAndStats(count);
+            if (usedLabels.Add(label)) return label;
+
+            for (int suffix = 2; ; suffix++)
+            {
+                string candidate = $"{label} #{suffix}";
+                if (usedLabels.Add(candidate)) return candidate;
+            }
         }
 
         /// <summary>
@@ -103,8 +141,8 @@ namespace FDG.Stages
                     lines.Add($"{rule.RequestedName} - {rule.Definition.Description}");
                 }
 
-                // Indexer, not Add: two weapons can share a label (the stats-name keying this stage
-                // already TODOs above), and a duplicate key must not throw mid-melee.
+                // Indexer, not Add: labels are unique by construction since #306, but a duplicate key
+                // must never be the thing that throws mid-melee.
                 if (lines.Count > 0) descriptions[label] = string.Join("\n", lines);
             }
 

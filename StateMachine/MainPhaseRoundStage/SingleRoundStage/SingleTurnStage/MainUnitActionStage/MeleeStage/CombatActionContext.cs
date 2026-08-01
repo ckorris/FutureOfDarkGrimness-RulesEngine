@@ -265,12 +265,12 @@ namespace FDG.Stages
             _activationContext = activationContext;
             if(isMelee)
             {
-                _availableWeapons = GetTypeSortedWeapons(attackingUnit.GetValue().GetMeleeWeapons());
+                _availableWeapons = WeaponPool.GroupByProfile(attackingUnit.GetValue().GetMeleeWeapons());
 
             }
             else
             {
-                _availableWeapons = GetTypeSortedWeapons(attackingUnit.GetValue().GetRangedWeapons());
+                _availableWeapons = WeaponPool.GroupByProfile(attackingUnit.GetValue().GetRangedWeapons());
 
             }
 
@@ -339,7 +339,7 @@ namespace FDG.Stages
         {
             InRangeAttackingModels = models;
             // Only models in melee range contribute weapons to the swing pool.
-            _availableWeapons = GetTypeSortedWeapons(MeleeRangeUtilities.GetMeleeWeaponsFromModels(models));
+            _availableWeapons = WeaponPool.GroupByProfile(MeleeRangeUtilities.GetMeleeWeaponsFromModels(models));
         }
 
         public void SetInRangeDefenders(IReadOnlyList<DataBinding<ModelData>> models)
@@ -363,7 +363,7 @@ namespace FDG.Stages
             (InRangeAttackingModels, InRangeDefendingModels) = (InRangeDefendingModels, InRangeAttackingModels);
 
             // Rebuild the melee-weapon pool from the new attacker's in-range models; nothing used yet this swing.
-            _availableWeapons = GetTypeSortedWeapons(MeleeRangeUtilities.GetMeleeWeaponsFromModels(InRangeAttackingModels));
+            _availableWeapons = WeaponPool.GroupByProfile(MeleeRangeUtilities.GetMeleeWeaponsFromModels(InRangeAttackingModels));
             _alreadyUsedWeapons.Clear();
             _pendingAttacks.Clear();
         }
@@ -407,30 +407,6 @@ namespace FDG.Stages
 
             return _activationContext.TryGetActivationStartDistanceTo(
                 DefendingUnit.GetValue().ID, out float distance) ? distance : 0f;
-        }
-
-        //TODO: Repeated in Ranged version. Move to static class.
-        private ConcurrentDictionary<Weapon, int> GetTypeSortedWeapons(List<Weapon> weapons)
-        {
-            ConcurrentDictionary<Weapon, int> weaponsAndCounts = new ConcurrentDictionary<Weapon, int>();
-
-            WeaponComparer comparer = new WeaponComparer();
-
-            foreach (Weapon newWeapon in weapons)
-            {
-                Weapon identicalWeapon = weaponsAndCounts.Keys.FirstOrDefault(keyWeapon => comparer.Equals(newWeapon, keyWeapon));
-
-                if (identicalWeapon != default)
-                {
-                    weaponsAndCounts[identicalWeapon]++;
-                }
-                else
-                {
-                    weaponsAndCounts[newWeapon] = 1;
-                }
-            }
-
-            return weaponsAndCounts;
         }
 
         /*

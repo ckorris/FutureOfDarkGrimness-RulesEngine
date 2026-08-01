@@ -70,8 +70,7 @@ namespace FDG.Stages
 
             RangedAttackChoice rangedAttackChoice = ((Selected<RangedAttackChoice>)attackResult).Value;
 
-            Weapon chosenWeapon = context.AvailableWeapons.Keys
-                .First(option => option.Name == rangedAttackChoice.Weapon.Name);
+            Weapon chosenWeapon = ResolveChosenWeapon(context, rangedAttackChoice.Weapon);
 
             context.SetAttackWeapon(chosenWeapon, out int weaponCount);
             context.SetDefender(rangedAttackChoice.TargetUnit);
@@ -109,6 +108,31 @@ namespace FDG.Stages
             LimitedRules.MarkFired(context.AttackingUnit.GetValue(), chosenWeapon);
 
             await OnChoseWeapon.Activate(context);
+        }
+
+        /// <summary>
+        /// #306: maps the resolver's reply back onto the pool entry it names. The reply may be a
+        /// DESERIALIZED weapon (a remote player's answer travels as JSON), so its rules arrive only in
+        /// their persisted form — <see cref="Weapon.RehydrateRules"/> restores them, and is a no-op for a
+        /// local resolver, which hands back the pool's own instance. Matching on the PROFILE rather than
+        /// the bare name is what lets a unit carry two same-named weapons with different rules and still
+        /// fire the one the player picked.
+        /// </summary>
+        private Weapon ResolveChosenWeapon(ICombatActionContext context, Weapon chosenFromResolver)
+        {
+            chosenFromResolver.RehydrateRules();
+            string chosenKey = WeaponProfileKey.For(chosenFromResolver);
+
+            Weapon? byProfile = context.AvailableWeapons.Keys
+                .FirstOrDefault(available => WeaponProfileKey.For(available) == chosenKey);
+            if (byProfile != null) return byProfile;
+
+            // A reply whose profile matches nothing available is a bug somewhere upstream, but faulting
+            // the state machine mid-activation is the one outcome worth avoiding here (it is exactly what
+            // #306 set out to remove). Degrade to the pre-#306 name match and say so.
+            GameContext.Log($"Chosen weapon '{chosenFromResolver.Name}' did not match any available " +
+                "weapon profile - falling back to the first copy carrying that name.");
+            return context.AvailableWeapons.Keys.First(available => available.Name == chosenFromResolver.Name);
         }
 
         /// <summary>
@@ -243,17 +267,19 @@ namespace FDG.Stages
         {
             UnitData attacker = attackingUnit.GetValue();
 
-            HashSet<string> priorityWeaponNames = weaponOptions
+            // #306: profile-keyed, not name-keyed - a partial upgrade can leave a unit with a Deadly
+            // "Sword" and a plain "Sword", and only the Deadly one must gate the rest.
+            HashSet<string> priorityWeaponKeys = weaponOptions
                 .Where(option => WoundPriorityQueries.MustResolveFirst(attacker, option.Weapon, gameContext.RuleEvaluator))
-                .Select(option => option.Weapon.Name)
-                .ToHashSet();
+                .Select(option => WeaponProfileKey.For(option.Weapon))
+                .ToHashSet(StringComparer.Ordinal);
 
-            if (priorityWeaponNames.Count == 0) return;
+            if (priorityWeaponKeys.Count == 0) return;
 
             // Only gate when a priority weapon actually has a fireable target this action; a Deadly weapon
             // with nothing in range / line of sight must not lock out the unit's other weapons.
             bool anyPriorityFireable = weaponOptions
-                .Where(option => priorityWeaponNames.Contains(option.Weapon.Name))
+                .Where(option => priorityWeaponKeys.Contains(WeaponProfileKey.For(option.Weapon)))
                 .SelectMany(option => option.WeaponTargetStats)
                 .Any(stats => stats.UnselectableReason == null && stats.modelsThatCanShoot.Count > 0);
 
@@ -261,7 +287,7 @@ namespace FDG.Stages
 
             foreach (WeaponOption option in weaponOptions)
             {
-                if (priorityWeaponNames.Contains(option.Weapon.Name)) continue;
+                if (priorityWeaponKeys.Contains(WeaponProfileKey.For(option.Weapon))) continue;
 
                 for (int i = 0; i < option.WeaponTargetStats.Count; i++)
                 {
@@ -302,7 +328,11 @@ namespace FDG.Stages
         internal static int CountEligibleCopies(List<WeaponOption> weaponOptions, Weapon chosenWeapon,
             DataBinding<UnitData> targetUnit)
         {
-            WeaponOption? option = weaponOptions.FirstOrDefault(o => o.Weapon.Name == chosenWeapon.Name);
+            // #306: the option carrying the chosen PROFILE - a same-named sibling with different rules is
+            // a different weapon with its own carriers, and counting its copies would over-size the volley.
+            string chosenKey = WeaponProfileKey.For(chosenWeapon);
+            WeaponOption? option = weaponOptions
+                .FirstOrDefault(o => WeaponProfileKey.For(o.Weapon) == chosenKey);
             WeaponTargetStats? stats = option?.WeaponTargetStats
                 .FirstOrDefault(s => s.TargetUnit.Reference.Equals(targetUnit.Reference));
             if (stats == null) return 0;
@@ -341,13 +371,12 @@ namespace FDG.Stages
             List<Weapon> rangedWeapons = unitValue.GetRangedWeapons();
             if (rangedWeapons.Count == 0) return false;
 
-            // GetRangedWeapons returns one Weapon instance per model that carries it, so duplicates
-            // are normal. BuildWeaponOptions keys by Weapon.Name internally and will throw on collisions,
-            // so dedupe by name (same semantics CombatActionContext uses for its AvailableWeapons dict).
-            var availableWeapons = new Dictionary<Weapon, int>();
-            var seenNames = new HashSet<string>();
-            foreach (Weapon w in rangedWeapons)
-                if (seenNames.Add(w.Name)) availableWeapons[w] = 1;
+            // GetRangedWeapons returns one Weapon instance per model that carries it, so duplicates are
+            // normal. #306: group by PROFILE through the same helper CombatActionContext builds its
+            // AvailableWeapons with - the gate must answer exactly what the stage will conclude (#200),
+            // and the old name-dedupe collapsed a same-name split into a single option the stage would
+            // never offer. Counts are irrelevant here; only the set of profiles is.
+            ConcurrentDictionary<Weapon, int> availableWeapons = WeaponPool.GroupByProfile(rangedWeapons);
 
             List<ITerrain> terrainSnapshot = gameContext.TableState.Terrain.Objects.ToList();
             List<WeaponOption> options = BuildWeaponOptions(attackingUnit, availableWeapons, gameContext,
@@ -368,10 +397,15 @@ namespace FDG.Stages
             ITeam playerTeam = gameContext.TableState.Teams.Objects
                 .First(team => team.IsPlayerOnTeam(playerID));
 
-            Dictionary<string, WeaponOption> nameAndWeaponOptions = new Dictionary<string, WeaponOption>();
+            // #306: keyed by weapon PROFILE, not by name. A partial upgrade (one of three rifles bought
+            // Precise) puts two same-named, differently-ruled weapons in the pool, and the old
+            // name-keyed Add threw on the second - faulting the state machine mid-activation.
+            Dictionary<string, WeaponOption> optionsByProfile =
+                new Dictionary<string, WeaponOption>(StringComparer.Ordinal);
             // Per-weapon LoS-ignore (Indirect/Takedown): a weapon that ignores intervening terrain for LoS
             // can hit targets it has no clear line to, so enumeration must not require LoS for it.
-            Dictionary<string, bool> weaponIgnoresLineOfSight = new Dictionary<string, bool>();
+            Dictionary<string, bool> weaponIgnoresLineOfSight =
+                new Dictionary<string, bool>(StringComparer.Ordinal);
 
             foreach(Weapon weapon in availableWeapons.Keys)
             {
@@ -384,10 +418,16 @@ namespace FDG.Stages
                     attackingUnit.GetValue(), weapon, gameContext.RuleEvaluator);
                 string? losIgnoreRule = Rules.Dispatch.SightRuleQueries.LineOfSightIgnoreSource(
                     attackingUnit.GetValue(), weapon, gameContext.RuleEvaluator);
-                nameAndWeaponOptions.Add(weapon.Name,
+                // TryAdd, not Add: the pool is already profile-grouped, so a repeat means the caller
+                // handed us an ungrouped list - folding the copies into one option is what grouping
+                // would have done anyway, and is never worth throwing over.
+                string profileKey = WeaponProfileKey.For(weapon);
+                if (optionsByProfile.TryAdd(profileKey,
                     new WeaponOption(weapon, new List<WeaponTargetStats>(),
-                        coverIgnoreRule != null, losIgnoreRule != null, coverIgnoreRule, losIgnoreRule));
-                weaponIgnoresLineOfSight.Add(weapon.Name, losIgnoreRule != null);
+                        coverIgnoreRule != null, losIgnoreRule != null, coverIgnoreRule, losIgnoreRule)))
+                {
+                    weaponIgnoresLineOfSight.Add(profileKey, losIgnoreRule != null);
+                }
             }
 
             IEnumerable<DataBinding<UnitData>> enemyUnits = gameContext.GameDataStore().GetAllDataBindings<ArmyData>()
@@ -410,29 +450,34 @@ namespace FDG.Stages
                 }
 
                 Dictionary<string, WeaponTargetStats> weaponToStats =
-                    BuildAttacksForEnemyUnit(attackingUnit, enemyUnit, availableWeapons.Keys.Select(weapon => weapon.Name),
+                    BuildAttacksForEnemyUnit(attackingUnit, enemyUnit, optionsByProfile.Keys,
                         terrain, gameContext, weaponIgnoresLineOfSight, unselectableReason);
 
                 foreach (KeyValuePair<string, WeaponTargetStats> kvp in weaponToStats)
                 {
-                    nameAndWeaponOptions[kvp.Key].WeaponTargetStats.Add(kvp.Value);
+                    optionsByProfile[kvp.Key].WeaponTargetStats.Add(kvp.Value);
                 }
             }
 
             // #209: availableWeapons is keyed by the Weapon reference type, so its enumeration
             // order is identity-hash-dependent and varied per run, breaking same-seed replay
-            // (#193). The options go out in a deterministic order (names are unique here - the
-            // pool dedupes by name and Add above throws on collisions).
-            return nameAndWeaponOptions.Values
-                .OrderBy(option => option.Weapon.Name, StringComparer.Ordinal).ToList();
+            // (#193). Ordering by the profile key is a TOTAL deterministic order - and, being
+            // name-primary, the same order the old OrderBy(Weapon.Name) produced whenever names are
+            // unique, which is every shipped book today (#306).
+            return optionsByProfile
+                .OrderBy(entry => entry.Key, StringComparer.Ordinal)
+                .Select(entry => entry.Value).ToList();
         }
 
+        // #306: weaponProfileKeys / weaponToStats are keyed by WeaponProfileKey, so a model's plain rifle
+        // and its neighbour's upgraded one land in their own rows instead of colliding on the name.
         private static Dictionary<string, WeaponTargetStats> BuildAttacksForEnemyUnit(DataBinding<UnitData> attackingUnit,
-            DataBinding<UnitData> enemyUnit, IEnumerable<string> weaponNames, IReadOnlyList<ITerrain> terrain,
+            DataBinding<UnitData> enemyUnit, IEnumerable<string> weaponProfileKeys, IReadOnlyList<ITerrain> terrain,
             IGameContext gameContext, IReadOnlyDictionary<string, bool> weaponIgnoresLineOfSight,
             string? unselectableReason = null)
         {
-            Dictionary<string, WeaponTargetStats> weaponToStats = new Dictionary<string, WeaponTargetStats>();
+            Dictionary<string, WeaponTargetStats> weaponToStats =
+                new Dictionary<string, WeaponTargetStats>(StringComparer.Ordinal);
 
             var modelBlockers = LineOfSightUtilities.BuildModelBlockers(
                 gameContext.TableState, attackingUnit, enemyUnit);
@@ -441,9 +486,9 @@ namespace FDG.Stages
             bool hasCover = ComputeHasCover(attackingUnit, enemyUnit, allTerrain,
                 gameContext.Settings.CoverProximityExceptionsEnabled);
 
-            foreach (string weaponName in weaponNames)
+            foreach (string weaponProfileKey in weaponProfileKeys)
             {
-                weaponToStats[weaponName] = new WeaponTargetStats(enemyUnit,
+                weaponToStats[weaponProfileKey] = new WeaponTargetStats(enemyUnit,
                     new HashSet<DataBinding<ModelData>>(),
                     new HashSet<DataBinding<ModelData>>(),
                     hasCover,
@@ -455,8 +500,9 @@ namespace FDG.Stages
             // #102: a weapon's effective range against THIS enemy unit folds the attacker's own range buffs
             // (Increased Shooting Range) and this defender's range debuffs (Ranged Shrouding). The delta is the
             // same for every model of the attacking unit (a unit+weapon+defender property), so compute it once
-            // per weapon name and reuse it across the model loop.
-            Dictionary<string, float> effectiveRangeByWeapon = new Dictionary<string, float>();
+            // per weapon profile and reuse it across the model loop.
+            Dictionary<string, float> effectiveRangeByWeapon =
+                new Dictionary<string, float>(StringComparer.Ordinal);
 
             //Go through each of our models that have weapons.
             foreach (DataBinding<ModelData> attackingModel in attackingUnit.ModelBindings()
@@ -471,19 +517,22 @@ namespace FDG.Stages
 
                 foreach (Weapon weapon in attackingModel.Weapons()) //For now relying on melee to be out of range.
                 {
-                    if (weaponToStats.ContainsKey(weapon.Name) == false)
+                    // #306: the model's own copy is matched to its profile's row - by name alone, a model
+                    // carrying the plain rifle would have been credited to whichever same-named row won.
+                    string weaponProfileKey = WeaponProfileKey.For(weapon);
+                    if (weaponToStats.ContainsKey(weaponProfileKey) == false)
                     {
                         continue;
                     }
 
-                    WeaponTargetStats weaponTargetStats = weaponToStats[weapon.Name];
-                    bool ignoresLoS = weaponIgnoresLineOfSight.TryGetValue(weapon.Name, out bool ig) && ig;
+                    WeaponTargetStats weaponTargetStats = weaponToStats[weaponProfileKey];
+                    bool ignoresLoS = weaponIgnoresLineOfSight.TryGetValue(weaponProfileKey, out bool ig) && ig;
 
-                    if (!effectiveRangeByWeapon.TryGetValue(weapon.Name, out float effectiveRange))
+                    if (!effectiveRangeByWeapon.TryGetValue(weaponProfileKey, out float effectiveRange))
                     {
                         effectiveRange = Rules.Dispatch.RangeRuleQueries.EffectiveRange(
                             attackingUnit.GetValue(), weapon, enemyUnit.GetValue(), gameContext.RuleEvaluator);
-                        effectiveRangeByWeapon[weapon.Name] = effectiveRange;
+                        effectiveRangeByWeapon[weaponProfileKey] = effectiveRange;
                     }
 
                     if(CanWeaponShootAtUnit(attackingModel, enemyUnit, effectiveRange,

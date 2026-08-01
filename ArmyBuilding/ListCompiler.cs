@@ -263,11 +263,12 @@ namespace FDG.ArmyBuilding
             // expression of "this model's attacks": round-robin hands the marked copies to a model at
             // load, and the batcher already rolls a rule-bearing copy as its own volley (#027).
             //
-            // The marked copy is then RENAMED ("Hand Weapon (Sergeant)"): the ranged-attack chooser keys
-            // its weapon pool by NAME and assumes uniqueness (#209's deterministic ordering leans on it) -
-            // a same-name split faults the shoot stage, found in this slice's play probe. Unique names
-            // keep that invariant true, and the row/log attribution ("Chose weapon: Rifle (Sergeant)")
-            // is what the player wants to see anyway.
+            // The marked copy is then RENAMED ("Hand Weapon (Sergeant)"), for ATTRIBUTION: the row/log
+            // lines name which copy did what ("Chose weapon: Rifle (Sergeant)"), which is what the player
+            // wants to see. It began life as a correctness workaround - both weapon choosers keyed their
+            // pools by NAME and a same-name split faulted the shoot stage, found in this slice's play
+            // probe - but #306 profile-keyed them, so nothing depends on the rename any more. Owner's
+            // call (2026-07-31) is to keep it for the attribution alone.
             foreach ((SpecialRuleEntry rule, int applications) in championMarks)
             {
                 foreach (string weaponName in unit.Weapons.Select(w => w.Name).Distinct().ToList())

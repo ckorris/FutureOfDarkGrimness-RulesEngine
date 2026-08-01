@@ -117,8 +117,31 @@ public static class TokenDisplay
         _ => "",
     };
 
-    /// <summary>The single entry point the GUI calls per token on a unit/model.</summary>
-    public static TokenDisplayInfo Resolve(Token token, IRuleResolver? rules, bool isModelScoped = false)
+    /// <summary>
+    /// The token's prominence for THIS bearer. Normally the definition's, but a
+    /// <see cref="TokenDefinition.VisibleOnlyWhenRead"/> type ("Moved") drops to
+    /// <see cref="ETokenProminence.Invisible"/> on a bearer that carries no rule testing it — the whole
+    /// point of the flag being that the stamp is universal while the interest in it is not (#305).
+    /// A null <paramref name="bearer"/> leaves the declared prominence alone: the caller cannot prove
+    /// the token is unread, and silently hiding it would be worse than a chip too many.
+    /// </summary>
+    public static ETokenProminence ResolveProminence(Token token, IUnit? bearer)
+    {
+        TokenDefinition def = TokenDefinitionCatalog.Lookup(token.Type);
+        if (!def.VisibleOnlyWhenRead || bearer == null) return def.Prominence;
+
+        return TokenReadership.IsReadByAnyRule(bearer, token.Type)
+            ? def.Prominence
+            : ETokenProminence.Invisible;
+    }
+
+    /// <summary>
+    /// The single entry point the GUI calls per token on a unit/model. <paramref name="bearer"/> is the
+    /// unit the token sits on (or whose model it sits on) — needed only by the bearer-scoped prominence
+    /// rule above; every other field is bearer-independent.
+    /// </summary>
+    public static TokenDisplayInfo Resolve(Token token, IRuleResolver? rules, bool isModelScoped = false,
+        IUnit? bearer = null)
     {
         TokenDefinition def = TokenDefinitionCatalog.Lookup(token.Type);
         return new TokenDisplayInfo(
@@ -126,7 +149,7 @@ public static class TokenDisplay
             Name: DescribeName(token),
             Description: DescribeDetail(token, rules),
             Valence: ResolveValence(token, rules),
-            Prominence: def.Prominence,
+            Prominence: ResolveProminence(token, bearer),
             Count: token.Count,
             IsModelScoped: isModelScoped,
             LifetimeText: DescribeLifetime(token.ClearTrigger),

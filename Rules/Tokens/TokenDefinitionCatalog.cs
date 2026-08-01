@@ -107,13 +107,17 @@ public static class TokenDefinitionCatalog
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd(),
                 Description: "Has already activated this round."),
 
-            // #197 Mobile Artillery. Normal, not Invisible: it is the only visible explanation for why an
-            // artillery piece is suddenly easier to shoot this round, and the player who needs to read it
-            // is the OWNER deciding whether to stay put. RoundEnd - the rule's window is the round.
+            // #197 Mobile Artillery. VisibleOnlyWhenRead (#305): the movement stage stamps this on EVERY
+            // unit that moves, so shown unconditionally it was a chip on most of the table that meant
+            // nothing on any of them. It is still the only visible explanation for why an artillery piece
+            // is suddenly easier to shoot this round - so it stays Normal for a bearer that actually
+            // carries a rule testing it, and disappears for everyone else. RoundEnd - the rule's window
+            // is the round.
             new(TokenType.MOVED_THIS_ROUND_ID, "Moved", EValence.Neutral, ETokenProminence.Normal,
                 DefaultClearTrigger: new TokenClearTrigger.RoundEnd(),
                 Description: "Has moved this round - rules that reward holding position are switched off " +
-                             "until the round ends."),
+                             "until the round ends.",
+                VisibleOnlyWhenRead: true),
 
             new(TokenType.SPELL_TOKENS_ID, "Spell Tokens", EValence.Positive, ETokenProminence.FirstClass,
                 ColorOverride: ETokenColor.Blue,

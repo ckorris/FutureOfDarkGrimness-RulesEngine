@@ -20,6 +20,15 @@ namespace FDG.Rules.Tokens;
 /// a type without an explicit override throws.
 /// </param>
 /// <param name="ValenceSource">How <see cref="Valence"/> is determined for this type — see <see cref="EValenceSource"/>.</param>
+/// <param name="VisibleOnlyWhenRead">
+/// This type is BOOKKEEPING for whichever rules happen to read it, not a status the player is meant to
+/// track in general — so it drops to <see cref="ETokenProminence.Invisible"/> unless its bearer actually
+/// carries a rule whose condition tests it (<c>TokenReadership.IsReadByAnyRule</c>). "Moved" is the case
+/// this exists for: every unit that moves gets stamped, but only a Mobile Artillery cares, and a chip on
+/// every unit on the table is noise that means nothing to the other 99% of them.
+/// <para>Resolved per BEARER, so it needs the unit passed to <c>TokenDisplay.Resolve</c>; with no bearer
+/// in hand the token stays at its declared prominence (the caller can't prove it's unread).</para>
+/// </param>
 public sealed record TokenDefinition(
     string Id,
     string Name,
@@ -29,4 +38,5 @@ public sealed record TokenDefinition(
     TokenClearTrigger? DefaultClearTrigger = null,
     string Description = "",
     ETokenColor? ColorOverride = null,
-    ETokenShape? ShapeOverride = null);
+    ETokenShape? ShapeOverride = null,
+    bool VisibleOnlyWhenRead = false);

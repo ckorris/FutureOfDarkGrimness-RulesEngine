@@ -230,8 +230,8 @@ namespace FDG.Tests
             await AssertVolleyPinned(attacker, defender, weapon, weaponCount: 3);
         }
 
-        // Blast multiplies hits capped at the target's model count: a big unit absorbs the full
-        // multiplier, a small one clips it.
+        // Blast multiplies EACH hit, capped per hit at the target's living model count and stacking
+        // across hits: a big unit absorbs the full multiplier, a small one clips it.
         [TestCase(10)]
         [TestCase(2)]
         public async Task Blast_CappedAtModelCount_MatchesEngine(int defenderModels)

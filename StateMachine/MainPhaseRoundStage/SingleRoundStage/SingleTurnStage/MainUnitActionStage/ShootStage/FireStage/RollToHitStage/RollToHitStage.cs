@@ -139,27 +139,40 @@ namespace FDG.Stages
             }
 
             // #042 hit-multiplier rules (Blast) fire at the same hook but resolve "after other rules":
-            // multiply the POST-injection hit total, then cap at the target unit's model count. Folded
-            // after the injection above so Blast multiplies whatever hits landed (including Surge's).
+            // multiply the POST-injection hit total. Folded after the injection above so Blast multiplies
+            // whatever hits landed (including Surge's).
+            //
+            // The model-count cap is PER HIT, and the multiplied hits STACK across hits (owner-ruled
+            // 2026-07-31): "hits X times for each hit, but no more times than there are models in the
+            // target unit" bounds what ONE hit can fan out to, not the volley's total. So an A3 Blast(3)
+            // that lands 3 hits on a 3-model unit deals 3 x 3 = 9, and on a 2-model unit 3 x 2 = 6 - not
+            // 3 either way, which is what capping the TOTAL used to produce (and which silently deleted
+            // save dice the defender owed).
             HitMultiplierSink hitMultiplier = new HitMultiplierSink();
             hitMultiplier.ApplyFrom(operations);
             if (hitMultiplier.NetMultiplier > 1)
             {
                 float currentHits = TotalHits(results);
                 int targetModelCount = CountLivingModels(defender);
-                float cappedHits = Math.Min(currentHits * hitMultiplier.NetMultiplier, targetModelCount);
+                // Floored at 1 so a target with no living models (unreachable in play - such a unit is not
+                // a legal target) leaves the hits untouched rather than erasing them.
+                int effectiveMultiplier = Math.Max(1, Math.Min(hitMultiplier.NetMultiplier, targetModelCount));
+                float cappedHits = currentHits * effectiveMultiplier;
                 float extraHits = cappedHits - currentHits;
                 if (extraHits > 0f)
                 {
                     // #204: tag the overflow group so the save stage shows "xN (Blast)" (name from the op,
-                    // falling back to "Blast" if a book aliased it away).
+                    // falling back to "Blast" if a book aliased it away). The EFFECTIVE multiplier rides
+                    // along, not the authored one, so the beat's arithmetic ("3 hits x2 (Blast) = 6") adds
+                    // up when the target's model count trimmed it.
                     string blastName = named.FirstOrDefault(n => n.Op is RuleOperation.MultiplyHits).RuleName;
                     if (string.IsNullOrEmpty(blastName)) blastName = "Blast";
                     results.SuccessfulHitList.Add(new SuccessfulHitInfo(
                         SyntheticHits(extraHits, rollToHitResults), 0,
-                        new HitGroupSource(EHitSourceKind.BlastMultiplier, blastName, hitMultiplier.NetMultiplier)));
-                    GameContext.Log($"Blast multiplied {currentHits} hits x{hitMultiplier.NetMultiplier}, capped at " +
-                        $"{targetModelCount} target models -> {cappedHits} total.");
+                        new HitGroupSource(EHitSourceKind.BlastMultiplier, blastName, effectiveMultiplier)));
+                    GameContext.Log($"Blast multiplied {currentHits} hits x{effectiveMultiplier} " +
+                        $"(authored x{hitMultiplier.NetMultiplier}, capped per hit at {targetModelCount} " +
+                        $"target model(s)) -> {cappedHits} total.");
                 }
             }
 

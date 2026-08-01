@@ -438,9 +438,11 @@ public static class CoreRuleCatalog
     // Hit-multiplier sink (RollToHitStage, after injection) ----------------------
 
     /// <summary>
-    /// Blast(X): each hit is multiplied by X (the rule's argument), capped at the target unit's
-    /// model count, and the attack ignores the target's cover. The multiply folds at
-    /// <see cref="EHookID.Shooting_OnHitRollComplete"/> AFTER the hit-injection rules ("after other
+    /// Blast(X): EACH hit is multiplied by X (the rule's argument), with X capped per hit at the target
+    /// unit's living model count, and the attack ignores the target's cover. The cap bounds one hit's
+    /// fan-out, not the volley's total, so the multiplied hits stack: an A3 Blast(3) landing 3 hits deals
+    /// 9 against a 3-model unit and 6 against a 2-model one (owner-ruled 2026-07-31). The multiply folds
+    /// at <see cref="EHookID.Shooting_OnHitRollComplete"/> AFTER the hit-injection rules ("after other
     /// rules"); the cover-ignore fires at <see cref="EHookID.Shooting_OnSaveRollModifier"/>, where the
     /// cover stage drops the bonus and the targeting/movement option builders flag the weapon.
     /// </summary>
@@ -459,7 +461,8 @@ public static class CoreRuleCatalog
         Array.Empty<ActivatedAbility>(),
         ERuleScope.Weapon,
         Valence: EValence.Positive,
-        Description: "Each hit is multiplied (up to the target unit's model count) and the attack ignores cover.");
+        Description: "Each hit becomes several hits (no more per hit than the target unit's model count) " +
+                     "and the attack ignores cover.");
 
     // Targets-selected marker (BuildTargetListStage, shooting) -------------------
 

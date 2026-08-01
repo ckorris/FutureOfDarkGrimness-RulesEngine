@@ -288,9 +288,12 @@ namespace FDG.Ai.Tactician
             hitMultiplier.ApplyFrom(completeOps);
             if (hitMultiplier.NetMultiplier > 1)
             {
+                // Mirrors RollToHitStage: the model-count cap is PER HIT and the multiplied hits stack,
+                // so it trims the MULTIPLIER, not the volley's total.
                 float currentHits = groups.Sum(group => group.HitCount);
                 int livingDefenders = def.Models.Count(model => model.GetIsAlive());
-                float cappedHits = Math.Min(currentHits * hitMultiplier.NetMultiplier, livingDefenders);
+                int effectiveMultiplier = Math.Max(1, Math.Min(hitMultiplier.NetMultiplier, livingDefenders));
+                float cappedHits = currentHits * effectiveMultiplier;
                 if (cappedHits - currentHits > 0f)
                     groups.Add(SingleGroupInfo(cappedHits - currentHits));
             }

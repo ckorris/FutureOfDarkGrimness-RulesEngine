@@ -28,6 +28,32 @@ public class TokenContainer : ITokenContainer
         //durations ("next roll" vs "this round") are different buffs — merging them would keep only the
         //first arrival's trigger, giving one of them the wrong lifetime. Payload-less same-trigger tokens
         //merge by type+owner exactly as before (Equals(null, null) is true).
+        //#197 P12: magnitude tokens are the one exception to payload-equality stacking. Their payload IS
+        //their value, so two 0.33 markers must become one 0.67 marker - matching on payload equality
+        //would instead leave a separate entry per ignore event, and the merge below would never fire.
+        //Type, owner and clear trigger still have to match, for the same reasons as the general case.
+        if (token.Payload is TokenPayload.Magnitude incoming)
+        {
+            int magnitudeIndex = _tokens.FindIndex(t => t.Type == token.Type
+                && t.OwnerUnitID == token.OwnerUnitID
+                && t.Payload is TokenPayload.Magnitude
+                && Equals(t.ClearTrigger, token.ClearTrigger));
+
+            if (magnitudeIndex < 0)
+            {
+                _tokens.Add(token);
+                OnTokenAdded?.Invoke(token);
+                return;
+            }
+
+            Token existingMagnitude = _tokens[magnitudeIndex];
+            float summed = ((TokenPayload.Magnitude)existingMagnitude.Payload!).Value + incoming.Value;
+            Token merged = existingMagnitude with { Payload = new TokenPayload.Magnitude(summed) };
+            _tokens[magnitudeIndex] = merged;
+            OnTokenCountChanged?.Invoke(merged);
+            return;
+        }
+
         int existingIndex = _tokens.FindIndex(t => t.Type == token.Type && t.OwnerUnitID == token.OwnerUnitID
             && Equals(t.Payload, token.Payload) && Equals(t.ClearTrigger, token.ClearTrigger));
         if (existingIndex < 0)
@@ -114,6 +140,20 @@ public class TokenContainer : ITokenContainer
         foreach (Token token in _tokens.Where(token => token.Type == tokenType))
         {
             total += token.Count;
+        }
+
+        return total;
+    }
+
+    public float GetTokenMagnitude(TokenType tokenType)
+    {
+        float total = 0f;
+        foreach (Token token in _tokens.Where(token => token.Type == tokenType))
+        {
+            if (token.Payload is TokenPayload.Magnitude magnitude)
+            {
+                total += magnitude.Value * token.Count;
+            }
         }
 
         return total;

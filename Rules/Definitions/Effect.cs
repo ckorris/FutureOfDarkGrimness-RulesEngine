@@ -41,6 +41,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(Heal), "heal")]
 [JsonDerivedType(typeof(GrantToken), "grantToken")]
 [JsonDerivedType(typeof(GrantTokenToKiller), "grantTokenToKiller")]
+[JsonDerivedType(typeof(GrantIgnoredWoundMarker), "grantIgnoredWoundMarker")]
 [JsonDerivedType(typeof(ConsumeToken), "consumeToken")]
 [JsonDerivedType(typeof(ClearTokenOnRoll), "clearTokenOnRoll")]
 [JsonDerivedType(typeof(GrantTokenOnRoll), "grantTokenOnRoll")]
@@ -636,6 +637,51 @@ public abstract record Effect
 
             operations.Add(new RuleOperation.GrantTokenToUnit(
                 killer, new Token(TType, count, Clear, OwnerUnitID: ruleInvocation.Bearer.ID)));
+        }
+    }
+
+    /// <summary>
+    /// #197 P12: grants the bearer one token of <see cref="TType"/> whose
+    /// <see cref="TokenPayload.Magnitude"/> is the number of wounds it just ignored — Regenerative
+    /// Strength's "place one marker on this model when it ignores a wound". Authored at
+    /// <see cref="EHookID.Lifecycle_OnWoundIgnored"/> in the <see cref="ERuleSeat.Subject"/> seat.
+    ///
+    /// <para>A separate effect rather than a <see cref="ValueSource"/> on <see cref="GrantToken"/>
+    /// because the count is a FLOAT. <see cref="ValueSource.Resolve"/> returns an int by design (every
+    /// other source is authored or counted), and widening it would put a rounding seam in front of every
+    /// value-driven effect in the engine. Reading the fraction off the capability keeps the compromise
+    /// where it belongs: in the one rule that actually has a fractional quantity. Repeat firings merge
+    /// into a single running total — see <see cref="TokenContainer.AddToken"/>'s magnitude branch.</para>
+    ///
+    /// <para>No <c>MaxTotal</c>: the corpus text caps nothing ("+X attacks, where X is the number of
+    /// markers on it"), and a cap on a fractional total would need its own rounding decision. Add one
+    /// when a rule asks for it.</para>
+    /// </summary>
+    public sealed record GrantIgnoredWoundMarker(TokenType TType, TokenClearTrigger Clear) : Effect
+    {
+        public override IReadOnlyCollection<Type> RequiredCapabilities => [typeof(IHasIgnoredWoundCount)];
+
+        public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
+        {
+            // Same contract and same throw as GrantTokenToKiller: an effect authored at a hook whose
+            // context can't answer is a data bug, caught before play by BookRuleSupplement.ValidateAll.
+            if (ruleInvocation.Hook is not IHasIgnoredWoundCount ignoredContext)
+            {
+                throw new InvalidOperationException(
+                    $"{nameof(GrantIgnoredWoundMarker)} requires {nameof(IHasIgnoredWoundCount)}, but the " +
+                    $"firing context ({ruleInvocation.Hook?.GetType().Name ?? "none"}) does not provide it.");
+            }
+
+            float ignored = ignoredContext.IgnoredWoundCount;
+            if (ignored <= 0f)
+            {
+                return;
+            }
+
+            operations.Add(new RuleOperation.GrantTokenToUnit(
+                ruleInvocation.EffectiveTarget,
+                new Token(TType, 1, Clear, Payload: new TokenPayload.Magnitude(ignored),
+                    OwnerUnitID: ruleInvocation.OwnerForEffectiveTarget)));
         }
     }
 

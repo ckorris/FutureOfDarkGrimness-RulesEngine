@@ -410,6 +410,12 @@ public static class RuleFireLint
             // Shaken arm).
             EHookID.Morale_OnShakenApplied => IsTokenOrExecutable(op),
 
+            // #197 P12: AssignWoundsStage applies TOKEN operations only at the wound-ignore hook -
+            // deliberately not IsTokenOrExecutable. The fire site sits mid-wound-resolution, before
+            // allocation, where running an executable (a move, a spawn) or prompting would reorder the
+            // attack. An executable authored here would be dropped on the floor, so the lint must say so.
+            EHookID.Lifecycle_OnWoundIgnored => IsOpTokenWork(op),
+
             _ => false,
         };
     }
@@ -566,6 +572,12 @@ public static class RuleFireLint
                 break;
             case EHookID.Lifecycle_OnUnitCreated:
                 yield return new UnitCreatedContext(bearer);
+                break;
+            // #197 P12: the bearer is the unit that ignored the wound (Subject seat at the real fire
+            // site). A positive count, matching the live guard - the stage never fires the hook for zero
+            // ignored wounds, so a lint variant with 0 would test a firing that cannot happen.
+            case EHookID.Lifecycle_OnWoundIgnored:
+                yield return new WoundIgnoredContext(bearer, world.Other, IgnoredWoundCount: 1f);
                 break;
             case EHookID.Deployment_OnPreDeploymentSelect:
                 yield return new PreDeploymentSelectContext(bearer);

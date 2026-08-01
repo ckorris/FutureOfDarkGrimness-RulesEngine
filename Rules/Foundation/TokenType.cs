@@ -90,6 +90,27 @@ public readonly record struct TokenType(string Id)
     // in contact and charges without moving has genuinely not moved, and keeps the bonus.
     public const string MOVED_THIS_ROUND_ID = "MovedThisRound";
 
+    // #197 P12 Regenerative Strength: "place one marker on this model when it ignores a wound; when in
+    // melee, pick one of its weapons to get +X attacks, where X is the number of markers on it."
+    //
+    // The marker is the engine's only FRACTIONAL token (owner-signed 2026-07-31). Wounds ignored is a
+    // roll-derived quantity, and under the probabilistic roller it is fractional twice over: the wound
+    // pool reaching the ignore fold is already a float, and the ignore roll spreads it across faces. An
+    // integer marker count would have to round a roll-derived value, which is the one thing the dice
+    // invariant forbids - so the count rides a TokenPayload.Magnitude instead of Token.Count, and the
+    // read side adds it to a float attack count. Under the realistic roller both are whole numbers and
+    // nothing looks unusual. ManualOnly: markers are never spent and last the whole game.
+    public const string REGENERATIVE_STRENGTH_MARKER_ID = "RegenerativeStrengthMarker";
+
+    // #197 P12: the bearer has already cashed its markers into a weapon THIS MELEE. "Pick ONE of its
+    // weapons" is a per-melee choice, but the swing loop re-enters DetermineHitRollStage once per weapon,
+    // so the offer needs state that spans the volleys of one melee and no further. Cleared by
+    // PostMeleeStage's Melee_OnPostMelee sweep, which is why the trigger is CustomHook and not
+    // ActivationEnd: a strike-back happens inside the ENEMY's activation, and the end-of-activation sweep
+    // only ever visits the activated unit - a gate set while striking back would survive to suppress the
+    // bearer's own next melee.
+    public const string REGENERATIVE_STRENGTH_SPENT_ID = "RegenerativeStrengthSpentThisMelee";
+
 
     public static readonly TokenType Shaken = new(SHAKEN_ID);
     public static readonly TokenType Fatigued = new(FATIGUED_ID);
@@ -99,6 +120,8 @@ public readonly record struct TokenType(string Id)
     public static readonly TokenType ActivatedThisRound = new(ACTIVATED_THIS_ROUND_ID);
     public static readonly TokenType CompelledToAttack = new(COMPELLED_TO_ATTACK_ID);
     public static readonly TokenType MovedThisRound = new(MOVED_THIS_ROUND_ID);
+    public static readonly TokenType RegenerativeStrengthMarker = new(REGENERATIVE_STRENGTH_MARKER_ID);
+    public static readonly TokenType RegenerativeStrengthSpent = new(REGENERATIVE_STRENGTH_SPENT_ID);
     public static readonly TokenType SpellTokens = new(SPELL_TOKENS_ID);
 
     /// <summary>

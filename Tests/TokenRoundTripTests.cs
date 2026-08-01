@@ -219,6 +219,55 @@ namespace FDG.Tests
         // Helper
         // ----------------------------------------------------------------------
 
+        // #197 P12: the fractional marker over the same wire. A magnitude payload is the engine's only
+        // non-integer token value, and it is the one thing about Regenerative Strength a networked client
+        // or a reloaded save could silently round - a client seeing 1 marker where the host has 1.33 would
+        // roll a different number of attack dice. SaveTypeRegistry pins the payload's stable $type id;
+        // this pins that the VALUE survives with it.
+        [Test]
+        public void MagnitudeTokens_SurviveTheRoundTrip_WithTheirFraction()
+        {
+            GameDataStore fromStore = new GameDataStore.GameDataStoreBuilder()
+                .RegisterType<float>(1)
+                .RegisterType<Position>(1)
+                .RegisterType<ModelData>(1)
+                .RegisterType<Float2>(1)
+                .Build();
+
+            var model = new ModelData(baseRadiusInches: 0.75f, weapons: new List<Weapon>(),
+                initialPosition: new Position(), fromStore);
+
+            var marker = TokenType.RegenerativeStrengthMarker;
+            model.Tokens.AddToken(new Token(marker, 1, new TokenClearTrigger.ManualOnly(),
+                Payload: new TokenPayload.Magnitude(1f / 3f)));
+
+            DataReference modelRef = fromStore.Create(model);
+            string sWounds = fromStore.GetValueAsJson<float>(model.RemainingWoundsBinding.Reference);
+            string sPosition = fromStore.GetValueAsJson<Position>(model.PositionBinding.Reference);
+            string sFacing = fromStore.GetValueAsJson<Float2>(model.FacingBinding.Reference);
+            string sModel = fromStore.GetValueAsJson<ModelData>(modelRef);
+
+            GameDataStore toStore = new GameDataStore.GameDataStoreBuilder()
+                .RegisterType<float>(1)
+                .RegisterType<Position>(1)
+                .RegisterType<ModelData>(1)
+                .RegisterType<Float2>(1)
+                .Build();
+
+            toStore.CreateFromReferenceAndJson(model.RemainingWoundsBinding.Reference, sWounds);
+            toStore.CreateFromReferenceAndJson(model.PositionBinding.Reference, sPosition);
+            toStore.CreateFromReferenceAndJson(model.FacingBinding.Reference, sFacing);
+            toStore.CreateFromReferenceAndJson(modelRef, sModel);
+
+            ModelData rehydrated = toStore.GetValue<ModelData>(modelRef);
+
+            Assert.That(rehydrated.Tokens.GetTokenMagnitude(marker), Is.EqualTo(1f / 3f).Within(0.0001f),
+                "the fraction must cross the wire intact - rounding it here is the same bug as rounding " +
+                "it at the ignore fold, just later");
+            Assert.That(rehydrated.Tokens.GetAllTokens(marker).Single().Payload,
+                Is.InstanceOf<TokenPayload.Magnitude>(), "and it is still a magnitude payload, not a count");
+        }
+
         private static Token MakeToken(TokenType type, int count,
             UnitID? owner = null, TokenClearTrigger? clear = null) =>
             new Token(

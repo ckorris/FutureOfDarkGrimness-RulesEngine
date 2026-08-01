@@ -4,6 +4,7 @@ using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 using FDG.StageResolution.Requests;
 using FDG.Utilities;
 using System;
@@ -124,6 +125,38 @@ namespace FDG.Stages
                 await GameContext.Presenter.Present(DiceRolledBeat.From(regenRoll, woundIgnore.Threshold,
                     GameContext.Settings.RandomnessType, "Regeneration", $"{ignored:0.##} ignored",
                     category: ERollBeatCategory.Defense, context: defender.Name));
+
+                // #197 P12: the wound-ignore hook, fired for the unit that just shrugged the wounds off.
+                // Declared as EHookID.Lifecycle_OnWoundIgnored since #042 but never lit until now, so a
+                // rule authored here used to validate, lint clean and do nothing. Regenerative Strength's
+                // marker is the one reader: its value is `ignored`, which is fractional under the
+                // probabilistic roller and whole under the realistic one.
+                //
+                // Guarded on ignored > 0f so the hook never fires as a no-op - IHasIgnoredWoundCount
+                // promises a positive count, which is what lets rules here skip the empty-firing guard.
+                // Token operations only: this is mid-wound-resolution, so nothing here may execute (a
+                // move, a spawn) or prompt. GrantIgnoredWoundMarker emits exactly one grant.
+                if (ignored > 0f)
+                {
+                    IReadOnlyList<RuleOperation> ignoredWoundOperations = GameContext.RuleEvaluator.EvaluateAll(
+                        new WoundIgnoredContext(defender, attacker, ignored),
+                        // Subject seat, models passed for the same reason as the save-complete evaluation
+                        // above: a joined hero's relocated per-model rule must still be seen.
+                        RuleParticipant.Subject(defender, models: HeroStatRules.LivingModels(defender)));
+                    OperationApplier.ApplyTokenOperations(ignoredWoundOperations);
+
+                    // Self-attributing log, the Sergeant precedent: a marker that accrues silently is
+                    // indistinguishable in play from one that never accrued, and this is the seam where a
+                    // regression would hide. Names the rule because it is the hook's only reader and the
+                    // read side is already rule-named stage code (RegenerativeStrengthAttacks); a second
+                    // reader here would mean generalizing this line, not keeping it vague now.
+                    if (ignoredWoundOperations.Count > 0)
+                    {
+                        GameContext.Log($"{defender.Name} banks {ignored:0.##} Regenerative Strength " +
+                            $"marker(s) - total " +
+                            $"{defender.Tokens.GetTokenMagnitude(TokenType.RegenerativeStrengthMarker):0.##}.");
+                    }
+                }
             }
 
             // #042 Takedown: if the attack was re-scoped to a single model (IndividualTargetResult,

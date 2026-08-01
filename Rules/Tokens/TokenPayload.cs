@@ -56,4 +56,23 @@ public abstract record TokenPayload
     /// lives on the model, keyed by weapon name since <c>Weapon</c> has no ID).
     /// </summary>
     public sealed record WeaponName(string Name) : TokenPayload;
+
+    /// <summary>
+    /// #197 P12: a FRACTIONAL quantity for a token whose value cannot be an integer. The engine's only
+    /// user is the Regenerative Strength marker, whose value is "wounds ignored" — a roll-derived
+    /// quantity that the probabilistic roller reports as a float (see
+    /// <see cref="Foundation.TokenType.REGENERATIVE_STRENGTH_MARKER_ID"/>).
+    ///
+    /// <para>The fraction lives here rather than on <see cref="Token.Count"/> deliberately
+    /// (owner-signed 2026-07-31): a float <c>Count</c> would put non-integers in front of spell-token
+    /// pools, Limited-spent flags and every cost gate, all of which must stay integral. Confining it to
+    /// a payload means exactly one reader — <see cref="ITokenContainer.GetTokenMagnitude"/> — ever sees a
+    /// fraction, and the rest of the token system is untouched.</para>
+    ///
+    /// <para>Unlike every other payload, magnitude tokens MERGE rather than stacking as distinct
+    /// entries: <see cref="TokenContainer.AddToken"/> special-cases them and sums the values, because
+    /// two markers worth 0.33 each are one marker worth 0.67, not two unrelated tokens. That is the only
+    /// place payload equality is deliberately not the stacking key.</para>
+    /// </summary>
+    public sealed record Magnitude(float Value) : TokenPayload;
 }

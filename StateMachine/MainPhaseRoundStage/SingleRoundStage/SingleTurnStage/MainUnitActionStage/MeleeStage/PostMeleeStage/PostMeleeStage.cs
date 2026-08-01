@@ -1,7 +1,10 @@
+using System.Collections.Generic;
+using System.Linq;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 
 namespace FDG.Stages
 {
@@ -44,6 +47,23 @@ namespace FDG.Stages
                 // round) and enforces the family's once-per-round budget — shared with the shooting seam.
                 await PostCombatMoveGate.OfferIfAvailable(GameContext, attacked, operations);
             }
+
+            // #197 P12: the per-melee token sweep. Melee_OnPostMelee was a hook nothing swept, so a
+            // CustomHook(Melee_OnPostMelee) token could be placed but never cleared. Both combatants are
+            // swept, not just the attacked unit: a per-melee gate belongs to whichever unit set it, and
+            // the charger and the striker-back both can. Runs unconditionally (no GetIsAlive guard) - a
+            // dead unit's stale gate is harmless, but Reanimation-style restoration means "harmless" is
+            // not worth relying on, and clearing costs nothing.
+            //
+            // The BackToChooseAction exit bypasses this stage, which is correct: no swing happened there,
+            // so no gate can have been set.
+            List<ITokenContainer> containers = new List<ITokenContainer>();
+            foreach (IUnit combatant in new[] { context.AttackingUnit.GetValue(), context.DefendingUnit.GetValue() })
+            {
+                containers.Add(combatant.Tokens);
+                containers.AddRange(combatant.Models.Select(model => model.Tokens));
+            }
+            new TokenClearService().ClearForHook(EHookID.Melee_OnPostMelee, containers);
 
             await ToFinished.Activate(context);
         }

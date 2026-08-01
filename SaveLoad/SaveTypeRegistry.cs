@@ -78,6 +78,7 @@ namespace FDG.SaveLoad
             Add(typeof(TokenPayload.RuleGrant), "tokenPayload.ruleGrant");
             Add(typeof(TokenPayload.StatModifier), "tokenPayload.statModifier");
             Add(typeof(TokenPayload.WeaponName), "tokenPayload.weaponName");
+            Add(typeof(TokenPayload.Magnitude), "tokenPayload.magnitude");
 
             // TokenClearTrigger — Token.ClearTrigger. Non-nullable, so EVERY saved token carries a $type here.
             Add(typeof(TokenClearTrigger.ManualOnly), "clearTrigger.manualOnly");

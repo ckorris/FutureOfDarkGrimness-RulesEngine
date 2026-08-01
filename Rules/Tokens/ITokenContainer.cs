@@ -39,7 +39,17 @@ public interface ITokenContainer
     public bool HasToken(TokenType tokenType);
 
     public int GetTokenCount(TokenType tokenType);
-    
+
+    /// <summary>
+    /// #197 P12: the summed <see cref="TokenPayload.Magnitude"/> of every token of
+    /// <paramref name="tokenType"/> — the fractional counterpart to <see cref="GetTokenCount"/>, and the
+    /// only place in the engine where a token's value is allowed to be a non-integer. Entries without a
+    /// magnitude payload contribute nothing, so a caller that asks the wrong type gets 0 rather than a
+    /// silently wrong integer count. Returns 0 when the bearer has no such tokens.
+    /// </summary>
+    public float GetTokenMagnitude(TokenType tokenType);
+
+
     public IEnumerable<Token> GetAllTokens(TokenType? tokenType = null);
     
     public IEnumerable<Token> TokensWithOwner(UnitID owningUnitID);

@@ -189,9 +189,16 @@ public abstract record RuleOperation
         // 3x Spell tokens on Warriors"), which is the price of the cross-unit cases being legible at all:
         // #197 Vengeance marks the unit that killed the bearer, and "applied an effect" hid which unit
         // the marker landed on - the one thing a player needs from that line.
+        // #197 P12: a magnitude token's VALUE is its payload, not its count - a 0.15 marker is granted as
+        // Count 1, so the plain count reads "1x" and contradicts the line the stage logs beside it. Read
+        // the payload when there is one.
         public override string Describe() =>
-            $"placed {TokenToGrant.Count}x {TokenDefinitionCatalog.Lookup(TokenToGrant.Type).Name} " +
+            $"placed {Quantity()}x {TokenDefinitionCatalog.Lookup(TokenToGrant.Type).Name} " +
             $"on {Unit.Name}";
+
+        private string Quantity() => TokenToGrant.Payload is Tokens.TokenPayload.Magnitude magnitude
+            ? $"{magnitude.Value * TokenToGrant.Count:0.##}"
+            : TokenToGrant.Count.ToString();
     }
 
     /// <summary>

@@ -72,9 +72,17 @@ namespace FDG.Stages
 
             // #015 Attack count: how many attack dice this volley rolls (weapon Attacks × weapons
             // firing). Computed here, beside the hit threshold, so attack-count modifiers fold at this
-            // point with the same accumulate-before-use discipline as the hit-roll modifiers above (no
-            // such rule exists yet — the producer side is deferred). RollToHitStage reads the result.
+            // point with the same accumulate-before-use discipline as the hit-roll modifiers above.
+            // RollToHitStage reads the result.
             float attackCount = metaData.WeaponType.Attacks * metaData.WeaponCount;
+
+            // #197 P12 Regenerative Strength: the one attack-count modifier in the corpus. Stage code
+            // rather than a rule at EHookID.Shooting_OnPreHitRollCount because it prompts and is gated to
+            // one weapon per melee — see RegenerativeStrengthAttacks for why the hook stays dormant. The
+            // float is the point: the bonus is a marker total that the probabilistic roller makes
+            // fractional, and attackCount has always been a float.
+            attackCount += await RegenerativeStrengthAttacks.Offer(GameContext, attacker,
+                metaData.WeaponType, metaData.IsMelee);
 
             DetermineHitRollResults results = new DetermineHitRollResults(baseQuality, attackCount);
 

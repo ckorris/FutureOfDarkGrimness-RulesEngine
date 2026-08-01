@@ -626,7 +626,7 @@ namespace FDG.Tests
         }
 
         // ──────────────────────────────────────────────────────────────────────
-        // #305: the STAGE owns "may the player back out?" and "what did the last weapon shoot?".
+        // #308: the STAGE owns "may the player back out?" and "what did the last weapon shoot?".
         // Both were previously guessed by the GUI resolver, which kept a per-attacker fire counter it
         // only reset when the ATTACKING UNIT changed - so a unit that shot once never saw Back again,
         // on that activation or any later one.

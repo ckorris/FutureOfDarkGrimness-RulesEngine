@@ -9,7 +9,7 @@ namespace FDG.Rules.Dispatch;
 /// attached rules (unit-level, per-model, and per-weapon), looking for a <see cref="Condition.TokenPresent"/>
 /// naming the type anywhere in a hook's condition or an activated ability's availability gate.
 ///
-/// <para>Exists for <see cref="Tokens.TokenDefinition.VisibleOnlyWhenRead"/> (#305): a bookkeeping token
+/// <para>Exists for <see cref="Tokens.TokenDefinition.VisibleOnlyWhenRead"/> (#308): a bookkeeping token
 /// that every unit gets stamped with is noise on the unit that has no rule caring about it, and genuine
 /// information on the one that does. Rather than hard-coding "hide Moved", the catalog marks the type and
 /// this decides per bearer — so a future book rule reading MovedThisRound lights the chip up for its unit

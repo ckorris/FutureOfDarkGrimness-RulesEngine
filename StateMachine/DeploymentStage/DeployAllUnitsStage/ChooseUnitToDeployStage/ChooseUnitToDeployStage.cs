@@ -138,7 +138,7 @@ namespace FDG.Stages
                 context.Log($"Activating {chosenUnit.GetValue().Name}.");
 
                 context.CurrentDeployingUnit = chosenUnit;
-                // #305: remember where it sat, so a placement the player backs out of can put it back in
+                // #308: remember where it sat, so a placement the player backs out of can put it back in
                 // the same slot rather than at the end of the menu.
                 context.CurrentDeployingUnitPoolIndex = context.UndeployedUnits[currentPlayerID].IndexOf(chosenUnit);
                 context.UndeployedUnits[currentPlayerID].Remove(chosenUnit);

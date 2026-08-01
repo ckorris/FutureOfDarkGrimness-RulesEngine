@@ -14,7 +14,7 @@ namespace FDG.Stages
         public StageBinding OnFinish;
 
         /// <summary>
-        /// #305: the player backed out of placing the chosen unit. Nothing has been committed — the unit
+        /// #308: the player backed out of placing the chosen unit. Nothing has been committed — the unit
         /// goes back into the pool at the slot it came from and the unit list is re-offered, so picking
         /// the wrong unit is no longer a decision you are stuck with.
         /// </summary>
@@ -49,7 +49,7 @@ namespace FDG.Stages
 
             DataBinding<RectangularZone> deploymentZone = context.PlayerDeploymentZones[deployingTeam];
 
-            // #305 allowCancel: deployment placement is now abandonable. Backing out is safe precisely
+            // #308 allowCancel: deployment placement is now abandonable. Backing out is safe precisely
             // here - nothing about the unit has changed yet (its models are still unplaced, no reserve
             // token, no post-deployment ability offered), and ChooseUnitToDeployStage's only side effect
             // is the pool removal we undo below. It is NOT offered for the other placements that share
@@ -92,7 +92,7 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// #305: undoes ChooseUnitToDeployStage's pool removal, putting the unit back at the index it was
+        /// #308: undoes ChooseUnitToDeployStage's pool removal, putting the unit back at the index it was
         /// taken from (clamped - the list can only have shrunk, but a defensive clamp beats an exception
         /// on a back-out). ChooseUnitToDeployStage throws if it finds a unit already chosen, so clearing
         /// CurrentDeployingUnit here is required, not tidy-mindedness.

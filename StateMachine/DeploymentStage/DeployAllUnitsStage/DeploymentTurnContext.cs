@@ -42,7 +42,7 @@ namespace FDG.Stages
         /// <summary>
         /// Where <see cref="CurrentDeployingUnit"/> sat in its owner's <see cref="UndeployedUnits"/> list
         /// before <c>ChooseUnitToDeployStage</c> pulled it out; -1 when no unit is being deployed.
-        /// Exists so a placement that BACKS OUT (#305) puts the unit back where the player found it in the
+        /// Exists so a placement that BACKS OUT (#308) puts the unit back where the player found it in the
         /// menu, rather than at the end of the list — the pool's order is the option order, and a unit that
         /// teleports to the bottom just for being looked at reads as a bug.
         /// </summary>

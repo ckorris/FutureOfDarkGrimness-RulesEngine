@@ -9,7 +9,7 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #305: the "Moved" token is stamped on EVERY unit that moves, but only a rule that tests it (Mobile
+    // #308: the "Moved" token is stamped on EVERY unit that moves, but only a rule that tests it (Mobile
     // Artillery's defensive arm) makes it worth showing. TokenDefinition.VisibleOnlyWhenRead + the
     // TokenReadership walk decide that per BEARER, so the chip appears on the artillery piece and nowhere
     // else. These pin both halves: the readership walk, and the prominence it drives.

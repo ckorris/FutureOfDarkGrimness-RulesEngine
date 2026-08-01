@@ -10,7 +10,7 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #305: picking a unit to deploy used to be irreversible - DeployUnitStage's placement was mandatory,
+    // #308: picking a unit to deploy used to be irreversible - DeployUnitStage's placement was mandatory,
     // so a mis-click cost you the choice for that deployment turn. The placement is now cancellable, and
     // backing out returns the unit to the pool AT ITS ORIGINAL SLOT and re-offers the unit list to the
     // SAME player (their turn is not over).

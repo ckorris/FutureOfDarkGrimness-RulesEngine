@@ -79,7 +79,7 @@ namespace FDG.StageResolution.Requests
         /// tooltip. Meaningful only when <see cref="AllowCancel"/> is set. Worded by the stage, because
         /// only the stage knows where a cancel returns to — the resolver used to hard-code Disembark's
         /// "the unit stays aboard its transport", which became a lie the moment a second placement
-        /// allowed cancelling (#305 deployment).
+        /// allowed cancelling (#308 deployment).
         /// </summary>
         public string CancelHint { get; }
 

@@ -121,7 +121,7 @@ public static class TokenDisplay
     /// The token's prominence for THIS bearer. Normally the definition's, but a
     /// <see cref="TokenDefinition.VisibleOnlyWhenRead"/> type ("Moved") drops to
     /// <see cref="ETokenProminence.Invisible"/> on a bearer that carries no rule testing it — the whole
-    /// point of the flag being that the stamp is universal while the interest in it is not (#305).
+    /// point of the flag being that the stamp is universal while the interest in it is not (#308).
     /// A null <paramref name="bearer"/> leaves the declared prominence alone: the caller cannot prove
     /// the token is unread, and silently hiding it would be worse than a chip too many.
     /// </summary>

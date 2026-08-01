@@ -39,7 +39,7 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// <see cref="RequestClearPlacement"/> for a placement the player may abandon (#305: deployment,
+        /// <see cref="RequestClearPlacement"/> for a placement the player may abandon (#308: deployment,
         /// where backing out returns to the unit list). Returns null when the resolver cancels — the caller
         /// owns the undo, since only it knows what picking the unit already changed.
         /// <para>The overlap guard still runs on a committed placement: a cancel is the player declining,

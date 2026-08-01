@@ -55,7 +55,7 @@ namespace FDG.Stages
             // skip DeployUnit and go back to pick the next player.
             chooseDeployAction.OnEmbarked.Bind(determineNextDeployPlayer);
             deployUnitStage.OnFinish.Bind(determineNextDeployPlayer);
-            // #305: backing out of the placement re-offers the unit list for the SAME player - it is not
+            // #308: backing out of the placement re-offers the unit list for the SAME player - it is not
             // their turn over, and DetermineNextDeployPlayer would hand the deployment to the opponent.
             deployUnitStage.BackToChooseUnit.Bind(chooseUnitToDeploy);
             placeDeferredUnits.OnFinish.Bind(toMainEvent);

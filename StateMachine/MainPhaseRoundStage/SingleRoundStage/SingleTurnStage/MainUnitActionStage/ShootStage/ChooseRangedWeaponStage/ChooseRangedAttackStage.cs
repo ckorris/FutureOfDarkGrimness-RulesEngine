@@ -56,7 +56,7 @@ namespace FDG.Stages
                 return;
             }
 
-            // #305: the stage owns both "may the player back out?" and "what did the last weapon shoot?".
+            // #308: the stage owns both "may the player back out?" and "what did the last weapon shoot?".
             // Backing out is legal exactly while nothing has fired this shoot action - the same
             // AlreadyUsedWeapons test the no-valid-shots branch above uses, so the Back button and the
             // fall-back path can never disagree. (The GUI used to decide this itself with a fire counter
@@ -73,7 +73,7 @@ namespace FDG.Stages
 
             if (attackResult is Cancelled<RangedAttackChoice>)
             {
-                // #305: a cancel after the first weapon has fired can't go back to Choose Action - the
+                // #308: a cancel after the first weapon has fired can't go back to Choose Action - the
                 // shoot has already happened and re-offering the action menu would hand the unit a second
                 // one. The request said so (AllowCancel), so a well-behaved resolver never sends this;
                 // an ill-behaved or out-of-date one ends the shoot instead of rewinding it.

@@ -107,7 +107,7 @@ public static class TokenDefinitionCatalog
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd(),
                 Description: "Has already activated this round."),
 
-            // #197 Mobile Artillery. VisibleOnlyWhenRead (#305): the movement stage stamps this on EVERY
+            // #197 Mobile Artillery. VisibleOnlyWhenRead (#308): the movement stage stamps this on EVERY
             // unit that moves, so shown unconditionally it was a chip on most of the table that meant
             // nothing on any of them. It is still the only visible explanation for why an artillery piece
             // is suddenly easier to shoot this round - so it stays Normal for a bearer that actually

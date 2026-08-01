@@ -16,25 +16,57 @@ namespace FDG.StageResolution.Requests
 
         public List<WeaponOption> WeaponOptions { get; }
 
+        /// <summary>
+        /// Whether the resolver should offer a Back button that abandons the shoot action (replying
+        /// <see cref="Cancelled{T}"/>, which <c>ChooseRangedAttackStage</c> routes to Choose Action).
+        /// True while NOTHING has fired yet this shoot action; false once a weapon has been committed,
+        /// where there is no un-firing it and Cancelled has nowhere to return to.
+        ///
+        /// <para>Authoritative on the ENGINE side on purpose (#305). The GUI resolver used to track this
+        /// itself with a per-attacker fire counter reset only when the attacking unit CHANGED — so a unit
+        /// that shot once never saw Back again for the rest of the game, including on later activations.
+        /// The stage already knows the answer (<c>AlreadyUsedWeapons</c>), so it says it.</para>
+        ///
+        /// <para>Mirrors <see cref="PlaceObjectsRequest{T}.AllowCancel"/>; the same name means the same
+        /// thing in both.</para>
+        /// </summary>
+        public bool AllowCancel { get; }
+
+        /// <summary>
+        /// The unit the PREVIOUS weapon of this shoot action fired at, or null on the first weapon. A
+        /// pre-selection hint only: a resolver should start with this target selected when the weapon it
+        /// pre-selects can still legally fire at it, and is free to ignore it otherwise (#305 - a volley
+        /// is usually aimed at one unit, and re-picking it per weapon was pure clicking).
+        /// <para>Never a permission: the target's selectability is decided entirely by its
+        /// <see cref="WeaponTargetStats"/>, as always.</para>
+        /// </summary>
+        public DataBinding<UnitData>? PreviousTarget { get; }
+
         [JsonConstructor]
         public ChooseRangedAttackRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
-            DataBinding<UnitData> attackingUnit, List<WeaponOption> weaponOptions)
+            DataBinding<UnitData> attackingUnit, List<WeaponOption> weaponOptions, bool allowCancel = true,
+            DataBinding<UnitData>? previousTarget = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
             TaskName = taskName;
             AttackingUnit = attackingUnit;
             WeaponOptions = weaponOptions;
+            AllowCancel = allowCancel;
+            PreviousTarget = previousTarget;
         }
 
         public ChooseRangedAttackRequest(PlayerID targetPlayerID, string taskName,
-            DataBinding<UnitData> attackingUnit, List<WeaponOption> weaponOptions)
+            DataBinding<UnitData> attackingUnit, List<WeaponOption> weaponOptions, bool allowCancel = true,
+            DataBinding<UnitData>? previousTarget = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = new TaskID(Guid.NewGuid());
             TaskName = taskName;
             AttackingUnit = attackingUnit;
             WeaponOptions = weaponOptions;
+            AllowCancel = allowCancel;
+            PreviousTarget = previousTarget;
         }
 
         public Task<CancellableResult<RangedAttackChoice>> Resolve(CancellableResult<RangedAttackChoice> resolution)

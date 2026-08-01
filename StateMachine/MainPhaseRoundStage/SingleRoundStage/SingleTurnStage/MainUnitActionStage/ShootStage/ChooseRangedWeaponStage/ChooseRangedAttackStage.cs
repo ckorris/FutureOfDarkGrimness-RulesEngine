@@ -56,14 +56,34 @@ namespace FDG.Stages
                 return;
             }
 
+            // #305: the stage owns both "may the player back out?" and "what did the last weapon shoot?".
+            // Backing out is legal exactly while nothing has fired this shoot action - the same
+            // AlreadyUsedWeapons test the no-valid-shots branch above uses, so the Back button and the
+            // fall-back path can never disagree. (The GUI used to decide this itself with a fire counter
+            // it only reset when the ATTACKER changed, which permanently hid Back for any unit that had
+            // ever shot.) PreviousTarget rides along so the next weapon starts aimed where the last one
+            // fired, when that is still legal.
             ChooseRangedAttackRequest chooseWeaponRequest = new ChooseRangedAttackRequest(context.AttackingUnit.PlayerID(), "Choose Ranged Weapon",
-                context.AttackingUnit, weaponOptions);
+                context.AttackingUnit, weaponOptions,
+                allowCancel: context.AlreadyUsedWeapons.Count == 0,
+                previousTarget: context.DefendingUnit);
 
             CancellableResult<RangedAttackChoice> attackResult = await context.PlayerRequester()
                 .RequestDecision<ChooseRangedAttackRequest, CancellableResult<RangedAttackChoice>>(chooseWeaponRequest);
 
             if (attackResult is Cancelled<RangedAttackChoice>)
             {
+                // #305: a cancel after the first weapon has fired can't go back to Choose Action - the
+                // shoot has already happened and re-offering the action menu would hand the unit a second
+                // one. The request said so (AllowCancel), so a well-behaved resolver never sends this;
+                // an ill-behaved or out-of-date one ends the shoot instead of rewinding it.
+                if (context.AlreadyUsedWeapons.Count > 0)
+                {
+                    GameContext.Log("Cancelled after firing - ending the shoot action rather than backing out.");
+                    await OnNoValidShots.Activate(context);
+                    return;
+                }
+
                 await BackToChooseAction.Activate(context);
                 return;
             }

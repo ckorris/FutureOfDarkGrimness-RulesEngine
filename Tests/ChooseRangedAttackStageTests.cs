@@ -625,6 +625,117 @@ namespace FDG.Tests
             Assert.That(metadata.WeaponCount, Is.EqualTo(2), "both carriers can shoot - nothing is trimmed");
         }
 
+        // ──────────────────────────────────────────────────────────────────────
+        // #305: the STAGE owns "may the player back out?" and "what did the last weapon shoot?".
+        // Both were previously guessed by the GUI resolver, which kept a per-attacker fire counter it
+        // only reset when the ATTACKING UNIT changed - so a unit that shot once never saw Back again,
+        // on that activation or any later one.
+        // ──────────────────────────────────────────────────────────────────────
+
+        [Test]
+        public async Task Enter_BeforeAnythingHasFired_AllowsCancel_AndHasNoPreviousTarget()
+        {
+            var requester = new CapturingRangedRequester(); // default reply: Cancelled
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(5, 0, 0) },
+                rifleRange: 24f,
+                playerRequester: requester);
+
+            var combatCtx = new CombatActionContext(ctx, attackerBinding, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+            await stage.Enter(combatCtx);
+
+            Assert.That(requester.Captured!.AllowCancel, Is.True,
+                "nothing has fired, so backing out to Choose Action costs the player nothing.");
+            Assert.That(requester.Captured!.PreviousTarget, Is.Null,
+                "the first weapon of a shoot action has no previous target to inherit.");
+        }
+
+        [Test]
+        public async Task Enter_AfterAWeaponHasFired_ForbidsCancel_AndCarriesTheLastTarget()
+        {
+            // Reply: always take the first fireable option. The first Enter commits the rifle; the second
+            // (a fresh Enter, as the weapon loop does) is the one whose request we inspect.
+            var requester = new CapturingRangedRequester
+            {
+                Reply = req =>
+                {
+                    var opt = req.WeaponOptions.First(o =>
+                        o.WeaponTargetStats.Any(t => t.UnselectableReason == null && t.modelsThatCanShoot.Count > 0));
+                    var target = opt.WeaponTargetStats.First(t =>
+                        t.UnselectableReason == null && t.modelsThatCanShoot.Count > 0);
+                    return new Selected<RangedAttackChoice>(new RangedAttackChoice(opt.Weapon, target.TargetUnit));
+                },
+            };
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(5, 0, 0) },
+                rifleRange: 24f,
+                attackerWeapons: new[] { Rifle(), new Weapon("Pistol", 12f, 1, 0) },
+                playerRequester: requester);
+
+            var combatCtx = new CombatActionContext(ctx, attackerBinding, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+
+            await stage.Enter(combatCtx);                       // first weapon committed
+            DataBinding<UnitData> firstTarget = combatCtx.DefendingUnit;
+            Assert.That(combatCtx.AlreadyUsedWeapons.Count, Is.EqualTo(1), "test setup: one weapon fired");
+
+            await stage.Enter(combatCtx);                       // the second weapon's choice
+
+            Assert.That(requester.Captured!.AllowCancel, Is.False,
+                "a weapon has fired - there is no un-firing it, so Back has nowhere to return to.");
+            Assert.That(requester.Captured!.PreviousTarget, Is.Not.Null);
+            Assert.That(requester.Captured!.PreviousTarget!.Reference, Is.EqualTo(firstTarget.Reference),
+                "the next weapon starts aimed where the last one fired.");
+        }
+
+        // A Cancelled reply that arrives anyway (out-of-date or ill-behaved resolver) must not rewind an
+        // activation that has already shot - that would hand the unit a second action from the menu.
+        [Test]
+        public async Task Enter_CancelledAfterFiring_EndsTheShoot_RatherThanReturningToChooseAction()
+        {
+            bool firstCall = true;
+            var requester = new CapturingRangedRequester
+            {
+                Reply = req =>
+                {
+                    if (!firstCall) return new Cancelled<RangedAttackChoice>();
+                    firstCall = false;
+                    var opt = req.WeaponOptions.First(o =>
+                        o.WeaponTargetStats.Any(t => t.UnselectableReason == null && t.modelsThatCanShoot.Count > 0));
+                    var target = opt.WeaponTargetStats.First(t =>
+                        t.UnselectableReason == null && t.modelsThatCanShoot.Count > 0);
+                    return new Selected<RangedAttackChoice>(new RangedAttackChoice(opt.Weapon, target.TargetUnit));
+                },
+            };
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(5, 0, 0) },
+                rifleRange: 24f,
+                attackerWeapons: new[] { Rifle(), new Weapon("Pistol", 12f, 1, 0) },
+                playerRequester: requester);
+
+            var combatCtx = new CombatActionContext(ctx, attackerBinding, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            var transitions = new List<string>();
+            stage.OnChoseWeapon.Bind("test-on-chose-weapon");
+            stage.BackToChooseAction.Bind("test-back-to-choose-action");
+            stage.OnNoValidShots.Bind("test-on-no-valid-shots");
+            stage.BackToChooseAction.OnWillActivate += _ => transitions.Add("back");
+            stage.OnNoValidShots.OnWillActivate += _ => transitions.Add("no-valid-shots");
+
+            await stage.Enter(combatCtx);   // fires
+            await stage.Enter(combatCtx);   // cancels
+
+            Assert.That(transitions, Does.Not.Contain("back"),
+                "backing out after firing would re-offer the action menu to a unit that already shot.");
+            Assert.That(transitions, Does.Contain("no-valid-shots"), "the shoot action ends instead.");
+        }
+
         private static void BindAllStageEvents(ChooseRangedAttackStage stage)
         {
             stage.OnChoseWeapon.Bind("test-on-chose-weapon");

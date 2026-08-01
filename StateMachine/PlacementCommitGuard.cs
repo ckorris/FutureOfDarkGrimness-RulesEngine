@@ -38,6 +38,24 @@ namespace FDG.Stages
             return await EnsureClear(gameContext, request, placements);
         }
 
+        /// <summary>
+        /// <see cref="RequestClearPlacement"/> for a placement the player may abandon (#305: deployment,
+        /// where backing out returns to the unit list). Returns null when the resolver cancels — the caller
+        /// owns the undo, since only it knows what picking the unit already changed.
+        /// <para>The overlap guard still runs on a committed placement: a cancel is the player declining,
+        /// not a reason to skip the check on the placement they DID make.</para>
+        /// </summary>
+        public static async Task<List<PlacedObjectEntry<ModelData>>?> RequestClearPlacementOrCancel(
+            IGameContext gameContext, PlaceObjectsRequest<ModelData> request)
+        {
+            CancellableResult<List<PlacedObjectEntry<ModelData>>> result = await gameContext.PlayerRequester
+                .RequestDecision<PlaceObjectsRequest<ModelData>, CancellableResult<List<PlacedObjectEntry<ModelData>>>>(request);
+
+            if (result is not Selected<List<PlacedObjectEntry<ModelData>>> selected) return null;
+
+            return await EnsureClear(gameContext, request, selected.Value);
+        }
+
         /// <summary>The placements to commit: the originals when clear, or a re-placed set when
         /// they overlap on-table models (logged either way it goes).</summary>
         public static async Task<List<PlacedObjectEntry<ModelData>>> EnsureClear(

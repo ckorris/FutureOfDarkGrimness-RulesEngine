@@ -74,13 +74,23 @@ namespace FDG.StageResolution.Requests
         /// </summary>
         public IReadOnlyList<PlacementDisc> EnemyDistanceWaiverDiscs { get; }
 
+        /// <summary>
+        /// One line telling the player what backing out of THIS placement does, for the Back button's
+        /// tooltip. Meaningful only when <see cref="AllowCancel"/> is set. Worded by the stage, because
+        /// only the stage knows where a cancel returns to — the resolver used to hard-code Disembark's
+        /// "the unit stays aboard its transport", which became a lie the moment a second placement
+        /// allowed cancelling (#305 deployment).
+        /// </summary>
+        public string CancelHint { get; }
+
         [JsonConstructor]
         public PlaceObjectsRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
             IBoundedZone deploymentZone, IReadOnlyList<DataBinding<T>> modelsToPlace,
             float minDistanceFromEnemiesInches = 0f, bool mustTouchTableEdge = false, bool allowCancel = false,
             float maxDistanceFromStartInches = 0f,
             IReadOnlyList<PlacementDisc>? enemyKeepOutDiscs = null,
-            IReadOnlyList<PlacementDisc>? enemyDistanceWaiverDiscs = null)
+            IReadOnlyList<PlacementDisc>? enemyDistanceWaiverDiscs = null,
+            string cancelHint = "")
         {
             MaxDistanceFromStartInches = maxDistanceFromStartInches;
             TargetPlayerID = targetPlayerID;
@@ -93,6 +103,7 @@ namespace FDG.StageResolution.Requests
             AllowCancel = allowCancel;
             EnemyKeepOutDiscs = enemyKeepOutDiscs ?? Array.Empty<PlacementDisc>();
             EnemyDistanceWaiverDiscs = enemyDistanceWaiverDiscs ?? Array.Empty<PlacementDisc>();
+            CancelHint = cancelHint;
         }
 
         public PlaceObjectsRequest(PlayerID targetPlayerID, string taskName,
@@ -100,7 +111,8 @@ namespace FDG.StageResolution.Requests
             float minDistanceFromEnemiesInches = 0f, bool mustTouchTableEdge = false, bool allowCancel = false,
             float maxDistanceFromStartInches = 0f,
             IReadOnlyList<PlacementDisc>? enemyKeepOutDiscs = null,
-            IReadOnlyList<PlacementDisc>? enemyDistanceWaiverDiscs = null)
+            IReadOnlyList<PlacementDisc>? enemyDistanceWaiverDiscs = null,
+            string cancelHint = "")
         {
             MaxDistanceFromStartInches = maxDistanceFromStartInches;
             TargetPlayerID = targetPlayerID;
@@ -112,6 +124,7 @@ namespace FDG.StageResolution.Requests
             AllowCancel = allowCancel;
             EnemyKeepOutDiscs = enemyKeepOutDiscs ?? Array.Empty<PlacementDisc>();
             EnemyDistanceWaiverDiscs = enemyDistanceWaiverDiscs ?? Array.Empty<PlacementDisc>();
+            CancelHint = cancelHint;
         }
 
         public Task<CancellableResult<List<PlacedObjectEntry<T>>>> Resolve(CancellableResult<List<PlacedObjectEntry<T>>> resolution)

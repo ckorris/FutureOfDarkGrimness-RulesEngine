@@ -65,7 +65,8 @@ namespace FDG.Stages
 
             var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID,
                 $"Teleport {unit.Name} (up to {TELEPORT_RANGE_INCHES:0.##}\")",
-                wholeTable, livingModels, allowCancel: true, maxDistanceFromStartInches: TELEPORT_RANGE_INCHES);
+                wholeTable, livingModels, allowCancel: true, maxDistanceFromStartInches: TELEPORT_RANGE_INCHES,
+                cancelHint: "Cancel the teleport and pick a different action.");
 
             CancellableResult<List<PlacedObjectEntry<ModelData>>> result = await GameContext.PlayerRequester
                 .RequestDecision<PlaceObjectsRequest<ModelData>, CancellableResult<List<PlacedObjectEntry<ModelData>>>>(request);

@@ -13,10 +13,18 @@ namespace FDG.Stages
     {
         public StageBinding OnFinish;
 
+        /// <summary>
+        /// #305: the player backed out of placing the chosen unit. Nothing has been committed — the unit
+        /// goes back into the pool at the slot it came from and the unit list is re-offered, so picking
+        /// the wrong unit is no longer a decision you are stuck with.
+        /// </summary>
+        public StageBinding BackToChooseUnit;
+
         public DeployUnitStage(IGameContext gameContext, IStateMachineLayer<IDeploymentTurnContext> parent)
             : base(gameContext, parent)
         {
             OnFinish = new StageBinding(this);
+            BackToChooseUnit = new StageBinding(this);
         }
 
         public override async Task Enter(IDeploymentTurnContext context)
@@ -41,13 +49,28 @@ namespace FDG.Stages
 
             DataBinding<RectangularZone> deploymentZone = context.PlayerDeploymentZones[deployingTeam];
 
+            // #305 allowCancel: deployment placement is now abandonable. Backing out is safe precisely
+            // here - nothing about the unit has changed yet (its models are still unplaced, no reserve
+            // token, no post-deployment ability offered), and ChooseUnitToDeployStage's only side effect
+            // is the pool removal we undo below. It is NOT offered for the other placements that share
+            // this stage's shape (Scout, Ambush arrival, spillout): those are consequences of an earlier
+            // committed decision, with nowhere to return to.
             var placeObjectsRequest = new PlaceObjectsRequest<ModelData>(currentPlayerID, "Place Unit Models",
-                deploymentZone.GetValue(), deployingUnit.ModelBindings);
+                deploymentZone.GetValue(), deployingUnit.ModelBindings, allowCancel: true,
+                cancelHint: "Go back and deploy a different unit. This one returns to the list.");
 
             // #282: request + commit-time overlap check, so a resolver-side failure can't
             // silently deploy one unit inside another.
-            List<PlacedObjectEntry<ModelData>> modelPositions = await PlacementCommitGuard
-                .RequestClearPlacement(GameContext, placeObjectsRequest);
+            List<PlacedObjectEntry<ModelData>>? modelPositions = await PlacementCommitGuard
+                .RequestClearPlacementOrCancel(GameContext, placeObjectsRequest);
+
+            if (modelPositions == null)
+            {
+                ReturnUnitToPool(context, currentPlayerID);
+                GameContext.Log($"{deployingUnit.Name} deployment cancelled - choose another unit.");
+                await BackToChooseUnit.Activate(context);
+                return;
+            }
 
             //Actually place the objects.
             foreach(PlacedObjectEntry<ModelData> entry in modelPositions)
@@ -63,8 +86,29 @@ namespace FDG.Stages
             await OfferPostDeploymentAbilities(deployingUnit, currentPlayerID);
 
             context.CurrentDeployingUnit = null; //Cleanup.
+            context.CurrentDeployingUnitPoolIndex = -1;
 
             await OnFinish.Activate(context);
+        }
+
+        /// <summary>
+        /// #305: undoes ChooseUnitToDeployStage's pool removal, putting the unit back at the index it was
+        /// taken from (clamped - the list can only have shrunk, but a defensive clamp beats an exception
+        /// on a back-out). ChooseUnitToDeployStage throws if it finds a unit already chosen, so clearing
+        /// CurrentDeployingUnit here is required, not tidy-mindedness.
+        /// </summary>
+        private static void ReturnUnitToPool(IDeploymentTurnContext context, PlayerID currentPlayerID)
+        {
+            DataBinding<UnitData>? unit = context.CurrentDeployingUnit;
+            if (unit != null)
+            {
+                List<DataBinding<UnitData>> pool = context.UndeployedUnits[currentPlayerID];
+                int index = context.CurrentDeployingUnitPoolIndex;
+                pool.Insert(index >= 0 && index <= pool.Count ? index : pool.Count, unit);
+            }
+
+            context.CurrentDeployingUnit = null;
+            context.CurrentDeployingUnitPoolIndex = -1;
         }
 
         /// <summary>

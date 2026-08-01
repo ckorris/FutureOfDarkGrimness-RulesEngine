@@ -39,6 +39,15 @@ namespace FDG.Stages
 
         public DataBinding<UnitData>? CurrentDeployingUnit { get; set; }
 
+        /// <summary>
+        /// Where <see cref="CurrentDeployingUnit"/> sat in its owner's <see cref="UndeployedUnits"/> list
+        /// before <c>ChooseUnitToDeployStage</c> pulled it out; -1 when no unit is being deployed.
+        /// Exists so a placement that BACKS OUT (#305) puts the unit back where the player found it in the
+        /// menu, rather than at the end of the list — the pool's order is the option order, and a unit that
+        /// teleports to the bottom just for being looked at reads as a bug.
+        /// </summary>
+        public int CurrentDeployingUnitPoolIndex { get; set; }
+
     }
 
     public class DeploymentTurnContext : IDeploymentTurnContext
@@ -67,6 +76,8 @@ namespace FDG.Stages
         private readonly List<DeferredUnitEntry> _deferredUnits = new();
 
         public DataBinding<UnitData>? CurrentDeployingUnit { get; set; } = null;
+
+        public int CurrentDeployingUnitPoolIndex { get; set; } = -1;
 
         public DeploymentTurnContext(IGameContext gameContext, List<ITeam> firstDeploymentRollOrder,
             Dictionary<ITeam, DataBinding<RectangularZone>> playerDeploymentZones)

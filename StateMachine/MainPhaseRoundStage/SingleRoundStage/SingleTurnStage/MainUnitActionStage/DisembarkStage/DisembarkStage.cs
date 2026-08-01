@@ -61,7 +61,8 @@ namespace FDG.Stages
                 .Where(binding => binding.GetValue().GetIsAlive()).ToList();
 
             var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID, $"Disembark {unit.Name}",
-                zone, livingModels, allowCancel: true);
+                zone, livingModels, allowCancel: true,
+                cancelHint: "Cancel and pick a different action. The unit stays aboard its transport.");
 
             CancellableResult<List<PlacedObjectEntry<ModelData>>> result = await GameContext.PlayerRequester
                 .RequestDecision<PlaceObjectsRequest<ModelData>, CancellableResult<List<PlacedObjectEntry<ModelData>>>>(request);

@@ -41,7 +41,8 @@ namespace FDG.Stages
 
             var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID,
                 $"Reposition {unit.Name} (up to {maxInches:0.##}\")",
-                wholeTable, livingModels, allowCancel: true, maxDistanceFromStartInches: maxInches);
+                wholeTable, livingModels, allowCancel: true, maxDistanceFromStartInches: maxInches,
+                cancelHint: "Cancel the reposition. Every model stays where it is.");
 
             CancellableResult<List<PlacedObjectEntry<ModelData>>> result = await gameContext.PlayerRequester
                 .RequestDecision<PlaceObjectsRequest<ModelData>, CancellableResult<List<PlacedObjectEntry<ModelData>>>>(request);

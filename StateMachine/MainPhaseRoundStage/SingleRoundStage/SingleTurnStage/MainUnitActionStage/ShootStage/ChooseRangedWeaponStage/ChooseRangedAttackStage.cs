@@ -156,17 +156,11 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// #028: while the unit still has an un-fired Deadly (wound-multiplier) weapon with a valid target,
-        /// mark every non-Deadly weapon's targets unselectable so the player must resolve Deadly first.
-        /// Each fired weapon leaves <see cref="ICombatActionContext.AvailableWeapons"/> once used, so once
-        /// the last Deadly weapon is spent this gate no longer fires and the rest become selectable.
-        /// </summary>
-        /// <summary>
         /// The post-build gating pipeline, shared by <see cref="Enter"/> and
         /// <see cref="HasAnyFireableTarget"/> so the Shoot ACTION gate and the shoot STAGE can never
         /// disagree about whether anything is fireable (#200 - they did, and a deterministic AI
         /// livelocked on the Choose Action / Shoot bounce).
-        /// ORDER MATTERS (#200's root cause): Limited-spent gating must run BEFORE Deadly-first
+        /// ORDER MATTERS (#200's root cause): Limited-spent gating must run BEFORE resolve-first
         /// gating - a spent Limited+Deadly weapon can never fire again, so it must not count as a
         /// priority weapon that locks out the unit's other weapons ("fire the empty rocket first").
         /// </summary>
@@ -177,11 +171,12 @@ namespace FDG.Stages
             // every living carrier has already fired it (per-model token), so it's no longer offered.
             ApplyLimitedSpentGating(weaponOptions, attackingUnit);
 
-            // #028: Deadly (wound-multiplier) weapons must be fired before the unit's other weapons, so
-            // a clump removes whole models before normal wounds spread. Runs after option-building AND
-            // after Limited gating: a Deadly weapon with no valid target - or one already spent - must
-            // not lock out the rest.
-            ApplyDeadlyFirstGating(weaponOptions, attackingUnit, gameContext);
+            // #028/#314: resolve-first weapons must be fired before the unit's other weapons - Deadly
+            // (a clump removes whole models before normal wounds spread) and Takedown ("Takedown attacks
+            // must be resolved before other weapons"). Runs after option-building AND after Limited
+            // gating: a priority weapon with no valid target - or one already spent - must not lock out
+            // the rest.
+            ApplyResolveFirstGating(weaponOptions, attackingUnit, gameContext);
 
             // #197 P20: when the only thing permitting this shot is a Quick Shot mark on some enemy, the
             // permission is target-bound - every unmarked target becomes unselectable.
@@ -282,17 +277,35 @@ namespace FDG.Stages
             }
         }
 
-        private static void ApplyDeadlyFirstGating(List<WeaponOption> weaponOptions,
+        /// <summary>
+        /// #028/#314: while the unit still has an un-fired resolve-first weapon (Deadly's wound multiplier
+        /// or Takedown's individual-target re-scope) with a valid target, mark every ordinary weapon's
+        /// targets unselectable so the player must resolve the priority weapons first.
+        /// Each fired weapon leaves <see cref="ICombatActionContext.AvailableWeapons"/> once used, so once
+        /// the last priority weapon is spent this gate no longer fires and the rest become selectable.
+        /// Deadly and Takedown share ONE priority class - neither rule claims precedence over the other,
+        /// so a unit carrying both fires both before its ordinary weapons in whichever order it likes.
+        /// </summary>
+        private static void ApplyResolveFirstGating(List<WeaponOption> weaponOptions,
             DataBinding<UnitData> attackingUnit, IGameContext gameContext)
         {
             UnitData attacker = attackingUnit.GetValue();
 
             // #306: profile-keyed, not name-keyed - a partial upgrade can leave a unit with a Deadly
             // "Sword" and a plain "Sword", and only the Deadly one must gate the rest.
-            HashSet<string> priorityWeaponKeys = weaponOptions
-                .Where(option => WoundPriorityQueries.MustResolveFirst(attacker, option.Weapon, gameContext.RuleEvaluator))
-                .Select(option => WeaponProfileKey.For(option.Weapon))
-                .ToHashSet(StringComparer.Ordinal);
+            // #314: the source name rides along so the reason text names the rule actually gating
+            // ("Deadly(3)" or "Takedown"), alias-aware. Distinct names are joined, since a unit may carry
+            // one of each and both must fire before the ordinary weapons.
+            HashSet<string> priorityWeaponKeys = new HashSet<string>(StringComparer.Ordinal);
+            SortedSet<string> prioritySources = new SortedSet<string>(StringComparer.Ordinal);
+            foreach (WeaponOption option in weaponOptions)
+            {
+                string? source = WoundPriorityQueries.ShootingResolveFirstSource(
+                    attacker, option.Weapon, gameContext.RuleEvaluator);
+                if (source == null) continue;
+                priorityWeaponKeys.Add(WeaponProfileKey.For(option.Weapon));
+                prioritySources.Add(source);
+            }
 
             if (priorityWeaponKeys.Count == 0) return;
 
@@ -305,6 +318,8 @@ namespace FDG.Stages
 
             if (!anyPriorityFireable) return;
 
+            string reason = $"Must fire {string.Join(" / ", prioritySources)} weapons first.";
+
             foreach (WeaponOption option in weaponOptions)
             {
                 if (priorityWeaponKeys.Contains(WeaponProfileKey.For(option.Weapon))) continue;
@@ -313,7 +328,7 @@ namespace FDG.Stages
                 {
                     WeaponTargetStats stats = option.WeaponTargetStats[i];
                     if (stats.UnselectableReason != null) continue; // keep a more specific reason (target limit, etc.)
-                    option.WeaponTargetStats[i] = stats with { UnselectableReason = "Must fire Deadly weapons first." };
+                    option.WeaponTargetStats[i] = stats with { UnselectableReason = reason };
                 }
             }
         }
@@ -422,7 +437,7 @@ namespace FDG.Stages
             // name-keyed Add threw on the second - faulting the state machine mid-activation.
             Dictionary<string, WeaponOption> optionsByProfile =
                 new Dictionary<string, WeaponOption>(StringComparer.Ordinal);
-            // Per-weapon LoS-ignore (Indirect/Takedown): a weapon that ignores intervening terrain for LoS
+            // Per-weapon LoS-ignore (Indirect): a weapon that ignores intervening terrain for LoS
             // can hit targets it has no clear line to, so enumeration must not require LoS for it.
             Dictionary<string, bool> weaponIgnoresLineOfSight =
                 new Dictionary<string, bool>(StringComparer.Ordinal);
@@ -430,7 +445,7 @@ namespace FDG.Stages
             foreach(Weapon weapon in availableWeapons.Keys)
             {
                 // #042: surface per-weapon whether this weapon ignores cover (Blast) or terrain/LoS
-                // (Indirect, Takedown), AND which rule causes it, so the resolver can both know a
+                // (Indirect), AND which rule causes it, so the resolver can both know a
                 // cover-/LoS-blocked target is still shootable and attribute it to the player ("(Blast
                 // ignores cover)"). Derived from the attacker's rules via the shared query (same source the
                 // cover and occlusion stages use; the *Source variants are non-logging).
@@ -578,8 +593,8 @@ namespace FDG.Stages
             foreach (DataBinding<ModelData> defendingModel in enemyUnit.ModelBindings()
                 .Where(model => model.GetIsAlive()))
             {
-                // #042 Indirect/Takedown: a weapon that ignores intervening terrain for LoS may fire at a
-                // target it has no clear line to, so only range gates it.
+                // #042 Indirect: a weapon that ignores intervening terrain for LoS may fire at a
+                // target it has no clear line to, so only range gates it. (Takedown does NOT - #314.)
                 bool hasLineOfSight;
                 if (ignoresLineOfSight)
                 {
@@ -603,7 +618,7 @@ namespace FDG.Stages
         private static bool DoesModelHaveLineOfSight(ModelData attacker, ModelData target,
             IReadOnlyList<ITerrain> terrain)
         {
-            // #042 Indirect/Takedown's LoS-ignore is handled by the caller (CanWeaponShootAtUnit short-
+            // #042 Indirect's LoS-ignore is handled by the caller (CanWeaponShootAtUnit short-
             // circuits before this is reached), since it's a per-weapon property. This is the plain
             // geometric check for weapons that don't ignore LoS.
             return LineOfSightUtilities.HasLineOfSight(

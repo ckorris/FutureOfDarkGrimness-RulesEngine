@@ -471,10 +471,19 @@ public static class CoreRuleCatalog
     /// just it ("a unit of [1]") — all wounds funnel to that model with no carry-over. A passive rule at
     /// <see cref="EHookID.Shooting_OnShootTargetsSelected"/> that queues
     /// <see cref="RuleOperation.TargetIndividualModel"/>; BuildTargetListStage reads it, asks the
-    /// attacker to pick the model, and AssignWoundsStage confines the wounds. The attack also ignores
-    /// intervening line of sight and the target's cover (the W9 facet), queuing
-    /// <see cref="RuleOperation.IgnoreLineOfSight"/> / <see cref="RuleOperation.IgnoreCover"/> at
-    /// <see cref="EHookID.Shooting_OnSaveRollModifier"/> — the same machinery Indirect/Blast use.
+    /// attacker to pick the model, and AssignWoundsStage confines the wounds.
+    ///
+    /// The rule does NOT ignore line of sight or cover (#314). It carried
+    /// <see cref="RuleOperation.IgnoreLineOfSight"/> / <see cref="RuleOperation.IgnoreCover"/> hooks from
+    /// 2026-06-11 to 2026-08-02, copied off Indirect's clause by the #042 checklist's per-rule mapping row;
+    /// the v3.5.1 rule text grants neither, and the LoS hook let snipers shoot through Blocking terrain.
+    /// Indirect keeps both — its own text does grant them.
+    ///
+    /// "Takedown attacks must be resolved before other weapons" is the ordering facet, realized as a
+    /// picker gate rather than a hook: <c>WoundPriorityQueries.ShootingResolveFirstSource</c> reads the
+    /// queued <see cref="RuleOperation.TargetIndividualModel"/> and ChooseRangedAttackStage marks the
+    /// bearer's other weapons unselectable while a Takedown weapon still has a target (the same gate
+    /// Deadly's "resolved first" uses).
     /// </summary>
     public static SpecialRuleDefinition Takedown { get; } = new SpecialRuleDefinition("Takedown",
         new[]
@@ -483,19 +492,12 @@ public static class CoreRuleCatalog
                 new Condition.Always(),
                 new Effect.TargetIndividualModel(),
                 ELifetime.ThisAttack),
-            new HookEntry(EHookID.Shooting_OnSaveRollModifier,
-                new Condition.Always(),
-                new Effect.IgnoreLineOfSight(),
-                ELifetime.ThisAttack),
-            new HookEntry(EHookID.Shooting_OnSaveRollModifier,
-                new Condition.Always(),
-                new Effect.IgnoreCover(),
-                ELifetime.ThisAttack),
         },
         Array.Empty<ActivatedAbility>(),
         ERuleScope.Weapon,
         Valence: EValence.Positive,
-        Description: "May fire at a single chosen model in the target unit, ignoring line of sight and cover; all wounds hit that model.");
+        Description: "May fire at a single chosen model in the target unit; all wounds hit that model. " +
+                     "Must be resolved before the unit's other weapons.");
 
     /// <summary>
     /// Limited (#032): "may only be used once per game." A weapon-scoped MARKER rule — no hooks; the behaviour

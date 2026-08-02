@@ -7,11 +7,16 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // Vertical-slice integration test for #042: proves Indirect's and Takedown's "ignore intervening
-    // line of sight / cover" facet (W9). A Blocking terrain piece sits between attacker (0,5) and
-    // defender (20,5), so a normal weapon is occluded; with Indirect (or Takedown) the REAL
-    // OcclusionCheckStage lets the shot through. Also checks the shared SightRuleQueries derivation that
-    // feeds the per-weapon LoS-/cover-ignore flags on the targeting + movement resolver requests.
+    // Vertical-slice integration test for #042: proves Indirect's "ignore intervening line of sight /
+    // cover" facet (W9). A Blocking terrain piece sits between attacker (0,5) and defender (20,5), so a
+    // normal weapon is occluded; with Indirect the REAL OcclusionCheckStage lets the shot through. Also
+    // checks the shared SightRuleQueries derivation that feeds the per-weapon LoS-/cover-ignore flags on
+    // the targeting + movement resolver requests.
+    //
+    // #314 regression guard: Takedown carried the same LoS-/cover-ignore hooks from 2026-06-11 until
+    // 2026-08-02 (copied off Indirect by the #042 checklist's mapping row), which let snipers shoot
+    // through Blocking terrain. Its rule text grants neither, so the Takedown cases here assert the
+    // OPPOSITE of Indirect's.
     [TestFixture]
     public class IndirectLineOfSightRuleIntegrationTests
     {
@@ -53,19 +58,37 @@ namespace FDG.Tests
             Assert.That(occluded, Is.False, "Indirect ignores intervening line of sight — the shot is not occluded.");
         }
 
+        // #314: the bug the user hit - a sniper shooting through a Blocking wall.
         [Test]
-        public async Task Takedown_BehindWall_ShotNotOccluded()
+        public async Task Takedown_BehindWall_ShotIsOccluded()
         {
             AttachRule(_attacker, "Takedown", CoreRuleCatalog.Takedown);
             DataBinding<UnitData> defender = MakeUnit(BehindWallPos);
 
             bool occluded = await RunOcclusionStage(_attacker, defender);
 
-            Assert.That(occluded, Is.False, "Takedown also ignores intervening line of sight.");
+            Assert.That(occluded, Is.True,
+                "Takedown re-scopes the attack to one model - it does NOT see through a Blocking wall.");
+        }
+
+        // #314: the same wrong facet also reached the resolvers' per-weapon flags, so pin the query too -
+        // a Takedown weapon must report neither ignore, or the targeting UI offers the blocked shot.
+        [Test]
+        public void SightRuleQueries_Takedown_IgnoresNeitherLoSNorCover()
+        {
+            var weapon = new Weapon("Test", rangeInches: 48f, attacks: 1, armorPenetration: 0);
+            RuleEvaluator ev = _ctx.RuleEvaluator;
+
+            AttachRule(_attacker, "Takedown", CoreRuleCatalog.Takedown);
+
+            Assert.That(SightRuleQueries.IgnoresTerrain(_attacker.GetValue(), weapon, ev), Is.False,
+                "Takedown -> does not ignore LoS.");
+            Assert.That(SightRuleQueries.IgnoresCover(_attacker.GetValue(), weapon, ev), Is.False,
+                "Takedown -> does not ignore cover.");
         }
 
         [Test]
-        public void SightRuleQueries_DeriveLoSAndCoverIgnore_FromIndirectAndTakedown()
+        public void SightRuleQueries_DeriveLoSAndCoverIgnore_FromIndirect()
         {
             var weapon = new Weapon("Test", rangeInches: 48f, attacks: 1, armorPenetration: 0);
             RuleEvaluator ev = _ctx.RuleEvaluator;

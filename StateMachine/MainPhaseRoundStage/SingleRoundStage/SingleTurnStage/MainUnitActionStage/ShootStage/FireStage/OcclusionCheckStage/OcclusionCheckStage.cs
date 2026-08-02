@@ -14,9 +14,10 @@ namespace FDG.Stages
 
         protected override async Task RunStage(ICombatMetadata metaData, Func<OcclusionCheckResults, Task> onFinished)
         {
-            // #042 Indirect/Takedown: a weapon that ignores intervening terrain for LoS may fire at a
+            // #042 Indirect: a weapon that ignores intervening terrain for LoS may fire at a
             // target out of line of sight, so the occlusion gate must not cancel the shot. Same shared
-            // query the enumeration and cover stages use, so they agree.
+            // query the enumeration and cover stages use, so they agree. (Takedown is NOT such a weapon -
+            // #314; it re-scopes the attack to one model and is occluded like any other shot.)
             if (Rules.Dispatch.SightRuleQueries.IgnoresTerrain(
                     metaData.AttackingUnit.GetValue(), metaData.WeaponType, GameContext.RuleEvaluator))
             {

@@ -97,12 +97,11 @@ namespace FDG.Stages
             List<IModel> targets = AlivePlacedModels(defendingUnit);
             if (targets.Count == 0) return FiringModels(attackingUnit, weaponType);
 
-            IReadOnlyList<ITerrain>? terrain = null;
-            if (!ignoresLineOfSight)
-            {
-                var modelBlockers = LineOfSightUtilities.BuildModelBlockers(tableState, attackingUnit, defendingUnit);
-                terrain = tableState.Terrain.Objects.Concat(modelBlockers).ToList();
-            }
+            // Null blockers == the weapon ignores line of sight, which is exactly what ShotEligibility
+            // reads a null list as.
+            IReadOnlyList<ITerrain>? terrain = ignoresLineOfSight
+                ? null
+                : ShotEligibility.BuildBlockers(tableState, attackingUnit, defendingUnit);
 
             var comparer = new WeaponComparer();
             var positions = new List<Position>();
@@ -123,23 +122,11 @@ namespace FDG.Stages
 
         // Mirrors ChooseRangedAttackStage.CanWeaponShootAtUnit: some living defender model must be both
         // seen (terrain == null means the weapon ignores LoS) and within effective range, base to base.
+        // The test itself lives in ShotEligibility so the targeting previews ask the same question.
         private static bool CanModelShoot(IModel model, List<IModel> targets, float effectiveRangeInches,
             IReadOnlyList<ITerrain>? terrain)
-        {
-            foreach (IModel target in targets)
-            {
-                if (terrain != null
-                    && !LineOfSightUtilities.HasLineOfSight(model.Position, target.Position, terrain))
-                {
-                    continue;
-                }
-
-                float distance = DistanceUtilities.GetBaseToBaseDistanceInches_3D(model.Position,
-                    target.Position, model.BaseShape, model.Facing, target.BaseShape, target.Facing);
-                if (distance <= effectiveRangeInches) return true;
-            }
-            return false;
-        }
+            => ShotEligibility.CanHitAny(model.Position, model.BaseShape, model.Facing, targets, terrain,
+                effectiveRangeInches);
 
         /// <summary>
         /// #276 melee strikers: the carriers of <paramref name="weaponType"/> that are in melee range of
@@ -227,8 +214,7 @@ namespace FDG.Stages
             List<Position> targets = AlivePlaced(defendingUnit);
             if (firingPositions.Count == 0 || targets.Count == 0) return targets;
 
-            var modelBlockers = LineOfSightUtilities.BuildModelBlockers(tableState, attackingUnit, defendingUnit);
-            var terrain = tableState.Terrain.Objects.Concat(modelBlockers).ToList();
+            IReadOnlyList<ITerrain> terrain = ShotEligibility.BuildBlockers(tableState, attackingUnit, defendingUnit);
 
             var visible = new List<Position>();
             foreach (Position target in targets)

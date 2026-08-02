@@ -109,10 +109,11 @@ namespace FDG.Stages
             // composed in DetermineHitRollStage), and which face-triggered rules fired on it.
             List<string> procTags = ComposeProcTags(named);
             await GameContext.Presenter.Present(
-                DiceRolledBeat.From(rollToHitResults, hitRollNeeded, GameContext.Settings.RandomnessType, "Roll to Hit",
+                DiceRolledBeat.From(rollToHitResults, hitRollNeeded, GameContext.Settings.RandomnessType,
+                    HitBeatLabel(metaData.WeaponType),
                     $"{successfulResults.TotalRolls:0.##} hits",
                     category: ERollBeatCategory.Offense,
-                    context: $"{attacker.Name} -> {defender.Name}",
+                    context: HitBeatContext(attacker.Name, defender.Name, attacks),
                     modifierTags: hitRollResults.ThresholdTags,
                     procTags: procTags.Count > 0 ? procTags : null));
 
@@ -203,6 +204,20 @@ namespace FDG.Stages
 
             await onFinished(results);
         }
+
+        // The to-hit beat's header names the weapon being rolled with, mirroring how the save beat is
+        // captioned "{weapon}: {breakdown}" (#204) — with several weapon batches firing in one activation
+        // the bare "Roll to Hit" said nothing about which one this was. Falls back to the bare label for a
+        // nameless weapon. Internal for tests.
+        internal static string HitBeatLabel(IWeapon weapon) =>
+            string.IsNullOrWhiteSpace(weapon.Name) ? "Roll to Hit" : $"Roll to Hit - {weapon.Name}";
+
+        // The context line: who is rolling at whom, plus the size of the volley. The count is the TOTAL
+        // attacks rolled (carriers x the weapon's Attacks, plus any attack-count modifier), so it matches
+        // the dice on screen — and it is the only readable count under the probabilistic roller, which
+        // draws a success bar instead of dice. Internal for tests.
+        internal static string HitBeatContext(string attackerName, string defenderName, float attacks) =>
+            $"{attackerName} -> {defenderName}  |  {attacks:0.##} attack{(attacks == 1f ? "" : "s")}";
 
         // #245: the to-hit beat's gold proc chips - face-triggered rule effects that fired on this roll.
         // Extra hits (Furious/Surge/Relentless) trigger on the top face; per-hit AP (Rending/Crack)

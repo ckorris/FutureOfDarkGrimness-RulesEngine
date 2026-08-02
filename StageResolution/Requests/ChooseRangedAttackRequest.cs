@@ -124,9 +124,36 @@ namespace FDG.StageResolution.Requests
         /// <param name="UnselectableReason">If non-null, the target is unselectable even when it has shooters in range
         /// (e.g. the attacker has already targeted the maximum number of distinct units this shoot action). UIs should
         /// list the target as disabled and surface the reason as a tooltip.</param>
+        /// <param name="Forecast">#323. The pre-roll forecast for firing THIS weapon at THIS target -
+        /// effective thresholds plus the modifier chips behind them - computed engine-side by
+        /// <c>ShootingForecast</c> (a resolver cannot compute it: weapon rules never cross the wire).
+        /// Null for a row with no shooters in range (nothing to price).</param>
         public record WeaponTargetStats(DataBinding<UnitData> TargetUnit, HashSet<DataBinding<ModelData>> modelsThatCanShoot,
             HashSet<DataBinding<ModelData>> modelsWithWeaponThatCannotShoot, bool HasCover = false,
-            string? UnselectableReason = null);
+            string? UnselectableReason = null, AttackForecast? Forecast = null);
+
+        /// <summary>
+        /// #323: what the dice will actually ask for if this weapon fires at this target - the numbers a
+        /// player needs to COMPARE targets before committing, shown in the targeting UI. Thresholds are
+        /// display-clamped to the 2-6 band (a natural 6 always hits, a natural 1 always fails), exactly as
+        /// the roll stages clamp before rolling.
+        /// </summary>
+        /// <param name="HitRollNeeded">Effective to-hit threshold: attacker Quality after floors
+        /// (Reliable), roll modifiers (Stealth, Precise...), granted buffs and persistent markers.</param>
+        /// <param name="SaveRollNeeded">Effective save threshold: defender Defense after weapon AP
+        /// (Fortified-reduced), cover, whole-attack save modifiers (Shielded), granted buffs and
+        /// persistent markers.</param>
+        /// <param name="HitTags">The arithmetic behind <paramref name="HitRollNeeded"/> as display chips
+        /// ("Quality 4+", "Stealth -1") - the SAME strings the post-roll dice beat shows, composed by the
+        /// same code. Null when the threshold is just the unmodified Quality.</param>
+        /// <param name="SaveTags">The arithmetic behind <paramref name="SaveRollNeeded"/> ("Defense 4+",
+        /// "AP 2", "Cover +1"). Null when the threshold is just the unmodified Defense.</param>
+        /// <param name="Notes">Roll-time facts the forecast cannot price - spendable markers the attacker
+        /// may claim mid-roll, an unclaimed Mark on the target. Null when there are none. Face-triggered
+        /// effects (Rending, Furious) are deliberately absent: they already read as rule names on the
+        /// weapon line, and pricing them pre-roll would be a guess.</param>
+        public record AttackForecast(int HitRollNeeded, int SaveRollNeeded,
+            List<string>? HitTags = null, List<string>? SaveTags = null, List<string>? Notes = null);
 
         /// <summary>
         /// Record suited to choosing your attack, with the attacking unit implied.

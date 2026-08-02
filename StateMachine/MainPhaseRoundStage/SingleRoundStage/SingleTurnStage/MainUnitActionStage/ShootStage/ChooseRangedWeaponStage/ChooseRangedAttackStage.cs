@@ -55,6 +55,12 @@ namespace FDG.Stages
             List<WeaponOption> weaponOptions = BuildWeaponOptions(context.AttackingUnit, context.AvailableWeapons,
                 context.GameContext, terrainSnapshot, context.AttackedDefenderRefs);
 
+            // #323: price every fireable row BEFORE the request goes out - the resolvers cannot (weapon
+            // rules never cross the wire). Here and not in BuildWeaponOptions, because HasAnyFireableTarget
+            // reuses the builder every time the action menu opens and only needs the boolean.
+            ShootingForecast.Attach(weaponOptions, context.AttackingUnit, context.GameContext,
+                context.AttackerMoved);
+
             ApplyTargetGating(weaponOptions, context.AttackingUnit, context.GameContext,
                 context.MarkedTargetsOnly);
 

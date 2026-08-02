@@ -54,6 +54,14 @@ namespace FDG.Stages
         /// </summary>
         public bool MarkedTargetsOnly { get; }
 
+        /// <summary>
+        /// Whether the attacking unit moved earlier this activation (sourced from the parent
+        /// <c>IUnitActionContext.HasMoved</c> at creation, same value every CombatMetadata carries).
+        /// #323: exposed so ChooseRangedAttackStage's pre-roll forecast evaluates movement-gated hit
+        /// rules (Indirect's -1 after moving) exactly as the roll will.
+        /// </summary>
+        public bool AttackerMoved { get; }
+
         public IReadOnlyDictionary<Weapon, int> AvailableWeapons { get; }
         public IReadOnlyDictionary<Weapon, int> AlreadyUsedWeapons { get; }
 
@@ -248,6 +256,8 @@ namespace FDG.Stages
         // CombatMetadata so hit-roll rules (Indirect) can read it; sourced from the
         // parent IUnitActionContext.HasMoved at child-context creation.
         private readonly bool _attackerMoved;
+
+        public bool AttackerMoved => _attackerMoved;
 
         // Whether this is the melee branch (vs. shooting). Carried into each CombatMetadata
         // so melee-only hit-roll rules (Furious) can gate on it; the hit-roll stages are shared.

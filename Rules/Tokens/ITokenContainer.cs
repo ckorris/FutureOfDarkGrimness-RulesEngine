@@ -50,8 +50,20 @@ public interface ITokenContainer
     public float GetTokenMagnitude(TokenType tokenType);
 
 
+    /// <summary>
+    /// Every token on this container, optionally filtered to <paramref name="tokenType"/>.
+    /// <para><b>Implementations must return a SNAPSHOT</b> (#326) — never the backing collection and
+    /// never a lazy view over it. Tokens are written on the engine thread and read on the render thread
+    /// every frame, so a live result let the renderer enumerate mid-mutation and threw "Collection was
+    /// modified" out of the draw loop. A caller cannot defend itself here: copying with <c>.ToList()</c>
+    /// at the call site has to enumerate the live collection to make the copy.</para>
+    /// </summary>
     public IEnumerable<Token> GetAllTokens(TokenType? tokenType = null);
-    
+
+    /// <summary>
+    /// Every token placed by <paramref name="owningUnitID"/>. A snapshot, for the same reason as
+    /// <see cref="GetAllTokens"/> (#326).
+    /// </summary>
     public IEnumerable<Token> TokensWithOwner(UnitID owningUnitID);
     
     public event Action<Token>? OnTokenAdded;

@@ -7,11 +7,24 @@ namespace FDG.Rules.Tokens;
 public class TokenContainer : ITokenContainer
 {
     [JsonProperty] private List<Token> _tokens = new();
-    
+
+    /// <summary>
+    /// #326. Tokens are written on the engine thread and READ on the render thread (the token chips over
+    /// every unit, and their hover tooltips, are redrawn every frame). Handing a caller the live list —
+    /// or a lazy <c>Where</c> view over it — let the renderer enumerate while a rule mutated, which threw
+    /// "Collection was modified" out of the draw loop and killed the window. Every read below therefore
+    /// takes this lock and hands back a SNAPSHOT: copying at the call site cannot fix it, because the copy
+    /// itself enumerates. Uncontended in the common case; the lists are a handful of entries.
+    ///
+    /// <para>Events fire OUTSIDE the lock — a handler that called back into the container would otherwise
+    /// deadlock or observe a half-applied mutation.</para>
+    /// </summary>
+    [JsonIgnore] private readonly object _lock = new();
+
     public event Action<Token>? OnTokenAdded;
     public event Action<Token>? OnTokenRemoved;
     public event Action<Token>? OnTokenCountChanged;
-    
+
     public void AddToken(Token token)
     {
         if (token.Count <= 0)
@@ -19,7 +32,13 @@ public class TokenContainer : ITokenContainer
             Debug.WriteLine($"Tried to add a token of type {token.Type} with a count of 0.");
             return;
         }
-        
+
+        // Decided under the lock, announced after it (see _lock).
+        Token? added = null;
+        Token? changed = null;
+        lock (_lock)
+        {
+
         //If we already have tokens of the same type, owner, payload, AND clear trigger, just add to that
         //pile. The payload must match too: distinct RuleGrant payloads (different granted rules) on the
         //same owner are semantically different tokens and must stay separate entries — without this they
@@ -42,32 +61,38 @@ public class TokenContainer : ITokenContainer
             if (magnitudeIndex < 0)
             {
                 _tokens.Add(token);
-                OnTokenAdded?.Invoke(token);
-                return;
+                added = token;
             }
-
-            Token existingMagnitude = _tokens[magnitudeIndex];
-            float summed = ((TokenPayload.Magnitude)existingMagnitude.Payload!).Value + incoming.Value;
-            Token merged = existingMagnitude with { Payload = new TokenPayload.Magnitude(summed) };
-            _tokens[magnitudeIndex] = merged;
-            OnTokenCountChanged?.Invoke(merged);
-            return;
+            else
+            {
+                Token existingMagnitude = _tokens[magnitudeIndex];
+                float summed = ((TokenPayload.Magnitude)existingMagnitude.Payload!).Value + incoming.Value;
+                Token merged = existingMagnitude with { Payload = new TokenPayload.Magnitude(summed) };
+                _tokens[magnitudeIndex] = merged;
+                changed = merged;
+            }
         }
-
-        int existingIndex = _tokens.FindIndex(t => t.Type == token.Type && t.OwnerUnitID == token.OwnerUnitID
-            && Equals(t.Payload, token.Payload) && Equals(t.ClearTrigger, token.ClearTrigger));
-        if (existingIndex < 0)
+        else
         {
-            _tokens.Add(token);
-            OnTokenAdded?.Invoke(token);
-            return;
+            int existingIndex = _tokens.FindIndex(t => t.Type == token.Type && t.OwnerUnitID == token.OwnerUnitID
+                && Equals(t.Payload, token.Payload) && Equals(t.ClearTrigger, token.ClearTrigger));
+            if (existingIndex < 0)
+            {
+                _tokens.Add(token);
+                added = token;
+            }
+            else
+            {
+                Token existing = _tokens[existingIndex];
+                Token updated = existing with { Count = existing.Count + token.Count };
+                _tokens[existingIndex] = updated;
+                changed = updated;
+            }
         }
+        } // lock
 
-        Token existing = _tokens[existingIndex];
-        Token updated = existing with { Count = existing.Count + token.Count };
-        _tokens[existingIndex] = updated;
-        OnTokenCountChanged?.Invoke(updated);
-
+        if (added is { } a) OnTokenAdded?.Invoke(a);
+        if (changed is { } c) OnTokenCountChanged?.Invoke(c);
     }
 
     public int RemoveTokens(TokenType tokenType, int count = 1)
@@ -98,32 +123,44 @@ public class TokenContainer : ITokenContainer
         }
 
         int totalRemoved = 0;
-        for (int i = 0; i < _tokens.Count && totalRemoved < count;)
+        // Announced after the lock is released (see _lock); order preserved.
+        List<(Token Token, bool Removed)> announce = new List<(Token, bool)>();
+
+        lock (_lock)
         {
-            Token entry =  _tokens[i];
-            if (!match(entry))
+            for (int i = 0; i < _tokens.Count && totalRemoved < count;)
             {
-                i++;
-                continue;
-            }
+                Token entry =  _tokens[i];
+                if (!match(entry))
+                {
+                    i++;
+                    continue;
+                }
 
-            int remaining = count - totalRemoved;
-            int takeFromEntry = Math.Min(remaining, entry.Count);
-            int newCount = entry.Count - takeFromEntry;
-            totalRemoved += takeFromEntry;
+                int remaining = count - totalRemoved;
+                int takeFromEntry = Math.Min(remaining, entry.Count);
+                int newCount = entry.Count - takeFromEntry;
+                totalRemoved += takeFromEntry;
 
-            if (newCount == 0) //Drained all tokens from this.
-            {
-                _tokens.RemoveAt(i);
-                OnTokenRemoved?.Invoke(entry);
+                if (newCount == 0) //Drained all tokens from this.
+                {
+                    _tokens.RemoveAt(i);
+                    announce.Add((entry, true));
+                }
+                else
+                {
+                    Token updated = entry with { Count = newCount };
+                    _tokens[i] = updated;
+                    announce.Add((updated, false));
+                    i++;
+                }
             }
-            else
-            {
-                Token updated = entry with { Count = newCount };
-                _tokens[i] = updated;
-                OnTokenCountChanged?.Invoke(updated);
-                i++;
-            }
+        }
+
+        foreach ((Token token, bool removed) in announce)
+        {
+            if (removed) OnTokenRemoved?.Invoke(token);
+            else OnTokenCountChanged?.Invoke(token);
         }
 
         return totalRemoved;
@@ -131,15 +168,18 @@ public class TokenContainer : ITokenContainer
 
     public bool HasToken(TokenType tokenType)
     {
-        return _tokens.Any(token => token.Type == tokenType);
+        lock (_lock) return _tokens.Any(token => token.Type == tokenType);
     }
 
     public int GetTokenCount(TokenType tokenType)
     {
         int total = 0;
-        foreach (Token token in _tokens.Where(token => token.Type == tokenType))
+        lock (_lock)
         {
-            total += token.Count;
+            foreach (Token token in _tokens)
+            {
+                if (token.Type == tokenType) total += token.Count;
+            }
         }
 
         return total;
@@ -148,32 +188,45 @@ public class TokenContainer : ITokenContainer
     public float GetTokenMagnitude(TokenType tokenType)
     {
         float total = 0f;
-        foreach (Token token in _tokens.Where(token => token.Type == tokenType))
+        lock (_lock)
         {
-            if (token.Payload is TokenPayload.Magnitude magnitude)
+            foreach (Token token in _tokens)
             {
-                total += magnitude.Value * token.Count;
+                if (token.Type == tokenType && token.Payload is TokenPayload.Magnitude magnitude)
+                {
+                    total += magnitude.Value * token.Count;
+                }
             }
         }
 
         return total;
     }
 
+    /// <summary>
+    /// A SNAPSHOT of the matching tokens (#326) — never the live list and never a lazy view over it, so
+    /// the caller may enumerate at leisure (including on the render thread) while the engine keeps
+    /// mutating. Callers that used to defend themselves with <c>.ToList()</c> no longer need to; that
+    /// copy never actually helped, since it enumerated the live list to make the copy.
+    /// </summary>
     public IEnumerable<Token> GetAllTokens(TokenType? tokenType = null)
     {
-        if (tokenType == null)
+        lock (_lock)
         {
-            return _tokens;
-        }
-        else
-        {
-            return _tokens.Where(token => token.Type == tokenType);
+            if (_tokens.Count == 0) return Array.Empty<Token>();
+            return tokenType == null
+                ? new List<Token>(_tokens)
+                : _tokens.Where(token => token.Type == tokenType).ToList();
         }
     }
 
+    /// <summary>A snapshot, for the same reason as <see cref="GetAllTokens"/> (#326).</summary>
     public IEnumerable<Token> TokensWithOwner(UnitID owningUnitID)
     {
-        return _tokens.Where(token => token.OwnerUnitID == owningUnitID);
+        lock (_lock)
+        {
+            if (_tokens.Count == 0) return Array.Empty<Token>();
+            return _tokens.Where(token => token.OwnerUnitID == owningUnitID).ToList();
+        }
     }
 
 

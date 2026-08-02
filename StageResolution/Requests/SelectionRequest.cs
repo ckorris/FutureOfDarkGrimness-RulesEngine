@@ -26,7 +26,7 @@ namespace FDG.StageResolution.Requests
         /// </summary>
         public bool AllowCancel { get; }
 
-        // displayName: what the #318 "Waiting on" HUD shows the other players; the generic TaskName
+        // displayName: what the #322 "Waiting on" HUD shows the other players; the generic TaskName
         // fallback leaks the C# type name ("Select UnitData"), so pass game wording wherever a
         // selection can hold up someone else's screen.
         [JsonConstructor]

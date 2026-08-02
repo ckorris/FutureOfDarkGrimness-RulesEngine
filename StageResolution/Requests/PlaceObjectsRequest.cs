@@ -85,7 +85,7 @@ namespace FDG.StageResolution.Requests
         /// </summary>
         public string CancelHint { get; }
 
-        // displayName: what the #318 "Waiting on" HUD shows the other players. taskName stays the
+        // displayName: what the #322 "Waiting on" HUD shows the other players. taskName stays the
         // machine-matched discriminator (the Tactician placement resolver switches on it), so game
         // wording - including per-unit text like "Deploying Warriors" - belongs here, never there.
         [JsonConstructor]

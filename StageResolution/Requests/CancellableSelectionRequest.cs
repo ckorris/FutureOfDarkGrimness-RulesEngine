@@ -20,7 +20,7 @@ namespace FDG.StageResolution.Requests
         public IReadOnlyList<ValidOption> ValidOptions { get; }
         public IReadOnlyList<InvalidOption> InvalidOptions { get; }
 
-        // displayName: see SelectionRequest - game wording for the #318 "Waiting on" HUD line.
+        // displayName: see SelectionRequest - game wording for the #322 "Waiting on" HUD line.
         [JsonConstructor]
         public CancellableSelectionRequest(PlayerID targetPlayerID, TaskID taskID, string instructions,
             IReadOnlyList<ValidOption> validOptions, IReadOnlyList<InvalidOption> invalidOptions,

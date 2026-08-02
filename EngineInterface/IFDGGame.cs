@@ -39,7 +39,7 @@ namespace FDG.EngineInterface
         /// <summary>
         /// The players controlled from this process (all slots added before launch on a host/local
         /// game; the single joined slot on a client). Lets the front end tell "waiting on another
-        /// player" apart from "waiting on someone at this machine" (#318 status HUD line).
+        /// player" apart from "waiting on someone at this machine" (#322 status HUD line).
         /// </summary>
         IReadOnlyList<PlayerID> LocalPlayerIDs { get; }
 

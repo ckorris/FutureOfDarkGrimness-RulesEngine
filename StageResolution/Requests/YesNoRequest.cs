@@ -31,7 +31,7 @@ namespace FDG.StageResolution.Requests
         [JsonProperty]
         public bool DefaultAnswer { get; private set; } = true;
 
-        // displayName: game wording for the #318 "Waiting on" HUD line - the shared TaskName literal
+        // displayName: game wording for the #322 "Waiting on" HUD line - the shared TaskName literal
         // tells a waiting opponent nothing about which of the many yes/no prompts this is.
         [JsonConstructor]
         public YesNoRequest(PlayerID targetPlayerID, TaskID taskID, string questionText,

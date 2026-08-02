@@ -20,7 +20,7 @@ namespace FDG.StageResolution
         public string TaskName { get; }
 
         /// <summary>
-        /// What everyone else reads while this task holds up the game - the #318 status HUD shows
+        /// What everyone else reads while this task holds up the game - the #322 status HUD shows
         /// "Waiting on Bob: {DisplayName}". Word it as what the player is doing in game terms
         /// ("Deploying Warriors"), not what the code wants from them ("Select UnitData").
         /// Defaults to <see cref="TaskName"/>.

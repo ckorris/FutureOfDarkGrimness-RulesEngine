@@ -14,7 +14,7 @@ namespace FDG.StageResolution.Requests
         public string DisplayName { get; }
         public string Instructions { get; }
 
-        // displayName: game wording for the #318 "Waiting on" HUD line.
+        // displayName: game wording for the #322 "Waiting on" HUD line.
         [JsonConstructor]
         public SingleBindingRequest(PlayerID targetPlayerID, TaskID taskID, string instructions,
             string? displayName = null)

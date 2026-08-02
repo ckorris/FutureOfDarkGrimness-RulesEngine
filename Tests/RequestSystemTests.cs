@@ -203,7 +203,7 @@ namespace FDG.Tests
         [Test]
         public void LocalPlayerIDs_ExposedOnBothGameFlavors()
         {
-            // #318: the front end filters the outstanding-task HUD line to non-local players, so both
+            // #322: the front end filters the outstanding-task HUD line to non-local players, so both
             // game flavors must expose who is driven from this process.
             var hostID = new PlayerID(Guid.NewGuid());
             var hotseatID = new PlayerID(Guid.NewGuid());
@@ -221,7 +221,7 @@ namespace FDG.Tests
         [Test]
         public void RequestDecision_AwaitingNotification_CarriesDisplayName()
         {
-            // #318: the broadcast "waiting on" notification carries DisplayName - the game wording
+            // #322: the broadcast "waiting on" notification carries DisplayName - the game wording
             // requests override for the HUD - falling back to TaskName when nothing is overridden.
             var gameDataStore = new GameDataStore.GameDataStoreBuilder()
                 .RegisterType<PlayerSlotInfo>(1)

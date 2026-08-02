@@ -66,10 +66,19 @@ namespace FDG.Stages
         // Sum the extra melee wounds (Fear) the actor contributes to its own who-won total. The actor
         // sits in the Actor seat (Fear's default), so only its rules fire; the opponent's Fear is summed
         // by the symmetric call. ExtraMeleeWoundCount arrives already resolved to an int.
+        //
+        // #175: the unit's LIVING models ride along (AnyOwner), the same shape every other model-aware
+        // dispatch site uses. Fear(X)'s rulebook text is per-MODEL ("this model counts as having dealt
+        // +X wounds"), and a joined hero's rules live on the hero MODEL (#006 slice F) — without the
+        // models list this site collected unit-static rules only, so a hero-only Fear contributed
+        // nothing at all. (X) rules are exempt from the no-stack dedup, so a host unit's Fear and a
+        // joined hero's Fear are two sources and sum; the unit-level rule still counts once, not once
+        // per model carrying it. A hero killed during this melee is not among the living and adds
+        // nothing, matching every other living-models site.
         private float SumExtraMeleeWounds(MeleeResolutionContext resolution, IUnit actor)
         {
             IReadOnlyList<RuleOperation> operations = GameContext.RuleEvaluator.EvaluateAll(
-                resolution, RuleParticipant.Actor(actor));
+                resolution, RuleParticipant.Actor(actor, models: HeroStatRules.LivingModels(actor)));
 
             float extra = 0f;
             foreach (RuleOperation operation in operations)

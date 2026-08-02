@@ -367,17 +367,26 @@ namespace FDG.Stages
 
             //At least one model in the unit must end within melee range of an enemy model (horizontal).
             //#029: an Aircraft can't be charged, so reaching it doesn't justify a beyond-Rush charge move.
-            List<Position> enemies = enemyFootprints?.Where(f => !f.Uncontactable).Select(f => f.Center).ToList()
-                ?? new List<Position>();
+            //#310: BASE-to-base, like every other melee-range gate (MeleeRangeUtilities, GetCanCharge, the
+            //GUI charge line). This used to be centre-to-centre, which demanded a base gap of
+            //2" - rMine - rEnemy: merely tight for small round bases, but mathematically impossible for a
+            //large base - a titan in literal base contact still read "no model ends within 2"" and the
+            //charge move was rejected. All pairs are checked (never nearest-by-centre: for a rectangle the
+            //nearest CENTRE is often not the nearest BASE), at the mover's END position and END facing.
+            List<EnemyModelFootprint> enemies = enemyFootprints?.Where(f => !f.Uncontactable).ToList()
+                ?? new List<EnemyModelFootprint>();
             float meleeRange = GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL;
 
             bool anyInMelee = moves.Any(move =>
             {
+                ModelData model = move.Model.GetValue();
                 Position end = move.Positions.Count == 0
-                    ? move.Model.GetValue().PositionBinding.GetValue()
+                    ? model.PositionBinding.GetValue()
                     : move.Positions[move.Positions.Count - 1];
+                Float2 endFacing = move.Positions.Count == 0 ? model.Facing : EndFacing(move, model);
 
-                return enemies.Any(e => Position.GetDistance2D(end, e) <= meleeRange + 0.0001f);
+                return enemies.Any(e => BaseShapeGeometry.SurfaceGap2D(
+                    model.BaseShape, end, endFacing, e.BaseShape, e.Center, e.Facing) <= meleeRange + 0.0001f);
             });
 
             if (!anyInMelee)
@@ -504,6 +513,16 @@ namespace FDG.Stages
         // when the move carries no per-waypoint facings (AI moves, consolidation, aircraft - Facings is null).
         private static Float2 SegmentFacing(ModelMoveEntry move, int i, Float2 fallback)
             => move.Facings != null && i < move.Facings.Count ? move.Facings[i] : fallback;
+
+        // The base's orientation at the END of the move: the last per-waypoint facing (#282 - committed
+        // waypoints keep the facing they were placed with, and the executor turns the model to it), falling
+        // back to the resting facing for moves that carry none (AI, consolidation holds). Every END-state
+        // check must measure the base at this orientation, not the pre-move one - for a rectangle the two
+        // can differ by the full inscribed-vs-circumscribed spread (#310).
+        private static Float2 EndFacing(ModelMoveEntry move, ModelData model)
+            => move.Facings != null && move.Facings.Count > 0
+                ? move.Facings[move.Facings.Count - 1]
+                : model.Facing;
 
         public static bool DoesPathCrossDangerousTerrain(ModelMoveEntry move, IEnumerable<ITerrain> terrain)
             => DoesPathCrossTerrainPieces(move, terrain
@@ -761,7 +780,8 @@ namespace FDG.Stages
 
                 var movingModel = move.Model.GetValue();
                 IBaseShape movingShape = movingModel.BaseShape;
-                Float2 movingFacing = movingModel.Facing;
+                Float2 restingFacing = movingModel.Facing;
+                Float2 endFacing = EndFacing(move, movingModel);
                 Position start = movingModel.PositionBinding.GetValue();
                 Position end = move.Positions[move.Positions.Count - 1];
 
@@ -772,9 +792,12 @@ namespace FDG.Stages
                 {
                     // Start/end base-to-base gaps use the true, facing-oriented footprints (#150); for circular
                     // bases this is exactly the old `distance − (rMoving + rEnemy)`, so circle behaviour is
-                    // unchanged, and a rotated rectangular base measures by its real outline.
-                    float startGap = BaseShapeGeometry.SurfaceGap2D(movingShape, start, movingFacing, enemy.BaseShape, enemy.Center, enemy.Facing);
-                    float endGap = BaseShapeGeometry.SurfaceGap2D(movingShape, end, movingFacing, enemy.BaseShape, enemy.Center, enemy.Facing);
+                    // unchanged, and a rotated rectangular base measures by its real outline. The start gap
+                    // measures the base as it RESTS pre-move; the end gap measures it at the facing the
+                    // executor will actually leave it at (#310 - these can differ by the full width-vs-length
+                    // spread of a rectangle).
+                    float startGap = BaseShapeGeometry.SurfaceGap2D(movingShape, start, restingFacing, enemy.BaseShape, enemy.Center, enemy.Facing);
+                    float endGap = BaseShapeGeometry.SurfaceGap2D(movingShape, end, endFacing, enemy.BaseShape, enemy.Center, enemy.Facing);
                     bool movedCloser = endGap < startGap - ENEMY_PROXIMITY_EPSILON_INCHES;
 
                     // #029: an Aircraft can't be moved into base contact with — a move that closes to within the
@@ -805,11 +828,15 @@ namespace FDG.Stages
                     {
                         IZone enemyZone = enemy.BaseShape.ToZone(enemy.Center, enemy.Facing);
                         Position segStart = start;
-                        foreach (Position step in move.Positions)
+                        for (int i = 0; i < move.Positions.Count; i++)
                         {
+                            Position step = move.Positions[i];
                             Float2 a = new Float2(segStart.x, segStart.z);
                             Float2 b = new Float2(step.x, step.z);
-                            if (SweptBaseGeometry.DoesSweptBaseIntersectZone(enemyZone, a, b, movingShape, movingFacing))
+                            // #310: sweep each segment at its travel facing (the orientation the ghost drew and
+                            // the executor applies), mirroring the terrain validators' 2026-07-25 fix.
+                            if (SweptBaseGeometry.DoesSweptBaseIntersectZone(enemyZone, a, b, movingShape,
+                                SegmentFacing(move, i, restingFacing)))
                             {
                                 reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.MovingThroughEnemyUnit, move.Model));
                                 flaggedThrough = true;
@@ -856,19 +883,22 @@ namespace FDG.Stages
 
                 ModelData movingModel = move.Model.GetValue();
                 IBaseShape movingShape = movingModel.BaseShape;
-                Float2 movingFacing = movingModel.Facing;
+                Float2 restingFacing = movingModel.Facing;
+                Float2 endFacing = EndFacing(move, movingModel);
                 Position start = movingModel.PositionBinding.GetValue();
                 Position end = move.Positions[move.Positions.Count - 1];
 
                 foreach (EnemyModelFootprint friendly in friendlyFootprints)
                 {
-                    if (!BaseShapeGeometry.AreColliding(movingShape, end, movingFacing,
+                    // #310: the end state is measured at the END facing (the base the executor leaves behind),
+                    // the start state at the resting facing the base actually stood at.
+                    if (!BaseShapeGeometry.AreColliding(movingShape, end, endFacing,
                             friendly.BaseShape, friendly.Center, friendly.Facing))
                         continue;
 
                     // Already overlapping this friendly at the start (should never happen in legal play) - don't
                     // trap the unit by rejecting a move it can't avoid; only NEWLY ending stacked is illegal.
-                    if (BaseShapeGeometry.AreColliding(movingShape, start, movingFacing,
+                    if (BaseShapeGeometry.AreColliding(movingShape, start, restingFacing,
                             friendly.BaseShape, friendly.Center, friendly.Facing))
                         continue;
 
@@ -910,9 +940,7 @@ namespace FDG.Stages
                 ModelData model = move.Model.GetValue();
                 Position end = move.Positions[move.Positions.Count - 1];
                 // #282: a path carries a facing per waypoint; the end facing is the one the base rests at.
-                Float2 endFacing = move.Facings != null && move.Facings.Count > 0
-                    ? move.Facings[move.Facings.Count - 1]
-                    : model.Facing;
+                Float2 endFacing = EndFacing(move, model);
 
                 float endOverhang = OverhangInches(model.BaseShape, end, endFacing);
                 if (endOverhang <= TABLE_EDGE_EPSILON_INCHES) continue;
@@ -993,10 +1021,12 @@ namespace FDG.Stages
         {
             List<DataBinding<ModelData>> models = new List<DataBinding<ModelData>>();
             List<Position> positions = new List<Position>();
+            List<Float2> facings = new List<Float2>();
 
             //Figure out where all the models will be after moving. Dead models are out of play — they
             //leave a hole in the formation rather than anchoring it, so a casualty's last position must
             //not count toward cohesion (it would wrongly fail the survivors for being "too far" from a corpse).
+            //#310: measure each base at its END facing too - the post-move formation is what the rule is about.
             foreach (ModelMoveEntry moveEntry in moves)
             {
                 if (moveEntry.Model.GetValue().GetIsAlive() == false)
@@ -1008,6 +1038,9 @@ namespace FDG.Stages
                 positions.Add(moveEntry.Positions.Count > 0
                     ? moveEntry.Positions.Last()
                     : moveEntry.Model.GetValue().PositionBinding.GetValue());
+                facings.Add(moveEntry.Positions.Count > 0
+                    ? EndFacing(moveEntry, moveEntry.Model.GetValue())
+                    : moveEntry.Model.GetValue().Facing);
             }
 
             //If there's just one living model, there's nothing to compare.
@@ -1019,30 +1052,8 @@ namespace FDG.Stages
             //Check each model's distance against all the others, for both kinds of coherency.
             //As of 3.4.0, each model must be within 1" of another model and within 9" of every other model.
 
-            float[] nearestDistances = new float[models.Count];
-            float[] farthestDistances = new float[models.Count];
-
-            for (int i = 0; i < models.Count; i++)
-            {
-                nearestDistances[i] = float.PositiveInfinity;
-                farthestDistances[i] = float.NegativeInfinity;
-            }
-
-            for (int i = 0; i < models.Count; i++)
-            {
-                for (int j = i + 1; j < models.Count; j++)
-                {
-                    float distance = DistanceUtilities.GetBaseToBaseDistanceInches_3D(positions[i], positions[j],
-                        models[i].GetValue().BaseShape, models[i].GetValue().Facing,
-                        models[j].GetValue().BaseShape, models[j].GetValue().Facing);
-
-                    nearestDistances[i] = Math.Min(distance, nearestDistances[i]);
-                    farthestDistances[i] = Math.Max(distance, farthestDistances[i]);
-
-                    nearestDistances[j] = Math.Min(distance, nearestDistances[j]);
-                    farthestDistances[j] = Math.Max(distance, farthestDistances[j]);
-                }
-            }
+            ComputeCohesionExtents(models, positions, facings,
+                out float[] nearestDistances, out float[] farthestDistances);
 
             for (int i = 0; i < models.Count; i++)
             {
@@ -1074,6 +1085,8 @@ namespace FDG.Stages
             List<DataBinding<ModelData>> models = new List<DataBinding<ModelData>>();
             List<Position> before = new List<Position>();
             List<Position> after = new List<Position>();
+            List<Float2> beforeFacings = new List<Float2>();
+            List<Float2> afterFacings = new List<Float2>();
 
             foreach (ModelMoveEntry moveEntry in moves)
             {
@@ -1084,12 +1097,18 @@ namespace FDG.Stages
                 after.Add(moveEntry.Positions.Count > 0
                     ? moveEntry.Positions.Last()
                     : moveEntry.Model.GetValue().PositionBinding.GetValue());
+                //#310: the before-state is the base as it rests; the after-state is the base at the facing the
+                //executor will leave it at.
+                beforeFacings.Add(moveEntry.Model.GetValue().Facing);
+                afterFacings.Add(moveEntry.Positions.Count > 0
+                    ? EndFacing(moveEntry, moveEntry.Model.GetValue())
+                    : moveEntry.Model.GetValue().Facing);
             }
 
             if (models.Count <= 1) return;
 
-            ComputeCohesionExtents(models, before, out float[] nearestBefore, out float[] farthestBefore);
-            ComputeCohesionExtents(models, after, out float[] nearestAfter, out float[] farthestAfter);
+            ComputeCohesionExtents(models, before, beforeFacings, out float[] nearestBefore, out float[] farthestBefore);
+            ComputeCohesionExtents(models, after, afterFacings, out float[] nearestAfter, out float[] farthestAfter);
 
             for (int i = 0; i < models.Count; i++)
             {
@@ -1105,10 +1124,10 @@ namespace FDG.Stages
             }
         }
 
-        // Per-model nearest- and farthest-neighbour base-to-base 3D distances at the given positions
-        // (index-aligned with <paramref name="models"/>). Shared by the not-worsened coherency check.
+        // Per-model nearest- and farthest-neighbour base-to-base 3D distances at the given positions and
+        // facings (both index-aligned with <paramref name="models"/>). Shared by both coherency checks.
         private static void ComputeCohesionExtents(List<DataBinding<ModelData>> models, List<Position> positions,
-            out float[] nearest, out float[] farthest)
+            List<Float2> facings, out float[] nearest, out float[] farthest)
         {
             int count = models.Count;
             nearest = new float[count];
@@ -1120,8 +1139,8 @@ namespace FDG.Stages
                 for (int j = i + 1; j < count; j++)
                 {
                     float distance = DistanceUtilities.GetBaseToBaseDistanceInches_3D(positions[i], positions[j],
-                        models[i].GetValue().BaseShape, models[i].GetValue().Facing,
-                        models[j].GetValue().BaseShape, models[j].GetValue().Facing);
+                        models[i].GetValue().BaseShape, facings[i],
+                        models[j].GetValue().BaseShape, facings[j]);
 
                     nearest[i] = Math.Min(distance, nearest[i]);
                     farthest[i] = Math.Max(distance, farthest[i]);

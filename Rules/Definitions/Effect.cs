@@ -1349,8 +1349,8 @@ public abstract record Effect
 
     /// <summary>
     /// The bearer's attack ignores intervening terrain for line of sight — it may fire at targets it has
-    /// no clear line to, as if in line of sight. Covers Indirect's "target non-LoS as if LoS" facet and
-    /// Takedown's "ignore intervening LoS" facet. Read by the ranged-target enumeration and the occlusion
+    /// no clear line to, as if in line of sight. Covers Indirect's "target non-LoS as if LoS" facet.
+    /// (Takedown does NOT grant it - see #311.) Read by the ranged-target enumeration and the occlusion
     /// stage (so the shot isn't blocked) and surfaced per-weapon to the movement + ranged-target resolver
     /// requests, so they can represent that LoS-blocked targets are still shootable with this weapon.
     /// </summary>

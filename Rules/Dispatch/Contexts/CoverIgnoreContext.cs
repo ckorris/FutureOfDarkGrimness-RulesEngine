@@ -5,7 +5,7 @@ namespace FDG.Rules.Dispatch.Contexts
     /// <summary>
     /// Fires at <see cref="EHookID.Shooting_OnSaveRollModifier"/>: the attacker-only "weapon sight
     /// properties" context. Rules react here to queue target-independent weapon flags — Blast queues
-    /// <see cref="RuleOperation.IgnoreCover"/>, and Indirect/Takedown queue
+    /// <see cref="RuleOperation.IgnoreCover"/>, and Indirect queues
     /// <see cref="RuleOperation.IgnoreLineOfSight"/>.
     ///
     /// These are properties of the attacker's weapon, independent of any specific target, so this context

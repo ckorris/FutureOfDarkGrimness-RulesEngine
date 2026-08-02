@@ -284,6 +284,101 @@ namespace FDG.Tests
                 "An unreachable Deadly weapon must not gate the unit's other weapons.");
         }
 
+        // #311: "Takedown attacks must be resolved before other weapons" — the same resolve-first gate
+        // Deadly uses, so a sniper's ordinary weapons are unselectable while its Takedown weapon can fire.
+        [Test]
+        public async Task Enter_TakedownWeaponFireable_MarksOtherWeaponsUnselectable()
+        {
+            var requester = new CapturingRangedRequester();
+            var sniperRifle = TakedownWeapon("Sniper Rifle", range: 24f);
+            var rifle = Rifle();
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(5, 0, 0) }, // both weapons (24") can reach
+                rifleRange: 24f,
+                attackerWeapons: new[] { sniperRifle, rifle },
+                playerRequester: requester);
+
+            var combatCtx = new CombatActionContext(ctx, attackerBinding, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+            await stage.Enter(combatCtx);
+
+            Assert.That(requester.Captured, Is.Not.Null);
+            var sniperOption = requester.Captured!.WeaponOptions.Single(o => o.Weapon.Name == "Sniper Rifle");
+            var rifleOption = requester.Captured!.WeaponOptions.Single(o => o.Weapon.Name == "Rifle");
+
+            Assert.That(sniperOption.WeaponTargetStats.All(t => t.UnselectableReason == null), Is.True,
+                "The Takedown weapon itself must stay selectable.");
+            Assert.That(rifleOption.WeaponTargetStats.All(t => t.UnselectableReason != null), Is.True,
+                "The ordinary weapon's targets must be gated while a Takedown weapon is fireable.");
+            Assert.That(rifleOption.WeaponTargetStats.First().UnselectableReason, Does.Contain("Takedown"),
+                "the reason must name the rule doing the gating, not Deadly.");
+        }
+
+        // #311 edge, mirroring #028's: a Takedown weapon that can't reach anyone must NOT lock out the
+        // unit's other weapons — the same anyPriorityFireable guard, now exercised on the new source.
+        [Test]
+        public async Task Enter_TakedownWeaponOutOfRange_DoesNotGateOtherWeapons()
+        {
+            var requester = new CapturingRangedRequester();
+            var sniperRifle = TakedownWeapon("Sniper Rifle", range: 6f); // short range
+            var rifle = Rifle(24f);
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(10, 0, 0) }, // 9" base-to-base: rifle reaches, sniper (6") doesn't
+                rifleRange: 24f,
+                attackerWeapons: new[] { sniperRifle, rifle },
+                playerRequester: requester);
+
+            var combatCtx = new CombatActionContext(ctx, attackerBinding, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+            await stage.Enter(combatCtx);
+
+            Assert.That(requester.Captured, Is.Not.Null);
+            var rifleOption = requester.Captured!.WeaponOptions.Single(o => o.Weapon.Name == "Rifle");
+            Assert.That(rifleOption.WeaponTargetStats.All(t => t.UnselectableReason == null), Is.True,
+                "An unreachable Takedown weapon must not gate the unit's other weapons.");
+        }
+
+        // #311: Deadly and Takedown share ONE priority class — a unit carrying both must fire both before
+        // its ordinary weapons, and neither gates the other (no precedence between them in the rules).
+        [Test]
+        public async Task Enter_DeadlyAndTakedown_GateOrdinaryWeaponsButNotEachOther()
+        {
+            var requester = new CapturingRangedRequester();
+            var heavy = DeadlyWeapon("Heavy Rifle", range: 24f, x: 3);
+            var sniperRifle = TakedownWeapon("Sniper Rifle", range: 24f);
+            var rifle = Rifle();
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(5, 0, 0) },
+                rifleRange: 24f,
+                attackerWeapons: new[] { heavy, sniperRifle, rifle },
+                playerRequester: requester);
+
+            var combatCtx = new CombatActionContext(ctx, attackerBinding, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+            await stage.Enter(combatCtx);
+
+            Assert.That(requester.Captured, Is.Not.Null);
+            var heavyOption = requester.Captured!.WeaponOptions.Single(o => o.Weapon.Name == "Heavy Rifle");
+            var sniperOption = requester.Captured!.WeaponOptions.Single(o => o.Weapon.Name == "Sniper Rifle");
+            var rifleOption = requester.Captured!.WeaponOptions.Single(o => o.Weapon.Name == "Rifle");
+
+            Assert.That(heavyOption.WeaponTargetStats.All(t => t.UnselectableReason == null), Is.True,
+                "Deadly must not be gated by Takedown.");
+            Assert.That(sniperOption.WeaponTargetStats.All(t => t.UnselectableReason == null), Is.True,
+                "Takedown must not be gated by Deadly.");
+            Assert.That(rifleOption.WeaponTargetStats.All(t => t.UnselectableReason != null), Is.True,
+                "the ordinary weapon waits for both.");
+            string reason = rifleOption.WeaponTargetStats.First().UnselectableReason!;
+            Assert.That(reason, Does.Contain("Deadly").And.Contain("Takedown"),
+                "the reason names both rules holding the ordinary weapon back.");
+        }
+
         // #032 Limited: a weapon already fired this game (per-model spent token) is no longer offered — its
         // targets are gated, while the unit's non-Limited weapons stay selectable.
         [Test]
@@ -751,6 +846,13 @@ namespace FDG.Tests
             var weapon = new Weapon(name, range, 1, 0);
             weapon.AttachRuleDefinition(new ResolvedRule("Deadly", CoreRuleCatalog.Deadly,
                 new RuleArgument[] { new RuleArgument.Int(x) }));
+            return weapon;
+        }
+
+        private static Weapon TakedownWeapon(string name, float range = 24f)
+        {
+            var weapon = new Weapon(name, range, 1, 0);
+            weapon.AttachRuleDefinition(new ResolvedRule("Takedown", CoreRuleCatalog.Takedown));
             return weapon;
         }
 

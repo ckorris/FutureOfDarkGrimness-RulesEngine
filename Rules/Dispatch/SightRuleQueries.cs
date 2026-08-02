@@ -37,8 +37,9 @@ namespace FDG.Rules.Dispatch
 
         /// <summary>
         /// The alias-aware display name of the rule that makes the attacker's weapon ignore intervening
-        /// terrain for line of sight (Indirect, Takedown) — it may fire at targets it has no clear line to,
-        /// as if in line of sight — or null if none does. (Distinct from Flying/Strider's
+        /// terrain for line of sight (Indirect) — it may fire at targets it has no clear line to,
+        /// as if in line of sight — or null if none does. (Takedown does NOT: it re-scopes the attack to a
+        /// single model and nothing more — see #311. Distinct from Flying/Strider's
         /// <see cref="RuleOperation.IgnoreTerrainEffects"/>, which is MOVEMENT terrain, not LoS.) Non-logging.
         /// </summary>
         public static string? LineOfSightIgnoreSource(IUnit attacker, IWeapon weapon, RuleEvaluator evaluator)
@@ -67,13 +68,25 @@ namespace FDG.Rules.Dispatch
         /// </summary>
         public static bool TargetsIndividualModels(IUnit attacker, IWeapon weapon, IUnit defender,
             RuleEvaluator evaluator)
+            => IndividualTargetSource(attacker, weapon, defender, evaluator) != null;
+
+        /// <summary>
+        /// The alias-aware display name of the rule that re-scopes this weapon's attack to a single chosen
+        /// model (Takedown), or null if none does. Named variant of
+        /// <see cref="TargetsIndividualModels"/> — the ranged picker attributes its resolve-first gating
+        /// with it ("Must fire Takedown weapons first."), so an army that renames Takedown shows its own
+        /// name. Non-logging and non-consuming (<c>EvaluateAllNamed</c>), so it is safe to call from the
+        /// option builder, which runs on every Choose Action / Choose Weapon pass.
+        /// </summary>
+        public static string? IndividualTargetSource(IUnit attacker, IWeapon weapon, IUnit defender,
+            RuleEvaluator evaluator)
         {
-            foreach ((RuleOperation op, string _) in evaluator.EvaluateAllNamed(
+            foreach ((RuleOperation op, string ruleName) in evaluator.EvaluateAllNamed(
                          new ShootTargetsSelectedContext(attacker, defender), RuleParticipant.Actor(attacker, weapon)))
             {
-                if (op is RuleOperation.TargetIndividualModel) return true;
+                if (op is RuleOperation.TargetIndividualModel) return ruleName;
             }
-            return false;
+            return null;
         }
     }
 }

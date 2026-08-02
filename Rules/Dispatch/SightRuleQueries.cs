@@ -39,7 +39,7 @@ namespace FDG.Rules.Dispatch
         /// The alias-aware display name of the rule that makes the attacker's weapon ignore intervening
         /// terrain for line of sight (Indirect) — it may fire at targets it has no clear line to,
         /// as if in line of sight — or null if none does. (Takedown does NOT: it re-scopes the attack to a
-        /// single model and nothing more — see #313. Distinct from Flying/Strider's
+        /// single model and nothing more — see #314. Distinct from Flying/Strider's
         /// <see cref="RuleOperation.IgnoreTerrainEffects"/>, which is MOVEMENT terrain, not LoS.) Non-logging.
         /// </summary>
         public static string? LineOfSightIgnoreSource(IUnit attacker, IWeapon weapon, RuleEvaluator evaluator)

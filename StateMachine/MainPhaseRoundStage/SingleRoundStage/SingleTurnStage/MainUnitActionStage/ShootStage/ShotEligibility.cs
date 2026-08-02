@@ -51,7 +51,10 @@ namespace FDG.Stages
         /// the same one the range check rolls on.
         /// </summary>
         /// <param name="blockers">Sight blockers from <see cref="BuildBlockers"/>. <b>Null means the
-        /// shot ignores line of sight</b> (Indirect, Takedown), so only range gates it.</param>
+        /// shot ignores line of sight</b> (Indirect), so only range gates it. Callers derive that from
+        /// <see cref="Rules.Dispatch.SightRuleQueries.IgnoresTerrain"/>; Takedown used to qualify and no
+        /// longer does (#314 - its rule text grants no LoS bypass), so this parameter's value changed
+        /// for snipers even though the logic here did not.</param>
         /// <param name="maxRangeInches">Effective range, already folded through any #102 range rules.
         /// Omit for "range is not my question" — a caller that already knows the shot is legal and only
         /// needs to know WHICH model it is aimed at.</param>

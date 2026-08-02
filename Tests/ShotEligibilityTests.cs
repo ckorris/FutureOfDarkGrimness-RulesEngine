@@ -10,7 +10,7 @@ using static FDG.StageResolution.Requests.ChooseRangedAttackRequest;
 
 namespace FDG.Tests
 {
-    // #313: ShotEligibility is the single answer to "which defender can this shooter actually hit",
+    // #314: ShotEligibility is the single answer to "which defender can this shooter actually hit",
     // shared by the rules (ChooseRangedAttackStage), the attack animation (AttackBeatPositions) and the
     // targeting previews. The bug that motivated it: the shoot panel aimed its fire lines at the NEAREST
     // defender by raw distance, so a line was drawn straight through a wall while the volley itself

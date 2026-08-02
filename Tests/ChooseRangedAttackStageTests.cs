@@ -284,7 +284,7 @@ namespace FDG.Tests
                 "An unreachable Deadly weapon must not gate the unit's other weapons.");
         }
 
-        // #313: "Takedown attacks must be resolved before other weapons" — the same resolve-first gate
+        // #314: "Takedown attacks must be resolved before other weapons" — the same resolve-first gate
         // Deadly uses, so a sniper's ordinary weapons are unselectable while its Takedown weapon can fire.
         [Test]
         public async Task Enter_TakedownWeaponFireable_MarksOtherWeaponsUnselectable()
@@ -316,7 +316,7 @@ namespace FDG.Tests
                 "the reason must name the rule doing the gating, not Deadly.");
         }
 
-        // #313 edge, mirroring #028's: a Takedown weapon that can't reach anyone must NOT lock out the
+        // #314 edge, mirroring #028's: a Takedown weapon that can't reach anyone must NOT lock out the
         // unit's other weapons — the same anyPriorityFireable guard, now exercised on the new source.
         [Test]
         public async Task Enter_TakedownWeaponOutOfRange_DoesNotGateOtherWeapons()
@@ -342,7 +342,7 @@ namespace FDG.Tests
                 "An unreachable Takedown weapon must not gate the unit's other weapons.");
         }
 
-        // #313: Deadly and Takedown share ONE priority class — a unit carrying both must fire both before
+        // #314: Deadly and Takedown share ONE priority class — a unit carrying both must fire both before
         // its ordinary weapons, and neither gates the other (no precedence between them in the rules).
         [Test]
         public async Task Enter_DeadlyAndTakedown_GateOrdinaryWeaponsButNotEachOther()

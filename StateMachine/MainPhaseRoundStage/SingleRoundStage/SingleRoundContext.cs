@@ -75,6 +75,12 @@ namespace FDG.Stages
             RoundCount = roundCount;
             Cursor = new TeamPlayerAlternationCursor(teamOrder);
 
+            // The round advances the cursor BEFORE every activation, including the round's first, so it
+            // starts parked one step short of teamOrder[0] - the team that won the deployment roll-off in
+            // round 1, and thereafter the one that finished activating first last round. Without this the
+            // opening activation of every round went to whoever should have gone SECOND.
+            Cursor.ParkBeforeFirstTurn();
+
             _unactivatedUnits = new Dictionary<PlayerID, List<DataBinding<UnitData>>>();
 
             SetUnactivatedUnits();

@@ -171,7 +171,10 @@ namespace FDG.Tests
             Assert.That(before.RoundCount, Is.EqualTo(1));
             Assert.That(before.Stage, Is.EqualTo(EResumeStage.MainPhase));
             Assert.That(before.TeamActivateOrder, Is.EqualTo(new List<int> { 0, 1 }).AsCollection);
-            Assert.That(before.CurrentTeamIndex, Is.EqualTo(0));
+            Assert.That(before.CurrentTeamIndex, Is.EqualTo(1),
+                "a round that hasn't opened yet is parked one step short of its first team (index 0), and " +
+                "that position has to reach the snapshot or a game saved at the start of a round resumes " +
+                "on the wrong player - see RoundActivationOrderTests");
             Assert.That(before.CurrentPlayerIndexPerTeam.Keys, Is.EquivalentTo(new[] { 0, 1 }));
             Assert.That(before.CurrentRoundTeamFinishOrder, Is.Empty);
             Assert.That(before.UnactivatedUnits.Count, Is.EqualTo(3), "All three units start unactivated.");

@@ -28,6 +28,30 @@ namespace FDG.Utilities
                 CurrentPlayerIndexPerTeam[team] = 0;
         }
 
+        /// <summary>
+        /// Parks the cursor one step BEFORE the first (team, player) in the order, so that the very first
+        /// <see cref="TryAdvance"/> lands ON them instead of past them.
+        /// <para>
+        /// There are two ways to walk this cursor. Terrain and terrain-points placement READ the current
+        /// position and then advance, so for them a fresh cursor pointing at the first turn is exactly right.
+        /// The round's activation loop instead advances BEFORE every turn, including the first - and for that
+        /// walk a fresh cursor is off by one, because "advance past position 0" hands the opening turn to
+        /// whoever is second. Call this once at construction for the second kind of walk.
+        /// </para>
+        /// <para>
+        /// Parking is a plain cursor position (the end of the order, which TryAdvance wraps off), not a flag,
+        /// so it survives the save/load round trip through GameProgressData like any other position - a game
+        /// saved before a round's first activation resumes with the same player still to lead. ScenarioCompiler
+        /// hand-rolls the same parking when it seeds a scenario mid-round.
+        /// </para>
+        /// </summary>
+        public void ParkBeforeFirstTurn()
+        {
+            CurrentTeamIndex = TeamOrder.Count - 1;
+            foreach (ITeam team in TeamOrder)
+                CurrentPlayerIndexPerTeam[team] = team.Players.Count - 1;
+        }
+
         public ITeam GetCurrentTeam() => TeamOrder[CurrentTeamIndex];
 
         public PlayerID GetCurrentPlayerID()

@@ -171,7 +171,7 @@ namespace FDG.Stages
             // every living carrier has already fired it (per-model token), so it's no longer offered.
             ApplyLimitedSpentGating(weaponOptions, attackingUnit);
 
-            // #028/#311: resolve-first weapons must be fired before the unit's other weapons - Deadly
+            // #028/#313: resolve-first weapons must be fired before the unit's other weapons - Deadly
             // (a clump removes whole models before normal wounds spread) and Takedown ("Takedown attacks
             // must be resolved before other weapons"). Runs after option-building AND after Limited
             // gating: a priority weapon with no valid target - or one already spent - must not lock out
@@ -278,7 +278,7 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// #028/#311: while the unit still has an un-fired resolve-first weapon (Deadly's wound multiplier
+        /// #028/#313: while the unit still has an un-fired resolve-first weapon (Deadly's wound multiplier
         /// or Takedown's individual-target re-scope) with a valid target, mark every ordinary weapon's
         /// targets unselectable so the player must resolve the priority weapons first.
         /// Each fired weapon leaves <see cref="ICombatActionContext.AvailableWeapons"/> once used, so once
@@ -293,7 +293,7 @@ namespace FDG.Stages
 
             // #306: profile-keyed, not name-keyed - a partial upgrade can leave a unit with a Deadly
             // "Sword" and a plain "Sword", and only the Deadly one must gate the rest.
-            // #311: the source name rides along so the reason text names the rule actually gating
+            // #313: the source name rides along so the reason text names the rule actually gating
             // ("Deadly(3)" or "Takedown"), alias-aware. Distinct names are joined, since a unit may carry
             // one of each and both must fire before the ordinary weapons.
             HashSet<string> priorityWeaponKeys = new HashSet<string>(StringComparer.Ordinal);
@@ -594,7 +594,7 @@ namespace FDG.Stages
                 .Where(model => model.GetIsAlive()))
             {
                 // #042 Indirect: a weapon that ignores intervening terrain for LoS may fire at a
-                // target it has no clear line to, so only range gates it. (Takedown does NOT - #311.)
+                // target it has no clear line to, so only range gates it. (Takedown does NOT - #313.)
                 bool hasLineOfSight;
                 if (ignoresLineOfSight)
                 {

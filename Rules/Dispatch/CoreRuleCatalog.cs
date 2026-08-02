@@ -473,7 +473,7 @@ public static class CoreRuleCatalog
     /// <see cref="RuleOperation.TargetIndividualModel"/>; BuildTargetListStage reads it, asks the
     /// attacker to pick the model, and AssignWoundsStage confines the wounds.
     ///
-    /// The rule does NOT ignore line of sight or cover (#311). It carried
+    /// The rule does NOT ignore line of sight or cover (#313). It carried
     /// <see cref="RuleOperation.IgnoreLineOfSight"/> / <see cref="RuleOperation.IgnoreCover"/> hooks from
     /// 2026-06-11 to 2026-08-02, copied off Indirect's clause by the #042 checklist's per-rule mapping row;
     /// the v3.5.1 rule text grants neither, and the LoS hook let snipers shoot through Blocking terrain.

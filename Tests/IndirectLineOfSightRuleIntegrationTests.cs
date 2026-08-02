@@ -13,7 +13,7 @@ namespace FDG.Tests
     // checks the shared SightRuleQueries derivation that feeds the per-weapon LoS-/cover-ignore flags on
     // the targeting + movement resolver requests.
     //
-    // #311 regression guard: Takedown carried the same LoS-/cover-ignore hooks from 2026-06-11 until
+    // #313 regression guard: Takedown carried the same LoS-/cover-ignore hooks from 2026-06-11 until
     // 2026-08-02 (copied off Indirect by the #042 checklist's mapping row), which let snipers shoot
     // through Blocking terrain. Its rule text grants neither, so the Takedown cases here assert the
     // OPPOSITE of Indirect's.
@@ -58,7 +58,7 @@ namespace FDG.Tests
             Assert.That(occluded, Is.False, "Indirect ignores intervening line of sight — the shot is not occluded.");
         }
 
-        // #311: the bug the user hit - a sniper shooting through a Blocking wall.
+        // #313: the bug the user hit - a sniper shooting through a Blocking wall.
         [Test]
         public async Task Takedown_BehindWall_ShotIsOccluded()
         {
@@ -71,7 +71,7 @@ namespace FDG.Tests
                 "Takedown re-scopes the attack to one model - it does NOT see through a Blocking wall.");
         }
 
-        // #311: the same wrong facet also reached the resolvers' per-weapon flags, so pin the query too -
+        // #313: the same wrong facet also reached the resolvers' per-weapon flags, so pin the query too -
         // a Takedown weapon must report neither ignore, or the targeting UI offers the blocked shot.
         [Test]
         public void SightRuleQueries_Takedown_IgnoresNeitherLoSNorCover()

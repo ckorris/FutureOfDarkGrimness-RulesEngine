@@ -16,7 +16,7 @@ namespace FDG.Rules.Dispatch
     /// weapon-choice stages so they gate identically.
     ///
     /// Shooting has a second, non-wound resolve-first rule — Takedown's "Takedown attacks must be
-    /// resolved before other weapons" (#311) — so the ranged picker asks
+    /// resolved before other weapons" (#313) — so the ranged picker asks
     /// <see cref="ShootingResolveFirstSource"/> instead, which is this predicate widened by the
     /// individual-target capability. Both rules land in ONE priority class: neither rulebook text claims
     /// precedence over the other, so a unit carrying both must fire both before its ordinary weapons and
@@ -56,7 +56,7 @@ namespace FDG.Rules.Dispatch
         /// <summary>
         /// The display name of the rule that forces this weapon to be fired before the unit's other
         /// weapons when SHOOTING — a wound multiplier (Deadly, #028) or an individual-target re-scope
-        /// (Takedown, #311) — or null if none does. Melee deliberately keeps the wound-only
+        /// (Takedown, #313) — or null if none does. Melee deliberately keeps the wound-only
         /// <see cref="MustResolveFirst"/>: Takedown's hook is
         /// <c>Shooting_OnShootTargetsSelected</c>, so a melee weapon carrying it re-scopes nothing and
         /// must not gate the unit's other melee weapons.

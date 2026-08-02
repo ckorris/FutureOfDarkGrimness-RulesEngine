@@ -432,7 +432,8 @@ namespace FDG.Stages
             bool canBackOut = !context.HasMoved && !context.HasAttacked && !context.IrreversibleActionTaken;
 
             StringSelectionRequest request = new StringSelectionRequest(context.ActivatingPlayer(),
-                "Choose Action", validOptions, invalidOptions, allowCancel: canBackOut);
+                "Choose Action", validOptions, invalidOptions, allowCancel: canBackOut,
+                displayName: "Choosing an Action");
 
             string choice = await GameContext.PlayerRequester.RequestDecision<StringSelectionRequest, string>(request);
 

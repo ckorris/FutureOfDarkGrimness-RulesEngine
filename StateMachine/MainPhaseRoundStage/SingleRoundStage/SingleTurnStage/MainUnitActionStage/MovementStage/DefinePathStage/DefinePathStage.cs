@@ -66,7 +66,8 @@ namespace FDG.Stages
             bool ignoresImpassibleTerrain = Rules.Dispatch.MovementRuleQueries.IgnoresAllTerrain(
                 context.MovingUnit.GetValue(), context.GameContext.RuleEvaluator);
 
-            var pathRequest = new DefineMovementPathRequest(playerID, "Move Unit", context.MovingUnit,
+            var pathRequest = new DefineMovementPathRequest(playerID,
+                $"Moving {context.MovingUnit.GetValue().Name}", context.MovingUnit,
                 context.MaxAdvanceDistance, context.MaxRushDistance, hardCap,
                 WeaponSightProfileBuilder.For(context.MovingUnit.GetValue(), context.GameContext.RuleEvaluator),
                 canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, BuildRangeOverrides(context),
@@ -151,7 +152,7 @@ namespace FDG.Stages
             UnitData unit = context.MovingUnit.GetValue();
             Float2 heading = ForcedAircraftMove.GetHeading(unit);
 
-            var request = new AircraftAdvanceRequest(playerID, $"{unit.Name} (Aircraft) - forced move",
+            var request = new AircraftAdvanceRequest(playerID, $"Flying {unit.Name}",
                 context.MovingUnit, heading,
                 ForcedAircraftMove.MinDistanceInches, ForcedAircraftMove.MaxDistanceInches);
             AircraftAdvanceResult choice = await context.PlayerRequester()

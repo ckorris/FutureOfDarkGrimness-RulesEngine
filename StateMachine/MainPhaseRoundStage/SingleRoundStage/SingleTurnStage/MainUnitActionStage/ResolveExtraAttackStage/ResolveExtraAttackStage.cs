@@ -136,7 +136,7 @@ namespace FDG.Stages
             var question = new YesNoRequest(attacker.PlayerID,
                 $"Use {offer.RuleName} (once per game): {attacker.Name} makes one extra attack " +
                 $"{how} against {defender.Name}?",
-                defaultAnswer: true);
+                defaultAnswer: true, displayName: $"Deciding Whether to Use {offer.RuleName}");
 
             return await GameContext.PlayerRequester.RequestDecision<YesNoRequest, bool>(question);
         }

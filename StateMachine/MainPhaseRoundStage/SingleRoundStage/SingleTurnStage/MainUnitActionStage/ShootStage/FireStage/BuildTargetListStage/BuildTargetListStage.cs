@@ -77,7 +77,8 @@ namespace FDG.Stages
             // The attack has already committed to Takedown — picking the target model is mandatory, no cancel.
             SelectionRequest<ModelData> request = new SelectionRequest<ModelData>(
                 metaData.AttackingUnit.PlayerID(), "Takedown: choose the target model",
-                validOptions, Array.Empty<SelectionRequest<ModelData>.InvalidOption>(), allowCancel: false);
+                validOptions, Array.Empty<SelectionRequest<ModelData>.InvalidOption>(), allowCancel: false,
+                displayName: "Choosing a Takedown Target");
 
             DataBinding<ModelData> chosen = await GameContext.PlayerRequester
                 .RequestDecision<SelectionRequest<ModelData>, DataBinding<ModelData>>(request);

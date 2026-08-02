@@ -48,7 +48,7 @@ namespace FDG.Stages
             // of the post-combat family) can be declined, so the resolver may reply Cancelled and a human
             // gets a Back button. A FORCED move (e.g. a spell pushing an enemy) is not cancellable - the
             // rule has already fired and there is nowhere to return to.
-            var pathRequest = new DefineMovementPathRequest(mover, "Triggered Move",
+            var pathRequest = new DefineMovementPathRequest(mover, $"Moving {unitBinding.GetValue().Name}",
                 unitBinding, maxInches, maxInches, maxInches,
                 WeaponSightProfileBuilder.For(unitBinding.GetValue(), _gameContext.RuleEvaluator),
                 canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain,
@@ -314,7 +314,7 @@ namespace FDG.Stages
             // placement flow (overlap/cohesion/terrain checks included) with the #282 commit guard.
             Position center = PlacerCenter(placer);
             var zone = new CircularZone(new Float2(center.x, center.z), radiusInches);
-            var request = new PlaceObjectsRequest<ModelData>(placer.PlayerID, "Place Spawned Unit",
+            var request = new PlaceObjectsRequest<ModelData>(placer.PlayerID, $"Placing {unit.Name}",
                 zone, unit.ModelBindings);
             List<PlacedObjectEntry<ModelData>> placements = await PlacementCommitGuard
                 .RequestClearPlacement(_gameContext, request);

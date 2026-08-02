@@ -12,6 +12,7 @@ namespace FDG.StageResolution.Requests
         public PlayerID TargetPlayerID { get; }
         public TaskID TaskID { get; }
         public string TaskName { get; }
+        public string DisplayName { get; }
         public string Instructions { get; }
         public IReadOnlyList<string> ValidOptions { get; }
         public IReadOnlyList<InvalidOption> InvalidOptions { get; }
@@ -33,10 +34,14 @@ namespace FDG.StageResolution.Requests
         /// </summary>
         public bool AllowCancel { get; }
 
+        // displayName: game wording for the #318 "Waiting on" HUD line - the shared TaskName literal
+        // makes the action menu, weapon picks, and hold-or-deploy prompts indistinguishable to a
+        // waiting opponent.
         [JsonConstructor]
         public StringSelectionRequest(PlayerID targetPlayerID, TaskID taskID,
             string instructions, IReadOnlyList<string> validOptions, IReadOnlyList<InvalidOption> invalidOptions,
-            Dictionary<string, string>? optionDescriptions = null, bool allowCancel = false)
+            Dictionary<string, string>? optionDescriptions = null, bool allowCancel = false,
+            string? displayName = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -46,20 +51,16 @@ namespace FDG.StageResolution.Requests
             OptionDescriptions = optionDescriptions;
             AllowCancel = allowCancel;
             TaskName = "Select Option";
+            DisplayName = displayName ?? TaskName;
         }
 
         public StringSelectionRequest(PlayerID targetPlayerID, string instructions,
             IReadOnlyList<string> validOptions, IReadOnlyList<InvalidOption> invalidOptions,
-            Dictionary<string, string>? optionDescriptions = null, bool allowCancel = false)
+            Dictionary<string, string>? optionDescriptions = null, bool allowCancel = false,
+            string? displayName = null)
+            : this(targetPlayerID, new TaskID(Guid.NewGuid()), instructions, validOptions, invalidOptions,
+                optionDescriptions, allowCancel, displayName)
         {
-            TargetPlayerID = targetPlayerID;
-            TaskID = new TaskID(Guid.NewGuid());
-            Instructions = instructions;
-            ValidOptions = validOptions;
-            InvalidOptions = invalidOptions;
-            OptionDescriptions = optionDescriptions;
-            AllowCancel = allowCancel;
-            TaskName = "Select Option";
         }
 
         public Task<string> Resolve(string resolution)

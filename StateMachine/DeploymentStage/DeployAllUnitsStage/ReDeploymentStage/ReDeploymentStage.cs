@@ -124,7 +124,8 @@ namespace FDG.Stages
 
             var request = new CancellableSelectionRequest<UnitData>(player,
                 $"Re-Deploy a unit ({remaining} left), or pass",
-                valid, new List<CancellableSelectionRequest<UnitData>.InvalidOption>());
+                valid, new List<CancellableSelectionRequest<UnitData>.InvalidOption>(),
+                displayName: "Choosing a Unit to Redeploy");
 
             CancellableResult<DataBinding<UnitData>> result = await GameContext.PlayerRequester
                 .RequestDecision<CancellableSelectionRequest<UnitData>, CancellableResult<DataBinding<UnitData>>>(request);
@@ -141,7 +142,7 @@ namespace FDG.Stages
             UnitData unit = unitBinding.GetValue();
             RectangularZone zone = context.PlayerDeploymentZones![team].GetValue();
 
-            var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID, $"Re-Deploy {unit.Name}",
+            var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID, $"Redeploying {unit.Name}",
                 zone, unit.ModelBindings);
 
             // #282: commit-time overlap check, same as first deployment.

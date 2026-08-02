@@ -11,23 +11,25 @@ namespace FDG.StageResolution.Requests
         public PlayerID TargetPlayerID { get; }
         public TaskID TaskID { get; }
         public string TaskName { get; }
+        public string DisplayName { get; }
         public string Instructions { get; }
 
+        // displayName: game wording for the #318 "Waiting on" HUD line.
         [JsonConstructor]
-        public SingleBindingRequest(PlayerID targetPlayerID, TaskID taskID,string instructions)
+        public SingleBindingRequest(PlayerID targetPlayerID, TaskID taskID, string instructions,
+            string? displayName = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
             Instructions = instructions;
             TaskName = "Select Item";
+            DisplayName = displayName ?? TaskName;
         }
 
-        public SingleBindingRequest(PlayerID targetPlayerID, string instructions)
+        public SingleBindingRequest(PlayerID targetPlayerID, string instructions,
+            string? displayName = null)
+            : this(targetPlayerID, new TaskID(Guid.NewGuid()), instructions, displayName)
         {
-            TargetPlayerID = targetPlayerID;
-            TaskID = new TaskID(Guid.NewGuid());
-            Instructions = instructions;
-            TaskName = "Select Item";
         }
 
         public Task<DataBinding<T>> Resolve(DataBinding<T> resolution)

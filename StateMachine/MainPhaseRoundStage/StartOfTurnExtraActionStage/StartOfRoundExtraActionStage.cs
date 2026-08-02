@@ -112,11 +112,13 @@ namespace FDG.Stages
                     bool bringOn = defer.MandatoryArrival
                         || await GameContext.PlayerRequester.RequestDecision<YesNoRequest, bool>(
                             new YesNoRequest(unit.PlayerID, $"Deploy {unit.Name} from Ambush this round?",
-                                defaultAnswer: true));
+                                defaultAnswer: true,
+                                displayName: $"Deciding Whether to Deploy {unit.Name} from Ambush"));
 
                     if (!bringOn) continue;
 
-                    await PlaceFromReserve(unit, defer.PlacementRangeInches);   // clears the reserve state
+                    await PlaceFromReserve(unit, defer.PlacementRangeInches,    // clears the reserve state
+                        displayName: $"Deploying {unit.Name} from Ambush");
                     // The pending-return marker (if this arrival IS the Ambush Re-Deployment return) is
                     // spent by arriving; a plain Ambush unit never carries it, so this is a safe no-op.
                     unit.Tokens.RemoveTokens(TokenType.PendingAmbushArrival);
@@ -153,7 +155,7 @@ namespace FDG.Stages
                     var zone = new TableEdgeBandZone(GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES,
                         GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES, bandWidthInches: 12f);
                     var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID,
-                        "Place Reinforcements", zone, unit.ModelBindings);
+                        $"Placing Reinforcements ({unit.Name})", zone, unit.ModelBindings);
                     List<PlacedObjectEntry<ModelData>> placements = await PlacementCommitGuard
                         .RequestClearPlacement(GameContext, request);
 
@@ -199,7 +201,7 @@ namespace FDG.Stages
                     // #309: OffTableFromForcedMove also gates GetIsOnBattlefield, so it must fall
                     // with the reserve clear - before the positions replicate, not after this call.
                     await PlaceFromReserve(unit, minDistanceFromEnemies: 0f,
-                        mustTouchTableEdge: true, taskName: "Aircraft Redeploy",
+                        mustTouchTableEdge: true, taskName: $"Redeploying {unit.Name}",
                         alsoClearBeforeApply: TokenType.OffTableFromForcedMove);
                     unit.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.ArrivedFromReserve));
 
@@ -211,7 +213,7 @@ namespace FDG.Stages
 
         private async Task PlaceFromReserve(UnitData unit, float minDistanceFromEnemies,
             bool mustTouchTableEdge = false, string taskName = "Ambush Deploy",
-            TokenType? alsoClearBeforeApply = null)
+            TokenType? alsoClearBeforeApply = null, string? displayName = null)
         {
             var wholeTable = new RectangularZone(0f, GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES,
                 0f, GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES);
@@ -231,7 +233,8 @@ namespace FDG.Stages
             var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID, taskName,
                 wholeTable, unit.ModelBindings, minDistanceFromEnemiesInches: minDistanceFromEnemies,
                 mustTouchTableEdge: mustTouchTableEdge,
-                enemyKeepOutDiscs: keepOut, enemyDistanceWaiverDiscs: waivers);
+                enemyKeepOutDiscs: keepOut, enemyDistanceWaiverDiscs: waivers,
+                displayName: displayName);
 
             // #282: commit-time overlap check - an Ambush arrival must not land inside another unit.
             List<PlacedObjectEntry<ModelData>> placements = await PlacementCommitGuard

@@ -103,7 +103,7 @@ namespace FDG.Stages
                 var holdBack = new YesNoRequest(context.ActivatedPlayer,
                     $"Delayed Action: hold {chosenUnit.GetValue().Name} back to activate later this round " +
                     "(your opponent activates next instead)? You may do this only once per round.",
-                    defaultAnswer: false);
+                    defaultAnswer: false, displayName: "Deciding Whether to Delay Activation");
 
                 bool delay = await GameContext.PlayerRequester
                     .RequestDecision<YesNoRequest, bool>(holdBack);

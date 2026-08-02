@@ -578,7 +578,7 @@ namespace FDG.Stages
                 SelectionRequest<UnitData> request = new SelectionRequest<UnitData>(player,
                     $"Choose target for {spell.Name} ({chosen.Count + 1} of up to {spell.Target.MaxCount})",
                     validOptions, System.Array.Empty<SelectionRequest<UnitData>.InvalidOption>(),
-                    allowCancel: true);
+                    allowCancel: true, displayName: $"Choosing a Target for {spell.Name}");
 
                 DataBinding<UnitData> target = await GameContext.PlayerRequester
                     .RequestDecision<SelectionRequest<UnitData>, DataBinding<UnitData>>(request);
@@ -631,7 +631,8 @@ namespace FDG.Stages
 
             SelectionRequest<ModelData> request = new SelectionRequest<ModelData>(player,
                 $"{spellName}: choose the target model",
-                validOptions, System.Array.Empty<SelectionRequest<ModelData>.InvalidOption>(), allowCancel: false);
+                validOptions, System.Array.Empty<SelectionRequest<ModelData>.InvalidOption>(), allowCancel: false,
+                displayName: $"Choosing a Target for {spellName}");
 
             return await GameContext.PlayerRequester
                 .RequestDecision<SelectionRequest<ModelData>, DataBinding<ModelData>>(request);

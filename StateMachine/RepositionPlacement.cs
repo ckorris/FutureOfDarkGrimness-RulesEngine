@@ -40,7 +40,7 @@ namespace FDG.Stages
                 0f, GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES);
 
             var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID,
-                $"Reposition {unit.Name} (up to {maxInches:0.##}\")",
+                $"Repositioning {unit.Name}",
                 wholeTable, livingModels, allowCancel: true, maxDistanceFromStartInches: maxInches,
                 cancelHint: "Cancel the reposition. Every model stays where it is.");
 

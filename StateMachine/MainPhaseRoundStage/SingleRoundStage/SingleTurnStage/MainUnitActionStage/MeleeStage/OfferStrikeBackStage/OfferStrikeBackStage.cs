@@ -30,7 +30,8 @@ namespace FDG.Stages
             GameContext.Log("Offering strikeback.");
 
             //TODO: Indicate if they have struck back yet.
-            YesNoRequest yesNoRequest = new YesNoRequest(context.DefendingUnit.PlayerID(), "Strike back?", defaultAnswer: true);
+            YesNoRequest yesNoRequest = new YesNoRequest(context.DefendingUnit.PlayerID(), "Strike back?",
+                defaultAnswer: true, displayName: "Deciding Whether to Strike Back");
 
             Task<bool> task = GameContext.PlayerRequester
                 .RequestDecision<YesNoRequest, bool>(yesNoRequest);

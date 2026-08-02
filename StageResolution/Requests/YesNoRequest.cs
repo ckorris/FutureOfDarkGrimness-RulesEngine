@@ -11,6 +11,7 @@ namespace FDG.StageResolution.Requests
         public PlayerID TargetPlayerID { get; }
         public TaskID TaskID { get; }
         public string TaskName { get; }
+        public string DisplayName { get; }
         public string QuestionText { get; }
 
         /// <summary>
@@ -30,22 +31,24 @@ namespace FDG.StageResolution.Requests
         [JsonProperty]
         public bool DefaultAnswer { get; private set; } = true;
 
+        // displayName: game wording for the #318 "Waiting on" HUD line - the shared TaskName literal
+        // tells a waiting opponent nothing about which of the many yes/no prompts this is.
         [JsonConstructor]
-        public YesNoRequest(PlayerID targetPlayerID, TaskID taskID, string questionText)
+        public YesNoRequest(PlayerID targetPlayerID, TaskID taskID, string questionText,
+            string? displayName = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
             QuestionText = questionText;
             TaskName = "Yes/No Question";
+            DisplayName = displayName ?? TaskName;
         }
 
-        public YesNoRequest(PlayerID targetPlayerID, string questionText, bool defaultAnswer = true)
+        public YesNoRequest(PlayerID targetPlayerID, string questionText, bool defaultAnswer = true,
+            string? displayName = null)
+            : this(targetPlayerID, new TaskID(Guid.NewGuid()), questionText, displayName)
         {
-            TargetPlayerID = targetPlayerID;
-            TaskID = new TaskID(Guid.NewGuid());
-            QuestionText = questionText;
             DefaultAnswer = defaultAnswer;
-            TaskName = "Yes/No Question";
         }
 
         public Task<bool> Resolve(bool resolution)

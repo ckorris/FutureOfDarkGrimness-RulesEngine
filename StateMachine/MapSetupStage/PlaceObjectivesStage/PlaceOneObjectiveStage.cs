@@ -54,7 +54,7 @@ namespace FDG.Stages
             {
                 var request = new PlaceObjectiveRequest(
                     targetPlayerID: placer,
-                    taskName: $"Place objective {markerNumber} of {context.TotalMarkers}",
+                    taskName: $"Placing Objective {markerNumber} of {context.TotalMarkers}",
                     markerIndex: markerNumber,
                     totalMarkers: context.TotalMarkers,
                     legalBand: context.LegalBand,

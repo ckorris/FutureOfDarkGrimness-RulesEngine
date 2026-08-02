@@ -25,7 +25,8 @@ namespace FDG.Stages
             {
                 foreach (PlayerID playerID in team.Players)
                 {
-                    SingleBindingRequest<ArmyData> armyRequest = new SingleBindingRequest<ArmyData>(playerID, "Choose an Army.");
+                    SingleBindingRequest<ArmyData> armyRequest = new SingleBindingRequest<ArmyData>(playerID, "Choose an Army.",
+                        displayName: "Choosing an Army");
                     Task<DataBinding<ArmyData>> task = context.PlayerRequester.RequestDecision<SingleBindingRequest<ArmyData>, 
                         DataBinding<ArmyData>>(armyRequest);
 

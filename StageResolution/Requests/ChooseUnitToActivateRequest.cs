@@ -16,7 +16,7 @@ namespace FDG.StageResolution.Requests
         public ChooseUnitToActivateRequest(PlayerID targetPlayerID,
             IReadOnlyList<ValidOption> validOptions, IReadOnlyList<InvalidOption> invalidOptions)
             : base(targetPlayerID, "Choose Unit to Activate", validOptions, invalidOptions,
-                allowCancel: false)
+                allowCancel: false, displayName: "Choosing a Unit to Activate")
         {
         }
 

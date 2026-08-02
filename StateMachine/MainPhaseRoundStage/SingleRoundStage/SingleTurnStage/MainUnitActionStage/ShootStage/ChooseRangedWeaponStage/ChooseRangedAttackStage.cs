@@ -63,7 +63,7 @@ namespace FDG.Stages
             // it only reset when the ATTACKER changed, which permanently hid Back for any unit that had
             // ever shot.) PreviousTarget rides along so the next weapon starts aimed where the last one
             // fired, when that is still legal.
-            ChooseRangedAttackRequest chooseWeaponRequest = new ChooseRangedAttackRequest(context.AttackingUnit.PlayerID(), "Choose Ranged Weapon",
+            ChooseRangedAttackRequest chooseWeaponRequest = new ChooseRangedAttackRequest(context.AttackingUnit.PlayerID(), "Choosing a Ranged Weapon",
                 context.AttackingUnit, weaponOptions,
                 allowCancel: context.AlreadyUsedWeapons.Count == 0,
                 previousTarget: context.DefendingUnit);

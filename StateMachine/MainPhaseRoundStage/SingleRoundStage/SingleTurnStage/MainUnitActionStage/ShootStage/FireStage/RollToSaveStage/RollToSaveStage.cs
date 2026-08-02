@@ -69,10 +69,11 @@ namespace FDG.Stages
 
             // One save-roll beat per distinct threshold, in first-seen order, captioned with the weapon and
             // why there are extra hits ("2 hits x3 (Blast) = 6", "3 hits +1 (Furious) = 4", "2 hits, Rending
-            // AP+1"). #204 follow-up: these are NOT held. A held beat only paces its short lead-in and then
-            // lingers until superseded, so with two thresholds the first flicked past in ~600ms while the
-            // last lingered through the whole wound animation - uneven. Non-held gives every threshold the
-            // same full DiceRoll duration (matching the Roll-to-Hit beat), so the rolls read evenly.
+            // AP+1"). Held (the #322 default), like every other roll: each threshold paces only its settle
+            // lead-in and then lingers on the front-end's dice STACK. The #204 follow-up that made these
+            // non-held did so because a held beat lingered "until superseded" and the second threshold
+            // EVICTED the first from the single dice slot - uneven. Stacked, each threshold gets its own
+            // panel and its own fixed lifetime, so they read evenly without stopping the game for each.
             // #245 glance metadata: category Defense, the defender's name as the "who", and the
             // attack-wide threshold arithmetic chips composed in DetermineSaveRollsNeededStage.
             string weaponName = metaData.WeaponType.Name;
@@ -82,7 +83,7 @@ namespace FDG.Stages
                 await GameContext.Presenter.Present(
                     DiceRolledBeat.From(bucket.BuildResults(), bucket.SaveNeeded, GameContext.Settings.RandomnessType,
                         $"{weaponName}: {bucket.ComposeExplanation()}",
-                        $"{bucket.Saved:0.##} saved, {bucket.Wounds:0.##} wounds", held: false,
+                        $"{bucket.Saved:0.##} saved, {bucket.Wounds:0.##} wounds",
                         category: ERollBeatCategory.Defense,
                         context: $"{defenderName} saves",
                         modifierTags: saveRollsNeeded.ThresholdTags));

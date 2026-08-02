@@ -90,7 +90,7 @@ namespace FDG.Presentation.Beats
         public IReadOnlyList<string>? ProcTags { get; }
 
         public DiceRolledBeat(IReadOnlyList<float> faceCounts, int sideMin, int successThreshold,
-            ERandomnessType mode, string label, string? resultSummary = null, bool held = false,
+            ERandomnessType mode, string label, string? resultSummary = null, bool held = true,
             ERollBeatCategory category = ERollBeatCategory.Misc, string? context = null,
             IReadOnlyList<string>? modifierTags = null, IReadOnlyList<string>? procTags = null)
         {
@@ -108,9 +108,17 @@ namespace FDG.Presentation.Beats
         }
 
         /// <summary>
-        /// When true, the settled dice linger on screen after their lead-in (via the held-beat
-        /// mechanism) so the result stays visible while the wounds it produced animate. Serializes so a
+        /// When true (the default, #322), the settled dice linger on screen after their lead-in (via the
+        /// held-beat mechanism) so the result stays visible while the wounds it produced animate — and,
+        /// crucially, so the engine does not stop for the roll's whole reading time. Serializes so a
         /// networked client holds the dice too.
+        ///
+        /// <para>Holding rolls was tried once before and reverted (ea91d68, a #204 follow-up): a held
+        /// beat lingers "until superseded", and with a single front-end dice slot the next roll EVICTED
+        /// the last, so a two-threshold volley read unevenly. #322 made the front-end stack rolls instead
+        /// of replacing them, which is the precondition this flag was missing. Passing <c>false</c>
+        /// remains the explicit opt-out for a roll that should stop play for its full duration; nothing
+        /// uses it today.</para>
         /// </summary>
         public override bool Held { get; }
 
@@ -153,7 +161,7 @@ namespace FDG.Presentation.Beats
         /// Build a beat from an engine roll result, capturing the per-face histogram.
         /// </summary>
         public static DiceRolledBeat From(IDiceResults results, int successThreshold, ERandomnessType mode,
-            string label, string? resultSummary = null, bool held = false,
+            string label, string? resultSummary = null, bool held = true,
             ERollBeatCategory category = ERollBeatCategory.Misc, string? context = null,
             IReadOnlyList<string>? modifierTags = null, IReadOnlyList<string>? procTags = null)
         {
@@ -178,7 +186,7 @@ namespace FDG.Presentation.Beats
         /// a probabilistic pool can land on whole numbers by coincidence, so only the roll site knows.</para>
         /// </summary>
         public static DiceRolledBeat FromDecisive(IDiceResults results, int successThreshold,
-            string label, string? resultSummary = null, bool held = false,
+            string label, string? resultSummary = null, bool held = true,
             ERollBeatCategory category = ERollBeatCategory.Misc, string? context = null,
             IReadOnlyList<string>? modifierTags = null, IReadOnlyList<string>? procTags = null)
             => From(results, successThreshold, ERandomnessType.Realistic, label, resultSummary, held,

@@ -34,7 +34,7 @@ namespace FDG.Tests
         }
 
         [Test]
-        public async Task Presenter_PacesZero_ForTheAttack_AndFullDuration_ForTheDice()
+        public async Task Presenter_PacesZero_ForTheAttack_AndOnlyTheLeadIn_ForTheDice()
         {
             var clock = new FakePresentationClock();
             var sink = new RecordingPresentationSink();
@@ -51,8 +51,14 @@ namespace FDG.Tests
                 "both beats still reach the sink, in order");
             Assert.That(clock.Waits[0], Is.EqualTo(TimeSpan.Zero),
                 "the attack costs no pacing time - the dice start at once");
-            Assert.That(clock.Waits[1], Is.GreaterThan(attack.NominalDuration),
-                "the dice envelope must outlast the attack animation, or the overlap would truncate it");
+            // #322: the dice are held too now, so they pace only their settle lead-in. That is SHORTER
+            // than the attack animation, which used to be what guaranteed the tracers finished before the
+            // next AttackBeat could arrive - the front-end's attack track became a concurrent LIST in the
+            // same change so overlapping attacks play out side by side instead of truncating each other.
+            Assert.That(clock.Waits[1], Is.EqualTo(dice.HoldLeadIn),
+                "a held roll costs the engine only its lead-in, not its whole reading time");
+            Assert.That(clock.Waits[1], Is.LessThan(dice.NominalDuration),
+                "the panel outlives the pacing - that IS the point of holding it");
         }
     }
 }

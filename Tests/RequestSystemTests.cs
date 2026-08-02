@@ -1,4 +1,5 @@
 using FDG.Data;
+using FDG.GameModel;
 using FDG.MessageBus;
 using FDG.Network.Connection;
 using FDG.Network.Messages.StageRequestMessages;
@@ -196,6 +197,24 @@ namespace FDG.Tests
             Assert.That(taskList.Last().Count, Is.EqualTo(2));
             Assert.That(taskList.Last().Any(t => t.PlayerInfo.PlayerID == playerID && t.TaskName == "Task 1"), Is.True);
             Assert.That(taskList.Last().Any(t => t.PlayerInfo.PlayerID == playerID && t.TaskName == "Task 2"), Is.True);
+        }
+
+        [Test]
+        public void LocalPlayerIDs_ExposedOnBothGameFlavors()
+        {
+            // #318: the front end filters the outstanding-task HUD line to non-local players, so both
+            // game flavors must expose who is driven from this process.
+            var hostID = new PlayerID(Guid.NewGuid());
+            var hotseatID = new PlayerID(Guid.NewGuid());
+            var localGame = new FDGGame_AsLocal(GameDataStore.GameDataStoreBuilder.GetDefault(), new InProcessBus());
+            localGame.AddLocalPlayerID(hostID);
+            localGame.AddLocalPlayerID(hotseatID);
+            Assert.That(localGame.LocalPlayerIDs, Is.EquivalentTo(new[] { hostID, hotseatID }));
+
+            var clientID = new PlayerID(Guid.NewGuid());
+            var clientGame = new FDGGame_AsClient(GameDataStore.GameDataStoreBuilder.GetDefault(),
+                new InProcessBus(), clientID);
+            Assert.That(clientGame.LocalPlayerIDs, Is.EquivalentTo(new[] { clientID }));
         }
 
         [Test]

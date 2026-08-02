@@ -105,7 +105,7 @@ namespace FDG.Stages
 
                 // Choosing which unit to deploy is mandatory — no back-destination, so no cancel.
                 SelectionRequest<UnitData> request = new SelectionRequest<UnitData>(currentPlayerID, "Choose Unit to Deploy",
-                    validOptions, invalidOptions, allowCancel: false);
+                    validOptions, invalidOptions, allowCancel: false, displayName: "Choosing Unit to Deploy");
 
                 DataBinding<UnitData> chosenUnit =
                     await GameContext.PlayerRequester.RequestDecision<SelectionRequest<UnitData>, DataBinding<UnitData>>

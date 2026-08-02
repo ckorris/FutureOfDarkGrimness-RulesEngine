@@ -15,13 +15,16 @@ namespace FDG.StageResolution.Requests
         public PlayerID TargetPlayerID { get; }
         public TaskID TaskID { get; }
         public string TaskName { get; }
+        public string DisplayName { get; }
         public string Instructions { get; }
         public IReadOnlyList<ValidOption> ValidOptions { get; }
         public IReadOnlyList<InvalidOption> InvalidOptions { get; }
 
+        // displayName: see SelectionRequest - game wording for the #318 "Waiting on" HUD line.
         [JsonConstructor]
         public CancellableSelectionRequest(PlayerID targetPlayerID, TaskID taskID, string instructions,
-            IReadOnlyList<ValidOption> validOptions, IReadOnlyList<InvalidOption> invalidOptions)
+            IReadOnlyList<ValidOption> validOptions, IReadOnlyList<InvalidOption> invalidOptions,
+            string? displayName = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -29,11 +32,14 @@ namespace FDG.StageResolution.Requests
             ValidOptions = validOptions;
             InvalidOptions = invalidOptions;
             TaskName = $"Select {typeof(T).Name}";
+            DisplayName = displayName ?? TaskName;
         }
 
         public CancellableSelectionRequest(PlayerID targetPlayerID, string instructions,
-            IReadOnlyList<ValidOption> validOptions, IReadOnlyList<InvalidOption> invalidOptions)
-            : this(targetPlayerID, new TaskID(Guid.NewGuid()), instructions, validOptions, invalidOptions)
+            IReadOnlyList<ValidOption> validOptions, IReadOnlyList<InvalidOption> invalidOptions,
+            string? displayName = null)
+            : this(targetPlayerID, new TaskID(Guid.NewGuid()), instructions, validOptions, invalidOptions,
+                displayName)
         {
         }
 

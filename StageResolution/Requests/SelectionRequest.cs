@@ -12,6 +12,7 @@ namespace FDG.StageResolution.Requests
         public PlayerID TargetPlayerID { get; }
         public TaskID TaskID { get; }
         public string TaskName { get; }
+        public string DisplayName { get; }
         public string Instructions { get; }
         public IReadOnlyList<ValidOption> ValidOptions { get; }
         public IReadOnlyList<InvalidOption> InvalidOptions { get; }
@@ -25,10 +26,13 @@ namespace FDG.StageResolution.Requests
         /// </summary>
         public bool AllowCancel { get; }
 
+        // displayName: what the #318 "Waiting on" HUD shows the other players; the generic TaskName
+        // fallback leaks the C# type name ("Select UnitData"), so pass game wording wherever a
+        // selection can hold up someone else's screen.
         [JsonConstructor]
         public SelectionRequest(PlayerID targetPlayerID, TaskID taskID, string instructions,
             IReadOnlyList<ValidOption> validOptions, IReadOnlyList<InvalidOption> invalidOptions,
-            bool allowCancel = true)
+            bool allowCancel = true, string? displayName = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -37,19 +41,15 @@ namespace FDG.StageResolution.Requests
             InvalidOptions = invalidOptions;
             AllowCancel = allowCancel;
             TaskName = $"Select {typeof(T).Name}";
+            DisplayName = displayName ?? TaskName;
         }
 
         public SelectionRequest(PlayerID targetPlayerID, string instructions,
             IReadOnlyList<ValidOption> validOptions, IReadOnlyList<InvalidOption> invalidOptions,
-            bool allowCancel = true)
+            bool allowCancel = true, string? displayName = null)
+            : this(targetPlayerID, new TaskID(Guid.NewGuid()), instructions, validOptions, invalidOptions,
+                allowCancel, displayName)
         {
-            TargetPlayerID = targetPlayerID;
-            TaskID = new TaskID(Guid.NewGuid());
-            Instructions = instructions;
-            ValidOptions = validOptions;
-            InvalidOptions = invalidOptions;
-            AllowCancel = allowCancel;
-            TaskName = $"Select {typeof(T).Name}";
         }
 
         public Task<DataBinding<T>> Resolve(DataBinding<T> resolution)

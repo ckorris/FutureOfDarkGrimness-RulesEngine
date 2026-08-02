@@ -136,8 +136,9 @@ namespace FDG.Tests
         }
 
         // A remote player's reply is a DESERIALIZED weapon: RuleDefinitions is [JsonIgnore] and travels as
-        // the persisted blob, so the choice arrives rule-less until rehydrated. Without that step a
-        // profile match would miss and the wrong rifle (or none) would fire.
+        // the persisted blob. #323 moved rehydration to the deserialization boundary itself (Weapon's
+        // [OnDeserialized]), so the reply now arrives with its rules already live - and the stage's own
+        // RehydrateRules call is a harmless no-op. The profile match this test pins is unchanged.
         [Test]
         public async Task RangedChooser_ChoiceThatCameOverTheWire_StillBindsItsProfile()
         {
@@ -150,8 +151,8 @@ namespace FDG.Tests
                     // Round-trip exactly the way a networked reply body does.
                     string json = JsonConvert.SerializeObject(opt.Weapon, store.GetJsonSettings());
                     Weapon overTheWire = JsonConvert.DeserializeObject<Weapon>(json, store.GetJsonSettings())!;
-                    Assert.That(overTheWire.RuleDefinitions, Is.Empty,
-                        "precondition: a freshly deserialized weapon has no live rules yet.");
+                    Assert.That(HasPrecise(overTheWire), Is.True,
+                        "#323: a deserialized weapon rehydrates its rules at the boundary.");
                     return new Selected<RangedAttackChoice>(
                         new RangedAttackChoice(overTheWire, opt.WeaponTargetStats.Single().TargetUnit));
                 },

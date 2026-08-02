@@ -1275,6 +1275,34 @@ namespace FDG.Tests
                 .GetValue().UnitBindings[0];
         }
 
+        // #323: RuleDefinitions is [JsonIgnore], so a request that reached a remote player used to carry
+        // rule-less weapons - the shoot panel showed "18\", A2 AP0" with Crack/Rending/etc. silently gone.
+        // Weapon now rehydrates from its persisted blob on deserialization, so the receiving side reads
+        // the same rules the host plays, descriptions included.
+        [Test]
+        public void RequestWeapon_RulesSurviveTheWire_ViaOnDeserializedRehydration()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var playerID = new PlayerID(Guid.NewGuid());
+            var rocket = LimitedWeapon("Rocket");
+            var attackerBinding = MakeUnit(store, playerID, "Attacker",
+                new[] { MakeModel(store, new Position(0, 0, 0), rocket) });
+
+            var request = new ChooseRangedAttackRequest(playerID, "ChooseRanged",
+                attackerBinding, new List<WeaponOption>
+                    { new WeaponOption(rocket, new List<WeaponTargetStats>()) });
+
+            string json = JsonConvert.SerializeObject(request, store.GetJsonSettings());
+            var back = JsonConvert.DeserializeObject<ChooseRangedAttackRequest>(json, store.GetJsonSettings());
+
+            var backWeapon = back!.WeaponOptions[0].Weapon;
+            Assert.That(backWeapon.RuleDefinitions, Has.Count.EqualTo(1),
+                "the persisted blob must rehydrate on arrival - no consumer calls RehydrateRules by hand.");
+            Assert.That(backWeapon.RuleDefinitions[0].RequestedName, Is.EqualTo("Limited"));
+            Assert.That(backWeapon.RuleDefinitions[0].Definition.Description, Is.Not.Null.And.Not.Empty,
+                "descriptions ride the blob, so rule tooltips work on the receiving side too.");
+        }
+
         // Reply helper: fire the first weapon that has a selectable target with shooters in range.
         private static CancellableResult<RangedAttackChoice> FireFirstFireable(ChooseRangedAttackRequest req)
         {

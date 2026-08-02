@@ -286,5 +286,16 @@ namespace FDG
                 _ruleDefinitions.AddRange(RuleAttachmentPersistence.Deserialize(_ruleDefinitionsJson));
             }
         }
+
+        // #323: RuleDefinitions is [JsonIgnore], so a weapon that crossed ANY Newtonsoft hop - a stage
+        // request reaching a remote player, the synced store, a save - used to arrive with an empty live
+        // list and only the blob, and every reader of RuleDefinitions on the receiving side (weapon stat
+        // lines, rule tooltips, the AI) silently saw a rule-less weapon. Restore the invariant at the
+        // boundary instead of asking each consumer to remember to rehydrate (the reply path's explicit
+        // RehydrateRules in ChooseRangedAttackStage.ResolveChosenWeapon and StoreReplay's sweep remain as
+        // harmless no-ops). The blob is self-contained (#095), so no resolver or registry is needed here.
+        [System.Runtime.Serialization.OnDeserialized]
+        private void OnDeserialized(System.Runtime.Serialization.StreamingContext context)
+            => RehydrateRules();
     }
 }

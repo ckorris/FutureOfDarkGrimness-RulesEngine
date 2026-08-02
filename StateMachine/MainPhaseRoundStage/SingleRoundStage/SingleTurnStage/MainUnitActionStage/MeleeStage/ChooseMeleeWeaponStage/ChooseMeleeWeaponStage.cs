@@ -77,6 +77,9 @@ namespace FDG.Stages
                 new List<(string, Weapon, bool)>();
             List<StringSelectionRequest.InvalidOption> invalidOptions = new List<StringSelectionRequest.InvalidOption>();
             HashSet<string> usedLabels = new HashSet<string>(StringComparer.Ordinal);
+            // #317: weapon label -> its hold-back companion, so the two render as one row.
+            Dictionary<string, StringSelectionRequest.SecondaryAction> secondaryActions =
+                new Dictionary<string, StringSelectionRequest.SecondaryAction>(StringComparer.Ordinal);
 
             // #028: Deadly (wound-multiplier) weapons must strike before the unit's other weapons, so a clump
             // removes whole models before normal wounds spread. While an un-used Deadly weapon is available,
@@ -139,6 +142,14 @@ namespace FDG.Stages
                 {
                     validOptions.Add((holdBackLabel, kvp.Key, true));
                 }
+
+                // #317: and say which weapon row OWNS that hold-back, so a resolver can draw it as a second
+                // button on the weapon's own row (with the row's hotkey + Shift) instead of a second,
+                // apparently unrelated, list entry. Recorded whether the hold-back is available or refused -
+                // a greyed companion button carrying "At least one weapon must attack after charging" is
+                // still attached to its weapon.
+                secondaryActions[label] =
+                    new StringSelectionRequest.SecondaryAction(holdBackLabel, "Hold back");
             }
 
             foreach(KeyValuePair<Weapon, int> kvp in InProfileOrder(unavailableWeapons))
@@ -175,7 +186,8 @@ namespace FDG.Stages
 
             StringSelectionRequest request = new StringSelectionRequest(context.AttackingUnit.PlayerID(),
                 "Choose weapon:", validOptions.Select(option => option.Label).ToList(), invalidOptions,
-                BuildRuleDescriptions(validOptions));
+                BuildRuleDescriptions(validOptions),
+                secondaryActions: secondaryActions.Count > 0 ? secondaryActions : null);
 
             string chosenWeaponStatsName = await GameContext.PlayerRequester
                 .RequestDecision<StringSelectionRequest, string>(request);
@@ -304,9 +316,10 @@ namespace FDG.Stages
             {
                 List<string> lines = new List<string>();
 
-                // #316: a hold-back row explains what declining BUYS - but only when there is something to
-                // buy, i.e. a once-per-game use to keep. "Do not attack with Blade" would just restate the
-                // label, and the plain-weapon menu must stay description-free (#298).
+                // #316: a hold-back explains what declining BUYS - but only when there is something to buy,
+                // i.e. a once-per-game use to keep. "Do not attack with Blade" would just restate the label,
+                // and the plain-weapon menu must stay description-free (#298). #317: it does NOT repeat the
+                // weapon's rules, which the weapon's own row already carries right above it.
                 if (holdBack)
                 {
                     string? limitedRule = LimitedRules.LimitedRuleName(weapon);
@@ -314,6 +327,8 @@ namespace FDG.Stages
                     {
                         lines.Add($"Keeps its {limitedRule} once-per-game use for a later melee.");
                     }
+                    if (lines.Count > 0) descriptions[label] = string.Join("\n", lines);
+                    continue;
                 }
 
                 foreach (ResolvedRule rule in weapon.RuleDefinitions)

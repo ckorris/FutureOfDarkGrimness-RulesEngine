@@ -267,6 +267,53 @@ namespace FDG.Tests
             Assert.That(transitions, Is.EqualTo(new[] { "no-weapons-left" }));
         }
 
+        // #317: each hold-back is declared as its OWNER weapon's companion action, so a resolver can draw
+        // it as a second button on that weapon's row (Shift + the row's letter) instead of a second,
+        // apparently unrelated, list entry. It stays an ordinary option on the wire either way.
+        [Test]
+        public async Task MeleeChoose_EachHoldBack_IsDeclaredAsItsWeaponsCompanionAction()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var requester = new MeleeRequester { Pick = options => Swing(options, "Blade") };
+            var (ctx, _, combatCtx) = BuildMelee(store, requester, LimitedWeapon("Demo Charge"), Blade());
+
+            await EnterStage(ctx, combatCtx);
+
+            var secondaries = requester.Captured!.SecondaryActions;
+            Assert.That(secondaries, Is.Not.Null);
+            string bombOption = requester.Captured!.ValidOptions
+                .First(o => o.Contains("Demo Charge") && !ChooseMeleeWeaponStage.IsHoldBackChoice(o));
+
+            Assert.That(secondaries!.ContainsKey(bombOption), Is.True,
+                "the weapon row owns its hold-back...");
+            Assert.That(secondaries[bombOption].Option,
+                Is.EqualTo(ChooseMeleeWeaponStage.HOLD_BACK_PREFIX + bombOption),
+                "...naming the option a resolver replies with to take it...");
+            Assert.That(secondaries[bombOption].ShortLabel, Is.EqualTo("Hold back"),
+                "...plus a label short enough for a button.");
+            Assert.That(requester.Captured!.ValidOptions, Does.Contain(secondaries[bombOption].Option),
+                "and it is still an ordinary option, so a resolver that ignores the pairing still works.");
+        }
+
+        // The refused hold-back is paired too - a resolver draws it greyed ON its weapon's row with the
+        // reason, rather than dropping it and leaving the weapon looking like it never had one.
+        [Test]
+        public async Task MeleeChoose_RefusedHoldBack_IsStillPairedToItsWeapon()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var requester = new MeleeRequester { Pick = options => Swing(options, "Demo Charge") };
+            var (ctx, _, combatCtx) = BuildMelee(store, requester, LimitedWeapon("Demo Charge"));
+
+            await EnterStage(ctx, combatCtx);
+
+            string bombOption = requester.Captured!.ValidOptions.Single();
+            var companion = requester.Captured!.SecondaryActions![bombOption];
+            Assert.That(requester.Captured!.ValidOptions, Does.Not.Contain(companion.Option));
+            Assert.That(requester.Captured!.InvalidOptions.Any(o =>
+                    o.Option == companion.Option && o.Reason.Contains("At least one weapon must attack")),
+                Is.True);
+        }
+
         // ──────────────────────────────────────────────────────────────────────
         // Helpers
         // ──────────────────────────────────────────────────────────────────────

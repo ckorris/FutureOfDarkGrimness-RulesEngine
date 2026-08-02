@@ -29,16 +29,22 @@ namespace FDG.Ai.Resolvers
             if (request.ValidOptions.Contains(ChooseUnitToDeployStage.DEPLOY_NORMALLY_CHOICE))
                 return Task.FromResult(ChooseUnitToDeployStage.DEPLOY_NORMALLY_CHOICE);
 
-            // #316: melee weapon choice now offers "Hold back: <weapon>" rows beside the weapons themselves,
-            // so a unit can decline a once-per-game weapon. The AI has no policy for spending one wisely,
-            // and declining is strictly worse than attacking for a player that cannot plan around it - so it
-            // never picks one. Explicit rather than relying on hold-backs sorting last: the catch-all below
-            // is exactly the trap the Ambush case above documents.
-            List<string> attackingOptions = request.ValidOptions
-                .Where(option => !ChooseMeleeWeaponStage.IsHoldBackChoice(option))
-                .ToList();
-            if (attackingOptions.Count > 0)
-                return Task.FromResult(attackingOptions[0]);
+            // #316/#317: a companion action (melee's "hold back this weapon") is an opt-OUT hanging off
+            // another option. The AI has no policy for when declining is worth it - and for a player that
+            // cannot plan around it, declining is strictly worse than acting - so it never picks one.
+            // Explicit rather than relying on companions sorting last: the catch-all below is exactly the
+            // trap the Ambush case above documents.
+            if (request.SecondaryActions is { Count: > 0 })
+            {
+                HashSet<string> companions = request.SecondaryActions.Values
+                    .Select(secondary => secondary.Option)
+                    .ToHashSet(StringComparer.Ordinal);
+                List<string> primaryOptions = request.ValidOptions
+                    .Where(option => !companions.Contains(option))
+                    .ToList();
+                if (primaryOptions.Count > 0)
+                    return Task.FromResult(primaryOptions[0]);
+            }
 
             // Fall back to first valid option for any other string selection.
             return Task.FromResult(request.ValidOptions[0]);

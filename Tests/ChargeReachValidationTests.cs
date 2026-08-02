@@ -40,7 +40,7 @@ namespace FDG.Tests
         public void BeyondRush_EndsInMelee_Accepted()
         {
             //Moved 15" (> 12" Rush, ≤ 18" Charge). Ends with a BASE-to-base gap of 1.9" (within
-            //MELEE_RANGE_INCHES_HORIZONTAL = 2"): centres 3.4" apart, radii 0.75" each. #310: the old
+            //MELEE_RANGE_INCHES_HORIZONTAL = 2"): centres 3.4" apart, radii 0.75" each. #312: the old
             //centre-to-centre check would have rejected exactly this legal charge.
             DataBinding<ModelData> model = MakeModel(new Position(0, 0));
             ModelMoveEntry move = new ModelMoveEntry(model, new List<Position> { new Position(15, 0) });
@@ -115,7 +115,7 @@ namespace FDG.Tests
         [Test]
         public void BeyondRush_BigRectBase_BaseContact_Accepted()
         {
-            //#310 regression: the Micro-Titan case from ChargeOfferedButWontAllow.fdgsave. A model on a
+            //#312 regression: the Micro-Titan case from ChargeOfferedButWontAllow.fdgsave. A model on a
             //large rectangular base (2.76" x 4.13") charges beyond Rush and ends its nose 0.1" from a small
             //round base. Centres are ~2.66" apart — the old centre-to-centre check rejected this even in
             //literal base contact, making big-base charges mathematically impossible.
@@ -143,7 +143,7 @@ namespace FDG.Tests
         [Test]
         public void BeyondRush_ReachOnlyAtEndFacing_Accepted()
         {
-            //#310: the reach check must measure the base at its END facing (the orientation the executor
+            //#312: the reach check must measure the base at its END facing (the orientation the executor
             //will leave it at), not its pre-move resting facing. A 1" x 4" base facing +Z (long axis along
             //Z) turns to face +X during the move: at the end facing its long axis reaches the enemy on the
             //X axis (gap 0.7"), while at the resting facing the gap is 2.2" — out of range.

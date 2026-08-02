@@ -367,7 +367,7 @@ namespace FDG.Stages
 
             //At least one model in the unit must end within melee range of an enemy model (horizontal).
             //#029: an Aircraft can't be charged, so reaching it doesn't justify a beyond-Rush charge move.
-            //#310: BASE-to-base, like every other melee-range gate (MeleeRangeUtilities, GetCanCharge, the
+            //#312: BASE-to-base, like every other melee-range gate (MeleeRangeUtilities, GetCanCharge, the
             //GUI charge line). This used to be centre-to-centre, which demanded a base gap of
             //2" - rMine - rEnemy: merely tight for small round bases, but mathematically impossible for a
             //large base - a titan in literal base contact still read "no model ends within 2"" and the
@@ -518,7 +518,7 @@ namespace FDG.Stages
         // waypoints keep the facing they were placed with, and the executor turns the model to it), falling
         // back to the resting facing for moves that carry none (AI, consolidation holds). Every END-state
         // check must measure the base at this orientation, not the pre-move one - for a rectangle the two
-        // can differ by the full inscribed-vs-circumscribed spread (#310).
+        // can differ by the full inscribed-vs-circumscribed spread (#312).
         private static Float2 EndFacing(ModelMoveEntry move, ModelData model)
             => move.Facings != null && move.Facings.Count > 0
                 ? move.Facings[move.Facings.Count - 1]
@@ -794,7 +794,7 @@ namespace FDG.Stages
                     // bases this is exactly the old `distance − (rMoving + rEnemy)`, so circle behaviour is
                     // unchanged, and a rotated rectangular base measures by its real outline. The start gap
                     // measures the base as it RESTS pre-move; the end gap measures it at the facing the
-                    // executor will actually leave it at (#310 - these can differ by the full width-vs-length
+                    // executor will actually leave it at (#312 - these can differ by the full width-vs-length
                     // spread of a rectangle).
                     float startGap = BaseShapeGeometry.SurfaceGap2D(movingShape, start, restingFacing, enemy.BaseShape, enemy.Center, enemy.Facing);
                     float endGap = BaseShapeGeometry.SurfaceGap2D(movingShape, end, endFacing, enemy.BaseShape, enemy.Center, enemy.Facing);
@@ -833,7 +833,7 @@ namespace FDG.Stages
                             Position step = move.Positions[i];
                             Float2 a = new Float2(segStart.x, segStart.z);
                             Float2 b = new Float2(step.x, step.z);
-                            // #310: sweep each segment at its travel facing (the orientation the ghost drew and
+                            // #312: sweep each segment at its travel facing (the orientation the ghost drew and
                             // the executor applies), mirroring the terrain validators' 2026-07-25 fix.
                             if (SweptBaseGeometry.DoesSweptBaseIntersectZone(enemyZone, a, b, movingShape,
                                 SegmentFacing(move, i, restingFacing)))
@@ -890,7 +890,7 @@ namespace FDG.Stages
 
                 foreach (EnemyModelFootprint friendly in friendlyFootprints)
                 {
-                    // #310: the end state is measured at the END facing (the base the executor leaves behind),
+                    // #312: the end state is measured at the END facing (the base the executor leaves behind),
                     // the start state at the resting facing the base actually stood at.
                     if (!BaseShapeGeometry.AreColliding(movingShape, end, endFacing,
                             friendly.BaseShape, friendly.Center, friendly.Facing))
@@ -1026,7 +1026,7 @@ namespace FDG.Stages
             //Figure out where all the models will be after moving. Dead models are out of play — they
             //leave a hole in the formation rather than anchoring it, so a casualty's last position must
             //not count toward cohesion (it would wrongly fail the survivors for being "too far" from a corpse).
-            //#310: measure each base at its END facing too - the post-move formation is what the rule is about.
+            //#312: measure each base at its END facing too - the post-move formation is what the rule is about.
             foreach (ModelMoveEntry moveEntry in moves)
             {
                 if (moveEntry.Model.GetValue().GetIsAlive() == false)
@@ -1097,7 +1097,7 @@ namespace FDG.Stages
                 after.Add(moveEntry.Positions.Count > 0
                     ? moveEntry.Positions.Last()
                     : moveEntry.Model.GetValue().PositionBinding.GetValue());
-                //#310: the before-state is the base as it rests; the after-state is the base at the facing the
+                //#312: the before-state is the base as it rests; the after-state is the base at the facing the
                 //executor will leave it at.
                 beforeFacings.Add(moveEntry.Model.GetValue().Facing);
                 afterFacings.Add(moveEntry.Positions.Count > 0

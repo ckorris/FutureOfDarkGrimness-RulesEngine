@@ -111,7 +111,7 @@ namespace FDG.StageResolution
             // outstanding-task UI. Snapshot the slot info by value (the message no longer carries a
             // live binding — see StageTaskNotifyAwaitingMessage, #088).
             PlayerSlotInfo targetSlotInfo = _playerSlotManager.GetSlotByID(request.TargetPlayerID).InfoBinding.GetValue();
-            StageTaskNotifyAwaitingMessage awaitingMessage = new StageTaskNotifyAwaitingMessage(taskID, targetSlotInfo, request.TaskName);
+            StageTaskNotifyAwaitingMessage awaitingMessage = new StageTaskNotifyAwaitingMessage(taskID, targetSlotInfo, request.DisplayName);
             _messageBusHost.SendCommandToAllAsync(awaitingMessage);
 
             // Route the decision payload to just the target player instead of broadcasting it to everyone

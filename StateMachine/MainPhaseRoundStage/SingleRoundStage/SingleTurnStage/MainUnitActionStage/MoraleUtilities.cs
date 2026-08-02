@@ -316,7 +316,7 @@ namespace FDG.Stages
                 bool accepted = await gameContext.PlayerRequester
                     .RequestDecision<YesNoRequest, bool>(new YesNoRequest(unit.PlayerID,
                         $"{unit.Name} is Shaken - remove it as destroyed and reinforce next round?",
-                        defaultAnswer: true));
+                        defaultAnswer: true, displayName: $"Deciding Whether to Reinforce {unit.Name}"));
                 if (!accepted)
                 {
                     return;

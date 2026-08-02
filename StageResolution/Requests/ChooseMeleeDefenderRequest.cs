@@ -13,7 +13,8 @@ namespace FDG.StageResolution.Requests
     {
         public ChooseMeleeDefenderRequest(PlayerID targetPlayerID, string instructions,
             IReadOnlyList<ValidOption> validOptions, IReadOnlyList<InvalidOption> invalidOptions)
-            : base(targetPlayerID, instructions, validOptions, invalidOptions)
+            : base(targetPlayerID, instructions, validOptions, invalidOptions,
+                displayName: "Choosing a Melee Target")
         {
         }
 

@@ -23,6 +23,12 @@ namespace FDG.Stages
             OnNoValidShots = new StageBinding(this);
         }
 
+        /// <summary>
+        /// #319: the weapon choice repeats within a single entry whenever the player HOLDS FIRE with a weapon
+        /// - that weapon leaves the action's pool and the remaining ones are offered again, without firing
+        /// anything and without leaving the stage. Everything else (a choice, a Back, a Done) exits the loop
+        /// on its first pass, exactly as before.
+        /// </summary>
         public override async Task Enter(ICombatActionContext context)
         {
             if (context.AvailableWeapons.Count == 0)
@@ -30,6 +36,20 @@ namespace FDG.Stages
                 throw new Exception($"Available weapon dictionary was empty when entering {nameof(ChooseRangedAttackStage)}.");
             }
 
+            while (true)
+            {
+                bool holdingFire = await OfferWeapons(context);
+                if (!holdingFire) return;
+            }
+        }
+
+        /// <summary>
+        /// One pass of the weapon offer. Returns true when the player held fire and weapons remain, i.e.
+        /// <see cref="Enter"/> should offer again; false when this stage has routed onward (fired, backed
+        /// out, ended the shoot, or nothing fireable is left).
+        /// </summary>
+        private async Task<bool> OfferWeapons(ICombatActionContext context)
+        {
             List<ITerrain> terrainSnapshot = context.GameContext.TableState.Terrain.Objects.ToList();
 
             List<WeaponOption> weaponOptions = BuildWeaponOptions(context.AttackingUnit, context.AvailableWeapons,
@@ -53,7 +73,7 @@ namespace FDG.Stages
                     GameContext.Log("No weapon has a valid target - returning to Choose Action.");
                     await BackToChooseAction.Activate(context);
                 }
-                return;
+                return false;
             }
 
             // #308: the stage owns both "may the player back out?" and "what did the last weapon shoot?".
@@ -63,10 +83,15 @@ namespace FDG.Stages
             // it only reset when the ATTACKER changed, which permanently hid Back for any unit that had
             // ever shot.) PreviousTarget rides along so the next weapon starts aimed where the last one
             // fired, when that is still legal.
-            ChooseRangedAttackRequest chooseWeaponRequest = new ChooseRangedAttackRequest(context.AttackingUnit.PlayerID(), "Choose Ranged Weapon",
+            // #319: exactly one of the two exits is offered, and both come back as Cancelled - "Back"
+            // (nothing fired yet) rewinds to Choose Action, "Done shooting" (something fired) ends the
+            // action here. Offering the second is what lets a player decline a weapon they would rather
+            // not spend, a once-per-game Limited one above all.
+            ChooseRangedAttackRequest chooseWeaponRequest = new ChooseRangedAttackRequest(context.AttackingUnit.PlayerID(), "Choosing a Ranged Weapon",
                 context.AttackingUnit, weaponOptions,
                 allowCancel: context.AlreadyUsedWeapons.Count == 0,
-                previousTarget: context.DefendingUnit);
+                previousTarget: context.DefendingUnit,
+                allowStopShooting: context.AlreadyUsedWeapons.Count > 0);
 
             CancellableResult<RangedAttackChoice> attackResult = await context.PlayerRequester()
                 .RequestDecision<ChooseRangedAttackRequest, CancellableResult<RangedAttackChoice>>(chooseWeaponRequest);
@@ -75,26 +100,51 @@ namespace FDG.Stages
             {
                 // #308: a cancel after the first weapon has fired can't go back to Choose Action - the
                 // shoot has already happened and re-offering the action menu would hand the unit a second
-                // one. The request said so (AllowCancel), so a well-behaved resolver never sends this;
-                // an ill-behaved or out-of-date one ends the shoot instead of rewinding it.
+                // one. #319 turned that fallback into an offered choice ("Done shooting"), but the routing
+                // is unchanged and still decided here, so a resolver can never get it wrong.
                 if (context.AlreadyUsedWeapons.Count > 0)
                 {
-                    GameContext.Log("Cancelled after firing - ending the shoot action rather than backing out.");
+                    GameContext.Log("Done shooting - ending the shoot action with weapons unfired.");
                     await OnNoValidShots.Activate(context);
-                    return;
+                    return false;
                 }
 
                 await BackToChooseAction.Activate(context);
-                return;
+                return false;
             }
 
             RangedAttackChoice rangedAttackChoice = ((Selected<RangedAttackChoice>)attackResult).Value;
 
             Weapon chosenWeapon = ResolveChosenWeapon(context, rangedAttackChoice.Weapon);
 
+            // #319: hold fire - the weapon drops out of this action unfired. Nothing is spent (a Limited
+            // weapon keeps its shot) and, since the gates above read the AVAILABLE pool, a declined
+            // resolve-first weapon stops locking out the unit's ordinary ones on the next pass.
+            if (rangedAttackChoice.IsHoldFire)
+            {
+                context.DeclineWeapon(chosenWeapon);
+                GameContext.Log($"Holding fire with {chosenWeapon.Name} - not used this shoot action.");
+
+                if (context.AvailableWeapons.Count > 0) return true;
+
+                if (context.AlreadyUsedWeapons.Count > 0)
+                {
+                    GameContext.Log("No weapons left to fire - ending shoot action.");
+                    await OnNoValidShots.Activate(context);
+                }
+                else
+                {
+                    GameContext.Log("Held fire with every weapon - returning to Choose Action.");
+                    await BackToChooseAction.Activate(context);
+                }
+                return false;
+            }
+
+            DataBinding<UnitData> targetUnit = rangedAttackChoice.TargetUnit!;
+
             context.SetAttackWeapon(chosenWeapon, out int weaponCount);
-            context.SetDefender(rangedAttackChoice.TargetUnit);
-            context.RegisterAttackedDefender(rangedAttackChoice.TargetUnit);
+            context.SetDefender(targetUnit);
+            context.RegisterAttackedDefender(targetUnit);
             GameContext.Log($"Chose weapon: {chosenWeapon.Name}. Count: {weaponCount}.");
 
             // #276: only the copies carried by models that can actually shoot the chosen target fire —
@@ -103,7 +153,7 @@ namespace FDG.Stages
             // weapon count includes every living carrier, so cap it here before the roll. Eligible == 0
             // can't normally happen (such targets are unselectable); if it does, leave the count alone
             // rather than firing a zero-dice attack.
-            int eligibleCount = CountEligibleCopies(weaponOptions, chosenWeapon, rangedAttackChoice.TargetUnit);
+            int eligibleCount = CountEligibleCopies(weaponOptions, chosenWeapon, targetUnit);
             if (eligibleCount > 0 && eligibleCount < weaponCount)
             {
                 context.TrimPendingAttack(eligibleCount);
@@ -116,7 +166,7 @@ namespace FDG.Stages
             // SEPARATE single-shot attacks so each shot picks its own victim (each sniper chooses a model),
             // instead of one pick funnelling the whole volley. FireStage then loops once per queued shot.
             if (weaponCount > 1 && Rules.Dispatch.SightRuleQueries.TargetsIndividualModels(
-                    context.AttackingUnit.GetValue(), chosenWeapon, rangedAttackChoice.TargetUnit.GetValue(),
+                    context.AttackingUnit.GetValue(), chosenWeapon, targetUnit.GetValue(),
                     GameContext.RuleEvaluator))
             {
                 context.SplitPendingAttackIntoSingleShots();
@@ -125,9 +175,18 @@ namespace FDG.Stages
 
             // #032 Limited: choosing the weapon commits it to fire (there's no cancel before FireStage), so mark
             // it spent now — every living carrier records it as fired this game (it's excluded from here on).
+            // #319: and SAY so. Spending a once-per-game weapon is the single most consequential thing this
+            // stage can do, and until now it happened silently; the player could decline it (Hold fire) right
+            // up to this point, so the log has to record which way it went.
+            string? limitedRule = LimitedRules.LimitedRuleName(chosenWeapon);
             LimitedRules.MarkFired(context.AttackingUnit.GetValue(), chosenWeapon);
+            if (limitedRule != null)
+            {
+                GameContext.Log($"{chosenWeapon.Name} is {limitedRule} - spent for the rest of the game.");
+            }
 
             await OnChoseWeapon.Activate(context);
+            return false;
         }
 
         /// <summary>
@@ -456,10 +515,17 @@ namespace FDG.Stages
                 // TryAdd, not Add: the pool is already profile-grouped, so a repeat means the caller
                 // handed us an ungrouped list - folding the copies into one option is what grouping
                 // would have done anyway, and is never worth throwing over.
+                // #319: a once-per-game weapon is named on the option so the resolvers can badge it BEFORE it
+                // is fired (they cannot read the weapon's rules themselves - RuleDefinitions is [JsonIgnore],
+                // so a remote player's request carries none).
+                string? limitedRule = Rules.Dispatch.LimitedRules.LimitedRuleName(weapon);
+                bool limitedSpent = limitedRule != null
+                    && Rules.Dispatch.LimitedRules.IsSpent(attackingUnit.GetValue(), weapon);
                 string profileKey = WeaponProfileKey.For(weapon);
                 if (optionsByProfile.TryAdd(profileKey,
                     new WeaponOption(weapon, new List<WeaponTargetStats>(),
-                        coverIgnoreRule != null, losIgnoreRule != null, coverIgnoreRule, losIgnoreRule)))
+                        coverIgnoreRule != null, losIgnoreRule != null, coverIgnoreRule, losIgnoreRule,
+                        limitedRule, limitedSpent)))
                 {
                     weaponIgnoresLineOfSight.Add(profileKey, losIgnoreRule != null);
                 }

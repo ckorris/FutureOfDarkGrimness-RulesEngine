@@ -79,7 +79,8 @@ namespace FDG.Stages
                 {
                     AbilityOffer offer = ruleOffers[0];
                     var question = new YesNoRequest(context.ActivatingPlayer(),
-                        $"Use {offer.RuleName} on {unit.Name}?", defaultAnswer: true);
+                        $"Use {offer.RuleName} on {unit.Name}?", defaultAnswer: true,
+                        displayName: $"Deciding Whether to Use {offer.RuleName}");
                     bool accepted = await GameContext.PlayerRequester
                         .RequestDecision<YesNoRequest, bool>(question);
                     if (!accepted) continue;

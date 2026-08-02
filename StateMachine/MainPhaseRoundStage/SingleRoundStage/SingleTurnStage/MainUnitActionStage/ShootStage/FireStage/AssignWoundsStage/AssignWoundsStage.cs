@@ -222,7 +222,7 @@ namespace FDG.Stages
                 if (trial.HasRemainingChoice)
                 {
                     AssignWoundsRequest request = new AssignWoundsRequest(metaData.DefendingUnit.PlayerID(),
-                        "Assign Wounds", metaData.DefendingUnit, totalWoundsDealt);
+                        "Assigning Wounds", metaData.DefendingUnit, totalWoundsDealt);
                     assignWoundsResults = await metaData.GameContext.PlayerRequester()
                         .RequestDecision<AssignWoundsRequest, AssignWoundsResults>(request);
                 }

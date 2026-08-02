@@ -160,7 +160,8 @@ namespace FDG.Stages
             SelectionRequest<UnitData> request = new SelectionRequest<UnitData>(
                 context.ActivatingPlayer(),
                 PICK_INSTRUCTION_PREFIX + offer.RuleName,
-                valid, new List<SelectionRequest<UnitData>.InvalidOption>(), allowCancel: false);
+                valid, new List<SelectionRequest<UnitData>.InvalidOption>(), allowCancel: false,
+                displayName: $"Choosing a {offer.RuleName} Target");
 
             return await GameContext.PlayerRequester
                 .RequestDecision<SelectionRequest<UnitData>, DataBinding<UnitData>>(request);

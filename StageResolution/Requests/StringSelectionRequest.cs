@@ -12,6 +12,7 @@ namespace FDG.StageResolution.Requests
         public PlayerID TargetPlayerID { get; }
         public TaskID TaskID { get; }
         public string TaskName { get; }
+        public string DisplayName { get; }
         public string Instructions { get; }
         public IReadOnlyList<string> ValidOptions { get; }
         public IReadOnlyList<InvalidOption> InvalidOptions { get; }
@@ -24,6 +25,27 @@ namespace FDG.StageResolution.Requests
         public Dictionary<string, string>? OptionDescriptions { get; }
 
         /// <summary>
+        /// #321: a companion action BELONGING to a valid option, keyed by that option's string - "and the
+        /// other thing you might do about this row" (melee: hold this weapon back instead of attacking with
+        /// it). The companion is still an ordinary option on the wire, listed in
+        /// <see cref="ValidOptions"/> or <see cref="InvalidOptions"/> like any other and replied to by its
+        /// own string; this map only says which row OWNS it.
+        /// <para>Resolvers that understand it must render the companion ON its owner's row - a second
+        /// button to the right, sharing the row's hotkey with a Shift modifier - and must NOT also list it
+        /// as a row of its own. Two peer rows for one weapon read as two unrelated choices, which is
+        /// exactly the confusion this exists to remove. A resolver that ignores the map still works: the
+        /// companion is a normal option, so it simply appears in the list.</para>
+        /// Null when no option has one, which is every menu but the melee weapon picker today.
+        /// </summary>
+        public Dictionary<string, SecondaryAction>? SecondaryActions { get; }
+
+        /// <param name="Option">The companion's own option string - what a resolver replies with to pick it,
+        /// and the key it appears under in <see cref="ValidOptions"/> / <see cref="InvalidOptions"/>.</param>
+        /// <param name="ShortLabel">Two or three words for the button itself ("Hold back"). The option
+        /// string carries the full weapon line, which no button in a docked panel can show.</param>
+        public record SecondaryAction(string Option, string ShortLabel);
+
+        /// <summary>
         /// #248: whether the player may back out of this menu without picking anything, replying null —
         /// the same null-cancel sentinel <see cref="SelectionRequest{T}"/> uses (legitimate over the wire,
         /// see RequestMessageSender.DeserializeAndReturnReply). Only interactive resolvers ever cancel;
@@ -33,10 +55,14 @@ namespace FDG.StageResolution.Requests
         /// </summary>
         public bool AllowCancel { get; }
 
+        // displayName: game wording for the #322 "Waiting on" HUD line - the shared TaskName literal
+        // makes the action menu, weapon picks, and hold-or-deploy prompts indistinguishable to a
+        // waiting opponent.
         [JsonConstructor]
         public StringSelectionRequest(PlayerID targetPlayerID, TaskID taskID,
             string instructions, IReadOnlyList<string> validOptions, IReadOnlyList<InvalidOption> invalidOptions,
-            Dictionary<string, string>? optionDescriptions = null, bool allowCancel = false)
+            Dictionary<string, string>? optionDescriptions = null, bool allowCancel = false,
+            Dictionary<string, SecondaryAction>? secondaryActions = null, string? displayName = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -45,21 +71,18 @@ namespace FDG.StageResolution.Requests
             InvalidOptions = invalidOptions;
             OptionDescriptions = optionDescriptions;
             AllowCancel = allowCancel;
+            SecondaryActions = secondaryActions;
             TaskName = "Select Option";
+            DisplayName = displayName ?? TaskName;
         }
 
         public StringSelectionRequest(PlayerID targetPlayerID, string instructions,
             IReadOnlyList<string> validOptions, IReadOnlyList<InvalidOption> invalidOptions,
-            Dictionary<string, string>? optionDescriptions = null, bool allowCancel = false)
+            Dictionary<string, string>? optionDescriptions = null, bool allowCancel = false,
+            Dictionary<string, SecondaryAction>? secondaryActions = null, string? displayName = null)
+            : this(targetPlayerID, new TaskID(Guid.NewGuid()), instructions, validOptions, invalidOptions,
+                optionDescriptions, allowCancel, secondaryActions, displayName)
         {
-            TargetPlayerID = targetPlayerID;
-            TaskID = new TaskID(Guid.NewGuid());
-            Instructions = instructions;
-            ValidOptions = validOptions;
-            InvalidOptions = invalidOptions;
-            OptionDescriptions = optionDescriptions;
-            AllowCancel = allowCancel;
-            TaskName = "Select Option";
         }
 
         public Task<string> Resolve(string resolution)

@@ -52,7 +52,9 @@ namespace FDG.Stages
             List<EnemyModelFootprint> friendlyFootprints =
                 MovementUtilities.GetFriendlyModelFootprints(context.AttackingUnit, context.GameContext);
 
-            var request = new ConsolidationMoveRequest(playerID, $"Consolidate Move ({reason})",
+            var request = new ConsolidationMoveRequest(playerID,
+                reason == EConsolidationReason.Wipeout
+                    ? "Consolidating After a Wipeout" : "Consolidating After Disengaging",
                 context.AttackingUnit, maxDist, reason, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain);
 
             List<ModelMoveEntry> movements = await context.PlayerRequester()

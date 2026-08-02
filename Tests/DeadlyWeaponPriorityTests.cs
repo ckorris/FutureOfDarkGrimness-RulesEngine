@@ -90,7 +90,10 @@ namespace FDG.Tests
             Assert.That(requester.Captured, Is.Not.Null);
             Assert.That(requester.Captured!.InvalidOptions, Is.Empty,
                 "With no Deadly weapon present, no weapon should be gated.");
-            Assert.That(requester.Captured!.ValidOptions.Count, Is.EqualTo(2));
+            // #320: each weapon now also has a "Hold back" row, so count the rows that ATTACK.
+            Assert.That(requester.Captured!.ValidOptions
+                    .Count(option => !ChooseMeleeWeaponStage.IsHoldBackChoice(option)),
+                Is.EqualTo(2));
         }
 
         // ──────────────────────────────────────────────────────────────────────

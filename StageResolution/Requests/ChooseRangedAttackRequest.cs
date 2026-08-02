@@ -33,6 +33,20 @@ namespace FDG.StageResolution.Requests
         public bool AllowCancel { get; }
 
         /// <summary>
+        /// #319: whether the resolver should offer a "Done shooting" button that ENDS the shoot action
+        /// (replying <see cref="Cancelled{T}"/>, which <c>ChooseRangedAttackStage</c> routes to morale and
+        /// post-shoot, exactly as a shoot that ran out of targets does). True once a weapon HAS fired this
+        /// action - the mirror image of <see cref="AllowCancel"/>, and exactly one of the two is ever true.
+        ///
+        /// <para>Both buttons reply <see cref="Cancelled{T}"/>; the engine decides what that means from
+        /// <c>AlreadyUsedWeapons</c>, so a resolver can never route it wrongly. The pair exists so the button
+        /// can be LABELLED truthfully - "Back" un-does nothing and returns to Choose Action, while "Done
+        /// shooting" spends the action - which is the whole point of offering it (a unit used to be forced to
+        /// fire every weapon that had a target, including a once-per-game Limited one).</para>
+        /// </summary>
+        public bool AllowStopShooting { get; }
+
+        /// <summary>
         /// The unit the PREVIOUS weapon of this shoot action fired at, or null on the first weapon. A
         /// pre-selection hint only: a resolver should start with this target selected when the weapon it
         /// pre-selects can still legally fire at it, and is free to ignore it otherwise (#308 - a volley
@@ -45,7 +59,7 @@ namespace FDG.StageResolution.Requests
         [JsonConstructor]
         public ChooseRangedAttackRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
             DataBinding<UnitData> attackingUnit, List<WeaponOption> weaponOptions, bool allowCancel = true,
-            DataBinding<UnitData>? previousTarget = null)
+            DataBinding<UnitData>? previousTarget = null, bool allowStopShooting = false)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -54,11 +68,12 @@ namespace FDG.StageResolution.Requests
             WeaponOptions = weaponOptions;
             AllowCancel = allowCancel;
             PreviousTarget = previousTarget;
+            AllowStopShooting = allowStopShooting;
         }
 
         public ChooseRangedAttackRequest(PlayerID targetPlayerID, string taskName,
             DataBinding<UnitData> attackingUnit, List<WeaponOption> weaponOptions, bool allowCancel = true,
-            DataBinding<UnitData>? previousTarget = null)
+            DataBinding<UnitData>? previousTarget = null, bool allowStopShooting = false)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = new TaskID(Guid.NewGuid());
@@ -67,6 +82,7 @@ namespace FDG.StageResolution.Requests
             WeaponOptions = weaponOptions;
             AllowCancel = allowCancel;
             PreviousTarget = previousTarget;
+            AllowStopShooting = allowStopShooting;
         }
 
         public Task<CancellableResult<RangedAttackChoice>> Resolve(CancellableResult<RangedAttackChoice> resolution)
@@ -83,9 +99,21 @@ namespace FDG.StageResolution.Requests
         /// (alias-aware), for player-facing attribution like "(Blast ignores cover)"; null when none.</param>
         /// <param name="LineOfSightIgnoreRule">Display name of the rule causing <paramref name="IgnoresTerrain"/>,
         /// for attribution like "(Indirect ignores line of sight)"; null when none.</param>
+        /// <param name="LimitedRule">#319. Display name of the once-per-game rule this weapon carries
+        /// ("Limited", alias-aware), or null when it has none. Set whether or not the weapon is still
+        /// available: a SPENT one arrives with its targets already unselectable ("Already fired (Limited)"),
+        /// an unspent one is about to be committed forever the moment the player fires it, and resolvers must
+        /// say so in both states. Carried on the option rather than read off the weapon because
+        /// <see cref="IWeapon.RuleDefinitions"/> is <c>[JsonIgnore]</c> - a remote player's copy of this
+        /// request has no rules on it at all.</param>
+        /// <param name="LimitedAlreadyFired">#319. True when <paramref name="LimitedRule"/> is set AND the
+        /// weapon has already been fired this game, so it can never fire again (its targets arrive
+        /// unselectable). Lets a resolver tell "spent" from "about to be spent" without parsing the
+        /// unselectable reason back into a meaning.</param>
         public record WeaponOption(Weapon Weapon, List<WeaponTargetStats> WeaponTargetStats,
             bool IgnoresCover = false, bool IgnoresTerrain = false,
-            string? CoverIgnoreRule = null, string? LineOfSightIgnoreRule = null);
+            string? CoverIgnoreRule = null, string? LineOfSightIgnoreRule = null,
+            string? LimitedRule = null, bool LimitedAlreadyFired = false);
 
         /// <summary>
         /// List which models can and cannot shoot at a given unit, of the models in a unit that have a specific weapon.
@@ -104,7 +132,25 @@ namespace FDG.StageResolution.Requests
         /// Record suited to choosing your attack, with the attacking unit implied.
         /// </summary>
         /// <param name="Weapon">Weapon used to shoot.</param>
-        /// <param name="TargetUnit">Unit to target.</param>
-        public record RangedAttackChoice(Weapon Weapon, DataBinding<UnitData> TargetUnit);
+        /// <param name="TargetUnit">Unit to target, or null to HOLD FIRE with this weapon (#319) - see
+        /// <see cref="HoldFire"/>.</param>
+        public record RangedAttackChoice(Weapon Weapon, DataBinding<UnitData>? TargetUnit)
+        {
+            /// <summary>
+            /// #319: "don't shoot this weapon at all this action". The weapon leaves the action's available
+            /// pool without firing - so it is never marked spent (the point, for a once-per-game Limited
+            /// weapon), and it stops gating the unit's other weapons (a Deadly/Takedown weapon you decline
+            /// must not go on demanding to be resolved first). The rest of the unit's weapons are then
+            /// offered as usual.
+            /// <para>A null target is the wire form because the reply type is fixed at
+            /// <c>CancellableResult&lt;RangedAttackChoice&gt;</c>: a third
+            /// <see cref="CancellableResult{T}"/> subtype would have to be generic over T for the benefit of
+            /// one request, while a weapon with nothing to shoot at says exactly this.</para>
+            /// </summary>
+            public static RangedAttackChoice HoldFire(Weapon weapon) => new(weapon, null);
+
+            /// <summary>True when this reply declines to fire <see cref="Weapon"/> (see <see cref="HoldFire"/>).</summary>
+            [JsonIgnore] public bool IsHoldFire => TargetUnit == null;
+        }
     }
 }

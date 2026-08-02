@@ -8,8 +8,11 @@ namespace FDG.Rules.Dispatch
     /// <summary>
     /// #032 Limited — a weapon that "may only be used once per game." Limited is a weapon-scoped MARKER rule
     /// (no hooks); this helper supplies the name-based detector plus the spent-state query/mutator the shooting
-    /// flow uses (the <see cref="AircraftRules"/>/<see cref="TransportUtilities"/> shape — gates that run in
-    /// stage code with no <see cref="RuleEvaluator"/> in scope).
+    /// AND melee flows use (the <see cref="AircraftRules"/>/<see cref="TransportUtilities"/> shape — gates that
+    /// run in stage code with no <see cref="RuleEvaluator"/> in scope).
+    ///
+    /// Each query comes in two forms: whole-unit (shooting — every living carrier can shoot) and
+    /// model-subset (#320, melee — only the models within melee range swing, so only they spend).
     ///
     /// The spent-state is a per-MODEL <see cref="TokenType.LimitedSpent"/> token (weapons have no token
     /// container; models do), keyed by weapon name via a <see cref="TokenPayload.WeaponName"/> payload. Binding
@@ -21,22 +24,48 @@ namespace FDG.Rules.Dispatch
     {
         /// <summary>True if <paramref name="weapon"/> carries the Limited rule (case-insensitive, name-based —
         /// so an army's own embedded "Limited" rule is recognised too, like the rule resolver).</summary>
-        public static bool IsLimited(IWeapon weapon) =>
-            weapon.RuleDefinitions.Any(rule =>
-                string.Equals(rule.Definition.Name, "Limited", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(rule.RequestedName, "Limited", StringComparison.OrdinalIgnoreCase));
+        public static bool IsLimited(IWeapon weapon) => LimitedRuleName(weapon) != null;
+
+        /// <summary>
+        /// #319: the DISPLAY name of the Limited rule on <paramref name="weapon"/> (its requested name, so an
+        /// alias or an argument form like <c>Limited(2)</c> reads as the army wrote it), or null when the
+        /// weapon is not Limited. The <c>CoverIgnoreSource</c> shape: a once-per-game weapon is worth naming in
+        /// the UI *before* it is fired, and the resolvers cannot ask the rule list themselves — weapon
+        /// <see cref="IWeapon.RuleDefinitions"/> is <c>[JsonIgnore]</c>, so a request that crossed the network
+        /// arrives with an empty list until it is rehydrated.
+        /// </summary>
+        public static string? LimitedRuleName(IWeapon weapon)
+        {
+            foreach (ResolvedRule rule in weapon.RuleDefinitions)
+            {
+                if (string.Equals(rule.Definition.Name, "Limited", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(rule.RequestedName, "Limited", StringComparison.OrdinalIgnoreCase))
+                {
+                    return rule.RequestedName;
+                }
+            }
+            return null;
+        }
 
         /// <summary>
         /// True if <paramref name="weapon"/> is Limited and every living model in <paramref name="unit"/> that
         /// carries it has already fired it this game — so it can no longer be offered. False for non-Limited
         /// weapons, and while any carrier still has a shot left.
         /// </summary>
-        public static bool IsSpent(IUnit unit, IWeapon weapon)
+        public static bool IsSpent(IUnit unit, IWeapon weapon) => IsSpent(unit.Models, weapon);
+
+        /// <summary>
+        /// #320: the same question asked of a SUBSET of a unit's models — melee only lets the models within
+        /// melee range swing (<see cref="Stages.ICombatActionContext.InRangeAttackingModels"/>), so a carrier
+        /// standing three inches back is not part of this attack and neither its spent-state nor its unspent
+        /// charge should decide whether the weapon is offered.
+        /// </summary>
+        public static bool IsSpent(IEnumerable<IModel> models, IWeapon weapon)
         {
             if (!IsLimited(weapon)) return false;
 
             bool anyCarrier = false;
-            foreach (IModel model in unit.Models)
+            foreach (IModel model in models)
             {
                 if (!model.GetIsAlive()) continue;
                 if (!CarriesWeapon(model, weapon.Name)) continue;
@@ -51,11 +80,17 @@ namespace FDG.Rules.Dispatch
         /// <paramref name="unit"/> that carries it (idempotent per model). No-op for non-Limited weapons. Called
         /// once the weapon is committed to fire — same-name weapons fire together, so all carriers are spent.
         /// </summary>
-        public static void MarkFired(IUnit unit, IWeapon weapon)
+        public static void MarkFired(IUnit unit, IWeapon weapon) => MarkFired(unit.Models, weapon);
+
+        /// <summary>
+        /// #320: mark only <paramref name="models"/> — the melee counterpart, where just the models within
+        /// melee range swing. Marking a carrier that never attacked would burn a charge it still has.
+        /// </summary>
+        public static void MarkFired(IEnumerable<IModel> models, IWeapon weapon)
         {
             if (!IsLimited(weapon)) return;
 
-            foreach (IModel model in unit.Models)
+            foreach (IModel model in models)
             {
                 if (!model.GetIsAlive()) continue;
                 if (!CarriesWeapon(model, weapon.Name)) continue;

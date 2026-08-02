@@ -135,7 +135,8 @@ namespace FDG.Stages
             CancellableSelectionRequest<UnitData> request = new CancellableSelectionRequest<UnitData>(
                 context.ActivatingPlayer(),
                 $"Storm target ({ordinal} of {total}) - pick an enemy to take the hits",
-                valid, new List<CancellableSelectionRequest<UnitData>.InvalidOption>());
+                valid, new List<CancellableSelectionRequest<UnitData>.InvalidOption>(),
+                displayName: "Choosing a Storm Target");
 
             CancellableResult<DataBinding<UnitData>> result = await GameContext.PlayerRequester
                 .RequestDecision<CancellableSelectionRequest<UnitData>, CancellableResult<DataBinding<UnitData>>>(request);

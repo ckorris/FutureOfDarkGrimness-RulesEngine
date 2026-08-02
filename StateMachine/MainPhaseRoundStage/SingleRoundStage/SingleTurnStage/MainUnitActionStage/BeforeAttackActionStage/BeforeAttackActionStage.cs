@@ -218,7 +218,8 @@ namespace FDG.Stages
                 CancellableSelectionRequest<UnitData> request = new CancellableSelectionRequest<UnitData>(
                     context.ActivatingPlayer(),
                     $"Choose target ({chosen.Count + 1} of up to {selector.MaxCount})",
-                    valid, new List<CancellableSelectionRequest<UnitData>.InvalidOption>());
+                    valid, new List<CancellableSelectionRequest<UnitData>.InvalidOption>(),
+                    displayName: "Choosing a Target");
 
                 CancellableResult<DataBinding<UnitData>> result = await GameContext.PlayerRequester
                     .RequestDecision<CancellableSelectionRequest<UnitData>, CancellableResult<DataBinding<UnitData>>>(request);

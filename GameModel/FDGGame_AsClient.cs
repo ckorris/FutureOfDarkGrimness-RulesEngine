@@ -37,6 +37,8 @@ namespace FDG.GameModel
 
         private PlayerID _thisPlayerID;
 
+        public IReadOnlyList<PlayerID> LocalPlayerIDs => new[] { _thisPlayerID };
+
 
         private IReadWriteableGameDataStore _gameDataStore;
 

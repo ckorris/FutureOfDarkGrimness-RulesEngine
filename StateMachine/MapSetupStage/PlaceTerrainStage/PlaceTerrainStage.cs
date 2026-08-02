@@ -320,7 +320,7 @@ namespace FDG.Stages
             {
                 var request = new PlaceOneTerrainRequest(
                     targetPlayerID: placer,
-                    taskName: $"Place terrain piece {piecesPlaced + 1} of {totalPieces}",
+                    taskName: $"Placing Terrain ({piecesPlaced + 1} of {totalPieces})",
                     piecesPlaced: piecesPlaced,
                     totalPieces: totalPieces,
                     pool: pool,
@@ -451,7 +451,7 @@ namespace FDG.Stages
                 TerrainPointsBudget budget = turn.Snapshot();
                 var request = new PlaceOneTerrainRequest(
                     targetPlayerID: placer,
-                    taskName: $"Place terrain - {budget.AllotmentRemaining} of {budget.AllotmentTotal} points left",
+                    taskName: $"Placing Terrain ({budget.AllotmentRemaining} of {budget.AllotmentTotal} points left)",
                     piecesPlaced: 0,
                     totalPieces: 0,
                     pool: pool,

@@ -409,6 +409,9 @@ namespace FDG.Tests
             Assert.That(rocketOption.WeaponTargetStats.First().UnselectableReason, Does.Contain("Limited"));
             Assert.That(rifleOption.WeaponTargetStats.All(t => t.UnselectableReason == null), Is.True,
                 "the non-Limited weapon stays selectable.");
+            // #319: and it says so in a form the UI can render without parsing the reason string.
+            Assert.That(rocketOption.LimitedAlreadyFired, Is.True);
+            Assert.That(rifleOption.LimitedAlreadyFired, Is.False);
         }
 
         // #032 Limited: choosing a Limited weapon commits it to fire, so it's marked spent for the game.
@@ -829,6 +832,285 @@ namespace FDG.Tests
             Assert.That(transitions, Does.Not.Contain("back"),
                 "backing out after firing would re-offer the action menu to a unit that already shot.");
             Assert.That(transitions, Does.Contain("no-valid-shots"), "the shoot action ends instead.");
+        }
+
+        // ──────────────────────────────────────────────────────────────────────
+        // #319: Hold fire / Done shooting. Before this, a unit was FORCED to fire every weapon that had a
+        // legal target - Back vanished the moment the first weapon fired - so a once-per-game Limited
+        // weapon got burned by the shoot loop whether the player wanted to spend it or not.
+        // ──────────────────────────────────────────────────────────────────────
+
+        // Holding fire with a Limited weapon must leave it unspent and still available NEXT game turn -
+        // the whole point of being able to decline it.
+        [Test]
+        public async Task Enter_HoldFireOnLimitedWeapon_LeavesItUnspent_AndOffersTheRemainingWeapons()
+        {
+            var rocket = LimitedWeapon("Rocket");
+            var requests = new List<ChooseRangedAttackRequest>();
+            var requester = new CapturingRangedRequester
+            {
+                Reply = req =>
+                {
+                    requests.Add(req);
+                    var rocketOption = req.WeaponOptions.FirstOrDefault(o => o.Weapon.Name == "Rocket");
+                    if (rocketOption != null) return new Selected<RangedAttackChoice>(
+                        RangedAttackChoice.HoldFire(rocketOption.Weapon));
+                    return FireFirstFireable(req);
+                },
+            };
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(5, 0, 0) },
+                rifleRange: 24f,
+                attackerWeapons: new[] { rocket, Rifle() },
+                playerRequester: requester);
+
+            var combatCtx = new CombatActionContext(ctx, attackerBinding, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+            await stage.Enter(combatCtx);
+
+            Assert.That(LimitedRules.IsSpent(attackerBinding.GetValue(), rocket), Is.False,
+                "a weapon that never fired must keep its once-per-game shot.");
+            Assert.That(combatCtx.DeclinedWeapons.Keys.Any(w => w.Name == "Rocket"), Is.True,
+                "the declined weapon is recorded as held-fire...");
+            Assert.That(combatCtx.AlreadyUsedWeapons.Keys.Any(w => w.Name == "Rocket"), Is.False,
+                "...and NOT as fired - that flag decides whether the action can still be backed out of.");
+            Assert.That(combatCtx.AlreadyUsedWeapons.Keys.Any(w => w.Name == "Rifle"), Is.True,
+                "the unit's other weapon still fires in the same shoot action.");
+            Assert.That(requests, Has.Count.EqualTo(2), "declining re-offers the remaining weapons.");
+            Assert.That(requests[1].WeaponOptions.Any(o => o.Weapon.Name == "Rocket"), Is.False,
+                "the held-fire weapon is not offered again this action.");
+        }
+
+        // The scenario a plain "end the shoot" exit could not serve, and the reason hold-fire is
+        // per-weapon: a Deadly+Limited rocket is a RESOLVE-FIRST weapon, so while it is on offer it gates
+        // the unit's ordinary weapons ("Must fire Deadly weapons first"). Declining it has to release them,
+        // or declining would cost the player their whole shoot.
+        [Test]
+        public async Task Enter_HoldFireOnResolveFirstLimitedWeapon_UnlocksTheOrdinaryWeapons()
+        {
+            var rocket = new Weapon("Rocket", 24f, 1, 0);
+            rocket.AttachRuleDefinition(new ResolvedRule("Deadly", CoreRuleCatalog.Deadly,
+                new RuleArgument[] { new RuleArgument.Int(3) }));
+            rocket.AttachRuleDefinition(new ResolvedRule("Limited", CoreRuleCatalog.Limited));
+
+            var requests = new List<ChooseRangedAttackRequest>();
+            var requester = new CapturingRangedRequester
+            {
+                Reply = req =>
+                {
+                    requests.Add(req);
+                    var rocketOption = req.WeaponOptions.FirstOrDefault(o => o.Weapon.Name == "Rocket");
+                    if (rocketOption != null) return new Selected<RangedAttackChoice>(
+                        RangedAttackChoice.HoldFire(rocketOption.Weapon));
+                    return FireFirstFireable(req);
+                },
+            };
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(5, 0, 0) },
+                rifleRange: 24f,
+                attackerWeapons: new[] { rocket, Rifle() },
+                playerRequester: requester);
+
+            var combatCtx = new CombatActionContext(ctx, attackerBinding, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+            await stage.Enter(combatCtx);
+
+            var gatedRifle = requests[0].WeaponOptions.Single(o => o.Weapon.Name == "Rifle");
+            Assert.That(gatedRifle.WeaponTargetStats.All(t => t.UnselectableReason != null), Is.True,
+                "test setup: while the Deadly rocket is on offer it gates the rifle.");
+
+            var freedRifle = requests[1].WeaponOptions.Single(o => o.Weapon.Name == "Rifle");
+            Assert.That(freedRifle.WeaponTargetStats.Any(t => t.UnselectableReason == null), Is.True,
+                "a declined resolve-first weapon must stop demanding to be resolved first.");
+            Assert.That(combatCtx.AlreadyUsedWeapons.Keys.Any(w => w.Name == "Rifle"), Is.True,
+                "so the rifle can actually fire.");
+            Assert.That(LimitedRules.IsSpent(attackerBinding.GetValue(), rocket), Is.False,
+                "and the rocket keeps its once-per-game shot.");
+        }
+
+        // Holding fire with everything, having fired nothing, spends no action: the player lands back on
+        // the action menu, exactly as the no-valid-target path does.
+        [Test]
+        public async Task Enter_HoldFireOnEveryWeapon_NothingFired_ReturnsToChooseAction()
+        {
+            var requester = new CapturingRangedRequester
+            {
+                Reply = req => new Selected<RangedAttackChoice>(
+                    RangedAttackChoice.HoldFire(req.WeaponOptions[0].Weapon)),
+            };
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(5, 0, 0) },
+                rifleRange: 24f,
+                attackerWeapons: new[] { LimitedWeapon("Rocket"), Rifle() },
+                playerRequester: requester);
+
+            var combatCtx = new CombatActionContext(ctx, attackerBinding, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            var transitions = new List<string>();
+            BindAllStageEvents(stage);
+            stage.BackToChooseAction.OnWillActivate += _ => transitions.Add("back");
+            stage.OnNoValidShots.OnWillActivate += _ => transitions.Add("no-valid-shots");
+
+            await stage.Enter(combatCtx);
+
+            Assert.That(transitions, Is.EqualTo(new[] { "back" }),
+                "declining every weapon without firing costs the unit nothing.");
+            Assert.That(combatCtx.AvailableWeapons, Is.Empty);
+        }
+
+        // Same, but a weapon HAS fired: the shoot action ends through the normal exit (morale, post-shoot)
+        // rather than rewinding to the action menu, which would hand the unit a second action.
+        [Test]
+        public async Task Enter_HoldFireOnLastWeapon_AfterFiring_EndsTheShootAction()
+        {
+            bool rifleFired = false;
+            var requester = new CapturingRangedRequester
+            {
+                Reply = req =>
+                {
+                    if (!rifleFired)
+                    {
+                        rifleFired = true;
+                        var rifleOption = req.WeaponOptions.Single(o => o.Weapon.Name == "Rifle");
+                        var target = rifleOption.WeaponTargetStats.First(t =>
+                            t.UnselectableReason == null && t.modelsThatCanShoot.Count > 0);
+                        return new Selected<RangedAttackChoice>(
+                            new RangedAttackChoice(rifleOption.Weapon, target.TargetUnit));
+                    }
+                    return new Selected<RangedAttackChoice>(
+                        RangedAttackChoice.HoldFire(req.WeaponOptions[0].Weapon));
+                },
+            };
+            var rocket = LimitedWeapon("Rocket");
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(5, 0, 0) },
+                rifleRange: 24f,
+                attackerWeapons: new[] { rocket, Rifle() },
+                playerRequester: requester);
+
+            var combatCtx = new CombatActionContext(ctx, attackerBinding, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            var transitions = new List<string>();
+            BindAllStageEvents(stage);
+            stage.BackToChooseAction.OnWillActivate += _ => transitions.Add("back");
+            stage.OnNoValidShots.OnWillActivate += _ => transitions.Add("no-valid-shots");
+
+            await stage.Enter(combatCtx);   // fires the rifle
+            await stage.Enter(combatCtx);   // holds fire with the rocket - nothing left
+
+            Assert.That(transitions, Does.Not.Contain("back"));
+            Assert.That(transitions, Does.Contain("no-valid-shots"),
+                "the shoot ends through the same exit a shoot with no targets left takes.");
+            Assert.That(LimitedRules.IsSpent(attackerBinding.GetValue(), rocket), Is.False,
+                "the declined Limited weapon is still unspent.");
+        }
+
+        // The request tells the resolver WHICH exit to label, and the two are mutually exclusive: Back
+        // (rewinds, nothing fired) or Done shooting (ends the action, something fired).
+        [Test]
+        public async Task Enter_AllowStopShooting_IsOfferedOnlyAfterAWeaponHasFired()
+        {
+            var requester = new CapturingRangedRequester { Reply = FireFirstFireable };
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(5, 0, 0) },
+                rifleRange: 24f,
+                attackerWeapons: new[] { Rifle(), new Weapon("Pistol", 12f, 1, 0) },
+                playerRequester: requester);
+
+            var combatCtx = new CombatActionContext(ctx, attackerBinding, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+
+            await stage.Enter(combatCtx);
+            Assert.That(requester.Captured!.AllowStopShooting, Is.False,
+                "nothing has fired yet - the exit is Back, not Done.");
+            Assert.That(requester.Captured!.AllowCancel, Is.True);
+
+            await stage.Enter(combatCtx);
+            Assert.That(requester.Captured!.AllowStopShooting, Is.True,
+                "a weapon has fired - the player may still decline the rest.");
+            Assert.That(requester.Captured!.AllowCancel, Is.False,
+                "exactly one of the two exits is offered.");
+        }
+
+        // The resolvers cannot read a weapon's rules off the wire (RuleDefinitions is [JsonIgnore]), so the
+        // once-per-game rule is named on the option itself - both while it can still be fired and after.
+        [Test]
+        public async Task Enter_LimitedRule_IsNamedOnTheOption_ForLimitedWeaponsOnly()
+        {
+            var requester = new CapturingRangedRequester();
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(5, 0, 0) },
+                rifleRange: 24f,
+                attackerWeapons: new[] { LimitedWeapon("Rocket"), Rifle() },
+                playerRequester: requester);
+
+            var combatCtx = new CombatActionContext(ctx, attackerBinding, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+            await stage.Enter(combatCtx);
+
+            var rocketOption = requester.Captured!.WeaponOptions.Single(o => o.Weapon.Name == "Rocket");
+            Assert.That(rocketOption.LimitedRule, Is.EqualTo("Limited"),
+                "the unspent once-per-game weapon is named, so the UI can warn.");
+            Assert.That(rocketOption.LimitedAlreadyFired, Is.False,
+                "it can still be fired - the warning is 'this will spend it', not 'it is spent'.");
+            Assert.That(requester.Captured!.WeaponOptions.Single(o => o.Weapon.Name == "Rifle").LimitedRule,
+                Is.Null, "an ordinary weapon carries no such warning.");
+        }
+
+        // The hold-fire reply and the Limited badge both cross the network on a remote player's turn.
+        [Test]
+        public void HoldFireChoice_AndLimitedRule_RoundTripThroughJson()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var playerID = new PlayerID(Guid.NewGuid());
+            var attackerBinding = MakeUnit(store, playerID, "Attacker",
+                new[] { MakeModel(store, new Position(0, 0, 0), Rifle()) });
+            var rocket = LimitedWeapon("Rocket");
+
+            var option = new WeaponOption(rocket, new List<WeaponTargetStats>(), LimitedRule: "Limited");
+            var request = new ChooseRangedAttackRequest(playerID, "ChooseRanged",
+                attackerBinding, new List<WeaponOption> { option }, allowCancel: false,
+                allowStopShooting: true);
+
+            string requestJson = JsonConvert.SerializeObject(request, store.GetJsonSettings());
+            var roundTrippedRequest = JsonConvert.DeserializeObject<ChooseRangedAttackRequest>(
+                requestJson, store.GetJsonSettings());
+
+            Assert.That(roundTrippedRequest!.WeaponOptions[0].LimitedRule, Is.EqualTo("Limited"));
+            Assert.That(roundTrippedRequest!.AllowStopShooting, Is.True);
+            Assert.That(roundTrippedRequest!.AllowCancel, Is.False);
+
+            CancellableResult<RangedAttackChoice> reply =
+                new Selected<RangedAttackChoice>(RangedAttackChoice.HoldFire(rocket));
+            string replyJson = JsonConvert.SerializeObject(reply,
+                typeof(CancellableResult<RangedAttackChoice>), store.GetJsonSettings());
+            var roundTrippedReply = JsonConvert.DeserializeObject<CancellableResult<RangedAttackChoice>>(
+                replyJson, store.GetJsonSettings());
+
+            Assert.That(roundTrippedReply, Is.InstanceOf<Selected<RangedAttackChoice>>());
+            var choice = ((Selected<RangedAttackChoice>)roundTrippedReply!).Value;
+            Assert.That(choice.IsHoldFire, Is.True, "a null target is what says 'do not fire this weapon'.");
+            Assert.That(choice.Weapon.Name, Is.EqualTo("Rocket"));
+        }
+
+        // Reply helper: fire the first weapon that has a selectable target with shooters in range.
+        private static CancellableResult<RangedAttackChoice> FireFirstFireable(ChooseRangedAttackRequest req)
+        {
+            var option = req.WeaponOptions.First(o =>
+                o.WeaponTargetStats.Any(t => t.UnselectableReason == null && t.modelsThatCanShoot.Count > 0));
+            var target = option.WeaponTargetStats.First(t =>
+                t.UnselectableReason == null && t.modelsThatCanShoot.Count > 0);
+            return new Selected<RangedAttackChoice>(new RangedAttackChoice(option.Weapon, target.TargetUnit));
         }
 
         private static void BindAllStageEvents(ChooseRangedAttackStage stage)

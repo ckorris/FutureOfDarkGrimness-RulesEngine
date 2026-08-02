@@ -101,7 +101,8 @@ namespace FDG.Stages
                 {
                     AbilityOffer offer = ruleOffers[0];
                     var question = new YesNoRequest(unit.PlayerID,
-                        $"Use {offer.RuleName} on {unit.Name}?", defaultAnswer: true);
+                        $"Use {offer.RuleName} on {unit.Name}?", defaultAnswer: true,
+                        displayName: $"Deciding Whether to Use {offer.RuleName}");
                     bool accepted = await GameContext.PlayerRequester
                         .RequestDecision<YesNoRequest, bool>(question);
                     if (!accepted) continue;
@@ -156,7 +157,8 @@ namespace FDG.Stages
 
             var request = new CancellableSelectionRequest<UnitData>(unit.PlayerID,
                 $"{offer.RuleName}: pick a friendly unit to activate next (or cancel)",
-                options, System.Array.Empty<CancellableSelectionRequest<UnitData>.InvalidOption>());
+                options, System.Array.Empty<CancellableSelectionRequest<UnitData>.InvalidOption>(),
+                displayName: "Choosing a Unit to Activate Next");
 
             CancellableResult<DataBinding<UnitData>> reply = await GameContext.PlayerRequester
                 .RequestDecision<CancellableSelectionRequest<UnitData>, CancellableResult<DataBinding<UnitData>>>(

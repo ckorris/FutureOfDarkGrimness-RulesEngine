@@ -99,6 +99,11 @@ namespace FDG.Stages
             determineInRangeDefenders.ToChooseMeleeWeapons.Bind(resolveExtraAttack);
             resolveExtraAttack.OnExtraAttackResolved.Bind(chooseMeleeWeapon);
             chooseMeleeWeapon.OnChosen.Bind(swingMeleeWeaponStage);
+            // #320: the player held back every weapon that was left (or every one was a spent Limited
+            // weapon), so there is nothing to swing - join the path a last swing takes, which is where
+            // DetermineCanKeepSwinging sends an out-of-weapons attacker. The melee still resolves: the
+            // defender gets its strike-back, the winner is determined, morale and consolidation follow.
+            chooseMeleeWeapon.OnNoWeaponsLeftToSwing.Bind(offerStrikeBack);
             swingMeleeWeaponStage.FinishedSwinging.Bind(determineCanKeepSwinging);
             determineCanKeepSwinging.ReturnToChooseWeapon.Bind(chooseMeleeWeapon);
             determineCanKeepSwinging.OnOutOfWeapons.Bind(offerStrikeBack);

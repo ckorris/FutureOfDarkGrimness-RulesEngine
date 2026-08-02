@@ -70,7 +70,7 @@ namespace FDG.Stages
 
                 context.LogDebug($"Requesting player choose deployment zone.");
                 ChooseDeploymentZoneRequest request = new ChooseDeploymentZoneRequest(firstTeamPlayer,
-                    "Choose Deployment Zone", zoneBindings, choices.Values.ToList());
+                    "Choosing a Deployment Zone", zoneBindings, choices.Values.ToList());
 
                 DataBinding<RectangularZone> choice 
                     = await context.PlayerRequester().RequestDecision<ChooseDeploymentZoneRequest, DataBinding<RectangularZone>>

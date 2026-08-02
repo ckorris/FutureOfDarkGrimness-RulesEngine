@@ -211,7 +211,9 @@ namespace FDG.Tests
             await EnterMelee(ctx, attacker);
 
             Assert.That(requester.Captured, Is.Not.Null);
-            IReadOnlyList<string> labels = requester.Captured!.ValidOptions;
+            // #320: filtered to the rows that ATTACK - each weapon also has a "Hold back" row now.
+            List<string> labels = requester.Captured!.ValidOptions
+                .Where(option => !ChooseMeleeWeaponStage.IsHoldBackChoice(option)).ToList();
             Assert.That(labels, Has.Count.EqualTo(2), "two profiles are two options.");
             Assert.That(labels.Any(l => l.Contains("Deadly(3)")), Is.True);
             Assert.That(labels.Any(l => l.Contains("Deadly(6)")), Is.True);
@@ -230,7 +232,8 @@ namespace FDG.Tests
 
             await EnterMelee(ctx, attacker);
 
-            IReadOnlyList<string> labels = requester.Captured!.ValidOptions;
+            List<string> labels = requester.Captured!.ValidOptions
+                .Where(option => !ChooseMeleeWeaponStage.IsHoldBackChoice(option)).ToList();   // #320
             Assert.That(labels, Has.Count.EqualTo(2));
             Assert.That(labels.Distinct().Count(), Is.EqualTo(2),
                 "two profiles must never present as one string - the label IS the option key here.");
@@ -246,7 +249,10 @@ namespace FDG.Tests
 
             var requester = new RecordingStringRequester
             {
-                Pick = options => options.Single(o => o.Contains("Rending")),
+                // #320: the hold-back row for the same weapon also contains "Rending" - pick the one
+                // that actually swings it.
+                Pick = options => options.Single(o =>
+                    o.Contains("Rending") && !ChooseMeleeWeaponStage.IsHoldBackChoice(o)),
             };
             var (ctx, attacker) = BuildSplitSwordWorld(requester, plain, rending);
 

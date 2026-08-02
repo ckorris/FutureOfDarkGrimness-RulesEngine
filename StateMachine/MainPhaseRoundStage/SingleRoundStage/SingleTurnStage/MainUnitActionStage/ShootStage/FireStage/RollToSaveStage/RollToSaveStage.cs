@@ -69,11 +69,11 @@ namespace FDG.Stages
 
             // One save-roll beat per distinct threshold, in first-seen order, captioned with the weapon and
             // why there are extra hits ("2 hits x3 (Blast) = 6", "3 hits +1 (Furious) = 4", "2 hits, Rending
-            // AP+1"). Held (the #322 default), like every other roll: each threshold paces only its settle
-            // lead-in and then lingers on the front-end's dice STACK. The #204 follow-up that made these
-            // non-held did so because a held beat lingered "until superseded" and the second threshold
-            // EVICTED the first from the single dice slot - uneven. Stacked, each threshold gets its own
-            // panel and its own fixed lifetime, so they read evenly without stopping the game for each.
+            // AP+1"). Non-held, like every other roll: each threshold gets the same full DiceRoll
+            // envelope, so the exchange keeps its rhythm. The panels still overlap - #322's front-end
+            // stack keeps each one up for seconds after its beat ends, so the to-hit roll is still on
+            // screen (below this one) while the saves come in. See DiceRolledBeat.Held for the two
+            // attempts at holding these and why the gap between rolls turned out to be load-bearing.
             // #245 glance metadata: category Defense, the defender's name as the "who", and the
             // attack-wide threshold arithmetic chips composed in DetermineSaveRollsNeededStage.
             string weaponName = metaData.WeaponType.Name;

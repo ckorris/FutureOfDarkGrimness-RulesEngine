@@ -90,7 +90,7 @@ namespace FDG.Presentation.Beats
         public IReadOnlyList<string>? ProcTags { get; }
 
         public DiceRolledBeat(IReadOnlyList<float> faceCounts, int sideMin, int successThreshold,
-            ERandomnessType mode, string label, string? resultSummary = null, bool held = true,
+            ERandomnessType mode, string label, string? resultSummary = null, bool held = false,
             ERollBeatCategory category = ERollBeatCategory.Misc, string? context = null,
             IReadOnlyList<string>? modifierTags = null, IReadOnlyList<string>? procTags = null)
         {
@@ -108,17 +108,20 @@ namespace FDG.Presentation.Beats
         }
 
         /// <summary>
-        /// When true (the default, #322), the settled dice linger on screen after their lead-in (via the
-        /// held-beat mechanism) so the result stays visible while the wounds it produced animate — and,
-        /// crucially, so the engine does not stop for the roll's whole reading time. Serializes so a
-        /// networked client holds the dice too.
+        /// When true, the presenter paces only <see cref="HoldLeadIn"/> and the engine carries on while
+        /// the front-end keeps the panel up. Serializes so a networked client holds the dice too.
         ///
-        /// <para>Holding rolls was tried once before and reverted (ea91d68, a #204 follow-up): a held
-        /// beat lingers "until superseded", and with a single front-end dice slot the next roll EVICTED
-        /// the last, so a two-threshold volley read unevenly. #322 made the front-end stack rolls instead
-        /// of replacing them, which is the precondition this flag was missing. Passing <c>false</c>
-        /// remains the explicit opt-out for a roll that should stop play for its full duration; nothing
-        /// uses it today.</para>
+        /// <para><b>Rolls do NOT hold</b> (#322, owner's call 2026-08-02 after playing it). Holding them
+        /// was tried twice: once before (ea91d68, a #204 follow-up), where a single front-end dice slot
+        /// meant the next roll EVICTED the last; and again in #322, where the front-end learned to stack
+        /// rolls so eviction was no longer the problem — but paying only the ~600ms settle made combat
+        /// read as rushed. The <em>gap between rolls</em> turns out to be load-bearing: it is the beat of
+        /// the exchange, not dead time. So a roll again paces its full <see cref="NominalDuration"/>, and
+        /// the lingering that #322 was after now comes from the front-end's stack, which keeps a panel on
+        /// screen for seconds AFTER its beat has finished. Same readability, unchanged pace.</para>
+        ///
+        /// <para>Passing <c>true</c> stays available for a roll that genuinely should not stop play;
+        /// nothing uses it today.</para>
         /// </summary>
         public override bool Held { get; }
 
@@ -161,7 +164,7 @@ namespace FDG.Presentation.Beats
         /// Build a beat from an engine roll result, capturing the per-face histogram.
         /// </summary>
         public static DiceRolledBeat From(IDiceResults results, int successThreshold, ERandomnessType mode,
-            string label, string? resultSummary = null, bool held = true,
+            string label, string? resultSummary = null, bool held = false,
             ERollBeatCategory category = ERollBeatCategory.Misc, string? context = null,
             IReadOnlyList<string>? modifierTags = null, IReadOnlyList<string>? procTags = null)
         {
@@ -186,7 +189,7 @@ namespace FDG.Presentation.Beats
         /// a probabilistic pool can land on whole numbers by coincidence, so only the roll site knows.</para>
         /// </summary>
         public static DiceRolledBeat FromDecisive(IDiceResults results, int successThreshold,
-            string label, string? resultSummary = null, bool held = true,
+            string label, string? resultSummary = null, bool held = false,
             ERollBeatCategory category = ERollBeatCategory.Misc, string? context = null,
             IReadOnlyList<string>? modifierTags = null, IReadOnlyList<string>? procTags = null)
             => From(results, successThreshold, ERandomnessType.Realistic, label, resultSummary, held,

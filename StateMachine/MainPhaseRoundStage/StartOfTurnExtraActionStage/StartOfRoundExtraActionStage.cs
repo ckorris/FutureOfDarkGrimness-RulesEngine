@@ -156,6 +156,11 @@ namespace FDG.Stages
                         "Place Reinforcements", zone, unit.ModelBindings);
                     List<PlacedObjectEntry<ModelData>> placements = await PlacementCommitGuard
                         .RequestClearPlacement(GameContext, request);
+
+                    // #309: reserve must clear before the first position replicates (see
+                    // PlaceFromReserve) or a networked client renders the arrival label-only.
+                    ReserveRules.ClearReserve(unit);
+
                     foreach (PlacedObjectEntry<ModelData> placement in placements)
                     {
                         placement.Binding.GetValue().SetPosition(placement.Position);
@@ -165,7 +170,6 @@ namespace FDG.Stages
                         }
                     }
 
-                    ReserveRules.ClearReserve(unit);
                     unit.Tokens.RemoveTokens(TokenType.PendingReinforcementArrival);
                     unit.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.ArrivedFromReserve));
 
@@ -192,9 +196,11 @@ namespace FDG.Stages
                     if (!unit.GetIsAlive()) continue;
                     if (!unit.Tokens.HasToken(TokenType.OffTableFromForcedMove)) continue;
 
+                    // #309: OffTableFromForcedMove also gates GetIsOnBattlefield, so it must fall
+                    // with the reserve clear - before the positions replicate, not after this call.
                     await PlaceFromReserve(unit, minDistanceFromEnemies: 0f,
-                        mustTouchTableEdge: true, taskName: "Aircraft Redeploy");
-                    unit.Tokens.RemoveTokens(TokenType.OffTableFromForcedMove);
+                        mustTouchTableEdge: true, taskName: "Aircraft Redeploy",
+                        alsoClearBeforeApply: TokenType.OffTableFromForcedMove);
                     unit.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.ArrivedFromReserve));
 
                     await GameContext.Announce($"{unit.Name} (Aircraft) flies back on from the table edge!",
@@ -204,7 +210,8 @@ namespace FDG.Stages
         }
 
         private async Task PlaceFromReserve(UnitData unit, float minDistanceFromEnemies,
-            bool mustTouchTableEdge = false, string taskName = "Ambush Deploy")
+            bool mustTouchTableEdge = false, string taskName = "Ambush Deploy",
+            TokenType? alsoClearBeforeApply = null)
         {
             var wholeTable = new RectangularZone(0f, GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES,
                 0f, GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES);
@@ -230,15 +237,25 @@ namespace FDG.Stages
             List<PlacedObjectEntry<ModelData>> placements = await PlacementCommitGuard
                 .RequestClearPlacement(GameContext, request);
 
+            // #309: clear the off-table state BEFORE the first position lands. Each SetPosition
+            // replicates immediately, and a networked client's renderer snapshots the unit's
+            // battlefield status as each position arrives - with the old order (positions, then
+            // token clear) the client rendered label-only ghosts until the unit next moved. Between
+            // the clear and the first position the unit reads "not in reserve, all models at
+            // origin", which is still off-battlefield, so no observer sees a premature arrival.
+            // Asserting the reserve-negation here (rather than only at the ambush call site) keeps
+            // the invariant true for the Aircraft redeploy path too.
+            ReserveRules.ClearReserve(unit);
+            if (alsoClearBeforeApply.HasValue)
+            {
+                unit.Tokens.RemoveTokens(alsoClearBeforeApply.Value);
+            }
+
             foreach (PlacedObjectEntry<ModelData> placement in placements)
             {
                 placement.Binding.GetValue().SetPosition(placement.Position);
                 if (placement.Facing.HasValue) placement.Binding.GetValue().SetFacing(placement.Facing.Value);
             }
-
-            // On the table is the negation of in reserve. Asserting it here (rather than only at the ambush
-            // call site) keeps the invariant true for the Aircraft redeploy path too.
-            ReserveRules.ClearReserve(unit);
         }
 
         private bool TryGetLaterRoundDefer(IUnit unit, out RuleOperation.DeferDeployment defer)

@@ -72,16 +72,18 @@ namespace FDG.Stages
                 return;
             }
 
+            // On the table is the negation of in reserve. A freshly deployed unit never carries the token,
+            // but a legacy save's bootstrap may have stamped it (see GameSaveSerializer.StampLegacyReserves).
+            // #309: cleared BEFORE the positions so a networked client never captures an
+            // on-table position paired with a still-reserved unit state.
+            Rules.Dispatch.ReserveRules.ClearReserve(deployingUnit);
+
             //Actually place the objects.
             foreach(PlacedObjectEntry<ModelData> entry in modelPositions)
             {
                 entry.Binding.GetValue().SetPosition(entry.Position);
                 if (entry.Facing.HasValue) entry.Binding.GetValue().SetFacing(entry.Facing.Value);
             }
-
-            // On the table is the negation of in reserve. A freshly deployed unit never carries the token,
-            // but a legacy save's bootstrap may have stamped it (see GameSaveSerializer.StampLegacyReserves).
-            Rules.Dispatch.ReserveRules.ClearReserve(deployingUnit);
 
             await OfferPostDeploymentAbilities(deployingUnit, currentPlayerID);
 

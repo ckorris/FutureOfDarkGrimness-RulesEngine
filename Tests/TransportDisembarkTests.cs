@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using FDG.Data;
 using FDG.Players;
@@ -96,6 +97,37 @@ namespace FDG.Tests
             Assert.That(unitCtx.MoveDistance, Is.EqualTo(2f).Within(0.001f),
                 "the drop is 2\" from the transport, and that is the distance the exit spent.");
             Assert.That(finished, Is.True, "loops back to Choose Action.");
+        }
+
+        // #309: a networked client's renderer snapshots the unit's battlefield status from the
+        // replicated state at the moment each model position lands (the position binding's
+        // OnValueChanged - the same event ridden here). The EmbarkedIn clear must therefore
+        // replicate BEFORE the exit positions, or the client captures a still-embarked unit and
+        // renders the disembarked squad label-only until it next moves.
+        [Test]
+        public async Task DisembarkStage_UnembarksBeforeFirstPositionReplicates()
+        {
+            var requester = new CannedPlaceRequester(new Position(12f, 10f));
+            var ctx = new TriggeredMoveTestContext(_store, requester);
+            DataBinding<UnitData> transport = MakeTransport("Rhino", capacity: 6, deployed: true);
+            DataBinding<UnitData> squad = MakeSquadWithDisembark("Grunts", modelCount: 2);
+            TransportUtilities.Embark(squad.GetValue(), transport.GetValue());
+
+            var onBattlefieldAtEachUpdate = new List<bool>();
+            foreach (DataBinding<ModelData> model in squad.GetValue().ModelBindings)
+            {
+                model.GetValue().PositionBinding.OnValueChanged +=
+                    (_, _) => onBattlefieldAtEachUpdate.Add(squad.GetValue().GetIsOnBattlefield());
+            }
+
+            var unitCtx = NewActivation(ctx, squad);
+            var stage = new DisembarkStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Assert.That(onBattlefieldAtEachUpdate, Is.Not.Empty, "the exit repositions the models");
+            Assert.That(onBattlefieldAtEachUpdate, Is.All.True,
+                "every replicated position update must already see the unit on the battlefield");
         }
 
         // #097: the distance is the FURTHEST model's, matching MovementUtilities.GetMaxMoveDistance's

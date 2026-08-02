@@ -43,15 +43,17 @@ namespace FDG.Stages
                 List<PlacedObjectEntry<ModelData>> placements = await PlacementCommitGuard
                     .RequestClearPlacement(GameContext, request);
 
+                // On the table is the negation of in reserve (a Scout defers within deployment, so it never
+                // carries the token; a legacy save's bootstrap may have stamped it). #309: cleared BEFORE
+                // the positions so a networked client never captures an on-table position paired with a
+                // still-reserved unit state.
+                Rules.Dispatch.ReserveRules.ClearReserve(unit);
+
                 foreach (PlacedObjectEntry<ModelData> placement in placements)
                 {
                     placement.Binding.GetValue().SetPosition(placement.Position);
                     if (placement.Facing.HasValue) placement.Binding.GetValue().SetFacing(placement.Facing.Value);
                 }
-
-                // On the table is the negation of in reserve (a Scout defers within deployment, so it never
-                // carries the token; a legacy save's bootstrap may have stamped it).
-                Rules.Dispatch.ReserveRules.ClearReserve(unit);
 
                 context.Log($"{unit.Name} deployed via Scout.");
             }

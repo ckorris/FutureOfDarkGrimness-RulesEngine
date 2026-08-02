@@ -73,6 +73,13 @@ namespace FDG.Stages
                 List<PlacedObjectEntry<ModelData>> placements = await PlacementCommitGuard
                     .RequestClearPlacement(gameContext, request);
 
+                // #309: un-embark BEFORE the positions land. Each SetPosition replicates immediately
+                // and a networked client's renderer snapshots the unit's battlefield status as each
+                // position arrives; with EmbarkedIn still set the client rendered the spilled unit
+                // label-only until it next moved. ApplySpilloutEffects below still calls Disembark -
+                // an idempotent token removal, by then a no-op - keeping its unit-tested core intact.
+                TransportUtilities.Disembark(occupantUnit);
+
                 foreach (PlacedObjectEntry<ModelData> placement in placements)
                 {
                     placement.Binding.GetValue().SetPosition(placement.Position);

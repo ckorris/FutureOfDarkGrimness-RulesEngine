@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using FDG.Data;
 using FDG.Presentation;
@@ -47,6 +48,31 @@ namespace FDG.Tests
             Assert.That(TransportUtilities.IsEmbarked(occupant.GetValue()), Is.False, "the occupant is no longer embarked.");
             Assert.That(occupant.GetValue().GetIsOnBattlefield(), Is.True, "the occupant is placed near the wreck (on the table).");
             Assert.That(occupant.GetValue().Tokens.HasToken(TokenType.Shaken), Is.True, "spilled-out occupants are Shaken.");
+        }
+
+        // #309: same networked-client ordering pin as AmbushRuleIntegrationTests / the disembark
+        // sibling - the un-embark must replicate before the spillout positions, or a client
+        // snapshots a still-embarked occupant when a position lands and renders it label-only.
+        [Test]
+        public async Task Spillout_UnembarksBeforeFirstPositionReplicates()
+        {
+            DataBinding<UnitData> transport = MakeTransport("Rhino", capacity: 6, new Position(10f, 10f));
+            DataBinding<UnitData> occupant = MakeUnit(_player, "Grunts", 2, new Position(0f, 0f)); // embarked → origin
+            TransportUtilities.Embark(occupant.GetValue(), transport.GetValue());
+            transport.GetValue().Models[0].DealWounds(1f); // destroy the transport
+
+            var onBattlefieldAtEachUpdate = new List<bool>();
+            foreach (DataBinding<ModelData> model in occupant.GetValue().ModelBindings)
+            {
+                model.GetValue().PositionBinding.OnValueChanged +=
+                    (_, _) => onBattlefieldAtEachUpdate.Add(occupant.GetValue().GetIsOnBattlefield());
+            }
+
+            await RunSpillout(transport);
+
+            Assert.That(onBattlefieldAtEachUpdate, Is.Not.Empty, "the spillout repositions the occupant");
+            Assert.That(onBattlefieldAtEachUpdate, Is.All.True,
+                "every replicated position update must already see the occupant on the battlefield");
         }
 
         [Test]

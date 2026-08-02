@@ -87,15 +87,18 @@ namespace FDG.Stages
                 if (fromTransport > distanceMoved) distanceMoved = fromTransport;
             }
 
+            // No longer aboard: clear the EmbarkedIn token (the unit is now a normal on-table unit, and the
+            // Disembark ability stops being offered since its AvailableWhen = TokenPresent(EmbarkedIn)).
+            // #309: cleared BEFORE the positions - each SetPosition replicates immediately, and a
+            // networked client's renderer snapshots the unit's battlefield status as each position
+            // arrives; the old order left the client rendering the disembarked unit label-only.
+            TransportUtilities.Disembark(unit);
+
             foreach (PlacedObjectEntry<ModelData> placement in placements)
             {
                 placement.Binding.GetValue().SetPosition(placement.Position);
                 if (placement.Facing.HasValue) placement.Binding.GetValue().SetFacing(placement.Facing.Value);
             }
-
-            // No longer aboard: clear the EmbarkedIn token (the unit is now a normal on-table unit, and the
-            // Disembark ability stops being offered since its AvailableWhen = TokenPresent(EmbarkedIn)).
-            TransportUtilities.Disembark(unit);
 
             // Disembarking IS the unit's move action, and the 6" leash is the whole of it ("units may
             // enter/exit by using any move action, but must stay fully within 6\" of it when exiting") — so

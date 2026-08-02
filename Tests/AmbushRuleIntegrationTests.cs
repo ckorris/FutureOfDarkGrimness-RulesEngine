@@ -94,6 +94,31 @@ namespace FDG.Tests
                 "an arrived reserve unit carries the seize-exclusion marker for the round it arrives.");
         }
 
+        // #309: a networked client's renderer snapshots the unit's battlefield status from the
+        // replicated state at the moment each model position lands (the position binding's
+        // OnValueChanged - the same event ridden here). The reserve clear must therefore replicate
+        // BEFORE the positions, or the client captures a still-reserved unit and renders the
+        // arrival label-only until it next moves.
+        [Test]
+        public async Task RoundTwo_Accept_ReserveClearsBeforeFirstPositionReplicates()
+        {
+            DataBinding<UnitData> ambush = MakeAmbushUnit();
+            var requester = new AmbushArrivalRequester(accept: true, destX: 20f, destZ: 20f);
+
+            var onBattlefieldAtEachUpdate = new List<bool>();
+            foreach (DataBinding<ModelData> model in ambush.GetValue().ModelBindings)
+            {
+                model.GetValue().PositionBinding.OnValueChanged +=
+                    (_, _) => onBattlefieldAtEachUpdate.Add(ambush.GetValue().GetIsOnBattlefield());
+            }
+
+            await RunStage(requester, roundCount: 2);
+
+            Assert.That(onBattlefieldAtEachUpdate, Is.Not.Empty, "the arrival repositions the models");
+            Assert.That(onBattlefieldAtEachUpdate, Is.All.True,
+                "every replicated position update must already see the unit on the battlefield");
+        }
+
         [Test]
         public async Task RoundTwo_NonReserveUnit_NotOfferedAndUntouched()
         {

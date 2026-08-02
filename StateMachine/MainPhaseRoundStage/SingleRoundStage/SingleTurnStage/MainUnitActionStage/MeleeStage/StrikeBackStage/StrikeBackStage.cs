@@ -62,7 +62,7 @@ namespace FDG.Stages
             resolveRavage.OnRavageResolved.Bind(resolveExtraAttack);
             resolveExtraAttack.OnExtraAttackResolved.Bind(chooseMeleeWeapon);
             chooseMeleeWeapon.OnChosen.Bind(swingMeleeWeapon);
-            // #316: held back everything left (or all of it was spent-Limited) - the strike-back is over,
+            // #320: held back everything left (or all of it was spent-Limited) - the strike-back is over,
             // the same exit an out-of-weapons striker takes.
             chooseMeleeWeapon.OnNoWeaponsLeftToSwing.Bind(finishedStrikingBackEvent);
             swingMeleeWeapon.FinishedSwinging.Bind(determineCanKeepSwinging);

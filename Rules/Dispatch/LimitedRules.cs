@@ -12,7 +12,7 @@ namespace FDG.Rules.Dispatch
     /// run in stage code with no <see cref="RuleEvaluator"/> in scope).
     ///
     /// Each query comes in two forms: whole-unit (shooting — every living carrier can shoot) and
-    /// model-subset (#316, melee — only the models within melee range swing, so only they spend).
+    /// model-subset (#320, melee — only the models within melee range swing, so only they spend).
     ///
     /// The spent-state is a per-MODEL <see cref="TokenType.LimitedSpent"/> token (weapons have no token
     /// container; models do), keyed by weapon name via a <see cref="TokenPayload.WeaponName"/> payload. Binding
@@ -27,7 +27,7 @@ namespace FDG.Rules.Dispatch
         public static bool IsLimited(IWeapon weapon) => LimitedRuleName(weapon) != null;
 
         /// <summary>
-        /// #315: the DISPLAY name of the Limited rule on <paramref name="weapon"/> (its requested name, so an
+        /// #319: the DISPLAY name of the Limited rule on <paramref name="weapon"/> (its requested name, so an
         /// alias or an argument form like <c>Limited(2)</c> reads as the army wrote it), or null when the
         /// weapon is not Limited. The <c>CoverIgnoreSource</c> shape: a once-per-game weapon is worth naming in
         /// the UI *before* it is fired, and the resolvers cannot ask the rule list themselves — weapon
@@ -55,7 +55,7 @@ namespace FDG.Rules.Dispatch
         public static bool IsSpent(IUnit unit, IWeapon weapon) => IsSpent(unit.Models, weapon);
 
         /// <summary>
-        /// #316: the same question asked of a SUBSET of a unit's models — melee only lets the models within
+        /// #320: the same question asked of a SUBSET of a unit's models — melee only lets the models within
         /// melee range swing (<see cref="Stages.ICombatActionContext.InRangeAttackingModels"/>), so a carrier
         /// standing three inches back is not part of this attack and neither its spent-state nor its unspent
         /// charge should decide whether the weapon is offered.
@@ -83,7 +83,7 @@ namespace FDG.Rules.Dispatch
         public static void MarkFired(IUnit unit, IWeapon weapon) => MarkFired(unit.Models, weapon);
 
         /// <summary>
-        /// #316: mark only <paramref name="models"/> — the melee counterpart, where just the models within
+        /// #320: mark only <paramref name="models"/> — the melee counterpart, where just the models within
         /// melee range swing. Marking a carrier that never attacked would burn a charge it still has.
         /// </summary>
         public static void MarkFired(IEnumerable<IModel> models, IWeapon weapon)

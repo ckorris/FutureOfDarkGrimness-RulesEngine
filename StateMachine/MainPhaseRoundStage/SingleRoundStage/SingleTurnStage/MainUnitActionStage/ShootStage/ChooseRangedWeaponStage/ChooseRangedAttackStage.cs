@@ -24,7 +24,7 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// #315: the weapon choice repeats within a single entry whenever the player HOLDS FIRE with a weapon
+        /// #319: the weapon choice repeats within a single entry whenever the player HOLDS FIRE with a weapon
         /// - that weapon leaves the action's pool and the remaining ones are offered again, without firing
         /// anything and without leaving the stage. Everything else (a choice, a Back, a Done) exits the loop
         /// on its first pass, exactly as before.
@@ -83,7 +83,7 @@ namespace FDG.Stages
             // it only reset when the ATTACKER changed, which permanently hid Back for any unit that had
             // ever shot.) PreviousTarget rides along so the next weapon starts aimed where the last one
             // fired, when that is still legal.
-            // #315: exactly one of the two exits is offered, and both come back as Cancelled - "Back"
+            // #319: exactly one of the two exits is offered, and both come back as Cancelled - "Back"
             // (nothing fired yet) rewinds to Choose Action, "Done shooting" (something fired) ends the
             // action here. Offering the second is what lets a player decline a weapon they would rather
             // not spend, a once-per-game Limited one above all.
@@ -100,7 +100,7 @@ namespace FDG.Stages
             {
                 // #308: a cancel after the first weapon has fired can't go back to Choose Action - the
                 // shoot has already happened and re-offering the action menu would hand the unit a second
-                // one. #315 turned that fallback into an offered choice ("Done shooting"), but the routing
+                // one. #319 turned that fallback into an offered choice ("Done shooting"), but the routing
                 // is unchanged and still decided here, so a resolver can never get it wrong.
                 if (context.AlreadyUsedWeapons.Count > 0)
                 {
@@ -117,7 +117,7 @@ namespace FDG.Stages
 
             Weapon chosenWeapon = ResolveChosenWeapon(context, rangedAttackChoice.Weapon);
 
-            // #315: hold fire - the weapon drops out of this action unfired. Nothing is spent (a Limited
+            // #319: hold fire - the weapon drops out of this action unfired. Nothing is spent (a Limited
             // weapon keeps its shot) and, since the gates above read the AVAILABLE pool, a declined
             // resolve-first weapon stops locking out the unit's ordinary ones on the next pass.
             if (rangedAttackChoice.IsHoldFire)
@@ -175,7 +175,7 @@ namespace FDG.Stages
 
             // #032 Limited: choosing the weapon commits it to fire (there's no cancel before FireStage), so mark
             // it spent now — every living carrier records it as fired this game (it's excluded from here on).
-            // #315: and SAY so. Spending a once-per-game weapon is the single most consequential thing this
+            // #319: and SAY so. Spending a once-per-game weapon is the single most consequential thing this
             // stage can do, and until now it happened silently; the player could decline it (Hold fire) right
             // up to this point, so the log has to record which way it went.
             string? limitedRule = LimitedRules.LimitedRuleName(chosenWeapon);
@@ -515,7 +515,7 @@ namespace FDG.Stages
                 // TryAdd, not Add: the pool is already profile-grouped, so a repeat means the caller
                 // handed us an ungrouped list - folding the copies into one option is what grouping
                 // would have done anyway, and is never worth throwing over.
-                // #315: a once-per-game weapon is named on the option so the resolvers can badge it BEFORE it
+                // #319: a once-per-game weapon is named on the option so the resolvers can badge it BEFORE it
                 // is fired (they cannot read the weapon's rules themselves - RuleDefinitions is [JsonIgnore],
                 // so a remote player's request carries none).
                 string? limitedRule = Rules.Dispatch.LimitedRules.LimitedRuleName(weapon);

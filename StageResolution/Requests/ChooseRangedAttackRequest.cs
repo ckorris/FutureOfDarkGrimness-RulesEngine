@@ -33,7 +33,7 @@ namespace FDG.StageResolution.Requests
         public bool AllowCancel { get; }
 
         /// <summary>
-        /// #315: whether the resolver should offer a "Done shooting" button that ENDS the shoot action
+        /// #319: whether the resolver should offer a "Done shooting" button that ENDS the shoot action
         /// (replying <see cref="Cancelled{T}"/>, which <c>ChooseRangedAttackStage</c> routes to morale and
         /// post-shoot, exactly as a shoot that ran out of targets does). True once a weapon HAS fired this
         /// action - the mirror image of <see cref="AllowCancel"/>, and exactly one of the two is ever true.
@@ -99,14 +99,14 @@ namespace FDG.StageResolution.Requests
         /// (alias-aware), for player-facing attribution like "(Blast ignores cover)"; null when none.</param>
         /// <param name="LineOfSightIgnoreRule">Display name of the rule causing <paramref name="IgnoresTerrain"/>,
         /// for attribution like "(Indirect ignores line of sight)"; null when none.</param>
-        /// <param name="LimitedRule">#315. Display name of the once-per-game rule this weapon carries
+        /// <param name="LimitedRule">#319. Display name of the once-per-game rule this weapon carries
         /// ("Limited", alias-aware), or null when it has none. Set whether or not the weapon is still
         /// available: a SPENT one arrives with its targets already unselectable ("Already fired (Limited)"),
         /// an unspent one is about to be committed forever the moment the player fires it, and resolvers must
         /// say so in both states. Carried on the option rather than read off the weapon because
         /// <see cref="IWeapon.RuleDefinitions"/> is <c>[JsonIgnore]</c> - a remote player's copy of this
         /// request has no rules on it at all.</param>
-        /// <param name="LimitedAlreadyFired">#315. True when <paramref name="LimitedRule"/> is set AND the
+        /// <param name="LimitedAlreadyFired">#319. True when <paramref name="LimitedRule"/> is set AND the
         /// weapon has already been fired this game, so it can never fire again (its targets arrive
         /// unselectable). Lets a resolver tell "spent" from "about to be spent" without parsing the
         /// unselectable reason back into a meaning.</param>
@@ -132,12 +132,12 @@ namespace FDG.StageResolution.Requests
         /// Record suited to choosing your attack, with the attacking unit implied.
         /// </summary>
         /// <param name="Weapon">Weapon used to shoot.</param>
-        /// <param name="TargetUnit">Unit to target, or null to HOLD FIRE with this weapon (#315) - see
+        /// <param name="TargetUnit">Unit to target, or null to HOLD FIRE with this weapon (#319) - see
         /// <see cref="HoldFire"/>.</param>
         public record RangedAttackChoice(Weapon Weapon, DataBinding<UnitData>? TargetUnit)
         {
             /// <summary>
-            /// #315: "don't shoot this weapon at all this action". The weapon leaves the action's available
+            /// #319: "don't shoot this weapon at all this action". The weapon leaves the action's available
             /// pool without firing - so it is never marked spent (the point, for a once-per-game Limited
             /// weapon), and it stops gating the unit's other weapons (a Deadly/Takedown weapon you decline
             /// must not go on demanding to be resolved first). The rest of the unit's weapons are then

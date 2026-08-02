@@ -8,7 +8,7 @@ namespace FDG.Stages
     public class ChooseMeleeWeaponStage : StageBase<ICombatActionContext>
     {
         /// <summary>
-        /// #316: the player held back every weapon that was left, so there is nothing more to swing. Bound to
+        /// #320: the player held back every weapon that was left, so there is nothing more to swing. Bound to
         /// the same place <see cref="DetermineCanKeepSwingingStage.OnOutOfWeapons"/> goes in each graph
         /// (strike-back offer for the charger's swing, "finished" for the strike-back itself) - the melee
         /// carries on from there exactly as it would after a last swing.
@@ -18,7 +18,7 @@ namespace FDG.Stages
         public StageBinding OnChosen;
 
         /// <summary>
-        /// #316: prefix marking an option as "decline this weapon" rather than "attack with it". Public
+        /// #320: prefix marking an option as "decline this weapon" rather than "attack with it". Public
         /// because the label is the option's identity on this wire, so anything that must tell the two apart
         /// - the AI resolver, which must never decline its own attacks, and the tests that count weapon rows
         /// - has to test for it rather than guess from ordering. Mirrors
@@ -37,7 +37,7 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// #316: repeats within a single entry when the player HOLDS BACK a weapon (it leaves the melee
+        /// #320: repeats within a single entry when the player HOLDS BACK a weapon (it leaves the melee
         /// unswung and the rest are offered again), mirroring <see cref="ChooseRangedAttackStage"/>'s hold-fire
         /// loop. Any other choice exits on the first pass.
         /// </summary>
@@ -70,14 +70,14 @@ namespace FDG.Stages
             // BuildUniqueLabel - which is the protection the old "no protection against identical names"
             // TODO here was asking for. Assigned over a profile-key-ordered pass so the disambiguation is
             // deterministic (#209), then sorted by label for display exactly as before.
-            // #316: an option is now a (label, weapon, holdBack) triple - the same weapon can appear twice,
+            // #320: an option is now a (label, weapon, holdBack) triple - the same weapon can appear twice,
             // once to swing it and once to decline it. The label is still the option's identity on the wire,
             // and the stage still maps the reply back through this list, so nothing is ever parsed out of it.
             List<(string Label, Weapon Weapon, bool HoldBack)> validOptions =
                 new List<(string, Weapon, bool)>();
             List<StringSelectionRequest.InvalidOption> invalidOptions = new List<StringSelectionRequest.InvalidOption>();
             HashSet<string> usedLabels = new HashSet<string>(StringComparer.Ordinal);
-            // #317: weapon label -> its hold-back companion, so the two render as one row.
+            // #321: weapon label -> its hold-back companion, so the two render as one row.
             Dictionary<string, StringSelectionRequest.SecondaryAction> secondaryActions =
                 new Dictionary<string, StringSelectionRequest.SecondaryAction>(StringComparer.Ordinal);
 
@@ -90,14 +90,14 @@ namespace FDG.Stages
                 .ToHashSet();
             bool gateNonDeadly = priorityWeapons.Count > 0;
 
-            // #316: only the models within melee range swing, so they are the ones whose once-per-game
+            // #320: only the models within melee range swing, so they are the ones whose once-per-game
             // charges are at stake. Falls back to the whole unit when the in-range set was never computed
             // (no path reaches this stage that way today, but an empty list must not read as "all spent").
             List<IModel> swingingModels = context.InRangeAttackingModels.Count > 0
                 ? context.InRangeAttackingModels.Select(binding => (IModel)binding.GetValue()).ToList()
                 : attacker.Models;
 
-            // #316/#318: a hold-back that would leave the unit having attacked with NOTHING is not offered.
+            // #320/#318: a hold-back that would leave the unit having attacked with NOTHING is not offered.
             // "Must strike with all melee weapons" is the rule; Limited's once-per-game clause is the only
             // implied exception, and it cannot stretch to striking with nothing at all. In every other case
             // declining is free, which is what keeps a Limited weapon declinable: hold it back and swing
@@ -108,7 +108,7 @@ namespace FDG.Stages
             {
                 string label = BuildUniqueLabel(kvp.Key, kvp.Value, usedLabels);
 
-                // #316 Limited: a weapon every in-range carrier has already used this game is out.
+                // #320 Limited: a weapon every in-range carrier has already used this game is out.
                 if (LimitedRules.IsSpent(swingingModels, kvp.Key))
                 {
                     invalidOptions.Add(new StringSelectionRequest.InvalidOption(label,
@@ -127,7 +127,7 @@ namespace FDG.Stages
                     validOptions.Add((label, kvp.Key, false));
                 }
 
-                // #316: the decline, offered beside the weapons that can actually swing this pass. A weapon
+                // #320: the decline, offered beside the weapons that can actually swing this pass. A weapon
                 // still waiting on the Deadly gate gets its hold-back entry once that gate clears - which is
                 // the pass where declining it would mean anything.
                 if (gatedByDeadly) continue;
@@ -154,7 +154,7 @@ namespace FDG.Stages
                     validOptions.Add((holdBackLabel, kvp.Key, true));
                 }
 
-                // #317: and say which weapon row OWNS that hold-back, so a resolver can draw it as a second
+                // #321: and say which weapon row OWNS that hold-back, so a resolver can draw it as a second
                 // button on the weapon's own row (with the row's hotkey + Shift) instead of a second,
                 // apparently unrelated, list entry. Recorded whether the hold-back is available or refused -
                 // a greyed companion button carrying "At least one weapon must attack after charging" is
@@ -175,7 +175,7 @@ namespace FDG.Stages
             // weapon units swing in a random order and broke same-seed replay (#193). Present the
             // options in a deterministic order instead; #028's Deadly gating above still decides
             // which of them are valid.
-            // #316: every weapon is spent-Limited, so the unit has nothing left to swing with. Route on
+            // #320: every weapon is spent-Limited, so the unit has nothing left to swing with. Route on
             // rather than send a request nobody can answer - the CLI/GUI would show an all-disabled list,
             // and the AI's catch-all (ValidOptions[0]) would throw on the empty list.
             if (validOptions.Count == 0)
@@ -185,7 +185,7 @@ namespace FDG.Stages
                 return false;
             }
 
-            // #316: swing options first, then the hold-backs, each block alphabetical - so the list reads
+            // #320: swing options first, then the hold-backs, each block alphabetical - so the list reads
             // "what I can attack with" before "what I can decline" instead of interleaving the two.
             // The order is also load-bearing for the AI: AiStringSelectionResolver falls through to
             // ValidOptions[0] here, and a hold-back sorted to the top would have it decline its own attacks
@@ -215,7 +215,7 @@ namespace FDG.Stages
             context.SetAttackWeapon(chosenWeapon, out int weaponCount);
             GameContext.Log($"Chose weapon: {chosenWeapon.Name}. Count: {weaponCount}.");
 
-            // #316 Limited: choosing commits the weapon to swing, so spend it now - on the models that
+            // #320 Limited: choosing commits the weapon to swing, so spend it now - on the models that
             // actually swing it, never on a carrier standing out of melee range. Mirrors
             // ChooseRangedAttackStage, including saying so: this is the one irreversible thing here.
             string? limitedRule = LimitedRules.LimitedRuleName(chosenWeapon);
@@ -230,7 +230,7 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// #316: decline one weapon for this melee. It leaves the pool unswung, so its once-per-game use is
+        /// #320: decline one weapon for this melee. It leaves the pool unswung, so its once-per-game use is
         /// kept - and a declined Deadly+Limited weapon stops gating the unit's other weapons (the gate above
         /// reads the AVAILABLE pool). #318: only Limited weapons are ever offered here, so "declining" never
         /// means dodging an ordinary swing. Returns true when weapons remain and the offer should repeat.
@@ -257,7 +257,7 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// #316: the melee counterpart of the "Done shooting" confirmation - it fires only on the hold-back
+        /// #320: the melee counterpart of the "Done shooting" confirmation - it fires only on the hold-back
         /// that ENDS the attack, naming what goes unswung and what a once-per-game weapon keeps by it.
         /// Per-weapon holds with swings still to come stay silent, exactly as Hold fire does.
         /// </summary>
@@ -328,9 +328,9 @@ namespace FDG.Stages
             {
                 List<string> lines = new List<string>();
 
-                // #316: a hold-back explains what declining BUYS - but only when there is something to buy,
+                // #320: a hold-back explains what declining BUYS - but only when there is something to buy,
                 // i.e. a once-per-game use to keep. "Do not attack with Blade" would just restate the label,
-                // and the plain-weapon menu must stay description-free (#298). #317: it does NOT repeat the
+                // and the plain-weapon menu must stay description-free (#298). #321: it does NOT repeat the
                 // weapon's rules, which the weapon's own row already carries right above it.
                 if (holdBack)
                 {

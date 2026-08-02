@@ -9,10 +9,10 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #316: Limited was enforced in shooting only (#032) - ChooseMeleeWeaponStage never asked IsSpent and
+    // #320: Limited was enforced in shooting only (#032) - ChooseMeleeWeaponStage never asked IsSpent and
     // never called MarkFired, so a once-per-game melee weapon was usable every combat, forever, and could
     // not be declined. These cover the melee half: the spent gate, the per-model spend (only the models
-    // within melee range swing), and the hold-back that #315 gave the shooting flow.
+    // within melee range swing), and the hold-back that #319 gave the shooting flow.
     [TestFixture]
     public class MeleeLimitedTests
     {
@@ -84,7 +84,7 @@ namespace FDG.Tests
         }
 
         // ──────────────────────────────────────────────────────────────────────
-        // Hold back — the melee counterpart of #315's Hold fire.
+        // Hold back — the melee counterpart of #319's Hold fire.
         // ──────────────────────────────────────────────────────────────────────
 
         [Test]
@@ -119,7 +119,7 @@ namespace FDG.Tests
                 "the held-back weapon is not offered again this melee.");
         }
 
-        // The melee twin of #315's headline case: a Deadly+Limited weapon gates the unit's ordinary ones,
+        // The melee twin of #319's headline case: a Deadly+Limited weapon gates the unit's ordinary ones,
         // so declining it has to release them or declining would cost the unit its whole attack.
         [Test]
         public async Task MeleeChoose_HoldBackDeadlyLimitedWeapon_UnlocksTheOrdinaryWeapons()
@@ -294,7 +294,7 @@ namespace FDG.Tests
             Assert.That(transitions, Is.EqualTo(new[] { "no-weapons-left" }));
         }
 
-        // #317: each hold-back is declared as its OWNER weapon's companion action, so a resolver can draw
+        // #321: each hold-back is declared as its OWNER weapon's companion action, so a resolver can draw
         // it as a second button on that weapon's row (Shift + the row's letter) instead of a second,
         // apparently unrelated, list entry. It stays an ordinary option on the wire either way.
         [Test]
@@ -403,7 +403,7 @@ namespace FDG.Tests
             return (ctx, attacker, combatCtx);
         }
 
-        // Answers both request types the melee weapon choice can raise: the weapon menu and (#316) the
+        // Answers both request types the melee weapon choice can raise: the weapon menu and (#320) the
         // confirmation that ending the attack early puts up.
         private class MeleeRequester : IPlayerRequestByID
         {

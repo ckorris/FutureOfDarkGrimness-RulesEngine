@@ -24,7 +24,7 @@ namespace FDG.StageResolution.Requests
         public Dictionary<string, string>? OptionDescriptions { get; }
 
         /// <summary>
-        /// #317: a companion action BELONGING to a valid option, keyed by that option's string - "and the
+        /// #321: a companion action BELONGING to a valid option, keyed by that option's string - "and the
         /// other thing you might do about this row" (melee: hold this weapon back instead of attacking with
         /// it). The companion is still an ordinary option on the wire, listed in
         /// <see cref="ValidOptions"/> or <see cref="InvalidOptions"/> like any other and replied to by its

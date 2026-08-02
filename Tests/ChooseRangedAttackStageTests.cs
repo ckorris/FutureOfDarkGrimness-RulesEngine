@@ -409,7 +409,7 @@ namespace FDG.Tests
             Assert.That(rocketOption.WeaponTargetStats.First().UnselectableReason, Does.Contain("Limited"));
             Assert.That(rifleOption.WeaponTargetStats.All(t => t.UnselectableReason == null), Is.True,
                 "the non-Limited weapon stays selectable.");
-            // #315: and it says so in a form the UI can render without parsing the reason string.
+            // #319: and it says so in a form the UI can render without parsing the reason string.
             Assert.That(rocketOption.LimitedAlreadyFired, Is.True);
             Assert.That(rifleOption.LimitedAlreadyFired, Is.False);
         }
@@ -835,7 +835,7 @@ namespace FDG.Tests
         }
 
         // ──────────────────────────────────────────────────────────────────────
-        // #315: Hold fire / Done shooting. Before this, a unit was FORCED to fire every weapon that had a
+        // #319: Hold fire / Done shooting. Before this, a unit was FORCED to fire every weapon that had a
         // legal target - Back vanished the moment the first weapon fired - so a once-per-game Limited
         // weapon got burned by the shoot loop whether the player wanted to spend it or not.
         // ──────────────────────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using FDG.Data;
 using FDG.Network.Messages;
 using FDG.Presentation;
@@ -146,6 +147,66 @@ namespace FDG.Tests
             List<string>? tags = DetermineSaveRollsNeededStage<ICombatMetadata>.ComposeThresholdTags(
                 4, 2, 1, new List<string> { "Shielded +1" }, -1);
             Assert.That(tags, Is.EqualTo(new[] { "Defense 4+", "AP 2", "Cover +1", "Shielded +1", "buff -1" }));
+        }
+
+        // ---------------- to-hit beat caption (weapon + volley size) ----------------
+
+        [Test]
+        public void HitBeatLabel_NamesTheWeaponBeingRolledWith()
+        {
+            Assert.That(RollToHitStage<ICombatMetadata>.HitBeatLabel(
+                    new Weapon("Heavy Rifle", rangeInches: 24f, attacks: 2, armorPenetration: 1)),
+                Is.EqualTo("Roll to Hit - Heavy Rifle"));
+
+            Assert.That(RollToHitStage<ICombatMetadata>.HitBeatLabel(
+                    new Weapon("  ", rangeInches: 24f, attacks: 1, armorPenetration: 0)),
+                Is.EqualTo("Roll to Hit"), "a nameless weapon falls back to the bare label");
+        }
+
+        [Test]
+        public void HitBeatContext_CarriesTheMatchupAndTheVolleySize()
+        {
+            Assert.That(RollToHitStage<ICombatMetadata>.HitBeatContext("Warriors", "Gunners", 6f),
+                Is.EqualTo("Warriors -> Gunners  |  6 attacks"));
+            Assert.That(RollToHitStage<ICombatMetadata>.HitBeatContext("Hero", "Gunners", 1f),
+                Is.EqualTo("Hero -> Gunners  |  1 attack"), "a single attack reads singular");
+        }
+
+        // The live stage: the caption must carry the weapon and the count of dice actually rolled -
+        // the determined AttackCount, not the weapon's per-carrier Attacks stat.
+        [Test]
+        public async Task ToHitBeat_IsCaptionedWithTheWeaponAndTheAttacksRolled()
+        {
+            GameDataStore store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var presenter = new RecordingPresenter();
+            var ctx = new TestGameContext(store, new FixedFaceDiceRoller(6), presenter: presenter);
+
+            var weapon = new Weapon("Energy Sword", rangeInches: 0f, attacks: 3, armorPenetration: 0);
+            DataBinding<UnitData> attacker = MakeUnit(store, "Warriors", new Position(0f, 5f), weapon);
+            DataBinding<UnitData> defender = MakeUnit(store, "Gunners", new Position(1f, 5f), null);
+
+            var stage = new RollToHitStage<ICombatMetadata>(ctx, new NoOpLayer<ICombatMetadata>());
+            stage.NextStage.Bind("done");
+            var metadata = new CombatMetadata(ctx, attacker, defender, weapon, weaponCount: 2, isMelee: true);
+            metadata.AddResult(new DetermineHitRollResults(4, attackCount: 6));
+            await stage.Enter(metadata);
+
+            DiceRolledBeat beat = presenter.Beats.OfType<DiceRolledBeat>().Single();
+            Assert.That(beat.Label, Is.EqualTo("Roll to Hit - Energy Sword"));
+            Assert.That(beat.Context, Is.EqualTo("Warriors -> Gunners  |  6 attacks"),
+                "the volley's rolled attack count, not the weapon's A3 profile");
+        }
+
+        private static DataBinding<UnitData> MakeUnit(GameDataStore store, string name, Position position,
+            Weapon? weapon)
+        {
+            var weapons = weapon == null ? new List<Weapon>() : new List<Weapon> { weapon };
+            var model = new ModelData(0.75f, weapons, position, store);
+            DataBinding<ModelData> modelBinding = store.GetDataBinding<ModelData>(store.Create(model));
+
+            var unit = new UnitData(new PlayerID(Guid.NewGuid()), name, quality: 4, defense: 4,
+                modelBindings: new List<DataBinding<ModelData>> { modelBinding });
+            return store.GetDataBinding<UnitData>(store.Create(unit));
         }
 
         [Test]

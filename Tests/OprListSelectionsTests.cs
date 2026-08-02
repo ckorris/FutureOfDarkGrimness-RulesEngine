@@ -189,6 +189,59 @@ public class OprListSelectionsTests
         Assert.That(result.TheirTotalIsAuthoritative, Is.False);
     }
 
+    // #318, the import half of the report: a share list carrying TWO swaps out of a section whose second
+    // target another section grants ("Replace Titan Shield" -> a second Heavy Hammer) rebuilt both choices
+    // correctly, but the compile behind it dropped one - so the imported list quietly lost an upgrade and
+    // read light on points. Both selections must survive the round trip into the Forge session.
+    [Test]
+    public void Reconstruct_KeepsBothSwaps_WhenTheSecondTargetComesFromAnotherSection()
+    {
+        var titan = new RosterUnit
+        {
+            Id = "titan", Name = "Errant Mini-Titan", Quality = 3, Defense = 2,
+            BaseModelCount = 1, MinModels = 1, MaxModels = 1, BasePointCost = 295,
+            Weapons = { new WeaponFileEntry { Name = "Heavy Hammer", Quantity = 1, Attacks = 2 } },
+            Items = { new ItemEntry { Name = "Titan Shield", Quantity = 1 } },
+            Sections =
+            {
+                new UpgradeSection
+                {
+                    Id = "HAM", Label = "Replace any Heavy Hammer", Variant = UpgradeVariant.Replace,
+                    Affects = UpgradeAffects.Any, Targets = { "Heavy Hammer" },
+                    Options = { new UpgradeOption { Id = "SWD", Label = "Heavy Sword", Cost = 30,
+                        WeaponsGained = { new WeaponFileEntry { Name = "Heavy Sword", Quantity = 1, Attacks = 6 } } } },
+                },
+                new UpgradeSection
+                {
+                    Id = "SHD", Label = "Replace Titan Shield", Variant = UpgradeVariant.Replace,
+                    Affects = UpgradeAffects.One, Targets = { "Titan Shield" },
+                    Options = { new UpgradeOption { Id = "HMR", Label = "Heavy Hammer", Cost = 30,
+                        WeaponsGained = { new WeaponFileEntry { Name = "Heavy Hammer", Quantity = 1, Attacks = 2 } } } },
+                },
+            },
+        };
+        var book = new BookFile { Name = "Titan Lords", Faction = "Titan Lords", Units = { titan } };
+
+        // Army Forge emits one selectedUpgrades entry per application - two for the two hammer swaps.
+        string json = ListJson(385, UnitJson("titan", "Errant Mini-Titan", 295, "SelTitan", selectedUpgrades: """
+            [ { "upgrade": { "uid": "SHD" }, "option": { "uid": "HMR", "label": "Heavy Hammer" } },
+              { "upgrade": { "uid": "HAM" }, "option": { "uid": "SWD", "label": "Heavy Sword" } },
+              { "upgrade": { "uid": "HAM" }, "option": { "uid": "SWD", "label": "Heavy Sword" } } ]
+            """));
+
+        OprForgeSessionResult result = OprListImporter.ReconstructSelections(json, book);
+
+        BuilderUnit rebuilt = result.Selections.Units.Single();
+        Assert.That(rebuilt.Choices.Single(c => c.SectionId == "HAM").Count, Is.EqualTo(2),
+            "both hammer swaps come across as applications of one choice");
+
+        UnitFileEntry compiled = ListCompiler.Compile(book, result.Selections).Units.Single();
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Heavy Sword").Quantity, Is.EqualTo(2),
+            "and both survive the compile - neither hammer is left behind");
+        Assert.That(result.OurTotalPoints, Is.EqualTo(385), "matching Army Forge's own listPoints");
+        Assert.That(result.Warnings, Is.Empty);
+    }
+
     [Test]
     public void Reconstruct_LinksCombinedPair_AndCompileMergesThem()
     {

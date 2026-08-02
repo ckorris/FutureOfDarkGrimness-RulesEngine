@@ -215,6 +215,10 @@ namespace FDG.ArmyBuilding
             IEnumerable<UpgradeChoice> ordered = bu.Choices
                 .OrderBy(c => Math.Max(0, roster.Sections.FindIndex(s => s.Id == c.SectionId)));
 
+            // #318: Replace applications the loadout couldn't afford yet, retried after every section has
+            // had its pass — book order alone can't satisfy a section whose targets a LATER one grants.
+            List<(UpgradeSection Section, UpgradeOption Option, int Remaining)> starved = new();
+
             foreach (UpgradeChoice choice in ordered)
             {
                 UpgradeSection section = roster.Sections.FirstOrDefault(s => s.Id == choice.SectionId)
@@ -223,6 +227,16 @@ namespace FDG.ArmyBuilding
                     ?? throw new InvalidOperationException($"Option '{choice.OptionId}' not found in section '{section.Id}'.");
 
                 int applications = Applications(section, choice, unit, items);
+
+                // #318: what the choice asked for minus what the loadout could afford. Parked, not lost —
+                // a later section may still buy the missing target (the Titan's "Replace any Heavy Hammer"
+                // is authored ABOVE the "Replace Titan Shield" that grants the second hammer).
+                if (section.Variant == UpgradeVariant.Replace)
+                {
+                    int owed = OwedApplications(section, choice, applications);
+                    if (owed > 0) starved.Add((section, option, owed));
+                }
+
                 if (applications <= 0) continue;
 
                 // #218: a "Replace all X" price is flat for the whole unit - it is NOT multiplied by the
@@ -256,6 +270,8 @@ namespace FDG.ArmyBuilding
                         break;
                 }
             }
+
+            ApplyStarvedReplaces(unit, items, starved);
 
             // #197 Sergeant: champion marks attach AFTER every section has applied - a later "Replace all
             // Hand Weapons" must not eat the mark; the champion attacks with whatever the unit ends up
@@ -302,6 +318,77 @@ namespace FDG.ArmyBuilding
                 weapon.EffectSet ??= WeaponEffectAssigner.Match(book.Faction, weapon);
 
             return (unit, items);
+        }
+
+        /// <summary>
+        /// #318 — how many applications a Replace choice still OWES after its first pass. The section order
+        /// a book is authored in is not a dependency order: the Titan Lords mini-titans put "Replace any Heavy
+        /// Hammer" ABOVE the "Replace Titan Shield" whose option buys the second hammer, so at the hammer
+        /// section's turn only one hammer exists and the second swap was clamped away silently (the Forge let
+        /// you set the count to 2, and an OPR import that carried two swaps lost one). What the choice asked
+        /// for is banked here and retried once every section has had its pass.
+        /// <para>All is the exception: "every match" is by definition whatever the unit holds when the section
+        /// applies, so it owes nothing once it has swapped at least one target. It parks only when it found
+        /// NO target at all (<see cref="EveryMatch"/> — take the whole pool whenever one turns up), which no
+        /// bundled book exercises today.</para>
+        /// </summary>
+        private static int OwedApplications(UpgradeSection section, UpgradeChoice choice, int applied)
+        {
+            int chosen = Math.Max(0, choice.Count);
+            if (chosen <= 0) return 0;
+
+            return section.Affects switch
+            {
+                UpgradeAffects.All => applied > 0 ? 0 : EveryMatch,
+                UpgradeAffects.Any => (section.MaxApplications > 0
+                    ? Math.Min(chosen, section.MaxApplications)
+                    : chosen) - applied,
+                _ => 1 - applied,
+            };
+        }
+
+        /// <summary>Stands in for "as many as the unit turns out to have" in a parked All (see
+        /// <see cref="OwedApplications"/>); the retry clamps it to the live pool.</summary>
+        private const int EveryMatch = int.MaxValue;
+
+        /// <summary>
+        /// #318 — settles the Replace applications <see cref="OwedApplications"/> banked, to a fixpoint: each
+        /// pass spends whatever the loadout can now afford, and the loop stops as soon as a whole pass changes
+        /// nothing (targets that never arrive simply stay unbought, as before). Every application charges its
+        /// points here, so the shortfall costs what it would have cost in the first pass.
+        /// </summary>
+        private static void ApplyStarvedReplaces(UnitFileEntry unit, List<ItemEntry> items,
+            List<(UpgradeSection Section, UpgradeOption Option, int Remaining)> starved)
+        {
+            bool progressed = starved.Count > 0;
+            while (progressed)
+            {
+                progressed = false;
+                for (int i = 0; i < starved.Count; i++)
+                {
+                    (UpgradeSection section, UpgradeOption option, int remaining) = starved[i];
+                    if (remaining <= 0) continue;
+
+                    // All strips every match of EACH target (max), the counted forms consume one of each per
+                    // application (min) — the same split Applications() makes.
+                    bool isAll = section.Affects == UpgradeAffects.All;
+                    int pool = isAll
+                        ? (section.Targets.Count == 0 ? 0 : section.Targets.Max(t => MatchedCount(unit.Weapons, items, t)))
+                        : AvailableApplications(unit.Weapons, items, section.Targets);
+
+                    int applications = Math.Min(remaining, pool);
+                    if (applications <= 0) continue;
+
+                    unit.PointCost += option.Cost * (isAll ? 1 : applications);
+                    foreach (string target in section.Targets)
+                        RemoveTarget(unit.Weapons, items, target, applications);
+                    AddGains(unit, items, option, applications);
+
+                    // An All that has now swapped is spent; a counted one keeps whatever it still owes.
+                    starved[i] = (section, option, isAll ? 0 : remaining - applications);
+                    progressed = true;
+                }
+            }
         }
 
         /// <summary>Rule names this book resolves to a <see cref="ERuleScope.Weapon"/>-scoped definition.

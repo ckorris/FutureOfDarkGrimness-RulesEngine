@@ -325,6 +325,173 @@ public class ArmyForgeCompilerTests
         Assert.That(compiled.PointCost, Is.EqualTo(125));
     }
 
+    // ── #318 starved Replace: the target arrives from a LATER section ──────────────────────────────────
+
+    // The Titan Lords mini-titans in miniature: one Heavy Hammer + a Titan Shield, with "Replace any Heavy
+    // Hammer" authored ABOVE the "Replace Titan Shield" whose only option buys the second hammer.
+    private static RosterUnit MiniTitan() => new()
+    {
+        Id = "titan", Name = "Errant Mini-Titan", Quality = 3, Defense = 2,
+        BaseModelCount = 1, MinModels = 1, MaxModels = 1, BasePointCost = 295,
+        Weapons = { Wpn("Heavy Hammer"), Wpn("Stomp") },
+        Items = { new ItemEntry { Name = "Titan Shield", Quantity = 1, Rules = { new SpecialRuleEntry_Core("Fortified") } } },
+        Sections =
+        {
+            new UpgradeSection
+            {
+                Id = "hammers", Label = "Replace any Heavy Hammer", Variant = UpgradeVariant.Replace,
+                Affects = UpgradeAffects.Any, Targets = { "Heavy Hammer" },
+                Options =
+                {
+                    new UpgradeOption { Id = "sword", Label = "Heavy Sword", Cost = 30, WeaponsGained = { Wpn("Heavy Sword") } },
+                    new UpgradeOption { Id = "claw", Label = "Heavy Claw", Cost = 35, WeaponsGained = { Wpn("Heavy Claw") } },
+                },
+            },
+            new UpgradeSection
+            {
+                Id = "shield", Label = "Replace Titan Shield", Variant = UpgradeVariant.Replace,
+                Affects = UpgradeAffects.One, Targets = { "Titan Shield" },
+                Options = { new UpgradeOption { Id = "hammer", Label = "Heavy Hammer", Cost = 30, WeaponsGained = { Wpn("Heavy Hammer") } } },
+            },
+        },
+    };
+
+    // #318, the reported bug (friend's War Disciples list, 2026-08-02): with the shield traded for a second
+    // Heavy Hammer, BOTH hammers must be swappable. Book order alone starved the second swap - the hammer
+    // section applies before the shield section that pays for the hammer - so it was silently clamped to one.
+    [Test]
+    public void ReplaceAny_TargetGrantedByALaterSection_AppliesTheFullCount()
+    {
+        UnitFileEntry compiled = CompileOne(MiniTitan(),
+            new UpgradeChoice { SectionId = "shield", OptionId = "hammer", Count = 1 },
+            new UpgradeChoice { SectionId = "hammers", OptionId = "sword", Count = 2 });
+
+        Assert.That(compiled.Weapons.Any(w => w.Name == "Heavy Hammer"), Is.False, "both hammers were swapped");
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Heavy Sword").Quantity, Is.EqualTo(2));
+        Assert.That(compiled.PointCost, Is.EqualTo(385), "295 + 30 shield swap + 30x2 hammer swaps");
+        Assert.That(compiled.SpecialRules.Contains(new SpecialRuleEntry_Core("Fortified")), Is.False,
+            "the shield is gone, so its granted rule goes with it");
+    }
+
+    // Two different options in the same starved section: the second hammer feeds whichever pick still owes.
+    [Test]
+    public void ReplaceAny_TargetGrantedLater_SplitsAcrossOptions()
+    {
+        UnitFileEntry compiled = CompileOne(MiniTitan(),
+            new UpgradeChoice { SectionId = "shield", OptionId = "hammer", Count = 1 },
+            new UpgradeChoice { SectionId = "hammers", OptionId = "sword", Count = 1 },
+            new UpgradeChoice { SectionId = "hammers", OptionId = "claw", Count = 1 });
+
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Heavy Sword").Quantity, Is.EqualTo(1));
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Heavy Claw").Quantity, Is.EqualTo(1));
+        Assert.That(compiled.PointCost, Is.EqualTo(390)); // 295 + 30 + 30 + 35
+    }
+
+    // The retry must not INVENT applications: without the shield swap there is exactly one hammer, so a
+    // count of 2 still buys (and charges for) one - the pre-existing clamp, unchanged.
+    [Test]
+    public void ReplaceAny_WithoutTheLaterGrant_StillClampsToWhatExists()
+    {
+        UnitFileEntry compiled = CompileOne(MiniTitan(),
+            new UpgradeChoice { SectionId = "hammers", OptionId = "sword", Count = 2 });
+
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Heavy Sword").Quantity, Is.EqualTo(1));
+        Assert.That(compiled.PointCost, Is.EqualTo(325), "295 + one 30-pt swap, not two");
+    }
+
+    // #318 sibling shape (Battle Brothers pathfinders): the section's target is absent from the BASE loadout
+    // entirely and only exists if a later section buys it. The swap used to vanish silently, free of charge.
+    [Test]
+    public void ReplaceOne_TargetAbsentUntilALaterSectionGrantsIt_StillApplies()
+    {
+        var unit = new RosterUnit
+        {
+            Id = "pathfinder", Name = "Elite Pathfinder", Quality = 3, Defense = 3,
+            BaseModelCount = 1, MinModels = 1, MaxModels = 1, BasePointCost = 100,
+            Weapons = { Wpn("Flamer Pistol") },
+            Sections =
+            {
+                new UpgradeSection
+                {
+                    Id = "gravity", Label = "Replace Gravity Pistol", Variant = UpgradeVariant.Replace,
+                    Affects = UpgradeAffects.One, Targets = { "Gravity Pistol" },
+                    Options = { new UpgradeOption { Id = "shotgun", Cost = 5, WeaponsGained = { Wpn("Master Shotgun") } } },
+                },
+                new UpgradeSection
+                {
+                    Id = "flamer", Label = "Replace Flamer Pistol", Variant = UpgradeVariant.Replace,
+                    Affects = UpgradeAffects.One, Targets = { "Flamer Pistol" },
+                    Options = { new UpgradeOption { Id = "grav", Cost = 10, WeaponsGained = { Wpn("Gravity Pistol") } } },
+                },
+            },
+        };
+
+        UnitFileEntry compiled = CompileOne(unit,
+            new UpgradeChoice { SectionId = "gravity", OptionId = "shotgun", Count = 1 },
+            new UpgradeChoice { SectionId = "flamer", OptionId = "grav", Count = 1 });
+
+        Assert.That(compiled.Weapons.Single().Name, Is.EqualTo("Master Shotgun"),
+            "the flamer became a gravity pistol, which the first section then swapped out");
+        Assert.That(compiled.PointCost, Is.EqualTo(115), "both swaps are charged");
+    }
+
+    // A section that can never be fed (nothing grants its target) still no-ops, and a pair whose targets
+    // each want the other's gain settles instead of spinning - the retry runs to a fixpoint, not forever.
+    [Test]
+    public void StarvedReplace_ThatIsNeverFed_StaysANoOp_AndMutualStarvationTerminates()
+    {
+        var unit = new RosterUnit
+        {
+            Id = "u", Name = "U", Quality = 4, Defense = 4, BaseModelCount = 1, MinModels = 1, MaxModels = 1,
+            BasePointCost = 50,
+            Sections =
+            {
+                new UpgradeSection { Id = "a", Variant = UpgradeVariant.Replace, Affects = UpgradeAffects.One,
+                    Targets = { "Sword" }, Options = { new UpgradeOption { Id = "o", Cost = 5, WeaponsGained = { Wpn("Axe") } } } },
+                new UpgradeSection { Id = "b", Variant = UpgradeVariant.Replace, Affects = UpgradeAffects.One,
+                    Targets = { "Axe" }, Options = { new UpgradeOption { Id = "o", Cost = 5, WeaponsGained = { Wpn("Sword") } } } },
+            },
+        };
+
+        UnitFileEntry compiled = CompileOne(unit,
+            new UpgradeChoice { SectionId = "a", OptionId = "o", Count = 1 },
+            new UpgradeChoice { SectionId = "b", OptionId = "o", Count = 1 });
+
+        Assert.That(compiled.Weapons, Is.Empty, "neither swap ever had a target");
+        Assert.That(compiled.PointCost, Is.EqualTo(50), "and neither was charged");
+    }
+
+    // A "Replace all" is evaluated once, where the book puts it: it must not come back after a later section
+    // grants a fresh copy of its target and eat that too (nor charge its flat price twice).
+    [Test]
+    public void ReplaceAll_DoesNotReapplyToTargetsGrantedByALaterSection()
+    {
+        var unit = new RosterUnit
+        {
+            Id = "u", Name = "U", Quality = 3, Defense = 3, BaseModelCount = 5, MinModels = 5, MaxModels = 5,
+            BasePointCost = 100,
+            Weapons = { Wpn("Energy Sword", 5), Wpn("CCW") },
+            Sections =
+            {
+                new UpgradeSection { Id = "all", Label = "Replace all Energy Swords", Variant = UpgradeVariant.Replace,
+                    Affects = UpgradeAffects.All, Targets = { "Energy Swords" },
+                    Options = { new UpgradeOption { Id = "o1", Cost = 10, WeaponsGained = { Wpn("Shard Carbine") } } } },
+                new UpgradeSection { Id = "sgt", Label = "Replace CCW", Variant = UpgradeVariant.Replace,
+                    Affects = UpgradeAffects.One, Targets = { "CCW" },
+                    Options = { new UpgradeOption { Id = "o2", Cost = 20, WeaponsGained = { Wpn("Energy Sword") } } } },
+            },
+        };
+
+        UnitFileEntry compiled = CompileOne(unit,
+            new UpgradeChoice { SectionId = "all", OptionId = "o1", Count = 1 },
+            new UpgradeChoice { SectionId = "sgt", OptionId = "o2", Count = 1 });
+
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Shard Carbine").Quantity, Is.EqualTo(5));
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Energy Sword").Quantity, Is.EqualTo(1),
+            "the sergeant's sword arrives after the all-swap and keeps it");
+        Assert.That(compiled.PointCost, Is.EqualTo(130), "100 + 10 flat + 20 - the flat price is levied once");
+    }
+
     // ── #107 combined squads (decision 8) ──────────────────────────────────────────────────────────────
 
     [Test]

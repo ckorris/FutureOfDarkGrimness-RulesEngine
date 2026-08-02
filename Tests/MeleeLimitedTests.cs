@@ -153,8 +153,35 @@ namespace FDG.Tests
             Assert.That(LimitedRules.IsSpent(attacker.GetValue(), spike), Is.False);
         }
 
-        // User sign-off: the charge already happened and cannot be rewound, so a unit may not decline its
-        // way out of attacking altogether. The last un-declined weapon is offered as unavailable.
+        // #318: "Models within 2in horizontally and 4in vertically of enemies must strike with all melee
+        // weapons" - there is no general opting out of a swing, so an ordinary weapon gets no hold-back at
+        // all. Limited's once-per-game clause is the only thing that implies a choice about whether to use
+        // a weapon, so the exception is scoped to weapons carrying it.
+        [Test]
+        public async Task MeleeChoose_OrdinaryWeapons_AreNotOfferedAHoldBackAtAll()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var requester = new MeleeRequester { Pick = options => Swing(options, "Blade") };
+            var (ctx, _, combatCtx) = BuildMelee(store, requester,
+                LimitedWeapon("Demo Charge"), Blade(), new Weapon("Spear", 0f, 1, 0));
+
+            await EnterStage(ctx, combatCtx);
+
+            var allOptions = requester.Captured!.ValidOptions
+                .Concat(requester.Captured!.InvalidOptions.Select(o => o.Option)).ToList();
+            Assert.That(allOptions.Any(o =>
+                    ChooseMeleeWeaponStage.IsHoldBackChoice(o) && o.Contains("Demo Charge")), Is.True,
+                "the once-per-game weapon may be held back...");
+            Assert.That(allOptions.Any(o =>
+                    ChooseMeleeWeaponStage.IsHoldBackChoice(o) && o.Contains("Blade")), Is.False,
+                "...but an ordinary weapon must strike, so it is not offered the choice at all...");
+            Assert.That(allOptions.Any(o =>
+                    ChooseMeleeWeaponStage.IsHoldBackChoice(o) && o.Contains("Spear")), Is.False,
+                "...not even as a greyed-out row, which would imply the choice exists.");
+        }
+
+        // The exception cannot stretch to striking with nothing: a Limited weapon that is all the unit has
+        // must still swing. The hold-back is shown as unavailable, with the rule as its reason.
         [Test]
         public async Task MeleeChoose_LastWeaponWithNothingSwungYet_CannotBeHeldBack()
         {
@@ -168,7 +195,7 @@ namespace FDG.Tests
                 "with one weapon and nothing swung, holding back would mean charging in and doing nothing.");
             Assert.That(requester.Captured!.InvalidOptions.Any(o =>
                     ChooseMeleeWeaponStage.IsHoldBackChoice(o.Option)
-                    && o.Reason.Contains("At least one weapon must attack")), Is.True,
+                    && o.Reason.Contains("Must strike with all melee weapons")), Is.True,
                 "and the menu says why it is refused.");
         }
 
@@ -293,6 +320,10 @@ namespace FDG.Tests
                 "...plus a label short enough for a button.");
             Assert.That(requester.Captured!.ValidOptions, Does.Contain(secondaries[bombOption].Option),
                 "and it is still an ordinary option, so a resolver that ignores the pairing still works.");
+
+            // #318: the plain weapon has no companion - it must strike, so there is no choice to pair.
+            string bladeOption = requester.Captured!.ValidOptions.First(o => o.Contains("Blade"));
+            Assert.That(secondaries.ContainsKey(bladeOption), Is.False);
         }
 
         // The refused hold-back is paired too - a resolver draws it greyed ON its weapon's row with the
@@ -310,7 +341,7 @@ namespace FDG.Tests
             var companion = requester.Captured!.SecondaryActions![bombOption];
             Assert.That(requester.Captured!.ValidOptions, Does.Not.Contain(companion.Option));
             Assert.That(requester.Captured!.InvalidOptions.Any(o =>
-                    o.Option == companion.Option && o.Reason.Contains("At least one weapon must attack")),
+                    o.Option == companion.Option && o.Reason.Contains("Must strike with all melee weapons")),
                 Is.True);
         }
 

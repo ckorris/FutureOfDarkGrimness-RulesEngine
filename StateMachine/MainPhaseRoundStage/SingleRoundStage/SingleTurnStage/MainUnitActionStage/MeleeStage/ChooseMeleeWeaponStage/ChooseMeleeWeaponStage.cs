@@ -97,10 +97,11 @@ namespace FDG.Stages
                 ? context.InRangeAttackingModels.Select(binding => (IModel)binding.GetValue()).ToList()
                 : attacker.Models;
 
-            // #316: a hold-back that would leave the unit having attacked with NOTHING is not offered - the
-            // charge already happened and cannot be rewound, so at least one weapon must swing (user
-            // sign-off). Declining is free in every other case, which is what keeps a Limited weapon
-            // declinable: hold it back and swing something else.
+            // #316/#318: a hold-back that would leave the unit having attacked with NOTHING is not offered.
+            // "Must strike with all melee weapons" is the rule; Limited's once-per-game clause is the only
+            // implied exception, and it cannot stretch to striking with nothing at all. In every other case
+            // declining is free, which is what keeps a Limited weapon declinable: hold it back and swing
+            // something else.
             bool nothingHasSwungYet = context.AlreadyUsedWeapons.Count == 0;
 
             foreach(KeyValuePair<Weapon, int> kvp in InProfileOrder(availableWeapons))
@@ -131,12 +132,22 @@ namespace FDG.Stages
                 // the pass where declining it would mean anything.
                 if (gatedByDeadly) continue;
 
+                // #318: and ONLY for a once-per-game weapon. The melee rule is "models within 2" horizontally
+                // and 4" vertically of enemies must strike with all melee weapons" - there is no general
+                // opting out of a swing. Limited's "may only be used once per game" is the one clause that
+                // implies a choice about WHETHER to use it (otherwise the first melee of the game would
+                // always spend it, and "once per game" would mean "in your first fight"), so the exception
+                // is scoped to exactly the weapons that carry it.
+                if (LimitedRules.LimitedRuleName(kvp.Key) == null) continue;
+
                 string holdBackLabel = HOLD_BACK_PREFIX + label;
                 usedLabels.Add(holdBackLabel);
                 if (nothingHasSwungYet && availableWeapons.Count == 1)
                 {
+                    // Even a Limited weapon must swing when it is all the unit has: holding it back would
+                    // strike with nothing, and "must strike with all melee weapons" still governs that.
                     invalidOptions.Add(new StringSelectionRequest.InvalidOption(holdBackLabel,
-                        "At least one weapon must attack after charging."));
+                        "Must strike with all melee weapons - this is the only one left to strike with."));
                 }
                 else
                 {
@@ -219,9 +230,10 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// #316: decline one weapon for this melee. It leaves the pool unswung - a Limited weapon keeps its
-        /// once-per-game use, and a declined Deadly weapon stops gating the unit's other weapons (the gate
-        /// above reads the AVAILABLE pool). Returns true when weapons remain and the offer should repeat.
+        /// #316: decline one weapon for this melee. It leaves the pool unswung, so its once-per-game use is
+        /// kept - and a declined Deadly+Limited weapon stops gating the unit's other weapons (the gate above
+        /// reads the AVAILABLE pool). #318: only Limited weapons are ever offered here, so "declining" never
+        /// means dodging an ordinary swing. Returns true when weapons remain and the offer should repeat.
         /// </summary>
         private async Task<bool> HoldBack(ICombatActionContext context, Weapon weapon)
         {

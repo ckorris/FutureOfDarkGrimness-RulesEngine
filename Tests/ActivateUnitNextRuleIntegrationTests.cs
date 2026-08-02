@@ -212,7 +212,8 @@ namespace FDG.Tests
             await RunTurnStage(ctx, round);
 
             Assert.That(round.GetCurrentPlayerID(), Is.EqualTo(_player),
-                "the flag displaces the alternation - without it the cursor would move to the enemy team");
+                "the flag displaces the alternation - without it the round would open on the enemy team, " +
+                "which leads the order");
         }
 
         [Test]
@@ -367,12 +368,15 @@ namespace FDG.Tests
             return new SingleRoundContext(ctx, new List<ITeam> { team });
         }
 
-        // Two teams so the cursor has somewhere else to go - the whole point of the override tests.
+        // Two teams so the cursor has somewhere else to go - the whole point of the override tests. The
+        // ENEMY leads the order on purpose: a round opens on the head of its order, so with my team at the
+        // head an honoured flag on my unit and an ordinary advance would both land on me, and every
+        // assertion below would hold whether or not the override did anything.
         private SingleRoundContext MakeTwoTeamRound(TriggeredMoveTestContext ctx)
         {
             ITeam mine = MakeTeam(1, _player);
             ITeam theirs = MakeTeam(2, _enemy);
-            return new SingleRoundContext(ctx, new List<ITeam> { mine, theirs });
+            return new SingleRoundContext(ctx, new List<ITeam> { theirs, mine });
         }
 
         private ITeam MakeTeam(int number, params PlayerID[] players)

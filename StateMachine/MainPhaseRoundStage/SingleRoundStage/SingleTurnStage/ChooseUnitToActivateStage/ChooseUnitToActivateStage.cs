@@ -53,6 +53,12 @@ namespace FDG.Stages
             List<SelectionRequest<UnitData>.ValidOption> validOptions = new List<SelectionRequest<UnitData>.ValidOption>();
             List<SelectionRequest<UnitData>.InvalidOption> invalidOptions = new List<SelectionRequest<UnitData>.InvalidOption>();
 
+            // #315: two same-named units embarked in two transports are indistinguishable in the list, so
+            // an embarked unit's label names its ride ("Warriors (in Rhino)") — the deploy picker's
+            // "(Ambush)" suffix treatment. All units, not just the player's: an ally's transport can carry
+            // this player's unit.
+            List<UnitData> allUnits = GameContext.GameDataStore.GetAllValues<UnitData>().ToList();
+
             foreach (ArmyData army in GameContext.GameDataStore.GetAllValues<ArmyData>()
                 .Where(a => a.IsOwnedBy(context.ActivatedPlayer)))
             {
@@ -64,13 +70,14 @@ namespace FDG.Stages
                         continue;
                     }
 
+                    string label = GetOptionLabel(potentialUnit.GetValue(), allUnits);
                     if (context.PlayerUnactivatedUnits.Contains(potentialUnit))
                     {
-                        validOptions.Add(new SelectionRequest<UnitData>.ValidOption(potentialUnit, potentialUnit.GetValue().Name));
+                        validOptions.Add(new SelectionRequest<UnitData>.ValidOption(potentialUnit, label));
                     }
                     else
                     {
-                        invalidOptions.Add(new SelectionRequest<UnitData>.InvalidOption(potentialUnit, potentialUnit.GetValue().Name,
+                        invalidOptions.Add(new SelectionRequest<UnitData>.InvalidOption(potentialUnit, label,
                             GetUnavailableReason(potentialUnit.GetValue())));
                     }
                 }
@@ -151,6 +158,19 @@ namespace FDG.Stages
                 .SelectMany(army => army.UnitBindings)
                 .Where(unit => unit.GetValue().GetIsAlive())
                 .Any(unit => unit.GetValue().Tokens.HasToken(TokenType.DelayedActionUsed));
+        }
+
+        // #315: an embarked unit's option label names its transport, on valid AND invalid options (an
+        // embarked unit that already activated still needs disambiguating from its twin). Defensive on a
+        // dangling transport id — spillout disembarks occupants on destruction, but a stale token must
+        // degrade to the bare name, not crash the activation menu.
+        private static string GetOptionLabel(UnitData unit, IReadOnlyList<UnitData> allUnits)
+        {
+            UnitID? transportId = TransportUtilities.GetTransportId(unit);
+            if (transportId == null) return unit.Name;
+
+            UnitData? transport = allUnits.FirstOrDefault(u => u.ID == transportId.Value);
+            return transport == null ? unit.Name : $"{unit.Name} (in {transport.Name})";
         }
 
         // Why a unit can't be activated right now. An unplaced Ambush reserve (off-table, deferred to a

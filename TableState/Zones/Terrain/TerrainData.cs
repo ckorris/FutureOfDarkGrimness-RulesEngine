@@ -4,6 +4,12 @@ namespace FDG
 {
     public interface ITerrain : IZone
     {
+        /// <summary>
+        /// Optional display name carried over from the palette entry the piece was placed from
+        /// ("Boulder", "Shipping container"). Empty for unnamed pieces; purely cosmetic.
+        /// </summary>
+        string Name { get; }
+
         ETerrainType TerrainType { get; }
 
         IZone Shape { get; }
@@ -21,14 +27,18 @@ namespace FDG
 
     public class TerrainData : ITerrain
     {
+        public string Name { get; }
+
         public ETerrainType TerrainType { get; }
 
         public IZone Shape { get; }
 
         public float HeightInches { get; }
 
+        //name is optional and last so pre-existing positional call sites (and saves/wire payloads
+        //written before the field existed) keep working unchanged.
         [JsonConstructor]
-        public TerrainData(ETerrainType terrainType, IZone shape, float heightInches)
+        public TerrainData(ETerrainType terrainType, IZone shape, float heightInches, string? name = null)
         {
             if (shape == null)
             {
@@ -38,6 +48,7 @@ namespace FDG
             TerrainType = terrainType;
             Shape = shape;
             HeightInches = heightInches;
+            Name = name ?? string.Empty;
         }
 
         public TerrainData(ETerrainType terrainType, IZone shape) : this(terrainType, shape, 0f) { }

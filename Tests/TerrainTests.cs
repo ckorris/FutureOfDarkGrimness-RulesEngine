@@ -259,7 +259,8 @@ namespace FDG.Tests
             TerrainData rectTerrain = new TerrainData(
                 ETerrainType.Blocking | ETerrainType.Impassible,
                 new RectangularZone(0, 10, 0, 10),
-                heightInches: 4f);
+                heightInches: 4f,
+                name: "Boulder");
 
             TerrainData circleTerrain = new TerrainData(
                 ETerrainType.Cover | ETerrainType.Difficult,
@@ -274,14 +275,38 @@ namespace FDG.Tests
             Assert.That(rectRoundTrip, Is.Not.Null);
             Assert.That(rectRoundTrip!.TerrainType, Is.EqualTo(rectTerrain.TerrainType));
             Assert.That(rectRoundTrip.HeightInches, Is.EqualTo(4f));
+            Assert.That(rectRoundTrip.Name, Is.EqualTo("Boulder"));
             Assert.That(rectRoundTrip.Shape, Is.TypeOf<RectangularZone>());
             Assert.That(rectRoundTrip.IsPointWithinZone(new Float2(5, 5)), Is.True);
 
             Assert.That(circleRoundTrip, Is.Not.Null);
             Assert.That(circleRoundTrip!.TerrainType, Is.EqualTo(circleTerrain.TerrainType));
+            Assert.That(circleRoundTrip.Name, Is.Empty);
             Assert.That(circleRoundTrip.Shape, Is.TypeOf<CircularZone>());
             Assert.That(circleRoundTrip.IsPointWithinZone(new Float2(20, 20)), Is.True);
             Assert.That(circleRoundTrip.IsPointWithinZone(new Float2(30, 20)), Is.False);
+        }
+
+        [Test]
+        public void TerrainData_LegacyJsonWithoutName_DeserializesToEmptyName()
+        {
+            //Saves and wire payloads written before the name field existed have no "name" property;
+            //they must keep loading with an empty (not null) name.
+            JsonSerializerSettings settings = new JsonSerializerSettings
+            {
+                TypeNameHandling = TypeNameHandling.Auto,
+            };
+
+            string legacyJson =
+                "{\"TerrainType\":\"Cover\",\"Shape\":{\"$type\":\"FDG.RectangularZone, FutureOfDarkGrimness\"," +
+                "\"Left\":0.0,\"Right\":10.0,\"Bottom\":0.0,\"Top\":10.0},\"HeightInches\":2.0}";
+
+            TerrainData? loaded = JsonConvert.DeserializeObject<TerrainData>(legacyJson, settings);
+
+            Assert.That(loaded, Is.Not.Null);
+            Assert.That(loaded!.Name, Is.Empty);
+            Assert.That(loaded.TerrainType, Is.EqualTo(ETerrainType.Cover));
+            Assert.That(loaded.HeightInches, Is.EqualTo(2f));
         }
     }
 }

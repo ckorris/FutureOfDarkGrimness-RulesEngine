@@ -193,6 +193,7 @@ namespace FDG.Tests
         {
             private readonly bool _closed;
             public DoorTerrain(bool closed) { _closed = closed; }
+            public string Name => string.Empty;
             public ETerrainType TerrainType => ETerrainType.Blocking;
             public IZone Shape => new RectangularZone(8, 12, 3, 7);
             public float HeightInches => 4f;

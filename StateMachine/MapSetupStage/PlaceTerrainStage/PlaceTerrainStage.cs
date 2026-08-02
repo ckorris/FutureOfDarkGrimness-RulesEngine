@@ -108,45 +108,128 @@ namespace FDG.Stages
             {
                 if (entry.Shape == null) continue;
                 context.GameContext.GameDataStore.Create(
-                    new TerrainData(entry.TerrainType, entry.Shape, entry.HeightInches));
+                    new TerrainData(entry.TerrainType, entry.Shape, entry.HeightInches, entry.Name));
             }
         }
 
         /// <summary> Probability that a default-layout piece sitting in a deployment zone is actually placed. </summary>
         private const float DeploymentZonePlacementChance = 0.4f;
 
+        /// <summary>Max distance (inches) a midfield auto-layout piece may drift from its authored center.</summary>
+        public const float MidfieldJitterMaxInches = 10f;
+
+        /// <summary>Max rotation wobble (degrees) applied to a jittered midfield auto-layout piece.</summary>
+        public const float MidfieldJitterMaxRotationDegrees = 15f;
+
         /// <summary>
-        /// Like <see cref="PlacePiecesVerbatim"/>, but a piece whose centre falls inside a deployment zone is
-        /// only placed <see cref="DeploymentZonePlacementChance"/> of the time — so there's still some terrain
-        /// in the deployment zones, just less often, and the layout varies per game. Pieces outside the
-        /// deployment zones are always placed. Only the built-in auto layout is thinned this way; a user's
-        /// LoadFromFile layout is placed verbatim.
+        /// Jitter attempts per midfield piece. The offset shrinks toward zero across attempts, so the
+        /// final attempt is the authored pose itself - collision resolution degrades gracefully toward
+        /// the known-good layout instead of giving up at full drift.
+        /// </summary>
+        private const int MidfieldJitterAttempts = 12;
+
+        /// <summary>
+        /// Like <see cref="PlacePiecesVerbatim"/>, but with two sources of seeded variety: a piece whose
+        /// centre falls inside a deployment zone is only placed <see cref="DeploymentZonePlacementChance"/>
+        /// of the time (so there's still some terrain in the deployment zones, just less often), and every
+        /// midfield piece is jittered around its authored pose via <see cref="TryJitterMidfieldPiece"/>.
+        /// Deployment-zone pieces are settled first so midfield jitter validates against the whole board.
+        /// Only the built-in auto layout gets either treatment; a user's LoadFromFile layout is placed verbatim.
         /// </summary>
         private static void PlaceAutoLayout(IMapSetupContext context, TerrainLayoutFile layout)
         {
-            // #198: the thinning draws from the game's seeded source. This was `new System.Random()` -
+            // #198: all randomness here draws from the game's seeded source. This was `new System.Random()` -
             // the last unseeded RNG on the game path (missed by #193's audit because the fully-qualified
             // spelling dodged its grep) - so the auto layout differed every run regardless of the seed,
             // and every seeded game diverged from the terrain onward.
             System.Random rng = context.GameContext.Rng;
+            float tableW = GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES;
             float tableH = GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES;
             float deploy = GameWideConstants.DEPLOYMENT_DISTANCE_INCHES;
 
+            var placed = new List<ITerrain>();
+            void Create(TerrainPieceEntry entry, IZone shape)
+            {
+                var data = new TerrainData(entry.TerrainType, shape, entry.HeightInches, entry.Name);
+                placed.Add(data);
+                context.GameContext.GameDataStore.Create(data);
+            }
+
+            var midfield = new List<TerrainPieceEntry>();
             foreach (TerrainPieceEntry entry in layout.Pieces)
             {
                 if (entry.Shape == null) continue;
 
-                if (IsInDeploymentZone(entry.Shape, tableH, deploy)
-                    && rng.NextDouble() > DeploymentZonePlacementChance)
+                if (!IsInDeploymentZone(entry.Shape, tableH, deploy))
+                {
+                    midfield.Add(entry);
+                    continue;
+                }
+
+                if (rng.NextDouble() > DeploymentZonePlacementChance)
                 {
                     context.Log($"  Auto layout: skipping a deployment-zone piece ({entry.TerrainType}).");
                     continue;
                 }
 
-                context.GameContext.GameDataStore.Create(
-                    new TerrainData(entry.TerrainType, entry.Shape, entry.HeightInches));
+                Create(entry, entry.Shape);
+            }
+
+            foreach (TerrainPieceEntry entry in midfield)
+            {
+                IZone? pose = TryJitterMidfieldPiece(entry.Shape, rng, tableW, tableH, deploy, placed);
+                if (pose == null)
+                {
+                    // Only reachable when an earlier piece jittered onto this piece's authored spot.
+                    context.Log($"  Auto layout: no clear spot for a midfield piece ({entry.TerrainType}); skipping it.");
+                    continue;
+                }
+
+                Create(entry, pose);
             }
         }
+
+        /// <summary>
+        /// Picks a seeded random pose for a midfield auto-layout piece: up to
+        /// <see cref="MidfieldJitterMaxInches"/> of drift per axis and
+        /// <see cref="MidfieldJitterMaxRotationDegrees"/> of rotation wobble around the authored pose.
+        /// Collisions resolve by shrinking the jitter toward the authored pose over
+        /// <see cref="MidfieldJitterAttempts"/> attempts; a candidate must sit fully on the table, overlap
+        /// nothing already placed, and keep its center out of the deployment bands (drifting in would undo
+        /// the band thinning). Returns null only when even the authored pose is blocked.
+        /// </summary>
+        public static IZone? TryJitterMidfieldPiece(
+            IZone shape, System.Random rng, float tableW, float tableH, float deploy,
+            IReadOnlyList<ITerrain> placed)
+        {
+            Float2 origin = TerrainTemplateUtilities.GetCenter(shape);
+
+            for (int attempt = 0; attempt <= MidfieldJitterAttempts; attempt++)
+            {
+                float scale = 1f - attempt / (float)MidfieldJitterAttempts;
+                float dx = NextSigned(rng) * MidfieldJitterMaxInches * scale;
+                float dz = NextSigned(rng) * MidfieldJitterMaxInches * scale;
+                // Rotating a lone circle about its own center is a no-op; skip the wrapper.
+                float wobble = shape is CircularZone
+                    ? 0f
+                    : NextSigned(rng) * MidfieldJitterMaxRotationDegrees * scale;
+
+                float cz = origin.Y + dz;
+                if (cz < deploy || cz > tableH - deploy) continue;
+
+                IZone candidate = TerrainTemplateUtilities.TranslateToCenter(
+                    TerrainTemplateUtilities.Rotate(shape, wobble),
+                    new Float2(origin.X + dx, cz));
+
+                if (TerrainPlacementValidator.Check(candidate, tableW, tableH, placed)
+                    == TerrainPlacementValidity.Valid)
+                    return candidate;
+            }
+
+            return null;
+        }
+
+        private static float NextSigned(System.Random rng) => (float)(rng.NextDouble() * 2.0 - 1.0);
 
         // A piece counts as "in a deployment zone" when its representative centre Z lands within the deploy
         // band of the top (z < deploy) or bottom (z > tableH - deploy) table edge.
@@ -222,7 +305,7 @@ namespace FDG.Stages
                 IZone placedShape = TerrainTemplateUtilities.TranslateToCenter(rotated, result.Center);
 
                 context.GameContext.GameDataStore.Create(
-                    new TerrainData(template.TerrainType, placedShape, template.HeightInches));
+                    new TerrainData(template.TerrainType, placedShape, template.HeightInches, template.Name));
 
                 piecesPlaced++;
                 cursor.TryAdvance(_ => true, _ => true, out _, out _);
@@ -345,7 +428,7 @@ namespace FDG.Stages
                 IZone placedShape = TerrainTemplateUtilities.TranslateToCenter(rotated, result.Center);
 
                 context.GameContext.GameDataStore.Create(
-                    new TerrainData(template.TerrainType, placedShape, template.HeightInches));
+                    new TerrainData(template.TerrainType, placedShape, template.HeightInches, template.Name));
 
                 turn.RecordPlacement(cost);
                 context.Log($"  {name} placed {template.Name} for {TerrainPointsBudget.Pts(cost)} " +

@@ -215,7 +215,7 @@ namespace FDG.ArmyBuilding
             IEnumerable<UpgradeChoice> ordered = bu.Choices
                 .OrderBy(c => Math.Max(0, roster.Sections.FindIndex(s => s.Id == c.SectionId)));
 
-            // #318: Replace applications the loadout couldn't afford yet, retried after every section has
+            // #323: Replace applications the loadout couldn't afford yet, retried after every section has
             // had its pass — book order alone can't satisfy a section whose targets a LATER one grants.
             List<(UpgradeSection Section, UpgradeOption Option, int Remaining)> starved = new();
 
@@ -228,7 +228,7 @@ namespace FDG.ArmyBuilding
 
                 int applications = Applications(section, choice, unit, items);
 
-                // #319: an "all" swap authored ABOVE a specialist swap on the same weapon used to eat the
+                // #324: an "all" swap authored ABOVE a specialist swap on the same weapon used to eat the
                 // whole pool before the specialist got a turn, silently deleting it (5 Pulse Rifles ->
                 // "replace all with Pulse Carbines" + "replace one with a Plasma Rifle" produced five
                 // carbines and no plasma, unpaid). "All" means "every one still on the model", so it yields
@@ -236,7 +236,7 @@ namespace FDG.ArmyBuilding
                 applications -= ReservedForLaterSwaps(roster, bu, choice, section);
                 if (applications < 0) applications = 0;
 
-                // #318: what the choice asked for minus what the loadout could afford. Parked, not lost —
+                // #323: what the choice asked for minus what the loadout could afford. Parked, not lost —
                 // a later section may still buy the missing target (the Titan's "Replace any Heavy Hammer"
                 // is authored ABOVE the "Replace Titan Shield" that grants the second hammer).
                 if (section.Variant == UpgradeVariant.Replace)
@@ -329,7 +329,7 @@ namespace FDG.ArmyBuilding
         }
 
         /// <summary>
-        /// #319 — copies a single-target "replace all" must leave behind for swaps authored BELOW it that
+        /// #324 — copies a single-target "replace all" must leave behind for swaps authored BELOW it that
         /// compete for the same weapon and have already been bought. Zero for anything else, so the ordering
         /// of every other section is untouched.
         /// <para>Only rivals authored LATER are counted: an earlier one has already taken its copies out of
@@ -374,7 +374,7 @@ namespace FDG.ArmyBuilding
             return reserved;
         }
 
-        /// <summary>#319 — whether a counted (One/Any) Replace draws on the same weapon an all-swap targets,
+        /// <summary>#324 — whether a counted (One/Any) Replace draws on the same weapon an all-swap targets,
         /// so the all-swap must leave it a copy. Shared with the Forge, which has to offer the specialist
         /// swap the pool the compiler will actually honour.</summary>
         public static bool CompetesForTarget(UpgradeSection countedSwap, string allSwapTarget) =>
@@ -382,7 +382,7 @@ namespace FDG.ArmyBuilding
             && countedSwap.Affects != UpgradeAffects.All
             && countedSwap.Targets.Any(t => TargetMatches(ParseTarget(t).Name, allSwapTarget));
 
-        /// <summary>#319 — the single target a "replace all" competes over, or null when the section is not a
+        /// <summary>#324 — the single target a "replace all" competes over, or null when the section is not a
         /// single-target all-swap (and so never yields).</summary>
         public static string? SingleAllSwapTarget(UpgradeSection section) =>
             section.Variant == UpgradeVariant.Replace && section.Affects == UpgradeAffects.All
@@ -391,7 +391,7 @@ namespace FDG.ArmyBuilding
                 : null;
 
         /// <summary>
-        /// #318 — how many applications a Replace choice still OWES after its first pass. The section order
+        /// #323 — how many applications a Replace choice still OWES after its first pass. The section order
         /// a book is authored in is not a dependency order: the Titan Lords mini-titans put "Replace any Heavy
         /// Hammer" ABOVE the "Replace Titan Shield" whose option buys the second hammer, so at the hammer
         /// section's turn only one hammer exists and the second swap was clamped away silently (the Forge let
@@ -422,7 +422,7 @@ namespace FDG.ArmyBuilding
         private const int EveryMatch = int.MaxValue;
 
         /// <summary>
-        /// #318 — settles the Replace applications <see cref="OwedApplications"/> banked, to a fixpoint: each
+        /// #323 — settles the Replace applications <see cref="OwedApplications"/> banked, to a fixpoint: each
         /// pass spends whatever the loadout can now afford, and the loop stops as soon as a whole pass changes
         /// nothing (targets that never arrive simply stay unbought, as before). Every application charges its
         /// points here, so the shortfall costs what it would have cost in the first pass.
@@ -667,7 +667,7 @@ namespace FDG.ArmyBuilding
         /// <summary>
         /// OPR upgrade targets are pluralised labels ("Energy Swords") that must match a singular weapon/item
         /// name ("Energy Sword"). Case-insensitive, and either side may carry the plural.
-        /// <para>#319: "-es" plurals count too. OPR's own data targets "Bashes" against a weapon named "Bash"
+        /// <para>#324: "-es" plurals count too. OPR's own data targets "Bashes" against a weapon named "Bash"
         /// (Dwarf Guilds Guardians) - verified 2026-08-02 against the live army-books API, where `targets` is
         /// a list of display STRINGS with no id-based alternative, so their client singularises the label the
         /// same way. Stripping only a single trailing "s" left "bashe", which matched nothing: the section

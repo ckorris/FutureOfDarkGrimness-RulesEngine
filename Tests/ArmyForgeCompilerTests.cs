@@ -325,7 +325,7 @@ public class ArmyForgeCompilerTests
         Assert.That(compiled.PointCost, Is.EqualTo(125));
     }
 
-    // ── #318 starved Replace: the target arrives from a LATER section ──────────────────────────────────
+    // ── #323 starved Replace: the target arrives from a LATER section ──────────────────────────────────
 
     // The Titan Lords mini-titans in miniature: one Heavy Hammer + a Titan Shield, with "Replace any Heavy
     // Hammer" authored ABOVE the "Replace Titan Shield" whose only option buys the second hammer.
@@ -356,7 +356,7 @@ public class ArmyForgeCompilerTests
         },
     };
 
-    // #318, the reported bug (friend's War Disciples list, 2026-08-02): with the shield traded for a second
+    // #323, the reported bug (friend's War Disciples list, 2026-08-02): with the shield traded for a second
     // Heavy Hammer, BOTH hammers must be swappable. Book order alone starved the second swap - the hammer
     // section applies before the shield section that pays for the hammer - so it was silently clamped to one.
     [Test]
@@ -399,7 +399,7 @@ public class ArmyForgeCompilerTests
         Assert.That(compiled.PointCost, Is.EqualTo(325), "295 + one 30-pt swap, not two");
     }
 
-    // #318 sibling shape (Battle Brothers pathfinders): the section's target is absent from the BASE loadout
+    // #323 sibling shape (Battle Brothers pathfinders): the section's target is absent from the BASE loadout
     // entirely and only exists if a later section buys it. The swap used to vanish silently, free of charge.
     [Test]
     public void ReplaceOne_TargetAbsentUntilALaterSectionGrantsIt_StillApplies()
@@ -492,7 +492,7 @@ public class ArmyForgeCompilerTests
         Assert.That(compiled.PointCost, Is.EqualTo(130), "100 + 10 flat + 20 - the flat price is levied once");
     }
 
-    // ── #319 a "replace all" yields to the specialist swaps below it ───────────────────────────────────
+    // ── #324 a "replace all" yields to the specialist swaps below it ───────────────────────────────────
 
     // DAO Union's Tactical Grunts in miniature: 5 Pulse Rifles, "Replace all Pulse Rifles" authored ABOVE
     // "Replace one Pulse Rifle". Both bought, the all-swap used to eat all five before the specialist got a
@@ -613,7 +613,7 @@ public class ArmyForgeCompilerTests
         Assert.That(compiled.Weapons.Any(w => w.Name == "Flamer"), Is.False, "still swallowed - tracked separately");
     }
 
-    // ── #319 plural matching ───────────────────────────────────────────────────────────────────────────
+    // ── #324 plural matching ───────────────────────────────────────────────────────────────────────────
 
     [TestCase("Bash", "Bashes", true)]        // the Dwarf Guilds Guardians case - OPR's own data
     [TestCase("Energy Sword", "Energy Swords", true)]

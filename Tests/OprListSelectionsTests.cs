@@ -189,7 +189,7 @@ public class OprListSelectionsTests
         Assert.That(result.TheirTotalIsAuthoritative, Is.False);
     }
 
-    // #318, the import half of the report: a share list carrying TWO swaps out of a section whose second
+    // #323, the import half of the report: a share list carrying TWO swaps out of a section whose second
     // target another section grants ("Replace Titan Shield" -> a second Heavy Hammer) rebuilt both choices
     // correctly, but the compile behind it dropped one - so the imported list quietly lost an upgrade and
     // read light on points. Both selections must survive the round trip into the Forge session.

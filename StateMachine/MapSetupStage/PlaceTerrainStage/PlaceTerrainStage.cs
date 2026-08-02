@@ -108,7 +108,7 @@ namespace FDG.Stages
             {
                 if (entry.Shape == null) continue;
                 context.GameContext.GameDataStore.Create(
-                    new TerrainData(entry.TerrainType, entry.Shape, entry.HeightInches));
+                    new TerrainData(entry.TerrainType, entry.Shape, entry.HeightInches, entry.Name));
             }
         }
 
@@ -144,7 +144,7 @@ namespace FDG.Stages
                 }
 
                 context.GameContext.GameDataStore.Create(
-                    new TerrainData(entry.TerrainType, entry.Shape, entry.HeightInches));
+                    new TerrainData(entry.TerrainType, entry.Shape, entry.HeightInches, entry.Name));
             }
         }
 
@@ -222,7 +222,7 @@ namespace FDG.Stages
                 IZone placedShape = TerrainTemplateUtilities.TranslateToCenter(rotated, result.Center);
 
                 context.GameContext.GameDataStore.Create(
-                    new TerrainData(template.TerrainType, placedShape, template.HeightInches));
+                    new TerrainData(template.TerrainType, placedShape, template.HeightInches, template.Name));
 
                 piecesPlaced++;
                 cursor.TryAdvance(_ => true, _ => true, out _, out _);
@@ -345,7 +345,7 @@ namespace FDG.Stages
                 IZone placedShape = TerrainTemplateUtilities.TranslateToCenter(rotated, result.Center);
 
                 context.GameContext.GameDataStore.Create(
-                    new TerrainData(template.TerrainType, placedShape, template.HeightInches));
+                    new TerrainData(template.TerrainType, placedShape, template.HeightInches, template.Name));
 
                 turn.RecordPlacement(cost);
                 context.Log($"  {name} placed {template.Name} for {TerrainPointsBudget.Pts(cost)} " +

@@ -21,10 +21,28 @@ namespace FDG.Rules.Dispatch
     {
         /// <summary>True if <paramref name="weapon"/> carries the Limited rule (case-insensitive, name-based —
         /// so an army's own embedded "Limited" rule is recognised too, like the rule resolver).</summary>
-        public static bool IsLimited(IWeapon weapon) =>
-            weapon.RuleDefinitions.Any(rule =>
-                string.Equals(rule.Definition.Name, "Limited", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(rule.RequestedName, "Limited", StringComparison.OrdinalIgnoreCase));
+        public static bool IsLimited(IWeapon weapon) => LimitedRuleName(weapon) != null;
+
+        /// <summary>
+        /// #315: the DISPLAY name of the Limited rule on <paramref name="weapon"/> (its requested name, so an
+        /// alias or an argument form like <c>Limited(2)</c> reads as the army wrote it), or null when the
+        /// weapon is not Limited. The <c>CoverIgnoreSource</c> shape: a once-per-game weapon is worth naming in
+        /// the UI *before* it is fired, and the resolvers cannot ask the rule list themselves — weapon
+        /// <see cref="IWeapon.RuleDefinitions"/> is <c>[JsonIgnore]</c>, so a request that crossed the network
+        /// arrives with an empty list until it is rehydrated.
+        /// </summary>
+        public static string? LimitedRuleName(IWeapon weapon)
+        {
+            foreach (ResolvedRule rule in weapon.RuleDefinitions)
+            {
+                if (string.Equals(rule.Definition.Name, "Limited", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(rule.RequestedName, "Limited", StringComparison.OrdinalIgnoreCase))
+                {
+                    return rule.RequestedName;
+                }
+            }
+            return null;
+        }
 
         /// <summary>
         /// True if <paramref name="weapon"/> is Limited and every living model in <paramref name="unit"/> that

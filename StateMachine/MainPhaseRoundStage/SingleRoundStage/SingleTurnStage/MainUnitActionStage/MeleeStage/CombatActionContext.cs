@@ -57,6 +57,22 @@ namespace FDG.Stages
         public IReadOnlyDictionary<Weapon, int> AvailableWeapons { get; }
         public IReadOnlyDictionary<Weapon, int> AlreadyUsedWeapons { get; }
 
+        /// <summary>
+        /// #315: weapons the player chose to HOLD FIRE with this action - out of
+        /// <see cref="AvailableWeapons"/>, but deliberately NOT in <see cref="AlreadyUsedWeapons"/>, which
+        /// means "has fired" and is what decides whether the action can still be backed out of and whether
+        /// morale is owed. Declining is not firing.
+        /// </summary>
+        public IReadOnlyDictionary<Weapon, int> DeclinedWeapons { get; }
+
+        /// <summary>
+        /// #315: drop <paramref name="weaponToDecline"/> from this action's available pool without firing it
+        /// (see <see cref="DeclinedWeapons"/>). Nothing is spent: a Limited weapon keeps its once-per-game
+        /// shot, and a declined resolve-first weapon (Deadly/Takedown) stops gating the unit's other weapons.
+        /// Throws if the weapon is not available, mirroring <see cref="SetAttackWeapon"/>.
+        /// </summary>
+        public void DeclineWeapon(Weapon weaponToDecline);
+
         public IReadOnlyList<DataBinding<ModelData>> InRangeAttackingModels { get; }
 
         public IReadOnlyList<DataBinding<ModelData>> InRangeDefendingModels { get; }
@@ -169,6 +185,8 @@ namespace FDG.Stages
 
         public IReadOnlyDictionary<Weapon, int> AlreadyUsedWeapons => _alreadyUsedWeapons;
 
+        public IReadOnlyDictionary<Weapon, int> DeclinedWeapons => _declinedWeapons;
+
         public float AttackerRemainingWoundsAtStart { get; private set; }
 
         public float DefenderRemainingWoundsAtStart { get; private set; }
@@ -204,6 +222,9 @@ namespace FDG.Stages
         private ConcurrentDictionary<Weapon, int> _availableWeapons;
 
         private ConcurrentDictionary<Weapon, int> _alreadyUsedWeapons = new ConcurrentDictionary<Weapon, int>();
+
+        // #315: held-fire weapons. Kept apart from _alreadyUsedWeapons on purpose - see DeclinedWeapons.
+        private ConcurrentDictionary<Weapon, int> _declinedWeapons = new ConcurrentDictionary<Weapon, int>();
 
         private HashSet<DataReference> _attackedDefenderRefs = new HashSet<DataReference>();
 
@@ -304,6 +325,19 @@ namespace FDG.Stages
             _pendingAttacks.Enqueue((weaponToConsume, weaponCount, 0));
         }
 
+        public void DeclineWeapon(Weapon weaponToDecline)
+        {
+            if (_availableWeapons.ContainsKey(weaponToDecline) == false)
+            {
+                throw new ArgumentException($"{nameof(CombatActionContext)}.{nameof(DeclineWeapon)} called on weapon " +
+                    $"that was not found in available list: {weaponToDecline.Name}");
+            }
+
+            _availableWeapons.TryRemove(weaponToDecline, out int weaponCount);
+
+            _declinedWeapons.TryAdd(weaponToDecline, weaponCount);
+        }
+
         public void SplitPendingAttackIntoSingleShots()
         {
             // Only ever called right after SetAttackWeapon, so exactly one batch is queued; anything else
@@ -365,6 +399,7 @@ namespace FDG.Stages
             // Rebuild the melee-weapon pool from the new attacker's in-range models; nothing used yet this swing.
             _availableWeapons = WeaponPool.GroupByProfile(MeleeRangeUtilities.GetMeleeWeaponsFromModels(InRangeAttackingModels));
             _alreadyUsedWeapons.Clear();
+            _declinedWeapons.Clear();
             _pendingAttacks.Clear();
         }
 

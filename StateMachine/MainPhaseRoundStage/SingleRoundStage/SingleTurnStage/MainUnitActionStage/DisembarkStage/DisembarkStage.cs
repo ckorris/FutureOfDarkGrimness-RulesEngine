@@ -60,7 +60,7 @@ namespace FDG.Stages
             List<DataBinding<ModelData>> livingModels = unit.ModelBindings
                 .Where(binding => binding.GetValue().GetIsAlive()).ToList();
 
-            var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID, $"Disembark {unit.Name}",
+            var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID, $"Disembarking {unit.Name}",
                 zone, livingModels, allowCancel: true,
                 cancelHint: "Cancel and pick a different action. The unit stays aboard its transport.");
 

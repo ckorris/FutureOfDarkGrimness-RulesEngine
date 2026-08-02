@@ -30,6 +30,8 @@ namespace FDG.GameModel
 
         private List<PlayerID> _localPlayerIDs = new List<PlayerID>();
 
+        public IReadOnlyList<PlayerID> LocalPlayerIDs => _localPlayerIDs;
+
         public event Action OnStageResolverAssigned;
 
         private IReadableGameDataStore _gameDataStore;

@@ -11,6 +11,8 @@ namespace FDG.StageResolution.Requests
 
         public string TaskName { get; }
 
+        public string DisplayName { get; }
+
         /// <summary>
         /// The region models must be placed within — any <see cref="IBoundedZone"/> (a rectangular
         /// deployment zone, or a circular disembark zone, …). Carried by value (serialized polymorphically
@@ -83,6 +85,9 @@ namespace FDG.StageResolution.Requests
         /// </summary>
         public string CancelHint { get; }
 
+        // displayName: what the #322 "Waiting on" HUD shows the other players. taskName stays the
+        // machine-matched discriminator (the Tactician placement resolver switches on it), so game
+        // wording - including per-unit text like "Deploying Warriors" - belongs here, never there.
         [JsonConstructor]
         public PlaceObjectsRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
             IBoundedZone deploymentZone, IReadOnlyList<DataBinding<T>> modelsToPlace,
@@ -90,12 +95,13 @@ namespace FDG.StageResolution.Requests
             float maxDistanceFromStartInches = 0f,
             IReadOnlyList<PlacementDisc>? enemyKeepOutDiscs = null,
             IReadOnlyList<PlacementDisc>? enemyDistanceWaiverDiscs = null,
-            string cancelHint = "")
+            string cancelHint = "", string? displayName = null)
         {
             MaxDistanceFromStartInches = maxDistanceFromStartInches;
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
             TaskName = taskName;
+            DisplayName = displayName ?? taskName;
             DeploymentZone = deploymentZone;
             ModelsToPlace = modelsToPlace;
             MinDistanceFromEnemiesInches = minDistanceFromEnemiesInches;
@@ -112,19 +118,11 @@ namespace FDG.StageResolution.Requests
             float maxDistanceFromStartInches = 0f,
             IReadOnlyList<PlacementDisc>? enemyKeepOutDiscs = null,
             IReadOnlyList<PlacementDisc>? enemyDistanceWaiverDiscs = null,
-            string cancelHint = "")
+            string cancelHint = "", string? displayName = null)
+            : this(targetPlayerID, new TaskID(Guid.NewGuid()), taskName, deploymentZone, modelsToPlace,
+                minDistanceFromEnemiesInches, mustTouchTableEdge, allowCancel, maxDistanceFromStartInches,
+                enemyKeepOutDiscs, enemyDistanceWaiverDiscs, cancelHint, displayName)
         {
-            MaxDistanceFromStartInches = maxDistanceFromStartInches;
-            TargetPlayerID = targetPlayerID;
-            TaskName = taskName;
-            DeploymentZone = deploymentZone;
-            ModelsToPlace = modelsToPlace;
-            MinDistanceFromEnemiesInches = minDistanceFromEnemiesInches;
-            MustTouchTableEdge = mustTouchTableEdge;
-            AllowCancel = allowCancel;
-            EnemyKeepOutDiscs = enemyKeepOutDiscs ?? Array.Empty<PlacementDisc>();
-            EnemyDistanceWaiverDiscs = enemyDistanceWaiverDiscs ?? Array.Empty<PlacementDisc>();
-            CancelHint = cancelHint;
         }
 
         public Task<CancellableResult<List<PlacedObjectEntry<T>>>> Resolve(CancellableResult<List<PlacedObjectEntry<T>>> resolution)

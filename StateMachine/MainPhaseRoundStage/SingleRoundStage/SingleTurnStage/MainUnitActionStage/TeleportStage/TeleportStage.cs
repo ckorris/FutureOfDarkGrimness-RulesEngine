@@ -64,7 +64,7 @@ namespace FDG.Stages
                 0f, GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES);
 
             var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID,
-                $"Teleport {unit.Name} (up to {TELEPORT_RANGE_INCHES:0.##}\")",
+                $"Teleporting {unit.Name}",
                 wholeTable, livingModels, allowCancel: true, maxDistanceFromStartInches: TELEPORT_RANGE_INCHES,
                 cancelHint: "Cancel the teleport and pick a different action.");
 

@@ -37,7 +37,8 @@ namespace FDG.Stages
                 RectangularZone forwardZone = BuildForwardZone(context, unit, entry.Defer.PlacementRangeInches);
 
                 var request = new PlaceObjectsRequest<ModelData>(unit.PlayerID, "Place Scout Unit",
-                    forwardZone, unit.ModelBindings);
+                    forwardZone, unit.ModelBindings,
+                    displayName: $"Deploying {unit.Name} (Scout)");
 
                 // #282: commit-time overlap check, same as normal deployment.
                 List<PlacedObjectEntry<ModelData>> placements = await PlacementCommitGuard

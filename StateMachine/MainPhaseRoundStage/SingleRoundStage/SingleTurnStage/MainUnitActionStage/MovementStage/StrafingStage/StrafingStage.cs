@@ -147,7 +147,7 @@ namespace FDG.Stages
                 var question = new YesNoRequest(mover.PlayerID,
                     $"Use {offer.RuleName}: {mover.Name} attacks {crossed[0].GetValue().Name} with its " +
                     $"{weaponName} while moving through?",
-                    defaultAnswer: true);
+                    defaultAnswer: true, displayName: $"Deciding Whether to Use {offer.RuleName}");
                 bool accepted = await GameContext.PlayerRequester
                     .RequestDecision<YesNoRequest, bool>(question);
                 return accepted ? crossed[0] : null;
@@ -162,7 +162,8 @@ namespace FDG.Stages
 
             var request = new CancellableSelectionRequest<UnitData>(mover.PlayerID,
                 $"{offer.RuleName}: pick one unit moved through to attack with {weaponName}",
-                options, System.Array.Empty<CancellableSelectionRequest<UnitData>.InvalidOption>());
+                options, System.Array.Empty<CancellableSelectionRequest<UnitData>.InvalidOption>(),
+                displayName: "Choosing a Strafing Target");
 
             CancellableResult<DataBinding<UnitData>> reply = await GameContext.PlayerRequester
                 .RequestDecision<CancellableSelectionRequest<UnitData>, CancellableResult<DataBinding<UnitData>>>(

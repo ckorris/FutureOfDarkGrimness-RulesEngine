@@ -45,7 +45,8 @@ namespace FDG.Stages
 
             YesNoRequest request = new YesNoRequest(attacker.PlayerID,
                 $"{attacker.Name} has {markers:0.##} Regenerative Strength marker(s). " +
-                $"Add +{markers:0.##} attacks to {weapon.Name} this melee?");
+                $"Add +{markers:0.##} attacks to {weapon.Name} this melee?",
+                displayName: "Deciding on Regenerative Strength");
 
             bool accepted = await gameContext.PlayerRequester
                 .RequestDecision<YesNoRequest, bool>(request);

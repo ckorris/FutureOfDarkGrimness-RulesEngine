@@ -84,7 +84,7 @@ namespace FDG.StageResolution.Requests
             HinderTokensInRange = hinderTokensInRange;
             Spells = spells;
             RelaysInRange = relaysInRange ?? Array.Empty<RelayOption>();
-            TaskName = "Choose Spell";
+            TaskName = "Choosing a Spell";
         }
 
         public ChooseSpellRequest(PlayerID targetPlayerID, DataBinding<UnitData> castingUnit,

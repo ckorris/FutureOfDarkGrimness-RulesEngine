@@ -1,9 +1,11 @@
 using FDG.Data;
+using FDG.GameModel;
 using FDG.MessageBus;
 using FDG.Network.Connection;
 using FDG.Network.Messages.StageRequestMessages;
 using FDG.Players;
 using FDG.StageResolution;
+using FDG.StageResolution.Requests;
 using NUnit.Framework;
 using System;
 using System.Threading.Tasks;
@@ -199,6 +201,51 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void LocalPlayerIDs_ExposedOnBothGameFlavors()
+        {
+            // #322: the front end filters the outstanding-task HUD line to non-local players, so both
+            // game flavors must expose who is driven from this process.
+            var hostID = new PlayerID(Guid.NewGuid());
+            var hotseatID = new PlayerID(Guid.NewGuid());
+            var localGame = new FDGGame_AsLocal(GameDataStore.GameDataStoreBuilder.GetDefault(), new InProcessBus());
+            localGame.AddLocalPlayerID(hostID);
+            localGame.AddLocalPlayerID(hotseatID);
+            Assert.That(localGame.LocalPlayerIDs, Is.EquivalentTo(new[] { hostID, hotseatID }));
+
+            var clientID = new PlayerID(Guid.NewGuid());
+            var clientGame = new FDGGame_AsClient(GameDataStore.GameDataStoreBuilder.GetDefault(),
+                new InProcessBus(), clientID);
+            Assert.That(clientGame.LocalPlayerIDs, Is.EquivalentTo(new[] { clientID }));
+        }
+
+        [Test]
+        public void RequestDecision_AwaitingNotification_CarriesDisplayName()
+        {
+            // #322: the broadcast "waiting on" notification carries DisplayName - the game wording
+            // requests override for the HUD - falling back to TaskName when nothing is overridden.
+            var gameDataStore = new GameDataStore.GameDataStoreBuilder()
+                .RegisterType<PlayerSlotInfo>(1)
+                .Build();
+
+            var mock = new MockMessageBusHost();
+            var playerID = new PlayerID(Guid.NewGuid());
+            PlayerSlot slot = new PlayerSlot(0, 0, playerID, null, gameDataStore);
+            PlayerSlotManager playerSlotManager = new PlayerSlotManager(new PlayerSlot[] { slot });
+            var sender = new RequestMessageSender(mock, gameDataStore, playerSlotManager, new EmptyTextOutput());
+
+            _ = sender.RequestDecision<SelectionRequest<UnitData>, DataBinding<UnitData>>(
+                new SelectionRequest<UnitData>(playerID, "Choose Unit to Deploy",
+                    Array.Empty<SelectionRequest<UnitData>.ValidOption>(),
+                    Array.Empty<SelectionRequest<UnitData>.InvalidOption>(),
+                    allowCancel: false, displayName: "Choosing Unit to Deploy"));
+            Assert.That(mock.LastAwaitingMessage?.UserFriendlyTaskName, Is.EqualTo("Choosing Unit to Deploy"));
+
+            _ = sender.RequestDecision<TestRequest, string>(
+                new TestRequest(playerID, new TaskID(Guid.NewGuid()), "Test Task"));
+            Assert.That(mock.LastAwaitingMessage?.UserFriendlyTaskName, Is.EqualTo("Test Task"));
+        }
+
+        [Test]
         public void RequestDecision_RemotePlayer_RoutesToThatConnectionOnly()
         {
             // A player on a network connection should receive their decision request on that connection
@@ -257,6 +304,7 @@ namespace FDG.Tests
         {
             private readonly Dictionary<Type, Action<object>> _messageHandlers = new();
             public StageTaskRequestMessage? LastRequestMessage { get; private set; }
+            public StageTaskNotifyAwaitingMessage? LastAwaitingMessage { get; private set; }
 
             // How the last request message was routed (#088): the connection a single-send targeted, or
             // a flag that it went out in-process to a local player. Null until a request is sent.
@@ -297,6 +345,10 @@ namespace FDG.Tests
             public Task SendCommandToAllAsync<TMessage>(TMessage command)
             {
                 LastSentCommand = command; LastSentConnection = null; LastSentWasBroadcast = true;
+                if (command is StageTaskNotifyAwaitingMessage awaitingMessage)
+                {
+                    LastAwaitingMessage = awaitingMessage;
+                }
                 if (command is StageTaskRequestMessage requestMessage)
                 {
                     LastRequestMessage = requestMessage;

@@ -70,7 +70,8 @@ namespace FDG.Stages
 
             StringSelectionRequest request = new StringSelectionRequest(attackingPlayer,
                 $"{defender.Name} carries {available} spendable marker(s) ({bonusText} each). Remove how many?",
-                options, new List<StringSelectionRequest.InvalidOption>());
+                options, new List<StringSelectionRequest.InvalidOption>(),
+                displayName: "Spending Target Markers");
             string choice = await gameContext.PlayerRequester
                 .RequestDecision<StringSelectionRequest, string>(request);
 

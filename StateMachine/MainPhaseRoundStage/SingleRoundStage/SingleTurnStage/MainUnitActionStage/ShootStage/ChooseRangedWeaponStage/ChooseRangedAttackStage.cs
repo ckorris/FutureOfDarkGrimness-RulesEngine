@@ -87,7 +87,7 @@ namespace FDG.Stages
             // (nothing fired yet) rewinds to Choose Action, "Done shooting" (something fired) ends the
             // action here. Offering the second is what lets a player decline a weapon they would rather
             // not spend, a once-per-game Limited one above all.
-            ChooseRangedAttackRequest chooseWeaponRequest = new ChooseRangedAttackRequest(context.AttackingUnit.PlayerID(), "Choose Ranged Weapon",
+            ChooseRangedAttackRequest chooseWeaponRequest = new ChooseRangedAttackRequest(context.AttackingUnit.PlayerID(), "Choosing a Ranged Weapon",
                 context.AttackingUnit, weaponOptions,
                 allowCancel: context.AlreadyUsedWeapons.Count == 0,
                 previousTarget: context.DefendingUnit,

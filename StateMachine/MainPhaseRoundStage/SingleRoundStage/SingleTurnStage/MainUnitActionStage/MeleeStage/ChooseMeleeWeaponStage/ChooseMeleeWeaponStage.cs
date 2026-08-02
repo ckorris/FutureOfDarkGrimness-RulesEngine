@@ -198,7 +198,8 @@ namespace FDG.Stages
             StringSelectionRequest request = new StringSelectionRequest(context.AttackingUnit.PlayerID(),
                 "Choose weapon:", validOptions.Select(option => option.Label).ToList(), invalidOptions,
                 BuildRuleDescriptions(validOptions),
-                secondaryActions: secondaryActions.Count > 0 ? secondaryActions : null);
+                secondaryActions: secondaryActions.Count > 0 ? secondaryActions : null,
+                displayName: "Choosing a Melee Weapon");
 
             string chosenWeaponStatsName = await GameContext.PlayerRequester
                 .RequestDecision<StringSelectionRequest, string>(request);

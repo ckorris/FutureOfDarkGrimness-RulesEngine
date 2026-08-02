@@ -44,7 +44,7 @@ namespace FDG.StageResolution.Requests
             IsFriendly = isFriendly;
             AvailableTokens = availableTokens;
             SpellName = spellName;
-            TaskName = "Cast Assist";
+            TaskName = "Assisting a Spell Cast";
         }
 
         public CastAssistRequest(PlayerID targetPlayerID, DataBinding<UnitData> assistingUnit,

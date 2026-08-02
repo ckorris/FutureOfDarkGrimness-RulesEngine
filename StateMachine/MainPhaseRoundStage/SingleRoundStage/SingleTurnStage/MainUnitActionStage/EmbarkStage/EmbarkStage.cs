@@ -130,7 +130,8 @@ namespace FDG.Stages
 
             SelectionRequest<UnitData> request = new SelectionRequest<UnitData>(unit.PlayerID,
                 $"Embark {unit.Name} into which transport? (Cancel to go back.)",
-                options, new List<SelectionRequest<UnitData>.InvalidOption>(), allowCancel: true);
+                options, new List<SelectionRequest<UnitData>.InvalidOption>(), allowCancel: true,
+                displayName: $"Choosing a Transport for {unit.Name}");
 
             return await GameContext.PlayerRequester
                 .RequestDecision<SelectionRequest<UnitData>, DataBinding<UnitData>>(request);

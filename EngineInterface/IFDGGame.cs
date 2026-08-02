@@ -1,4 +1,5 @@
-﻿using FDG.Presentation;
+﻿using System.Collections.Generic;
+using FDG.Presentation;
 using FDG.StageResolution;
 using FDG.StageResolution.Previews;
 using FDG.TextInterface;
@@ -34,6 +35,13 @@ namespace FDG.EngineInterface
         /// renderer to draw. Same lifecycle rationale as <see cref="PreviewChannel"/>.
         /// </summary>
         IPreviewFeed PreviewFeed { get; }
+
+        /// <summary>
+        /// The players controlled from this process (all slots added before launch on a host/local
+        /// game; the single joined slot on a client). Lets the front end tell "waiting on another
+        /// player" apart from "waiting on someone at this machine" (#322 status HUD line).
+        /// </summary>
+        IReadOnlyList<PlayerID> LocalPlayerIDs { get; }
 
         void AssignInterfaces(ILogMessageUI? logMessageUI, IPlayerMessageUI? playerMessageUI,
             IStageResolverRegistry stageResolverRegistry,

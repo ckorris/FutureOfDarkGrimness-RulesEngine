@@ -54,7 +54,7 @@ namespace FDG.StageResolution.Requests
             RuleName = ruleName;
             BearerName = bearerName;
             Options = options;
-            TaskName = "Choose Effect";
+            TaskName = "Choosing an Effect";
         }
 
         public ChooseAbilityEffectRequest(PlayerID targetPlayerID, string instructions, string ruleName,

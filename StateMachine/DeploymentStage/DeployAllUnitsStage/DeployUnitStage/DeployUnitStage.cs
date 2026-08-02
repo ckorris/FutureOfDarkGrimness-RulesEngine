@@ -57,7 +57,8 @@ namespace FDG.Stages
             // committed decision, with nowhere to return to.
             var placeObjectsRequest = new PlaceObjectsRequest<ModelData>(currentPlayerID, "Place Unit Models",
                 deploymentZone.GetValue(), deployingUnit.ModelBindings, allowCancel: true,
-                cancelHint: "Go back and deploy a different unit. This one returns to the list.");
+                cancelHint: "Go back and deploy a different unit. This one returns to the list.",
+                displayName: $"Deploying {deployingUnit.Name}");
 
             // #282: request + commit-time overlap check, so a resolver-side failure can't
             // silently deploy one unit inside another.
@@ -139,7 +140,8 @@ namespace FDG.Stages
                 {
                     AbilityOffer offer = ruleOffers[0];
                     var question = new YesNoRequest(owningPlayer,
-                        $"Use {offer.RuleName} on {deployedUnit.Name}?", defaultAnswer: true);
+                        $"Use {offer.RuleName} on {deployedUnit.Name}?", defaultAnswer: true,
+                        displayName: $"Deciding Whether to Use {offer.RuleName}");
                     bool accepted = await GameContext.PlayerRequester
                         .RequestDecision<YesNoRequest, bool>(question);
 

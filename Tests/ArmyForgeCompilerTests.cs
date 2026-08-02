@@ -492,6 +492,145 @@ public class ArmyForgeCompilerTests
         Assert.That(compiled.PointCost, Is.EqualTo(130), "100 + 10 flat + 20 - the flat price is levied once");
     }
 
+    // ── #319 a "replace all" yields to the specialist swaps below it ───────────────────────────────────
+
+    // DAO Union's Tactical Grunts in miniature: 5 Pulse Rifles, "Replace all Pulse Rifles" authored ABOVE
+    // "Replace one Pulse Rifle". Both bought, the all-swap used to eat all five before the specialist got a
+    // turn - five carbines, no plasma, and the plasma's points not even charged.
+    private static RosterUnit Grunts() => new()
+    {
+        Id = "grunts", Name = "Tactical Grunts", Quality = 4, Defense = 4,
+        BaseModelCount = 5, MinModels = 5, MaxModels = 5, BasePointCost = 115,
+        Weapons = { Wpn("Pulse Rifle", 5), Wpn("CCW", 5) },
+        Sections =
+        {
+            new UpgradeSection
+            {
+                Id = "all", Label = "Replace all Pulse Rifles", Variant = UpgradeVariant.Replace,
+                Affects = UpgradeAffects.All, Targets = { "Pulse Rifles" },
+                Options = { new UpgradeOption { Id = "carbine", Cost = 25, WeaponsGained = { Wpn("Pulse Carbine") } } },
+            },
+            new UpgradeSection
+            {
+                Id = "one", Label = "Replace one Pulse Rifle", Variant = UpgradeVariant.Replace,
+                Affects = UpgradeAffects.One, Targets = { "Pulse Rifle" },
+                Options = { new UpgradeOption { Id = "plasma", Cost = 10, WeaponsGained = { Wpn("Plasma Rifle") } } },
+            },
+            new UpgradeSection
+            {
+                Id = "upto", Label = "Replace up to two Pulse Rifles", Variant = UpgradeVariant.Replace,
+                Affects = UpgradeAffects.Any, MaxApplications = 2, Targets = { "Pulse Rifle" },
+                Options = { new UpgradeOption { Id = "fusion", Cost = 20, WeaponsGained = { Wpn("Fusion Carbine") } } },
+            },
+        },
+    };
+
+    [Test]
+    public void ReplaceAll_LeavesACopyForTheSpecialistSwapBelowIt()
+    {
+        UnitFileEntry compiled = CompileOne(Grunts(),
+            new UpgradeChoice { SectionId = "one", OptionId = "plasma", Count = 1 },
+            new UpgradeChoice { SectionId = "all", OptionId = "carbine", Count = 1 });
+
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Pulse Carbine").Quantity, Is.EqualTo(4),
+            "the all-swap takes what is left, not the specialist's copy");
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Plasma Rifle").Quantity, Is.EqualTo(1));
+        Assert.That(compiled.Weapons.Any(w => w.Name == "Pulse Rifle"), Is.False);
+        Assert.That(compiled.PointCost, Is.EqualTo(150), "115 + 25 flat all-swap + 10 plasma");
+    }
+
+    [Test]
+    public void ReplaceAll_YieldsTheFullCount_ToACountedSwapBelowIt()
+    {
+        UnitFileEntry compiled = CompileOne(Grunts(),
+            new UpgradeChoice { SectionId = "upto", OptionId = "fusion", Count = 2 },
+            new UpgradeChoice { SectionId = "all", OptionId = "carbine", Count = 1 });
+
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Fusion Carbine").Quantity, Is.EqualTo(2));
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Pulse Carbine").Quantity, Is.EqualTo(3));
+        Assert.That(compiled.PointCost, Is.EqualTo(180), "115 + 25 + 20x2");
+    }
+
+    // Alone, the all-swap still takes everything - the reservation exists only for swaps actually bought.
+    [Test]
+    public void ReplaceAll_Alone_StillTakesTheWholePool()
+    {
+        UnitFileEntry compiled = CompileOne(Grunts(),
+            new UpgradeChoice { SectionId = "all", OptionId = "carbine", Count = 1 });
+
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Pulse Carbine").Quantity, Is.EqualTo(5));
+        Assert.That(compiled.PointCost, Is.EqualTo(140));
+    }
+
+    // A specialist swap authored ABOVE the all-swap already had its copy by the time the all-swap ran;
+    // reserving again would hand it a second one and leave a target unswapped.
+    [Test]
+    public void ReplaceAll_DoesNotReserveForASwapAuthoredAboveIt()
+    {
+        var unit = Grunts();
+        // Move the specialist above the all-swap.
+        UpgradeSection one = unit.Sections.Single(s => s.Id == "one");
+        unit.Sections.Remove(one);
+        unit.Sections.Insert(0, one);
+
+        UnitFileEntry compiled = CompileOne(unit,
+            new UpgradeChoice { SectionId = "one", OptionId = "plasma", Count = 1 },
+            new UpgradeChoice { SectionId = "all", OptionId = "carbine", Count = 1 });
+
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Pulse Carbine").Quantity, Is.EqualTo(4));
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Plasma Rifle").Quantity, Is.EqualTo(1));
+        Assert.That(compiled.Weapons.Any(w => w.Name == "Pulse Rifle"), Is.False, "nothing is left unswapped");
+        Assert.That(compiled.PointCost, Is.EqualTo(150));
+    }
+
+    // Owner decision 2026-08-02: a MULTI-target all-swap ("all Heavy Pistols and CCWs") keeps today's
+    // behaviour - the aggregate weapon model can't say which model's CCW survives when another model has
+    // already traded its pistol away, so those 88 corpus pairs are deferred rather than guessed at.
+    [Test]
+    public void ReplaceAll_WithTwoTargets_DoesNotYield_PendingTheAggregateModelQuestion()
+    {
+        var unit = new RosterUnit
+        {
+            Id = "u", Name = "Pathfinders", Quality = 3, Defense = 3,
+            BaseModelCount = 5, MinModels = 5, MaxModels = 5, BasePointCost = 100,
+            Weapons = { Wpn("Heavy Pistol", 5), Wpn("CCW", 5) },
+            Sections =
+            {
+                new UpgradeSection { Id = "all", Variant = UpgradeVariant.Replace, Affects = UpgradeAffects.All,
+                    Targets = { "Heavy Pistols", "CCWs" },
+                    Options = { new UpgradeOption { Id = "o1", Cost = 10, WeaponsGained = { Wpn("Heavy Rifle") } } } },
+                new UpgradeSection { Id = "one", Variant = UpgradeVariant.Replace, Affects = UpgradeAffects.One,
+                    Targets = { "Heavy Pistol" },
+                    Options = { new UpgradeOption { Id = "o2", Cost = 5, WeaponsGained = { Wpn("Flamer") } } } },
+            },
+        };
+
+        UnitFileEntry compiled = CompileOne(unit,
+            new UpgradeChoice { SectionId = "one", OptionId = "o2", Count = 1 },
+            new UpgradeChoice { SectionId = "all", OptionId = "o1", Count = 1 });
+
+        Assert.That(compiled.Weapons.Single(w => w.Name == "Heavy Rifle").Quantity, Is.EqualTo(5));
+        Assert.That(compiled.Weapons.Any(w => w.Name == "Flamer"), Is.False, "still swallowed - tracked separately");
+    }
+
+    // ── #319 plural matching ───────────────────────────────────────────────────────────────────────────
+
+    [TestCase("Bash", "Bashes", true)]        // the Dwarf Guilds Guardians case - OPR's own data
+    [TestCase("Energy Sword", "Energy Swords", true)]
+    [TestCase("CCW", "CCWS", true)]
+    [TestCase("Pulse Rifles", "Pulse Rifle", true)]
+    [TestCase("Heavy Razor Claws", "Heavy Razor Claw", true)]
+    [TestCase("Bash", "Bash", true)]
+    [TestCase("Bash", "Slash", false)]
+    [TestCase("Heavy Pistol", "Pistol", false)]  // a longer name is not a plural of a shorter one
+    [TestCase("Blade", "Blades", true)]
+    [TestCase("Axe", "Axes", true)]
+    public void TargetMatches_HandlesEnglishPlurals(string name, string target, bool expected)
+    {
+        Assert.That(ListCompiler.TargetMatches(name, target), Is.EqualTo(expected));
+        Assert.That(ListCompiler.TargetMatches(target, name), Is.EqualTo(expected), "matching is symmetric");
+    }
+
     // ── #107 combined squads (decision 8) ──────────────────────────────────────────────────────────────
 
     [Test]

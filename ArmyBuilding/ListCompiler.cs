@@ -228,6 +228,14 @@ namespace FDG.ArmyBuilding
 
                 int applications = Applications(section, choice, unit, items);
 
+                // #319: an "all" swap authored ABOVE a specialist swap on the same weapon used to eat the
+                // whole pool before the specialist got a turn, silently deleting it (5 Pulse Rifles ->
+                // "replace all with Pulse Carbines" + "replace one with a Plasma Rifle" produced five
+                // carbines and no plasma, unpaid). "All" means "every one still on the model", so it yields
+                // the copies its rivals have already been bought for and takes what remains.
+                applications -= ReservedForLaterSwaps(roster, bu, choice, section);
+                if (applications < 0) applications = 0;
+
                 // #318: what the choice asked for minus what the loadout could afford. Parked, not lost —
                 // a later section may still buy the missing target (the Titan's "Replace any Heavy Hammer"
                 // is authored ABOVE the "Replace Titan Shield" that grants the second hammer).
@@ -319,6 +327,68 @@ namespace FDG.ArmyBuilding
 
             return (unit, items);
         }
+
+        /// <summary>
+        /// #319 — copies a single-target "replace all" must leave behind for swaps authored BELOW it that
+        /// compete for the same weapon and have already been bought. Zero for anything else, so the ordering
+        /// of every other section is untouched.
+        /// <para>Only rivals authored LATER are counted: an earlier one has already taken its copies out of
+        /// the pool by the time this section applies, and reserving again would double-count it.</para>
+        /// <para>Scoped to SINGLE-target all-swaps by owner decision (2026-08-02). The 88 corpus pairs whose
+        /// all-swap names two weapons ("Replace all Heavy Pistols and CCWs") raise a separate question the
+        /// aggregate weapon model can't answer cleanly - one model trading a pistol away leaves the unit
+        /// holding more weapon copies than it has models - and are deferred to their own item. The 33
+        /// single-target pairs have no such ambiguity: what is left is simply what "all" now means.</para>
+        /// </summary>
+        private static int ReservedForLaterSwaps(RosterUnit roster, BuilderUnit bu, UpgradeChoice choice,
+            UpgradeSection section)
+        {
+            if (section.Variant != UpgradeVariant.Replace || section.Affects != UpgradeAffects.All
+                || section.Targets.Count != 1)
+                return 0;
+
+            int index = roster.Sections.FindIndex(s => s.Id == section.Id);
+            string target = ParseTarget(section.Targets[0]).Name;
+            int reserved = 0;
+
+            foreach (UpgradeChoice rival in bu.Choices)
+            {
+                if (rival == choice || rival.SectionId == section.Id) continue;
+
+                int rivalIndex = roster.Sections.FindIndex(s => s.Id == rival.SectionId);
+                if (rivalIndex <= index) continue;
+
+                UpgradeSection rivalSection = roster.Sections[rivalIndex];
+                if (!CompetesForTarget(rivalSection, target)) continue;
+
+                reserved += rivalSection.Affects switch
+                {
+                    UpgradeAffects.One => 1,
+                    UpgradeAffects.Any => rivalSection.MaxApplications > 0
+                        ? Math.Min(Math.Max(0, rival.Count), rivalSection.MaxApplications)
+                        : Math.Max(0, rival.Count),
+                    _ => 0,
+                };
+            }
+
+            return reserved;
+        }
+
+        /// <summary>#319 — whether a counted (One/Any) Replace draws on the same weapon an all-swap targets,
+        /// so the all-swap must leave it a copy. Shared with the Forge, which has to offer the specialist
+        /// swap the pool the compiler will actually honour.</summary>
+        public static bool CompetesForTarget(UpgradeSection countedSwap, string allSwapTarget) =>
+            countedSwap.Variant == UpgradeVariant.Replace
+            && countedSwap.Affects != UpgradeAffects.All
+            && countedSwap.Targets.Any(t => TargetMatches(ParseTarget(t).Name, allSwapTarget));
+
+        /// <summary>#319 — the single target a "replace all" competes over, or null when the section is not a
+        /// single-target all-swap (and so never yields).</summary>
+        public static string? SingleAllSwapTarget(UpgradeSection section) =>
+            section.Variant == UpgradeVariant.Replace && section.Affects == UpgradeAffects.All
+            && section.Targets.Count == 1
+                ? ParseTarget(section.Targets[0]).Name
+                : null;
 
         /// <summary>
         /// #318 — how many applications a Replace choice still OWES after its first pass. The section order
@@ -594,15 +664,31 @@ namespace FDG.ArmyBuilding
             return (trimmed, 1);
         }
 
-        // OPR upgrade targets are pluralised labels ("Energy Swords") that must match a singular weapon/item
-        // name ("Energy Sword"). Normalise case + a single trailing 's' so they line up.
-        public static bool TargetMatches(string name, string target) => Normalize(name) == Normalize(target);
-
-        private static string Normalize(string s)
+        /// <summary>
+        /// OPR upgrade targets are pluralised labels ("Energy Swords") that must match a singular weapon/item
+        /// name ("Energy Sword"). Case-insensitive, and either side may carry the plural.
+        /// <para>#319: "-es" plurals count too. OPR's own data targets "Bashes" against a weapon named "Bash"
+        /// (Dwarf Guilds Guardians) - verified 2026-08-02 against the live army-books API, where `targets` is
+        /// a list of display STRINGS with no id-based alternative, so their client singularises the label the
+        /// same way. Stripping only a single trailing "s" left "bashe", which matched nothing: the section
+        /// stripped the Pistols half and silently left all five Bashes on the unit, free. Corpus-wide this
+        /// rule changes exactly that one target (pinned by ForgeCrossSectionReplaceShippedDataTests).</para>
+        /// </summary>
+        public static bool TargetMatches(string name, string target)
         {
-            s = s.Trim().ToLowerInvariant();
-            return s.EndsWith("s") ? s[..^1] : s;
+            string a = name.Trim().ToLowerInvariant();
+            string b = target.Trim().ToLowerInvariant();
+            return IsSingularOf(a, b) || IsSingularOf(b, a);
         }
+
+        // Whether `plural` is `singular` itself, or `singular` + an English plural suffix. Allocation-free:
+        // this runs inside the Forge's per-frame recompile.
+        private static bool IsSingularOf(string plural, string singular) =>
+            plural == singular
+            || (plural.Length == singular.Length + 1 && plural.EndsWith("s", StringComparison.Ordinal)
+                && plural.StartsWith(singular, StringComparison.Ordinal))
+            || (plural.Length == singular.Length + 2 && plural.EndsWith("es", StringComparison.Ordinal)
+                && plural.StartsWith(singular, StringComparison.Ordinal));
 
         // Removes the target for `count` applications, consuming matching weapons first, then items. A
         // quantity-prefixed target ("2x Rapid Shard Cannon") consumes that many copies per application, so

@@ -1104,7 +1104,7 @@ namespace FDG.Tests
         }
 
         // ──────────────────────────────────────────────────────────────────────
-        // #323 pre-roll forecast: the effective hit/save numbers ride every
+        // #325 pre-roll forecast: the effective hit/save numbers ride every
         // fireable row of the request, composed by the same code as the roll
         // beats' chips, so the targeting UI can show them before the commit.
         // ──────────────────────────────────────────────────────────────────────
@@ -1275,7 +1275,7 @@ namespace FDG.Tests
                 .GetValue().UnitBindings[0];
         }
 
-        // #323: RuleDefinitions is [JsonIgnore], so a request that reached a remote player used to carry
+        // #325: RuleDefinitions is [JsonIgnore], so a request that reached a remote player used to carry
         // rule-less weapons - the shoot panel showed "18\", A2 AP0" with Crack/Rending/etc. silently gone.
         // Weapon now rehydrates from its persisted blob on deserialization, so the receiving side reads
         // the same rules the host plays, descriptions included.

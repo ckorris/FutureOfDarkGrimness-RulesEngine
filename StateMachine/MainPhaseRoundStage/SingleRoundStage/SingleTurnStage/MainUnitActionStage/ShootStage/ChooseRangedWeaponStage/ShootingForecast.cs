@@ -14,7 +14,7 @@ using static FDG.StageResolution.Requests.ChooseRangedAttackRequest;
 namespace FDG.Stages
 {
     /// <summary>
-    /// #323: the pre-roll forecast stamped onto each weapon-x-target row of a
+    /// #325: the pre-roll forecast stamped onto each weapon-x-target row of a
     /// <see cref="ChooseRangedAttackRequest"/> - the effective to-hit and save thresholds the dice
     /// will use, with the same modifier chips the roll beats show, so the targeting UI can put the
     /// numbers in front of the player BEFORE the commit. Computed engine-side because a resolver

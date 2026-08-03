@@ -57,7 +57,7 @@ namespace FDG.Stages
         /// <summary>
         /// Whether the attacking unit moved earlier this activation (sourced from the parent
         /// <c>IUnitActionContext.HasMoved</c> at creation, same value every CombatMetadata carries).
-        /// #323: exposed so ChooseRangedAttackStage's pre-roll forecast evaluates movement-gated hit
+        /// #325: exposed so ChooseRangedAttackStage's pre-roll forecast evaluates movement-gated hit
         /// rules (Indirect's -1 after moving) exactly as the roll will.
         /// </summary>
         public bool AttackerMoved { get; }

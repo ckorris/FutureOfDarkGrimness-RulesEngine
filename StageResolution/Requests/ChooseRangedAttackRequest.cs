@@ -124,7 +124,7 @@ namespace FDG.StageResolution.Requests
         /// <param name="UnselectableReason">If non-null, the target is unselectable even when it has shooters in range
         /// (e.g. the attacker has already targeted the maximum number of distinct units this shoot action). UIs should
         /// list the target as disabled and surface the reason as a tooltip.</param>
-        /// <param name="Forecast">#323. The pre-roll forecast for firing THIS weapon at THIS target -
+        /// <param name="Forecast">#325. The pre-roll forecast for firing THIS weapon at THIS target -
         /// effective thresholds plus the modifier chips behind them - computed engine-side by
         /// <c>ShootingForecast</c> (a resolver cannot compute it: weapon rules never cross the wire).
         /// Null for a row with no shooters in range (nothing to price).</param>
@@ -133,7 +133,7 @@ namespace FDG.StageResolution.Requests
             string? UnselectableReason = null, AttackForecast? Forecast = null);
 
         /// <summary>
-        /// #323: what the dice will actually ask for if this weapon fires at this target - the numbers a
+        /// #325: what the dice will actually ask for if this weapon fires at this target - the numbers a
         /// player needs to COMPARE targets before committing, shown in the targeting UI. Thresholds are
         /// display-clamped to the 2-6 band (a natural 6 always hits, a natural 1 always fails), exactly as
         /// the roll stages clamp before rolling.

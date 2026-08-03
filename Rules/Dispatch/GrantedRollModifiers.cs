@@ -17,7 +17,7 @@ namespace FDG.Rules.Dispatch
     public static class GrantedRollModifiers
     {
         /// <summary>
-        /// Read-only twin of <see cref="ConsumeNet"/> (#323 pre-roll forecast): the same net delta the
+        /// Read-only twin of <see cref="ConsumeNet"/> (#325 pre-roll forecast): the same net delta the
         /// next roll will fold in, computed WITHOUT removing the one-shot grants that roll will spend.
         /// Safe to call while building UI; the forecast stays honest because each offer pass recomputes
         /// it, so a grant spent by an earlier volley of the same action has already left the tokens.

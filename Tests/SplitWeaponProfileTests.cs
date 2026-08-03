@@ -136,7 +136,7 @@ namespace FDG.Tests
         }
 
         // A remote player's reply is a DESERIALIZED weapon: RuleDefinitions is [JsonIgnore] and travels as
-        // the persisted blob. #323 moved rehydration to the deserialization boundary itself (Weapon's
+        // the persisted blob. #325 moved rehydration to the deserialization boundary itself (Weapon's
         // [OnDeserialized]), so the reply now arrives with its rules already live - and the stage's own
         // RehydrateRules call is a harmless no-op. The profile match this test pins is unchanged.
         [Test]
@@ -152,7 +152,7 @@ namespace FDG.Tests
                     string json = JsonConvert.SerializeObject(opt.Weapon, store.GetJsonSettings());
                     Weapon overTheWire = JsonConvert.DeserializeObject<Weapon>(json, store.GetJsonSettings())!;
                     Assert.That(HasPrecise(overTheWire), Is.True,
-                        "#323: a deserialized weapon rehydrates its rules at the boundary.");
+                        "#325: a deserialized weapon rehydrates its rules at the boundary.");
                     return new Selected<RangedAttackChoice>(
                         new RangedAttackChoice(overTheWire, opt.WeaponTargetStats.Single().TargetUnit));
                 },

@@ -112,7 +112,7 @@ namespace FDG.Stages
             IDiceResults hits = pool.SubsetAtOrAbove(pooled.SuccessThreshold);
 
             await GameContext.Presenter.Present(DiceRolledBeat.From(pool, pooled.SuccessThreshold,
-                GameContext.Settings.RandomnessType, offer.RuleName, $"{hits.TotalRolls:0.##} hits",
+                GameContext.Settings.RandomnessType, offer.RuleName, RollTags.Count(hits.TotalRolls, "hit"),
                 category: ERollBeatCategory.Offense, context: unit.Name));
             GameContext.Log($"{unit.Name}'s {offer.RuleName}: rolled {pooled.DiceCount} dice at " +
                 $"{target.GetValue().Name} -> {hits.TotalRolls:0.##} hit(s) at AP({pooled.ArmorPenetration}).");

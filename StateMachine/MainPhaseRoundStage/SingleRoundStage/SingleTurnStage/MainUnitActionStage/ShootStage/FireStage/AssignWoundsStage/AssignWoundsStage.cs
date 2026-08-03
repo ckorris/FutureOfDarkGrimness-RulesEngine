@@ -74,7 +74,7 @@ namespace FDG.Stages
                     float newWounds = rerollResult.Below(saveNeeded);
                     totalWoundsDealt += newWounds;
                     await GameContext.Presenter.Present(DiceRolledBeat.From(rerollResult, saveNeeded,
-                        GameContext.Settings.RandomnessType, "Bane Re-roll", $"{newWounds:0.##} new wounds",
+                        GameContext.Settings.RandomnessType, "Bane Re-roll", RollTags.Count(newWounds, "new wound"),
                         category: ERollBeatCategory.Defense, context: $"{defender.Name} re-saves"));
                 }
             }

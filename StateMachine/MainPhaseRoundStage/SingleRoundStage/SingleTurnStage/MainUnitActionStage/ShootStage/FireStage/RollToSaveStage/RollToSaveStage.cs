@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using FDG.Presentation;
 using FDG.Presentation.Beats;
+using FDG.Utilities;
 
 namespace FDG.Stages
 {
@@ -83,7 +84,7 @@ namespace FDG.Stages
                 await GameContext.Presenter.Present(
                     DiceRolledBeat.From(bucket.BuildResults(), bucket.SaveNeeded, GameContext.Settings.RandomnessType,
                         $"{weaponName}: {bucket.ComposeExplanation()}",
-                        $"{bucket.Saved:0.##} saved, {bucket.Wounds:0.##} wounds",
+                        $"{bucket.Saved:0.##} saved, {RollTags.Count(bucket.Wounds, "wound")}",
                         category: ERollBeatCategory.Defense,
                         context: $"{defenderName} saves",
                         modifierTags: saveRollsNeeded.ThresholdTags));
@@ -146,7 +147,7 @@ namespace FDG.Stages
                     string name = perHitAp.Select(s => s.Source.RuleName).FirstOrDefault(n => !string.IsNullOrEmpty(n)) ?? "";
                     float ap = perHitAp[0].Source.Amount;
                     string apTag = string.IsNullOrEmpty(name) ? $"AP+{ap:0.##}" : $"{name} AP+{ap:0.##}";
-                    return $"{TotalHits:0.##} hits, {apTag}";
+                    return $"{RollTags.Count(TotalHits, "hit")}, {apTag}";
                 }
 
                 float baseHits = _sources.Where(s => s.Source.Kind == EHitSourceKind.BaseRolled).Sum(s => s.Count);
@@ -156,12 +157,12 @@ namespace FDG.Stages
 
                 // No modifiers - just a plain volley.
                 if (extras.Count == 0 && !hasBlast)
-                    return $"{baseHits:0.##} hits";
+                    return RollTags.Count(baseHits, "hit");
 
                 // Extras only ("2 hits +1 (Furious) = 3").
                 if (!hasBlast)
                 {
-                    StringBuilder sb = new StringBuilder($"{baseHits:0.##} hits");
+                    StringBuilder sb = new StringBuilder(RollTags.Count(baseHits, "hit"));
                     foreach ((HitGroupSource src, float count) in extras)
                         sb.Append($" +{count:0.##} ({src.RuleName})");
                     return $"{sb} = {TotalHits:0.##}";
@@ -172,7 +173,7 @@ namespace FDG.Stages
                 string multiplicand;
                 if (extras.Count == 0)
                 {
-                    multiplicand = $"{baseHits:0.##} hits";
+                    multiplicand = RollTags.Count(baseHits, "hit");
                 }
                 else
                 {

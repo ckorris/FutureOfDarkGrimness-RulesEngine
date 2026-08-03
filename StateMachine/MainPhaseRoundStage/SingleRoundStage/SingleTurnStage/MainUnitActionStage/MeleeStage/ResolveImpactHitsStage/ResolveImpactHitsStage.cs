@@ -73,7 +73,7 @@ namespace FDG.Stages
 
             await GameContext.Presenter.Present(
                 DiceRolledBeat.From(rolled, 2, GameContext.Settings.RandomnessType, "Impact Hits",
-                    $"{_impactHitCount:0.##} impact hits"));
+                    RollTags.Count(_impactHitCount, "impact hit")));
 
             if (_impactHitCount <= 0f)
             {

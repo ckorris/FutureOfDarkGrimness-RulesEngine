@@ -37,7 +37,7 @@ namespace FDG.Stages
             IDiceResults wounds = pool.SubsetAtOrAbove(successThreshold);
 
             await gameContext.Presenter.Present(DiceRolledBeat.From(pool, successThreshold,
-                gameContext.Settings.RandomnessType, label, $"{wounds.TotalRolls:0.##} wounds",
+                gameContext.Settings.RandomnessType, label, RollTags.Count(wounds.TotalRolls, "wound"),
                 category: ERollBeatCategory.Offense, context: context));
 
             return wounds;

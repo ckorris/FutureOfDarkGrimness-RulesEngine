@@ -14,5 +14,14 @@ namespace FDG.Utilities
         /// <summary>A rule name for a chip, falling back when a book aliased the name away.</summary>
         public static string NameOr(string? ruleName, string fallback) =>
             string.IsNullOrEmpty(ruleName) ? fallback : ruleName;
+
+        /// <summary>A rolled count + noun with number agreement: "1 hit", "2 hits", "0 hits".
+        /// Probabilistic counts are fractional, so the DISPLAYED 0.## rendering decides - singular
+        /// only when it reads exactly "1" (a shown "1.02" stays plural, matching what the eye sees).</summary>
+        public static string Count(float count, string noun)
+        {
+            string formatted = count.ToString("0.##");
+            return formatted == "1" ? $"{formatted} {noun}" : $"{formatted} {noun}s";
+        }
     }
 }

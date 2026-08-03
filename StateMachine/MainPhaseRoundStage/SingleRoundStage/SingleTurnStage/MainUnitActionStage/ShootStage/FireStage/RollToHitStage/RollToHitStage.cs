@@ -111,7 +111,7 @@ namespace FDG.Stages
             await GameContext.Presenter.Present(
                 DiceRolledBeat.From(rollToHitResults, hitRollNeeded, GameContext.Settings.RandomnessType,
                     HitBeatLabel(metaData.WeaponType),
-                    $"{successfulResults.TotalRolls:0.##} hits",
+                    RollTags.Count(successfulResults.TotalRolls, "hit"),
                     category: ERollBeatCategory.Offense,
                     context: HitBeatContext(attacker.Name, defender.Name, attacks),
                     modifierTags: hitRollResults.ThresholdTags,

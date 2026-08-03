@@ -152,6 +152,11 @@ namespace FDG.GameModel
             }
 
             ArmyData armyData = new ArmyData(playerID, unitBindings);
+            // #329: the file's display identity, so the in-game army list can head this player's tab
+            // ("Name - Faction - total/limit pts") on every client and on a resumed save.
+            armyData.ArmyName = armyListFile.Name;
+            armyData.Faction = armyListFile.Faction;
+            armyData.PointsLimit = armyListFile.PointsLimit;
             // #033: resolve the army's embedded spell list (any Caster(X) unit can cast these). Done here
             // where the rule resolver is live, so a damage spell's weapon rules are pre-resolved for the
             // cast stage.

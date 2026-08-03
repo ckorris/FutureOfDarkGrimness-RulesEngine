@@ -376,6 +376,9 @@ namespace FDG.Stages
             }
 
             var copy = new UnitData(unit.PlayerID, unit.Name, unit.Quality, unit.Defense, modelBindings);
+            // #329: the copy displays the same points as the unit it duplicates (it IS that unit,
+            // fielded again) - not 0, which would read as a freebie next to its twin.
+            copy.PointCost = (unit as UnitData)?.PointCost ?? 0;
             foreach (Rules.Dispatch.ResolvedRule rule in unit.RuleDefinitions)
             {
                 if (string.Equals(rule.Definition.Name, sourceRuleName ?? string.Empty,

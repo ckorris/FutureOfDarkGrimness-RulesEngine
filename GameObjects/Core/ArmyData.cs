@@ -11,6 +11,16 @@ namespace FDG
     {
         public PlayerID PlayerID { get; private set; }
 
+        // #329: the army file's display identity (list name, faction, points limit), carried into the
+        // game so the in-game army list can head each player's tab the way the printed list does.
+        // Display-only. Public settable so all three ride the store to clients and survive saves; a
+        // pre-#329 save reads back ""/0 and the display hides them. Set at army load (CreateArmy).
+        public string ArmyName { get; set; } = string.Empty;
+
+        public string Faction { get; set; } = string.Empty;
+
+        public int PointsLimit { get; set; }
+
         public List<DataBinding<UnitData>> UnitBindings;
 
         // The army-wide spell list (#033), resolved from the embedded army file at creation. [JsonIgnore]

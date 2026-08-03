@@ -23,6 +23,13 @@ namespace FDG
 
         public int Defense { get; set; }
 
+        // #329: what this unit cost in its army list, carried into the game so the in-game army list
+        // can print it the way the printed list does. Display-only — no rule reads it. A joined
+        // hero's cost folds into its host at merge (HeroJoinResolver, mirroring the Forge's combined
+        // cost); rule-spawned auxiliaries cost 0 by their spec. Public settable, so it rides the
+        // store to clients and survives saves; a pre-#329 save reads back 0 and the display hides it.
+        public int PointCost { get; set; }
+
         // #029/#150: an Aircraft's fixed flight heading is no longer a unit field — it lives on the models'
         // per-model IModel.Facing (set once toward the table centre, never turned), read back via
         // ForcedAircraftMove.EnsureHeading and gated by the AircraftHeadingSet token.
@@ -125,6 +132,7 @@ namespace FDG
             Name = unitFileEntry.Name;
             Quality = unitFileEntry.Quality;
             Defense = unitFileEntry.Defense;
+            PointCost = unitFileEntry.PointCost;
 
             ModelBindings = new List<DataBinding<ModelData>>(unitFileEntry.ModelCount);
 

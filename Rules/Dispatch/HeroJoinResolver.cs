@@ -105,6 +105,10 @@ public static class HeroJoinResolver
             host.AttachHero(new HeroAttachment(heroModelId, hero.Quality, ResolveJoinedHeroDefense(hero), heroWounds),
                 hero.ModelBindings);
 
+            // #329: the absorbed hero's cost folds into the host, mirroring the Forge's combined-cost
+            // precedent (ListCompiler), so per-unit points still sum to the army total after the merge.
+            host.PointCost += hero.PointCost;
+
             // #006 slice F: carry the hero's own unit-scoped rules onto the hero MODEL, so they fire for the
             // hero alone (Furious/Relentless/Thrust) rather than the whole host unit. The Hero marker stays
             // structural (no hooks); weapon-scoped rules already ride the hero's weapon and need no move.

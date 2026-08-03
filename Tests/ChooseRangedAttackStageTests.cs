@@ -1103,6 +1103,206 @@ namespace FDG.Tests
             Assert.That(choice.Weapon.Name, Is.EqualTo("Rocket"));
         }
 
+        // ──────────────────────────────────────────────────────────────────────
+        // #325 pre-roll forecast: the effective hit/save numbers ride every
+        // fireable row of the request, composed by the same code as the roll
+        // beats' chips, so the targeting UI can show them before the commit.
+        // ──────────────────────────────────────────────────────────────────────
+
+        [Test]
+        public async Task Enter_Forecast_RidesFireableRows_AndSkipsRowsWithNoShooters()
+        {
+            var requester = new CapturingRangedRequester { Reply = _ => new Cancelled<RangedAttackChoice>() };
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(5, 0, 0), new Position(100, 0, 0) },
+                rifleRange: 24f,
+                playerRequester: requester);
+
+            var combatCtx = new CombatActionContext(ctx, attackerBinding, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+            await stage.Enter(combatCtx);
+
+            var enemies = ctx.GameDataStore.GetAllDataBindings<ArmyData>()
+                .First(a => a.GetValue().PlayerID != attackerBinding.GetValue().PlayerID)
+                .GetValue().UnitBindings;
+            var rows = requester.Captured!.WeaponOptions.Single().WeaponTargetStats;
+            var inRange = rows.Single(t => t.TargetUnit.Reference.Equals(enemies[0].Reference));
+            var outOfRange = rows.Single(t => t.TargetUnit.Reference.Equals(enemies[1].Reference));
+
+            Assert.That(inRange.Forecast, Is.Not.Null, "a fireable row carries the numbers.");
+            Assert.That(inRange.Forecast!.HitRollNeeded, Is.EqualTo(4), "attacker Quality 4, unmodified.");
+            Assert.That(inRange.Forecast!.SaveRollNeeded, Is.EqualTo(4), "defender Defense 4, AP 0, no cover.");
+            Assert.That(inRange.Forecast!.HitTags, Is.Null, "no chips when the number is just the stat.");
+            Assert.That(inRange.Forecast!.SaveTags, Is.Null);
+            Assert.That(outOfRange.Forecast, Is.Null, "no shooters - nothing to price.");
+        }
+
+        [Test]
+        public void Compute_ApAndCover_FoldIntoTheSaveNumberAndChips()
+        {
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(5, 0, 0) },
+                rifleRange: 24f,
+                attackerWeapons: new[] { new Weapon("Cannon", 24f, 1, 2) });
+            var enemy = FirstEnemy(ctx, attackerBinding);
+            Weapon cannon = attackerBinding.GetValue().GetRangedWeapons().Single();
+
+            var covered = ShootingForecast.Compute(ctx, attackerBinding, cannon, enemy,
+                hasCover: true, ignoresCover: false, attackerMoved: false);
+            Assert.That(covered.SaveRollNeeded, Is.EqualTo(5), "Defense 4 + AP 2 - Cover 1.");
+            Assert.That(covered.SaveTags, Is.EqualTo(new[] { "Defense 4+", "AP 2", "Cover +1" }),
+                "the same chips the save beat composes.");
+
+            var coverIgnored = ShootingForecast.Compute(ctx, attackerBinding, cannon, enemy,
+                hasCover: true, ignoresCover: true, attackerMoved: false);
+            Assert.That(coverIgnored.SaveRollNeeded, Is.EqualTo(6), "a Blast-style weapon prices cover away.");
+            Assert.That(coverIgnored.SaveTags, Does.Not.Contain("Cover +1"));
+        }
+
+        [Test]
+        public void Compute_StealthDefender_RaisesTheHitThreshold_WithTheBeatChip()
+        {
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(12, 0, 0), new Position(5, 0, 0) },
+                rifleRange: 24f);
+            var enemies = ctx.GameDataStore.GetAllDataBindings<ArmyData>()
+                .First(a => a.GetValue().PlayerID != attackerBinding.GetValue().PlayerID)
+                .GetValue().UnitBindings;
+            foreach (var enemyUnit in enemies)
+            {
+                enemyUnit.GetValue().AttachRuleDefinition(new ResolvedRule("Stealth", CoreRuleCatalog.Stealth));
+            }
+            Weapon rifle = attackerBinding.GetValue().GetRangedWeapons().First();
+
+            var farShot = ShootingForecast.Compute(ctx, attackerBinding, rifle, enemies[0],
+                hasCover: false, ignoresCover: false, attackerMoved: false);
+            Assert.That(farShot.HitRollNeeded, Is.EqualTo(5), "Quality 4 shifted by Stealth's -1 beyond 9\".");
+            Assert.That(farShot.HitTags, Is.EqualTo(new[] { "Quality 4+", "Stealth -1" }));
+
+            var closeShot = ShootingForecast.Compute(ctx, attackerBinding, rifle, enemies[1],
+                hasCover: false, ignoresCover: false, attackerMoved: false);
+            Assert.That(closeShot.HitRollNeeded, Is.EqualTo(4), "within 9\" Stealth is silent.");
+            Assert.That(closeShot.HitTags, Is.Null);
+        }
+
+        [Test]
+        public void Compute_ShieldedDefender_LowersTheSaveThreshold_WithTheBeatChip()
+        {
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(5, 0, 0) },
+                rifleRange: 24f);
+            var enemy = FirstEnemy(ctx, attackerBinding);
+            enemy.GetValue().AttachRuleDefinition(new ResolvedRule("Shielded", CoreRuleCatalog.Shielded));
+            Weapon rifle = attackerBinding.GetValue().GetRangedWeapons().First();
+
+            var forecast = ShootingForecast.Compute(ctx, attackerBinding, rifle, enemy,
+                hasCover: false, ignoresCover: false, attackerMoved: false);
+
+            Assert.That(forecast.SaveRollNeeded, Is.EqualTo(3), "Defense 4 improved by Shielded's +1.");
+            Assert.That(forecast.SaveTags, Is.EqualTo(new[] { "Defense 4+", "Shielded +1" }));
+        }
+
+        [Test]
+        public void Compute_ClampsThresholds_ToTheNaturalBand()
+        {
+            // A Quality 6 attacker into a Stealth target at range would need raw 7s; the forecast
+            // clamps exactly as RollToHitStage does before rolling - a natural 6 always hits.
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var ctx = new TestGameContextWithRequester(store, new CapturingRangedRequester());
+            var shooterModel = MakeModel(store, new Position(0, 0, 0), Rifle());
+            var shooterUnit = new UnitData(new PlayerID(Guid.NewGuid()), "Militia", quality: 6, defense: 4,
+                modelBindings: new List<DataBinding<ModelData>> { shooterModel });
+            var shooterBinding = store.GetDataBinding<UnitData>(store.Create(shooterUnit));
+            var targetModel = MakeModel(store, new Position(12, 0, 0));
+            var targetUnit = new UnitData(new PlayerID(Guid.NewGuid()), "Sneaks", quality: 4, defense: 4,
+                modelBindings: new List<DataBinding<ModelData>> { targetModel });
+            targetUnit.AttachRuleDefinition(new ResolvedRule("Stealth", CoreRuleCatalog.Stealth));
+            var targetBinding = store.GetDataBinding<UnitData>(store.Create(targetUnit));
+            Weapon rifle = shooterUnit.GetRangedWeapons().Single();
+
+            var forecast = ShootingForecast.Compute(ctx, shooterBinding, rifle, targetBinding,
+                hasCover: false, ignoresCover: false, attackerMoved: false);
+
+            Assert.That(forecast.HitRollNeeded, Is.EqualTo(6), "raw 7+ clamps to the 6s-always-hit band.");
+            Assert.That(forecast.HitTags, Is.EqualTo(new[] { "Quality 6+", "Stealth -1" }),
+                "the chips keep the honest arithmetic even when the number clamps.");
+        }
+
+        // The forecast crosses the network on a remote player's turn like the rest of the request.
+        [Test]
+        public void Forecast_RoundTripsThroughJson()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var playerID = new PlayerID(Guid.NewGuid());
+            var attackerBinding = MakeUnit(store, playerID, "Attacker",
+                new[] { MakeModel(store, new Position(0, 0, 0), Rifle()) });
+            var targetBinding = MakeUnit(store, playerID, "Target",
+                new[] { MakeModel(store, new Position(5, 0, 0)) });
+
+            var forecast = new AttackForecast(5, 6,
+                HitTags: new List<string> { "Quality 4+", "Stealth -1" },
+                SaveTags: new List<string> { "Defense 4+", "AP 2" },
+                Notes: new List<string> { "Mark on target: the first attack into it claims the marked bonus at roll time." });
+            var stats = new WeaponTargetStats(targetBinding,
+                new HashSet<DataBinding<ModelData>>(), new HashSet<DataBinding<ModelData>>(),
+                Forecast: forecast);
+            var request = new ChooseRangedAttackRequest(playerID, "ChooseRanged",
+                attackerBinding, new List<WeaponOption>
+                    { new WeaponOption(Rifle(), new List<WeaponTargetStats> { stats }) });
+
+            string json = JsonConvert.SerializeObject(request, store.GetJsonSettings());
+            var back = JsonConvert.DeserializeObject<ChooseRangedAttackRequest>(json, store.GetJsonSettings());
+
+            var backForecast = back!.WeaponOptions[0].WeaponTargetStats[0].Forecast;
+            Assert.That(backForecast, Is.Not.Null);
+            Assert.That(backForecast!.HitRollNeeded, Is.EqualTo(5));
+            Assert.That(backForecast!.SaveRollNeeded, Is.EqualTo(6));
+            Assert.That(backForecast!.HitTags, Is.EqualTo(new[] { "Quality 4+", "Stealth -1" }));
+            Assert.That(backForecast!.SaveTags, Is.EqualTo(new[] { "Defense 4+", "AP 2" }));
+            Assert.That(backForecast!.Notes!.Single(), Does.Contain("Mark on target"));
+        }
+
+        private DataBinding<UnitData> FirstEnemy(TestGameContextWithRequester ctx,
+            DataBinding<UnitData> attackerBinding)
+        {
+            return ctx.GameDataStore.GetAllDataBindings<ArmyData>()
+                .First(a => a.GetValue().PlayerID != attackerBinding.GetValue().PlayerID)
+                .GetValue().UnitBindings[0];
+        }
+
+        // #325: RuleDefinitions is [JsonIgnore], so a request that reached a remote player used to carry
+        // rule-less weapons - the shoot panel showed "18\", A2 AP0" with Crack/Rending/etc. silently gone.
+        // Weapon now rehydrates from its persisted blob on deserialization, so the receiving side reads
+        // the same rules the host plays, descriptions included.
+        [Test]
+        public void RequestWeapon_RulesSurviveTheWire_ViaOnDeserializedRehydration()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var playerID = new PlayerID(Guid.NewGuid());
+            var rocket = LimitedWeapon("Rocket");
+            var attackerBinding = MakeUnit(store, playerID, "Attacker",
+                new[] { MakeModel(store, new Position(0, 0, 0), rocket) });
+
+            var request = new ChooseRangedAttackRequest(playerID, "ChooseRanged",
+                attackerBinding, new List<WeaponOption>
+                    { new WeaponOption(rocket, new List<WeaponTargetStats>()) });
+
+            string json = JsonConvert.SerializeObject(request, store.GetJsonSettings());
+            var back = JsonConvert.DeserializeObject<ChooseRangedAttackRequest>(json, store.GetJsonSettings());
+
+            var backWeapon = back!.WeaponOptions[0].Weapon;
+            Assert.That(backWeapon.RuleDefinitions, Has.Count.EqualTo(1),
+                "the persisted blob must rehydrate on arrival - no consumer calls RehydrateRules by hand.");
+            Assert.That(backWeapon.RuleDefinitions[0].RequestedName, Is.EqualTo("Limited"));
+            Assert.That(backWeapon.RuleDefinitions[0].Definition.Description, Is.Not.Null.And.Not.Empty,
+                "descriptions ride the blob, so rule tooltips work on the receiving side too.");
+        }
+
         // Reply helper: fire the first weapon that has a selectable target with shooters in range.
         private static CancellableResult<RangedAttackChoice> FireFirstFireable(ChooseRangedAttackRequest req)
         {

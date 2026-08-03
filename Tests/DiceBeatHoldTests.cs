@@ -8,12 +8,12 @@ using NUnit.Framework;
 namespace FDG.Tests
 {
     /// <summary>
-    /// #325 — a dice roll paces its FULL envelope. The gap between two rolls is the rhythm of the
-    /// exchange, not dead time, so the engine still stops for each one; the "let it linger" half of #325
+    /// #327 — a dice roll paces its FULL envelope. The gap between two rolls is the rhythm of the
+    /// exchange, not dead time, so the engine still stops for each one; the "let it linger" half of #327
     /// is the front-end's dice stack, which keeps a panel on screen for seconds after its beat ends.
     ///
     /// <para>These pins exist because holding rolls has been tried twice and reverted twice (ea91d68,
-    /// then #325 itself after playing it). If the default flips again, combat silently reads as rushed —
+    /// then #327 itself after playing it). If the default flips again, combat silently reads as rushed —
     /// a change nothing else in the suite would catch.</para>
     /// </summary>
     [TestFixture]
@@ -49,7 +49,7 @@ namespace FDG.Tests
         public async Task AMultiThresholdVolley_PacesEachRollIdentically()
         {
             // The shape ea91d68 was fighting: two save thresholds back to back. Both get the same full
-            // envelope, so neither flicks past — and #325's stack means the first panel is still on
+            // envelope, so neither flicks past — and #327's stack means the first panel is still on
             // screen underneath when the second arrives.
             var clock = new FakePresentationClock();
             var presenter = new LocalPresenter(new RecordingPresentationSink(), clock);

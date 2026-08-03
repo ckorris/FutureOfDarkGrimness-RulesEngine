@@ -10,13 +10,13 @@ using NUnit.Framework;
 namespace FDG.Tests
 {
     /// <summary>
-    /// #326 — tokens are written on the engine thread and read every frame on the render thread (the
+    /// #328 — tokens are written on the engine thread and read every frame on the render thread (the
     /// chips over each unit and their tooltips). Handing out the live list, or a lazy <c>Where</c> view
     /// over it, let the renderer enumerate mid-mutation: "Collection was modified; enumeration operation
     /// may not execute" thrown out of the draw loop, taking the window with it.
     ///
     /// <para>The first test is the real contract and is fully deterministic; the stress test is the
-    /// shape the crash actually took, and fails reliably against the pre-#326 container.</para>
+    /// shape the crash actually took, and fails reliably against the pre-#328 container.</para>
     /// </summary>
     [TestFixture]
     public class TokenContainerConcurrencyTests

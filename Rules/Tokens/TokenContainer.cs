@@ -9,7 +9,7 @@ public class TokenContainer : ITokenContainer
     [JsonProperty] private List<Token> _tokens = new();
 
     /// <summary>
-    /// #326. Tokens are written on the engine thread and READ on the render thread (the token chips over
+    /// #328. Tokens are written on the engine thread and READ on the render thread (the token chips over
     /// every unit, and their hover tooltips, are redrawn every frame). Handing a caller the live list —
     /// or a lazy <c>Where</c> view over it — let the renderer enumerate while a rule mutated, which threw
     /// "Collection was modified" out of the draw loop and killed the window. Every read below therefore
@@ -203,7 +203,7 @@ public class TokenContainer : ITokenContainer
     }
 
     /// <summary>
-    /// A SNAPSHOT of the matching tokens (#326) — never the live list and never a lazy view over it, so
+    /// A SNAPSHOT of the matching tokens (#328) — never the live list and never a lazy view over it, so
     /// the caller may enumerate at leisure (including on the render thread) while the engine keeps
     /// mutating. Callers that used to defend themselves with <c>.ToList()</c> no longer need to; that
     /// copy never actually helped, since it enumerated the live list to make the copy.
@@ -219,7 +219,7 @@ public class TokenContainer : ITokenContainer
         }
     }
 
-    /// <summary>A snapshot, for the same reason as <see cref="GetAllTokens"/> (#326).</summary>
+    /// <summary>A snapshot, for the same reason as <see cref="GetAllTokens"/> (#328).</summary>
     public IEnumerable<Token> TokensWithOwner(UnitID owningUnitID)
     {
         lock (_lock)

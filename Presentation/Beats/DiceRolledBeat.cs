@@ -111,13 +111,13 @@ namespace FDG.Presentation.Beats
         /// When true, the presenter paces only <see cref="HoldLeadIn"/> and the engine carries on while
         /// the front-end keeps the panel up. Serializes so a networked client holds the dice too.
         ///
-        /// <para><b>Rolls do NOT hold</b> (#325, owner's call 2026-08-02 after playing it). Holding them
+        /// <para><b>Rolls do NOT hold</b> (#327, owner's call 2026-08-02 after playing it). Holding them
         /// was tried twice: once before (ea91d68, a #204 follow-up), where a single front-end dice slot
-        /// meant the next roll EVICTED the last; and again in #325, where the front-end learned to stack
+        /// meant the next roll EVICTED the last; and again in #327, where the front-end learned to stack
         /// rolls so eviction was no longer the problem — but paying only the ~600ms settle made combat
         /// read as rushed. The <em>gap between rolls</em> turns out to be load-bearing: it is the beat of
         /// the exchange, not dead time. So a roll again paces its full <see cref="NominalDuration"/>, and
-        /// the lingering that #325 was after now comes from the front-end's stack, which keeps a panel on
+        /// the lingering that #327 was after now comes from the front-end's stack, which keeps a panel on
         /// screen for seconds AFTER its beat has finished. Same readability, unchanged pace.</para>
         ///
         /// <para>Passing <c>true</c> stays available for a roll that genuinely should not stop play;

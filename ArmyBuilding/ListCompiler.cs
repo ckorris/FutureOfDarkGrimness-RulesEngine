@@ -215,6 +215,10 @@ namespace FDG.ArmyBuilding
             IEnumerable<UpgradeChoice> ordered = bu.Choices
                 .OrderBy(c => Math.Max(0, roster.Sections.FindIndex(s => s.Id == c.SectionId)));
 
+            // #323: Replace applications the loadout couldn't afford yet, retried after every section has
+            // had its pass — book order alone can't satisfy a section whose targets a LATER one grants.
+            List<(UpgradeSection Section, UpgradeOption Option, int Remaining)> starved = new();
+
             foreach (UpgradeChoice choice in ordered)
             {
                 UpgradeSection section = roster.Sections.FirstOrDefault(s => s.Id == choice.SectionId)
@@ -223,6 +227,24 @@ namespace FDG.ArmyBuilding
                     ?? throw new InvalidOperationException($"Option '{choice.OptionId}' not found in section '{section.Id}'.");
 
                 int applications = Applications(section, choice, unit, items);
+
+                // #324: an "all" swap authored ABOVE a specialist swap on the same weapon used to eat the
+                // whole pool before the specialist got a turn, silently deleting it (5 Pulse Rifles ->
+                // "replace all with Pulse Carbines" + "replace one with a Plasma Rifle" produced five
+                // carbines and no plasma, unpaid). "All" means "every one still on the model", so it yields
+                // the copies its rivals have already been bought for and takes what remains.
+                applications -= ReservedForLaterSwaps(roster, bu, choice, section);
+                if (applications < 0) applications = 0;
+
+                // #323: what the choice asked for minus what the loadout could afford. Parked, not lost —
+                // a later section may still buy the missing target (the Titan's "Replace any Heavy Hammer"
+                // is authored ABOVE the "Replace Titan Shield" that grants the second hammer).
+                if (section.Variant == UpgradeVariant.Replace)
+                {
+                    int owed = OwedApplications(section, choice, applications);
+                    if (owed > 0) starved.Add((section, option, owed));
+                }
+
                 if (applications <= 0) continue;
 
                 // #218: a "Replace all X" price is flat for the whole unit - it is NOT multiplied by the
@@ -256,6 +278,8 @@ namespace FDG.ArmyBuilding
                         break;
                 }
             }
+
+            ApplyStarvedReplaces(unit, items, starved);
 
             // #197 Sergeant: champion marks attach AFTER every section has applied - a later "Replace all
             // Hand Weapons" must not eat the mark; the champion attacks with whatever the unit ends up
@@ -302,6 +326,139 @@ namespace FDG.ArmyBuilding
                 weapon.EffectSet ??= WeaponEffectAssigner.Match(book.Faction, weapon);
 
             return (unit, items);
+        }
+
+        /// <summary>
+        /// #324 — copies a single-target "replace all" must leave behind for swaps authored BELOW it that
+        /// compete for the same weapon and have already been bought. Zero for anything else, so the ordering
+        /// of every other section is untouched.
+        /// <para>Only rivals authored LATER are counted: an earlier one has already taken its copies out of
+        /// the pool by the time this section applies, and reserving again would double-count it.</para>
+        /// <para>Scoped to SINGLE-target all-swaps by owner decision (2026-08-02). The 88 corpus pairs whose
+        /// all-swap names two weapons ("Replace all Heavy Pistols and CCWs") raise a separate question the
+        /// aggregate weapon model can't answer cleanly - one model trading a pistol away leaves the unit
+        /// holding more weapon copies than it has models - and are deferred to their own item. The 33
+        /// single-target pairs have no such ambiguity: what is left is simply what "all" now means.</para>
+        /// </summary>
+        private static int ReservedForLaterSwaps(RosterUnit roster, BuilderUnit bu, UpgradeChoice choice,
+            UpgradeSection section)
+        {
+            if (section.Variant != UpgradeVariant.Replace || section.Affects != UpgradeAffects.All
+                || section.Targets.Count != 1)
+                return 0;
+
+            int index = roster.Sections.FindIndex(s => s.Id == section.Id);
+            string target = ParseTarget(section.Targets[0]).Name;
+            int reserved = 0;
+
+            foreach (UpgradeChoice rival in bu.Choices)
+            {
+                if (rival == choice || rival.SectionId == section.Id) continue;
+
+                int rivalIndex = roster.Sections.FindIndex(s => s.Id == rival.SectionId);
+                if (rivalIndex <= index) continue;
+
+                UpgradeSection rivalSection = roster.Sections[rivalIndex];
+                if (!CompetesForTarget(rivalSection, target)) continue;
+
+                reserved += rivalSection.Affects switch
+                {
+                    UpgradeAffects.One => 1,
+                    UpgradeAffects.Any => rivalSection.MaxApplications > 0
+                        ? Math.Min(Math.Max(0, rival.Count), rivalSection.MaxApplications)
+                        : Math.Max(0, rival.Count),
+                    _ => 0,
+                };
+            }
+
+            return reserved;
+        }
+
+        /// <summary>#324 — whether a counted (One/Any) Replace draws on the same weapon an all-swap targets,
+        /// so the all-swap must leave it a copy. Shared with the Forge, which has to offer the specialist
+        /// swap the pool the compiler will actually honour.</summary>
+        public static bool CompetesForTarget(UpgradeSection countedSwap, string allSwapTarget) =>
+            countedSwap.Variant == UpgradeVariant.Replace
+            && countedSwap.Affects != UpgradeAffects.All
+            && countedSwap.Targets.Any(t => TargetMatches(ParseTarget(t).Name, allSwapTarget));
+
+        /// <summary>#324 — the single target a "replace all" competes over, or null when the section is not a
+        /// single-target all-swap (and so never yields).</summary>
+        public static string? SingleAllSwapTarget(UpgradeSection section) =>
+            section.Variant == UpgradeVariant.Replace && section.Affects == UpgradeAffects.All
+            && section.Targets.Count == 1
+                ? ParseTarget(section.Targets[0]).Name
+                : null;
+
+        /// <summary>
+        /// #323 — how many applications a Replace choice still OWES after its first pass. The section order
+        /// a book is authored in is not a dependency order: the Titan Lords mini-titans put "Replace any Heavy
+        /// Hammer" ABOVE the "Replace Titan Shield" whose option buys the second hammer, so at the hammer
+        /// section's turn only one hammer exists and the second swap was clamped away silently (the Forge let
+        /// you set the count to 2, and an OPR import that carried two swaps lost one). What the choice asked
+        /// for is banked here and retried once every section has had its pass.
+        /// <para>All is the exception: "every match" is by definition whatever the unit holds when the section
+        /// applies, so it owes nothing once it has swapped at least one target. It parks only when it found
+        /// NO target at all (<see cref="EveryMatch"/> — take the whole pool whenever one turns up), which no
+        /// bundled book exercises today.</para>
+        /// </summary>
+        private static int OwedApplications(UpgradeSection section, UpgradeChoice choice, int applied)
+        {
+            int chosen = Math.Max(0, choice.Count);
+            if (chosen <= 0) return 0;
+
+            return section.Affects switch
+            {
+                UpgradeAffects.All => applied > 0 ? 0 : EveryMatch,
+                UpgradeAffects.Any => (section.MaxApplications > 0
+                    ? Math.Min(chosen, section.MaxApplications)
+                    : chosen) - applied,
+                _ => 1 - applied,
+            };
+        }
+
+        /// <summary>Stands in for "as many as the unit turns out to have" in a parked All (see
+        /// <see cref="OwedApplications"/>); the retry clamps it to the live pool.</summary>
+        private const int EveryMatch = int.MaxValue;
+
+        /// <summary>
+        /// #323 — settles the Replace applications <see cref="OwedApplications"/> banked, to a fixpoint: each
+        /// pass spends whatever the loadout can now afford, and the loop stops as soon as a whole pass changes
+        /// nothing (targets that never arrive simply stay unbought, as before). Every application charges its
+        /// points here, so the shortfall costs what it would have cost in the first pass.
+        /// </summary>
+        private static void ApplyStarvedReplaces(UnitFileEntry unit, List<ItemEntry> items,
+            List<(UpgradeSection Section, UpgradeOption Option, int Remaining)> starved)
+        {
+            bool progressed = starved.Count > 0;
+            while (progressed)
+            {
+                progressed = false;
+                for (int i = 0; i < starved.Count; i++)
+                {
+                    (UpgradeSection section, UpgradeOption option, int remaining) = starved[i];
+                    if (remaining <= 0) continue;
+
+                    // All strips every match of EACH target (max), the counted forms consume one of each per
+                    // application (min) — the same split Applications() makes.
+                    bool isAll = section.Affects == UpgradeAffects.All;
+                    int pool = isAll
+                        ? (section.Targets.Count == 0 ? 0 : section.Targets.Max(t => MatchedCount(unit.Weapons, items, t)))
+                        : AvailableApplications(unit.Weapons, items, section.Targets);
+
+                    int applications = Math.Min(remaining, pool);
+                    if (applications <= 0) continue;
+
+                    unit.PointCost += option.Cost * (isAll ? 1 : applications);
+                    foreach (string target in section.Targets)
+                        RemoveTarget(unit.Weapons, items, target, applications);
+                    AddGains(unit, items, option, applications);
+
+                    // An All that has now swapped is spent; a counted one keeps whatever it still owes.
+                    starved[i] = (section, option, isAll ? 0 : remaining - applications);
+                    progressed = true;
+                }
+            }
         }
 
         /// <summary>Rule names this book resolves to a <see cref="ERuleScope.Weapon"/>-scoped definition.
@@ -507,15 +664,31 @@ namespace FDG.ArmyBuilding
             return (trimmed, 1);
         }
 
-        // OPR upgrade targets are pluralised labels ("Energy Swords") that must match a singular weapon/item
-        // name ("Energy Sword"). Normalise case + a single trailing 's' so they line up.
-        public static bool TargetMatches(string name, string target) => Normalize(name) == Normalize(target);
-
-        private static string Normalize(string s)
+        /// <summary>
+        /// OPR upgrade targets are pluralised labels ("Energy Swords") that must match a singular weapon/item
+        /// name ("Energy Sword"). Case-insensitive, and either side may carry the plural.
+        /// <para>#324: "-es" plurals count too. OPR's own data targets "Bashes" against a weapon named "Bash"
+        /// (Dwarf Guilds Guardians) - verified 2026-08-02 against the live army-books API, where `targets` is
+        /// a list of display STRINGS with no id-based alternative, so their client singularises the label the
+        /// same way. Stripping only a single trailing "s" left "bashe", which matched nothing: the section
+        /// stripped the Pistols half and silently left all five Bashes on the unit, free. Corpus-wide this
+        /// rule changes exactly that one target (pinned by ForgeCrossSectionReplaceShippedDataTests).</para>
+        /// </summary>
+        public static bool TargetMatches(string name, string target)
         {
-            s = s.Trim().ToLowerInvariant();
-            return s.EndsWith("s") ? s[..^1] : s;
+            string a = name.Trim().ToLowerInvariant();
+            string b = target.Trim().ToLowerInvariant();
+            return IsSingularOf(a, b) || IsSingularOf(b, a);
         }
+
+        // Whether `plural` is `singular` itself, or `singular` + an English plural suffix. Allocation-free:
+        // this runs inside the Forge's per-frame recompile.
+        private static bool IsSingularOf(string plural, string singular) =>
+            plural == singular
+            || (plural.Length == singular.Length + 1 && plural.EndsWith("s", StringComparison.Ordinal)
+                && plural.StartsWith(singular, StringComparison.Ordinal))
+            || (plural.Length == singular.Length + 2 && plural.EndsWith("es", StringComparison.Ordinal)
+                && plural.StartsWith(singular, StringComparison.Ordinal));
 
         // Removes the target for `count` applications, consuming matching weapons first, then items. A
         // quantity-prefixed target ("2x Rapid Shard Cannon") consumes that many copies per application, so

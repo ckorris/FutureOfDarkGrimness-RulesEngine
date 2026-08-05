@@ -173,6 +173,30 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void Route_DifficultBandOnTheLane_PricesTheDetour_UnlessTheUnitIgnoresIt()
+        {
+            // #281 follow-up: the score gradients measure goals through RouteMetrics.Route, so they
+            // must price the same mud detour the mover now walks - a gradient still pricing the
+            // straight lane would understate a muddy marker's real distance and disagree with the
+            // path the unit actually takes. A Strider unit's lane through the band is real, so its
+            // gradient must keep the straight measure (and never build a grid for a mud-only lane).
+            var terrain = new List<ITerrain> { MakeTerrain(ETerrainType.Difficult, 20f, 28f, 18f, 26f) };
+            var start = new Position(24f, 8f);
+            var goal = new Position(24f, 36f);
+
+            List<Position> plain = RouteMetrics.Route(terrain,
+                () => TerrainGrid.Build(terrain, 0.5f), start, goal, 0.5f);
+            List<Position> strider = RouteMetrics.Route(terrain,
+                () => TerrainGrid.Build(terrain, 0.5f, ignoreDifficultTerrain: true), start, goal, 0.5f,
+                ignoresDifficultTerrain: true);
+
+            Assert.That(RouteMetrics.Length(plain), Is.GreaterThan(28.5f),
+                "the gradient's route must carry the mud detour the mover walks");
+            Assert.That(strider.Count, Is.EqualTo(2),
+                "a Strider unit's gradient must keep pricing the straight lane");
+        }
+
+        [Test]
         public void PlanMoveToward_AvoidableDifficultBand_ModelsRouteAroundAtFullBudget()
         {
             // The end-to-end #281 claim: with a clear lane of comparable length available, the unit

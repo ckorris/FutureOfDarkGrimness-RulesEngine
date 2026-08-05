@@ -875,8 +875,9 @@ namespace FDG.Ai.Tactician
 
         // The route this unit would walk from its activation start to an enemy, cached per enemy -
         // the melee twin of RouteToObjective, sharing its grid. One A* per enemy per activation, and
-        // only for enemies whose straight lane is actually blocked (RouteMetrics.Route short-circuits
-        // a clear lane to the segment, so an open table pays nothing).
+        // only for enemies whose straight lane is actually blocked or mud-crossed
+        // (RouteMetrics.Route short-circuits a clear lane to the segment, so an open table pays
+        // nothing).
         private (List<Position> Route, List<ITerrain> Terrain, float BaseRadius) RouteToEnemy(
             Position now, DataBinding<UnitData> enemyBinding, Position enemyPos)
         {
@@ -912,7 +913,7 @@ namespace FDG.Ai.Tactician
             if (IgnoresAllTerrain) return new List<Position> { from, to };
             return RouteMetrics.Route(terrain,
                 () => _routeGrid ??= TerrainGridCache.Get(_tableState, terrain, baseRadius, IgnoresDifficultTerrain),
-                from, to, baseRadius);
+                from, to, baseRadius, IgnoresDifficultTerrain);
         }
 
         // Terrain-ignoring rules are unit-wide and fixed for the activation, so they are read once

@@ -19,19 +19,28 @@ namespace FDG.Ai.Tactician
     {
         /// <summary>
         /// The polyline a unit of this base size walks from <paramref name="start"/> to
-        /// <paramref name="goal"/>, detouring around impassible terrain. The straight segment when it
-        /// is clear - and also when NO route exists, so callers degrade to the old straight-line
-        /// measure rather than to nonsense (#264 issue 3 fixes the null-route case at its source).
-        /// The grid is a factory so a clear lane never pays for building one.
+        /// <paramref name="goal"/>, detouring around impassible terrain - and, for a unit that does
+        /// not ignore it, around difficult ground with a comparably-priced clear alternative (#281:
+        /// the mover detours now, so a gradient that priced the straight lane would disagree with
+        /// the path the unit actually walks and understate a muddy marker's real distance). The
+        /// straight segment when the lane is clear - and also when NO route exists, so callers
+        /// degrade to the old straight-line measure rather than to nonsense (#264 issue 3 fixes the
+        /// null-route case at its source). The grid is a factory so a clear lane never pays for
+        /// building one; pass <paramref name="ignoresDifficultTerrain"/> for a Strider unit so a
+        /// mud-only lane skips the build too (its grid could never bend the route anyway).
         /// </summary>
         public static List<Position> Route(IReadOnlyList<ITerrain> terrain, Func<TerrainGrid> grid,
-            Position start, Position goal, float baseRadiusInches)
+            Position start, Position goal, float baseRadiusInches, bool ignoresDifficultTerrain = false)
         {
             List<Position>? path = null;
+            var startPoint = new Float2(start.x, start.z);
+            var goalPoint = new Float2(goal.x, goal.z);
             bool blocked = terrain.Any(t => t.TerrainType.HasFlag(ETerrainType.Impassible)
-                && t.Shape.DoesPathIntersectZone(new Float2(start.x, start.z),
-                    new Float2(goal.x, goal.z), baseRadiusInches));
-            if (blocked)
+                && t.Shape.DoesPathIntersectZone(startPoint, goalPoint, baseRadiusInches));
+            bool throughDifficult = !ignoresDifficultTerrain
+                && terrain.Any(t => t.TerrainType.HasFlag(ETerrainType.Difficult)
+                    && t.Shape.DoesPathIntersectZone(startPoint, goalPoint, baseRadiusInches));
+            if (blocked || throughDifficult)
                 path = GridPathfinder.FindPath(grid(), terrain, start, goal, baseRadiusInches);
             return path ?? new List<Position> { start, goal };
         }

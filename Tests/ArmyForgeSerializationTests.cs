@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using System.Text.Json;
+using FDG.Rules.Definitions;
 using FDG.Rules.Serialization;
 using FDG.SaveLoad;
 using FDG.ArmyBuilding;
@@ -152,5 +154,163 @@ public class ArmyForgeSerializationTests
         Assert.That(asBuilt.Units, Has.Count.EqualTo(1));
         Assert.That(asBuilt.Selections, Is.Null);
         Assert.That(asBuilt.Book, Is.Null);
+    }
+
+    // ── #356: an imported army saved verbatim can still carry an editable session ────────────────────────
+
+    /// <summary>An Army Forge "Save As" army: verbatim OPR data, including the fields a field-by-field copy
+    /// is most likely to forget (unattributed points, effect-set defaults, auxiliary units).</summary>
+    private static ArmyListFile MakeImportedArmy() => new()
+    {
+        Name = "Imported", Faction = "Demo", PointsLimit = 500,
+        UnattributedPoints = 15,
+        DefaultRangedEffectSet = "laser", DefaultMeleeEffectSet = "blade",
+        AuxiliaryUnits = new() { new UnitFileEntry { Name = "Spores", ModelCount = 5, PointCost = 0 } },
+        RuleDefinitions = { new SpecialRuleDefinition("Demo Rule", new List<HookEntry>(), new List<ActivatedAbility>()) },
+        Units =
+        {
+            new UnitFileEntry { Name = "Warriors", ModelCount = 5, Quality = 4, Defense = 4, PointCost = 70 },
+            new UnitFileEntry { Name = "Heavy Gunners", ModelCount = 3, Quality = 4, Defense = 4, PointCost = 120 },
+        },
+    };
+
+    private static BuilderList MakeSelections() => new()
+    {
+        BookName = "Demo Legion", PointsLimit = 500,
+        Units =
+        {
+            new BuilderUnit { RosterUnitId = "warriors", ModelCount = 5 },
+            new BuilderUnit { RosterUnitId = "gunners", ModelCount = 3 },
+        },
+    };
+
+    [Test]
+    public void Attach_KeepsThePlayableArmyIntact_AndAddsTheEditableSession()
+    {
+        ArmyListFile imported = MakeImportedArmy();
+
+        BuiltArmyFile attached = EditableSession.Attach(imported, MakeSelections(), MakeBook());
+
+        // The playable half is what plays and what it costs - it must survive untouched, including the
+        // optional fields a hand-written copy would drop.
+        Assert.That(attached.Name, Is.EqualTo("Imported"));
+        Assert.That(attached.Faction, Is.EqualTo("Demo"));
+        Assert.That(attached.PointsLimit, Is.EqualTo(500));
+        Assert.That(attached.Units, Has.Count.EqualTo(2));
+        Assert.That(attached.TotalPoints, Is.EqualTo(imported.TotalPoints));
+        Assert.That(attached.UnattributedPoints, Is.EqualTo(15));
+        Assert.That(attached.DefaultRangedEffectSet, Is.EqualTo("laser"));
+        Assert.That(attached.DefaultMeleeEffectSet, Is.EqualTo("blade"));
+        Assert.That(attached.AuxiliaryUnits, Is.Not.Null.And.Count.EqualTo(1));
+        Assert.That(attached.RuleDefinitions, Has.Count.EqualTo(1));
+
+        Assert.That(attached.Selections, Is.Not.Null);
+        Assert.That(attached.Book, Is.Not.Null);
+    }
+
+    [Test]
+    public void Attach_Output_SerializesItsEmbeddedBlock_WhenWrittenAtRuntimeType()
+    {
+        BuiltArmyFile attached = EditableSession.Attach(MakeImportedArmy(), MakeSelections(), MakeBook());
+
+        // The trap this guards: serializing through a base-typed reference silently writes only the base
+        // properties, so the file would look saved and reopen as un-editable.
+        string json = JsonSerializer.Serialize(attached, attached.GetType(), RuleJson.Options);
+
+        Assert.That(json, Does.Contain("\"selections\""));
+        Assert.That(json, Does.Contain("\"book\""));
+        BuiltArmyFile back = JsonSerializer.Deserialize<BuiltArmyFile>(json, RuleJson.Options)!;
+        Assert.That(back.Selections!.Units, Has.Count.EqualTo(2));
+        Assert.That(back.UnattributedPoints, Is.EqualTo(15));
+    }
+
+    [Test]
+    public void Measure_ReturnsNull_WhenTheFileHasNoEditableSession()
+    {
+        var plain = new BuiltArmyFile { Name = "Hand" };
+        Assert.That(EditableSession.Measure(plain), Is.Null);
+    }
+
+    [Test]
+    public void Measure_ReportsNoDrift_ForAForgeAuthoredFile()
+    {
+        // Both halves came from one compile, so reopening reproduces the army exactly - adopt silently.
+        BookFile book = MakeBook();
+        BuiltArmyFile forgeAuthored = ListCompiler.Compile(book, MakeSelections());
+
+        EditableSessionDrift? drift = EditableSession.Measure(forgeAuthored);
+
+        Assert.That(drift, Is.Not.Null);
+        Assert.That(drift!.Differs, Is.False,
+            $"saved {drift.SavedUnitCount} units/{drift.SavedPoints} pts vs rebuilt " +
+            $"{drift.RebuiltUnitCount}/{drift.RebuiltPoints}");
+        Assert.That(drift.DroppedUnits, Is.Empty);
+    }
+
+    [Test]
+    public void Measure_ReportsPointsDrift_WhenOnlyThePricingDisagrees()
+    {
+        // The real Save As case (#219): same units both ways, but Army Forge's authoritative total carries
+        // points for options it publishes no price for, so our rebuild reads lighter.
+        BookFile book = MakeBook();
+        BuiltArmyFile compiled = ListCompiler.Compile(book, MakeSelections());
+        ArmyListFile playable = MakeImportedArmy();
+        playable.Units.Clear();
+        foreach (UnitFileEntry u in compiled.Units) playable.Units.Add(u);
+
+        EditableSessionDrift drift = EditableSession.Measure(
+            EditableSession.Attach(playable, MakeSelections(), book))!;
+
+        Assert.That(drift.DroppedUnits, Is.Empty, "no unit was lost - only the price differs");
+        Assert.That(drift.SavedUnitCount, Is.EqualTo(drift.RebuiltUnitCount));
+        Assert.That(drift.SavedPoints, Is.EqualTo(compiled.TotalPoints + 15));
+        Assert.That(drift.RebuiltPoints, Is.EqualTo(compiled.TotalPoints));
+        Assert.That(drift.Differs, Is.True);
+    }
+
+    [Test]
+    public void Measure_NamesUnitsTheRebuildCannotProduce()
+    {
+        // A unit the bundled book does not know is excluded from the reconstruction (#241), so it is in the
+        // army you play but not in the session you would edit.
+        BookFile book = MakeBook();
+        BuilderList shortSelections = MakeSelections();
+        shortSelections.Units.RemoveAt(1); // drops "Heavy Gunners"
+
+        EditableSessionDrift drift = EditableSession.Measure(
+            EditableSession.Attach(MakeImportedArmy(), shortSelections, book))!;
+
+        Assert.That(drift.Differs, Is.True);
+        Assert.That(drift.DroppedUnits, Is.EqualTo(new[] { "Heavy Gunners" }));
+        Assert.That(drift.SavedUnitCount, Is.EqualTo(2));
+        Assert.That(drift.RebuiltUnitCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Measure_CountsDuplicateNamesAsAMultiset()
+    {
+        // Two copies saved, one rebuilt: exactly one is reported dropped, not zero and not two.
+        BookFile book = MakeBook();
+        var twoCopies = new BuilderList
+        {
+            BookName = "Demo Legion", PointsLimit = 500,
+            Units =
+            {
+                new BuilderUnit { RosterUnitId = "warriors", ModelCount = 5, Id = "a" },
+                new BuilderUnit { RosterUnitId = "warriors", ModelCount = 5, Id = "b" },
+            },
+        };
+        BuiltArmyFile saved = ListCompiler.Compile(book, twoCopies);
+
+        var oneCopy = new BuilderList
+        {
+            BookName = "Demo Legion", PointsLimit = 500,
+            Units = { new BuilderUnit { RosterUnitId = "warriors", ModelCount = 5, Id = "a" } },
+        };
+        EditableSessionDrift drift = EditableSession.Measure(
+            EditableSession.Attach(saved, oneCopy, book))!;
+
+        Assert.That(drift.DroppedUnits, Has.Count.EqualTo(1));
+        Assert.That(drift.DroppedUnits[0], Is.EqualTo("Warriors"));
     }
 }

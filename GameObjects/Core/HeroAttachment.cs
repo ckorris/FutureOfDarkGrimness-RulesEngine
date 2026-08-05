@@ -15,10 +15,29 @@ namespace FDG
     ///   <item>the hero's weapon batches fire at <see cref="Quality"/>;</item>
     ///   <item>wounds are assigned to <see cref="HeroModelId"/> last.</item>
     /// </list>
+    ///
+    /// It also carries the hero's <see cref="Name"/> and <see cref="PointCost"/> (#342). Both belong to the
+    /// discarded standalone unit and have no other home: <see cref="ModelData"/> has no name field, and the
+    /// hero's points fold into the host's total at merge. Display-only - no rule reads either.
     /// </summary>
     public class HeroAttachment
     {
         public ModelID HeroModelId { get; set; }
+
+        /// <summary>
+        /// #342: the joined hero's own name, e.g. "Elven Noble". Captured at merge because the hero's
+        /// standalone <see cref="UnitData"/> is discarded there and its model carries no name, so without
+        /// this the hero is anonymous for the rest of the game - the host unit's name is all any display
+        /// has. Null on a pre-#342 save, where callers fall back to a bare "Hero".
+        /// </summary>
+        public string? Name { get; set; }
+
+        /// <summary>
+        /// #342: what the hero cost in the army list. Its points are added to the host's
+        /// <see cref="UnitData.PointCost"/> at merge (#329), so the host's total is correct but the hero's
+        /// share is otherwise unrecoverable. 0 on a pre-#342 save.
+        /// </summary>
+        public int PointCost { get; set; }
 
         /// <summary> The hero model's own Quality (the rank and file keep the host unit's Quality). </summary>
         public int Quality { get; set; }
@@ -38,12 +57,15 @@ namespace FDG
         {
         }
 
-        public HeroAttachment(ModelID heroModelId, int quality, int defense, int heroWounds)
+        public HeroAttachment(ModelID heroModelId, int quality, int defense, int heroWounds,
+            string? name = null, int pointCost = 0)
         {
             HeroModelId = heroModelId;
             Quality = quality;
             Defense = defense;
             HeroWounds = heroWounds;
+            Name = name;
+            PointCost = pointCost;
         }
     }
 }

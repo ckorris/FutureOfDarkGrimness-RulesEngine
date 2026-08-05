@@ -234,6 +234,72 @@ namespace FDG.Tests
                 "the diagonal departure is clear at the resting attitude it sets off in");
         }
 
+        // ---------------------------------------------------------------------------------------------
+        // #340 in CONSOLIDATION. Same rule, different facing derivation: consolidation rotates IN PLACE
+        // (#283) rather than facing its direction of travel, so a node's attitude is the model's resting
+        // facing turned by that node's offset. The leg rule and the node-pose check are shared with
+        // movement (both run through ValidateMovingThroughImpassibleTerrain), so this pins that the
+        // rotate-in-place derivation lands on them correctly.
+        // ---------------------------------------------------------------------------------------------
+
+        // The wall shortened to end at Z=1, within a 3" wipeout consolidation of the model's start.
+        private static List<ITerrain> ShortWallToTheWest()
+            => new List<ITerrain> { new TerrainData(ETerrainType.Impassible, new RectangularZone(-2f, 0f, -4f, 1f)) };
+
+        private static bool ValidateConsolidation(ModelMoveEntry move, List<ITerrain> terrain,
+            out List<ReasonForInvalidMove> errors)
+            => MovementUtilities.ValidateConsolidationPaths(new List<ModelMoveEntry> { move },
+                maxDistanceInches: 3f, NoEnemies(), canMoveThroughEnemies: false,
+                ignoresDifficultTerrain: false, ignoresImpassibleTerrain: false, terrain, out errors);
+
+        // A consolidation whose single step carries a rotate-in-place offset (the GUI group wheel, #283).
+        private ModelMoveEntry RotateInPlaceMove(DataBinding<ModelData> model, Position to, float offsetRadians)
+        {
+            var waypoints = new List<Position> { to };
+            List<Float2> facings = MovementFacingUtilities.RotateInPlaceFacings(
+                model.GetValue().Facing, new List<float> { offsetRadians });
+            return new ModelMoveEntry(model, waypoints, facings);
+        }
+
+        [Test]
+        public void Consolidation_StepsClearOfTheWallThenTurns_Accepted()
+        {
+            DataBinding<ModelData> model = ModelHuggingTheWall();
+            var move = RotateInPlaceMove(model, new Position(0.6f, 3f), offsetRadians: -MathF.PI / 2f);
+
+            bool ok = ValidateConsolidation(move, ShortWallToTheWest(), out List<ReasonForInvalidMove> errors);
+
+            Assert.That(ok, Is.True, "the 3\" step is clear at the attitude it departed with. " + Describe(errors));
+        }
+
+        [Test]
+        public void Consolidation_PivotInPlaceIntoTheWall_Rejected()
+        {
+            // A pure pivot: the position does not change, so there is no leg to sweep at all and ONLY the
+            // node-pose check can catch it. It must - turning the 3" nose into the wall is the whole thing
+            // the pose check exists for, and the hold-skip that keeps a stationary model from self-flagging
+            // must not swallow a pose the move actually changes.
+            DataBinding<ModelData> model = ModelHuggingTheWall();
+            var move = RotateInPlaceMove(model, new Position(0.6f, 0f), offsetRadians: -MathF.PI / 2f);
+
+            bool ok = ValidateConsolidation(move, ShortWallToTheWest(), out List<ReasonForInvalidMove> errors);
+
+            Assert.That(ok, Is.False, "pivoting in place puts the long axis inside the wall");
+            Assert.That(errors.Any(e => e.ErrorReasonType == EErrorReasonType.MovingThroughImpassibleTerrain), Is.True);
+        }
+
+        [Test]
+        public void Consolidation_HoldWithNoRotation_StaysLegal()
+        {
+            // The counterpart the hold-skip protects: an unrotated hold creates no new pose, so it is never
+            // flagged - the AI's hold-in-place fallback, and the reason zero-length legs are skipped.
+            DataBinding<ModelData> model = ModelHuggingTheWall();
+            var move = RotateInPlaceMove(model, new Position(0.6f, 0f), offsetRadians: 0f);
+
+            Assert.That(ValidateConsolidation(move, ShortWallToTheWest(), out List<ReasonForInvalidMove> errors),
+                Is.True, Describe(errors));
+        }
+
         private static string Describe(List<ReasonForInvalidMove> errors)
             => string.Join(", ", errors.Select(e => e.ErrorReasonType.ToString()));
 

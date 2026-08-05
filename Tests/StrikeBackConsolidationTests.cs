@@ -7,7 +7,7 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #337: a unit that is charged, strikes back, and kills its attacker gets a consolidation move too.
+    // #339: a unit that is charged, strikes back, and kills its attacker gets a consolidation move too.
     //
     // ConsolidateStage used to key off the ATTACKING seat alone: a dead attacker logged "attacker has no
     // living models - skipping" and the melee ended with the unit that actually won it standing exactly

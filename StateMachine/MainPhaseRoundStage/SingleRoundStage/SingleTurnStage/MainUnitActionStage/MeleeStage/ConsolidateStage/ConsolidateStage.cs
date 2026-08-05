@@ -31,7 +31,7 @@ namespace FDG.Stages
                 return;
             }
 
-            // #337: the SURVIVOR of a wipeout consolidates, whichever seat it sat in. A defender that
+            // #339: the SURVIVOR of a wipeout consolidates, whichever seat it sat in. A defender that
             // strikes back and kills the charger has won the melee exactly as a charger that wipes out its
             // defender has, and gets the same 3" move. This stage used to key off the attacker alone, so a
             // dead attacker skipped consolidation entirely and the unit that won never moved.

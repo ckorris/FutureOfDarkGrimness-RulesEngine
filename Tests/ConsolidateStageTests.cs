@@ -46,7 +46,7 @@ namespace FDG.Tests
         [Test]
         public async Task AttackerWiped_DefenderConsolidatesWithThreeInchCap()
         {
-            // #337: the defender struck back and killed the charger. It won the melee just as surely as a
+            // #339: the defender struck back and killed the charger. It won the melee just as surely as a
             // charger that wipes out its defender, so it gets the same 3" wipeout move - this used to fire
             // no request at all, and the surviving unit never moved.
             var (ctx, combat, requester, attacker, defender) = BuildBattlefield(

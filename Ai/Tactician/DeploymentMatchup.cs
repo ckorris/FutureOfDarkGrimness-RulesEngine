@@ -71,7 +71,9 @@ namespace FDG.Ai.Tactician
         {
             float best = ValueFraction(CombatMath.EstimateShooting(evaluator, attacker, defender,
                 new AttackContext(EngagementRangeInches, AttackerMoved: true)).ExpectedWounds, defender.GetValue());
-            if (attacker.GetValue().GetMeleeWeapons().Count > 0)
+            // #355: an impact-only charger has no melee weapon but real melee output, and CombatMath's
+            // melee estimate already includes its impact wounds.
+            if (ChargeContactRules.CanFightInMelee(attacker.GetValue()))
             {
                 best = Math.Max(best, ValueFraction(
                     CombatMath.EstimateMelee(evaluator, attacker, defender).AttackerAttack.ExpectedWounds,

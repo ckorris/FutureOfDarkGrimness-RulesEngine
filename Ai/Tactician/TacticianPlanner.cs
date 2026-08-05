@@ -428,7 +428,8 @@ namespace FDG.Ai.Tactician
                 float theirReach = Math.Max(1f, d - TacticalAnalysis.AdvanceDistance(enemy, _evaluator));
                 incoming = Math.Max(incoming, CombatMath.EstimateShooting(_evaluator, enemyBinding,
                     transport, new AttackContext(theirReach, AttackerMoved: true)).ExpectedWounds);
-                if (enemy.GetMeleeWeapons().Count > 0
+                // #355: an impact-only enemy can still charge this transport.
+                if (ChargeContactRules.CanFightInMelee(enemy)
                     && TacticalAnalysis.MeleeThreatReach(enemy, transport.GetValue(), _evaluator) >= d - 1f)
                 {
                     incoming = Math.Max(incoming, CombatMath.EstimateMelee(_evaluator, enemyBinding,
@@ -451,7 +452,8 @@ namespace FDG.Ai.Tactician
                     return true;
             }
 
-            if (self.GetMeleeWeapons().Count > 0)
+            // #355: cargo that can only ram still has a reason to disembark for a charge.
+            if (ChargeContactRules.CanFightInMelee(self))
             {
                 foreach (DataBinding<UnitData> enemyBinding in EnemyBindings(self.PlayerID))
                 {

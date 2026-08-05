@@ -22,6 +22,25 @@ namespace FDG.Tests
     {
         private static readonly List<ActivatedAbility> NoAbilities = new List<ActivatedAbility>();
 
+        // #354: the messy army's 'Grudge' reference exercises ERuleDropReason.OutdatedList, which only
+        // exists when a rulebook is installed that knows the name. MessyArmy carries no Faction, so
+        // nothing is backfilled and the reference drops - classified as "your list predates this rule"
+        // rather than "not implemented".
+        private sealed class RulebookKnowingGrudge : ICurrentRulebook
+        {
+            public IReadOnlyList<SpecialRuleDefinition> DefinitionsForFaction(string faction) =>
+                Array.Empty<SpecialRuleDefinition>();
+
+            public bool Defines(string ruleName) =>
+                string.Equals(ruleName, "Grudge", StringComparison.OrdinalIgnoreCase);
+        }
+
+        [SetUp]
+        public void InstallRulebook() => CurrentRulebook.Installed = new RulebookKnowingGrudge();
+
+        [TearDown]
+        public void ClearRulebook() => CurrentRulebook.Installed = null;
+
         // The Deadly(X) shape: an effect reading Arg(0), so a bare Core reference (no argument)
         // trips the MissingArgument branch. Registered as an embedded definition, unit-scoped.
         private static SpecialRuleDefinition ArgReadingRule(string name) =>
@@ -49,6 +68,7 @@ namespace FDG.Tests
                     SpecialRules =
                     {
                         new SpecialRuleEntry_Core("Wolfborn"),       // Unimplemented (unit level)
+                        new SpecialRuleEntry_Core("Grudge"),         // OutdatedList: the rulebook has it, this list doesn't (#354)
                         new SpecialRuleEntry_Core("Argful"),         // MissingArgument (reads Arg(0))
                         new SpecialRuleEntry_Core("Bane in melee"),  // weapon-scoped, re-homes: NO drop
                         new SpecialRuleEntry_Core("Stealth"),        // implemented: NO drop

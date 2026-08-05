@@ -3,8 +3,16 @@ namespace FDG.Rules.Dispatch;
 /// <summary>Why an army-list rule reference was dropped at load time (#168).</summary>
 public enum ERuleDropReason
 {
-    /// <summary>The name has no definition in the registry — valid but not yet implemented.</summary>
+    /// <summary>The name has no definition in the registry, and none in the current rulebook either — valid but not yet implemented.</summary>
     Unimplemented,
+    /// <summary>
+    /// The name has no definition in the registry, but the current rulebook DOES define it (#354): the
+    /// saved list predates the rule's implementation and froze a copy of its book's definitions without
+    /// it. Distinct from <see cref="Unimplemented"/> because the fix is to rebuild the list, not to wait
+    /// for the rule to be built. Only reachable when the list's faction matches no bundled book — when
+    /// one matches, load gap-fills the definition and the reference resolves normally.
+    /// </summary>
+    OutdatedList,
     /// <summary>The rule resolved but its declared scope doesn't fit where the list attached it.</summary>
     WrongScope,
     /// <summary>The rule's effects read an argument the list entry doesn't supply (e.g. a missing numeric value).</summary>

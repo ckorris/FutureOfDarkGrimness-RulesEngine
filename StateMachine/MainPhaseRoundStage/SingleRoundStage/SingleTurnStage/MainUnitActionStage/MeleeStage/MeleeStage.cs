@@ -93,6 +93,12 @@ namespace FDG.Stages
             // skip the swing but follow the same applyFatigue → consolidate → finish path as a defender
             // killed mid-swing, so the charger still consolidates.
             determineInRangeAttackers.OnNoAttackersInRange.Bind(applyFatigueStage);
+            // #355: in contact but carrying nothing to swing (an impact-only charger — every APC, tank and
+            // speeder — or a unit that lost its melee-armed models). Two units ARE locked together, so the
+            // melee resolves in full rather than ending: on through the defender-range stage, which records
+            // who may strike back and then routes past the weapon offer to offerStrikeBack.
+            determineInRangeAttackers.OnAttackersInRangeUnarmed.Bind(determineInRangeDefenders);
+            determineInRangeDefenders.ToStrikeBackUnopposed.Bind(offerStrikeBack);
             // #197 P16: the extra-attack window opens once contact is settled and before the first swing, so
             // a Takedown Strike is offered exactly once per melee for whoever swings first - not once per
             // weapon, which is why the swing loop below returns to chooseMeleeWeapon and not to here.

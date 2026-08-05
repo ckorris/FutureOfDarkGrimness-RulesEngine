@@ -122,7 +122,8 @@ namespace FDG.Ai.Tactician
         {
             float shooting = MaxWeaponRange(unit, target, evaluator);
             float shootingThreat = shooting > 0f ? AdvanceDistance(unit, evaluator) + shooting : 0f;
-            float meleeThreat = unit.GetMeleeWeapons().Count > 0
+            // #355: a ramming vehicle threatens its charge reach even with no melee weapon.
+            float meleeThreat = ChargeContactRules.CanFightInMelee(unit)
                 ? ChargeDistanceAgainst(unit, target, evaluator) : 0f;
             return Math.Max(shootingThreat, meleeThreat);
         }

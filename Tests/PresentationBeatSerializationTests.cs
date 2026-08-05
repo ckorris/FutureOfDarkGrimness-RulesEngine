@@ -84,7 +84,11 @@ namespace FDG.Tests
                     new ModelMove(modelId, new List<Position>
                     {
                         new Position(1f, 2f), new Position(1f, 5f), new Position(4f, 5f),
-                    }),
+                    },
+                    // #340: the attitude at each of those points - [0] the pre-move resting facing, then one
+                    // per waypoint. A networked client turns the model between them exactly as the placer's
+                    // client does, so the two must not disagree over the wire.
+                    new List<Float2> { new Float2(0f, 1f), new Float2(0f, 1f), new Float2(1f, 0f) }),
                 },
                 TimeSpan.FromMilliseconds(900), toughness: 6);
 
@@ -108,6 +112,14 @@ namespace FDG.Tests
             Assert.That(m.Waypoints[1].z, Is.EqualTo(5f).Within(0.0001f));
             Assert.That(m.Waypoints[2].x, Is.EqualTo(4f).Within(0.0001f));
             Assert.That(m.Waypoints[2].z, Is.EqualTo(5f).Within(0.0001f));
+
+            Assert.That(m.Facings, Is.Not.Null, "#340: the per-waypoint attitudes must survive the wire");
+            Assert.That(m.Facings, Has.Count.EqualTo(3), "one attitude per polyline point, resting facing first");
+            Assert.That(m.Facings![0].X, Is.EqualTo(0f).Within(0.0001f));
+            Assert.That(m.Facings[0].Y, Is.EqualTo(1f).Within(0.0001f));
+            Assert.That(m.Facings[2].X, Is.EqualTo(1f).Within(0.0001f),
+                "the turn taken at the last node is what the glide has to interpolate to");
+            Assert.That(m.Facings[2].Y, Is.EqualTo(0f).Within(0.0001f));
         }
 
         [Test]

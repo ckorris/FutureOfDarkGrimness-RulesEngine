@@ -42,7 +42,7 @@ namespace FDG.Stages
                 List<Position> waypoints = new List<Position>(entry.Positions.Count + 1);
                 waypoints.Add(model.Position);       // start
                 waypoints.AddRange(entry.Positions); // through to destination
-                moves.Add(new ModelMove(model.ID, waypoints));
+                moves.Add(new ModelMove(model.ID, waypoints, BeatFacings(model, entry, waypoints.Count)));
 
                 int modelTough = (int)MathF.Round(model.TotalWounds);
                 if (modelTough > toughness) toughness = modelTough;
@@ -96,6 +96,28 @@ namespace FDG.Stages
                 (movingUnit, Rules.Foundation.ERuleSeat.Actor));
 
             await OnMoveExecuted.Activate(context);
+        }
+
+        /// <summary>
+        /// #340: the attitude at each of the beat's waypoints, 1:1 with them - index 0 is the model's
+        /// PRE-MOVE resting facing (paired with the start position the polyline opens on), the rest are the
+        /// per-waypoint facings the path was built with. This must be read BEFORE
+        /// <c>MovementExecutor.CommitPositions</c> snaps the model to its final facing, which is why it is
+        /// captured in the same loop as the waypoints.
+        ///
+        /// <para>Null when the move carries no facings (AI, aircraft, holds): nothing turned, so the front
+        /// end simply draws the model's own facing for the whole glide. A short list is padded with its last
+        /// entry rather than trusted to line up - a beat that mispairs facings with waypoints would spin a
+        /// model on screen, and the executor already tolerates the same mismatch.</para>
+        /// </summary>
+        private static List<Float2>? BeatFacings(ModelData model, ModelMoveEntry entry, int waypointCount)
+        {
+            if (entry.Facings == null || entry.Facings.Count == 0) return null;
+
+            List<Float2> facings = new List<Float2>(waypointCount) { model.Facing }; // the pose it sets off from
+            for (int i = 0; facings.Count < waypointCount; i++)
+                facings.Add(i < entry.Facings.Count ? entry.Facings[i] : entry.Facings[^1]);
+            return facings;
         }
     }
 

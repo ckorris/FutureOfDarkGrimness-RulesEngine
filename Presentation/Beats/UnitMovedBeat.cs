@@ -48,7 +48,15 @@ namespace FDG.Presentation.Beats
     /// between are corners the path rounds (e.g. routing around terrain). The renderer animates
     /// along the whole polyline, distributing the beat's single duration across segments by length
     /// so the model moves at a constant speed — three segments are one move, not three.
+    ///
+    /// <para>#340: <paramref name="Facings"/> is the attitude at each of those points, 1:1 with
+    /// <paramref name="Waypoints"/> — so <c>Facings[0]</c> is the model's PRE-MOVE resting attitude and the
+    /// rest are the facings its waypoints were placed with. The renderer turns the model between them as it
+    /// glides, which is the whole reason a rotation may now be dialled in for one node without applying to
+    /// the ground before it: the turn has to be visible somewhere, and this is where. Null for moves that
+    /// carry no per-waypoint facings (AI, aircraft) — the model simply keeps its resting attitude.</para>
     /// </summary>
     [Serializable]
-    public readonly record struct ModelMove(ModelID Model, IReadOnlyList<Position> Waypoints);
+    public readonly record struct ModelMove(ModelID Model, IReadOnlyList<Position> Waypoints,
+        IReadOnlyList<Float2>? Facings = null);
 }

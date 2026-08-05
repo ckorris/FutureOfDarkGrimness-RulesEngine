@@ -26,6 +26,14 @@ namespace FDG.SaveLoad
         /// resolver is never left half-populated. A capability mismatch is an authoring bug in shipped
         /// data (distinct from <see cref="ResolveForScope"/>'s tolerance of valid-but-unimplemented
         /// rules) and must fail loudly rather than misbehave silently at dispatch.
+        ///
+        /// <para>#342: before the army's own definitions, any definition the CURRENT rulebook ships for
+        /// this army's faction that the army does not itself define is registered as a backfill. A
+        /// compiled list embeds a frozen COPY of its book's definitions, so a list saved before a rule
+        /// existed names that rule with nothing behind it and the rule silently does nothing forever.
+        /// Gap-fill only, by owner ruling: a definition the file DOES carry is never replaced, so every
+        /// rule the list already had behaves exactly as it did when it was saved — only genuinely
+        /// absent ones are filled in.</para>
         /// </summary>
         public static void RegisterEmbeddedDefinitions(RuleResolver ruleResolver, ArmyListFile armyListFile,
             RuleValidator? validator = null)
@@ -43,10 +51,79 @@ namespace FDG.SaveLoad
                 throw new RuleValidationException(armyListFile.Name, violations);
             }
 
-            foreach (SpecialRuleDefinition definition in armyListFile.RuleDefinitions)
+            foreach (SpecialRuleDefinition definition in EffectiveDefinitions(armyListFile, validator))
             {
                 ruleResolver.RegisterOrReplace(definition);
             }
+        }
+
+        /// <summary>
+        /// Every definition this army load registers, in registration order: the #342 rulebook backfill
+        /// first, then the army's own (so the army always wins on a name it defines).
+        ///
+        /// <para>Public because the effective set — not the file's frozen list — is what must be
+        /// persisted onto <c>ArmyData</c> for a resume (#095): a resumed game rebuilds its resolver from
+        /// that snapshot, and a backfilled rule missing from it would be dead to every by-name lookup
+        /// (a <c>RuleGrant</c> token, a unit created mid-game) even though the units carrying it kept
+        /// their attachments.</para>
+        /// </summary>
+        public static List<SpecialRuleDefinition> EffectiveDefinitions(ArmyListFile armyListFile,
+            RuleValidator? validator = null)
+        {
+            List<SpecialRuleDefinition> effective =
+                BackfillFromCurrentRulebook(armyListFile, validator ?? new RuleValidator());
+            effective.AddRange(armyListFile.RuleDefinitions);
+            return effective;
+        }
+
+        /// <summary>
+        /// The #342 backfill set: definitions the current rulebook ships for this army's faction whose
+        /// names the army itself does not define. Registered BEFORE the army's own, so the army always
+        /// wins where it has an opinion; registered AFTER the core catalog, so a book definition that
+        /// retunes a core rule takes effect the same way it does on a freshly built list.
+        ///
+        /// An invalid backfill definition is skipped with a warning rather than thrown: shipped book
+        /// data is validated by <c>--validate-rules</c>, and a bad book must never turn a list that
+        /// loads today into a list that refuses to load.
+        /// </summary>
+        private static List<SpecialRuleDefinition> BackfillFromCurrentRulebook(ArmyListFile armyListFile,
+            RuleValidator validator)
+        {
+            List<SpecialRuleDefinition> backfill = new List<SpecialRuleDefinition>();
+
+            IReadOnlyList<SpecialRuleDefinition> rulebook =
+                CurrentRulebook.DefinitionsForFaction(armyListFile.Faction);
+            if (rulebook.Count == 0)
+            {
+                return backfill;
+            }
+
+            HashSet<string> alreadyEmbedded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (SpecialRuleDefinition definition in armyListFile.RuleDefinitions)
+            {
+                alreadyEmbedded.Add(definition.Name);
+            }
+
+            foreach (SpecialRuleDefinition definition in rulebook)
+            {
+                if (alreadyEmbedded.Contains(definition.Name))
+                {
+                    continue;
+                }
+
+                IReadOnlyList<RuleViolation> definitionViolations = validator.Validate(definition);
+                if (definitionViolations.Count > 0)
+                {
+                    RuleDiagnostics.Warn($"Not backfilling rule '{definition.Name}' into army " +
+                        $"'{armyListFile.Name}': the bundled rulebook's definition does not validate " +
+                        $"({string.Join("; ", definitionViolations)}).");
+                    continue;
+                }
+
+                backfill.Add(definition);
+            }
+
+            return backfill;
         }
 
         /// <summary>
@@ -113,9 +190,19 @@ namespace FDG.SaveLoad
 
             if (!ruleResolver.TryResolve(lookupName, out ResolvedRule resolved))
             {
+                // #342: "unimplemented" and "your list predates the implementation" are different
+                // problems with different fixes, and reporting the second as the first is what sent a
+                // player looking for an engine gap that wasn't there. The backfill above already
+                // rescues a list whose faction matches a bundled book, so reaching here with a name the
+                // rulebook DOES define means the list carries no faction we can match — rebuild it.
+                bool inCurrentRulebook = CurrentRulebook.Defines(lookupName);
                 drop = new RuleDrop(ruleEntry.PrintableName, ownerDescription,
-                    ERuleDropReason.Unimplemented,
-                    $"Skipping unimplemented special rule '{ruleEntry.PrintableName}' on {ownerDescription}.");
+                    inCurrentRulebook ? ERuleDropReason.OutdatedList : ERuleDropReason.Unimplemented,
+                    inCurrentRulebook
+                        ? $"Skipping special rule '{ruleEntry.PrintableName}' on {ownerDescription}: the " +
+                          "current rulebook implements it, but this saved list predates it and carries no " +
+                          "definition for it - rebuild the list to pick it up."
+                        : $"Skipping unimplemented special rule '{ruleEntry.PrintableName}' on {ownerDescription}.");
                 return null;
             }
 

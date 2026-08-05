@@ -166,7 +166,10 @@ namespace FDG.GameModel
             // redo both halves on a resume — where this method doesn't run and the file is vestigial.
             // #197 P17: the auxiliary unit specs + effect-set keys ride along, so the unit-creation
             // service (Spawn/Split) can build a new unit mid-game and on a resumed game alike.
-            armyData.PersistRuleData(armyListFile.RuleDefinitions, armyListFile.Spells,
+            // #342: the EFFECTIVE definitions, not the file's frozen list — a rule backfilled from the
+            // current rulebook has to survive into the resume snapshot too, or a resumed game's by-name
+            // lookups (RuleGrant tokens, units created mid-game) would find nothing behind it.
+            armyData.PersistRuleData(ArmyListRuleResolution.EffectiveDefinitions(armyListFile), armyListFile.Spells,
                 armyListFile.AuxiliaryUnits, armyListFile.DefaultRangedEffectSet,
                 armyListFile.DefaultMeleeEffectSet);
 

@@ -537,13 +537,11 @@ namespace FDG.Tests
             // Strider crosses difficult ground at full speed, so its router must not pay the 2x
             // difficult multiplier and steer around mud it walks straight through.
             //
-            // Pinned at the GRID, deliberately, because the routed GEOMETRY cannot show it today:
-            // GridPathfinder.StringPull re-tests each shortcut with SegmentClear, which checks
-            // Impassible ONLY - so any bend the A* makes to dodge difficult ground is pulled straight
-            // back through it whenever the direct line is impassible-clear. DifficultCostMultiplier
-            // therefore only survives where impassible terrain forces the bend anyway. That is a
-            // pre-existing limitation, filed separately; this pin guards the half within reach, so
-            // the flag is already correct if StringPull is ever made difficult-aware.
+            // Originally pinned at the GRID only, because pre-#281 the routed geometry could not show
+            // the difference (StringPull re-tested shortcuts with the impassible-only clearance, so
+            // both routes collapsed to the same straight line). With the pull cost-preserving, the
+            // geometry now demonstrates the flag: the plain unit detours around the band, Strider
+            // walks the straight lane through it.
             var terrain = new List<ITerrain>
             {
                 new TerrainData(ETerrainType.Difficult, new RectangularZone(20f, 28f, 18f, 26f)),
@@ -562,6 +560,18 @@ namespace FDG.Tests
                 "Strider must not be charged the router's difficult multiplier");
             Assert.That(strider.IsBlocked(inWall.col, inWall.row), Is.True,
                 "Strider ignores DIFFICULT only - impassible terrain must still block it");
+
+            var start = new Position(24f, 8f);
+            var goal = new Position(24f, 36f);
+            List<Position>? plainRoute = GridPathfinder.FindPath(plain, terrain, start, goal, 0.5f);
+            List<Position>? striderRoute = GridPathfinder.FindPath(strider, terrain, start, goal, 0.5f);
+
+            Assert.That(plainRoute, Is.Not.Null);
+            Assert.That(RouteMetrics.Length(plainRoute!), Is.GreaterThan(28.5f),
+                "a plain unit must pay length to route around the band (#281)");
+            Assert.That(striderRoute, Is.Not.Null);
+            Assert.That(striderRoute!.Count, Is.EqualTo(2),
+                "Strider's route is the straight lane through the mud - no detour, no penalty");
         }
 
         // Movement terrain-ignoring is a UNIT-scope rule (SpecialRuleDefinition's default), and

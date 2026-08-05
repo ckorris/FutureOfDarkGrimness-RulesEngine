@@ -408,7 +408,7 @@ namespace FDG.Ai.Tactician
             List<DataBinding<ModelData>> living, List<Position> path, float arcLengthInches,
             IReadOnlyList<ITerrain> terrain, float baseRadiusInches, float maxDistanceInches,
             EFormation formation = EFormation.Grid, (float X, float Z)? lineAxis = null,
-            float lateralOffsetInches = 0f)
+            float lateralOffsetInches = 0f, TerrainGrid? routeGrid = null)
         {
             if (arcLengthInches <= 0f || path.Count < 2) return StayInPlace(unit);
 
@@ -419,7 +419,7 @@ namespace FDG.Ai.Tactician
             for (int attempt = 0; attempt < RepackCorrectionAttempts; attempt++)
             {
                 List<ModelMoveEntry> candidate = PathCandidateAt(unit, living, path, arc, terrain,
-                    baseRadiusInches, formation, lineAxis, lateralOffsetInches);
+                    baseRadiusInches, formation, lineAxis, lateralOffsetInches, routeGrid);
                 float overshoot = MaxModelMove(candidate) - maxDistanceInches;
                 if (overshoot <= 0f) return candidate;
                 arc -= overshoot + RepackCorrectionSlackInches;
@@ -441,7 +441,8 @@ namespace FDG.Ai.Tactician
         /// </summary>
         public static List<ModelMoveEntry> BuildSnakeCandidate(DataBinding<UnitData> unit,
             List<DataBinding<ModelData>> living, List<Position> path, float arcLengthInches,
-            IReadOnlyList<ITerrain> terrain, float baseRadiusInches, float maxDistanceInches)
+            IReadOnlyList<ITerrain> terrain, float baseRadiusInches, float maxDistanceInches,
+            TerrainGrid? routeGrid = null)
         {
             if (arcLengthInches <= 0f || path.Count < 2 || living.Count == 0) return StayInPlace(unit);
 
@@ -472,7 +473,8 @@ namespace FDG.Ai.Tactician
             foreach (float side in new[] { 1f, -1f })
             {
                 List<ModelMoveEntry> candidate = BuildSnakeToSide(unit, living, order, path,
-                    arcLengthInches, terrain, baseRadiusInches, maxDistanceInches, spacing, files, side);
+                    arcLengthInches, terrain, baseRadiusInches, maxDistanceInches, spacing, files, side,
+                    routeGrid);
                 if (files == 1 || !ClipsImpassible(candidate, terrain, baseRadiusInches)) return candidate;
                 fallback ??= candidate;
             }
@@ -483,7 +485,8 @@ namespace FDG.Ai.Tactician
         private static List<ModelMoveEntry> BuildSnakeToSide(DataBinding<UnitData> unit,
             List<DataBinding<ModelData>> living, List<DataBinding<ModelData>> order,
             List<Position> path, float arcLengthInches, IReadOnlyList<ITerrain> terrain,
-            float baseRadiusInches, float maxDistanceInches, float spacing, int files, float side)
+            float baseRadiusInches, float maxDistanceInches, float spacing, int files, float side,
+            TerrainGrid? routeGrid)
         {
             float arc = arcLengthInches;
             for (int attempt = 0; attempt < RepackCorrectionAttempts; attempt++)
@@ -513,7 +516,7 @@ namespace FDG.Ai.Tactician
                     // hop grazes the very piece the route detours around.
                     candidate.Add(new ModelMoveEntry(order[i],
                         RouteLegsFor(order[i].GetValue().Position, path, passedI,
-                            new List<Position> { endI }, terrain, baseRadiusInches)));
+                            new List<Position> { endI }, terrain, baseRadiusInches, routeGrid)));
                 }
 
                 float overshoot = MaxModelMove(candidate) - maxDistanceInches;
@@ -545,7 +548,8 @@ namespace FDG.Ai.Tactician
         private static List<ModelMoveEntry> PathCandidateAt(DataBinding<UnitData> unit,
             List<DataBinding<ModelData>> living, List<Position> path, float arcLengthInches,
             IReadOnlyList<ITerrain> terrain, float baseRadiusInches,
-            EFormation formation, (float X, float Z)? lineAxis, float lateralOffsetInches = 0f)
+            EFormation formation, (float X, float Z)? lineAxis, float lateralOffsetInches = 0f,
+            TerrainGrid? routeGrid = null)
         {
             (Position endpoint, List<Position> passed, _) =
                 GridPathfinder.AdvanceAlongPath(path, arcLengthInches, terrain, baseRadiusInches);
@@ -582,7 +586,7 @@ namespace FDG.Ai.Tactician
             return destinations
                 .Select(entry => new ModelMoveEntry(entry.Model,
                     RouteLegsFor(entry.Model.GetValue().Position, path, passed,
-                        entry.Positions, terrain, baseRadiusInches)))
+                        entry.Positions, terrain, baseRadiusInches, routeGrid)))
                 .ToList();
         }
 
@@ -603,7 +607,7 @@ namespace FDG.Ai.Tactician
         /// </summary>
         private static List<Position> RouteLegsFor(Position from, List<Position> path,
             List<Position> passed, List<Position> tail, IReadOnlyList<ITerrain> terrain,
-            float baseRadiusInches)
+            float baseRadiusInches, TerrainGrid? routeGrid)
         {
             if (tail.Count == 0) return new List<Position>(passed);
 
@@ -618,7 +622,10 @@ namespace FDG.Ai.Tactician
             }
             legs.AddRange(tail);
 
-            List<Position> pulled = GridPathfinder.StringPull(terrain, legs, baseRadiusInches);
+            // #281: the per-model pull shares the route's difficult-weighted metric - with the
+            // impassible-only test every model's legs collapsed straight back through the mud the
+            // route just paid to avoid (nothing impassible forces the bend, by construction).
+            List<Position> pulled = GridPathfinder.StringPull(terrain, legs, baseRadiusInches, routeGrid);
             pulled.RemoveAt(0); // the anchor is the model's own position, not a leg
             return pulled;
         }
@@ -675,7 +682,8 @@ namespace FDG.Ai.Tactician
 
         /// <summary>
         /// <see cref="PlanMoveToward"/>, additionally handing back the ROUTE it followed (the
-        /// start -> goal polyline, detouring around impassible terrain). Callers that grade how much
+        /// start -> goal polyline, detouring around impassible terrain and - #281 - difficult ground
+        /// whose clear alternative prices comparably). Callers that grade how much
         /// progress a candidate made need route distance, not straight-line distance: rounding a
         /// large wall closes ~zero straight-line gap and its first leg can point away from the goal
         /// (#264 issue 1). The route is already computed here, so this costs the caller nothing.
@@ -700,19 +708,28 @@ namespace FDG.Ai.Tactician
             // Grid construction is the expensive part (thousands of point tests), so: straight-clear
             // paths never touch it, and callers planning MANY candidates in one activation share one
             // build via sharedGrid (the A4-2 hot path - per-candidate builds cost ~0.5s per decision).
+            // #281: DIFFICULT ground on the straight lane is also a reason to route, not just
+            // impassible - the A* prices it at 2x, so a comparably-priced clear detour wins and the
+            // unit stops walking into the 6" whole-move cap. Strider units skip that trigger (their
+            // grid marks no difficult cells, so the search could never bend anyway).
             List<Position>? path = null;
-            if (!ignoresImpassibleTerrain
-                && terrain.Any(t => t.TerrainType.HasFlag(ETerrainType.Impassible)
-                    && t.Shape.DoesPathIntersectZone(new Float2(start.x, start.z),
-                        new Float2(goal.x, goal.z), baseRadius)))
+            TerrainGrid? routeGrid = null;
+            var startPoint = new Float2(start.x, start.z);
+            var goalPoint = new Float2(goal.x, goal.z);
+            bool straightBlocked = terrain.Any(t => t.TerrainType.HasFlag(ETerrainType.Impassible)
+                && t.Shape.DoesPathIntersectZone(startPoint, goalPoint, baseRadius));
+            bool straightThroughDifficult = !ignoresDifficultTerrain
+                && terrain.Any(t => t.TerrainType.HasFlag(ETerrainType.Difficult)
+                    && t.Shape.DoesPathIntersectZone(startPoint, goalPoint, baseRadius));
+            if (!ignoresImpassibleTerrain && (straightBlocked || straightThroughDifficult))
             {
-                TerrainGrid grid = sharedGrid?.Invoke()
+                routeGrid = sharedGrid?.Invoke()
                     ?? TerrainGridCache.Get(tableState, terrain, baseRadius, ignoresDifficultTerrain);
-                path = GridPathfinder.FindPath(grid, terrain, start, goal, baseRadius);
+                path = GridPathfinder.FindPath(routeGrid, terrain, start, goal, baseRadius);
                 // #264 issue 3: no route to the goal is not a reason to walk INTO the wall. Head for
                 // the reachable point closest to it instead - the straight line below remains only
                 // for the case where standing still is genuinely as close as the unit can get.
-                path ??= GridPathfinder.FindPathToNearestReachable(grid, terrain, start, goal, baseRadius);
+                path ??= GridPathfinder.FindPathToNearestReachable(routeGrid, terrain, start, goal, baseRadius);
             }
             path ??= new List<Position> { start, goal };
 
@@ -724,17 +741,17 @@ namespace FDG.Ai.Tactician
 
             List<ModelMoveEntry> move = ValidateWithBackoff(
                 arc => BuildPathCandidate(unit, living, path, arc, terrain, baseRadius,
-                    maxDistanceInches, formation, lineAxis),
+                    maxDistanceInches, formation, lineAxis, routeGrid: routeGrid),
                 budget, unit, living, budgetFor, enemies,
                 canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, friendlies,
                 // #256 S2: a friendly parked on the arrival spot side-steps the endpoint fan-out
                 // instead of halving the arc toward a stall (the Warriors-toward-(7,30) row).
                 (arc, lat) => BuildPathCandidate(unit, living, path, arc, terrain, baseRadius,
-                    maxDistanceInches, formation, lineAxis, lat),
+                    maxDistanceInches, formation, lineAxis, lat, routeGrid),
                 // #256 S4: a formation too wide for the route's corridor falls back to the on-path
                 // snake instead of halving to a crawl (the walled Battle Brothers pocket).
                 arc => BuildSnakeCandidate(unit, living, path, arc, terrain, baseRadius,
-                    maxDistanceInches));
+                    maxDistanceInches, routeGrid));
             return (move, path);
         }
 

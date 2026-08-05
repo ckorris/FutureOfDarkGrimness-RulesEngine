@@ -110,7 +110,10 @@ namespace FDG.Tests
         [Test]
         public void PlanMoveToward_DifficultRoute_CapsTheMoveAtSix()
         {
-            MakeTerrainInStore(ETerrainType.Difficult, left: 12f, right: 30f, bottom: 20f, top: 28f);
+            // Full-height band: no clear detour exists, so the router crosses and the whole-move cap
+            // applies. (#281: an avoidABLE band is routed around instead - pinned separately below -
+            // which is why this scene must leave the unit no alternative.)
+            MakeTerrainInStore(ETerrainType.Difficult, left: 12f, right: 30f, bottom: 0f, top: 48f);
             var unit = MakeUnit(3, atX: 10f, atZ: 24f);
             var living = unit.GetValue().ModelBindings.ToList();
 
@@ -125,6 +128,82 @@ namespace FDG.Tests
                 Assert.That(travelled, Is.LessThanOrEqualTo(GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES),
                     "crossing difficult ground caps the whole move at 6\"");
             }
+        }
+
+        [Test]
+        public void FindPath_DifficultBandOnTheLane_RoutesAroundIt()
+        {
+            // The #281 filing scene: a difficult band straddling the lane, nothing impassible
+            // anywhere. Pre-fix this returned the straight 28" line - the early exit never consulted
+            // difficult ground and StringPull erased any A* bend - so DifficultCostMultiplier was a
+            // complete no-op on an open table.
+            var terrain = new List<ITerrain> { MakeTerrain(ETerrainType.Difficult, 20f, 28f, 18f, 26f) };
+            TerrainGrid grid = TerrainGrid.Build(terrain, 0.5f);
+
+            List<Position>? path = GridPathfinder.FindPath(grid, terrain,
+                new Position(24f, 8f), new Position(24f, 36f), 0.5f);
+
+            Assert.That(path, Is.Not.Null);
+            float length = RouteMetrics.Length(path!);
+            Assert.That(length, Is.GreaterThan(28.5f), "the route must detour around the band, not cross it");
+            Assert.That(length, Is.LessThan(34f), "the detour must stay comparable to the lane, not wander");
+            foreach ((Position from, Position to) in Legs(path!))
+            {
+                bool touches = terrain.Any(t => t.Shape.DoesPathIntersectZone(
+                    new Float2(from.x, from.z), new Float2(to.x, to.z), 0.5f));
+                Assert.That(touches, Is.False,
+                    $"leg ({from.x},{from.z})->({to.x},{to.z}) walks through the difficult band");
+            }
+        }
+
+        [Test]
+        public void FindPath_UnavoidableDifficultField_CrossesRatherThanWanders()
+        {
+            // The pull is cost-PRESERVING, not mud-forbidding: a full-width band leaves no clear
+            // lane, so crossing straight is the cheapest route and must survive as such.
+            var terrain = new List<ITerrain> { MakeTerrain(ETerrainType.Difficult, 0f, 48f, 18f, 26f) };
+            TerrainGrid grid = TerrainGrid.Build(terrain, 0.5f);
+
+            List<Position>? path = GridPathfinder.FindPath(grid, terrain,
+                new Position(24f, 8f), new Position(24f, 36f), 0.5f);
+
+            Assert.That(path, Is.Not.Null);
+            Assert.That(RouteMetrics.Length(path!), Is.LessThan(29f),
+                "with no clear lane anywhere, the route must not pay extra length to dodge the undodgeable");
+        }
+
+        [Test]
+        public void PlanMoveToward_AvoidableDifficultBand_ModelsRouteAroundAtFullBudget()
+        {
+            // The end-to-end #281 claim: with a clear lane of comparable length available, the unit
+            // detours - every MODEL leg stays out of the mud (the per-model string pull must not undo
+            // the route's bend) and the move keeps its full budget instead of eating the 6" cap.
+            MakeTerrainInStore(ETerrainType.Difficult, left: 12f, right: 30f, bottom: 20f, top: 28f);
+            var unit = MakeUnit(3, atX: 10f, atZ: 24f);
+            var living = unit.GetValue().ModelBindings.ToList();
+            var difficult = _tableState.Terrain.Objects.ToList();
+
+            List<ModelMoveEntry> move = MovementPlanner.PlanMoveToward(unit, living, _tableState,
+                new Position(40f, 24f), moveBudgetInches: 12f, maxDistanceInches: 12f,
+                _ => new ModelMoveBudget(12f, 12f),
+                canMoveThroughEnemies: false, ignoresDifficultTerrain: false, ignoresImpassibleTerrain: false);
+
+            float longest = 0f;
+            foreach (ModelMoveEntry entry in move)
+            {
+                Position current = entry.Model.GetValue().Position;
+                foreach (Position next in entry.Positions)
+                {
+                    bool touches = difficult.Any(t => t.Shape.DoesPathIntersectZone(
+                        new Float2(current.x, current.z), new Float2(next.x, next.z), 0.5f));
+                    Assert.That(touches, Is.False,
+                        $"model leg ({current.x},{current.z})->({next.x},{next.z}) walks through the mud the route avoids");
+                    current = next;
+                }
+                longest = MathF.Max(longest, PathLength(entry));
+            }
+            Assert.That(longest, Is.GreaterThan(GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES),
+                "a mud-free detour must not be charged the difficult-terrain move cap");
         }
 
         [Test]

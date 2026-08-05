@@ -149,8 +149,12 @@ namespace FDG.Ai.Tactician
             Position start, Position goal, float baseRadiusInches)
         {
             // A clear straight shot needs no search - the common case, and it keeps clear-lane
-            // candidates identical to what straight construction produces.
-            if (SegmentClear(terrain, start, goal, baseRadiusInches))
+            // candidates identical to what straight construction produces. "Clear" includes the
+            // grid's difficult cells (#281): a straight line through mud must reach the A* so a
+            // comparably-priced clear detour can win; a Strider grid marks no difficult cells, so
+            // for it this stays the pure impassible test.
+            if (SegmentClear(terrain, start, goal, baseRadiusInches)
+                && !CrossesDifficult(grid, start, goal))
                 return new List<Position> { start, goal };
 
             (int startCol, int startRow) = grid.ToCell(start);
@@ -233,7 +237,7 @@ namespace FDG.Ai.Tactician
                 if (SegmentClear(terrain, approach, goal, baseRadiusInches)) waypoints.Add(goal);
             }
 
-            return StringPull(terrain, waypoints, baseRadiusInches);
+            return StringPull(terrain, waypoints, baseRadiusInches, grid);
         }
 
         /// <summary>
@@ -350,7 +354,7 @@ namespace FDG.Ai.Tactician
             var waypoints = new List<Position> { start };
             for (int i = 1; i < cellsOnPath.Count; i++)
                 waypoints.Add(grid.CellCenter(cellsOnPath[i] % grid.Cols, cellsOnPath[i] / grid.Cols));
-            return StringPull(terrain, waypoints, baseRadiusInches);
+            return StringPull(terrain, waypoints, baseRadiusInches, grid);
         }
 
         private static float DistanceSq(Position a, Position b)
@@ -408,14 +412,29 @@ namespace FDG.Ai.Tactician
             return (dx + dz) + (1.41421356f - 2f) * Math.Min(dx, dz);
         }
 
+        // Slack on the cost-preserving pull comparison (#281): well under the surcharge of even a
+        // half-cell of difficult ground (0.5" x the 1x extra multiplier), so quantization noise
+        // between the sampled metric and the A*'s cell metric never refuses a legitimate pull, and
+        // no real mud crossing ever slips under it.
+        private const float PullCostSlackInches = 0.1f;
+
         /// <summary>
         /// Greedy line-of-sight simplification: from each anchor, keep the farthest waypoint reachable
         /// by a clear swept segment. Preserves endpoints; always terminates (worst case advances one).
         /// Public because per-model leg lists get the same treatment (#264 issue 4) - a model that can
         /// reach a later waypoint directly should not walk the dogleg.
+        /// <para>
+        /// #281: with a <paramref name="grid"/>, a shortcut must also not cost more than the run it
+        /// replaces under the router's own difficult-weighted metric - the pull used to re-test
+        /// shortcuts with the impassible-only clearance, silently dragging every bend the A* paid
+        /// <see cref="DifficultCostMultiplier"/> for straight back through the mud. A shortcut through
+        /// difficult ground is still taken when it is genuinely cheaper (the A* itself would route
+        /// there); a Strider grid marks no difficult cells, so its pull stays as aggressive as ever.
+        /// Null keeps the pure impassible behaviour for callers with no grid in hand.
+        /// </para>
         /// </summary>
         public static List<Position> StringPull(IReadOnlyList<ITerrain> terrain,
-            List<Position> waypoints, float baseRadiusInches)
+            List<Position> waypoints, float baseRadiusInches, TerrainGrid? grid = null)
         {
             var result = new List<Position> { waypoints[0] };
             int anchor = 0;
@@ -424,7 +443,8 @@ namespace FDG.Ai.Tactician
                 int farthest = anchor + 1;
                 for (int probe = waypoints.Count - 1; probe > anchor + 1; probe--)
                 {
-                    if (SegmentClear(terrain, waypoints[anchor], waypoints[probe], baseRadiusInches))
+                    if (SegmentClear(terrain, waypoints[anchor], waypoints[probe], baseRadiusInches)
+                        && (grid == null || ShortcutKeepsCost(grid, waypoints, anchor, probe)))
                     {
                         farthest = probe;
                         break;
@@ -434,6 +454,58 @@ namespace FDG.Ai.Tactician
                 anchor = farthest;
             }
             return result;
+        }
+
+        /// <summary>Whether the straight hop anchor -> probe is no more expensive than the waypoint
+        /// run it would replace, priced by <see cref="WeightedLength"/> on both sides.</summary>
+        private static bool ShortcutKeepsCost(TerrainGrid grid, List<Position> waypoints,
+            int anchor, int probe)
+        {
+            float run = 0f;
+            for (int i = anchor + 1; i <= probe; i++)
+                run += WeightedLength(grid, waypoints[i - 1], waypoints[i]);
+            return WeightedLength(grid, waypoints[anchor], waypoints[probe]) <= run + PullCostSlackInches;
+        }
+
+        /// <summary>
+        /// Arc length priced by the same multiplier the A* pays for difficult cells, sampled against
+        /// the grid at half-cell steps. Sampling the GRID (not the terrain shapes) keeps the pull and
+        /// the A* on one metric - the cells are radius-inflated, so a shortcut grazing the inflation
+        /// pays exactly what the search paid to avoid it.
+        /// </summary>
+        private static float WeightedLength(TerrainGrid grid, Position from, Position to)
+        {
+            float dx = to.x - from.x, dz = to.z - from.z;
+            float length = MathF.Sqrt(dx * dx + dz * dz);
+            if (length <= 1e-6f) return 0f;
+            int steps = Math.Max(1, (int)MathF.Ceiling(length / (TerrainGrid.CellSizeInches * 0.5f)));
+            float stepLength = length / steps;
+            float total = 0f;
+            for (int i = 0; i < steps; i++)
+            {
+                float t = (i + 0.5f) / steps;
+                (int col, int row) = grid.ToCell(
+                    new Position(from.x + dx * t, from.z + dz * t));
+                total += grid.IsDifficult(col, row) ? stepLength * DifficultCostMultiplier : stepLength;
+            }
+            return total;
+        }
+
+        /// <summary>Whether the straight segment touches any difficult cell, sampled at half-cell
+        /// steps like <see cref="WeightedLength"/>.</summary>
+        private static bool CrossesDifficult(TerrainGrid grid, Position from, Position to)
+        {
+            float dx = to.x - from.x, dz = to.z - from.z;
+            float length = MathF.Sqrt(dx * dx + dz * dz);
+            int steps = Math.Max(1, (int)MathF.Ceiling(length / (TerrainGrid.CellSizeInches * 0.5f)));
+            for (int i = 0; i < steps; i++)
+            {
+                float t = (i + 0.5f) / steps;
+                (int col, int row) = grid.ToCell(
+                    new Position(from.x + dx * t, from.z + dz * t));
+                if (grid.IsDifficult(col, row)) return true;
+            }
+            return false;
         }
 
         /// <summary>

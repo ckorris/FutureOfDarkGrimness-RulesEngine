@@ -98,14 +98,21 @@ namespace FDG.Stages
         /// </summary>
         public void SetInRangeDefenders(IReadOnlyList<DataBinding<ModelData>> models);
 
-        /// <summary>True while at least one queued attack awaits firing. Normally one per
-        /// <see cref="SetAttackWeapon"/>; a Takedown-split weapon queues one single-shot attack per copy
-        /// (#157) and FireStage loops until the queue drains.</summary>
+        /// <summary>True while a queued attack awaits firing - one per <see cref="SetAttackWeapon"/>,
+        /// consumed by <see cref="ConsumeAttackIntoContext"/>.</summary>
         public bool HasPendingAttack { get; }
 
-        /// <summary>#157: split the just-queued attack (weapon, N) into N single-shot attacks so each shot
-        /// picks its own individual target (Takedown / Sniper). No-op unless exactly one attack is queued.</summary>
-        public void SplitPendingAttackIntoSingleShots();
+        /// <summary>
+        /// #340: commit exactly ONE copy of the just-queued attack and hand the rest back to
+        /// <see cref="AvailableWeapons"/>, so the weapon is offered again and every copy picks its own
+        /// target UNIT as well as its own victim model (Takedown / Sniper - each rifle aims separately).
+        /// <paramref name="copiesHeldBack"/> reports how many went back into the pool.
+        /// <para>Supersedes #157's split-the-volley-into-single-shots, which gave each shot its own model
+        /// pick but locked the whole burst onto the unit chosen for the first one.</para>
+        /// No-op unless exactly one attack is queued (it is only ever called right after
+        /// <see cref="SetAttackWeapon"/>).
+        /// </summary>
+        public void AimPendingAttackOneCopyAtATime(out int copiesHeldBack);
 
         /// <summary>#276: cap the just-queued attack's weapon count at <paramref name="maxCount"/> — the
         /// copies carried by models that can actually shoot the chosen target (range + line of sight).
@@ -217,13 +224,18 @@ namespace FDG.Stages
 
         public IGameContext GameContext { get; }
 
-        // The attack(s) set up by SetAttackWeapon and consumed one per FireStage/SwingMeleeWeaponStage
-        // entry. Normally holds a single (weapon, count) batch; SplitPendingAttackIntoSingleShots (#157)
-        // turns a Takedown batch into N single-shot entries so each shot picks its own victim.
-        // BurstIndex is the entry's position within that split burst (0 for unsplit attacks) — carried
-        // into CombatMetadata so the attack beat can fire each shot from a different carrier (#276).
+        // The attack set up by SetAttackWeapon and consumed by the next FireStage/SwingMeleeWeaponStage
+        // entry. BurstIndex is how many copies of that weapon this action has already fired (0 for a
+        // whole-volley attack) — carried into CombatMetadata so the attack beat animates each of a
+        // Takedown weapon's one-at-a-time shots from a different carrier (#276/#340).
         private readonly Queue<(Weapon Weapon, int Count, int BurstIndex)> _pendingAttacks
             = new Queue<(Weapon, int, int)>();
+
+        // #340: copies of each weapon already fired this action, for the burst index above. Keyed by the
+        // pool's own representative instance (the same one SetAttackWeapon consumes and
+        // AimPendingAttackOneCopyAtATime puts back), so a one-at-a-time weapon keeps its count across the
+        // passes through ChooseRangedAttackStage.
+        private readonly Dictionary<Weapon, int> _copiesFiredThisAction = new Dictionary<Weapon, int>();
 
         public bool HasPendingAttack => _pendingAttacks.Count > 0;
 
@@ -348,22 +360,35 @@ namespace FDG.Stages
             _declinedWeapons.TryAdd(weaponToDecline, weaponCount);
         }
 
-        public void SplitPendingAttackIntoSingleShots()
+        public void AimPendingAttackOneCopyAtATime(out int copiesHeldBack)
         {
+            copiesHeldBack = 0;
+
             // Only ever called right after SetAttackWeapon, so exactly one batch is queued; anything else
-            // means the caller is mid-burst and splitting would corrupt the queue.
+            // means the caller is mid-attack and re-queueing would corrupt the queue.
             if (_pendingAttacks.Count != 1) return;
 
             (Weapon weapon, int count, _) = _pendingAttacks.Dequeue();
-            for (int i = 0; i < count; i++)
+
+            _copiesFiredThisAction.TryGetValue(weapon, out int alreadyFired);
+            _pendingAttacks.Enqueue((weapon, 1, alreadyFired));
+            _copiesFiredThisAction[weapon] = alreadyFired + 1;
+            // SetAttackWeapon recorded the whole stack as used; only one copy of it is firing.
+            _alreadyUsedWeapons[weapon] = alreadyFired + 1;
+
+            copiesHeldBack = count - 1;
+            if (copiesHeldBack > 0)
             {
-                _pendingAttacks.Enqueue((weapon, 1, i));
+                // Back into the pool under the SAME key instance, so the next pass through
+                // ChooseRangedAttackStage offers this weapon again and SetAttackWeapon finds it.
+                _availableWeapons[weapon] = copiesHeldBack;
             }
         }
 
         public void TrimPendingAttack(int maxCount)
         {
-            // Same single-batch window as the split above: only ever called right after SetAttackWeapon.
+            // Same single-batch window as the one-at-a-time commit above: only ever called right after
+            // SetAttackWeapon.
             if (_pendingAttacks.Count != 1 || maxCount <= 0) return;
 
             (Weapon weapon, int count, int burstIndex) = _pendingAttacks.Dequeue();
@@ -411,6 +436,7 @@ namespace FDG.Stages
             _alreadyUsedWeapons.Clear();
             _declinedWeapons.Clear();
             _pendingAttacks.Clear();
+            _copiesFiredThisAction.Clear();
         }
 
         public ICombatMetadata ConsumeAttackIntoContext(IGameContext gameContext)

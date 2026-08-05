@@ -71,10 +71,10 @@ namespace FDG.Tests
                 "2 failed saves, but a 1-wound model takes only 1 — no carry-over to the rest of the unit.");
         }
 
-        // ── #157: a Takedown volley fires as single shots, each with its own pick ────────────────────────
+        // ── #157/#340: a Takedown weapon fires ONE copy per weapon choice, each with its own pick ───────
 
         [Test]
-        public async Task TakedownVolley_SplitsIntoSingleShots_EachPicksItsOwnModel()
+        public async Task TakedownWeapon_FiresOneCopyPerChoice_EachPicksItsOwnModel()
         {
             DataBinding<UnitData> attacker = MakeUnit(modelCount: 3, weaponName: "Sniper Rifle");
             AttachTakedown(attacker);
@@ -86,23 +86,28 @@ namespace FDG.Tests
 
             var combat = new CombatActionContext(ctx, attacker, isMelee: false);
             Weapon rifle = combat.AvailableWeapons.Keys.Single();
-            combat.SetAttackWeapon(rifle, out int weaponCount);
-            combat.SetDefender(defender);
-            Assert.That(weaponCount, Is.EqualTo(3), "3 models carry the rifle, batched by name");
 
-            // The split decision ChooseRangedAttackStage makes (non-consuming query), then the split itself.
-            Assert.That(Rules.Dispatch.SightRuleQueries.TargetsIndividualModels(
-                attacker.GetValue(), rifle, defender.GetValue(), ctx.RuleEvaluator), Is.True);
-            combat.SplitPendingAttackIntoSingleShots();
-
-            // Drive the real per-shot loop: each FireStage entry consumes one queued shot and runs its own
-            // BuildTargetListStage, which asks for that shot's individual target.
+            // Three passes through the weapon picker, exactly as ChooseRangedAttackStage /
+            // DetermineCanKeepShootingStage drive it: each commits one copy, fires it through the REAL
+            // BuildTargetListStage (its own Takedown pick), and hands the rest back for the next pass.
             var picks = new List<DataBinding<ModelData>>();
+            var burstIndices = new List<int>();
+            var copiesLeftAfterEachPass = new List<int>();
             int shots = 0;
-            while (combat.HasPendingAttack)
+            while (combat.AvailableWeapons.ContainsKey(rifle))
             {
+                combat.SetAttackWeapon(rifle, out _);
+                combat.SetDefender(defender);
+
+                // The decision ChooseRangedAttackStage makes (non-consuming query), then the commit itself.
+                Assert.That(Rules.Dispatch.SightRuleQueries.TargetsIndividualModels(
+                    attacker.GetValue(), rifle, defender.GetValue(), ctx.RuleEvaluator), Is.True);
+                combat.AimPendingAttackOneCopyAtATime(out int copiesHeldBack);
+                copiesLeftAfterEachPass.Add(copiesHeldBack);
+
                 ICombatMetadata metadata = combat.ConsumeAttackIntoContext(ctx);
-                Assert.That(metadata.WeaponCount, Is.EqualTo(1), "a split shot fires a single copy");
+                Assert.That(metadata.WeaponCount, Is.EqualTo(1), "one rifle fires per choice");
+                burstIndices.Add(metadata.BurstShotIndex);
 
                 var layer = new NoOpLayer<ICombatMetadata>();
                 var stage = new BuildTargetListStage<ICombatMetadata>(ctx, layer);
@@ -112,10 +117,15 @@ namespace FDG.Tests
                 Assert.That(metadata.QueryForResult(out IndividualTargetResult result), Is.True,
                     "every shot gets its own Takedown pick");
                 picks.Add(result.Model);
+                Assert.That(combat.HasPendingAttack, Is.False, "the pass queued exactly one attack");
                 shots++;
             }
 
-            Assert.That(shots, Is.EqualTo(3), "the volley fired one attack per copy");
+            Assert.That(shots, Is.EqualTo(3), "one attack per copy, three passes");
+            Assert.That(copiesLeftAfterEachPass, Is.EqualTo(new[] { 2, 1, 0 }),
+                "each pass hands the unfired rifles back to the pool");
+            Assert.That(burstIndices, Is.EqualTo(new[] { 0, 1, 2 }),
+                "#276: the shots are tagged in firing order so the attack beat rotates carriers");
             Assert.That(picks, Is.EquivalentTo(defender.ModelBindings()),
                 "the shots spread across three different chosen models");
         }
@@ -140,10 +150,10 @@ namespace FDG.Tests
             Assert.That(combat.HasPendingAttack, Is.False, "nothing left queued after the single consume");
         }
 
-        // ── #276: trimmed volleys and burst indices ──────────────────────────────────────────────────
+        // ── #340: the copies not fired go back into the action's pool ────────────────────────────────
 
         [Test]
-        public void TrimmedTakedownVolley_SplitsOnlyEligibleShots_WithBurstIndices()
+        public void TakedownCopies_ReturnToTheAvailablePool_UntilTheLastOneFires()
         {
             DataBinding<UnitData> attacker = MakeUnit(modelCount: 3, weaponName: "Sniper Rifle");
             AttachTakedown(attacker);
@@ -151,28 +161,35 @@ namespace FDG.Tests
             var ctx = new WoundTestContext(_store, new CannedModelSelectionRequester(defender.ModelBindings()[0]));
 
             var combat = new CombatActionContext(ctx, attacker, isMelee: false);
-            combat.SetAttackWeapon(combat.AvailableWeapons.Keys.Single(), out int weaponCount);
+            Weapon rifle = combat.AvailableWeapons.Keys.Single();
+
+            combat.SetAttackWeapon(rifle, out int weaponCount);
             combat.SetDefender(defender);
-            Assert.That(weaponCount, Is.EqualTo(3));
+            Assert.That(weaponCount, Is.EqualTo(3), "3 models carry the rifle, batched by profile");
 
-            // The stage trims to the eligible-shooter count (one sniper is occluded, say), THEN splits.
-            combat.TrimPendingAttack(2);
-            combat.SplitPendingAttackIntoSingleShots();
+            combat.AimPendingAttackOneCopyAtATime(out int heldBack);
+            Assert.That(heldBack, Is.EqualTo(2));
+            Assert.That(combat.AvailableWeapons.TryGetValue(rifle, out int leftInPool), Is.True,
+                "the weapon is offered again while copies remain - that is what lets each rifle pick its own target");
+            Assert.That(leftInPool, Is.EqualTo(2));
+            Assert.That(combat.AlreadyUsedWeapons[rifle], Is.EqualTo(1),
+                "only the copy that actually fired counts as used");
 
-            var burstIndices = new List<int>();
-            while (combat.HasPendingAttack)
-            {
-                ICombatMetadata metadata = combat.ConsumeAttackIntoContext(ctx);
-                Assert.That(metadata.WeaponCount, Is.EqualTo(1), "each split shot fires a single copy");
-                burstIndices.Add(metadata.BurstShotIndex);
-            }
+            combat.ConsumeAttackIntoContext(ctx);
+            combat.SetAttackWeapon(rifle, out _);
+            combat.AimPendingAttackOneCopyAtATime(out heldBack);
+            Assert.That(heldBack, Is.EqualTo(1));
+            combat.ConsumeAttackIntoContext(ctx);
 
-            Assert.That(burstIndices, Is.EqualTo(new[] { 0, 1 }),
-                "the trimmed volley fires only the eligible shots, each tagged with its burst position");
+            combat.SetAttackWeapon(rifle, out _);
+            combat.AimPendingAttackOneCopyAtATime(out heldBack);
+            Assert.That(heldBack, Is.EqualTo(0), "the last rifle keeps nothing back");
+            Assert.That(combat.AvailableWeapons.ContainsKey(rifle), Is.False,
+                "with every copy fired the weapon leaves the pool and stops being offered");
         }
 
         [Test]
-        public async Task DeadDefenderMidVolley_RemainingShotsFizzle()
+        public void DeadDefenderMidShoot_RemainingCopiesStayAvailableForANewTarget()
         {
             DataBinding<UnitData> attacker = MakeUnit(modelCount: 3, weaponName: "Sniper Rifle");
             AttachTakedown(attacker);
@@ -180,21 +197,20 @@ namespace FDG.Tests
             var ctx = new WoundTestContext(_store, new CannedModelSelectionRequester(defender.ModelBindings()[0]));
 
             var combat = new CombatActionContext(ctx, attacker, isMelee: false);
-            combat.SetAttackWeapon(combat.AvailableWeapons.Keys.Single(), out _);
+            Weapon rifle = combat.AvailableWeapons.Keys.Single();
+            combat.SetAttackWeapon(rifle, out _);
             combat.SetDefender(defender);
-            combat.SplitPendingAttackIntoSingleShots();
-            combat.ConsumeAttackIntoContext(ctx); // shot 1 fired...
+            combat.AimPendingAttackOneCopyAtATime(out _);
+            combat.ConsumeAttackIntoContext(ctx); // rifle 1 fired...
 
             var model = defender.ModelBindings()[0].GetValue();
             model.DealWounds(model.TotalWounds - model.WoundsDealt); // ...and it killed the last model
 
-            var stage = new DetermineMorePendingShotsStage(ctx, new NoOpLayer<ICombatActionContext>());
-            stage.FireNextShot.Bind("fire");
-            stage.OnVolleyComplete.Bind("volleyComplete");
-            await stage.Enter(combat);
-
             Assert.That(combat.HasPendingAttack, Is.False,
-                "the dead target's remaining queued shots are discarded, not fired into a corpse");
+                "nothing is queued at the corpse - the burst that used to fizzle here no longer exists");
+            Assert.That(combat.AvailableWeapons[rifle], Is.EqualTo(2),
+                "#340: the two rifles that had not fired are still available, and the weapon picker will " +
+                "offer them a live target instead of discarding their shots");
         }
 
         private async Task<CombatMetadata> RunBuildTargetList(WoundTestContext ctx,

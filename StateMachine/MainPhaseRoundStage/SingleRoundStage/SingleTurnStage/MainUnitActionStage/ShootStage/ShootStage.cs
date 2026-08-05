@@ -52,7 +52,6 @@ namespace FDG.Stages
                 //.AddChild(new ChooseRangedTargetStage(GameContext, this), out var chooseRangedTarget)
                 .AddChild(new ResolveRangedExtraAttackStage(GameContext, this), out var resolveExtraAttack)
                 .AddChild(new FireStage(GameContext, this), out var fire)
-                .AddChild(new DetermineMorePendingShotsStage(GameContext, this), out var morePendingShots)
                 .AddChild(new ResolveRangedMoraleStage(GameContext, this), out var resolveRangedMorale)
                 .AddChild(new DetermineCanKeepShootingStage(GameContext, this), out var determineCanKeepShooting)
                 .AddChild(new PostShootStage(GameContext, this), out var postShoot)
@@ -74,11 +73,11 @@ namespace FDG.Stages
             // fires once a weapon has already been used, so it must not bypass morale.
             chooseRangedWeapon.OnNoValidShots.Bind(resolveRangedMorale);
 
-            // #157: while queued attacks remain (a Takedown-split volley), loop FireStage — each entry
-            // consumes one queued shot with its own target-model pick.
-            fire.OnFinishedFiring.Bind(morePendingShots);
-            morePendingShots.FireNextShot.Bind(fire);
-            morePendingShots.OnVolleyComplete.Bind(determineCanKeepShooting);
+            // #340: one firing per weapon choice. A Takedown weapon that still has unfired copies is back
+            // in the available pool by now, so DetermineCanKeepShootingStage routes straight to the weapon
+            // picker and its next rifle chooses its own target. (#157's DetermineMorePendingShotsStage
+            // looped FireStage over a pre-split burst; that burst could never leave its first target.)
+            fire.OnFinishedFiring.Bind(determineCanKeepShooting);
             determineCanKeepShooting.ReturnToChooseWeapon.Bind(chooseRangedWeapon);
             // Morale runs after the LAST weapon, not after each one: one test per unit that was shot at,
             // measured against its wounds when this attacker first targeted it.

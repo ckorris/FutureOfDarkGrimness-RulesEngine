@@ -141,6 +141,21 @@ namespace FDG.Ai.Tactician
         // morale tests rout whole mobs (the engine's own mechanic - break the horde, don't shave it).
         public static float MoraleBreakBonus = 1.3f;
 
+        // ADDED 2026-08-05 (#359, Chris's re-report of the crowded-zone creep: a front unit with
+        // no reason to advance - a long-ranged gun, say - should still step ASIDE so the ranks
+        // behind can pass): value-weighted penalty for ENDING on the advance lane of a friendly
+        // that has not activated yet this round (LaneGeometry; the M13 SideStep candidates exist
+        // for exactly this pick). LaneGeometry scales the block by how much of the friendly's
+        // move it cuts off - (1 - t) along the lane, so an ADVANCE that ends deep downrange is
+        // nearly free (Chris's correction: the friendly walks into the vacated ground) - which
+        // means standing MID-lane prices at about half this constant; 0.2 keeps that mid-lane
+        // stand at the ~0.1 the term was sized for, comfortably above the 0.05 reachable
+        // tie-break and an order below the real reasons to stand - a held marker (~0.5 round 1),
+        // a paying screen (0.8 x threatened value). An Indirect unit's -1-after-moving is priced
+        // by the damage term in the same currency, so "is the shuffle worth it?" resolves in the
+        // argmax, not here.
+        public static float MoveLaneBlock = 0.2f;
+
         // A5-8 (Chris): a landed charge also DEGRADES the target's next volley - it still shoots
         // on its own activation, but with fewer models and chargers obscuring lanes - so a charge
         // earns this bonus per expected wound of the target's ranged output (reference Q4/D4).

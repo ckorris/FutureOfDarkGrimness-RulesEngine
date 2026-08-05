@@ -65,6 +65,9 @@ namespace FDG.Ai.Tactician
         // Strider / Flying, read once per activation (see UnitRoute).
         private bool? _ignoresAllTerrain;
         private bool? _ignoresDifficultTerrain;
+        // #359: advance lanes of the friendlies that have not activated yet this round - the
+        // endpoints the lane-block penalty charges against. Endpoint-independent, built lazily.
+        private List<LaneGeometry.AdvanceLane>? _advanceLanes;
 
         /// <summary>The unit whose activation is being planned (null between activations).</summary>
         public DataBinding<UnitData>? ActiveUnit => _activeUnit;
@@ -96,6 +99,7 @@ namespace FDG.Ai.Tactician
             _routeGrid = null;
             _ignoresAllTerrain = null;
             _ignoresDifficultTerrain = null;
+            _advanceLanes = null;
         }
 
         /// <summary>
@@ -666,7 +670,12 @@ namespace FDG.Ai.Tactician
                  // A5-8: the gradient is deadline-scaled per objective INSIDE ObjectiveApproach.
                  + objectiveScale * TacticianWeights.MoveObjectiveApproach * objectiveApproach
                  + TacticianWeights.MoveApproach * approach
-                 + TacticianWeights.MoveScreen * ScreenValue(end);
+                 + TacticianWeights.MoveScreen * ScreenValue(end)
+                 // #359: ending on the advance lane of a friendly that has not activated yet is
+                 // the wall the rear ranks halve their moves against; clearing it is what the M13
+                 // SideStep candidates are for. Endpoint-only, so it compares candidates - the
+                 // screen credit and marker deltas above outbid it whenever standing is real work.
+                 - TacticianWeights.MoveLaneBlock * LaneBlockValue(end);
 
             // #264 issue 2: the reachable bonus is a TIE-BREAK between candidates that are already
             // worth something ("if two plans are worth the same, take the one that actually gets
@@ -783,6 +792,13 @@ namespace FDG.Ai.Tactician
             if (lengthSq <= 0.0001f) return Distance(p, a);
             float t = Math.Clamp(((p.x - a.x) * abx + (p.z - a.z) * abz) / lengthSq, 0f, 1f);
             return Distance(p, new Position(a.x + t * abx, a.z + t * abz));
+        }
+
+        // #359: how much unactivated-friendly advance lane this endpoint sits on (LaneGeometry).
+        private float LaneBlockValue(Position end)
+        {
+            _advanceLanes ??= LaneGeometry.Build(_tableState, _evaluator, _activeUnit!.GetValue());
+            return LaneGeometry.BlockValue(_advanceLanes, end);
         }
 
         // #296: FRIENDS are the whole team, not just this player's own army - a teammate's units

@@ -287,6 +287,40 @@ namespace FDG.Ai.Tactician
                 }
             }
 
+            // M13 - side-step (#359): the unit is standing on the advance lane of a friendly that
+            // has not activated yet, so offer perpendicular Advance-budget steps - the argmax then
+            // weighs clearing the lane (the planner's MoveLaneBlock penalty on staying) against
+            // whatever standing still is worth. Advance, not Rush, so the unit can still shoot
+            // from the new spot; gated on actually blocking, so uncrowded games generate nothing.
+            if (enemies.Count > 0)
+            {
+                List<LaneGeometry.AdvanceLane> lanes = LaneGeometry.Build(tableState, evaluator, self);
+                if (LaneGeometry.BlockValue(lanes, start) > 0f)
+                {
+                    Position enemyMass = MeanPosition(enemies.Select(Centroid).ToList());
+                    float toEnemyX = enemyMass.x - start.x, toEnemyZ = enemyMass.z - start.z;
+                    float axisLength = MathF.Sqrt(toEnemyX * toEnemyX + toEnemyZ * toEnemyZ);
+                    if (axisLength > 0.001f)
+                    {
+                        (float perpX, float perpZ) = (-toEnemyZ / axisLength, toEnemyX / axisLength);
+                        foreach (float side in new[] { 1f, -1f })
+                        {
+                            var goal = ClampToTable(new Position(
+                                start.x + side * perpX * advance, start.z + side * perpZ * advance));
+                            // goalRadius 2: the goal is an arbitrary clear-of-the-lane point, not
+                            // a marker - a formation that repacks within a base-width of it has
+                            // arrived, and grading that BudgetClipped would cost the tie-break
+                            // that lets a completed side-step beat standing still.
+                            candidates.Add(Plan(EMacroIntent.SideStep,
+                                $"intent=SideStep side={(side > 0 ? "left" : "right")}",
+                                EActionType.Advance, unit, living, tableState, evaluator, goal,
+                                advanceBudget, canMoveThroughEnemies, ignoresDifficult,
+                                ignoresAllTerrain, goalRadius: 2f, sharedGrid: sharedGrid));
+                        }
+                    }
+                }
+            }
+
             return PruneWithDiversity(candidates, candidateBudget);
         }
 

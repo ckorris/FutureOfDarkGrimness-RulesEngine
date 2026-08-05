@@ -23,6 +23,7 @@ namespace FDG.Ai.Tactician
         Concentrate,        // M10
         MoveToCast,         // M11
         DeliverCargo,       // M12
+        SideStep,           // M13 (#359: clear an unactivated friendly's advance lane)
     }
 
     /// <summary>M4's range bands. SafeShooting is the kite band: inside our reach, outside theirs.</summary>

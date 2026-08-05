@@ -32,7 +32,8 @@ namespace FDG.Ai.Tactician
             var planner = new TacticianPlanner(tableState, evaluator, options.DecisionLog);
 
             // A4-1: activation order by urgency (also announces the active unit to the planner).
-            registry.RegisterResolver(new Resolvers.TacticianActivationResolver(tableState, evaluator, planner));
+            registry.RegisterResolver(new Resolvers.TacticianActivationResolver(tableState, evaluator,
+                planner, options.DecisionLog));
 
             // A4-2: the (action x macro-action) pair is planned once at Choose Action and played out
             // at the movement request; solo-rules instances are the per-request fallbacks (G3).

@@ -17,13 +17,19 @@ namespace FDG.Ai.Tactician.Resolvers
         private readonly ITableState _tableState;
         private readonly RuleEvaluator _evaluator;
         private readonly TacticianPlanner? _planner;
+        // #359 measurement: when set (--log-decisions), each pick is narrated with whether the
+        // frontline bias DECIDED it - i.e. urgency alone would have picked someone else. The #296
+        // bias is deliberately below every real urgency signal, so this is the direct check on
+        // "does it still bind in the crowded shape it was built for". Null costs nothing.
+        private readonly Action<string>? _decisionLog;
 
         public TacticianActivationResolver(ITableState tableState, RuleEvaluator evaluator,
-            TacticianPlanner? planner = null)
+            TacticianPlanner? planner = null, Action<string>? decisionLog = null)
         {
             _tableState = tableState;
             _evaluator = evaluator;
             _planner = planner;
+            _decisionLog = decisionLog;
         }
 
         public Task<DataBinding<UnitData>> Resolve(ChooseUnitToActivateRequest request)
@@ -40,17 +46,37 @@ namespace FDG.Ai.Tactician.Resolvers
 
             DataBinding<UnitData> best = request.ValidOptions[0].Option;
             float bestScore = float.NegativeInfinity;
+            // The plain-urgency argmax, tracked alongside (same order, same strict-greater tie
+            // rule, so the comparison is exact): when it differs, the frontline bias decided.
+            DataBinding<UnitData> plainBest = request.ValidOptions[0].Option;
+            float plainBestScore = float.NegativeInfinity;
+            float bestFrontline = 0f;
             IReadOnlyDictionary<DataReference, float> frontline = FrontlineFractions(request.ValidOptions);
             foreach (SelectionRequest<UnitData>.ValidOption option in request.ValidOptions)
             {
-                float score = Urgency(option.Option)
-                    + TacticianWeights.ActivationFrontlineBias
-                        * frontline.GetValueOrDefault(option.Option.Reference);
+                float urgency = Urgency(option.Option);
+                float front = frontline.GetValueOrDefault(option.Option.Reference);
+                float score = urgency + TacticianWeights.ActivationFrontlineBias * front;
                 if (score > bestScore)
                 {
                     bestScore = score;
                     best = option.Option;
+                    bestFrontline = front;
                 }
+                if (urgency > plainBestScore)
+                {
+                    plainBestScore = urgency;
+                    plainBest = option.Option;
+                }
+            }
+            if (_decisionLog != null)
+            {
+                bool biasDecisive = !ReferenceEquals(best, plainBest);
+                _decisionLog($"activate {best.GetValue().Name} score={bestScore:F4} " +
+                    $"front={bestFrontline:F2} of {request.ValidOptions.Count}" +
+                    (biasDecisive
+                        ? $" bias-decisive (urgency alone picks {plainBest.GetValue().Name})"
+                        : ""));
             }
             _planner?.BeginActivation(best);
             return Task.FromResult(best);

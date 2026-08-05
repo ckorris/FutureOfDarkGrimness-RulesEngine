@@ -22,7 +22,7 @@ namespace FDG.Tests
     {
         private static readonly List<ActivatedAbility> NoAbilities = new List<ActivatedAbility>();
 
-        // #342: the messy army's 'Grudge' reference exercises ERuleDropReason.OutdatedList, which only
+        // #344: the messy army's 'Grudge' reference exercises ERuleDropReason.OutdatedList, which only
         // exists when a rulebook is installed that knows the name. MessyArmy carries no Faction, so
         // nothing is backfilled and the reference drops - classified as "your list predates this rule"
         // rather than "not implemented".
@@ -68,7 +68,7 @@ namespace FDG.Tests
                     SpecialRules =
                     {
                         new SpecialRuleEntry_Core("Wolfborn"),       // Unimplemented (unit level)
-                        new SpecialRuleEntry_Core("Grudge"),         // OutdatedList: the rulebook has it, this list doesn't (#342)
+                        new SpecialRuleEntry_Core("Grudge"),         // OutdatedList: the rulebook has it, this list doesn't (#344)
                         new SpecialRuleEntry_Core("Argful"),         // MissingArgument (reads Arg(0))
                         new SpecialRuleEntry_Core("Bane in melee"),  // weapon-scoped, re-homes: NO drop
                         new SpecialRuleEntry_Core("Stealth"),        // implemented: NO drop

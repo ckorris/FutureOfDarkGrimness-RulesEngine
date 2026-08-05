@@ -13,7 +13,7 @@ using System.Linq;
 namespace FDG.Tests
 {
     /// <summary>
-    /// #342 — a compiled <c>.fdgarmy</c> embeds a frozen COPY of its book's rule definitions
+    /// #344 — a compiled <c>.fdgarmy</c> embeds a frozen COPY of its book's rule definitions
     /// (<c>ListCompiler</c>), and army load used to resolve rule names against the core catalog plus
     /// that copy alone. So a list saved before a rule was implemented named the rule with nothing behind
     /// it, and the rule silently did nothing in every game the list was ever fielded in — the shipped

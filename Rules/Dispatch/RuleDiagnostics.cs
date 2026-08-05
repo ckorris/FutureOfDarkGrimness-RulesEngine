@@ -6,7 +6,7 @@ public enum ERuleDropReason
     /// <summary>The name has no definition in the registry, and none in the current rulebook either — valid but not yet implemented.</summary>
     Unimplemented,
     /// <summary>
-    /// The name has no definition in the registry, but the current rulebook DOES define it (#342): the
+    /// The name has no definition in the registry, but the current rulebook DOES define it (#344): the
     /// saved list predates the rule's implementation and froze a copy of its book's definitions without
     /// it. Distinct from <see cref="Unimplemented"/> because the fix is to rebuild the list, not to wait
     /// for the rule to be built. Only reachable when the list's faction matches no bundled book — when

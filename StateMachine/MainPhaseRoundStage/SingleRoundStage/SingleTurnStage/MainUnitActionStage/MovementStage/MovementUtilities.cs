@@ -561,8 +561,11 @@ namespace FDG.Stages
         /// <summary>Where a flagged path actually collides, for the preview's "show me why" feedback: the
         /// terrain piece, the path segment (by index), the sweep's oriented facing, and the model's centre at
         /// first contact. A collision is often nowhere near the node being placed — a pivot at an earlier
-        /// waypoint, or a manual rotation offset re-orienting the whole committed path, can make a segment the
-        /// player already placed collide — so "invalid" alone reads as an inexplicable red flag on open ground.</summary>
+        /// waypoint can make a leg the player already placed collide — so "invalid" alone reads as an
+        /// inexplicable red flag on open ground.
+        /// <para>#340: it may also be a NODE POSE rather than a leg, reported as a zero-length segment at
+        /// that node (<see cref="SegmentStart"/> == <see cref="SegmentEnd"/>). The move has room to travel
+        /// there; what it has no room for is standing there at that attitude.</para></summary>
         public readonly struct TerrainCrossing
         {
             public readonly ITerrain Piece;
@@ -667,7 +670,7 @@ namespace FDG.Stages
                 if (!SweptBaseGeometry.DoesSweptBaseIntersectZone(piece.Shape, from, to, baseShape, facing))
                     continue;
                 // The centre at first touch: known-clear travel along the segment (0 when the base
-                // already overlaps at the segment start - the pivot/offset re-orientation case).
+                // already overlaps at the segment start, and for a node pose, which has nowhere to travel).
                 float entry = SweptBaseGeometry.MaxTravelBeforeZoneIntersection(
                     piece.Shape, from, to, baseShape, facing);
                 float dx = to.X - from.X, dz = to.Y - from.Y;

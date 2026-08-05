@@ -396,6 +396,59 @@ namespace FDG.Tests
             }
         }
 
+        // #170: a unit mixing base sizes (a joined hero's large base among small troopers) used to be
+        // laid out on a uniform grid spaced by the LARGEST base, leaving two adjacent small models a
+        // base-to-base gap far over the 1" rule - deployed already out of cohesion (the deploy sibling
+        // of the #159 PackGrid movement bug). The block must pack per-row at each model's own size.
+        [Test]
+        public async Task MixedBaseUnit_DeploysInCohesion_WithoutOverlaps()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var selfPlayer = new PlayerID(System.Guid.NewGuid());
+
+            var zone = new RectangularZone(0f, 48f, 0f, 12f);
+            var placing = new List<DataBinding<ModelData>>();
+            // One 1.81"-radius leader base among six 0.55" troopers - the shape that stranded models:
+            // uniform spacing is 2*1.81 + 0.1 = 3.72", so two troopers sat 2.62" apart base-to-base.
+            var leader = new ModelData(1.81f, new List<Weapon>(), new Position(0f, 0f), store);
+            placing.Add(store.GetDataBinding<ModelData>(store.Create(leader)));
+            for (int i = 0; i < 6; i++)
+            {
+                var m = new ModelData(0.55f, new List<Weapon>(), new Position(0f, 0f), store);
+                placing.Add(store.GetDataBinding<ModelData>(store.Create(m)));
+            }
+            store.Create(new UnitData(selfPlayer, "Guard with Champion", 4, 4, placing));
+
+            var resolver = new AiPlaceObjectsResolver<ModelData>(new TableState(store));
+            var request = new PlaceObjectsRequest<ModelData>(selfPlayer, "Place Unit Models", zone, placing);
+
+            List<PlacedObjectEntry<ModelData>> result = Unwrap(await resolver.Resolve(request));
+
+            Assert.That(result, Has.Count.EqualTo(7));
+            const float eps = 0.01f;
+            for (int i = 0; i < result.Count; i++)
+            {
+                float ri = result[i].Binding.GetValue().BaseRadiusInches;
+                float nearestB2B = float.MaxValue;
+                for (int j = 0; j < result.Count; j++)
+                {
+                    if (i == j) continue;
+                    float rj = result[j].Binding.GetValue().BaseRadiusInches;
+                    float b2b = Dist(result[i].Position, result[j].Position) - ri - rj;
+                    nearestB2B = MathF.Min(nearestB2B, b2b);
+                    Assert.That(b2b, Is.GreaterThanOrEqualTo(-eps),
+                        $"models {i},{j} overlap by {-b2b:F2}\"");
+                }
+                Assert.That(nearestB2B, Is.LessThanOrEqualTo(GameWideConstants.MAX_MODEL_DISTANCE_FROM_ANY_OTHER_MODEL_INCHES + eps),
+                    $"model {i} (r={ri}) has no neighbour within " +
+                    $"{GameWideConstants.MAX_MODEL_DISTANCE_FROM_ANY_OTHER_MODEL_INCHES}\" - deployed out of cohesion");
+            }
+            foreach (PlacedObjectEntry<ModelData> e in result)
+                Assert.That(PlacementUtilities.IsBaseWithinZone(e.Position,
+                        e.Binding.GetValue().BaseShape.CircumscribedRadiusInches, zone), Is.True,
+                    $"base at ({e.Position.x:F1},{e.Position.z:F1}) pokes out of the deployment zone");
+        }
+
         private static float Dist(Position a, Position b)
         {
             float dx = a.x - b.x, dz = a.z - b.z;

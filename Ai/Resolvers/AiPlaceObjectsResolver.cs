@@ -6,7 +6,8 @@ namespace FDG.Ai.Resolvers
     /// <summary>
     /// Auto-places a unit's models as one cohesion-valid block in the deployment zone. The models pack into
     /// a tight, square-ish grid (0.1" base-to-base, the same formation the movement resolvers use via
-    /// <see cref="FDG.Stages.CohesiveFormation"/>), so the whole unit always satisfies BOTH cohesion rules —
+    /// <see cref="FDG.Stages.CohesiveFormation"/>; a mixed-base unit packs per-row at each model's own
+    /// extent exactly as PackGrid does, #170), so the whole unit always satisfies BOTH cohesion rules —
     /// every model within 1" of a neighbour (<see cref="GameWideConstants.MAX_MODEL_DISTANCE_FROM_ANY_OTHER_MODEL_INCHES"/>)
     /// and within 9" of every other model (<see cref="GameWideConstants.MAX_MODEL_DISTANCE_FROM_ALL_OTHER_MODELS_INCHES"/>).
     /// A 10-wide single rank would break the 9" rule, so wrapping into ranks falls out of the grid for free.
@@ -95,20 +96,25 @@ namespace FDG.Ai.Resolvers
             // the deploy facing (axis-aligned toward the table centre), matching CohesiveFormation.PackGrid so
             // deploy and movement form the same cohesive shape. A circle gives (r, r) — the old square grid.
             Float2 deployFacing = PlacementUtilities.DefaultDeployFacing(bounds, GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES);
+            var halfXs = new float[models.Count];
+            var halfZs = new float[models.Count];
             float maxHalfX = 0.1f, maxHalfZ = 0.1f;
-            foreach (var b in models)
+            for (int i = 0; i < models.Count; i++)
             {
-                var (hx, hz) = GetHalfExtents(b.GetValue(), deployFacing);
+                var (hx, hz) = GetHalfExtents(models[i].GetValue(), deployFacing);
+                halfXs[i] = hx;
+                halfZs[i] = hz;
                 if (hx > maxHalfX) maxHalfX = hx;
                 if (hz > maxHalfZ) maxHalfZ = hz;
             }
             float spacingX = 2f * maxHalfX + 0.1f; // 0.1" base-to-base per axis, so adjacent models satisfy the 1" rule
             float spacingZ = 2f * maxHalfZ + 0.1f;
 
-            int cols = Math.Max(1, (int)MathF.Ceiling(MathF.Sqrt(models.Count)));
-            int rows = (int)MathF.Ceiling(models.Count / (float)cols);
-            float gridWidth = (cols - 1) * spacingX;
-            float gridHeight = (rows - 1) * spacingZ;
+            (float dx, float dz)[] offsets = BlockOffsets(halfXs, halfZs, spacingX, spacingZ);
+            // Symmetric cover of the block for the centre-range clamps below; equals the historical
+            // (cols-1)*spacing box exactly on the uniform path.
+            float gridWidth = 2f * offsets.Max(o => MathF.Abs(o.dx));
+            float gridHeight = 2f * offsets.Max(o => MathF.Abs(o.dz));
 
             var existing = GetTableOccupants().ToList();
 
@@ -134,20 +140,20 @@ namespace FDG.Ai.Resolvers
             if (request.MustTouchTableEdge)
             {
                 // #029 edge redeploy: the block must come back on touching a table edge.
-                center = FindEdgeBlockCenter(zone, maxRadius, cols, spacingX, spacingZ, gridWidth, gridHeight,
-                    models.Count, preferredCx, preferredCz, cxMin, cxMax, czMin, czMax, existing, enemies,
+                center = FindEdgeBlockCenter(zone, maxRadius, offsets, spacingX, spacingZ,
+                    preferredCx, preferredCz, cxMin, cxMax, czMin, czMax, existing, enemies,
                     minEnemyDist, out facing);
             }
             else
             {
-                center = FindBlockCenter(zone, maxRadius, cols, spacingX, spacingZ, gridWidth, gridHeight,
-                    models.Count, preferredCx, preferredCz, cxMin, cxMax, czMin, czMax, existing, enemies, minEnemyDist);
+                center = FindBlockCenter(zone, maxRadius, offsets, spacingX, spacingZ,
+                    preferredCx, preferredCz, cxMin, cxMax, czMin, czMax, existing, enemies, minEnemyDist);
                 // Face toward the table centre (a top-zone unit faces down) — matters for Aircraft, whose
                 // heading IS this facing (#150); a whole-table zone (Ambush) lands on the neutral +Z default.
                 facing = PlacementUtilities.DefaultDeployFacing(bounds, GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES);
             }
 
-            var positions = BuildGrid(center, cols, spacingX, spacingZ, gridWidth, gridHeight, models.Count);
+            var positions = BuildBlock(center, offsets);
             var placed = new List<PlacedObjectEntry<T>>(models.Count);
             for (int i = 0; i < models.Count; i++)
             {
@@ -183,28 +189,56 @@ namespace FDG.Ai.Resolvers
                 bounds.CenterZ + signedBand * FanOutBandSpacingInches);
         }
 
-        // The model positions of a block centred at (center): cols per row, filling left→right, top→bottom,
-        // for exactly `count` models (the last row may be partial). Per-axis spacing so an elongated rectangle
-        // packs tight on its short axis and clear on its long axis (#150).
-        private static List<Position> BuildGrid(Position center, int cols, float spacingX, float spacingZ,
-            float gridWidth, float gridHeight, int count)
+        /// <summary>
+        /// Per-model offsets of the deploy block around its centre. Uniform-base units keep the
+        /// historical row-major grid at max-extent spacing (byte-identical layouts, so solo
+        /// deployments are unchanged). A MIXED-base unit gets CohesiveFormation.PackGrid's per-row
+        /// layout instead (#170): edge-to-edge at each model's own extent, rows stacked by their
+        /// tallest member, and no lonely last-row model - the uniform max-base spacing stranded
+        /// small models &gt;1" from every neighbour, the deploy sibling of the #159 movement bug.
+        /// </summary>
+        private static (float dx, float dz)[] BlockOffsets(float[] halfXs, float[] halfZs,
+            float spacingX, float spacingZ)
         {
-            var positions = new List<Position>(count);
-            for (int k = 0; k < count; k++)
+            int n = halfXs.Length;
+            bool mixed = false;
+            for (int i = 1; i < n && !mixed; i++)
+                mixed = MathF.Abs(halfXs[i] - halfXs[0]) > 0.005f
+                    || MathF.Abs(halfZs[i] - halfZs[0]) > 0.005f;
+
+            int cols = Math.Max(1, (int)MathF.Ceiling(MathF.Sqrt(n)));
+            if (!mixed)
             {
-                int col = k % cols, row = k / cols;
-                positions.Add(new Position(
-                    center.x - gridWidth / 2f + col * spacingX,
-                    center.z - gridHeight / 2f + row * spacingZ));
+                int rows = (int)MathF.Ceiling(n / (float)cols);
+                float w = (cols - 1) * spacingX, h = (rows - 1) * spacingZ;
+                var uniform = new (float dx, float dz)[n];
+                for (int k = 0; k < n; k++)
+                    uniform[k] = (-w / 2f + (k % cols) * spacingX, -h / 2f + (k / cols) * spacingZ);
+                return uniform;
             }
+
+            if (n % cols == 1) cols++; // no lonely model in the last row (#159's rule)
+            int mixedRows = (int)MathF.Ceiling(n / (float)cols);
+            var rowCounts = new int[mixedRows];
+            for (int r = 0; r < mixedRows; r++) rowCounts[r] = Math.Min(cols, n - r * cols);
+            return FormationLibrary.LayoutOffsets(halfXs, halfZs, rowCounts, gap: 0.1f);
+        }
+
+        // The model positions of a block centred at (center) - the offsets computed once by
+        // BlockOffsets, translated to a candidate centre.
+        private static List<Position> BuildBlock(Position center, (float dx, float dz)[] offsets)
+        {
+            var positions = new List<Position>(offsets.Length);
+            foreach ((float dx, float dz) in offsets)
+                positions.Add(new Position(center.x + dx, center.z + dz));
             return positions;
         }
 
         // Searches block centres (preferred lane/band first, then spiralling outward in `spacing` steps within
         // the in-bounds range) for one where the whole block is legal. Falls back to the clamped preferred
         // centre — block intact, so the unit is cohesion-valid even when the zone is too cramped to be clear.
-        private Position FindBlockCenter(IBoundedZone zone, float radius, int cols, float spacingX, float spacingZ,
-            float gridWidth, float gridHeight, int count, float preferredCx, float preferredCz,
+        private Position FindBlockCenter(IBoundedZone zone, float radius, (float dx, float dz)[] offsets,
+            float spacingX, float spacingZ, float preferredCx, float preferredCz,
             float cxMin, float cxMax, float czMin, float czMax,
             List<(Position pos, float radius)> existing, List<Position> enemies, float minEnemyDist)
         {
@@ -220,8 +254,8 @@ namespace FDG.Ai.Resolvers
                 foreach (float cx in CandidateAxis(startCx, cxMin, cxMax, spacingX))
                 {
                     var center = new Position(cx, cz);
-                    float penalty = BlockPenalty(center, zone, radius, cols, spacingX, spacingZ, gridWidth,
-                        gridHeight, count, existing, enemies, minEnemyDist);
+                    float penalty = BlockPenalty(center, zone, radius, offsets,
+                        existing, enemies, minEnemyDist);
                     if (penalty <= 0f) return center;   // fully legal: unchanged fast path
                     if (penalty < bestPenalty) { bestPenalty = penalty; bestCentre = center; }
                 }
@@ -251,8 +285,8 @@ namespace FDG.Ai.Resolvers
         // exactly `radius` from that zone edge — touching it. The other axis sweeps for a clear spot. Edges
         // are tried nearest-to-preferred first; models face inward from the chosen edge, so a redeployed
         // Aircraft's new heading (facing = heading, #150) doesn't immediately carry it back off the table.
-        private Position FindEdgeBlockCenter(IBoundedZone zone, float radius, int cols, float spacingX, float spacingZ,
-            float gridWidth, float gridHeight, int count, float preferredCx, float preferredCz,
+        private Position FindEdgeBlockCenter(IBoundedZone zone, float radius, (float dx, float dz)[] offsets,
+            float spacingX, float spacingZ, float preferredCx, float preferredCz,
             float cxMin, float cxMax, float czMin, float czMax,
             List<(Position pos, float radius)> existing, List<Position> enemies, float minEnemyDist,
             out Float2? inwardFacing)
@@ -279,8 +313,8 @@ namespace FDG.Ai.Resolvers
                     foreach (float cx in CandidateAxis(startCx, edge.exMin, edge.exMax, spacingX))
                     {
                         var centre = new Position(cx, cz);
-                        float penalty = BlockPenalty(centre, zone, radius, cols, spacingX, spacingZ, gridWidth,
-                            gridHeight, count, existing, enemies, minEnemyDist);
+                        float penalty = BlockPenalty(centre, zone, radius, offsets,
+                            existing, enemies, minEnemyDist);
                         if (penalty <= 0f)                      // fully legal: unchanged fast path
                         {
                             inwardFacing = edge.facing;
@@ -303,15 +337,9 @@ namespace FDG.Ai.Resolvers
             return bestCentre;
         }
 
-        private bool BlockIsValid(Position center, IBoundedZone zone, float radius, int cols, float spacingX, float spacingZ,
-            float gridWidth, float gridHeight, int count, List<(Position pos, float radius)> existing,
-            List<Position> enemies, float minEnemyDist)
-            => BlockPenalty(center, zone, radius, cols, spacingX, spacingZ, gridWidth, gridHeight, count,
-                   existing, enemies, minEnemyDist) <= 0f;
-
         /// <summary>
-        /// How badly a candidate centre breaks placement legality; 0 means fully legal (what
-        /// <see cref="BlockIsValid"/> reports). Used to pick the LEAST-BAD centre when the zone has no legal
+        /// How badly a candidate centre breaks placement legality; 0 means fully legal. Used to pick
+        /// the LEAST-BAD centre when the zone has no legal
         /// spot left at all, instead of the blind clamped guess the fallbacks used to return.
         /// <para>
         /// That blind guess is how a Retributors block ended up deployed INSIDE an allied Saurian Guardians
@@ -322,8 +350,8 @@ namespace FDG.Ai.Resolvers
         /// in a building is worse than being tightly packed.
         /// </para>
         /// </summary>
-        private float BlockPenalty(Position center, IBoundedZone zone, float radius, int cols, float spacingX,
-            float spacingZ, float gridWidth, float gridHeight, int count,
+        private float BlockPenalty(Position center, IBoundedZone zone, float radius,
+            (float dx, float dz)[] offsets,
             List<(Position pos, float radius)> existing, List<Position> enemies, float minEnemyDist)
         {
             const float OutOfZonePenalty = 1000f;
@@ -331,7 +359,7 @@ namespace FDG.Ai.Resolvers
             const float EnemySpacingPenalty = 10f;
 
             float penalty = 0f;
-            foreach (Position p in BuildGrid(center, cols, spacingX, spacingZ, gridWidth, gridHeight, count))
+            foreach (Position p in BuildBlock(center, offsets))
             {
                 // The whole base must fit in the zone (footprint, not just the centre) — so no base pokes past a
                 // zone edge, and since deployment zones are flush with the table edge, none goes off the table.

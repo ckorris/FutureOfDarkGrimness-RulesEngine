@@ -65,6 +65,101 @@ namespace FDG.Tests
         }
 
         // ──────────────────────────────────────────────────────────────────────
+        // #345 AttackCounts — the volley's real size vs its full size, shown to the player pre-roll.
+        // Must mirror the #276 trim in OfferWeapons exactly, or the preview promises dice the roll
+        // will not throw (or hides ones it will).
+        // ──────────────────────────────────────────────────────────────────────
+
+        [Test]
+        public void AttackCounts_ReportTheTrimmedVolleyAgainstTheFullOne()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var playerID = new PlayerID(Guid.NewGuid());
+
+            // Five riflemen, only three of whom can see the target: A2 rifles, so 6 of a possible 10.
+            var shooters = new[]
+            {
+                MakeModel(store, new Position(0, 0, 0), TwoShotRifle()),
+                MakeModel(store, new Position(1, 0, 0), TwoShotRifle()),
+                MakeModel(store, new Position(2, 0, 0), TwoShotRifle()),
+            };
+            var blocked = new[]
+            {
+                MakeModel(store, new Position(3, 0, 0), TwoShotRifle()),
+                MakeModel(store, new Position(4, 0, 0), TwoShotRifle()),
+            };
+            var targetBinding = MakeUnit(store, new PlayerID(Guid.NewGuid()), "Target",
+                new[] { MakeModel(store, new Position(20, 0, 0)) });
+
+            var stats = new WeaponTargetStats(targetBinding,
+                new HashSet<DataBinding<ModelData>>(shooters),
+                new HashSet<DataBinding<ModelData>>(blocked));
+            var option = new WeaponOption(TwoShotRifle(), new List<WeaponTargetStats> { stats },
+                CopiesRemaining: 5);
+
+            Assert.That(ChooseRangedAttackStage.AttackCounts(option, stats), Is.EqualTo((6, 10)),
+                "3 of 5 carriers have a lane, and each rifle is A2");
+        }
+
+        [Test]
+        public void AttackCounts_AreEqualWhenTheWholeUnitCanFire()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var playerID = new PlayerID(Guid.NewGuid());
+            var shooters = new[]
+            {
+                MakeModel(store, new Position(0, 0, 0), Rifle()),
+                MakeModel(store, new Position(1, 0, 0), Rifle()),
+            };
+            var targetBinding = MakeUnit(store, new PlayerID(Guid.NewGuid()), "Target",
+                new[] { MakeModel(store, new Position(20, 0, 0)) });
+
+            var stats = new WeaponTargetStats(targetBinding,
+                new HashSet<DataBinding<ModelData>>(shooters), new HashSet<DataBinding<ModelData>>());
+            var option = new WeaponOption(Rifle(), new List<WeaponTargetStats> { stats },
+                CopiesRemaining: 2);
+
+            Assert.That(ChooseRangedAttackStage.AttackCounts(option, stats), Is.EqualTo((2, 2)),
+                "nothing is held back, so the UI has nothing to warn about");
+        }
+
+        [Test]
+        public void AttackCounts_AOneAtATimeWeaponFiresOneCopyByRule_NotByBlocking()
+        {
+            // #340: a Takedown volley is never trimmed - the other copies are aimed SEPARATELY, not
+            // blocked, so reporting "1 of 3" would blame terrain for the rule's own behaviour.
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            Weapon sniper = TakedownWeapon("Sniper Rifle");
+            var shooters = new[] { MakeModel(store, new Position(0, 0, 0), sniper) };
+            var targetBinding = MakeUnit(store, new PlayerID(Guid.NewGuid()), "Target",
+                new[] { MakeModel(store, new Position(20, 0, 0)) });
+
+            var stats = new WeaponTargetStats(targetBinding,
+                new HashSet<DataBinding<ModelData>>(shooters), new HashSet<DataBinding<ModelData>>());
+            var option = new WeaponOption(sniper, new List<WeaponTargetStats> { stats },
+                AimedIndividuallyRule: "Takedown", CopiesRemaining: 3);
+
+            Assert.That(ChooseRangedAttackStage.AttackCounts(option, stats), Is.EqualTo((1, 1)));
+        }
+
+        [Test]
+        public void AttackCounts_NoEligibleCarrier_LeavesTheCountAlone()
+        {
+            // Mirrors the stage's own "eligible == 0 leaves the count alone" guard: such a target is not
+            // selectable in the first place, and reporting 0 would read as "this weapon does nothing".
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var targetBinding = MakeUnit(store, new PlayerID(Guid.NewGuid()), "Target",
+                new[] { MakeModel(store, new Position(20, 0, 0)) });
+
+            var stats = new WeaponTargetStats(targetBinding,
+                new HashSet<DataBinding<ModelData>>(), new HashSet<DataBinding<ModelData>>());
+            var option = new WeaponOption(Rifle(), new List<WeaponTargetStats> { stats },
+                CopiesRemaining: 4);
+
+            Assert.That(ChooseRangedAttackStage.AttackCounts(option, stats), Is.EqualTo((4, 4)));
+        }
+
+        // ──────────────────────────────────────────────────────────────────────
         // HasAnyFireableTarget — used by ChooseActionStage to gray out Shoot.
         // ──────────────────────────────────────────────────────────────────────
 
@@ -1491,6 +1586,10 @@ namespace FDG.Tests
 
         private static Weapon Rifle(float range = 24f) =>
             new Weapon("Rifle", range, 1, 0);
+
+        // #345: an A2 rifle, so a trimmed volley's attack count is not merely its carrier count.
+        private static Weapon TwoShotRifle(float range = 24f) =>
+            new Weapon("Burst Rifle", range, 2, 0);
 
         private static Weapon DeadlyWeapon(string name, float range, int x)
         {

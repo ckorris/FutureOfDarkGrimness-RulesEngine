@@ -58,10 +58,19 @@ namespace FDG.Stages
                     WeaponTargetStats stats = option.WeaponTargetStats[i];
                     if (stats.modelsThatCanShoot.Count == 0) continue;
 
+                    // #345: the size of the volley rides along with the thresholds. Stamped here rather than
+                    // inside Compute because it is a property of THIS row's shooter set, not of the
+                    // attacker-x-target arithmetic Compute mirrors.
+                    (int firing, int potential) = ChooseRangedAttackStage.AttackCounts(option, stats);
+
                     option.WeaponTargetStats[i] = stats with
                     {
                         Forecast = Compute(gameContext, attackingUnit, option.Weapon, stats.TargetUnit,
-                            stats.HasCover, option.IgnoresCover, attackerMoved),
+                            stats.HasCover, option.IgnoresCover, attackerMoved) with
+                        {
+                            AttacksFiring = firing,
+                            AttacksPotential = potential,
+                        },
                     };
                 }
             }

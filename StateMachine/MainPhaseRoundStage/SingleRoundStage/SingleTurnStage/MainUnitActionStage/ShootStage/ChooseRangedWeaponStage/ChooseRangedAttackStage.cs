@@ -463,16 +463,46 @@ namespace FDG.Stages
                 .FirstOrDefault(s => s.TargetUnit.Reference.Equals(targetUnit.Reference));
             if (stats == null) return 0;
 
+            return EligibleCopies(stats, chosenWeapon);
+        }
+
+        /// <summary>
+        /// #276/#345: copies of <paramref name="weapon"/> carried by the models that can shoot THIS row's
+        /// target. The trim above caps the volley at it, and <c>ShootingForecast</c> shows it to the player
+        /// before the commit - one implementation so the preview's "7 of 10 attacks" and the dice actually
+        /// rolled can never disagree. Internal for tests.
+        /// </summary>
+        internal static int EligibleCopies(WeaponTargetStats stats, Weapon weapon)
+        {
             var comparer = new WeaponComparer();
             int copies = 0;
             foreach (DataBinding<ModelData> model in stats.modelsThatCanShoot)
             {
-                foreach (Weapon weapon in model.Weapons())
+                foreach (Weapon carried in model.Weapons())
                 {
-                    if (comparer.Equals(weapon, chosenWeapon)) copies++;
+                    if (comparer.Equals(carried, weapon)) copies++;
                 }
             }
             return copies;
+        }
+
+        /// <summary>
+        /// #345: how many attack dice firing this option at this target will ACTUALLY roll, and how many it
+        /// would roll if every copy could reach - the gap being the carriers that blocking terrain (or
+        /// range) has taken out of the volley. Mirrors the trim in <see cref="OfferWeapons"/> exactly,
+        /// including its "eligible == 0 leaves the count alone" guard. A one-at-a-time weapon (#340
+        /// Takedown / Sniper) fires a single copy by rule, so its potential IS one copy - the others are not
+        /// blocked, they are simply aimed separately. Internal for tests.
+        /// </summary>
+        internal static (int Firing, int Potential) AttackCounts(WeaponOption option, WeaponTargetStats stats)
+        {
+            int attacksPerCopy = System.Math.Max(0, option.Weapon.Attacks);
+            if (option.AimedIndividuallyRule != null) return (attacksPerCopy, attacksPerCopy);
+
+            int pooled = System.Math.Max(0, option.CopiesRemaining);
+            int eligible = EligibleCopies(stats, option.Weapon);
+            int firing = eligible > 0 && eligible < pooled ? eligible : pooled;
+            return (firing * attacksPerCopy, pooled * attacksPerCopy);
         }
 
         private static bool HasAnyFireableOption(List<WeaponOption> weaponOptions)

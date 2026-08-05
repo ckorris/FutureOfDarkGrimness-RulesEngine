@@ -163,8 +163,16 @@ namespace FDG.StageResolution.Requests
         /// may claim mid-roll, an unclaimed Mark on the target. Null when there are none. Face-triggered
         /// effects (Rending, Furious) are deliberately absent: they already read as rule names on the
         /// weapon line, and pricing them pre-roll would be a guess.</param>
+        /// <param name="AttacksFiring">#345: how many attack dice this weapon will actually roll at this
+        /// target - only the copies whose carriers have line of sight and range fire (#276 trims the volley
+        /// to them). 0 on a legacy/unstamped forecast.</param>
+        /// <param name="AttacksPotential">#345: how many it would roll if every copy the unit still has
+        /// could reach. Equal to <paramref name="AttacksFiring"/> when nothing is held back; the gap is the
+        /// shots that blocking terrain (or range) is eating, which is the fact a player cannot otherwise see
+        /// until the dice are already on the table.</param>
         public record AttackForecast(int HitRollNeeded, int SaveRollNeeded,
-            List<string>? HitTags = null, List<string>? SaveTags = null, List<string>? Notes = null);
+            List<string>? HitTags = null, List<string>? SaveTags = null, List<string>? Notes = null,
+            int AttacksFiring = 0, int AttacksPotential = 0);
 
         /// <summary>
         /// Record suited to choosing your attack, with the attacking unit implied.

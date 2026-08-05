@@ -1,3 +1,4 @@
+using FDG.Presentation.Beats;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
@@ -100,15 +101,30 @@ namespace FDG.Stages
             }
             new TokenClearService().ClearForHook(EHookID.Round_OnRoundEnd, containers);
 
-            if (roundJustFinished < GameWideConstants.NUMBER_OF_ROUNDS)
-            {
-                await ToReconcileEndOfTurn.Activate(context);
-            }
-            else
+            if (roundJustFinished >= GameWideConstants.NUMBER_OF_ROUNDS)
             {
                 GameContext.Log($"{GameWideConstants.NUMBER_OF_ROUNDS} rounds complete. Proceeding to victory calculation.");
                 await ToVictoryCalculation.Activate(context);
+                return;
             }
+
+            // #332: stop once no remaining play can change the result. A tabled opponent plus a sole
+            // objective lead used to leave the winner holding every move through the last round to reach a
+            // foregone conclusion. Announce is what makes the short stop legible - it flashes the Headline
+            // banner AND writes the same line to the log, and both channels already replicate (beats via
+            // PresentationRelayer, log lines via PlayerLogSender), so a networked client sees it too. The
+            // call lands before the victory banner, so the two read in order.
+            if (MatchDecision.IsResultFixed(GameContext.TableState, out string headline, out string detail))
+            {
+                GameContext.Log($"Match decided after round {roundJustFinished} of " +
+                    $"{GameWideConstants.NUMBER_OF_ROUNDS}: {detail}.");
+                await GameContext.Announce($"{headline} - the match is decided.",
+                    tier: EBannerTier.Headline);
+                await ToVictoryCalculation.Activate(context);
+                return;
+            }
+
+            await ToReconcileEndOfTurn.Activate(context);
         }
 
         // Returns the set of PlayerIDs whose living models have a base edge within SeizureRadiusInches of the objective.

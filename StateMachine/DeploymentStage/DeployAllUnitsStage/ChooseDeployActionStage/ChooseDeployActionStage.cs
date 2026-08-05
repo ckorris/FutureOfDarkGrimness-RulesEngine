@@ -15,6 +15,13 @@ namespace FDG.Stages
         // the next player.
         public StageBinding OnEmbarked;
 
+        /// <summary>
+        /// The name of the "place this unit on the table instead of loading it" choice, offered as the
+        /// embark prompt's cancel action (#331). Public so tests — and any front end that wants to pin a
+        /// key or a button to it — read the wording from one place instead of retyping it.
+        /// </summary>
+        public const string DEPLOY_NORMALLY_CHOICE_NAME = "Deploy Normally";
+
         public ChooseDeployActionStage(IGameContext gameContext, IStateMachineLayer<IDeploymentTurnContext> parent)
             : base(gameContext, parent)
         {
@@ -95,9 +102,13 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// Asks which eligible transport to load <paramref name="unit"/> into, or cancel to deploy it
-        /// normally. Cancel (a null reply) is a real choice here, not a back-out — there's no list to
-        /// re-prompt — so <c>allowCancel</c> is true and null means "place this unit on the table instead".
+        /// Asks which eligible transport to load <paramref name="unit"/> into, or to deploy it normally.
+        /// Cancel (a null reply) is a real choice here, not a back-out — there's no list to re-prompt — so
+        /// <c>allowCancel</c> is true and null means "place this unit on the table instead". Because it is a
+        /// choice rather than an escape hatch it names itself: <c>cancelLabel</c> makes the resolver's exit
+        /// button read "Deploy Normally", after a playtester reported having to press Back to deploy a unit
+        /// that was standing next to a transport (#331). The mid-game <c>EmbarkStage</c> prompt deliberately
+        /// keeps the default "Back" — cancelling THAT one really does return to the action menu.
         /// </summary>
         private async Task<DataBinding<UnitData>?> PromptEmbarkChoice(UnitData unit,
             List<DataBinding<UnitData>> transports)
@@ -110,8 +121,10 @@ namespace FDG.Stages
             }
 
             SelectionRequest<UnitData> request = new SelectionRequest<UnitData>(unit.PlayerID,
-                $"Embark {unit.Name} into a transport? (Cancel to deploy normally.)",
-                options, new List<SelectionRequest<UnitData>.InvalidOption>(), allowCancel: true);
+                $"Deploy {unit.Name} inside a transport, or on the table?",
+                options, new List<SelectionRequest<UnitData>.InvalidOption>(), allowCancel: true,
+                displayName: $"Deploying {unit.Name}",
+                cancelLabel: DEPLOY_NORMALLY_CHOICE_NAME);
 
             return await GameContext.PlayerRequester
                 .RequestDecision<SelectionRequest<UnitData>, DataBinding<UnitData>>(request);

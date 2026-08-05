@@ -6,6 +6,7 @@ using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
 using FDG.StageResolution.Requests;
+using FDG.Utilities;
 
 namespace FDG.Stages
 {
@@ -164,13 +165,20 @@ namespace FDG.Stages
         // embarked unit that already activated still needs disambiguating from its twin). Defensive on a
         // dangling transport id — spillout disembarks occupants on destruction, but a stale token must
         // degrade to the bare name, not crash the activation menu.
+        //
+        // #337: a Shaken unit's row says so. Activating it skips the action menu outright (ChooseActionStage
+        // sees StartedActivationShaken and spends the activation recovering), so this is not decoration —
+        // it is the difference between an activation that can act and one that cannot, and it was previously
+        // announced only by a Toast that had already faded. Appended LAST so the transport suffix keeps its
+        // place: "Warriors (in Rhino) (Shaken - recovers)".
         private static string GetOptionLabel(UnitData unit, IReadOnlyList<UnitData> allUnits)
         {
             UnitID? transportId = TransportUtilities.GetTransportId(unit);
-            if (transportId == null) return unit.Name;
+            if (transportId == null) return UnitStatusLabel.Decorate(unit, unit.Name);
 
             UnitData? transport = allUnits.FirstOrDefault(u => u.ID == transportId.Value);
-            return transport == null ? unit.Name : $"{unit.Name} (in {transport.Name})";
+            return UnitStatusLabel.Decorate(unit,
+                transport == null ? unit.Name : $"{unit.Name} (in {transport.Name})");
         }
 
         // Why a unit can't be activated right now. An unplaced Ambush reserve (off-table, deferred to a

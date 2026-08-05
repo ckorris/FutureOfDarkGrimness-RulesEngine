@@ -44,16 +44,64 @@ namespace FDG.Tests
         }
 
         [Test]
-        public async Task AttackerWiped_NoRequestFiredAndStageExits()
+        public async Task AttackerWiped_DefenderConsolidatesWithThreeInchCap()
         {
-            var (ctx, combat, requester, attacker, _) = BuildBattlefield(
+            // #339: the defender struck back and killed the charger. It won the melee just as surely as a
+            // charger that wipes out its defender, so it gets the same 3" wipeout move - this used to fire
+            // no request at all, and the surviving unit never moved.
+            var (ctx, combat, requester, attacker, defender) = BuildBattlefield(
                 attackerPositions: new[] { new Position(20, 20) },
                 defenderPositions: new[] { new Position(22, 20) });
             KillAll(attacker);
+            requester.Reply = req => StayInPlace(req);
 
             bool consolidated = await RunConsolidate(ctx, combat);
 
-            Assert.That(requester.Captured, Is.Null);
+            Assert.That(requester.Captured, Is.Not.Null);
+            Assert.That(requester.Captured!.Reason, Is.EqualTo(EConsolidationReason.Wipeout));
+            Assert.That(requester.Captured.MaxDistanceInches, Is.EqualTo(ConsolidateStage.WIPEOUT_MAX_DISTANCE_INCHES));
+            Assert.That(requester.Captured.UnitDataBinding.Reference, Is.EqualTo(defender.Reference),
+                "the surviving defender is the one asked to consolidate.");
+            Assert.That(requester.Captured.TargetPlayerID, Is.EqualTo(defender.GetValue().PlayerID),
+                "and its own player is the one prompted, not the active player.");
+            Assert.That(consolidated, Is.True);
+        }
+
+        [Test]
+        public async Task AttackerWipedMovesDefender_MovementIsApplied()
+        {
+            // The defender's move must actually execute - the same ApplyMovements path the attacker's does.
+            var (ctx, combat, requester, attacker, defender) = BuildBattlefield(
+                attackerPositions: new[] { new Position(20, 20) },
+                defenderPositions: new[] { new Position(22, 20) });
+            KillAll(attacker);
+            requester.Reply = req => req.UnitDataBinding.GetValue().ModelBindings
+                .Where(mb => mb.GetValue().GetIsAlive())
+                .Select(mb =>
+                {
+                    var m = mb.GetValue();
+                    return new ModelMoveEntry(mb,
+                        new List<Position> { new Position(m.Position.x, m.Position.z - 2f) });
+                }).ToList();
+
+            await RunConsolidate(ctx, combat);
+
+            var pos = defender.GetValue().ModelBindings[0].GetValue().Position;
+            Assert.That(pos.z, Is.EqualTo(18f).Within(0.0001f), "2\" is inside the 3\" wipeout cap.");
+        }
+
+        [Test]
+        public async Task BothSidesWiped_NoRequestFiredAndStageExits()
+        {
+            var (ctx, combat, requester, attacker, defender) = BuildBattlefield(
+                attackerPositions: new[] { new Position(20, 20) },
+                defenderPositions: new[] { new Position(22, 20) });
+            KillAll(attacker);
+            KillAll(defender);
+
+            bool consolidated = await RunConsolidate(ctx, combat);
+
+            Assert.That(requester.Captured, Is.Null, "nobody is left to consolidate.");
             Assert.That(consolidated, Is.True);
         }
 

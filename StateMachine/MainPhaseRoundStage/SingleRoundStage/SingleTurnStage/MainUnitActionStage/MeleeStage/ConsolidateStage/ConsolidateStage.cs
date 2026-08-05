@@ -1,4 +1,5 @@
 using System.Text;
+using FDG.Data;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 using FDG.Utilities;
@@ -23,39 +24,45 @@ namespace FDG.Stages
             bool attackerAlive = AnyAlive(context.AttackingUnit.GetValue());
             bool defenderAlive = AnyAlive(context.DefendingUnit.GetValue());
 
-            if (!attackerAlive)
+            if (!attackerAlive && !defenderAlive)
             {
-                GameContext.Log("Consolidation: attacker has no living models - skipping.");
+                GameContext.Log("Consolidation: no living models on either side - skipping.");
                 await OnConsolidated.Activate(context);
                 return;
             }
 
-            bool wipeout = !defenderAlive;
+            // #339: the SURVIVOR of a wipeout consolidates, whichever seat it sat in. A defender that
+            // strikes back and kills the charger has won the melee exactly as a charger that wipes out its
+            // defender has, and gets the same 3" move. This stage used to key off the attacker alone, so a
+            // dead attacker skipped consolidation entirely and the unit that won never moved.
+            // (The disengage case stays one-sided: only the attacker falls back when both sides survive.)
+            bool wipeout = !attackerAlive || !defenderAlive;
+            DataBinding<UnitData> consolidatingUnit = attackerAlive ? context.AttackingUnit : context.DefendingUnit;
             EConsolidationReason reason = wipeout ? EConsolidationReason.Wipeout : EConsolidationReason.Disengage;
             float maxDist = wipeout ? WIPEOUT_MAX_DISTANCE_INCHES : DISENGAGE_MAX_DISTANCE_INCHES;
 
-            GameContext.Log($"Consolidation: {reason} (up to {maxDist}\").");
+            GameContext.Log($"Consolidation: {consolidatingUnit.GetValue().Name} - {reason} (up to {maxDist}\").");
 
-            PlayerID playerID = context.AttackingUnit.GetValue().PlayerID;
+            PlayerID playerID = consolidatingUnit.GetValue().PlayerID;
 
             // #090: enemy-check the consolidation move (no charge semantics). The fly-over flag lets a
             // Strafing unit consolidate through an enemy; it still may not end stacked on one.
             bool canMoveThroughEnemies = Rules.Dispatch.MovementRuleQueries.CanMoveThroughEnemies(
-                context.AttackingUnit.GetValue(), context.GameContext.RuleEvaluator);
+                consolidatingUnit.GetValue(), context.GameContext.RuleEvaluator);
             bool ignoresDifficultTerrain = Rules.Dispatch.MovementRuleQueries.IgnoresDifficultTerrain(
-                context.AttackingUnit.GetValue(), context.GameContext.RuleEvaluator);
+                consolidatingUnit.GetValue(), context.GameContext.RuleEvaluator);
             bool ignoresImpassibleTerrain = Rules.Dispatch.MovementRuleQueries.IgnoresAllTerrain(
-                context.AttackingUnit.GetValue(), context.GameContext.RuleEvaluator);
+                consolidatingUnit.GetValue(), context.GameContext.RuleEvaluator);
             List<EnemyModelFootprint> enemyFootprints =
-                MovementUtilities.GetEnemyModelFootprints(context.AttackingUnit, context.GameContext);
+                MovementUtilities.GetEnemyModelFootprints(consolidatingUnit, context.GameContext);
             // #205: a consolidation move may not end stacked on a friendly unit either.
             List<EnemyModelFootprint> friendlyFootprints =
-                MovementUtilities.GetFriendlyModelFootprints(context.AttackingUnit, context.GameContext);
+                MovementUtilities.GetFriendlyModelFootprints(consolidatingUnit, context.GameContext);
 
             var request = new ConsolidationMoveRequest(playerID,
                 reason == EConsolidationReason.Wipeout
                     ? "Consolidating After a Wipeout" : "Consolidating After Disengaging",
-                context.AttackingUnit, maxDist, reason, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain);
+                consolidatingUnit, maxDist, reason, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain);
 
             List<ModelMoveEntry> movements = await context.PlayerRequester()
                 .RequestDecision<ConsolidationMoveRequest, List<ModelMoveEntry>>(request);

@@ -31,7 +31,12 @@ namespace FDG.Presentation
         // held beats that pace only a lead-in, so the game carries on while they finish on screen.
         // Toast pauses nothing at all -- it is meant to ride along with whatever else is playing.
         public static readonly TimeSpan Banner            = TimeSpan.FromMilliseconds(1300);
-        public static readonly TimeSpan BannerNotice      = TimeSpan.FromMilliseconds(900);
+        // #338: was 900ms, which after a 120ms fade-in and a 400ms fade-out tail left under 400ms at full
+        // strength - long enough to notice that SOMETHING was said, too short to read it, and short enough
+        // that two notices never coexisted, so #327's centered stack could not be seen in play at all. The
+        // engine pause is unchanged: a Notice is a held beat that paces only BannerNoticeLeadIn, so the
+        // extra time is spent on screen while play carries on underneath it.
+        public static readonly TimeSpan BannerNotice      = TimeSpan.FromMilliseconds(2400);
         public static readonly TimeSpan BannerNoticeLeadIn = TimeSpan.FromMilliseconds(300);
         // Longer than a Notice despite being smaller: a toast is read out of the corner of the eye
         // while the eye is busy elsewhere, so it needs to stay up rather than to stay loud.

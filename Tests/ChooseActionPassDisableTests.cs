@@ -1,6 +1,7 @@
 using FDG.Data;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Tokens;
 using FDG.Stages;
 using NUnit.Framework;
 
@@ -103,23 +104,71 @@ namespace FDG.Tests
                 $"an allied model in the standoff must not force a charge. Reason given: {reason}");
         }
 
+        // #337 — the gate measures BASE to BASE, not centre to centre, and the difference is the whole
+        // rule once bases get big. Two 3"-diameter circular bases whose centres are 3.5" apart are 0.5"
+        // of table apart: plainly inside the 1" standoff, and a centre-distance implementation would call
+        // them four times clear of it. Circles on both sides deliberately — that is the pairing a playtest
+        // reported as "got really really close and didn't have to charge" (2026-08-04), and the pairing
+        // where a bug would be least visible, since a circle needs no facing to measure.
+        [Test]
+        public void GetCanPass_LargeCircularBases_MeasuredBaseToBase_NotCentreToCentre()
+        {
+            var (ctx, unitCtx) = Build(enemyAt: new Position(3.5f, 0), baseRadius: 1.5f);
+
+            bool canPass = ChooseActionStage.GetCanPass(ctx, unitCtx, out string reason);
+
+            Assert.That(canPass, Is.False,
+                "centres 3.5\" apart but bases only 0.5\" apart - a centre-distance check would wrongly "
+                + $"allow Pass here. Reason given: {reason}");
+        }
+
+        // The other side of the same coin: big bases must not force a charge on a unit that is genuinely
+        // clear. Centres 5.1" apart, bases 2.1" apart - outside the standoff AND outside melee range.
+        [Test]
+        public void GetCanPass_LargeCircularBases_GenuinelyClear_True()
+        {
+            var (ctx, unitCtx) = Build(enemyAt: new Position(5.1f, 0), baseRadius: 1.5f);
+
+            bool canPass = ChooseActionStage.GetCanPass(ctx, unitCtx, out string reason);
+
+            Assert.That(canPass, Is.True,
+                $"bases 2.1\" apart are clear of the 1\" standoff. Reason given: {reason}");
+        }
+
+        // #337 — the case the playtest actually hit. A unit that STARTED its activation Shaken never
+        // reaches the action menu at all (ChooseActionStage short-circuits to end-of-activation), so the
+        // forced-charge gate is bypassed no matter how close it is standing. Pinned because it is easy to
+        // read as the proximity rule failing, and because it is exactly why the picker now badges Shaken.
+        [Test]
+        public void StartedActivationShaken_BypassesTheForcedChargeGate_ByDesign()
+        {
+            var (ctx, unitCtx) = Build(enemyAt: new Position(1.5f, 0), shaken: true);
+
+            Assert.That(unitCtx.StartedActivationShaken, Is.True);
+            Assert.That(ChooseActionStage.GetCanPass(ctx, unitCtx, out _), Is.False,
+                "the gate itself still says no - it is simply never consulted for a Shaken activation.");
+        }
+
         private static (TestGameContext ctx, UnitActionContext unitCtx) Build(
-            Position? enemyAt = null, bool otherIsAlly = false,
+            Position? enemyAt = null, bool otherIsAlly = false, float baseRadius = 0.5f,
+            bool shaken = false,
             Action<DataBinding<UnitData>>? configureUnit = null)
         {
             var store = GameDataStore.GameDataStoreBuilder.GetDefault();
             var ctx = new TestGameContext(store, new FixedDiceRoller(4));
 
             var playerID = new PlayerID(Guid.NewGuid());
-            var model = MakeModel(store, new Position(0, 0));
+            var model = MakeModel(store, new Position(0, 0), baseRadius);
             var unit = MakeUnit(store, playerID, new[] { model });
+            if (shaken) unit.GetValue().Tokens.AddToken(
+                TokenDefinitionCatalog.Create(Rules.Foundation.TokenType.Shaken));
             configureUnit?.Invoke(unit);
             store.Create(new ArmyData(playerID, new List<DataBinding<UnitData>> { unit }));
 
             if (enemyAt.HasValue)
             {
                 var otherPlayer = new PlayerID(Guid.NewGuid());
-                var otherModel = MakeModel(store, enemyAt.Value);
+                var otherModel = MakeModel(store, enemyAt.Value, baseRadius);
                 var otherUnit = MakeUnit(store, otherPlayer, new[] { otherModel });
                 store.Create(new ArmyData(otherPlayer, new List<DataBinding<UnitData>> { otherUnit }));
 
@@ -134,10 +183,11 @@ namespace FDG.Tests
             return (ctx, unitCtx);
         }
 
-        private static DataBinding<ModelData> MakeModel(GameDataStore store, Position position)
+        private static DataBinding<ModelData> MakeModel(GameDataStore store, Position position,
+            float baseRadiusInches = 0.5f)
         {
             var model = new ModelData(
-                baseRadiusInches: 0.5f,
+                baseRadiusInches: baseRadiusInches,
                 weapons: new List<Weapon>(),
                 initialPosition: position,
                 gameDataStore: store);

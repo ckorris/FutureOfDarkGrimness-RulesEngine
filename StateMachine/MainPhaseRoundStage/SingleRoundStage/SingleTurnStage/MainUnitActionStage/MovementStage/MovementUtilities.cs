@@ -457,47 +457,15 @@ namespace FDG.Stages
                 .ToList();
             if (impassable.Count == 0) return;
 
+            // #340: the authoritative gate and the preview's "show me why" finder are now ONE walk. They were
+            // two copies of the same segment loop that docs/ResolverGuide.md requires never to diverge, and the
+            // two-attitude leg rule plus the per-node pose check gave them far more to keep in step.
             foreach (ModelMoveEntry move in moves)
             {
-                if (move.Positions.Count == 0) continue;
-
-                var model = move.Model.GetValue();
-                IBaseShape baseShape = model.BaseShape;
-                Float2 restingFacing = model.Facing;
-                Position startPos = model.PositionBinding.GetValue();
-                Float2 segmentStart = new Float2(startPos.x, startPos.z);
-
-                bool blocked = false;
-                for (int i = 0; i < move.Positions.Count && !blocked; i++)
+                if (FindFirstTerrainCrossing(move, impassable, ELegAttitudeRule.EitherAttitudeClears) != null)
                 {
-                    Position stepPos = move.Positions[i];
-                    Float2 segmentEnd = new Float2(stepPos.x, stepPos.z);
-
-                    // A stationary (zero-length) step isn't moving THROUGH terrain — skip it. Otherwise a model
-                    // already sitting within its base radius of impassable terrain self-flags even on a hold,
-                    // which defeats the AI's hold-in-place fallback and crashes DefinePathStage (no valid move).
-                    if (IsZeroLengthSegment(segmentStart, segmentEnd)) continue;
-
-                    // Sweep at the facing the model will HAVE while traversing this segment - its per-waypoint
-                    // travel facing (#150), the same oriented base the ghost drew and the executor turns to - not
-                    // its pre-move resting facing. For a large non-square base the orientation changes which
-                    // footprint the swept test uses, so a frozen resting facing disagreed with what the player saw.
-                    Float2 facing = SegmentFacing(move, i, restingFacing);
-
-                    foreach (ITerrain piece in impassable)
-                    {
-                        //Sweep the model's true base footprint (shape + facing) along the segment so base
-                        //overlap — not just the centre crossing — counts as moving through impassable terrain (#150).
-                        if (SweptBaseGeometry.DoesSweptBaseIntersectZone(piece.Shape, segmentStart, segmentEnd, baseShape, facing))
-                        {
-                            reasonsForInvalidMove.Add(
-                                new ReasonForInvalidMove(EErrorReasonType.MovingThroughImpassibleTerrain, move.Model));
-                            blocked = true;
-                            break;
-                        }
-                    }
-
-                    segmentStart = segmentEnd;
+                    reasonsForInvalidMove.Add(
+                        new ReasonForInvalidMove(EErrorReasonType.MovingThroughImpassibleTerrain, move.Model));
                 }
             }
         }
@@ -511,12 +479,51 @@ namespace FDG.Stages
             return dx * dx + dz * dz < ZERO_MOVE_EPSILON_SQ;
         }
 
-        // The base's orientation while traversing the segment that ENDS at Positions[i]: the move's per-waypoint
-        // travel facing (#150, Facings[i]), so the swept-footprint terrain tests use the same oriented base the
-        // ghost drew and the executor will turn the model to. Falls back to the model's pre-move resting facing
-        // when the move carries no per-waypoint facings (AI moves, consolidation, aircraft - Facings is null).
-        private static Float2 SegmentFacing(ModelMoveEntry move, int i, Float2 fallback)
-            => move.Facings != null && i < move.Facings.Count ? move.Facings[i] : fallback;
+        // The base's orientation as it ARRIVES at Positions[i]: the move's per-waypoint travel facing
+        // (#150, Facings[i]), the same oriented base the ghost drew and the executor will turn the model to.
+        // Falls back to the model's pre-move resting facing when the move carries no per-waypoint facings
+        // (AI moves, consolidation, aircraft - Facings is null).
+        private static Float2 ArriveFacing(ModelMoveEntry move, int i, Float2 resting)
+            => move.Facings != null && i < move.Facings.Count ? move.Facings[i] : resting;
+
+        // #340: the orientation the base DEPARTED the previous node with - the facing that node was placed at,
+        // or the model's pre-move resting facing for the first leg. A leg runs between two attitudes, and this
+        // is the one the old single-facing sweep silently threw away: it swept the whole leg at the ARRIVING
+        // attitude, so a rotation the player dialled in for the node they were placing was applied to the
+        // ground they were standing on. A rectangle parked beside a wall could not be told to turn at all.
+        private static Float2 DepartFacing(ModelMoveEntry move, int i, Float2 resting)
+            => i == 0 ? resting : ArriveFacing(move, i - 1, resting);
+
+        // Two attitudes that are the same heading - the overwhelmingly common case (no manual rotation, or a
+        // straight leg), where the two-attitude leg rule collapses back to a single sweep and costs nothing.
+        private const float FACING_EPSILON = 1e-4f;
+        private static bool FacingsEqual(Float2 a, Float2 b)
+            => MathF.Abs(a.X - b.X) < FACING_EPSILON && MathF.Abs(a.Y - b.Y) < FACING_EPSILON;
+
+        /// <summary>
+        /// #340 - how a leg whose two endpoint attitudes DISAGREE is treated. A leg's rotation is deliberately
+        /// left unvalidated (the base turns from the node it left to the node it arrives at somewhere along the
+        /// way; the animation decides when), so the two questions a swept test can be asked need opposite
+        /// answers and each caller has to say which it means.
+        /// </summary>
+        private enum ELegAttitudeRule
+        {
+            /// <summary>
+            /// Hazard detection (Dangerous / Difficult): the ARRIVING attitude alone, exactly as before #340.
+            /// "Does this ground affect the model" is not "is this move legal", and widening it either way
+            /// would change how often units take terrain wounds or hit the 6" cap.
+            /// </summary>
+            ArrivingAttitude,
+
+            /// <summary>
+            /// Legality (Impassible): the leg is blocked only when the swept footprint collides at BOTH
+            /// endpoint attitudes - one clear attitude is enough, because the model could have been holding it
+            /// for the whole leg. The OR is evaluated over the WHOLE obstacle set per attitude ("there is one
+            /// attitude at which this leg is clear of everything"), never per obstacle. Each node's pose is
+            /// then checked strictly on its own, which is what still stops a move ending rotated into a wall.
+            /// </summary>
+            EitherAttitudeClears,
+        }
 
         // The base's orientation at the END of the move: the last per-waypoint facing (#282 - committed
         // waypoints keep the facing they were placed with, and the executor turns the model to it), falling
@@ -549,9 +556,7 @@ namespace FDG.Stages
         /// the Done gate. The authoritative enforcement is <see cref="ValidateMovingThroughImpassibleTerrain"/>;
         /// this is the same swept-base test it uses, for preview.</summary>
         public static bool DoesPathCrossImpassibleTerrain(ModelMoveEntry move, IEnumerable<ITerrain> terrain)
-            => DoesPathCrossTerrainPieces(move, terrain
-                .Where(t => t.TerrainType.HasFlag(ETerrainType.Impassible))
-                .ToList());
+            => FindFirstImpassibleCrossing(move, terrain) != null;
 
         /// <summary>Where a flagged path actually collides, for the preview's "show me why" feedback: the
         /// terrain piece, the path segment (by index), the sweep's oriented facing, and the model's centre at
@@ -586,12 +591,28 @@ namespace FDG.Stages
         public static TerrainCrossing? FindFirstImpassibleCrossing(ModelMoveEntry move, IEnumerable<ITerrain> terrain)
             => FindFirstTerrainCrossing(move, terrain
                 .Where(t => t.TerrainType.HasFlag(ETerrainType.Impassible))
-                .ToList());
+                .ToList(), ELegAttitudeRule.EitherAttitudeClears);
 
         private static bool DoesPathCrossTerrainPieces(ModelMoveEntry move, List<ITerrain> pieces)
-            => FindFirstTerrainCrossing(move, pieces) != null;
+            => FindFirstTerrainCrossing(move, pieces, ELegAttitudeRule.ArrivingAttitude) != null;
 
-        private static TerrainCrossing? FindFirstTerrainCrossing(ModelMoveEntry move, List<ITerrain> pieces)
+        /// <summary>
+        /// Walks a path against a set of terrain pieces and reports the first collision, under the chosen
+        /// <see cref="ELegAttitudeRule"/> (#340). Two kinds of collision can be reported:
+        /// <list type="bullet">
+        /// <item>a LEG - the swept footprint between two nodes; and</item>
+        /// <item>a NODE POSE - the static footprint at a waypoint, at the facing that waypoint was placed
+        /// with. Only under <see cref="ELegAttitudeRule.EitherAttitudeClears"/>, where it is the whole point:
+        /// the leg rule accepts a leg that is clear at the DEPARTING attitude, so without this a move could
+        /// end (or turn a corner) rotated into a wall and nothing would catch it. Reported as a zero-length
+        /// segment at the node, which is exactly what it is.</item>
+        /// </list>
+        /// A pose identical to the one before it is skipped: it is not a pose this move creates, and flagging
+        /// it would self-flag every hold by a model already overlapping a piece - the AI's hold-in-place
+        /// fallback, which is the documented reason zero-length legs are skipped too.
+        /// </summary>
+        private static TerrainCrossing? FindFirstTerrainCrossing(ModelMoveEntry move, List<ITerrain> pieces,
+            ELegAttitudeRule attitudeRule)
         {
             if (pieces.Count == 0 || move.Positions.Count == 0) return null;
 
@@ -600,32 +621,73 @@ namespace FDG.Stages
             Float2 restingFacing = model.Facing;
             Position startPos = model.PositionBinding.GetValue();
             Float2 segmentStart = new Float2(startPos.x, startPos.z);
+            bool eitherClears = attitudeRule == ELegAttitudeRule.EitherAttitudeClears;
 
             for (int i = 0; i < move.Positions.Count; i++)
             {
                 Float2 segmentEnd = new Float2(move.Positions[i].x, move.Positions[i].z);
-                if (IsZeroLengthSegment(segmentStart, segmentEnd)) continue; // a hold doesn't cross terrain
-                // Per-waypoint travel facing (#150); see ValidateMovingThroughImpassibleTerrain for the rationale.
-                Float2 facing = SegmentFacing(move, i, restingFacing);
-                foreach (ITerrain piece in pieces)
+                Float2 arriveFacing = ArriveFacing(move, i, restingFacing);
+                Float2 departFacing = DepartFacing(move, i, restingFacing);
+                bool held = IsZeroLengthSegment(segmentStart, segmentEnd); // a hold doesn't cross terrain
+
+                if (!held)
                 {
-                    if (!SweptBaseGeometry.DoesSweptBaseIntersectZone(piece.Shape, segmentStart, segmentEnd, baseShape, facing))
-                        continue;
-                    // The centre at first touch: known-clear travel along the segment (0 when the base
-                    // already overlaps at the segment start - the pivot/offset re-orientation case).
-                    float entry = SweptBaseGeometry.MaxTravelBeforeZoneIntersection(
-                        piece.Shape, segmentStart, segmentEnd, baseShape, facing);
-                    float dx = segmentEnd.X - segmentStart.X, dz = segmentEnd.Y - segmentStart.Y;
-                    float len = MathF.Sqrt(dx * dx + dz * dz);
-                    Float2 contact = len > 0f
-                        ? new Float2(segmentStart.X + dx / len * entry, segmentStart.Y + dz / len * entry)
-                        : segmentStart;
-                    return new TerrainCrossing(piece, i, segmentStart, segmentEnd, facing, contact);
+                    // Sweep the model's true base footprint (shape + facing) along the leg so base overlap -
+                    // not just the centre crossing - counts as moving through the piece (#150).
+                    TerrainCrossing? leg = FirstSweptCollision(pieces, segmentStart, segmentEnd, baseShape,
+                        arriveFacing, i);
+                    // The arriving attitude is tried first: it is the one the ghost drew, and on a leg that is
+                    // clear at it (the common case) the second sweep never runs.
+                    if (leg != null && (!eitherClears
+                                        || FacingsEqual(departFacing, arriveFacing)
+                                        || AnySweptCollision(pieces, segmentStart, segmentEnd, baseShape, departFacing)))
+                        return leg;
                 }
+
+                if (eitherClears && !(held && FacingsEqual(departFacing, arriveFacing)))
+                {
+                    TerrainCrossing? pose = FirstSweptCollision(pieces, segmentEnd, segmentEnd, baseShape,
+                        arriveFacing, i);
+                    if (pose != null) return pose;
+                }
+
                 segmentStart = segmentEnd;
             }
 
             return null;
+        }
+
+        // The first piece the swept base touches, as a reportable crossing (null when clear). A zero-length
+        // sweep is a static pose test, and reports the node itself as the contact centre.
+        private static TerrainCrossing? FirstSweptCollision(List<ITerrain> pieces, Float2 from, Float2 to,
+            IBaseShape baseShape, Float2 facing, int segmentIndex)
+        {
+            foreach (ITerrain piece in pieces)
+            {
+                if (!SweptBaseGeometry.DoesSweptBaseIntersectZone(piece.Shape, from, to, baseShape, facing))
+                    continue;
+                // The centre at first touch: known-clear travel along the segment (0 when the base
+                // already overlaps at the segment start - the pivot/offset re-orientation case).
+                float entry = SweptBaseGeometry.MaxTravelBeforeZoneIntersection(
+                    piece.Shape, from, to, baseShape, facing);
+                float dx = to.X - from.X, dz = to.Y - from.Y;
+                float len = MathF.Sqrt(dx * dx + dz * dz);
+                Float2 contact = len > 0f
+                    ? new Float2(from.X + dx / len * entry, from.Y + dz / len * entry)
+                    : from;
+                return new TerrainCrossing(piece, segmentIndex, from, to, facing, contact);
+            }
+            return null;
+        }
+
+        // The same question without the reporting work, for the second attitude of the #340 leg rule.
+        private static bool AnySweptCollision(List<ITerrain> pieces, Float2 from, Float2 to,
+            IBaseShape baseShape, Float2 facing)
+        {
+            foreach (ITerrain piece in pieces)
+                if (SweptBaseGeometry.DoesSweptBaseIntersectZone(piece.Shape, from, to, baseShape, facing))
+                    return true;
+            return false;
         }
 
         /// <summary>Safety margin the difficult-terrain preview clamp keeps below the exact limits — both the
@@ -839,8 +901,16 @@ namespace FDG.Stages
                             Float2 b = new Float2(step.x, step.z);
                             // #312: sweep each segment at its travel facing (the orientation the ghost drew and
                             // the executor applies), mirroring the terrain validators' 2026-07-25 fix.
-                            if (SweptBaseGeometry.DoesSweptBaseIntersectZone(enemyZone, a, b, movingShape,
-                                SegmentFacing(move, i, restingFacing)))
+                            // #340: but a leg runs BETWEEN two attitudes, and its rotation is not validated - so
+                            // the leg is "through" this enemy only when it crosses at both of them. Sweeping the
+                            // arriving attitude alone applied a turn the player dialled in for the node being
+                            // placed to the ground the model set off from. (Scoped per enemy, like every other
+                            // clause of this check - the question here is "did I pass through THIS enemy".)
+                            Float2 arriveFacing = ArriveFacing(move, i, restingFacing);
+                            Float2 departFacing = DepartFacing(move, i, restingFacing);
+                            if (SweptBaseGeometry.DoesSweptBaseIntersectZone(enemyZone, a, b, movingShape, arriveFacing)
+                                && (FacingsEqual(departFacing, arriveFacing)
+                                    || SweptBaseGeometry.DoesSweptBaseIntersectZone(enemyZone, a, b, movingShape, departFacing)))
                             {
                                 reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.MovingThroughEnemyUnit, move.Model));
                                 flaggedThrough = true;

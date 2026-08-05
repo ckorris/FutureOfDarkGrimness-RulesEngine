@@ -93,7 +93,9 @@ namespace FDG.Tests
         [Test]
         public void FindFirstCrossing_ReportsPieceSegmentAndContact()
         {
-            DataBinding<ModelData> model = MakeModel(new Position(0f, 0f), restFacing: new Float2(0f, 1f));
+            // Resting +X and travelling +X, so the leg's two endpoint attitudes agree and #340's either-attitude
+            // rule collapses to the single sweep this has always tested: a mid-leg contact found by bisection.
+            DataBinding<ModelData> model = MakeModel(new Position(0f, 0f), restFacing: new Float2(1f, 0f));
             var move = TravelMove(model, new Position(3f, 0f));
             List<ITerrain> band = ImpassibleBand();
 
@@ -109,34 +111,131 @@ namespace FDG.Tests
             Assert.That(crossing.Value.ContactCentre.Y, Is.EqualTo(0f).Within(0.02f));
         }
 
-        // The TankCantMakeCorner mechanism: the manual rotation offset re-orients the WHOLE committed path,
-        // so adding a node (or turning the hand) late in a path can make an EARLIER, already-green segment
-        // collide with a piece it used to skirt. The finder must attribute the collision to that earlier
-        // segment - the player's cursor is nowhere near it.
+        // #340: the same destination reached from a resting +Z facing is a NODE-POSE collision, not a leg one.
+        // Swept at the resting attitude the 0.5" half-width stays short of the band all the way to X=3, so the
+        // travel is legal - what is not is standing there turned +X, which puts the 3" nose inside it. Reported
+        // as a zero-length segment AT the node, which is what the "show me why" overlay needs to draw.
         [Test]
-        public void FindFirstCrossing_LateRotationOffset_FlagsTheEarlierSegment()
+        public void FindFirstCrossing_RotatedIntoTerrainOnArrival_ReportsTheNodePose()
         {
-            // 1"x6" base (0.5" half-width, 3" half-height) driving +Z past a pillar at X 2..3. Facing along
-            // travel, the footprint reaches only X=0.5 - segment 1 skirts the pillar cleanly. A 45deg manual
-            // offset swings the 3" half-height toward the pillar (reach = 0.5cos45 + 3sin45 ~ 2.47") - the
-            // same first segment now collides.
+            DataBinding<ModelData> model = MakeModel(new Position(0f, 0f), restFacing: new Float2(0f, 1f));
+            var move = TravelMove(model, new Position(3f, 0f));
+
+            MovementUtilities.TerrainCrossing? crossing =
+                MovementUtilities.FindFirstImpassibleCrossing(move, ImpassibleBand());
+
+            Assert.That(crossing, Is.Not.Null, "the arrival pose stands the long axis in the band");
+            Assert.That(crossing!.Value.SegmentIndex, Is.EqualTo(0));
+            Assert.That(crossing.Value.SegmentStart.X, Is.EqualTo(3f).Within(0.001f));
+            Assert.That(crossing.Value.SegmentEnd.X, Is.EqualTo(3f).Within(0.001f),
+                "a node pose is reported as a zero-length segment at the node");
+            Assert.That(crossing.Value.ContactCentre.X, Is.EqualTo(3f).Within(0.001f));
+        }
+
+        // The TankCantMakeCorner mechanism, after #340: a rotation dialled in for a later node no longer
+        // re-orients the leg that led up to it. The first leg is walked at the attitude the model DEPARTED
+        // with and stays clear; what the rotation can still cost you is the pose at the node itself.
+        [Test]
+        public void FindFirstCrossing_LateRotationOffset_LeavesTheEarlierLegAlone()
+        {
+            // 1"x6" base (0.5" half-width, 3" half-height) driving +Z past a pillar at X 2..3, Z 0..4. Facing
+            // along travel the footprint reaches only X=0.5, so leg 0 skirts the pillar. A 45deg hand offset
+            // swings the 3" half-height toward it (reach = 0.5cos45 + 3sin45 ~ 2.47").
             DataBinding<ModelData> model = MakeModel(new Position(0f, 0f), restFacing: new Float2(0f, 1f));
             var pillar = new List<ITerrain>
                 { new TerrainData(ETerrainType.Impassible, new RectangularZone(2f, 3f, 0f, 4f)) };
-            var waypoints = new List<Position> { new Position(0f, 6f), new Position(0f, 12f) };
 
-            ModelMoveEntry straight = OffsetMove(model, waypoints, offsetRadians: 0f);
-            Assert.That(MovementUtilities.FindFirstImpassibleCrossing(straight, pillar), Is.Null,
-                "facing along travel, the path skirts the pillar");
+            // Turning at a node level with the pillar puts the swung long axis inside it - still rejected, and
+            // attributed to that node rather than to open ground the cursor is nowhere near.
+            var alongside = new List<Position> { new Position(0f, 6f), new Position(0f, 12f) };
+            MovementUtilities.TerrainCrossing? blocked = MovementUtilities.FindFirstImpassibleCrossing(
+                OffsetMove(model, alongside, offsetRadians: MathF.PI / 4f), pillar);
+            Assert.That(blocked, Is.Not.Null, "the 45deg pose at the node swings the long axis into the pillar");
+            Assert.That(blocked!.Value.SegmentIndex, Is.EqualTo(0));
+            Assert.That(blocked.Value.SegmentStart.Y, Is.EqualTo(6f).Within(0.001f),
+                "attributed to the node that is turned, not to the leg that got there");
 
-            ModelMoveEntry rotated = OffsetMove(model, waypoints, offsetRadians: MathF.PI / 4f);
-            MovementUtilities.TerrainCrossing? crossing =
-                MovementUtilities.FindFirstImpassibleCrossing(rotated, pillar);
-
-            Assert.That(crossing, Is.Not.Null, "the 45deg hand offset swings the long axis into the pillar");
-            Assert.That(crossing!.Value.SegmentIndex, Is.EqualTo(0),
-                "the collision is on the EARLIER segment, not the one being placed");
+            // Turn well past the pillar instead and the whole path is legal: leg 0 runs at the resting attitude
+            // (which skirts it), and the rotated pose at Z=20 is nowhere near. Before #340 the offset was applied
+            // to leg 0 as well and this move was refused.
+            var pastIt = new List<Position> { new Position(0f, 20f), new Position(0f, 26f) };
+            Assert.That(MovementUtilities.FindFirstImpassibleCrossing(
+                    OffsetMove(model, pastIt, offsetRadians: MathF.PI / 4f), pillar), Is.Null,
+                "a rotation placed past the pillar does not reach back and re-orient the leg before it");
         }
+
+        // ---------------------------------------------------------------------------------------------
+        // #340 - the owner's 2026-08-04 report: a rectangular model parked beside a wall could not be told
+        // to "move out a way and THEN turn", because the turn was applied to the square it was standing on.
+        // ---------------------------------------------------------------------------------------------
+
+        // A wall running up the model's west side and ENDING at Z=4, so there is clear ground beyond it.
+        private static List<ITerrain> WallToTheWest()
+            => new List<ITerrain> { new TerrainData(ETerrainType.Impassible, new RectangularZone(-2f, 0f, -4f, 4f)) };
+
+        // The model hugging that wall: a 1"x6" base at X=0.6 facing along it (+Z), 0.1" of daylight to the wall.
+        private DataBinding<ModelData> ModelHuggingTheWall()
+            => MakeModel(new Position(0.6f, 0f), restFacing: new Float2(0f, 1f));
+
+        [Test]
+        public void MoveOutThenTurn_IsLegal_ThoughTheTurnWouldNotFitAtTheStartSquare()
+        {
+            // Drive +Z clear of the wall's Z=4 end, arriving turned 90deg to +X. At that arrival attitude the
+            // 3" half-height reaches X=-2.4 - which, applied to the START square, is 0.4" inside the wall. That
+            // is exactly what used to refuse this move.
+            DataBinding<ModelData> model = ModelHuggingTheWall();
+            var move = OffsetMove(model, new List<Position> { new Position(0.6f, 8f) },
+                offsetRadians: -MathF.PI / 2f);
+
+            Assert.That(MovementUtilities.DoesPathCrossImpassibleTerrain(move, WallToTheWest()), Is.False,
+                "the leg is clear at the attitude the model departed with; the turn happens on arrival");
+
+            bool ok = MovementUtilities.ValidatePaths(new List<ModelMoveEntry> { move },
+                maxDistanceInches: 12f, NoEnemies(), canMoveThroughEnemies: false,
+                ignoresDifficultTerrain: false, ignoresImpassibleTerrain: false, WallToTheWest(),
+                out List<ReasonForInvalidMove> errors);
+
+            Assert.That(ok, Is.True, "the authoritative gate must agree with the preview: " + Describe(errors));
+        }
+
+        [Test]
+        public void TurningIntoTheWall_IsStillRejected()
+        {
+            // The guard rail: the same 90deg turn, but taken while still ALONGSIDE the wall. The leg is clear
+            // (the model travels at its departing attitude), so only the node-pose check can catch this - and
+            // must, or the move rule would have traded one bug for a worse one.
+            DataBinding<ModelData> model = ModelHuggingTheWall();
+            var move = OffsetMove(model, new List<Position> { new Position(0.6f, 2f) },
+                offsetRadians: -MathF.PI / 2f);
+
+            Assert.That(MovementUtilities.DoesPathCrossImpassibleTerrain(move, WallToTheWest()), Is.True,
+                "the arrival pose puts the 3\" nose inside the wall");
+
+            bool ok = MovementUtilities.ValidatePaths(new List<ModelMoveEntry> { move },
+                maxDistanceInches: 12f, NoEnemies(), canMoveThroughEnemies: false,
+                ignoresDifficultTerrain: false, ignoresImpassibleTerrain: false, WallToTheWest(),
+                out List<ReasonForInvalidMove> errors);
+
+            Assert.That(ok, Is.False);
+            Assert.That(errors.Any(e => e.ErrorReasonType == EErrorReasonType.MovingThroughImpassibleTerrain), Is.True);
+        }
+
+        [Test]
+        public void AutoTravelFacing_NoLongerCollidesAtTheStartSquare()
+        {
+            // No keypress needed to hit the same defect: #150 auto-faces each waypoint along its direction of
+            // travel, so a rectangle parked parallel to the wall that sets off diagonally is turned toward the
+            // wall - and the old single-attitude sweep applied that turn to the square it was leaving, where
+            // the swung corner sits at X=-1.8, inside the wall.
+            DataBinding<ModelData> model = ModelHuggingTheWall();
+            var move = TravelMove(model, new Position(8f, 8f));
+
+            Assert.That(MovementUtilities.DoesPathCrossImpassibleTerrain(move, WallToTheWest()), Is.False,
+                "the diagonal departure is clear at the resting attitude it sets off in");
+        }
+
+        private static string Describe(List<ReasonForInvalidMove> errors)
+            => string.Join(", ", errors.Select(e => e.ErrorReasonType.ToString()));
 
         private ModelMoveEntry OffsetMove(DataBinding<ModelData> model, List<Position> waypoints, float offsetRadians)
         {

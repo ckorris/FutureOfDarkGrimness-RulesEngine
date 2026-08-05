@@ -306,6 +306,29 @@ namespace FDG.Tests
             Assert.That(ok, Is.True, Why(errors));
         }
 
+        // #340: a leg's ROTATION is not validated - the base turns from the node it left to the node it is
+        // arriving at somewhere along the way - so a leg is "through" an enemy only when its swept footprint
+        // crosses at BOTH endpoint attitudes. #312 swept every leg at its ARRIVING attitude alone, which
+        // applied a turn belonging to the node being placed to the ground the model set off from.
+        [Test]
+        public void SweptFootprintClipsEnemyOnlyAtTheArrivingAttitude_Accepted()
+        {
+            // The same 6"x1" base and the same enemy at (2.5,5) as the test above, but the model RESTS facing
+            // +X: its 6" width then runs along Z, giving a 1"-wide corridor up the X=0 line that misses the
+            // enemy entirely. Only the +Z attitude it turns to on arrival sweeps the 6"-wide corridor that
+            // clips it - and the model neither starts nor ends in contact, so nothing else objects.
+            DataBinding<ModelData> model = MakeModel(new RectangleBase(6f, 1f), new Position(0f, 0f));
+            model.GetValue().SetFacing(new Float2(1f, 0f));
+
+            var waypoints = new List<Position> { new Position(0f, 10f) };
+            var move = new ModelMoveEntry(model, waypoints, MovementFacingUtilities.WaypointFacings(
+                model.GetValue().Position, waypoints, model.GetValue().Facing, 0f));
+
+            bool ok = Validate(move, Enemy(new Position(2.5f, 5f)), out var errors);
+
+            Assert.That(ok, Is.True, "the leg is clear at the attitude the model departed with. " + Why(errors));
+        }
+
         private static List<EnemyModelFootprint> Enemy(Position center)
             => new List<EnemyModelFootprint> { new EnemyModelFootprint(center, 0.75f, unitKey: 0) };
 

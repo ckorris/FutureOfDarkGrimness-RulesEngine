@@ -99,7 +99,7 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// #340: the attitude at each of the beat's waypoints, 1:1 with them - index 0 is the model's
+        /// #341: the attitude at each of the beat's waypoints, 1:1 with them - index 0 is the model's
         /// PRE-MOVE resting facing (paired with the start position the polyline opens on), the rest are the
         /// per-waypoint facings the path was built with. This must be read BEFORE
         /// <c>MovementExecutor.CommitPositions</c> snaps the model to its final facing, which is why it is

@@ -306,7 +306,7 @@ namespace FDG.Tests
             Assert.That(ok, Is.True, Why(errors));
         }
 
-        // #340: a leg's ROTATION is not validated - the base turns from the node it left to the node it is
+        // #341: a leg's ROTATION is not validated - the base turns from the node it left to the node it is
         // arriving at somewhere along the way - so a leg is "through" an enemy only when its swept footprint
         // crosses at BOTH endpoint attitudes. #312 swept every leg at its ARRIVING attitude alone, which
         // applied a turn belonging to the node being placed to the ground the model set off from.

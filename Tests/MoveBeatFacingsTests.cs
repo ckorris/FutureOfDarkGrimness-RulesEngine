@@ -10,7 +10,7 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #340: the move beat carries the attitude at each waypoint so the front end can turn the model as it
+    // #341: the move beat carries the attitude at each waypoint so the front end can turn the model as it
     // glides, instead of snapping it to its final facing before the animation even starts. That is what makes
     // the placement rule watchable: a rotation dialled in for one node no longer applies to the ground before
     // it, so the turn has to happen visibly somewhere, and it happens across the leg into that node.

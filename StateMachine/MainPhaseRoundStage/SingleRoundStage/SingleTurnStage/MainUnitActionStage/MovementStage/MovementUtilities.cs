@@ -457,7 +457,7 @@ namespace FDG.Stages
                 .ToList();
             if (impassable.Count == 0) return;
 
-            // #340: the authoritative gate and the preview's "show me why" finder are now ONE walk. They were
+            // #341: the authoritative gate and the preview's "show me why" finder are now ONE walk. They were
             // two copies of the same segment loop that docs/ResolverGuide.md requires never to diverge, and the
             // two-attitude leg rule plus the per-node pose check gave them far more to keep in step.
             foreach (ModelMoveEntry move in moves)
@@ -486,7 +486,7 @@ namespace FDG.Stages
         private static Float2 ArriveFacing(ModelMoveEntry move, int i, Float2 resting)
             => move.Facings != null && i < move.Facings.Count ? move.Facings[i] : resting;
 
-        // #340: the orientation the base DEPARTED the previous node with - the facing that node was placed at,
+        // #341: the orientation the base DEPARTED the previous node with - the facing that node was placed at,
         // or the model's pre-move resting facing for the first leg. A leg runs between two attitudes, and this
         // is the one the old single-facing sweep silently threw away: it swept the whole leg at the ARRIVING
         // attitude, so a rotation the player dialled in for the node they were placing was applied to the
@@ -501,7 +501,7 @@ namespace FDG.Stages
             => MathF.Abs(a.X - b.X) < FACING_EPSILON && MathF.Abs(a.Y - b.Y) < FACING_EPSILON;
 
         /// <summary>
-        /// #340 - how a leg whose two endpoint attitudes DISAGREE is treated. A leg's rotation is deliberately
+        /// #341 - how a leg whose two endpoint attitudes DISAGREE is treated. A leg's rotation is deliberately
         /// left unvalidated (the base turns from the node it left to the node it arrives at somewhere along the
         /// way; the animation decides when), so the two questions a swept test can be asked need opposite
         /// answers and each caller has to say which it means.
@@ -509,7 +509,7 @@ namespace FDG.Stages
         private enum ELegAttitudeRule
         {
             /// <summary>
-            /// Hazard detection (Dangerous / Difficult): the ARRIVING attitude alone, exactly as before #340.
+            /// Hazard detection (Dangerous / Difficult): the ARRIVING attitude alone, exactly as before #341.
             /// "Does this ground affect the model" is not "is this move legal", and widening it either way
             /// would change how often units take terrain wounds or hit the 6" cap.
             /// </summary>
@@ -563,7 +563,7 @@ namespace FDG.Stages
         /// first contact. A collision is often nowhere near the node being placed — a pivot at an earlier
         /// waypoint can make a leg the player already placed collide — so "invalid" alone reads as an
         /// inexplicable red flag on open ground.
-        /// <para>#340: it may also be a NODE POSE rather than a leg, reported as a zero-length segment at
+        /// <para>#341: it may also be a NODE POSE rather than a leg, reported as a zero-length segment at
         /// that node (<see cref="SegmentStart"/> == <see cref="SegmentEnd"/>). The move has room to travel
         /// there; what it has no room for is standing there at that attitude.</para></summary>
         public readonly struct TerrainCrossing
@@ -601,7 +601,7 @@ namespace FDG.Stages
 
         /// <summary>
         /// Walks a path against a set of terrain pieces and reports the first collision, under the chosen
-        /// <see cref="ELegAttitudeRule"/> (#340). Two kinds of collision can be reported:
+        /// <see cref="ELegAttitudeRule"/> (#341). Two kinds of collision can be reported:
         /// <list type="bullet">
         /// <item>a LEG - the swept footprint between two nodes; and</item>
         /// <item>a NODE POSE - the static footprint at a waypoint, at the facing that waypoint was placed
@@ -683,7 +683,7 @@ namespace FDG.Stages
             return null;
         }
 
-        // The same question without the reporting work, for the second attitude of the #340 leg rule.
+        // The same question without the reporting work, for the second attitude of the #341 leg rule.
         private static bool AnySweptCollision(List<ITerrain> pieces, Float2 from, Float2 to,
             IBaseShape baseShape, Float2 facing)
         {
@@ -904,7 +904,7 @@ namespace FDG.Stages
                             Float2 b = new Float2(step.x, step.z);
                             // #312: sweep each segment at its travel facing (the orientation the ghost drew and
                             // the executor applies), mirroring the terrain validators' 2026-07-25 fix.
-                            // #340: but a leg runs BETWEEN two attitudes, and its rotation is not validated - so
+                            // #341: but a leg runs BETWEEN two attitudes, and its rotation is not validated - so
                             // the leg is "through" this enemy only when it crosses at both of them. Sweeping the
                             // arriving attitude alone applied a turn the player dialled in for the node being
                             // placed to the ground the model set off from. (Scoped per enemy, like every other

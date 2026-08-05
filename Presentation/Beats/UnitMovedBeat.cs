@@ -49,7 +49,7 @@ namespace FDG.Presentation.Beats
     /// along the whole polyline, distributing the beat's single duration across segments by length
     /// so the model moves at a constant speed — three segments are one move, not three.
     ///
-    /// <para>#340: <paramref name="Facings"/> is the attitude at each of those points, 1:1 with
+    /// <para>#341: <paramref name="Facings"/> is the attitude at each of those points, 1:1 with
     /// <paramref name="Waypoints"/> — so <c>Facings[0]</c> is the model's PRE-MOVE resting attitude and the
     /// rest are the facings its waypoints were placed with. The renderer turns the model between them as it
     /// glides, which is the whole reason a rotation may now be dialled in for one node without applying to

@@ -93,7 +93,7 @@ namespace FDG.Tests
         [Test]
         public void FindFirstCrossing_ReportsPieceSegmentAndContact()
         {
-            // Resting +X and travelling +X, so the leg's two endpoint attitudes agree and #340's either-attitude
+            // Resting +X and travelling +X, so the leg's two endpoint attitudes agree and #341's either-attitude
             // rule collapses to the single sweep this has always tested: a mid-leg contact found by bisection.
             DataBinding<ModelData> model = MakeModel(new Position(0f, 0f), restFacing: new Float2(1f, 0f));
             var move = TravelMove(model, new Position(3f, 0f));
@@ -111,7 +111,7 @@ namespace FDG.Tests
             Assert.That(crossing.Value.ContactCentre.Y, Is.EqualTo(0f).Within(0.02f));
         }
 
-        // #340: the same destination reached from a resting +Z facing is a NODE-POSE collision, not a leg one.
+        // #341: the same destination reached from a resting +Z facing is a NODE-POSE collision, not a leg one.
         // Swept at the resting attitude the 0.5" half-width stays short of the band all the way to X=3, so the
         // travel is legal - what is not is standing there turned +X, which puts the 3" nose inside it. Reported
         // as a zero-length segment AT the node, which is what the "show me why" overlay needs to draw.
@@ -132,7 +132,7 @@ namespace FDG.Tests
             Assert.That(crossing.Value.ContactCentre.X, Is.EqualTo(3f).Within(0.001f));
         }
 
-        // The TankCantMakeCorner mechanism, after #340: a rotation dialled in for a later node no longer
+        // The TankCantMakeCorner mechanism, after #341: a rotation dialled in for a later node no longer
         // re-orients the leg that led up to it. The first leg is walked at the attitude the model DEPARTED
         // with and stays clear; what the rotation can still cost you is the pose at the node itself.
         [Test]
@@ -156,7 +156,7 @@ namespace FDG.Tests
                 "attributed to the node that is turned, not to the leg that got there");
 
             // Turn well past the pillar instead and the whole path is legal: leg 0 runs at the resting attitude
-            // (which skirts it), and the rotated pose at Z=20 is nowhere near. Before #340 the offset was applied
+            // (which skirts it), and the rotated pose at Z=20 is nowhere near. Before #341 the offset was applied
             // to leg 0 as well and this move was refused.
             var pastIt = new List<Position> { new Position(0f, 20f), new Position(0f, 26f) };
             Assert.That(MovementUtilities.FindFirstImpassibleCrossing(
@@ -165,7 +165,7 @@ namespace FDG.Tests
         }
 
         // ---------------------------------------------------------------------------------------------
-        // #340 - the owner's 2026-08-04 report: a rectangular model parked beside a wall could not be told
+        // #341 - the owner's 2026-08-04 report: a rectangular model parked beside a wall could not be told
         // to "move out a way and THEN turn", because the turn was applied to the square it was standing on.
         // ---------------------------------------------------------------------------------------------
 
@@ -235,7 +235,7 @@ namespace FDG.Tests
         }
 
         // ---------------------------------------------------------------------------------------------
-        // #340 in CONSOLIDATION. Same rule, different facing derivation: consolidation rotates IN PLACE
+        // #341 in CONSOLIDATION. Same rule, different facing derivation: consolidation rotates IN PLACE
         // (#283) rather than facing its direction of travel, so a node's attitude is the model's resting
         // facing turned by that node's offset. The leg rule and the node-pose check are shared with
         // movement (both run through ValidateMovingThroughImpassibleTerrain), so this pins that the

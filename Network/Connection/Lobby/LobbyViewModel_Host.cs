@@ -114,6 +114,34 @@ namespace FDG.Network.Connection.Lobby
 
         private static readonly Random _tributeRng = new Random();
 
+        // Bot banter: a bot posts one line to lobby chat a few seconds after it is added, so a lobby
+        // with bots in it feels inhabited while everyone waits on the host. Cosmetic and off the game
+        // path, so these draw from Random.Shared rather than the seeded GameRandom - nothing here can
+        // reach a rules outcome. ASCII only (the ImGui atlas bakes no glyph above U+00FF).
+        private static readonly string[] BOT_GREETINGS = new[]
+        {
+            "May your energy sword chip and shatter.",
+            "Resistors are futile.",
+            "Only humanoid.",
+            "Quite an experience to live in Fear(2), isn't it?",
+            "Today is a good day to dice.",
+            "I swear by my pretty floral bonnet, I will beat you.",
+            "You have no chance to survive. Make your time.",
+            "The odds of you surviving are approximately one thousand three hundred thirty seven to one.",
+            "Shall we play a game of tabletop war?",
+            "Sometimes, you have to roll the hard D6.",
+        };
+
+        // Which lines are already spoken, so no two bots pick the same one. Guarded by its own lock:
+        // every bot's greeting resolves on its own thread-pool continuation, so the picks genuinely race.
+        private readonly HashSet<int> _usedBotGreetings = new HashSet<int>();
+        private readonly object _botGreetingLock = new object();
+
+        // How long after being added a bot waits before speaking. Instance fields rather than consts
+        // purely so tests can collapse the wait instead of sleeping for whole seconds.
+        internal int BotGreetingMinDelayMs = 3000;
+        internal int BotGreetingMaxDelayMs = 5000;
+
         public event Action<IFDGGame>? OnLaunched;
 
         public event Action<string>? OnGameEnded;
@@ -1118,6 +1146,52 @@ namespace FDG.Network.Connection.Lobby
 
             LobbyGameSettingsUpdate gameSettingsUpdate = new LobbyGameSettingsUpdate(_gameSettings);
             _messageBus.SendCommandToAllAsync(gameSettingsUpdate);
+
+            _ = SendBotGreetingAsync(name); //Fire-and-forget; the bot speaks a few seconds from now.
+        }
+
+        // One line per bot, a few seconds after it joins. Broadcast rather than AddMessageToLocalList so
+        // networked players see it too, and carried by the same LobbyChatMessage the humans use - that
+        // type is only a sender name plus text, so a bot's line is indistinguishable from a person's.
+        private async Task SendBotGreetingAsync(string botName)
+        {
+            await Task.Delay(Random.Shared.Next(BotGreetingMinDelayMs, BotGreetingMaxDelayMs + 1));
+
+            //The lobby can be torn down or launched while a bot is still winding up; either way the
+            //chat log it would post into is already gone.
+            if (_isDisposed || _isLaunched)
+            {
+                return;
+            }
+
+            await _messageBus.SendCommandToAllAsync(new LobbyChatMessage(botName, TakeUnusedGreeting()));
+        }
+
+        // Picks a line no bot has used yet. A lobby that somehow exhausts the pool recycles rather than
+        // falling silent - with 8 players max a real lobby never gets there, so in practice this just
+        // guarantees every bot present says something different.
+        private string TakeUnusedGreeting()
+        {
+            lock (_botGreetingLock)
+            {
+                if (_usedBotGreetings.Count >= BOT_GREETINGS.Length)
+                {
+                    _usedBotGreetings.Clear();
+                }
+
+                List<int> unused = new List<int>(BOT_GREETINGS.Length);
+                for (int i = 0; i < BOT_GREETINGS.Length; i++)
+                {
+                    if (!_usedBotGreetings.Contains(i))
+                    {
+                        unused.Add(i);
+                    }
+                }
+
+                int chosen = unused[Random.Shared.Next(unused.Count)];
+                _usedBotGreetings.Add(chosen);
+                return BOT_GREETINGS[chosen];
+            }
         }
     }
 }

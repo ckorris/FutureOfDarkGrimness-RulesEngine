@@ -153,42 +153,68 @@ namespace FDG.Stages
             context.RegisterAttackedDefender(targetUnit);
             GameContext.Log($"Chose weapon: {chosenWeapon.Name}. Count: {weaponCount}.");
 
-            // #276: only the copies carried by models that can actually shoot the chosen target fire —
-            // GDF checks range and line of sight per model, and the option builder above already computed
-            // exactly that (modelsThatCanShoot, the same truth the targeting UI shows). The pooled
-            // weapon count includes every living carrier, so cap it here before the roll. Eligible == 0
-            // can't normally happen (such targets are unselectable); if it does, leave the count alone
-            // rather than firing a zero-dice attack.
-            int eligibleCount = CountEligibleCopies(weaponOptions, chosenWeapon, targetUnit);
-            if (eligibleCount > 0 && eligibleCount < weaponCount)
-            {
-                context.TrimPendingAttack(eligibleCount);
-                GameContext.Log($"{eligibleCount} of {weaponCount} {chosenWeapon.Name} copies have " +
-                    "line of sight and range - the rest hold fire.");
-                weaponCount = eligibleCount;
-            }
+            // #337: a weapon whose attack re-scopes to a single chosen model (Takedown / Sniper) is aimed
+            // ONE COPY AT A TIME - each rifle picks its own target UNIT as well as its own victim model.
+            // Only one copy is committed here; the rest go straight back into the action's pool, so this
+            // stage offers the weapon again and the player (or AI) chooses afresh, target limit and all.
+            // #157 split the volley into per-shot MODEL picks but left every shot locked onto the unit
+            // chosen for the first one, which is the bug this replaces.
+            bool aimsOneCopyAtATime = Rules.Dispatch.SightRuleQueries.TargetsIndividualModels(
+                context.AttackingUnit.GetValue(), chosenWeapon, targetUnit.GetValue(),
+                GameContext.RuleEvaluator);
 
-            // #157: a weapon whose attack re-scopes to a single chosen model (Takedown) fires its copies as
-            // SEPARATE single-shot attacks so each shot picks its own victim (each sniper chooses a model),
-            // instead of one pick funnelling the whole volley. FireStage then loops once per queued shot.
-            if (weaponCount > 1 && Rules.Dispatch.SightRuleQueries.TargetsIndividualModels(
-                    context.AttackingUnit.GetValue(), chosenWeapon, targetUnit.GetValue(),
-                    GameContext.RuleEvaluator))
+            if (aimsOneCopyAtATime)
             {
-                context.SplitPendingAttackIntoSingleShots();
-                GameContext.Log($"{chosenWeapon.Name}: {weaponCount} individually-aimed shots, each picks its own target model.");
+                context.AimPendingAttackOneCopyAtATime(out int copiesHeldBack);
+                if (copiesHeldBack > 0)
+                {
+                    GameContext.Log($"{chosenWeapon.Name}: firing 1 of {weaponCount} - the other " +
+                        $"{copiesHeldBack} {(copiesHeldBack == 1 ? "aims" : "aim")} separately and " +
+                        $"{(copiesHeldBack == 1 ? "is" : "are")} offered again.");
+                }
+            }
+            else
+            {
+                // #276: only the copies carried by models that can actually shoot the chosen target fire —
+                // GDF checks range and line of sight per model, and the option builder above already computed
+                // exactly that (modelsThatCanShoot, the same truth the targeting UI shows). The pooled
+                // weapon count includes every living carrier, so cap it here before the roll. Eligible == 0
+                // can't normally happen (such targets are unselectable); if it does, leave the count alone
+                // rather than firing a zero-dice attack.
+                // Skipped for a one-at-a-time weapon: exactly one copy fires, its carrier is picked from the
+                // eligible ones by the attack beat, and trimming the stack would strip the copies that are
+                // going back into the pool to be aimed elsewhere.
+                int eligibleCount = CountEligibleCopies(weaponOptions, chosenWeapon, targetUnit);
+                if (eligibleCount > 0 && eligibleCount < weaponCount)
+                {
+                    context.TrimPendingAttack(eligibleCount);
+                    GameContext.Log($"{eligibleCount} of {weaponCount} {chosenWeapon.Name} copies have " +
+                        "line of sight and range - the rest hold fire.");
+                    weaponCount = eligibleCount;
+                }
             }
 
             // #032 Limited: choosing the weapon commits it to fire (there's no cancel before FireStage), so mark
             // it spent now — every living carrier records it as fired this game (it's excluded from here on).
+            // #337: a one-at-a-time weapon spends ONE carrier per firing instead, or the first rifle would
+            // burn the once-per-game shot of the ones still waiting to be aimed.
             // #319: and SAY so. Spending a once-per-game weapon is the single most consequential thing this
             // stage can do, and until now it happened silently; the player could decline it (Hold fire) right
             // up to this point, so the log has to record which way it went.
             string? limitedRule = LimitedRules.LimitedRuleName(chosenWeapon);
-            LimitedRules.MarkFired(context.AttackingUnit.GetValue(), chosenWeapon);
+            if (aimsOneCopyAtATime)
+            {
+                LimitedRules.MarkOneCarrierFired(context.AttackingUnit.GetValue(), chosenWeapon);
+            }
+            else
+            {
+                LimitedRules.MarkFired(context.AttackingUnit.GetValue(), chosenWeapon);
+            }
             if (limitedRule != null)
             {
-                GameContext.Log($"{chosenWeapon.Name} is {limitedRule} - spent for the rest of the game.");
+                GameContext.Log(aimsOneCopyAtATime
+                    ? $"{chosenWeapon.Name} is {limitedRule} - this copy is spent for the rest of the game."
+                    : $"{chosenWeapon.Name} is {limitedRule} - spent for the rest of the game.");
             }
 
             await OnChoseWeapon.Activate(context);
@@ -527,11 +553,19 @@ namespace FDG.Stages
                 string? limitedRule = Rules.Dispatch.LimitedRules.LimitedRuleName(weapon);
                 bool limitedSpent = limitedRule != null
                     && Rules.Dispatch.LimitedRules.IsSpent(attackingUnit.GetValue(), weapon);
+                // #337: a weapon whose attack re-scopes to an individual model (Takedown) fires one copy
+                // per pass through this stage, each with its own target. The defender is the neutral
+                // attacker stand-in WoundPriorityQueries.ShootingResolveFirstSource uses for the same
+                // query - Takedown's condition is unconditional, and this flag is per weapon row, not per
+                // target row.
+                string? individualTargetRule = Rules.Dispatch.SightRuleQueries.IndividualTargetSource(
+                    attackingUnit.GetValue(), weapon, attackingUnit.GetValue(), gameContext.RuleEvaluator);
                 string profileKey = WeaponProfileKey.For(weapon);
                 if (optionsByProfile.TryAdd(profileKey,
                     new WeaponOption(weapon, new List<WeaponTargetStats>(),
                         coverIgnoreRule != null, losIgnoreRule != null, coverIgnoreRule, losIgnoreRule,
-                        limitedRule, limitedSpent)))
+                        limitedRule, limitedSpent,
+                        individualTargetRule, availableWeapons[weapon])))
                 {
                     weaponIgnoresLineOfSight.Add(profileKey, losIgnoreRule != null);
                 }

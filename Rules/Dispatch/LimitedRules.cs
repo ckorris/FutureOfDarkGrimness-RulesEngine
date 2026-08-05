@@ -101,6 +101,27 @@ namespace FDG.Rules.Dispatch
             }
         }
 
+        /// <summary>
+        /// #337: spend the weapon on ONE carrier - the first living model that still has its shot. A
+        /// weapon that aims one copy at a time (Takedown / Sniper) fires a single copy per pass through
+        /// the weapon picker, so marking every carrier would burn the rifles that have not fired yet.
+        /// No-op for non-Limited weapons and when every living carrier is already spent.
+        /// </summary>
+        public static void MarkOneCarrierFired(IUnit unit, IWeapon weapon)
+        {
+            if (!IsLimited(weapon)) return;
+
+            foreach (IModel model in unit.Models)
+            {
+                if (!model.GetIsAlive()) continue;
+                if (!CarriesWeapon(model, weapon.Name)) continue;
+                if (HasSpentToken(model, weapon.Name)) continue;
+
+                MarkFired(new[] { model }, weapon);
+                return;
+            }
+        }
+
         private static bool CarriesWeapon(IModel model, string weaponName) =>
             model.Weapons.Any(w => w.Name == weaponName);
 

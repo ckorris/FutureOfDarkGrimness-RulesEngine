@@ -1303,6 +1303,175 @@ namespace FDG.Tests
                 "descriptions ride the blob, so rule tooltips work on the receiving side too.");
         }
 
+        // ──────────────────────────────────────────────────────────────────────
+        // #337: a Takedown weapon aims ONE COPY AT A TIME. Firing it commits a single rifle and hands the
+        // rest back to the action's pool, so the picker offers the weapon again and every copy chooses its
+        // own target unit - not just its own victim model inside the unit the first shot picked (#157).
+        // ──────────────────────────────────────────────────────────────────────
+
+        [Test]
+        public async Task Enter_TakedownWeapon_FiresOneCopy_AndOffersTheRestAgain()
+        {
+            var requester = new CapturingRangedRequester { Reply = FireFirstFireable };
+            var (ctx, attacker, _) = BuildSniperWorld(requester, snipers: 3, enemyUnits: 1);
+
+            var combatCtx = new CombatActionContext(ctx, attacker, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+            await stage.Enter(combatCtx);
+
+            ICombatMetadata metadata = combatCtx.ConsumeAttackIntoContext(ctx);
+            Assert.That(metadata.WeaponCount, Is.EqualTo(1),
+                "one rifle fires per choice - the other two have not been aimed yet");
+
+            Weapon rifle = combatCtx.AvailableWeapons.Keys.Single();
+            Assert.That(combatCtx.AvailableWeapons[rifle], Is.EqualTo(2),
+                "the unfired rifles go back into the pool, so the weapon is offered again");
+
+            await stage.Enter(combatCtx);
+            var option = requester.Captured!.WeaponOptions.Single();
+            Assert.That(option.AimedIndividuallyRule, Is.EqualTo("Takedown"),
+                "the request says WHY the weapon came back, so a resolver can label the row");
+            Assert.That(option.CopiesRemaining, Is.EqualTo(2),
+                "and how many rifles are still waiting to be aimed");
+        }
+
+        [Test]
+        public async Task Enter_TakedownCopies_MayEachChooseADifferentTargetUnit()
+        {
+            // The bug this fixes: three snipers, one target unit for the lot of them.
+            int pass = 0;
+            var requester = new CapturingRangedRequester();
+            requester.Reply = req => FireAtTargetNamed(req, pass++ == 0 ? "Enemy0" : "Enemy1");
+            var (ctx, attacker, enemies) = BuildSniperWorld(requester, snipers: 3, enemyUnits: 2);
+
+            var combatCtx = new CombatActionContext(ctx, attacker, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+
+            await stage.Enter(combatCtx);
+            ICombatMetadata first = combatCtx.ConsumeAttackIntoContext(ctx);
+
+            await stage.Enter(combatCtx);
+            ICombatMetadata second = combatCtx.ConsumeAttackIntoContext(ctx);
+
+            Assert.That(first.DefendingUnit.Reference, Is.EqualTo(enemies[0].Reference));
+            Assert.That(second.DefendingUnit.Reference, Is.EqualTo(enemies[1].Reference),
+                "the second rifle aimed at a different unit entirely");
+            Assert.That(combatCtx.AttackedDefenderRefs.Count, Is.EqualTo(2),
+                "both units are on the hook for morale, each measured from its own starting wounds");
+            Assert.That(new[] { first.BurstShotIndex, second.BurstShotIndex }, Is.EqualTo(new[] { 0, 1 }),
+                "#276: consecutive copies are tagged in firing order so the attack beat rotates carriers");
+        }
+
+        [Test]
+        public async Task Enter_TakedownCopies_StillBoundByTheTwoTargetCap()
+        {
+            // Owner ruling (#337): Takedown does not buy extra targets - the shoot action's 2-unit cap
+            // binds sniper shots like everything else.
+            int pass = 0;
+            var requester = new CapturingRangedRequester();
+            requester.Reply = req => FireAtTargetNamed(req, $"Enemy{pass++}");
+            var (ctx, attacker, _) = BuildSniperWorld(requester, snipers: 3, enemyUnits: 3);
+
+            var combatCtx = new CombatActionContext(ctx, attacker, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+
+            await stage.Enter(combatCtx);                       // rifle 1 -> Enemy0
+            combatCtx.ConsumeAttackIntoContext(ctx);
+            await stage.Enter(combatCtx);                       // rifle 2 -> Enemy1
+            combatCtx.ConsumeAttackIntoContext(ctx);
+
+            // Third pass: the request must already have closed Enemy2 off, so the reply above never gets
+            // the chance to break the cap.
+            requester.Reply = req => FireAtTargetNamed(req, "Enemy0");
+            await stage.Enter(combatCtx);
+
+            var thirdUnit = requester.Captured!.WeaponOptions.Single()
+                .WeaponTargetStats.Single(t => t.TargetUnit.GetValue().Name == "Enemy2");
+            Assert.That(thirdUnit.UnselectableReason, Does.Contain("Already targeting 2 units"),
+                "the third rifle may only add to a unit this action has already engaged");
+        }
+
+        [Test]
+        public async Task Enter_LimitedTakedownWeapon_SpendsOneCarrierPerShot()
+        {
+            // A Limited + Takedown weapon (BlessedSisters' Crossbow-Mod) is the combination that would
+            // break if firing one copy marked every carrier: rifle 1 would burn rifles 2 and 3.
+            var requester = new CapturingRangedRequester { Reply = FireFirstFireable };
+            Weapon crossbow = TakedownWeapon("Crossbow-Mod");
+            crossbow.AttachRuleDefinition(new ResolvedRule("Limited", CoreRuleCatalog.Limited));
+            var (ctx, attacker, _) = BuildSniperWorld(requester, snipers: 2, enemyUnits: 1,
+                weaponTemplate: () =>
+                {
+                    var copy = TakedownWeapon("Crossbow-Mod");
+                    copy.AttachRuleDefinition(new ResolvedRule("Limited", CoreRuleCatalog.Limited));
+                    return copy;
+                });
+
+            var combatCtx = new CombatActionContext(ctx, attacker, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+
+            await stage.Enter(combatCtx);
+            combatCtx.ConsumeAttackIntoContext(ctx);
+
+            Assert.That(LimitedRules.IsSpent(attacker.GetValue(), crossbow), Is.False,
+                "only the carrier that fired is spent - the other crossbow still has its once-per-game shot");
+
+            await stage.Enter(combatCtx);
+            combatCtx.ConsumeAttackIntoContext(ctx);
+
+            Assert.That(LimitedRules.IsSpent(attacker.GetValue(), crossbow), Is.True,
+                "with both carriers fired the weapon is spent for the rest of the game");
+        }
+
+        // Reply helper: fire the first weapon at the named target unit (the row must be selectable).
+        private static CancellableResult<RangedAttackChoice> FireAtTargetNamed(
+            ChooseRangedAttackRequest req, string targetName)
+        {
+            var option = req.WeaponOptions.First(o =>
+                o.WeaponTargetStats.Any(t => t.UnselectableReason == null && t.modelsThatCanShoot.Count > 0));
+            var target = option.WeaponTargetStats.Single(t => t.TargetUnit.GetValue().Name == targetName);
+            Assert.That(target.UnselectableReason, Is.Null, $"test setup: {targetName} must be selectable");
+            return new Selected<RangedAttackChoice>(new RangedAttackChoice(option.Weapon, target.TargetUnit));
+        }
+
+        // A squad of Takedown-rifle carriers facing N single-model enemy units, all in range with clear
+        // lines of sight (no terrain). One weapon PROFILE, so the copies pool into a single option.
+        private static (TestGameContextWithRequester ctx, DataBinding<UnitData> attacker,
+            List<DataBinding<UnitData>> enemies) BuildSniperWorld(
+                IPlayerRequestByID requester, int snipers, int enemyUnits, Func<Weapon>? weaponTemplate = null)
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var attackerPlayer = new PlayerID(Guid.NewGuid());
+            var enemyPlayer    = new PlayerID(Guid.NewGuid());
+            var ctx = new TestGameContextWithRequester(store, requester);
+
+            store.Create(new TeamData(0, new List<PlayerID> { attackerPlayer }));
+            store.Create(new TeamData(1, new List<PlayerID> { enemyPlayer }));
+
+            var attackerModels = new List<DataBinding<ModelData>>();
+            for (int i = 0; i < snipers; i++)
+            {
+                Weapon weapon = weaponTemplate?.Invoke() ?? TakedownWeapon("Sniper Rifle");
+                attackerModels.Add(MakeModel(store, new Position(0, i * 2), weapon));
+            }
+            var attackerUnit = MakeUnit(store, attackerPlayer, "Snipers", attackerModels);
+            store.Create(new ArmyData(attackerPlayer, new List<DataBinding<UnitData>> { attackerUnit }));
+
+            var enemies = new List<DataBinding<UnitData>>();
+            for (int i = 0; i < enemyUnits; i++)
+            {
+                enemies.Add(MakeUnit(store, enemyPlayer, $"Enemy{i}",
+                    new[] { MakeModel(store, new Position(10, i * 3)) }));
+            }
+            store.Create(new ArmyData(enemyPlayer, enemies));
+
+            return (ctx, attackerUnit, enemies);
+        }
+
         // Reply helper: fire the first weapon that has a selectable target with shooters in range.
         private static CancellableResult<RangedAttackChoice> FireFirstFireable(ChooseRangedAttackRequest req)
         {

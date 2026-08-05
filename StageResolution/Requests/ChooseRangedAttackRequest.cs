@@ -110,10 +110,21 @@ namespace FDG.StageResolution.Requests
         /// weapon has already been fired this game, so it can never fire again (its targets arrive
         /// unselectable). Lets a resolver tell "spent" from "about to be spent" without parsing the
         /// unselectable reason back into a meaning.</param>
+        /// <param name="AimedIndividuallyRule">#337. Display name of the rule that makes each COPY of this
+        /// weapon aim on its own (Takedown / Sniper), or null when the copies fire as one volley. Firing
+        /// such a weapon commits exactly one copy: the rest stay in the action's pool and are offered
+        /// again, so every rifle picks its own target unit as well as its own victim model. Carried on the
+        /// option for the same reason <paramref name="LimitedRule"/> is - <see cref="IWeapon.RuleDefinitions"/>
+        /// is <c>[JsonIgnore]</c>, so a remote player's request has no rules to read.</param>
+        /// <param name="CopiesRemaining">#337. How many copies of this weapon are still unfired this shoot
+        /// action - what firing the option will draw from. Always >= 1 for an offered weapon; only
+        /// meaningful to display when <paramref name="AimedIndividuallyRule"/> is set, since every other
+        /// weapon spends all of its copies in one firing.</param>
         public record WeaponOption(Weapon Weapon, List<WeaponTargetStats> WeaponTargetStats,
             bool IgnoresCover = false, bool IgnoresTerrain = false,
             string? CoverIgnoreRule = null, string? LineOfSightIgnoreRule = null,
-            string? LimitedRule = null, bool LimitedAlreadyFired = false);
+            string? LimitedRule = null, bool LimitedAlreadyFired = false,
+            string? AimedIndividuallyRule = null, int CopiesRemaining = 1);
 
         /// <summary>
         /// List which models can and cannot shoot at a given unit, of the models in a unit that have a specific weapon.

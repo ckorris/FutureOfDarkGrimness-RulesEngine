@@ -3,7 +3,7 @@ using FDG.Players;
 namespace FDG.Stages
 {
     /// <summary>
-    /// #330: is the match's result already fixed, so that playing out the remaining rounds cannot change
+    /// #332: is the match's result already fixed, so that playing out the remaining rounds cannot change
     /// who wins? Reported from play - a player who held every objective and had tabled their opponent at
     /// the end of round 3 still had to hold every move through round 4 to reach a foregone conclusion.
     ///

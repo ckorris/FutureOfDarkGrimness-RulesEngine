@@ -108,7 +108,7 @@ namespace FDG.Stages
                 return;
             }
 
-            // #330: stop once no remaining play can change the result. A tabled opponent plus a sole
+            // #332: stop once no remaining play can change the result. A tabled opponent plus a sole
             // objective lead used to leave the winner holding every move through the last round to reach a
             // foregone conclusion. Announce is what makes the short stop legible - it flashes the Headline
             // banner AND writes the same line to the log, and both channels already replicate (beats via

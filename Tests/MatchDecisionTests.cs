@@ -7,7 +7,7 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #330 — a match whose result can no longer change ends at that round's end instead of grinding out
+    // #332 — a match whose result can no longer change ends at that round's end instead of grinding out
     // the remaining rounds with only one player acting. Reported from play: a player who held every
     // objective and had tabled their opponent at the end of round 3 still had to hold every move through
     // round 4 to reach a foregone conclusion.

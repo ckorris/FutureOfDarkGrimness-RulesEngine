@@ -80,7 +80,7 @@ namespace FDG.Stages
             // #321: weapon label -> its hold-back companion, so the two render as one row.
             Dictionary<string, StringSelectionRequest.SecondaryAction> secondaryActions =
                 new Dictionary<string, StringSelectionRequest.SecondaryAction>(StringComparer.Ordinal);
-            // #333: every WEAPON row's label -> the weapon it shows, so the request can carry each row's
+            // #336: every WEAPON row's label -> the weapon it shows, so the request can carry each row's
             // special rules structured. Greyed rows are in here too: a weapon the Deadly gate is holding
             // back this pass still has to explain itself, and the player is choosing partly by what the
             // options they CANNOT take say. Hold-backs are not - they are a decline, not a weapon.
@@ -320,7 +320,7 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// Free-form prose about what taking an option COSTS OR BUYS. #333 moved the weapon rules out of
+        /// Free-form prose about what taking an option COSTS OR BUYS. #336 moved the weapon rules out of
         /// here into <see cref="BuildOptionRules"/>, so today only the #320 hold-back line remains: a
         /// hold-back explains what declining buys - but only when there is something to buy, i.e. a
         /// once-per-game use to keep. "Do not attack with Blade" would just restate the label, and the plain
@@ -349,13 +349,13 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// #298/#333: the option label lists a weapon's special rules by NAME only, which is no help at the
+        /// #298/#336: the option label lists a weapon's special rules by NAME only, which is no help at the
         /// moment the choice is made - "Deadly(3)" and "Rending" are the whole reason to prefer one weapon
         /// over another. Each swing option carries its rules structured (name + what it does) so a front end
         /// can underline the names where they already sit in the label and hover the text (GUI), or print
         /// them as indented lines (CLI). #298 shipped this pre-formatted into one prose blob, which left the
         /// GUI no way to find where a rule name started - so it could only dump the whole thing under the
-        /// button, the inconsistency #333 exists to fix.
+        /// button, the inconsistency #336 exists to fix.
         /// <para>Undocumented rules are included: the front end says they are not enforced, which is worth
         /// knowing before swinging. Greyed rows are included too (<paramref name="weaponByLabel"/> holds
         /// them), since an option the player cannot take is still part of the comparison. Hold-backs are

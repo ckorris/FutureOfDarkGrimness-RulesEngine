@@ -23,12 +23,12 @@ namespace FDG.StageResolution.Requests
         /// option has a description (the common case — the action menu, custom actions, etc.).
         /// <para>Free-form prose about the CHOICE - what taking it costs or buys (#320's "Keeps its Limited
         /// once-per-game use for a later melee"). Special rules attached to the thing being chosen go in
-        /// <see cref="OptionRules"/> instead, which is structured; see #333 for why the two are separate.</para>
+        /// <see cref="OptionRules"/> instead, which is structured; see #336 for why the two are separate.</para>
         /// </summary>
         public Dictionary<string, string>? OptionDescriptions { get; }
 
         /// <summary>
-        /// #333: the special rules carried by a valid option, keyed by that option's string - the melee
+        /// #336: the special rules carried by a valid option, keyed by that option's string - the melee
         /// weapon menu's "Deadly(3)" and "Rending", structured rather than pre-formatted into prose.
         /// <para>The option label already NAMES its rules (a weapon's datasheet line ends with them, in this
         /// same order), so this adds what the label cannot: which runs of that string are rule names, and

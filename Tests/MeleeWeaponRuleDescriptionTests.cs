@@ -12,7 +12,7 @@ namespace FDG.Tests
     // #298: the melee weapon menu used to offer rule NAMES only ("2x Axe - A1, AP0, Deadly(3)"), which is
     // no help at the one moment the player has to choose between weapons. The stage attaches each rule's
     // text to the option, which both front ends render (GUI: underlined names in the label + a details
-    // strip; CLI: an indented line). #333 changed the SHAPE of that from a pre-formatted prose blob to
+    // strip; CLI: an indented line). #336 changed the SHAPE of that from a pre-formatted prose blob to
     // structured name/description pairs, so the GUI can find where each rule name sits inside the label.
     // Sibling of DeadlyWeaponPriorityTests, which covers the same stage's gating half.
     [TestFixture]
@@ -76,7 +76,7 @@ namespace FDG.Tests
             Assert.That(request.OptionDescriptions, Is.Null);
         }
 
-        // #333 reversed #298 here: an undocumented rule IS listed now, carrying a null description. The
+        // #336 reversed #298 here: an undocumented rule IS listed now, carrying a null description. The
         // front ends say it is not enforced in play, which is the shoot panel's long-standing treatment
         // (#292) and is real information when choosing what to swing with.
         [Test]
@@ -94,7 +94,7 @@ namespace FDG.Tests
                 "null, not empty - the front end shows the not-enforced note in its place");
         }
 
-        // #333: an option the player cannot take right now is still part of the comparison - the whole
+        // #336: an option the player cannot take right now is still part of the comparison - the whole
         // reason the Deadly gate is holding the other weapon back is that Deadly matters - so a greyed row
         // carries its rules too, exactly as the shoot panel greys an unavailable weapon but still explains it.
         [Test]
@@ -111,7 +111,7 @@ namespace FDG.Tests
             Assert.That(request.OptionRules![greyed].Single().Name, Is.EqualTo("Rending"));
         }
 
-        // #333 split the two kinds of text apart: a weapon's RULES are structured on OptionRules, while
+        // #336 split the two kinds of text apart: a weapon's RULES are structured on OptionRules, while
         // OptionDescriptions keeps only free-form prose about the choice itself - #320's hold-back line.
         // A hold-back must not also carry the weapon's rules; its owner's row right above already has them.
         [Test]

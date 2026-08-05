@@ -208,6 +208,167 @@ namespace FDG.Tests
                 $"defender must stop at contact with the third-party enemy, not overlap it (gap {gap:F3}).");
         }
 
+        // --- #330: contact-slot pile-in — the unit envelops instead of keeping formation -------------
+
+        [Test]
+        public void SecondRankDefender_SlidesAroundFriend_IntoContact()
+        {
+            // D1 at (1,0) already in base contact with the charger at (0,0). D2 at (2,0) sits directly
+            // behind D1. The pre-#330 ray-march stopped D2 dead against D1's back (formation-keeping);
+            // slot assignment must route it to an open flank slot in true base contact with the charger.
+            var d1 = MakeModel(new Position(1f, 0f), radius: 0.5f);
+            var d2 = MakeModel(new Position(2f, 0f), radius: 0.5f);
+            var charger = MakeModel(new Position(0f, 0f), radius: 0.5f);
+
+            var moves = PileInUtilities.ComputePileInMoves(
+                chargingModels: new[] { charger },
+                defendingModels: new[] { d1, d2 },
+                terrain: null);
+
+            Assert.That(moves, Has.Count.EqualTo(1), "only D2 moves; D1 is already in contact.");
+            Assert.That(moves[0].Model, Is.SameAs(d2));
+            Position end = moves[0].NewPosition;
+
+            float b2bCharger = DistanceUtilities.GetBaseToBaseDistanceInches_2D(end, charger.GetValue().Position, 0.5f, 0.5f);
+            Assert.That(b2bCharger, Is.LessThanOrEqualTo(0.011f), "D2 must reach base contact with the charger.");
+            float b2bFriend = DistanceUtilities.GetBaseToBaseDistanceInches_2D(end, d1.GetValue().Position, 0.5f, 0.5f);
+            Assert.That(b2bFriend, Is.GreaterThanOrEqualTo(-0.005f), "D2 must not overlap D1 at its final spot.");
+        }
+
+        [Test]
+        public void ThreeDefenders_AllReachContact_SurroundingTheCharger()
+        {
+            // Three defenders east of a lone charger. Ray-marching got exactly one into contact (the
+            // others piled up behind); slot assignment must wrap all three around the charger's base.
+            var dA = MakeModel(new Position(2f, 0f), radius: 0.5f);
+            var dB = MakeModel(new Position(2f, 1f), radius: 0.5f);
+            var dC = MakeModel(new Position(2f, -1f), radius: 0.5f);
+            var charger = MakeModel(new Position(0f, 0f), radius: 0.5f);
+            var defenders = new[] { dA, dB, dC };
+
+            var moves = PileInUtilities.ComputePileInMoves(
+                chargingModels: new[] { charger },
+                defendingModels: defenders,
+                terrain: null);
+
+            Assert.That(moves, Has.Count.EqualTo(3), "all three defenders can reach a slot within 3\".");
+
+            var finals = new Dictionary<DataBinding<ModelData>, Position>();
+            foreach (var d in defenders) finals[d] = d.GetValue().Position;
+            foreach (var m in moves) finals[m.Model] = m.NewPosition;
+
+            foreach (var d in defenders)
+            {
+                float b2b = DistanceUtilities.GetBaseToBaseDistanceInches_2D(finals[d], charger.GetValue().Position, 0.5f, 0.5f);
+                Assert.That(b2b, Is.LessThanOrEqualTo(0.011f), "every defender ends in base contact with the charger.");
+            }
+            for (int i = 0; i < defenders.Length; i++)
+            {
+                for (int j = i + 1; j < defenders.Length; j++)
+                {
+                    float gap = DistanceUtilities.GetBaseToBaseDistanceInches_2D(finals[defenders[i]], finals[defenders[j]], 0.5f, 0.5f);
+                    Assert.That(gap, Is.GreaterThanOrEqualTo(-0.005f), "defenders must not overlap each other.");
+                }
+            }
+        }
+
+        [Test]
+        public void TerrainPartiallyBlocksApproach_DefenderSlidesToOpenSlot()
+        {
+            // A thin impassable wall dips just into the direct lane from the defender at (3,0) to the
+            // charger at (0,0): it spans x 1.45..1.55, z 0.35..3.0, so the straight approach (swept band
+            // z -0.5..0.5 at the wall) is blocked, as is every northern slot — but the southern flank is
+            // open. The pre-#330 behavior skipped the move entirely (terrain on the ray = stay put);
+            // slot assignment must take a southern contact slot instead.
+            var defender = MakeModel(new Position(3f, 0f), radius: 0.5f);
+            var charger = MakeModel(new Position(0f, 0f), radius: 0.5f);
+
+            var wall = new RectangularZone(1.45f, 1.55f, 0.35f, 3f);
+            var terrain = new List<ITerrain> { new TerrainData(ETerrainType.Impassible, wall) };
+
+            var moves = PileInUtilities.ComputePileInMoves(
+                chargingModels: new[] { charger },
+                defendingModels: new[] { defender },
+                terrain: terrain);
+
+            Assert.That(moves, Has.Count.EqualTo(1), "an open flank slot exists, so the defender must move.");
+            Position end = moves[0].NewPosition;
+
+            float b2b = DistanceUtilities.GetBaseToBaseDistanceInches_2D(end, charger.GetValue().Position, 0.5f, 0.5f);
+            Assert.That(b2b, Is.LessThanOrEqualTo(0.011f), "the defender reaches base contact despite the wall.");
+            Assert.That(end.z, Is.LessThan(-0.1f), "it must have gone around the SOUTH side (the open flank).");
+        }
+
+        [Test]
+        public void TerrainBlocksDirectLaneOnly_SecondDefenderStillWrapsClear()
+        {
+            // Two defenders share the blocked eastern lane (same wall as above, moved to guard only the
+            // corridor). Both must find open southern slots without overlapping each other or the wall's
+            // side of the ring.
+            var d1 = MakeModel(new Position(3f, -0.4f), radius: 0.5f);
+            var d2 = MakeModel(new Position(4f, -0.4f), radius: 0.5f);
+            var charger = MakeModel(new Position(0f, 0f), radius: 0.5f);
+
+            var wall = new RectangularZone(1.45f, 1.55f, 0.35f, 3f);
+            var terrain = new List<ITerrain> { new TerrainData(ETerrainType.Impassible, wall) };
+
+            var moves = PileInUtilities.ComputePileInMoves(
+                chargingModels: new[] { charger },
+                defendingModels: new[] { d1, d2 },
+                terrain: terrain);
+
+            // D1 can reach a southern slot (about 2.1-2.3" away). D2 starts ~3" behind; whether it reaches
+            // contact or falls back, it must never overlap D1 or cross the wall.
+            Assert.That(moves, Has.Count.GreaterThanOrEqualTo(1), "at least the near defender piles in.");
+
+            Position d1Final = d1.GetValue().Position;
+            Position d2Final = d2.GetValue().Position;
+            foreach (var m in moves)
+            {
+                if (m.Model == d1) d1Final = m.NewPosition;
+                if (m.Model == d2) d2Final = m.NewPosition;
+            }
+
+            float d1B2B = DistanceUtilities.GetBaseToBaseDistanceInches_2D(d1Final, charger.GetValue().Position, 0.5f, 0.5f);
+            Assert.That(d1B2B, Is.LessThanOrEqualTo(0.011f), "the near defender reaches base contact.");
+
+            float pairGap = DistanceUtilities.GetBaseToBaseDistanceInches_2D(d1Final, d2Final, 0.5f, 0.5f);
+            Assert.That(pairGap, Is.GreaterThanOrEqualTo(-0.005f), "defenders must not overlap.");
+        }
+
+        [Test]
+        public void RectangularCharger_BothDefendersReachTrueEdgeContact()
+        {
+            // A 3"x1" rectangular charger. Two round defenders approach its eastern short edge from
+            // offset angles; the slot search must settle both at TRUE oriented-edge contact (via
+            // SurfaceGap2D), not bounding-circle contact, and without overlapping each other.
+            var charger = MakeModel(new RectangleBase(3f, 1f), new Position(0f, 0f));
+            var d1 = MakeModel(new Position(2.6f, 0.8f), radius: 0.5f);
+            var d2 = MakeModel(new Position(2.6f, -0.8f), radius: 0.5f);
+
+            var moves = PileInUtilities.ComputePileInMoves(
+                chargingModels: new[] { charger },
+                defendingModels: new[] { d1, d2 },
+                terrain: null);
+
+            Assert.That(moves, Has.Count.EqualTo(2), "both defenders have reachable slots on the eastern edge.");
+
+            Position d1Final = moves.First(m => m.Model == d1).NewPosition;
+            Position d2Final = moves.First(m => m.Model == d2).NewPosition;
+
+            float d1Gap = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
+                d1Final, charger.GetValue().Position, d1.GetValue().BaseShape, charger.GetValue().BaseShape);
+            float d2Gap = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
+                d2Final, charger.GetValue().Position, d2.GetValue().BaseShape, charger.GetValue().BaseShape);
+            Assert.That(d1Gap, Is.LessThanOrEqualTo(0.011f), "D1 ends in true edge contact with the rectangle.");
+            Assert.That(d1Gap, Is.GreaterThanOrEqualTo(-0.005f), "D1 must not overlap the rectangle.");
+            Assert.That(d2Gap, Is.LessThanOrEqualTo(0.011f), "D2 ends in true edge contact with the rectangle.");
+            Assert.That(d2Gap, Is.GreaterThanOrEqualTo(-0.005f), "D2 must not overlap the rectangle.");
+
+            float pairGap = DistanceUtilities.GetBaseToBaseDistanceInches_2D(d1Final, d2Final, 0.5f, 0.5f);
+            Assert.That(pairGap, Is.GreaterThanOrEqualTo(-0.005f), "defenders must not overlap each other.");
+        }
+
         private DataBinding<ModelData> MakeModel(IBaseShape shape, Position initialPosition)
         {
             var modelData = new ModelData(shape, new List<Weapon>(), initialPosition, _store);

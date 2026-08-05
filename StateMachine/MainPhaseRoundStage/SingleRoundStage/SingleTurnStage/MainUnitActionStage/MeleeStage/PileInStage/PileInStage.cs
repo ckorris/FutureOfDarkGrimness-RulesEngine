@@ -42,7 +42,11 @@ namespace FDG.Stages
 
             if (moves.Count > 0)
             {
-                GameContext.Log($"Pile in: {moves.Count} defender model(s) moved toward the charging unit.");
+                // #330: report how many defenders actually reached base contact, so a formation-y
+                // result is visible in the log instead of hiding behind a bare move count.
+                int inContact = PileInUtilities.CountDefendersInBaseContact(
+                    chargingUnit.ModelBindings, defendingUnit.ModelBindings);
+                GameContext.Log($"Pile in: {moves.Count} defender model(s) moved toward the charging unit ({inContact} in base contact).");
             }
 
             await OnPiledIn.Activate(context);

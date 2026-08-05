@@ -4,8 +4,17 @@ namespace FDG.Stages
 {
     /// <summary>
     /// Computes the defender's reactive pile-in moves after a charge. GF v3.5.1 p.9:
-    /// defender models not in base contact must move by up to 3" toward a charging model,
-    /// or as close as possible, maintaining unit coherency.
+    /// defender models not in base contact must move by up to 3" to get into base contact
+    /// with a charging model, or as close as possible, maintaining unit coherency.
+    /// <para>
+    /// #330: "into base contact" is read as maximize-the-contact-count, the way a player would
+    /// actually pile in. Contact slots are sampled around every charging model's base and
+    /// defenders are greedily assigned to reachable free slots (most-constrained defender first),
+    /// so a second-rank model slides around its front rank to an open flank instead of stopping
+    /// dead against a friend's back. Defenders that can reach no slot fall back to the previous
+    /// behavior: a straight step toward the nearest charger, clamped at the first obstruction.
+    /// Models keep their facing throughout (pile-in has never rotated).
+    /// </para>
     /// </summary>
     public static class PileInUtilities
     {
@@ -16,6 +25,22 @@ namespace FDG.Stages
 
         // Don't bother applying a move shorter than this; reduces noise.
         private const float MIN_MEANINGFUL_STEP_INCHES = 0.01f;
+
+        // #330 slot sampling: candidate contact positions per charging model. 36 = one per 10 degrees,
+        // dense enough that a 25mm base never misses the gap between neighbors on any base we ship.
+        private const int SLOT_DIRECTIONS_PER_CHARGER = 36;
+
+        // A slot is settled at this base-to-base gap: positive so float drift can never read as overlap,
+        // comfortably under BTB_EPSILON_INCHES so the result still counts as base contact everywhere.
+        private const float SLOT_CONTACT_GAP_INCHES = 0.003f;
+
+        // End-state overlap tolerance between any two bases. Contact (gap ~0) is legal; deeper is not.
+        private const float OVERLAP_TOLERANCE_INCHES = 0.005f;
+
+        // Swept-path tolerance: a path is blocked only if the first touch happens meaningfully before the
+        // destination; grazing an obstacle at the final approach (every contact slot ends touching its
+        // charger by definition) must not read as blocked.
+        private const float PATH_TOUCH_TOLERANCE_INCHES = 0.02f;
 
         public readonly struct PileInMove
         {
@@ -75,8 +100,20 @@ namespace FDG.Stages
 
             HashSet<DataBinding<ModelData>> movedDefenders = new HashSet<DataBinding<ModelData>>();
 
+            // --- Phase 1 (#330): assign defenders to contact slots around the chargers. ---
+            // Slots depend on the defender's base shape + facing (a 4"-wide rectangle sits at a different
+            // spot than a 25mm circle), so slot rings are computed once per distinct (shape, facing) group.
+            List<DataBinding<ModelData>> slotAssigned = AssignDefendersToContactSlots(
+                candidates, liveChargers, liveDefenders, workingDefenderPositions, impassable, otherEnemies);
+            foreach (DataBinding<ModelData> d in slotAssigned) movedDefenders.Add(d);
+
+            // --- Phase 2: fallback for defenders no slot could take — the pre-#330 straight-line step
+            // toward the nearest charger, clamped at the first obstruction. Same rule floor as before:
+            // "as close as possible" caps out at zero when terrain blocks the lane.
             foreach (var (defender, targetCharger, currentB2B) in candidates)
             {
+                if (movedDefenders.Contains(defender)) continue;
+
                 ModelData defenderModel = defender.GetValue();
                 Position defenderPos = workingDefenderPositions[defender];
 
@@ -118,6 +155,12 @@ namespace FDG.Stages
                 movedDefenders.Remove(worstMoved);
             }
 
+            // #330 belt-and-braces: a revert can drop a defender back onto a spot another mover has since
+            // been placed against (its vacated start looked free while it was elsewhere). Every emitted
+            // position must be overlap-free, so revert the deepest-overlapping mover until clean. Bounded:
+            // each pass removes one mover; the floor (nobody moved) is the original, valid layout.
+            RevertResidualOverlaps(liveChargers, liveDefenders, workingDefenderPositions, otherEnemies, movedDefenders);
+
             List<PileInMove> result = new List<PileInMove>();
             foreach (DataBinding<ModelData> defender in movedDefenders)
             {
@@ -129,6 +172,326 @@ namespace FDG.Stages
                     result.Add(new PileInMove(defender, newPos));
             }
             return result;
+        }
+
+        /// <summary>Count of live defenders in base contact (within <see cref="BTB_EPSILON_INCHES"/> b2b)
+        /// with any live charger. Read-only; used by the stage for the pile-in log line.</summary>
+        public static int CountDefendersInBaseContact(
+            IReadOnlyList<DataBinding<ModelData>> chargingModels,
+            IReadOnlyList<DataBinding<ModelData>> defendingModels)
+        {
+            List<DataBinding<ModelData>> liveChargers = chargingModels
+                .Where(m => m.GetValue().GetIsAlive()).ToList();
+            int count = 0;
+            foreach (DataBinding<ModelData> d in defendingModels)
+            {
+                ModelData dm = d.GetValue();
+                if (!((IModel)dm).GetIsAlive()) continue;
+                if (NearestB2BAt(dm.Position, dm.BaseShape, dm.Facing, liveChargers, out _) <= BTB_EPSILON_INCHES)
+                    count++;
+            }
+            return count;
+        }
+
+        // --- #330 contact-slot assignment ------------------------------------------------------------
+
+        private readonly struct ContactSlot
+        {
+            public readonly Position Pos;
+            public readonly int Order; // (chargerIndex * SLOT_DIRECTIONS_PER_CHARGER) + angleIndex — the deterministic tie-break.
+
+            public ContactSlot(Position pos, int order)
+            {
+                Pos = pos;
+                Order = order;
+            }
+        }
+
+        /// <summary>
+        /// Greedily assigns candidate defenders to contact slots around the charging models, writing accepted
+        /// placements into <paramref name="workingDefenderPositions"/> and returning the assigned defenders.
+        /// Most-constrained defender picks first (fewest viable slots), so the model with one open flank takes
+        /// it before a freer teammate does; ties break toward the defender already closest to contact, then
+        /// input order. Every placement is re-validated against the positions accepted so far, so two
+        /// defenders can never take overlapping slots.
+        /// </summary>
+        private static List<DataBinding<ModelData>> AssignDefendersToContactSlots(
+            List<(DataBinding<ModelData> Defender, DataBinding<ModelData> Charger, float B2B)> candidates,
+            List<DataBinding<ModelData>> liveChargers,
+            List<DataBinding<ModelData>> liveDefenders,
+            Dictionary<DataBinding<ModelData>, Position> workingDefenderPositions,
+            List<ITerrain> impassable,
+            IReadOnlyList<EnemyModelFootprint> otherEnemies)
+        {
+            var assigned = new List<DataBinding<ModelData>>();
+            if (candidates.Count == 0) return assigned;
+
+            // Slot rings per distinct defender (shape, facing) group. Units are usually homogeneous, so this
+            // is one ring set; a mixed unit (joined hero on a bigger base) gets one per distinct base.
+            var slotsByDefender = new Dictionary<DataBinding<ModelData>, List<ContactSlot>>();
+            var slotCache = new List<(IBaseShape Shape, Float2 Facing, List<ContactSlot> Slots)>();
+            foreach (var c in candidates)
+            {
+                ModelData dm = c.Defender.GetValue();
+                List<ContactSlot>? slots = null;
+                foreach (var entry in slotCache)
+                {
+                    if (SameShape(entry.Shape, dm.BaseShape) && entry.Facing.X == dm.Facing.X && entry.Facing.Y == dm.Facing.Y)
+                    {
+                        slots = entry.Slots;
+                        break;
+                    }
+                }
+                if (slots == null)
+                {
+                    slots = GenerateContactSlots(liveChargers, dm.BaseShape, dm.Facing);
+                    slotCache.Add((dm.BaseShape, dm.Facing, slots));
+                }
+                slotsByDefender[c.Defender] = slots;
+            }
+
+            var unassigned = new List<(DataBinding<ModelData> Defender, DataBinding<ModelData> Charger, float B2B)>(candidates);
+
+            // Each pass places exactly one defender, so the loop runs at most candidates.Count times.
+            while (unassigned.Count > 0)
+            {
+                int bestIdx = -1;
+                int bestViableCount = int.MaxValue;
+                ContactSlot bestSlot = default;
+
+                for (int i = 0; i < unassigned.Count; i++)
+                {
+                    var (defender, _, currentB2B) = unassigned[i];
+                    ModelData dm = defender.GetValue();
+                    Position from = dm.Position; // candidates never move before acceptance; working pos == start.
+
+                    int viableCount = 0;
+                    ContactSlot ownBest = default;
+                    float ownBestDist = float.PositiveInfinity;
+
+                    foreach (ContactSlot slot in slotsByDefender[defender])
+                    {
+                        float dx = slot.Pos.x - from.x;
+                        float dz = slot.Pos.z - from.z;
+                        float moveDist = MathF.Sqrt(dx * dx + dz * dz);
+                        if (moveDist > MAX_PILE_IN_DISTANCE_INCHES) continue;
+                        if (moveDist < MIN_MEANINGFUL_STEP_INCHES) continue; // standing in a slot means BTB already; not a candidate then.
+
+                        if (!IsSlotEndStateFree(slot.Pos, dm, defender, liveChargers, liveDefenders,
+                            workingDefenderPositions, otherEnemies)) continue;
+                        if (!IsSlotPathClear(from, slot.Pos, moveDist, dm, defender, liveChargers,
+                            impassable, otherEnemies)) continue;
+
+                        viableCount++;
+                        // Prefer the shortest move; tie -> lowest slot order. Strict '<' keeps it deterministic.
+                        if (moveDist < ownBestDist - 1e-6f
+                            || (MathF.Abs(moveDist - ownBestDist) <= 1e-6f && slot.Order < ownBest.Order))
+                        {
+                            ownBest = slot;
+                            ownBestDist = moveDist;
+                        }
+                    }
+
+                    if (viableCount == 0) continue;
+
+                    // Most-constrained first; tie -> closest to contact already; tie -> input order (stable).
+                    bool better = viableCount < bestViableCount
+                        || (viableCount == bestViableCount && bestIdx >= 0 && currentB2B < unassigned[bestIdx].B2B - 1e-6f);
+                    if (bestIdx < 0 || better)
+                    {
+                        bestIdx = i;
+                        bestViableCount = viableCount;
+                        bestSlot = ownBest;
+                    }
+                }
+
+                if (bestIdx < 0) break; // nobody left can reach a free slot — the rest fall back.
+
+                DataBinding<ModelData> placed = unassigned[bestIdx].Defender;
+                workingDefenderPositions[placed] = bestSlot.Pos;
+                assigned.Add(placed);
+                unassigned.RemoveAt(bestIdx);
+            }
+
+            return assigned;
+        }
+
+        // Contact slots for a defender base of the given shape+facing, around every live charger:
+        // SLOT_DIRECTIONS_PER_CHARGER rays out of each charger's center, each settled by binary search to the
+        // center distance where the two bases sit SLOT_CONTACT_GAP_INCHES apart. Shape-agnostic: only
+        // SurfaceGap2D is consulted, so circles, rectangles, and any future base measure identically.
+        private static List<ContactSlot> GenerateContactSlots(
+            List<DataBinding<ModelData>> liveChargers, IBaseShape defenderShape, Float2 defenderFacing)
+        {
+            var slots = new List<ContactSlot>(liveChargers.Count * SLOT_DIRECTIONS_PER_CHARGER);
+            for (int c = 0; c < liveChargers.Count; c++)
+            {
+                ModelData cm = liveChargers[c].GetValue();
+                float hi0 = cm.BaseShape.CircumscribedRadiusInches + defenderShape.CircumscribedRadiusInches
+                    + SLOT_CONTACT_GAP_INCHES + 0.01f;
+
+                for (int a = 0; a < SLOT_DIRECTIONS_PER_CHARGER; a++)
+                {
+                    float theta = a * (2f * MathF.PI / SLOT_DIRECTIONS_PER_CHARGER);
+                    float dirX = MathF.Cos(theta);
+                    float dirZ = MathF.Sin(theta);
+
+                    // gap(d) is continuous, < 0 at d=0 (centers coincide) and > gap target at hi0 (bases fit
+                    // inside their circumscribed circles), so the bisection always brackets a crossing.
+                    float lo = 0f, hi = hi0;
+                    for (int i = 0; i < 24; i++)
+                    {
+                        float mid = (lo + hi) * 0.5f;
+                        Position p = new Position(cm.Position.x + dirX * mid, cm.Position.z + dirZ * mid);
+                        float gap = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
+                            p, cm.Position, defenderShape, defenderFacing, cm.BaseShape, cm.Facing);
+                        if (gap < SLOT_CONTACT_GAP_INCHES) lo = mid;
+                        else hi = mid;
+                    }
+
+                    Position slotPos = new Position(cm.Position.x + dirX * hi, cm.Position.z + dirZ * hi);
+                    float finalGap = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
+                        slotPos, cm.Position, defenderShape, defenderFacing, cm.BaseShape, cm.Facing);
+                    // Keep only well-formed slots: genuine base contact, never overlap. A degenerate search
+                    // result is dropped here rather than trusted downstream.
+                    if (finalGap < -0.001f || finalGap > BTB_EPSILON_INCHES) continue;
+
+                    slots.Add(new ContactSlot(slotPos, c * SLOT_DIRECTIONS_PER_CHARGER + a));
+                }
+            }
+            return slots;
+        }
+
+        // End state at a slot: the defender must not overlap ANY other base — chargers (contact is fine,
+        // that's the point), teammates at their working positions, or any other enemy/friendly footprint.
+        private static bool IsSlotEndStateFree(Position slotPos, ModelData defenderModel,
+            DataBinding<ModelData> selfDefender,
+            List<DataBinding<ModelData>> chargers,
+            List<DataBinding<ModelData>> defenders,
+            Dictionary<DataBinding<ModelData>, Position> workingDefenderPositions,
+            IReadOnlyList<EnemyModelFootprint> otherEnemies)
+        {
+            foreach (DataBinding<ModelData> other in chargers)
+            {
+                ModelData om = other.GetValue();
+                float gap = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
+                    slotPos, om.Position, defenderModel.BaseShape, defenderModel.Facing, om.BaseShape, om.Facing);
+                if (gap < -OVERLAP_TOLERANCE_INCHES) return false;
+            }
+            foreach (DataBinding<ModelData> other in defenders)
+            {
+                if (ReferenceEquals(other, selfDefender)) continue;
+                ModelData om = other.GetValue();
+                float gap = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
+                    slotPos, workingDefenderPositions[other], defenderModel.BaseShape, defenderModel.Facing, om.BaseShape, om.Facing);
+                if (gap < -OVERLAP_TOLERANCE_INCHES) return false;
+            }
+            foreach (EnemyModelFootprint enemy in otherEnemies)
+            {
+                float gap = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
+                    slotPos, enemy.Center, defenderModel.BaseShape, defenderModel.Facing, enemy.BaseShape, enemy.Facing);
+                if (gap < -OVERLAP_TOLERANCE_INCHES) return false;
+            }
+            return true;
+        }
+
+        // Path to a slot: the straight swept base must clear impassable terrain and every base that is NOT
+        // moving in this pile-in — chargers (grazing the target at the final approach is expected; blocked
+        // only when the touch comes meaningfully before the destination) and other enemy/friendly footprints.
+        // Fellow defenders are deliberately NOT swept obstacles: the whole unit shuffles simultaneously, so a
+        // model may pass through a teammate's start square — end-state overlap is still forbidden above. This
+        // transparency is exactly what lets the second rank slide around the first into contact (#330).
+        private static bool IsSlotPathClear(Position from, Position to, float moveDist, ModelData defenderModel,
+            DataBinding<ModelData> selfDefender,
+            List<DataBinding<ModelData>> chargers,
+            List<ITerrain> impassable,
+            IReadOnlyList<EnemyModelFootprint> otherEnemies)
+        {
+            if (PathCrossesImpassable(from, to, defenderModel.BaseShape, defenderModel.Facing, impassable))
+                return false;
+
+            float dirX = (to.x - from.x) / moveDist;
+            float dirZ = (to.z - from.z) / moveDist;
+
+            foreach (DataBinding<ModelData> other in chargers)
+            {
+                ModelData om = other.GetValue();
+                float allowed = MaxStepToTouch(from, defenderModel.BaseShape, defenderModel.Facing, dirX, dirZ,
+                    moveDist, om.Position, om.BaseShape, om.Facing);
+                if (allowed < moveDist - PATH_TOUCH_TOLERANCE_INCHES) return false;
+            }
+            foreach (EnemyModelFootprint enemy in otherEnemies)
+            {
+                float allowed = MaxStepToTouch(from, defenderModel.BaseShape, defenderModel.Facing, dirX, dirZ,
+                    moveDist, enemy.Center, enemy.BaseShape, enemy.Facing);
+                if (allowed < moveDist - PATH_TOUCH_TOLERANCE_INCHES) return false;
+            }
+            return true;
+        }
+
+        private static bool SameShape(IBaseShape a, IBaseShape b)
+        {
+            if (ReferenceEquals(a, b)) return true;
+            if (a is CircleBase ca && b is CircleBase cb) return ca.RadiusInches == cb.RadiusInches;
+            if (a is RectangleBase ra && b is RectangleBase rb)
+                return ra.WidthInches == rb.WidthInches && ra.HeightInches == rb.HeightInches;
+            return false;
+        }
+
+        // Final safety pass (#330): revert any moved defender whose final position overlaps another base
+        // deeper than tolerance. Deepest overlap reverts first; each pass shrinks movedDefenders, so the loop
+        // is bounded and the floor is the original (valid) layout.
+        private static void RevertResidualOverlaps(
+            List<DataBinding<ModelData>> liveChargers,
+            List<DataBinding<ModelData>> liveDefenders,
+            Dictionary<DataBinding<ModelData>, Position> workingDefenderPositions,
+            IReadOnlyList<EnemyModelFootprint> otherEnemies,
+            HashSet<DataBinding<ModelData>> movedDefenders)
+        {
+            while (movedDefenders.Count > 0)
+            {
+                DataBinding<ModelData>? worst = null;
+                float worstDepth = OVERLAP_TOLERANCE_INCHES;
+
+                foreach (DataBinding<ModelData> mover in movedDefenders)
+                {
+                    ModelData mm = mover.GetValue();
+                    Position pos = workingDefenderPositions[mover];
+                    float deepest = 0f;
+
+                    foreach (DataBinding<ModelData> other in liveChargers)
+                    {
+                        ModelData om = other.GetValue();
+                        float gap = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
+                            pos, om.Position, mm.BaseShape, mm.Facing, om.BaseShape, om.Facing);
+                        if (-gap > deepest) deepest = -gap;
+                    }
+                    foreach (DataBinding<ModelData> other in liveDefenders)
+                    {
+                        if (ReferenceEquals(other, mover)) continue;
+                        ModelData om = other.GetValue();
+                        float gap = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
+                            pos, workingDefenderPositions[other], mm.BaseShape, mm.Facing, om.BaseShape, om.Facing);
+                        if (-gap > deepest) deepest = -gap;
+                    }
+                    foreach (EnemyModelFootprint enemy in otherEnemies)
+                    {
+                        float gap = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
+                            pos, enemy.Center, mm.BaseShape, mm.Facing, enemy.BaseShape, enemy.Facing);
+                        if (-gap > deepest) deepest = -gap;
+                    }
+
+                    if (deepest > worstDepth)
+                    {
+                        worstDepth = deepest;
+                        worst = mover;
+                    }
+                }
+
+                if (worst == null) return; // no residual overlap — the common case, first pass.
+                workingDefenderPositions[worst] = worst.GetValue().Position;
+                movedDefenders.Remove(worst);
+            }
         }
 
         private static float NearestB2BAt(Position pos, IBaseShape shape, Float2 facing,

@@ -44,51 +44,34 @@ namespace FDG.Stages
                 GameContext.TextOutput.Log($"  Player {kv.Key.ID}: {kv.Value} objective(s)");
 
             // #257: the winner is the TEAM with the highest summed objective count, so teammates pool
-            // their objectives. Each player maps to their slot's team; an objective owner with no slot
-            // keeps a private bucket (mirrors the old per-player behavior for that edge, and the pseudo
-            // keys count down from int.MinValue so they can't collide with real team numbers).
+            // their objectives. #331 moved that arithmetic into TeamScoreTally so the front end can colour
+            // a victory celebration by the winning side using the SAME computation rather than a lookalike
+            // - the structured result never crosses the wire, but the objectives and slots this reads do.
             var players = GameContext.TableState.Players.Objects.ToList();
-            var teamOfPlayer = new Dictionary<PlayerID, int>();
-            foreach (var slot in players)
-                teamOfPlayer[slot.PlayerID] = slot.TeamNumber;
-
-            int nextPseudoTeam = int.MinValue;
-            var scoreByTeam = new Dictionary<int, int>();
-            foreach (var obj in objectives) // objective order: deterministic, and covers every owner.
-            {
-                if (obj.OwnerID.HasValue == false) continue;
-                var pid = obj.OwnerID.Value;
-                if (teamOfPlayer.TryGetValue(pid, out int team) == false)
-                    teamOfPlayer[pid] = team = nextPseudoTeam++;
-                scoreByTeam.TryGetValue(team, out int current);
-                scoreByTeam[team] = current + 1;
-            }
+            IReadOnlyList<TeamScore> teamScores = TeamScoreTally.Build(players, objectives);
 
             // Team tally lines only when a real multi-player team exists - keeps 1v1 logs unchanged.
             if (players.GroupBy(p => p.TeamNumber).Any(g => g.Count() > 1))
             {
-                foreach (var kv in scoreByTeam.Where(kv => kv.Key > int.MinValue / 2).OrderByDescending(kv => kv.Value))
-                    GameContext.TextOutput.Log($"  Team {kv.Key}: {kv.Value} objective(s)");
+                foreach (TeamScore score in teamScores.Where(score => score.TeamNumber > int.MinValue / 2))
+                    GameContext.TextOutput.Log($"  Team {score.TeamNumber}: {score.ObjectiveCount} objective(s)");
             }
 
-            int topScore = scoreByTeam.Values.DefaultIfEmpty(0).Max();
-            var winningTeams = scoreByTeam.Where(kv => kv.Value == topScore).Select(kv => kv.Key).ToList();
+            IReadOnlyList<TeamScore> winningTeams = TeamScoreTally.TopTeams(teamScores);
 
-            if (winningTeams.Count == 0 || topScore == 0)
+            if (winningTeams.Count != 1)
             {
-                await AnnounceTie(context, finalScores, roundsPlayed);
-            }
-            else if (winningTeams.Count > 1)
-            {
+                // No objective owned at all, or two or more teams level at the top: both are ties.
                 await AnnounceTie(context, finalScores, roundsPlayed);
             }
             else
             {
-                int winningTeam = winningTeams[0];
+                TeamScore winningTeam = winningTeams[0];
 
                 // The victory text names every player on the winning team (including teammates who held
                 // no objective themselves), never just the team number.
-                var roster = players.Where(p => p.TeamNumber == winningTeam).OrderBy(p => p.SlotID).ToList();
+                var roster = players.Where(p => p.TeamNumber == winningTeam.TeamNumber)
+                    .OrderBy(p => p.SlotID).ToList();
                 IReadOnlyList<PlayerID> winnerIds;
                 IReadOnlyList<string> winnerNames;
                 if (roster.Count > 0)
@@ -98,8 +81,9 @@ namespace FDG.Stages
                 }
                 else
                 {
-                    // A pseudo-team: the winning objective owner has no slot, so no roster or name exists.
-                    winnerIds = new[] { teamOfPlayer.First(kv => kv.Value == winningTeam).Key };
+                    // A pseudo-team: the winning objective owner has no slot, so no name exists. The tally
+                    // still carries the owner itself as that team's one-player roster.
+                    winnerIds = winningTeam.Players;
                     winnerNames = new[] { "A player" };
                 }
 

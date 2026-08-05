@@ -1175,6 +1175,48 @@ namespace FDG.Tests
                 "streams run INTO the caster, which is where Positions points");
         }
 
+        // #348 — the boost beat streams from the casters that ACTUALLY SPENT, never from the ones that were
+        // merely eligible. Three friendly Casters stand in assist range; one spends and two decline, so the
+        // beat must carry exactly one source unit's models. (The pre-existing coverage had every eligible
+        // assister spend, which cannot tell "only spenders" apart from "everyone offered".)
+        [Test]
+        public async Task CastSpellStage_OnlySpendingAssistersStreamIntoTheCaster()
+        {
+            var sink = new RecordingPresentationSink();
+            // Only the ally at x=12 spends; the ones at 14 and 16 decline.
+            var requester = new CannedAssistRequester(tokensPerAssister: 0, boostTokens: 0,
+                perAssister: assist => AssisterX(assist) == 12f ? 2 : 0);
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedDiceRoller(5), sink);
+
+            DataBinding<UnitData> caster = MakeCasterBinding(_player, casterRating: 3, tokens: 3, new Position(10f, 10f));
+            DataBinding<UnitData> spender = MakeCasterBinding(_player, casterRating: 3, tokens: 2, new Position(12f, 10f));
+            DataBinding<UnitData> idleA = MakeCasterBinding(_player, casterRating: 3, tokens: 2, new Position(14f, 10f));
+            DataBinding<UnitData> idleB = MakeCasterBinding(_player, casterRating: 3, tokens: 2, new Position(16f, 10f));
+            var army = new ArmyData(_player,
+                new List<DataBinding<UnitData>> { caster, spender, idleA, idleB });
+            army.SetSpells(new[] { SelfBuffSpell("Bless", threshold: 1, grantedRule: "Furious") });
+            _store.Create(army);
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Assert.That(requester.AssistPromptCount, Is.EqualTo(3), "all three eligible allies were offered");
+
+            SpellEffectBeat boost = sink.Beats.OfType<SpellEffectBeat>()
+                .First(b => b.Visual == ESpellVisual.AssistBoost);
+            Assert.That(boost.Magnitude, Is.EqualTo(2), "only the two tokens actually spent");
+            Assert.That(boost.Sources.Select(p => p.x), Is.EqualTo(new[] { 12f }),
+                "the stream comes from the spender alone - a caster that declined must not animate");
+            Assert.That(idleA.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(2));
+            Assert.That(idleB.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(2));
+        }
+
+        // The assisting unit's model x, for the selective-spend requester above (one model per test caster).
+        private static float AssisterX(CastAssistRequest assist) =>
+            assist.AssistingUnit.GetValue().ModelBindings[0].GetValue().PositionBinding.GetValue().x;
+
         // #274 — no spend, no assist beat. A quiet cast must not pay for two beats' worth of pacing.
         [Test]
         public async Task CastSpellStage_NoAssistOrBoost_EmitsNoAssistVisuals()
@@ -1715,13 +1757,19 @@ namespace FDG.Tests
     {
         private readonly int _tokensPerAssister;
         private readonly int _boostTokens;
+        private readonly System.Func<CastAssistRequest, int>? _perAssister;
         public int AssistPromptCount { get; private set; }
         public ChooseSpellRequest? CapturedSpellPick { get; private set; }
 
-        public CannedAssistRequester(int tokensPerAssister, int boostTokens = 0)
+        /// <param name="perAssister">Optional per-prompt override, so a test can have ONE of several
+        /// eligible assisters spend while the rest decline (#348) — the shape real play produces and
+        /// which a flat tokens-per-assister can't express.</param>
+        public CannedAssistRequester(int tokensPerAssister, int boostTokens = 0,
+            System.Func<CastAssistRequest, int>? perAssister = null)
         {
             _tokensPerAssister = tokensPerAssister;
             _boostTokens = boostTokens;
+            _perAssister = perAssister;
         }
 
         public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
@@ -1731,7 +1779,8 @@ namespace FDG.Tests
             {
                 case CastAssistRequest assist:
                     AssistPromptCount++;
-                    return Task.FromResult((TReply)(object)System.Math.Min(_tokensPerAssister, assist.AvailableTokens));
+                    int spend = _perAssister?.Invoke(assist) ?? _tokensPerAssister;
+                    return Task.FromResult((TReply)(object)System.Math.Min(spend, assist.AvailableTokens));
                 case ChooseSpellRequest spellPick:
                     CapturedSpellPick = spellPick;
                     return Task.FromResult((TReply)(object)CannedSpellPick.FirstCastable(spellPick, _boostTokens));

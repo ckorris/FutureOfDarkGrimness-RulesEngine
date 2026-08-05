@@ -151,7 +151,12 @@ namespace FDG.Stages
         // Stable option labels for the hold-or-deploy prompt, so resolvers (notably the AI) can match a
         // choice without depending on the dynamic prompt wording. The "hold" label is rule-name dependent
         // (HoldChoiceFor) since it reads naturally as "Hold in Ambush".
-        public const string DEPLOY_NORMALLY_CHOICE = "Deploy normally";
+        //
+        // #335: also the cancel label on ChooseDeployActionStage's embark prompt — "put this unit on the
+        // table as normal" is ONE action, so it is one string, spelled the same way in both places (it was
+        // "Deploy normally" here and "Deploy Normally" there for about an hour). Both AI resolvers decline
+        // their prompt by matching this constant, which is why it must not be retyped as a literal.
+        public const string DEPLOY_NORMALLY_CHOICE = "Deploy Normally";
         public const string BACK_TO_LIST_CHOICE = "Back to unit list";
         public static string HoldChoiceFor(string ruleName) => $"Hold in {ruleName}";
 

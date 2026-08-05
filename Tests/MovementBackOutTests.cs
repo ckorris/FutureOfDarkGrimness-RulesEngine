@@ -108,6 +108,43 @@ namespace FDG.Tests
                 "a move that never happened leaves the unit as if it had held.");
         }
 
+        // #333: the third way out of MovementStage - a move that RESOLVED but covered no ground. "Skip all"
+        // in the GUI (and a Done with no waypoints placed) submits a real path whose every waypoint sits on
+        // the model's own position, so it travels OnFinishedMovement, not the back-out, and used to stamp.
+        // The unit has genuinely not moved, so the round-scoped fact must read that way; the per-activation
+        // Move action is still spent, which is the half a player DOES pay for finishing an empty move.
+        [Test]
+        public async Task ZeroDistanceMove_SpendsTheMove_ButDoesNotStampMovedThisRound()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new ResolvingMoveRequester(0f), new FixedDiceRoller(4));
+            DataBinding<UnitData> unit = MakeUnit(ctx, new Position(10f, 10f));
+
+            var context = new UnitActionContext(ctx, unit);
+            var movement = new MovementStage(ctx, new NoOpLayer<IUnitActionContext>());
+            movement.BackToChooseAction.Bind("backToChooseAction");
+            movement.OnFinishedMovement.Bind("finishedMovement");
+            await movement.Enter(context);
+
+            Assert.That(context.HasMoved, Is.True,
+                "finishing an empty move still spends the unit's Move action - Back is what keeps it.");
+            Assert.That(unit.GetValue().Tokens.HasToken(TokenType.MovedThisRound), Is.False,
+                "a unit that travelled 0in has not moved this round, whichever exit it left through.");
+        }
+
+        // The guard is an epsilon against float drift, not a "barely moved" allowance: a real move of any
+        // size still stamps. Pinned so nobody widens it into a rule.
+        [Test]
+        public async Task TinyButRealMove_StillStampsMovedThisRound()
+        {
+            var ctx = new TriggeredMoveTestContext(_store, new ResolvingMoveRequester(0.25f), new FixedDiceRoller(4));
+            DataBinding<UnitData> unit = MakeUnit(ctx, new Position(10f, 10f));
+
+            await RunMovement(ctx, unit);
+
+            Assert.That(unit.GetValue().Tokens.HasToken(TokenType.MovedThisRound), Is.True,
+                "0.25in is a move; only a genuinely zero-length path is exempt.");
+        }
+
         // The token is round-scoped, not game-scoped: it must come off in the round-end sweep, or an
         // artillery piece that moved once would never get its bonus back.
         [Test]

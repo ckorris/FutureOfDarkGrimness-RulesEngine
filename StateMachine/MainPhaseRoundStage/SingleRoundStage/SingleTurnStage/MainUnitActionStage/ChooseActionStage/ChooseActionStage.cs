@@ -580,7 +580,9 @@ namespace FDG.Stages
                 return false;
             }
 
-            if (AnyEnemyWithinStandoff(gameContext, context.ActivatingPlayer(), unit))
+            //#334: the predicate itself lives in ForcedChargeUtilities so the movement resolvers can show the
+            //player this obligation WHILE the move is being aimed, measuring exactly what this gate measures.
+            if (ForcedChargeUtilities.AnyEnemyWithinStandoff(gameContext, context.ActivatingPlayer(), unit))
             {
                 reasonIfCant = "Within 1\" of an enemy - must charge (or reposition) rather than stand idle.";
                 return false;
@@ -588,29 +590,6 @@ namespace FDG.Stages
 
             reasonIfCant = null;
             return true;
-        }
-
-        //True when any non-allied unit has a living model within ENEMY_STANDOFF_DISTANCE_INCHES (base-to-base,
-        //3D) of one of this unit's living models. Allies are excluded via the activating player's team, mirroring
-        //GetCanCharge's target screening.
-        private static bool AnyEnemyWithinStandoff(IGameContext gameContext, PlayerID activatingPlayer, IUnit unit)
-        {
-            TeamData? playerTeam = gameContext.GameDataStore().GetAllValues<TeamData>()
-                .FirstOrDefault(t => t.IsPlayerOnTeam(activatingPlayer));
-            IReadOnlyList<PlayerID> alliedPlayers = playerTeam != null
-                ? playerTeam.Players
-                : new List<PlayerID> { activatingPlayer };
-
-            // #263: only units actually in play can force a charge — a reserve unit's models sit at the
-            // origin, and without this filter an enemy standing near the table corner was FORCED to
-            // charge a unit that wasn't on the board.
-            return gameContext.GameDataStore().GetAllValues<ArmyData>()
-                .Where(a => !alliedPlayers.Contains(a.PlayerID))
-                .SelectMany(a => a.UnitBindings)
-                .Where(enemyUnit => enemyUnit.GetValue().GetIsOnBattlefield())
-                .Any(enemyUnit => UnitCompareUtilities.MinDistanceBetweenUnits(
-                        unit, enemyUnit.GetValue(), out _, out _, includeVertical: true)
-                    < GameWideConstants.ENEMY_STANDOFF_DISTANCE_INCHES);
         }
 
         // #033 — true when the caster's army has at least one spell it can currently CAST: affordable AND

@@ -26,13 +26,27 @@ namespace FDG.StageResolution.Requests
         /// </summary>
         public bool AllowCancel { get; }
 
+        /// <summary>
+        /// What the cancel button is called, defaulting to "Back". Meaningful only when
+        /// <see cref="AllowCancel"/> is set, and worded by the stage, because only the stage knows what a
+        /// cancel MEANS here. For most selections it rewinds to the menu you came from, and "Back" is the
+        /// truth. For a few it is a real choice with no back-destination at all — the deploy-time embark
+        /// prompt, where cancelling deploys the unit on the table as normal — and labelling that "Back"
+        /// hides an action behind a button that reads like an escape hatch (#335, playtest note).
+        /// Same division of labour as <see cref="PlaceObjectsRequest{T}.CancelHint"/>: the stage supplies
+        /// the wording, the resolver just draws it. Game-facing, so ASCII only (CLAUDE.md).
+        /// </summary>
+        public string CancelLabel { get; }
+
+        public const string DEFAULT_CANCEL_LABEL = "Back";
+
         // displayName: what the #322 "Waiting on" HUD shows the other players; the generic TaskName
         // fallback leaks the C# type name ("Select UnitData"), so pass game wording wherever a
         // selection can hold up someone else's screen.
         [JsonConstructor]
         public SelectionRequest(PlayerID targetPlayerID, TaskID taskID, string instructions,
             IReadOnlyList<ValidOption> validOptions, IReadOnlyList<InvalidOption> invalidOptions,
-            bool allowCancel = true, string? displayName = null)
+            bool allowCancel = true, string? displayName = null, string? cancelLabel = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -42,13 +56,14 @@ namespace FDG.StageResolution.Requests
             AllowCancel = allowCancel;
             TaskName = $"Select {typeof(T).Name}";
             DisplayName = displayName ?? TaskName;
+            CancelLabel = string.IsNullOrWhiteSpace(cancelLabel) ? DEFAULT_CANCEL_LABEL : cancelLabel!;
         }
 
         public SelectionRequest(PlayerID targetPlayerID, string instructions,
             IReadOnlyList<ValidOption> validOptions, IReadOnlyList<InvalidOption> invalidOptions,
-            bool allowCancel = true, string? displayName = null)
+            bool allowCancel = true, string? displayName = null, string? cancelLabel = null)
             : this(targetPlayerID, new TaskID(Guid.NewGuid()), instructions, validOptions, invalidOptions,
-                allowCancel, displayName)
+                allowCancel, displayName, cancelLabel)
         {
         }
 

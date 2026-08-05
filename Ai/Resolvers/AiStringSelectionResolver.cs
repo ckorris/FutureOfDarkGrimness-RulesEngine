@@ -1,3 +1,4 @@
+using FDG.Rules.Dispatch;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 using FDG.Stages;
@@ -72,7 +73,25 @@ namespace FDG.Ai.Resolvers
 
             return options.Contains(ChooseActionStage.PASS_CHOICE_NAME)
                 ? ChooseActionStage.PASS_CHOICE_NAME
-                : options[0];
+                : FirstActionWorthTaking(options);
+        }
+
+        // #335: the AI never embarks mid-game either, for the reason AiSelectionResolver declines the
+        // deploy-time prompt - a ride only pays off if someone planned the drop-off, and nothing here
+        // plans one. Embark reaches this menu as a rule-NAMED action (ChooseActionStage routes it by
+        // offer.RuleName), so the ranked branches above can never return it and only this tail could,
+        // by position. Matched on CoreRuleCatalog.EmbarkRuleName the same way the Tactician matches
+        // DisembarkRuleName.
+        //
+        // If Embark is somehow the ONLY option, it is still returned: the fallback MUST stay within
+        // ValidOptions or ChooseActionStage faults, and a fault is worse than one unwanted ride.
+        private static string FirstActionWorthTaking(IReadOnlyList<string> options)
+        {
+            foreach (string option in options)
+            {
+                if (option != CoreRuleCatalog.EmbarkRuleName) return option;
+            }
+            return options[0];
         }
 
         // Returns true if any living enemy model is within the max ranged weapon range

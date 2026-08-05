@@ -13,6 +13,26 @@ namespace FDG.Stages
             return distances.Values.Max();
         }
 
+        /// <summary>
+        /// #333: how far one model travels along its own path — start position through every waypoint.
+        /// Public because a front end has to be able to ask "did THIS model move?" before it commits (the
+        /// CLI's Done confirmation), and re-deriving the sum caller-side is exactly how it drifts from the
+        /// number <see cref="GetMaxMoveDistance"/> reports to the stage.
+        /// </summary>
+        public static float GetTotalMoveDistance(ModelMoveEntry move)
+        {
+            List<Position> path = move.Positions;
+            if (path.Count == 0) return 0.0f;
+
+            //Start to the first step, then along the rest.
+            float distanceMoved = Position.GetDistance3D(move.Model.GetValue().PositionBinding, path[0]);
+            for (int i = 0; i < path.Count - 1; i++)
+            {
+                distanceMoved += Position.GetDistance3D(path[i], path[i + 1]);
+            }
+            return distanceMoved;
+        }
+
         // Normalise an optional footprint sequence to a non-null read-only list (empty when null).
         private static IReadOnlyList<EnemyModelFootprint> AsReadOnly(IEnumerable<EnemyModelFootprint>? footprints)
             => footprints as IReadOnlyList<EnemyModelFootprint> ?? footprints?.ToList()
@@ -403,23 +423,7 @@ namespace FDG.Stages
 
             foreach (ModelMoveEntry modelEntry in moves)
             {
-                List<Position> path = modelEntry.Positions; //Shorthand.
-
-                if (path.Count == 0)
-                {
-                    distances.Add(modelEntry, 0.0f);
-                    continue;
-                }
-
-                //Get the distance from the start to the first step.
-                float distanceMoved = Position.GetDistance3D(modelEntry.Model.GetValue().PositionBinding, path[0]);
-
-                for (int i = 0; i < path.Count - 1; i++) //Move along the rest of the steps.
-                {
-                    distanceMoved += Position.GetDistance3D(path[i], path[i + 1]);
-                }
-
-                distances.Add(modelEntry, distanceMoved);
+                distances.Add(modelEntry, GetTotalMoveDistance(modelEntry));
             }
 
             return distances;

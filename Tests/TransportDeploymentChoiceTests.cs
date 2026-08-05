@@ -109,12 +109,34 @@ namespace FDG.Tests
 
             SelectionRequest<UnitData> prompt = requester.LastSelection!;
             Assert.That(prompt.AllowCancel, Is.True, "declining the transport has to stay reachable.");
-            Assert.That(prompt.CancelLabel, Is.EqualTo(ChooseDeployActionStage.DEPLOY_NORMALLY_CHOICE_NAME),
+            Assert.That(prompt.CancelLabel, Is.EqualTo(ChooseUnitToDeployStage.DEPLOY_NORMALLY_CHOICE),
                 "the exit is a real deployment choice, so it is labelled with what it does, not 'Back'.");
             Assert.That(prompt.Instructions, Does.Not.Contain("Cancel"),
                 "the instructions no longer have to explain the Back button's hidden second meaning.");
             Assert.That(prompt.DisplayName, Does.Contain("Grunts"),
                 "the #322 'Waiting on' HUD names the unit rather than the C# type.");
+        }
+
+        // #331 (owner's call, 2026-08-04): the AI never embarks. Riding needs forethought it doesn't have -
+        // it has no policy for where the cargo gets out - and before this the option-0 fallback embarked
+        // every eligible unit because "Embark into Rhino" was simply first in the list. Driven through the
+        // REAL AiSelectionResolver against the real stage, so the decline is proven end to end rather than
+        // in the resolver alone.
+        [Test]
+        public async Task DeployAction_AiPlayer_NeverEmbarksAndDeploysNormally()
+        {
+            DataBinding<UnitData> transport = MakeTransport("Rhino", capacity: 6);
+            Deploy(transport);
+            DataBinding<UnitData> squad = MakeUnit("Grunts", modelCount: 2);
+            MakeArmy(transport, squad);
+
+            var requester = new AiRequester();
+            (var deployment, bool finished, bool embarked) = await RunChooseDeployAction(requester, squad);
+
+            Assert.That(embarked, Is.False, "the AI declines the transport.");
+            Assert.That(finished, Is.True, "and heads for ordinary placement instead.");
+            Assert.That(TransportUtilities.IsEmbarked(squad.GetValue()), Is.False);
+            Assert.That(deployment.CurrentDeployingUnit, Is.EqualTo(squad));
         }
 
         // Every other cancellable selection keeps the plain Back wording — the label is opt-in, so a stage
@@ -214,6 +236,23 @@ namespace FDG.Tests
         private void MakeArmy(params DataBinding<UnitData>[] units)
         {
             _store.Create(new ArmyData(_player, units.ToList()));
+        }
+    }
+
+    // Routes the stage's requests through the production AI resolver, so a test exercises what an AI player
+    // actually does rather than a hand-written stand-in (#331).
+    internal sealed class AiRequester : IPlayerRequestByID
+    {
+        public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
+            where TRequest : IStageTaskRequest<TReply>
+        {
+            if (request is SelectionRequest<UnitData> selection)
+            {
+                return new FDG.Ai.Resolvers.AiSelectionResolver<UnitData>().Resolve(selection)
+                    .ContinueWith(t => (TReply)(object)t.Result!);
+            }
+
+            throw new InvalidOperationException("Unexpected request type: " + request.GetType());
         }
     }
 

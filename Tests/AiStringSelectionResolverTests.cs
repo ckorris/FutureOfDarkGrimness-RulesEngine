@@ -1,5 +1,6 @@
 using FDG.Ai.Resolvers;
 using FDG.Data;
+using FDG.Rules.Dispatch;
 using FDG.Stages;
 using FDG.StageResolution.Requests;
 using NUnit.Framework;
@@ -57,6 +58,48 @@ namespace FDG.Tests
 
             Assert.That(choice, Is.EqualTo(ChooseActionStage.CAST_CHOICE_NAME));
             Assert.That(choice, Is.Not.EqualTo(ChooseActionStage.PASS_CHOICE_NAME));
+        }
+
+        // #331: the AI never embarks (owner's call - a ride only pays off if someone planned the drop-off).
+        // Embark is a rule-NAMED action, so no ranked branch can return it; the position-based tail could,
+        // and this pins that it doesn't. Pass isn't offered here, or it would mask the filter.
+        [Test]
+        public async Task Resolve_ChooseAction_NeverEmbarksFromTheFallback()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var player = new PlayerID(System.Guid.NewGuid());
+            var resolver = new AiStringSelectionResolver(new TableState(store), player);
+
+            var request = new StringSelectionRequest(player, "Choose Action",
+                new List<string>
+                {
+                    CoreRuleCatalog.EmbarkRuleName,       // listed first - the trap
+                    ChooseActionStage.CAST_CHOICE_NAME,
+                },
+                new List<StringSelectionRequest.InvalidOption>());
+
+            string choice = await resolver.Resolve(request);
+
+            Assert.That(choice, Is.EqualTo(ChooseActionStage.CAST_CHOICE_NAME),
+                "an action it cannot follow through on loses to any other valid action.");
+        }
+
+        // ...but the fallback must stay INSIDE ValidOptions: returning something unoffered faults
+        // ChooseActionStage, and a fault is worse than one unwanted ride.
+        [Test]
+        public async Task Resolve_ChooseAction_EmbarkIsTheOnlyOption_StillAnswersWithIt()
+        {
+            var store = GameDataStore.GameDataStoreBuilder.GetDefault();
+            var player = new PlayerID(System.Guid.NewGuid());
+            var resolver = new AiStringSelectionResolver(new TableState(store), player);
+
+            var request = new StringSelectionRequest(player, "Choose Action",
+                new List<string> { CoreRuleCatalog.EmbarkRuleName },
+                new List<StringSelectionRequest.InvalidOption>());
+
+            string choice = await resolver.Resolve(request);
+
+            Assert.That(choice, Is.EqualTo(CoreRuleCatalog.EmbarkRuleName));
         }
 
         // The AI still passes when passing IS allowed and nothing more useful is offered.

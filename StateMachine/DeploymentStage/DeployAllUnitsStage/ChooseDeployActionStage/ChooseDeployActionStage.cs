@@ -15,13 +15,6 @@ namespace FDG.Stages
         // the next player.
         public StageBinding OnEmbarked;
 
-        /// <summary>
-        /// The name of the "place this unit on the table instead of loading it" choice, offered as the
-        /// embark prompt's cancel action (#331). Public so tests — and any front end that wants to pin a
-        /// key or a button to it — read the wording from one place instead of retyping it.
-        /// </summary>
-        public const string DEPLOY_NORMALLY_CHOICE_NAME = "Deploy Normally";
-
         public ChooseDeployActionStage(IGameContext gameContext, IStateMachineLayer<IDeploymentTurnContext> parent)
             : base(gameContext, parent)
         {
@@ -124,7 +117,7 @@ namespace FDG.Stages
                 $"Deploy {unit.Name} inside a transport, or on the table?",
                 options, new List<SelectionRequest<UnitData>.InvalidOption>(), allowCancel: true,
                 displayName: $"Deploying {unit.Name}",
-                cancelLabel: DEPLOY_NORMALLY_CHOICE_NAME);
+                cancelLabel: ChooseUnitToDeployStage.DEPLOY_NORMALLY_CHOICE);
 
             return await GameContext.PlayerRequester
                 .RequestDecision<SelectionRequest<UnitData>, DataBinding<UnitData>>(request);

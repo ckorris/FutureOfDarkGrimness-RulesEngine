@@ -500,6 +500,15 @@ public sealed class RuleEvaluator
 
     private void Log(TaggedOperation t)
     {
+        // A capability is an ANSWER, not an event - nothing ever applies it, so narrating it describes
+        // something that did not happen. Dropped by TYPE here rather than only by context below, so no
+        // future call site can reintroduce the spam stream #197 Instinctive caused. See
+        // CapabilityOperation.
+        if (t.Op is CapabilityOperation)
+        {
+            return;
+        }
+
         string carrier = t.Weapon == null
             ? $"{t.Bearer.Name}'s {t.Origin.RequestedName}"
             : $"{t.Bearer.Name}'s {t.Weapon.Name}'s {t.Origin.RequestedName}";

@@ -1,5 +1,6 @@
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
+using FDG.Utilities;
 using Microsoft.ApplicationInsights.Extensibility;
 
 namespace FDG.Rules.Definitions;
@@ -48,13 +49,51 @@ public abstract record RuleOperation
     /// <summary>
     /// Human-readable description of what this operation does, for game-log output. The
     /// evaluator pairs it with the bearer + rule ("Goblins' Stealth added -1 to Hit rolls").
-    /// Default is generic; operations override it where a specific phrasing reads better.
+    ///
+    /// <para>ABSTRACT on purpose. This used to be a virtual returning the placeholder "applied an
+    /// effect", which two thirds of the operations never overrode - so most of what the rule engine
+    /// narrated was a line that named the rule but not what it did. A new operation now cannot compile
+    /// without saying what it does. <see cref="CapabilityOperation"/> answers it once for the whole
+    /// capability family, which is never logged (see that type).</para>
+    ///
+    /// <para>Phrasing contract: a past-tense verb phrase with no leading capital and no trailing
+    /// period - the evaluator supplies "{bearer}'s {rule} " before it and "." after. ASCII only, per
+    /// the font-atlas constraint: use <c>-</c>, <c>-&gt;</c>, <c>...</c> and <c>x</c>, never dashes or
+    /// arrows beyond U+00FF.</para>
     /// </summary>
+    public abstract string Describe();
 
-    public virtual string Describe()
+    /// <summary>
+    /// How much of <paramref name="token"/> a grant/consume line should report. #197 P12: a magnitude
+    /// token's VALUE is its payload, not its count - a 0.15 marker is granted as Count 1, so the plain
+    /// count reads "1x" and contradicts the line the stage logs beside it. Read the payload when there
+    /// is one. Shared by the unit- and model-scoped grant descriptions so they cannot drift.
+    /// </summary>
+    /// <summary>
+    /// "1 die" / "3 dice". Its own helper because <see cref="RollTags.Count"/> pluralizes by appending
+    /// "s", which cannot spell an irregular plural - it would produce "1 dice" or "3 dies".
+    /// </summary>
+    private protected static string DiceTally(int count, string? adjective = null)
     {
-        return "applied an effect"; //Placeholder, should be overridden.
+        string qualified = adjective == null ? string.Empty : adjective + " ";
+        return count == 1 ? $"1 {qualified}die" : $"{count} {qualified}dice";
     }
+
+    /// <summary>" at AP(2)", or nothing at AP 0 - the near-universal case, where naming it is just noise.</summary>
+    private protected static string ApSuffix(int armorPenetration) =>
+        armorPenetration > 0 ? $" at AP({armorPenetration})" : string.Empty;
+
+    /// <summary>
+    /// " with Rending, Poison", or nothing when the attack carries no rules. The names are the rules as
+    /// AUTHORED (unresolved strings on the operation), which is what a player reads them as anyway.
+    /// </summary>
+    private protected static string RulesSuffix(IReadOnlyList<string> withRules) =>
+        withRules is { Count: > 0 } ? $" with {string.Join(", ", withRules)}" : string.Empty;
+
+    private protected static string TokenQuantity(Token token) =>
+        token.Payload is Tokens.TokenPayload.Magnitude magnitude
+            ? $"{magnitude.Value * token.Count:0.##}"
+            : token.Count.ToString();
     
     /// <summary>
     /// Adjust the modifier stack of the in-flight roll of <see cref="Roll"/>
@@ -85,7 +124,11 @@ public abstract record RuleOperation
     /// all if one of those rescues succeeded. The op carries its own price so the two can never drift apart.
     /// </para>
     /// </summary>
-    public sealed record PassMoraleTest(int SelfWoundOnRollAtMost) : RuleOperation;
+    public sealed record PassMoraleTest(int SelfWoundOnRollAtMost) : RuleOperation
+    {
+        public override string Describe() =>
+            $"passed a failed morale test, self-wounding on rolls of {SelfWoundOnRollAtMost} or less";
+    }
 
     /// <summary>
     /// Re-roll dice in the current <see cref="Roll"/> matching
@@ -120,7 +163,9 @@ public abstract record RuleOperation
 
         public override string Describe()
         {
-            return $"added {Count} extra hits";
+            // RollTags.Count agrees with the DISPLAYED value, which matters here: Count is fractional
+            // under the probabilistic roller, so a raw "{Count} extra hits" reads "1 extra hits".
+            return $"added {RollTags.Count(Count, "extra hit")}";
         }
     }
 
@@ -139,7 +184,7 @@ public abstract record RuleOperation
 
         public override string Describe()
         {
-            return $"added {Count} extra wounds";
+            return $"added {RollTags.Count(Count, "extra wound")}";
         }
     }
 
@@ -193,12 +238,8 @@ public abstract record RuleOperation
         // Count 1, so the plain count reads "1x" and contradicts the line the stage logs beside it. Read
         // the payload when there is one.
         public override string Describe() =>
-            $"placed {Quantity()}x {TokenDefinitionCatalog.Lookup(TokenToGrant.Type).Name} " +
-            $"on {Unit.Name}";
-
-        private string Quantity() => TokenToGrant.Payload is Tokens.TokenPayload.Magnitude magnitude
-            ? $"{magnitude.Value * TokenToGrant.Count:0.##}"
-            : TokenToGrant.Count.ToString();
+            $"placed {TokenQuantity(TokenToGrant)}x " +
+            $"{TokenDefinitionCatalog.Lookup(TokenToGrant.Type).Name} on {Unit.Name}";
     }
 
     /// <summary>
@@ -206,7 +247,14 @@ public abstract record RuleOperation
     /// Resolution of <see cref="Effect.GrantToken"/> targeting a model
     /// (e.g. model-scoped Regenerative Strength markers).
     /// </summary>
-    public sealed record GrantTokenToModel(IModel Model, Token TokenToGrant) : RuleOperation;
+    public sealed record GrantTokenToModel(IModel Model, Token TokenToGrant) : RuleOperation
+    {
+        // "a model", not a name: IModel carries only a ModelID, and no log line anywhere names an
+        // individual model. The carrier prefix already names the bearer unit, which is the useful half.
+        public override string Describe() =>
+            $"placed {TokenQuantity(TokenToGrant)}x " +
+            $"{TokenDefinitionCatalog.Lookup(TokenToGrant.Type).Name} on a model";
+    }
 
     /// <summary>
     /// Remove up to <see cref="Count"/> tokens of <see cref="TType"/> from
@@ -214,14 +262,22 @@ public abstract record RuleOperation
     /// <see cref="Effect.ConsumeToken"/> targeting a unit, and of
     /// <see cref="Cost.ConsumesToken"/> at activated-ability cost-resolution.
     /// </summary>
-    public sealed record ConsumeTokensFromUnit(IUnit Unit, TokenType TType, int Count) : RuleOperation;
+    public sealed record ConsumeTokensFromUnit(IUnit Unit, TokenType TType, int Count) : RuleOperation
+    {
+        public override string Describe() =>
+            $"spent {Count}x {TokenDefinitionCatalog.Lookup(TType).Name} from {Unit.Name}";
+    }
 
     /// <summary>
     /// Remove up to <see cref="Count"/> tokens of <see cref="TType"/> from
     /// <see cref="Model"/>'s container. Resolution of
     /// <see cref="Effect.ConsumeToken"/> targeting a model.
     /// </summary>
-    public sealed record ConsumeTokensFromModel(IModel Model, TokenType TType, int Count) : RuleOperation;
+    public sealed record ConsumeTokensFromModel(IModel Model, TokenType TType, int Count) : RuleOperation
+    {
+        public override string Describe() =>
+            $"spent {Count}x {TokenDefinitionCatalog.Lookup(TType).Name} from a model";
+    }
 
     /// <summary>
     /// Invoke the engine's movement subsystem for <see cref="Unit"/> with a
@@ -254,7 +310,11 @@ public abstract record RuleOperation
     /// Resolution of <see cref="Effect.Reactivate"/>. Depends on the engine
     /// exposing re-activation as a callable primitive.
     /// </summary>
-    public sealed record InvokeReactivate(IUnit Unit, bool ClearsFatigue = false) : RuleOperation;
+    public sealed record InvokeReactivate(IUnit Unit, bool ClearsFatigue = false) : RuleOperation
+    {
+        public override string Describe() =>
+            $"gave {Unit.Name} another activation" + (ClearsFatigue ? ", clearing its fatigue" : "");
+    }
 
     /// <summary>
     /// #197 P19 — <see cref="Target"/> takes the next activation, ahead of the normal team alternation.
@@ -265,14 +325,20 @@ public abstract record RuleOperation
     /// <c>IOperationServices</c> seam, so the enacting stage applies it (as reactivation and
     /// DeferDeployment are).
     /// </summary>
-    public sealed record InvokeActivateUnitNext(IUnit Target) : RuleOperation;
+    public sealed record InvokeActivateUnitNext(IUnit Target) : RuleOperation
+    {
+        public override string Describe() => $"moved {Target.Name} to the front of the activation order";
+    }
 
     /// <summary>
     /// Reduce the incoming attack's weapon armor penetration by <see cref="Amount"/> (floored at 0 by
     /// the save stage). Resolution of <see cref="Effect.ReduceArmorPenetration"/>; <c>RollToHitStage</c>
     /// sums these and carries the total to <c>DetermineSaveRollsNeededStage</c>, which clamps the weapon AP.
     /// </summary>
-    public sealed record ReduceArmorPenetration(int Amount) : RuleOperation;
+    public sealed record ReduceArmorPenetration(int Amount) : RuleOperation
+    {
+        public override string Describe() => $"reduced the attack's AP by {Amount}";
+    }
 
     /// <summary>
     /// The ATTACKING unit takes <see cref="Wounds"/> wounds from its own attack (#197 Hazardous's
@@ -287,7 +353,11 @@ public abstract record RuleOperation
     /// <c>IOperationServices</c> member and becomes executable.
     /// </para>
     /// </summary>
-    public sealed record InflictSelfWounds(float Wounds) : RuleOperation;
+    public sealed record InflictSelfWounds(float Wounds) : RuleOperation
+    {
+        public override string Describe() =>
+            $"took {RollTags.Count(Wounds, "wound")} from its own attack";
+    }
 
     /// <summary>
     /// Apply <see cref="Delta"/> to the defender's save roll, but only for the hits that came up an
@@ -318,7 +388,10 @@ public abstract record RuleOperation
     /// <c>ActivationStartStage</c> sums them into a single placement instead — the same "the stage folds it"
     /// shape <c>BeforeAttackActionStage</c> uses for DealHits.</para>
     /// </summary>
-    public sealed record RepositionModels(float MaxInches) : RuleOperation;
+    public sealed record RepositionModels(float MaxInches) : RuleOperation
+    {
+        public override string Describe() => $"repositioned its models up to {MaxInches:0.##}\"";
+    }
 
     /// <summary>
     /// Remove <see cref="Unit"/> from the table at the end of its activation for a mandatory Ambush
@@ -332,6 +405,9 @@ public abstract record RuleOperation
         {
             return services.RedeployAsAmbush(Unit);
         }
+
+        public override string Describe() =>
+            $"removed {Unit.Name} from the table to return by Ambush next round";
     }
 
     /// <summary>
@@ -346,6 +422,9 @@ public abstract record RuleOperation
         {
             return services.SpawnUnit(Placer, SpecName, RadiusInches);
         }
+
+        public override string Describe() =>
+            $"spawned {SpecName} within {RadiusInches:0.##}\" of {Placer.Name}";
     }
 
     /// <summary>
@@ -360,6 +439,9 @@ public abstract record RuleOperation
         {
             return services.ReinforceUnit(Unit, SourceRuleName);
         }
+
+        public override string Describe() =>
+            $"queued {Unit.Name} to arrive as reinforcements at the next round start";
     }
 
     /// <summary>
@@ -373,6 +455,9 @@ public abstract record RuleOperation
         {
             return services.RestoreWounds(Unit, MinRoll);
         }
+
+        public override string Describe() =>
+            $"rolled to restore {Unit.Name}'s missing wounds on a {MinRoll}+";
     }
 
     /// <summary>
@@ -460,7 +545,12 @@ public abstract record RuleOperation
     /// the universal offensive-spell delivery mechanism.
     /// </summary>
     public sealed record InvokeDealHits(IUnit Target, int Count, IReadOnlyList<string> WithRules,
-        int ArmorPenetration = 0) : RuleOperation;
+        int ArmorPenetration = 0) : RuleOperation
+    {
+        public override string Describe() =>
+            $"dealt {RollTags.Count(Count, "hit")} to {Target.Name}" +
+            $"{ApSuffix(ArmorPenetration)}{RulesSuffix(WithRules)}";
+    }
 
     /// <summary>
     /// #197 Strafing — attack <see cref="Target"/> with <see cref="Weapon"/> as if shooting it. Resolution
@@ -471,7 +561,14 @@ public abstract record RuleOperation
     /// that chain is a child-stage pipeline. <see cref="Weapon"/> is null when the bearing rule was not
     /// weapon-scoped, which the stage reports rather than guessing a weapon.
     /// </summary>
-    public sealed record InvokeWeaponAttack(IUnit Target, IWeapon? Weapon) : RuleOperation;
+    public sealed record InvokeWeaponAttack(IUnit Target, IWeapon? Weapon) : RuleOperation
+    {
+        // Weapon is null when the bearing rule was not weapon-scoped. Say so rather than inventing a
+        // weapon name - the stage reports the same gap instead of guessing.
+        public override string Describe() => Weapon == null
+            ? $"had no weapon to attack {Target.Name} with"
+            : $"attacked {Target.Name} with its {Weapon.Name}";
+    }
 
     /// <summary>
     /// #197 P16 — make one extra attack against <see cref="Target"/> with a weapon the rule authored rather
@@ -484,7 +581,12 @@ public abstract record RuleOperation
     /// hit-to-wound resolution is a child-stage pipeline.
     /// </summary>
     public sealed record InvokeExtraAttack(IUnit Target, string WeaponName, int Attacks,
-        int ArmorPenetration, IReadOnlyList<string> WithRules) : RuleOperation;
+        int ArmorPenetration, IReadOnlyList<string> WithRules) : RuleOperation
+    {
+        public override string Describe() =>
+            $"made {RollTags.Count(Attacks, "extra attack")} on {Target.Name} with {WeaponName}" +
+            $"{ApSuffix(ArmorPenetration)}{RulesSuffix(WithRules)}";
+    }
 
     /// <summary>
     /// #197 P10 — roll <see cref="DiceCount"/> dice against <see cref="Target"/>; each result at or above
@@ -494,7 +596,11 @@ public abstract record RuleOperation
     /// A plain <see cref="RuleOperation"/>, not an <see cref="ExecutableOperation"/>: enacted stage-side
     /// because the wound-assignment flow is a child-stage chain, exactly like <see cref="InvokeDealHits"/>.
     /// </summary>
-    public sealed record InvokeDealAutoWounds(IUnit Target, int DiceCount, int SuccessThreshold) : RuleOperation;
+    public sealed record InvokeDealAutoWounds(IUnit Target, int DiceCount, int SuccessThreshold) : RuleOperation
+    {
+        public override string Describe() =>
+            $"rolled {DiceTally(DiceCount)} at {Target.Name}, each {SuccessThreshold}+ a direct wound";
+    }
 
     /// <summary>
     /// #197 P10 Storm of X — the config for a rolled multi-target hit burst. Resolution of
@@ -505,7 +611,13 @@ public abstract record RuleOperation
     /// are chosen per success at resolution.
     /// </summary>
     public sealed record InvokeStorm(int PoolDice, int SuccessThreshold, int HitsPerSuccess,
-        IReadOnlyList<string> WithRules, int ArmorPenetration, float RangeInches) : RuleOperation;
+        IReadOnlyList<string> WithRules, int ArmorPenetration, float RangeInches) : RuleOperation
+    {
+        public override string Describe() =>
+            $"rolled {DiceTally(PoolDice)}, each {SuccessThreshold}+ dealing " +
+            $"{RollTags.Count(HitsPerSuccess, "hit")} to an enemy within {RangeInches:0.##}\"" +
+            $"{ApSuffix(ArmorPenetration)}{RulesSuffix(WithRules)}";
+    }
 
     /// <summary>
     /// #197 Surprise Attack — roll <see cref="DiceCount"/> dice at <see cref="Target"/>; each result >=
@@ -516,7 +628,12 @@ public abstract record RuleOperation
     /// the probabilistic roller.
     /// </summary>
     public sealed record InvokeDealPooledHits(IUnit Target, int DiceCount, int SuccessThreshold,
-        int ArmorPenetration) : RuleOperation;
+        int ArmorPenetration) : RuleOperation
+    {
+        public override string Describe() =>
+            $"rolled {DiceTally(DiceCount)} at {Target.Name}, each {SuccessThreshold}+ a hit" +
+            ApSuffix(ArmorPenetration);
+    }
 
     /// <summary>
     /// Restore <see cref="Amount"/> wounds on <see cref="Target"/>. Resolution
@@ -525,7 +642,10 @@ public abstract record RuleOperation
     /// float, since a rolled heal is fractional under the probabilistic roller
     /// (a D6 heal averages 3.5).
     /// </summary>
-    public sealed record InvokeHeal(IModel Target, float Amount) : RuleOperation;
+    public sealed record InvokeHeal(IModel Target, float Amount) : RuleOperation
+    {
+        public override string Describe() => $"restored {RollTags.Count(Amount, "wound")} to a model";
+    }
 
     /// <summary>
     /// Multiply the in-flight attack's wound count by <see cref="Multiplier"/>.
@@ -654,8 +774,15 @@ public abstract record RuleOperation
 
         public override string Describe()
         {
-            string ap = ArmorPenetration > 0 ? $" with AP({ArmorPenetration})" : string.Empty;
-            return $"rolled {DiceCount} impact dice on the charge{ap}";
+            // Counter emits a NEGATIVE count to cancel a charger's Impact dice - both fold into the one
+            // sink, so ResolveImpactHitsStage rolls the net. The old wording only fit the adding half and
+            // narrated Counter as "rolled -1 impact dice on the charge".
+            //
+            // Not RollTags.Count: it pluralizes by appending "s", and "dice" has no regular plural.
+            string dice = DiceTally(Math.Abs(DiceCount), "impact");
+            return DiceCount < 0
+                ? $"cancelled {dice} from the charge"
+                : $"rolled {dice} on the charge{ApSuffix(ArmorPenetration)}";
         }
     }
 
@@ -663,13 +790,19 @@ public abstract record RuleOperation
     /// Add <see cref="Amount"/> to the bearer's melee-won wound tally. Resolution of
     /// <see cref="Effect.ExtraMeleeWoundCount"/> (Fear).
     /// </summary>
-    public sealed record ExtraMeleeWoundCount(int Amount) : RuleOperation;
+    public sealed record ExtraMeleeWoundCount(int Amount) : RuleOperation
+    {
+        public override string Describe() => $"added {Amount} to its melee wound tally";
+    }
 
     /// <summary>
     /// Insert the bearer's strikes ahead of the charging unit's. Resolution of
     /// <see cref="Effect.StrikeFirst"/> (Counter).
     /// </summary>
-    public sealed record StrikeFirst : RuleOperation;
+    public sealed record StrikeFirst : RuleOperation
+    {
+        public override string Describe() => "struck first";
+    }
 
     /// <summary>
     /// The bearer's strikes come AFTER the unit it charged - the mirror of <see cref="StrikeFirst"/>, seen
@@ -678,7 +811,10 @@ public abstract record RuleOperation
     /// either op asks for: a charger that strikes last and a defender that strikes first describe one
     /// outcome, so the two compose rather than cancelling.
     /// </summary>
-    public sealed record StrikeLast : RuleOperation;
+    public sealed record StrikeLast : RuleOperation
+    {
+        public override string Describe() => "struck last";
+    }
 
     /// <summary>
     /// The bearer may shoot even after a move too long to normally allow it - "may shoot after using Rush
@@ -690,31 +826,38 @@ public abstract record RuleOperation
     /// counts as an Advance for every other rule that asks.
     /// </para>
     /// </summary>
-    public sealed record AllowShootAfterRush : RuleOperation;
+    public sealed record AllowShootAfterRush : RuleOperation
+    {
+        public override string Describe() => "could still shoot after Rushing";
+    }
 
     // --- Capabilities ------------------------------------------------------------------------------
     //
     // Answers to questions asked at Lifecycle_OnCapabilityQuery, never APPLIED by anything: presence in
     // the queue IS the capability. Read through CapabilityRuleQueries. See EHookID.Lifecycle_OnCapabilityQuery
     // for why capabilities are asked for rather than detected by testing for a named rule.
+    //
+    // All derive from CapabilityOperation, which is what keeps them out of the game log. The section ENDS
+    // at AmbushBeacon - TargetIndividualModel and everything after it are applied effects that happen to
+    // sit below this comment.
 
     /// <summary>
     /// The bearer can cast spells. Resolution of <see cref="Effect.EnableCasting"/> (Caster, Caster Group).
     /// </summary>
-    public sealed record EnableCasting : RuleOperation;
+    public sealed record EnableCasting : CapabilityOperation;
 
     /// <summary>
     /// The bearer can carry friendly units, with room for <see cref="Capacity"/> spaces. Resolution of
     /// <see cref="Effect.EnableTransport"/> (Transport(X)). Capacity rides the operation because "is a
     /// transport" and "how big is it" are the same question asked once.
     /// </summary>
-    public sealed record EnableTransport(int Capacity) : RuleOperation;
+    public sealed record EnableTransport(int Capacity) : CapabilityOperation;
 
     /// <summary>
     /// The bearer may be re-deployed in the post-deployment pass. Resolution of
     /// <see cref="Effect.EnableReDeployment"/> (Re-Deployment).
     /// </summary>
-    public sealed record EnableReDeployment : RuleOperation;
+    public sealed record EnableReDeployment : CapabilityOperation;
 
     /// <summary>
     /// The bearer lends its <see cref="Pool"/> tokens to OTHER friendly casters within
@@ -725,7 +868,7 @@ public abstract record RuleOperation
     /// rule - the round-start <see cref="Effect.GrantToken"/> that fills the pool and this entry that opens
     /// it to borrowers - name the same token type explicitly instead of agreeing by convention.</para>
     /// </summary>
-    public sealed record EnableSpellLending(TokenType Pool, float RangeInches) : RuleOperation;
+    public sealed record EnableSpellLending(TokenType Pool, float RangeInches) : CapabilityOperation;
 
     /// <summary>
     /// The bearer relays casts for OTHER friendly casters within <see cref="RangeInches"/>: they may
@@ -737,7 +880,7 @@ public abstract record RuleOperation
     /// "+1 when you do" are one offer - the bonus applies only to a cast that actually used the relay, so
     /// splitting them would let the bonus apply to a cast made from the caster's own position.</para>
     /// </summary>
-    public sealed record EnableSpellRelay(float RangeInches, int CastRollBonus) : RuleOperation;
+    public sealed record EnableSpellRelay(float RangeInches, int CastRollBonus) : CapabilityOperation;
 
     /// <summary>
     /// The bearer relays non-spell friendly picks for OTHER friendly units within <see cref="RangeInches"/>:
@@ -745,7 +888,7 @@ public abstract record RuleOperation
     /// own. Resolution of <see cref="Effect.EnableBuffRelay"/> (#197 Extended Buff Range). Read by
     /// <c>AbilityTargeting</c>.
     /// </summary>
-    public sealed record EnableBuffRelay(float RangeInches) : RuleOperation;
+    public sealed record EnableBuffRelay(float RangeInches) : CapabilityOperation;
 
     /// <summary>
     /// The bearer must attack when able, and its attack must go to the closest valid target. Resolution of
@@ -753,21 +896,21 @@ public abstract record RuleOperation
     /// read by <c>CapabilityRuleQueries.MustAttackClosestSource</c> for the action menu and both target
     /// choosers.
     /// </summary>
-    public sealed record CompelClosestTarget : RuleOperation;
+    public sealed record CompelClosestTarget : CapabilityOperation;
 
     /// <summary>
     /// Enemy Ambush arrivals must set up over <see cref="DistanceInches"/> from the bearer's unit.
     /// Resolution of <see cref="Effect.RepelAmbushers"/> (Repel Ambushers). Read by
     /// <c>AmbushArrivalRules</c>, which turns it into keep-out discs on the arrival placement request.
     /// </summary>
-    public sealed record RepelAmbushers(float DistanceInches) : RuleOperation;
+    public sealed record RepelAmbushers(float DistanceInches) : CapabilityOperation;
 
     /// <summary>
     /// Friendly Ambush arrivals within <see cref="RangeInches"/> of the bearer ignore enemy-distance
     /// restrictions. Resolution of <see cref="Effect.AmbushBeacon"/> (Ambush Beacon). Read by
     /// <c>AmbushArrivalRules</c>, which turns it into waiver discs on the arrival placement request.
     /// </summary>
-    public sealed record AmbushBeacon(float RangeInches) : RuleOperation;
+    public sealed record AmbushBeacon(float RangeInches) : CapabilityOperation;
 
     /// <summary>
     /// Re-scope the in-flight attack to a single chosen model in the target unit.
@@ -812,7 +955,12 @@ public abstract record RuleOperation
     /// Limit the bearer's declarable actions to <see cref="Allowed"/>. Resolution of
     /// <see cref="Effect.RestrictActions"/> (Immobile, Artillery Hold-only).
     /// </summary>
-    public sealed record RestrictActions(IReadOnlyList<EActionType> Allowed) : RuleOperation;
+    public sealed record RestrictActions(IReadOnlyList<EActionType> Allowed) : RuleOperation
+    {
+        public override string Describe() => Allowed is { Count: > 0 }
+            ? $"limited its actions to {string.Join(", ", Allowed)}"
+            : "left it unable to act";
+    }
 
     /// <summary>
     /// Adjust a weapon's effective shooting range by <see cref="Delta"/> inches — the attacker's own range
@@ -822,7 +970,15 @@ public abstract record RuleOperation
     /// <c>ChooseRangedAttackStage</c>'s target-eligibility check (#102). Resolution of
     /// <see cref="Effect.RangeModifier"/>.
     /// </summary>
-    public sealed record ApplyRangeModifier(int Delta, int MinResultInches = 0) : RuleOperation;
+    public sealed record ApplyRangeModifier(int Delta, int MinResultInches = 0) : RuleOperation
+    {
+        // Deliberately does not say WHOSE range: the same op serves the Actor seat (the bearer's own
+        // shooting range) and the Subject seat (the range of enemies shooting the bearer), and the
+        // operation cannot see which seat produced it. "shooting range" is true of both.
+        public override string Describe() =>
+            $"changed shooting range by {(Delta >= 0 ? "+" : "")}{Delta}\"" +
+            (MinResultInches > 0 ? $" (no lower than {MinResultInches}\")" : "");
+    }
 
     /// <summary>
     /// Suppress terrain effects for the bearer's current move; <see cref="Scope"/> selects how much (Strider
@@ -830,7 +986,13 @@ public abstract record RuleOperation
     /// Read by <see cref="Rules.Dispatch.MovementRuleQueries.IgnoresDifficultTerrain"/> (any scope) and
     /// <see cref="Rules.Dispatch.MovementRuleQueries.IgnoresAllTerrain"/> (AllTerrain only).
     /// </summary>
-    public sealed record IgnoreTerrainEffects(ETerrainIgnoreScope Scope = ETerrainIgnoreScope.DifficultOnly) : RuleOperation;
+    public sealed record IgnoreTerrainEffects(ETerrainIgnoreScope Scope = ETerrainIgnoreScope.DifficultOnly)
+        : RuleOperation
+    {
+        public override string Describe() => Scope == ETerrainIgnoreScope.AllTerrain
+            ? "ignored all terrain effects"
+            : "ignored difficult terrain";
+    }
 
     /// <summary>
     /// The bearer may move through enemy units — its path is not blocked by enemy bases — though it still
@@ -839,7 +1001,10 @@ public abstract record RuleOperation
     /// (<see cref="Rules.Dispatch.MovementRuleQueries.CanMoveThroughEnemies"/>). Resolution of
     /// <see cref="Effect.IgnoreEnemyMovementBlock"/> (Strafing; a future Flying rule can emit the same op).
     /// </summary>
-    public sealed record IgnoreEnemyMovementBlock : RuleOperation;
+    public sealed record IgnoreEnemyMovementBlock : RuleOperation
+    {
+        public override string Describe() => "moved through enemy units";
+    }
 
     /// <summary>
     /// The bearer's move suffers the given terrain effect regardless of the table's actual terrain —
@@ -848,7 +1013,10 @@ public abstract record RuleOperation
     /// <c>MovementActionContext</c>, forced rolls in <c>ApplyNonMovementTerrainEffectsStage</c>).
     /// Resolution of <see cref="Effect.CountAsInTerrain"/>.
     /// </summary>
-    public sealed record CountAsInTerrain(ECountAsTerrain Terrain) : RuleOperation;
+    public sealed record CountAsInTerrain(ECountAsTerrain Terrain) : RuleOperation
+    {
+        public override string Describe() => $"counted as moving through {Terrain} terrain";
+    }
 
     /// <summary>
     /// <see cref="Unit"/> takes a dangerous-terrain test right now, standing still: one d6 per living
@@ -868,6 +1036,9 @@ public abstract record RuleOperation
         {
             return services.ForceDangerousTerrainTest(Unit);
         }
+
+        public override string Describe() =>
+            $"forced {Unit.Name} to take a dangerous terrain test";
     }
 
     /// <summary>
@@ -891,7 +1062,15 @@ public abstract record RuleOperation
         EDeferTiming Timing = EDeferTiming.AfterNormalDeployment,
         float PlacementRangeInches = 0f,
         int MinArrivalRound = 2,
-        bool MandatoryArrival = false) : RuleOperation;
+        bool MandatoryArrival = false) : RuleOperation
+    {
+        // PlacementRangeInches means different things per timing (Scout: how far forward the zone
+        // extends; Ambush: how far from enemies it must arrive), so each branch names its own.
+        public override string Describe() => Timing == EDeferTiming.LaterRound
+            ? $"was held in reserve, {(MandatoryArrival ? "arriving" : "able to arrive")} from round " +
+              $"{MinArrivalRound} over {PlacementRangeInches:0.##}\" from enemies"
+            : $"deployed after everything else, up to {PlacementRangeInches:0.##}\" forward of its zone";
+    }
 }
 
 /// <summary>
@@ -906,4 +1085,28 @@ public abstract record RuleOperation
 public abstract record SinkOperation<TSink> : RuleOperation
 {
     public abstract void ApplyTo(TSink sink);
+}
+
+/// <summary>
+/// A <see cref="RuleOperation"/> that is an ANSWER rather than an event: presence in the queue IS the
+/// capability, and nothing ever applies it. Produced at
+/// <see cref="Rules.Foundation.EHookID.Lifecycle_OnCapabilityQuery"/> and read back through
+/// <c>CapabilityRuleQueries</c>.
+///
+/// <para>Exists so the game log can exclude the whole family by TYPE. <c>RuleEvaluator</c> already
+/// skipped logging when the CONTEXT was a <c>CapabilityQueryContext</c> (#197 Instinctive: the
+/// compelled-attack question is asked at every action menu and both target choosers, which turned the
+/// log into a spam stream). That guard depends on every capability answer arriving through that one
+/// context - true today, but a property of the call sites rather than of the operations. Marking the
+/// operations themselves means a future path cannot reintroduce the noise: a question is not an event
+/// no matter which context asks it.</para>
+/// </summary>
+public abstract record CapabilityOperation : RuleOperation
+{
+    /// <summary>
+    /// Never reaches the game log (<c>RuleEvaluator.Log</c> drops this whole family). Answered once here
+    /// rather than per capability so the family stays a family; present for diagnostics and tracing,
+    /// which print operations without knowing whether they are loggable.
+    /// </summary>
+    public override string Describe() => "answered a capability query";
 }

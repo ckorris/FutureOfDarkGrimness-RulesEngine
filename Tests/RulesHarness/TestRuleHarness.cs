@@ -26,13 +26,18 @@ namespace FDG.Tests.RulesHarness
         private readonly Dictionary<string, PlayerID> _playersByName = new();
         private readonly TokenClearService _tokenClearService = new();
 
-        public TestRuleHarness(IDiceRoller? diceRoller = null)
+        /// <summary>
+        /// <paramref name="log"/> is the evaluator's game-log sink - null (the default) keeps the harness
+        /// silent, which is what almost every rule test wants. Supply one to assert on what the rule
+        /// NARRATED rather than on the operations it produced.
+        /// </summary>
+        public TestRuleHarness(IDiceRoller? diceRoller = null, ITextOutput? log = null)
         {
             _store = GameDataStore.GameDataStoreBuilder.GetDefault();
             GameContext = new TestGameContext(_store, diceRoller ?? new FixedDiceRoller(4));
             // Hand the evaluator the same Resolver this harness attaches rules through, so token-granted
             // rules (auras / "gains rule X" buffs) read back to their definitions exactly as in production.
-            Evaluator = new RuleEvaluator(GameContext.DiceRoller, ruleResolver: Resolver);
+            Evaluator = new RuleEvaluator(GameContext.DiceRoller, log, Resolver);
         }
 
         /// <summary> Registers a rule definition under its canonical name. </summary>

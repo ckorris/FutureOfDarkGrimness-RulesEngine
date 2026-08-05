@@ -179,8 +179,11 @@ namespace FDG.Ai.Tactician
             if (impact.TotalDice > 0)
             {
                 float impactHits = Dice.Roll(impact.TotalDice).AtOrAbove(2);
+                // #345: read the sink's AP like ResolveImpactHitsStage does - hardcoding 0 valued Heavy
+                // Impact's AP(1) hits as though they were core Impact's, understating every ram by it.
                 impactWounds = ResolveSaves(evaluator, atk, def,
-                    new Weapon("Impact", rangeInches: 0f, attacks: 0, armorPenetration: 0),
+                    new Weapon("Impact", rangeInches: 0f, attacks: 0,
+                        armorPenetration: impact.ArmorPenetration),
                     SingleGroup(impactHits), apReduction: 0, wholeAttackSaveModifier: 0,
                     coverBonus: 0, isMelee: true, notes);
             }

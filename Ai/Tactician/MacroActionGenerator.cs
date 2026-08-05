@@ -129,7 +129,9 @@ namespace FDG.Ai.Tactician
             List<IUnit> rankedEnemies = enemies
                 .OrderByDescending(TacticalAnalysis.UnitValue).Take(TopEnemies).ToList();
             bool hasRanged = self.GetRangedWeapons().Count > 0;
-            bool hasMelee = self.GetMeleeWeapons().Count > 0;
+            // #345: "can fight in melee", not "carries a melee weapon" - an impact-only unit's charge IS
+            // its attack, so a charge macro-action must be generated for it too.
+            bool hasMelee = ChargeContactRules.CanFightInMelee(self);
 
             foreach (IUnit enemy in rankedEnemies)
             {

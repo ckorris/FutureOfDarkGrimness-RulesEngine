@@ -111,7 +111,12 @@ namespace FDG.Ai.Resolvers
             // to the standoff line.
             float leadRadius = living.Max(mb => mb.GetValue().BaseRadiusInches);
             float contactDistance = leadRadius + nearest.BaseRadiusInches;
-            bool wantsCharge = archetype != AiUnitArchetype.Shooting
+            // #345: an impact-only unit (Impact/Ravage, no melee weapon) closes to contact when it can
+            // reach - that IS its melee attack. Its ARCHETYPE stays Shooting on purpose: a tank's guns are
+            // its output, and Hybrid would make it rush (forfeiting the shot) across the whole table
+            // instead of advancing. So it seeks contact only when contact is already within this move.
+            bool wantsCharge = (archetype != AiUnitArchetype.Shooting
+                    || Rules.Dispatch.ChargeContactRules.ActsOnChargeContact(unit))
                 && (dist - contactDistance) <= moveDistance + 0.05f;
             float targetGap = wantsCharge
                 ? MovementPlanner.ChargeContactTargetGapInches

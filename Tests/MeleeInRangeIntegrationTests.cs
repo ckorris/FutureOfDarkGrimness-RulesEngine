@@ -106,16 +106,22 @@ namespace FDG.Tests
         }
 
         [Test]
-        public async Task InRangeButOnlyRangedWeapon_FizzlesWithoutEmptyPoolCrash()
+        public async Task InRangeButOnlyRangedWeapon_TakesTheUnarmedPath_NotTheFizzle()
         {
             // The attacking model is in base contact (positionally in melee range) but carries only a ranged
             // weapon — the dead-units case: the melee-armed models died and a ranged-only survivor remains in
-            // range. inRange.Count > 0, but the swing pool is empty, so the guard must route to the fizzle path
-            // rather than entering ChooseMeleeWeaponStage with an empty pool.
+            // range. inRange.Count > 0, but the swing pool is empty, so the guard must not enter
+            // ChooseMeleeWeaponStage with an empty pool.
+            //
+            // #345 changed WHICH exit that takes. It used to share OnNoAttackersInRange with "nobody reached
+            // contact at all", which skipped the strike-back and the melee winner: two units locked together
+            // and nothing happened. Now it takes OnAttackersInRangeUnarmed, which goes on to the defender's
+            // strike-back. The same exit an impact-only charger (Impact/Ravage, no melee weapon) takes.
             DataBinding<UnitData> attacker = MakeRangedUnit(new Position(1f, 0f));
             DataBinding<UnitData> defender = MakeUnit(new Position(0f, 0f));
 
             bool noneInRangeFired = false;
+            bool unarmedInContactFired = false;
             bool proceededToDefenders = false;
 
             CombatActionContext context = new CombatActionContext(_ctx, attacker, isMelee: true, isCharging: true);
@@ -125,8 +131,10 @@ namespace FDG.Tests
                 new DetermineInRangeAttackersStage(_ctx, new NoOpLayer<ICombatActionContext>());
             stage.ToDetermineDefenders.Bind("done");
             stage.OnNoAttackersInRange.Bind("done");
+            stage.OnAttackersInRangeUnarmed.Bind("done");
             stage.ToDetermineDefenders.OnWillActivate += _ => proceededToDefenders = true;
             stage.OnNoAttackersInRange.OnWillActivate += _ => noneInRangeFired = true;
+            stage.OnAttackersInRangeUnarmed.OnWillActivate += _ => unarmedInContactFired = true;
 
             await stage.Enter(context);
 
@@ -134,9 +142,12 @@ namespace FDG.Tests
                 "The model is within melee range positionally.");
             Assert.That(context.AvailableWeapons, Is.Empty,
                 "Its only weapon is ranged, so the melee swing pool is empty.");
-            Assert.That(noneInRangeFired, Is.True,
-                "An in-range but melee-weaponless attacker fizzles instead of crashing ChooseMeleeWeaponStage.");
-            Assert.That(proceededToDefenders, Is.False);
+            Assert.That(unarmedInContactFired, Is.True,
+                "In contact with nothing to swing is a melee that still resolves, not a fizzle.");
+            Assert.That(noneInRangeFired, Is.False,
+                "That exit means nobody reached contact - it must not fire when a model is in range.");
+            Assert.That(proceededToDefenders, Is.False,
+                "The weapon offer is skipped; ChooseMeleeWeaponStage throws on an empty pool.");
         }
 
         [Test]

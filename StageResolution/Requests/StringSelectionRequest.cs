@@ -21,8 +21,34 @@ namespace FDG.StageResolution.Requests
         /// Optional secondary text shown under a valid option, keyed by the option string (e.g. a spell's
         /// effect summary under its name). Options absent from the map render with no subtext; null when no
         /// option has a description (the common case — the action menu, custom actions, etc.).
+        /// <para>Free-form prose about the CHOICE - what taking it costs or buys (#320's "Keeps its Limited
+        /// once-per-game use for a later melee"). Special rules attached to the thing being chosen go in
+        /// <see cref="OptionRules"/> instead, which is structured; see #333 for why the two are separate.</para>
         /// </summary>
         public Dictionary<string, string>? OptionDescriptions { get; }
+
+        /// <summary>
+        /// #333: the special rules carried by a valid option, keyed by that option's string - the melee
+        /// weapon menu's "Deadly(3)" and "Rending", structured rather than pre-formatted into prose.
+        /// <para>The option label already NAMES its rules (a weapon's datasheet line ends with them, in this
+        /// same order), so this adds what the label cannot: which runs of that string are rule names, and
+        /// what each one does. A front end with room to be interactive underlines the names in place and
+        /// hovers the descriptions (the shoot panel and Army Forge convention, #292/#259); one without prints
+        /// them as indented lines. #298 shipped the descriptions ALREADY formatted into a block, which is why
+        /// the GUI could only ever dump them under the button - it had no way to know where a rule name
+        /// started.</para>
+        /// <para>Every rule is listed, including one whose <see cref="OptionRule.Description"/> is null
+        /// because the catalog has no text for it: "this rule is not enforced" is worth showing at the moment
+        /// of the choice, and it is what the shoot panel already shows. Null when no option has any rule,
+        /// which is every menu but the melee weapon picker today.</para>
+        /// </summary>
+        public Dictionary<string, List<OptionRule>>? OptionRules { get; }
+
+        /// <param name="Name">The rule's RESOLVED name, exactly as it appears inside the option label
+        /// ("Deadly(3)", not "Deadly") - front ends locate the name in the label by matching this.</param>
+        /// <param name="Description">What the rule does, or null when the catalog entry carries no
+        /// player-facing text (the engine may still resolve it, or may not resolve it at all).</param>
+        public record OptionRule(string Name, string? Description);
 
         /// <summary>
         /// #321: a companion action BELONGING to a valid option, keyed by that option's string - "and the
@@ -62,7 +88,8 @@ namespace FDG.StageResolution.Requests
         public StringSelectionRequest(PlayerID targetPlayerID, TaskID taskID,
             string instructions, IReadOnlyList<string> validOptions, IReadOnlyList<InvalidOption> invalidOptions,
             Dictionary<string, string>? optionDescriptions = null, bool allowCancel = false,
-            Dictionary<string, SecondaryAction>? secondaryActions = null, string? displayName = null)
+            Dictionary<string, SecondaryAction>? secondaryActions = null, string? displayName = null,
+            Dictionary<string, List<OptionRule>>? optionRules = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -72,6 +99,7 @@ namespace FDG.StageResolution.Requests
             OptionDescriptions = optionDescriptions;
             AllowCancel = allowCancel;
             SecondaryActions = secondaryActions;
+            OptionRules = optionRules;
             TaskName = "Select Option";
             DisplayName = displayName ?? TaskName;
         }
@@ -79,9 +107,10 @@ namespace FDG.StageResolution.Requests
         public StringSelectionRequest(PlayerID targetPlayerID, string instructions,
             IReadOnlyList<string> validOptions, IReadOnlyList<InvalidOption> invalidOptions,
             Dictionary<string, string>? optionDescriptions = null, bool allowCancel = false,
-            Dictionary<string, SecondaryAction>? secondaryActions = null, string? displayName = null)
+            Dictionary<string, SecondaryAction>? secondaryActions = null, string? displayName = null,
+            Dictionary<string, List<OptionRule>>? optionRules = null)
             : this(targetPlayerID, new TaskID(Guid.NewGuid()), instructions, validOptions, invalidOptions,
-                optionDescriptions, allowCancel, secondaryActions, displayName)
+                optionDescriptions, allowCancel, secondaryActions, displayName, optionRules)
         {
         }
 

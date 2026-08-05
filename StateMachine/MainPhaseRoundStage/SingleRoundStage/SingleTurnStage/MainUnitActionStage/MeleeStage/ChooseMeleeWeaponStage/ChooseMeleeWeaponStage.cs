@@ -80,6 +80,11 @@ namespace FDG.Stages
             // #321: weapon label -> its hold-back companion, so the two render as one row.
             Dictionary<string, StringSelectionRequest.SecondaryAction> secondaryActions =
                 new Dictionary<string, StringSelectionRequest.SecondaryAction>(StringComparer.Ordinal);
+            // #333: every WEAPON row's label -> the weapon it shows, so the request can carry each row's
+            // special rules structured. Greyed rows are in here too: a weapon the Deadly gate is holding
+            // back this pass still has to explain itself, and the player is choosing partly by what the
+            // options they CANNOT take say. Hold-backs are not - they are a decline, not a weapon.
+            Dictionary<string, Weapon> weaponByLabel = new Dictionary<string, Weapon>(StringComparer.Ordinal);
 
             // #028: Deadly (wound-multiplier) weapons must strike before the unit's other weapons, so a clump
             // removes whole models before normal wounds spread. While an un-used Deadly weapon is available,
@@ -107,6 +112,7 @@ namespace FDG.Stages
             foreach(KeyValuePair<Weapon, int> kvp in InProfileOrder(availableWeapons))
             {
                 string label = BuildUniqueLabel(kvp.Key, kvp.Value, usedLabels);
+                weaponByLabel[label] = kvp.Key;
 
                 // #320 Limited: a weapon every in-range carrier has already used this game is out.
                 if (LimitedRules.IsSpent(swingingModels, kvp.Key))
@@ -165,9 +171,10 @@ namespace FDG.Stages
 
             foreach(KeyValuePair<Weapon, int> kvp in InProfileOrder(unavailableWeapons))
             {
+                string usedLabel = BuildUniqueLabel(kvp.Key, kvp.Value, usedLabels);
+                weaponByLabel[usedLabel] = kvp.Key;
                 invalidOptions.Add(new StringSelectionRequest.InvalidOption(
-                    BuildUniqueLabel(kvp.Key, kvp.Value, usedLabels),
-                    "The unit has already attacked with this weapon."));
+                    usedLabel, "The unit has already attacked with this weapon."));
             }
 
             // #209: the weapon pool is a dictionary keyed by the Weapon reference type, so its
@@ -199,7 +206,8 @@ namespace FDG.Stages
                 "Choose weapon:", validOptions.Select(option => option.Label).ToList(), invalidOptions,
                 BuildRuleDescriptions(validOptions),
                 secondaryActions: secondaryActions.Count > 0 ? secondaryActions : null,
-                displayName: "Choosing a Melee Weapon");
+                displayName: "Choosing a Melee Weapon",
+                optionRules: BuildOptionRules(weaponByLabel));
 
             string chosenWeaponStatsName = await GameContext.PlayerRequester
                 .RequestDecision<StringSelectionRequest, string>(request);
@@ -312,13 +320,13 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// #298: the option label lists a weapon's special rules by NAME only, which is no help at the moment
-        /// the choice is made - "Deadly(3)" and "Rending" are the whole reason to prefer one weapon over
-        /// another. Each option gets one line per documented rule ("Name - what it does") as its
-        /// <see cref="StringSelectionRequest.OptionDescriptions"/> entry; front ends already render that as
-        /// subtext (GUI) or an indented line (CLI). Weapons whose rules carry no description are simply
-        /// absent from the map - a name with nothing to say adds no information the label doesn't have.
-        /// Returns null when no option has anything to describe, which is the common plain-weapon case.
+        /// Free-form prose about what taking an option COSTS OR BUYS. #333 moved the weapon rules out of
+        /// here into <see cref="BuildOptionRules"/>, so today only the #320 hold-back line remains: a
+        /// hold-back explains what declining buys - but only when there is something to buy, i.e. a
+        /// once-per-game use to keep. "Do not attack with Blade" would just restate the label, and the plain
+        /// weapon menu must stay description-free (#298). #321: it does NOT repeat the weapon's rules, which
+        /// the weapon's own row already carries right above it. Returns null when no option has anything to
+        /// say, which is the common plain-weapon case.
         /// </summary>
         private static Dictionary<string, string>? BuildRuleDescriptions(
             List<(string Label, Weapon Weapon, bool HoldBack)> options)
@@ -327,35 +335,58 @@ namespace FDG.Stages
 
             foreach ((string label, Weapon weapon, bool holdBack) in options)
             {
-                List<string> lines = new List<string>();
+                if (!holdBack) continue;
 
-                // #320: a hold-back explains what declining BUYS - but only when there is something to buy,
-                // i.e. a once-per-game use to keep. "Do not attack with Blade" would just restate the label,
-                // and the plain-weapon menu must stay description-free (#298). #321: it does NOT repeat the
-                // weapon's rules, which the weapon's own row already carries right above it.
-                if (holdBack)
-                {
-                    string? limitedRule = LimitedRules.LimitedRuleName(weapon);
-                    if (limitedRule != null)
-                    {
-                        lines.Add($"Keeps its {limitedRule} once-per-game use for a later melee.");
-                    }
-                    if (lines.Count > 0) descriptions[label] = string.Join("\n", lines);
-                    continue;
-                }
-
-                foreach (ResolvedRule rule in weapon.RuleDefinitions)
-                {
-                    if (string.IsNullOrWhiteSpace(rule.Definition.Description)) continue;
-                    lines.Add($"{rule.RequestedName} - {rule.Definition.Description}");
-                }
+                string? limitedRule = LimitedRules.LimitedRuleName(weapon);
+                if (limitedRule == null) continue;
 
                 // Indexer, not Add: labels are unique by construction since #306, but a duplicate key
                 // must never be the thing that throws mid-melee.
-                if (lines.Count > 0) descriptions[label] = string.Join("\n", lines);
+                descriptions[label] = $"Keeps its {limitedRule} once-per-game use for a later melee.";
             }
 
             return descriptions.Count > 0 ? descriptions : null;
+        }
+
+        /// <summary>
+        /// #298/#333: the option label lists a weapon's special rules by NAME only, which is no help at the
+        /// moment the choice is made - "Deadly(3)" and "Rending" are the whole reason to prefer one weapon
+        /// over another. Each swing option carries its rules structured (name + what it does) so a front end
+        /// can underline the names where they already sit in the label and hover the text (GUI), or print
+        /// them as indented lines (CLI). #298 shipped this pre-formatted into one prose blob, which left the
+        /// GUI no way to find where a rule name started - so it could only dump the whole thing under the
+        /// button, the inconsistency #333 exists to fix.
+        /// <para>Undocumented rules are included: the front end says they are not enforced, which is worth
+        /// knowing before swinging. Greyed rows are included too (<paramref name="weaponByLabel"/> holds
+        /// them), since an option the player cannot take is still part of the comparison. Hold-backs are
+        /// absent - a decline is not a weapon, and its owner's row right above carries the rules (#321).
+        /// Returns null when no option has a rule at all.</para>
+        /// </summary>
+        private static Dictionary<string, List<StringSelectionRequest.OptionRule>>? BuildOptionRules(
+            Dictionary<string, Weapon> weaponByLabel)
+        {
+            Dictionary<string, List<StringSelectionRequest.OptionRule>> optionRules =
+                new Dictionary<string, List<StringSelectionRequest.OptionRule>>(StringComparer.Ordinal);
+
+            foreach (KeyValuePair<string, Weapon> kvp in weaponByLabel)
+            {
+                List<StringSelectionRequest.OptionRule> rules =
+                    new List<StringSelectionRequest.OptionRule>();
+
+                // Attachment order, which is also the order GetWeaponNameAndStats appended the names to the
+                // label in - front ends walk the label and these in lockstep to find each name.
+                foreach (ResolvedRule rule in kvp.Value.RuleDefinitions)
+                {
+                    string? description = string.IsNullOrWhiteSpace(rule.Definition.Description)
+                        ? null
+                        : rule.Definition.Description;
+                    rules.Add(new StringSelectionRequest.OptionRule(rule.RequestedName, description));
+                }
+
+                if (rules.Count > 0) optionRules[kvp.Key] = rules;
+            }
+
+            return optionRules.Count > 0 ? optionRules : null;
         }
     }
 }

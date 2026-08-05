@@ -103,7 +103,7 @@ namespace FDG.Stages
         public bool HasPendingAttack { get; }
 
         /// <summary>
-        /// #337: commit exactly ONE copy of the just-queued attack and hand the rest back to
+        /// #340: commit exactly ONE copy of the just-queued attack and hand the rest back to
         /// <see cref="AvailableWeapons"/>, so the weapon is offered again and every copy picks its own
         /// target UNIT as well as its own victim model (Takedown / Sniper - each rifle aims separately).
         /// <paramref name="copiesHeldBack"/> reports how many went back into the pool.
@@ -227,11 +227,11 @@ namespace FDG.Stages
         // The attack set up by SetAttackWeapon and consumed by the next FireStage/SwingMeleeWeaponStage
         // entry. BurstIndex is how many copies of that weapon this action has already fired (0 for a
         // whole-volley attack) — carried into CombatMetadata so the attack beat animates each of a
-        // Takedown weapon's one-at-a-time shots from a different carrier (#276/#337).
+        // Takedown weapon's one-at-a-time shots from a different carrier (#276/#340).
         private readonly Queue<(Weapon Weapon, int Count, int BurstIndex)> _pendingAttacks
             = new Queue<(Weapon, int, int)>();
 
-        // #337: copies of each weapon already fired this action, for the burst index above. Keyed by the
+        // #340: copies of each weapon already fired this action, for the burst index above. Keyed by the
         // pool's own representative instance (the same one SetAttackWeapon consumes and
         // AimPendingAttackOneCopyAtATime puts back), so a one-at-a-time weapon keeps its count across the
         // passes through ChooseRangedAttackStage.

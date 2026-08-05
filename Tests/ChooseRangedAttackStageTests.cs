@@ -1304,7 +1304,7 @@ namespace FDG.Tests
         }
 
         // ──────────────────────────────────────────────────────────────────────
-        // #337: a Takedown weapon aims ONE COPY AT A TIME. Firing it commits a single rifle and hands the
+        // #340: a Takedown weapon aims ONE COPY AT A TIME. Firing it commits a single rifle and hands the
         // rest back to the action's pool, so the picker offers the weapon again and every copy chooses its
         // own target unit - not just its own victim model inside the unit the first shot picked (#157).
         // ──────────────────────────────────────────────────────────────────────
@@ -1367,7 +1367,7 @@ namespace FDG.Tests
         [Test]
         public async Task Enter_TakedownCopies_StillBoundByTheTwoTargetCap()
         {
-            // Owner ruling (#337): Takedown does not buy extra targets - the shoot action's 2-unit cap
+            // Owner ruling (#340): Takedown does not buy extra targets - the shoot action's 2-unit cap
             // binds sniper shots like everything else.
             int pass = 0;
             var requester = new CapturingRangedRequester();

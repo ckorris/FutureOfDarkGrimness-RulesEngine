@@ -73,7 +73,7 @@ namespace FDG.Stages
             // fires once a weapon has already been used, so it must not bypass morale.
             chooseRangedWeapon.OnNoValidShots.Bind(resolveRangedMorale);
 
-            // #337: one firing per weapon choice. A Takedown weapon that still has unfired copies is back
+            // #340: one firing per weapon choice. A Takedown weapon that still has unfired copies is back
             // in the available pool by now, so DetermineCanKeepShootingStage routes straight to the weapon
             // picker and its next rifle chooses its own target. (#157's DetermineMorePendingShotsStage
             // looped FireStage over a pre-split burst; that burst could never leave its first target.)

@@ -153,7 +153,7 @@ namespace FDG.Stages
             context.RegisterAttackedDefender(targetUnit);
             GameContext.Log($"Chose weapon: {chosenWeapon.Name}. Count: {weaponCount}.");
 
-            // #337: a weapon whose attack re-scopes to a single chosen model (Takedown / Sniper) is aimed
+            // #340: a weapon whose attack re-scopes to a single chosen model (Takedown / Sniper) is aimed
             // ONE COPY AT A TIME - each rifle picks its own target UNIT as well as its own victim model.
             // Only one copy is committed here; the rest go straight back into the action's pool, so this
             // stage offers the weapon again and the player (or AI) chooses afresh, target limit and all.
@@ -196,7 +196,7 @@ namespace FDG.Stages
 
             // #032 Limited: choosing the weapon commits it to fire (there's no cancel before FireStage), so mark
             // it spent now — every living carrier records it as fired this game (it's excluded from here on).
-            // #337: a one-at-a-time weapon spends ONE carrier per firing instead, or the first rifle would
+            // #340: a one-at-a-time weapon spends ONE carrier per firing instead, or the first rifle would
             // burn the once-per-game shot of the ones still waiting to be aimed.
             // #319: and SAY so. Spending a once-per-game weapon is the single most consequential thing this
             // stage can do, and until now it happened silently; the player could decline it (Hold fire) right
@@ -553,7 +553,7 @@ namespace FDG.Stages
                 string? limitedRule = Rules.Dispatch.LimitedRules.LimitedRuleName(weapon);
                 bool limitedSpent = limitedRule != null
                     && Rules.Dispatch.LimitedRules.IsSpent(attackingUnit.GetValue(), weapon);
-                // #337: a weapon whose attack re-scopes to an individual model (Takedown) fires one copy
+                // #340: a weapon whose attack re-scopes to an individual model (Takedown) fires one copy
                 // per pass through this stage, each with its own target. The defender is the neutral
                 // attacker stand-in WoundPriorityQueries.ShootingResolveFirstSource uses for the same
                 // query - Takedown's condition is unconditional, and this flag is per weapon row, not per

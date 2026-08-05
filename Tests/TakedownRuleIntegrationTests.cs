@@ -71,7 +71,7 @@ namespace FDG.Tests
                 "2 failed saves, but a 1-wound model takes only 1 — no carry-over to the rest of the unit.");
         }
 
-        // ── #157/#337: a Takedown weapon fires ONE copy per weapon choice, each with its own pick ───────
+        // ── #157/#340: a Takedown weapon fires ONE copy per weapon choice, each with its own pick ───────
 
         [Test]
         public async Task TakedownWeapon_FiresOneCopyPerChoice_EachPicksItsOwnModel()
@@ -150,7 +150,7 @@ namespace FDG.Tests
             Assert.That(combat.HasPendingAttack, Is.False, "nothing left queued after the single consume");
         }
 
-        // ── #337: the copies not fired go back into the action's pool ────────────────────────────────
+        // ── #340: the copies not fired go back into the action's pool ────────────────────────────────
 
         [Test]
         public void TakedownCopies_ReturnToTheAvailablePool_UntilTheLastOneFires()
@@ -209,7 +209,7 @@ namespace FDG.Tests
             Assert.That(combat.HasPendingAttack, Is.False,
                 "nothing is queued at the corpse - the burst that used to fizzle here no longer exists");
             Assert.That(combat.AvailableWeapons[rifle], Is.EqualTo(2),
-                "#337: the two rifles that had not fired are still available, and the weapon picker will " +
+                "#340: the two rifles that had not fired are still available, and the weapon picker will " +
                 "offer them a live target instead of discarding their shots");
         }
 

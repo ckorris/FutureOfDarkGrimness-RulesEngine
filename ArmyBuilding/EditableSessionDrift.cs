@@ -43,6 +43,15 @@ namespace FDG.ArmyBuilding
 
     public static class EditableSession
     {
+        private const string CombinedSuffix = "(Combined)";
+
+        /// <summary>A unit name with the #107 combined marker removed, so the same unit compares equal
+        /// whether it was saved as the merged pair or rebuilt from its two roster copies.</summary>
+        public static string NormalizeUnitName(string name) =>
+            name.EndsWith(CombinedSuffix, StringComparison.Ordinal)
+                ? name[..^CombinedSuffix.Length].TrimEnd()
+                : name;
+
         /// <summary>Build a file that PLAYS as <paramref name="playable"/> but REOPENS as the given editable
         /// session. The playable half is copied through a serialization round-trip rather than field by
         /// field, so a future <see cref="ArmyListFile"/> field cannot be silently dropped here - the same
@@ -70,12 +79,14 @@ namespace FDG.ArmyBuilding
 
             BuiltArmyFile rebuilt = ListCompiler.Compile(file.Book, file.Selections);
 
-            // Multiset difference by name: every saved unit the rebuild does not account for.
-            var remaining = rebuilt.Units.Select(u => u.Name).ToList();
+            // Multiset difference by name: every saved unit the rebuild does not account for. Names are
+            // normalized first - a #107 pair can be saved as "Warriors (Combined)" while the rebuild merges
+            // two copies and calls the result "Warriors", which is the same unit, not a loss.
+            var remaining = rebuilt.Units.Select(u => NormalizeUnitName(u.Name)).ToList();
             var dropped = new List<string>();
             foreach (UnitFileEntry saved in file.Units)
             {
-                int at = remaining.IndexOf(saved.Name);
+                int at = remaining.IndexOf(NormalizeUnitName(saved.Name));
                 if (at >= 0) remaining.RemoveAt(at);
                 else dropped.Add(saved.Name);
             }

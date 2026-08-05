@@ -286,6 +286,109 @@ public class ArmyForgeSerializationTests
         Assert.That(drift.RebuiltUnitCount, Is.EqualTo(1));
     }
 
+    // ── #357: solving the picks back out of a compiled army ─────────────────────────────────────────────
+
+    [Test]
+    public void Solver_RecoversPicksFromACompiledArmy_RoundTrip()
+    {
+        // The load-bearing claim: compile picks -> throw the picks away -> solve them back -> the same army.
+        BookFile book = MakeBook();
+        BuiltArmyFile compiled = ListCompiler.Compile(book, new BuilderList
+        {
+            BookName = book.Name, PointsLimit = 500,
+            Units =
+            {
+                new BuilderUnit
+                {
+                    RosterUnitId = "warriors", ModelCount = 5,
+                    Choices = { new UpgradeChoice { SectionId = "warriors-heavy", OptionId = "heavy-rifle", Count = 1 } },
+                },
+                new BuilderUnit { RosterUnitId = "gunners", ModelCount = 3 },
+            },
+        });
+
+        var plain = new ArmyListFile { Name = compiled.Name, Faction = compiled.Faction, PointsLimit = 500 };
+        plain.Units.AddRange(compiled.Units); // a file with the RESULT but no record of the picks
+
+        ArmySolve solve = SelectionSolver.Solve(book, plain);
+
+        Assert.That(solve.Complete, Is.True,
+            string.Join("; ", solve.Units.Where(u => !u.Solved).Select(u => $"{u.UnitName}: {u.Failure}")));
+        Assert.That(EditableSession.Measure(EditableSession.Attach(plain, solve.Selections!, book))!.Differs,
+            Is.False, "the solved picks must rebuild the army exactly");
+        Assert.That(solve.Selections!.Units[0].Choices.Single().OptionId, Is.EqualTo("heavy-rifle"));
+    }
+
+    [Test]
+    public void Solver_MatchesOnLoadout_NotOnPrice()
+    {
+        // An Army Forge import carries THEIR per-unit cost, which our compiler is known to disagree with
+        // (#218/#219). Requiring price equality would reject the correct picks on exactly those armies.
+        BookFile book = MakeBook();
+        BuiltArmyFile compiled = ListCompiler.Compile(book, new BuilderList
+        {
+            BookName = book.Name, Units = { new BuilderUnit { RosterUnitId = "gunners", ModelCount = 3 } },
+        });
+        var plain = new ArmyListFile { Faction = "Demo" };
+        plain.Units.AddRange(compiled.Units);
+        plain.Units[0].PointCost += 17; // their price, not ours
+
+        ArmySolve solve = SelectionSolver.Solve(book, plain);
+
+        Assert.That(solve.Complete, Is.True);
+        Assert.That(solve.Units[0].PointsDelta, Is.EqualTo(-17), "the disagreement is reported, not hidden");
+    }
+
+    [Test]
+    public void Solver_ReportsUnitsItCannotPlace_AndRefusesAPartialList()
+    {
+        BookFile book = MakeBook();
+        var plain = new ArmyListFile { Faction = "Demo" };
+        plain.Units.Add(new UnitFileEntry { Name = "Not In This Book", ModelCount = 1, PointCost = 10 });
+
+        ArmySolve solve = SelectionSolver.Solve(book, plain);
+
+        Assert.That(solve.Complete, Is.False, "a partial answer is not a list and must not be attachable");
+        Assert.That(solve.Selections, Is.Null);
+        Assert.That(solve.Units.Single().Failure, Does.Contain("no unit named"));
+    }
+
+    [Test]
+    public void Solver_RecoversACombinedPair()
+    {
+        // #107: two copies merge into one unit at compile time, so the saved army holds a single entry of
+        // double size that no single roster copy can account for.
+        BookFile book = MakeBook();
+        BuiltArmyFile compiled = ListCompiler.Compile(book, new BuilderList
+        {
+            BookName = book.Name,
+            Units =
+            {
+                new BuilderUnit { RosterUnitId = "warriors", ModelCount = 5, Id = "a" },
+                new BuilderUnit { RosterUnitId = "warriors", ModelCount = 5, Id = "b", CombinedWithId = "a" },
+            },
+        });
+        Assert.That(compiled.Units, Has.Count.EqualTo(1), "precondition: the pair merged");
+
+        var plain = new ArmyListFile { Faction = "Demo" };
+        plain.Units.AddRange(compiled.Units);
+
+        ArmySolve solve = SelectionSolver.Solve(book, plain);
+
+        Assert.That(solve.Complete, Is.True,
+            string.Join("; ", solve.Units.Where(u => !u.Solved).Select(u => u.Failure)));
+        Assert.That(solve.Units[0].IsCombinedPair, Is.True);
+        Assert.That(solve.Selections!.Units, Has.Count.EqualTo(2), "a pair solves to two list entries");
+        Assert.That(solve.Selections.Units[1].CombinedWithId, Is.EqualTo(solve.Selections.Units[0].Id));
+    }
+
+    [Test]
+    public void NormalizeUnitName_TreatsACombinedPairAsItsRosterUnit()
+    {
+        Assert.That(EditableSession.NormalizeUnitName("Warriors (Combined)"), Is.EqualTo("Warriors"));
+        Assert.That(EditableSession.NormalizeUnitName("Warriors"), Is.EqualTo("Warriors"));
+    }
+
     [Test]
     public void Measure_CountsDuplicateNamesAsAMultiset()
     {

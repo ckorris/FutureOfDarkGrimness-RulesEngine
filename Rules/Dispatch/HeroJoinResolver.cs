@@ -102,7 +102,10 @@ public static class HeroJoinResolver
             ModelData heroModel = hero.ModelBindings[0].GetValue();
             ModelID heroModelId = heroModel.ID;
             int heroWounds = hasTough ? tough : IModel.DEFAULT_WOUND_COUNT;
-            host.AttachHero(new HeroAttachment(heroModelId, hero.Quality, ResolveJoinedHeroDefense(hero), heroWounds),
+            // #342: the hero's name and points ride the attachment. This is the last moment either exists —
+            // below, the hero's UnitData is dropped from the registered set and its model carries neither.
+            host.AttachHero(new HeroAttachment(heroModelId, hero.Quality, ResolveJoinedHeroDefense(hero), heroWounds,
+                    hero.Name, hero.PointCost),
                 hero.ModelBindings);
 
             // #329: the absorbed hero's cost folds into the host, mirroring the Forge's combined-cost

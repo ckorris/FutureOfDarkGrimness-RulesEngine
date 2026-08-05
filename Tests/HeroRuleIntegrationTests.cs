@@ -181,10 +181,36 @@ namespace FDG.Tests
                 "dead models are retained, so the hero stays identifiable by id after a grunt falls.");
         }
 
+        // #342: the merge is the hero's last moment as a named thing — its UnitData is dropped from the
+        // survivor set below and ModelData carries no name, so an attachment that didn't capture these
+        // leaves the hero anonymous (and its share of the host's folded-in points unrecoverable) for the
+        // rest of the game. That was the whole defect: no display COULD name a joined hero.
+        [Test]
+        public void MergedHero_CarriesItsNameAndPointsOntoTheAttachment()
+        {
+            UnitData host = MakeUnit(modelCount: 3, quality: 4, defense: 4);
+            host.Name = "Retributors";
+            host.PointCost = 650;
+
+            UnitData hero = MakeUnit(modelCount: 1, quality: 2, defense: 2);
+            hero.Name = "Elven Noble";
+            hero.PointCost = 150;
+            AttachHero(hero);
+
+            HeroJoinResolver.Apply(Pairs(("host", null, host), (null, "host", hero)));
+
+            Assert.That(host.HeroAttachment!.Name, Is.EqualTo("Elven Noble"),
+                "the hero's own name survives the merge; the host's name is not it.");
+            Assert.That(host.HeroAttachment!.PointCost, Is.EqualTo(150),
+                "the hero's share of the host's folded-in total stays recoverable.");
+            Assert.That(host.PointCost, Is.EqualTo(800), "#329: the host's total still absorbs the hero.");
+        }
+
         [Test]
         public void HeroAttachment_RoundTripsThroughJson()
         {
-            var original = new HeroAttachment(new ModelID(System.Guid.NewGuid()), quality: 3, defense: 2, heroWounds: 4);
+            var original = new HeroAttachment(new ModelID(System.Guid.NewGuid()), quality: 3, defense: 2, heroWounds: 4,
+                name: "Elven Noble", pointCost: 150);
 
             string json = JsonConvert.SerializeObject(original);
             HeroAttachment restored = JsonConvert.DeserializeObject<HeroAttachment>(json)!;
@@ -193,6 +219,24 @@ namespace FDG.Tests
             Assert.That(restored.Quality, Is.EqualTo(3));
             Assert.That(restored.Defense, Is.EqualTo(2));
             Assert.That(restored.HeroWounds, Is.EqualTo(4));
+            Assert.That(restored.Name, Is.EqualTo("Elven Noble"), "#342: rides saves and the network sync.");
+            Assert.That(restored.PointCost, Is.EqualTo(150));
+        }
+
+        // A save written before #342 has neither field. It must still load — the displays fall back to a
+        // bare "Hero" and hide the points rather than the resume failing.
+        [Test]
+        public void HeroAttachment_FromPreNameSaveLoadsWithNoNameOrPoints()
+        {
+            string legacyJson =
+                $"{{\"HeroModelId\":{JsonConvert.SerializeObject(new ModelID(System.Guid.NewGuid()))}," +
+                "\"Quality\":3,\"Defense\":2,\"HeroWounds\":4}";
+
+            HeroAttachment restored = JsonConvert.DeserializeObject<HeroAttachment>(legacyJson)!;
+
+            Assert.That(restored.Quality, Is.EqualTo(3), "the pre-#342 fields still load.");
+            Assert.That(restored.Name, Is.Null);
+            Assert.That(restored.PointCost, Is.Zero);
         }
 
         // --- helpers ---

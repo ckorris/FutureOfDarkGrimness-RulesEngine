@@ -22,11 +22,17 @@ namespace FDG.Ai.Resolvers
     {
         private readonly ITableState _tableState;
         private readonly PlayerID _playerID;
+        // #358: armed when this resolver declines the MAIN activation move, so the action menu
+        // the decline reopens does not deterministically re-pick Move forever. Null-safe for
+        // callers outside a solo set (tests, ad-hoc use) - they just keep the raw #208 decline.
+        private readonly SoloMoveDeclineLatch? _declineLatch;
 
-        public AiDefineMovementResolver(ITableState tableState, PlayerID playerID)
+        public AiDefineMovementResolver(ITableState tableState, PlayerID playerID,
+            SoloMoveDeclineLatch? declineLatch = null)
         {
             _tableState = tableState;
             _playerID = playerID;
+            _declineLatch = declineLatch;
         }
 
         /// <summary>
@@ -40,6 +46,10 @@ namespace FDG.Ai.Resolvers
         public async Task<CancellableResult<List<ModelMoveEntry>>> Resolve(DefineMovementPathRequest request)
         {
             List<ModelMoveEntry>? path = await ChoosePath(request);
+            // #358: a declined MAIN move bounces back to the action menu - arm the latch so the
+            // menu pick skips the movement family once instead of looping the decline forever.
+            // A declined TRIGGERED move (MainActivationMove false) is final and arms nothing.
+            if (path == null && request.MainActivationMove) _declineLatch?.Arm();
             return path == null
                 ? new Cancelled<List<ModelMoveEntry>>()
                 : new Selected<List<ModelMoveEntry>>(path);

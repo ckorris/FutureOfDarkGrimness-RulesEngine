@@ -12,11 +12,16 @@ namespace FDG.Ai.Resolvers
     {
         private readonly ITableState _tableState;
         private readonly PlayerID _playerID;
+        // #358: set when our own path resolver declined the main move it was just asked for -
+        // the movement family must be skipped for the one pick this menu re-offers it.
+        private readonly SoloMoveDeclineLatch? _declineLatch;
 
-        public AiStringSelectionResolver(ITableState tableState, PlayerID playerID)
+        public AiStringSelectionResolver(ITableState tableState, PlayerID playerID,
+            SoloMoveDeclineLatch? declineLatch = null)
         {
             _tableState = tableState;
             _playerID = playerID;
+            _declineLatch = declineLatch;
         }
 
         public Task<string> Resolve(StringSelectionRequest request)
@@ -62,10 +67,16 @@ namespace FDG.Ai.Resolvers
         // guaranteed non-empty (ChooseActionStage auto-passes when it's empty without sending a request).
         private string ChooseAction(IReadOnlyList<string> options)
         {
-            if (options.Contains(ChooseActionStage.CHARGE_CHOICE_NAME))
+            // #358: our own path resolver just declined this unit's main move (no legal path -
+            // a wedged unit). The engine's Back affordance reopened this menu; picking the
+            // movement family again would decline again, forever (the ~1.5M-decision watchdog
+            // faults). Skip Charge AND Move for this one pick and end the activation instead.
+            bool movementDeclined = _declineLatch?.Consume() == true;
+
+            if (!movementDeclined && options.Contains(ChooseActionStage.CHARGE_CHOICE_NAME))
                 return ChooseActionStage.CHARGE_CHOICE_NAME;
 
-            if (options.Contains(ChooseActionStage.MOVEMENT_CHOICE_NAME))
+            if (!movementDeclined && options.Contains(ChooseActionStage.MOVEMENT_CHOICE_NAME))
                 return ChooseActionStage.MOVEMENT_CHOICE_NAME;
 
             if (options.Contains(ChooseActionStage.SHOOT_CHOICE_NAME) && AnyEnemyInShootingRange())

@@ -77,6 +77,16 @@ namespace FDG.StageResolution.Requests
         /// </summary>
         public bool AllowCancel { get; }
 
+        /// <summary>
+        /// True only for the unit's MAIN move of its activation (built by <c>DefinePathStage</c>), where a
+        /// Cancelled reply returns to the action menu. False for rule-triggered moves
+        /// (<c>GameOperationServices</c>), where declining is final. The solo AI reads this to arm its
+        /// decline latch (#358): a deterministic policy that declines a menu-reopening move must not be
+        /// offered the same pick again, or it loops the menu forever - while declining an optional
+        /// triggered move must stay a latch-free "no thanks".
+        /// </summary>
+        public bool MainActivationMove { get; }
+
         [JsonConstructor]
         public DefineMovementPathRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
             DataBinding<UnitData> unitDataBinding, float maxAdvanceDistance, float maxRushDistance, float maxDistanceInches,
@@ -84,7 +94,7 @@ namespace FDG.StageResolution.Requests
             bool ignoresDifficultTerrain = false, bool ignoresImpassibleTerrain = false,
             IReadOnlyList<WeaponRangeOverride>? weaponRangeOverrides = null,
             IReadOnlyList<ModelMoveBudgetInfo>? modelMoveBudgets = null,
-            bool allowCancel = false)
+            bool allowCancel = false, bool mainActivationMove = false)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -100,6 +110,7 @@ namespace FDG.StageResolution.Requests
             WeaponRangeOverrides = weaponRangeOverrides ?? new List<WeaponRangeOverride>();
             ModelMoveBudgets = modelMoveBudgets ?? new List<ModelMoveBudgetInfo>();
             AllowCancel = allowCancel;
+            MainActivationMove = mainActivationMove;
         }
 
         public DefineMovementPathRequest(PlayerID targetPlayerID,  string taskName,
@@ -108,7 +119,7 @@ namespace FDG.StageResolution.Requests
             bool ignoresDifficultTerrain = false, bool ignoresImpassibleTerrain = false,
             IReadOnlyList<WeaponRangeOverride>? weaponRangeOverrides = null,
             IReadOnlyList<ModelMoveBudgetInfo>? modelMoveBudgets = null,
-            bool allowCancel = false)
+            bool allowCancel = false, bool mainActivationMove = false)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = new TaskID(Guid.NewGuid());
@@ -124,6 +135,7 @@ namespace FDG.StageResolution.Requests
             WeaponRangeOverrides = weaponRangeOverrides ?? new List<WeaponRangeOverride>();
             ModelMoveBudgets = modelMoveBudgets ?? new List<ModelMoveBudgetInfo>();
             AllowCancel = allowCancel;
+            MainActivationMove = mainActivationMove;
         }
 
         /// <summary>

@@ -26,9 +26,13 @@ namespace FDG.Ai
             Random? objectiveRng = playerSeed.HasValue ? GameRandom.Create(playerSeed, salt: 1) : null;
             Random? terrainRng = playerSeed.HasValue ? GameRandom.Create(playerSeed, salt: 2) : null;
 
+            // #358: one latch per solo set - the path resolver's main-move decline tells the
+            // action menu to skip the movement family once, breaking the decline-repick livelock.
+            var declineLatch = new SoloMoveDeclineLatch();
+
             IStageResolverRegistry registry = new StageResolverRegistry()
                 .RegisterResolver(new AiYesNoResolver())
-                .RegisterResolver(new AiStringSelectionResolver(tableState, playerID))
+                .RegisterResolver(new AiStringSelectionResolver(tableState, playerID, declineLatch))
                 .RegisterResolver(new AiChooseAbilityEffectResolver())
                 .RegisterResolver(new AiChooseSpellResolver())
                 .RegisterResolver(new AiCastAssistResolver())
@@ -39,7 +43,7 @@ namespace FDG.Ai
                     StageResolution.Requests.CancellableSelectionRequest<UnitData>,
                     StageResolution.CancellableResult<Data.DataBinding<UnitData>>>(
                     new AiChooseMeleeDefenderResolver()))
-                .RegisterResolver(new AiDefineMovementResolver(tableState, playerID))
+                .RegisterResolver(new AiDefineMovementResolver(tableState, playerID, declineLatch))
                 .RegisterResolver(new AiAircraftAdvanceResolver())
                 .RegisterResolver(new AiConsolidationMoveResolver(tableState, playerID))
                 .RegisterResolver(new AiAssignWoundsResolver())

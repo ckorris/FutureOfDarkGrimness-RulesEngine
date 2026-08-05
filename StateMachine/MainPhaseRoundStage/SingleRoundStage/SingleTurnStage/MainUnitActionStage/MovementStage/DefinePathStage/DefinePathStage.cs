@@ -71,7 +71,7 @@ namespace FDG.Stages
                 context.MaxAdvanceDistance, context.MaxRushDistance, hardCap,
                 WeaponSightProfileBuilder.For(context.MovingUnit.GetValue(), context.GameContext.RuleEvaluator),
                 canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, BuildRangeOverrides(context),
-                perModelBudgets, allowCancel: true);
+                perModelBudgets, allowCancel: true, mainActivationMove: true);
 
             CancellableResult<List<ModelMoveEntry>> pathResult = await context.PlayerRequester()
                 .RequestDecision<DefineMovementPathRequest, CancellableResult<List<ModelMoveEntry>>>(pathRequest);

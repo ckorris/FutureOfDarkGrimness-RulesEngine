@@ -36,10 +36,14 @@ namespace FDG.Ai.Tactician
 
             // A4-2: the (action x macro-action) pair is planned once at Choose Action and played out
             // at the movement request; solo-rules instances are the per-request fallbacks (G3).
+            // #358: the embedded fallback pair shares a decline latch like every solo set - when
+            // the planner has no claim, the fallback policy must not loop a wedged unit's menu.
+            var fallbackDeclineLatch = new FDG.Ai.Resolvers.SoloMoveDeclineLatch();
             registry.RegisterResolver(new Resolvers.TacticianActionResolver(planner, tableState,
-                new FDG.Ai.Resolvers.AiStringSelectionResolver(tableState, playerID)));
+                new FDG.Ai.Resolvers.AiStringSelectionResolver(tableState, playerID, fallbackDeclineLatch)));
             registry.RegisterResolver(new Resolvers.TacticianMovementResolver(planner, tableState,
-                new FDG.Ai.Resolvers.AiDefineMovementResolver(tableState, playerID), options.DecisionLog));
+                new FDG.Ai.Resolvers.AiDefineMovementResolver(tableState, playerID, fallbackDeclineLatch),
+                options.DecisionLog));
 
             // A4-3: value-weighted target choice (shooting + melee defender). A5-6 adds cargo-aware
             // target value and the charge-threat factor (tableState).

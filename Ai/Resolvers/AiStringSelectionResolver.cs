@@ -76,7 +76,7 @@ namespace FDG.Ai.Resolvers
                 : FirstActionWorthTaking(options);
         }
 
-        // #333: the AI never embarks mid-game either, for the reason AiSelectionResolver declines the
+        // #335: the AI never embarks mid-game either, for the reason AiSelectionResolver declines the
         // deploy-time prompt - a ride only pays off if someone planned the drop-off, and nothing here
         // plans one. Embark reaches this menu as a rule-NAMED action (ChooseActionStage routes it by
         // offer.RuleName), so the ranked branches above can never return it and only this tail could,

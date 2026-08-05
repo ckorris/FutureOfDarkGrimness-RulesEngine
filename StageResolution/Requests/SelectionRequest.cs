@@ -32,7 +32,7 @@ namespace FDG.StageResolution.Requests
         /// cancel MEANS here. For most selections it rewinds to the menu you came from, and "Back" is the
         /// truth. For a few it is a real choice with no back-destination at all — the deploy-time embark
         /// prompt, where cancelling deploys the unit on the table as normal — and labelling that "Back"
-        /// hides an action behind a button that reads like an escape hatch (#333, playtest note).
+        /// hides an action behind a button that reads like an escape hatch (#335, playtest note).
         /// Same division of labour as <see cref="PlaceObjectsRequest{T}.CancelHint"/>: the stage supplies
         /// the wording, the resolver just draws it. Game-facing, so ASCII only (CLAUDE.md).
         /// </summary>

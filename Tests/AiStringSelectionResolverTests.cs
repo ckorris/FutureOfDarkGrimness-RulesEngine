@@ -60,7 +60,7 @@ namespace FDG.Tests
             Assert.That(choice, Is.Not.EqualTo(ChooseActionStage.PASS_CHOICE_NAME));
         }
 
-        // #331: the AI never embarks (owner's call - a ride only pays off if someone planned the drop-off).
+        // #333: the AI never embarks (owner's call - a ride only pays off if someone planned the drop-off).
         // Embark is a rule-NAMED action, so no ranked branch can return it; the position-based tail could,
         // and this pins that it doesn't. Pass isn't offered here, or it would mask the filter.
         [Test]

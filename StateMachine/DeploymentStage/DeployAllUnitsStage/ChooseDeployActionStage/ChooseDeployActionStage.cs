@@ -100,7 +100,7 @@ namespace FDG.Stages
         /// <c>allowCancel</c> is true and null means "place this unit on the table instead". Because it is a
         /// choice rather than an escape hatch it names itself: <c>cancelLabel</c> makes the resolver's exit
         /// button read "Deploy Normally", after a playtester reported having to press Back to deploy a unit
-        /// that was standing next to a transport (#331). The mid-game <c>EmbarkStage</c> prompt deliberately
+        /// that was standing next to a transport (#333). The mid-game <c>EmbarkStage</c> prompt deliberately
         /// keeps the default "Back" — cancelling THAT one really does return to the action menu.
         /// </summary>
         private async Task<DataBinding<UnitData>?> PromptEmbarkChoice(UnitData unit,

@@ -6,7 +6,7 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #331: the AI declines the deploy-time embark prompt (owner's call - embarking needs forethought this
+    // #333: the AI declines the deploy-time embark prompt (owner's call - embarking needs forethought this
     // AI hasn't got, and it never plans where the cargo gets out). The decline is deliberately narrow: it
     // keys on the shared DEPLOY_NORMALLY_CHOICE label, because a blanket "AI cancels cancellable
     // selections" would loop the prompts that re-ask after a cancel.

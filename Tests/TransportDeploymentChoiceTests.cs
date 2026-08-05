@@ -93,7 +93,7 @@ namespace FDG.Tests
             Assert.That(deployment.CurrentDeployingUnit, Is.EqualTo(squad), "the unit stays current, headed for placement.");
         }
 
-        // #331: "deploy normally" used to be reachable only by pressing Back, which reads as "I picked the
+        // #333: "deploy normally" used to be reachable only by pressing Back, which reads as "I picked the
         // wrong unit", not as one of the two ways to deploy. The choice now names itself on the request, so
         // both front ends label the button (and the CLI's [0] row) with what it actually does.
         [Test]
@@ -117,7 +117,7 @@ namespace FDG.Tests
                 "the #322 'Waiting on' HUD names the unit rather than the C# type.");
         }
 
-        // #331 (owner's call, 2026-08-04): the AI never embarks. Riding needs forethought it doesn't have -
+        // #333 (owner's call, 2026-08-04): the AI never embarks. Riding needs forethought it doesn't have -
         // it has no policy for where the cargo gets out - and before this the option-0 fallback embarked
         // every eligible unit because "Embark into Rhino" was simply first in the list. Driven through the
         // REAL AiSelectionResolver against the real stage, so the decline is proven end to end rather than
@@ -240,7 +240,7 @@ namespace FDG.Tests
     }
 
     // Routes the stage's requests through the production AI resolver, so a test exercises what an AI player
-    // actually does rather than a hand-written stand-in (#331).
+    // actually does rather than a hand-written stand-in (#333).
     internal sealed class AiRequester : IPlayerRequestByID
     {
         public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
@@ -265,7 +265,7 @@ namespace FDG.Tests
 
         public int SelectionPromptCount { get; private set; }
 
-        /// <summary>The last embark prompt seen, so a test can assert on how it was worded (#331).</summary>
+        /// <summary>The last embark prompt seen, so a test can assert on how it was worded (#333).</summary>
         public SelectionRequest<UnitData>? LastSelection { get; private set; }
 
         public EmbarkChoiceRequester(DataBinding<UnitData>? pickTransport) => _pickTransport = pickTransport;

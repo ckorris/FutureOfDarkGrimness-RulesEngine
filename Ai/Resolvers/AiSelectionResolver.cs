@@ -9,7 +9,7 @@ namespace FDG.Ai.Resolvers
     {
         public Task<DataBinding<T>> Resolve(SelectionRequest<T> request)
         {
-            // #331: the AI never loads a transport. Riding is a PLAN - who gets carried, where they get
+            // #333: the AI never loads a transport. Riding is a PLAN - who gets carried, where they get
             // out, and what they do on arrival - and this AI has none: its cargo rides until the transport
             // dies, which is the same gap the Tactician's A5-5 disembark timing had to be written by hand
             // to cover. Until an AI can make that plan, being carried is worse than walking - and the

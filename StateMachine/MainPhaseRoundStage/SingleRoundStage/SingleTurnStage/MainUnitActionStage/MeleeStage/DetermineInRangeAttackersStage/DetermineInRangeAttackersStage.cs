@@ -8,7 +8,7 @@ namespace FDG.Stages
         public StageBinding OnNoAttackersInRange;
 
         /// <summary>
-        /// #345: models ARE in contact, they just carry nothing to swing — an impact-only charger (every
+        /// #355: models ARE in contact, they just carry nothing to swing — an impact-only charger (every
         /// APC/tank/speeder), or a unit whose melee-armed models all died. Distinct from
         /// <see cref="OnNoAttackersInRange"/>, which means nobody reached contact at all (the defender was
         /// wiped by the impact hits, or pile-in failed): there the melee is over, whereas here two units
@@ -42,7 +42,7 @@ namespace FDG.Stages
             // already rebuilt AvailableWeapons from exactly the in-range living models, so it is the precise
             // precondition ChooseMeleeWeaponStage requires.
             //
-            // #345 splits the two: whether anyone is IN CONTACT decides whether there is still a melee to
+            // #355 splits the two: whether anyone is IN CONTACT decides whether there is still a melee to
             // resolve. Nobody in contact (defender wiped by the impact hits, pile-in failed) ends it; models
             // in contact with nothing to swing — an impact-only charger, or a unit that lost its melee-armed
             // models — is still a melee, so it goes on to the strike-back the defender is owed.

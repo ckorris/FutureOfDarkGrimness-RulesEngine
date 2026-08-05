@@ -11,7 +11,7 @@ using System.Collections.Generic;
 namespace FDG.Tests
 {
     /// <summary>
-    /// #345 — a unit with no melee weapon but an Impact-family rule may charge, and the melee it starts
+    /// #355 — a unit with no melee weapon but an Impact-family rule may charge, and the melee it starts
     /// resolves in full. Impact(X), Heavy Impact(X) and Ravage(X) fire at
     /// <see cref="EHookID.Melee_OnChargeContact"/> — on the charge itself, not off a weapon — so gating the
     /// charge on carrying a melee weapon made them unreachable on the 138 corpus units (every APC, tank and

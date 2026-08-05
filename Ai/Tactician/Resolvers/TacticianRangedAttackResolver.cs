@@ -64,7 +64,7 @@ namespace FDG.Ai.Tactician.Resolvers
                     float targetValue = _tableState != null
                         ? TacticalAnalysis.UnitValueWithCargo(target, _tableState, _evaluator)
                         : TacticalAnalysis.UnitValue(target);
-                    // #345: a unit that can only ram still threatens to charge us.
+                    // #355: a unit that can only ram still threatens to charge us.
                     bool threatensUs = ChargeContactRules.CanFightInMelee(target)
                         && TacticalAnalysis.MeleeThreatReach(target,
                             request.AttackingUnit.GetValue(), _evaluator) >= distance - 1f;

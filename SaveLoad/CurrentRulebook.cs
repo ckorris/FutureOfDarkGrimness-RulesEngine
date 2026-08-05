@@ -5,7 +5,7 @@ using System.Collections.Generic;
 namespace FDG.SaveLoad
 {
     /// <summary>
-    /// The host's current rulebook data, as army load sees it (#344). The engine has no idea where
+    /// The host's current rulebook data, as army load sees it (#354). The engine has no idea where
     /// rulebooks live — they are app-side assets (<c>FdgRaylib/Assets/Books</c>) — so the app installs
     /// an implementation at startup and the engine asks it two questions during army load.
     /// </summary>
@@ -27,7 +27,7 @@ namespace FDG.SaveLoad
     }
 
     /// <summary>
-    /// Install point for <see cref="ICurrentRulebook"/> (#344), mirroring how the app installs itself
+    /// Install point for <see cref="ICurrentRulebook"/> (#354), mirroring how the app installs itself
     /// on <see cref="Rules.Dispatch.RuleDiagnostics"/>. Nothing installed means the engine behaves
     /// exactly as it did before this item: an army resolves against the core catalog plus its own
     /// embedded definitions and nothing else. Tests install a stub and reset it in teardown.

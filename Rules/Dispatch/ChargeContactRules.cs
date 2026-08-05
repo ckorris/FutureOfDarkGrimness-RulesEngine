@@ -5,7 +5,7 @@ using System.Linq;
 namespace FDG.Rules.Dispatch
 {
     /// <summary>
-    /// #345 — "can this unit do anything in a melee?", the question the charge gate and the AI's melee
+    /// #355 — "can this unit do anything in a melee?", the question the charge gate and the AI's melee
     /// valuation both need. A melee weapon is the obvious answer; the other one is a rule that fires on
     /// the CHARGE itself rather than off a weapon (Impact(X), Heavy Impact(X), Ravage(X)).
     ///

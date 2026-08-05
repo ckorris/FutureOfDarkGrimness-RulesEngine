@@ -514,7 +514,7 @@ namespace FDG.Stages
                 return false;
             }
 
-            // #345: a melee weapon is one reason to charge; a rule that fires on charge contact is the
+            // #355: a melee weapon is one reason to charge; a rule that fires on charge contact is the
             // other. Impact(X) / Heavy Impact(X) / Ravage(X) are the charge itself, not a weapon - and 138
             // corpus units (every APC, tank and speeder) carry one with no melee weapon at all, so gating on
             // weapons alone made those rules unreachable. Nothing to swing and nothing to trigger is still

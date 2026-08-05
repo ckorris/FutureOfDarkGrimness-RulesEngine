@@ -27,7 +27,7 @@ namespace FDG.SaveLoad
         /// data (distinct from <see cref="ResolveForScope"/>'s tolerance of valid-but-unimplemented
         /// rules) and must fail loudly rather than misbehave silently at dispatch.
         ///
-        /// <para>#344: before the army's own definitions, any definition the CURRENT rulebook ships for
+        /// <para>#354: before the army's own definitions, any definition the CURRENT rulebook ships for
         /// this army's faction that the army does not itself define is registered as a backfill. A
         /// compiled list embeds a frozen COPY of its book's definitions, so a list saved before a rule
         /// existed names that rule with nothing behind it and the rule silently does nothing forever.
@@ -58,7 +58,7 @@ namespace FDG.SaveLoad
         }
 
         /// <summary>
-        /// Every definition this army load registers, in registration order: the #344 rulebook backfill
+        /// Every definition this army load registers, in registration order: the #354 rulebook backfill
         /// first, then the army's own (so the army always wins on a name it defines).
         ///
         /// <para>Public because the effective set — not the file's frozen list — is what must be
@@ -77,7 +77,7 @@ namespace FDG.SaveLoad
         }
 
         /// <summary>
-        /// The #344 backfill set: definitions the current rulebook ships for this army's faction whose
+        /// The #354 backfill set: definitions the current rulebook ships for this army's faction whose
         /// names the army itself does not define. Registered BEFORE the army's own, so the army always
         /// wins where it has an opinion; registered AFTER the core catalog, so a book definition that
         /// retunes a core rule takes effect the same way it does on a freshly built list.
@@ -190,7 +190,7 @@ namespace FDG.SaveLoad
 
             if (!ruleResolver.TryResolve(lookupName, out ResolvedRule resolved))
             {
-                // #344: "unimplemented" and "your list predates the implementation" are different
+                // #354: "unimplemented" and "your list predates the implementation" are different
                 // problems with different fixes, and reporting the second as the first is what sent a
                 // player looking for an engine gap that wasn't there. The backfill above already
                 // rescues a list whose faction matches a bundled book, so reaching here with a name the

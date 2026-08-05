@@ -113,7 +113,7 @@ namespace FDG.Tests
             // range. inRange.Count > 0, but the swing pool is empty, so the guard must not enter
             // ChooseMeleeWeaponStage with an empty pool.
             //
-            // #345 changed WHICH exit that takes. It used to share OnNoAttackersInRange with "nobody reached
+            // #355 changed WHICH exit that takes. It used to share OnNoAttackersInRange with "nobody reached
             // contact at all", which skipped the strike-back and the melee winner: two units locked together
             // and nothing happened. Now it takes OnAttackersInRangeUnarmed, which goes on to the defender's
             // strike-back. The same exit an impact-only charger (Impact/Ravage, no melee weapon) takes.

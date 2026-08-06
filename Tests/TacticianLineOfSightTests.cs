@@ -14,11 +14,13 @@ namespace FDG.Tests
     // alone, so a unit behind a Blocking wall was credited a phantom volley it could never take
     // (the engine's Shoot gate then found nothing fireable and the activation fizzled - the
     // BattleBrothers save: a 6" advance into the wall's shadow, no shot, while a real firing lane
-    // sat 5" to the side). These tests pin the two mechanisms of the fix: (1) AttackContext's
-    // SightBlocked flag silences LoS-bound weapons in the estimate (Indirect exempt, per weapon);
-    // (2) MacroActionGenerator's EngageAtRange goals rotate around the target to a clear lane when
-    // the straight-line band point is blocked. Plus the headline behavior: the planned move ends
-    // where the unit can actually fire.
+    // sat 5" to the side). These tests pin the three mechanisms of the fix: (1) AttackContext's
+    // SightFactor scales LoS-bound weapons in the estimate - 0 silences them outright (Indirect
+    // exempt, per weapon); (2) MacroActionGenerator's EngageAtRange goals rotate around the target
+    // to a clear lane when the straight-line band point is blocked; (3) facet 3, the mirror image:
+    // INCOMING fire respects the same walls, discounted rather than silenced because the shooter
+    // moves before it shoots - so cover is worth something without being worth everything. Plus
+    // the headline behavior: the planned move ends where the unit can actually fire.
     //
     // The shared scene: 5 rifles (24") at (24,6), 5 enemy rifles at (24,30) - exactly max range -
     // with a small Blocking wall (x 22..26, z 17..18) cutting the straight lane. A clear lane
@@ -32,6 +34,7 @@ namespace FDG.Tests
         private RuleEvaluator _evaluator = null!;
         private PlayerID _us;
         private PlayerID _them;
+        private DataBinding<UnitData> _us1 = null!;
         private List<string> _decisions = null!;
 
         private static readonly Position EnemyCenter = new Position(24f, 30f);
@@ -61,14 +64,14 @@ namespace FDG.Tests
         // --- Mechanism 1: the estimate itself. ---
 
         [Test]
-        public void EstimateShooting_SightBlocked_SilencesLosBoundWeapons()
+        public void EstimateShooting_BlockedSight_SilencesLosBoundWeapons()
         {
             (DataBinding<UnitData> us, DataBinding<UnitData> them) = MakeWalledShooterScene();
 
             AttackEstimate clear = CombatMath.EstimateShooting(_evaluator, us, them,
                 new AttackContext(20f));
             AttackEstimate blocked = CombatMath.EstimateShooting(_evaluator, us, them,
-                new AttackContext(20f, SightBlocked: true));
+                new AttackContext(20f, SightFactor: 0f));
 
             Assert.That(clear.ExpectedWounds, Is.GreaterThan(0f),
                 "sanity: rifles in range with a clear line must expect wounds");
@@ -78,17 +81,36 @@ namespace FDG.Tests
         }
 
         [Test]
-        public void EstimateShooting_SightBlocked_IndirectStillFires()
+        public void EstimateShooting_PartialSightFactor_DiscountsLosBoundWeapons()
+        {
+            (DataBinding<UnitData> us, DataBinding<UnitData> them) = MakeWalledShooterScene();
+
+            AttackEstimate clear = CombatMath.EstimateShooting(_evaluator, us, them,
+                new AttackContext(20f));
+            AttackEstimate discounted = CombatMath.EstimateShooting(_evaluator, us, them,
+                new AttackContext(20f, SightFactor: 0.4f));
+
+            // Facet 3's currency: a threat behind a wall is worth a FRACTION of the same threat in
+            // the open - not zero (the shooter moves before it shoots), not full price (today's bug).
+            Assert.That(discounted.ExpectedWounds,
+                Is.EqualTo(0.4f * clear.ExpectedWounds).Within(0.0001f),
+                "a partial sight factor must scale LoS-bound firepower linearly");
+        }
+
+        [Test]
+        public void EstimateShooting_BlockedSight_IndirectStillFires()
         {
             (DataBinding<UnitData> us, DataBinding<UnitData> them) = MakeWalledShooterScene();
             AttachRule(us, "Indirect", CoreRuleCatalog.Indirect);
 
+            AttackEstimate clear = CombatMath.EstimateShooting(_evaluator, us, them,
+                new AttackContext(20f));
             AttackEstimate blocked = CombatMath.EstimateShooting(_evaluator, us, them,
-                new AttackContext(20f, SightBlocked: true));
+                new AttackContext(20f, SightFactor: 0f));
 
-            Assert.That(blocked.ExpectedWounds, Is.GreaterThan(0f),
-                "Indirect ignores line of sight - a blocked lane must not zero its estimate " +
-                "(the #360 artillery family keeps its value)");
+            Assert.That(blocked.ExpectedWounds, Is.EqualTo(clear.ExpectedWounds).Within(0.0001f),
+                "Indirect ignores line of sight - neither a blocked lane nor a discounted one may " +
+                "touch its estimate (the #360 artillery family keeps its value)");
         }
 
         // --- Mechanism 2: the generator's firing positions. ---
@@ -163,6 +185,52 @@ namespace FDG.Tests
                 "a real volley from the clear lane must outscore standing in the shadow with a " +
                 "phantom one - phantom offense propping up bad candidates is the #363 failure");
         }
+
+        // --- Mechanism 3 (facet 3): incoming fire respects the same walls. ---
+
+        [Test]
+        public void Score_WallShadowEndpoint_PricesIncomingFireBelowOpenGround()
+        {
+            (Position shadow, Position open) = MakeThreatenedScene();
+            var planner = new TacticianPlanner(_tableState, _evaluator, _decisions.Add);
+            planner.BeginActivation(_us1);
+
+            float shadowScore = planner.Score(Endpoint(shadow));
+            float openScore = planner.Score(Endpoint(open));
+
+            Assert.That(shadowScore, Is.GreaterThan(openScore),
+                $"two endpoints the same distance from the enemy gunline, one behind a wall: the " +
+                $"covered one must price SAFER. Before facet 3 retaliation saw through walls, so " +
+                $"cover was worth exactly nothing and every engage endpoint near a wall read as " +
+                $"dangerous as open ground. shadow=({shadow.x:F1},{shadow.z:F1}) {shadowScore:F4} " +
+                $"vs open=({open.x:F1},{open.z:F1}) {openScore:F4}");
+            Assert.That(shadowScore, Is.LessThan(0f),
+                "but a wall is not immunity: the enemy MOVES before it shoots, so the covered " +
+                "endpoint must still carry a discounted threat price, never a free pass");
+        }
+
+        /// <summary>
+        /// A gunline we cannot answer (our carbines are out of range, no melee) at (24,30), the
+        /// same Blocking wall, and two endpoints EQUIDISTANT from that gunline - one in the wall's
+        /// shadow, one with a clear lane. Every scoring term except incoming fire is identical
+        /// between them: no objectives, no other friendlies, no offense, no approach.
+        /// </summary>
+        private (Position Shadow, Position Open) MakeThreatenedScene()
+        {
+            _store.Create(new TerrainData(ETerrainType.Blocking | ETerrainType.Impassible,
+                new RectangularZone(22f, 26f, 17f, 18f)));
+            _us1 = MakeUnitAt(_us, 5, new Weapon("Carbine", rangeInches: 6f, attacks: 1, armorPenetration: 0),
+                i => new Position(22.9f + (i % 3) * 1.1f, 11.5f + (i / 3) * 1.1f));
+            MakeUnitAt(_them, 5, Rifle(),
+                i => new Position(22.9f + (i % 3) * 1.1f, 29.5f + (i / 3) * 1.1f));
+            return (new Position(24f, 12f), new Position(32.75f, 14.4f));
+        }
+
+        // A bare endpoint to price: Advance so the offense term is allowed to look (it finds
+        // nothing - the carbines are 12" short), reachable so feasibility is not the difference.
+        private static MacroAction Endpoint(Position end) =>
+            new MacroAction(EMacroIntent.AdvanceOnObjective, $"test end=({end.x:F1},{end.z:F1})",
+                EActionType.Advance, new List<ModelMoveEntry>(), EFeasibility.Reachable, end);
 
         // --- Helpers (mirroring TacticianWalledUnitTests). ---
 

@@ -13,13 +13,22 @@ namespace FDG.Ai.Tactician
     /// supplies the hypothetical position's values), so the same units can be priced "from here" and
     /// "from there" without touching game state - the property movement scoring depends on (#191 A3/A4).
     /// </summary>
+    /// <param name="SightFactor">
+    /// #363: the fraction of LoS-bound firepower that reaches the defender, given the terrain
+    /// between the two hypothetical positions. 1 = clear lane (the default: callers that supply no
+    /// geometry get the old distance-only estimate). 0 = the lane is cut and the volley cannot
+    /// happen - what an attack FROM a candidate endpoint is worth, since the shot would be taken
+    /// from there. Between: the lane is cut but the shooter gets to move first, so the threat is
+    /// discounted rather than silenced (the incoming-fire terms; see TacticianWeights.
+    /// BlockedThreatShare). Weapons that ignore line of sight (Indirect) are exempt per weapon.
+    /// </param>
     public sealed record AttackContext(
         float DistanceInches,
         bool AttackerMoved = false,
         bool DefenderInCover = false,
         bool IsMelee = false,
         bool IsCharging = false,
-        bool SightBlocked = false);
+        float SightFactor = 1f);
 
     /// <summary>Expected outcome of one unit's whole attack (all weapon batches) against a defender.</summary>
     public sealed record AttackEstimate(
@@ -93,17 +102,22 @@ namespace FDG.Ai.Tactician
                     attacker.GetValue(), weapon, defender.GetValue(), evaluator);
                 if (reach < context.DistanceInches) continue;
 
-                // #363: a blocked sight line silences every weapon that needs one (Indirect keeps
-                // firing). SightBlocked is caller-supplied geometry, like DistanceInches - the
-                // estimate itself stays position-free.
-                if (context.SightBlocked
-                    && !SightRuleQueries.IgnoresTerrain(attacker.GetValue(), weapon, evaluator))
+                // #363: terrain between the two positions scales every weapon that needs a lane -
+                // silenced outright at factor 0, discounted in between (see AttackContext). The
+                // geometry is caller-supplied, like DistanceInches, so the estimate itself stays
+                // position-free. Indirect keeps firing at full value; the query only runs when the
+                // lane is not clear, so clear-lane estimates cost exactly what they always did.
+                float sight = Math.Clamp(context.SightFactor, 0f, 1f);
+                if (sight < 1f
+                    && SightRuleQueries.IgnoresTerrain(attacker.GetValue(), weapon, evaluator))
                 {
-                    continue;
+                    sight = 1f;
                 }
+                if (sight <= 0f) continue;
 
-                total += EstimateVolley(evaluator, attacker, defender, weapon, count,
+                float volley = EstimateVolley(evaluator, attacker, defender, weapon, count,
                     context with { IsMelee = false, IsCharging = false }, notes);
+                total += sight < 1f ? sight * volley : volley;
             }
 
             return Finish(total, defender, notes);

@@ -90,6 +90,19 @@ namespace FDG.Ai.Tactician
         // be penalized for standing its ground.
         public static float MoveProjectedThreat = 0.15f;
 
+        // ADDED 2026-08-05 (#363 facet 3, the mirror of the phantom volley): incoming fire is
+        // priced through walls unless something says otherwise, so before this a wall shadow read
+        // exactly as dangerous as open ground and cover was worth nothing. It is NOT worth
+        // everything either: retaliation is a NEXT-activation threat, and the enemy moves before
+        // it shoots - a cut lane costs it a repositioning move it may not have (or may prefer to
+        // spend elsewhere), it does not make us invulnerable. Zero here would invent perfect hard
+        // cover and teach the whole army to hug walls. So a blocked lane prices incoming SHOOTING
+        // at this fraction of its clear-lane value (melee is untouched - a charge needs a path,
+        // not a sight line). Prior, not a measurement: the arc search in MacroActionGenerator
+        // shows a clear lane is usually findable within one move, so this sits above a token
+        // discount and well below full price.
+        public static float BlockedThreatShare = 0.4f;
+
         // --- Risk posture (#191 idea 3) -------------------------------------------------------------
         // ADDED 2026-07-26: the projected objective differential, round-scaled, tilts the risk
         // budget - 1-vs-3 on markers late must not score like 3-vs-1. Behind: retaliation and

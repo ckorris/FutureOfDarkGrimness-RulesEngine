@@ -434,8 +434,11 @@ namespace FDG.Ai.Tactician
                 UnitData enemy = enemyBinding.GetValue();
                 float d = Distance(here, Centroid(enemy));
                 float theirReach = Math.Max(1f, d - TacticalAnalysis.AdvanceDistance(enemy, _evaluator));
+                // #363 facet 3: same sight discount as Score's retaliation - a boat parked behind
+                // a building is not in the same danger as one parked in the open.
                 incoming = Math.Max(incoming, CombatMath.EstimateShooting(_evaluator, enemyBinding,
-                    transport, new AttackContext(theirReach, AttackerMoved: true)).ExpectedWounds);
+                    transport, new AttackContext(theirReach, AttackerMoved: true,
+                        SightFactor: ThreatSightFactor(Centroid(enemy), here))).ExpectedWounds);
                 // #355: an impact-only enemy can still charge this transport.
                 if (ChargeContactRules.CanFightInMelee(enemy)
                     && TacticalAnalysis.MeleeThreatReach(enemy, transport.GetValue(), _evaluator) >= d - 1f)
@@ -550,7 +553,7 @@ namespace FDG.Ai.Tactician
                     AttackEstimate shot = CombatMath.EstimateShooting(_evaluator, _activeUnit, enemyBinding,
                         new AttackContext(Math.Max(1f, endDistance),
                             AttackerMoved: candidate.Intent != EMacroIntent.Hold,
-                            SightBlocked: sightBlocked));
+                            SightFactor: sightBlocked ? 0f : 1f));
                     offense = Math.Max(offense, ValueFraction(shot.ExpectedWounds, enemy));
                 }
 
@@ -607,9 +610,12 @@ namespace FDG.Ai.Tactician
                 }
 
                 // What the enemy could do to us at the endpoint next activation (their advance included).
+                // #363 facet 3: through the same terrain the offense term now respects - at the
+                // discounted threat factor, because this shooter gets to MOVE before it shoots.
                 float theirReach = Math.Max(1f, endDistance - TacticalAnalysis.AdvanceDistance(enemy, _evaluator));
                 AttackEstimate incoming = CombatMath.EstimateShooting(_evaluator, enemyBinding, _activeUnit,
-                    new AttackContext(theirReach, AttackerMoved: true));
+                    new AttackContext(theirReach, AttackerMoved: true,
+                        SightFactor: ThreatSightFactor(enemyPos, end)));
                 float incomingValue = ValueFraction(incoming.ExpectedWounds, self);
                 // Melee threat: if they can charge the endpoint (charge + 2" melee cylinder),
                 // count their melee margin too.
@@ -646,8 +652,11 @@ namespace FDG.Ai.Tactician
                     float projReach = Math.Max(1f,
                         projDistance - TacticalAnalysis.AdvanceDistance(enemy, _evaluator));
                     float projValue = projReach > EnemyMaxRangeAgainstUs(enemyBinding) ? 0f
+                        // #363 facet 3: sighted from where the forecast puts them, not from where
+                        // they stand - the projection IS the position this term prices from.
                         : ValueFraction(CombatMath.EstimateShooting(_evaluator, enemyBinding,
-                                _activeUnit, new AttackContext(projReach, AttackerMoved: true))
+                                _activeUnit, new AttackContext(projReach, AttackerMoved: true,
+                                    SightFactor: ThreatSightFactor(projected, end)))
                             .ExpectedWounds, self);
                     if (enemy.GetMeleeWeapons().Count > 0
                         && MeleeApproachAgainst(enemyBinding).Margin <= 0f
@@ -1072,10 +1081,15 @@ namespace FDG.Ai.Tactician
             {
                 if (friendlyBinding.Reference.Equals(_activeUnit.Reference)) continue;
                 UnitData friendly = friendlyBinding.GetValue();
-                float d = Distance(enemyPos, Centroid(friendly));
+                Position friendlyPos = Centroid(friendly);
+                float d = Distance(enemyPos, friendlyPos);
                 float reach = Math.Max(1f, d - TacticalAnalysis.AdvanceDistance(enemy, _evaluator));
+                // #363 facet 3: sight-gated on the same terms as the numerator in Score, or the
+                // share compares a wall-discounted "us" against a see-through-walls "them" and
+                // every unit behind cover reads as the enemy's preferred target.
                 float value = ValueFraction(CombatMath.EstimateShooting(_evaluator, enemyBinding,
-                        friendlyBinding, new AttackContext(reach, AttackerMoved: true)).ExpectedWounds,
+                        friendlyBinding, new AttackContext(reach, AttackerMoved: true,
+                            SightFactor: ThreatSightFactor(enemyPos, friendlyPos))).ExpectedWounds,
                     friendly);
                 if (enemy.GetMeleeWeapons().Count > 0
                     && TacticalAnalysis.MeleeThreatReach(enemy, friendly, _evaluator) >= d - 1f)
@@ -1204,6 +1218,16 @@ namespace FDG.Ai.Tactician
         // (candidate x enemy) sight test of the plan.
         private List<ITerrain> TerrainSnapshot() =>
             _terrainSnapshot ??= _tableState.Terrain.Objects.ToList();
+
+        // #363 facet 3: how much of an INCOMING volley a cut lane actually stops. Unlike the
+        // offense term - where the shot would be taken from the endpoint being priced, so a
+        // blocked lane means no shot, full stop - every threat term prices what an enemy does on
+        // ITS next activation, and it moves before it shoots. So terrain between the two positions
+        // is a discount (TacticianWeights.BlockedThreatShare), never immunity: a hard zero would
+        // make wall-hugging read as invulnerability and teach the army to cower.
+        private float ThreatSightFactor(Position shooter, Position target) =>
+            LineOfSightUtilities.HasLineOfSight(shooter, target, TerrainSnapshot())
+                ? 1f : TacticianWeights.BlockedThreatShare;
 
         private static float ValueFraction(float expectedWounds, UnitData target)
         {

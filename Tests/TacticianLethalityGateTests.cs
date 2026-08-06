@@ -8,20 +8,23 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #365 Tier 2 - the lethality gate. Tier 1 is a habit that shapes HOW a unit travels; this is
-    // the only term allowed to decide WHETHER it goes at all:
+    // #365 Tier 2 (slice 2c) - the lethality VETO. Tier 1 is a habit that shapes HOW a unit
+    // travels; this is the only term allowed to decide WHETHER it goes at all:
     //
-    //     penalty = MoveLethality x P(effectively lost) x (what this unit would still have done)
+    //     penalty = MoveLethality x P(destroyed outright) x (what this unit would still have done)
     //
-    // Pricing the FORFEITED CONTRIBUTION rather than the death is the whole design (Chris). A gate
-    // keyed on DANGER peaks exactly when death is certain, so a doomed unit sees a huge penalty
-    // everywhere, picks the least-bad option and freezes in cover contributing nothing. Priced as
-    // forfeiture, a unit that dies whatever it does sees a near-CONSTANT, the term cancels in the
-    // argmax, and the goal wins - case 12 below.
+    // P is a wipeout-only ramp: identically ZERO until the ranked threat estimate nears the unit's
+    // remaining wounds. The shape is the hard-won part. Two continuous formulations (a morale-knee
+    // curve over three different aggregations, W 0.4-1.7) lost 4-14pp on the 640-game pool,
+    // monotonically in how much threat they perceived - because in an argmax over one unit's
+    // candidates, f(threat) x candidate-constant is just a second retaliation term, whatever the
+    // curve. "Goals dominate except at certain death" (Chris) is expressible additively only as a
+    // term that is zero almost everywhere. The morale knee and quality scaling died with that
+    // finding (pin 9 cut, see the #365 ledger); pricing the FORFEITED CONTRIBUTION survived it,
+    // and is still what makes the doomed remnant rush instead of freeze (case 12).
     //
-    // Every case scores the same scene twice, once with the gate switched off, and asserts the
-    // decision FLIPS (or pointedly does not). Asserting the outcome alone would let retaliation or
-    // the objective terms pass the pin on their own and leave the gate untested.
+    // Cases that isolate the veto score the same scene with the gate on and off - asserting the
+    // outcome alone would let retaliation pass the pin on its own and leave the veto untested.
     // Mutates process-global statics, so it must not run alongside anything that scores.
     [TestFixture, NonParallelizable]
     public class TacticianLethalityGateTests
@@ -88,8 +91,10 @@ namespace FDG.Tests
                 $"rush={rush:F4} hold={hold:F4}");
         }
 
-        // --- Case 8: the knee is about STRENGTH, not raw casualties - it is the engine's own
-        // mechanic (a unit at half strength or less is the one a failed morale test can finish). ---
+        // --- Case 8: same volley, and only the unit already pushed past half strength balks.
+        // Under slice 2b this was the morale knee; under the veto it survives for a plainer
+        // reason - five remaining wounds are twice as easy to WIPE as ten, so wipeout proximity
+        // tracks being worn. The behaviour Chris asked for outlived the mechanism built for it. ---
 
         [Test]
         public void Score_SameVolley_OnlyTheUnitPushedPastHalfStrength_Balks()
@@ -99,76 +104,68 @@ namespace FDG.Tests
 
             Assert.That(worn, Is.LessThan(fresh),
                 $"the same marker, the same gunline, and the only difference is that one squad has " +
-                $"already lost half its models: that one must lose its nerve at a strictly smaller " +
-                $"volley. balks at {worn} guns worn vs {fresh} guns fresh");
+                $"already lost half its models: what wipes 5 wounds is far less than what wipes 10, " +
+                $"so the worn squad must lose its nerve at a strictly smaller volley. " +
+                $"balks at {worn} guns worn vs {fresh} guns fresh");
 
-            // At a volley between the two thresholds the claim is a single decision, not a trend.
             (float freshRush, float freshHold) = RushScene(worn, ourCasualties: 0);
             (float wornRush, float wornHold) = RushScene(worn, ourCasualties: 5);
             TacticianWeights.MoveLethality = 0f;
             (float ungatedRush, float ungatedHold) = RushScene(worn, ourCasualties: 5);
 
             Assert.That(ungatedRush, Is.GreaterThan(ungatedHold),
-                $"scene check: with the gate off the worn squad takes the marker too, so the flip " +
-                $"below belongs to the gate and not to retaliation. " +
+                $"scene check: with the veto off the worn squad takes the marker too, so the flip " +
+                $"below belongs to the veto and not to retaliation. " +
                 $"rush={ungatedRush:F4} hold={ungatedHold:F4}");
             Assert.That(freshRush, Is.GreaterThan(freshHold),
-                $"{worn} guns leaves a full-strength squad above half strength - no knee, no reason " +
-                $"to stop. rush={freshRush:F4} hold={freshHold:F4}");
+                $"{worn} guns is nowhere near wiping a full-strength squad - the veto must be " +
+                $"exactly silent. rush={freshRush:F4} hold={freshHold:F4}");
             Assert.That(wornHold, Is.GreaterThan(wornRush),
-                $"the identical volley onto the halved squad crosses the line where a failed test " +
-                $"stops being a nuisance. rush={wornRush:F4} hold={wornHold:F4}");
+                $"the identical volley wipes the halved squad outright. " +
+                $"rush={wornRush:F4} hold={wornHold:F4}");
         }
 
-        // --- Case 9: Chris - "that could also scale with the unit quality, because a 3+ unit has
-        // less to worry about than a 5+ one." Fresh squads, because quality only bites AT the knee:
-        // a unit already deep past it is near-certain to break whatever its Quality. ---
-
-        [Test]
-        public void Score_AtTheKnee_TheWorseQualityUnitBalksFirst()
-        {
-            int veteran = BalkThreshold(casualties: 0, quality: 3);
-            int militia = BalkThreshold(casualties: 0, quality: 5);
-
-            Assert.That(militia, Is.LessThan(veteran),
-                $"same squad, same marker, same guns - a 5+ unit fails the morale test that follows " +
-                $"about twice as often as a 3+ one, so it must balk at a strictly smaller volley. " +
-                $"5+ balks at {militia} guns, 3+ at {veteran}");
-
-            (float veteranRush, float veteranHold) = RushScene(militia, quality: 3);
-            (float militiaRush, float militiaHold) = RushScene(militia, quality: 5);
-
-            Assert.That(veteranRush, Is.GreaterThan(veteranHold),
-                $"the 3+ squad shrugs that test off often enough to be worth the marker. " +
-                $"rush={veteranRush:F4} hold={veteranHold:F4}");
-            Assert.That(militiaHold, Is.GreaterThan(militiaRush),
-                $"the 5+ squad does not. rush={militiaRush:F4} hold={militiaHold:F4}");
-        }
+        // --- Case 9 (CUT with slice 2c, recorded in the #365 ledger): quality scaling at the
+        // morale knee. A 3+ vs 5+ distinction only exists BELOW wipeout, and sub-wipeout pricing
+        // is precisely what the pool forbade at every weight that let this pin resolve (the pin
+        // demanded W >= 1.0; no aggregation was pool-neutral at 1.0). If quality-aware caution
+        // ever returns, its home is retaliation's response curve, not a goal-overriding term. ---
 
         // --- Case 10: round decay, and it must be EMERGENT from the horizon, not its own scalar.
-        // Deliberately an objective-free scene: with no marker in play the forfeited contribution is
-        // the attrition half alone, which is the half that decays (a contesting unit's objective
-        // half correctly does NOT, and would mask the contrast). ---
+        // Objective-free scene, so the forfeiture is the attrition half alone - the half that
+        // decays. Asserted on the veto's PRICE rather than as a behavioural flip: in an
+        // objective-free scene, any gunline big enough to wipe the unit is priced so heavily by
+        // retaliation that the ungated argmax already balks, so there is no window where "ungated
+        // goes AND the veto fires" - recorded in the ledger, not hidden. The price form pins the
+        // same mechanism exactly: a round-4 death of an off-objective unit forfeits NOTHING
+        // (NUMBER_OF_ROUNDS = 4, every unit dies at the end anyway), so the veto must vanish
+        // bit-for-bit, not merely shrink. ---
 
         [Test]
-        public void Score_LethalTrade_BalksInRoundOne_TakesItInTheFinalRound()
+        public void Score_LethalTrade_VetoPricesItInRoundOne_AndIsFreeInTheFinalRound()
         {
-            (float earlyAdvance, float earlyHold) = TradeScene(round: 1, enemyModels: 20);
-            (float lateAdvance, float lateHold) = TradeScene(round: 4, enemyModels: 20);
-            TacticianWeights.MoveLethality = 0f;
-            (float ungatedAdvance, float ungatedHold) = TradeScene(round: 1, enemyModels: 20);
+            float earlyCost = VetoCostOnTheAdvance(round: 1);
+            float lateCost = VetoCostOnTheAdvance(round: 4);
 
-            Assert.That(ungatedAdvance, Is.GreaterThan(ungatedHold),
-                $"scene check: ungated this trade looks good in every round, so the round-1 refusal " +
-                $"below is the gate's doing. advance={ungatedAdvance:F4} hold={ungatedHold:F4}");
-            Assert.That(earlyHold, Is.GreaterThan(earlyAdvance),
-                $"in round 1 a unit that dies for one volley forfeits three more rounds of work. " +
-                $"advance={earlyAdvance:F4} hold={earlyHold:F4}");
-            Assert.That(lateAdvance, Is.GreaterThan(lateHold),
-                $"in the final round it forfeits almost nothing - every unit dies when the game ends " +
-                $"anyway (NUMBER_OF_ROUNDS = 4), so the same trade is now free. Round decay falls out " +
-                $"of 'expected remaining contribution' being horizon-limited; it is never its own " +
-                $"weight. advance={lateAdvance:F4} hold={lateHold:F4}");
+            Assert.That(earlyCost, Is.GreaterThan(0.15f),
+                $"in round 1 a unit that dies for one volley forfeits three more rounds of work, " +
+                $"and the veto must charge for them. cost={earlyCost:F4}");
+            Assert.That(lateCost, Is.EqualTo(0f).Within(1e-6f),
+                $"in the final round an off-objective death forfeits nothing, so the veto must be " +
+                $"EXACTLY zero - the round scaling lives in the forfeiture, never in a weight. " +
+                $"cost={lateCost:F4}");
+        }
+
+        /// <summary>The veto's price on the lethal advance, isolated by differencing gate-on and
+        /// gate-off scores of the same scene.</summary>
+        private float VetoCostOnTheAdvance(int round)
+        {
+            float shipped = ShippedLethality;
+            TacticianWeights.MoveLethality = 0f;
+            (float offAdvance, _) = TradeScene(round);
+            TacticianWeights.MoveLethality = shipped;
+            (float onAdvance, _) = TradeScene(round);
+            return offAdvance - onAdvance;
         }
 
         // --- Case 12: the one Chris was most worried about. "You've got 2 models left of 10 and
@@ -187,6 +184,47 @@ namespace FDG.Tests
                 $"the unit in cover, contributing nothing, when it could have contested a marker and " +
                 $"soaked a volley that would otherwise hit something that matters. " +
                 $"rush={rush:F4} hold={hold:F4}");
+        }
+
+        // --- Case 19: the veto's threat estimate must see CONVERGENT fire without believing in
+        // FOCUSED fire. Ranked decay: worst enemy at full weight, next at half, next at a quarter.
+        // Each assertion kills one of the aggregations that was tried or considered - and they are
+        // only observable near the wipeout line, because the veto is zero everywhere else. ---
+
+        [Test]
+        public void Score_VetoThreatEstimate_SeesConvergenceButNotMassedFocus()
+        {
+            // 28-model gunlines put ~7 expected wounds on the 10-wound squad - below the ramp
+            // alone, past wipeout when two converge under decay (7 + 3.5 = 10.5).
+            float oneBig = VetoCostOnTheRush(gunlines: 1, modelsEach: 28);
+            float twoBig = VetoCostOnTheRush(gunlines: 2, modelsEach: 28);
+            // 12-model gunlines put ~3 wounds each: a plain SUM of five reads 15 - "wiped out" -
+            // while decay reads 5.8 and correctly stays silent.
+            float fiveSmall = VetoCostOnTheRush(gunlines: 5, modelsEach: 12);
+
+            Assert.That(oneBig, Is.EqualTo(0f).Within(1e-6f),
+                $"one gunline that cannot wipe the squad is not a veto matter at all - the term is " +
+                $"zero, not small. cost={oneBig:F4}");
+            Assert.That(twoBig, Is.GreaterThan(0.1f),
+                $"two of them CONVERGING is a wipeout, and the veto must see it - a MAX over " +
+                $"enemies reads the pair as 7 wounds and walks the unit into the crossfire. " +
+                $"one={oneBig:F4} two={twoBig:F4}");
+            Assert.That(fiveSmall, Is.EqualTo(0f).Within(1e-6f),
+                $"five small squads whose wounds SUM past wipeout must not veto - decay reads 5.8 " +
+                $"of 8 needed. Believing every gun on the table fires at whoever moves is exactly " +
+                $"the belief that cost -9.8pp on the pool. cost={fiveSmall:F4}");
+        }
+
+        /// <summary>The veto's price on the rush candidate, isolated by differencing gate-on and
+        /// gate-off scores of the same scene.</summary>
+        private float VetoCostOnTheRush(int gunlines, int modelsEach)
+        {
+            float shipped = ShippedLethality;
+            TacticianWeights.MoveLethality = 0f;
+            (float offRush, _) = CrossfireScene(gunlines, modelsEach);
+            TacticianWeights.MoveLethality = shipped;
+            (float onRush, _) = CrossfireScene(gunlines, modelsEach);
+            return offRush - onRush;
         }
 
         // --- Scenes. ---
@@ -257,28 +295,46 @@ namespace FDG.Tests
 
         // --- Calibration harness: prints the bracket MoveLethality has to sit inside. ---
 
+        /// <summary>
+        /// The same marker rush, but the fire comes from N separate gunlines of EQUAL size spread
+        /// on an arc at roughly equal range, so every one of them bears on the endpoint and none is
+        /// nearer than another. Each added gunline is genuinely more incoming, which is what makes
+        /// "does it add up, and does it stop adding up" a meaningful question to ask.
+        /// </summary>
+        private (float Rush, float Hold) CrossfireScene(int gunlines, int modelsEach)
+        {
+            SetUp();
+            SetRound(1);
+            DataBinding<UnitData> us = Squad(_us, Rifle(), new Position(36f, 6f), models: 10);
+            Position[] arc =
+            {
+                new Position(36f, 40f), new Position(22f, 36f), new Position(50f, 36f),
+                new Position(14f, 28f), new Position(58f, 28f),
+            };
+            for (int i = 0; i < gunlines && i < arc.Length; i++)
+                Squad(_them, Rifle(), arc[i], models: modelsEach);
+            _store.Create(new ObjectiveData(new Position(36f, 18f), _store));
+
+            var planner = new TacticianPlanner(_tableState, _evaluator);
+            planner.BeginActivation(us);
+            return (planner.Score(Endpoint(new Position(36f, 17f))),
+                    planner.Score(Endpoint(new Position(36f, 6f))));
+        }
+
         [Test, Explicit("calibration harness - prints the bracket, asserts nothing")]
         public void Calibrate()
         {
             float shipped = ShippedLethality;
             TestContext.Out.WriteLine("smallest gunline (models) that makes the unit refuse the marker:");
-            foreach (float w in new[] { 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f })
+            foreach (float w in new[] { 0.4f, 0.5f, 0.6f, 0.8f, 1.0f, 1.5f })
             {
                 TacticianWeights.MoveLethality = w;
                 TestContext.Out.WriteLine($"  W={w:F1}  freshQ4={BalkThreshold(0, 4),4} " +
-                    $"wornQ4={BalkThreshold(5, 4),4} freshQ3={BalkThreshold(0, 3),4} " +
-                    $"freshQ5={BalkThreshold(0, 5),4}");
+                    $"wornQ4={BalkThreshold(5, 4),4}");
             }
             TacticianWeights.MoveLethality = shipped;
-            foreach (int enemies in new[] { 10, 20, 30, 40 })
-            {
-                foreach (int round in new[] { 1, 4 })
-                {
-                    (float a, float h) = TradeScene(round, enemies);
-                    TestContext.Out.WriteLine($"  trade {enemies,2} guns r{round}: " +
-                        $"margin={a - h:+0.0000;-0.0000} -> {(a > h ? "GOES" : "BALKS")}");
-                }
-            }
+            foreach (int round in new[] { 1, 2, 3, 4 })
+                TestContext.Out.WriteLine($"  trade veto cost r{round}: {VetoCostOnTheAdvance(round):F4}");
             (float dRush, float dHold) = SurroundedRemnantScene();
             TestContext.Out.WriteLine($"  doomed remnant: margin={dRush - dHold:+0.0000;-0.0000} " +
                 $"-> {(dRush > dHold ? "RUSHES" : "FREEZES")}");
@@ -313,10 +369,18 @@ namespace FDG.Tests
         private DataBinding<UnitData> Squad(PlayerID owner, Weapon weapon, Position centre,
             int models, int quality = 4)
         {
+            // Laid out SYMMETRICALLY about `centre`, so the unit's centroid IS `centre` whatever the
+            // model count. A one-directional block walks the centroid away as the squad grows - at
+            // 60 models it drifted ~5", which put a gunline out of range of the very endpoint the
+            // scene existed to threaten, and the scene silently scored nothing at all.
+            const int cols = 5;
+            int rows = (models + cols - 1) / cols;
             var bindings = new List<DataBinding<ModelData>>(models);
             for (int i = 0; i < models; i++)
             {
-                var at = new Position(centre.x - 2.2f + (i % 5) * 1.1f, centre.z - 1.1f + (i / 5) * 1.1f);
+                var at = new Position(
+                    centre.x + ((i % cols) - (cols - 1) / 2f) * 1.1f,
+                    centre.z + ((i / cols) - (rows - 1) / 2f) * 1.1f);
                 bindings.Add(_store.GetDataBinding<ModelData>(
                     _store.Create(new ModelData(0.5f, new List<Weapon> { weapon }, at, _store))));
             }

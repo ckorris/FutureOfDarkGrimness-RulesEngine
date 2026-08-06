@@ -2,7 +2,6 @@ using FDG.Data;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
-using FDG.Rules.Tokens;
 using FDG.StageResolution.Requests;
 using FDG.Stages;
 using FDG.Utilities;
@@ -46,6 +45,7 @@ namespace FDG.Ai.Tactician
         // at their current positions) - the one-ply reply the retaliation term prices against.
         // Endpoint-independent, computed lazily per activation.
         private readonly Dictionary<DataReference, float> _enemyAltTarget = new();
+
         // Where each enemy will plausibly stand after its next activation (one rush toward its
         // nearest attractive goal) + its longest effective weapon range against us - both feed
         // the arriving-pressure term. Endpoint-independent, computed lazily per activation.
@@ -80,6 +80,10 @@ namespace FDG.Ai.Tactician
         // INDEPENDENT by design - across candidates the gate varies only through P(lost), which is
         // what makes a doomed unit's penalty a near-constant that cancels in the argmax.
         private float? _forfeitedContribution;
+
+        // #365 Tier 2: per-candidate scratch for the ranked threat sum. Score is not reentrant, so
+        // one buffer cleared per call beats an allocation per candidate.
+        private readonly List<float> _threatRanking = new();
 
         /// <summary>The unit whose activation is being planned (null between activations).</summary>
         public DataBinding<UnitData>? ActiveUnit => _activeUnit;
@@ -541,15 +545,11 @@ namespace FDG.Ai.Tactician
             float shootingTotal = 0f;
             float shootingBlocked = 0f;
             float meleeReaching = 0f;
-            // #365 Tier 2 (the lethality gate): RAW expected wounds landing on this endpoint,
-            // SUMMED over enemies - every one of them activates, so a unit standing in three
-            // firing lanes is in three times the danger. Deliberately NOT retaliation's Math.Max
-            // (which prices the worst single enemy) and deliberately NOT ValueFraction (which
-            // clamps at min(1, wounds/remaining) and so saturates exactly where a gate needs to
-            // tell 1.2x lethal from 3x lethal apart). Split by KIND because the rules treat them
-            // differently at the half-strength line - see ProbabilityLost.
-            float killWoundsShoot = 0f;
-            float killWoundsMelee = 0f;
+            // #365 Tier 2 (the lethality gate): RAW expected wounds that can reach this endpoint,
+            // collected per enemy and then combined with DIMINISHING RETURNS by rank - see
+            // RankedThreat. Raw, not ValueFraction, which clamps at min(1, wounds/remaining) and so
+            // saturates exactly where a gate needs to tell 1.2x lethal from 3x lethal apart.
+            _threatRanking.Clear();
             foreach (DataBinding<UnitData> enemyBinding in EnemyBindings(self.PlayerID))
             {
                 UnitData enemy = enemyBinding.GetValue();
@@ -701,16 +701,16 @@ namespace FDG.Ai.Tactician
                         incomingValue / (incomingValue + alt));
                     retaliation = Math.Max(retaliation, incomingValue * share);
 
-                    // #365 Tier 2. Same one-ply share (they may well shoot someone else), applied
-                    // to raw wounds. Per enemy it is max(shoot, melee) - one activation does one or
-                    // the other - but the accumulation across enemies is a SUM. Cover is discounted
-                    // here, never zeroed: optimism about a wall is cheap in the habit and fatal in
-                    // the gate. No engaged-target exemption either - the unit we chose to fight can
-                    // kill us just as dead, and chosen exposure is still exposure.
+                    // #365 Tier 2. Cover is discounted here, never zeroed: optimism about a wall is
+                    // cheap in the Tier 1 habit and fatal in the gate. No engaged-target exemption
+                    // either - the unit we chose to fight can kill us just as dead, and chosen
+                    // exposure is still exposure.
                     float shootWounds = incoming.ExpectedWounds
                         * (hasLane ? 1f : TacticianWeights.LethalityBlockedDiscount);
-                    if (meleeWounds > shootWounds) killWoundsMelee += meleeWounds * share;
-                    else killWoundsShoot += shootWounds * share;
+                    // One entry per enemy that can reach us - max(shoot, melee), because one
+                    // activation does one or the other. What they add up to is decided by rank
+                    // afterwards, not here.
+                    _threatRanking.Add(Math.Max(shootWounds, meleeWounds));
                 }
                 // Arriving pressure (#191 idea 2): an enemy too far to answer THIS round prices
                 // nothing above, but one projected rush can put the endpoint inside its threat
@@ -786,7 +786,7 @@ namespace FDG.Ai.Tactician
             float bankedByThisMove = TacticianWeights.MoveDamage * offense
                                    + TacticianWeights.MoveScreen * screenValue;
             float lethality = TacticianWeights.MoveLethality
-                * ProbabilityLost(self, killWoundsShoot, killWoundsMelee)
+                * ProbabilityLost(self, RankedThreat())
                 * Math.Max(0f, ForfeitedContribution() - bankedByThisMove);
 
             float substantive =
@@ -1327,65 +1327,61 @@ namespace FDG.Ai.Tactician
         // #365: every enemy's melee threat to us, reachable or not - the denominator the habit's
         // melee half is a share OF. Endpoint-independent, so one pass per activation serves every
         // candidate; the per-candidate question ("can it reach HERE") is asked in Score.
-        // #365 Tier 2. How much of the half-strength band we treat as "close enough to count" -
-        // killWounds is an EXPECTATION, and a volley whose mean lands just short of the knee still
-        // crosses it a good share of the time. Smearing the threshold over a quarter of the unit's
-        // health is what keeps the gate CONTINUOUS: a boolean here would rebuild exactly the cliff
-        // that sank #363 facet 3, in the one term that is allowed to override a goal.
-        private const float KneeSmearFraction = 0.25f;
+        /// <summary>
+        /// #365 Tier 2: what the enemies that can reach this endpoint add up to, with DIMINISHING
+        /// RETURNS by rank - the worst at full weight, the next at LethalityFocusDecay, the one
+        /// after at its square, and so on.
+        ///
+        /// This replaced two aggregations that were each wrong in an opposite direction, both
+        /// measured on the 640-game pool: a plain SUM weighted by a guess at who the enemy would
+        /// choose to shoot (75.55% / 77.89% against 85.39% with the gate off - and it made the
+        /// term depend on how many units OUR side brought, and on predicting the opponent's target
+        /// choice, the class of guess this item rules out), and a plain MAX, which needs no guess
+        /// but cannot see convergent fire at all. Ranked decay needs no model of the opponent,
+        /// does not care how many units we own, lets real focus fire add up - and is BOUNDED,
+        /// converging to 1/(1 - decay) times the worst single threat. For a wipeout veto the
+        /// estimator matters doubly: overestimation means false vetoes, and false vetoes are the
+        /// veto's one failure mode.
+        /// </summary>
+        private float RankedThreat()
+        {
+            if (_threatRanking.Count == 0) return 0f;
+            _threatRanking.Sort(static (a, b) => b.CompareTo(a));
+            float total = 0f;
+            float weight = 1f;
+            foreach (float wounds in _threatRanking)
+            {
+                total += wounds * weight;
+                weight *= TacticianWeights.LethalityFocusDecay;
+            }
+            return total;
+        }
+
+        // #365 Tier 2: where the veto's ramp begins, as a fraction of the unit's remaining wounds.
+        // Below this the term is IDENTICALLY zero - not small, zero - which is the whole design:
+        // measured three ways on the 640-game pool, any curve that engages at sub-lethal threat
+        // becomes a board-wide second retaliation term and loses 4-14pp (see the #365 ledger,
+        // 2026-08-06). The ramp from here to wipeout keeps the term continuous in the wound
+        // estimate; a step would put a cliff in the one term allowed to override goals.
+        private const float VetoRampStartFraction = 0.8f;
 
         /// <summary>
-        /// #365 Tier 2: P(this unit is effectively lost) if the endpoint eats <paramref name="shootWounds"/>
-        /// of shooting and <paramref name="meleeWounds"/> of melee. Piecewise linear and continuous
-        /// in total wounds - flat zero below the knee (so "lose 2 of 10 taking an objective" is
-        /// exactly free, Chris's exchange rate), rising to the morale price as the half-strength
-        /// line is crossed, then on to 1 at outright wipeout.
-        ///
-        /// The two kinds are tracked apart because the RULES treat them apart, verified in the
-        /// engine rather than assumed. A wound-driven morale failure from SHOOTING makes a unit
-        /// Shaken and never Routs it ("Rout is a melee-only result, GF v3.5.1" -
-        /// ResolveRangedMoraleStage); losing a MELEE at half strength Routs it outright
-        /// (AssignMeleeMoralePenaltyStage). So a gunline can only suppress a unit by breaking it,
-        /// and only swords can delete it - pricing a gunline as though it could delete would have
-        /// the bot flinch away from fire it should walk through.
+        /// #365 Tier 2, slice 2c: P(this unit is destroyed outright) if the endpoint eats
+        /// <paramref name="killWounds"/>. A wipeout-only VETO: zero below the ramp, 1 at remaining
+        /// wounds. Deliberately NOTHING else - no morale knee, no quality scaling, no
+        /// shooting-vs-melee split. Those were sub-wipeout discrimination, and the pool showed
+        /// (monotonically, across three aggregations) that ANY sub-wipeout pricing here repriced
+        /// the whole game; their pins (8, 9) were cut with the ledger's sign-off, not dropped
+        /// silently. In an argmax over one unit's candidates, a term of the form f(threat) x
+        /// candidate-constant is just another retaliation term - the only additive shape that can
+        /// mean "goals dominate except at certain death" is one that is zero almost everywhere.
         /// </summary>
-        private static float ProbabilityLost(UnitData self, float shootWounds, float meleeWounds)
+        private static float ProbabilityLost(UnitData self, float killWounds)
         {
-            float killWounds = shootWounds + meleeWounds;
-            if (killWounds <= 0f) return 0f;
-
             float woundsToWipe = Math.Max(0.01f, self.RemainingWounds);
-            if (killWounds >= woundsToWipe) return 1f;
-
-            // A Shaken unit auto-fails every morale test - no die is rolled (MoraleUtilities), so
-            // for it the knee is a certainty rather than a gamble.
-            float pMoraleFail = self.Tokens.HasToken(TokenType.Shaken)
-                ? 1f
-                : Math.Clamp((self.Quality - 1) / 6f, 0f, 1f);
-            // What the knee actually COSTS: deletion for the melee share, suppression for the
-            // shooting share. Blended by which kind is doing the wounding.
-            float meleeFraction = meleeWounds / killWounds;
-            float kneeSeverity = pMoraleFail * (meleeFraction
-                + (1f - meleeFraction) * TacticianWeights.LethalityShakenSeverity);
-
-            float smear = Math.Max(0.01f, KneeSmearFraction * self.MaxWounds);
-            // Already at half strength or less: the knee is behind us, so the smear sits at the
-            // bottom instead - any real wounding puts it straight into morale-test territory.
-            float knee = Math.Min(Math.Max(self.RemainingWounds - self.MaxWounds / 2f, smear),
-                woundsToWipe);
-            float kneeStart = Math.Max(0f, knee - smear);
-
-            if (killWounds <= kneeStart) return 0f;
-            // On a unit at a quarter strength or less the knee has slid all the way onto wipeout -
-            // there is no "break it first" band left, it just dies. The ramp below the knee must
-            // then climb to 1 rather than to the morale price, or P would jump at that point, and a
-            // cliff is the one thing this curve exists to avoid.
-            float span = woundsToWipe - knee;
-            float atKnee = span <= 0f ? 1f : kneeSeverity;
-            if (killWounds < knee)
-                return atKnee * (killWounds - kneeStart) / (knee - kneeStart);
-            if (span <= 0f) return 1f;
-            return kneeSeverity + (1f - kneeSeverity) * (killWounds - knee) / span;
+            float rampStart = VetoRampStartFraction * woundsToWipe;
+            if (killWounds <= rampStart) return 0f;
+            return Math.Min(1f, (killWounds - rampStart) / (woundsToWipe - rampStart));
         }
 
         /// <summary>

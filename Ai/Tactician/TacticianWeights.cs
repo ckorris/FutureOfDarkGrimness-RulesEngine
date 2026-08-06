@@ -122,73 +122,55 @@ namespace FDG.Ai.Tactician
         // we want and comes free from ObjectiveApproach's normalisation.
         public static float MoveCoverHabit = 0.05f;
 
-        // #365 Tier 2, the lethality gate - the ONLY term allowed to interrupt a goal:
+        // #365 Tier 2 (slice 2c), the lethality VETO - the only term allowed to interrupt a goal:
         //
-        //     penalty = MoveLethality x P(effectively lost) x (what this unit would still have done)
+        //     penalty = MoveLethality x P(destroyed outright) x (what this unit would still have done)
         //
-        // Pricing the FORFEITED CONTRIBUTION rather than the death is what makes a doomed unit
-        // behave (Chris): if it dies whatever it does, P is ~1 on every candidate, the term is a
-        // near-constant, it cancels in the argmax and the goal wins - the 2-of-10 remnant rushes
-        // the objective and soaks a volley instead of freezing in cover. A gate keyed on DANGER
-        // instead peaks exactly when death is certain and produces the freeze.
+        // P is a wipeout-only ramp (TacticianPlanner.ProbabilityLost): identically ZERO until the
+        // ranked threat estimate nears the unit's remaining wounds, 1 at wipeout. This is the third
+        // formulation, and the shape - not the weight - is the lesson of the first two: any curve
+        // that engages at sub-lethal threat is, in the argmax, just a second retaliation term with
+        // a knee (f(threat) x candidate-constant), and the pool punished every such curve
+        // monotonically in how much threat it perceived (-4 to -14pp across three aggregations and
+        // W 0.4-1.7; #365 ledger 2026-08-06). A veto that is zero almost everywhere is the only
+        // additive shape that can mean "goals dominate except at certain death" (Chris).
         //
-        // Calibrated by measurement, not taste (TacticianLethalityGateTests.Calibrate prints it).
-        // The harness sweeps this weight and reports, for each unit, the smallest gunline that
-        // makes it refuse an objective it could otherwise take:
+        // Pricing the FORFEITED CONTRIBUTION rather than the danger is still what makes a doomed
+        // unit behave: P ~ 1 on every candidate makes the term a constant, it cancels, and the
+        // 2-of-10 remnant rushes the marker instead of freezing (pin 12). The morale knee and
+        // quality scaling were CUT with this reshape (pins 8/9, recorded in the ledger) - they are
+        // sub-wipeout discrimination, which is exactly what the pool forbids. If the knee ever
+        // returns, its home is retaliation's response curve, never a goal-overriding term.
         //
-        //   W      fresh Q4   worn Q4   fresh Q3   fresh Q5
-        //   0.8      30         20        30         30      <- pin 9 cannot resolve: a 5+ unit and
-        //   0.9      28         18        28         28         a 3+ one balk at the same volley
-        //   1.0      28         18        28         26      <- floor: quality starts to decide
-        //   1.5      22         14        24         22
-        //   2.0      20         12        22         18
-        //   3.0      18         10        20         16      <- ceiling: a half-strength unit now
-        //   4.0      16          8        18         14         refuses to move for half of what
-        //   6.0      14          6        16         14         it has left - Chris's freeze
+        // Calibrated by measurement (TacticianLethalityGateTests.Calibrate prints it): smallest
+        // gunline, in models, that makes a 10-model rifle squad refuse a marker it could take -
         //
-        // Floor 1.0 (below it the morale odds lose to the raw value difference and pin 9 reads
-        // backwards: a 3+ unit is worth MORE, so it balks first, which is not the behaviour asked
-        // for). Ceiling 3.0 (at and above it an already-worn unit refuses a marker rather than risk
-        // half its remaining wounds - "a really weak unit shouldn't just freeze up and run for
-        // cover"). 1.7 is the geometric centre of that bracket, ~1.7x clear of both ends.
+        //   W      fresh (10 wounds)   worn to half (5 wounds)
+        //   0.4        never                never              <- pin 7 unsatisfiable
+        //   0.5         40                  never              <- exactly a full-wipe volley
+        //   0.8         38                   20                <- floor: pin 8's worn balk appears
+        //   1.0         36                   20
+        //   1.5         36                   18
         //
-        // The fresh-unit column flattens near 14 however hard this is pushed: below the knee P is
-        // identically zero, so the gate CANNOT make a healthy unit flinch at ordinary casualties at
-        // any weight. Chris's "lose 2 of 10 and take the objective" is a property of the curve's
-        // shape, not of this number.
-        //
-        // The bracket only EXISTS because the gate nets against value the move already banked (see
-        // TacticianPlanner). Without that, cheap chaff refused to tarpit a gunline and cheap bodies
-        // refused to screen from about 1.05 upward, while pin 9 needed 1.0 or more - one single
-        // admissible value, which is overfitting rather than calibration.
-        public static float MoveLethality = 1.7f;
+        // The thresholds barely move with W because the decision comes from P reaching 1, not from
+        // the weight - W only sets how DECISIVELY the veto overrides once it fires, which is the
+        // veto property working. 1.0 sits a margin above the 0.8 floor; there is no pin-driven
+        // ceiling, and the pool run is the ceiling's referee.
+        public static float MoveLethality = 1.0f;
 
-        // Cover is discounted HARD here, never zeroed. Being wrong about cover in the Tier 1 habit
-        // costs a slightly different equally-good route; being wrong about it in the gate gets the
-        // unit deleted. That asymmetry is why one scalar could never serve both tiers, and why
-        // #363's BlockedThreatShare felt arbitrary at 0.4 and like noise at 0.2.
+        // Cover is discounted here, never zeroed. Being wrong about cover in the Tier 1 habit
+        // costs a slightly different equally-good route; being wrong about it in the veto gets the
+        // unit deleted. That asymmetry is why one scalar could never serve both tiers.
         public static float LethalityBlockedDiscount = 0.8f;
 
-        // What crossing the half-strength line actually COSTS on the shooting side. Verified in the
-        // engine rather than assumed (#365 slice 2b): a wound-driven morale failure makes a unit
-        // SHAKEN and never Routs it - "Rout is a melee-only result, GF v3.5.1"
-        // (ResolveRangedMoraleStage vs AssignMeleeMoralePenaltyStage). So a gunline cannot delete a
-        // unit by breaking it, only suppress it.
-        //
-        // Suppression is nowhere near free, though (Chris: "it's still very, very bad to get
-        // shaken - you lose at least a quarter of the unit's lifetime potential instantly"), and
-        // the three costs are concrete:
-        //   - it burns an activation recovering: one of four, so a QUARTER of a unit's whole life;
-        //   - it counts toward NO objective while Shaken (TacticalAnalysis's eligibility gate) -
-        //     and objectives decide the winner, so for the objective half of a unit's contribution
-        //     being Shaken at the wrong moment is worth exactly as little as being dead;
-        //   - it auto-fails its next morale test (MoraleUtilities short-circuits, no die rolled),
-        //     which is what turns a later melee loss at half strength into a CERTAIN Rout.
-        // 0.6 is the blend of a total loss of the objective half against a ~quarter loss of the
-        // attrition half. Pricing those two halves separately is the more faithful model and is
-        // recorded as deferred in WorkItems/365 rather than folded in silently - it needs its own
-        // probability track and its own pins.
-        public static float LethalityShakenSeverity = 0.6f;
+        // How fast a threat's contribution decays by RANK (#365 Tier 2). The worst enemy able to
+        // reach an endpoint counts fully, the next at this fraction, the next at its square. Real
+        // convergent fire therefore adds up - three guns bearing on one spot is genuinely worse
+        // than one - but the series converges to 1/(1 - decay) = 2x the worst single threat, so the
+        // gate can never again conclude that the whole enemy army is focusing one squad. That is
+        // what a plain sum did, and it cost -9.8pp on the 640-game pool.
+        public static float LethalityFocusDecay = 0.5f;
+
 
         // --- Risk posture (#191 idea 3) -------------------------------------------------------------
         // ADDED 2026-07-26: the projected objective differential, round-scaled, tilts the risk

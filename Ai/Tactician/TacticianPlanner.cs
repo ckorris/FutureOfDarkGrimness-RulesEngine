@@ -71,6 +71,9 @@ namespace FDG.Ai.Tactician
         // #363: terrain snapshot for the offense term's sight-line test - the scorer must not
         // credit a volley the shoot stage will refuse (Blocking wall between endpoint and enemy).
         private List<ITerrain>? _terrainSnapshot;
+        // #365: total enemy melee threat to the active unit. Endpoint-independent (it asks how
+        // hard they hit, not from where), so it is an activation-level constant, not per candidate.
+        private float? _meleeThreatTotal;
 
         /// <summary>The unit whose activation is being planned (null between activations).</summary>
         public DataBinding<UnitData>? ActiveUnit => _activeUnit;
@@ -104,6 +107,7 @@ namespace FDG.Ai.Tactician
             _ignoresDifficultTerrain = null;
             _advanceLanes = null;
             _terrainSnapshot = null;
+            _meleeThreatTotal = null;
         }
 
         /// <summary>
@@ -434,11 +438,11 @@ namespace FDG.Ai.Tactician
                 UnitData enemy = enemyBinding.GetValue();
                 float d = Distance(here, Centroid(enemy));
                 float theirReach = Math.Max(1f, d - TacticalAnalysis.AdvanceDistance(enemy, _evaluator));
-                // #363 facet 3: same sight discount as Score's retaliation - a boat parked behind
-                // a building is not in the same danger as one parked in the open.
+                // #365: no sight discount on a THREAT (see MoveCoverHabit) - the shooter moves
+                // before it shoots, so a wall between us and where it stands right now is not
+                // protection, and a bail-out decision is exactly where optimism gets a boat killed.
                 incoming = Math.Max(incoming, CombatMath.EstimateShooting(_evaluator, enemyBinding,
-                    transport, new AttackContext(theirReach, AttackerMoved: true,
-                        SightFactor: ThreatSightFactor(Centroid(enemy), here))).ExpectedWounds);
+                    transport, new AttackContext(theirReach, AttackerMoved: true)).ExpectedWounds);
                 // #355: an impact-only enemy can still charge this transport.
                 if (ChargeContactRules.CanFightInMelee(enemy)
                     && TacticalAnalysis.MeleeThreatReach(enemy, transport.GetValue(), _evaluator) >= d - 1f)
@@ -520,11 +524,25 @@ namespace FDG.Ai.Tactician
             float retaliation = 0f;
             float approach = 0f;
             float projectedThreat = 0f;
+            // #365 Tier 1: two opposing signals, each normalised against its OWN kind of threat.
+            // Sharing a denominator was wrong (Chris): under a heavy melee threat that reaches every
+            // candidate alike, melee mass in the denominator diluted - and clamping at zero outright
+            // destroyed - the shooting-cover signal, so the unit stopped caring which side of the
+            // corridor it got shot from over a charge it could not avoid either way. Normalised
+            // apart, a melee threat that is equal everywhere is a constant and cancels in the argmax,
+            // which is exactly what an unavoidable threat should do.
+            float shootingTotal = 0f;
+            float shootingBlocked = 0f;
+            float meleeReaching = 0f;
             foreach (DataBinding<UnitData> enemyBinding in EnemyBindings(self.PlayerID))
             {
                 UnitData enemy = enemyBinding.GetValue();
                 Position enemyPos = Centroid(enemy);
                 float endDistance = Distance(end, enemyPos);
+                // One centroid-to-centroid sight test per (candidate x enemy), shared by the two
+                // things that need it: the offense term (a fact - can we shoot from here) and the
+                // #365 cover share (a habit - is this endpoint shadowed from that gun).
+                bool hasLane = LineOfSightUtilities.HasLineOfSight(end, enemyPos, TerrainSnapshot());
 
                 if (candidate.Intent == EMacroIntent.ChargeToContact
                     && candidate.ActionType == EActionType.Charge
@@ -548,12 +566,10 @@ namespace FDG.Ai.Tactician
                     // may be undervalued, while the phantom volley through a wall (the failure that
                     // walked units into wall shadows expecting a shot) can no longer be credited.
                     // Indirect weapons keep their value - the estimate exempts them per weapon.
-                    bool sightBlocked = !LineOfSightUtilities.HasLineOfSight(
-                        end, enemyPos, TerrainSnapshot());
                     AttackEstimate shot = CombatMath.EstimateShooting(_evaluator, _activeUnit, enemyBinding,
                         new AttackContext(Math.Max(1f, endDistance),
                             AttackerMoved: candidate.Intent != EMacroIntent.Hold,
-                            SightFactor: sightBlocked ? 0f : 1f));
+                            SightFactor: hasLane ? 1f : 0f));
                     offense = Math.Max(offense, ValueFraction(shot.ExpectedWounds, enemy));
                 }
 
@@ -610,21 +626,49 @@ namespace FDG.Ai.Tactician
                 }
 
                 // What the enemy could do to us at the endpoint next activation (their advance included).
-                // #363 facet 3: through the same terrain the offense term now respects - at the
-                // discounted threat factor, because this shooter gets to MOVE before it shoots.
+                // #365: priced THROUGH terrain. This shooter moves before it shoots, so a wall
+                // between the endpoint and where it stands right now is not protection - crediting
+                // it here is what made wall shadows read as safe (#363 facet 3, replaced).
                 float theirReach = Math.Max(1f, endDistance - TacticalAnalysis.AdvanceDistance(enemy, _evaluator));
                 AttackEstimate incoming = CombatMath.EstimateShooting(_evaluator, enemyBinding, _activeUnit,
-                    new AttackContext(theirReach, AttackerMoved: true,
-                        SightFactor: ThreatSightFactor(enemyPos, end)));
+                    new AttackContext(theirReach, AttackerMoved: true));
                 float incomingValue = ValueFraction(incoming.ExpectedWounds, self);
+
                 // Melee threat: if they can charge the endpoint (charge + 2" melee cylinder),
                 // count their melee margin too.
-                if (TacticalAnalysis.MeleeThreatReach(enemy, self, _evaluator) >= endDistance - 1f
-                    && enemy.GetMeleeWeapons().Count > 0)
+                float meleeThreat =
+                    TacticalAnalysis.MeleeThreatReach(enemy, self, _evaluator) >= endDistance - 1f
+                    && enemy.GetMeleeWeapons().Count > 0
+                        ? 0.5f * ValueFraction(CombatMath.EstimateMelee(
+                            _evaluator, enemyBinding, _activeUnit).AttackerAttack.ExpectedWounds, self)
+                        : 0f;
+
+                // #365 Tier 1, the wall-hugging reflex. Two coarse signals in one currency, both
+                // weighted by threat TO US (so a tank's AP4 Deadly(3) pair dominates when we are the
+                // tank, and ten little guys dominate when we are infantry - existence is not threat):
+                //
+                //   + shooting we are SHADOWED from   - a wall is worth something against bullets
+                //   - melee that can REACH us         - and nothing at all against swords
+                //
+                // The melee half is Chris's corridor: without it the habit would happily pick the
+                // covered side of a corridor and walk into a pack of swordsmen, because retaliation
+                // takes a MAX over enemies and so barely distinguishes "shot at" from "charged".
+                // Deliberately crude - reach, with no attempt to decide whether terrain makes the
+                // charge safe (that is #364, and over-fearing is the safe direction).
+                //
+                // Skipped for the engaged target (exposure to the unit we came to fight is CHOSEN,
+                // and retaliation already charges for it) and for an enemy we would happily charge -
+                // its melee is an opportunity, not a threat, the same exemption the projected-melee
+                // branch below makes for a staged charge.
+                if (!ReferenceEquals(candidate.TargetEnemy, enemy))
                 {
-                    incomingValue = Math.Max(incomingValue, 0.5f * ValueFraction(
-                        CombatMath.EstimateMelee(_evaluator, enemyBinding, _activeUnit).AttackerAttack.ExpectedWounds, self));
+                    bool wantThatFight = meleeThreat > 0f && MeleeApproachAgainst(enemyBinding).Margin > 0f;
+                    if (!wantThatFight) meleeReaching += meleeThreat;
+                    shootingTotal += incomingValue;
+                    if (!hasLane) shootingBlocked += incomingValue;
                 }
+
+                incomingValue = Math.Max(incomingValue, meleeThreat);
                 // One-ply reply (#191, replaces the 2026-07-11 per-sharer dilution): this enemy's
                 // volley lands on ONE target per activation, and it picks that target
                 // adversarially - so what we pay is our share of its best reply, not a headcount
@@ -652,11 +696,10 @@ namespace FDG.Ai.Tactician
                     float projReach = Math.Max(1f,
                         projDistance - TacticalAnalysis.AdvanceDistance(enemy, _evaluator));
                     float projValue = projReach > EnemyMaxRangeAgainstUs(enemyBinding) ? 0f
-                        // #363 facet 3: sighted from where the forecast puts them, not from where
-                        // they stand - the projection IS the position this term prices from.
+                        // #365: no sight gate - this is a forecast two moves out, where a boolean
+                        // about today's geometry is worth even less than it is for retaliation.
                         : ValueFraction(CombatMath.EstimateShooting(_evaluator, enemyBinding,
-                                _activeUnit, new AttackContext(projReach, AttackerMoved: true,
-                                    SightFactor: ThreatSightFactor(projected, end)))
+                                _activeUnit, new AttackContext(projReach, AttackerMoved: true))
                             .ExpectedWounds, self);
                     if (enemy.GetMeleeWeapons().Count > 0
                         && MeleeApproachAgainst(enemyBinding).Margin <= 0f
@@ -685,10 +728,20 @@ namespace FDG.Ai.Tactician
             float riskScale = 1f - TacticianWeights.PostureRetaliationRelief * posture;
             float objectiveScale = 1f + TacticianWeights.PostureObjectiveBoost * Math.Max(0f, posture);
 
+            // #365 Tier 1: (share of enemy GUNS we are shadowed from) - (share of enemy SWORDS that
+            // can reach us). Each in [0, 1], so the habit is in [-1, 1] and its magnitude is capped at
+            // MoveCoverHabit - which is what makes "the habit never outranks the goal" a property
+            // rather than a hope. Deliberately NOT posture- or risk-scaled: it is a habit, priced the
+            // same whether we are ahead or behind.
+            float meleeTotal = MeleeThreatTotal();
+            float coverShare = (shootingTotal > 0f ? shootingBlocked / shootingTotal : 0f)
+                             - (meleeTotal > 0f ? meleeReaching / meleeTotal : 0f);
+
             float substantive =
                    TacticianWeights.MoveDamage * offense
                  - riskScale * TacticianWeights.MoveRetaliation * retaliation
                  - riskScale * TacticianWeights.MoveProjectedThreat * projectedThreat
+                 + TacticianWeights.MoveCoverHabit * coverShare
                  + objectiveScale * urgency * TacticianWeights.MoveObjective * objectiveDelta
                  // A5-8: the gradient is deadline-scaled per objective INSIDE ObjectiveApproach.
                  + objectiveScale * TacticianWeights.MoveObjectiveApproach * objectiveApproach
@@ -1084,12 +1137,11 @@ namespace FDG.Ai.Tactician
                 Position friendlyPos = Centroid(friendly);
                 float d = Distance(enemyPos, friendlyPos);
                 float reach = Math.Max(1f, d - TacticalAnalysis.AdvanceDistance(enemy, _evaluator));
-                // #363 facet 3: sight-gated on the same terms as the numerator in Score, or the
-                // share compares a wall-discounted "us" against a see-through-walls "them" and
-                // every unit behind cover reads as the enemy's preferred target.
+                // #365: ungated, exactly like the numerator in Score - both sides of the share
+                // must use the same currency or a wall-discounted "us" gets compared against a
+                // see-through-walls "them".
                 float value = ValueFraction(CombatMath.EstimateShooting(_evaluator, enemyBinding,
-                        friendlyBinding, new AttackContext(reach, AttackerMoved: true,
-                            SightFactor: ThreatSightFactor(enemyPos, friendlyPos))).ExpectedWounds,
+                        friendlyBinding, new AttackContext(reach, AttackerMoved: true)).ExpectedWounds,
                     friendly);
                 if (enemy.GetMeleeWeapons().Count > 0
                     && TacticalAnalysis.MeleeThreatReach(enemy, friendly, _evaluator) >= d - 1f)
@@ -1219,15 +1271,23 @@ namespace FDG.Ai.Tactician
         private List<ITerrain> TerrainSnapshot() =>
             _terrainSnapshot ??= _tableState.Terrain.Objects.ToList();
 
-        // #363 facet 3: how much of an INCOMING volley a cut lane actually stops. Unlike the
-        // offense term - where the shot would be taken from the endpoint being priced, so a
-        // blocked lane means no shot, full stop - every threat term prices what an enemy does on
-        // ITS next activation, and it moves before it shoots. So terrain between the two positions
-        // is a discount (TacticianWeights.BlockedThreatShare), never immunity: a hard zero would
-        // make wall-hugging read as invulnerability and teach the army to cower.
-        private float ThreatSightFactor(Position shooter, Position target) =>
-            LineOfSightUtilities.HasLineOfSight(shooter, target, TerrainSnapshot())
-                ? 1f : TacticianWeights.BlockedThreatShare;
+        // #365: every enemy's melee threat to us, reachable or not - the denominator the habit's
+        // melee half is a share OF. Endpoint-independent, so one pass per activation serves every
+        // candidate; the per-candidate question ("can it reach HERE") is asked in Score.
+        private float MeleeThreatTotal()
+        {
+            if (_meleeThreatTotal.HasValue) return _meleeThreatTotal.Value;
+            UnitData self = _activeUnit!.GetValue();
+            float total = 0f;
+            foreach (DataBinding<UnitData> enemyBinding in EnemyBindings(self.PlayerID))
+            {
+                if (enemyBinding.GetValue().GetMeleeWeapons().Count == 0) continue;
+                total += 0.5f * ValueFraction(CombatMath.EstimateMelee(
+                    _evaluator, enemyBinding, _activeUnit).AttackerAttack.ExpectedWounds, self);
+            }
+            _meleeThreatTotal = total;
+            return total;
+        }
 
         private static float ValueFraction(float expectedWounds, UnitData target)
         {

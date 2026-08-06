@@ -17,10 +17,13 @@ namespace FDG.Tests
     // sat 5" to the side). These tests pin the three mechanisms of the fix: (1) AttackContext's
     // SightFactor scales LoS-bound weapons in the estimate - 0 silences them outright (Indirect
     // exempt, per weapon); (2) MacroActionGenerator's EngageAtRange goals rotate around the target
-    // to a clear lane when the straight-line band point is blocked; (3) facet 3, the mirror image:
-    // INCOMING fire respects the same walls, discounted rather than silenced because the shooter
-    // moves before it shoots - so cover is worth something without being worth everything. Plus
-    // the headline behavior: the planned move ends where the unit can actually fire.
+    // to a clear lane when the straight-line band point is blocked. Plus the headline behavior:
+    // the planned move ends where the unit can actually fire.
+    //
+    // Both mechanisms are OFFENSE-side, and that is the half of #363 that survived. Offense is a
+    // FACT - the shot would be taken from the endpoint being priced, right now, so exact LoS is the
+    // correct math and a cut lane is a hard zero. Facet 3 tried to mirror this onto incoming fire,
+    // which is a FORECAST, and #365 replaced it: see TacticianCoverHabitTests.
     //
     // The shared scene: 5 rifles (24") at (24,6), 5 enemy rifles at (24,30) - exactly max range -
     // with a small Blocking wall (x 22..26, z 17..18) cutting the straight lane. A clear lane
@@ -186,7 +189,7 @@ namespace FDG.Tests
                 "phantom one - phantom offense propping up bad candidates is the #363 failure");
         }
 
-        // --- Mechanism 3 (facet 3): incoming fire respects the same walls. ---
+        // --- The threat side, now owned by #365's cover habit rather than facet 3's discount. ---
 
         [Test]
         public void Score_WallShadowEndpoint_PricesIncomingFireBelowOpenGround()
@@ -200,13 +203,14 @@ namespace FDG.Tests
 
             Assert.That(shadowScore, Is.GreaterThan(openScore),
                 $"two endpoints the same distance from the enemy gunline, one behind a wall: the " +
-                $"covered one must price SAFER. Before facet 3 retaliation saw through walls, so " +
-                $"cover was worth exactly nothing and every engage endpoint near a wall read as " +
-                $"dangerous as open ground. shadow=({shadow.x:F1},{shadow.z:F1}) {shadowScore:F4} " +
+                $"covered one must price SAFER. shadow=({shadow.x:F1},{shadow.z:F1}) {shadowScore:F4} " +
                 $"vs open=({open.x:F1},{open.z:F1}) {openScore:F4}");
             Assert.That(shadowScore, Is.LessThan(0f),
-                "but a wall is not immunity: the enemy MOVES before it shoots, so the covered " +
-                "endpoint must still carry a discounted threat price, never a free pass");
+                "but a wall is not immunity. #365 gets here differently from facet 3: retaliation " +
+                "is priced through the wall at FULL value (the shooter moves before it shoots), and " +
+                "the covered endpoint wins only by the bounded cover-habit bonus on top - so the " +
+                "endpoint stays underwater, which is the honest price of standing in front of a " +
+                "gunline you cannot answer");
         }
 
         /// <summary>

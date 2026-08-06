@@ -18,9 +18,13 @@ namespace FDG.Ai.Tactician
     /// between the two hypothetical positions. 1 = clear lane (the default: callers that supply no
     /// geometry get the old distance-only estimate). 0 = the lane is cut and the volley cannot
     /// happen - what an attack FROM a candidate endpoint is worth, since the shot would be taken
-    /// from there. Between: the lane is cut but the shooter gets to move first, so the threat is
-    /// discounted rather than silenced (the incoming-fire terms; see TacticianWeights.
-    /// BlockedThreatShare). Weapons that ignore line of sight (Indirect) are exempt per weapon.
+    /// from there. Weapons that ignore line of sight (Indirect) are exempt per weapon.
+    ///
+    /// Fractional values are supported and pinned, but no caller passes one today: #365 removed
+    /// the one that did. Discounting an INCOMING volley for terrain was fact-math on a forecast -
+    /// the shooter moves before it shoots - and cover is now priced as a bounded habit on the
+    /// candidate instead (TacticianWeights.MoveCoverHabit). The fraction stays for #365's Tier 2,
+    /// where a lethality gate wants to credit cover deliberately little rather than not at all.
     /// </param>
     public sealed record AttackContext(
         float DistanceInches,

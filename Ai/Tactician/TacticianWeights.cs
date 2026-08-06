@@ -90,18 +90,37 @@ namespace FDG.Ai.Tactician
         // be penalized for standing its ground.
         public static float MoveProjectedThreat = 0.15f;
 
-        // ADDED 2026-08-05 (#363 facet 3, the mirror of the phantom volley): incoming fire is
-        // priced through walls unless something says otherwise, so before this a wall shadow read
-        // exactly as dangerous as open ground and cover was worth nothing. It is NOT worth
-        // everything either: retaliation is a NEXT-activation threat, and the enemy moves before
-        // it shoots - a cut lane costs it a repositioning move it may not have (or may prefer to
-        // spend elsewhere), it does not make us invulnerable. Zero here would invent perfect hard
-        // cover and teach the whole army to hug walls. So a blocked lane prices incoming SHOOTING
-        // at this fraction of its clear-lane value (melee is untouched - a charge needs a path,
-        // not a sight line). Prior, not a measurement: the arc search in MacroActionGenerator
-        // shows a clear lane is usually findable within one move, so this sits above a token
-        // discount and well below full price.
-        public static float BlockedThreatShare = 0.4f;
+        // #365 Tier 1, the wall-hugging reflex. REPLACED 2026-08-06 the #363 facet-3 scalar
+        // (BlockedThreatShare), which discounted incoming fire when a wall cut the lane. That was
+        // fact-math on a forecast: a boolean LoS test against where a shooter stands RIGHT NOW,
+        // used to price what it does on its NEXT activation, after it moves. Being a boolean it
+        // made a cliff in the score, and a cliff can only produce two behaviours - ignore cover or
+        // hide in it. It cannot produce "take the slightly bent route", because bending a path 3"
+        // does not change a boolean. Tuning it was tuning the height of a cliff (measured: 0.2
+        // scored +0.78pp over 0.4, both inside the noise of maps that are 2.2% blocking terrain).
+        //
+        // Cover is a HABIT, not a plan (Chris): it shapes HOW a unit travels, never WHETHER it
+        // pursues its goal. So threat is priced through walls again, and cover instead earns this
+        // BOUNDED bonus on the share of enemy shooting that has no lane to the endpoint. Bounded
+        // is the whole point - the term can never move a score by more than this, which makes
+        // "never interrupts the goal" a property rather than a hope.
+        //
+        // Calibrated by pins, not taste. Chris's exchange rate - give up 2 of 12 inches of progress
+        // for full cover, never give up 8 - brackets it, measured on the scene in
+        // TacticianCoverHabitTests.ExchangeRateScene (all endpoints equidistant from the gunline,
+        // so incoming fire is provably identical and only progress and cover differ):
+        //
+        //   2" of progress ....... 0.0229   -> the floor: below this the habit never bends a route
+        //   8" of progress ....... 0.1526   -> the ceiling from the goal side
+        //   a real 5-rifle volley  0.1686   -> the ceiling from the offense side (pin 11)
+        //   MoveReachableBonus ... 0.0500   -> steps in when a candidate crosses zero, which
+        //                                      tightens the practical ceiling to ~0.1026
+        //
+        // 0.05 sits at the geometric centre of (0.0229, 0.1026) - a little over 2x clear of both
+        // ends. Note the bracket is a FRACTION of the route gap, not inches: giving up 2" when the
+        // marker is 4" away is a much bigger deal than when it is 30" away, which is the behaviour
+        // we want and comes free from ObjectiveApproach's normalisation.
+        public static float MoveCoverHabit = 0.05f;
 
         // --- Risk posture (#191 idea 3) -------------------------------------------------------------
         // ADDED 2026-07-26: the projected objective differential, round-scaled, tilts the risk

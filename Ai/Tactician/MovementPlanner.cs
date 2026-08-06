@@ -127,6 +127,23 @@ namespace FDG.Ai.Tactician
         }
 
         /// <summary>
+        /// #361: the inflation radius PLANNING geometry (route grids, straight-clear probes, route
+        /// crossing metrics) must use for terrain clearance - the CIRCUMSCRIBED base radius, not
+        /// <see cref="IModel.BaseRadiusInches"/>. The authoritative validator sweeps the true oriented
+        /// base (#341), whose corners reach the circumscribed circle; the inscribed BaseRadiusInches
+        /// (#149's deliberate approximation) plans corridors the swept base cannot take, and the ladder
+        /// then collapses every arc to a stand-still. The Hive Lord save: a 3.6"x4.7" rect base parked
+        /// 0.03" from a rotated tank-trap bar graded EVERY candidate Blocked at its own centroid, because
+        /// routes threaded a gap the disc cleared and the base could not. Conservative by construction
+        /// (swept disc contains the swept base, whatever the facing), so a planned route always
+        /// validates; circles are unchanged (circumscribed == radius).
+        /// </summary>
+        public static float TerrainClearanceRadius(List<DataBinding<ModelData>> living)
+            => living.Count == 0
+                ? 0.5f
+                : living.Max(mb => mb.GetValue().BaseShape.CircumscribedRadiusInches);
+
+        /// <summary>
         /// Measure-and-correct refinement toward a target end gap: probes Grid candidates and nudges the
         /// step until the closest moving model's base-to-base gap to any enemy is within tolerance of
         /// <paramref name="targetGap"/> (or iterations run out). Returns the refined step.
@@ -703,7 +720,10 @@ namespace FDG.Ai.Tactician
             float cx = living.Average(mb => mb.GetValue().Position.x);
             float cz = living.Average(mb => mb.GetValue().Position.z);
             var start = new Position(cx, cz);
-            float baseRadius = living.Max(mb => mb.GetValue().BaseRadiusInches);
+            // #361: circumscribed, not inscribed - routing with the inscribed radius plans corridors
+            // the swept-base validator rejects, and the ladder then stalls the whole move (see
+            // TerrainClearanceRadius).
+            float baseRadius = TerrainClearanceRadius(living);
 
             // Grid construction is the expensive part (thousands of point tests), so: straight-clear
             // paths never touch it, and callers planning MANY candidates in one activation share one

@@ -878,7 +878,11 @@ namespace FDG.Ai.Tactician
         {
             var terrain = _tableState.Terrain.Objects.ToList();
             List<IModel> alive = _activeUnit!.GetValue().Models.Where(m => m.GetIsAlive()).ToList();
-            float baseRadius = alive.Count == 0 ? 0.5f : alive.Max(m => m.BaseRadiusInches);
+            // #361: circumscribed - the gradient must route with the same clearance the move
+            // planner does (see MovementPlanner.TerrainClearanceRadius), or the score steers
+            // toward corridors the candidates cannot take.
+            float baseRadius = alive.Count == 0
+                ? 0.5f : alive.Max(m => m.BaseShape.CircumscribedRadiusInches);
 
             (float X, float Z) key = (marker.x, marker.z);
             if (!_objectiveRoutes.TryGetValue(key, out List<Position>? route))
@@ -899,7 +903,9 @@ namespace FDG.Ai.Tactician
         {
             var terrain = _tableState.Terrain.Objects.ToList();
             List<IModel> alive = _activeUnit!.GetValue().Models.Where(m => m.GetIsAlive()).ToList();
-            float baseRadius = alive.Count == 0 ? 0.5f : alive.Max(m => m.BaseRadiusInches);
+            // #361: circumscribed, same rationale as RouteToObjective.
+            float baseRadius = alive.Count == 0
+                ? 0.5f : alive.Max(m => m.BaseShape.CircumscribedRadiusInches);
 
             if (!_enemyRoutes.TryGetValue(enemyBinding.Reference, out List<Position>? route))
             {

@@ -29,6 +29,16 @@ namespace FDG.Ai.Tactician
         /// <summary>Enemies considered per targeted family, by unit value - keeps enumeration O(small).</summary>
         private const int TopEnemies = 3;
 
+        /// <summary>
+        /// #361: nearest enemies unioned into the targeted families regardless of value. Value-only
+        /// pruning has no eyes for reachability - the Hive Lord save's cheap APC 9.3" away (the only
+        /// enemy with an in-reach charge lane) was dropped from every targeted family while three
+        /// high-value squads 20-35" away kept all the slots. Nearness is measured to the closest
+        /// LIVING MODEL, not the centroid - reach is edge-to-edge, and a spread unit's centroid can
+        /// sit half a formation farther than its nearest base.
+        /// </summary>
+        private const int NearestEnemies = 2;
+
         private const float ContactFeasibleGapInches = 0.25f;
         private const float BandMarginInches = 0.5f;
         // Non-charge moves must end >= 1" from enemies (engine standoff rule); aim with slack.
@@ -102,12 +112,16 @@ namespace FDG.Ai.Tactician
             var terrain = tableState.Terrain.Objects.ToList();
             var enemyFootprints = MovementPlanner.LiveEnemyFootprints(tableState, self.PlayerID);
             float leadRadius = living.Max(mb => mb.GetValue().BaseRadiusInches);
+            // #361: terrain clearance is the CIRCUMSCRIBED radius (see TerrainClearanceRadius);
+            // leadRadius (inscribed) stays for base-contact arithmetic, where the refine loop's
+            // shape-aware gap measurement corrects any error.
+            float clearanceRadius = MovementPlanner.TerrainClearanceRadius(living);
             // One terrain grid for the whole enumeration (built only if some candidate needs it).
             TerrainGrid? cachedGrid = null;
             // Strider: no difficult multiplier in the router, so the shared grid matches the score
             // gradient's view of this unit (TacticianPlanner.UnitRoute).
             Func<TerrainGrid> sharedGrid = () =>
-                cachedGrid ??= TerrainGridCache.Get(tableState, terrain, leadRadius, ignoresDifficult);
+                cachedGrid ??= TerrainGridCache.Get(tableState, terrain, clearanceRadius, ignoresDifficult);
 
             // M2/M3 - objectives, both budgets (rush reaches farther; ranking keeps the useful one).
             foreach (IObjective objective in tableState.Objectives.Objects)
@@ -128,12 +142,25 @@ namespace FDG.Ai.Tactician
 
             List<IUnit> rankedEnemies = enemies
                 .OrderByDescending(TacticalAnalysis.UnitValue).Take(TopEnemies).ToList();
+            // #361: the targeted families aim at the top-value enemies PLUS the nearest few - the
+            // union keeps enumeration O(small) while guaranteeing the enemy standing next to us is
+            // always evaluated. Enumerated NEAREST-first: value picks WHO is targeted, never the
+            // order - the in-family pruning rank is stable, so under a tight budget the reachable
+            // charge must not lose its slot to a hopeless 35" target enumerated earlier.
+            // rankedEnemies[0] (the value pick) still anchors M6/M7/M8.
+            List<IUnit> byDistance = enemies
+                .OrderBy(e => NearestLivingModel(e, start) is IModel m
+                    ? Distance(m.Position, start) : float.MaxValue)
+                .ToList();
+            List<IUnit> targetEnemies = byDistance
+                .Where((e, i) => i < NearestEnemies || rankedEnemies.Contains(e))
+                .ToList();
             bool hasRanged = self.GetRangedWeapons().Count > 0;
             // #355: "can fight in melee", not "carries a melee weapon" - an impact-only unit's charge IS
             // its attack, so a charge macro-action must be generated for it too.
             bool hasMelee = ChargeContactRules.CanFightInMelee(self);
 
-            foreach (IUnit enemy in rankedEnemies)
+            foreach (IUnit enemy in targetEnemies)
             {
                 Position enemyPos = Centroid(enemy);
 
@@ -157,7 +184,7 @@ namespace FDG.Ai.Tactician
                 if (hasMelee)
                 {
                     MacroAction charge = BuildCharge(unit, living, tableState, evaluator, self, enemy,
-                        start, leadRadius, terrain, enemyFootprints,
+                        start, leadRadius, clearanceRadius, terrain, enemyFootprints,
                         canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, perModelBudgets);
                     if (charge.Feasibility == EFeasibility.Reachable)
                     {
@@ -383,7 +410,7 @@ namespace FDG.Ai.Tactician
         /// </summary>
         private static MacroAction BuildCharge(DataBinding<UnitData> unit,
             List<DataBinding<ModelData>> living, ITableState tableState, RuleEvaluator evaluator,
-            UnitData self, IUnit enemy, Position start, float leadRadius,
+            UnitData self, IUnit enemy, Position start, float leadRadius, float clearanceRadius,
             List<ITerrain> terrain, List<EnemyModelFootprint> enemyFootprints,
             bool canMoveThroughEnemies, bool ignoresDifficult, bool ignoresAllTerrain,
             IReadOnlyDictionary<ModelID, (float Advance, float Rush, float Charge)> perModelBudgets)
@@ -416,10 +443,13 @@ namespace FDG.Ai.Tactician
             string rationale = $"intent=ChargeToContact target={enemy.Name}";
 
             List<ModelMoveEntry> move;
+            // #361: clearanceRadius (circumscribed), matching what the swept-base validator will
+            // accept - probing with the inscribed leadRadius sent wedged rect-based units down the
+            // straight branch, where every backoff arc failed and the charge graded Blocked-at-zero.
             bool straightClear = ignoresAllTerrain || !terrain.Any(t =>
                 t.TerrainType.HasFlag(ETerrainType.Impassible)
                 && t.Shape.DoesPathIntersectZone(new Float2(start.x, start.z),
-                    new Float2(enemyPos.x, enemyPos.z), leadRadius));
+                    new Float2(enemyPos.x, enemyPos.z), clearanceRadius));
             if (straightClear)
             {
                 float dx = enemyPos.x - start.x, dz = enemyPos.z - start.z;
@@ -488,7 +518,8 @@ namespace FDG.Ai.Tactician
             // impassible piece closes ~zero straight-line gap - sometimes a negative one - so a
             // correct move was graded Blocked and lost its family's pruning slot to a worse one.
             var terrain = tableState.Terrain.Objects.ToList();
-            float baseRadius = living.Count == 0 ? 0.5f : living.Max(mb => mb.GetValue().BaseRadiusInches);
+            // #361: the same clearance radius the route was planned with (see TerrainClearanceRadius).
+            float baseRadius = MovementPlanner.TerrainClearanceRadius(living);
             float progress = RouteMetrics.Length(route)
                 - RouteMetrics.RemainingFrom(route, end, terrain, baseRadius);
 

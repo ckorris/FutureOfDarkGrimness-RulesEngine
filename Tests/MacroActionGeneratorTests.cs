@@ -94,6 +94,82 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void ChargeToContact_CheapNearbyEnemy_SurvivesValuePruning()
+        {
+            // #361 facet 1, the Hive Lord shape: a melee monster with a cheap enemy in clean charge
+            // reach while three expensive units sit far away. Value-only top-3 pruning dropped the
+            // ONLY chargeable enemy from every targeted family - the nearest-enemies union must
+            // keep it, and its charge must grade Reachable.
+            var monster = MakeUnit(_us, 1, Blade(), atX: 20f, atZ: 20f, woundsPerModel: 6);
+            var cheap = MakeUnit(_them, 1, Rifle(), atX: 29f, atZ: 20f); // 9" away, charge 12
+            MakeUnit(_them, 8, Rifle(ap: 2), atX: 52f, atZ: 10f, woundsPerModel: 2);
+            MakeUnit(_them, 8, Rifle(ap: 2), atX: 52f, atZ: 25f, woundsPerModel: 2);
+            MakeUnit(_them, 8, Rifle(ap: 2), atX: 52f, atZ: 40f, woundsPerModel: 2);
+
+            List<MacroAction> actions = MacroActionGenerator.Enumerate(_evaluator, _tableState, monster);
+            MacroAction? charge = actions.FirstOrDefault(a =>
+                a.Intent == EMacroIntent.ChargeToContact
+                && ReferenceEquals(a.TargetEnemy, cheap.GetValue()));
+
+            Assert.That(charge, Is.Not.Null,
+                "the enemy standing next to us must be evaluated no matter how cheap it is:\n"
+                + string.Join("\n", actions.Select(a => a.Rationale)));
+            Assert.That(charge!.Feasibility, Is.EqualTo(EFeasibility.Reachable),
+                "9\" with a clean lane is a reachable charge");
+        }
+
+        [Test]
+        public void ChargeFamily_RanksNearestEnemyFirst_WhenFeasibilityTies()
+        {
+            // #361: two enemies both in clean charge reach - the nearer, cheaper one must head the
+            // family. In-family pruning ranks by feasibility with the GENERATION order as tiebreak,
+            // and value-first generation let a high-value target eat the family's budget slot while
+            // the enemy standing next to us was cut (the Hive Lord save's APC, round two).
+            var monster = MakeUnit(_us, 1, Blade(), atX: 20f, atZ: 20f, woundsPerModel: 6);
+            var near = MakeUnit(_them, 1, Rifle(), atX: 27f, atZ: 24f);
+            MakeUnit(_them, 8, Rifle(ap: 2), atX: 30f, atZ: 16f, woundsPerModel: 2);
+
+            List<MacroAction> actions = MacroActionGenerator.Enumerate(_evaluator, _tableState, monster);
+            List<MacroAction> charges = actions.Where(a => a.Intent == EMacroIntent.ChargeToContact).ToList();
+
+            Assert.That(charges, Has.Count.GreaterThanOrEqualTo(2),
+                "both in-reach enemies keep a charge candidate");
+            Assert.That(charges[0].TargetEnemy, Is.SameAs(near.GetValue()),
+                "the family's first slot belongs to the nearest enemy, not the most valuable:\n"
+                + string.Join("\n", charges.Select(c => c.Rationale)));
+        }
+
+        [Test]
+        public void ChargeToContact_BigRectBaseParkedByRotatedTerrain_StillMakesProgress()
+        {
+            // #361 facet 2, the Hive Lord wedge (geometry lifted from the save): a 3.62"x4.72" rect
+            // base parked 0.03" from a rotated tank-trap bar. The swept-base validator (#341) is
+            // right that ANY north/east move clips the bar - but planning terrain clearance with the
+            // INSCRIBED BaseRadiusInches (1.81 vs the corner's true 2.98 reach) routed corridors the
+            // base cannot take, every backoff arc failed, and the charge against an enemy 10" away
+            // graded Blocked at the unit's own centroid. Clearance must be circumscribed: the route
+            // then bends west around the bar and the charge makes real progress.
+            var monster = MakeRectBaseUnit(_us, widthInches: 3.6220472f, heightInches: 4.7244096f,
+                Blade(), atX: 48.51327f, atZ: 17.038704f, woundsPerModel: 6);
+            _store.Create(new TerrainData(ETerrainType.Impassible, new RotatedZoneWrapper(
+                new RectangularZone(49.38774f, 54.38774f, 20.907413f, 21.907413f),
+                225f, new Float2(51.88774f, 21.407413f))));
+            var apc = MakeUnit(_them, 1, Rifle(), atX: 42.6f, atZ: 25.5f);
+            Position enemyPos = Centroid(apc);
+            Position start = new Position(48.51327f, 17.038704f);
+
+            List<MacroAction> actions = MacroActionGenerator.Enumerate(_evaluator, _tableState, monster);
+            MacroAction charge = actions.First(a => a.Intent == EMacroIntent.ChargeToContact);
+
+            Assert.That(charge.Feasibility, Is.Not.EqualTo(EFeasibility.Blocked),
+                "a reachable enemy behind a routable bar must not grade Blocked-at-zero, end="
+                + $"({charge.ProjectedCentroid.x:F1},{charge.ProjectedCentroid.z:F1})");
+            float closed = Distance(start, enemyPos) - Distance(charge.ProjectedCentroid, enemyPos);
+            Assert.That(closed, Is.GreaterThanOrEqualTo(3f),
+                $"the charge must make real progress toward contact, closed only {closed:F2}\"");
+        }
+
+        [Test]
         public void FallBack_OpensDistanceFromTheThreat()
         {
             var unit = MakeUnit(_us, 3, Rifle(), atX: 20f, atZ: 20f);
@@ -332,6 +408,19 @@ namespace FDG.Tests
 
         private void MakeObjective(Position position) =>
             _store.Create(new ObjectiveData(position, _store));
+
+        // A single-model unit on a rectangular base (#361: the Hive Lord class of wedge repro).
+        private DataBinding<UnitData> MakeRectBaseUnit(PlayerID owner, float widthInches,
+            float heightInches, Weapon weapon, float atX, float atZ, int woundsPerModel = 1)
+        {
+            var model = new ModelData(new RectangleBase(widthInches, heightInches),
+                new List<Weapon> { weapon }, new Position(atX, atZ), _store);
+            if (woundsPerModel > 1) model.SetMaxWounds(woundsPerModel);
+            var binding = _store.GetDataBinding<ModelData>(_store.Create(model));
+            var unit = new UnitData(owner, "RectBase", quality: 4, defense: 4,
+                modelBindings: new List<DataBinding<ModelData>> { binding });
+            return _store.GetDataBinding<UnitData>(_store.Create(unit));
+        }
 
         private DataBinding<UnitData> MakeUnit(PlayerID owner, int modelCount, object weapons,
             float atX, float atZ, int woundsPerModel = 1)

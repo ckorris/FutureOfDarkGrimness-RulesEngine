@@ -1376,9 +1376,14 @@ namespace FDG.Ai.Tactician
             float kneeStart = Math.Max(0f, knee - smear);
 
             if (killWounds <= kneeStart) return 0f;
-            if (killWounds < knee)
-                return kneeSeverity * (killWounds - kneeStart) / (knee - kneeStart);
+            // On a unit at a quarter strength or less the knee has slid all the way onto wipeout -
+            // there is no "break it first" band left, it just dies. The ramp below the knee must
+            // then climb to 1 rather than to the morale price, or P would jump at that point, and a
+            // cliff is the one thing this curve exists to avoid.
             float span = woundsToWipe - knee;
+            float atKnee = span <= 0f ? 1f : kneeSeverity;
+            if (killWounds < knee)
+                return atKnee * (killWounds - kneeStart) / (knee - kneeStart);
             if (span <= 0f) return 1f;
             return kneeSeverity + (1f - kneeSeverity) * (killWounds - knee) / span;
         }

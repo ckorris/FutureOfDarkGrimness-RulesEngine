@@ -171,7 +171,8 @@ namespace FDG.Ai.Tactician
                     foreach (ERangeBand band in BandsFor(self, enemy, reach, evaluator, out float[] distances))
                     {
                         float d = distances[(int)band];
-                        Position goal = PointAtDistanceFrom(enemyPos, start, d);
+                        Position goal = ClearLaneGoal(
+                            PointAtDistanceFrom(enemyPos, start, d), enemyPos, terrain);
                         candidates.Add(Plan(EMacroIntent.EngageAtRange,
                             $"intent=EngageAtRange band={band} target={enemy.Name} d={d:F1}",
                             EActionType.Advance, unit, living, tableState, evaluator, goal, advanceBudget,
@@ -668,6 +669,43 @@ namespace FDG.Ai.Tactician
             float len = MathF.Sqrt(dx * dx + dz * dz);
             if (len < 1e-6f) { dx = 1f; dz = 0f; len = 1f; }
             return new Position(anchor.x + dx / len * distance, anchor.z + dz / len * distance);
+        }
+
+        /// <summary>
+        /// #363: a band endpoint whose sight line to the target is cut by Blocking terrain is a
+        /// firing position in name only - the scorer now prices it at zero (phantom volleys), so
+        /// without this the whole EngageAtRange family dies wherever a wall stands on the straight
+        /// lane, even when a clear lane exists a short side-step away (the BattleBrothers corner:
+        /// clear lane 5" from where the unit stood, structurally unfindable). Rotate the band point
+        /// around the target in 15-degree steps (up to 90 each way, nearer-to-us side first per
+        /// step, fixed order - bench determinism) and take the first sample that both stays on the
+        /// table and sees the target. All samples keep the band distance; none found = keep the
+        /// straight goal (previous behavior, and the scorer prices it truthfully now).
+        /// </summary>
+        private static Position ClearLaneGoal(Position straightGoal, Position enemyPos,
+            IReadOnlyList<ITerrain> terrain)
+        {
+            if (LineOfSightUtilities.HasLineOfSight(straightGoal, enemyPos, terrain))
+                return straightGoal;
+
+            float dx = straightGoal.x - enemyPos.x, dz = straightGoal.z - enemyPos.z;
+            for (int step = 1; step <= 6; step++)
+            {
+                float radians = step * (MathF.PI / 12f);
+                float cos = MathF.Cos(radians), sin = MathF.Sin(radians);
+                Position plus = ClampToTable(new Position(
+                    enemyPos.x + dx * cos - dz * sin, enemyPos.z + dx * sin + dz * cos));
+                Position minus = ClampToTable(new Position(
+                    enemyPos.x + dx * cos + dz * sin, enemyPos.z - dx * sin + dz * cos));
+
+                // Same deviation both ways - try the sample nearer the straight goal first (the
+                // cheaper walk); strict inequality keeps the tie deterministic (plus first).
+                (Position first, Position second) = Distance(minus, straightGoal)
+                    < Distance(plus, straightGoal) ? (minus, plus) : (plus, minus);
+                if (LineOfSightUtilities.HasLineOfSight(first, enemyPos, terrain)) return first;
+                if (LineOfSightUtilities.HasLineOfSight(second, enemyPos, terrain)) return second;
+            }
+            return straightGoal;
         }
 
         private static Position ClampToTable(Position p) => new Position(

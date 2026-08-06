@@ -68,6 +68,9 @@ namespace FDG.Ai.Tactician
         // #359: advance lanes of the friendlies that have not activated yet this round - the
         // endpoints the lane-block penalty charges against. Endpoint-independent, built lazily.
         private List<LaneGeometry.AdvanceLane>? _advanceLanes;
+        // #363: terrain snapshot for the offense term's sight-line test - the scorer must not
+        // credit a volley the shoot stage will refuse (Blocking wall between endpoint and enemy).
+        private List<ITerrain>? _terrainSnapshot;
 
         /// <summary>The unit whose activation is being planned (null between activations).</summary>
         public DataBinding<UnitData>? ActiveUnit => _activeUnit;
@@ -100,6 +103,7 @@ namespace FDG.Ai.Tactician
             _ignoresAllTerrain = null;
             _ignoresDifficultTerrain = null;
             _advanceLanes = null;
+            _terrainSnapshot = null;
         }
 
         /// <summary>
@@ -535,8 +539,18 @@ namespace FDG.Ai.Tactician
                 }
                 else if (CanShootAfter(candidate))
                 {
+                    // #363: centroid-to-centroid sight test against Blocking terrain. The shoot
+                    // stage's gate is per-model (and counts enemy bases as blockers), so this is an
+                    // approximation - but its errors are the cheap kind: a marginal per-model shot
+                    // may be undervalued, while the phantom volley through a wall (the failure that
+                    // walked units into wall shadows expecting a shot) can no longer be credited.
+                    // Indirect weapons keep their value - the estimate exempts them per weapon.
+                    bool sightBlocked = !LineOfSightUtilities.HasLineOfSight(
+                        end, enemyPos, TerrainSnapshot());
                     AttackEstimate shot = CombatMath.EstimateShooting(_evaluator, _activeUnit, enemyBinding,
-                        new AttackContext(Math.Max(1f, endDistance), AttackerMoved: candidate.Intent != EMacroIntent.Hold));
+                        new AttackContext(Math.Max(1f, endDistance),
+                            AttackerMoved: candidate.Intent != EMacroIntent.Hold,
+                            SightBlocked: sightBlocked));
                     offense = Math.Max(offense, ValueFraction(shot.ExpectedWounds, enemy));
                 }
 
@@ -1185,6 +1199,11 @@ namespace FDG.Ai.Tactician
         // per game; the RL row was the only one below the 50% gate line).
         private static bool CanShootAfter(MacroAction candidate) =>
             candidate.ActionType is EActionType.Hold or EActionType.Advance;
+
+        // #363: terrain doesn't change inside an activation - one snapshot serves every
+        // (candidate x enemy) sight test of the plan.
+        private List<ITerrain> TerrainSnapshot() =>
+            _terrainSnapshot ??= _tableState.Terrain.Objects.ToList();
 
         private static float ValueFraction(float expectedWounds, UnitData target)
         {

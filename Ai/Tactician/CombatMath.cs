@@ -18,7 +18,8 @@ namespace FDG.Ai.Tactician
         bool AttackerMoved = false,
         bool DefenderInCover = false,
         bool IsMelee = false,
-        bool IsCharging = false);
+        bool IsCharging = false,
+        bool SightBlocked = false);
 
     /// <summary>Expected outcome of one unit's whole attack (all weapon batches) against a defender.</summary>
     public sealed record AttackEstimate(
@@ -91,6 +92,15 @@ namespace FDG.Ai.Tactician
                 float reach = RangeRuleQueries.EffectiveRange(
                     attacker.GetValue(), weapon, defender.GetValue(), evaluator);
                 if (reach < context.DistanceInches) continue;
+
+                // #363: a blocked sight line silences every weapon that needs one (Indirect keeps
+                // firing). SightBlocked is caller-supplied geometry, like DistanceInches - the
+                // estimate itself stays position-free.
+                if (context.SightBlocked
+                    && !SightRuleQueries.IgnoresTerrain(attacker.GetValue(), weapon, evaluator))
+                {
+                    continue;
+                }
 
                 total += EstimateVolley(evaluator, attacker, defender, weapon, count,
                     context with { IsMelee = false, IsCharging = false }, notes);

@@ -231,21 +231,44 @@ namespace FDG.Tests
                 $"shadowed={shadowed:F4} exposed={exposed:F4}");
         }
 
+        // --- Case 17 (#365 slice 2a): melee mass that cannot reach must not dilute the melee half.
+
+        [Test]
+        public void Score_DistantMeleeBlob_DoesNotDiluteTheReachablePenalty()
+        {
+            // Three more sword squads massed near the far table edge - a melee-heavy army. None is
+            // within a charge of either endpoint, and all three sit on x=25, equidistant from the
+            // two endpoints, so whatever they DO contribute (projected pressure) is identical for
+            // both and cannot decide the comparison on its own.
+            (float shadowedNearSwords, float openAwayFromSwords) = CorridorScene(new Position(18f, 12f),
+                new[] { new Position(25f, 42f), new Position(25f, 45f), new Position(25f, 48f) });
+
+            Assert.That(openAwayFromSwords, Is.GreaterThan(shadowedNearSwords),
+                $"case 14 must not depend on how many OTHER melee units the enemy owns. The melee " +
+                $"half's denominator counts only threat that could reach us this activation - summed " +
+                $"over the whole table it shrinks the reachable pack's share toward 1/N, the cover " +
+                $"bonus survives almost intact, and the habit walks the unit into the swords it was " +
+                $"added to avoid. shadowed+charged={shadowedNearSwords:F4} " +
+                $"open+safe={openAwayFromSwords:F4}");
+        }
+
         /// <summary>
         /// A corridor between two walls. Both endpoints sit at the same z, so objective progress is
         /// identical (ObjectiveApproach projects onto the route and discards lateral offset). The
         /// left-hand one is shadowed from the gunline at (4,34) by the left wall; the right-hand one
         /// has a clear lane. Where the swordsmen stand decides which endpoints they can charge.
         /// </summary>
-        private (float ShadowedNearSwords, float OpenAwayFromSwords) CorridorScene(Position swordsmen)
+        private (float ShadowedNearSwords, float OpenAwayFromSwords) CorridorScene(Position swordsmen,
+            IReadOnlyList<Position>? distantMelee = null)
         {
             SetUp();
             Wall(14f, 16f, 18f, 28f);
             Wall(32f, 34f, 18f, 30f);
             DataBinding<UnitData> us = Squad(_us, Carbine(), new Position(24f, 10f));
             Squad(_them, Rifle(), new Position(4f, 34f));
-            Squad(_them, new Weapon("Great Sword", rangeInches: 0f, attacks: 4, armorPenetration: 3),
-                swordsmen);
+            Squad(_them, GreatSword(), swordsmen);
+            foreach (Position far in distantMelee ?? Array.Empty<Position>())
+                Squad(_them, GreatSword(), far);
             _store.Create(new ObjectiveData(new Position(24f, 40f), _store));
 
             var planner = new TacticianPlanner(_tableState, _evaluator);
@@ -308,6 +331,9 @@ namespace FDG.Tests
         // --- Helpers. ---
 
         private static Weapon Rifle() => new Weapon("Rifle", rangeInches: 24f, attacks: 1, armorPenetration: 0);
+
+        private static Weapon GreatSword() =>
+            new Weapon("Great Sword", rangeInches: 0f, attacks: 4, armorPenetration: 3);
 
         // Too short to reach anything in these scenes, so the offense and approach terms stay inert
         // and the only live differences between endpoints are objective progress and cover.

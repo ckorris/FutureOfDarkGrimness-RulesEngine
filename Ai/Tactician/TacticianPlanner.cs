@@ -1274,14 +1274,37 @@ namespace FDG.Ai.Tactician
         // #365: every enemy's melee threat to us, reachable or not - the denominator the habit's
         // melee half is a share OF. Endpoint-independent, so one pass per activation serves every
         // candidate; the per-candidate question ("can it reach HERE") is asked in Score.
+        /// <summary>
+        /// The denominator for the habit's melee half (#365): total melee threat from enemies that
+        /// could RELEVANTLY reach us this activation. Endpoint-independent - it asks how hard they
+        /// hit, not from where - so it is cached per activation.
+        ///
+        /// #365 slice 2a: it originally summed EVERY melee-capable enemy on the table, which
+        /// diluted the penalty to nothing against a melee-heavy army - eight melee units on the
+        /// board made one pack reaching the covered corridor side worth ~1/8 of the denominator
+        /// (~-0.006 against a cover bonus of up to +0.05), which is the same order as the slice-1b
+        /// corridor failure this half exists to prevent. The pins missed it because both corridor
+        /// scenes have exactly one melee enemy.
+        ///
+        /// Relevance mirrors the numerator's reach test, but against the whole candidate ENVELOPE
+        /// (our longest legal move) instead of one endpoint - so every enemy that any candidate
+        /// could walk into counts, and a blob idling across the table counts for nothing.
+        /// </summary>
         private float MeleeThreatTotal()
         {
             if (_meleeThreatTotal.HasValue) return _meleeThreatTotal.Value;
             UnitData self = _activeUnit!.GetValue();
+            Position now = Centroid(self);
+            float envelope = TacticalAnalysis.RushDistance(self, _evaluator);
             float total = 0f;
             foreach (DataBinding<UnitData> enemyBinding in EnemyBindings(self.PlayerID))
             {
-                if (enemyBinding.GetValue().GetMeleeWeapons().Count == 0) continue;
+                UnitData enemy = enemyBinding.GetValue();
+                if (enemy.GetMeleeWeapons().Count == 0) continue;
+                // The same slack the per-endpoint test uses, so an enemy that reaches SOME endpoint
+                // is always in the denominator it is scored against.
+                if (TacticalAnalysis.MeleeThreatReach(enemy, self, _evaluator)
+                    < Distance(now, Centroid(enemy)) - envelope - 1f) continue;
                 total += 0.5f * ValueFraction(CombatMath.EstimateMelee(
                     _evaluator, enemyBinding, _activeUnit).AttackerAttack.ExpectedWounds, self);
             }

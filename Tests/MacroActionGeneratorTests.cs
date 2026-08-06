@@ -197,6 +197,30 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void ChargeGrade_DeadEndOnABystander_IsNotAReachableCharge()
+        {
+            // #361 follow-up: the feasibility grade must ask "did we reach the unit we are
+            // CHARGING?". A bystander enemy stands one base-width in front of the real target, so
+            // the maximal legal advance stops in contact with the BYSTANDER - measured against all
+            // enemies that graded Reachable, the mislabeled charge was declared for real, and the
+            // stage's #312 reach check (vs the declared target) rejected it at resolve time.
+            var monster = MakeUnit(_us, 1, Blade(), atX: 20f, atZ: 24f, woundsPerModel: 6);
+            MakeUnit(_them, 1, Rifle(), atX: 33f, atZ: 24f); // the bystander, squarely in the lane
+            var target = MakeUnit(_them, 3, Rifle(), atX: 34.6f, atZ: 24f); // right behind it
+
+            List<MacroAction> actions = MacroActionGenerator.Enumerate(_evaluator, _tableState,
+                monster, candidateBudget: 64);
+            MacroAction? vsTarget = actions.FirstOrDefault(a =>
+                a.Intent == EMacroIntent.ChargeToContact
+                && ReferenceEquals(a.TargetEnemy, target.GetValue()));
+
+            Assert.That(vsTarget, Is.Not.Null, "the target keeps a ChargeToContact-family candidate");
+            Assert.That(vsTarget!.ActionType, Is.Not.EqualTo(EActionType.Charge),
+                $"contact with a bystander must not grade as a playable charge on the target "
+                + $"({vsTarget.Feasibility}, end=({vsTarget.ProjectedCentroid.x:F1},{vsTarget.ProjectedCentroid.z:F1}))");
+        }
+
+        [Test]
         public void FallBack_OpensDistanceFromTheThreat()
         {
             var unit = MakeUnit(_us, 3, Rifle(), atX: 20f, atZ: 20f);

@@ -497,7 +497,13 @@ namespace FDG.Ai.Tactician
                     ignoresDifficult, ignoresAllTerrain, terrain);
             }
 
-            float gap = MovementPlanner.MinEnemyGap(move, enemyFootprints);
+            // #361: the grade asks "did we reach the unit we are CHARGING?", so the gap is measured
+            // against the TARGET's models only. Measured against all enemies, a charge that
+            // dead-ended on a bystander in the lane graded Reachable, was declared as a real charge,
+            // and the stage's #312 reach validation (base-to-base vs the declared target) then
+            // rejected it at resolve time - the #216 silent-degradation class. The construction
+            // above keeps the all-enemies lists: they are what make the move legal.
+            float gap = MovementPlanner.MinEnemyGap(move, MovementPlanner.UnitFootprints(enemy));
             Position end = MoveCentroid(move, living);
             float progress = Distance(start, enemyPos) - Distance(end, enemyPos);
             EFeasibility feasibility = gap <= ContactFeasibleGapInches

@@ -160,19 +160,31 @@ namespace FDG.Ai.Tactician
         /// stands. Gap is measured against the TARGET's models only: contact with a bystander must
         /// not read as the charge arriving.
         /// </summary>
+        /// <summary>
+        /// One unit's living model footprints (#361) - the target-only view for measuring whether a
+        /// charge actually reached the unit it is charging, as opposed to the all-enemies lists that
+        /// drive collision and standoff validity. Reserve-parked models at (0,0) excluded by the
+        /// same convention as <see cref="LiveEnemyFootprints"/>.
+        /// </summary>
+        public static List<EnemyModelFootprint> UnitFootprints(IUnit unit)
+        {
+            var footprints = new List<EnemyModelFootprint>();
+            foreach (IModel m in unit.Models)
+            {
+                if (m is ModelData md && md.GetIsAlive() && (md.Position.x != 0f || md.Position.z != 0f))
+                    footprints.Add(new EnemyModelFootprint(md.Position, md.BaseRadiusInches, 0,
+                        false, md.BaseShape, md.Facing));
+            }
+            return footprints;
+        }
+
         public static List<ModelMoveEntry> NudgeToContact(List<ModelMoveEntry> move,
             DataBinding<UnitData> unit, List<DataBinding<ModelData>> living, ITableState tableState,
             IUnit target, Func<ModelMoveEntry, ModelMoveBudget> budgetFor,
             List<EnemyModelFootprint> allEnemies, bool canMoveThroughEnemies,
             bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain, List<ITerrain> terrain)
         {
-            var targetFootprints = new List<EnemyModelFootprint>();
-            foreach (IModel m in target.Models)
-            {
-                if (m is ModelData md && md.GetIsAlive() && (md.Position.x != 0f || md.Position.z != 0f))
-                    targetFootprints.Add(new EnemyModelFootprint(md.Position, md.BaseRadiusInches, 0,
-                        false, md.BaseShape, md.Facing));
-            }
+            List<EnemyModelFootprint> targetFootprints = UnitFootprints(target);
             if (targetFootprints.Count == 0 || living.Count == 0) return move;
 
             float targetGap = ChargeContactTargetGapInches;

@@ -199,7 +199,11 @@ namespace FDG.Ai.Tactician
                         // approach term makes this worth taking (#191 A4 gate fix).
                         IModel? nearest = NearestLivingModel(enemy, start);
                         Position aim = nearest?.Position ?? enemyPos;
-                        float standoff = leadRadius + (nearest?.BaseRadiusInches ?? 0.5f)
+                        // #361: circumscribed on both sides - an inscribed standoff parks a rect
+                        // base's front edge inside the 1" rule and the ladder halves the approach
+                        // to a crawl.
+                        float standoff = clearanceRadius
+                            + (nearest?.BaseShape.CircumscribedRadiusInches ?? 0.5f)
                             + ApproachStandoffGapInches;
                         candidates.Add(Plan(EMacroIntent.ChargeToContact,
                             $"intent=ChargeToContact target={enemy.Name} approach",
@@ -475,11 +479,22 @@ namespace FDG.Ai.Tactician
             }
             else
             {
+                // #361: the routed goal must clear the enemy for the WHOLE base at any approach
+                // facing - placed with the inscribed contactDistance, a rect base's front edge lands
+                // inside the target, the validator rejects every long arc, and the ladder stalls the
+                // charge mid-route (the Hive Lord save's APC charge died at 3" of a 9" dogleg).
+                // Circumscribed radii aim slightly short; NudgeToContact closes the remainder (and
+                // the route's grid-quantization scatter) with a validated final step.
+                float routedContact = clearanceRadius
+                    + (nearestModel?.BaseShape.CircumscribedRadiusInches ?? 0.5f);
                 Position contactGoal = PointAtDistanceFrom(enemyPos, start,
-                    contactDistance + MovementPlanner.ChargeContactTargetGapInches);
+                    routedContact + MovementPlanner.ChargeContactTargetGapInches);
                 move = MovementPlanner.PlanMoveToward(unit, living, tableState, contactGoal,
                     chargeReach, chargeReach, chargeBudgetFor,
                     canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain);
+                move = MovementPlanner.NudgeToContact(move, unit, living, tableState, enemy,
+                    chargeBudgetFor, enemyFootprints, canMoveThroughEnemies,
+                    ignoresDifficult, ignoresAllTerrain, terrain);
             }
 
             float gap = MovementPlanner.MinEnemyGap(move, enemyFootprints);

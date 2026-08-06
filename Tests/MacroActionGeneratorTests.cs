@@ -170,6 +170,33 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void ChargeToContact_RoutedAroundTerrain_RefinesToBaseContact()
+        {
+            // #361 facet 4: the same wedge scene as the routed-progress pin, but "made progress" is
+            // not enough - the routed goal (circumscribed radii, always legal) plus the validated
+            // NudgeToContact must land the monster in base contact, so the fighting charge reaches
+            // the scorer as a Charge action with melee credit, not a rush-to-standoff.
+            var monster = MakeRectBaseUnit(_us, widthInches: 3.6220472f, heightInches: 4.7244096f,
+                Blade(), atX: 48.51327f, atZ: 17.038704f, woundsPerModel: 6);
+            _store.Create(new TerrainData(ETerrainType.Impassible, new RotatedZoneWrapper(
+                new RectangularZone(49.38774f, 54.38774f, 20.907413f, 21.907413f),
+                225f, new Float2(51.88774f, 21.407413f))));
+            MakeUnit(_them, 1, Rifle(), atX: 42.6f, atZ: 25.5f);
+
+            List<MacroAction> actions = MacroActionGenerator.Enumerate(_evaluator, _tableState, monster);
+            MacroAction charge = actions.First(a => a.Intent == EMacroIntent.ChargeToContact);
+
+            Assert.That(charge.ActionType, Is.EqualTo(EActionType.Charge),
+                $"the charge must be playable AS a charge, got {charge.ActionType} "
+                + $"({charge.Feasibility}, end=({charge.ProjectedCentroid.x:F1},{charge.ProjectedCentroid.z:F1}))");
+            Assert.That(charge.Feasibility, Is.EqualTo(EFeasibility.Reachable));
+            float gap = MovementPlanner.MinEnemyGap(charge.Move,
+                MovementPlanner.LiveEnemyFootprints(_tableState, _us));
+            Assert.That(gap, Is.LessThanOrEqualTo(0.25f),
+                $"the routed charge must end in base contact, gap={gap:F2}\"");
+        }
+
+        [Test]
         public void FallBack_OpensDistanceFromTheThreat()
         {
             var unit = MakeUnit(_us, 3, Rifle(), atX: 20f, atZ: 20f);

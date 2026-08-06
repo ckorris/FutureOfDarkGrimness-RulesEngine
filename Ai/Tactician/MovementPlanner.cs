@@ -143,6 +143,92 @@ namespace FDG.Ai.Tactician
                 ? 0.5f
                 : living.Max(mb => mb.GetValue().BaseShape.CircumscribedRadiusInches);
 
+        /// <summary>How far outside contact a routed charge may land and still be pulled in by
+        /// <see cref="NudgeToContact"/>. Larger shortfalls are real (budget or blockage) and must
+        /// grade as the partial approaches they are.</summary>
+        private const float NudgeToContactWindowInches = 1.5f;
+
+        /// <summary>
+        /// #361: close a routed charge's final fraction to base contact. A route arrives
+        /// grid-quantized, and its goal is placed with circumscribed radii (conservative, so a rect
+        /// base never lands inside the target) - both leave the arrived formation a hair to ~1"
+        /// outside the contact grade, demoting a fighting charge to a rush-to-standoff (the Hive
+        /// Lord save's squad charge missed contact by 0.01"). Translates the whole arrived formation
+        /// toward <paramref name="target"/>'s nearest model until the measured base-to-base gap hits
+        /// <see cref="ChargeContactTargetGapInches"/>, and keeps the extension only if the full move
+        /// still validates (budgets, terrain, enemies, friendlies) - otherwise the honest shortfall
+        /// stands. Gap is measured against the TARGET's models only: contact with a bystander must
+        /// not read as the charge arriving.
+        /// </summary>
+        public static List<ModelMoveEntry> NudgeToContact(List<ModelMoveEntry> move,
+            DataBinding<UnitData> unit, List<DataBinding<ModelData>> living, ITableState tableState,
+            IUnit target, Func<ModelMoveEntry, ModelMoveBudget> budgetFor,
+            List<EnemyModelFootprint> allEnemies, bool canMoveThroughEnemies,
+            bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain, List<ITerrain> terrain)
+        {
+            var targetFootprints = new List<EnemyModelFootprint>();
+            foreach (IModel m in target.Models)
+            {
+                if (m is ModelData md && md.GetIsAlive() && (md.Position.x != 0f || md.Position.z != 0f))
+                    targetFootprints.Add(new EnemyModelFootprint(md.Position, md.BaseRadiusInches, 0,
+                        false, md.BaseShape, md.Facing));
+            }
+            if (targetFootprints.Count == 0 || living.Count == 0) return move;
+
+            float targetGap = ChargeContactTargetGapInches;
+            float gap = MinEnemyGap(move, targetFootprints);
+            if (gap <= targetGap || gap > NudgeToContactWindowInches) return move;
+
+            (float ex, float ez) = EndCentroid(move);
+            IModel? nearest = null;
+            float best = float.MaxValue;
+            foreach (IModel m in target.Models)
+            {
+                if (!m.GetIsAlive()) continue;
+                float mdx = m.Position.x - ex, mdz = m.Position.z - ez;
+                float d = mdx * mdx + mdz * mdz;
+                if (d < best) { best = d; nearest = m; }
+            }
+            if (nearest == null) return move;
+            float dx = nearest.Position.x - ex, dz = nearest.Position.z - ez;
+            float len = MathF.Sqrt(dx * dx + dz * dz);
+            if (len < 1e-6f) return move;
+            (dx, dz) = (dx / len, dz / len);
+
+            List<ModelMoveEntry> BuildNudged(float offset)
+            {
+                var extended = new List<ModelMoveEntry>(move.Count);
+                foreach (ModelMoveEntry entry in move)
+                {
+                    if (entry.Positions.Count == 0) { extended.Add(entry); continue; }
+                    var positions = new List<Position>(entry.Positions);
+                    Position last = positions[^1];
+                    positions.Add(new Position(last.x + dx * offset, last.z + dz * offset));
+                    extended.Add(new ModelMoveEntry(entry.Model, positions));
+                }
+                return extended;
+            }
+
+            // Translation toward the nearest model closes the gap roughly one-for-one; a couple of
+            // measure-and-correct rounds absorb the shape-dependent error (rect faces, diagonals).
+            float delta = 0f;
+            float measured = gap;
+            List<ModelMoveEntry> nudged = move;
+            for (int i = 0; i < TargetRefineIterations && MathF.Abs(measured - targetGap) > TargetGapToleranceInches; i++)
+            {
+                delta = Math.Clamp(delta + (measured - targetGap), 0f, NudgeToContactWindowInches);
+                nudged = BuildNudged(delta);
+                measured = MinEnemyGap(nudged, targetFootprints);
+            }
+            if (delta <= 0f) return move;
+
+            bool valid = MovementUtilities.ValidatePaths(nudged, budgetFor, allEnemies,
+                canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain,
+                out _, LiveFriendlyFootprints(tableState, unit.GetValue().PlayerID, unit.GetValue().ID),
+                lenientCoherency: true);
+            return valid ? nudged : move;
+        }
+
         /// <summary>
         /// Measure-and-correct refinement toward a target end gap: probes Grid candidates and nudges the
         /// step until the closest moving model's base-to-base gap to any enemy is within tolerance of

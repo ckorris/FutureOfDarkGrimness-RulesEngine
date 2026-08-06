@@ -76,14 +76,6 @@ namespace FDG.Ai.Tactician
         // hard they hit, not from where), so it is an activation-level constant, not per candidate.
         private float? _meleeThreatTotal;
 
-        // #365 Tier 2: what this unit would still have contributed if it survives. Endpoint-
-        // INDEPENDENT by design - across candidates the gate varies only through P(lost), which is
-        // what makes a doomed unit's penalty a near-constant that cancels in the argmax.
-        private float? _forfeitedContribution;
-
-        // #365 Tier 2: per-candidate scratch for the ranked threat sum. Score is not reentrant, so
-        // one buffer cleared per call beats an allocation per candidate.
-        private readonly List<float> _threatRanking = new();
 
         /// <summary>The unit whose activation is being planned (null between activations).</summary>
         public DataBinding<UnitData>? ActiveUnit => _activeUnit;
@@ -118,7 +110,6 @@ namespace FDG.Ai.Tactician
             _advanceLanes = null;
             _terrainSnapshot = null;
             _meleeThreatTotal = null;
-            _forfeitedContribution = null;
         }
 
         /// <summary>
@@ -545,11 +536,6 @@ namespace FDG.Ai.Tactician
             float shootingTotal = 0f;
             float shootingBlocked = 0f;
             float meleeReaching = 0f;
-            // #365 Tier 2 (the lethality gate): RAW expected wounds that can reach this endpoint,
-            // collected per enemy and then combined with DIMINISHING RETURNS by rank - see
-            // RankedThreat. Raw, not ValueFraction, which clamps at min(1, wounds/remaining) and so
-            // saturates exactly where a gate needs to tell 1.2x lethal from 3x lethal apart.
-            _threatRanking.Clear();
             foreach (DataBinding<UnitData> enemyBinding in EnemyBindings(self.PlayerID))
             {
                 UnitData enemy = enemyBinding.GetValue();
@@ -652,15 +638,12 @@ namespace FDG.Ai.Tactician
 
                 // Melee threat: if they can charge the endpoint (charge + 2" melee cylinder),
                 // count their melee margin too.
-                // Raw wounds first: the habit and retaliation want it value-weighted and halved,
-                // the Tier 2 gate wants it unscaled. One estimate, two consumers.
-                float meleeWounds =
+                float meleeThreat =
                     TacticalAnalysis.MeleeThreatReach(enemy, self, _evaluator) >= endDistance - 1f
                     && enemy.GetMeleeWeapons().Count > 0
-                        ? CombatMath.EstimateMelee(
-                            _evaluator, enemyBinding, _activeUnit).AttackerAttack.ExpectedWounds
+                        ? 0.5f * ValueFraction(CombatMath.EstimateMelee(
+                            _evaluator, enemyBinding, _activeUnit).AttackerAttack.ExpectedWounds, self)
                         : 0f;
-                float meleeThreat = meleeWounds > 0f ? 0.5f * ValueFraction(meleeWounds, self) : 0f;
 
                 // #365 Tier 1, the wall-hugging reflex. Two coarse signals in one currency, both
                 // weighted by threat TO US (so a tank's AP4 Deadly(3) pair dominates when we are the
@@ -701,16 +684,6 @@ namespace FDG.Ai.Tactician
                         incomingValue / (incomingValue + alt));
                     retaliation = Math.Max(retaliation, incomingValue * share);
 
-                    // #365 Tier 2. Cover is discounted here, never zeroed: optimism about a wall is
-                    // cheap in the Tier 1 habit and fatal in the gate. No engaged-target exemption
-                    // either - the unit we chose to fight can kill us just as dead, and chosen
-                    // exposure is still exposure.
-                    float shootWounds = incoming.ExpectedWounds
-                        * (hasLane ? 1f : TacticianWeights.LethalityBlockedDiscount);
-                    // One entry per enemy that can reach us - max(shoot, melee), because one
-                    // activation does one or the other. What they add up to is decided by rank
-                    // afterwards, not here.
-                    _threatRanking.Add(Math.Max(shootWounds, meleeWounds));
                 }
                 // Arriving pressure (#191 idea 2): an enemy too far to answer THIS round prices
                 // nothing above, but one projected rush can put the endpoint inside its threat
@@ -768,27 +741,6 @@ namespace FDG.Ai.Tactician
             float coverShare = (shootingTotal > 0f ? shootingBlocked / shootingTotal : 0f)
                              - (meleeTotal > 0f ? meleeReaching / meleeTotal : 0f);
 
-            // #365 Tier 2, the lethality gate: the one term allowed to interrupt a goal.
-            //
-            // Netted against what this candidate has already BANKED, because the gate must not bill
-            // a unit for a death the plan is already paying for - the same double-charge that pin 15
-            // caught in the Tier 1 habit, in the other direction. A screen's whole value IS standing
-            // in the lane; a tarpit charge's value IS getting stuck in. Ungated netting, cheap chaff
-            // refused to charge a gunline and cheap bodies refused to screen (two long-standing pins
-            // in TacticianPlannerTests), and the weight got squeezed into a single admissible value.
-            //
-            // Only IMMEDIATELY REALISED value nets: damage actually dealt from this endpoint, and a
-            // body actually interposed on a charge lane. Objective deltas and approach credit
-            // deliberately do NOT - ReconcileObjectivesStage scores at END of round, so a unit that
-            // dies before then never collects the marker, and an approach is a promise for next
-            // activation that death simply cancels. Those are exactly the things the gate SHOULD be
-            // allowed to talk a unit out of.
-            float bankedByThisMove = TacticianWeights.MoveDamage * offense
-                                   + TacticianWeights.MoveScreen * screenValue;
-            float lethality = TacticianWeights.MoveLethality
-                * ProbabilityLost(self, RankedThreat())
-                * Math.Max(0f, ForfeitedContribution() - bankedByThisMove);
-
             float substantive =
                    TacticianWeights.MoveDamage * offense
                  - riskScale * TacticianWeights.MoveRetaliation * retaliation
@@ -803,8 +755,7 @@ namespace FDG.Ai.Tactician
                  // the wall the rear ranks halve their moves against; clearing it is what the M13
                  // SideStep candidates are for. Endpoint-only, so it compares candidates - the
                  // screen credit and marker deltas above outbid it whenever standing is real work.
-                 - TacticianWeights.MoveLaneBlock * LaneBlockValue(end)
-                 - lethality;
+                 - TacticianWeights.MoveLaneBlock * LaneBlockValue(end);
 
             // #264 issue 2: the reachable bonus is a TIE-BREAK between candidates that are already
             // worth something ("if two plans are worth the same, take the one that actually gets
@@ -1327,106 +1278,6 @@ namespace FDG.Ai.Tactician
         // #365: every enemy's melee threat to us, reachable or not - the denominator the habit's
         // melee half is a share OF. Endpoint-independent, so one pass per activation serves every
         // candidate; the per-candidate question ("can it reach HERE") is asked in Score.
-        /// <summary>
-        /// #365 Tier 2: what the enemies that can reach this endpoint add up to, with DIMINISHING
-        /// RETURNS by rank - the worst at full weight, the next at LethalityFocusDecay, the one
-        /// after at its square, and so on.
-        ///
-        /// This replaced two aggregations that were each wrong in an opposite direction, both
-        /// measured on the 640-game pool: a plain SUM weighted by a guess at who the enemy would
-        /// choose to shoot (75.55% / 77.89% against 85.39% with the gate off - and it made the
-        /// term depend on how many units OUR side brought, and on predicting the opponent's target
-        /// choice, the class of guess this item rules out), and a plain MAX, which needs no guess
-        /// but cannot see convergent fire at all. Ranked decay needs no model of the opponent,
-        /// does not care how many units we own, lets real focus fire add up - and is BOUNDED,
-        /// converging to 1/(1 - decay) times the worst single threat. For a wipeout veto the
-        /// estimator matters doubly: overestimation means false vetoes, and false vetoes are the
-        /// veto's one failure mode.
-        /// </summary>
-        private float RankedThreat()
-        {
-            if (_threatRanking.Count == 0) return 0f;
-            _threatRanking.Sort(static (a, b) => b.CompareTo(a));
-            float total = 0f;
-            float weight = 1f;
-            foreach (float wounds in _threatRanking)
-            {
-                total += wounds * weight;
-                weight *= TacticianWeights.LethalityFocusDecay;
-            }
-            return total;
-        }
-
-        // #365 Tier 2: where the veto's ramp begins, as a fraction of the unit's remaining wounds.
-        // Below this the term is IDENTICALLY zero - not small, zero - which is the whole design:
-        // measured three ways on the 640-game pool, any curve that engages at sub-lethal threat
-        // becomes a board-wide second retaliation term and loses 4-14pp (see the #365 ledger,
-        // 2026-08-06). The ramp from here to wipeout keeps the term continuous in the wound
-        // estimate; a step would put a cliff in the one term allowed to override goals.
-        private const float VetoRampStartFraction = 0.8f;
-
-        /// <summary>
-        /// #365 Tier 2, slice 2c: P(this unit is destroyed outright) if the endpoint eats
-        /// <paramref name="killWounds"/>. A wipeout-only VETO: zero below the ramp, 1 at remaining
-        /// wounds. Deliberately NOTHING else - no morale knee, no quality scaling, no
-        /// shooting-vs-melee split. Those were sub-wipeout discrimination, and the pool showed
-        /// (monotonically, across three aggregations) that ANY sub-wipeout pricing here repriced
-        /// the whole game; their pins (8, 9) were cut with the ledger's sign-off, not dropped
-        /// silently. In an argmax over one unit's candidates, a term of the form f(threat) x
-        /// candidate-constant is just another retaliation term - the only additive shape that can
-        /// mean "goals dominate except at certain death" is one that is zero almost everywhere.
-        /// </summary>
-        private static float ProbabilityLost(UnitData self, float killWounds)
-        {
-            float woundsToWipe = Math.Max(0.01f, self.RemainingWounds);
-            float rampStart = VetoRampStartFraction * woundsToWipe;
-            if (killWounds <= rampStart) return 0f;
-            return Math.Min(1f, (killWounds - rampStart) / (woundsToWipe - rampStart));
-        }
-
-        /// <summary>
-        /// #365 Tier 2: what this unit would still have done for us if it lives - the thing a death
-        /// actually forfeits. Endpoint-INDEPENDENT and cached per activation, which is the whole
-        /// trick (Chris): a unit that dies whatever it does sees the same penalty on every
-        /// candidate, so the gate cancels in the argmax and the goal term decides - the 2-of-10
-        /// remnant rushes the objective and soaks a volley instead of freezing in cover. A gate
-        /// keyed on DANGER would peak exactly when death is certain and produce that freeze.
-        /// </summary>
-        private float ForfeitedContribution()
-        {
-            if (_forfeitedContribution.HasValue) return _forfeitedContribution.Value;
-            UnitData self = _activeUnit!.GetValue();
-            int round = _tableState.Progress.RoundCount ?? 1;
-            int total = Math.Max(1, _tableState.Progress.TotalRounds);
-
-            // Fighting half, horizon-decayed: with NUMBER_OF_ROUNDS = 4 every unit dies at the end
-            // anyway, so what a death costs is the rounds it still had. This is where "round decay"
-            // lives - it is emergent from the horizon, never its own scalar.
-            float attrition = TacticalAnalysis.UnitValue(self) / 100f
-                * Math.Max(0f, (total - round) / (float)total);
-
-            // Objective half, NOT decayed (Chris's correction: dying is not free in round 4 if you
-            // were contesting). ReconcileObjectivesStage scores at END of round on presence, and
-            // ownership persists when uncontested - so a death costs a marker we were taking or
-            // holding against a live challenger, and costs nothing at all for one already safe.
-            // Urgency RISES into the final round, which is exactly right here.
-            float urgency = ObjectiveUrgency(round, total);
-            float objective = 0f;
-            float envelope = TacticalAnalysis.ObjectiveSeizureRadiusInches
-                + TacticalAnalysis.RushDistance(self, _evaluator);
-            foreach (ObjectiveProjection projection in TacticalAnalysis.ProjectObjectives(_tableState))
-            {
-                Position marker = projection.Objective.Position;
-                if (TacticalAnalysis.MinBaseEdgeDistanceToPoint(self, marker) > envelope) continue;
-                if (!MarkerContestable(marker)) continue;
-                // One body can only be in one place - the best marker it is playing for, not a sum.
-                objective = Math.Max(objective, urgency * TacticianWeights.MoveObjective);
-            }
-
-            _forfeitedContribution = attrition + objective;
-            return _forfeitedContribution.Value;
-        }
-
         /// <summary>
         /// The denominator for the habit's melee half (#365): total melee threat from enemies that
         /// could RELEVANTLY reach us this activation. Endpoint-independent - it asks how hard they

@@ -122,55 +122,15 @@ namespace FDG.Ai.Tactician
         // we want and comes free from ObjectiveApproach's normalisation.
         public static float MoveCoverHabit = 0.05f;
 
-        // #365 Tier 2 (slice 2c), the lethality VETO - the only term allowed to interrupt a goal:
-        //
-        //     penalty = MoveLethality x P(destroyed outright) x (what this unit would still have done)
-        //
-        // P is a wipeout-only ramp (TacticianPlanner.ProbabilityLost): identically ZERO until the
-        // ranked threat estimate nears the unit's remaining wounds, 1 at wipeout. This is the third
-        // formulation, and the shape - not the weight - is the lesson of the first two: any curve
-        // that engages at sub-lethal threat is, in the argmax, just a second retaliation term with
-        // a knee (f(threat) x candidate-constant), and the pool punished every such curve
-        // monotonically in how much threat it perceived (-4 to -14pp across three aggregations and
-        // W 0.4-1.7; #365 ledger 2026-08-06). A veto that is zero almost everywhere is the only
-        // additive shape that can mean "goals dominate except at certain death" (Chris).
-        //
-        // Pricing the FORFEITED CONTRIBUTION rather than the danger is still what makes a doomed
-        // unit behave: P ~ 1 on every candidate makes the term a constant, it cancels, and the
-        // 2-of-10 remnant rushes the marker instead of freezing (pin 12). The morale knee and
-        // quality scaling were CUT with this reshape (pins 8/9, recorded in the ledger) - they are
-        // sub-wipeout discrimination, which is exactly what the pool forbids. If the knee ever
-        // returns, its home is retaliation's response curve, never a goal-overriding term.
-        //
-        // Calibrated by measurement (TacticianLethalityGateTests.Calibrate prints it): smallest
-        // gunline, in models, that makes a 10-model rifle squad refuse a marker it could take -
-        //
-        //   W      fresh (10 wounds)   worn to half (5 wounds)
-        //   0.4        never                never              <- pin 7 unsatisfiable
-        //   0.5         40                  never              <- exactly a full-wipe volley
-        //   0.8         38                   20                <- floor: pin 8's worn balk appears
-        //   1.0         36                   20
-        //   1.5         36                   18
-        //
-        // The thresholds barely move with W because the decision comes from P reaching 1, not from
-        // the weight - W only sets how DECISIVELY the veto overrides once it fires, which is the
-        // veto property working. 1.0 sits a margin above the 0.8 floor; there is no pin-driven
-        // ceiling, and the pool run is the ceiling's referee.
-        public static float MoveLethality = 1.0f;
-
-        // Cover is discounted here, never zeroed. Being wrong about cover in the Tier 1 habit
-        // costs a slightly different equally-good route; being wrong about it in the veto gets the
-        // unit deleted. That asymmetry is why one scalar could never serve both tiers.
-        public static float LethalityBlockedDiscount = 0.8f;
-
-        // How fast a threat's contribution decays by RANK (#365 Tier 2). The worst enemy able to
-        // reach an endpoint counts fully, the next at this fraction, the next at its square. Real
-        // convergent fire therefore adds up - three guns bearing on one spot is genuinely worse
-        // than one - but the series converges to 1/(1 - decay) = 2x the worst single threat, so the
-        // gate can never again conclude that the whole enemy army is focusing one squad. That is
-        // what a plain sum did, and it cost -9.8pp on the 640-game pool.
-        public static float LethalityFocusDecay = 0.5f;
-
+        // #365 Tier 2 (the lethality gate / veto) lived here from 2026-08-06 to 2026-08-06 and
+        // was REMOVED the same day after failing its pool gate in every formulation tried: a
+        // morale-knee curve over three threat aggregations (-4 to -14pp, monotone in perceived
+        // threat) and a wipeout-only veto with ranked-decay aggregation (-4.06pp, z -3.11, worst
+        // for the melee armies whose correct play is walking through near-lethal fire). The full
+        // record - formulations, measurements, replay post-mortem, and the structural finding that
+        // f(threat) x candidate-constant is just a second retaliation term in the argmax - is in
+        // WorkItems/365-cover-as-a-habit.md. Do not reintroduce a goal-overriding threat term
+        // without reading it first; the safe home for smarter caution is retaliation's curve.
 
         // --- Risk posture (#191 idea 3) -------------------------------------------------------------
         // ADDED 2026-07-26: the projected objective differential, round-scaled, tilts the risk

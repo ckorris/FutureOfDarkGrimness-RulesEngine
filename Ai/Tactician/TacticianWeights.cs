@@ -122,6 +122,74 @@ namespace FDG.Ai.Tactician
         // we want and comes free from ObjectiveApproach's normalisation.
         public static float MoveCoverHabit = 0.05f;
 
+        // #365 Tier 2, the lethality gate - the ONLY term allowed to interrupt a goal:
+        //
+        //     penalty = MoveLethality x P(effectively lost) x (what this unit would still have done)
+        //
+        // Pricing the FORFEITED CONTRIBUTION rather than the death is what makes a doomed unit
+        // behave (Chris): if it dies whatever it does, P is ~1 on every candidate, the term is a
+        // near-constant, it cancels in the argmax and the goal wins - the 2-of-10 remnant rushes
+        // the objective and soaks a volley instead of freezing in cover. A gate keyed on DANGER
+        // instead peaks exactly when death is certain and produces the freeze.
+        //
+        // Calibrated by measurement, not taste (TacticianLethalityGateTests.Calibrate prints it).
+        // The harness sweeps this weight and reports, for each unit, the smallest gunline that
+        // makes it refuse an objective it could otherwise take:
+        //
+        //   W      fresh Q4   worn Q4   fresh Q3   fresh Q5
+        //   0.8      30         20        30         30      <- pin 9 cannot resolve: a 5+ unit and
+        //   0.9      28         18        28         28         a 3+ one balk at the same volley
+        //   1.0      28         18        28         26      <- floor: quality starts to decide
+        //   1.5      22         14        24         22
+        //   2.0      20         12        22         18
+        //   3.0      18         10        20         16      <- ceiling: a half-strength unit now
+        //   4.0      16          8        18         14         refuses to move for half of what
+        //   6.0      14          6        16         14         it has left - Chris's freeze
+        //
+        // Floor 1.0 (below it the morale odds lose to the raw value difference and pin 9 reads
+        // backwards: a 3+ unit is worth MORE, so it balks first, which is not the behaviour asked
+        // for). Ceiling 3.0 (at and above it an already-worn unit refuses a marker rather than risk
+        // half its remaining wounds - "a really weak unit shouldn't just freeze up and run for
+        // cover"). 1.7 is the geometric centre of that bracket, ~1.7x clear of both ends.
+        //
+        // The fresh-unit column flattens near 14 however hard this is pushed: below the knee P is
+        // identically zero, so the gate CANNOT make a healthy unit flinch at ordinary casualties at
+        // any weight. Chris's "lose 2 of 10 and take the objective" is a property of the curve's
+        // shape, not of this number.
+        //
+        // The bracket only EXISTS because the gate nets against value the move already banked (see
+        // TacticianPlanner). Without that, cheap chaff refused to tarpit a gunline and cheap bodies
+        // refused to screen from about 1.05 upward, while pin 9 needed 1.0 or more - one single
+        // admissible value, which is overfitting rather than calibration.
+        public static float MoveLethality = 1.7f;
+
+        // Cover is discounted HARD here, never zeroed. Being wrong about cover in the Tier 1 habit
+        // costs a slightly different equally-good route; being wrong about it in the gate gets the
+        // unit deleted. That asymmetry is why one scalar could never serve both tiers, and why
+        // #363's BlockedThreatShare felt arbitrary at 0.4 and like noise at 0.2.
+        public static float LethalityBlockedDiscount = 0.8f;
+
+        // What crossing the half-strength line actually COSTS on the shooting side. Verified in the
+        // engine rather than assumed (#365 slice 2b): a wound-driven morale failure makes a unit
+        // SHAKEN and never Routs it - "Rout is a melee-only result, GF v3.5.1"
+        // (ResolveRangedMoraleStage vs AssignMeleeMoralePenaltyStage). So a gunline cannot delete a
+        // unit by breaking it, only suppress it.
+        //
+        // Suppression is nowhere near free, though (Chris: "it's still very, very bad to get
+        // shaken - you lose at least a quarter of the unit's lifetime potential instantly"), and
+        // the three costs are concrete:
+        //   - it burns an activation recovering: one of four, so a QUARTER of a unit's whole life;
+        //   - it counts toward NO objective while Shaken (TacticalAnalysis's eligibility gate) -
+        //     and objectives decide the winner, so for the objective half of a unit's contribution
+        //     being Shaken at the wrong moment is worth exactly as little as being dead;
+        //   - it auto-fails its next morale test (MoraleUtilities short-circuits, no die rolled),
+        //     which is what turns a later melee loss at half strength into a CERTAIN Rout.
+        // 0.6 is the blend of a total loss of the objective half against a ~quarter loss of the
+        // attrition half. Pricing those two halves separately is the more faithful model and is
+        // recorded as deferred in WorkItems/365 rather than folded in silently - it needs its own
+        // probability track and its own pins.
+        public static float LethalityShakenSeverity = 0.6f;
+
         // --- Risk posture (#191 idea 3) -------------------------------------------------------------
         // ADDED 2026-07-26: the projected objective differential, round-scaled, tilts the risk
         // budget - 1-vs-3 on markers late must not score like 3-vs-1. Behind: retaliation and

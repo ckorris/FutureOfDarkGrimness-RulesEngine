@@ -42,10 +42,15 @@ namespace FDG.Tests
             _them = new PlayerID(Guid.NewGuid());
         }
 
-        // Captured ONCE, before any test mutates it - scenes here call SetUp() again mid-test, so a
-        // per-test capture would restore whatever the last one happened to leave behind, and a
-        // hard-coded literal would silently rot the day the weight is retuned.
-        private static readonly float ShippedCoverHabit = TacticianWeights.MoveCoverHabit;
+        // Captured ONCE, before any test mutates it - a per-test capture would restore whatever the
+        // last scene happened to leave behind, and a hard-coded literal would silently rot the day
+        // the weight is retuned. In OneTimeSetUp rather than a static field initialiser: this type
+        // is beforefieldinit, so an initialiser fires on FIRST ACCESS - which is inside TearDown,
+        // after case 15 has already set the weight to 0 - and would capture 0 as the default.
+        private static float ShippedCoverHabit;
+
+        [OneTimeSetUp]
+        public void CaptureShippedWeights() => ShippedCoverHabit = TacticianWeights.MoveCoverHabit;
 
         [TearDown]
         public void TearDown() => TacticianWeights.MoveCoverHabit = ShippedCoverHabit;

@@ -56,9 +56,14 @@ namespace FDG.Ai.Tactician
         public const int RepackCorrectionAttempts = 8;
         public const float RepackCorrectionSlackInches = 0.01f;
 
-        // #366: the shortest arc a snake rank may be given. A rank whose stagger leaves it less than
-        // this holds position instead of being floored onto the route's start (see BuildSnakeToSide).
+        // #366: the shortest arc a snake rank may be given ON the route. A rank whose stagger leaves it
+        // less than this is seated BEHIND the route's start instead, extending the file backwards, rather
+        // than being floored onto the start on top of its neighbours (see BuildSnakeToSide).
         public const float MinSnakeRankArcInches = 0.05f;
+
+        // #366: how far a rank may be backed off (in quarter-spacings) hunting for a full base width of
+        // real clearance from the rank ahead when the route bends under it. 16 covers four spacings.
+        public const int SnakeRankBackoffSteps = 16;
 
         // Aim tuning. A charge targets just inside base contact (still < the validator's contact
         // tolerance, so it reads as engaged, not standoff-band loitering); an advance targets just past
@@ -608,46 +613,30 @@ namespace FDG.Ai.Tactician
             TerrainGrid? routeGrid)
         {
             float arc = arcLengthInches;
+            int rankCount = (order.Count + files - 1) / files;
             for (int attempt = 0; attempt < RepackCorrectionAttempts; attempt++)
             {
+                RankAnchor[] anchors =
+                    SnakeRankAnchors(path, arc, rankCount, spacing, terrain, baseRadiusInches);
                 var candidate = new List<ModelMoveEntry>(order.Count);
                 for (int i = 0; i < order.Count; i++)
                 {
-                    int rank = i / files;
+                    RankAnchor anchor = anchors[i / files];
                     int file = i % files;
-                    float arcI = arc - rank * spacing;
-                    // #366: a rank staggered further back than the arc itself has no room ahead of the
-                    // route's start, and the old Math.Max(0.05f, ...) floor put EVERY such rank on the
-                    // same point - a big unit's models ended stacked on each other (11 models needed
-                    // 5 x spacing = 6.8" of arc to seat six ranks; a 4" advance can never supply it, so
-                    // the collapse was structural, not an edge case). Those ranks hold position instead:
-                    // the file forms over successive activations, as the S4 note above describes, and no
-                    // model is dragged BACKWARDS to the route's start to make the pile.
-                    if (arcI < MinSnakeRankArcInches)
-                    {
-                        candidate.Add(new ModelMoveEntry(order[i],
-                            new List<Position> { order[i].GetValue().Position }));
-                        continue;
-                    }
-                    (Position endI, List<Position> passedI, _) =
-                        GridPathfinder.AdvanceAlongPath(path, arcI, terrain, baseRadiusInches);
+                    Position endI = anchor.Position;
 
                     if (files > 1)
                     {
-                        // Offset parallel files perpendicular to the LOCAL path direction at this point.
-                        Position prev = passedI.Count > 0 ? passedI[^1] : path[0];
-                        float dx = endI.x - prev.x, dz = endI.z - prev.z;
-                        float len = MathF.Sqrt(dx * dx + dz * dz);
-                        (dx, dz) = len < 1e-6f ? (1f, 0f) : (dx / len, dz / len);
+                        // Offset parallel files perpendicular to the local path direction.
                         float across = file * spacing * side;
-                        endI = new Position(endI.x + across * -dz, endI.z + across * dx);
+                        endI = new Position(endI.x + across * -anchor.DirZ, endI.z + across * anchor.DirX);
                     }
 
                     // #264 issue 4: join the route where this model actually stands, rather than
                     // hopping to its first bend - for a rank drawn up across the route's mouth that
                     // hop grazes the very piece the route detours around.
                     candidate.Add(new ModelMoveEntry(order[i],
-                        RouteLegsFor(order[i].GetValue().Position, path, passedI,
+                        RouteLegsFor(order[i].GetValue().Position, path, anchor.Passed,
                             new List<Position> { endI }, terrain, baseRadiusInches, routeGrid)));
                 }
 
@@ -657,6 +646,81 @@ namespace FDG.Ai.Tactician
                 if (arc <= 0f) break;
             }
             return StayInPlace(unit);
+        }
+
+        /// <summary>One rank's place in the file: where it stands, the route waypoints it funnels through
+        /// to get there, and the local direction of travel the parallel files offset perpendicular to.</summary>
+        private readonly struct RankAnchor
+        {
+            public readonly Position Position;
+            public readonly List<Position> Passed;
+            public readonly float DirX, DirZ;
+
+            public RankAnchor(Position position, List<Position> passed, float dirX, float dirZ)
+            {
+                Position = position; Passed = passed; DirX = dirX; DirZ = dirZ;
+            }
+        }
+
+        /// <summary>
+        /// Where each rank of the snake stands, head first. Two #366 fixes over the original
+        /// "arc - rank * spacing, floored at 0.05":
+        ///
+        /// <para>Ranks are staggered by <paramref name="spacing"/> of REAL distance, not of arc length.
+        /// Around a bend the same arc separation is a much shorter straight-line gap, so pure arc
+        /// staggering bunched consecutive ranks into each other at exactly the corners the snake exists to
+        /// round; each rank now backs off along the route until it clears the rank ahead by a full base
+        /// width. Nothing caught this before because no validator checked a unit against its own models.</para>
+        ///
+        /// <para>Ranks that run out of route fall BEHIND the start, extending the file backwards along the
+        /// first segment - what forming a column out of a blob actually costs. The old floor put every
+        /// such rank on the SAME point, which stacked them and, because piling the rear models onto the
+        /// start dragged them forward, read as free progress to the ladder's forward-progress gate. An
+        /// honest tail lets that gate see a net retreat for what it is.</para>
+        /// </summary>
+        private static RankAnchor[] SnakeRankAnchors(List<Position> path, float arc, int rankCount,
+            float spacing, IReadOnlyList<ITerrain> terrain, float baseRadiusInches)
+        {
+            // The first segment's forward direction - the axis the file extends back along once the
+            // route runs out.
+            float bx = path[1].x - path[0].x, bz = path[1].z - path[0].z;
+            float blen = MathF.Sqrt(bx * bx + bz * bz);
+            (bx, bz) = blen < 1e-6f ? (1f, 0f) : (bx / blen, bz / blen);
+
+            RankAnchor At(float a)
+            {
+                if (a < MinSnakeRankArcInches)
+                    return new RankAnchor(new Position(path[0].x + bx * a, path[0].z + bz * a),
+                        new List<Position>(), bx, bz);
+
+                (Position pos, List<Position> passed, _) =
+                    GridPathfinder.AdvanceAlongPath(path, a, terrain, baseRadiusInches);
+                Position prev = passed.Count > 0 ? passed[^1] : path[0];
+                float dx = pos.x - prev.x, dz = pos.z - prev.z;
+                float len = MathF.Sqrt(dx * dx + dz * dz);
+                (dx, dz) = len < 1e-6f ? (bx, bz) : (dx / len, dz / len);
+                return new RankAnchor(pos, passed, dx, dz);
+            }
+
+            var anchors = new RankAnchor[rankCount];
+            anchors[0] = At(arc);
+            float arcR = arc;
+            for (int rank = 1; rank < rankCount; rank++)
+            {
+                arcR -= spacing;
+                RankAnchor a = At(arcR);
+                // Bounded back-off: a hairpin can need well over one spacing of arc to open a full base
+                // width of real gap. If it never opens, the validator rejects the snake and the halving
+                // ladder takes over - the same outcome as any other unbuildable shape.
+                for (int guard = 0; guard < SnakeRankBackoffSteps
+                    && Dist(a.Position, anchors[rank - 1].Position) < spacing - 0.001f; guard++)
+                {
+                    arcR -= spacing / 4f;
+                    a = At(arcR);
+                }
+                anchors[rank] = a;
+            }
+            return anchors;
         }
 
         /// <summary>Whether any leg of the candidate sweeps through impassible terrain - the fault the

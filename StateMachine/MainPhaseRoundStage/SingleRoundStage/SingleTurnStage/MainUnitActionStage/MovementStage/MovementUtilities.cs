@@ -55,6 +55,7 @@ namespace FDG.Stages
             //standoff check is a no-op here, preserving these callers' existing behavior.
             ValidateMovingThroughEnemyUnits(moves, Array.Empty<EnemyModelFootprint>(), canMoveThroughEnemies: false, ref errors);
             ValidateCoherency(moves, ref errors);
+            ValidateNoSelfOverlap(moves, ref errors);
             ValidateEndsOnTable(moves, ref errors);
 
             return errors.Count == 0;
@@ -85,6 +86,7 @@ namespace FDG.Stages
             ValidateMovingThroughEnemyUnits(moves, enemies, canMoveThroughEnemies, ref errors);
             ValidateCoherency(moves, ref errors);
             ValidateEndsOnFriendly(moves, AsReadOnly(friendlyFootprints), ref errors);
+            ValidateNoSelfOverlap(moves, ref errors);
             ValidateEndsOnTable(moves, ref errors);
 
             return errors.Count == 0;
@@ -160,6 +162,7 @@ namespace FDG.Stages
                 ValidateCoherency(moves, ref errors);
             ValidateChargeReach(moves, move => budgetFor(move).MaxRushDistance, enemies, ref errors);
             ValidateEndsOnFriendly(moves, AsReadOnly(friendlyFootprints), ref errors);
+            ValidateNoSelfOverlap(moves, ref errors);
             ValidateEndsOnTable(moves, ref errors);
 
             return errors.Count == 0;
@@ -191,6 +194,7 @@ namespace FDG.Stages
             ValidateMovingThroughEnemyUnits(moves, enemies, canMoveThroughEnemies, ref errors);
             ValidateCoherencyNotWorsened(moves, ref errors);
             ValidateEndsOnFriendly(moves, AsReadOnly(friendlyFootprints), ref errors);
+            ValidateNoSelfOverlap(moves, ref errors);
             ValidateEndsOnTable(moves, ref errors);
 
             return errors.Count == 0;
@@ -985,6 +989,59 @@ namespace FDG.Stages
             }
         }
 
+        /// <summary>
+        /// #366 — no two models of the MOVING unit may end their move stacked on each other. This rule was
+        /// simply absent: <see cref="GetFriendlyModelFootprints"/> deliberately omits the moving unit on the
+        /// grounds that "my own cohesion governs my models' spacing", but cohesion is a MAXIMUM-distance
+        /// rule — two models 0" apart satisfy it perfectly. Nothing else looked, so an AI-submitted move
+        /// that gave several models the same destination was accepted and written straight to the table
+        /// (the reported save: 4 models on one point, 3 on another). The GUI resolver has always blocked a
+        /// human from doing it, which is why it read as guarded.
+        ///
+        /// <para>Like <see cref="ValidateEndsOnFriendly"/> and <see cref="ValidateEndsOnTable"/> this is a
+        /// "not worsened" rule: a pair that ALREADY overlaps (an older save, a forced move, a bug like the
+        /// one that motivated this) must not be frozen in place by a validator that rejects every move it
+        /// can make — only a pair that is newly stacked is illegal.</para>
+        /// </summary>
+        private static void ValidateNoSelfOverlap(List<ModelMoveEntry> moves,
+            ref List<ReasonForInvalidMove> reasonsForInvalidMove)
+        {
+            for (int i = 0; i < moves.Count; i++)
+            {
+                ModelData a = moves[i].Model.GetValue();
+                if (!a.GetIsAlive()) continue;
+                Position endA = moves[i].Positions.Count > 0
+                    ? moves[i].Positions[^1] : a.PositionBinding.GetValue();
+                Float2 endFacingA = EndFacing(moves[i], a);
+
+                for (int j = i + 1; j < moves.Count; j++)
+                {
+                    ModelData b = moves[j].Model.GetValue();
+                    if (!b.GetIsAlive()) continue;
+                    // A dead model's slot can be reused; the same model appearing twice is a caller bug,
+                    // not a geometry one, and would self-flag here for no useful reason.
+                    if (ReferenceEquals(a, b)) continue;
+
+                    Position endB = moves[j].Positions.Count > 0
+                        ? moves[j].Positions[^1] : b.PositionBinding.GetValue();
+                    Float2 endFacingB = EndFacing(moves[j], b);
+
+                    if (!BaseShapeGeometry.AreColliding(a.BaseShape, endA, endFacingA,
+                            b.BaseShape, endB, endFacingB))
+                        continue;
+
+                    // Already stacked before the move - don't trap the pair; only NEWLY stacking is illegal.
+                    if (BaseShapeGeometry.AreColliding(a.BaseShape, a.PositionBinding.GetValue(), a.Facing,
+                            b.BaseShape, b.PositionBinding.GetValue(), b.Facing))
+                        continue;
+
+                    reasonsForInvalidMove.Add(
+                        new ReasonForInvalidMove(EErrorReasonType.EndedOnOwnUnitModel, moves[i].Model));
+                    break; // one flag per model is enough
+                }
+            }
+        }
+
         // #291 — float slack on the table edge, so a model deliberately parked flush against it isn't
         // rejected by sub-thousandth rounding in the footprint corners.
         private const float TABLE_EDGE_EPSILON_INCHES = 0.001f;
@@ -1267,6 +1324,8 @@ namespace FDG.Stages
                     return "Ends stacked on top of a friendly unit";
                 case EErrorReasonType.EndedOffTable:
                     return "Ends with part of its base off the table";
+                case EErrorReasonType.EndedOnOwnUnitModel:
+                    return "Ends stacked on top of another model in its own unit";
                 default:
                     throw new ArgumentOutOfRangeException();
             }
@@ -1301,7 +1360,9 @@ namespace FDG.Stages
         EndedTooCloseToEnemy,
         EndedOnFriendlyUnit,
         /// <summary>#291 - part of the model's base would end past the table edge.</summary>
-        EndedOffTable
+        EndedOffTable,
+        /// <summary>#366 - two models of the MOVING unit would end stacked on each other.</summary>
+        EndedOnOwnUnitModel
     }
 
     /// <summary>

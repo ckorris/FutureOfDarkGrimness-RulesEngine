@@ -181,9 +181,18 @@ namespace FDG.Tests
             }
 
             Position final = Centroid(unit);
-            Assert.That(Distance(final, goal), Is.LessThanOrEqualTo(2.5f),
+            // What "arrived" means is a model ON the marker - seizure is per model, not per centroid.
+            // #366: the centroid bound is the 3" seizure radius rather than the old 2.5". A file that no
+            // longer overlaps itself is physically longer, so its centroid sits further back: the lead
+            // model still lands exactly on the goal (unchanged from before #366), but the centroid trails
+            // 2.9" instead of 2.4". Asserting the lead model pins the behaviour that actually matters.
+            float nearest = living.Min(mb => Distance(mb.GetValue().Position, goal));
+            Assert.That(nearest, Is.LessThanOrEqualTo(0.5f),
                 $"a null pathfind must degrade to the nearest REACHABLE approach, not a straight " +
-                $"line into the wall face; unit ended at ({final.x:F1},{final.z:F1})");
+                $"line into the wall face; nearest model ended {nearest:F1}\" from the marker");
+            Assert.That(Distance(final, goal), Is.LessThanOrEqualTo(3f),
+                $"the unit must arrive within seizure radius, not straggle; centroid ended at " +
+                $"({final.x:F1},{final.z:F1})");
         }
 
         // --- Issue 4: BuildPathCandidate routes EVERY model through the path's shared interior

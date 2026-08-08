@@ -91,8 +91,11 @@ namespace FDG.Tests
 
             //Overshooter goes 13" (beyond Rush) but stops clear of the enemy — NOT in melee and not stacked
             //on it (ending on top of an enemy base is now its own MovingThroughEnemyUnit error).
+            //#366: offset off the lane so it doesn't end stacked on its own unit's other model either
+            //(both are 0.75" bases; the old (13,0)/(14,0) ends overlapped by 0.5" and only passed because
+            //no validator checked same-unit overlap). Still 13.15" travelled — beyond Rush, within the cap.
             ModelMoveEntry overshooterMove = new ModelMoveEntry(overshooter,
-                new List<Position> { new Position(13, 0) });
+                new List<Position> { new Position(13, 2) });
 
             //A different (slower) model ends within melee range, satisfying the reach rule for the unit.
             ModelMoveEntry closerMove = new ModelMoveEntry(closer,

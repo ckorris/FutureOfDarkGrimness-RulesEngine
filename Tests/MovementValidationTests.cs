@@ -613,6 +613,89 @@ namespace FDG.Tests
                 .ToList();
         }
 
+        // --- #366: two models of the MOVING unit may not end stacked on each other. The rule was
+        // missing entirely - GetFriendlyModelFootprints omits the moving unit on the grounds that
+        // cohesion governs its own spacing, but cohesion is a MAXIMUM-distance rule and 0" apart
+        // satisfies it. An AI move that gave several models one destination was written straight to
+        // the table (the reported save: 4 models on one point, 3 on another).
+
+        [Test]
+        public void ValidatePaths_TwoOwnModelsEndOnTheSameSpot_Rejected()
+        {
+            DataBinding<ModelData> a = MakeModel(new Position(0, 0));
+            DataBinding<ModelData> b = MakeModel(new Position(0, 3));
+            var dest = new Position(5, 0);
+
+            bool ok = MovementUtilities.ValidatePaths(
+                new List<ModelMoveEntry>
+                {
+                    new ModelMoveEntry(a, new List<Position> { dest }),
+                    new ModelMoveEntry(b, new List<Position> { dest }),
+                },
+                maxDistanceInches: 12f, terrain: null, out List<ReasonForInvalidMove> errors);
+
+            Assert.That(ok, Is.False, "a move that sends two models of one unit to the same point is illegal");
+            Assert.That(errors.Any(e => e.ErrorReasonType == EErrorReasonType.EndedOnOwnUnitModel), Is.True,
+                "got: " + string.Join(", ", errors.Select(e => e.ErrorReasonType.ToString())));
+        }
+
+        [Test]
+        public void ValidatePaths_OwnModelsEndOverlappingWithoutCoinciding_Rejected()
+        {
+            // 0.75" bases 1" apart overlap by half an inch - cohesion is delighted (well under 1"),
+            // which is exactly why cohesion could never stand in for this rule.
+            DataBinding<ModelData> a = MakeModel(new Position(0, 0));
+            DataBinding<ModelData> b = MakeModel(new Position(0, 3));
+
+            bool ok = MovementUtilities.ValidatePaths(
+                new List<ModelMoveEntry>
+                {
+                    new ModelMoveEntry(a, new List<Position> { new Position(5f, 0f) }),
+                    new ModelMoveEntry(b, new List<Position> { new Position(6f, 0f) }),
+                },
+                maxDistanceInches: 12f, terrain: null, out List<ReasonForInvalidMove> errors);
+
+            Assert.That(ok, Is.False);
+            Assert.That(errors.Any(e => e.ErrorReasonType == EErrorReasonType.EndedOnOwnUnitModel), Is.True);
+        }
+
+        [Test]
+        public void ValidatePaths_OwnModelsEndClearOfEachOther_Accepted()
+        {
+            DataBinding<ModelData> a = MakeModel(new Position(0, 0));
+            DataBinding<ModelData> b = MakeModel(new Position(0, 3));
+
+            bool ok = MovementUtilities.ValidatePaths(
+                new List<ModelMoveEntry>
+                {
+                    new ModelMoveEntry(a, new List<Position> { new Position(5f, 0f) }),
+                    new ModelMoveEntry(b, new List<Position> { new Position(5f, 1.6f) }),
+                },
+                maxDistanceInches: 12f, terrain: null, out List<ReasonForInvalidMove> errors);
+
+            Assert.That(ok, Is.True, "got: " + string.Join(", ", errors.Select(e => e.ErrorReasonType.ToString())));
+        }
+
+        [Test]
+        public void ValidatePaths_PairAlreadyStackedBeforeTheMove_NotWorsened_Accepted()
+        {
+            // A unit loaded from a save written by the bug this rule exists to stop must not be frozen:
+            // like the friendly-overlap and off-table rules, only NEWLY stacking is illegal.
+            DataBinding<ModelData> a = MakeModel(new Position(0, 0));
+            DataBinding<ModelData> b = MakeModel(new Position(0, 0));
+
+            bool ok = MovementUtilities.ValidatePaths(
+                new List<ModelMoveEntry>
+                {
+                    new ModelMoveEntry(a, new List<Position> { new Position(2f, 0f) }),
+                    new ModelMoveEntry(b, new List<Position> { new Position(2f, 0.4f) }),
+                },
+                maxDistanceInches: 12f, terrain: null, out List<ReasonForInvalidMove> errors);
+
+            Assert.That(ok, Is.True, "an already-stacked pair must still be able to move; got: "
+                + string.Join(", ", errors.Select(e => e.ErrorReasonType.ToString())));
+        }
+
         private DataBinding<ModelData> MakeModel(Position initialPosition)
         {
             ModelData modelData = new ModelData(

@@ -326,6 +326,44 @@ namespace FDG.Tests
                 "a blocked advance may stall, but must never march the unit away from the goal");
         }
 
+        [Test]
+        public void ValidateWithBackoff_SnakeThatBarelyAdvances_IsRejectedForTheHalvingLadder()
+        {
+            // #366: the snake's gate used to be the bare 0.05" floor, so a big unit would spend a whole
+            // activation stringing itself into a file for a token nudge - and the reported save's
+            // collapsed snake cleared that bar easily, because piling the tail onto the route start
+            // dragged those models forward and read as progress. A snake must now gain a real share of
+            // the arc it was given.
+            var models = MakeModels(6, baseRadius: 0.5f);
+            DataBinding<UnitData> unit = MakeUnit(models);
+            (float cx, float cz) = Centroid(models);
+            const float step = 4f;
+            var wall = new List<ITerrain> { new TerrainData(ETerrainType.Impassible,
+                new RectangularZone(cx - 20f, cx + 20f, cz + 3f, cz + 5f)) };
+
+            // The straight candidate walks its pack into the wall - the impassible fault that reaches
+            // for the snake in the first place.
+            List<ModelMoveEntry> Blocked(float s) =>
+                MovementPlanner.BuildCandidate(unit, models, cx, cz, 0f, 1f, s, step);
+
+            // The snake on offer is a real, legal, cohesive file - it just strings the unit out sideways
+            // for 0.4" of ground out of a 4" arc. Every model travels far enough to clear the "did the
+            // head actually thread the corridor" gate, so only the progress bar can reject it.
+            const float gain = 0.4f;
+            List<ModelMoveEntry> TokenSnake(float s) => models
+                .Select((mb, k) => new ModelMoveEntry(mb, new List<Position>
+                    { new Position(cx + (k - 2.5f) * 1.1f, cz + gain) })).ToList();
+
+            List<ModelMoveEntry> move = MovementPlanner.ValidateWithBackoff(
+                Blocked, step, unit, models, _ => new ModelMoveBudget(step, step),
+                new List<EnemyModelFootprint>(), false, false, false, wall, null,
+                reaimAt: null, snakeAt: TokenSnake);
+
+            var ends = move.Where(e => e.Positions.Count > 0).Select(e => e.Positions[^1]).ToList();
+            Assert.That(ends.Average(p => p.z) - cz, Is.Not.EqualTo(gain).Within(0.001f),
+                "a snake worth a tenth of its arc must lose to the halving ladder");
+        }
+
         // The AI deploy shape a combined unit actually starts a game in: rows front-to-back, bases
         // 0.1" apart, centred on (cx, cz) - what the #366 save's Warriors were standing in.
         private List<DataBinding<ModelData>> DeployGrid(int[] rowCounts, float radius, float cx, float cz)

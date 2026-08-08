@@ -65,6 +65,15 @@ namespace FDG.Ai.Tactician
         // real clearance from the rank ahead when the route bends under it. 16 covers four spacings.
         public const int SnakeRankBackoffSteps = 16;
 
+        // #366: the share of the arc a snake must actually gain to be worth taking. The old bar was the
+        // bare MinBackoffStepInches (0.05"), which let a big unit spend its whole activation stringing
+        // itself out for a token nudge - and the reported save's collapse cleared it easily, because
+        // piling the tail on the route start dragged those models forward and read as progress. Measured
+        // across the suite, every legitimate snake lands at 0.44-0.95 of its arc and the degenerate ones
+        // at 0.04, so a quarter separates them with room to spare. Below the bar the halving ladder (or
+        // a hold) is simply the better move.
+        public const float SnakeMinProgressFraction = 0.25f;
+
         // Aim tuning. A charge targets just inside base contact (still < the validator's contact
         // tolerance, so it reads as engaged, not standoff-band loitering); an advance targets just past
         // the standoff line. A few measure-and-correct passes converge thanks to the ~1:1 step<->gap
@@ -345,7 +354,8 @@ namespace FDG.Ai.Tactician
                     // unit must gain SOME ground - the first snake move stretches more than it advances,
                     // so the S2-style half-forward gate would wrongly reject it.
                     if (MaxModelMove(snake) >= 0.5f * step
-                        && ForwardProgress(living, candidate, snake) > MinBackoffStepInches
+                        && ForwardProgress(living, candidate, snake)
+                            > Math.Max(MinBackoffStepInches, SnakeMinProgressFraction * step)
                         && Validate(snake, out _))
                         return snake;
                 }

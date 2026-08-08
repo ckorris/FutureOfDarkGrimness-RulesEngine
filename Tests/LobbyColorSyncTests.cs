@@ -92,10 +92,8 @@ namespace FDG.Tests
         // rosters hold Host + Client. Mirrors LobbyJoinGateTests.StandUpLobby.
         private static async Task<(LobbyViewModel_Host host, LobbyViewModel_Client client)> StandUpJoinedLobby()
         {
-            var loopbackHost = new LoopbackHost();
-            var loopbackClient = new LoopbackClient();
-            loopbackHost.Client = loopbackClient;
-            loopbackClient.Host = loopbackHost;
+            var loopbackHost = new LoopbackNetworkHost();
+            var loopbackClient = loopbackHost.Connect("Client");
 
             var hostVm = new LobbyViewModel_Host("Host", "The Table", "", loopbackHost);
             var clientVm = new LobbyViewModel_Client("Client", loopbackClient, "");
@@ -106,64 +104,6 @@ namespace FDG.Tests
             Assert.That(await joinTask, Is.Null, "open lobby join must be accepted");
 
             return (hostVm, clientVm);
-        }
-
-        // Synchronous in-process loopback doubles, mirroring LobbyJoinGateTests / NetworkedFullStateSyncTests.
-        private static ArraySegment<byte> Copy(ArraySegment<byte> data) =>
-            new ArraySegment<byte>(data.ToArray());
-
-        private sealed class LoopbackHost : INetworkHost
-        {
-            public static readonly ConnectionID ClientId = new ConnectionID(Guid.NewGuid());
-
-            public LoopbackClient? Client;
-
-            public event Action<ConnectionID>? OnNewClientConnected;
-            public event Action<ConnectionID>? OnClientDisconnected;
-            public event Action<ArraySegment<byte>, ConnectionID>? OnMessageReceived;
-
-            public Task StartAsync() => Task.CompletedTask;
-
-            public Task SendCommandToAllAsync(ArraySegment<byte> data, bool isPooled)
-            {
-                Client!.Deliver(Copy(data));
-                return Task.CompletedTask;
-            }
-
-            public Task SendCommandToSingleClientAsync(ConnectionID clientId, ArraySegment<byte> data, bool isPooled)
-            {
-                Client!.Deliver(Copy(data));
-                return Task.CompletedTask;
-            }
-
-            public void DisconnectClient(ConnectionID clientId) { }
-
-            public void MarkClientAuthenticated(ConnectionID clientId) { }
-
-            public void Stop() { }
-
-            internal void ReceiveFromClient(ArraySegment<byte> data) =>
-                OnMessageReceived?.Invoke(data, ClientId);
-        }
-
-        private sealed class LoopbackClient : INetworkClient
-        {
-            public LoopbackHost? Host;
-
-            public event Action<ArraySegment<byte>>? OnMessageReceived;
-            public event Action? OnDisconnected;
-
-            public Task<bool> ConnectAsync(IPAddress serverIP, int port = NetworkProtocol.DefaultPort) => Task.FromResult(true);
-
-            public Task SendCommandToHost(ArraySegment<byte> command, bool isPooled)
-            {
-                Host!.ReceiveFromClient(Copy(command));
-                return Task.CompletedTask;
-            }
-
-            public void Disconnect() => OnDisconnected?.Invoke();
-
-            internal void Deliver(ArraySegment<byte> data) => OnMessageReceived?.Invoke(data);
         }
     }
 }

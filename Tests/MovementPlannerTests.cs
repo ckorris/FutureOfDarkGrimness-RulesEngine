@@ -261,6 +261,92 @@ namespace FDG.Tests
                 "an 11-model snake must wrap into files rather than break the 9\" rule");
         }
 
+        [Test]
+        public void BuildSnakeCandidate_ArcShorterThanTheFile_NeverStacksTwoModelsOnOneSpot()
+        {
+            // #366: 11 models on 0.63" bases seat six ranks at 1.36" apiece - 6.8" of arc. Given only
+            // 2", the ranks that don't fit used to be floored onto the route's start and pile up there
+            // (the reported save: 4 models on one point, 3 on another, 7 further base overlaps). They
+            // must hold position instead, so no two models are ever sent to the same spot.
+            var models = MakeModels(11, baseRadius: 0.62992126f);
+            DataBinding<UnitData> unit = MakeUnit(models);
+            (float cx, float cz) = Centroid(models);
+            var path = new List<Position> { new Position(cx, cz), new Position(cx + 9.476f, cz - 3.195f) };
+
+            List<ModelMoveEntry> move = MovementPlanner.BuildSnakeCandidate(unit, models, path,
+                arcLengthInches: 2f, terrain: new List<ITerrain>(), baseRadiusInches: 0.62992126f,
+                maxDistanceInches: 8f);
+
+            var ends = move.Select(e => e.Positions.Count > 0
+                ? e.Positions[^1] : e.Model.GetValue().Position).ToList();
+            for (int i = 0; i < ends.Count; i++)
+                for (int j = i + 1; j < ends.Count; j++)
+                    Assert.That(Dist(ends[i], ends[j]), Is.GreaterThan(0.001f),
+                        $"models {i} and {j} were sent to the same destination");
+        }
+
+        [Test]
+        public void PlanMoveToward_BlockedBigUnitWithNoRoomToFormAFile_NeitherStacksNorRetreats()
+        {
+            // #366 end to end, on the reported save's geometry: an 11-model combined unit tucked behind
+            // a blocking building with a 4" advance toward an objective past it. The grid pack embeds
+            // slots in the building, the ladder reaches for the snake, and the snake cannot seat six
+            // ranks in the arc available. Whatever it settles on, the unit may not end with two models
+            // on one spot, and may not end further from the goal than it started.
+            const float r = 0.62992126f;
+            var models = DeployGrid(new[] { 4, 4, 3 }, r, 20f, 20f);
+            DataBinding<UnitData> unit = MakeUnit(models);
+            (float cx, float cz) = Centroid(models);
+            var tableState = new TableState(_store);
+            // A building diagonally across the lane to the goal, as in the save.
+            _store.Create(new TerrainData(ETerrainType.Impassible,
+                new RotatedZoneWrapper(new RectangularZone(cx + 1.3f, cx + 7.3f, cz + 2f, cz + 6f),
+                    315f, new Float2(cx + 4.3f, cz + 4f))));
+            var goal = new Position(cx + 31f, cz + 22f);
+            const float budget = 4f;
+
+            List<ModelMoveEntry> move = MovementPlanner.PlanMoveToward(unit, models, tableState,
+                goal, moveBudgetInches: budget, maxDistanceInches: budget,
+                budgetFor: _ => new ModelMoveBudget(budget, budget),
+                canMoveThroughEnemies: false, ignoresDifficultTerrain: false,
+                ignoresImpassibleTerrain: false);
+
+            var ends = move.Select(e => e.Positions.Count > 0
+                ? e.Positions[^1] : e.Model.GetValue().Position).ToList();
+            for (int i = 0; i < ends.Count; i++)
+                for (int j = i + 1; j < ends.Count; j++)
+                    Assert.That(Dist(ends[i], ends[j]), Is.GreaterThan(0.001f),
+                        $"models {i} and {j} were sent to the same destination");
+
+            float gx = goal.x - cx, gz = goal.z - cz;
+            float glen = MathF.Sqrt(gx * gx + gz * gz);
+            (gx, gz) = (gx / glen, gz / glen);
+            float ex = ends.Average(p => p.x), ez = ends.Average(p => p.z);
+            Assert.That((ex - cx) * gx + (ez - cz) * gz, Is.GreaterThanOrEqualTo(0f),
+                "a blocked advance may stall, but must never march the unit away from the goal");
+        }
+
+        // The AI deploy shape a combined unit actually starts a game in: rows front-to-back, bases
+        // 0.1" apart, centred on (cx, cz) - what the #366 save's Warriors were standing in.
+        private List<DataBinding<ModelData>> DeployGrid(int[] rowCounts, float radius, float cx, float cz)
+        {
+            float spacing = 2f * radius + 0.1f;
+            var bindings = new List<DataBinding<ModelData>>();
+            for (int row = 0; row < rowCounts.Length; row++)
+                for (int c = 0; c < rowCounts[row]; c++)
+                {
+                    var model = new ModelData(radius, new List<Weapon>(),
+                        new Position(cx + (c - (rowCounts[row] - 1) / 2f) * spacing,
+                                     cz + ((rowCounts.Length - 1) / 2f - row) * spacing),
+                        _store);
+                    bindings.Add(_store.GetDataBinding<ModelData>(_store.Create(model)));
+                }
+            return bindings;
+        }
+
+        private static float Dist(Position a, Position b) =>
+            MathF.Sqrt((a.x - b.x) * (a.x - b.x) + (a.z - b.z) * (a.z - b.z));
+
         private DataBinding<UnitData> MakeUnit(List<DataBinding<ModelData>> models)
         {
             var unit = new UnitData(new PlayerID(Guid.NewGuid()), "Blob", quality: 4, defense: 4,

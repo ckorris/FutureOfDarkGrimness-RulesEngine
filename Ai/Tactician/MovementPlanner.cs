@@ -56,6 +56,10 @@ namespace FDG.Ai.Tactician
         public const int RepackCorrectionAttempts = 8;
         public const float RepackCorrectionSlackInches = 0.01f;
 
+        // #366: the shortest arc a snake rank may be given. A rank whose stagger leaves it less than
+        // this holds position instead of being floored onto the route's start (see BuildSnakeToSide).
+        public const float MinSnakeRankArcInches = 0.05f;
+
         // Aim tuning. A charge targets just inside base contact (still < the validator's contact
         // tolerance, so it reads as engaged, not standoff-band loitering); an advance targets just past
         // the standoff line. A few measure-and-correct passes converge thanks to the ~1:1 step<->gap
@@ -611,7 +615,20 @@ namespace FDG.Ai.Tactician
                 {
                     int rank = i / files;
                     int file = i % files;
-                    float arcI = Math.Max(0.05f, arc - rank * spacing);
+                    float arcI = arc - rank * spacing;
+                    // #366: a rank staggered further back than the arc itself has no room ahead of the
+                    // route's start, and the old Math.Max(0.05f, ...) floor put EVERY such rank on the
+                    // same point - a big unit's models ended stacked on each other (11 models needed
+                    // 5 x spacing = 6.8" of arc to seat six ranks; a 4" advance can never supply it, so
+                    // the collapse was structural, not an edge case). Those ranks hold position instead:
+                    // the file forms over successive activations, as the S4 note above describes, and no
+                    // model is dragged BACKWARDS to the route's start to make the pile.
+                    if (arcI < MinSnakeRankArcInches)
+                    {
+                        candidate.Add(new ModelMoveEntry(order[i],
+                            new List<Position> { order[i].GetValue().Position }));
+                        continue;
+                    }
                     (Position endI, List<Position> passedI, _) =
                         GridPathfinder.AdvanceAlongPath(path, arcI, terrain, baseRadiusInches);
 

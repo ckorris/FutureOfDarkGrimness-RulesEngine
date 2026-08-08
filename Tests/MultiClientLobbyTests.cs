@@ -201,20 +201,55 @@ namespace FDG.Tests
         }
 
         [Test]
-        public async Task FifthPlayer_DefaultsToATeamOutsideTheDefinedRange()
+        public async Task EveryPlayerUpToTheTeamCap_GetsItsOwnDefinedTeam()
         {
-            // Current engine behavior, pinned rather than endorsed: ETeamOption defines Team1..Team4, but
-            // FirstEmptyTeam returns (ETeamOption)(count + 1) unconditionally, so a fifth player defaults
-            // to an undefined enum value - which SetPlayerTeam would then reject as out of range if the
-            // player tried to re-pick it. Nothing in the engine caps the roster at four. Ruling needed
-            // (cap the lobby, clamp the default, or widen ETeamOption) - see WorkItems/188.
+            // #188: ETeamOption used to stop at Team4 while nothing capped the roster, so a fifth player
+            // defaulted to an undefined enum value that SetPlayerTeam then rejected as out of range.
             (LobbyViewModel_Host host, _, _) = await StandUpLobby(3);
-            host.AddAiPlayer(EAiProfile.SoloRules);
+            while (host.PlayerInfos.Count < TeamOptions.MaxTeamNumber)
+                host.AddAiPlayer(EAiProfile.SoloRules);
 
-            ETeamOption fifth = host.PlayerInfos[4].TeamNumber;
-            Assert.That((int)fifth, Is.EqualTo(5));
-            Assert.That(Enum.IsDefined(typeof(ETeamOption), fifth), Is.False,
-                "A fifth player's default team is not a defined ETeamOption value.");
+            List<ETeamOption> teams = host.PlayerInfos.Select(p => p.TeamNumber).ToList();
+
+            Assert.That(teams.Count, Is.EqualTo(TeamOptions.MaxTeamNumber));
+            Assert.That(teams.Distinct().Count(), Is.EqualTo(TeamOptions.MaxTeamNumber),
+                "Up to the cap, every player defaults to a team of its own.");
+            foreach (ETeamOption team in teams)
+                Assert.That(TeamOptions.IsRealTeam(team), Is.True, $"{team} is not a defined team.");
+        }
+
+        [Test]
+        public async Task PlayersBeyondTheTeamCap_DoubleUpRatherThanTakeAnUndefinedTeam()
+        {
+            (LobbyViewModel_Host host, _, _) = await StandUpLobby(3);
+            while (host.PlayerInfos.Count < TeamOptions.MaxTeamNumber + 2)
+                host.AddAiPlayer(EAiProfile.SoloRules);
+
+            List<ETeamOption> teams = host.PlayerInfos.Select(p => p.TeamNumber).ToList();
+
+            foreach (ETeamOption team in teams)
+                Assert.That(TeamOptions.IsRealTeam(team), Is.True,
+                    $"A roster past the cap must never hand out an undefined team ({team}).");
+            Assert.That(teams.Skip(TeamOptions.MaxTeamNumber),
+                Is.All.EqualTo((ETeamOption)TeamOptions.MaxTeamNumber),
+                "Past the cap, arrivals double up on the last team.");
+        }
+
+        [Test]
+        public async Task ATeamPickAboveTheCapIsIgnored()
+        {
+            (LobbyViewModel_Host host, _, _) = await StandUpLobby(3);
+            while (host.PlayerInfos.Count < TeamOptions.MaxTeamNumber + 2)
+                host.AddAiPlayer(EAiProfile.SoloRules);
+
+            PlayerID hostID = host.PlayerInfos[0].PlayerID;
+            ETeamOption before = host.PlayerInfos[0].TeamNumber;
+
+            // Roster is larger than the defined teams, so the old "1..player count" range check would
+            // have accepted this undefined value.
+            host.SetPlayerTeam(hostID, (ETeamOption)(TeamOptions.MaxTeamNumber + 1));
+
+            Assert.That(TeamOf(host, hostID), Is.EqualTo(before), "A team above the cap must be ignored.");
         }
 
         // ── Helpers ─────────────────────────────────────────────────────────────────────────

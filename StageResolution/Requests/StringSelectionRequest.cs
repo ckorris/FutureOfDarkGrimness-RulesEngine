@@ -44,6 +44,21 @@ namespace FDG.StageResolution.Requests
         /// </summary>
         public Dictionary<string, List<OptionRule>>? OptionRules { get; }
 
+        /// <summary>
+        /// #369: the rules named inside a valid option's DESCRIPTION, keyed by that option's string - the
+        /// "Courage" in "...which gains Courage for its next relevant roll". Same shape and same treatment
+        /// as <see cref="OptionRules"/>, pointed at the other string: a front end locates each name inside
+        /// the subtext it is already drawing, underlines it in place and hovers the description (GUI), or
+        /// prints it as an indented line under the subtext (CLI).
+        /// <para>Separate from <see cref="OptionRules"/> because they annotate DIFFERENT TEXT, and a front
+        /// end has to know which. An ability action's label IS a rule name ("Courage Buff"), so feeding
+        /// these through <see cref="OptionRules"/> would have the label matcher underline the "Courage"
+        /// inside "Courage Buff" - the wrong run, explaining the wrong rule.</para>
+        /// <para>Null when no option's description names a rule, which is every menu but the action menu's
+        /// ability rows today.</para>
+        /// </summary>
+        public Dictionary<string, List<OptionRule>>? OptionDescriptionRules { get; }
+
         /// <param name="Name">The rule's RESOLVED name, exactly as it appears inside the option label
         /// ("Deadly(3)", not "Deadly") - front ends locate the name in the label by matching this.</param>
         /// <param name="Description">What the rule does, or null when the catalog entry carries no
@@ -89,7 +104,8 @@ namespace FDG.StageResolution.Requests
             string instructions, IReadOnlyList<string> validOptions, IReadOnlyList<InvalidOption> invalidOptions,
             Dictionary<string, string>? optionDescriptions = null, bool allowCancel = false,
             Dictionary<string, SecondaryAction>? secondaryActions = null, string? displayName = null,
-            Dictionary<string, List<OptionRule>>? optionRules = null)
+            Dictionary<string, List<OptionRule>>? optionRules = null,
+            Dictionary<string, List<OptionRule>>? optionDescriptionRules = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -100,6 +116,7 @@ namespace FDG.StageResolution.Requests
             AllowCancel = allowCancel;
             SecondaryActions = secondaryActions;
             OptionRules = optionRules;
+            OptionDescriptionRules = optionDescriptionRules;
             TaskName = "Select Option";
             DisplayName = displayName ?? TaskName;
         }
@@ -108,9 +125,11 @@ namespace FDG.StageResolution.Requests
             IReadOnlyList<string> validOptions, IReadOnlyList<InvalidOption> invalidOptions,
             Dictionary<string, string>? optionDescriptions = null, bool allowCancel = false,
             Dictionary<string, SecondaryAction>? secondaryActions = null, string? displayName = null,
-            Dictionary<string, List<OptionRule>>? optionRules = null)
+            Dictionary<string, List<OptionRule>>? optionRules = null,
+            Dictionary<string, List<OptionRule>>? optionDescriptionRules = null)
             : this(targetPlayerID, new TaskID(Guid.NewGuid()), instructions, validOptions, invalidOptions,
-                optionDescriptions, allowCancel, secondaryActions, displayName, optionRules)
+                optionDescriptions, allowCancel, secondaryActions, displayName, optionRules,
+                optionDescriptionRules)
         {
         }
 

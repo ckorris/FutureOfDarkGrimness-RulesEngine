@@ -7,6 +7,7 @@ using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
 using FDG.Stages;
+using FDG.StageResolution.Requests;
 using NUnit.Framework;
 
 namespace FDG.Tests
@@ -115,17 +116,77 @@ namespace FDG.Tests
             Assert.That(offers[0].Definition!.Description, Is.EqualTo(BuffText));
         }
 
+        // #369 — the description names the rule the buff CONFERS ("...which gains Courage..."), and that
+        // is the rule the player does not know. It rides alongside as a structured (name, description)
+        // pair so a front end can underline it where it already sits and hover the text.
+        [Test]
+        public async Task Description_CarriesTheRulesItNames_WithTheirOwnText()
+        {
+            var resolver = new RuleResolver();
+            resolver.Register(CoreRuleCatalog.Courage);
+
+            var capture = new CapturingChoiceRequester(BuffName);
+            var ctx = new TriggeredMoveTestContext(_store, capture, ruleResolver: resolver);
+            DataBinding<UnitData> unit = MakeUnitWithAbility(
+                EHookID.Activation_OnBeforeAttackAction, BuffName, BuffText,
+                effect: new Effect.AddRule("Courage", ELifetime.NextTrigger));
+            UnitActionContext unitCtx = NewActivation(ctx, unit);
+
+            var stage = new ChooseActionStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.ToBeforeAttackAction.Bind("ToBeforeAttackAction");
+            await stage.Enter(unitCtx);
+
+            Assert.That(capture.Request!.OptionDescriptionRules, Is.Not.Null);
+            List<StringSelectionRequest.OptionRule> rules =
+                capture.Request!.OptionDescriptionRules![BuffName];
+            Assert.That(rules.Count, Is.EqualTo(1));
+            Assert.That(rules[0].Name, Is.EqualTo("Courage"),
+                "the name is carried verbatim so a front end can find it inside the description");
+            Assert.That(rules[0].Description, Is.EqualTo(CoreRuleCatalog.Courage.Description));
+
+            Assert.That(capture.Request!.OptionRules, Is.Null,
+                "it is NOT the label's rule map - that matcher would underline the 'Courage' inside the "
+                + "label 'Courage Buff' and explain the wrong rule");
+        }
+
+        // A rule the effect references but the description never spells out has nowhere on screen to be
+        // underlined, so it is dropped rather than shipped as an entry no front end can place.
+        [Test]
+        public async Task Description_SkipsAReferencedRuleItNeverMentions()
+        {
+            var resolver = new RuleResolver();
+            resolver.Register(CoreRuleCatalog.Courage);
+
+            var capture = new CapturingChoiceRequester(BuffName);
+            var ctx = new TriggeredMoveTestContext(_store, capture, ruleResolver: resolver);
+            DataBinding<UnitData> unit = MakeUnitWithAbility(
+                EHookID.Activation_OnBeforeAttackAction, BuffName,
+                "Once per activation, buff a friend.",
+                effect: new Effect.AddRule("Courage", ELifetime.NextTrigger));
+            UnitActionContext unitCtx = NewActivation(ctx, unit);
+
+            var stage = new ChooseActionStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.ToBeforeAttackAction.Bind("ToBeforeAttackAction");
+            await stage.Enter(unitCtx);
+
+            Assert.That(capture.Request!.OptionDescriptions![BuffName],
+                Is.EqualTo("Once per activation, buff a friend."),
+                "precondition: the description is still shown");
+            Assert.That(capture.Request!.OptionDescriptionRules, Is.Null);
+        }
+
         // --- Helpers ---
 
         // A lone weaponless unit (its own only friendly) carrying one self-targeting activated ability at
         // the given hook - it cannot Shoot or Charge, so the ability action is the only thing in the menu
         // that could carry a description.
-        private DataBinding<UnitData> MakeUnitWithAbility(EHookID hook, string ruleName, string description)
+        private DataBinding<UnitData> MakeUnitWithAbility(EHookID hook, string ruleName, string description,
+            Effect? effect = null)
         {
             var ability = new ActivatedAbility(
                 hook, new Cost.OncePerActivation(),
                 new TargetSelector(12f, 1, 1, ETargetAffinity.Friend, false),
-                new Effect.GrantToken(new TokenType("BuffFired"), new ValueSource.Literal(1),
+                effect ?? new Effect.GrantToken(new TokenType("BuffFired"), new ValueSource.Literal(1),
                     new TokenClearTrigger.ManualOnly()),
                 new Condition.Always());
             var rule = new SpecialRuleDefinition(ruleName, Array.Empty<HookEntry>(), new[] { ability },

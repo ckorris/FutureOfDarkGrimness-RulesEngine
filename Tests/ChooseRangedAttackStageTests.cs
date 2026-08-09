@@ -1431,6 +1431,28 @@ namespace FDG.Tests
                 "and how many rifles are still waiting to be aimed");
         }
 
+        // #368: every weapon row now prints its copy count ("4x Rifle"), not just the Takedown ones, so
+        // CopiesRemaining has to be right for an ORDINARY weapon too - it was previously documented as
+        // "only meaningful to display when AimedIndividuallyRule is set", and nothing pinned the rest.
+        [Test]
+        public async Task Enter_OrdinaryWeapon_ReportsHowManyCopiesTheUnitIsFiring()
+        {
+            var requester = new CapturingRangedRequester { Reply = FireFirstFireable };
+            var (ctx, attacker, _) = BuildSniperWorld(requester, snipers: 4, enemyUnits: 1,
+                weaponTemplate: () => Rifle());
+
+            var combatCtx = new CombatActionContext(ctx, attacker, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+            await stage.Enter(combatCtx);
+
+            var option = requester.Captured!.WeaponOptions.Single();
+            Assert.That(option.AimedIndividuallyRule, Is.Null,
+                "precondition: a plain rifle fires as one volley");
+            Assert.That(option.CopiesRemaining, Is.EqualTo(4),
+                "the row says how many rifles the volley is made of");
+        }
+
         [Test]
         public async Task Enter_TakedownCopies_MayEachChooseADifferentTargetUnit()
         {

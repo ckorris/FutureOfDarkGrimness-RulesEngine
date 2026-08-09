@@ -187,12 +187,30 @@ namespace FDG.Stages
             // here IS the rule name - hiding the only explanation behind a hover is the bug, not the fix.
             Dictionary<string, string> optionDescriptions = new Dictionary<string, string>(StringComparer.Ordinal);
 
+            // #369 — a buff's description is written in terms of the rule it CONFERS ("...which gains
+            // Courage for its next relevant roll"), and that rule is the one the player does not know.
+            // Each name the ability's effect references is passed alongside its own description so a front
+            // end can make it hoverable where it already sits in the subtext, the same treatment weapon
+            // rules get (#292/#336). Keyed by option string, pointed at the DESCRIPTION rather than the
+            // label - which is why it is not OptionRules: the label here IS a rule name, so that matcher
+            // would underline the "Courage" inside "Courage Buff".
+            Dictionary<string, List<StringSelectionRequest.OptionRule>> optionDescriptionRules =
+                new Dictionary<string, List<StringSelectionRequest.OptionRule>>(StringComparer.Ordinal);
+
             void Describe(AbilityOffer describedOffer)
             {
                 string? text = describedOffer.Definition?.Description;
-                if (!string.IsNullOrWhiteSpace(text))
+                if (string.IsNullOrWhiteSpace(text))
                 {
-                    optionDescriptions[describedOffer.RuleName] = text!;
+                    return;
+                }
+
+                optionDescriptions[describedOffer.RuleName] = text!;
+
+                List<StringSelectionRequest.OptionRule> referenced = ReferencedRules(describedOffer, text!);
+                if (referenced.Count > 0)
+                {
+                    optionDescriptionRules[describedOffer.RuleName] = referenced;
                 }
             }
 
@@ -459,7 +477,8 @@ namespace FDG.Stages
             StringSelectionRequest request = new StringSelectionRequest(context.ActivatingPlayer(),
                 "Choose Action", validOptions, invalidOptions,
                 optionDescriptions: optionDescriptions.Count > 0 ? optionDescriptions : null,
-                allowCancel: canBackOut, displayName: "Choosing an Action");
+                allowCancel: canBackOut, displayName: "Choosing an Action",
+                optionDescriptionRules: optionDescriptionRules.Count > 0 ? optionDescriptionRules : null);
 
             string choice = await GameContext.PlayerRequester.RequestDecision<StringSelectionRequest, string>(request);
 
@@ -485,6 +504,40 @@ namespace FDG.Stages
             await outcomes[choice].Invoke();
         }
 
+
+        /// <summary>
+        /// #369 — the rules <paramref name="offer"/>'s effect names, paired with their own descriptions, for
+        /// the ones that actually appear in <paramref name="descriptionText"/>. A referenced rule the text
+        /// does not spell out has nowhere on screen to be underlined, and one with no definition in the
+        /// registry cannot be explained, so both are dropped rather than shipped as a dead entry.
+        /// <para>An undocumented but REGISTERED rule is kept: the front ends already say "this rule is not
+        /// enforced" for one of those, which is worth knowing at the moment of the choice.</para>
+        /// </summary>
+        private List<StringSelectionRequest.OptionRule> ReferencedRules(AbilityOffer offer,
+            string descriptionText)
+        {
+            List<StringSelectionRequest.OptionRule> rules =
+                new List<StringSelectionRequest.OptionRule>();
+
+            IRuleResolver? resolver = GameContext.RuleEvaluator.RuleResolver;
+            if (resolver == null)
+            {
+                return rules;
+            }
+
+            foreach (string name in EffectRuleReferences.NamesIn(offer.Ability.Effect))
+            {
+                if (!descriptionText.Contains(name, StringComparison.Ordinal)) continue;
+                if (!resolver.TryResolve(name, out ResolvedRule resolved)) continue;
+
+                string? text = string.IsNullOrWhiteSpace(resolved.Definition.Description)
+                    ? null
+                    : resolved.Definition.Description;
+                rules.Add(new StringSelectionRequest.OptionRule(name, text));
+            }
+
+            return rules;
+        }
 
         private bool GetCanMove(IUnitActionContext context, out string reasonIfCant)
         {

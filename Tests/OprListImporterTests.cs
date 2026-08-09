@@ -338,4 +338,67 @@ public class OprListImporterTests
         Assert.That(army.RuleDefinitions, Is.Not.SameAs(book.RuleDefinitions), "attached lists are copies");
         Assert.That(OprListImporter.UnresolvedRuleNames(army), Is.Empty);
     }
+
+    // #367 — the Blessed Sisters Procession Altar shape, the bug that surfaced this: a Transport(6) hull
+    // buys Extended Cargo (an item granting Transport(6)) and Army Forge shows Transport(12). The rating
+    // arrives THREE times in one share list - `rules` (base), `loadout` (final gear), and the
+    // selectedUpgrade's own gains - and only the loadout copy is a second real grant.
+    private const string StackListJson = """
+    {
+      "id": "STACKLIST", "name": "Stacking", "gameSystem": "gf", "pointsLimit": 500,
+      "campaignMode": false, "narrativeMode": false, "listPoints": 250,
+      "units": [
+        { "id": "altar", "cost": 230, "name": "Altar", "size": 1, "bases": { "round": "50" },
+          "rules": [ {"name":"Fearless"}, {"name":"Tough","rating":6}, {"name":"Transport","rating":6} ],
+          "quality": 4, "defense": 2, "armyId": "bookA", "combined": false,
+          "joinToUnit": null, "selectionId": "SelAltar",
+          "selectedUpgrades": [
+            { "option": { "cost": 20, "gains": [ { "type": "ArmyBookItem", "name": "Extended Cargo",
+                "content": [ {"type":"ArmyBookRule","name":"Transport","rating":"6"} ] } ] } }
+          ],
+          "loadout": [
+            { "type": "ArmyBookWeapon", "name": "Flame Blasts", "count": 1, "range": 12, "attacks": 2, "specialRules": [] },
+            { "type": "ArmyBookItem", "name": "Aura", "count": 1,
+              "content": [ {"type":"ArmyBookRule","name":"Fearless"} ] },
+            { "type": "ArmyBookItem", "name": "Extended Cargo", "count": 1,
+              "content": [ {"type":"ArmyBookRule","name":"Transport","rating":"6"} ] }
+          ] }
+      ],
+      "forceOrgErrors": []
+    }
+    """;
+
+    [Test]
+    public void Import_ItemGrantedRating_StacksOntoTheBaseRule_AndIsCountedOnce()
+    {
+        ArmyListFile army = OprListImporter.Import(StackListJson, Books).Army;
+        UnitFileEntry altar = army.Units.Single(u => u.Name == "Altar");
+
+        // 6 (base rule) + 6 (the loadout item) - the selectedUpgrade echo of the SAME item must not add a third.
+        Assert.That(altar.SpecialRules, Has.One.EqualTo(new SpecialRuleEntry_CoreNumeric("Transport", 12)));
+        Assert.That(altar.SpecialRules.Single(r => r is SpecialRuleEntry_CoreNumeric { Name: "Transport" })
+            .PrintableName, Is.EqualTo("Transport(12)"), "the derived name tracks the stacked rating");
+
+        // An un-rated duplicate is still one rule: the Aura item's Fearless does not double the base one.
+        Assert.That(altar.SpecialRules.Count(r => r is SpecialRuleEntry_Core { Name: "Fearless" }), Is.EqualTo(1));
+
+        // Untouched rated rules keep their single rating.
+        Assert.That(altar.SpecialRules, Has.One.EqualTo(new SpecialRuleEntry_CoreNumeric("Tough", 6)));
+    }
+
+    // The same list without a `loadout` - the fallback shape, where the gear above is only the BASE kit, so
+    // the selectedUpgrade's item IS the grant and has to be read there instead. Same answer either way.
+    [Test]
+    public void Import_WithoutLoadout_StacksTheGainedItemInstead()
+    {
+        string noLoadout = StackListJson
+            .Replace("\"loadout\": [", "\"items\": [ {\"type\":\"ArmyBookItem\",\"name\":\"Aura\",\"count\":1," +
+                "\"content\":[{\"type\":\"ArmyBookRule\",\"name\":\"Fearless\"}]} ], \"unusedLoadout\": [");
+
+        ArmyListFile army = OprListImporter.Import(noLoadout, Books).Army;
+        UnitFileEntry altar = army.Units.Single(u => u.Name == "Altar");
+
+        Assert.That(altar.SpecialRules, Has.One.EqualTo(new SpecialRuleEntry_CoreNumeric("Transport", 12)));
+        Assert.That(altar.SpecialRules.Count(r => r is SpecialRuleEntry_Core { Name: "Fearless" }), Is.EqualTo(1));
+    }
 }

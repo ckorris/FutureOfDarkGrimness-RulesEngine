@@ -310,14 +310,15 @@ namespace FDG.ArmyBuilding
                 }
             }
 
-            // Items are rule-bundles at runtime: fold their rules into the unit (deduped by value). A rule
-            // already placed on its target weapon is skipped — it lives there, not on the unit. A weapon
-            // rule from an UNtargeted item ("Toxic Cysts (Bane in Melee)") does fold in, and army-load
-            // (GameBootstrap) spreads it across every weapon the unit carries.
+            // Items are rule-bundles at runtime: fold their rules into the unit (see AddGrantedRule - deduped
+            // by value, except a rated rule the unit already has, which stacks). A rule already placed on its
+            // target weapon is skipped — it lives there, not on the unit. A weapon rule from an UNtargeted
+            // item ("Toxic Cysts (Bane in Melee)") does fold in, and army-load (GameBootstrap) spreads it
+            // across every weapon the unit carries.
             foreach (ItemEntry item in items)
                 foreach (SpecialRuleEntry rule in item.Rules)
-                    if (!placedOnWeapons.Contains((item.Name, rule)) && !unit.SpecialRules.Contains(rule))
-                        unit.SpecialRules.Add(rule);
+                    if (!placedOnWeapons.Contains((item.Name, rule)))
+                        AddGrantedRule(unit.SpecialRules, rule);
 
             // #239: bake effect-set keys. An explicit book key survives the clone; anything still
             // unset gets its keyword/override match, so cross-faction tech (plasma, fusion...) beats
@@ -592,6 +593,10 @@ namespace FDG.ArmyBuilding
         {
             foreach (WeaponFileEntry w in option.WeaponsGained)
                 AddWeapon(unit.Weapons, w, applications);
+            // #367: a BARE gained rule dedupes rather than stacking, unlike an item-granted one. No corpus
+            // option grants a rated rule the unit already has except through an item, and the Army Forge
+            // share JSON (OprListImporter) cannot tell a bare gain from an echo of the base rule - so both
+            // list paths agree here. Revisit together if a book ever ships the bare shape.
             foreach (SpecialRuleEntry r in option.RulesGained)
                 if (!unit.SpecialRules.Contains(r) && (skipRules == null || !skipRules.Contains(r)))
                     unit.SpecialRules.Add(r);
@@ -714,6 +719,39 @@ namespace FDG.ArmyBuilding
                 remaining -= take;
             }
             items.RemoveAll(i => i.Quantity <= 0);
+        }
+
+        // #367 — folds a rule granted by an ITEM (the unit's own gear, or an item an upgrade added) into
+        // its rule list, with OPR's additive semantic for rated rules: a granted Transport(6)
+        // on a unit that already has Transport(6) makes it Transport(12), which is why Army Forge prints
+        // the upgrade line as "Transport(+6)". Corpus-wide this fires for Tough (mounts), Impact, Transport
+        // and Caster; it is keyed on "numeric" rather than a name list so a future book's rated rule stacks
+        // by default instead of being silently swallowed. Un-rated rules still dedupe - a second Fearless
+        // is not two Fearlesses.
+        //
+        // Only for GRANTS. Absorbing another unit's rules (a #107 combined pair, a joined hero) keeps the
+        // plain dedupe: the host does not get tougher because its passenger is Tough.
+        //
+        // Internal: OprListImporter (#241) folds a share-link unit's `loadout` items through the same rule.
+        internal static void AddGrantedRule(List<SpecialRuleEntry> rules, SpecialRuleEntry granted)
+        {
+            if (granted is SpecialRuleEntry_CoreNumeric numeric)
+            {
+                int at = rules.FindIndex(r => r is SpecialRuleEntry_CoreNumeric existing
+                    && string.Equals(existing.Name, numeric.Name, StringComparison.Ordinal));
+                if (at >= 0)
+                {
+                    // Constructed, never `with`: PrintableName is a positional member of the BASE record,
+                    // so a copy-expression would keep the old "Transport(6)" text - and record equality
+                    // keys on it, so the stale entry would also compare unequal to its own value.
+                    var existing = (SpecialRuleEntry_CoreNumeric)rules[at];
+                    rules[at] = new SpecialRuleEntry_CoreNumeric(existing.Name,
+                        existing.NumericValue + numeric.NumericValue);
+                    return;
+                }
+            }
+
+            if (!rules.Contains(granted)) rules.Add(granted);
         }
 
         private static void AddItem(List<ItemEntry> items, ItemEntry template, int applications)

@@ -789,4 +789,105 @@ public class ArmyForgeCompilerTests
         Assert.That(name, Is.EqualTo(expectedName));
         Assert.That(per, Is.EqualTo(expectedPer));
     }
+
+    // #367 — an ITEM's rated rule adds to a same-named rule the unit already has, the way Army Forge prints
+    // it ("Transport(+6)" on the upgrade line, Transport(12) at the top). Before this, an identical rating
+    // was discarded as a duplicate and the unit kept its base value while still paying for the upgrade -
+    // the Blessed Sisters Procession Altar shipped at Transport(6) with Extended Cargo bought.
+    private static RosterUnit Hull() => new()
+    {
+        Id = "hull", Name = "Hull", Quality = 4, Defense = 2,
+        BaseModelCount = 1, MinModels = 1, MaxModels = 1, BasePointCost = 230,
+        Rules =
+        {
+            new SpecialRuleEntry_Core("Fearless"),
+            new SpecialRuleEntry_CoreNumeric("Tough", 6),
+            new SpecialRuleEntry_CoreNumeric("Transport", 6),
+        },
+        Sections =
+        {
+            new UpgradeSection
+            {
+                Id = "up", Variant = UpgradeVariant.Upgrade, Affects = UpgradeAffects.One, MaxPicks = 2,
+                Options =
+                {
+                    new UpgradeOption
+                    {
+                        Id = "cargo", Cost = 20,
+                        ItemsGained =
+                        {
+                            new ItemEntry
+                            {
+                                Name = "Extended Cargo", Quantity = 1,
+                                Rules =
+                                {
+                                    new SpecialRuleEntry_CoreNumeric("Transport", 6),
+                                    new SpecialRuleEntry_Core("Fearless"),
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    [Test]
+    public void ItemGrantedRating_StacksOntoTheUnitsOwnRule()
+    {
+        UnitFileEntry hull = CompileOne(Hull(), new UpgradeChoice { SectionId = "up", OptionId = "cargo" });
+
+        Assert.That(hull.SpecialRules, Has.One.EqualTo(new SpecialRuleEntry_CoreNumeric("Transport", 12)),
+            "6 base + 6 from Extended Cargo - and equal by VALUE, so the derived PrintableName says (12) too");
+        Assert.That(hull.SpecialRules.Single(r => r is SpecialRuleEntry_CoreNumeric { Name: "Transport" })
+            .PrintableName, Is.EqualTo("Transport(12)"));
+        Assert.That(hull.SpecialRules.Count(r => r is SpecialRuleEntry_Core { Name: "Fearless" }), Is.EqualTo(1),
+            "an un-rated duplicate is still one rule");
+        Assert.That(hull.SpecialRules, Has.One.EqualTo(new SpecialRuleEntry_CoreNumeric("Tough", 6)),
+            "a rule the upgrade never touched keeps its rating");
+        Assert.That(hull.PointCost, Is.EqualTo(250));
+    }
+
+    [Test]
+    public void UnitsOwnItem_StacksWithNoUpgradeBought()
+    {
+        // The Orc Great Battle Truck / Eternal Dynasty Syen & Xaotyan shape: the ADDITION is in the roster
+        // itself, an item the unit starts with granting a rating it also has as a rule.
+        RosterUnit hull = Hull();
+        hull.Items.Add(new ItemEntry
+        {
+            Name = "Extra Space", Quantity = 1,
+            Rules = { new SpecialRuleEntry_CoreNumeric("Transport", 5) },
+        });
+
+        UnitFileEntry compiled = CompileOne(hull);
+
+        Assert.That(compiled.SpecialRules, Has.One.EqualTo(new SpecialRuleEntry_CoreNumeric("Transport", 11)));
+    }
+
+    [Test]
+    public void CombinedPair_AbsorbsRulesWithoutStackingThem()
+    {
+        // Absorbing another unit's rules is not a grant: two Tough(6) halves make one Tough(6) unit, not a
+        // Tough(12) one. Same for a joined hero, which never merges its rules at all.
+        RosterUnit hull = Hull();
+        hull.MaxModels = 5;
+        var book = new BookFile { Name = "T", Units = { hull } };
+        var list = new BuilderList
+        {
+            PointsLimit = 100000,
+            Units =
+            {
+                new BuilderUnit { RosterUnitId = "hull", ModelCount = 1, Id = "a" },
+                new BuilderUnit { RosterUnitId = "hull", ModelCount = 1, Id = "b", CombinedWithId = "a" },
+            },
+        };
+
+        UnitFileEntry merged = ListCompiler.Compile(book, list).Units.Single();
+
+        Assert.That(merged.SpecialRules.OfType<SpecialRuleEntry_CoreNumeric>().Single(r => r.Name == "Tough")
+            .NumericValue, Is.EqualTo(6));
+        Assert.That(merged.SpecialRules.OfType<SpecialRuleEntry_CoreNumeric>().Single(r => r.Name == "Transport")
+            .NumericValue, Is.EqualTo(6));
+    }
 }

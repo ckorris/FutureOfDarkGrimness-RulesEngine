@@ -268,14 +268,19 @@ namespace FDG.ArmyBuilding
 
             // `loadout` is the unit's FINAL gear as Army Forge resolved it (upgrades applied, counts are
             // unit totals). Only a list shape without one falls back to the base weapons + items.
-            List<OprLoadoutEntry> gear = unit.Loadout is { Count: > 0 }
-                ? unit.Loadout
+            bool hasLoadout = unit.Loadout is { Count: > 0 };
+            List<OprLoadoutEntry> gear = hasLoadout
+                ? unit.Loadout!
                 : (unit.Weapons ?? new()).Concat(unit.Items ?? new()).ToList();
             foreach (OprLoadoutEntry item in gear)
                 AddLoadoutEntry(entry, item, bookName, warn);
 
             // Upgrades granting bare RULES may or may not already be reflected in `rules` (unverified
-            // corpus corner, see #241) — dedupe-merge covers both. Weapons/items are trusted to `loadout`.
+            // corpus corner, see #241) — dedupe-merge covers both. Weapons/items are trusted to `loadout`
+            // when the list shape has one: re-reading a gained item here would count a grant `loadout`
+            // already delivered twice, which #367's stacking would then make visible. Without a loadout the
+            // gear above is only the BASE kit, so gained items are read here instead - and stack, since each
+            // is a real grant.
             // Alongside, sum each selection's price (#219) so the unit carries its real upgraded cost, not
             // just its base: the option's cost is a flat scalar or a per-unit `costs` entry keyed by unit.Id.
             // A selection whose price we can't read contributes 0 and stays in UnattributedPoints below.
@@ -289,10 +294,11 @@ namespace FDG.ArmyBuilding
                 {
                     if (gain.Type == "ArmyBookRule")
                         AddRule(entry, MapRule(new OprListRule { Name = gain.Name, Rating = gain.Rating }, bookName));
-                    else if (gain.Type == "ArmyBookItem")
+                    else if (gain.Type == "ArmyBookItem" && !hasLoadout)
                         foreach (OprLoadoutEntry inner in gain.Content ?? new())
                             if (inner.Type == "ArmyBookRule")
-                                AddRule(entry, MapRule(new OprListRule { Name = inner.Name, Rating = inner.Rating }, bookName));
+                                ListCompiler.AddGrantedRule(entry.SpecialRules,
+                                    MapRule(new OprListRule { Name = inner.Name, Rating = inner.Rating }, bookName));
                 }
             }
             entry.PointCost += upgradeCost;
@@ -306,6 +312,11 @@ namespace FDG.ArmyBuilding
         // A loadout entry is a weapon, or a named item bundling rules (and possibly nested weapons). Item
         // rules fold into the unit's rule list — same as ListCompiler's untargeted-item path; army load
         // spreads weapon-scoped ones across the unit's weapons.
+        //
+        // #367: an ITEM's rated rule STACKS onto a same-named rule the unit already has (Extended Cargo
+        // makes a Transport(6) hull Transport(12)), because `loadout` is the unit's final gear - each item
+        // in it is one real grant, never an echo of `rules`. A bare ArmyBookRule entry has no such
+        // guarantee, so it keeps the plain dedupe.
         private static void AddLoadoutEntry(UnitFileEntry entry, OprLoadoutEntry item, string bookName,
             Action<string> warn)
         {
@@ -318,7 +329,8 @@ namespace FDG.ArmyBuilding
                     foreach (OprLoadoutEntry inner in item.Content ?? new())
                     {
                         if (inner.Type == "ArmyBookRule")
-                            AddRule(entry, MapRule(new OprListRule { Name = inner.Name, Rating = inner.Rating }, bookName));
+                            ListCompiler.AddGrantedRule(entry.SpecialRules,
+                                MapRule(new OprListRule { Name = inner.Name, Rating = inner.Rating }, bookName));
                         else
                             AddLoadoutEntry(entry, inner, bookName, warn);
                     }

@@ -178,7 +178,7 @@ namespace FDG.Stages
 
             Dictionary<string, Func<Task>> outcomes = new Dictionary<string, Func<Task>>();
 
-            // #367 — an ability action is listed by its rule NAME and nothing else ("Courage Buff"), which
+            // #370 — an ability action is listed by its rule NAME and nothing else ("Courage Buff"), which
             // says nothing about what taking it does; the built-in actions at least explain themselves when
             // greyed out. Every such rule already carries a player-facing Description, so each offer-derived
             // entry below records it here and the request hands it to the front ends as option subtext (GUI:

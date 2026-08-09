@@ -12,7 +12,7 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #367 — the Choose Action menu listed an ability action as its bare rule name ("Courage Buff") with
+    // #370 — the Choose Action menu listed an ability action as its bare rule name ("Courage Buff") with
     // nothing saying what taking it does, while the built-in actions at least explain themselves when
     // greyed out ("Move (Procession Altar has already moved.)"). Every such rule already carries a
     // player-facing SpecialRuleDefinition.Description, and the request already has an OptionDescriptions

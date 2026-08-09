@@ -23,8 +23,15 @@ namespace FDG.Rules.Dispatch
     /// offer came from the unit, a model, or a token grant. Threaded into the <see cref="RuleInvocation"/>
     /// at resolution so an effect can act with the carrying weapon — Strafing's "attack it with THIS
     /// weapon" has no other way to know which of the bearer's weapons is speaking.</param>
+    /// <param name="Definition">The rule definition <see cref="RuleName"/> resolved to — the same
+    /// <see cref="ResolvedRule.Definition"/> the gather walked. Carried so a menu can show the rule's
+    /// player-facing <see cref="SpecialRuleDefinition.Description"/> beside the offer (#367): the offer's
+    /// name alone is what the action menu was listing, which tells a player nothing about what taking it
+    /// does. Null only for an offer built by hand (tests), never for one <see cref="RuleEvaluator"/>
+    /// gathered, so consumers degrade to "no description" rather than throwing.</param>
     public sealed record AbilityOffer(IUnit Bearer, string RuleName, ActivatedAbility Ability,
-        IReadOnlyList<RuleArgument>? Arguments = null, IWeapon? Weapon = null)
+        IReadOnlyList<RuleArgument>? Arguments = null, IWeapon? Weapon = null,
+        SpecialRuleDefinition? Definition = null)
     {
         /// <summary> The arguments, normalized to an empty list when none were supplied. </summary>
         public IReadOnlyList<RuleArgument> ResolvedArguments => Arguments ?? System.Array.Empty<RuleArgument>();

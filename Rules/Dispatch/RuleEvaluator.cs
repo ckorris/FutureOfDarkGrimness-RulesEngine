@@ -742,7 +742,7 @@ public sealed class RuleEvaluator
                 }
 
                 offers.Add(new AbilityOffer(unit, rule.RequestedName, ability, rule.Arguments,
-                    carryingWeapon));
+                    carryingWeapon, rule.Definition));
             }
         }
     }

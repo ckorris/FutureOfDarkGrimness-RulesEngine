@@ -178,6 +178,24 @@ namespace FDG.Stages
 
             Dictionary<string, Func<Task>> outcomes = new Dictionary<string, Func<Task>>();
 
+            // #367 — an ability action is listed by its rule NAME and nothing else ("Courage Buff"), which
+            // says nothing about what taking it does; the built-in actions at least explain themselves when
+            // greyed out. Every such rule already carries a player-facing Description, so each offer-derived
+            // entry below records it here and the request hands it to the front ends as option subtext (GUI:
+            // under the button; CLI: indented under the numbered line). Not OptionRules (#336): that exists
+            // to underline a rule name sitting INSIDE a longer label and hover its text, and the whole label
+            // here IS the rule name - hiding the only explanation behind a hover is the bug, not the fix.
+            Dictionary<string, string> optionDescriptions = new Dictionary<string, string>(StringComparer.Ordinal);
+
+            void Describe(AbilityOffer describedOffer)
+            {
+                string? text = describedOffer.Definition?.Description;
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    optionDescriptions[describedOffer.RuleName] = text!;
+                }
+            }
+
             if(canMove)
             {
                 validOptions.Add(MOVEMENT_CHOICE_NAME);
@@ -249,6 +267,7 @@ namespace FDG.Stages
                     if (!outcomes.ContainsKey(offer.RuleName))
                     {
                         validOptions.Add(offer.RuleName);
+                        Describe(offer);
                         outcomes.Add(offer.RuleName, () => ToDisembark.Activate(context));
                     }
                     continue;
@@ -275,6 +294,7 @@ namespace FDG.Stages
                     if (boardable.Count > 0)
                     {
                         validOptions.Add(offer.RuleName);
+                        Describe(offer);
                         outcomes.Add(offer.RuleName, () => ToEmbark.Activate(context));
                         continue;
                     }
@@ -292,6 +312,7 @@ namespace FDG.Stages
                             context.HasMoved
                                 ? $"Not in contact with {transportName}, and the move is spent."
                                 : $"Move into contact with {transportName} first."));
+                        Describe(offer);
                     }
                     continue;
                 }
@@ -307,6 +328,7 @@ namespace FDG.Stages
                     {
                         AbilityOffer teleportOffer = offer;
                         validOptions.Add(offer.RuleName);
+                        Describe(offer);
                         outcomes.Add(offer.RuleName, () =>
                         {
                             context.SetPendingCustomAction(teleportOffer);
@@ -326,6 +348,7 @@ namespace FDG.Stages
                     {
                         AbilityOffer stormOffer = offer;
                         validOptions.Add(offer.RuleName);
+                        Describe(offer);
                         outcomes.Add(offer.RuleName, () =>
                         {
                             context.SetPendingCustomAction(stormOffer);
@@ -351,6 +374,7 @@ namespace FDG.Stages
 
                 AbilityOffer capturedOffer = offer;
                 validOptions.Add(offer.RuleName);
+                Describe(offer);
                 outcomes.Add(offer.RuleName, () =>
                 {
                     context.SetPendingCustomAction(capturedOffer);
@@ -395,6 +419,7 @@ namespace FDG.Stages
 
                     AbilityOffer capturedOffer = offer;
                     validOptions.Add(offer.RuleName);
+                    Describe(offer);
                     outcomes.Add(offer.RuleName, () =>
                     {
                         context.SetPendingCustomAction(capturedOffer);
@@ -432,8 +457,9 @@ namespace FDG.Stages
             bool canBackOut = !context.HasMoved && !context.HasAttacked && !context.IrreversibleActionTaken;
 
             StringSelectionRequest request = new StringSelectionRequest(context.ActivatingPlayer(),
-                "Choose Action", validOptions, invalidOptions, allowCancel: canBackOut,
-                displayName: "Choosing an Action");
+                "Choose Action", validOptions, invalidOptions,
+                optionDescriptions: optionDescriptions.Count > 0 ? optionDescriptions : null,
+                allowCancel: canBackOut, displayName: "Choosing an Action");
 
             string choice = await GameContext.PlayerRequester.RequestDecision<StringSelectionRequest, string>(request);
 

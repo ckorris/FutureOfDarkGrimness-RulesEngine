@@ -531,17 +531,21 @@ namespace FDG.Network.Connection.Lobby
         }
 
         // #255: the default team for a newly added player - the lowest team number 1..N not currently
-        // held, where N counts the new player (as many teams as players). A free slot always exists in
-        // that range; at worst the new player lands on the team their own arrival created.
+        // held, where N counts the new player (as many teams as players), capped at the highest team the
+        // enum defines. Below the cap a free slot always exists in that range; at worst the new player
+        // lands on the team their own arrival created.
         private ETeamOption FirstEmptyTeam()
         {
-            int newPlayerCount = _playerInfosFull.Count + 1;
-            for (int team = 1; team <= newPlayerCount; team++)
+            int highestCandidate = Math.Min(_playerInfosFull.Count + 1, TeamOptions.MaxTeamNumber);
+            for (int team = 1; team <= highestCandidate; team++)
             {
                 if (_playerInfosFull.Values.All(info => (int)info.TeamNumber != team))
                     return (ETeamOption)team;
             }
-            return (ETeamOption)newPlayerCount; //Unreachable: N existing players can't occupy all N+1 candidates.
+
+            // Reached only once the roster outgrows the defined teams (#188): every team is held, so the
+            // arriving player doubles up on the last one rather than taking an undefined enum value.
+            return (ETeamOption)highestCandidate;
         }
 
         // #255: a client's team pick, applied through the same path the host's own picks take. Sender
@@ -566,12 +570,14 @@ namespace FDG.Network.Connection.Lobby
                 return;
             }
 
-            // As many teams as players. (A player can hold a stale out-of-range team after someone
-            // leaves - left as-is by design - but new picks stay in range.)
+            // As many teams as players, never more than the enum defines (#188). (A player can hold a
+            // stale out-of-range team after someone leaves - left as-is by design - but new picks stay
+            // in range.)
+            int maxTeam = Math.Min(_playerInfosFull.Count, TeamOptions.MaxTeamNumber);
             int team = (int)teamNumber;
-            if (team < 1 || team > _playerInfosFull.Count)
+            if (team < 1 || team > maxTeam)
             {
-                Debug.WriteLine($"SetPlayerTeam: team {team} out of range 1..{_playerInfosFull.Count}; ignoring.");
+                Debug.WriteLine($"SetPlayerTeam: team {team} out of range 1..{maxTeam}; ignoring.");
                 return;
             }
 

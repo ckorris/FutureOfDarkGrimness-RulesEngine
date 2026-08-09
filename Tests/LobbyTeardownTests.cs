@@ -22,7 +22,7 @@ namespace FDG.Tests
         [Test]
         public void DisposedHostLobby_IgnoresLateGreeting()
         {
-            (LoopbackHost loopbackHost, LoopbackClient loopbackClient) = WireLoopback();
+            (LoopbackNetworkHost loopbackHost, LoopbackNetworkClient loopbackClient) = WireLoopback();
             var hostVm = new LobbyViewModel_Host("Host", "The Table", "", loopbackHost);
 
             hostVm.Dispose();
@@ -40,7 +40,7 @@ namespace FDG.Tests
         [Test]
         public void HostDispose_StopsTheNetworkHost_Once()
         {
-            (LoopbackHost loopbackHost, LoopbackClient _) = WireLoopback();
+            (LoopbackNetworkHost loopbackHost, LoopbackNetworkClient _) = WireLoopback();
             var hostVm = new LobbyViewModel_Host("Host", "The Table", "", loopbackHost);
 
             hostVm.Dispose();
@@ -53,7 +53,7 @@ namespace FDG.Tests
         [Test]
         public async Task ClientDispose_ClosesTheConnection_WithoutRaisingGameEnded()
         {
-            (LoopbackHost loopbackHost, LoopbackClient loopbackClient) = WireLoopback();
+            (LoopbackNetworkHost loopbackHost, LoopbackNetworkClient loopbackClient) = WireLoopback();
             _ = new LobbyViewModel_Host("Host", "The Table", "", loopbackHost);
             var clientVm = new LobbyViewModel_Client("Client", loopbackClient, "");
             await AwaitJoin(clientVm);
@@ -73,7 +73,7 @@ namespace FDG.Tests
         [Test]
         public async Task DisposedClientLobby_IgnoresLateBroadcasts()
         {
-            (LoopbackHost loopbackHost, LoopbackClient loopbackClient) = WireLoopback();
+            (LoopbackNetworkHost loopbackHost, LoopbackNetworkClient loopbackClient) = WireLoopback();
             var hostVm = new LobbyViewModel_Host("Host", "The Table", "", loopbackHost);
             var clientVm = new LobbyViewModel_Client("Client", loopbackClient, "");
             await AwaitJoin(clientVm);
@@ -96,80 +96,11 @@ namespace FDG.Tests
             return await joinTask;
         }
 
-        private static (LoopbackHost host, LoopbackClient client) WireLoopback()
+        private static (LoopbackNetworkHost host, LoopbackNetworkClient client) WireLoopback()
         {
-            var loopbackHost = new LoopbackHost();
-            var loopbackClient = new LoopbackClient();
-            loopbackHost.Client = loopbackClient;
-            loopbackClient.Host = loopbackHost;
+            var loopbackHost = new LoopbackNetworkHost();
+            var loopbackClient = loopbackHost.Connect("Client");
             return (loopbackHost, loopbackClient);
-        }
-
-        // Synchronous in-process loopback doubles, mirroring LobbyJoinGateTests, plus Stop/Disconnect
-        // counters for the teardown assertions.
-        private static ArraySegment<byte> Copy(ArraySegment<byte> data) =>
-            new ArraySegment<byte>(data.ToArray());
-
-        private sealed class LoopbackHost : INetworkHost
-        {
-            public static readonly ConnectionID ClientId = new ConnectionID(Guid.NewGuid());
-
-            public LoopbackClient? Client;
-
-            public int StopCount;
-
-            public event Action<ConnectionID>? OnNewClientConnected;
-            public event Action<ConnectionID>? OnClientDisconnected;
-            public event Action<ArraySegment<byte>, ConnectionID>? OnMessageReceived;
-
-            public Task StartAsync() => Task.CompletedTask;
-
-            public Task SendCommandToAllAsync(ArraySegment<byte> data, bool isPooled)
-            {
-                Client!.Deliver(Copy(data));
-                return Task.CompletedTask;
-            }
-
-            public Task SendCommandToSingleClientAsync(ConnectionID clientId, ArraySegment<byte> data, bool isPooled)
-            {
-                Client!.Deliver(Copy(data));
-                return Task.CompletedTask;
-            }
-
-            public void DisconnectClient(ConnectionID clientId) { }
-
-            public void MarkClientAuthenticated(ConnectionID clientId) { }
-
-            public void Stop() => StopCount++;
-
-            internal void ReceiveFromClient(ArraySegment<byte> data) =>
-                OnMessageReceived?.Invoke(data, ClientId);
-        }
-
-        private sealed class LoopbackClient : INetworkClient
-        {
-            public LoopbackHost? Host;
-
-            public int DisconnectCount;
-
-            public event Action<ArraySegment<byte>>? OnMessageReceived;
-            public event Action? OnDisconnected;
-
-            public Task<bool> ConnectAsync(IPAddress serverIP, int port = NetworkProtocol.DefaultPort) => Task.FromResult(true);
-
-            public Task SendCommandToHost(ArraySegment<byte> command, bool isPooled)
-            {
-                Host!.ReceiveFromClient(Copy(command));
-                return Task.CompletedTask;
-            }
-
-            public void Disconnect()
-            {
-                DisconnectCount++;
-                OnDisconnected?.Invoke();
-            }
-
-            internal void Deliver(ArraySegment<byte> data) => OnMessageReceived?.Invoke(data);
         }
     }
 }

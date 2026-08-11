@@ -70,6 +70,8 @@ namespace FDG.Network.Connection.Lobby
         IObservable<EObjectivePlacementMode> ObjectivePlacementModeObservable { get; }
         IObservable<ERandomnessType> RandomnessTypeObservable { get; }
         IObservable<ETurnStyle> TurnStyleObservable { get; }
+        /// <summary>#371 - see <see cref="GameSettings.ShootingMode"/>.</summary>
+        IObservable<EShootingMode> ShootingModeObservable { get; }
         /// <summary>#201 cover proximity house rules toggle (default on) - see <see cref="GameSettings.CoverProximityExceptions"/>.</summary>
         IObservable<bool> CoverProximityExceptionsObservable { get; }
         /// <summary>#265 cosmetic table surface - see <see cref="GameSettings.TableBackground"/>.</summary>
@@ -98,6 +100,9 @@ namespace FDG.Network.Connection.Lobby
         ERandomnessType RandomnessType { get; }
 
         ETurnStyle TurnStyle { get; }
+
+        /// <summary>#371 - see <see cref="GameSettings.ShootingMode"/>.</summary>
+        EShootingMode ShootingMode { get; }
 
         bool CoverProximityExceptions { get; }
 
@@ -149,6 +154,9 @@ namespace FDG.Network.Connection.Lobby
         void SetRandomnessType(ERandomnessType randomnessType);
 
         void SetTurnStyle(ETurnStyle turnStyle);
+
+        /// <summary>#371 - see <see cref="GameSettings.ShootingMode"/>.</summary>
+        void SetShootingMode(EShootingMode shootingMode);
 
         void SetCoverProximityExceptions(bool enabled);
 

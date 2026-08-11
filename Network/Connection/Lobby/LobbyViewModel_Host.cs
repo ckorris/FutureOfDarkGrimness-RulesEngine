@@ -42,6 +42,7 @@ namespace FDG.Network.Connection.Lobby
         public IObservable<EObjectivePlacementMode> ObjectivePlacementModeObservable => _settings_ObjectivePlacementMode;
         public IObservable<ERandomnessType> RandomnessTypeObservable => _settings_RandomnessType;
         public IObservable<ETurnStyle> TurnStyleObservable => _settings_TurnMethod;
+        public IObservable<EShootingMode> ShootingModeObservable => _settings_ShootingMode;
         public IObservable<bool> CoverProximityExceptionsObservable => _settings_CoverProximityExceptions;
         public IObservable<ETableBackground> TableBackgroundObservable => _settings_TableBackground;
 
@@ -69,6 +70,8 @@ namespace FDG.Network.Connection.Lobby
 
         public ETurnStyle TurnStyle => _settings_TurnMethod.Value;
 
+        public EShootingMode ShootingMode => _settings_ShootingMode.Value;
+
         public bool CoverProximityExceptions => _settings_CoverProximityExceptions.Value;
 
         public ETableBackground TableBackground => _settings_TableBackground.Value;
@@ -90,6 +93,8 @@ namespace FDG.Network.Connection.Lobby
         private BehaviorSubject<EObjectivePlacementMode> _settings_ObjectivePlacementMode;
         private BehaviorSubject<ERandomnessType> _settings_RandomnessType;
         private BehaviorSubject<ETurnStyle> _settings_TurnMethod;
+
+        private BehaviorSubject<EShootingMode> _settings_ShootingMode;
         private BehaviorSubject<bool> _settings_CoverProximityExceptions;
         private BehaviorSubject<ETableBackground> _settings_TableBackground;
 
@@ -186,6 +191,7 @@ namespace FDG.Network.Connection.Lobby
             _settings_ObjectivePlacementMode = new BehaviorSubject<EObjectivePlacementMode>(_gameSettings.ObjectivePlacementMode);
             _settings_RandomnessType = new BehaviorSubject<ERandomnessType>(_gameSettings.RandomnessType);
             _settings_TurnMethod = new BehaviorSubject<ETurnStyle>(_gameSettings.TurnStyle);
+            _settings_ShootingMode = new BehaviorSubject<EShootingMode>(_gameSettings.ShootingMode);
             _settings_CoverProximityExceptions = new BehaviorSubject<bool>(_gameSettings.CoverProximityExceptionsEnabled);
             _settings_TableBackground = new BehaviorSubject<ETableBackground>(_gameSettings.TableBackground);
 
@@ -246,6 +252,7 @@ namespace FDG.Network.Connection.Lobby
             _settings_ObjectivePlacementMode = new BehaviorSubject<EObjectivePlacementMode>(_gameSettings.ObjectivePlacementMode);
             _settings_RandomnessType = new BehaviorSubject<ERandomnessType>(_gameSettings.RandomnessType);
             _settings_TurnMethod = new BehaviorSubject<ETurnStyle>(_gameSettings.TurnStyle);
+            _settings_ShootingMode = new BehaviorSubject<EShootingMode>(_gameSettings.ShootingMode);
             _settings_CoverProximityExceptions = new BehaviorSubject<bool>(_gameSettings.CoverProximityExceptionsEnabled);
             _settings_TableBackground = new BehaviorSubject<ETableBackground>(_gameSettings.TableBackground);
 
@@ -1047,6 +1054,20 @@ namespace FDG.Network.Connection.Lobby
             else
             {
                 _settings_RandomnessType.OnNext(_settings_RandomnessType.Value);
+            }
+        }
+
+        public void SetShootingMode(EShootingMode shootingMode)
+        {
+            if (Enum.IsDefined(shootingMode))
+            {
+                _settings_ShootingMode.OnNext(shootingMode);
+                _gameSettings.ShootingMode = shootingMode;
+                _messageBus.SendCommandToAllAsync(new LobbyGameSettingsUpdate(_gameSettings));
+            }
+            else
+            {
+                _settings_ShootingMode.OnNext(_settings_ShootingMode.Value);
             }
         }
 

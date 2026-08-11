@@ -122,6 +122,20 @@ namespace FDG.Stages
         /// <summary>Drop any queued attacks — the burst's target died mid-way, the leftover shots fizzle (#157).</summary>
         public void ClearPendingAttacks();
 
+        /// <summary>
+        /// #371 Declare First: the weapon and declared target at the head of the pending queue, without
+        /// consuming it. False when nothing is queued. <paramref name="target"/> is null for an attack
+        /// queued by the melee path, which aims at <see cref="DefendingUnit"/> rather than declaring.
+        /// </summary>
+        public bool TryPeekPendingAttack(out Weapon weapon, out DataBinding<UnitData>? target);
+
+        /// <summary>
+        /// #371 Declare First: discard the head of the pending queue unfired - its declared target was
+        /// destroyed before the shot came round. The weapon stays in <see cref="AlreadyUsedWeapons"/>:
+        /// it was committed at declaration and a once-per-game one is already spent.
+        /// </summary>
+        public void DropNextPendingAttack();
+
         public float AttackerRemainingWoundsAtStart { get; }
 
         public float DefenderRemainingWoundsAtStart { get; }
@@ -169,6 +183,16 @@ namespace FDG.Stages
         public void SwapCombatRoles();
 
         public void SetAttackWeapon(Weapon weaponToConsume, out int weaponCount);
+
+        /// <summary>
+        /// #371 Declare First: as <see cref="SetAttackWeapon"/>, but the queued attack remembers the unit
+        /// it was aimed at, so several may sit in the queue aimed at different targets and each still
+        /// fires at its own. <see cref="ConsumeAttackIntoContext"/> makes the remembered target the
+        /// defender as it dequeues. One-at-a-time shooting takes the same path with a single entry in
+        /// flight, so there is one code path, not a mode branch.
+        /// </summary>
+        public void SetAttackWeaponAtTarget(Weapon weaponToConsume, DataBinding<UnitData> target,
+            out int weaponCount);
 
         public ICombatMetadata ConsumeAttackIntoContext(IGameContext gameContext);
     }
@@ -228,8 +252,13 @@ namespace FDG.Stages
         // entry. BurstIndex is how many copies of that weapon this action has already fired (0 for a
         // whole-volley attack) — carried into CombatMetadata so the attack beat animates each of a
         // Takedown weapon's one-at-a-time shots from a different carrier (#276/#340).
-        private readonly Queue<(Weapon Weapon, int Count, int BurstIndex)> _pendingAttacks
-            = new Queue<(Weapon, int, int)>();
+        //
+        // #371: Target is the unit the attack was DECLARED against, or null for the melee path (which
+        // aims at DefendingUnit and never declares). Under Declare First several entries sit here at
+        // once, each aimed somewhere different, which is the whole reason the target rides the entry
+        // rather than living in the single DefendingUnit field.
+        private readonly Queue<(Weapon Weapon, int Count, int BurstIndex, DataBinding<UnitData>? Target)>
+            _pendingAttacks = new Queue<(Weapon, int, int, DataBinding<UnitData>?)>();
 
         // #340: copies of each weapon already fired this action, for the burst index above. Keyed by the
         // pool's own representative instance (the same one SetAttackWeapon consumes and
@@ -332,7 +361,14 @@ namespace FDG.Stages
         }
 
        
-        public void SetAttackWeapon(Weapon weaponToConsume, out int weaponCount)
+        public void SetAttackWeapon(Weapon weaponToConsume, out int weaponCount) =>
+            QueueAttack(weaponToConsume, target: null, out weaponCount);
+
+        public void SetAttackWeaponAtTarget(Weapon weaponToConsume, DataBinding<UnitData> target,
+            out int weaponCount) =>
+            QueueAttack(weaponToConsume, target, out weaponCount);
+
+        private void QueueAttack(Weapon weaponToConsume, DataBinding<UnitData>? target, out int weaponCount)
         {
             if (_availableWeapons.ContainsKey(weaponToConsume) == false)
             {
@@ -344,7 +380,7 @@ namespace FDG.Stages
 
             _alreadyUsedWeapons.TryAdd(weaponToConsume, weaponCount);
 
-            _pendingAttacks.Enqueue((weaponToConsume, weaponCount, 0));
+            _pendingAttacks.Enqueue((weaponToConsume, weaponCount, 0, target));
         }
 
         public void DeclineWeapon(Weapon weaponToDecline)
@@ -368,10 +404,10 @@ namespace FDG.Stages
             // means the caller is mid-attack and re-queueing would corrupt the queue.
             if (_pendingAttacks.Count != 1) return;
 
-            (Weapon weapon, int count, _) = _pendingAttacks.Dequeue();
+            (Weapon weapon, int count, _, DataBinding<UnitData>? target) = _pendingAttacks.Dequeue();
 
             _copiesFiredThisAction.TryGetValue(weapon, out int alreadyFired);
-            _pendingAttacks.Enqueue((weapon, 1, alreadyFired));
+            _pendingAttacks.Enqueue((weapon, 1, alreadyFired, target));
             _copiesFiredThisAction[weapon] = alreadyFired + 1;
             // SetAttackWeapon recorded the whole stack as used; only one copy of it is firing.
             _alreadyUsedWeapons[weapon] = alreadyFired + 1;
@@ -391,11 +427,29 @@ namespace FDG.Stages
             // SetAttackWeapon.
             if (_pendingAttacks.Count != 1 || maxCount <= 0) return;
 
-            (Weapon weapon, int count, int burstIndex) = _pendingAttacks.Dequeue();
-            _pendingAttacks.Enqueue((weapon, Math.Min(count, maxCount), burstIndex));
+            (Weapon weapon, int count, int burstIndex, DataBinding<UnitData>? target) = _pendingAttacks.Dequeue();
+            _pendingAttacks.Enqueue((weapon, Math.Min(count, maxCount), burstIndex, target));
         }
 
         public void ClearPendingAttacks() => _pendingAttacks.Clear();
+
+        public bool TryPeekPendingAttack(out Weapon weapon, out DataBinding<UnitData>? target)
+        {
+            if (_pendingAttacks.Count == 0)
+            {
+                weapon = default!;
+                target = null;
+                return false;
+            }
+
+            (weapon, _, _, target) = _pendingAttacks.Peek();
+            return true;
+        }
+
+        public void DropNextPendingAttack()
+        {
+            if (_pendingAttacks.Count > 0) _pendingAttacks.Dequeue();
+        }
 
         public void SetDefender(DataBinding<UnitData> defendingUnit)
         {
@@ -448,7 +502,13 @@ namespace FDG.Stages
             }
 
             // Don't clear DefendingUnit — OfferStrikeBackStage needs it after this call.
-            (Weapon weapon, int count, int burstIndex) = _pendingAttacks.Dequeue();
+            (Weapon weapon, int count, int burstIndex, DataBinding<UnitData>? target) = _pendingAttacks.Dequeue();
+
+            // #371: an attack queued with a declared target aims at THAT unit, not at whatever the last
+            // one left in DefendingUnit. Re-pointing here (rather than at declaration time) is what keeps
+            // DefenderRemainingWoundsAtStart a per-attack snapshot in both shooting modes. The melee path
+            // queues no target and leaves the defender exactly as it set it.
+            if (target != null && !ReferenceEquals(target, DefendingUnit)) SetDefender(target);
 
             return new CombatMetadata(gameContext, AttackingUnit,
                 DefendingUnit, weapon, count, _attackerMoved, _isMelee, _isCharging,

@@ -51,6 +51,15 @@ namespace FDG
         public ETurnStyle TurnStyle;
 
         /// <summary>
+        /// #371 - whether a unit's shooting targets are all declared before any dice are rolled, or
+        /// chosen one weapon at a time with the previous weapon's casualties already on the table. See
+        /// <see cref="EShootingMode"/>. Default <see cref="EShootingMode.OneAtATime"/>, which is what
+        /// the game did before the setting existed - so a pre-#371 save (field absent from the JSON)
+        /// deserializes to the behaviour it was played with.
+        /// </summary>
+        public EShootingMode ShootingMode;
+
+        /// <summary>
         /// How objective markers are placed during map setup. See
         /// <see cref="EObjectivePlacementMode"/>. Default <see cref="EObjectivePlacementMode.AutoPlaced"/>
         /// (the engine places all markers with no player interaction).
@@ -84,8 +93,8 @@ namespace FDG
         /// <para>Today that is <see cref="TableBackground"/> and nothing else. Everything else is
         /// either already spent (army points, terrain and objective placement all happened during the
         /// saved game's setup) or would change the rules of a game in progress (randomness, dice seed,
-        /// turn style, the cover house rules) - so the save stays authoritative for them, whatever the
-        /// lobby panel happens to be showing. Adding a field here is a deliberate decision, not a
+        /// turn style, shooting mode, the cover house rules) - so the save stays authoritative for them,
+        /// whatever the lobby panel happens to be showing. Adding a field here is a deliberate decision, not a
         /// default: it must be safe to change mid-game.</para>
         /// </summary>
         public GameSettings WithResumeOverridesFrom(GameSettings lobbySettings)
@@ -107,6 +116,7 @@ namespace FDG
                 RandomnessType = ERandomnessType.Realistic,
                 DiceSeed = null,
                 TurnStyle = ETurnStyle.Standard,
+                ShootingMode = EShootingMode.OneAtATime,
                 ObjectivePlacementMode = EObjectivePlacementMode.AutoPlaced,
                 TerrainPlacementMode = ETerrainPlacementMode.AutoFromLayout,
                 TerrainLayoutPath = null,
@@ -140,6 +150,26 @@ namespace FDG
     {
         Standard,
         BoltAction
+    }
+
+    /// <summary>
+    /// #371 - when a shooting unit commits to its targets.
+    /// </summary>
+    public enum EShootingMode
+    {
+        /// <summary>
+        /// Pick a weapon and a target, resolve it to wounds, then pick the next weapon - already knowing
+        /// what the last one killed. Declared first so it is both the default and what
+        /// <c>default(GameSettings)</c> / a pre-#371 save resolves to.
+        /// </summary>
+        OneAtATime,
+
+        /// <summary>
+        /// Declare a target for every weapon the unit intends to fire, THEN roll them all. Casualties
+        /// from an earlier weapon cannot re-aim a later one; if a declared target is wiped out before
+        /// its weapon fires, those shots are lost.
+        /// </summary>
+        DeclareFirst,
     }
 
     public enum ETerrainPlacementMode

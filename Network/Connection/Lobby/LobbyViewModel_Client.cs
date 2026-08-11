@@ -51,6 +51,7 @@ namespace FDG.Network.Connection.Lobby
         public IObservable<EObjectivePlacementMode> ObjectivePlacementModeObservable => _settings_ObjectivePlacementMode;
         public IObservable<ERandomnessType> RandomnessTypeObservable => _settings_RandomnessType;
         public IObservable<ETurnStyle> TurnStyleObservable => _settings_TurnMethod;
+        public IObservable<EShootingMode> ShootingModeObservable => _settings_ShootingMode;
         public IObservable<bool> CoverProximityExceptionsObservable => _settings_CoverProximityExceptions;
         public IObservable<ETableBackground> TableBackgroundObservable => _settings_TableBackground;
 
@@ -78,6 +79,8 @@ namespace FDG.Network.Connection.Lobby
 
         public ETurnStyle TurnStyle => _settings_TurnMethod.Value;
 
+        public EShootingMode ShootingMode => _settings_ShootingMode.Value;
+
         public bool CoverProximityExceptions => _settings_CoverProximityExceptions.Value;
 
         public ETableBackground TableBackground => _settings_TableBackground.Value;
@@ -98,6 +101,7 @@ namespace FDG.Network.Connection.Lobby
         private BehaviorSubject<EObjectivePlacementMode> _settings_ObjectivePlacementMode;
         private BehaviorSubject<ERandomnessType> _settings_RandomnessType;
         private BehaviorSubject<ETurnStyle> _settings_TurnMethod;
+        private BehaviorSubject<EShootingMode> _settings_ShootingMode;
         private BehaviorSubject<bool> _settings_CoverProximityExceptions;
         private BehaviorSubject<ETableBackground> _settings_TableBackground;
 
@@ -167,6 +171,8 @@ namespace FDG.Network.Connection.Lobby
             _settings_ObjectivePlacementMode = new BehaviorSubject<EObjectivePlacementMode>(EObjectivePlacementMode.AutoPlaced);
             _settings_RandomnessType = new BehaviorSubject<ERandomnessType>(ERandomnessType.Realistic);
             _settings_TurnMethod = new BehaviorSubject<ETurnStyle>(ETurnStyle.Standard);
+            // #371: One At A Time until the host's first settings update lands, same as the others here.
+            _settings_ShootingMode = new BehaviorSubject<EShootingMode>(EShootingMode.OneAtATime);
             // #201: default-on mirrors GameSettings; the host's first LobbyGameSettingsUpdate corrects it.
             _settings_CoverProximityExceptions = new BehaviorSubject<bool>(true);
             // #265: same deal - Forest until the host's first settings update lands.
@@ -344,6 +350,10 @@ namespace FDG.Network.Connection.Lobby
             {
                 _settings_TurnMethod.OnNext(gameSettingsUpdate.GameSettings.TurnStyle);
             }
+            if (_settings_ShootingMode.Value != gameSettingsUpdate.GameSettings.ShootingMode)
+            {
+                _settings_ShootingMode.OnNext(gameSettingsUpdate.GameSettings.ShootingMode);
+            }
             if (_settings_CoverProximityExceptions.Value != gameSettingsUpdate.GameSettings.CoverProximityExceptionsEnabled)
             {
                 _settings_CoverProximityExceptions.OnNext(gameSettingsUpdate.GameSettings.CoverProximityExceptionsEnabled);
@@ -419,6 +429,11 @@ namespace FDG.Network.Connection.Lobby
         {
             throw new InvalidOperationException("Tried to set turn style when not the host.");
 
+        }
+
+        public void SetShootingMode(EShootingMode shootingMode)
+        {
+            throw new InvalidOperationException("Tried to set shooting mode when not the host.");
         }
 
         public void SetCoverProximityExceptions(bool enabled)

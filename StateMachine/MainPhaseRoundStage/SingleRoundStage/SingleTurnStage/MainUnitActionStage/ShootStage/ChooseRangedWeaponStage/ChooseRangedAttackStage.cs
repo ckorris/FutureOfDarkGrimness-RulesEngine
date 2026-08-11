@@ -23,14 +23,40 @@ namespace FDG.Stages
             OnNoValidShots = new StageBinding(this);
         }
 
+        /// <summary>What one pass of the weapon offer decided.</summary>
+        private enum EOfferOutcome
+        {
+            /// <summary>A binding has been activated; the stage is done for this entry.</summary>
+            Routed,
+
+            /// <summary>Offer the remaining weapons again without leaving the stage - the player held fire
+            /// (#319), or declared a target and Declare First has more weapons to declare (#371).</summary>
+            OfferAgain,
+        }
+
         /// <summary>
         /// #319: the weapon choice repeats within a single entry whenever the player HOLDS FIRE with a weapon
         /// - that weapon leaves the action's pool and the remaining ones are offered again, without firing
         /// anything and without leaving the stage. Everything else (a choice, a Back, a Done) exits the loop
         /// on its first pass, exactly as before.
+        ///
+        /// #371 Declare First: a CHOICE repeats the same way. Every weapon is aimed before anything is
+        /// rolled, the picks pile up in the context's pending queue, and only once the unit has nothing
+        /// left to declare does the stage route onward to fire them. Each later entry (via
+        /// <c>DetermineCanKeepShootingStage</c>) then finds a queue and fires the next declaration
+        /// without asking anything, until the queue drains.
         /// </summary>
         public override async Task Enter(ICombatActionContext context)
         {
+            // #371: declarations waiting means Declare First is mid-resolution - fire the next one. In One
+            // At A Time the queue is always empty here, because FireStage consumed the single pending
+            // attack before DetermineCanKeepShootingStage sent us back.
+            if (context.HasPendingAttack)
+            {
+                await ResolveNextDeclaration(context);
+                return;
+            }
+
             if (context.AvailableWeapons.Count == 0)
             {
                 throw new Exception($"Available weapon dictionary was empty when entering {nameof(ChooseRangedAttackStage)}.");
@@ -38,18 +64,48 @@ namespace FDG.Stages
 
             while (true)
             {
-                bool holdingFire = await OfferWeapons(context);
-                if (!holdingFire) return;
+                if (await OfferWeapons(context) == EOfferOutcome.Routed) return;
             }
         }
 
         /// <summary>
-        /// One pass of the weapon offer. Returns true when the player held fire and weapons remain, i.e.
-        /// <see cref="Enter"/> should offer again; false when this stage has routed onward (fired, backed
-        /// out, ended the shoot, or nothing fireable is left).
+        /// #371 Declare First: route the head of the declaration queue to <see cref="OnChoseWeapon"/>,
+        /// first discarding any declaration whose target is no longer on the table. Committing before you
+        /// know the outcome is the point of the mode, so those shots are lost rather than re-aimed.
         /// </summary>
-        private async Task<bool> OfferWeapons(ICombatActionContext context)
+        private async Task ResolveNextDeclaration(ICombatActionContext context)
         {
+            while (context.TryPeekPendingAttack(out Weapon weapon, out DataBinding<UnitData>? target))
+            {
+                // A melee-queued attack carries no declared target and aims at DefendingUnit as always.
+                if (target == null || target.GetValue().GetIsOnBattlefield())
+                {
+                    await OnChoseWeapon.Activate(context);
+                    return;
+                }
+
+                GameContext.Log($"{weapon.Name} was declared against {target.GetValue().Name}, which is " +
+                    "no longer on the table - those shots are lost.");
+                context.DropNextPendingAttack();
+            }
+
+            // Everything still declared was aimed at something that has since gone. The unit did shoot, so
+            // this takes the same exit as running out of targets: morale first, then the post-shoot move.
+            GameContext.Log("No declared shots are left to resolve - ending the shoot action.");
+            await OnNoValidShots.Activate(context);
+        }
+
+        /// <summary>
+        /// One pass of the weapon offer. <see cref="EOfferOutcome.OfferAgain"/> when <see cref="Enter"/>
+        /// should offer the remaining weapons again; <see cref="EOfferOutcome.Routed"/> when this stage
+        /// has routed onward (fired, backed out, ended the shoot, or nothing fireable is left).
+        /// </summary>
+        private async Task<EOfferOutcome> OfferWeapons(ICombatActionContext context)
+        {
+            // #371: in Declare First a pick is a DECLARATION - it queues and comes straight back for the
+            // next weapon, and only the last one routes onward to the dice.
+            bool declareFirst = GameContext.Settings.ShootingMode == EShootingMode.DeclareFirst;
+
             List<ITerrain> terrainSnapshot = context.GameContext.TableState.Terrain.Objects.ToList();
 
             List<WeaponOption> weaponOptions = BuildWeaponOptions(context.AttackingUnit, context.AvailableWeapons,
@@ -66,6 +122,14 @@ namespace FDG.Stages
 
             if (!HasAnyFireableOption(weaponOptions))
             {
+                // #371: nothing left to declare, but declarations are queued - go resolve them.
+                if (context.HasPendingAttack)
+                {
+                    GameContext.Log("No further weapon has a valid target - resolving the declared shots.");
+                    await ResolveNextDeclaration(context);
+                    return EOfferOutcome.Routed;
+                }
+
                 // No weapon has any selectable target with shooters in range. If the unit has already fired at least
                 // once this shoot action, finish the shoot stage; otherwise fall back to the regular cancel path so the
                 // player can return to Choose Action without burning their shoot.
@@ -79,7 +143,7 @@ namespace FDG.Stages
                     GameContext.Log("No weapon has a valid target - returning to Choose Action.");
                     await BackToChooseAction.Activate(context);
                 }
-                return false;
+                return EOfferOutcome.Routed;
             }
 
             // #308: the stage owns both "may the player back out?" and "what did the last weapon shoot?".
@@ -104,6 +168,16 @@ namespace FDG.Stages
 
             if (attackResult is Cancelled<RangedAttackChoice>)
             {
+                // #371: under Declare First "Done" ends DECLARING, not shooting - what has been declared
+                // still has to be rolled. Checked before the fired-something test below, which cannot tell
+                // the two apart (a declaration marks the weapon used the moment it is committed).
+                if (context.HasPendingAttack)
+                {
+                    GameContext.Log("Done declaring targets - resolving the declared shots.");
+                    await ResolveNextDeclaration(context);
+                    return EOfferOutcome.Routed;
+                }
+
                 // #308: a cancel after the first weapon has fired can't go back to Choose Action - the
                 // shoot has already happened and re-offering the action menu would hand the unit a second
                 // one. #319 turned that fallback into an offered choice ("Done shooting"), but the routing
@@ -112,11 +186,11 @@ namespace FDG.Stages
                 {
                     GameContext.Log("Done shooting - ending the shoot action with weapons unfired.");
                     await OnNoValidShots.Activate(context);
-                    return false;
+                    return EOfferOutcome.Routed;
                 }
 
                 await BackToChooseAction.Activate(context);
-                return false;
+                return EOfferOutcome.Routed;
             }
 
             RangedAttackChoice rangedAttackChoice = ((Selected<RangedAttackChoice>)attackResult).Value;
@@ -131,7 +205,15 @@ namespace FDG.Stages
                 context.DeclineWeapon(chosenWeapon);
                 GameContext.Log($"Holding fire with {chosenWeapon.Name} - not used this shoot action.");
 
-                if (context.AvailableWeapons.Count > 0) return true;
+                if (context.AvailableWeapons.Count > 0) return EOfferOutcome.OfferAgain;
+
+                // #371: held fire with the last undeclared weapon - the declarations still have to be rolled.
+                if (context.HasPendingAttack)
+                {
+                    GameContext.Log("Nothing left to declare - resolving the declared shots.");
+                    await ResolveNextDeclaration(context);
+                    return EOfferOutcome.Routed;
+                }
 
                 if (context.AlreadyUsedWeapons.Count > 0)
                 {
@@ -143,12 +225,15 @@ namespace FDG.Stages
                     GameContext.Log("Held fire with every weapon - returning to Choose Action.");
                     await BackToChooseAction.Activate(context);
                 }
-                return false;
+                return EOfferOutcome.Routed;
             }
 
             DataBinding<UnitData> targetUnit = rangedAttackChoice.TargetUnit!;
 
-            context.SetAttackWeapon(chosenWeapon, out int weaponCount);
+            // #371: the queued attack remembers what it was aimed at, so several declarations can sit in
+            // the queue pointed at different units and each still fires at its own. SetDefender stays for
+            // both modes - it is what the NEXT offer reads for "start aimed where the last one fired".
+            context.SetAttackWeaponAtTarget(chosenWeapon, targetUnit, out int weaponCount);
             context.SetDefender(targetUnit);
             context.RegisterAttackedDefender(targetUnit);
             GameContext.Log($"Chose weapon: {chosenWeapon.Name}. Count: {weaponCount}.");
@@ -217,8 +302,13 @@ namespace FDG.Stages
                     : $"{chosenWeapon.Name} is {limitedRule} - spent for the rest of the game.");
             }
 
+            // #371: in Declare First, go straight back for the next weapon's target. Only when nothing is
+            // left to declare does the volley actually start - which is the branch at the top of
+            // OfferWeapons, or the Done exit above.
+            if (declareFirst && context.AvailableWeapons.Count > 0) return EOfferOutcome.OfferAgain;
+
             await OnChoseWeapon.Activate(context);
-            return false;
+            return EOfferOutcome.Routed;
         }
 
         /// <summary>

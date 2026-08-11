@@ -583,9 +583,11 @@ namespace FDG.Tests
                 playerRequester: requester);
 
             var combatCtx = new CombatActionContext(ctx, attackerBinding, isMelee: false);
-            // Consume the rifle to simulate a prior fire.
+            // Consume the rifle to simulate a prior fire. ClearPendingAttacks is what FireStage's
+            // consume leaves behind (#371): the weapon counts as used, and nothing is still queued.
             Weapon consumeMe = combatCtx.AvailableWeapons.Keys.First(w => w.Name == "Rifle");
             combatCtx.SetAttackWeapon(consumeMe, out _);
+            combatCtx.ClearPendingAttacks();
 
             var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
             BindAllStageEvents(stage);
@@ -599,6 +601,213 @@ namespace FDG.Tests
             Assert.That(requester.Captured, Is.Null);
             Assert.That(noShotsActivated, Is.True);
             Assert.That(backActivated, Is.False);
+        }
+
+        // ──────────────────────────────────────────────────────────────────────
+        // #371 Declare First — every weapon is aimed before any dice are rolled.
+        // ──────────────────────────────────────────────────────────────────────
+
+        // The control case, so the two modes are pinned against each other rather than in isolation:
+        // One At A Time asks once and goes straight to the dice.
+        [Test]
+        public async Task OneAtATime_RoutesToFireAfterASingleChoice()
+        {
+            var (ctx, attacker, requester) = BuildDeclareFirstWorld(EShootingMode.OneAtATime);
+            var combatCtx = new CombatActionContext(ctx, attacker, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            int firedRoutes = 0;
+            BindAllStageEvents(stage);
+            stage.OnChoseWeapon.OnWillActivate += _ => firedRoutes++;
+
+            await stage.Enter(combatCtx);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(requester.Asked, Is.EqualTo(1), "one weapon is aimed per entry");
+                Assert.That(firedRoutes, Is.EqualTo(1));
+                Assert.That(combatCtx.AvailableWeapons, Has.Count.EqualTo(1),
+                    "the pistol has not been touched yet - it is aimed on the NEXT entry");
+            });
+        }
+
+        [Test]
+        public async Task DeclareFirst_AimsEveryWeaponBeforeRoutingToTheDice()
+        {
+            var (ctx, attacker, requester) = BuildDeclareFirstWorld(EShootingMode.DeclareFirst);
+            var combatCtx = new CombatActionContext(ctx, attacker, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            int firedRoutes = 0;
+            BindAllStageEvents(stage);
+            stage.OnChoseWeapon.OnWillActivate += _ => firedRoutes++;
+
+            await stage.Enter(combatCtx);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(requester.Asked, Is.EqualTo(2), "both weapons are aimed in one entry");
+                Assert.That(firedRoutes, Is.EqualTo(1), "the volley starts once, after the last declaration");
+                Assert.That(combatCtx.AvailableWeapons, Is.Empty);
+                Assert.That(combatCtx.HasPendingAttack, Is.True, "two declarations are queued");
+            });
+        }
+
+        // The declarations are not merely queued - each one keeps its OWN target, which is the whole
+        // reason the pending entry carries it rather than reading the single DefendingUnit field.
+        [Test]
+        public async Task DeclareFirst_EachDeclarationFiresAtTheUnitItWasAimedAt()
+        {
+            var (ctx, attacker, _) = BuildDeclareFirstWorld(EShootingMode.DeclareFirst);
+            var combatCtx = new CombatActionContext(ctx, attacker, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+
+            await stage.Enter(combatCtx);
+
+            ICombatMetadata first = combatCtx.ConsumeAttackIntoContext(ctx);
+            ICombatMetadata second = combatCtx.ConsumeAttackIntoContext(ctx);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(first.DefendingUnit.GetValue().Name, Is.EqualTo("Enemy0"));
+                Assert.That(second.DefendingUnit.GetValue().Name, Is.EqualTo("Enemy1"));
+                Assert.That(combatCtx.AttackedDefenderRefs.Count, Is.EqualTo(2),
+                    "both are on the hook for morale, each measured from its own starting wounds");
+            });
+        }
+
+        // The point of the mode: you commit before you know the outcome. A target killed by an earlier
+        // weapon takes the shots declared against it with it.
+        [Test]
+        public async Task DeclareFirst_ShotsDeclaredAgainstADestroyedTargetAreLost()
+        {
+            // Both weapons aimed at the same unit, so the first volley can wipe the second one's target.
+            var (ctx, attacker, requester) = BuildDeclareFirstWorld(EShootingMode.DeclareFirst,
+                aimEverythingAt: "Enemy0");
+            var combatCtx = new CombatActionContext(ctx, attacker, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            bool endedShoot = false;
+            BindAllStageEvents(stage);
+            stage.OnNoValidShots.OnWillActivate += _ => endedShoot = true;
+
+            await stage.Enter(combatCtx);
+            Assert.That(requester.Asked, Is.EqualTo(2), "test setup: both weapons declared");
+
+            combatCtx.ConsumeAttackIntoContext(ctx);            // the first volley resolves...
+            KillUnit(FindEnemy(ctx, "Enemy0"));                 // ...and wipes the declared target
+
+            int askedBefore = requester.Asked;
+            await stage.Enter(combatCtx);                       // the weapon loop comes back for the pistol
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(requester.Asked, Is.EqualTo(askedBefore),
+                    "the lost shots are NOT re-aimed - that would hand back the information the mode withholds");
+                Assert.That(combatCtx.HasPendingAttack, Is.False, "the stale declaration was discarded");
+                Assert.That(endedShoot, Is.True,
+                    "the unit still shot, so the action ends through morale rather than simply stopping");
+            });
+        }
+
+        // A survivor still gets shot: only the declaration whose own target died is dropped.
+        [Test]
+        public async Task DeclareFirst_ADeclarationAgainstASurvivorStillFires()
+        {
+            var (ctx, attacker, _) = BuildDeclareFirstWorld(EShootingMode.DeclareFirst);
+            var combatCtx = new CombatActionContext(ctx, attacker, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+
+            await stage.Enter(combatCtx);
+            combatCtx.ConsumeAttackIntoContext(ctx);
+            KillUnit(FindEnemy(ctx, "Enemy0"));                 // the FIRST target dies, not the second's
+
+            await stage.Enter(combatCtx);
+
+            Assert.That(combatCtx.HasPendingAttack, Is.True,
+                "Enemy1 is still standing, so the shots declared against it are still owed");
+            Assert.That(combatCtx.ConsumeAttackIntoContext(ctx).DefendingUnit.GetValue().Name,
+                Is.EqualTo("Enemy1"));
+        }
+
+        // Declare First empties the weapon pool at declaration time, long before the last volley rolls.
+        // DetermineCanKeepShootingStage must not read that as "the action is over".
+        [Test]
+        public async Task DeclareFirst_KeepShootingWaitsForTheQueueNotThePool()
+        {
+            var (ctx, attacker, _) = BuildDeclareFirstWorld(EShootingMode.DeclareFirst);
+            var combatCtx = new CombatActionContext(ctx, attacker, isMelee: false);
+            var chooseStage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(chooseStage);
+            await chooseStage.Enter(combatCtx);
+            combatCtx.ConsumeAttackIntoContext(ctx);            // the first of two declarations fires
+
+            var keepShooting = new DetermineCanKeepShootingStage(ctx, new NoOpLayer<ICombatActionContext>());
+            keepShooting.ReturnToChooseWeapon.Bind("test-return");
+            keepShooting.ToFinishShooting.Bind("test-finish");
+            bool returned = false, finished = false;
+            keepShooting.ReturnToChooseWeapon.OnWillActivate += _ => returned = true;
+            keepShooting.ToFinishShooting.OnWillActivate += _ => finished = true;
+
+            await keepShooting.Enter(combatCtx);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(combatCtx.AvailableWeapons, Is.Empty, "test setup: nothing left to declare");
+                Assert.That(returned, Is.True, "the second declaration still has to be rolled");
+                Assert.That(finished, Is.False);
+            });
+        }
+
+        /// <summary>Two weapons and two enemies, with a reply that aims each weapon at its own enemy
+        /// (or all of them at <paramref name="aimEverythingAt"/> when named).</summary>
+        private (TestGameContextWithRequester ctx, DataBinding<UnitData> attacker, CountingRangedRequester requester)
+            BuildDeclareFirstWorld(EShootingMode mode, string? aimEverythingAt = null)
+        {
+            var requester = new CountingRangedRequester();
+            var (ctx, attacker) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(5, 0, 0), new Position(6, 0, 0) },
+                rifleRange: 24f,
+                attackerWeapons: new[] { Rifle(), new Weapon("Pistol", 24f, 1, 0) },
+                playerRequester: requester);
+            ctx.Settings = ctx.Settings with { ShootingMode = mode };
+
+            int pass = 0;
+            requester.Reply = req => FireAtTargetNamed(req, aimEverythingAt ?? $"Enemy{pass++}");
+            return (ctx, attacker, requester);
+        }
+
+        private static DataBinding<UnitData> FindEnemy(TestGameContextWithRequester ctx, string name) =>
+            ctx.GameDataStore.GetAllDataBindings<UnitData>()
+                .First(unit => unit.GetValue().Name == name);
+
+        private static void KillUnit(DataBinding<UnitData> unit)
+        {
+            foreach (ModelData model in unit.GetValue().ModelBindings.Select(binding => binding.GetValue()))
+                model.DealWounds(model.TotalWounds - model.WoundsDealt);
+        }
+
+        // Like CapturingRangedRequester, but counts the asks - "how many times was the player prompted"
+        // IS the observable difference between the two shooting modes.
+        internal class CountingRangedRequester : IPlayerRequestByID
+        {
+            public int Asked { get; private set; }
+            public ChooseRangedAttackRequest? Captured { get; private set; }
+            public Func<ChooseRangedAttackRequest, CancellableResult<RangedAttackChoice>> Reply { get; set; }
+                = _ => new Cancelled<RangedAttackChoice>();
+
+            public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
+                where TRequest : IStageTaskRequest<TReply>
+            {
+                if (request is ChooseRangedAttackRequest cr)
+                {
+                    Asked++;
+                    Captured = cr;
+                    object reply = Reply(cr)!;
+                    return Task.FromResult((TReply)reply);
+                }
+                throw new InvalidOperationException("Unexpected request type: " + request.GetType());
+            }
         }
 
         // ──────────────────────────────────────────────────────────────────────
@@ -874,6 +1083,10 @@ namespace FDG.Tests
             BindAllStageEvents(stage);
 
             await stage.Enter(combatCtx);                       // first weapon committed
+            // #371: FireStage consumes the queued attack before the weapon loop re-enters this
+            // stage. Model that here - a re-entry with a declaration still queued now means
+            // Declare First is mid-resolution and the stage fires it without asking anything.
+            combatCtx.ConsumeAttackIntoContext(ctx);
             DataBinding<UnitData> firstTarget = combatCtx.DefendingUnit;
             Assert.That(combatCtx.AlreadyUsedWeapons.Count, Is.EqualTo(1), "test setup: one weapon fired");
 
@@ -922,6 +1135,10 @@ namespace FDG.Tests
             stage.OnNoValidShots.OnWillActivate += _ => transitions.Add("no-valid-shots");
 
             await stage.Enter(combatCtx);   // fires
+            // #371: FireStage consumes the queued attack before the weapon loop re-enters this
+            // stage. Model that here - a re-entry with a declaration still queued now means
+            // Declare First is mid-resolution and the stage fires it without asking anything.
+            combatCtx.ConsumeAttackIntoContext(ctx);
             await stage.Enter(combatCtx);   // cancels
 
             Assert.That(transitions, Does.Not.Contain("back"),
@@ -1097,6 +1314,10 @@ namespace FDG.Tests
             stage.OnNoValidShots.OnWillActivate += _ => transitions.Add("no-valid-shots");
 
             await stage.Enter(combatCtx);   // fires the rifle
+            // #371: FireStage consumes the queued attack before the weapon loop re-enters this
+            // stage. Model that here - a re-entry with a declaration still queued now means
+            // Declare First is mid-resolution and the stage fires it without asking anything.
+            combatCtx.ConsumeAttackIntoContext(ctx);
             await stage.Enter(combatCtx);   // holds fire with the rocket - nothing left
 
             Assert.That(transitions, Does.Not.Contain("back"));
@@ -1128,6 +1349,10 @@ namespace FDG.Tests
                 "nothing has fired yet - the exit is Back, not Done.");
             Assert.That(requester.Captured!.AllowCancel, Is.True);
 
+            // #371: FireStage consumes the queued attack before the weapon loop re-enters this
+            // stage. Model that here - a re-entry with a declaration still queued now means
+            // Declare First is mid-resolution and the stage fires it without asking anything.
+            combatCtx.ConsumeAttackIntoContext(ctx);
             await stage.Enter(combatCtx);
             Assert.That(requester.Captured!.AllowStopShooting, Is.True,
                 "a weapon has fired - the player may still decline the rest.");
@@ -1706,7 +1931,8 @@ namespace FDG.Tests
             public TableState TableState { get; }
             public IReadWriteableGameDataStore GameDataStore { get; }
             public IPresenter Presenter { get; } = new LocalPresenter(null, new InstantPresentationClock());
-            public GameSettings Settings { get; } = GameSettings.GetDefault();
+            // Settable so a test can flip a rule setting (#371 shooting mode) without a second context type.
+            public GameSettings Settings { get; set; } = GameSettings.GetDefault();
             public List<ITeam>? FirstDeploymentRollOrder => null;
             IGameContext IGameContextAccessor.GameContext => this;
 

@@ -778,17 +778,175 @@ namespace FDG.Tests
             });
         }
 
+        // ── What the resolvers are told about the standing declarations ──────────────────────────────
+
+        // The GUI has to show the volley taking shape: a player who aims a weapon and is handed the
+        // weapon list again reads that as a bug unless the shots already committed stay on screen.
+        [Test]
+        public async Task DeclareFirst_TheRequestCarriesWhatIsAlreadyDeclared()
+        {
+            var (ctx, attacker, requester) = BuildDeclareFirstWorld(EShootingMode.DeclareFirst);
+            var seen = new List<List<DeclaredShot>>();
+            var flags = new List<bool>();
+            var chosen = new List<string>();
+            var inner = requester.Reply;
+            requester.Reply = req =>
+            {
+                seen.Add(req.Declarations.ToList());
+                flags.Add(req.DeclareFirst);
+                var reply = inner(req);
+                chosen.Add(((Selected<RangedAttackChoice>)reply).Value.Weapon.Name);
+                return reply;
+            };
+
+            var combatCtx = new CombatActionContext(ctx, attacker, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+
+            await stage.Enter(combatCtx);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(flags, Is.EqualTo(new[] { true, true }), "the mode is on both requests");
+                Assert.That(seen[0], Is.Empty, "nothing is declared when the first weapon is aimed");
+                Assert.That(seen[1], Has.Count.EqualTo(1), "the second request shows the first declaration");
+            });
+            Assert.Multiple(() =>
+            {
+                Assert.That(seen[1][0].Weapon.Name, Is.EqualTo(chosen[0]));
+                Assert.That(seen[1][0].TargetUnit.GetValue().Name, Is.EqualTo("Enemy0"));
+                Assert.That(seen[1][0].Copies, Is.EqualTo(1), "one carrier, so one shot is owed");
+            });
+        }
+
+        // The mirror of the mode gate on the declaration drain: One At A Time never carries declarations,
+        // on any path - including one that re-enters with an attack still queued.
+        [Test]
+        public async Task OneAtATime_TheRequestNeverCarriesDeclarations()
+        {
+            var (ctx, attacker, requester) = BuildDeclareFirstWorld(EShootingMode.OneAtATime);
+            var seen = new List<List<DeclaredShot>>();
+            var flags = new List<bool>();
+            var inner = requester.Reply;
+            requester.Reply = req =>
+            {
+                seen.Add(req.Declarations.ToList());
+                flags.Add(req.DeclareFirst);
+                return inner(req);
+            };
+
+            var combatCtx = new CombatActionContext(ctx, attacker, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+
+            await stage.Enter(combatCtx);
+            await stage.Enter(combatCtx);   // re-entered WITHOUT a FireStage consume: a queue exists
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(flags, Is.EqualTo(new[] { false, false }));
+                Assert.That(seen.SelectMany(declarations => declarations), Is.Empty,
+                    "a queued attack is not a declaration - this mode fires before it offers again");
+            });
+        }
+
+        // ── #032 Limited under Declare First ─────────────────────────────────────────────────────────
+        // Declaring IS the commit in both modes (there is no un-aiming), so a once-per-game weapon is
+        // spent the moment it is aimed. These pin that it is spent exactly once and never re-offered.
+
+        [Test]
+        public async Task DeclareFirst_ALimitedWeaponIsSpentWhenDeclared_AndIsNotOfferedAgain()
+        {
+            Weapon rocket = LimitedWeapon("Rocket");
+            var (ctx, attacker, requester) = BuildDeclareFirstWorld(EShootingMode.DeclareFirst,
+                attackerWeapons: new[] { rocket, new Weapon("Pistol", 24f, 1, 0) });
+            // Rocket first, so the second offer is the one that must no longer list it. The pool is a
+            // ConcurrentDictionary, so the order has to be fixed here rather than assumed.
+            var offered = new List<List<string>>();
+            int pass = 0;
+            requester.Reply = req =>
+            {
+                offered.Add(req.WeaponOptions.Select(option => option.Weapon.Name).ToList());
+                return FireNamedWeaponAt(req, pass++ == 0 ? "Rocket" : "Pistol", "Enemy0");
+            };
+
+            var combatCtx = new CombatActionContext(ctx, attacker, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+
+            await stage.Enter(combatCtx);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(requester.Asked, Is.EqualTo(2), "test setup: both weapons declared");
+                Assert.That(LimitedRules.IsSpent(attacker.GetValue(), rocket), Is.True,
+                    "aiming a once-per-game weapon commits it - there is no un-declaring");
+                Assert.That(offered[1], Does.Not.Contain("Rocket"),
+                    "a declared weapon leaves the pool, so it cannot be aimed a second time this action");
+            });
+        }
+
+        // The mode's bargain applied to its most expensive case: declare the rocket at a unit an earlier
+        // weapon then wipes out and you have burned it for nothing. Deliberate, and worth pinning - it is
+        // the one Declare First outcome a player would most likely report as a bug.
+        [Test]
+        public async Task DeclareFirst_ALimitedWeaponDeclaredAtADoomedTarget_IsStillSpent()
+        {
+            Weapon rocket = LimitedWeapon("Rocket");
+            var (ctx, attacker, requester) = BuildDeclareFirstWorld(EShootingMode.DeclareFirst,
+                attackerWeapons: new[] { Rifle(), rocket });
+            // Rifle first, rocket second, both at Enemy0 - so the rocket is the declaration left holding
+            // a corpse. (Reply order, not pool order: which weapon is offered first is not guaranteed.)
+            int pass = 0;
+            requester.Reply = req => FireNamedWeaponAt(req, pass++ == 0 ? "Rifle" : "Rocket", "Enemy0");
+
+            var combatCtx = new CombatActionContext(ctx, attacker, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            bool endedShoot = false;
+            BindAllStageEvents(stage);
+            stage.OnNoValidShots.OnWillActivate += _ => endedShoot = true;
+
+            await stage.Enter(combatCtx);
+            Assert.That(requester.Asked, Is.EqualTo(2), "test setup: rifle then rocket");
+
+            combatCtx.ConsumeAttackIntoContext(ctx);            // the rifle fires...
+            KillUnit(FindEnemy(ctx, "Enemy0"));                 // ...and kills the rocket's target
+
+            await stage.Enter(combatCtx);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(combatCtx.HasPendingAttack, Is.False, "the rocket's shot is lost");
+                Assert.That(endedShoot, Is.True);
+                Assert.That(LimitedRules.IsSpent(attacker.GetValue(), rocket), Is.True,
+                    "spent for the game even though it never rolled - committing early is the whole bargain");
+            });
+        }
+
+        // Reply helper: fire a NAMED weapon at a named target, so a test can fix the declaration order
+        // (the available-weapon pool is a ConcurrentDictionary and does not promise one).
+        private static CancellableResult<RangedAttackChoice> FireNamedWeaponAt(
+            ChooseRangedAttackRequest req, string weaponName, string targetName)
+        {
+            var option = req.WeaponOptions.Single(o => o.Weapon.Name == weaponName);
+            var target = option.WeaponTargetStats.Single(t => t.TargetUnit.GetValue().Name == targetName);
+            Assert.That(target.UnselectableReason, Is.Null,
+                $"test setup: {weaponName} must be able to shoot {targetName}");
+            return new Selected<RangedAttackChoice>(new RangedAttackChoice(option.Weapon, target.TargetUnit));
+        }
+
         /// <summary>Two weapons and two enemies, with a reply that aims each weapon at its own enemy
         /// (or all of them at <paramref name="aimEverythingAt"/> when named).</summary>
         private (TestGameContextWithRequester ctx, DataBinding<UnitData> attacker, CountingRangedRequester requester)
-            BuildDeclareFirstWorld(EShootingMode mode, string? aimEverythingAt = null)
+            BuildDeclareFirstWorld(EShootingMode mode, string? aimEverythingAt = null,
+                Weapon[]? attackerWeapons = null)
         {
             var requester = new CountingRangedRequester();
             var (ctx, attacker) = BuildTwoTeamWorld(
                 attackerPos: new Position(0, 0, 0),
                 enemyPositions: new[] { new Position(5, 0, 0), new Position(6, 0, 0) },
                 rifleRange: 24f,
-                attackerWeapons: new[] { Rifle(), new Weapon("Pistol", 24f, 1, 0) },
+                attackerWeapons: attackerWeapons ?? new[] { Rifle(), new Weapon("Pistol", 24f, 1, 0) },
                 playerRequester: requester);
             ctx.Settings = ctx.Settings with { ShootingMode = mode };
 

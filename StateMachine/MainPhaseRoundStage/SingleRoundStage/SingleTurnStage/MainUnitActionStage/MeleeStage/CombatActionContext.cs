@@ -21,6 +21,19 @@ namespace FDG.Stages
         }
     }
 
+    /// <summary>
+    /// #371 Declare First: one shot aimed but not yet rolled. The shoot action's declarations sit in
+    /// <see cref="ICombatActionContext.PendingDeclarations"/> in firing order, and ride the weapon
+    /// request out to the resolvers so a player still choosing weapons can see what is already committed.
+    /// </summary>
+    /// <param name="Weapon">The declared weapon.</param>
+    /// <param name="TargetUnit">The unit it was aimed at. May since have been destroyed - the shots are
+    /// then lost, which is the risk the mode exists to create.</param>
+    /// <param name="Copies">How many copies of the weapon will fire, after #276 line-of-sight trimming
+    /// and #340 one-at-a-time splitting.</param>
+    public readonly record struct PendingDeclaration(
+        Weapon Weapon, DataBinding<UnitData> TargetUnit, int Copies);
+
     //TODO: There's lots of info that's specific to parts of the melee process.
     //Having a query handler like the combat metadata could be an improvement.
     public interface ICombatActionContext : IGameContextAccessor
@@ -109,14 +122,18 @@ namespace FDG.Stages
         /// <paramref name="copiesHeldBack"/> reports how many went back into the pool.
         /// <para>Supersedes #157's split-the-volley-into-single-shots, which gave each shot its own model
         /// pick but locked the whole burst onto the unit chosen for the first one.</para>
-        /// No-op unless exactly one attack is queued (it is only ever called right after
-        /// <see cref="SetAttackWeapon"/>).
+        /// Edits the attack queued LAST, which is the one just committed - both callers run immediately
+        /// after <see cref="SetAttackWeapon"/>. No-op when nothing is queued.
+        /// <para>#371: "last", not "only". Under Declare First earlier declarations are still waiting in
+        /// the queue when a new weapon is aimed; the original single-entry guard silently skipped the
+        /// split for every weapon after the first, firing a Takedown volley as one burst.</para>
         /// </summary>
         public void AimPendingAttackOneCopyAtATime(out int copiesHeldBack);
 
-        /// <summary>#276: cap the just-queued attack's weapon count at <paramref name="maxCount"/> — the
+        /// <summary>#276: cap the just-queued attack's weapon count at <paramref name="maxCount"/> - the
         /// copies carried by models that can actually shoot the chosen target (range + line of sight).
-        /// No-op unless exactly one attack is queued or when the cap wouldn't lower the count.</summary>
+        /// Edits the LAST queued attack (see <see cref="AimPendingAttackOneCopyAtATime"/> for why last
+        /// rather than only); no-op when nothing is queued or the cap wouldn't lower the count.</summary>
         public void TrimPendingAttack(int maxCount);
 
         /// <summary>Drop any queued attacks — the burst's target died mid-way, the leftover shots fizzle (#157).</summary>
@@ -135,6 +152,14 @@ namespace FDG.Stages
         /// it was committed at declaration and a once-per-game one is already spent.
         /// </summary>
         public void DropNextPendingAttack();
+
+        /// <summary>
+        /// #371 Declare First: every attack aimed but not yet rolled this action, in the order they will
+        /// fire. Empty in One At A Time, where an attack is consumed before the next weapon is offered.
+        /// Read by <c>ChooseRangedAttackStage</c> to tell the resolvers what the unit has already
+        /// committed to, so a player picking the third weapon can still see where the first two are aimed.
+        /// </summary>
+        public IReadOnlyList<PendingDeclaration> PendingDeclarations { get; }
 
         public float AttackerRemainingWoundsAtStart { get; }
 
@@ -257,8 +282,12 @@ namespace FDG.Stages
         // aims at DefendingUnit and never declares). Under Declare First several entries sit here at
         // once, each aimed somewhere different, which is the whole reason the target rides the entry
         // rather than living in the single DefendingUnit field.
-        private readonly Queue<(Weapon Weapon, int Count, int BurstIndex, DataBinding<UnitData>? Target)>
-            _pendingAttacks = new Queue<(Weapon, int, int, DataBinding<UnitData>?)>();
+        //
+        // A List used as a FIFO rather than a Queue: attacks are consumed from the front, but the two
+        // #276/#340 adjusters edit the one just added at the BACK, which a Queue cannot express. Never
+        // more than a unit's weapon count long, so removing from index 0 is free.
+        private readonly List<(Weapon Weapon, int Count, int BurstIndex, DataBinding<UnitData>? Target)>
+            _pendingAttacks = new List<(Weapon, int, int, DataBinding<UnitData>?)>();
 
         // #340: copies of each weapon already fired this action, for the burst index above. Keyed by the
         // pool's own representative instance (the same one SetAttackWeapon consumes and
@@ -267,6 +296,12 @@ namespace FDG.Stages
         private readonly Dictionary<Weapon, int> _copiesFiredThisAction = new Dictionary<Weapon, int>();
 
         public bool HasPendingAttack => _pendingAttacks.Count > 0;
+
+        public IReadOnlyList<PendingDeclaration> PendingDeclarations =>
+            _pendingAttacks
+                .Where(pending => pending.Target != null)
+                .Select(pending => new PendingDeclaration(pending.Weapon, pending.Target!, pending.Count))
+                .ToList();
 
         private ConcurrentDictionary<Weapon, int> _availableWeapons;
 
@@ -380,7 +415,7 @@ namespace FDG.Stages
 
             _alreadyUsedWeapons.TryAdd(weaponToConsume, weaponCount);
 
-            _pendingAttacks.Enqueue((weaponToConsume, weaponCount, 0, target));
+            _pendingAttacks.Add((weaponToConsume, weaponCount, 0, target));
         }
 
         public void DeclineWeapon(Weapon weaponToDecline)
@@ -400,14 +435,16 @@ namespace FDG.Stages
         {
             copiesHeldBack = 0;
 
-            // Only ever called right after SetAttackWeapon, so exactly one batch is queued; anything else
-            // means the caller is mid-attack and re-queueing would corrupt the queue.
-            if (_pendingAttacks.Count != 1) return;
+            // Always called right after SetAttackWeapon, so the batch to split is the LAST one queued.
+            // #371: under Declare First it is not the only one - earlier declarations are still waiting
+            // behind it - so this reads the back of the queue rather than requiring a queue of one.
+            if (_pendingAttacks.Count == 0) return;
 
-            (Weapon weapon, int count, _, DataBinding<UnitData>? target) = _pendingAttacks.Dequeue();
+            int last = _pendingAttacks.Count - 1;
+            (Weapon weapon, int count, _, DataBinding<UnitData>? target) = _pendingAttacks[last];
 
             _copiesFiredThisAction.TryGetValue(weapon, out int alreadyFired);
-            _pendingAttacks.Enqueue((weapon, 1, alreadyFired, target));
+            _pendingAttacks[last] = (weapon, 1, alreadyFired, target);
             _copiesFiredThisAction[weapon] = alreadyFired + 1;
             // SetAttackWeapon recorded the whole stack as used; only one copy of it is firing.
             _alreadyUsedWeapons[weapon] = alreadyFired + 1;
@@ -423,12 +460,13 @@ namespace FDG.Stages
 
         public void TrimPendingAttack(int maxCount)
         {
-            // Same single-batch window as the one-at-a-time commit above: only ever called right after
-            // SetAttackWeapon.
-            if (_pendingAttacks.Count != 1 || maxCount <= 0) return;
+            // Same window as the one-at-a-time commit above: called right after SetAttackWeapon, so the
+            // attack to cap is the last one queued (#371 - not necessarily the only one).
+            if (_pendingAttacks.Count == 0 || maxCount <= 0) return;
 
-            (Weapon weapon, int count, int burstIndex, DataBinding<UnitData>? target) = _pendingAttacks.Dequeue();
-            _pendingAttacks.Enqueue((weapon, Math.Min(count, maxCount), burstIndex, target));
+            int last = _pendingAttacks.Count - 1;
+            (Weapon weapon, int count, int burstIndex, DataBinding<UnitData>? target) = _pendingAttacks[last];
+            _pendingAttacks[last] = (weapon, Math.Min(count, maxCount), burstIndex, target);
         }
 
         public void ClearPendingAttacks() => _pendingAttacks.Clear();
@@ -442,13 +480,13 @@ namespace FDG.Stages
                 return false;
             }
 
-            (weapon, _, _, target) = _pendingAttacks.Peek();
+            (weapon, _, _, target) = _pendingAttacks[0];
             return true;
         }
 
         public void DropNextPendingAttack()
         {
-            if (_pendingAttacks.Count > 0) _pendingAttacks.Dequeue();
+            if (_pendingAttacks.Count > 0) _pendingAttacks.RemoveAt(0);
         }
 
         public void SetDefender(DataBinding<UnitData> defendingUnit)
@@ -502,7 +540,8 @@ namespace FDG.Stages
             }
 
             // Don't clear DefendingUnit — OfferStrikeBackStage needs it after this call.
-            (Weapon weapon, int count, int burstIndex, DataBinding<UnitData>? target) = _pendingAttacks.Dequeue();
+            (Weapon weapon, int count, int burstIndex, DataBinding<UnitData>? target) = _pendingAttacks[0];
+            _pendingAttacks.RemoveAt(0);
 
             // #371: an attack queued with a declared target aims at THAT unit, not at whatever the last
             // one left in DefendingUnit. Re-pointing here (rather than at declaration time) is what keeps

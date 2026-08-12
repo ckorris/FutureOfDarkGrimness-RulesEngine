@@ -172,7 +172,20 @@ namespace FDG.Stages
                 context.AttackingUnit, weaponOptions,
                 allowCancel: context.AlreadyUsedWeapons.Count == 0,
                 previousTarget: context.DefendingUnit,
-                allowStopShooting: context.AlreadyUsedWeapons.Count > 0);
+                allowStopShooting: context.AlreadyUsedWeapons.Count > 0,
+                // #371: the mode drives how the resolver LABELS the commit ("Declare" vs "Fire"), and the
+                // standing declarations let it show the volley taking shape. Mapped onto the request's own
+                // DeclaredShot here rather than passing the context's PendingDeclaration straight through:
+                // a request is deserialized by remote players, so it must not carry state-machine types.
+                declareFirst: declareFirst,
+                // Mode-gated for the same reason the declaration drain is: One At A Time has no concept
+                // of a standing declaration, and must be handed an empty list on every path - including
+                // one that re-enters with an attack still queued.
+                declarations: declareFirst
+                    ? context.PendingDeclarations
+                        .Select(pending => new DeclaredShot(pending.Weapon, pending.TargetUnit, pending.Copies))
+                        .ToList()
+                    : new List<DeclaredShot>());
 
             CancellableResult<RangedAttackChoice> attackResult = await context.PlayerRequester()
                 .RequestDecision<ChooseRangedAttackRequest, CancellableResult<RangedAttackChoice>>(chooseWeaponRequest);

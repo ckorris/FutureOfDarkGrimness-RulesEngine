@@ -188,6 +188,70 @@ namespace FDG.Tests
                 "with every copy fired the weapon leaves the pool and stops being offered");
         }
 
+        // ── #371: the queue adjusters must edit the attack just queued, not "the only" one ────────────
+        // Under Declare First several attacks sit in the queue at once, so both adjusters used to hit
+        // their "exactly one queued" guard and silently do nothing from the second declaration onward.
+
+        [Test]
+        public void DeclareFirst_SecondTakedownDeclaration_IsStillSplitOneCopyAtATime()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 3, weaponName: "Sniper Rifle");
+            AttachTakedown(attacker);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 3);
+            var ctx = new WoundTestContext(_store, new CannedModelSelectionRequester(defender.ModelBindings()[0]));
+
+            var combat = new CombatActionContext(ctx, attacker, isMelee: false);
+            Weapon rifle = combat.AvailableWeapons.Keys.Single();
+
+            // Declare TWICE with nothing fired in between - the Declare First shape, where the first
+            // rifle's shot is still waiting in the queue when the second one is aimed.
+            combat.SetAttackWeapon(rifle, out _);
+            combat.SetDefender(defender);
+            combat.AimPendingAttackOneCopyAtATime(out int heldBackFirst);
+
+            combat.SetAttackWeapon(rifle, out _);
+            combat.AimPendingAttackOneCopyAtATime(out int heldBackSecond);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(heldBackFirst, Is.EqualTo(2));
+                Assert.That(heldBackSecond, Is.EqualTo(1),
+                    "the second declaration splits too - it used to swallow all three remaining copies");
+                Assert.That(combat.AvailableWeapons[rifle], Is.EqualTo(1),
+                    "one rifle is still unaimed and must be offered again");
+            });
+
+            Assert.That(combat.ConsumeAttackIntoContext(ctx).WeaponCount, Is.EqualTo(1));
+            Assert.That(combat.ConsumeAttackIntoContext(ctx).WeaponCount, Is.EqualTo(1),
+                "each declaration fires a single copy, so each still picks its own victim model");
+        }
+
+        [Test]
+        public void DeclareFirst_TrimCapsTheWeaponJustDeclared_NotTheOneWaitingInFront()
+        {
+            DataBinding<UnitData> attacker =
+                MakeUnit(modelCount: 3, weaponName: "Rifle", secondWeaponName: "Pistol");
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 3);
+            var ctx = new WoundTestContext(_store, new CannedModelSelectionRequester(defender.ModelBindings()[0]));
+
+            var combat = new CombatActionContext(ctx, attacker, isMelee: false);
+            Weapon rifle  = combat.AvailableWeapons.Keys.Single(w => w.Name == "Rifle");
+            Weapon pistol = combat.AvailableWeapons.Keys.Single(w => w.Name == "Pistol");
+
+            combat.SetAttackWeapon(rifle, out int rifleCount);
+            combat.SetDefender(defender);
+            combat.SetAttackWeapon(pistol, out int pistolCount);
+            Assert.That((rifleCount, pistolCount), Is.EqualTo((3, 3)), "test setup: 3 carriers each");
+
+            // #276: only one pistol has line of sight to the chosen target.
+            combat.TrimPendingAttack(1);
+
+            Assert.That(combat.ConsumeAttackIntoContext(ctx).WeaponCount, Is.EqualTo(3),
+                "the rifle was declared first and is untouched by a later weapon's trim");
+            Assert.That(combat.ConsumeAttackIntoContext(ctx).WeaponCount, Is.EqualTo(1),
+                "the pistol is capped to the copy that can actually shoot - it used to fire all three");
+        }
+
         [Test]
         public void DeadDefenderMidShoot_RemainingCopiesStayAvailableForANewTarget()
         {
@@ -259,7 +323,8 @@ namespace FDG.Tests
         private static void AttachTakedown(DataBinding<UnitData> unit) =>
             unit.GetValue().AttachRuleDefinition(new ResolvedRule("Takedown", CoreRuleCatalog.Takedown));
 
-        private DataBinding<UnitData> MakeUnit(int modelCount, string? weaponName = null)
+        private DataBinding<UnitData> MakeUnit(int modelCount, string? weaponName = null,
+            string? secondWeaponName = null)
         {
             var modelBindings = new List<DataBinding<ModelData>>(modelCount);
             for (int i = 0; i < modelCount; i++)
@@ -269,6 +334,11 @@ namespace FDG.Tests
                 {
                     // One instance per model — CombatActionContext batches identical weapons by comparer.
                     weapons.Add(new Weapon(weaponName, rangeInches: 24f, attacks: 1, armorPenetration: 0));
+                }
+                // #371: a second profile, so a test can queue two declarations at once.
+                if (secondWeaponName != null)
+                {
+                    weapons.Add(new Weapon(secondWeaponName, rangeInches: 24f, attacks: 1, armorPenetration: 0));
                 }
                 var model = new ModelData(
                     baseRadiusInches: 0.75f,

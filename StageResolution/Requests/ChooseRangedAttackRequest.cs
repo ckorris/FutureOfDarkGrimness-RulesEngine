@@ -56,10 +56,31 @@ namespace FDG.StageResolution.Requests
         /// </summary>
         public DataBinding<UnitData>? PreviousTarget { get; }
 
+        /// <summary>
+        /// #371: true when the game is in <c>EShootingMode.DeclareFirst</c>, where answering this request
+        /// AIMS the weapon and queues it rather than firing it - the stage comes straight back for the
+        /// next weapon, and nothing is rolled until the unit has finished declaring.
+        /// <para>Resolvers need it to label the commit truthfully ("Declare" rather than "Fire"): a
+        /// player who presses Fire and is handed the weapon list again reasonably reads that as a bug.
+        /// It is NOT a routing decision - the reply is the same either way, and the stage alone decides
+        /// what happens next.</para>
+        /// </summary>
+        public bool DeclareFirst { get; }
+
+        /// <summary>
+        /// #371: what this shoot action has already aimed and not yet rolled, in the order it will fire.
+        /// Always empty in One At A Time (each attack resolves before the next weapon is offered), and
+        /// empty on the first declaration of a Declare First action.
+        /// <para>Purely informational - a resolver shows it so the player can see the volley taking
+        /// shape, and the AI can avoid piling shots onto a unit it has already over-killed.</para>
+        /// </summary>
+        public List<DeclaredShot> Declarations { get; }
+
         [JsonConstructor]
         public ChooseRangedAttackRequest(PlayerID targetPlayerID, TaskID taskID, string taskName,
             DataBinding<UnitData> attackingUnit, List<WeaponOption> weaponOptions, bool allowCancel = true,
-            DataBinding<UnitData>? previousTarget = null, bool allowStopShooting = false)
+            DataBinding<UnitData>? previousTarget = null, bool allowStopShooting = false,
+            bool declareFirst = false, List<DeclaredShot>? declarations = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -69,11 +90,14 @@ namespace FDG.StageResolution.Requests
             AllowCancel = allowCancel;
             PreviousTarget = previousTarget;
             AllowStopShooting = allowStopShooting;
+            DeclareFirst = declareFirst;
+            Declarations = declarations ?? new List<DeclaredShot>();
         }
 
         public ChooseRangedAttackRequest(PlayerID targetPlayerID, string taskName,
             DataBinding<UnitData> attackingUnit, List<WeaponOption> weaponOptions, bool allowCancel = true,
-            DataBinding<UnitData>? previousTarget = null, bool allowStopShooting = false)
+            DataBinding<UnitData>? previousTarget = null, bool allowStopShooting = false,
+            bool declareFirst = false, List<DeclaredShot>? declarations = null)
         {
             TargetPlayerID = targetPlayerID;
             TaskID = new TaskID(Guid.NewGuid());
@@ -83,12 +107,26 @@ namespace FDG.StageResolution.Requests
             AllowCancel = allowCancel;
             PreviousTarget = previousTarget;
             AllowStopShooting = allowStopShooting;
+            DeclareFirst = declareFirst;
+            Declarations = declarations ?? new List<DeclaredShot>();
         }
 
         public Task<CancellableResult<RangedAttackChoice>> Resolve(CancellableResult<RangedAttackChoice> resolution)
         {
             return Task.FromResult(resolution);
         }
+
+        /// <summary>
+        /// #371 Declare First: one already-aimed, not-yet-rolled shot (see <see cref="Declarations"/>).
+        /// The wire twin of the engine's <c>PendingDeclaration</c>, restated here so the request layer -
+        /// which is what a remote player deserializes - stays free of state-machine types.
+        /// </summary>
+        /// <param name="Weapon">The declared weapon.</param>
+        /// <param name="TargetUnit">The unit it is aimed at. Still listed if that unit has since been
+        /// destroyed; those shots will be lost, which is the risk the mode exists to create.</param>
+        /// <param name="Copies">How many copies of the weapon will fire, after line-of-sight trimming
+        /// (#276) and one-at-a-time splitting (#340).</param>
+        public record DeclaredShot(Weapon Weapon, DataBinding<UnitData> TargetUnit, int Copies);
 
         /// <param name="IgnoresCover">True if this weapon ignores the target's cover (Blast). Resolvers
         /// should treat a target's <see cref="WeaponTargetStats.HasCover"/> as moot for this weapon when

@@ -21,7 +21,12 @@ namespace FDG.Stages
             // #371: under Declare First the pool empties at DECLARATION time, long before the last volley
             // is rolled - so "nothing left to choose" is only the end of the action once the declaration
             // queue has drained too. ChooseRangedAttackStage fires the next one without asking.
-            if (context.AvailableWeapons.Count == 0 && !context.HasPendingAttack)
+            // Gated on the MODE as well as the queue, so One At A Time keeps its exact pre-#371 exit test
+            // (it never arrives here with an attack queued - FireStage has just consumed it).
+            bool declarationsPending = GameContext.Settings.ShootingMode == EShootingMode.DeclareFirst
+                && context.HasPendingAttack;
+
+            if (context.AvailableWeapons.Count == 0 && !declarationsPending)
             {
                 GameContext.Log("Has fired all weapons.");
                 await ToFinishShooting.Activate(context);

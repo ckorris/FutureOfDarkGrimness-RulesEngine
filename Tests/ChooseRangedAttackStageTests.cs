@@ -583,11 +583,9 @@ namespace FDG.Tests
                 playerRequester: requester);
 
             var combatCtx = new CombatActionContext(ctx, attackerBinding, isMelee: false);
-            // Consume the rifle to simulate a prior fire. ClearPendingAttacks is what FireStage's
-            // consume leaves behind (#371): the weapon counts as used, and nothing is still queued.
+            // Consume the rifle to simulate a prior fire.
             Weapon consumeMe = combatCtx.AvailableWeapons.Keys.First(w => w.Name == "Rifle");
             combatCtx.SetAttackWeapon(consumeMe, out _);
-            combatCtx.ClearPendingAttacks();
 
             var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
             BindAllStageEvents(stage);
@@ -628,6 +626,28 @@ namespace FDG.Tests
                 Assert.That(combatCtx.AvailableWeapons, Has.Count.EqualTo(1),
                     "the pistol has not been touched yet - it is aimed on the NEXT entry");
             });
+        }
+
+        // The invariant the five pre-#371 "after a weapon has fired" tests guard implicitly, stated
+        // outright: One At A Time must not pick up the declaration machinery. Those tests re-enter the
+        // stage without modelling FireStage's consume, so a queued attack is still sitting there - and
+        // the stage must still OFFER the next weapon rather than draining the queue. Gating the drain on
+        // the queue alone (rather than on the mode) broke all five, which is what caught it.
+        [Test]
+        public async Task OneAtATime_WithAnAttackStillQueued_StillOffersTheNextWeapon()
+        {
+            var (ctx, attacker, requester) = BuildDeclareFirstWorld(EShootingMode.OneAtATime);
+            var combatCtx = new CombatActionContext(ctx, attacker, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+
+            await stage.Enter(combatCtx);
+            Assert.That(combatCtx.HasPendingAttack, Is.True, "test setup: nothing has consumed the attack");
+
+            await stage.Enter(combatCtx);   // re-entered WITHOUT a FireStage consume
+
+            Assert.That(requester.Asked, Is.EqualTo(2),
+                "the second entry asks for the pistol's target - it does not silently fire the queue");
         }
 
         [Test]
@@ -1083,10 +1103,6 @@ namespace FDG.Tests
             BindAllStageEvents(stage);
 
             await stage.Enter(combatCtx);                       // first weapon committed
-            // #371: FireStage consumes the queued attack before the weapon loop re-enters this
-            // stage. Model that here - a re-entry with a declaration still queued now means
-            // Declare First is mid-resolution and the stage fires it without asking anything.
-            combatCtx.ConsumeAttackIntoContext(ctx);
             DataBinding<UnitData> firstTarget = combatCtx.DefendingUnit;
             Assert.That(combatCtx.AlreadyUsedWeapons.Count, Is.EqualTo(1), "test setup: one weapon fired");
 
@@ -1135,10 +1151,6 @@ namespace FDG.Tests
             stage.OnNoValidShots.OnWillActivate += _ => transitions.Add("no-valid-shots");
 
             await stage.Enter(combatCtx);   // fires
-            // #371: FireStage consumes the queued attack before the weapon loop re-enters this
-            // stage. Model that here - a re-entry with a declaration still queued now means
-            // Declare First is mid-resolution and the stage fires it without asking anything.
-            combatCtx.ConsumeAttackIntoContext(ctx);
             await stage.Enter(combatCtx);   // cancels
 
             Assert.That(transitions, Does.Not.Contain("back"),
@@ -1314,10 +1326,6 @@ namespace FDG.Tests
             stage.OnNoValidShots.OnWillActivate += _ => transitions.Add("no-valid-shots");
 
             await stage.Enter(combatCtx);   // fires the rifle
-            // #371: FireStage consumes the queued attack before the weapon loop re-enters this
-            // stage. Model that here - a re-entry with a declaration still queued now means
-            // Declare First is mid-resolution and the stage fires it without asking anything.
-            combatCtx.ConsumeAttackIntoContext(ctx);
             await stage.Enter(combatCtx);   // holds fire with the rocket - nothing left
 
             Assert.That(transitions, Does.Not.Contain("back"));
@@ -1349,10 +1357,6 @@ namespace FDG.Tests
                 "nothing has fired yet - the exit is Back, not Done.");
             Assert.That(requester.Captured!.AllowCancel, Is.True);
 
-            // #371: FireStage consumes the queued attack before the weapon loop re-enters this
-            // stage. Model that here - a re-entry with a declaration still queued now means
-            // Declare First is mid-resolution and the stage fires it without asking anything.
-            combatCtx.ConsumeAttackIntoContext(ctx);
             await stage.Enter(combatCtx);
             Assert.That(requester.Captured!.AllowStopShooting, Is.True,
                 "a weapon has fired - the player may still decline the rest.");

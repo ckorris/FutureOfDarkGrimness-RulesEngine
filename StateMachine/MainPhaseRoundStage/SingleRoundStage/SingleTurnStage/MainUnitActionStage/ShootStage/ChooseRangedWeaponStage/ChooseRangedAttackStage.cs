@@ -48,10 +48,8 @@ namespace FDG.Stages
         /// </summary>
         public override async Task Enter(ICombatActionContext context)
         {
-            // #371: declarations waiting means Declare First is mid-resolution - fire the next one. In One
-            // At A Time the queue is always empty here, because FireStage consumed the single pending
-            // attack before DetermineCanKeepShootingStage sent us back.
-            if (context.HasPendingAttack)
+            // #371: declarations waiting means Declare First is mid-resolution - fire the next one.
+            if (HasDeclarationsPending(context))
             {
                 await ResolveNextDeclaration(context);
                 return;
@@ -67,6 +65,19 @@ namespace FDG.Stages
                 if (await OfferWeapons(context) == EOfferOutcome.Routed) return;
             }
         }
+
+        /// <summary>
+        /// #371: true only in Declare First, and only while declarations are still queued.
+        ///
+        /// <para>Gated on the MODE and not merely on the queue. One At A Time never reaches this stage
+        /// with an attack still queued - FireStage consumes each one before
+        /// <c>DetermineCanKeepShootingStage</c> sends the loop back - so the two tests are equivalent in
+        /// play. Reading the mode as well is what guarantees it: One At A Time behaves exactly as it did
+        /// before #371 on every path, including any that re-enters with a queue, rather than silently
+        /// picking up the declaration machinery.</para>
+        /// </summary>
+        private bool HasDeclarationsPending(ICombatActionContext context) =>
+            GameContext.Settings.ShootingMode == EShootingMode.DeclareFirst && context.HasPendingAttack;
 
         /// <summary>
         /// #371 Declare First: route the head of the declaration queue to <see cref="OnChoseWeapon"/>,
@@ -123,7 +134,7 @@ namespace FDG.Stages
             if (!HasAnyFireableOption(weaponOptions))
             {
                 // #371: nothing left to declare, but declarations are queued - go resolve them.
-                if (context.HasPendingAttack)
+                if (HasDeclarationsPending(context))
                 {
                     GameContext.Log("No further weapon has a valid target - resolving the declared shots.");
                     await ResolveNextDeclaration(context);
@@ -171,7 +182,7 @@ namespace FDG.Stages
                 // #371: under Declare First "Done" ends DECLARING, not shooting - what has been declared
                 // still has to be rolled. Checked before the fired-something test below, which cannot tell
                 // the two apart (a declaration marks the weapon used the moment it is committed).
-                if (context.HasPendingAttack)
+                if (HasDeclarationsPending(context))
                 {
                     GameContext.Log("Done declaring targets - resolving the declared shots.");
                     await ResolveNextDeclaration(context);
@@ -208,7 +219,7 @@ namespace FDG.Stages
                 if (context.AvailableWeapons.Count > 0) return EOfferOutcome.OfferAgain;
 
                 // #371: held fire with the last undeclared weapon - the declarations still have to be rolled.
-                if (context.HasPendingAttack)
+                if (HasDeclarationsPending(context))
                 {
                     GameContext.Log("Nothing left to declare - resolving the declared shots.");
                     await ResolveNextDeclaration(context);

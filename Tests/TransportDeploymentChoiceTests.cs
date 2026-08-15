@@ -117,7 +117,8 @@ namespace FDG.Tests
                 "the #322 'Waiting on' HUD names the unit rather than the C# type.");
         }
 
-        // #335 (owner's call, 2026-08-04): the AI never embarks. Riding needs forethought it doesn't have -
+        // #335 (owner's call, 2026-08-04): the SOLO AI never embarks (the Tactician does, since #191
+        // A5-10 - see TacticianDeployEmbarkTests). Riding needs forethought the solo bot doesn't have -
         // it has no policy for where the cargo gets out - and before this the option-0 fallback embarked
         // every eligible unit because "Embark into Rhino" was simply first in the list. Driven through the
         // REAL AiSelectionResolver against the real stage, so the decline is proven end to end rather than

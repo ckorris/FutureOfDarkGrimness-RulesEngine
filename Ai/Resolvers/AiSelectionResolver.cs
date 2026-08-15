@@ -9,11 +9,13 @@ namespace FDG.Ai.Resolvers
     {
         public Task<DataBinding<T>> Resolve(SelectionRequest<T> request)
         {
-            // #335: the AI never loads a transport. Riding is a PLAN - who gets carried, where they get
-            // out, and what they do on arrival - and this AI has none: its cargo rides until the transport
-            // dies, which is the same gap the Tactician's A5-5 disembark timing had to be written by hand
-            // to cover. Until an AI can make that plan, being carried is worse than walking - and the
-            // fallback below was embarking every eligible unit purely because "Embark into X" sorted first.
+            // #335: the solo AI never loads a transport. Riding is a PLAN - who gets carried, where they
+            // get out, and what they do on arrival - and this AI has none: its cargo rides until the
+            // transport dies, which is the same gap the Tactician's A5-5 disembark timing had to be written
+            // by hand to cover. Until an AI can make that plan, being carried is worse than walking - and
+            // the fallback below was embarking every eligible unit purely because "Embark into X" sorted
+            // first. (#191 A5-10, owner's reversal 2026-08-15: the TACTICIAN now answers this prompt itself
+            // - it has the drop-off plan - so this decline governs solo, Gunline, and fallback modes only.)
             //
             // Matched on the shared DEPLOY_NORMALLY_CHOICE constant, exactly like AiStringSelectionResolver's
             // Ambush hold decline: same prompt family, same reason. No other cancellable selection carries

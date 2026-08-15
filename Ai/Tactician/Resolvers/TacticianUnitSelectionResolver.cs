@@ -12,8 +12,11 @@ namespace FDG.Ai.Tactician.Resolvers
     /// <see cref="TacticianPlanner.TryChooseSpellTarget"/>). Deploy-order picks hold
     /// matchup-sensitive units back (#191 A5-9, Chris's option 2): generalists deploy early,
     /// counters deploy late when more of the enemy layout is visible. #197 Surprise Attack's
-    /// first-activation burst picks the enemy its hit pool is expected to hurt most. Every other unit
-    /// selection (embark picks, ...) is the unmodified solo resolver (G3 fallback).
+    /// first-activation burst picks the enemy its hit pool is expected to hurt most. Deploy-time
+    /// embark picks (#191 A5-10) load the tightest-fitting transport - the Tactician is the one
+    /// profile that overrides the #335 blanket decline, because it alone has a drop-off plan (A5-5
+    /// arrival timing, M12 DeliverCargo, #355 disembark-to-charge). Every other unit selection is
+    /// the unmodified solo resolver (G3 fallback).
     /// </summary>
     public class TacticianUnitSelectionResolver
         : IStageResolver<SelectionRequest<UnitData>, DataBinding<UnitData>>
@@ -63,16 +66,54 @@ namespace FDG.Ai.Tactician.Resolvers
             if (request.Instructions == DeployOrderInstructions
                 && _tableState != null && _evaluator != null && request.ValidOptions.Count > 1)
             {
-                // Lowest matchup sensitivity first; stable on ties (list order), so armies
-                // without meaningful spread keep the solo bot's front-of-list order.
+                // A5-10: transports deploy before anything that could ride them - the embark offer
+                // only exists for a transport ALREADY on the table, so a hold that deploys late
+                // means cargo that walked. Within each group (transports, then the rest) the A5-9
+                // order stands: lowest matchup sensitivity first; stable on ties (list order), so
+                // armies without meaningful spread keep the solo bot's front-of-list order.
                 DataBinding<UnitData> pick = request.ValidOptions[0].Option;
+                bool bestIsTransport = false;
                 float bestSensitivity = float.MaxValue;
                 foreach (SelectionRequest<UnitData>.ValidOption option in request.ValidOptions)
                 {
+                    bool isTransport = TransportUtilities.IsTransport(option.Option.GetValue(), _evaluator);
                     float sensitivity = DeploymentMatchup.Sensitivity(_evaluator, _tableState, option.Option);
-                    if (sensitivity < bestSensitivity - 0.0001f)
+                    bool better = isTransport != bestIsTransport
+                        ? isTransport
+                        : sensitivity < bestSensitivity - 0.0001f;
+                    if (better)
                     {
+                        bestIsTransport = isTransport;
                         bestSensitivity = sensitivity;
+                        pick = option.Option;
+                    }
+                }
+                return Task.FromResult(pick);
+            }
+
+            // #191 A5-10 (owner's reversal of the #335 decline, 2026-08-15, Tactician only): ride
+            // whenever the engine offers a hold. Keyed on the same DEPLOY_NORMALLY_CHOICE label
+            // AiSelectionResolver's decline matches - the one cancellable UnitData selection that
+            // carries it - so solo and Gunline (and this resolver's own scaffold-mode fallback,
+            // when built without a table state) keep declining: no drop-off plan, no ride.
+            //
+            // Transport pick is tightest fit: the least remaining capacity among the offers (every
+            // offer is engine-validated to fit this unit already), so a small squad does not squat
+            // in a big hold that a later, bigger squad needs. Ties keep list order.
+            if (request.AllowCancel
+                && request.CancelLabel == Stages.ChooseUnitToDeployStage.DEPLOY_NORMALLY_CHOICE
+                && _tableState != null && _evaluator != null && request.ValidOptions.Count > 0)
+            {
+                List<IUnit> allUnits = _tableState.Units.Objects.ToList();
+                DataBinding<UnitData> pick = request.ValidOptions[0].Option;
+                int tightest = int.MaxValue;
+                foreach (SelectionRequest<UnitData>.ValidOption option in request.ValidOptions)
+                {
+                    int remaining = TransportUtilities.GetRemainingCapacity(
+                        option.Option.GetValue(), allUnits, _evaluator);
+                    if (remaining < tightest)
+                    {
+                        tightest = remaining;
                         pick = option.Option;
                     }
                 }

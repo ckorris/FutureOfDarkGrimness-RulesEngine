@@ -13,18 +13,18 @@ namespace FDG.Ai.Tactician.Resolvers
     /// matchup-sensitive units back (#191 A5-9, Chris's option 2): generalists deploy early,
     /// counters deploy late when more of the enemy layout is visible. #197 Surprise Attack's
     /// first-activation burst picks the enemy its hit pool is expected to hurt most. Deploy-time
-    /// embark picks (#191 A5-10) load the tightest-fitting transport - the Tactician is the one
-    /// profile that overrides the #335 blanket decline, because it alone has a drop-off plan (A5-5
-    /// arrival timing, M12 DeliverCargo, #355 disembark-to-charge). Every other unit selection is
-    /// the unmodified solo resolver (G3 fallback).
+    /// embark picks (#191 A5-10) load the tightest-fitting transport, refining the solo bot's
+    /// first-offer accept with this profile's richer drop-off plan (A5-5 arrival timing, M12
+    /// DeliverCargo, #355 disembark-to-charge). Every other unit selection is the unmodified solo
+    /// resolver (G3 fallback).
     /// </summary>
     public class TacticianUnitSelectionResolver
         : IStageResolver<SelectionRequest<UnitData>, DataBinding<UnitData>>
     {
         // CastSpellStage.PickTargets' instructions: "Choose target for {spell} ({k} of up to {N})".
         public const string SpellTargetInstructionPrefix = "Choose target for ";
-        // ChooseUnitToDeployStage's literal instructions - the deploy-order discriminator.
-        public const string DeployOrderInstructions = "Choose Unit to Deploy";
+        // The deploy-order discriminator - now the stage's own constant (#191 A5-10 promoted it).
+        public const string DeployOrderInstructions = Stages.ChooseUnitToDeployStage.CHOOSE_UNIT_INSTRUCTIONS;
 
         private readonly TacticianPlanner _planner;
         private readonly IStageResolver<SelectionRequest<UnitData>, DataBinding<UnitData>> _soloFallback;
@@ -91,15 +91,14 @@ namespace FDG.Ai.Tactician.Resolvers
                 return Task.FromResult(pick);
             }
 
-            // #191 A5-10 (owner's reversal of the #335 decline, 2026-08-15, Tactician only): ride
-            // whenever the engine offers a hold. Keyed on the same DEPLOY_NORMALLY_CHOICE label
-            // AiSelectionResolver's decline matches - the one cancellable UnitData selection that
-            // carries it - so solo and Gunline (and this resolver's own scaffold-mode fallback,
-            // when built without a table state) keep declining: no drop-off plan, no ride.
-            //
-            // Transport pick is tightest fit: the least remaining capacity among the offers (every
-            // offer is engine-validated to fit this unit already), so a small squad does not squat
-            // in a big hold that a later, bigger squad needs. Ties keep list order.
+            // #191 A5-10 (owner's reversal of the #335 decline, 2026-08-15): ride whenever the
+            // engine offers a hold. All profiles embark at deploy time now - the solo resolver
+            // takes the FIRST offer (and is the fallthrough when this resolver is built without a
+            // table state); the Tactician improves on it below with the tightest fit: the least
+            // remaining capacity among the offers (every offer is engine-validated to fit this
+            // unit already), so a small squad does not squat in a big hold that a later, bigger
+            // squad needs. Ties keep list order. Keyed on the DEPLOY_NORMALLY_CHOICE label - the
+            // one cancellable UnitData selection that carries it.
             if (request.AllowCancel
                 && request.CancelLabel == Stages.ChooseUnitToDeployStage.DEPLOY_NORMALLY_CHOICE
                 && _tableState != null && _evaluator != null && request.ValidOptions.Count > 0)

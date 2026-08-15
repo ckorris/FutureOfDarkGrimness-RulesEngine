@@ -117,14 +117,13 @@ namespace FDG.Tests
                 "the #322 'Waiting on' HUD names the unit rather than the C# type.");
         }
 
-        // #335 (owner's call, 2026-08-04): the SOLO AI never embarks (the Tactician does, since #191
-        // A5-10 - see TacticianDeployEmbarkTests). Riding needs forethought the solo bot doesn't have -
-        // it has no policy for where the cargo gets out - and before this the option-0 fallback embarked
-        // every eligible unit because "Embark into Rhino" was simply first in the list. Driven through the
-        // REAL AiSelectionResolver against the real stage, so the decline is proven end to end rather than
-        // in the resolver alone.
+        // #191 A5-10 (owner's reversal of the 2026-08-04 #335 decline): every AI profile embarks at
+        // deploy time - "during deployment, it's almost always best to put something in transports."
+        // The forethought #335 said was missing now exists: AiStringSelectionResolver.ShouldDisembark
+        // is the solo get-out rule (the Tactician has A5-5). Driven through the REAL
+        // AiSelectionResolver against the real stage, so the accept is proven end to end.
         [Test]
-        public async Task DeployAction_AiPlayer_NeverEmbarksAndDeploysNormally()
+        public async Task DeployAction_AiPlayer_EmbarksAtDeployment()
         {
             DataBinding<UnitData> transport = MakeTransport("Rhino", capacity: 6);
             Deploy(transport);
@@ -134,10 +133,10 @@ namespace FDG.Tests
             var requester = new AiRequester();
             (var deployment, bool finished, bool embarked) = await RunChooseDeployAction(requester, squad);
 
-            Assert.That(embarked, Is.False, "the AI declines the transport.");
-            Assert.That(finished, Is.True, "and heads for ordinary placement instead.");
-            Assert.That(TransportUtilities.IsEmbarked(squad.GetValue()), Is.False);
-            Assert.That(deployment.CurrentDeployingUnit, Is.EqualTo(squad));
+            Assert.That(embarked, Is.True, "the AI takes the ride (#191 A5-10).");
+            Assert.That(finished, Is.False, "and skips ordinary placement.");
+            Assert.That(TransportUtilities.IsEmbarked(squad.GetValue()), Is.True);
+            Assert.That(deployment.CurrentDeployingUnit, Is.Null);
         }
 
         // Every other cancellable selection keeps the plain Back wording — the label is opt-in, so a stage

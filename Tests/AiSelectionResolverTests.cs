@@ -1,15 +1,19 @@
 using FDG.Ai.Resolvers;
 using FDG.Data;
+using FDG.Rules.Dispatch;
+using FDG.Rules.Foundation;
 using FDG.Stages;
 using FDG.StageResolution.Requests;
 using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #335: the AI declines the deploy-time embark prompt (owner's call - embarking needs forethought this
-    // AI hasn't got, and it never plans where the cargo gets out). The decline is deliberately narrow: it
-    // keys on the shared DEPLOY_NORMALLY_CHOICE label, because a blanket "AI cancels cancellable
-    // selections" would loop the prompts that re-ask after a cancel.
+    // #191 A5-10 (owner's reversal of #335, 2026-08-15): the AI ACCEPTS the deploy-time embark prompt -
+    // "during deployment, it's almost always best to put something in transports". The prompt is still
+    // keyed on the shared DEPLOY_NORMALLY_CHOICE label (a blanket rule over cancellable selections would
+    // loop the prompts that re-ask after a cancel); the get-out half of the ride lives in
+    // AiStringSelectionResolver.ShouldDisembark. Also here: transports deploy first (A5-10), so later
+    // cargo actually receives the offer.
     [TestFixture]
     public class AiSelectionResolverTests
     {
@@ -24,15 +28,38 @@ namespace FDG.Tests
         }
 
         [Test]
-        public async Task Resolve_DeployTimeEmbarkPrompt_DeclinesAndDeploysNormally()
+        public async Task Resolve_DeployTimeEmbarkPrompt_TakesTheFirstTransport()
         {
             SelectionRequest<UnitData> request = Request(allowCancel: true,
                 cancelLabel: ChooseUnitToDeployStage.DEPLOY_NORMALLY_CHOICE);
 
             DataBinding<UnitData> choice = await new AiSelectionResolver<UnitData>().Resolve(request);
 
-            Assert.That(choice, Is.Null,
-                "null is 'deploy normally' - the AI never takes the transport, even listed first.");
+            Assert.That(choice, Is.EqualTo(request.ValidOptions[0].Option),
+                "the AI rides: first offered transport, never a decline (#191 A5-10).");
+        }
+
+        // A5-10's other half: cargo only gets the offer if its ride is already on the table, so the
+        // deploy-order pick puts transports first even when they are not first in the list.
+        [Test]
+        public async Task Resolve_DeployOrder_PicksATransportFirst()
+        {
+            var evaluator = new RuleEvaluator(new ProbabilisticDiceRoller());
+            DataBinding<UnitData> squad = Unit("Grunts");
+            DataBinding<UnitData> transport = Transport("Rhino", capacity: 6);
+            var request = new SelectionRequest<UnitData>(_player,
+                ChooseUnitToDeployStage.CHOOSE_UNIT_INSTRUCTIONS,
+                new List<SelectionRequest<UnitData>.ValidOption>
+                {
+                    new(squad, "Grunts"), // listed first - front-of-list would deploy the cargo early
+                    new(transport, "Rhino"),
+                },
+                new List<SelectionRequest<UnitData>.InvalidOption>(), allowCancel: false);
+
+            DataBinding<UnitData> choice = await new AiSelectionResolver<UnitData>(evaluator).Resolve(request);
+
+            Assert.That(choice, Is.EqualTo(transport),
+                "the transport goes down first so later cargo can be offered the ride.");
         }
 
         // The guard rail: an ordinary cancellable selection (melee defender) must still be ANSWERED.
@@ -68,6 +95,15 @@ namespace FDG.Tests
             return new SelectionRequest<UnitData>(_player, "Pick one.", options,
                 new List<SelectionRequest<UnitData>.InvalidOption>(),
                 allowCancel: allowCancel, displayName: null, cancelLabel: cancelLabel);
+        }
+
+        private DataBinding<UnitData> Transport(string name, int capacity)
+        {
+            DataBinding<UnitData> binding = Unit(name);
+            binding.GetValue().AttachRuleDefinition(new ResolvedRule(
+                TransportUtilities.TransportRuleName, CoreRuleCatalog.Transport,
+                new RuleArgument[] { new RuleArgument.Int(capacity) }));
+            return binding;
         }
 
         private DataBinding<UnitData> Unit(string name)

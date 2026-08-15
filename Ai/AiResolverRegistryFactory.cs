@@ -30,6 +30,10 @@ namespace FDG.Ai
             // action menu to skip the movement family once, breaking the decline-repick livelock.
             var declineLatch = new SoloMoveDeclineLatch();
 
+            // #191 A5-10: the UnitData selection resolver asks the rule graph which deploy-order
+            // options are transports (they go down first, so later cargo can be offered the ride).
+            var evaluator = new Rules.Dispatch.RuleEvaluator(new ProbabilisticDiceRoller());
+
             IStageResolverRegistry registry = new StageResolverRegistry()
                 .RegisterResolver(new AiYesNoResolver())
                 .RegisterResolver(new AiStringSelectionResolver(tableState, playerID, declineLatch))
@@ -47,7 +51,7 @@ namespace FDG.Ai
                 .RegisterResolver(new AiAircraftAdvanceResolver())
                 .RegisterResolver(new AiConsolidationMoveResolver(tableState, playerID))
                 .RegisterResolver(new AiAssignWoundsResolver())
-                .RegisterResolver(new AiSelectionResolver<UnitData>())
+                .RegisterResolver(new AiSelectionResolver<UnitData>(evaluator))
                 // #191 A4-1's request split: activation is its own type; solo-rules keeps the same
                 // first-option behavior via the adapter (pinned by the benchmark hashes).
                 .RegisterResolver(new DerivedRequestAdapter<StageResolution.Requests.ChooseUnitToActivateRequest,

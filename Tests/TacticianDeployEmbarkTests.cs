@@ -12,12 +12,11 @@ using NUnit.Framework;
 
 namespace FDG.Tests
 {
-    // #191 A5-10 (owner's reversal of the #335 decline, 2026-08-15): the Tactician loads its
-    // transports at deploy time. It is the one profile with a drop-off plan (A5-5 arrival timing,
-    // M12 DeliverCargo, #355 disembark-to-charge), so riding beats walking for it - while solo and
-    // Gunline keep the #335 decline (TransportDeploymentChoiceTests pins that side). Also covered
-    // here: transports deploy before potential cargo (the embark offer only exists for a hold
-    // already on the table) and the tightest-fit transport pick.
+    // #191 A5-10 (owner's reversal of the #335 decline, 2026-08-15): every AI profile loads its
+    // transports at deploy time; the Tactician's edition adds the tightest-fit transport pick on
+    // top of the solo first-offer accept (TransportDeploymentChoiceTests pins the solo side, and
+    // AiStringSelectionResolverTests pins the solo get-out rule). Also covered here: transports
+    // deploy before potential cargo - the embark offer only exists for a hold already on the table.
     [TestFixture]
     public class TacticianDeployEmbarkTests
     {
@@ -107,21 +106,24 @@ namespace FDG.Tests
         }
 
         // G3 fallback discipline: built without a table state (the A0 scaffold shape), the embark
-        // prompt falls through to the solo resolver, which declines it (#335).
+        // prompt falls through to the solo resolver - which also embarks since A5-10 extended the
+        // accept to every profile, just first-offer instead of tightest-fit.
         [Test]
-        public async Task EmbarkPrompt_WithoutTableState_FallsThroughToTheSoloDecline()
+        public async Task EmbarkPrompt_WithoutTableState_FallsThroughToTheSoloAccept()
         {
-            DataBinding<UnitData> transport = MakeTransport("Rhino", capacity: 6);
-            Deploy(transport);
+            DataBinding<UnitData> bigHold = MakeTransport("Land Barge", capacity: 8);
+            DataBinding<UnitData> smallHold = MakeTransport("Buggy", capacity: 4);
+            Deploy(bigHold); Deploy(smallHold);
             DataBinding<UnitData> squad = MakeUnit("Grunts", modelCount: 2);
-            MakeArmy(transport, squad);
+            MakeArmy(bigHold, smallHold, squad);
             var resolver = new TacticianUnitSelectionResolver(
                 new TacticianPlanner(_tableState, _evaluator),
                 new FDG.Ai.Resolvers.AiSelectionResolver<UnitData>());
 
-            DataBinding<UnitData> pick = await resolver.Resolve(EmbarkPrompt(squad, transport));
+            DataBinding<UnitData> pick = await resolver.Resolve(EmbarkPrompt(squad, bigHold, smallHold));
 
-            Assert.That(pick, Is.Null, "no table state means no capacity read - the solo decline stands");
+            Assert.That(pick.Reference, Is.EqualTo(bigHold.Reference),
+                "no table state means no capacity read - the solo first-offer accept stands in");
         }
 
         // --- fixtures ---

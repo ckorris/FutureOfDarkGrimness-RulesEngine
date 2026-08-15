@@ -104,7 +104,7 @@ namespace FDG.Stages
                 }
 
                 // Choosing which unit to deploy is mandatory — no back-destination, so no cancel.
-                SelectionRequest<UnitData> request = new SelectionRequest<UnitData>(currentPlayerID, "Choose Unit to Deploy",
+                SelectionRequest<UnitData> request = new SelectionRequest<UnitData>(currentPlayerID, CHOOSE_UNIT_INSTRUCTIONS,
                     validOptions, invalidOptions, allowCancel: false, displayName: "Choosing a Unit to Deploy");
 
                 DataBinding<UnitData> chosenUnit =
@@ -157,6 +157,10 @@ namespace FDG.Stages
         // "Deploy normally" here and "Deploy Normally" there for about an hour). Both AI resolvers decline
         // their prompt by matching this constant, which is why it must not be retyped as a literal.
         public const string DEPLOY_NORMALLY_CHOICE = "Deploy Normally";
+        // The deploy-order prompt's instructions - the discriminator both AI layers key their
+        // transports-deploy-first bias on (#191 A5-10), so it lives here rather than as a retyped
+        // literal in each resolver (same reasoning as DEPLOY_NORMALLY_CHOICE above).
+        public const string CHOOSE_UNIT_INSTRUCTIONS = "Choose Unit to Deploy";
         public const string BACK_TO_LIST_CHOICE = "Back to unit list";
         public static string HoldChoiceFor(string ruleName) => $"Hold in {ruleName}";
 

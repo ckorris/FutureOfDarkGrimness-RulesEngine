@@ -73,6 +73,14 @@ namespace FDG.Ai.Resolvers
             // faults). Skip Charge AND Move for this one pick and end the activation instead.
             bool movementDeclined = _declineLatch?.Consume() == true;
 
+            // #191 A5-10 companion: solo cargo used to ride until the transport died (the gap that
+            // justified #335's never-embark). Now that the solo bot loads transports at deployment,
+            // it needs a get-out rule: disembark when the ride has ARRIVED. Ranked above everything -
+            // an embarked unit's only other real option is Pass, and rule-named options never win a
+            // ranked branch by themselves.
+            if (options.Contains(CoreRuleCatalog.DisembarkRuleName) && ShouldDisembark())
+                return CoreRuleCatalog.DisembarkRuleName;
+
             if (!movementDeclined && options.Contains(ChooseActionStage.CHARGE_CHOICE_NAME))
                 return ChooseActionStage.CHARGE_CHOICE_NAME;
 
@@ -87,9 +95,11 @@ namespace FDG.Ai.Resolvers
                 : FirstActionWorthTaking(options);
         }
 
-        // #335: the AI never embarks mid-game either, for the reason AiSelectionResolver declines the
-        // deploy-time prompt - a ride only pays off if someone planned the drop-off, and nothing here
-        // plans one. Embark reaches this menu as a rule-NAMED action (ChooseActionStage routes it by
+        // #335 / #191 A5-10: mid-game embark is the half of #335 that SURVIVED the owner's reversal -
+        // "units should very rarely embark into a transport AFTER deployment" (2026-08-15). Deploy-time
+        // loading is now taken (AiSelectionResolver) and ShouldDisembark above plans the get-out; a
+        // mid-game re-board still has no plan behind it, so it stays filtered.
+        // Embark reaches this menu as a rule-NAMED action (ChooseActionStage routes it by
         // offer.RuleName), so the ranked branches above can never return it and only this tail could,
         // by position. Matched on CoreRuleCatalog.EmbarkRuleName the same way the Tactician matches
         // DisembarkRuleName.
@@ -103,6 +113,59 @@ namespace FDG.Ai.Resolvers
                 if (option != CoreRuleCatalog.EmbarkRuleName) return option;
             }
             return options[0];
+        }
+
+        // 6" placement radius + roughly one solo move: if the transport is this close to something
+        // worth having, the cargo can reach it on foot next activation.
+        private const float DisembarkTriggerInches = 12f;
+
+        // Solo-grade arrival test (#191 A5-10, same owner's call as the deploy-time accept in
+        // AiSelectionResolver): get out when any friendly LOADED transport stands within
+        // DisembarkTriggerInches of an enemy model or an objective we don't already hold. The active
+        // unit isn't threaded through Choose Action, so this reads every loaded friendly transport
+        // rather than "ours" - exact with one transport (the common case), and with several the worst
+        // case is a slightly early hop 6" from the unit's own ride. No live loaded transport at all
+        // means the offer is a ghost: get out rather than ride it.
+        private bool ShouldDisembark()
+        {
+            List<IUnit> allUnits = _tableState.Units.Objects.ToList();
+            bool anyLoaded = false;
+            foreach (IUnit transport in allUnits)
+            {
+                if (transport.PlayerID != _playerID) continue;
+                if (!transport.GetIsOnBattlefield()) continue;
+                if (!TransportUtilities.GetOccupants(transport, allUnits).Any()) continue;
+                anyLoaded = true;
+
+                foreach (IModel model in transport.Models)
+                {
+                    if (model is not ModelData md || !md.GetIsAlive()) continue;
+
+                    foreach (IObjective objective in _tableState.Objectives.Objects)
+                    {
+                        // #296-style team awareness: an objective an ally already holds is no
+                        // reason to jump out of the boat.
+                        if (objective.OwnerID is PlayerID owner
+                            && ITeamExtensions.AreAllied(_tableState.Teams.Objects, _playerID, owner))
+                            continue;
+                        if (Position.GetDistance2D(md.Position, objective.Position) <= DisembarkTriggerInches)
+                            return true;
+                    }
+
+                    foreach (IUnit enemy in allUnits)
+                    {
+                        if (ITeamExtensions.AreAllied(_tableState.Teams.Objects, _playerID, enemy.PlayerID))
+                            continue;
+                        foreach (IModel enemyModel in enemy.Models)
+                        {
+                            if (enemyModel is not ModelData emd || !emd.GetIsAlive()) continue;
+                            if (Position.GetDistance2D(md.Position, emd.Position) <= DisembarkTriggerInches)
+                                return true;
+                        }
+                    }
+                }
+            }
+            return !anyLoaded;
         }
 
         // Returns true if any living enemy model is within the max ranged weapon range

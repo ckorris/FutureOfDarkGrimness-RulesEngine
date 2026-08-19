@@ -4,7 +4,6 @@ using FDG.BuiltInAssets;
 using FDG.Data;
 using FDG.SerializableVisuals.Materials;
 using FDG.SerializableVisuals.Meshes;
-using FDG.SerializableVisuals.Textures;
 using FDG.StageResolution.Requests;
 using System.Numerics;
 
@@ -98,11 +97,9 @@ namespace FDG.Stages
             //TODO: This doesn't belong here but I want to make sure we can make visuals happen from the stage machine.
             System.Diagnostics.Debug.WriteLine("Testing drawing something in ChooseMapSideStage.");
             var meshProvider = new BuiltInObjMeshProvider(BuiltInAssetHelper.SILLYMANMODEL_PATH);
-            var textureProvider = new BuiltInPngTextureProvider(BuiltInAssetHelper.SILLYMANTEXTURE_PATH);
 
             var materialProvider = new BasicMaterial();
             materialProvider.BaseColor = new Vector4(1, 1, 1, 1);
-            materialProvider.BaseColorTexture = textureProvider;
 
             Position position = new Position(10f, 25f);
             Quaternion rotation = new Quaternion(Vector3.UnitY, 0f);

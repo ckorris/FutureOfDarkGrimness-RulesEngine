@@ -2,7 +2,6 @@
 using FDG.SerializableVisuals.Materials;
 using FDG.SerializableVisuals;
 using FDG.SerializableVisuals.Meshes;
-using FDG.SerializableVisuals.Textures;
 using Newtonsoft.Json;
 using NUnit.Framework;
 using System.Numerics;
@@ -64,32 +63,13 @@ namespace FDG.Tests
 
 
         [Test]
-        public void BuiltInPngTextureSerializationAndDeserialization()
-        {
-            var textureProvider = new BuiltInPngTextureProvider(BuiltInAssetHelper.SILLYMANTEXTURE_PATH);
-
-            string serializedJson = JsonConvert.SerializeObject(textureProvider);
-
-            var deserializedTextureProvider = JsonConvert.DeserializeObject<BuiltInPngTextureProvider>(serializedJson);
-
-            Assert.That(deserializedTextureProvider.PixelWidth, Is.EqualTo(256), "Texture width is not 256.");
-            Assert.That(deserializedTextureProvider.PixelHeight, Is.EqualTo(256), "Texture height is not 256.");
-
-            int expectedRawDataSize = 256 * 256 * 4; // RGBA32 (4 bytes per pixel)
-            Assert.That(expectedRawDataSize, Is.EqualTo(deserializedTextureProvider.RawTextureData.Length),
-                "Raw texture data size is incorrect.");
-        }
-
-        [Test]
         public void TestMaterialSerializationAndDeserialization()
         {
-            string texturePath = BuiltInAssetHelper.SILLYMANTEXTURE_PATH;
-
             var originalMaterial = new BasicMaterial
             {
                 BaseColor = new Vector4(1f, 0f, 0f, 1f), // Red color
                 EmissiveColor = null,
-                BaseColorTexture = new BuiltInPngTextureProvider(texturePath),
+                BaseColorTexture = null,
                 NormalMapTexture = null,
                 RoughnessMapTexture = null,
                 MetallicMapTexture = null,
@@ -109,14 +89,7 @@ namespace FDG.Tests
 
             Assert.That(deserializedMaterial.BaseColor, Is.EqualTo(originalMaterial.BaseColor), "BaseColor doesn't match.");
             Assert.That(deserializedMaterial.EmissiveColor, Is.Null, "EmissiveColor should be null.");
-            Assert.That(deserializedMaterial.BaseColorTexture, Is.Not.Null, "BaseColorTexture should not be null.");
-
-            var textureProvider = deserializedMaterial.BaseColorTexture as BuiltInPngTextureProvider;
-            Assert.That(textureProvider, Is.Not.Null, "BaseColorTexture is not of type BuiltInPngTextureProvider.");
-            Assert.That(textureProvider.ResourcePath, Is.EqualTo(texturePath), "The texture path doesn't match the expected resource path.");
-
-            Assert.That(textureProvider.PixelWidth, Is.EqualTo(256), "Texture width is not correct.");
-            Assert.That(textureProvider.PixelHeight, Is.EqualTo(256), "Texture height is not correct.");
+            Assert.That(deserializedMaterial.BaseColorTexture, Is.Null, "BaseColorTexture should be null.");
         }
     }
 }

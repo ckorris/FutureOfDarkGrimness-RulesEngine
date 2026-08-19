@@ -6,7 +6,6 @@ using FDG.Rules.Tokens;
 using FDG.SerializableVisuals;
 using FDG.SerializableVisuals.Materials;
 using FDG.SerializableVisuals.Meshes;
-using FDG.SerializableVisuals.Textures;
 using Newtonsoft.Json;
 using System.Numerics;
 
@@ -117,8 +116,9 @@ namespace FDG
 
         private static readonly IMaterialProvider s_defaultMaterialProvider = new BasicMaterial
         {
+            // #081 shared singleton + ImageSharp removed: no texture. Nothing consumes texture data
+            // anymore, and the old BuiltInPngTextureProvider was the engine's only ImageSharp dependency.
             BaseColor = new Vector4(1, 1, 1, 1),
-            BaseColorTexture = new BuiltInPngTextureProvider(BuiltInAssetHelper.SILLYMANTEXTURE_PATH),
         };
 
         [JsonIgnore] //Only while it's a default.

@@ -47,7 +47,9 @@ namespace FDG.Stages
             // resulting queue feeds the reroll (below, before Deadly) and the wound-ignore (after Deadly).
             IReadOnlyList<RuleOperation> saveCompleteOperations = GameContext.RuleEvaluator.EvaluateAll(
                 new SaveRollCompleteContext(attacker, defender, CombineSaveRolls(rollToSaveResults),
-                    metaData.IsMelee, metaData.IsSpell, distance, metaData.ChargeOriginDistanceInches),
+                    metaData.IsMelee, metaData.IsSpell, distance, metaData.ChargeOriginDistanceInches,
+                    // #376 (Grounded Protection): terrain-proximity save-side rules read the live layout.
+                    GameContext.TableState.Terrain.Objects.ToList()),
                 RuleParticipant.Actor(attacker, metaData.WeaponType),
                 // #183: the defender's living models surface a joined hero's relocated wound-ignore rules
                 // (Regeneration/Resistance/Protected), gated by AllModelsHaveThisRule - so a sole-surviving

@@ -15,6 +15,10 @@ namespace FDG.Ai.Tactician.Resolvers
     public class TacticianActivationResolver : IStageResolver<ChooseUnitToActivateRequest, DataBinding<UnitData>>
     {
         private readonly ITableState _tableState;
+        // #376 (Grounded Speed): terrain snapshot for the mobility queries - see TacticianPlanner.
+        private IReadOnlyList<ITerrain>? _terrainSnapshot;
+        private IReadOnlyList<ITerrain> Terrain =>
+            _terrainSnapshot ??= TacticalAnalysis.TerrainOf(_tableState);
         private readonly RuleEvaluator _evaluator;
         private readonly TacticianPlanner? _planner;
         // #359 measurement: when set (--log-decisions), each pick is narrated with whether the
@@ -146,8 +150,8 @@ namespace FDG.Ai.Tactician.Resolvers
         {
             UnitData unit = unitBinding.GetValue();
             Position here = Centroid(unit);
-            float advance = TacticalAnalysis.AdvanceDistance(unit, _evaluator);
-            float rush = TacticalAnalysis.RushDistance(unit, _evaluator);
+            float advance = TacticalAnalysis.AdvanceDistance(unit, _evaluator, Terrain);
+            float rush = TacticalAnalysis.RushDistance(unit, _evaluator, Terrain);
 
             float kill = 0f;
             float threat = 0f;
@@ -164,7 +168,8 @@ namespace FDG.Ai.Tactician.Resolvers
                 kill = Math.Max(kill, ValueFraction(ours.ExpectedWounds, enemy));
 
                 // What could THEY do to us from where things stand (their advance included)?
-                float theirReach = Math.Max(1f, distance - TacticalAnalysis.AdvanceDistance(enemy, _evaluator));
+                float theirReach = Math.Max(1f,
+                    distance - TacticalAnalysis.AdvanceDistance(enemy, _evaluator, Terrain));
                 AttackEstimate theirs = CombatMath.EstimateShooting(_evaluator, enemyBinding, unitBinding,
                     new AttackContext(theirReach, AttackerMoved: true));
                 threat = Math.Max(threat, ValueFraction(theirs.ExpectedWounds, unit));

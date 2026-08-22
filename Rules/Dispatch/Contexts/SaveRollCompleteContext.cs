@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using FDG.Rules.Definitions;
 using FDG.Rules.Foundation;
 
@@ -24,11 +26,15 @@ namespace FDG.Rules.Dispatch.Contexts
     /// <see cref="IHasAttackOriginDistance"/> rather than directly.</param>
     /// <param name="ChargeOriginDistanceInches">How far the defender was when the charging unit's
     /// activation began. 0 for shooting and for a non-charge melee swing.</param>
+    /// <param name="TerrainPieces">Table terrain for terrain-proximity conditions (#376 Grounded
+    /// Protection). Null/empty on paths that cannot supply it (AI volley valuation); see
+    /// <see cref="IHasTerrain"/>.</param>
     public sealed record SaveRollCompleteContext(
         IUnit Attacker, IUnit Defender, IDiceResults UnmodifiedSaveRolls, bool IsMelee = false,
-        bool IsSpell = false, float DistanceInches = 0f, float ChargeOriginDistanceInches = 0f)
+        bool IsSpell = false, float DistanceInches = 0f, float ChargeOriginDistanceInches = 0f,
+        IReadOnlyList<ITerrain>? TerrainPieces = null)
         : IHookContext, IHasTarget, IHasUnmodifiedSaveRolls, IHasCombatKind, IHasIsSpell, IHasDistance,
-            IHasAttackOriginDistance
+            IHasAttackOriginDistance, IHasTerrain
     {
         public EHookID Hook => EHookID.Shooting_OnSaveRollComplete;
 
@@ -38,5 +44,7 @@ namespace FDG.Rules.Dispatch.Contexts
         // Mirrors HitRollCompleteContext: in melee the launch distance is the charge's declared distance,
         // never the base-contact distance the save is being rolled at.
         public float AttackOriginDistanceInches => IsMelee ? ChargeOriginDistanceInches : DistanceInches;
+
+        public IReadOnlyList<ITerrain> Terrain => TerrainPieces ?? Array.Empty<ITerrain>();
     }
 }

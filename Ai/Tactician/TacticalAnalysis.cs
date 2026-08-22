@@ -55,37 +55,51 @@ namespace FDG.Ai.Tactician
 
         // --- Mobility / threat ------------------------------------------------------------------
 
+        /// <summary>
+        /// Terrain snapshot for the movement-budget queries (#376 Grounded Speed): terrain-gated
+        /// movement rules only fire when the caller supplies the table's terrain, so every planner
+        /// path that holds table state passes this down - otherwise the planner's numbers diverge
+        /// from the move resolver's (the #264 issue-7 failure mode).
+        /// </summary>
+        public static IReadOnlyList<ITerrain> TerrainOf(ITableState tableState) =>
+            tableState.Terrain.Objects.ToList();
+
         /// <summary>How far the unit may move and still shoot (Advance), movement rules included.</summary>
-        public static float AdvanceDistance(IUnit unit, RuleEvaluator evaluator) =>
-            MovementRuleQueries.EffectiveMoveShootDistance(unit, evaluator);
+        public static float AdvanceDistance(IUnit unit, RuleEvaluator evaluator,
+            IReadOnlyList<ITerrain>? terrain = null) =>
+            MovementRuleQueries.EffectiveMoveShootDistance(unit, evaluator, terrain);
 
         /// <summary>The unit's longest legal non-charge move (Rush), movement rules included.</summary>
-        public static float RushDistance(IUnit unit, RuleEvaluator evaluator) =>
-            MovementRuleQueries.EffectiveMaxRushDistance(unit, evaluator);
+        public static float RushDistance(IUnit unit, RuleEvaluator evaluator,
+            IReadOnlyList<ITerrain>? terrain = null) =>
+            MovementRuleQueries.EffectiveMaxRushDistance(unit, evaluator, terrain);
 
         /// <summary>
         /// Charge reach against a specific target: the charger's own charge budget (base + its
         /// movement rules, e.g. Fast) further modified by target-conditioned rules (Melee Shrouding
         /// etc.) - composed exactly as DefinePathStage does (budget in, per-target query on top).
         /// </summary>
-        public static float ChargeDistanceAgainst(IUnit charger, IUnit target, RuleEvaluator evaluator) =>
+        public static float ChargeDistanceAgainst(IUnit charger, IUnit target, RuleEvaluator evaluator,
+            IReadOnlyList<ITerrain>? terrain = null) =>
             MovementRuleQueries.EffectiveChargeDistanceAgainst(
-                charger, target, ChargeBudget(charger, evaluator), evaluator);
+                charger, target, ChargeBudget(charger, evaluator, terrain), evaluator);
 
         /// <summary>
         /// How far away the charger is genuinely DANGEROUS (#191 A5-6): its charge budget plus the
         /// 2" horizontal melee cylinder (a charge only needs to END within melee range, not in
         /// base contact). Centroid-based callers get a little extra slack on top.
         /// </summary>
-        public static float MeleeThreatReach(IUnit charger, IUnit target, RuleEvaluator evaluator) =>
-            ChargeDistanceAgainst(charger, target, evaluator)
+        public static float MeleeThreatReach(IUnit charger, IUnit target, RuleEvaluator evaluator,
+            IReadOnlyList<ITerrain>? terrain = null) =>
+            ChargeDistanceAgainst(charger, target, evaluator, terrain)
             + GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL;
 
         /// <summary>
         /// The unit's charge move allowance including its movement rules - the same accumulation
         /// MovementActionContext performs (the "when" fired for all three actions onto one sink).
         /// </summary>
-        public static float ChargeBudget(IUnit unit, RuleEvaluator evaluator)
+        public static float ChargeBudget(IUnit unit, RuleEvaluator evaluator,
+            IReadOnlyList<ITerrain>? terrain = null)
         {
             var sink = new MovementModifierSink();
             foreach ((EActionType action, float baseDistance) in new[]
@@ -96,7 +110,8 @@ namespace FDG.Ai.Tactician
             })
             {
                 sink.ApplyFrom(evaluator.EvaluateAllNamed(
-                        new Rules.Dispatch.Contexts.MoveActionDeclaredContext(unit, action, baseDistance),
+                        new Rules.Dispatch.Contexts.MoveActionDeclaredContext(unit, action, baseDistance,
+                            terrain),
                         RuleParticipant.Actor(unit))
                     .Select(tagged => tagged.Op));
             }
@@ -118,13 +133,14 @@ namespace FDG.Ai.Tactician
         /// and its charge reach. The kite band (Appendix A, M4 SafeShooting) positions just outside
         /// the enemy's value of this.
         /// </summary>
-        public static float ThreatRangeAgainst(IUnit unit, IUnit target, RuleEvaluator evaluator)
+        public static float ThreatRangeAgainst(IUnit unit, IUnit target, RuleEvaluator evaluator,
+            IReadOnlyList<ITerrain>? terrain = null)
         {
             float shooting = MaxWeaponRange(unit, target, evaluator);
-            float shootingThreat = shooting > 0f ? AdvanceDistance(unit, evaluator) + shooting : 0f;
+            float shootingThreat = shooting > 0f ? AdvanceDistance(unit, evaluator, terrain) + shooting : 0f;
             // #355: a ramming vehicle threatens its charge reach even with no melee weapon.
             float meleeThreat = ChargeContactRules.CanFightInMelee(unit)
-                ? ChargeDistanceAgainst(unit, target, evaluator) : 0f;
+                ? ChargeDistanceAgainst(unit, target, evaluator, terrain) : 0f;
             return Math.Max(shootingThreat, meleeThreat);
         }
 

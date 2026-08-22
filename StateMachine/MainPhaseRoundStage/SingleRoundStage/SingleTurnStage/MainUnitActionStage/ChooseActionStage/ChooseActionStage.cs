@@ -319,7 +319,8 @@ namespace FDG.Stages
 
                     List<DataBinding<UnitData>> withinReach = EmbarkStage.GetEmbarkableTransports(
                         GameContext, self,
-                        MovementRuleQueries.EffectiveMaxRushDistance(self, GameContext.RuleEvaluator));
+                        MovementRuleQueries.EffectiveMaxRushDistance(self, GameContext.RuleEvaluator,
+                            GameContext.TableState.Terrain.Objects.ToList()));
                     if (withinReach.Count > 0)
                     {
                         // Two different situations, and the difference matters to the player: one is an

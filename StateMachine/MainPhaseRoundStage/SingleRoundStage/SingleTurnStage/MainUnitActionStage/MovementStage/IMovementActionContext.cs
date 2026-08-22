@@ -210,7 +210,7 @@ namespace FDG.Stages
             MovementModifierSink sink)
         {
             IReadOnlyList<(RuleOperation Op, string RuleName)> operations = GameContext.RuleEvaluator
-                .EvaluateAllNamed(new MoveActionDeclaredContext(unit, action, baseDistance),
+                .EvaluateAllNamed(new MoveActionDeclaredContext(unit, action, baseDistance, RelevantTerrain),
                     RuleParticipant.Actor(unit));
             sink.ApplyFrom(operations.Select(t => t.Op).ToList());
         }
@@ -223,7 +223,7 @@ namespace FDG.Stages
             float baseDistance, MovementModifierSink sink)
         {
             IReadOnlyList<(RuleOperation Op, string RuleName)> operations = GameContext.RuleEvaluator
-                .EvaluateAllNamed(new MoveActionDeclaredContext(unit, action, baseDistance),
+                .EvaluateAllNamed(new MoveActionDeclaredContext(unit, action, baseDistance, RelevantTerrain),
                     RuleParticipant.Actor(unit, models: new[] { model }));
             sink.ApplyFrom(operations.Select(t => t.Op).ToList());
         }

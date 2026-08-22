@@ -59,7 +59,8 @@ namespace FDG.Ai.Tactician
                 float dx = enemyMass.x - at.x, dz = enemyMass.z - at.z;
                 float length = MathF.Sqrt(dx * dx + dz * dz);
                 if (length < 0.001f) continue;
-                float rush = TacticalAnalysis.RushDistance(friend, evaluator);
+                float rush = TacticalAnalysis.RushDistance(friend, evaluator,
+                    TacticalAnalysis.TerrainOf(tableState));
                 if (rush <= 0f) continue;
 
                 lanes.Add(new AdvanceLane(at,

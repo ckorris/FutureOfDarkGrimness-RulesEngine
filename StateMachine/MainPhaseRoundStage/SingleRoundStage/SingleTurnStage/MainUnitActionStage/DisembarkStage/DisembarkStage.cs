@@ -113,7 +113,8 @@ namespace FDG.Stages
             // from - and nothing on this path consumes a movement grant, so querying it live here is the
             // value that was in force. (Same number GetCanShoot used to derive for itself.)
             context.RegisterMoveFinished(distanceMoved,
-                MovementRuleQueries.EffectiveMoveShootDistance(unit, GameContext.RuleEvaluator));
+                MovementRuleQueries.EffectiveMoveShootDistance(unit, GameContext.RuleEvaluator,
+                    GameContext.TableState.Terrain.Objects.ToList()));
 
             GameContext.Log($"{unit.Name} disembarked {transport.Name}, moving {distanceMoved:0.#} inches.");
             await context.Announce($"{unit.Name} disembarked {transport.Name}.", new TextColor(120, 200, 255, 255),

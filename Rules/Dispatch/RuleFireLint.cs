@@ -610,6 +610,10 @@ public static class RuleFireLint
                 foreach (EActionType action in Enum.GetValues<EActionType>())
                 {
                     yield return new MoveActionDeclaredContext(bearer, action, BaseDistanceInches: 6f);
+                    // #376 (Grounded Speed): one terrain-populated variant per action so
+                    // terrain-proximity movement rules prove fireable.
+                    yield return new MoveActionDeclaredContext(bearer, action, BaseDistanceInches: 6f,
+                        TerrainPieces: OriginTerrain);
                 }
                 break;
             case EHookID.Movement_OnChargeDeclared:
@@ -682,6 +686,10 @@ public static class RuleFireLint
                 }
                 yield return new SaveRollCompleteContext(attacker, defender, OneOfEachFace(),
                     IsMelee: false, IsSpell: true);
+                // #376 (Grounded Protection): one terrain-populated variant for the terrain-proximity
+                // save-side rules (not distance-gated).
+                yield return new SaveRollCompleteContext(attacker, defender, OneOfEachFace(),
+                    TerrainPieces: OriginTerrain);
                 break;
             case EHookID.Shooting_OnPreApplyWound:
                 yield return new PreApplyWoundContext(attacker, defender);

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch.Contexts;
@@ -130,12 +131,13 @@ namespace FDG.Rules.Dispatch
         /// (The situational difficult-terrain cap is intentionally not applied here: the resolver already caps
         /// the actual move, so the moved distance is always &lt;= this allowance regardless.)
         /// </summary>
-        public static float EffectiveMoveShootDistance(IUnit unit, RuleEvaluator evaluator)
+        public static float EffectiveMoveShootDistance(IUnit unit, RuleEvaluator evaluator,
+            IReadOnlyList<ITerrain>? terrain = null)
         {
             MovementModifierSink sink = new MovementModifierSink();
-            AccumulateMovementRules(unit, evaluator, EActionType.Advance, GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES, sink);
-            AccumulateMovementRules(unit, evaluator, EActionType.Rush, GameWideConstants.RUSH_DISTANCE_INCHES, sink);
-            AccumulateMovementRules(unit, evaluator, EActionType.Charge, GameWideConstants.CHARGE_DISTANCE_INCHES, sink);
+            AccumulateMovementRules(unit, evaluator, EActionType.Advance, GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES, sink, terrain);
+            AccumulateMovementRules(unit, evaluator, EActionType.Rush, GameWideConstants.RUSH_DISTANCE_INCHES, sink, terrain);
+            AccumulateMovementRules(unit, evaluator, EActionType.Charge, GameWideConstants.CHARGE_DISTANCE_INCHES, sink, terrain);
             return GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES + sink.Net(EActionType.Advance);
         }
 
@@ -152,12 +154,13 @@ namespace FDG.Rules.Dispatch
         /// (The situational difficult-terrain cap is intentionally not applied: the resolver already
         /// caps the actual move, so the moved distance is always &lt;= this allowance regardless.)
         /// </summary>
-        public static float EffectiveMaxRushDistance(IUnit unit, RuleEvaluator evaluator)
+        public static float EffectiveMaxRushDistance(IUnit unit, RuleEvaluator evaluator,
+            IReadOnlyList<ITerrain>? terrain = null)
         {
             MovementModifierSink unitSink = new MovementModifierSink();
-            AccumulateMovementRules(unit, evaluator, EActionType.Advance, GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES, unitSink);
-            AccumulateMovementRules(unit, evaluator, EActionType.Rush, GameWideConstants.RUSH_DISTANCE_INCHES, unitSink);
-            AccumulateMovementRules(unit, evaluator, EActionType.Charge, GameWideConstants.CHARGE_DISTANCE_INCHES, unitSink);
+            AccumulateMovementRules(unit, evaluator, EActionType.Advance, GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES, unitSink, terrain);
+            AccumulateMovementRules(unit, evaluator, EActionType.Rush, GameWideConstants.RUSH_DISTANCE_INCHES, unitSink, terrain);
+            AccumulateMovementRules(unit, evaluator, EActionType.Charge, GameWideConstants.CHARGE_DISTANCE_INCHES, unitSink, terrain);
             float maxRush = GameWideConstants.RUSH_DISTANCE_INCHES + unitSink.Net(EActionType.Rush);
 
             foreach (IModel model in unit.Models)
@@ -168,9 +171,9 @@ namespace FDG.Rules.Dispatch
                 }
 
                 MovementModifierSink modelSink = new MovementModifierSink();
-                AccumulateModelMovementRules(unit, model, evaluator, EActionType.Advance, GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES, modelSink);
-                AccumulateModelMovementRules(unit, model, evaluator, EActionType.Rush, GameWideConstants.RUSH_DISTANCE_INCHES, modelSink);
-                AccumulateModelMovementRules(unit, model, evaluator, EActionType.Charge, GameWideConstants.CHARGE_DISTANCE_INCHES, modelSink);
+                AccumulateModelMovementRules(unit, model, evaluator, EActionType.Advance, GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES, modelSink, terrain);
+                AccumulateModelMovementRules(unit, model, evaluator, EActionType.Rush, GameWideConstants.RUSH_DISTANCE_INCHES, modelSink, terrain);
+                AccumulateModelMovementRules(unit, model, evaluator, EActionType.Charge, GameWideConstants.CHARGE_DISTANCE_INCHES, modelSink, terrain);
                 float modelRush = GameWideConstants.RUSH_DISTANCE_INCHES + modelSink.Net(EActionType.Rush);
                 if (modelRush > maxRush)
                 {
@@ -194,7 +197,7 @@ namespace FDG.Rules.Dispatch
         /// </para>
         /// </summary>
         public static Dictionary<ModelID, (float Advance, float Rush, float Charge)> PerModelMoveBudgets(
-            IUnit unit, RuleEvaluator evaluator)
+            IUnit unit, RuleEvaluator evaluator, IReadOnlyList<ITerrain>? terrain = null)
         {
             var budgets = new Dictionary<ModelID, (float, float, float)>();
             foreach (IModel model in unit.Models)
@@ -205,9 +208,9 @@ namespace FDG.Rules.Dispatch
                 }
 
                 MovementModifierSink sink = new MovementModifierSink();
-                AccumulateModelMovementRules(unit, model, evaluator, EActionType.Advance, GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES, sink);
-                AccumulateModelMovementRules(unit, model, evaluator, EActionType.Rush, GameWideConstants.RUSH_DISTANCE_INCHES, sink);
-                AccumulateModelMovementRules(unit, model, evaluator, EActionType.Charge, GameWideConstants.CHARGE_DISTANCE_INCHES, sink);
+                AccumulateModelMovementRules(unit, model, evaluator, EActionType.Advance, GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES, sink, terrain);
+                AccumulateModelMovementRules(unit, model, evaluator, EActionType.Rush, GameWideConstants.RUSH_DISTANCE_INCHES, sink, terrain);
+                AccumulateModelMovementRules(unit, model, evaluator, EActionType.Charge, GameWideConstants.CHARGE_DISTANCE_INCHES, sink, terrain);
                 budgets[model.ID] = (
                     GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES + sink.Net(EActionType.Advance),
                     GameWideConstants.RUSH_DISTANCE_INCHES + sink.Net(EActionType.Rush),
@@ -217,10 +220,11 @@ namespace FDG.Rules.Dispatch
         }
 
         private static void AccumulateMovementRules(IUnit unit, RuleEvaluator evaluator, EActionType action,
-            float baseDistance, MovementModifierSink sink)
+            float baseDistance, MovementModifierSink sink, IReadOnlyList<ITerrain>? terrain)
         {
             var operations = evaluator.EvaluateAllNamed(
-                new MoveActionDeclaredContext(unit, action, baseDistance), RuleParticipant.Actor(unit));
+                new MoveActionDeclaredContext(unit, action, baseDistance, terrain),
+                RuleParticipant.Actor(unit));
             sink.ApplyFrom(operations.Select(t => t.Op));
         }
 
@@ -228,10 +232,11 @@ namespace FDG.Rules.Dispatch
         // per-model Fast/Slow lands in that model's budget only — mirrors MovementActionContext's
         // per-model accumulation. Read-only (EvaluateAllNamed): must not consume one-shot grants.
         private static void AccumulateModelMovementRules(IUnit unit, IModel model, RuleEvaluator evaluator,
-            EActionType action, float baseDistance, MovementModifierSink sink)
+            EActionType action, float baseDistance, MovementModifierSink sink,
+            IReadOnlyList<ITerrain>? terrain)
         {
             var operations = evaluator.EvaluateAllNamed(
-                new MoveActionDeclaredContext(unit, action, baseDistance),
+                new MoveActionDeclaredContext(unit, action, baseDistance, terrain),
                 RuleParticipant.Actor(unit, models: new[] { model }));
             sink.ApplyFrom(operations.Select(t => t.Op));
         }

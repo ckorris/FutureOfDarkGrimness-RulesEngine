@@ -30,6 +30,10 @@ namespace FDG.Ai.Tactician.Resolvers
         private const float MidRangeDepthInches = 3f;
 
         private readonly ITableState _tableState;
+        // #376 (Grounded Speed): terrain snapshot for the mobility queries - see TacticianPlanner.
+        private IReadOnlyList<ITerrain>? _terrainSnapshot;
+        private IReadOnlyList<ITerrain> Terrain =>
+            _terrainSnapshot ??= TacticalAnalysis.TerrainOf(_tableState);
         private readonly RuleEvaluator _evaluator;
 
         public TacticianPlaceObjectsResolver(ITableState tableState, RuleEvaluator? evaluator = null)
@@ -240,8 +244,8 @@ namespace FDG.Ai.Tactician.Resolvers
                 AttackEstimate shot = CombatMath.EstimateShooting(_evaluator, arriver, victim,
                     new AttackContext(distance, AttackerMoved: true));
                 damage = Math.Max(damage, ValueFraction(shot.ExpectedWounds, victim.GetValue()));
-                if (TacticalAnalysis.MeleeThreatReach(arriver.GetValue(), victim.GetValue(), _evaluator)
-                    >= distance)
+                if (TacticalAnalysis.MeleeThreatReach(arriver.GetValue(), victim.GetValue(), _evaluator,
+                        Terrain) >= distance)
                 {
                     MeleeEstimate melee = CombatMath.EstimateMelee(_evaluator, arriver, victim);
                     damage = Math.Max(damage,
@@ -297,13 +301,13 @@ namespace FDG.Ai.Tactician.Resolvers
             {
                 float distance = MathF.Sqrt(DistSq(spot, Centroid(enemy.GetValue())));
                 float reach = Math.Max(1f, distance
-                    - TacticalAnalysis.AdvanceDistance(enemy.GetValue(), _evaluator));
+                    - TacticalAnalysis.AdvanceDistance(enemy.GetValue(), _evaluator, Terrain));
                 AttackEstimate incoming = CombatMath.EstimateShooting(_evaluator, enemy, arriver,
                     new AttackContext(reach, AttackerMoved: true));
                 float value = ValueFraction(incoming.ExpectedWounds, arriver.GetValue());
                 if (enemy.GetValue().GetMeleeWeapons().Count > 0
-                    && TacticalAnalysis.MeleeThreatReach(enemy.GetValue(), arriver.GetValue(), _evaluator)
-                        >= distance - 1f)
+                    && TacticalAnalysis.MeleeThreatReach(enemy.GetValue(), arriver.GetValue(), _evaluator,
+                        Terrain) >= distance - 1f)
                 {
                     value = Math.Max(value, 0.5f * ValueFraction(
                         CombatMath.EstimateMelee(_evaluator, enemy, arriver).AttackerAttack.ExpectedWounds,

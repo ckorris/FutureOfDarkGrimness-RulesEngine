@@ -19,6 +19,12 @@ namespace FDG.Ai.Tactician.Resolvers
     {
         private readonly RuleEvaluator _evaluator;
         private readonly ITableState? _tableState;
+        // #376 (Grounded Speed): terrain snapshot for the mobility queries - see TacticianPlanner.
+        // Null when no table state was supplied (bare-resolver tests): terrain-gated movement rules
+        // then conservatively don't fire in the threat estimate.
+        private IReadOnlyList<ITerrain>? _terrainSnapshot;
+        private IReadOnlyList<ITerrain>? Terrain =>
+            _terrainSnapshot ??= _tableState == null ? null : TacticalAnalysis.TerrainOf(_tableState);
         private readonly IStageResolver<ChooseRangedAttackRequest, CancellableResult<RangedAttackChoice>> _soloFallback;
 
         public TacticianRangedAttackResolver(RuleEvaluator evaluator,
@@ -67,7 +73,7 @@ namespace FDG.Ai.Tactician.Resolvers
                     // #355: a unit that can only ram still threatens to charge us.
                     bool threatensUs = ChargeContactRules.CanFightInMelee(target)
                         && TacticalAnalysis.MeleeThreatReach(target,
-                            request.AttackingUnit.GetValue(), _evaluator) >= distance - 1f;
+                            request.AttackingUnit.GetValue(), _evaluator, Terrain) >= distance - 1f;
                     float score = fractionKilled * targetValue
                         * (wounds >= remaining ? TacticianWeights.ShootingKillBonus
                            : breaks ? TacticianWeights.MoraleBreakBonus : 1f)

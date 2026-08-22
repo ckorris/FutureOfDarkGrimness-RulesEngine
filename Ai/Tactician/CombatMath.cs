@@ -370,7 +370,9 @@ namespace FDG.Ai.Tactician
             }
 
             // --- AssignWoundsStage mirror, in its load-bearing order: Bane reroll -> Deadly clump
-            // confinement -> Shred injection -> Regeneration ignore.
+            // confinement -> Shred injection -> Regeneration ignore. No terrain here (IHasTerrain):
+            // valuation is position-hypothetical, so terrain-gated save rules (Grounded Protection)
+            // conservatively don't fire - the bonus is only ever omitted, never wrongly granted.
             IReadOnlyList<RuleOperation> saveCompleteOps = Ops(evaluator.EvaluateAllNamed(
                 new SaveRollCompleteContext(atk, def, new DiceResults(combinedSaveFaces), isMelee),
                 RuleParticipant.Actor(atk, weapon),

@@ -439,7 +439,7 @@ namespace FDG.Ai.Tactician
             {
                 UnitData enemy = enemyBinding.GetValue();
                 float d = Distance(here, Centroid(enemy));
-                float theirReach = Math.Max(1f, d - TacticalAnalysis.AdvanceDistance(enemy, _evaluator));
+                float theirReach = Math.Max(1f, d - TacticalAnalysis.AdvanceDistance(enemy, _evaluator, TerrainSnapshot()));
                 // #365: no sight discount on a THREAT (see MoveCoverHabit) - the shooter moves
                 // before it shoots, so a wall between us and where it stands right now is not
                 // protection, and a bail-out decision is exactly where optimism gets a boat killed.
@@ -447,7 +447,7 @@ namespace FDG.Ai.Tactician
                     transport, new AttackContext(theirReach, AttackerMoved: true)).ExpectedWounds);
                 // #355: an impact-only enemy can still charge this transport.
                 if (ChargeContactRules.CanFightInMelee(enemy)
-                    && TacticalAnalysis.MeleeThreatReach(enemy, transport.GetValue(), _evaluator) >= d - 1f)
+                    && TacticalAnalysis.MeleeThreatReach(enemy, transport.GetValue(), _evaluator, TerrainSnapshot()) >= d - 1f)
                 {
                     incoming = Math.Max(incoming, CombatMath.EstimateMelee(_evaluator, enemyBinding,
                         transport).AttackerAttack.ExpectedWounds);
@@ -458,7 +458,7 @@ namespace FDG.Ai.Tactician
                 return true;
 
             const float placementInches = 6f;
-            float cargoReach = placementInches + TacticalAnalysis.AdvanceDistance(self, _evaluator);
+            float cargoReach = placementInches + TacticalAnalysis.AdvanceDistance(self, _evaluator, TerrainSnapshot());
 
             foreach (ObjectiveProjection projection in TacticalAnalysis.ProjectObjectives(_tableState))
             {
@@ -619,7 +619,7 @@ namespace FDG.Ai.Tactician
                         if (enemy.GetMeleeWeapons().Count > 0)
                         {
                             float stageGap = Math.Max(0f,
-                                TacticalAnalysis.MeleeThreatReach(enemy, self, _evaluator) + 1.5f - reach);
+                                TacticalAnalysis.MeleeThreatReach(enemy, self, _evaluator, TerrainSnapshot()) + 1.5f - reach);
                             gapEnd = Math.Max(gapEnd, Math.Min(stageGap, gapNow));
                         }
                         approach = Math.Max(approach,
@@ -631,7 +631,7 @@ namespace FDG.Ai.Tactician
                 // #365: priced THROUGH terrain. This shooter moves before it shoots, so a wall
                 // between the endpoint and where it stands right now is not protection - crediting
                 // it here is what made wall shadows read as safe (#363 facet 3, replaced).
-                float theirReach = Math.Max(1f, endDistance - TacticalAnalysis.AdvanceDistance(enemy, _evaluator));
+                float theirReach = Math.Max(1f, endDistance - TacticalAnalysis.AdvanceDistance(enemy, _evaluator, TerrainSnapshot()));
                 AttackEstimate incoming = CombatMath.EstimateShooting(_evaluator, enemyBinding, _activeUnit,
                     new AttackContext(theirReach, AttackerMoved: true));
                 float incomingValue = ValueFraction(incoming.ExpectedWounds, self);
@@ -639,7 +639,7 @@ namespace FDG.Ai.Tactician
                 // Melee threat: if they can charge the endpoint (charge + 2" melee cylinder),
                 // count their melee margin too.
                 float meleeThreat =
-                    TacticalAnalysis.MeleeThreatReach(enemy, self, _evaluator) >= endDistance - 1f
+                    TacticalAnalysis.MeleeThreatReach(enemy, self, _evaluator, TerrainSnapshot()) >= endDistance - 1f
                     && enemy.GetMeleeWeapons().Count > 0
                         ? 0.5f * ValueFraction(CombatMath.EstimateMelee(
                             _evaluator, enemyBinding, _activeUnit).AttackerAttack.ExpectedWounds, self)
@@ -697,7 +697,7 @@ namespace FDG.Ai.Tactician
                     Position projected = ProjectedEnemyPosition(enemyBinding);
                     float projDistance = Distance(end, projected);
                     float projReach = Math.Max(1f,
-                        projDistance - TacticalAnalysis.AdvanceDistance(enemy, _evaluator));
+                        projDistance - TacticalAnalysis.AdvanceDistance(enemy, _evaluator, TerrainSnapshot()));
                     float projValue = projReach > EnemyMaxRangeAgainstUs(enemyBinding) ? 0f
                         // #365: no sight gate - this is a forecast two moves out, where a boolean
                         // about today's geometry is worth even less than it is for retaliation.
@@ -706,7 +706,7 @@ namespace FDG.Ai.Tactician
                             .ExpectedWounds, self);
                     if (enemy.GetMeleeWeapons().Count > 0
                         && MeleeApproachAgainst(enemyBinding).Margin <= 0f
-                        && TacticalAnalysis.MeleeThreatReach(enemy, self, _evaluator) >= projDistance - 1f)
+                        && TacticalAnalysis.MeleeThreatReach(enemy, self, _evaluator, TerrainSnapshot()) >= projDistance - 1f)
                     {
                         projValue = Math.Max(projValue, 0.5f * ValueFraction(CombatMath.EstimateMelee(
                                 _evaluator, enemyBinding, _activeUnit).AttackerAttack.ExpectedWounds,
@@ -915,7 +915,7 @@ namespace FDG.Ai.Tactician
         {
             float onIt = TacticalAnalysis.ObjectiveSeizureRadiusInches + 1.5f;
             UnitData self = _activeUnit!.GetValue();
-            float speed = Math.Max(1f, TacticalAnalysis.RushDistance(self, _evaluator));
+            float speed = Math.Max(1f, TacticalAnalysis.RushDistance(self, _evaluator, TerrainSnapshot()));
             int round = _tableState.Progress.RoundCount ?? 1;
             int totalRounds = _tableState.Progress.TotalRounds;
             float movesLeft = totalRounds - round + 1;
@@ -1037,7 +1037,7 @@ namespace FDG.Ai.Tactician
             (float, float) result = (
                 ValueFraction(melee.AttackerAttack.ExpectedWounds, enemy)
                     - ValueFraction(melee.DefenderReturn.ExpectedWounds, self),
-                TacticalAnalysis.ChargeDistanceAgainst(self, enemy, _evaluator));
+                TacticalAnalysis.ChargeDistanceAgainst(self, enemy, _evaluator, TerrainSnapshot()));
             _meleeApproach[enemyBinding.Reference] = result;
             return result;
         }
@@ -1107,8 +1107,8 @@ namespace FDG.Ai.Tactician
                     UnitData enemy = enemyBinding.GetValue();
                     if (AircraftRules.IsAircraft(enemy)) continue; // can never seize or contest
                     float reach = movesLeft * Math.Max(
-                        TacticalAnalysis.RushDistance(enemy, _evaluator),
-                        TacticalAnalysis.ChargeBudget(enemy, _evaluator));
+                        TacticalAnalysis.RushDistance(enemy, _evaluator, TerrainSnapshot()),
+                        TacticalAnalysis.ChargeBudget(enemy, _evaluator, TerrainSnapshot()));
                     if (TacticalAnalysis.MinBaseEdgeDistanceToPoint(enemy, marker)
                         <= reach + TacticalAnalysis.ObjectiveSeizureRadiusInches)
                     {
@@ -1140,7 +1140,7 @@ namespace FDG.Ai.Tactician
                 UnitData friendly = friendlyBinding.GetValue();
                 Position friendlyPos = Centroid(friendly);
                 float d = Distance(enemyPos, friendlyPos);
-                float reach = Math.Max(1f, d - TacticalAnalysis.AdvanceDistance(enemy, _evaluator));
+                float reach = Math.Max(1f, d - TacticalAnalysis.AdvanceDistance(enemy, _evaluator, TerrainSnapshot()));
                 // #365: ungated, exactly like the numerator in Score - both sides of the share
                 // must use the same currency or a wall-discounted "us" gets compared against a
                 // see-through-walls "them".
@@ -1148,7 +1148,7 @@ namespace FDG.Ai.Tactician
                         friendlyBinding, new AttackContext(reach, AttackerMoved: true)).ExpectedWounds,
                     friendly);
                 if (enemy.GetMeleeWeapons().Count > 0
-                    && TacticalAnalysis.MeleeThreatReach(enemy, friendly, _evaluator) >= d - 1f)
+                    && TacticalAnalysis.MeleeThreatReach(enemy, friendly, _evaluator, TerrainSnapshot()) >= d - 1f)
                 {
                     value = Math.Max(value, 0.5f * ValueFraction(CombatMath.EstimateMelee(
                         _evaluator, enemyBinding, friendlyBinding).AttackerAttack.ExpectedWounds,
@@ -1227,7 +1227,7 @@ namespace FDG.Ai.Tactician
             if (goal != null && bestDistance > 0.01f)
             {
                 float step = Math.Min(
-                    TacticalAnalysis.RushDistance(enemy, _evaluator), bestDistance);
+                    TacticalAnalysis.RushDistance(enemy, _evaluator, TerrainSnapshot()), bestDistance);
                 result = new Position(at.x + (goal.Value.x - at.x) / bestDistance * step,
                     at.z + (goal.Value.z - at.z) / bestDistance * step);
             }
@@ -1271,7 +1271,8 @@ namespace FDG.Ai.Tactician
             candidate.ActionType is EActionType.Hold or EActionType.Advance;
 
         // #363: terrain doesn't change inside an activation - one snapshot serves every
-        // (candidate x enemy) sight test of the plan.
+        // (candidate x enemy) sight test of the plan. #376 also feeds it to the mobility queries
+        // (Grounded Speed) so the planner's numbers match the move resolver's.
         private List<ITerrain> TerrainSnapshot() =>
             _terrainSnapshot ??= _tableState.Terrain.Objects.ToList();
 
@@ -1299,7 +1300,7 @@ namespace FDG.Ai.Tactician
             if (_meleeThreatTotal.HasValue) return _meleeThreatTotal.Value;
             UnitData self = _activeUnit!.GetValue();
             Position now = Centroid(self);
-            float envelope = TacticalAnalysis.RushDistance(self, _evaluator);
+            float envelope = TacticalAnalysis.RushDistance(self, _evaluator, TerrainSnapshot());
             float total = 0f;
             foreach (DataBinding<UnitData> enemyBinding in EnemyBindings(self.PlayerID))
             {
@@ -1307,7 +1308,7 @@ namespace FDG.Ai.Tactician
                 if (enemy.GetMeleeWeapons().Count == 0) continue;
                 // The same slack the per-endpoint test uses, so an enemy that reaches SOME endpoint
                 // is always in the denominator it is scored against.
-                if (TacticalAnalysis.MeleeThreatReach(enemy, self, _evaluator)
+                if (TacticalAnalysis.MeleeThreatReach(enemy, self, _evaluator, TerrainSnapshot())
                     < Distance(now, Centroid(enemy)) - envelope - 1f) continue;
                 total += 0.5f * ValueFraction(CombatMath.EstimateMelee(
                     _evaluator, enemyBinding, _activeUnit).AttackerAttack.ExpectedWounds, self);

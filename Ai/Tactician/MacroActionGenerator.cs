@@ -88,13 +88,16 @@ namespace FDG.Ai.Tactician
             // own. The unit scalars take the MAX across models (a joined Fast hero raises the unit's
             // Rush), so planning at them submits moves the movement resolver's per-model re-check
             // rejects - and that unit silently plays the solo resolver for the rest of the game.
+            // #376 (Grounded Speed): the budgets must see the terrain the move resolver will, or a
+            // terrain-boosted unit plans short (and the reverse split degrades it to the solo resolver).
+            var terrain = tableState.Terrain.Objects.ToList();
             Dictionary<ModelID, (float Advance, float Rush, float Charge)> perModelBudgets =
-                MovementRuleQueries.PerModelMoveBudgets(self, evaluator);
+                MovementRuleQueries.PerModelMoveBudgets(self, evaluator, terrain);
             float advance = perModelBudgets.Count == 0
-                ? TacticalAnalysis.AdvanceDistance(self, evaluator)
+                ? TacticalAnalysis.AdvanceDistance(self, evaluator, terrain)
                 : perModelBudgets.Values.Min(b => b.Advance);
             float rush = perModelBudgets.Count == 0
-                ? TacticalAnalysis.RushDistance(self, evaluator)
+                ? TacticalAnalysis.RushDistance(self, evaluator, terrain)
                 : perModelBudgets.Values.Min(b => b.Rush);
             PlanBudget advanceBudget = new PlanBudget(advance,
                 PerModelCaps(perModelBudgets, EActionType.Advance, advance));
@@ -109,7 +112,6 @@ namespace FDG.Ai.Tactician
             List<IUnit> enemies = LivingEnemies(tableState, self.PlayerID);
             List<IUnit> friends = LivingFriends(tableState, self);
 
-            var terrain = tableState.Terrain.Objects.ToList();
             var enemyFootprints = MovementPlanner.LiveEnemyFootprints(tableState, self.PlayerID);
             float leadRadius = living.Max(mb => mb.GetValue().BaseRadiusInches);
             // #361: terrain clearance is the CIRCUMSCRIBED radius (see TerrainClearanceRadius);
@@ -420,11 +422,11 @@ namespace FDG.Ai.Tactician
             bool canMoveThroughEnemies, bool ignoresDifficult, bool ignoresAllTerrain,
             IReadOnlyDictionary<ModelID, (float Advance, float Rush, float Charge)> perModelBudgets)
         {
-            float fullChargeReach = TacticalAnalysis.ChargeDistanceAgainst(self, enemy, evaluator);
+            float fullChargeReach = TacticalAnalysis.ChargeDistanceAgainst(self, enemy, evaluator, terrain);
             // #264 issue 7: the same per-model split as the move families. The target-conditioned
             // shrink (Melee Shrouding) is unit-wide, so it comes off every model's own charge - the
             // composition DefinePathStage uses to build the request's per-model budgets.
-            float chargeShrink = TacticalAnalysis.ChargeBudget(self, evaluator) - fullChargeReach;
+            float chargeShrink = TacticalAnalysis.ChargeBudget(self, evaluator, terrain) - fullChargeReach;
             Func<ModelMoveEntry, ModelMoveBudget> chargeBudgetFor = entry =>
             {
                 float cap = fullChargeReach;

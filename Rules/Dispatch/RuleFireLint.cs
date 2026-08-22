@@ -338,11 +338,13 @@ public static class RuleFireLint
             EHookID.Shooting_OnSaveRollModifier =>
                 op is RuleOperation.IgnoreCover or RuleOperation.IgnoreLineOfSight,
 
-            // AssignWoundsStage: the save reroll, injected wounds, and the wound-ignore threshold.
+            // AssignWoundsStage: the save reroll, injected wounds, the wound-ignore threshold, and
+            // the earned follow-up attacks (#376 Bloodthirsty; consumed by the melee swing chain).
             EHookID.Shooting_OnSaveRollComplete =>
                 op is RuleOperation.ApplyReroll { Roll: ERollKind.Save }
                     or RuleOperation.InsertExtraWounds
-                    or RuleOperation.IgnoreWound,
+                    or RuleOperation.IgnoreWound
+                    or RuleOperation.AddBonusAttacks,
 
             EHookID.Shooting_OnPreApplyWound => op is RuleOperation.MultiplyWounds,
             EHookID.Shooting_OnRangeCheck => op is RuleOperation.ApplyRangeModifier,

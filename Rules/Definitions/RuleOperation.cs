@@ -696,6 +696,26 @@ public abstract record RuleOperation
     /// <see cref="RuleOperation.SuppressRule"/> from Bane / Rending / Unstoppable (the suppression
     /// first-pass drops this op before the sink ever sees it).
     /// </summary>
+    /// <summary>
+    /// Grant the attacker <see cref="Count"/> follow-up attacks with the weapon whose hits were just
+    /// blocked (#376 Bloodthirsty Fighter). Resolution of <see cref="Effect.AddBonusAttack"/>; folded
+    /// by <c>BonusAttackSink</c> at wound-assignment time and enacted as a real child attack chain by
+    /// <c>ResolveBonusMeleeAttacksStage</c> - the melee swing chain only, mirroring
+    /// <see cref="Effect.DealAutoWounds"/>' supported-paths doctrine (any other pipeline drops it).
+    /// </summary>
+    public sealed record AddBonusAttacks(float Count) : SinkOperation<IBonusAttackSink>
+    {
+        public override void ApplyTo(IBonusAttackSink sink)
+        {
+            sink.AddBonusAttacks(Count);
+        }
+
+        public override string Describe()
+        {
+            return $"grants {Count:0.##} follow-up attack(s) with this weapon";
+        }
+    }
+
     public sealed record IgnoreWound(int MinRoll) : SinkOperation<IWoundIgnoreSink>
     {
         public override void ApplyTo(IWoundIgnoreSink sink)

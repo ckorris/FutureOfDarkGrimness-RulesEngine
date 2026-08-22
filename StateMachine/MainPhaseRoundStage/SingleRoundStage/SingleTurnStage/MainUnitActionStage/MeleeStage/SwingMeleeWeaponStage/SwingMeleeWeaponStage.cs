@@ -45,6 +45,10 @@ namespace FDG.Stages
                 // Transport spillout (#035 slice E) is no longer a stage here — ApplyWoundsStage's
                 // UnitDestructionNotifier call runs it for every destruction path (#169).
                 .AddChild(new ApplyWoundsStage<ICombatMetadata>(GameContext, this), out var applyWounds)
+                // #376 Bloodthirsty Fighter: after the wounds land, roll the follow-up attacks the
+                // block-roll 1s earned (a real child batch, no chaining). A no-op for every swing that
+                // earned none.
+                .AddChild(new ResolveBonusMeleeAttacksStage(GameContext, this), out var bonusAttacks)
                 .AddSibling(nameof(FinishedSwinging), FinishedSwinging, out string finishedSwingingEvent)
                 .Build();
 
@@ -55,8 +59,9 @@ namespace FDG.Stages
                 .BindNextStage(determineSaveRollsNeeded)
                 .BindNextStage(rollToSave)
                 .BindNextStage(assignWounds)
-                .BindNextStage(applyWounds)
-                .BindToEvent(finishedSwingingEvent);
+                .BindNextStage(applyWounds);
+            applyWounds.NextStage.Bind(bonusAttacks);
+            bonusAttacks.OnBonusAttacksResolved.Bind(finishedSwingingEvent);
 
             return dictionary;
         }

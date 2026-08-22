@@ -207,6 +207,49 @@ namespace FDG.Tests
 
         // --- Extra-hit / multiplier rules -----------------------------------------------------------
 
+        // #376 Bloodthirsty: the follow-up batch earned by block-roll 1s. The engine runs it as a real
+        // child batch after the base swing (ResolveBonusMeleeAttacksStage); the estimate prices it
+        // first-order inside EstimateVolley. Under the probabilistic roller both are pure expectations,
+        // so for a plain weapon they must agree. Engine total is measured on the defender's ledger,
+        // since the bonus batch's wounds land in the child chain's own assign/apply pass.
+        [Test]
+        public async Task Bloodthirsty_FollowUpAttacks_MatchEngine()
+        {
+            var weapon = Blade(attacks: 6);
+            var attacker = MakeUnit(1, weapon);
+            AttachUnitRule(attacker, "Bloodthirsty Probe", new SpecialRuleDefinition("Bloodthirsty Probe",
+                new[]
+                {
+                    new HookEntry(EHookID.Shooting_OnSaveRollComplete, new Condition.IsMelee(),
+                        new Effect.AddBonusAttack(OnRollValue: 1, Count: 1), ELifetime.ThisAttack),
+                },
+                Array.Empty<ActivatedAbility>()));
+            var defender = MakeUnit(10, null);
+            float start = defender.RemainingWounds();
+
+            var metadata = new CombatMetadata(_ctx, attacker, defender, weapon, weaponCount: 1,
+                attackerMoved: false, isMelee: true);
+            metadata.AddResult(new CoverCheckResults(0));
+            await RunStage(new DetermineHitRollStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
+            await RunStage(new RollToHitStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
+            await RunStage(new DetermineSaveRollsNeededStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
+            await RunStage(new RollToSaveStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
+            await RunStage(new AssignWoundsStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
+            await RunStage(new ApplyWoundsStage<ICombatMetadata>(_ctx, new NoOpLayer<ICombatMetadata>()), metadata);
+            var bonusStage = new ResolveBonusMeleeAttacksStage(_ctx, new NoOpLayer<ICombatMetadata>());
+            bonusStage.OnBonusAttacksResolved.Bind("done");
+            await bonusStage.Enter(metadata);
+            float engineWounds = start - defender.RemainingWounds();
+
+            var notes = new List<string>();
+            float estimate = CombatMath.EstimateVolley(_ctx.RuleEvaluator, attacker, defender,
+                weapon, weaponCount: 1, new AttackContext(1f, IsMelee: true), notes);
+
+            float tolerance = Math.Max(0.05f, 0.02f * engineWounds);
+            Assert.That(estimate, Is.EqualTo(engineWounds).Within(tolerance),
+                $"the follow-up batch must be priced (notes: {string.Join("; ", notes)})");
+        }
+
         [Test]
         public async Task Surge_ExtraHitOnSix_MatchesEngine()
         {

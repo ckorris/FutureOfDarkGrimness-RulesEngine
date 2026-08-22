@@ -28,6 +28,7 @@ namespace FDG.Rules.Definitions;
 [JsonDerivedType(typeof(PassFailedMoraleTest), "passFailedMoraleTest")]
 [JsonDerivedType(typeof(AddExtraHit), "addExtraHit")]
 [JsonDerivedType(typeof(AddExtraWound), "addExtraWound")]
+[JsonDerivedType(typeof(AddBonusAttack), "addBonusAttack")]
 [JsonDerivedType(typeof(SelfWoundOnUnmodifiedRoll), "selfWoundOnUnmodifiedRoll")]
 [JsonDerivedType(typeof(MovementBonus), "movementBonus")]
 [JsonDerivedType(typeof(IgnoreRule), "ignoreRule")]
@@ -235,6 +236,30 @@ public abstract record Effect
         protected override void ApplyCore(IHasUnmodifiedSaveRolls context, List<RuleOperation> operations)
         {
             operations.Add(new RuleOperation.InsertExtraWounds(context.UnmodifiedSaveRolls.At(OnRollValue) * Count));
+        }
+    }
+
+    /// <summary>
+    /// Each of the defender's unmodified <see cref="OnRollValue"/> BLOCK rolls grants the attacker
+    /// <see cref="Count"/> follow-up attacks with the weapon whose hits were blocked (#376
+    /// Bloodthirsty Fighter). Same histogram read as <see cref="AddExtraWound"/>, but the output is
+    /// new ATTACK dice, not wounds: the melee swing chain runs them as a real child batch (hit ->
+    /// save -> wound, the weapon's own rules included) via <c>ResolveBonusMeleeAttacksStage</c>, which
+    /// refuses to trigger from a bonus batch's own blocks - "this rule doesn't apply to newly
+    /// generated attacks". SUPPORTED PATHS (the <see cref="DealAutoWounds"/> doctrine): only the melee
+    /// swing chain consumes the emitted op; gate the entry on <see cref="Condition.IsMelee"/> - at any
+    /// other pipeline (shooting, impact hits, Ravage's synthetic attack) it is silently dropped.
+    /// </summary>
+    public sealed record AddBonusAttack(int OnRollValue = 1, int Count = 1)
+        : CapabilityEffect<IHasUnmodifiedSaveRolls>
+    {
+        protected override void ApplyCore(IHasUnmodifiedSaveRolls context, List<RuleOperation> operations)
+        {
+            float total = context.UnmodifiedSaveRolls.At(OnRollValue) * Count;
+            if (total > 0f)
+            {
+                operations.Add(new RuleOperation.AddBonusAttacks(total));
+            }
         }
     }
 

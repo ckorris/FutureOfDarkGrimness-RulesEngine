@@ -338,15 +338,35 @@ namespace FDG.Ai.Tactician
             int coverBonus = !context.IsMelee && context.DefenderInCover
                 && !SightRuleQueries.IgnoresCover(atk, weapon, evaluator) ? 1 : 0;
 
-            return ResolveSaves(evaluator, atk, def, weapon, groups, apReduction,
-                saveModifiers.Net(ERollKind.Save), coverBonus, context.IsMelee, notes);
+            var bonusAttacks = new BonusAttackSink();
+            float wounds = ResolveSaves(evaluator, atk, def, weapon, groups, apReduction,
+                saveModifiers.Net(ERollKind.Save), coverBonus, context.IsMelee, notes, bonusAttacks);
+
+            // --- ResolveBonusMeleeAttacksStage mirror (#376 Bloodthirsty): the follow-up batch earned
+            // by block-roll 1s, priced first-order - the same hit threshold and weapon, plain saves.
+            // The engine's real child batch reruns the weapon's on-6 rules on the bonus dice and this
+            // mirror does not (nor does it chain, matching the rule); exact for plain weapons,
+            // understating exotic ones - the conservative side.
+            if (bonusAttacks.TotalBonusAttacks > 0f)
+            {
+                IDiceResults bonusRolls = Dice.Roll(bonusAttacks.TotalBonusAttacks);
+                float bonusHits = bonusRolls.AtOrAbove(DiceUtilities.ClampSuccessRollNeeded(hitRollNeeded));
+                if (bonusHits > 0f)
+                {
+                    NoteIf(true, $"{weapon.Name}: Bloodthirsty follow-up priced first-order", notes);
+                    wounds += ResolveSaves(evaluator, atk, def, weapon,
+                        new List<SuccessfulHitInfo> { SingleGroupInfo(bonusHits) }, apReduction,
+                        saveModifiers.Net(ERollKind.Save), coverBonus, context.IsMelee, notes);
+                }
+            }
+            return wounds;
         }
 
         // --- DetermineSaveRollsNeeded + RollToSave + AssignWounds mirror (shared by volleys and
         // impact hits). Returns the expected wound total BEFORE capping at the defender's remaining.
         private static float ResolveSaves(RuleEvaluator evaluator, UnitData atk, UnitData def,
             Weapon weapon, List<SuccessfulHitInfo> groups, int apReduction, int wholeAttackSaveModifier,
-            int coverBonus, bool isMelee, List<string> notes)
+            int coverBonus, bool isMelee, List<string> notes, BonusAttackSink? bonusAttackSink = null)
         {
             int baseDefense = HeroStatRules.GetSaveDefense(def);
             int ap = Math.Max(0, weapon.ArmorPenetration - apReduction);
@@ -377,6 +397,11 @@ namespace FDG.Ai.Tactician
                 new SaveRollCompleteContext(atk, def, new DiceResults(combinedSaveFaces), isMelee),
                 RuleParticipant.Actor(atk, weapon),
                 RuleParticipant.Subject(def, models: HeroStatRules.LivingModels(def))));
+
+            // #376 Bloodthirsty: collect the earned follow-up attacks for the caller's second pass.
+            // Null on the second pass itself (and on the impact-hit path) - no chaining, and impact
+            // hits are not weapon swings, matching the engine's consumption sites.
+            bonusAttackSink?.ApplyFrom(saveCompleteOps);
 
             var reroll = new RerollSink();
             reroll.ApplyFrom(saveCompleteOps);

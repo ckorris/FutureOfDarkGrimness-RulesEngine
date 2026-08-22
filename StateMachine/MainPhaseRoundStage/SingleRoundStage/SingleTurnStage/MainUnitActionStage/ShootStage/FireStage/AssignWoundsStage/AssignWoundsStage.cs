@@ -112,6 +112,19 @@ namespace FDG.Stages
                 GameContext.Log($"Shred added {woundInjection.TotalExtraWounds:0.##} extra wound(s).");
             }
 
+            // #376 Bloodthirsty Fighter (bonus attacks): "each unmodified 1 to block earns a follow-up
+            // attack with this weapon" also rides the save-complete queue. Fold the sum and post it for
+            // ResolveBonusMeleeAttacksStage (melee swing chain only; other pipelines drop it, the
+            // DealAutoWounds doctrine). Never posted for a bonus batch itself - no chaining.
+            BonusAttackSink bonusAttacks = new BonusAttackSink();
+            bonusAttacks.ApplyFrom(saveCompleteOperations);
+            if (bonusAttacks.TotalBonusAttacks > 0f && !metaData.IsBonusAttack)
+            {
+                metaData.AddResult(new BonusAttackResults(bonusAttacks.TotalBonusAttacks));
+                GameContext.Log($"Block rolls of 1 earn {attacker.Name} " +
+                    $"{bonusAttacks.TotalBonusAttacks:0.##} follow-up attack(s).");
+            }
+
             // #042 wound-ignore rules (Regeneration) from the same save-complete queue: the defender
             // ignores each wound on a roll of X+. Fold the ignore sink, then roll one d6 per wound at the
             // best threshold and drop the ignored count. The stage interprets no operation.

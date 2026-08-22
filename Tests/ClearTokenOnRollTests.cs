@@ -19,25 +19,39 @@ namespace FDG.Tests
     // beginning of the round, roll one die. On a 4+, it stops being Shaken." (Steadfast / Battleborn /
     // Honor Code, all identical.)
     //
-    // Round_OnRoundStart is NOT a dormant hook, contrary to what #197's slice table said:
-    // StartOfRoundExtraActionStage fires it every round for every living unit (Caster spell-token grants),
-    // applying token operations and running executables. So this slice is only the effect.
+    // #376 (Vale Oath Boost) reshaped the mechanism: the effect emits a SINK op, TokenClearRollSink folds
+    // every entry to the best (lowest) threshold per token type, and TokenClearRolls makes ONE decisive
+    // roll per type through IOperationServices.ClearTokenOnRoll. A base 4+ plus a Boost 3+ is one roll at
+    // 3+ (P 1/2 -> 2/3), never two chances (4+ twice would be 3/4).
     [TestFixture]
     public class ClearTokenOnRollTests
     {
-        private static SpecialRuleDefinition Steadfast() => new("Steadfast",
+        private static SpecialRuleDefinition Steadfast(string name = "Steadfast", int minRoll = 4) => new(name,
             new[]
             {
                 new HookEntry(EHookID.Round_OnRoundStart,
                     new Condition.And(new Condition.TokenPresent(TokenType.Shaken),
                                       new Condition.AllModelsHaveThisRule()),
-                    new Effect.ClearTokenOnRoll(TokenType.Shaken, MinRoll: 4),
+                    new Effect.ClearTokenOnRoll(TokenType.Shaken, MinRoll: minRoll),
+                    ELifetime.ThisRound),
+            },
+            Array.Empty<ActivatedAbility>());
+
+        // The Vale Oath Boost shape: gated on the unit carrying the base rule, authored as the FULL
+        // boosted band (3) - the min-threshold convention (RerollSink doctrine), not an increment.
+        private static SpecialRuleDefinition Boost(string baseName) => new(baseName + " Boost",
+            new[]
+            {
+                new HookEntry(EHookID.Round_OnRoundStart,
+                    new Condition.And(new Condition.TokenPresent(TokenType.Shaken),
+                                      new Condition.UnitHasRule(baseName)),
+                    new Effect.ClearTokenOnRoll(TokenType.Shaken, MinRoll: 3),
                     ELifetime.ThisRound),
             },
             Array.Empty<ActivatedAbility>());
 
         [Test]
-        public void Effect_ProducesAnExecutableOperation_OnlyWhileTheTokenIsHeld()
+        public void Effect_ProducesASinkOperation_OnlyWhileTheTokenIsHeld()
         {
             var harness = new TestRuleHarness();
             harness.Register(Steadfast());
@@ -47,8 +61,79 @@ namespace FDG.Tests
 
             unit.Tokens.AddToken(new Token(TokenType.Shaken, 1, new TokenClearTrigger.ManualOnly()));
 
-            Assert.That(Ops(harness, unit).OfType<RuleOperation.InvokeClearTokenOnRoll>().Single().MinRoll,
+            Assert.That(Ops(harness, unit).OfType<RuleOperation.ClearTokenOnRoll>().Single().MinRoll,
                 Is.EqualTo(4));
+        }
+
+        // ---- The fold: base + Boost = one threshold, never a second chance --------------------------
+
+        [Test]
+        public void BaseAndBoost_FoldToTheBoostedThreshold()
+        {
+            var harness = new TestRuleHarness();
+            harness.Register(Steadfast("Vale Oath"));
+            harness.Register(Boost("Vale Oath"));
+            IUnit unit = harness.BuildUnit("P1", 1, "Vale Oath", "Vale Oath Boost");
+            unit.Tokens.AddToken(new Token(TokenType.Shaken, 1, new TokenClearTrigger.ManualOnly()));
+
+            var sink = new TokenClearRollSink();
+            sink.ApplyFrom(Ops(harness, unit));
+
+            Assert.That(sink.Entries, Has.Count.EqualTo(1),
+                "two entries for one token type must fold to ONE roll - a second entry is a second chance.");
+            Assert.That(sink.Entries.Single(), Is.EqualTo((TokenType.Shaken, 3)));
+        }
+
+        [Test]
+        public void TwoDistinctBaseRules_AlsoFoldToOneRoll()
+        {
+            // Owner-ruled facet (#376): Steadfast + Battleborn on one unit is one roll at the best
+            // threshold, not two chances. No shipped unit carries both; the fold decides the edge.
+            var harness = new TestRuleHarness();
+            harness.Register(Steadfast("Steadfast"));
+            harness.Register(Steadfast("Battleborn"));
+            IUnit unit = harness.BuildUnit("P1", 1, "Steadfast", "Battleborn");
+            unit.Tokens.AddToken(new Token(TokenType.Shaken, 1, new TokenClearTrigger.ManualOnly()));
+
+            var sink = new TokenClearRollSink();
+            sink.ApplyFrom(Ops(harness, unit));
+
+            Assert.That(sink.Entries.Single(), Is.EqualTo((TokenType.Shaken, 4)));
+        }
+
+        [Test]
+        public void Sink_ClampsOutOfRangeThresholds_AndKeepsTokenTypesSeparate()
+        {
+            var sink = new TokenClearRollSink();
+            sink.ClearOn(TokenType.Shaken, 1);            // "always" must stay a real roll -> 2+
+            sink.ClearOn(TokenType.Fatigued, 7);          // "never" must stay winnable -> 6+
+            sink.ClearOn(TokenType.Fatigued, 5);
+
+            Assert.That(sink.Entries, Is.EqualTo(new[]
+            {
+                (TokenType.Shaken, 2),
+                (TokenType.Fatigued, 5),
+            }), "thresholds clamp to [2,6] and fold per token type, not across types.");
+        }
+
+        // ---- The single decisive roll, through TokenClearRolls --------------------------------------
+
+        [Test]
+        public async Task FoldedRoll_AtTheBoostedThreshold_ClearsOnAThree()
+        {
+            var sink = new RecordingPresentationSink();
+            (World world, IUnit unit) = ShakenUnit(new FixedDiceRoller(3), sink);
+
+            await TokenClearRolls.ResolveAsync(unit, new RuleOperation[]
+            {
+                new RuleOperation.ClearTokenOnRoll(TokenType.Shaken, 4),
+                new RuleOperation.ClearTokenOnRoll(TokenType.Shaken, 3),
+            }, new GameOperationServices(world.Context));
+
+            Assert.That(unit.Tokens.HasToken(TokenType.Shaken), Is.False,
+                "a 3 passes the folded 3+ threshold - the base 4+ entry must not shadow the Boost.");
+            Assert.That(sink.Beats.OfType<DiceRolledBeat>().Count(), Is.EqualTo(1),
+                "one token type folds to exactly one die, however many entries fired.");
         }
 
         [Test]
@@ -56,9 +141,7 @@ namespace FDG.Tests
         {
             (World world, IUnit unit) = ShakenUnit(dieFace: 4);
 
-            await OperationExecutor.Execute(
-                new[] { new RuleOperation.InvokeClearTokenOnRoll(unit, TokenType.Shaken, 4) },
-                new GameOperationServices(world.Context));
+            await new GameOperationServices(world.Context).ClearTokenOnRoll(unit, TokenType.Shaken, 4);
 
             Assert.That(unit.Tokens.HasToken(TokenType.Shaken), Is.False);
         }
@@ -68,9 +151,7 @@ namespace FDG.Tests
         {
             (World world, IUnit unit) = ShakenUnit(dieFace: 3);
 
-            await OperationExecutor.Execute(
-                new[] { new RuleOperation.InvokeClearTokenOnRoll(unit, TokenType.Shaken, 4) },
-                new GameOperationServices(world.Context));
+            await new GameOperationServices(world.Context).ClearTokenOnRoll(unit, TokenType.Shaken, 4);
 
             Assert.That(unit.Tokens.HasToken(TokenType.Shaken), Is.True,
                 "A 3 on a 4+ recovery must leave the unit Shaken.");
@@ -92,8 +173,8 @@ namespace FDG.Tests
             {
                 (World world, IUnit unit) = ShakenUnit(new ProbabilisticDiceRoller(seed));
 
-                await OperationExecutor.Execute(
-                    new[] { new RuleOperation.InvokeClearTokenOnRoll(unit, TokenType.Shaken, 4) },
+                await TokenClearRolls.ResolveAsync(unit,
+                    new RuleOperation[] { new RuleOperation.ClearTokenOnRoll(TokenType.Shaken, 4) },
                     new GameOperationServices(world.Context));
 
                 int remaining = unit.Tokens.GetTokenCount(TokenType.Shaken);
@@ -113,9 +194,7 @@ namespace FDG.Tests
             var sink = new RecordingPresentationSink();
             (World world, IUnit unit) = ShakenUnit(new FixedDiceRoller(4), sink);
 
-            await OperationExecutor.Execute(
-                new[] { new RuleOperation.InvokeClearTokenOnRoll(unit, TokenType.Shaken, 4) },
-                new GameOperationServices(world.Context));
+            await new GameOperationServices(world.Context).ClearTokenOnRoll(unit, TokenType.Shaken, 4);
 
             BannerBeat? banner = sink.Beats.OfType<BannerBeat>().SingleOrDefault();
             Assert.That(banner, Is.Not.Null, "shedding Shaken presents a banner beat.");
@@ -129,9 +208,7 @@ namespace FDG.Tests
             var sink = new RecordingPresentationSink();
             (World world, IUnit unit) = ShakenUnit(new FixedDiceRoller(3), sink);
 
-            await OperationExecutor.Execute(
-                new[] { new RuleOperation.InvokeClearTokenOnRoll(unit, TokenType.Shaken, 4) },
-                new GameOperationServices(world.Context));
+            await new GameOperationServices(world.Context).ClearTokenOnRoll(unit, TokenType.Shaken, 4);
 
             Assert.That(sink.Beats.OfType<BannerBeat>().Any(), Is.False,
                 "a failed recovery keeps its die beat but earns no banner.");

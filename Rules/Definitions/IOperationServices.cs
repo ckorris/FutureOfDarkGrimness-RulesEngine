@@ -43,8 +43,9 @@ public interface IOperationServices
 
     /// <summary>
     /// Roll one die for <paramref name="unit"/>; on <paramref name="minRoll"/>+ remove every
-    /// <paramref name="tokenType"/> token it holds. Resolution of
-    /// <see cref="RuleOperation.InvokeClearTokenOnRoll"/> (round-start Shaken recovery). The implementation
+    /// <paramref name="tokenType"/> token it holds. Called once per FOLDED token type by
+    /// <c>TokenClearRolls</c> (round-start Shaken recovery; #376: entries fold to the best threshold
+    /// first, so this is never invoked twice for one token type). The implementation
     /// must roll DECISIVELY — the outcome is binary, so a probabilistic roller has to yield a concrete face
     /// rather than a fractional one.
     /// </summary>

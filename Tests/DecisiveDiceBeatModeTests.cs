@@ -58,8 +58,8 @@ namespace FDG.Tests
             (TestGameContext ctx, DataBinding<UnitData> unit) = Build(sink);
             unit.GetValue().Tokens.AddToken(new Token(TokenType.Shaken, 1, new TokenClearTrigger.ManualOnly()));
 
-            await OperationExecutor.Execute(
-                new[] { new RuleOperation.InvokeClearTokenOnRoll(unit.GetValue(), TokenType.Shaken, 4) },
+            await TokenClearRolls.ResolveAsync(unit.GetValue(),
+                new RuleOperation[] { new RuleOperation.ClearTokenOnRoll(TokenType.Shaken, 4) },
                 new GameOperationServices(ctx));
 
             DiceRolledBeat beat = SingleDiceBeat(sink);

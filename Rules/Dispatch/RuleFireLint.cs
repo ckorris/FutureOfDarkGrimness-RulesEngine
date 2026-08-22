@@ -386,8 +386,10 @@ public static class RuleFireLint
 
             EHookID.Deployment_OnPreDeploymentSelect => op is RuleOperation.DeferDeployment,
 
-            // StartOfRoundExtraActionStage applies token ops and runs executables for every living unit.
-            EHookID.Round_OnRoundStart => IsTokenOrExecutable(op),
+            // StartOfRoundExtraActionStage applies token ops, runs executables, and folds the
+            // token-clear rolls (#376: one decisive roll per token type via TokenClearRolls).
+            EHookID.Round_OnRoundStart =>
+                op is RuleOperation.ClearTokenOnRoll || IsTokenOrExecutable(op),
 
             // ReconcileObjectivesStage fires round-end rules for every living unit before the token
             // sweep (#100 #13, Fortified Growth's end-of-round marker).

@@ -461,28 +461,31 @@ public abstract record RuleOperation
     }
 
     /// <summary>
-    /// Roll one die against <see cref="MinRoll"/> and, on a pass, strip every <see cref="TType"/> token from
-    /// <see cref="Unit"/>. Resolution of <see cref="Effect.ClearTokenOnRoll"/> — the round-start Shaken
-    /// recovery. Executable, not a sink fold: the roll reads live dice and the removal is imperative.
+    /// Clear every <see cref="TType"/> token on a single roll of <see cref="MinRoll"/>+. Resolution of
+    /// <see cref="Effect.ClearTokenOnRoll"/> — the round-start Shaken recovery. A sink fold rather than
+    /// an executable (#376 Vale Oath Boost): thresholds from multiple entries compose by MINIMUM per
+    /// token type in <c>TokenClearRollSink</c>, and the stage then makes ONE decisive roll per type —
+    /// an executable-per-entry would roll once per rule and turn a Boost into a second chance.
     /// </summary>
-    public sealed record InvokeClearTokenOnRoll(IUnit Unit, TokenType TType, int MinRoll) : ExecutableOperation
+    public sealed record ClearTokenOnRoll(TokenType TType, int MinRoll) : SinkOperation<ITokenClearRollSink>
     {
-        public override Task Execute(IOperationServices services)
+        public override void ApplyTo(ITokenClearRollSink sink)
         {
-            return services.ClearTokenOnRoll(Unit, TType, MinRoll);
+            sink.ClearOn(TType, MinRoll);
         }
 
         public override string Describe()
         {
-            return $"rolled to clear {TType} on a {MinRoll}+";
+            return $"clears {TType} on a {MinRoll}+";
         }
     }
 
     /// <summary>
     /// Roll one die against <see cref="MinRoll"/> and, on a pass, add <see cref="GrantedToken"/> to
     /// <see cref="Unit"/>'s container. Resolution of <see cref="Effect.GrantTokenOnRoll"/> — the Spotter
-    /// family's "on a 4+ place a marker" (#100 #14b). Executable for the same reason as
-    /// <see cref="InvokeClearTokenOnRoll"/>: the roll reads live dice and the grant is imperative.
+    /// family's "on a 4+ place a marker" (#100 #14b). Executable — the roll reads live dice and the
+    /// grant is imperative — unlike <see cref="ClearTokenOnRoll"/>, whose thresholds must fold (#376);
+    /// a grant-on-roll has no composing threshold, so per-entry rolls are the intended semantics.
     /// </summary>
     public sealed record InvokeGrantTokenOnRoll(IUnit Unit, Token GrantedToken, int MinRoll) : ExecutableOperation
     {

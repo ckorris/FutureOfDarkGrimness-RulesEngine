@@ -1509,17 +1509,18 @@ public abstract record Effect
     /// Shaken"). Gate it on <see cref="Condition.TokenPresent"/> so the die is only rolled when there is
     /// something to clear.
     ///
-    /// <para>An <see cref="ExecutableOperation"/> rather than a sink fold, for the reason
-    /// <see cref="MoraleTestThen"/> is: the roll is live state, and clearing a token is imperative. The
-    /// engine rolls it with <c>RollDecisive</c>, never a histogram — the outcome is binary (the unit either
-    /// recovers or does not), so a probabilistic roller must still produce a concrete face or the token would
-    /// be fractionally removed.</para>
+    /// <para>A sink fold, not an executable (#376 Vale Oath Boost): all entries for one token type fold
+    /// to the BEST (lowest) threshold and the stage makes ONE decisive roll at it — so a Boost is
+    /// authored as the full boosted band (3), the min-threshold convention (see RerollSink's doctrine
+    /// note), and never becomes a second chance. The stage still rolls with <c>RollDecisive</c>, never a
+    /// histogram — the outcome is binary (the unit either recovers or does not), so a probabilistic
+    /// roller must produce a concrete face or the token would be fractionally removed.</para>
     /// </summary>
     public sealed record ClearTokenOnRoll(TokenType TType, int MinRoll) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
-            operations.Add(new RuleOperation.InvokeClearTokenOnRoll(ruleInvocation.Bearer, TType, MinRoll));
+            operations.Add(new RuleOperation.ClearTokenOnRoll(TType, MinRoll));
         }
     }
 

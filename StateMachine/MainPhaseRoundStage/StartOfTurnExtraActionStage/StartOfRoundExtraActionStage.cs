@@ -74,8 +74,12 @@ namespace FDG.Stages
                     // is unaffected.
                     IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator.Evaluate(
                         unit, ERuleSeat.Actor, new RoundStartContext(unit), weapon: null, models: unit.Models);
+                    var services = new GameOperationServices(GameContext);
                     OperationApplier.ApplyTokenOperations(ops);
-                    await OperationExecutor.Execute(ops, new GameOperationServices(GameContext));
+                    await OperationExecutor.Execute(ops, services);
+                    // #376: the Shaken-recovery rolls are a per-token-type fold (best threshold wins,
+                    // one decisive roll each), not per-entry executables - see TokenClearRolls.
+                    await TokenClearRolls.ResolveAsync(unit, ops, services);
 
                     int excess = unit.Tokens.GetTokenCount(TokenType.SpellTokens)
                         - GameWideConstants.MAX_SPELL_TOKENS;

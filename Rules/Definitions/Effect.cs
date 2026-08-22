@@ -1530,9 +1530,15 @@ public abstract record Effect
     /// mirror of <see cref="ClearTokenOnRoll"/> (same decisive-roll discipline, for the same dice
     /// invariant). Covers the Spotter family (#100 #14b): "roll one die, on a 4+ place a marker on it".
     /// An <see cref="ExecutableOperation"/> because the roll is live state.
+    ///
+    /// <para><see cref="OnFailure"/> (#376 Reckless Piercing): the optional failure arm of the SAME
+    /// die — "on a 2+ gain the boon, but on a 1 ... instead". One roll, two outcomes; authoring the
+    /// arms as two effects would roll two independent dice, the both-or-neither failure the
+    /// Unpredictable machinery documents. Applied with the roll's unit as both bearer and target
+    /// (the <see cref="MoraleTestThen"/> pattern); a flat (token/executable) effect, like that one's.</para>
     /// </summary>
     public sealed record GrantTokenOnRoll(TokenType TType, ValueSource Count, TokenClearTrigger Clear,
-        int MinRoll) : Effect
+        int MinRoll, Effect? OnFailure = null) : Effect
     {
         public override void Apply(RuleInvocation ruleInvocation, List<RuleOperation> operations)
         {
@@ -1540,7 +1546,7 @@ public abstract record Effect
                 ruleInvocation.EffectiveTarget,
                 new Token(TType, Count.Resolve(ruleInvocation), Clear,
                     OwnerUnitID: ruleInvocation.OwnerForEffectiveTarget),
-                MinRoll));
+                MinRoll, OnFailure));
         }
     }
 

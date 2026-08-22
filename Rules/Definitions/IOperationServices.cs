@@ -56,8 +56,10 @@ public interface IOperationServices
     /// <paramref name="unit"/>'s container. Resolution of
     /// <see cref="RuleOperation.InvokeGrantTokenOnRoll"/> (the Spotter family's "on a 4+ place a
     /// marker", #100 #14b). Same decisive-roll requirement as <see cref="ClearTokenOnRoll"/>.
+    /// On a MISS, <paramref name="onFailure"/> (if any) is applied to the same unit — the gamble's
+    /// backfire arm on the same die (#376 Reckless Piercing).
     /// </summary>
-    Task GrantTokenOnRoll(IUnit unit, Rules.Tokens.Token token, int minRoll);
+    Task GrantTokenOnRoll(IUnit unit, Rules.Tokens.Token token, int minRoll, Effect? onFailure = null);
 
     /// <summary>
     /// Remove <paramref name="unit"/> from the table for a mandatory Ambush return next round

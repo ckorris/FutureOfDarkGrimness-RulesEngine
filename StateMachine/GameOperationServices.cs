@@ -206,7 +206,8 @@ namespace FDG.Stages
             }
         }
 
-        public async Task GrantTokenOnRoll(IUnit unit, Rules.Tokens.Token token, int minRoll)
+        public async Task GrantTokenOnRoll(IUnit unit, Rules.Tokens.Token token, int minRoll,
+            Effect? onFailure = null)
         {
             // Decisive for the same reason as ClearTokenOnRoll above: the marker is either placed or it
             // is not — a histogram would want to place a fraction of one.
@@ -218,15 +219,29 @@ namespace FDG.Stages
             }
 
             string label = TokenDefinitionCatalog.Lookup(token.Type).Name;
+            bool backfires = !placed && onFailure != null;
             _gameContext.Log($"Rolled {face} to place {label} on {unit.Name} ({minRoll}+ needed) - " +
-                (placed ? "placed." : "no effect."));
+                (placed ? "placed." : backfires ? "backfired." : "no effect."));
 
             float[] perSide = new float[IDiceRollerExtensions.DEFAULT_SIDE_COUNT];
             perSide[face - 1] = 1f;
 
             await _gameContext.Presenter.Present(DiceRolledBeat.FromDecisive(new DiceResults(perSide), minRoll,
                 $"Place {label}",
-                placed ? "marker placed" : "no effect"));
+                placed ? "marker placed" : backfires ? "backfired" : "no effect"));
+
+            if (backfires)
+            {
+                // The gamble's failure arm rides the SAME die (#376 Reckless Piercing): apply the nested
+                // effect with the rolling unit as both bearer and target - the MoraleTestThen pattern.
+                var operations = new List<RuleOperation>();
+                onFailure!.Apply(
+                    new RuleInvocation(null, unit, System.Array.Empty<Rules.Foundation.RuleArgument>(),
+                        unit, _gameContext.DiceRoller),
+                    operations);
+                OperationApplier.ApplyTokenOperations(operations);
+                await OperationExecutor.Execute(operations, this);
+            }
         }
 
         public async Task RedeployAsAmbush(IUnit unit)

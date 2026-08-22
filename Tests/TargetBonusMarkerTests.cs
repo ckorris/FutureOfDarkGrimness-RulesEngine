@@ -46,6 +46,46 @@ namespace FDG.Tests
                 "A 3 on a 4+ placement roll must place no marker.");
         }
 
+        // --- GrantTokenOnRoll: the failure arm (#376 Reckless Piercing) ---
+
+        [Test]
+        public async Task GrantTokenOnRoll_OnAMiss_AppliesTheFailureArm_ToTheSameUnit()
+        {
+            (TestGameContext ctx, IUnit target) = Setup(dieFace: 1);
+            var exposed = new TokenType("BackfireMarker");
+
+            await ExecuteWithFailureArm(ctx, target, minRoll: 2, exposed);
+
+            Assert.That(target.Tokens.HasToken(TokenType.SpendableHitBonus), Is.False,
+                "a 1 on a 2+ gamble places no boon.");
+            Assert.That(target.Tokens.GetTokenCount(exposed), Is.EqualTo(1),
+                "the SAME die's failure arm lands the backfire marker instead.");
+        }
+
+        [Test]
+        public async Task GrantTokenOnRoll_OnAPass_SkipsTheFailureArm()
+        {
+            (TestGameContext ctx, IUnit target) = Setup(dieFace: 2);
+            var exposed = new TokenType("BackfireMarker");
+
+            await ExecuteWithFailureArm(ctx, target, minRoll: 2, exposed);
+
+            Assert.That(target.Tokens.GetTokenCount(TokenType.SpendableHitBonus), Is.EqualTo(1));
+            Assert.That(target.Tokens.HasToken(exposed), Is.False,
+                "one die, two exclusive outcomes - never both.");
+        }
+
+        private static Task ExecuteWithFailureArm(TestGameContext ctx, IUnit target, int minRoll,
+            TokenType exposed)
+        {
+            var boon = new Token(TokenType.SpendableHitBonus, 1, new TokenClearTrigger.ManualOnly());
+            var onFailure = new Effect.GrantToken(exposed, new ValueSource.Literal(1),
+                new TokenClearTrigger.ManualOnly());
+            return OperationExecutor.Execute(
+                new[] { new RuleOperation.InvokeGrantTokenOnRoll(target, boon, minRoll, onFailure) },
+                new GameOperationServices(ctx));
+        }
+
         [Test]
         public async Task GrantTokenOnRoll_IsDecisive_UnderTheProbabilisticRoller_AndActuallyVaries()
         {

@@ -487,16 +487,18 @@ public abstract record RuleOperation
     /// grant is imperative — unlike <see cref="ClearTokenOnRoll"/>, whose thresholds must fold (#376);
     /// a grant-on-roll has no composing threshold, so per-entry rolls are the intended semantics.
     /// </summary>
-    public sealed record InvokeGrantTokenOnRoll(IUnit Unit, Token GrantedToken, int MinRoll) : ExecutableOperation
+    public sealed record InvokeGrantTokenOnRoll(IUnit Unit, Token GrantedToken, int MinRoll,
+        Effect? OnFailure = null) : ExecutableOperation
     {
         public override Task Execute(IOperationServices services)
         {
-            return services.GrantTokenOnRoll(Unit, GrantedToken, MinRoll);
+            return services.GrantTokenOnRoll(Unit, GrantedToken, MinRoll, OnFailure);
         }
 
         public override string Describe()
         {
-            return $"rolled to place {GrantedToken.Type} on a {MinRoll}+";
+            return $"rolled to place {GrantedToken.Type} on a {MinRoll}+"
+                + (OnFailure == null ? "" : " (with a failure arm)");
         }
     }
 

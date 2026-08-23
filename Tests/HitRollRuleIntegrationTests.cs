@@ -384,6 +384,31 @@ namespace FDG.Tests
             Assert.That(result.HitRollNeeded, Is.EqualTo(4), "no mark on the defender → nothing claimed.");
         }
 
+        // #377 — a one-shot range grant ("+6\" range when shooting once", Battle Rune) is spent by the
+        // shooting attack that used it: the range check itself only peeks (a per-frame query must not
+        // consume), so DetermineHitRollStage runs one live range evaluation per shooting attack. A melee
+        // swing never read the range and must not spend it.
+        [Test]
+        public async Task RangeGrant_SpentByShootingAttack_NotByMelee()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(FarPos);
+            GrantRangeBonus(attacker);
+
+            await RunStage(attacker, defender, isMelee: true);
+            Assert.That(attacker.GetValue().Tokens.HasToken(TokenType.RuleGrant), Is.True,
+                "a melee swing never reads range - the one-shot range grant survives it.");
+
+            await RunStage(attacker, defender);
+            Assert.That(attacker.GetValue().Tokens.HasToken(TokenType.RuleGrant), Is.False,
+                "the shooting attack is the range's 'next time' - the grant is spent.");
+        }
+
+        private static void GrantRangeBonus(DataBinding<UnitData> unit) =>
+            unit.GetValue().Tokens.AddToken(new Token(TokenType.RuleGrant, 1,
+                new TokenClearTrigger.FirstTrigger(),
+                Payload: new TokenPayload.RuleGrant("+6\" range when shooting", ELifetime.NextTrigger)));
+
         // #377 — a mark naming a combat-kind-gated phrase rule ("+1 to hit rolls in melee", the Magic
         // Targeting / Raiding Drugs spells): the claim transfers the rule, and the rule's own gate then
         // decides whether it does anything. A melee swing gets the bonus; a shooting claim spends the

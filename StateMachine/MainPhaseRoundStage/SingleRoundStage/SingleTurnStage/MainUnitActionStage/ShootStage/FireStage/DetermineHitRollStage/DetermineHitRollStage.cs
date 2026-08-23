@@ -32,6 +32,19 @@ namespace FDG.Stages
             // next claim.
             ClaimTargetMarks(attacker, defender);
 
+            // #377 — spend one-shot range grants ("+6\" range when shooting once", Battle Rune): the
+            // range check itself only ever PEEKS (RangeRuleQueries.EffectiveRange is a non-logging
+            // per-frame query that must not consume), so "the next time the effect would apply" is the
+            // shot that used the range — here, at the attack's first live evaluation. Shooting only:
+            // a melee swing never read the range. The ops themselves are discarded; the live evaluation
+            // exists to log the rule and retire its NextTrigger grant.
+            if (!metaData.IsMelee)
+            {
+                GameContext.RuleEvaluator.EvaluateAllNamedLive(
+                    new Rules.Dispatch.Contexts.RangeModifierContext(attacker),
+                    RuleParticipant.Actor(attacker, metaData.WeaponType));
+            }
+
             float distance = UnitCompareUtilities.MinDistanceBetweenUnits(attacker, defender, out _, out _, includeVertical:true);
 
             // #245: the NAMED live evaluation — identical to EvaluateAll (logs, spends grants), but each

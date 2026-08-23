@@ -1,6 +1,7 @@
 using FDG.Data;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Tokens;
 using FDG.Rules.Foundation;
 using FDG.Stages;
 using NUnit.Framework;
@@ -23,7 +24,9 @@ namespace FDG.Tests
         public void SetUp()
         {
             _store = GameDataStore.GameDataStoreBuilder.GetDefault();
-            _ctx = new TestGameContext(_store, new FixedDiceRoller(4));
+            // Resolver-equipped so the #377 range-mark peek can resolve a mark's rule by name.
+            _ctx = new TestGameContext(_store, new FixedDiceRoller(4),
+                ruleResolver: CoreRuleCatalog.CreateResolver());
             _attackerPlayer = new PlayerID(Guid.NewGuid());
             _enemyPlayer = new PlayerID(Guid.NewGuid());
             _store.Create(new TeamData(0, new List<PlayerID> { _attackerPlayer }));
@@ -157,6 +160,50 @@ namespace FDG.Tests
                 Assert.That(CoreRuleCatalog.All.Any(r => r.Name == name), Is.True, $"{name} must be in All.");
                 Assert.That(resolver.TryResolve(name, out _), Is.True, $"{name} must resolve.");
             }
+        }
+
+        // --- #377 range-extension marks: "friendly units get +6\" range when shooting against it once" ---
+
+        [Test]
+        public void RangeMark_OnDefender_ExtendsRangeAgainstIt_WithoutSpendingTheMark()
+        {
+            var weapon = new Weapon("Rifle", rangeInches: 12f, attacks: 1, armorPenetration: 0);
+            DataBinding<UnitData> attacker = MakeArmyUnit(_attackerPlayer, new Position(0, 0, 0), Rifle(12f));
+            DataBinding<UnitData> marked = MakeArmyUnit(_enemyPlayer, new Position(14, 0, 0));
+            DataBinding<UnitData> unmarked = MakeArmyUnit(_enemyPlayer, new Position(30, 0, 0));
+            RuleEvaluator ev = _ctx.RuleEvaluator;
+
+            marked.GetValue().Tokens.AddToken(new Token(TokenType.Mark, 1,
+                new TokenClearTrigger.ManualOnly(),
+                Payload: new TokenPayload.RuleGrant("+6\" range when shooting",
+                    ELifetime.ThisAttack)));
+
+            Assert.That(RangeRuleQueries.EffectiveRange(attacker.GetValue(), weapon, marked.GetValue(), ev),
+                Is.EqualTo(18f), "the mark's +6\" folds into range against the MARKED target.");
+            Assert.That(RangeRuleQueries.EffectiveRange(attacker.GetValue(), weapon, unmarked.GetValue(), ev),
+                Is.EqualTo(12f), "the extension is target-bound - an unmarked enemy gets base range.");
+            Assert.That(marked.GetValue().Tokens.HasToken(TokenType.Mark), Is.True,
+                "the range check is a peek - the mark is claimed later, at the hit-roll stage.");
+        }
+
+        [Test]
+        public void RangeMark_MakesAnOutOfRangeMarkedTargetFireable()
+        {
+            // Enemy centre 14" -> 13" base-to-base, beyond the 12" rifle - exactly the shot the
+            // Eternal Guidance / Clearview Leaves spells exist to enable.
+            DataBinding<UnitData> attacker = MakeArmyUnit(_attackerPlayer, new Position(0, 0, 0), Rifle(12f));
+            DataBinding<UnitData> enemy = MakeArmyUnit(_enemyPlayer, new Position(14, 0, 0));
+
+            Assert.That(ChooseRangedAttackStage.HasAnyFireableTarget(attacker, _ctx), Is.False,
+                "13\" base-to-base is beyond the rifle's 12\" range.");
+
+            enemy.GetValue().Tokens.AddToken(new Token(TokenType.Mark, 1,
+                new TokenClearTrigger.ManualOnly(),
+                Payload: new TokenPayload.RuleGrant("+6\" range when shooting",
+                    ELifetime.ThisAttack)));
+
+            Assert.That(ChooseRangedAttackStage.HasAnyFireableTarget(attacker, _ctx), Is.True,
+                "the mark's +6\" (18\" effective) makes the marked target fireable.");
         }
 
         private static void Attach(DataBinding<UnitData> unit, string name, SpecialRuleDefinition def) =>

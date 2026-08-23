@@ -62,7 +62,23 @@ namespace FDG.ArmyBuilding
 
                 foreach (UpgradeSection section in roster.Sections)
                 {
-                    if (section.IsCounted) continue; // counted sections are bounded by their stepper, not pick count
+                    if (section.IsCounted)
+                    {
+                        // #383: a per-model section ("Any model may replace/take ...") spends one pick per
+                        // MODEL, so its total applications across all options are capped at the unit's
+                        // current size. Other counted sections stay bounded by their steppers alone.
+                        if (section.PerModelBudget)
+                        {
+                            int applications = bu.Choices.Where(c => c.SectionId == section.Id)
+                                .Sum(c => Math.Max(0, c.Count));
+                            if (applications > models)
+                                issues.Add(new ListIssue(
+                                    $"{roster.Name}: \"{section.Label}\" applied {applications} times for " +
+                                    $"{models} models (one per model).",
+                                    ListIssueSeverity.Error, i));
+                        }
+                        continue;
+                    }
                     int picks = bu.Choices.Count(c => c.SectionId == section.Id);
                     int max = section.MaxPicks < 1 ? 1 : section.MaxPicks;
                     if (picks > max)

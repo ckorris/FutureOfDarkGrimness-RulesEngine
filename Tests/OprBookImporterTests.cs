@@ -560,6 +560,108 @@ public class OprBookImporterTests
             "absent select keeps the one-pick default");
     }
 
+    // #383 — OPR's "Any model may replace/take ..." sections: select "any" + model:true on a replace or
+    // attachment section means each MODEL makes the pick once, repeatable across models — a counted
+    // stepper (Affects=Any) with a per-model section budget. The treacherous part is that the plain
+    // "Upgrade with any" subset sections carry the IDENTICAL select, so the model flag + variant are what
+    // separate a 3-model unit taking 3x Ravager Gun from a tank taking each of its options once. Shapes
+    // verbatim from the live army-books API (Alien Hives, Robot Legions, Change Disciples, 2026-08-22).
+    private const string PerModelJson = """
+    {
+      "name": "PerModel", "versionString": "1",
+      "units": [ { "id": "u1", "name": "Squad", "size": 3, "cost": 100, "quality": 4, "defense": 4,
+                   "weapons": [ { "name": "Claw", "count": 3, "range": null, "attacks": 2, "specialRules": [] } ],
+                   "rules": [], "upgrades": ["P1"] } ],
+      "upgradePackages": [
+        { "uid": "P1", "sections": [
+          { "id":"pm-one", "label":"Any model may replace one Claw", "variant":"replace",
+            "select":{"type":"any"}, "affects":{"type":"exactly","value":1}, "model":true, "targets":["Claw"],
+            "options":[ { "id":"a1", "label":"Gun", "cost":10, "gains":[
+              {"type":"ArmyBookWeapon","name":"Gun","count":1,"range":18,"attacks":3,"specialRules":[]} ] } ] },
+          { "id":"pm-all", "label":"Any model may replace Claws", "variant":"replace",
+            "select":{"type":"any"}, "model":true, "targets":["Claw"],
+            "options":[ { "id":"b1", "label":"Fangs", "cost":5, "gains":[
+              {"type":"ArmyBookWeapon","name":"Fangs","count":1,"range":null,"attacks":2,"specialRules":[]} ] } ] },
+          { "id":"pm-att", "label":"Any model may take one Rifle attachment", "variant":"attachment",
+            "select":{"type":"any"}, "affects":{"type":"exactly","value":1}, "model":true,
+            "options":[ { "id":"c1", "label":"Launcher", "cost":5, "gains":[
+              {"type":"ArmyBookWeapon","name":"Launcher","count":1,"range":24,"attacks":1,"specialRules":[]} ] } ] },
+          { "id":"subset", "label":"Upgrade with any", "variant":"upgrade", "select":{"type":"any"},
+            "options":[ { "id":"d1", "label":"A", "cost":5, "gains":[{"type":"ArmyBookRule","name":"Fast"}] },
+                        { "id":"d2", "label":"B", "cost":5, "gains":[{"type":"ArmyBookRule","name":"Scout"}] } ] },
+          { "id":"all-models", "label":"Upgrade all models with any", "variant":"upgrade",
+            "select":{"type":"any"}, "affects":{"type":"all"}, "model":true,
+            "options":[ { "id":"e1", "label":"C", "cost":5, "gains":[{"type":"ArmyBookRule","name":"Strider"}] } ] }
+        ] }
+      ]
+    }
+    """;
+
+    [Test]
+    public void Import_ClassifiesPerModelSections_AsCountedWithBudget()
+    {
+        BookFile book = OprBookImporter.Import(PerModelJson, "TestSource", "CC-BY-SA 4.0");
+        RosterUnit squad = book.Units.Single();
+
+        foreach (string id in new[] { "pm-one", "pm-all", "pm-att" })
+        {
+            UpgradeSection section = squad.Sections.Single(s => s.Id == id);
+            Assert.That(section.Affects, Is.EqualTo(UpgradeAffects.Any), $"{id}: a counted stepper");
+            Assert.That(section.PerModelBudget, Is.True, $"{id}: one application per model");
+            Assert.That(section.IsCounted, Is.True, id);
+        }
+
+        Assert.That(squad.Sections.Single(s => s.Id == "subset").PerModelBudget, Is.False,
+            "'Upgrade with any' is an option subset - each option once, no model budget");
+        Assert.That(squad.Sections.Single(s => s.Id == "subset").Affects, Is.EqualTo(UpgradeAffects.One));
+        Assert.That(squad.Sections.Single(s => s.Id == "all-models").PerModelBudget, Is.False,
+            "'Upgrade all models with any' stays the whole-unit subset shape");
+        Assert.That(squad.Sections.Single(s => s.Id == "all-models").Affects, Is.EqualTo(UpgradeAffects.All));
+    }
+
+    // #383 — the reported scenario end-to-end through the compiler: 3 models may EACH replace their Claw
+    // with the same Gun, so a count of 3 on one option compiles to 3 guns (and is charged 3 times) —
+    // impossible under the old one-per-option checkbox import.
+    [Test]
+    public void ImportedPerModelSection_CompilesRepeatedOption_OncePerModel()
+    {
+        BookFile book = OprBookImporter.Import(PerModelJson, "TestSource", "CC-BY-SA 4.0");
+        var list = new BuilderList { Name = "L", BookName = book.Name, PointsLimit = 1000 };
+        list.Units.Add(new BuilderUnit
+        {
+            RosterUnitId = "u1", ModelCount = 3,
+            Choices = { new UpgradeChoice { SectionId = "pm-one", OptionId = "a1", Count = 3 } },
+        });
+
+        BuiltArmyFile compiled = ListCompiler.Compile(book, list);
+        UnitFileEntry unit = compiled.Units.Single();
+
+        Assert.That(unit.Weapons.Single(w => w.Name == "Gun").Quantity, Is.EqualTo(3));
+        Assert.That(unit.Weapons.Any(w => w.Name == "Claw"), Is.False, "all three claws were traded in");
+        Assert.That(unit.PointCost, Is.EqualTo(100 + 3 * 10), "each application is charged");
+        Assert.That(ListValidator.Validate(book, list, compiled)
+            .Where(issue => issue.Severity == ListIssueSeverity.Error), Is.Empty);
+    }
+
+    // #383 — the budget's other half: a fourth application on a 3-model unit is an Error, not a silent clamp.
+    [Test]
+    public void PerModelSection_OverBudget_IsAValidationError()
+    {
+        BookFile book = OprBookImporter.Import(PerModelJson, "TestSource", "CC-BY-SA 4.0");
+        var list = new BuilderList { Name = "L", BookName = book.Name };
+        list.Units.Add(new BuilderUnit
+        {
+            RosterUnitId = "u1", ModelCount = 3,
+            Choices =
+            {
+                new UpgradeChoice { SectionId = "pm-att", OptionId = "c1", Count = 4 },
+            },
+        });
+
+        Assert.That(ListValidator.Validate(book, list, ListCompiler.Compile(book, list)).Any(issue =>
+            issue.Severity == ListIssueSeverity.Error && issue.Message.Contains("one per model")), Is.True);
+    }
+
     // #219 (2026-07-19): OPR writes an explicit "cost": 0 for a genuinely free option, and OMITS the key
     // entirely on options it prices inside its own points algorithm rather than publishing a number. A
     // non-nullable int collapsed both onto 0, so unpriced upgrades imported as free and every list carrying

@@ -374,6 +374,22 @@ namespace FDG.ArmyBuilding
                 _ => 1,
             };
 
+            // #383: "Any model may replace/take ..." — select "any" + model:true on a replace/attachment
+            // section means each MODEL may make this pick once, repeatable across models: a counted stepper
+            // (Affects=Any, charged per application) whose section-wide total is capped at the unit's
+            // current model count (PerModelBudget). Distinct from the identically-selected plain-upgrade
+            // shapes, which are option SUBSETS: "Upgrade with any" (no model flag — each option once) and
+            // "Upgrade all models / one model with any" (variant upgrade + model:true — each option once,
+            // applied to all/one model). On the model sections, `affects` describes what one application
+            // CONSUMES ("exactly 1" target, or absent = the model's whole set), not a count bound, so the
+            // One it mapped to above is overridden; maxApplications stays as mapped (0 corpus-wide here).
+            bool perModelBudget = s.Select?.Type == "any" && s.Model == true
+                && (s.Variant == "replace" || s.Variant == "attachment");
+            if (perModelBudget)
+            {
+                affects = UpgradeAffects.Any;
+            }
+
             return new UpgradeSection
             {
                 Id = s.Id ?? s.Uid ?? Guid.NewGuid().ToString("N")[..8],
@@ -383,6 +399,7 @@ namespace FDG.ArmyBuilding
                 Affects = affects,
                 MaxApplications = maxApplications,
                 MaxPicks = maxPicks,
+                PerModelBudget = perModelBudget,
                 Targets = s.Targets ?? new(),
                 Options = (s.Options ?? new()).Select(o => MapOption(o, unitId)).ToList(),
             };
@@ -824,6 +841,10 @@ namespace FDG.ArmyBuilding
             public string? Variant { get; set; }
             public OprAffects? Affects { get; set; }
             public OprAffects? Select { get; set; } // same {type,value} shape as affects
+            // #383: OPR's marker that the section is about MODELS ("Any model may ...", "Upgrade all
+            // models with ..."), the field that tells a per-model repeatable section apart from the
+            // identically-selected "Upgrade with any" option-subset sections.
+            public bool? Model { get; set; }
             public List<string>? Targets { get; set; }
             public List<OprOption>? Options { get; set; }
         }

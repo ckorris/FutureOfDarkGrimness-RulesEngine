@@ -153,6 +153,17 @@ namespace FDG.ArmyBuilding
         public int MinPicks { get; set; } = 0;
         public int MaxPicks { get; set; } = 1;
 
+        /// <summary>#383 — each application is one MODEL's pick (OPR's "Any model may replace/take ..."
+        /// sections: `select: any` + `model: true` on a replace/attachment section), so the section's TOTAL
+        /// applications across ALL its options are capped at the unit's CURRENT model count, on top of each
+        /// option's own bounds. Always paired with <see cref="UpgradeAffects.Any"/> (a counted stepper,
+        /// charged per application); false everywhere else, including the same-shaped "Upgrade with any"
+        /// subset sections, whose options are each takeable once. Serialized only when true, so the 22
+        /// stamped corpus sections carry it and every other section stays byte-identical.</summary>
+        [System.Text.Json.Serialization.JsonIgnore(
+            Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+        public bool PerModelBudget { get; set; }
+
         public List<UpgradeOption> Options { get; set; } = new();
 
         /// <summary>Counted sections use a numeric quantity (AddModels, or an "any"-model effect); the rest are

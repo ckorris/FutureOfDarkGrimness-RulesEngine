@@ -290,6 +290,14 @@ namespace FDG.ArmyBuilding
                 return Math.Max(0, target.ModelCount - roster.BaseModelCount);
 
             int declared = section.MaxApplications > 0 ? section.MaxApplications : int.MaxValue;
+            // #383: a per-model section applies at most once per model, so the target's size caps the
+            // search — and for the targets-less attachment form it is the WHOLE bound (there is no weapon
+            // pool to consume, which the availability sum below would misread as "can never apply").
+            if (section.PerModelBudget)
+            {
+                declared = Math.Min(declared, target.ModelCount);
+                if (section.Targets.Count == 0) return declared;
+            }
             int available = ListCompiler.AvailableApplications(roster.Weapons, roster.Items, section.Targets)
                 + GrantableCopies(roster, section);
             return Math.Min(declared, Math.Max(available, 0));

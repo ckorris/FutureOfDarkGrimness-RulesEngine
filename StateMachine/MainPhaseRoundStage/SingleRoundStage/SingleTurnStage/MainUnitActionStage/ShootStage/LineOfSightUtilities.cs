@@ -11,20 +11,23 @@ namespace FDG.Stages
     public static class LineOfSightUtilities
     {
         /// <summary>
-        /// Returns a blocker list representing every placed model on the table that
-        /// does not belong to a unit on the attacker's team and does not belong to
-        /// <paramref name="defendingUnit"/>. Per the game rules a unit's sight line
-        /// passes through models of its own player and allied players, so every
-        /// same-team model is excluded. Pass the result to <see cref="EvaluateSightLine"/>
-        /// / <see cref="HasLineOfSight"/> after concatenating with the normal terrain
-        /// snapshot.
+        /// Returns a blocker list representing every placed model on the table whose base interrupts
+        /// the (attacker, defender) sight test. Which models are transparent depends on
+        /// <paramref name="seeThroughFriendlyUnits"/> (#384, <see cref="GameSettings.SeeThroughFriendlyUnits"/>):
+        /// false (official rules, the default game setting) excludes only the attacker's OWN unit and
+        /// <paramref name="defendingUnit"/> - every other unit's models, friendly or enemy, block;
+        /// true (house rule, pre-#384 behavior per #044) also excludes every model on the attacker's
+        /// team. Pass the result to <see cref="EvaluateSightLine"/> / <see cref="HasLineOfSight"/>
+        /// after concatenating with the normal terrain snapshot.
         /// </summary>
         public static List<ITerrain> BuildModelBlockers(ITableState tableState,
-            DataBinding<UnitData> attackingUnit, DataBinding<UnitData> defendingUnit)
-            => BuildModelBlockers(tableState, (IUnit)attackingUnit.GetValue(), (IUnit)defendingUnit.GetValue());
+            DataBinding<UnitData> attackingUnit, DataBinding<UnitData> defendingUnit,
+            bool seeThroughFriendlyUnits)
+            => BuildModelBlockers(tableState, (IUnit)attackingUnit.GetValue(), (IUnit)defendingUnit.GetValue(),
+                seeThroughFriendlyUnits);
 
         public static List<ITerrain> BuildModelBlockers(ITableState tableState,
-            IUnit attackingUnit, IUnit defendingUnit)
+            IUnit attackingUnit, IUnit defendingUnit, bool seeThroughFriendlyUnits)
         {
             PlayerID attackerPlayerID = attackingUnit.PlayerID;
             ITeam? attackerTeam = tableState.Teams.Objects
@@ -42,12 +45,16 @@ namespace FDG.Stages
                     continue;
                 }
 
+                if (!seeThroughFriendlyUnits) continue;
                 bool isAlly = attackerTeam != null
                     ? attackerTeam.IsPlayerOnTeam(unit.PlayerID)
                     : unit.PlayerID.Equals(attackerPlayerID);
                 if (!isAlly) continue;
                 foreach (IModel m in unit.Models) excluded.Add(m);
             }
+            // The shooter's own unit and its target are transparent under either setting: a unit
+            // always ignores its own models, and "sees the unit = sees any of its models".
+            foreach (IModel m in attackingUnit.Models) excluded.Add(m);
             foreach (IModel m in defendingUnit.Models) excluded.Add(m);
 
             var blockers = new List<ITerrain>();
@@ -65,6 +72,41 @@ namespace FDG.Stages
             }
             return blockers;
         }
+
+        /// <summary>
+        /// #384 AI-awareness helper: blockers for the models of every same-team unit OTHER than
+        /// <paramref name="activeUnit"/>, for the Tactician's centroid lane tests when
+        /// <see cref="GameSettings.SeeThroughFriendlyUnits"/> is OFF. Deliberately friendlies-only:
+        /// the lane approximation keeps ignoring third-party ENEMY bases (#363) - and a full
+        /// per-target <see cref="BuildModelBlockers"/> list would let a target's own models shadow
+        /// the centroid it is being sighted at.
+        /// </summary>
+        public static List<ITerrain> BuildFriendlySightBlockers(ITableState tableState, IUnit activeUnit)
+        {
+            PlayerID activePlayerID = activeUnit.PlayerID;
+            ITeam? activeTeam = tableState.Teams.Objects
+                .FirstOrDefault(t => t.IsPlayerOnTeam(activePlayerID));
+
+            var blockers = new List<ITerrain>();
+            foreach (IUnit unit in tableState.Units.Objects)
+            {
+                if (unit.ID.Equals(activeUnit.ID)) continue;
+                if (!unit.GetIsOnBattlefield()) continue;
+                bool isAlly = activeTeam != null
+                    ? activeTeam.IsPlayerOnTeam(unit.PlayerID)
+                    : unit.PlayerID.Equals(activePlayerID);
+                if (!isAlly) continue;
+                foreach (IModel model in unit.Models)
+                {
+                    if (!model.GetIsAlive()) continue;
+                    if (model.Position.x == 0f && model.Position.z == 0f) continue;
+                    blockers.Add(new TerrainData(ETerrainType.Blocking,
+                        model.BaseShape.ToZone(model.Position, model.Facing)));
+                }
+            }
+            return blockers;
+        }
+
         public static ESightLineEffect EvaluateSightLine(Position attacker, Position target,
             IEnumerable<ITerrain>? terrain)
         {

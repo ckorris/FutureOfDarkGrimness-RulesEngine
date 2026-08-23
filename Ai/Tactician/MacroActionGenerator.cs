@@ -72,7 +72,8 @@ namespace FDG.Ai.Tactician
             };
 
         public static List<MacroAction> Enumerate(RuleEvaluator evaluator, ITableState tableState,
-            DataBinding<UnitData> unit, int candidateBudget = DefaultCandidateBudget)
+            DataBinding<UnitData> unit, int candidateBudget = DefaultCandidateBudget,
+            bool seeThroughFriendlyUnits = false)
         {
             UnitData self = unit.GetValue();
             var living = self.ModelBindings.Where(mb => mb.GetValue().GetIsAlive()).ToList();
@@ -91,6 +92,14 @@ namespace FDG.Ai.Tactician
             // #376 (Grounded Speed): the budgets must see the terrain the move resolver will, or a
             // terrain-boosted unit plans short (and the reverse split degrades it to the solo resolver).
             var terrain = tableState.Terrain.Objects.ToList();
+            // #384: what the M4 clear-lane probe must see through. With the see-through-allies house
+            // rule off (official rules), other friendly units' bases block the lane exactly as the
+            // shoot stage will count them; terrain-only otherwise. Movement budgets, grids, and
+            // charge math keep the plain terrain list - bases are not terrain.
+            List<ITerrain> sightTerrain = seeThroughFriendlyUnits
+                ? terrain
+                : terrain.Concat(LineOfSightUtilities.BuildFriendlySightBlockers(tableState, self))
+                    .ToList();
             Dictionary<ModelID, (float Advance, float Rush, float Charge)> perModelBudgets =
                 MovementRuleQueries.PerModelMoveBudgets(self, evaluator, terrain);
             float advance = perModelBudgets.Count == 0
@@ -174,7 +183,7 @@ namespace FDG.Ai.Tactician
                     {
                         float d = distances[(int)band];
                         Position goal = ClearLaneGoal(
-                            PointAtDistanceFrom(enemyPos, start, d), enemyPos, terrain);
+                            PointAtDistanceFrom(enemyPos, start, d), enemyPos, sightTerrain);
                         candidates.Add(Plan(EMacroIntent.EngageAtRange,
                             $"intent=EngageAtRange band={band} target={enemy.Name} d={d:F1}",
                             EActionType.Advance, unit, living, tableState, evaluator, goal, advanceBudget,

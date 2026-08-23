@@ -13,38 +13,21 @@ namespace FDG.Stages
         protected override async Task RunStage(ICombatMetadata metaData, Func<CoverCheckResults, Task> onFinished)
         {
             var modelBlockers = LineOfSightUtilities.BuildModelBlockers(
-                GameContext.TableState, metaData.AttackingUnit, metaData.DefendingUnit);
+                GameContext.TableState, metaData.AttackingUnit, metaData.DefendingUnit,
+                GameContext.Settings.SeeThroughFriendlyUnits);
             IReadOnlyList<ITerrain> terrain = GameContext.TableState.Terrain.Objects
                 .Concat(modelBlockers).ToList();
 
-            List<DataBinding<ModelData>> attackers = metaData.AttackingUnit.ModelBindings().ToList();
-            List<DataBinding<ModelData>> defenders = metaData.DefendingUnit.ModelBindings().ToList();
+            // #385: the shared majority computation - the same function that feeds the targeting
+            // panel's cover flag, so the preview and this roll cannot disagree. Dead models are
+            // excluded on both sides there (#158); this stage used to count them. The #201
+            // proximity exceptions ride the same call.
+            CoverMajority.Result majority = CoverMajority.Evaluate(
+                metaData.AttackingUnit, metaData.DefendingUnit, terrain,
+                GameContext.Settings.CoverProximityExceptionsEnabled);
 
-            // #201: the proximity exceptions (shooter hugging the piece / shared cover at knife
-            // range) void individual sight-line cover when the lobby toggle is on.
-            bool applyProximity = GameContext.Settings.CoverProximityExceptionsEnabled;
-
-            int modelsInCover = 0;
-            foreach (DataBinding<ModelData> defender in defenders)
-            {
-                ModelData defModel = defender.GetValue();
-                Position defPos = defModel.PositionBinding.GetValue();
-                foreach (DataBinding<ModelData> attacker in attackers)
-                {
-                    ModelData atkModel = attacker.GetValue();
-                    ESightLineEffect effect = LineOfSightUtilities.EvaluateSightLine(
-                        atkModel.PositionBinding.GetValue(), defPos, terrain,
-                        CoverContext.ForModels(atkModel, defModel), applyProximity);
-                    if (effect == ESightLineEffect.Cover)
-                    {
-                        modelsInCover++;
-                        break;
-                    }
-                }
-            }
-
-            // Majority rule: more than half of defending models in cover → +1 defense bonus.
-            int bonus = modelsInCover * 2 > defenders.Count ? 1 : 0;
+            // Majority rule: more than half of the living defending models in cover → +1 defense bonus.
+            int bonus = majority.HasCover ? 1 : 0;
 
             // #042 Blast: the attacking weapon ignores cover — drop the bonus. Derived from the attacker's
             // rules via the shared query so the cover stage, targeting options, and movement options agree.
@@ -56,9 +39,9 @@ namespace FDG.Stages
             }
 
             if (bonus > 0)
-                GameContext.Log($"Cover: {modelsInCover}/{defenders.Count} defending models in cover. Defense +{bonus}.");
+                GameContext.Log($"Cover: {majority.ModelsInCover}/{majority.LivingDefenders} defending models in cover. Defense +{bonus}.");
             else
-                GameContext.Log($"Cover: {modelsInCover}/{defenders.Count} defending models in cover. No bonus.");
+                GameContext.Log($"Cover: {majority.ModelsInCover}/{majority.LivingDefenders} defending models in cover. No bonus.");
 
             await onFinished(new CoverCheckResults(bonus));
         }

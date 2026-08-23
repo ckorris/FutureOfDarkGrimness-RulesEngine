@@ -117,6 +117,11 @@ namespace FDG.Stages
         {
             PlayerID playerID = activatedUnit.GetValue().PlayerID;
 
+            // Sweep BEFORE this unit leaves the pool. A team whose last unactivated unit was KILLED during
+            // the activation that is ending here ran out of activations before this one did, and the finish
+            // order means "who finished first" - so it has to be recorded ahead of the team activating now.
+            RecordTeamsThatHaveRunOut();
+
             if (_unactivatedUnits[playerID].Remove(activatedUnit) == false)
             {
                 throw new ArgumentOutOfRangeException($"Unit not found as unactivated when marking activated: {activatedUnit.GetValue().Name}");
@@ -130,27 +135,42 @@ namespace FDG.Stages
             activatedUnit.GetValue().Tokens.AddToken(
                 TokenDefinitionCatalog.Create(TokenType.ActivatedThisRound));
 
-            //If we've removed the last living unit from the list, mark that player as finished.
+            //If we've removed the last living unit from the list, clean that player's list just in case
+            //there are dead units left in it.
             if (_unactivatedUnits[playerID].Where(unit => unit.GetValue().GetIsAlive()).Count() == 0)
             {
-                //Clean that player's list just in case there are dead units.
                 _unactivatedUnits[playerID].Clear();
+            }
 
-                //If that player's team is all done, mark the team as finished.
-                ITeam playerTeam = GameContext.TableState.Teams.Objects.First(team => team.IsPlayerOnTeam(playerID));
-                bool foundTeammateWithActivations = false;
-                foreach (PlayerID teamPlayer in playerTeam.Players)
-                {
-                    if (teamPlayer != playerID && DoesPlayerHaveRemainingActivations(teamPlayer))
-                    {
-                        foundTeammateWithActivations = true;
-                    }
-                }
+            //If that player's team is now all done, mark the team as finished.
+            RecordTeamsThatHaveRunOut();
+        }
 
-                if (foundTeammateWithActivations == false)
-                {
-                    _currentRoundTeamFinishOrder.Add(playerTeam);
-                }
+        /// <summary>
+        /// Appends every team that has no activations left and is not already in the round's finish order.
+        /// <para>
+        /// The finish order is not just a record of who led: it becomes the next round's COMPLETE team
+        /// list (<see cref="MainPhaseContext.OnEndOfRound"/> hands it straight to the next
+        /// <see cref="TeamPlayerAlternationCursor"/>). It used to be written in exactly one place - the tail
+        /// of <see cref="MarkUnitAsActivated"/> - so a team only counted as finished if it ACTIVATED its way
+        /// to an empty pool. A team whose last unactivated unit was killed first never got there, dropped out
+        /// of the next round's team order, and was then skipped for every remaining round of the game: the
+        /// opponent took every activation while that player was never offered one.
+        /// </para>
+        /// <para>
+        /// Running out is running out, however it happened, so this is swept at both seams that can empty a
+        /// pool - an activation ending, and the cursor being asked who is next - rather than being tied to
+        /// the one path that happens to activate.
+        /// </para>
+        /// </summary>
+        private void RecordTeamsThatHaveRunOut()
+        {
+            foreach (ITeam team in GameContext.TableState.Teams.Objects)
+            {
+                if (_currentRoundTeamFinishOrder.Contains(team)) continue;
+                if (DoesTeamHaveRemainingActivations(team)) continue;
+
+                _currentRoundTeamFinishOrder.Add(team);
             }
         }
 
@@ -285,6 +305,10 @@ namespace FDG.Stages
 
         public bool TryAdvanceToNextPlayer(out ITeam? nextTeam, out PlayerID? nextPlayerID)
         {
+            // The round-end seam: when this returns false the round is over, and any team that quietly ran
+            // out of units since the last activation has to be on the books before that happens.
+            RecordTeamsThatHaveRunOut();
+
             return Cursor.TryAdvance(
                 teamHasRemainingWork: DoesTeamHaveRemainingActivations,
                 playerHasRemainingWork: DoesPlayerHaveRemainingActivations,

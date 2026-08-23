@@ -66,11 +66,24 @@ namespace FDG.Stages
             _currentRoundTeamFinishOrder.Clear();
             */
 
-            // If no team finished this round (because every unit was already dead going in),
-            // keep the previous order. Otherwise we'd hand an empty list to the next round's
-            // SingleRoundContext and crash on the first TryAdvance.
-            if (newTeamActivateOrder.Count > 0)
-                TeamActivateOrder = new List<ITeam>(newTeamActivateOrder);
+            // The finish order decides who LEADS next round, but it is also the complete team list the next
+            // round alternates over - so a team missing from it does not merely lose the lead, it loses every
+            // activation for the rest of the game (each later round rebuilds the order from a finish order
+            // that can no longer contain it). SingleRoundContext now records a team that runs out however it
+            // ran out; this is the backstop, so no future path that empties a pool can silently delete a team
+            // from the game. Anything the round did not report keeps its previous relative position.
+            List<ITeam> merged = new List<ITeam>(newTeamActivateOrder);
+            foreach (ITeam team in TeamActivateOrder ?? new List<ITeam>())
+            {
+                if (merged.Contains(team) == false)
+                    merged.Add(team);
+            }
+
+            // Covers the old empty-finish-order case too (every unit already dead going in): merged falls
+            // back to the previous order rather than handing an empty list to the next SingleRoundContext,
+            // which would crash on the first TryAdvance.
+            if (merged.Count > 0)
+                TeamActivateOrder = merged;
 
             RoundCount++;
         }

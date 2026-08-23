@@ -53,6 +53,8 @@ namespace FDG.Network.Connection.Lobby
         public IObservable<ETurnStyle> TurnStyleObservable => _settings_TurnMethod;
         public IObservable<EShootingMode> ShootingModeObservable => _settings_ShootingMode;
         public IObservable<bool> CoverProximityExceptionsObservable => _settings_CoverProximityExceptions;
+        public IObservable<bool> SeeThroughFriendlyUnitsObservable => _settings_SeeThroughFriendlyUnits;
+        public IObservable<bool> UnlimitedSplitFireObservable => _settings_UnlimitedSplitFire;
         public IObservable<ETableBackground> TableBackgroundObservable => _settings_TableBackground;
 
         public string ServerName => _serverName.Value;
@@ -83,6 +85,10 @@ namespace FDG.Network.Connection.Lobby
 
         public bool CoverProximityExceptions => _settings_CoverProximityExceptions.Value;
 
+        public bool SeeThroughFriendlyUnits => _settings_SeeThroughFriendlyUnits.Value;
+
+        public bool UnlimitedSplitFire => _settings_UnlimitedSplitFire.Value;
+
         public ETableBackground TableBackground => _settings_TableBackground.Value;
 
         private BehaviorSubject<string> _serverName;
@@ -103,6 +109,8 @@ namespace FDG.Network.Connection.Lobby
         private BehaviorSubject<ETurnStyle> _settings_TurnMethod;
         private BehaviorSubject<EShootingMode> _settings_ShootingMode;
         private BehaviorSubject<bool> _settings_CoverProximityExceptions;
+        private BehaviorSubject<bool> _settings_SeeThroughFriendlyUnits;
+        private BehaviorSubject<bool> _settings_UnlimitedSplitFire;
         private BehaviorSubject<ETableBackground> _settings_TableBackground;
 
         private PlayerID? _thisPlayerID = null;
@@ -175,6 +183,8 @@ namespace FDG.Network.Connection.Lobby
             _settings_ShootingMode = new BehaviorSubject<EShootingMode>(EShootingMode.OneAtATime);
             // #201: default-on mirrors GameSettings; the host's first LobbyGameSettingsUpdate corrects it.
             _settings_CoverProximityExceptions = new BehaviorSubject<bool>(true);
+            _settings_SeeThroughFriendlyUnits = new BehaviorSubject<bool>(false);
+            _settings_UnlimitedSplitFire = new BehaviorSubject<bool>(false);
             // #265: same deal - Forest until the host's first settings update lands.
             _settings_TableBackground = new BehaviorSubject<ETableBackground>(ETableBackground.Forest);
 
@@ -358,6 +368,14 @@ namespace FDG.Network.Connection.Lobby
             {
                 _settings_CoverProximityExceptions.OnNext(gameSettingsUpdate.GameSettings.CoverProximityExceptionsEnabled);
             }
+            if (_settings_SeeThroughFriendlyUnits.Value != gameSettingsUpdate.GameSettings.SeeThroughFriendlyUnits)
+            {
+                _settings_SeeThroughFriendlyUnits.OnNext(gameSettingsUpdate.GameSettings.SeeThroughFriendlyUnits);
+            }
+            if (_settings_UnlimitedSplitFire.Value != gameSettingsUpdate.GameSettings.UnlimitedSplitFire)
+            {
+                _settings_UnlimitedSplitFire.OnNext(gameSettingsUpdate.GameSettings.UnlimitedSplitFire);
+            }
             if (_settings_TableBackground.Value != gameSettingsUpdate.GameSettings.TableBackground)
             {
                 _settings_TableBackground.OnNext(gameSettingsUpdate.GameSettings.TableBackground);
@@ -439,6 +457,16 @@ namespace FDG.Network.Connection.Lobby
         public void SetCoverProximityExceptions(bool enabled)
         {
             throw new InvalidOperationException("Tried to set cover proximity exceptions when not the host.");
+        }
+
+        public void SetSeeThroughFriendlyUnits(bool enabled)
+        {
+            throw new InvalidOperationException("Tried to set see-through allies when not the host.");
+        }
+
+        public void SetUnlimitedSplitFire(bool enabled)
+        {
+            throw new InvalidOperationException("Tried to set unlimited split fire when not the host.");
         }
 
         public void SetTableBackground(ETableBackground background)

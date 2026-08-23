@@ -99,7 +99,27 @@ namespace FDG
         public static MainPhaseContext RestoreMainPhaseContext(IGameContext gameContext, GameProgressData progress)
         {
             List<ITeam> allTeams = gameContext.TableState.Teams.Objects.ToList();
-            return new MainPhaseContext(gameContext, MapTeams(allTeams, progress.TeamActivateOrder), progress.RoundCount);
+            return new MainPhaseContext(
+                gameContext, WithMissingTeamsAppended(allTeams, progress.TeamActivateOrder), progress.RoundCount);
+        }
+
+        /// <summary>
+        /// A saved activation order, with any team the snapshot omits appended. The activation order is the
+        /// team list the round alternates over, so a truncated one silently benches a player for the rest of
+        /// the game. Saves written before that bug was fixed carry exactly such an order, and loading one
+        /// would otherwise resume straight back into the skipped-activations state - so the order is repaired
+        /// on the way in rather than trusted.
+        /// </summary>
+        private static List<ITeam> WithMissingTeamsAppended(List<ITeam> allTeams, List<int> savedTeamNumbers)
+        {
+            List<ITeam> order = MapTeams(allTeams, savedTeamNumbers);
+            foreach (ITeam team in allTeams)
+            {
+                if (order.Contains(team) == false)
+                    order.Add(team);
+            }
+
+            return order;
         }
 
         /// <summary>
@@ -111,7 +131,7 @@ namespace FDG
         public static SingleRoundContext RestoreSingleRoundContext(IGameContext gameContext, GameProgressData progress)
         {
             List<ITeam> allTeams = gameContext.TableState.Teams.Objects.ToList();
-            List<ITeam> teamOrder = MapTeams(allTeams, progress.TeamActivateOrder);
+            List<ITeam> teamOrder = WithMissingTeamsAppended(allTeams, progress.TeamActivateOrder);
             List<ITeam> finishOrder = MapTeams(allTeams, progress.CurrentRoundTeamFinishOrder);
 
             Dictionary<ITeam, int> playerIndexPerTeam = new Dictionary<ITeam, int>();

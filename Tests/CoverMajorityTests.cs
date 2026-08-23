@@ -84,7 +84,54 @@ namespace FDG.Tests
             Assert.That(result.DefenseRollBonus, Is.EqualTo(0));
         }
 
+        // ── #385: dead models must not sway the roll (the stage used to count raw bindings,
+        // so after mid-activation casualties it disagreed with the targeting preview's flag) ──
+
+        [Test]
+        public async Task DeadDefendersInCover_DoNotGrantTheSurvivorABonus()
+        {
+            // Raw counting would read 2/3 in cover → bonus; only the living model matters (0/1).
+            DataBinding<UnitData> defender = MakeUnit(new[] { InCoverPos, InCoverPos, NotInCoverPos });
+            Kill(defender, 0);
+            Kill(defender, 1);
+            CoverCheckResults result = await RunStage(defender);
+            Assert.That(result.DefenseRollBonus, Is.EqualTo(0),
+                "corpses behind the wall must not grant the survivor in the open a cover bonus");
+        }
+
+        [Test]
+        public async Task DeadDefendersInTheOpen_DoNotDenyTheCoveredSurvivor()
+        {
+            // Raw counting would read 1/3 → no bonus; the living model is in cover (1/1 → bonus).
+            DataBinding<UnitData> defender = MakeUnit(new[] { InCoverPos, NotInCoverPos, NotInCoverPos });
+            Kill(defender, 1);
+            Kill(defender, 2);
+            CoverCheckResults result = await RunStage(defender);
+            Assert.That(result.DefenseRollBonus, Is.EqualTo(1),
+                "corpses in the open must not out-vote the living model behind the wall");
+        }
+
+        [Test]
+        public async Task DeadAttackersSightLine_DoesNotGrantCover()
+        {
+            // The dead attacker at (0,5) is the only one whose line to (20,5) crosses the Cover
+            // rect; the living attacker at (0,25) has a clear line over it. Only living attackers
+            // have sight lines, so no cover.
+            _attacker = MakeUnit(new[] { AttackerPos, new Position(0, 25) });
+            Kill(_attacker, 0);
+            DataBinding<UnitData> defender = MakeUnit(new[] { InCoverPos });
+            CoverCheckResults result = await RunStage(defender);
+            Assert.That(result.DefenseRollBonus, Is.EqualTo(0),
+                "a dead attacker's sight line must not put the defender in cover");
+        }
+
         // Helpers
+
+        private static void Kill(DataBinding<UnitData> unit, int modelIndex)
+        {
+            ModelData model = unit.GetValue().ModelBindings[modelIndex].GetValue();
+            model.DealWounds(model.TotalWounds - model.WoundsDealt);
+        }
 
         private async Task<CoverCheckResults> RunStage(DataBinding<UnitData> defender)
         {

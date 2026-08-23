@@ -21,5 +21,12 @@ namespace FDG.Ai.Tactician
         /// the full scored candidate table. Null (the default) in normal play.
         /// </summary>
         public Action<string>? DecisionLog { get; init; }
+
+        /// <summary>
+        /// The game's #384 see-through-allies house rule (<see cref="GameSettings.SeeThroughFriendlyUnits"/>).
+        /// False (the default game setting, official rules) makes the planner count other friendly
+        /// units' bases as sight blockers when scoring endpoints and aiming clear-lane goals.
+        /// </summary>
+        public bool SeeThroughFriendlyUnits { get; init; }
     }
 }

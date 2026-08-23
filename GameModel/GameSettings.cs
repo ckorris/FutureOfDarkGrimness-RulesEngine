@@ -19,6 +19,24 @@ namespace FDG
         [JsonIgnore]
         public bool CoverProximityExceptionsEnabled => CoverProximityExceptions ?? true;
 
+        /// <summary>
+        /// #384 house rule (lobby toggle, default OFF): when true, NO same-team model ever blocks
+        /// shooting line of sight - the pre-#384 behavior (#044). When false (official rules), only
+        /// the shooting unit's own models and the target unit's models are transparent; every other
+        /// unit's models, friendly or enemy, block. Plain bool, so a pre-#384 save (field absent
+        /// from the JSON) resumes under the official rules - deliberate: "default = official" was
+        /// the explicit ruling, even though the save was played see-through (see WorkItems/384).
+        /// </summary>
+        public bool SeeThroughFriendlyUnits;
+
+        /// <summary>
+        /// #384 house rule (lobby toggle, default OFF): when true, a shooting unit may split its
+        /// fire across any number of distinct enemy units in one shoot action. When false, the
+        /// <see cref="Utilities.GameWideConstants.MAX_TARGETED_UNITS_PER_SHOOT_ACTION"/> cap (2)
+        /// applies - today's behavior, so a pre-#384 save deserializes to what it was played with.
+        /// </summary>
+        public bool UnlimitedSplitFire;
+
         public int TerrainPieceCount;
 
         /// <summary>
@@ -110,6 +128,8 @@ namespace FDG
             {
                 ArmyPoints = 2000,
                 CoverProximityExceptions = true,
+                SeeThroughFriendlyUnits = false,
+                UnlimitedSplitFire = false,
                 TerrainPieceCount = 20,
                 TerrainPointsTotal = 30,
                 TerrainPointsPerTurn = 3,

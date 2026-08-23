@@ -722,8 +722,10 @@ namespace FDG.Stages
                 .Where(unit => unit.GetValue().GetIsOnBattlefield());
 
             // If the attacker has already engaged the max number of distinct units this shoot action, any further
-            // unit that wasn't already among them is unselectable.
-            bool atTargetLimit = attackedDefenderRefs.Count >= GameWideConstants.MAX_TARGETED_UNITS_PER_SHOOT_ACTION;
+            // unit that wasn't already among them is unselectable. #384: the Unlimited Split Fire house
+            // rule (lobby toggle, default off) lifts the cap entirely.
+            bool atTargetLimit = !gameContext.Settings.UnlimitedSplitFire
+                && attackedDefenderRefs.Count >= GameWideConstants.MAX_TARGETED_UNITS_PER_SHOOT_ACTION;
 
             //Go through each enemy unit, which will correspond to a WeaponTargetStats.
             foreach (DataBinding<UnitData> enemyUnit in enemyUnits)
@@ -765,11 +767,15 @@ namespace FDG.Stages
                 new Dictionary<string, WeaponTargetStats>(StringComparer.Ordinal);
 
             var modelBlockers = LineOfSightUtilities.BuildModelBlockers(
-                gameContext.TableState, attackingUnit, enemyUnit);
+                gameContext.TableState, attackingUnit, enemyUnit,
+                gameContext.Settings.SeeThroughFriendlyUnits);
             IReadOnlyList<ITerrain> allTerrain = terrain.Concat(modelBlockers).ToList();
 
-            bool hasCover = ComputeHasCover(attackingUnit, enemyUnit, allTerrain,
-                gameContext.Settings.CoverProximityExceptionsEnabled);
+            // #055/#045 truthfulness: this feeds the targeting UI's cover flag, so it is the SAME
+            // computation CoverCheckStage rolls (#385: CoverMajority) - including the #158 dead-model
+            // exclusion and the #201 proximity exceptions.
+            bool hasCover = CoverMajority.Evaluate(attackingUnit, enemyUnit, allTerrain,
+                gameContext.Settings.CoverProximityExceptionsEnabled).HasCover;
 
             foreach (string weaponProfileKey in weaponProfileKeys)
             {
@@ -793,12 +799,9 @@ namespace FDG.Stages
             foreach (DataBinding<ModelData> attackingModel in attackingUnit.ModelBindings()
                 .Where(model => model.GetIsAlive()))
             {
-                //TODO: Cache model weapons, both outside of this to look up, and 
+                //TODO: Cache model weapons, both outside of this to look up, and
                 //within here. Should make a list before this scope of just models with relevant weapons.
                 //Also that should have list of relevant weapons.
-
-                Dictionary<DataBinding<ModelData>, bool> lineOfSightCache 
-                    = new Dictionary<DataBinding<ModelData>, bool>();
 
                 foreach (Weapon weapon in attackingModel.Weapons()) //For now relying on melee to be out of range.
                 {
@@ -821,7 +824,7 @@ namespace FDG.Stages
                     }
 
                     if(CanWeaponShootAtUnit(attackingModel, enemyUnit, effectiveRange,
-                        ref lineOfSightCache, allTerrain, ignoresLoS))
+                        allTerrain, ignoresLoS))
                     {
                         weaponTargetStats.modelsThatCanShoot.Add(attackingModel);
                     }
@@ -835,91 +838,19 @@ namespace FDG.Stages
             return weaponToStats;
         }
 
+        // #385: a thin front on ShotEligibility.CanHitAny - the SAME per-model sight+range test the
+        // shoot panel's fire lines, the attack animation, and the occlusion gate use, so none of
+        // them can disagree about who can shoot whom. #042 Indirect: a weapon that ignores
+        // intervening terrain for LoS passes null blockers, so only range gates it (Takedown does
+        // NOT - #314).
         private static bool CanWeaponShootAtUnit(DataBinding<ModelData> attackingModel,
             DataBinding<UnitData> enemyUnit, float effectiveRangeInches,
-            ref Dictionary<DataBinding<ModelData>, bool> cachedLineOfSights,
             IReadOnlyList<ITerrain> terrain, bool ignoresLineOfSight)
         {
-            foreach (DataBinding<ModelData> defendingModel in enemyUnit.ModelBindings()
-                .Where(model => model.GetIsAlive()))
-            {
-                // #042 Indirect: a weapon that ignores intervening terrain for LoS may fire at a
-                // target it has no clear line to, so only range gates it. (Takedown does NOT - #314.)
-                bool hasLineOfSight;
-                if (ignoresLineOfSight)
-                {
-                    hasLineOfSight = true;
-                }
-                else if (cachedLineOfSights.TryGetValue(defendingModel, out hasLineOfSight) == false)
-                {
-                    hasLineOfSight = DoesModelHaveLineOfSight(attackingModel.GetValue(), defendingModel.GetValue(), terrain);
-                    cachedLineOfSights[defendingModel] = hasLineOfSight;
-                }
-
-                if (hasLineOfSight && IsTargetWithinRange(attackingModel.GetValue(), defendingModel.GetValue(), effectiveRangeInches))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        private static bool DoesModelHaveLineOfSight(ModelData attacker, ModelData target,
-            IReadOnlyList<ITerrain> terrain)
-        {
-            // #042 Indirect's LoS-ignore is handled by the caller (CanWeaponShootAtUnit short-
-            // circuits before this is reached), since it's a per-weapon property. This is the plain
-            // geometric check for weapons that don't ignore LoS.
-            return LineOfSightUtilities.HasLineOfSight(
-                attacker.PositionBinding.GetValue(),
-                target.PositionBinding.GetValue(),
-                terrain);
-        }
-
-        private static bool IsTargetWithinRange(ModelData attacker, ModelData target, float effectiveRangeInches)
-        {
-            float distance = DistanceUtilities.GetBaseToBaseDistanceInches_3D(attacker.PositionBinding.GetValue(),
-                target.PositionBinding.GetValue(), attacker.BaseShape, attacker.Facing, target.BaseShape, target.Facing);
-            return distance <= effectiveRangeInches;
-        }
-
-        // Internal for tests. Dead models must not sway the cover majority (#158): only living defenders
-        // can benefit from cover, and only living attackers have sight lines — a squad whose casualties
-        // happened to die behind a wall must not grant the survivors standing in the open a cover bonus.
-        // #055/#045 truthfulness: this feeds the targeting UI's cover flag, so it must mirror
-        // CoverCheckStage exactly — including the #201 proximity exceptions, threaded here as
-        // applyProximityExceptions from GameSettings.CoverProximityExceptionsEnabled.
-        internal static bool ComputeHasCover(DataBinding<UnitData> attackingUnit,
-            DataBinding<UnitData> defendingUnit, IReadOnlyList<ITerrain> terrain,
-            bool applyProximityExceptions)
-        {
-            List<DataBinding<ModelData>> attackers = attackingUnit.ModelBindings()
-                .Where(model => model.GetIsAlive()).ToList();
-            List<DataBinding<ModelData>> defenders = defendingUnit.ModelBindings()
-                .Where(model => model.GetIsAlive()).ToList();
-            if (defenders.Count == 0) return false;
-
-            int modelsInCover = 0;
-            foreach (DataBinding<ModelData> defender in defenders)
-            {
-                ModelData defModel = defender.GetValue();
-                Position defPos = defModel.PositionBinding.GetValue();
-                foreach (DataBinding<ModelData> attacker in attackers)
-                {
-                    ModelData atkModel = attacker.GetValue();
-                    ESightLineEffect effect = LineOfSightUtilities.EvaluateSightLine(
-                        atkModel.PositionBinding.GetValue(), defPos, terrain,
-                        CoverContext.ForModels(atkModel, defModel), applyProximityExceptions);
-                    if (effect == ESightLineEffect.Cover)
-                    {
-                        modelsInCover++;
-                        break;
-                    }
-                }
-            }
-
-            return modelsInCover * 2 > defenders.Count;
+            ModelData attacker = attackingModel.GetValue();
+            return ShotEligibility.CanHitAny(attacker.PositionBinding.GetValue(), attacker.BaseShape,
+                attacker.Facing, enemyUnit.GetValue().Models,
+                ignoresLineOfSight ? null : terrain, effectiveRangeInches);
         }
     }
 }

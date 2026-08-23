@@ -74,6 +74,10 @@ namespace FDG.Network.Connection.Lobby
         IObservable<EShootingMode> ShootingModeObservable { get; }
         /// <summary>#201 cover proximity house rules toggle (default on) - see <see cref="GameSettings.CoverProximityExceptions"/>.</summary>
         IObservable<bool> CoverProximityExceptionsObservable { get; }
+        /// <summary>#384 see-through-allies house rule toggle (default off) - see <see cref="GameSettings.SeeThroughFriendlyUnits"/>.</summary>
+        IObservable<bool> SeeThroughFriendlyUnitsObservable { get; }
+        /// <summary>#384 unlimited split fire house rule toggle (default off) - see <see cref="GameSettings.UnlimitedSplitFire"/>.</summary>
+        IObservable<bool> UnlimitedSplitFireObservable { get; }
         /// <summary>#265 cosmetic table surface - see <see cref="GameSettings.TableBackground"/>.</summary>
         IObservable<ETableBackground> TableBackgroundObservable { get; }
 
@@ -105,6 +109,12 @@ namespace FDG.Network.Connection.Lobby
         EShootingMode ShootingMode { get; }
 
         bool CoverProximityExceptions { get; }
+
+        /// <summary>#384 - see <see cref="GameSettings.SeeThroughFriendlyUnits"/>.</summary>
+        bool SeeThroughFriendlyUnits { get; }
+
+        /// <summary>#384 - see <see cref="GameSettings.UnlimitedSplitFire"/>.</summary>
+        bool UnlimitedSplitFire { get; }
 
         ETableBackground TableBackground { get; }
 
@@ -159,6 +169,12 @@ namespace FDG.Network.Connection.Lobby
         void SetShootingMode(EShootingMode shootingMode);
 
         void SetCoverProximityExceptions(bool enabled);
+
+        /// <summary>#384 - see <see cref="GameSettings.SeeThroughFriendlyUnits"/>.</summary>
+        void SetSeeThroughFriendlyUnits(bool enabled);
+
+        /// <summary>#384 - see <see cref="GameSettings.UnlimitedSplitFire"/>.</summary>
+        void SetUnlimitedSplitFire(bool enabled);
 
         void SetTableBackground(ETableBackground background);
 

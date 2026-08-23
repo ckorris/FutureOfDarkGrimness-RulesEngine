@@ -37,7 +37,8 @@ namespace FDG.Tests
             DataBinding<UnitData> defenderUnit = MakeUnit(new[] { TargetPos });
             MakeOrphanModel(BlockerPos); // belongs to no unit — should block
 
-            var blockers = LineOfSightUtilities.BuildModelBlockers(_ctx.TableState, attackerUnit, defenderUnit);
+            var blockers = LineOfSightUtilities.BuildModelBlockers(_ctx.TableState, attackerUnit, defenderUnit,
+                seeThroughFriendlyUnits: false);
             var allTerrain = blockers.Concat(new List<ITerrain>()).ToList();
 
             Assert.That(LineOfSightUtilities.HasLineOfSight(AttackerPos, TargetPos, allTerrain), Is.False,
@@ -51,7 +52,8 @@ namespace FDG.Tests
             DataBinding<UnitData> attackerUnit = MakeUnit(new[] { AttackerPos, BlockerPos });
             DataBinding<UnitData> defenderUnit = MakeUnit(new[] { TargetPos });
 
-            var blockers = LineOfSightUtilities.BuildModelBlockers(_ctx.TableState, attackerUnit, defenderUnit);
+            var blockers = LineOfSightUtilities.BuildModelBlockers(_ctx.TableState, attackerUnit, defenderUnit,
+                seeThroughFriendlyUnits: false);
             var allTerrain = blockers.Concat(new List<ITerrain>()).ToList();
 
             Assert.That(LineOfSightUtilities.HasLineOfSight(AttackerPos, TargetPos, allTerrain), Is.True,
@@ -65,7 +67,8 @@ namespace FDG.Tests
             DataBinding<UnitData> attackerUnit = MakeUnit(new[] { AttackerPos });
             DataBinding<UnitData> defenderUnit = MakeUnit(new[] { BlockerPos, TargetPos });
 
-            var blockers = LineOfSightUtilities.BuildModelBlockers(_ctx.TableState, attackerUnit, defenderUnit);
+            var blockers = LineOfSightUtilities.BuildModelBlockers(_ctx.TableState, attackerUnit, defenderUnit,
+                seeThroughFriendlyUnits: false);
             var allTerrain = blockers.Concat(new List<ITerrain>()).ToList();
 
             Assert.That(LineOfSightUtilities.HasLineOfSight(AttackerPos, TargetPos, allTerrain), Is.True,
@@ -79,7 +82,8 @@ namespace FDG.Tests
             DataBinding<UnitData> defenderUnit = MakeUnit(new[] { TargetPos });
             MakeOrphanModel(new Position(0, 0)); // position (0,0) means unplaced
 
-            var blockers = LineOfSightUtilities.BuildModelBlockers(_ctx.TableState, attackerUnit, defenderUnit);
+            var blockers = LineOfSightUtilities.BuildModelBlockers(_ctx.TableState, attackerUnit, defenderUnit,
+                seeThroughFriendlyUnits: false);
 
             Assert.That(blockers, Is.Empty, "Unplaced models (position 0,0) must not become blockers.");
         }
@@ -91,7 +95,8 @@ namespace FDG.Tests
             DataBinding<UnitData> defenderUnit = MakeUnit(new[] { TargetPos });
             MakeOrphanModel(new Position(10, 15)); // far off the line z=5
 
-            var blockers = LineOfSightUtilities.BuildModelBlockers(_ctx.TableState, attackerUnit, defenderUnit);
+            var blockers = LineOfSightUtilities.BuildModelBlockers(_ctx.TableState, attackerUnit, defenderUnit,
+                seeThroughFriendlyUnits: false);
             var allTerrain = blockers.Concat(new List<ITerrain>()).ToList();
 
             Assert.That(LineOfSightUtilities.HasLineOfSight(AttackerPos, TargetPos, allTerrain), Is.True,
@@ -99,9 +104,10 @@ namespace FDG.Tests
         }
 
         [Test]
-        public void AlliedUnitModel_OnSightLine_DoesNotBlock()
+        public void AlliedUnitModel_OnSightLine_DoesNotBlock_UnderHouseRule()
         {
-            // Same-team but different-unit allied model on the line — must NOT block.
+            // #384 house rule ON (the pre-#384 behavior, #044): same-team but
+            // different-unit allied model on the line — must NOT block.
             var attackerPlayer = new PlayerID(Guid.NewGuid());
             var allyPlayer     = new PlayerID(Guid.NewGuid());
             var enemyPlayer    = new PlayerID(Guid.NewGuid());
@@ -112,11 +118,77 @@ namespace FDG.Tests
             MakeUnit(new[] { BlockerPos }, allyPlayer); // allied unit on the line
             DataBinding<UnitData> defenderUnit = MakeUnit(new[] { TargetPos }, enemyPlayer);
 
-            var blockers = LineOfSightUtilities.BuildModelBlockers(_ctx.TableState, attackerUnit, defenderUnit);
+            var blockers = LineOfSightUtilities.BuildModelBlockers(_ctx.TableState, attackerUnit, defenderUnit,
+                seeThroughFriendlyUnits: true);
             var allTerrain = blockers.Concat(new List<ITerrain>()).ToList();
 
             Assert.That(LineOfSightUtilities.HasLineOfSight(AttackerPos, TargetPos, allTerrain), Is.True,
                 "Models in allied units (same team as the attacker) must not block LoS.");
+        }
+
+        [Test]
+        public void AlliedUnitModel_OnSightLine_Blocks_UnderOfficialRules()
+        {
+            // #384 default OFF (official rules): only the shooter's own unit and the target are
+            // transparent - an allied unit's model on the line blocks like any other unit's.
+            var attackerPlayer = new PlayerID(Guid.NewGuid());
+            var allyPlayer     = new PlayerID(Guid.NewGuid());
+            var enemyPlayer    = new PlayerID(Guid.NewGuid());
+            _store.Create(new TeamData(0, new List<PlayerID> { attackerPlayer, allyPlayer }));
+            _store.Create(new TeamData(1, new List<PlayerID> { enemyPlayer }));
+
+            DataBinding<UnitData> attackerUnit = MakeUnit(new[] { AttackerPos }, attackerPlayer);
+            MakeUnit(new[] { BlockerPos }, allyPlayer); // allied unit on the line
+            DataBinding<UnitData> defenderUnit = MakeUnit(new[] { TargetPos }, enemyPlayer);
+
+            var blockers = LineOfSightUtilities.BuildModelBlockers(_ctx.TableState, attackerUnit, defenderUnit,
+                seeThroughFriendlyUnits: false);
+            var allTerrain = blockers.Concat(new List<ITerrain>()).ToList();
+
+            Assert.That(LineOfSightUtilities.HasLineOfSight(AttackerPos, TargetPos, allTerrain), Is.False,
+                "Under the official rules an allied unit's model on the sight line must block LoS.");
+        }
+
+        [Test]
+        public void SamePlayerOtherUnitModel_OnSightLine_Blocks_UnderOfficialRules()
+        {
+            // #384 default OFF, no teams registered: even the shooter's OWN PLAYER's other unit
+            // blocks - the own-unit exception really is own-unit only.
+            var player = new PlayerID(Guid.NewGuid());
+            DataBinding<UnitData> attackerUnit = MakeUnit(new[] { AttackerPos }, player);
+            MakeUnit(new[] { BlockerPos }, player); // the same player's OTHER unit on the line
+            DataBinding<UnitData> defenderUnit = MakeUnit(new[] { TargetPos });
+
+            var blockers = LineOfSightUtilities.BuildModelBlockers(_ctx.TableState, attackerUnit, defenderUnit,
+                seeThroughFriendlyUnits: false);
+            var allTerrain = blockers.Concat(new List<ITerrain>()).ToList();
+
+            Assert.That(LineOfSightUtilities.HasLineOfSight(AttackerPos, TargetPos, allTerrain), Is.False,
+                "Under the official rules a same-player unit that is neither shooter nor target blocks LoS.");
+        }
+
+        [Test]
+        public void FriendlySightBlockers_OtherAlliedUnitBlocks_OwnAndEnemyDoNot()
+        {
+            // #384 AI helper: only OTHER same-team units become blockers - never the active
+            // unit's own models, and never enemy models (the lane approximation keeps #363).
+            var activePlayer = new PlayerID(Guid.NewGuid());
+            var allyPlayer   = new PlayerID(Guid.NewGuid());
+            var enemyPlayer  = new PlayerID(Guid.NewGuid());
+            _store.Create(new TeamData(0, new List<PlayerID> { activePlayer, allyPlayer }));
+            _store.Create(new TeamData(1, new List<PlayerID> { enemyPlayer }));
+
+            DataBinding<UnitData> activeUnit = MakeUnit(new[] { AttackerPos, BlockerPos }, activePlayer);
+            MakeUnit(new[] { new Position(5, 5) }, allyPlayer);   // ally's unit -> blocker
+            MakeUnit(new[] { new Position(15, 5) }, enemyPlayer); // enemy unit -> not a blocker
+
+            var blockers = LineOfSightUtilities.BuildFriendlySightBlockers(
+                _ctx.TableState, activeUnit.GetValue());
+
+            Assert.That(blockers, Has.Count.EqualTo(1),
+                "Exactly the ally's model becomes a blocker - not the active unit's own models, not enemies.");
+            Assert.That(LineOfSightUtilities.HasLineOfSight(AttackerPos, TargetPos, blockers), Is.False,
+                "The ally's base at (5,5) sits on the z=5 sight line and must cut it.");
         }
 
         [Test]
@@ -133,7 +205,8 @@ namespace FDG.Tests
             MakeUnit(new[] { BlockerPos }, enemyAPlayer); // some other enemy unit on the line
             DataBinding<UnitData> defenderUnit = MakeUnit(new[] { TargetPos }, enemyBPlayer);
 
-            var blockers = LineOfSightUtilities.BuildModelBlockers(_ctx.TableState, attackerUnit, defenderUnit);
+            var blockers = LineOfSightUtilities.BuildModelBlockers(_ctx.TableState, attackerUnit, defenderUnit,
+                seeThroughFriendlyUnits: false);
             var allTerrain = blockers.Concat(new List<ITerrain>()).ToList();
 
             Assert.That(LineOfSightUtilities.HasLineOfSight(AttackerPos, TargetPos, allTerrain), Is.False,
@@ -150,7 +223,8 @@ namespace FDG.Tests
             DataBinding<UnitData> defenderUnit = MakeUnit(new[] { TargetPos });
             MakeOrphanModel(new Position(10, 7.5f), new RectangleBase(0.5f, 6f), new Float2(0f, 1f));
 
-            var blockers = LineOfSightUtilities.BuildModelBlockers(_ctx.TableState, attackerUnit, defenderUnit).ToList();
+            var blockers = LineOfSightUtilities.BuildModelBlockers(_ctx.TableState, attackerUnit, defenderUnit,
+                seeThroughFriendlyUnits: false).ToList();
             Assert.That(LineOfSightUtilities.HasLineOfSight(AttackerPos, TargetPos, blockers), Is.False,
                 "a long base reaching across the sight line blocks, though its bounding circle wouldn't.");
         }
@@ -164,7 +238,8 @@ namespace FDG.Tests
             DataBinding<UnitData> defenderUnit = MakeUnit(new[] { TargetPos });
             MakeOrphanModel(new Position(10, 7.5f), new RectangleBase(0.5f, 6f), new Float2(1f, 0f));
 
-            var blockers = LineOfSightUtilities.BuildModelBlockers(_ctx.TableState, attackerUnit, defenderUnit).ToList();
+            var blockers = LineOfSightUtilities.BuildModelBlockers(_ctx.TableState, attackerUnit, defenderUnit,
+                seeThroughFriendlyUnits: false).ToList();
             Assert.That(LineOfSightUtilities.HasLineOfSight(AttackerPos, TargetPos, blockers), Is.True,
                 "rotated so only its narrow width faces the line, the base no longer blocks.");
         }

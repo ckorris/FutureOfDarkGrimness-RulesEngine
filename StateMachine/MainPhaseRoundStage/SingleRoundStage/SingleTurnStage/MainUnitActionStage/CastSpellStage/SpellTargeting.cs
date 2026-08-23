@@ -110,7 +110,7 @@ namespace FDG.Stages
         {
             IReadOnlyList<ITerrain> blockers = selector.RequireLineOfSight
                 ? terrain.Concat(LineOfSightUtilities.BuildModelBlockers(gameContext.TableState, origin,
-                    (IUnit)target.GetValue())).ToList()
+                    (IUnit)target.GetValue(), gameContext.Settings.SeeThroughFriendlyUnits)).ToList()
                 : terrain;
 
             foreach (IModel om in origin.Models)

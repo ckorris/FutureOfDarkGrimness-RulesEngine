@@ -244,6 +244,57 @@ namespace FDG.Tests
                 "the next move projects without the spent grant");
         }
 
+        // #377 — the spell-granted counts-as-terrain shape, exactly as the importer synthesizes it
+        // ("Desert Storm Effect": Movement_OnMoveThroughTerrain / always / countAsInTerrain / Actor,
+        // granted NextTrigger by the spell's addRule). The rule reaches the unit as a RuleGrant token,
+        // not an attachment, so this pins the granted read-back at the terrain hook: projection caps the
+        // budgets without spending, and the real move spends the grant so "once" means once.
+        [Test]
+        public async Task SpellGrantedCountAsDifficult_CapsTheMove_AndTheMoveSpendsIt()
+        {
+            RuleResolver resolver = CoreRuleCatalog.CreateResolver();
+            resolver.RegisterOrReplace(SynthesizedDesertStorm);
+            var ctx = new TestGameContext(_store, new FixedDiceRoller(4), ruleResolver: resolver);
+            var baseline = new MovementActionContext(ctx, MakeUnit());
+
+            DataBinding<UnitData> unit = MakeUnit();
+            GrantOnce(unit, "Desert Storm Effect");
+
+            float cap = GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES;
+            var first = new MovementActionContext(ctx, unit);
+            var second = new MovementActionContext(ctx, unit);
+            Assert.That(first.MaxAdvanceDistance, Is.EqualTo(cap).Within(0.001f),
+                "the granted counts-as-difficult caps the projected Advance");
+            Assert.That(first.MaxRushDistance, Is.EqualTo(cap).Within(0.001f),
+                "the granted counts-as-difficult caps the projected Rush");
+            Assert.That(second.MaxAdvanceDistance, Is.EqualTo(cap).Within(0.001f),
+                "re-projection is read-only and must not spend the grant");
+
+            var context = new MovementActionContext(ctx, unit);
+            context.SubmitValidPathTemplate(new List<ModelMoveEntry>
+            {
+                new ModelMoveEntry(unit.GetValue().ModelBindings[0],
+                    new List<Position> { new Position(1f, 0f) }),
+            });
+            var stage = new ExecuteMoveStage(ctx, new NoOpLayer<IMovementActionContext>());
+            stage.OnMoveExecuted.Bind("done");
+            await stage.Enter(context);
+
+            Assert.That(unit.GetValue().Tokens.GetTokenCount(Rules.Foundation.TokenType.RuleGrant),
+                Is.EqualTo(0), "the one-shot grant is spent by the move it capped");
+            var after = new MovementActionContext(ctx, unit);
+            Assert.That(after.MaxAdvanceDistance, Is.EqualTo(baseline.MaxAdvanceDistance).Within(0.001f),
+                "'once' means once - the next move projects uncapped");
+        }
+
+        private static readonly SpecialRuleDefinition SynthesizedDesertStorm = new("Desert Storm Effect",
+            new List<HookEntry>
+            {
+                new HookEntry(EHookID.Movement_OnMoveThroughTerrain, new Condition.Always(),
+                    new Effect.CountAsInTerrain(ECountAsTerrain.Difficult), ELifetime.ThisActivation),
+            },
+            new List<ActivatedAbility>());
+
         // "Counts as being in Difficult Terrain": the whole move is capped at the difficult-terrain
         // limit, after bonuses — unless the unit ignores difficult terrain (Strider).
         [Test]

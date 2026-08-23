@@ -201,33 +201,16 @@ namespace FDG.ArmyBuilding
 
         private static IEnumerable<string> GrantedNamesIn(Effect effect)
         {
-            switch (effect)
+            foreach (string granted in SpellRuleReferences.GrantedRuleNames(effect))
             {
-                case Effect.AddRule addRule:
-                    yield return addRule.RuleName;
-                    break;
-                case Effect.Aura aura:
-                    yield return aura.RuleName;
-                    break;
-                case Effect.MarkTarget mark:
-                    yield return mark.RuleName;
-                    break;
-                case Effect.DealHits dealHits:
-                    // WithRules entries are weapon-rule refs, possibly argumented ("Blast(3)") — the bare
-                    // name is what must resolve.
-                    foreach (string withRule in dealHits.WithRules)
-                    {
-                        yield return StripArgument(withRule);
-                    }
+                yield return granted;
+            }
 
-                    break;
-                case Effect.MoraleTestThen moraleTest:
-                    foreach (string nested in GrantedNamesIn(moraleTest.OnFailure))
-                    {
-                        yield return nested;
-                    }
-
-                    break;
+            // WithRules entries are weapon-rule refs, possibly argumented ("Blast(3)") — the bare
+            // name is what must resolve.
+            foreach (string withRule in SpellRuleReferences.WeaponRuleNames(effect))
+            {
+                yield return StripArgument(withRule);
             }
         }
 

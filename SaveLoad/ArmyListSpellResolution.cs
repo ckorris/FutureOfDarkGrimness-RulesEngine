@@ -32,8 +32,33 @@ namespace FDG.SaveLoad
             foreach (SpellDefinition definition in definitions)
             {
                 spells.Add(new RuntimeSpell(definition, ResolveWeaponRules(definition, ruleResolver)));
+                WarnUnresolvableGrants(definition, ruleResolver);
             }
             return spells;
+        }
+
+        /// <summary>
+        /// Pre-flights the names a spell grants as rules (#377): dispatch resolves a granted name lazily
+        /// — RuleEvaluator.CollectGrantedRules skips an unresolvable or argument-reading definition with
+        /// only a WarnOnce at cast time — so without this check a buff spell that can never do anything
+        /// looks healthy at load, in the army builder, and in the cast menu. Purely diagnostic: the
+        /// spell still loads and casts (matching the dispatch-time tolerance), but the drop is surfaced
+        /// through <see cref="RuleDiagnostics"/> where the #168 audit and the lobby can report it.
+        /// A bare-name entry with no arguments mirrors the grant path exactly: grants carry no argument
+        /// slot, so an argument-reading definition classifies as <see cref="ERuleDropReason.MissingArgument"/>.
+        /// </summary>
+        private static void WarnUnresolvableGrants(SpellDefinition spell, IRuleResolver ruleResolver)
+        {
+            foreach (string ruleName in SpellRuleReferences.GrantedRuleNames(spell.Effect))
+            {
+                ArmyListRuleResolution.ResolveOrDescribeDrop(ruleResolver,
+                    new SpecialRuleEntry_Core(ruleName), attachmentScope: null,
+                    $"spell '{spell.Name}'", out RuleDrop? drop);
+                if (drop != null)
+                {
+                    RuleDiagnostics.WarnDropped(drop.Value);
+                }
+            }
         }
 
         private static IReadOnlyList<ResolvedRule> ResolveWeaponRules(SpellDefinition spell, IRuleResolver ruleResolver)

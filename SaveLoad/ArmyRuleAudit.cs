@@ -98,19 +98,24 @@ namespace FDG.SaveLoad
                 }
             }
 
-            // Spell-carried weapon rules: a damage spell's WithRules names resolve at Weapon scope
-            // (ArmyListSpellResolution.ResolveWeaponRules).
+            // Spell references, in ResolveSpells' per-spell order: first the damage effect's WithRules
+            // names (Weapon scope, argument-parsed — ArmyListSpellResolution.ResolveWeaponRules), then
+            // the names the effect grants as rules (#377) — raw, argument-less lookups mirroring the
+            // dispatch-time grant path, which ArmyListSpellResolution.WarnUnresolvableGrants pre-flights
+            // at load with the same classification.
             foreach (SpellDefinition spell in armyListFile.Spells)
             {
-                if (spell.Effect is not Effect.DealHits dealHits)
-                {
-                    continue;
-                }
-
-                foreach (string ruleName in dealHits.WithRules)
+                string owner = $"spell '{spell.Name}'";
+                foreach (string ruleName in SpellRuleReferences.WeaponRuleNames(spell.Effect))
                 {
                     SpecialRuleEntry entry = SpecialRuleEntryParser.Parse(ruleName);
-                    Classify(resolver, entry, ERuleScope.Weapon, $"spell '{spell.Name}'", drops);
+                    Classify(resolver, entry, ERuleScope.Weapon, owner, drops);
+                }
+
+                foreach (string ruleName in SpellRuleReferences.GrantedRuleNames(spell.Effect))
+                {
+                    Classify(resolver, new SpecialRuleEntry_Core(ruleName), attachmentScope: null,
+                        owner, drops);
                 }
             }
 

@@ -59,7 +59,11 @@ namespace FDG.Tests
         private static ArmyListFile MessyArmy() => new ArmyListFile
         {
             Name = "Messy",
-            RuleDefinitions = new List<SpecialRuleDefinition> { ArgReadingRule("Argful") },
+            RuleDefinitions = new List<SpecialRuleDefinition>
+            {
+                ArgReadingRule("Argful"),
+                ArgReadingRule("Argmark"), // granted by the 'Argent Mark' spell — grants carry no arguments
+            },
             Units =
             {
                 new UnitFileEntry
@@ -98,6 +102,20 @@ namespace FDG.Tests
                 new SpellDefinition("Warp Bolt", Threshold: 2,
                     new TargetSelector(18f, MinCount: 1, MaxCount: 1, ETargetAffinity.Foe, RequireLineOfSight: true),
                     new Effect.DealHits(3, new[] { "Blast(3)", "Frobnicate" })),          // Frobnicate: Unimplemented
+                // #377 — the grant-side spell references, resolved raw and argument-less at dispatch:
+                new SpellDefinition("Phantom Blessing", Threshold: 1,
+                    new TargetSelector(12f, MinCount: 1, MaxCount: 1, ETargetAffinity.Friend, RequireLineOfSight: false),
+                    new Effect.AddRule("Wolfsong", ELifetime.NextTrigger)),               // Unimplemented (granted)
+                new SpellDefinition("Argent Mark", Threshold: 1,
+                    new TargetSelector(12f, MinCount: 1, MaxCount: 1, ETargetAffinity.Foe, RequireLineOfSight: false),
+                    new Effect.MarkTarget("Argmark")),                                    // MissingArgument: grants carry no arguments
+                new SpellDefinition("Dread Chant", Threshold: 2,
+                    new TargetSelector(18f, MinCount: 1, MaxCount: 1, ETargetAffinity.Foe, RequireLineOfSight: false),
+                    new Effect.MoraleTestThen(
+                        new Effect.AddRule("Hexbound", ELifetime.NextTrigger))),          // Unimplemented (granted on the on-fail arm)
+                new SpellDefinition("Veil", Threshold: 1,
+                    new TargetSelector(12f, MinCount: 1, MaxCount: 1, ETargetAffinity.Friend, RequireLineOfSight: false),
+                    new Effect.AddRule("Stealth", ELifetime.NextTrigger)),                // implemented, argument-free: NO drop
             },
         };
 

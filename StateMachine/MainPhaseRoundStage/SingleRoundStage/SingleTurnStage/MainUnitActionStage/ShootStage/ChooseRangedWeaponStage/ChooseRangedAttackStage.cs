@@ -821,6 +821,11 @@ namespace FDG.Stages
                         effectiveRange = Rules.Dispatch.RangeRuleQueries.EffectiveRange(
                             attackingUnit.GetValue(), weapon, enemyUnit.GetValue(), gameContext.RuleEvaluator);
                         effectiveRangeByWeapon[weaponProfileKey] = effectiveRange;
+                        // #387: stamp the range the eligibility check below actually uses, so resolvers
+                        // can show a modified range instead of the weapon's printed one. The record copy
+                        // shares the model HashSets, so later adds land in the stamped copy too.
+                        weaponTargetStats = weaponTargetStats with { EffectiveRangeInches = effectiveRange };
+                        weaponToStats[weaponProfileKey] = weaponTargetStats;
                     }
 
                     if(CanWeaponShootAtUnit(attackingModel, enemyUnit, effectiveRange,

@@ -284,6 +284,50 @@ namespace FDG.Tests
             }
         }
 
+        // ── #387: the effective range the eligibility check used is stamped on the target stats ──
+
+        [Test]
+        public async Task Enter_StampsEffectiveRange_BuffedAttackerShowsModifiedRange()
+        {
+            var requester = new CapturingRangedRequester { Reply = _ => new Cancelled<RangedAttackChoice>() };
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(5, 0, 0) },
+                rifleRange: 12f,
+                playerRequester: requester);
+            attackerBinding.GetValue().AttachRuleDefinition(
+                new ResolvedRule("Increased Shooting Range", CoreRuleCatalog.IncreasedShootingRange));
+
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+            await stage.Enter(new CombatActionContext(ctx, attackerBinding, isMelee: false));
+
+            WeaponTargetStats stats = requester.Captured!.WeaponOptions.Single().WeaponTargetStats.Single();
+            Assert.That(stats.EffectiveRangeInches, Is.EqualTo(18f),
+                "#387: the stamped range folds the attacker's +6\" range buff (12 + 6) so a " +
+                "resolver can draw the delta.");
+        }
+
+        [Test]
+        public async Task Enter_StampsEffectiveRange_UnmodifiedEqualsBase()
+        {
+            var requester = new CapturingRangedRequester { Reply = _ => new Cancelled<RangedAttackChoice>() };
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(5, 0, 0) },
+                rifleRange: 12f,
+                playerRequester: requester);
+
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+            await stage.Enter(new CombatActionContext(ctx, attackerBinding, isMelee: false));
+
+            WeaponTargetStats stats = requester.Captured!.WeaponOptions.Single().WeaponTargetStats.Single();
+            Assert.That(stats.EffectiveRangeInches, Is.EqualTo(12f),
+                "no range rules in play: the stamp equals the weapon's base range, which resolvers " +
+                "render with no indicator.");
+        }
+
         // ── #384: the See-Through Allies house rule at the targeting stage ────
 
         [Test]

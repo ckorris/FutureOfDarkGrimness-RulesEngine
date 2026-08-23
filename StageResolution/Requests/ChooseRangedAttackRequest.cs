@@ -177,9 +177,16 @@ namespace FDG.StageResolution.Requests
         /// effective thresholds plus the modifier chips behind them - computed engine-side by
         /// <c>ShootingForecast</c> (a resolver cannot compute it: weapon rules never cross the wire).
         /// Null for a row with no shooters in range (nothing to price).</param>
+        /// <param name="EffectiveRangeInches">#387. The range the stage's own eligibility check used for
+        /// this weapon against THIS target (<c>RangeRuleQueries.EffectiveRange</c>: the attacker's range
+        /// buffs, the defender's debuffs, and any range-extension mark on the defender). Carried on the
+        /// request per the #325 doctrine - a resolver cannot fold rules. 0 means unstamped (the weapon
+        /// had no living carrier to price); resolvers should treat 0, or a value equal to the weapon's
+        /// base range, as "unmodified" and only then draw a +N"/-N" indicator.</param>
         public record WeaponTargetStats(DataBinding<UnitData> TargetUnit, HashSet<DataBinding<ModelData>> modelsThatCanShoot,
             HashSet<DataBinding<ModelData>> modelsWithWeaponThatCannotShoot, bool HasCover = false,
-            string? UnselectableReason = null, AttackForecast? Forecast = null);
+            string? UnselectableReason = null, AttackForecast? Forecast = null,
+            float EffectiveRangeInches = 0f);
 
         /// <summary>
         /// #325: what the dice will actually ask for if this weapon fires at this target - the numbers a

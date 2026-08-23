@@ -39,6 +39,8 @@ public static class CoreRuleCatalog
         BaneWhenShootingAura, ShredWhenShootingAura, UnstoppableWhenShootingAura,
         Courage, UnstoppableInMelee, ShredInMelee, BaneInMelee, RendingInMelee,
         CourageAura, BaneInMeleeAura, RendingInMeleeAura, ShredInMeleeAura, UnstoppableInMeleeAura,
+        HitBonusInMelee, HitBonusWhenShooting, ApBonusInMelee, ApBonusWhenShooting,
+        BaneWhenAttacking, ShredWhenAttacking, Slayer, RangeBonusWhenShooting,
         Resistance, Protected, PiercingAssault, PiercingHunter, Shielded, Fortified,
         ResistanceAura, ProtectedAura, PiercingAssaultAura, PiercingHunterAura, ShieldedAura, FortifiedAura,
         Strider, Flying, Aircraft, Teleport, TeleportAura, DelayedAction,
@@ -948,6 +950,143 @@ public static class CoreRuleCatalog
             ERuleScope.Weapon,
             Valence: EValence.Positive,
             Description: "In melee, an unmodified 6 to hit gives the attack AP(+4), and the attack ignores Regeneration.");
+
+    // Spell-granted phrase rules (#377) ------------------------------------------------------------------
+    // The names GDF/AoF buff & mark spells grant verbatim ("...which gets +1 to hit rolls in melee once",
+    // "...which friendly units get Slayer against once"): the importer emits the printed phrase as the
+    // granted rule name, and RuleEvaluator.CollectGrantedRules / DetermineHitRollStage's mark claim
+    // resolve it against this registry — so the phrase IS the canonical rule name. Cataloged here (not in
+    // a supplement) so every already-baked book and every saved army resolves them without a rebake.
+    // Ungated numeric phrases ("+1 to morale test rolls", "-3 to casting rolls", ...) are NOT defined as
+    // rules — the importer emits those as Effect.StatModifier, whose tokens the roll stages consume
+    // directly (the cast roll has no rule hook at all, so a rule-shaped "-3 to casting rolls" could
+    // never fire).
+
+    /// <summary> "+1 to hit rolls in melee": melee-gated Actor hit bonus (Precision Fighter's shape under the spell phrase). </summary>
+    public static SpecialRuleDefinition HitBonusInMelee { get; } =
+        new SpecialRuleDefinition("+1 to hit rolls in melee",
+            new[]
+            {
+                new HookEntry(EHookID.Shooting_OnHitRollModifier,
+                    new Condition.IsMelee(),
+                    new Effect.RollModifier(ERollKind.Hit, Delta: +1),
+                    ELifetime.ThisAttack),
+            },
+            Array.Empty<ActivatedAbility>(),
+            Valence: EValence.Positive,
+            Description: "+1 to hit rolls in melee.");
+
+    /// <summary> "+1 to hit rolls when shooting": shooting-gated Actor hit bonus (Precision Shooter's shape under the spell phrase). </summary>
+    public static SpecialRuleDefinition HitBonusWhenShooting { get; } =
+        new SpecialRuleDefinition("+1 to hit rolls when shooting",
+            new[]
+            {
+                new HookEntry(EHookID.Shooting_OnHitRollModifier,
+                    new Condition.Not(new Condition.IsMelee()),
+                    new Effect.RollModifier(ERollKind.Hit, Delta: +1),
+                    ELifetime.ThisAttack),
+            },
+            Array.Empty<ActivatedAbility>(),
+            Valence: EValence.Positive,
+            Description: "+1 to hit rolls when shooting.");
+
+    /// <summary> "AP(+1) in melee": melee-gated save modifier — <see cref="PiercingAssault"/> without the charge gate. </summary>
+    public static SpecialRuleDefinition ApBonusInMelee { get; } =
+        new SpecialRuleDefinition("AP(+1) in melee",
+            new[]
+            {
+                new HookEntry(EHookID.Shooting_OnHitRollComplete,
+                    new Condition.IsMelee(),
+                    new Effect.RollModifier(ERollKind.Save, Delta: -1),
+                    ELifetime.ThisAttack),
+            },
+            Array.Empty<ActivatedAbility>(),
+            Valence: EValence.Positive,
+            Description: "This unit's melee attacks gain AP(+1).");
+
+    /// <summary> "AP(1) when shooting": shooting-gated save modifier (the mark phrase keeps OPR's bare "AP(1)" spelling). </summary>
+    public static SpecialRuleDefinition ApBonusWhenShooting { get; } =
+        new SpecialRuleDefinition("AP(1) when shooting",
+            new[]
+            {
+                new HookEntry(EHookID.Shooting_OnHitRollComplete,
+                    new Condition.Not(new Condition.IsMelee()),
+                    new Effect.RollModifier(ERollKind.Save, Delta: -1),
+                    ELifetime.ThisAttack),
+            },
+            Array.Empty<ActivatedAbility>(),
+            Valence: EValence.Positive,
+            Description: "This unit's shooting attacks gain AP(+1).");
+
+    /// <summary> "Bane when attacking": <see cref="Bane"/> ungated — Bane only ever applies when attacking, so the qualifier is redundant (the "Counter in Melee" reading). </summary>
+    public static SpecialRuleDefinition BaneWhenAttacking { get; } =
+        new SpecialRuleDefinition("Bane when attacking",
+            new[]
+            {
+                new HookEntry(EHookID.Shooting_OnSaveRollComplete,
+                    new Condition.Always(),
+                    new Effect.Reroll(ERollKind.Save, new RerollCondition.OnUnmodifiedValue()),
+                    ELifetime.ThisAttack),
+                new HookEntry(EHookID.Shooting_OnSaveRollComplete,
+                    new Condition.Always(),
+                    new Effect.IgnoreRule("Regeneration"),
+                    ELifetime.ThisAttack),
+            },
+            Array.Empty<ActivatedAbility>(),
+            ERuleScope.Weapon,
+            Valence: EValence.Positive,
+            Description: "When attacking, the defender must re-roll unmodified Defense 6s, and the attack ignores Regeneration.");
+
+    /// <summary> "Shred when attacking": <see cref="Shred"/> ungated — same redundant-qualifier reading as Bane's. </summary>
+    public static SpecialRuleDefinition ShredWhenAttacking { get; } =
+        new SpecialRuleDefinition("Shred when attacking",
+            new[]
+            {
+                new HookEntry(EHookID.Shooting_OnSaveRollComplete,
+                    new Condition.Always(),
+                    new Effect.AddExtraWound(OnRollValue: 1),
+                    ELifetime.ThisAttack),
+            },
+            Array.Empty<ActivatedAbility>(),
+            ERuleScope.Weapon,
+            Valence: EValence.Positive,
+            Description: "When attacking, each of the defender's unmodified Defense rolls of 1 deals an extra wound.");
+
+    /// <summary>
+    /// Slayer (rules-page name, reachable only through the "Slayer Mark" spells): AP(+2) against
+    /// majority-Tough(3)+ targets when shooting from over 9" away or when charging — the same two-arm
+    /// shape as <see cref="PiercingHunter"/> + the AoF Melee Slayer, at AP(+2) with the Tough gate.
+    /// Printed text is identical in GDF and AoF.
+    /// </summary>
+    public static SpecialRuleDefinition Slayer { get; } = new SpecialRuleDefinition("Slayer",
+        new[]
+        {
+            new HookEntry(EHookID.Shooting_OnHitRollComplete,
+                new Condition.And(new Condition.DistanceGreaterThan(9f), new Condition.TargetMajorityHasTough(3)),
+                new Effect.RollModifier(ERollKind.Save, Delta: -2),
+                ELifetime.ThisAttack),
+            new HookEntry(EHookID.Shooting_OnHitRollComplete,
+                new Condition.And(new Condition.IsCharging(), new Condition.TargetMajorityHasTough(3)),
+                new Effect.RollModifier(ERollKind.Save, Delta: -2),
+                ELifetime.ThisAttack),
+        },
+        Array.Empty<ActivatedAbility>(),
+        Valence: EValence.Positive,
+        Description: "When shooting at enemies over 9\" away, or when charging, this unit's weapons get AP(+2) if most models in the target have Tough(3) or higher.");
+
+    /// <summary> "+6\" range when shooting": <see cref="IncreasedShootingRange"/>'s effect under the spell phrase (range checks only exist for shooting, so the qualifier is inherent). </summary>
+    public static SpecialRuleDefinition RangeBonusWhenShooting { get; } =
+        new SpecialRuleDefinition("+6\" range when shooting",
+            new[]
+            {
+                new HookEntry(EHookID.Shooting_OnRangeCheck,
+                    new Condition.Always(),
+                    new Effect.RangeModifier(Delta: +6),
+                    ELifetime.ThisActivation),
+            },
+            Array.Empty<ActivatedAbility>(),
+            Valence: EValence.Positive,
+            Description: "This unit's ranged weapons get +6\" range.");
 
     // Defensive wound-ignore + AP corpus rules (reuse IgnoreWoundOnRoll / save-modifier primitives) ------
 

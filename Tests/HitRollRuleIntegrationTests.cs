@@ -384,6 +384,38 @@ namespace FDG.Tests
             Assert.That(result.HitRollNeeded, Is.EqualTo(4), "no mark on the defender → nothing claimed.");
         }
 
+        // #377 — a mark naming a combat-kind-gated phrase rule ("+1 to hit rolls in melee", the Magic
+        // Targeting / Raiding Drugs spells): the claim transfers the rule, and the rule's own gate then
+        // decides whether it does anything. A melee swing gets the bonus; a shooting claim spends the
+        // mark for nothing (#101 doctrine: forcing a wasted buff is legitimate).
+        [Test]
+        public async Task MarkedGatedHitRule_MeleeSwing_AppliesBonus()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(NearPos);
+            MarkDefender(defender, "+1 to hit rolls in melee");
+
+            DetermineHitRollResults result = await RunStage(attacker, defender, isMelee: true);
+
+            Assert.That(result.HitRollNeeded, Is.EqualTo(3),
+                "the claimed \"+1 to hit rolls in melee\" fires on the melee swing: threshold 4 - 1 = 3.");
+        }
+
+        [Test]
+        public async Task MarkedGatedHitRule_ShootingClaim_SpendsMarkForNothing()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            DataBinding<UnitData> defender = MakeUnit(FarPos);
+            MarkDefender(defender, "+1 to hit rolls in melee");
+
+            DetermineHitRollResults result = await RunStage(attacker, defender);
+
+            Assert.That(result.HitRollNeeded, Is.EqualTo(4),
+                "shooting claims the mark but the melee gate fails - no bonus.");
+            Assert.That(defender.GetValue().Tokens.HasToken(TokenType.Mark), Is.False,
+                "the mark is spent by the claiming attack even though its gate failed.");
+        }
+
         private static void MarkDefender(DataBinding<UnitData> unit, string ruleName) =>
             unit.GetValue().Tokens.AddToken(new Token(TokenType.Mark, 1, new TokenClearTrigger.ManualOnly(),
                 Payload: new TokenPayload.RuleGrant(ruleName, ELifetime.ThisAttack)));

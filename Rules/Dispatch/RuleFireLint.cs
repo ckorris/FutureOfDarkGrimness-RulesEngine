@@ -675,6 +675,22 @@ public static class RuleFireLint
                 // #197 misc: one terrain-populated variant for the Grounded family (not distance-gated).
                 yield return new HitRollCompleteContext(attacker, defender, OneOfEachFace(), FarInches,
                     TerrainPieces: OriginTerrain);
+                // #377 (Slayer / Melee Slayer / Ranged Slayer / Shatter / Tear): Tough-majority defender
+                // variants across the same melee/charge/distance axes, so targetMajorityHasTough-gated
+                // rules prove fireable. Actor seat only — Subject-seat entries put the BEARER in the
+                // defender chair, and no Tough-gated rule reads its own toughness.
+                if (seat == ERuleSeat.Actor)
+                {
+                    foreach (float distance in new[] { NearInches, FarInches })
+                    foreach (bool isMelee in new[] { false, true })
+                    foreach (bool isCharging in new[] { false, true })
+                    foreach (float chargeOrigin in new[] { 0f, FarInches })
+                    {
+                        yield return new HitRollCompleteContext(attacker, world.ToughOther, OneOfEachFace(),
+                            distance, isMelee, isCharging, IsSpell: false,
+                            ChargeOriginDistanceInches: chargeOrigin);
+                    }
+                }
                 break;
             case EHookID.Shooting_OnSaveRollModifier:
                 yield return new CoverIgnoreContext(attacker);
@@ -751,6 +767,10 @@ public static class RuleFireLint
         public UnitData Bearer { get; private init; } = null!;
         public UnitData Other { get; private init; } = null!;
 
+        /// <summary> An opposing unit whose models are all Tough(9), for targetMajorityHasTough
+        /// conditions (#377) — 9 satisfies every gate the corpus uses (3 and 9). </summary>
+        public UnitData ToughOther { get; private init; } = null!;
+
         /// <summary> The bearer's carrying weapon for weapon-scoped rules; null for unit rules. </summary>
         public Weapon? Weapon { get; private init; }
 
@@ -770,10 +790,17 @@ public static class RuleFireLint
             bearer.AttachRuleDefinition(
                 new ResolvedRule(definition.Name, definition, ArgumentsFor(definition)));
 
+            UnitData toughOther = BuildUnit(store, "Lint tough opponent", carriedWeapon: null);
+            foreach (var model in toughOther.Models)
+            {
+                model.SetMaxWounds(9);
+            }
+
             return new LintWorld
             {
                 Bearer = bearer,
                 Other = BuildUnit(store, "Lint opponent", carriedWeapon: null),
+                ToughOther = toughOther,
                 Weapon = weapon,
             };
         }

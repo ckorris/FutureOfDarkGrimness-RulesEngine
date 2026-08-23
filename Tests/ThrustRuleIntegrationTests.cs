@@ -185,6 +185,116 @@ namespace FDG.Tests
                 "Shielded applies in melee too — RollToHitStage is shared between shooting and the melee swing.");
         }
 
+        // --- #377 spell-granted phrase rules: the AP arms ride the same save-modifier seam ---
+
+        [Test]
+        public async Task ApBonusInMelee_Melee_AppliesSaveModifier()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            attacker.GetValue().AttachRuleDefinition(
+                new ResolvedRule("AP(+1) in melee", CoreRuleCatalog.ApBonusInMelee));
+
+            RollToHitResults result = await RunRollToHit(attacker, MakeUnit(DefenderPos),
+                isMelee: true, isCharging: false);
+
+            Assert.That(result.SaveModifier, Is.EqualTo(-1),
+                "\"AP(+1) in melee\" applies on any melee swing - no charge gate, unlike Piercing Assault.");
+        }
+
+        [Test]
+        public async Task ApBonusInMelee_Shooting_NoSaveModifier()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            attacker.GetValue().AttachRuleDefinition(
+                new ResolvedRule("AP(+1) in melee", CoreRuleCatalog.ApBonusInMelee));
+
+            RollToHitResults result = await RunRollToHit(attacker, MakeUnit(DefenderPos),
+                isMelee: false, isCharging: false);
+
+            Assert.That(result.SaveModifier, Is.EqualTo(0), "the melee gate fails when shooting.");
+        }
+
+        [Test]
+        public async Task ApBonusWhenShooting_Shooting_AppliesSaveModifier()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            attacker.GetValue().AttachRuleDefinition(
+                new ResolvedRule("AP(1) when shooting", CoreRuleCatalog.ApBonusWhenShooting));
+
+            RollToHitResults result = await RunRollToHit(attacker, MakeUnit(DefenderPos),
+                isMelee: false, isCharging: false);
+
+            Assert.That(result.SaveModifier, Is.EqualTo(-1),
+                "\"AP(1) when shooting\" applies to any shooting attack.");
+        }
+
+        [Test]
+        public async Task ApBonusWhenShooting_Melee_NoSaveModifier()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            attacker.GetValue().AttachRuleDefinition(
+                new ResolvedRule("AP(1) when shooting", CoreRuleCatalog.ApBonusWhenShooting));
+
+            RollToHitResults result = await RunRollToHit(attacker, MakeUnit(DefenderPos),
+                isMelee: true, isCharging: false);
+
+            Assert.That(result.SaveModifier, Is.EqualTo(0), "the shooting gate fails in melee.");
+        }
+
+        // --- #377 Slayer: AP(+2) vs a majority-Tough(3)+ target, when shooting >9" OR charging ---
+
+        [Test]
+        public async Task Slayer_ShootingBeyondNine_ToughTarget_AppliesSaveModifier()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            attacker.GetValue().AttachRuleDefinition(new ResolvedRule("Slayer", CoreRuleCatalog.Slayer));
+            DataBinding<UnitData> tough = MakeToughUnit(new Position(20, 5));
+
+            RollToHitResults result = await RunRollToHit(attacker, tough, isMelee: false, isCharging: false);
+
+            Assert.That(result.SaveModifier, Is.EqualTo(-2),
+                "Slayer gives AP(+2) shooting a majority-Tough(3)+ target from beyond 9\".");
+        }
+
+        [Test]
+        public async Task Slayer_Charging_ToughTarget_AppliesSaveModifier()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            attacker.GetValue().AttachRuleDefinition(new ResolvedRule("Slayer", CoreRuleCatalog.Slayer));
+            DataBinding<UnitData> tough = MakeToughUnit(DefenderPos);
+
+            RollToHitResults result = await RunRollToHit(attacker, tough, isMelee: true, isCharging: true);
+
+            Assert.That(result.SaveModifier, Is.EqualTo(-2),
+                "Slayer's charge arm fires in base contact - only ONE arm may fire, never both.");
+        }
+
+        [Test]
+        public async Task Slayer_ShootingBeyondNine_SoftTarget_NoSaveModifier()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            attacker.GetValue().AttachRuleDefinition(new ResolvedRule("Slayer", CoreRuleCatalog.Slayer));
+
+            RollToHitResults result = await RunRollToHit(attacker, MakeUnit(new Position(20, 5)),
+                isMelee: false, isCharging: false);
+
+            Assert.That(result.SaveModifier, Is.EqualTo(0),
+                "1-wound models are not Tough(3)+ - the Tough-majority gate fails.");
+        }
+
+        [Test]
+        public async Task Slayer_ShootingWithinNine_NotCharging_ToughTarget_NoSaveModifier()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(AttackerPos);
+            attacker.GetValue().AttachRuleDefinition(new ResolvedRule("Slayer", CoreRuleCatalog.Slayer));
+            DataBinding<UnitData> tough = MakeToughUnit(DefenderPos);
+
+            RollToHitResults result = await RunRollToHit(attacker, tough, isMelee: false, isCharging: false);
+
+            Assert.That(result.SaveModifier, Is.EqualTo(0),
+                "within 9\" and not charging, neither Slayer arm applies.");
+        }
+
         private async Task<DetermineHitRollResults> RunHitStage(
             DataBinding<UnitData> attacker, DataBinding<UnitData> defender, bool isMelee, bool isCharging)
         {
@@ -227,6 +337,18 @@ namespace FDG.Tests
 
         private static void AttachThrust(DataBinding<UnitData> unit) =>
             unit.GetValue().AttachRuleDefinition(new ResolvedRule("Thrust", CoreRuleCatalog.Thrust));
+
+        /// <summary> A one-model unit whose model is Tough(3), for Slayer's majority-Tough gate. </summary>
+        private DataBinding<UnitData> MakeToughUnit(Position position)
+        {
+            DataBinding<UnitData> unit = MakeUnit(position);
+            foreach (var model in unit.GetValue().Models)
+            {
+                model.SetMaxWounds(3);
+            }
+
+            return unit;
+        }
 
         private DataBinding<UnitData> MakeUnit(Position position)
         {

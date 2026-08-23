@@ -139,6 +139,60 @@ namespace FDG.ArmyBuilding
             return book;
         }
 
+        /// <summary>
+        /// Re-parses ONLY the spells of <paramref name="book"/> from its OPR source JSON, leaving every
+        /// other facet untouched (#377). The bundled books carry post-bake passes pulled from the live
+        /// API (#219 per-unit prices, #383 per-model section shapes), so a full re-import would regress
+        /// them — spell re-parsing gets the same targeted-stamp treatment those passes got. Replaces
+        /// <see cref="BookFile.Spells"/> wholesale and swaps each synthesized "&lt;Spell&gt; Effect"
+        /// definition by name (other rule definitions, including supplement embeds, are untouched).
+        /// Returns the number of spells stamped; unparseable spells warn and drop, exactly as import does.
+        /// </summary>
+        public static int RestampSpells(BookFile book, string oprJson, Action<string>? warn = null)
+        {
+            OprBook opr;
+            try
+            {
+                oprJson = AsciiFoldJsonValues(oprJson, warn);
+                opr = JsonSerializer.Deserialize<OprBook>(oprJson, ReadOpts)
+                    ?? throw new InvalidOperationException("OPR army-book JSON did not deserialize.");
+            }
+            catch (JsonException ex)
+            {
+                throw new InvalidOperationException($"Malformed OPR army-book JSON: {ex.Message}", ex);
+            }
+
+            book.Spells.Clear();
+            foreach (OprSpell spell in opr.Spells ?? new())
+            {
+                SpellDefinition? parsed = TryParseSpell(spell, out SpecialRuleDefinition? synthesized);
+                if (parsed is null)
+                {
+                    warn?.Invoke($"Spell '{spell.Name}' skipped: unrecognized effect text \"{spell.Effect}\".");
+                    continue;
+                }
+
+                book.Spells.Add(parsed);
+                if (synthesized is not null)
+                {
+                    // Replace in place (not remove+append) so an unchanged synthesized definition keeps
+                    // its position and the re-stamped file diffs only where spells actually changed.
+                    int existing = book.RuleDefinitions.FindIndex(d =>
+                        string.Equals(d.Name, synthesized.Name, StringComparison.OrdinalIgnoreCase));
+                    if (existing >= 0)
+                    {
+                        book.RuleDefinitions[existing] = synthesized;
+                    }
+                    else
+                    {
+                        book.RuleDefinitions.Add(synthesized);
+                    }
+                }
+            }
+
+            return book.Spells.Count;
+        }
+
         /// <summary>Parses the JSON and ASCII-folds every string value (leaves, not property names — those
         /// are ASCII schema keys), then re-serializes. The serializer re-escapes any quote the fold
         /// introduced, so the document stays well-formed.</summary>

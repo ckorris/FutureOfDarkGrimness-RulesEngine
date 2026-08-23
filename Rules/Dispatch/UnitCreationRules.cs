@@ -1,6 +1,7 @@
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch.Contexts;
 using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 
 namespace FDG.Rules.Dispatch;
 
@@ -49,6 +50,19 @@ public static class UnitCreationRules
         // its wound count rides on the host's HeroAttachment and is applied to the hero model here.
         HeroAttachment? hero = (unit as UnitData)?.HeroAttachment;
 
+        // #382: the join relocated the hero's unit-scoped rules onto the hero MODEL, and the
+        // participant above carries no models — so an aura the hero brought (Effect.Aura at this
+        // hook: a Robot Legions lord's Reanimation Aura) never fired, leaving the granted rule inert
+        // on exactly the unit it was bought for. Matched by EFFECT SHAPE, mirroring
+        // HeroJoinResolver.ResolveJoinedHeroDefense, NOT by walking the hero model's rules through
+        // the evaluator: the hero's other creation-time rules are hero-personal (Tough is baked into
+        // HeroAttachment.HeroWounds, Armor(X) into the join's defense) and a general walk would apply
+        // them unit-wide. Auras are the only creation-time effect whose semantics are the whole unit.
+        if (hero != null)
+        {
+            ApplyJoinedHeroAuras(unit, hero);
+        }
+
         if (!maxWounds.HasMax && hero == null)
         {
             return;
@@ -67,5 +81,54 @@ public static class UnitCreationRules
                 model.SetMaxWounds(maxWounds.MaxWounds);
             }
         }
+    }
+
+    /// <summary>
+    /// #382 — fires the creation-time auras riding the joined hero's model, granting to the HOST unit.
+    /// Conditions are not evaluated (creation entries are authored <c>Condition.Always</c> — the
+    /// <c>HeroJoinResolver.ResolveJoinedHeroDefense</c> precedent). Deduped by granted rule name against
+    /// grants the unit already holds, so a host that statically carries the same aura (which fired in the
+    /// main pass above) doesn't double-grant, matching the evaluator's argument-less dedup.
+    /// </summary>
+    private static void ApplyJoinedHeroAuras(IUnit unit, HeroAttachment hero)
+    {
+        IModel? heroModel = unit.Models.FirstOrDefault(m => m.ID == hero.HeroModelId);
+        if (heroModel == null)
+        {
+            return;
+        }
+
+        List<RuleOperation> operations = new List<RuleOperation>();
+        foreach (ResolvedRule rule in heroModel.RuleDefinitions)
+        {
+            foreach (HookEntry entry in rule.Definition.Passive)
+            {
+                if (entry.HookID != EHookID.Lifecycle_OnUnitCreated || entry.Effect is not Effect.Aura aura
+                    || UnitHoldsGrant(unit, aura.RuleName))
+                {
+                    continue;
+                }
+
+                aura.Apply(new RuleInvocation(Hook: null, Bearer: unit, Arguments: rule.Arguments,
+                    Definition: rule.Definition), operations);
+                OperationApplier.ApplyTokenOperations(operations);
+                operations.Clear();
+            }
+        }
+    }
+
+    /// <summary> Whether the unit already holds a <see cref="TokenType.RuleGrant"/> for this rule name. </summary>
+    private static bool UnitHoldsGrant(IUnit unit, string ruleName)
+    {
+        foreach (Token token in unit.Tokens.GetAllTokens(TokenType.RuleGrant))
+        {
+            if (token.Payload is TokenPayload.RuleGrant grant
+                && string.Equals(grant.RuleName, ruleName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

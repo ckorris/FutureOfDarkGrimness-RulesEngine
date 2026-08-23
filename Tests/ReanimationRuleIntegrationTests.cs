@@ -28,6 +28,16 @@ namespace FDG.Tests
             },
             System.Array.Empty<ActivatedAbility>());
 
+        // The shipped delivery vehicle (ReanimationShippedDataTests: every corpus ref is the Aura on a
+        // Robot Legions lord) — "this model and its unit get Reanimation" at creation.
+        private static SpecialRuleDefinition AuraDefinition() => new("Reanimation Aura",
+            new[]
+            {
+                new HookEntry(EHookID.Lifecycle_OnUnitCreated, new Condition.Always(),
+                    new Effect.Aura(RuleName), ELifetime.UntilEndOfGame),
+            },
+            System.Array.Empty<ActivatedAbility>());
+
         private GameDataStore _store = null!;
         private PlayerID _player;
 
@@ -97,13 +107,55 @@ namespace FDG.Tests
             Assert.That(unit.GetValue().Models.All(m => m.GetIsAlive()), Is.True, "nothing to restore, no dice");
         }
 
+        // #382: the reported failure end-to-end. The rule reaches play only as the AURA on a lord, and the
+        // lord JOINS a unit — the join relocates the aura onto the hero model and consumes the lord's own
+        // unit, so the host's creation pass is the only chance to land the grant. The combined unit must
+        // then reanimate at activation start.
+        [Test]
+        public async Task JoinedLordWithAura_ReanimatesTheJoinedUnit()
+        {
+            var resolver = new RuleResolver();
+            resolver.Register(Definition());
+            resolver.Register(AuraDefinition());
+
+            DataBinding<UnitData> host = MakeUnit(modelCount: 3, attachReanimation: false);
+            var heroModel = new ModelData(0.5f, new List<Weapon>(), new Position(22f, 20f), _store);
+            var lord = new UnitData(_player, "Robot Lord", quality: 3, defense: 2,
+                modelBindings: new List<DataBinding<ModelData>>
+                    { _store.GetDataBinding<ModelData>(_store.Create(heroModel)) });
+            lord.AttachRuleDefinition(new ResolvedRule("Hero", CoreRuleCatalog.Hero));
+            lord.AttachRuleDefinition(new ResolvedRule("Reanimation Aura", AuraDefinition()));
+            HeroJoinResolver.Apply(new List<(SaveLoad.UnitFileEntry, UnitData)>
+            {
+                (new SaveLoad.UnitFileEntry { Id = "host" }, host.GetValue()),
+                (new SaveLoad.UnitFileEntry { JoinsUnitId = "host" }, lord),
+            });
+
+            var ctx = new TriggeredMoveTestContext(_store, new NullPlayerRequester(),
+                diceRoller: new FixedDiceRoller(5), ruleResolver: resolver);
+            Rules.Dispatch.UnitCreationRules.Apply(host.GetValue(), ctx.RuleEvaluator);
+
+            KillModel(host, 1);
+            KillModel(host, 2);
+
+            var unitContext = new UnitActionContext(ctx, host);
+            unitContext.Reset(host);
+            var stage = new ActivationStartStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("finish");
+            await stage.Enter(unitContext);
+
+            Assert.That(host.GetValue().Models.Count(m => m.GetIsAlive()), Is.EqualTo(4),
+                "the lord's aura grants Reanimation to the joined unit - both casualties return.");
+        }
+
         private void KillModel(DataBinding<UnitData> unit, int index)
         {
             var model = (ModelData)unit.GetValue().Models[index];
             model.DealWounds(model.TotalWounds - model.WoundsDealt);
         }
 
-        private DataBinding<UnitData> MakeUnit(int modelCount, int toughSecondModel = 0)
+        private DataBinding<UnitData> MakeUnit(int modelCount, int toughSecondModel = 0,
+            bool attachReanimation = true)
         {
             var modelBindings = new List<DataBinding<ModelData>>();
             for (int i = 0; i < modelCount; i++)
@@ -120,7 +172,10 @@ namespace FDG.Tests
             var unit = new UnitData(_player, "Warriors", quality: 4, defense: 4,
                 modelBindings: modelBindings);
             DataBinding<UnitData> binding = _store.GetDataBinding<UnitData>(_store.Create(unit));
-            binding.GetValue().AttachRuleDefinition(new ResolvedRule(RuleName, Definition()));
+            if (attachReanimation)
+            {
+                binding.GetValue().AttachRuleDefinition(new ResolvedRule(RuleName, Definition()));
+            }
 
             _store.Create(new ArmyData(_player, new List<DataBinding<UnitData>> { binding }));
             _store.Create(new TeamData(0, new List<PlayerID> { _player }));

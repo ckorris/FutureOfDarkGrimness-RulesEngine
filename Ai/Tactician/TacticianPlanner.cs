@@ -72,6 +72,11 @@ namespace FDG.Ai.Tactician
         // #363: terrain snapshot for the offense term's sight-line test - the scorer must not
         // credit a volley the shoot stage will refuse (Blocking wall between endpoint and enemy).
         private List<ITerrain>? _terrainSnapshot;
+        // #384: the game's see-through-allies setting, and (when OFF - official rules) the lane
+        // tests' extra blockers: other friendly units' bases, which the shoot stage will count.
+        // Enemy bases stay out of the approximation (#363). Cached like _terrainSnapshot.
+        private readonly bool _seeThroughFriendlyUnits;
+        private List<ITerrain>? _sightSnapshot;
         // #365: total enemy melee threat to the active unit. Endpoint-independent (it asks how
         // hard they hit, not from where), so it is an activation-level constant, not per candidate.
         private float? _meleeThreatTotal;
@@ -80,12 +85,17 @@ namespace FDG.Ai.Tactician
         /// <summary>The unit whose activation is being planned (null between activations).</summary>
         public DataBinding<UnitData>? ActiveUnit => _activeUnit;
 
+        /// <param name="seeThroughFriendlyUnits">The game's #384 LoS house rule
+        /// (<see cref="GameSettings.SeeThroughFriendlyUnits"/>). False (the default game setting)
+        /// makes the planner's sight tests count OTHER friendly units' bases as blockers, matching
+        /// what the shoot stage will rule from a candidate endpoint.</param>
         public TacticianPlanner(ITableState tableState, RuleEvaluator evaluator,
-            Action<string>? decisionLog = null)
+            Action<string>? decisionLog = null, bool seeThroughFriendlyUnits = false)
         {
             _tableState = tableState;
             _evaluator = evaluator;
             _decisionLog = decisionLog;
+            _seeThroughFriendlyUnits = seeThroughFriendlyUnits;
         }
 
         /// <summary>Called by the activation resolver the moment it picks the unit.</summary>
@@ -109,6 +119,7 @@ namespace FDG.Ai.Tactician
             _ignoresDifficultTerrain = null;
             _advanceLanes = null;
             _terrainSnapshot = null;
+            _sightSnapshot = null;
             _meleeThreatTotal = null;
         }
 
@@ -152,7 +163,8 @@ namespace FDG.Ai.Tactician
                 return null;
             }
 
-            List<MacroAction> candidates = MacroActionGenerator.Enumerate(_evaluator, _tableState, _activeUnit);
+            List<MacroAction> candidates = MacroActionGenerator.Enumerate(_evaluator, _tableState, _activeUnit,
+                seeThroughFriendlyUnits: _seeThroughFriendlyUnits);
             MacroAction? best = null;
             string? bestAction = null;
             float bestScore = float.NegativeInfinity;
@@ -268,7 +280,8 @@ namespace FDG.Ai.Tactician
             {
                 RuntimeSpell? spell = SpellValuation.FindByLabel(army, option);
                 if (spell == null) continue; // Cancel, or a label we cannot map back to a spell
-                float value = SpellValuation.NetCastValue(_evaluator, _tableState, _activeUnit, spell);
+                float value = SpellValuation.NetCastValue(_evaluator, _tableState, _activeUnit, spell,
+                    _seeThroughFriendlyUnits);
                 if (bestLabel == null || value > bestValue)
                 {
                     bestValue = value;
@@ -498,7 +511,8 @@ namespace FDG.Ai.Tactician
             foreach (RuntimeSpell spell in army.Spells)
             {
                 if (spell.Threshold <= 0 || spell.Threshold > tokens) continue;
-                float value = SpellValuation.NetCastValue(_evaluator, _tableState, _activeUnit!, spell);
+                float value = SpellValuation.NetCastValue(_evaluator, _tableState, _activeUnit!, spell,
+                    _seeThroughFriendlyUnits);
                 if (value > bestValue)
                 {
                     bestValue = value;
@@ -544,7 +558,7 @@ namespace FDG.Ai.Tactician
                 // One centroid-to-centroid sight test per (candidate x enemy), shared by the two
                 // things that need it: the offense term (a fact - can we shoot from here) and the
                 // #365 cover share (a habit - is this endpoint shadowed from that gun).
-                bool hasLane = LineOfSightUtilities.HasLineOfSight(end, enemyPos, TerrainSnapshot());
+                bool hasLane = LineOfSightUtilities.HasLineOfSight(end, enemyPos, SightSnapshot());
 
                 if (candidate.Intent == EMacroIntent.ChargeToContact
                     && candidate.ActionType == EActionType.Charge
@@ -1275,6 +1289,21 @@ namespace FDG.Ai.Tactician
         // (Grounded Speed) so the planner's numbers match the move resolver's.
         private List<ITerrain> TerrainSnapshot() =>
             _terrainSnapshot ??= _tableState.Terrain.Objects.ToList();
+
+        // #384: what a SIGHT test must clear from a candidate endpoint - terrain, plus other
+        // friendly units' bases when the see-through-allies house rule is off (official rules).
+        // Distance/mobility queries keep using TerrainSnapshot(): model bases are not terrain.
+        private List<ITerrain> SightSnapshot()
+        {
+            if (_sightSnapshot != null) return _sightSnapshot;
+            _sightSnapshot = _seeThroughFriendlyUnits || _activeUnit == null
+                ? TerrainSnapshot()
+                : TerrainSnapshot()
+                    .Concat(LineOfSightUtilities.BuildFriendlySightBlockers(
+                        _tableState, _activeUnit.GetValue()))
+                    .ToList();
+            return _sightSnapshot;
+        }
 
         // #365: every enemy's melee threat to us, reachable or not - the denominator the habit's
         // melee half is a share OF. Endpoint-independent, so one pass per activation serves every

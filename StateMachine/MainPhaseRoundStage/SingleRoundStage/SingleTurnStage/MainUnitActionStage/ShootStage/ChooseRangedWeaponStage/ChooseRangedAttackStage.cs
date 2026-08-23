@@ -722,8 +722,10 @@ namespace FDG.Stages
                 .Where(unit => unit.GetValue().GetIsOnBattlefield());
 
             // If the attacker has already engaged the max number of distinct units this shoot action, any further
-            // unit that wasn't already among them is unselectable.
-            bool atTargetLimit = attackedDefenderRefs.Count >= GameWideConstants.MAX_TARGETED_UNITS_PER_SHOOT_ACTION;
+            // unit that wasn't already among them is unselectable. #384: the Unlimited Split Fire house
+            // rule (lobby toggle, default off) lifts the cap entirely.
+            bool atTargetLimit = !gameContext.Settings.UnlimitedSplitFire
+                && attackedDefenderRefs.Count >= GameWideConstants.MAX_TARGETED_UNITS_PER_SHOOT_ACTION;
 
             //Go through each enemy unit, which will correspond to a WeaponTargetStats.
             foreach (DataBinding<UnitData> enemyUnit in enemyUnits)
@@ -765,7 +767,8 @@ namespace FDG.Stages
                 new Dictionary<string, WeaponTargetStats>(StringComparer.Ordinal);
 
             var modelBlockers = LineOfSightUtilities.BuildModelBlockers(
-                gameContext.TableState, attackingUnit, enemyUnit);
+                gameContext.TableState, attackingUnit, enemyUnit,
+                gameContext.Settings.SeeThroughFriendlyUnits);
             IReadOnlyList<ITerrain> allTerrain = terrain.Concat(modelBlockers).ToList();
 
             bool hasCover = ComputeHasCover(attackingUnit, enemyUnit, allTerrain,

@@ -44,6 +44,8 @@ namespace FDG.Network.Connection.Lobby
         public IObservable<ETurnStyle> TurnStyleObservable => _settings_TurnMethod;
         public IObservable<EShootingMode> ShootingModeObservable => _settings_ShootingMode;
         public IObservable<bool> CoverProximityExceptionsObservable => _settings_CoverProximityExceptions;
+        public IObservable<bool> SeeThroughFriendlyUnitsObservable => _settings_SeeThroughFriendlyUnits;
+        public IObservable<bool> UnlimitedSplitFireObservable => _settings_UnlimitedSplitFire;
         public IObservable<ETableBackground> TableBackgroundObservable => _settings_TableBackground;
 
         public string ServerName => _serverName.Value;
@@ -74,6 +76,10 @@ namespace FDG.Network.Connection.Lobby
 
         public bool CoverProximityExceptions => _settings_CoverProximityExceptions.Value;
 
+        public bool SeeThroughFriendlyUnits => _settings_SeeThroughFriendlyUnits.Value;
+
+        public bool UnlimitedSplitFire => _settings_UnlimitedSplitFire.Value;
+
         public ETableBackground TableBackground => _settings_TableBackground.Value;
 
         private BehaviorSubject<string> _serverName;
@@ -96,6 +102,8 @@ namespace FDG.Network.Connection.Lobby
 
         private BehaviorSubject<EShootingMode> _settings_ShootingMode;
         private BehaviorSubject<bool> _settings_CoverProximityExceptions;
+        private BehaviorSubject<bool> _settings_SeeThroughFriendlyUnits;
+        private BehaviorSubject<bool> _settings_UnlimitedSplitFire;
         private BehaviorSubject<ETableBackground> _settings_TableBackground;
 
         private INetworkHost _host;
@@ -193,6 +201,8 @@ namespace FDG.Network.Connection.Lobby
             _settings_TurnMethod = new BehaviorSubject<ETurnStyle>(_gameSettings.TurnStyle);
             _settings_ShootingMode = new BehaviorSubject<EShootingMode>(_gameSettings.ShootingMode);
             _settings_CoverProximityExceptions = new BehaviorSubject<bool>(_gameSettings.CoverProximityExceptionsEnabled);
+            _settings_SeeThroughFriendlyUnits = new BehaviorSubject<bool>(_gameSettings.SeeThroughFriendlyUnits);
+            _settings_UnlimitedSplitFire = new BehaviorSubject<bool>(_gameSettings.UnlimitedSplitFire);
             _settings_TableBackground = new BehaviorSubject<ETableBackground>(_gameSettings.TableBackground);
 
             _playerInfos = new BehaviorSubject<IReadOnlyList<LobbyPlayerInfoSummary>>(new List<LobbyPlayerInfoSummary>());
@@ -254,6 +264,8 @@ namespace FDG.Network.Connection.Lobby
             _settings_TurnMethod = new BehaviorSubject<ETurnStyle>(_gameSettings.TurnStyle);
             _settings_ShootingMode = new BehaviorSubject<EShootingMode>(_gameSettings.ShootingMode);
             _settings_CoverProximityExceptions = new BehaviorSubject<bool>(_gameSettings.CoverProximityExceptionsEnabled);
+            _settings_SeeThroughFriendlyUnits = new BehaviorSubject<bool>(_gameSettings.SeeThroughFriendlyUnits);
+            _settings_UnlimitedSplitFire = new BehaviorSubject<bool>(_gameSettings.UnlimitedSplitFire);
             _settings_TableBackground = new BehaviorSubject<ETableBackground>(_gameSettings.TableBackground);
 
             _playerInfos = new BehaviorSubject<IReadOnlyList<LobbyPlayerInfoSummary>>(new List<LobbyPlayerInfoSummary>());
@@ -710,7 +722,8 @@ namespace FDG.Network.Connection.Lobby
                         FDGGame_AsLocal aiGame = new FDGGame_AsLocal(_gameDataStore, _messageBus);
                         playerSlot.AssignPlayerController(FDG.Ai.AiProfileFactory.CreateController(
                             info.AiProfile, info.PlayerName, playerSlot.PlayerID, aiGame,
-                            _gameSettings.DiceSeed, playerSlot.SlotID));
+                            _gameSettings.DiceSeed, playerSlot.SlotID,
+                            _gameSettings.SeeThroughFriendlyUnits));
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
@@ -855,7 +868,8 @@ namespace FDG.Network.Connection.Lobby
                         FDGGame_AsLocal aiGame = new FDGGame_AsLocal(_gameDataStore, _messageBus);
                         ComputerPlayerController aiController = FDG.Ai.AiProfileFactory.CreateController(
                             lobbyPlayerInfo.AiProfile, lobbyPlayerInfo.PlayerName, playerSlot.PlayerID, aiGame,
-                            _gameSettings.DiceSeed, playerSlot.SlotID);
+                            _gameSettings.DiceSeed, playerSlot.SlotID,
+                            _gameSettings.SeeThroughFriendlyUnits);
                         playerSlot.AssignPlayerController(aiController);
                         break;
                     default:
@@ -1090,6 +1104,20 @@ namespace FDG.Network.Connection.Lobby
         {
             _settings_CoverProximityExceptions.OnNext(enabled);
             _gameSettings.CoverProximityExceptions = enabled;
+            _messageBus.SendCommandToAllAsync(new LobbyGameSettingsUpdate(_gameSettings));
+        }
+
+        public void SetSeeThroughFriendlyUnits(bool enabled)
+        {
+            _settings_SeeThroughFriendlyUnits.OnNext(enabled);
+            _gameSettings.SeeThroughFriendlyUnits = enabled;
+            _messageBus.SendCommandToAllAsync(new LobbyGameSettingsUpdate(_gameSettings));
+        }
+
+        public void SetUnlimitedSplitFire(bool enabled)
+        {
+            _settings_UnlimitedSplitFire.OnNext(enabled);
+            _gameSettings.UnlimitedSplitFire = enabled;
             _messageBus.SendCommandToAllAsync(new LobbyGameSettingsUpdate(_gameSettings));
         }
 

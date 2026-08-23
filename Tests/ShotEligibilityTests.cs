@@ -126,7 +126,8 @@ namespace FDG.Tests
             Assert.That(stats.modelsThatCanShoot, Is.Not.Empty, "the clear-lane shooter can fire");
 
             IReadOnlyList<ITerrain> blockers =
-                ShotEligibility.BuildBlockers(ctx.TableState, attackerUnit, enemyUnit);
+                ShotEligibility.BuildBlockers(ctx.TableState, attackerUnit, enemyUnit,
+                    seeThroughFriendlyUnits: false);
             var targets = enemyUnit.GetValue().Models.ToList();
             foreach (DataBinding<ModelData> shooterBinding in stats.modelsThatCanShoot)
             {

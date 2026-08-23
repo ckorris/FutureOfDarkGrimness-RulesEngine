@@ -13,7 +13,8 @@ namespace FDG.Stages
         protected override async Task RunStage(ICombatMetadata metaData, Func<CoverCheckResults, Task> onFinished)
         {
             var modelBlockers = LineOfSightUtilities.BuildModelBlockers(
-                GameContext.TableState, metaData.AttackingUnit, metaData.DefendingUnit);
+                GameContext.TableState, metaData.AttackingUnit, metaData.DefendingUnit,
+                GameContext.Settings.SeeThroughFriendlyUnits);
             IReadOnlyList<ITerrain> terrain = GameContext.TableState.Terrain.Objects
                 .Concat(modelBlockers).ToList();
 

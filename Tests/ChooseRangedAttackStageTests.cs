@@ -249,6 +249,93 @@ namespace FDG.Tests
             Assert.That(reasonForEnemy2, Does.Contain("Already targeting"));
         }
 
+        // ── #384: the Unlimited Split Fire house rule lifts the 2-unit cap ────
+
+        [Test]
+        public async Task Enter_TwoTargetsAlreadyAttacked_ThirdSelectable_WithUnlimitedSplitFire()
+        {
+            var requester = new CapturingRangedRequester { Reply = _ => new Cancelled<RangedAttackChoice>() };
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(2, 0, 0), new Position(3, 0, 0), new Position(4, 0, 0) },
+                rifleRange: 24f,
+                playerRequester: requester);
+            GameSettings settings = ctx.Settings;
+            settings.UnlimitedSplitFire = true;
+            ctx.Settings = settings;
+
+            var combatCtx = new CombatActionContext(ctx, attackerBinding, isMelee: false);
+            var enemies = ctx.GameDataStore.GetAllDataBindings<ArmyData>()
+                .First(a => a.GetValue().PlayerID != attackerBinding.GetValue().PlayerID)
+                .GetValue().UnitBindings;
+            combatCtx.RegisterAttackedDefender(enemies[0]);
+            combatCtx.RegisterAttackedDefender(enemies[1]);
+
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+            await stage.Enter(combatCtx);
+
+            Assert.That(requester.Captured, Is.Not.Null, "Resolver should have been called.");
+            var targetsForRifle = requester.Captured!.WeaponOptions.Single().WeaponTargetStats;
+            foreach (WeaponTargetStats target in targetsForRifle)
+            {
+                Assert.That(target.UnselectableReason, Is.Null,
+                    "With Unlimited Split Fire on, no target is gated by the 2-unit cap.");
+            }
+        }
+
+        // ── #384: the See-Through Allies house rule at the targeting stage ────
+
+        [Test]
+        public async Task Enter_AllyOnSightLine_BlocksShot_UnderOfficialRules()
+        {
+            CapturingRangedRequester requester = await RunAllyScreenWorld(seeThroughFriendlyUnits: false);
+            // The only enemy sits behind the ally, so no weapon has a fireable target and the stage
+            // never even raises the targeting request.
+            Assert.That(requester.Captured, Is.Null,
+                "Under the official rules (setting off) the allied unit's base cuts the only sight line.");
+        }
+
+        [Test]
+        public async Task Enter_AllyOnSightLine_DoesNotBlockShot_UnderHouseRule()
+        {
+            CapturingRangedRequester requester = await RunAllyScreenWorld(seeThroughFriendlyUnits: true);
+            Assert.That(requester.Captured, Is.Not.Null, "the shot must be offered");
+            WeaponTargetStats stats = requester.Captured!.WeaponOptions.Single().WeaponTargetStats.Single();
+            Assert.That(stats.modelsThatCanShoot, Is.Not.Empty,
+                "With See-Through Allies on (pre-#384 behavior) the ally is transparent.");
+        }
+
+        // One shooter at (0,0), one enemy at (20,0), and a same-player screening unit at (10,0)
+        // square on the sight line.
+        private async Task<CapturingRangedRequester> RunAllyScreenWorld(
+            bool seeThroughFriendlyUnits)
+        {
+            var requester = new CapturingRangedRequester { Reply = _ => new Cancelled<RangedAttackChoice>() };
+            var (ctx, attackerBinding) = BuildTwoTeamWorld(
+                attackerPos: new Position(0, 0, 0),
+                enemyPositions: new[] { new Position(20, 0, 0) },
+                rifleRange: 24f,
+                playerRequester: requester);
+            // A second unit of the attacker's own player, parked on the sight line. Not in any army -
+            // TableState.Units tracks every unit created through the store, which is all the LoS
+            // blocker builder reads.
+            MakeUnit(ctx.GameDataStore as GameDataStore ?? throw new InvalidOperationException(),
+                attackerBinding.GetValue().PlayerID, "AllyScreen",
+                new[] { MakeModel((GameDataStore)ctx.GameDataStore, new Position(10, 0, 0)) });
+
+            GameSettings settings = ctx.Settings;
+            settings.SeeThroughFriendlyUnits = seeThroughFriendlyUnits;
+            ctx.Settings = settings;
+
+            var combatCtx = new CombatActionContext(ctx, attackerBinding, isMelee: false);
+            var stage = new ChooseRangedAttackStage(ctx, new NoOpLayer<ICombatActionContext>());
+            BindAllStageEvents(stage);
+            await stage.Enter(combatCtx);
+
+            return requester;
+        }
+
         // ── #158: dead models must not contaminate targeting ──────────────────
 
         // Pins TWO dead-model rules at once: (1) a wiped-out unit is not offered as a target (enemy[0]

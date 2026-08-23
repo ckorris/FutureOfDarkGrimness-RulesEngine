@@ -95,10 +95,10 @@ namespace FDG.Ai.Tactician
         /// 0 when the spell has no eligible target at all.
         /// </summary>
         public static float GrossCastValue(RuleEvaluator evaluator, ITableState tableState,
-            DataBinding<UnitData> caster, RuntimeSpell spell)
+            DataBinding<UnitData> caster, RuntimeSpell spell, bool seeThroughFriendlyUnits)
         {
             List<(DataBinding<UnitData> Unit, float Value)> ranked =
-                RankEligibleTargets(evaluator, tableState, caster, spell);
+                RankEligibleTargets(evaluator, tableState, caster, spell, seeThroughFriendlyUnits);
             if (ranked.Count < Math.Max(1, spell.Target.MinCount)) return 0f;
 
             float total = 0f;
@@ -115,14 +115,14 @@ namespace FDG.Ai.Tactician
         /// the tokens the attempt burns win or lose.
         /// </summary>
         public static float NetCastValue(RuleEvaluator evaluator, ITableState tableState,
-            DataBinding<UnitData> caster, RuntimeSpell spell)
-            => BaseCastSuccessChance * GrossCastValue(evaluator, tableState, caster, spell)
+            DataBinding<UnitData> caster, RuntimeSpell spell, bool seeThroughFriendlyUnits)
+            => BaseCastSuccessChance * GrossCastValue(evaluator, tableState, caster, spell, seeThroughFriendlyUnits)
                - spell.Threshold * TacticianWeights.CastTokenValue;
 
         /// <summary>Eligible targets with their values, best first.</summary>
         public static List<(DataBinding<UnitData> Unit, float Value)> RankEligibleTargets(
             RuleEvaluator evaluator, ITableState tableState, DataBinding<UnitData> caster,
-            RuntimeSpell spell)
+            RuntimeSpell spell, bool seeThroughFriendlyUnits)
         {
             PlayerID casterPlayer = caster.GetValue().PlayerID;
             var ranked = new List<(DataBinding<UnitData> Unit, float Value)>();
@@ -135,7 +135,7 @@ namespace FDG.Ai.Tactician
                     if (!candidate.GetIsAlive() || !candidate.GetIsOnBattlefield()) continue;
                     bool friendly = IsFriendlyTo(tableState, casterPlayer, candidate.PlayerID);
                     if (!MatchesAffinity(spell.Target.TargetAffinity, caster, unit, friendly)) continue;
-                    if (!WithinRangeAndSight(tableState, caster, unit, spell.Target)) continue;
+                    if (!WithinRangeAndSight(tableState, caster, unit, spell.Target, seeThroughFriendlyUnits)) continue;
                     ranked.Add((unit, TargetValue(evaluator, caster, spell, unit, friendly)));
                 }
             }
@@ -160,11 +160,12 @@ namespace FDG.Ai.Tactician
         // SpellTargeting.WithinRangeAndSight's test, verbatim: some living caster model within
         // range (base-to-base, 3D) of some living target model, with line of sight when required.
         private static bool WithinRangeAndSight(ITableState tableState, DataBinding<UnitData> caster,
-            DataBinding<UnitData> target, TargetSelector selector)
+            DataBinding<UnitData> target, TargetSelector selector, bool seeThroughFriendlyUnits)
         {
             List<ITerrain> terrain = tableState.Terrain.Objects.ToList();
             IReadOnlyList<ITerrain> blockers = selector.RequireLineOfSight
-                ? terrain.Concat(LineOfSightUtilities.BuildModelBlockers(tableState, caster, target)).ToList()
+                ? terrain.Concat(LineOfSightUtilities.BuildModelBlockers(tableState, caster, target,
+                    seeThroughFriendlyUnits)).ToList()
                 : terrain;
 
             foreach (DataBinding<ModelData> casterModel in caster.GetValue().ModelBindings

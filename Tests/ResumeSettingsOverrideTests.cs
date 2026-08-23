@@ -34,6 +34,8 @@ namespace FDG.Tests
                 DiceSeed = 5150,
                 TurnStyle = ETurnStyle.BoltAction,
                 CoverProximityExceptions = false,
+                SeeThroughFriendlyUnits = true,
+                UnlimitedSplitFire = true,
                 TableBackground = ETableBackground.Forest,
             };
 
@@ -51,6 +53,8 @@ namespace FDG.Tests
                 DiceSeed = 99,
                 TurnStyle = ETurnStyle.Standard,
                 CoverProximityExceptions = true,
+                SeeThroughFriendlyUnits = false,
+                UnlimitedSplitFire = false,
                 TableBackground = ETableBackground.Urban,
             };
 
@@ -69,6 +73,9 @@ namespace FDG.Tests
             Assert.That(merged.DiceSeed, Is.EqualTo(5150));
             Assert.That(merged.TurnStyle, Is.EqualTo(ETurnStyle.BoltAction));
             Assert.That(merged.CoverProximityExceptionsEnabled, Is.False);
+            // #384 house rules are rules of a game in progress - the save stays authoritative.
+            Assert.That(merged.SeeThroughFriendlyUnits, Is.True);
+            Assert.That(merged.UnlimitedSplitFire, Is.True);
         }
 
         [Test]

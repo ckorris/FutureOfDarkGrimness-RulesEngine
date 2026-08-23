@@ -48,7 +48,8 @@ namespace FDG.Stages
             // (a #157 split shot fires ONE beam, from a different sniper each shot), and a Takedown
             // shot's tracer aims at its picked model.
             (List<Position> attackerPositions, List<Position> targetPositions) =
-                AttackBeatPositions.Endpoints(GameContext.TableState, metaData, GameContext.RuleEvaluator);
+                AttackBeatPositions.Endpoints(GameContext.TableState, metaData, GameContext.RuleEvaluator,
+                    GameContext.Settings.SeeThroughFriendlyUnits);
             if (attackerPositions.Count > 0 && targetPositions.Count > 0)
             {
                 // Each volley fires every weapon at once; the weapon's Attacks is the volley count.

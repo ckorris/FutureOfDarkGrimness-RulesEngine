@@ -23,7 +23,7 @@ namespace FDG.Stages
     {
         /// <summary>The From/To endpoints for <paramref name="metaData"/>'s attack beat.</summary>
         public static (List<Position> From, List<Position> To) Endpoints(ITableState tableState,
-            ICombatMetadata metaData, RuleEvaluator evaluator)
+            ICombatMetadata metaData, RuleEvaluator evaluator, bool seeThroughFriendlyUnits)
         {
             // Non-consuming query (BuildTargetListStage's own evaluation drives the actual rule), so
             // reading it here for both the shooter filter and the target side is safe.
@@ -33,7 +33,7 @@ namespace FDG.Stages
             List<Position> from = metaData.IsMelee
                 ? MeleeFiringModels(metaData.AttackingUnit, metaData.DefendingUnit, metaData.WeaponType)
                 : RangedFiringModels(tableState, metaData.AttackingUnit, metaData.DefendingUnit,
-                    metaData.WeaponType, evaluator, ignoresLineOfSight);
+                    metaData.WeaponType, evaluator, ignoresLineOfSight, seeThroughFriendlyUnits);
 
             from = SelectBurstShooters(from, metaData.WeaponCount, metaData.BurstShotIndex);
 
@@ -57,7 +57,8 @@ namespace FDG.Stages
             }
             else
             {
-                to = VisibleTargets(tableState, metaData.AttackingUnit, metaData.DefendingUnit, from);
+                to = VisibleTargets(tableState, metaData.AttackingUnit, metaData.DefendingUnit, from,
+                    seeThroughFriendlyUnits);
             }
 
             return (from, to);
@@ -88,7 +89,8 @@ namespace FDG.Stages
         /// </summary>
         public static List<Position> RangedFiringModels(ITableState tableState,
             DataBinding<UnitData> attackingUnit, DataBinding<UnitData> defendingUnit,
-            IWeapon weaponType, RuleEvaluator evaluator, bool ignoresLineOfSight)
+            IWeapon weaponType, RuleEvaluator evaluator, bool ignoresLineOfSight,
+            bool seeThroughFriendlyUnits)
         {
             IUnit attacker = attackingUnit.GetValue();
             IUnit defender = defendingUnit.GetValue();
@@ -101,7 +103,8 @@ namespace FDG.Stages
             // reads a null list as.
             IReadOnlyList<ITerrain>? terrain = ignoresLineOfSight
                 ? null
-                : ShotEligibility.BuildBlockers(tableState, attackingUnit, defendingUnit);
+                : ShotEligibility.BuildBlockers(tableState, attackingUnit, defendingUnit,
+                    seeThroughFriendlyUnits);
 
             var comparer = new WeaponComparer();
             var positions = new List<Position>();
@@ -209,12 +212,13 @@ namespace FDG.Stages
         /// </summary>
         public static List<Position> VisibleTargets(ITableState tableState,
             DataBinding<UnitData> attackingUnit, DataBinding<UnitData> defendingUnit,
-            IReadOnlyList<Position> firingPositions)
+            IReadOnlyList<Position> firingPositions, bool seeThroughFriendlyUnits)
         {
             List<Position> targets = AlivePlaced(defendingUnit);
             if (firingPositions.Count == 0 || targets.Count == 0) return targets;
 
-            IReadOnlyList<ITerrain> terrain = ShotEligibility.BuildBlockers(tableState, attackingUnit, defendingUnit);
+            IReadOnlyList<ITerrain> terrain = ShotEligibility.BuildBlockers(tableState, attackingUnit,
+                defendingUnit, seeThroughFriendlyUnits);
 
             var visible = new List<Position>();
             foreach (Position target in targets)

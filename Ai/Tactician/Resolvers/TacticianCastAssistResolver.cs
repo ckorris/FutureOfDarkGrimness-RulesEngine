@@ -17,11 +17,15 @@ namespace FDG.Ai.Tactician.Resolvers
     {
         private readonly ITableState _tableState;
         private readonly RuleEvaluator _evaluator;
+        // #384: the game's see-through-allies setting, for the spell pricing's sight tests.
+        private readonly bool _seeThroughFriendlyUnits;
 
-        public TacticianCastAssistResolver(ITableState tableState, RuleEvaluator evaluator)
+        public TacticianCastAssistResolver(ITableState tableState, RuleEvaluator evaluator,
+            bool seeThroughFriendlyUnits = false)
         {
             _tableState = tableState;
             _evaluator = evaluator;
+            _seeThroughFriendlyUnits = seeThroughFriendlyUnits;
         }
 
         public Task<int> Resolve(CastAssistRequest request)
@@ -32,7 +36,8 @@ namespace FDG.Ai.Tactician.Resolvers
             RuntimeSpell? spell = army == null ? null : SpellValuation.FindByName(army, request.SpellName);
             if (spell == null) return Task.FromResult(0); // unknown spell: decline, like solo
 
-            float gross = SpellValuation.GrossCastValue(_evaluator, _tableState, request.CastingUnit, spell);
+            float gross = SpellValuation.GrossCastValue(_evaluator, _tableState, request.CastingUnit, spell,
+                _seeThroughFriendlyUnits);
             float perToken = gross / 6f;
             if (perToken <= TacticianWeights.CastTokenValue) return Task.FromResult(0);
 

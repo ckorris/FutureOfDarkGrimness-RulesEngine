@@ -141,7 +141,7 @@ namespace FDG.Tests
             var defender = MakeUnit(MakeModel(new Position(21f, 5f)));
 
             (List<Position> from, List<Position> to) = AttackBeatPositions.Endpoints(_ctx.TableState,
-                Metadata(attacker, defender, rifle, weaponCount: 1), _ctx.RuleEvaluator);
+                Metadata(attacker, defender, rifle, weaponCount: 1), _ctx.RuleEvaluator, seeThroughFriendlyUnits: false);
 
             Assert.That(from, Has.Count.EqualTo(1), "only the carrier with line of sight fires");
             Assert.That(from[0].z, Is.EqualTo(12f).Within(0.0001f));
@@ -158,7 +158,7 @@ namespace FDG.Tests
             var defender = MakeUnit(MakeModel(new Position(21f, 5f)));
 
             (List<Position> from, _) = AttackBeatPositions.Endpoints(_ctx.TableState,
-                Metadata(attacker, defender, rifle, weaponCount: 1), _ctx.RuleEvaluator);
+                Metadata(attacker, defender, rifle, weaponCount: 1), _ctx.RuleEvaluator, seeThroughFriendlyUnits: false);
 
             Assert.That(from, Has.Count.EqualTo(1), "only the carrier in range fires");
             Assert.That(from[0].z, Is.EqualTo(5f).Within(0.0001f));
@@ -179,7 +179,7 @@ namespace FDG.Tests
             {
                 (List<Position> from, _) = AttackBeatPositions.Endpoints(_ctx.TableState,
                     Metadata(attacker, defender, rifle, weaponCount: 1, burstShotIndex: shot),
-                    _ctx.RuleEvaluator);
+                    _ctx.RuleEvaluator, seeThroughFriendlyUnits: false);
                 Assert.That(from, Has.Count.EqualTo(1), "a split single-copy shot draws ONE beam");
                 fromZs.Add(from[0].z);
             }
@@ -199,7 +199,7 @@ namespace FDG.Tests
             metadata.AddResult(new IndividualTargetResult(victim));
 
             (_, List<Position> to) = AttackBeatPositions.Endpoints(_ctx.TableState, metadata,
-                _ctx.RuleEvaluator);
+                _ctx.RuleEvaluator, seeThroughFriendlyUnits: false);
 
             Assert.That(to, Has.Count.EqualTo(1), "a Takedown shot aims at its one picked model");
             Assert.That(to[0].z, Is.EqualTo(9f).Within(0.0001f));
@@ -215,7 +215,7 @@ namespace FDG.Tests
             var defender = MakeUnit(MakeModel(new Position(2.5f, 1f)));
 
             (List<Position> from, _) = AttackBeatPositions.Endpoints(_ctx.TableState,
-                Metadata(attacker, defender, claws, weaponCount: 1, isMelee: true), _ctx.RuleEvaluator);
+                Metadata(attacker, defender, claws, weaponCount: 1, isMelee: true), _ctx.RuleEvaluator, seeThroughFriendlyUnits: false);
 
             Assert.That(from, Has.Count.EqualTo(1), "only the model in melee range swings");
             Assert.That(from[0].x, Is.EqualTo(1f).Within(0.0001f));

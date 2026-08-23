@@ -488,6 +488,19 @@ namespace FDG.ArmyBuilding
             "which gets? (?<rule>.+?) once",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+        // The UNGATED numeric-roll-modifier subset of the grant family ("gets -1 to morale test rolls
+        // once", "gets -3 to casting rolls once", "gets -1 to hit rolls when attacking once"): emitted as
+        // Effect.StatModifier — the engine's token primitive the hit/save/morale/cast stages consume
+        // directly (#197 P6) — NOT as an addRule of the phrase. The cast roll makes this mandatory: it
+        // folds GrantedRollModifiers tokens only (no rule hook fires there), so a rule-shaped "-3 to
+        // casting rolls" could never fire. Combat-kind-GATED phrases ("+1 to hit rolls in melee",
+        // "+1 to hit rolls when shooting") deliberately fail this regex and stay addRule grants — their
+        // gate lives in the #377 core catalog phrase rules. "when attacking" is not a gate: every roll
+        // the Hit token folds into IS an attack.
+        private static readonly Regex StatModifierShape = new(
+            "^(?<delta>[+-]\\d+) to (?<roll>hit|defense|morale test|casting) rolls( when attacking)?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
         // "...which friendly units get X against once" — the mark family (#034): the rule lands on friendlies
         // ATTACKING the picked target, i.e. Effect.MarkTarget.
         private static readonly Regex MarkShape = new(
@@ -624,9 +637,27 @@ namespace FDG.ArmyBuilding
             Match grant = GrantShape.Match(text);
             if (grant.Success)
             {
+                string granted = grant.Groups["rule"].Value.Trim();
+
+                Match statModifier = StatModifierShape.Match(granted);
+                if (statModifier.Success)
+                {
+                    ERollKind roll = statModifier.Groups["roll"].Value.ToLowerInvariant() switch
+                    {
+                        "hit" => ERollKind.Hit,
+                        "defense" => ERollKind.Save,
+                        "morale test" => ERollKind.Morale,
+                        _ => ERollKind.Cast,
+                    };
+                    return new SpellDefinition(spellName, spell.Threshold ?? 1,
+                        new TargetSelector(range, 1, maxCount, affinity, RequireLineOfSight: false),
+                        new Effect.StatModifier(roll, int.Parse(statModifier.Groups["delta"].Value,
+                            System.Globalization.NumberStyles.AllowLeadingSign), ELifetime.NextTrigger));
+                }
+
                 return new SpellDefinition(spellName, spell.Threshold ?? 1,
                     new TargetSelector(range, 1, maxCount, affinity, RequireLineOfSight: false),
-                    new Effect.AddRule(grant.Groups["rule"].Value.Trim(), ELifetime.NextTrigger));
+                    new Effect.AddRule(granted, ELifetime.NextTrigger));
             }
 
             return null;

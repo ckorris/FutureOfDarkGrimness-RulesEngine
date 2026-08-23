@@ -451,6 +451,58 @@ public class OprBookImporterTests
     }
     """;
 
+    // #377 — the ungated numeric-roll-modifier subset of the grant family imports as Effect.StatModifier
+    // (the token primitive the roll stages consume), while combat-kind-GATED phrases stay addRule grants
+    // of the core catalog phrase rules.
+    private const string StatModifierSpellsJson = """
+    {
+      "name": "Spells3", "versionString": "1", "units": [], "upgradePackages": [],
+      "spells": [
+        { "name": "Psy-Injected Courage", "threshold": 1,
+          "effect": "Pick up to two friendly units within 12\", which get +1 to morale test rolls once (next time the effect would apply)." },
+        { "name": "Banishing Sigil", "threshold": 2,
+          "effect": "Pick one enemy unit within 18\", which gets -1 to defense rolls once (next time the effect would apply)." },
+        { "name": "Shifting Form", "threshold": 2,
+          "effect": "Pick one enemy unit within 18\", which gets -3 to casting rolls once (next time the effect would apply)." },
+        { "name": "Brain Infestation", "threshold": 3,
+          "effect": "Pick one enemy unit within 18\", which gets -1 to hit rolls when attacking once (next time the effect would apply)." },
+        { "name": "Vicious Spirits", "threshold": 1,
+          "effect": "Pick up to two friendly units within 12\", which get +1 to hit rolls in melee once (next time the effect would apply)." }
+      ]
+    }
+    """;
+
+    [Test]
+    public void Import_UngatedRollModifierSpells_BecomeStatModifiers_GatedStayGrants()
+    {
+        var warnings = new List<string>();
+        BookFile book = OprBookImporter.Import(StatModifierSpellsJson, "TestSource", "CC-BY-SA 4.0", warnings.Add);
+
+        Assert.That(book.Spells, Has.Count.EqualTo(5));
+        Assert.That(warnings, Is.Empty);
+
+        var courage = (Effect.StatModifier)book.Spells.Single(s => s.Name == "Psy-Injected Courage").Effect;
+        Assert.That((courage.Roll, courage.Delta), Is.EqualTo((ERollKind.Morale, 1)));
+        Assert.That(courage.LifetimeScope, Is.EqualTo(ELifetime.NextTrigger));
+
+        var sigil = (Effect.StatModifier)book.Spells.Single(s => s.Name == "Banishing Sigil").Effect;
+        Assert.That((sigil.Roll, sigil.Delta), Is.EqualTo((ERollKind.Save, -1)),
+            "'defense rolls' is the save roll.");
+
+        var shifting = (Effect.StatModifier)book.Spells.Single(s => s.Name == "Shifting Form").Effect;
+        Assert.That((shifting.Roll, shifting.Delta), Is.EqualTo((ERollKind.Cast, -3)),
+            "the cast roll folds tokens only - this shape MUST be a StatModifier, a rule could never fire.");
+
+        var infestation = (Effect.StatModifier)book.Spells.Single(s => s.Name == "Brain Infestation").Effect;
+        Assert.That((infestation.Roll, infestation.Delta), Is.EqualTo((ERollKind.Hit, -1)),
+            "'when attacking' is not a gate - every hit roll is an attack.");
+
+        var spirits = book.Spells.Single(s => s.Name == "Vicious Spirits").Effect;
+        Assert.That(spirits, Is.InstanceOf<Effect.AddRule>(),
+            "'in melee' IS a gate - the phrase stays a grant of the core catalog phrase rule.");
+        Assert.That(((Effect.AddRule)spirits).RuleName, Is.EqualTo("+1 to hit rolls in melee"));
+    }
+
     [Test]
     public void Import_ParsesMovementApLossAndMoraleTestSpells_SynthesizingRules()
     {

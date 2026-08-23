@@ -31,22 +31,11 @@ namespace FDG.Stages
             IReadOnlyList<ITerrain> terrain = GameContext.TableState.Terrain.Objects
                 .Concat(modelBlockers).ToList();
 
-            bool hasLoS = false;
-            foreach (DataBinding<ModelData> attacker in metaData.AttackingUnit.ModelBindings())
-            {
-                foreach (DataBinding<ModelData> defender in metaData.DefendingUnit.ModelBindings())
-                {
-                    if (LineOfSightUtilities.HasLineOfSight(
-                        attacker.GetValue().PositionBinding.GetValue(),
-                        defender.GetValue().PositionBinding.GetValue(),
-                        terrain))
-                    {
-                        hasLoS = true;
-                        break;
-                    }
-                }
-                if (hasLoS) break;
-            }
+            // #385: the shared unit-sees-unit gate (living, placed models on both sides) - the same
+            // per-model sight test the targeting previews use, so this stage can never cancel a shot
+            // that was legally offered, nor let a dead model's sight line keep one alive.
+            bool hasLoS = ShotEligibility.UnitSeesUnit(
+                metaData.AttackingUnit, metaData.DefendingUnit, terrain);
 
             if (!hasLoS)
             {

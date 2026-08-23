@@ -372,8 +372,10 @@ namespace FDG.Tests
             Assert.That(targets.Single().TargetUnit.Reference, Is.EqualTo(enemies[1].Reference));
         }
 
+        // #385: the preview's cover flag and CoverCheckStage now share this one function;
+        // CoverMajorityTests pins the stage side of the same rule.
         [Test]
-        public void ComputeHasCover_CountsOnlyLivingModels()
+        public void CoverMajority_CountsOnlyLivingModels()
         {
             var store = GameDataStore.GameDataStoreBuilder.GetDefault();
             var player = new PlayerID(Guid.NewGuid());
@@ -399,15 +401,15 @@ namespace FDG.Tests
                 new TerrainData(ETerrainType.Cover, new RectangularZone(8, 12, 3, 7))
             };
 
-            Assert.That(ChooseRangedAttackStage.ComputeHasCover(attacker, defender, terrain,
-                    applyProximityExceptions: true), Is.False,
+            Assert.That(CoverMajority.Evaluate(attacker, defender, terrain,
+                    applyProximityExceptions: true).HasCover, Is.False,
                 "corpses behind the wall must not grant the lone survivor in the open a cover bonus");
 
             // Converse: when the LIVING model is the one behind the wall, cover applies (1 of 1).
             var aliveCovered = MakeUnit(store, enemy, "Defender2",
                 new[] { MakeModel(store, new Position(20, 5)) });
-            Assert.That(ChooseRangedAttackStage.ComputeHasCover(attacker, aliveCovered, terrain,
-                applyProximityExceptions: true), Is.True);
+            Assert.That(CoverMajority.Evaluate(attacker, aliveCovered, terrain,
+                applyProximityExceptions: true).HasCover, Is.True);
         }
 
         // #028: while the unit holds an un-fired Deadly (wound-multiplier) weapon that can reach a target,

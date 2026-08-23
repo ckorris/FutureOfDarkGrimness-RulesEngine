@@ -100,5 +100,36 @@ namespace FDG.Stages
         public static bool CanHitAny(Position from, IBaseShape fromShape, Float2 fromFacing,
             IReadOnlyList<IModel> targets, IReadOnlyList<ITerrain>? blockers, float maxRangeInches)
             => NearestVisibleModel(from, fromShape, fromFacing, targets, blockers, maxRangeInches) != null;
+
+        /// <summary>
+        /// Whether ANY living, placed model of <paramref name="attackingUnit"/> can see ANY living,
+        /// placed model of <paramref name="defendingUnit"/> — the unit-level occlusion gate
+        /// (<see cref="OcclusionCheckStage"/>), built on the same per-model sight test the targeting
+        /// previews and the attack animation use, so the gate cannot pass a shot no living model was
+        /// offered (#385: it used to iterate raw model bindings, letting a dead model keep a sight
+        /// line alive). Range is deliberately not asked — occlusion is a pure sight question; the
+        /// range gate already ran at targeting.
+        /// </summary>
+        public static bool UnitSeesUnit(IUnit attackingUnit, IUnit defendingUnit,
+            IReadOnlyList<ITerrain> blockers)
+        {
+            foreach (IModel shooter in attackingUnit.Models)
+            {
+                if (!shooter.GetIsAlive()) continue;
+                if (shooter.Position.x == 0f && shooter.Position.z == 0f) continue;
+                // NearestVisibleModel applies the same alive+placed filter to the defender side.
+                if (NearestVisibleModel(shooter.Position, shooter.BaseShape, shooter.Facing,
+                        defendingUnit.Models, blockers) != null)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <inheritdoc cref="UnitSeesUnit(IUnit, IUnit, IReadOnlyList{ITerrain})"/>
+        public static bool UnitSeesUnit(DataBinding<UnitData> attackingUnit,
+            DataBinding<UnitData> defendingUnit, IReadOnlyList<ITerrain> blockers)
+            => UnitSeesUnit(attackingUnit.GetValue(), defendingUnit.GetValue(), blockers);
     }
 }

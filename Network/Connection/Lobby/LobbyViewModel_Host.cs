@@ -483,7 +483,7 @@ namespace FDG.Network.Connection.Lobby
             {
                 ArmyListSummary? summary = fullInfo.ArmyListFile != null
                     ? new ArmyListSummary(true, fullInfo.ArmyListFile.Name, fullInfo.ArmyListFile.Faction,
-                    fullInfo.ArmyListFile.TotalPoints)
+                    fullInfo.ArmyListFile.TotalPoints, fullInfo.ArmyListFile.GameSystem)
                     : new ArmyListSummary(false, "N/A", "N/A", 0);
                 infoSummaries.Add(new LobbyPlayerInfoSummary(fullInfo.PlayerName, summary, fullInfo.TeamNumber, fullInfo.PlayerType,
                     fullInfo.ConnectionID, fullInfo.PlayerID, fullInfo.ColorIndex));

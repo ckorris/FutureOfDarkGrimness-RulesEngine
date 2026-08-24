@@ -43,7 +43,7 @@ namespace FDG.Tests
                 _definitions = definitions;
             }
 
-            public IReadOnlyList<SpecialRuleDefinition> DefinitionsForFaction(string faction) =>
+            public IReadOnlyList<SpecialRuleDefinition> DefinitionsForFaction(string faction, string? gameSystem) =>
                 string.Equals(faction, _faction, StringComparison.OrdinalIgnoreCase)
                     ? _definitions
                     : Array.Empty<SpecialRuleDefinition>();

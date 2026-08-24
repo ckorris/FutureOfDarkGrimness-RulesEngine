@@ -92,7 +92,7 @@ namespace FDG.SaveLoad
             List<SpecialRuleDefinition> backfill = new List<SpecialRuleDefinition>();
 
             IReadOnlyList<SpecialRuleDefinition> rulebook =
-                CurrentRulebook.DefinitionsForFaction(armyListFile.Faction);
+                CurrentRulebook.DefinitionsForFaction(armyListFile.Faction, armyListFile.GameSystem);
             if (rulebook.Count == 0)
             {
                 return backfill;

@@ -14,9 +14,11 @@ namespace FDG.SaveLoad
         /// <summary>
         /// Every special-rule definition the book for <paramref name="faction"/> ships today, or empty
         /// when no book matches (a hand-authored or freeform list). Called once per army load, so an
-        /// implementation is expected to cache.
+        /// implementation is expected to cache. <paramref name="gameSystem"/> disambiguates faction
+        /// names that exist in more than one OPR game system (#378: the AoF/GDF Disciples books);
+        /// null/absent means Grimdark Future.
         /// </summary>
-        IReadOnlyList<SpecialRuleDefinition> DefinitionsForFaction(string faction);
+        IReadOnlyList<SpecialRuleDefinition> DefinitionsForFaction(string faction, string? gameSystem);
 
         /// <summary>
         /// Whether the current rulebook data defines <paramref name="ruleName"/> at all, regardless of
@@ -46,14 +48,15 @@ namespace FDG.SaveLoad
         public static ICurrentRulebook? Installed { get; set; }
 
         /// <inheritdoc cref="ICurrentRulebook.DefinitionsForFaction"/>
-        public static IReadOnlyList<SpecialRuleDefinition> DefinitionsForFaction(string? faction)
+        public static IReadOnlyList<SpecialRuleDefinition> DefinitionsForFaction(string? faction,
+            string? gameSystem = null)
         {
             if (Installed == null || string.IsNullOrWhiteSpace(faction))
             {
                 return None;
             }
 
-            return Installed.DefinitionsForFaction(faction!);
+            return Installed.DefinitionsForFaction(faction!, gameSystem);
         }
 
         /// <inheritdoc cref="ICurrentRulebook.Defines"/>

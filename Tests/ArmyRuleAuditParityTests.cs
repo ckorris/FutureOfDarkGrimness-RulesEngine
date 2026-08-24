@@ -28,7 +28,7 @@ namespace FDG.Tests
         // rather than "not implemented".
         private sealed class RulebookKnowingGrudge : ICurrentRulebook
         {
-            public IReadOnlyList<SpecialRuleDefinition> DefinitionsForFaction(string faction) =>
+            public IReadOnlyList<SpecialRuleDefinition> DefinitionsForFaction(string faction, string? gameSystem) =>
                 Array.Empty<SpecialRuleDefinition>();
 
             public bool Defines(string ruleName) =>

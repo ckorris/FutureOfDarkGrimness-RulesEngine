@@ -31,6 +31,16 @@ namespace FDG.ArmyBuilding
             public const string ArcanePsychic   = "arcane-psychic";
             public const string ShardCrystal    = "shard-crystal";    // High Elf Fleets bespoke
 
+            // Ranged, Age of Fantasy (#378 mints the keys; #379 implements visuals/sounds - until
+            // then front-ends draw them as their global default, by design).
+            public const string ArrowLoose   = "arrow-loose";
+            public const string CrossbowBolt = "crossbow-bolt";
+            public const string SlingStone   = "sling-stone";
+            public const string ThrownSpear  = "thrown-spear";
+            public const string BallistaBolt = "ballista-bolt";
+            public const string BreathFlame  = "breath-flame";
+            public const string ArcaneBolt   = "arcane-bolt";
+
             // Melee.
             public const string EnergyBlade       = "energy-blade";
             public const string TitanImpact       = "titan-impact";
@@ -42,6 +52,11 @@ namespace FDG.ArmyBuilding
             public const string ClawRend          = "claw-rend";
             public const string CrudeMelee        = "crude-melee";
             public const string BladeStandard     = "blade-standard"; // global melee default
+
+            // Melee, Age of Fantasy (#378/#379, as above).
+            public const string GreatWeaponSmash = "great-weapon-smash";
+            public const string SpectralTouch    = "spectral-touch";
+            public const string BeastMaw         = "beast-maw";
         }
 
         // Cross-faction tech keywords, priority-ordered — first matching set wins (case-insensitive
@@ -78,6 +93,41 @@ namespace FDG.ArmyBuilding
             (Sets.ClawRend,          new[] { "claw", "fang", "bite", "jaw", "talon", "razor", "whip", "slash", "serrated", "rend", "swarm" }),
             (Sets.CrudeMelee,        new[] { "fist", "club", "mace", "flail", "hammer", "bash", "axe", "knuckle", "gauntlet", "crew", "pick", "maul" }),
             (Sets.BladeStandard,     new[] { "sword", "blade", "dagger", "knife" }),
+        };
+
+        // Age of Fantasy keyword tables (#378) - a separate vocabulary, not additions to the GDF rows:
+        // AoF weapon names collide with GDF tech words in the wrong direction ("Fire Bolt Thrower" must
+        // not read as storm-tracer fire, "Chain-Sword" is not a chainsaw). Same discipline as the GDF
+        // tables: only distinctive words; generics (hand weapon, crew, CCW) fall to the faction default.
+        // Priority-ordered - crossbows/ballistae before "bow", bio/flame before the gunpowder row so
+        // "Toxin Bombs" and "Flame Pistol" read by their payload, not their casing.
+        private static readonly (string Set, string[] Keywords)[] AofRangedKeywords =
+        {
+            (Sets.BallistaBolt,    new[] { "ballista", "bolt thrower" }),
+            (Sets.CrossbowBolt,    new[] { "crossbow", "handbow" }),
+            (Sets.ArrowLoose,      new[] { "bow" }),
+            (Sets.ThrownSpear,     new[] { "javelin", "throwing", "harpoon" }),
+            (Sets.BioOrganic,      new[] { "venom", "toxin", "toxic", "spit", "acid", "spore", "plague" }),
+            (Sets.BreathFlame,     new[] { "flame", "breath", "lava", "spout", "blaze", "scorcher" }),
+            (Sets.ArcaneBolt,      new[] { "magic", "arcane", "hex", "curse", "fireball", "staff", "wand", "banish", "summon" }),
+            (Sets.SlingStone,      new[] { "sling", "throw rock", "throw stone", "hurl", "stone thrower", "catapult" }),
+            (Sets.MortarArtillery, new[] { "bomb", "grenade", "firework", "rocket", "mortar", "siege" }),
+            (Sets.BallisticSlug,   new[] { "rifle", "pistol", "gun", "cannon", "blunderbuss", "gatling", "firepowder", "musket" }),
+        };
+
+        private static readonly (string Set, string[] Keywords)[] AofMeleeKeywords =
+        {
+            (Sets.SpectralTouch,    new[] { "spectral", "soul", "spirit", "ghost", "mourning" }),
+            (Sets.ToxicMelee,       new[] { "venom", "toxin", "toxic", "plague", "acid", "poison", "infected", "stinger", "censer" }),
+            (Sets.DaemonArcaneMelee, new[] { "power", "ritual", "hexed", "cursed", "daemon", "exalted", "perfect", "mutated", "pain" }),
+            (Sets.EnergyBlade,      new[] { "flame", "magma", "fire", "holy", "blessed", "runic", "celestial", "magic" }),
+            (Sets.GreatWeaponSmash, new[] { "great weapon", "greatsword", "great hammer", "great axe", "great mace", "great glaive" }),
+            (Sets.BeastMaw,         new[] { "jaws", "jaw", "bite", "fang", "maw", "tusk", "tentacle", "pincer", "beak", "horn" }),
+            (Sets.SpearPierce,      new[] { "spear", "lance", "pike", "halberd", "glaive", "scythe", "trident" }),
+            (Sets.ClawRend,         new[] { "claw", "talon", "rend", "swarm", "razor", "whip", "slash", "serrated" }),
+            (Sets.TitanImpact,      new[] { "stomp", "hull", "crushing" }),
+            (Sets.CrudeMelee,       new[] { "fist", "club", "mace", "flail", "hammer", "axe", "pick", "maul", "drill", "chain" }),
+            (Sets.BladeStandard,    new[] { "sword", "blade", "dagger", "knife", "falchion" }),
         };
 
         // Exact (faction, weapon name) overrides for the handful of names the keywords misread in a
@@ -141,28 +191,87 @@ namespace FDG.ArmyBuilding
             ["Wormhole Daemons of War"]      = (Sets.BioOrganic, Sets.BladeStandard),
         };
 
-        /// <summary>The faction's default (ranged, melee) sets, or (null, null) for a faction the
-        /// table doesn't know (hand-authored books/armies) — the front-end global default applies.</summary>
-        public static (string? Ranged, string? Melee) FactionDefaults(string faction) =>
-            FactionDefaultsTable.TryGetValue(faction ?? string.Empty, out var d) ? (d.Ranged, d.Melee) : (null, null);
+        // Per-faction default sets for the 40 Age of Fantasy books (#378 survey, 2026-08-23). A separate
+        // table, not new rows: four AoF faction names (Change/Lust/Plague/War Disciples) COLLIDE with GDF
+        // factions, which is exactly how the first AoF bake picked up sci-fi tracer fire - the game
+        // system must be part of the key. Keys are the books' Faction strings.
+        private static readonly Dictionary<string, (string Ranged, string Melee)> AofFactionDefaultsTable = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Beastmen"]                     = (Sets.ArrowLoose, Sets.BeastMaw),
+            ["Change Disciples"]             = (Sets.ArcaneBolt, Sets.BladeStandard),
+            ["Chivalrous Kingdoms"]          = (Sets.ArrowLoose, Sets.BladeStandard),
+            ["Dark Elves"]                   = (Sets.CrossbowBolt, Sets.BladeStandard),
+            ["Deep-Sea Elves"]               = (Sets.ThrownSpear, Sets.SpearPierce),
+            ["Dragon Empire"]                = (Sets.ArrowLoose, Sets.BladeStandard),
+            ["Duchies of Vinci"]             = (Sets.CrossbowBolt, Sets.BladeStandard),
+            ["Dwarves"]                      = (Sets.BallisticSlug, Sets.CrudeMelee),
+            ["Eternal Wardens"]              = (Sets.ArrowLoose, Sets.SpearPierce),
+            ["Ghostly Undead"]               = (Sets.ArcaneBolt, Sets.SpectralTouch),
+            ["Giant Tribes"]                 = (Sets.SlingStone, Sets.TitanImpact),
+            ["Giant Tribes Change Disciples"] = (Sets.SlingStone, Sets.TitanImpact),
+            ["Giant Tribes Lust Disciples"]  = (Sets.SlingStone, Sets.TitanImpact),
+            ["Giant Tribes Plague Disciples"] = (Sets.SlingStone, Sets.TitanImpact),
+            ["Giant Tribes War Disciples"]   = (Sets.SlingStone, Sets.TitanImpact),
+            ["Goblins"]                      = (Sets.ArrowLoose, Sets.CrudeMelee),
+            ["Halflings"]                    = (Sets.SlingStone, Sets.BladeStandard),
+            ["Havoc Dwarves"]                = (Sets.BallisticSlug, Sets.CrudeMelee),
+            ["Havoc Warriors"]               = (Sets.ArcaneBolt, Sets.BladeStandard),
+            ["High Elves"]                   = (Sets.ArrowLoose, Sets.BladeStandard),
+            ["Human Empire"]                 = (Sets.BallisticSlug, Sets.BladeStandard),
+            ["Kingdom of Angels"]            = (Sets.CrossbowBolt, Sets.BladeStandard),
+            ["Lust Disciples"]               = (Sets.ArcaneBolt, Sets.BladeStandard),
+            ["Mummified Undead"]             = (Sets.ArrowLoose, Sets.BladeStandard),
+            ["Ogres"]                        = (Sets.SlingStone, Sets.CrudeMelee),
+            ["Orcs"]                         = (Sets.ArrowLoose, Sets.CrudeMelee),
+            ["Ossified Undead"]              = (Sets.ArrowLoose, Sets.BladeStandard),
+            ["Plague Disciples"]             = (Sets.ArcaneBolt, Sets.ToxicMelee),
+            ["Ratmen"]                       = (Sets.SlingStone, Sets.BladeStandard),
+            ["Rift Daemons of Change"]       = (Sets.ArcaneBolt, Sets.DaemonArcaneMelee),
+            ["Rift Daemons of Lust"]         = (Sets.ArcaneBolt, Sets.DaemonArcaneMelee),
+            ["Rift Daemons of Plague"]       = (Sets.BioOrganic, Sets.ToxicMelee),
+            ["Rift Daemons of War"]          = (Sets.ArcaneBolt, Sets.DaemonArcaneMelee),
+            ["Saurians"]                     = (Sets.ThrownSpear, Sets.ClawRend),
+            ["Shadow Stalkers"]              = (Sets.ThrownSpear, Sets.ClawRend),
+            ["Sky-City Dwarves"]             = (Sets.BallisticSlug, Sets.CrudeMelee),
+            ["Vampiric Undead"]              = (Sets.ArrowLoose, Sets.BladeStandard),
+            ["Volcanic Dwarves"]             = (Sets.BreathFlame, Sets.CrudeMelee),
+            ["War Disciples"]                = (Sets.ArcaneBolt, Sets.BladeStandard),
+            ["Wood Elves"]                   = (Sets.ArrowLoose, Sets.BladeStandard),
+        };
+
+        /// <summary>The faction's default (ranged, melee) sets for a game system (#378: null/absent
+        /// means Grimdark Future), or (null, null) for a faction that system's table doesn't know
+        /// (hand-authored books/armies) — the front-end global default applies.</summary>
+        public static (string? Ranged, string? Melee) FactionDefaults(string faction, string? gameSystem = null)
+        {
+            var table = IsAof(gameSystem) ? AofFactionDefaultsTable : FactionDefaultsTable;
+            return table.TryGetValue(faction ?? string.Empty, out var d) ? (d.Ranged, d.Melee) : (null, null);
+        }
+
+        private static bool IsAof(string? gameSystem) =>
+            string.Equals(GameSystems.Normalize(gameSystem), GameSystems.AgeOfFantasy, StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
         /// The keyword/override match for a weapon name, or null when nothing distinctive matches
         /// (the army default covers it at load). <paramref name="faction"/> feeds the rare exact
         /// (faction, name) overrides; pass what the data has — an unknown faction just skips them.
+        /// <paramref name="gameSystem"/> selects the keyword vocabulary (#378: null/absent = GDF).
         /// </summary>
-        public static string? Match(string faction, WeaponFileEntry weapon) =>
-            Match(faction, weapon.Name, isRanged: weapon.RangeInches > 0);
+        public static string? Match(string faction, WeaponFileEntry weapon, string? gameSystem = null) =>
+            Match(faction, weapon.Name, isRanged: weapon.RangeInches > 0, gameSystem);
 
-        /// <inheritdoc cref="Match(string, WeaponFileEntry)"/>
-        public static string? Match(string faction, string weaponName, bool isRanged)
+        /// <inheritdoc cref="Match(string, WeaponFileEntry, string?)"/>
+        public static string? Match(string faction, string weaponName, bool isRanged, string? gameSystem = null)
         {
             if (string.IsNullOrWhiteSpace(weaponName)) return null;
 
             if (NameOverrides.TryGetValue((faction ?? string.Empty, weaponName.Trim()), out string? overridden))
                 return overridden;
 
-            foreach ((string set, string[] keywords) in isRanged ? RangedKeywords : MeleeKeywords)
+            (string Set, string[] Keywords)[] table = IsAof(gameSystem)
+                ? (isRanged ? AofRangedKeywords : AofMeleeKeywords)
+                : (isRanged ? RangedKeywords : MeleeKeywords);
+            foreach ((string set, string[] keywords) in table)
                 foreach (string keyword in keywords)
                     if (weaponName.Contains(keyword, StringComparison.OrdinalIgnoreCase))
                         return set;
@@ -175,7 +284,7 @@ namespace FDG.ArmyBuilding
         /// so a keyword-table improvement reaches every future army without re-patching 47 books.</summary>
         public static bool ApplyToBook(BookFile book)
         {
-            (string? ranged, string? melee) = FactionDefaults(book.Faction);
+            (string? ranged, string? melee) = FactionDefaults(book.Faction, book.GameSystem);
             bool changed = false;
             if (book.DefaultRangedEffectSet == null && ranged != null) { book.DefaultRangedEffectSet = ranged; changed = true; }
             if (book.DefaultMeleeEffectSet == null && melee != null) { book.DefaultMeleeEffectSet = melee; changed = true; }
@@ -192,7 +301,7 @@ namespace FDG.ArmyBuilding
         {
             bool changed = false;
 
-            (string? ranged, string? melee) = FactionDefaults(army.Faction);
+            (string? ranged, string? melee) = FactionDefaults(army.Faction, army.GameSystem);
             if (army.DefaultRangedEffectSet == null && ranged != null) { army.DefaultRangedEffectSet = ranged; changed = true; }
             if (army.DefaultMeleeEffectSet == null && melee != null) { army.DefaultMeleeEffectSet = melee; changed = true; }
 
@@ -201,7 +310,7 @@ namespace FDG.ArmyBuilding
                 foreach (WeaponFileEntry weapon in unit.Weapons)
                 {
                     if (weapon.EffectSet != null) continue;
-                    string? match = Match(army.Faction, weapon);
+                    string? match = Match(army.Faction, weapon, army.GameSystem);
                     if (match != null) { weapon.EffectSet = match; changed = true; }
                 }
             }

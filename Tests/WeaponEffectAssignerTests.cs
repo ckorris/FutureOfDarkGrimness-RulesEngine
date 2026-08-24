@@ -48,6 +48,53 @@ public class WeaponEffectAssignerTests
             Is.EqualTo(((string?)null, (string?)null)));
     }
 
+    // ---------------- Age of Fantasy (#378) ----------------
+
+    // The colliding faction names are why the game system is part of the key: AoF's Change Disciples
+    // are arcane cultists, not the GDF faction of the same name with tracer fire.
+    [Test]
+    public void FactionDefaults_CollidingDisciplesNames_SplitByGameSystem()
+    {
+        Assert.That(WeaponEffectAssigner.FactionDefaults("Change Disciples"),
+            Is.EqualTo(("ballistic-slug", "energy-blade")), "GDF entry unchanged");
+        Assert.That(WeaponEffectAssigner.FactionDefaults("Change Disciples", GameSystems.AgeOfFantasy),
+            Is.EqualTo(("arcane-bolt", "blade-standard")));
+        Assert.That(WeaponEffectAssigner.FactionDefaults("Wood Elves"),
+            Is.EqualTo(((string?)null, (string?)null)), "an AoF faction is unknown to the GDF table");
+    }
+
+    [TestCase("Repeater Crossbow", true, "crossbow-bolt")] // crossbow outranks "bow"
+    [TestCase("Light Bolt Thrower", true, "ballista-bolt")] // NOT storm-tracer's "bolt"
+    [TestCase("Longbow", true, "arrow-loose")]
+    [TestCase("Giant Sling", true, "sling-stone")]
+    [TestCase("Firepowder Rifle", true, "ballistic-slug")] // fantasy gunpowder IS ballistic
+    [TestCase("Flame Pistol", true, "breath-flame")]       // payload outranks the gun casing
+    [TestCase("Magic Staff", true, "arcane-bolt")]
+    [TestCase("Hand Weapon", false, null)]                 // the AoF generic -> faction default
+    [TestCase("Great Weapon", false, "great-weapon-smash")]
+    [TestCase("Deadly Fangs", false, "beast-maw")]
+    [TestCase("Chain-Sword", false, "crude-melee")]        // a chained sword, not a GDF chainsaw
+    public void Match_AofVocabulary(string name, bool isRanged, string? expected)
+    {
+        Assert.That(WeaponEffectAssigner.Match("Nobody", name, isRanged, GameSystems.AgeOfFantasy),
+            Is.EqualTo(expected));
+        Assert.That(WeaponEffectAssigner.Match("Nobody", "Light Bolt Thrower", isRanged: true),
+            Is.EqualTo("storm-tracer"), "the GDF vocabulary is untouched");
+    }
+
+    [Test]
+    public void ApplyToBook_AofBook_StampsAofDefaults()
+    {
+        var book = new BookFile { Faction = "Ghostly Undead", GameSystem = GameSystems.AgeOfFantasy };
+        Assert.That(WeaponEffectAssigner.ApplyToBook(book), Is.True);
+        Assert.That((book.DefaultRangedEffectSet, book.DefaultMeleeEffectSet),
+            Is.EqualTo(("arcane-bolt", "spectral-touch")));
+
+        var systemless = new BookFile { Faction = "Ghostly Undead" };
+        Assert.That(WeaponEffectAssigner.ApplyToBook(systemless), Is.False,
+            "no system field means GDF, whose table does not know AoF factions");
+    }
+
     // ---------------- forge-time bake (ListCompiler) ----------------
 
     [Test]

@@ -38,8 +38,8 @@ namespace FDG.ArmyBuilding
                 Spells = new List<FDG.Rules.Definitions.SpellDefinition>(book.Spells),
                 // #239: the faction's default effect sets ride the compiled army — from the book,
                 // else the assigner's faction table (covers a book snapshot predating the fields).
-                DefaultRangedEffectSet = book.DefaultRangedEffectSet ?? WeaponEffectAssigner.FactionDefaults(book.Faction).Ranged,
-                DefaultMeleeEffectSet = book.DefaultMeleeEffectSet ?? WeaponEffectAssigner.FactionDefaults(book.Faction).Melee,
+                DefaultRangedEffectSet = book.DefaultRangedEffectSet ?? WeaponEffectAssigner.FactionDefaults(book.Faction, book.GameSystem).Ranged,
+                DefaultMeleeEffectSet = book.DefaultMeleeEffectSet ?? WeaponEffectAssigner.FactionDefaults(book.Faction, book.GameSystem).Melee,
                 Selections = list,
                 Book = book,
             };
@@ -325,7 +325,7 @@ namespace FDG.ArmyBuilding
             // unset gets its keyword/override match, so cross-faction tech (plasma, fusion...) beats
             // the army default. No match stays null — the army default covers it at load.
             foreach (WeaponFileEntry weapon in unit.Weapons)
-                weapon.EffectSet ??= WeaponEffectAssigner.Match(book.Faction, weapon);
+                weapon.EffectSet ??= WeaponEffectAssigner.Match(book.Faction, weapon, book.GameSystem);
 
             return (unit, items);
         }

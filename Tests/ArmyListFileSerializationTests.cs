@@ -1,4 +1,5 @@
 using System.Text.Json;
+using FDG.ArmyBuilding;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
@@ -109,6 +110,21 @@ namespace FDG.Tests
 
             Assert.That(json, Does.Not.Contain("stableid"));
             Assert.That(json, Does.Not.Contain("totalpoints"));
+        }
+
+        // #378: a null GameSystem (= Grimdark Future) is omitted on save so pre-#378 files round-trip
+        // unchanged; a set slug persists.
+        [Test]
+        public void GameSystem_NullOmitted_SetPersists()
+        {
+            ArmyListFile army = MakeArmy();
+            Assert.That(JsonSerializer.Serialize(army, RuleJson.Options).ToLowerInvariant(),
+                Does.Not.Contain("gamesystem"));
+
+            army.GameSystem = GameSystems.AgeOfFantasy;
+            string json = JsonSerializer.Serialize(army, RuleJson.Options);
+            ArmyListFile back = JsonSerializer.Deserialize<ArmyListFile>(json, RuleJson.Options)!;
+            Assert.That(back.GameSystem, Is.EqualTo(GameSystems.AgeOfFantasy));
         }
     }
 }

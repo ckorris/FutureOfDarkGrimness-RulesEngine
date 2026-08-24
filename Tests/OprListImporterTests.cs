@@ -277,12 +277,28 @@ public class OprListImporterTests
         Assert.That(result.Warnings, Has.Some.Contains("joins a unit that is not in the list"));
     }
 
+    // #378: AoF shares GDF's core ruleset, so an 'aof' list imports and records its system slug.
+    // The other OPR systems (skirmish/regiments variants) still refuse.
+    [Test]
+    public void Import_AgeOfFantasyList_ImportsAndStampsGameSystem()
+    {
+        string json = ListJson.Replace("\"gameSystem\": \"gf\"", "\"gameSystem\": \"aof\"");
+        OprListImportResult result = OprListImporter.Import(json, Books);
+        Assert.That(result.Army.GameSystem, Is.EqualTo(GameSystems.AgeOfFantasy));
+    }
+
+    [Test]
+    public void Import_GrimdarkList_StampsGameSystem()
+    {
+        Assert.That(Import().Army.GameSystem, Is.EqualTo(GameSystems.GrimdarkFuture));
+    }
+
     [Test]
     public void Import_WrongGameSystem_Throws()
     {
-        string json = ListJson.Replace("\"gameSystem\": \"gf\"", "\"gameSystem\": \"aof\"");
+        string json = ListJson.Replace("\"gameSystem\": \"gf\"", "\"gameSystem\": \"gff\"");
         var ex = Assert.Throws<InvalidOperationException>(() => OprListImporter.Import(json, Books));
-        Assert.That(ex!.Message, Does.Contain("aof"));
+        Assert.That(ex!.Message, Does.Contain("gff"));
     }
 
     [Test]

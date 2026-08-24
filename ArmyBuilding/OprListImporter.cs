@@ -39,8 +39,15 @@ namespace FDG.ArmyBuilding
         /// Bump when the bundled Assets/Books snapshots are re-imported against a newer OPR release.</summary>
         public const string SupportedVersionPrefix = "3.5";
 
-        /// <summary>The only OPR game system this game implements (Grimdark Future).</summary>
-        public const string SupportedGameSystem = "gf";
+        /// <summary>The OPR game systems this game implements, as the short codes a /api/tts list
+        /// carries, each mapped to the slug our data records (#378). Grimdark Future and Age of
+        /// Fantasy share the core ruleset; the other OPR systems (skirmish/regiments variants) do not.</summary>
+        public static readonly IReadOnlyDictionary<string, string> SupportedGameSystems =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["gf"] = GameSystems.GrimdarkFuture,
+                ["aof"] = GameSystems.AgeOfFantasy,
+            };
 
         /// <summary>Cheap pre-parse of the list JSON: the identifiers the caller needs BEFORE it can fetch
         /// the army books Import requires (each distinct armyId, in first-appearance order).</summary>
@@ -60,11 +67,11 @@ namespace FDG.ArmyBuilding
 
             OprList list = Parse(OprBookImporter.AsciiFoldJsonValues(listJson, warn), warn);
 
-            if (!string.Equals(list.GameSystem, SupportedGameSystem, StringComparison.OrdinalIgnoreCase))
+            if (!SupportedGameSystems.TryGetValue(list.GameSystem ?? string.Empty, out string? systemSlug))
             {
                 throw new InvalidOperationException(
                     $"This list is for OPR game system '{list.GameSystem ?? "?"}'; " +
-                    $"only Grimdark Future ('{SupportedGameSystem}') is supported.");
+                    "only Grimdark Future ('gf') and Age of Fantasy ('aof') are supported.");
             }
 
             // Version gate: every referenced book must sit inside the supported major.minor.
@@ -84,6 +91,7 @@ namespace FDG.ArmyBuilding
                 Name = string.IsNullOrWhiteSpace(list.Name) ? "Imported Army" : list.Name!,
                 PointsLimit = list.PointsLimit ?? 0,
                 Faction = PrimaryFaction(list, books, warn),
+                GameSystem = systemSlug,
             };
 
             // Map every entry 1:1 first (combined halves included), then fold the pairs — mirrors

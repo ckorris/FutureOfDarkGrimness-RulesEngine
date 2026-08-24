@@ -108,6 +108,9 @@ namespace FDG.ArmyBuilding
                 Version = opr.VersionString is null ? string.Empty : $"OPR v{opr.VersionString}",
                 Source = source,
                 License = license,
+                // #378: which OPR game system the book belongs to. Absent in the JSON leaves the field
+                // null, which every consumer reads as Grimdark Future (GameSystems.Normalize).
+                GameSystem = string.IsNullOrWhiteSpace(opr.GameSystemSlug) ? null : opr.GameSystemSlug,
             };
 
             // #239: stamp the faction's default effect sets so armies forged from this book inherit
@@ -862,6 +865,7 @@ namespace FDG.ArmyBuilding
         {
             public string? Name { get; set; }
             public string? VersionString { get; set; }
+            public string? GameSystemSlug { get; set; }
             public List<OprUnit>? Units { get; set; }
             public List<OprPackage>? UpgradePackages { get; set; }
             public List<OprSpell>? Spells { get; set; }

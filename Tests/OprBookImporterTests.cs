@@ -45,6 +45,28 @@ public class OprBookImporterTests
 
     private static BookFile Import() => OprBookImporter.Import(OprJson, "TestSource", "CC-BY-SA 4.0");
 
+    // #378: the game-system slug rides the book (and compiled armies copy it); absent stays null,
+    // which every consumer reads as Grimdark Future - pre-#378 snapshots must not change meaning.
+    [Test]
+    public void Import_StampsGameSystemSlug_AbsentStaysNull()
+    {
+        string json = """{"name":"Fantasy Book","versionString":"3.5.3","gameSystemSlug":"age-of-fantasy","units":[]}""";
+        Assert.That(OprBookImporter.Import(json, "src", "lic").GameSystem, Is.EqualTo(GameSystems.AgeOfFantasy));
+        Assert.That(Import().GameSystem, Is.Null, "no gameSystemSlug in the JSON leaves the field null (= GDF)");
+    }
+
+    [Test]
+    public void Compile_CopiesGameSystemOntoArmy()
+    {
+        string json = """{"name":"Fantasy Book","versionString":"3.5.3","gameSystemSlug":"age-of-fantasy","units":[]}""";
+        BookFile book = OprBookImporter.Import(json, "src", "lic");
+        BuiltArmyFile army = ListCompiler.Compile(book, new BuilderList { BookName = book.Name });
+        Assert.That(army.GameSystem, Is.EqualTo(GameSystems.AgeOfFantasy));
+
+        BuiltArmyFile legacy = ListCompiler.Compile(Import(), new BuilderList { BookName = "Test Legion" });
+        Assert.That(legacy.GameSystem, Is.Null, "a system-less book compiles a system-less (= GDF) army");
+    }
+
     [Test]
     public void Import_AsciiFoldsBookText()
     {

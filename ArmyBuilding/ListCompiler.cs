@@ -30,6 +30,7 @@ namespace FDG.ArmyBuilding
             {
                 Name = string.IsNullOrWhiteSpace(list.Name) ? book.Name : list.Name,
                 Faction = book.Faction,
+                GameSystem = book.GameSystem,
                 PointsLimit = list.PointsLimit,
                 // Carry the book's rule/spell definitions so the engine's RuleValidator gate passes and unit
                 // rule references resolve at load (audit finding 3).

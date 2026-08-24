@@ -20,6 +20,17 @@ namespace FDG.SaveLoad
 
         public int PointsLimit { get; set; }
 
+        /// <summary>
+        /// #378: the OPR game-system slug this army belongs to ("grimdark-future", "age-of-fantasy").
+        /// Null/absent means Grimdark Future - the only system that existed before the field did - so
+        /// every pre-#378 file keeps its meaning, and is omitted on save so those files round-trip
+        /// unchanged. Compiled armies copy it from their book; consumers compare via
+        /// <c>FDG.ArmyBuilding.GameSystems.SameSystem</c> rather than reading it raw.
+        /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        [Newtonsoft.Json.JsonProperty(NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public string? GameSystem { get; set; }
+
         public List<UnitFileEntry> Units { get; set; } = new List<UnitFileEntry>();
 
         /// <summary>

@@ -34,6 +34,12 @@ namespace FDG.ArmyBuilding
         /// <summary>License the imported data is used under (e.g. CC-BY-SA 4.0). Empty for hand-authored books.</summary>
         public string License { get; set; } = string.Empty;
 
+        /// <summary>#378: the OPR game-system slug this book belongs to (<see cref="GameSystems"/>).
+        /// Null/absent means Grimdark Future so pre-#378 snapshots keep their meaning; omitted on save
+        /// then. Stamped from the OPR JSON's gameSystemSlug at import.</summary>
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        public string? GameSystem { get; set; }
+
         /// <summary>
         /// #239: the faction's default effect-set keys — copied onto every army compiled from this
         /// book (<see cref="ArmyListFile.DefaultRangedEffectSet"/>), the fallback for weapons no

@@ -95,6 +95,73 @@ public class WeaponEffectAssignerTests
             "no system field means GDF, whose table does not know AoF factions");
     }
 
+    // ---------------- #379: melee form upgrades + keyword gap fixes + bombing runs ----------------
+
+    [TestCase("Giant Hammer", "great-weapon-smash")]    // size word + blunt noun -> overhead smash
+    [TestCase("Great Bone Mace", "great-weapon-smash")] // the pair may be separated by other words
+    [TestCase("Titan Mace", "great-weapon-smash")]
+    [TestCase("Flail", "crude-melee")]                  // a bare blunt noun stays crude
+    [TestCase("Great Plague Hammer", "toxic-melee")]    // payload rows keep their priority
+    [TestCase("Toxin Claws", "toxic-rend")]             // toxic + claw keeps the rake motion
+    [TestCase("Toxic Maw", "toxic-rend")]
+    [TestCase("Censer Flail", "toxic-melee")]           // toxic without a claw stays a slash
+    [TestCase("Hooves", "titan-impact")]                // a mount's kick is a blunt impact
+    [TestCase("Heavy Hooves", "titan-impact")]
+    [TestCase("Bash", "crude-melee")]
+    public void Match_AofMeleeFormUpgrades(string name, string expected)
+    {
+        Assert.That(WeaponEffectAssigner.Match("Nobody", name, isRanged: false, GameSystems.AgeOfFantasy),
+            Is.EqualTo(expected));
+    }
+
+    [TestCase("Heavy Hammer", "great-weapon-smash")]  // the GDF two-handers get the same treatment
+    [TestCase("Heavy Energy Hammer", "energy-blade")] // payload still wins in the GDF vocabulary too
+    [TestCase("Titan Hammer", "titan-impact")]        // GDF's own titan row outranks the upgrade
+    [TestCase("Toxin Claws", "toxic-rend")]
+    public void Match_GdfMeleeFormUpgrades(string name, string expected)
+    {
+        Assert.That(WeaponEffectAssigner.Match("Nobody", name, isRanged: false), Is.EqualTo(expected));
+    }
+
+    [TestCase("Death Stare", "arcane-bolt")]          // a magical gaze is not a crossbow bolt
+    [TestCase("Mind-Piercer Screech", "arcane-bolt")]
+    [TestCase("Blowpipe", "bio-organic")]             // a poison dart is not a javelin
+    public void Match_AofRangedKeywordAdditions(string name, string expected)
+    {
+        Assert.That(WeaponEffectAssigner.Match("Nobody", name, isRanged: true, GameSystems.AgeOfFantasy),
+            Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Match_RangeZeroStrafing_IsABombingRun()
+    {
+        var bombs = new WeaponFileEntry
+        {
+            Name = "Flame Bombs", RangeInches = 0, Attacks = 2,
+            SpecialRules = { new SpecialRuleEntry_Core("Strafing") },
+        };
+        Assert.That(WeaponEffectAssigner.Match("Nobody", bombs, GameSystems.AgeOfFantasy),
+            Is.EqualTo("bombing-run"), "the rule is the signature - Flame Bombs is not a flame sword");
+        Assert.That(WeaponEffectAssigner.Match("Nobody", bombs), Is.EqualTo("bombing-run"),
+            "GDF bomb racks strafe too");
+
+        var aliased = new WeaponFileEntry
+        {
+            Name = "Sky-Charges", RangeInches = 0, Attacks = 2,
+            SpecialRules = { new SpecialRuleEntry_Alias("Sky Attack", new SpecialRuleEntry_Core("Strafing")) },
+        };
+        Assert.That(WeaponEffectAssigner.Match("Nobody", aliased, GameSystems.AgeOfFantasy),
+            Is.EqualTo("bombing-run"), "an aliased Strafing still reads as a bombing run");
+
+        var ranged = new WeaponFileEntry
+        {
+            Name = "Stone Thrower", RangeInches = 18, Attacks = 1,
+            SpecialRules = { new SpecialRuleEntry_Core("Strafing") },
+        };
+        Assert.That(WeaponEffectAssigner.Match("Nobody", ranged, GameSystems.AgeOfFantasy),
+            Is.EqualTo("sling-stone"), "a genuinely ranged strafing weapon keeps its ranged voice");
+    }
+
     // ---------------- forge-time bake (ListCompiler) ----------------
 
     [Test]

@@ -57,6 +57,12 @@ namespace FDG.ArmyBuilding
             public const string GreatWeaponSmash = "great-weapon-smash";
             public const string SpectralTouch    = "spectral-touch";
             public const string BeastMaw         = "beast-maw";
+
+            // Melee, cross-system (#379): minted with the AoF pass but applied to BOTH vocabularies
+            // via the form upgrades / rule override below (GDF has Toxin Claws and strafing bomb
+            // racks too).
+            public const string ToxicRend  = "toxic-rend";   // toxic payload, claw motion
+            public const string BombingRun = "bombing-run";  // range-0 Strafing aerial bomb drops
         }
 
         // Cross-faction tech keywords, priority-ordered — first matching set wins (case-insensitive
@@ -107,9 +113,12 @@ namespace FDG.ArmyBuilding
             (Sets.CrossbowBolt,    new[] { "crossbow", "handbow" }),
             (Sets.ArrowLoose,      new[] { "bow" }),
             (Sets.ThrownSpear,     new[] { "javelin", "throwing", "harpoon" }),
-            (Sets.BioOrganic,      new[] { "venom", "toxin", "toxic", "spit", "acid", "spore", "plague" }),
+            (Sets.BioOrganic,      new[] { "venom", "toxin", "toxic", "spit", "acid", "spore", "plague", "blowpipe", "dart" }),
             (Sets.BreathFlame,     new[] { "flame", "breath", "lava", "spout", "blaze", "scorcher" }),
-            (Sets.ArcaneBolt,      new[] { "magic", "arcane", "hex", "curse", "fireball", "staff", "wand", "banish", "summon" }),
+            // "stare"/"gaze"/"shriek"/"screech": psychic attacks with no magic word in the name
+            // (Death Stare, Mind-Piercer Screech) must not fall to a faction's crossbow/javelin
+            // default (#379 audit).
+            (Sets.ArcaneBolt,      new[] { "magic", "arcane", "hex", "curse", "fireball", "staff", "wand", "banish", "summon", "stare", "gaze", "shriek", "screech" }),
             (Sets.SlingStone,      new[] { "sling", "throw rock", "throw stone", "hurl", "stone thrower", "catapult" }),
             (Sets.MortarArtillery, new[] { "bomb", "grenade", "firework", "rocket", "mortar", "siege" }),
             (Sets.BallisticSlug,   new[] { "rifle", "pistol", "gun", "cannon", "blunderbuss", "gatling", "firepowder", "musket" }),
@@ -125,10 +134,58 @@ namespace FDG.ArmyBuilding
             (Sets.BeastMaw,         new[] { "jaws", "jaw", "bite", "fang", "maw", "tusk", "tentacle", "pincer", "beak", "horn" }),
             (Sets.SpearPierce,      new[] { "spear", "lance", "pike", "halberd", "glaive", "scythe", "trident" }),
             (Sets.ClawRend,         new[] { "claw", "talon", "rend", "swarm", "razor", "whip", "slash", "serrated" }),
-            (Sets.TitanImpact,      new[] { "stomp", "hull", "crushing" }),
-            (Sets.CrudeMelee,       new[] { "fist", "club", "mace", "flail", "hammer", "axe", "pick", "maul", "drill", "chain" }),
+            // "hoof"/"hooves": 41 refs across 13 factions were kicking as sword-slashes (#379 audit);
+            // a mount's trample is a blunt impact.
+            (Sets.TitanImpact,      new[] { "stomp", "hull", "crushing", "hooves", "hoof" }),
+            (Sets.CrudeMelee,       new[] { "fist", "club", "mace", "flail", "hammer", "axe", "pick", "maul", "drill", "chain", "bash" }),
             (Sets.BladeStandard,    new[] { "sword", "blade", "dagger", "knife", "falchion" }),
         };
+
+        // #379 melee form upgrades, applied AFTER the keyword tables so payload rows keep their
+        // priority ("Great Plague Hammer" stays toxic-melee, "Heavy Energy Hammer" stays
+        // energy-blade). Cross-system: the word lists come from both corpora.
+        //
+        // A crude-melee name that pairs a size word with a blunt noun ("Giant Hammer", "Great Bone
+        // Mace", "Heavy Flail") is a two-handed weapon: it swings overhead (great-weapon-smash)
+        // instead of slashing. A bare "Mace"/"Club"/"Flail" stays crude-melee.
+        private static readonly string[] BluntSizeWords = { "great", "giant", "mega", "ultra", "heavy", "titan", "thunder", "meteor", "massive" };
+        private static readonly string[] BluntNouns = { "hammer", "mace", "club", "flail", "maul" };
+
+        // A toxic-melee name that is also a claw/jaw ("Toxin Claws", "Toxic Maw") keeps the claw's
+        // rake motion with the toxic accent instead of slashing like a poisoned sword.
+        private static readonly string[] ClawNouns = { "claw", "talon", "jaw", "maw", "bite", "fang" };
+
+        private static string UpgradeMeleeForm(string set, string weaponName)
+        {
+            if (set == Sets.CrudeMelee && ContainsAny(weaponName, BluntSizeWords) && ContainsAny(weaponName, BluntNouns))
+                return Sets.GreatWeaponSmash;
+            if (set == Sets.ToxicMelee && ContainsAny(weaponName, ClawNouns))
+                return Sets.ToxicRend;
+            return set;
+        }
+
+        private static bool ContainsAny(string name, string[] words)
+        {
+            foreach (string word in words)
+                if (name.Contains(word, StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
+        // #379: aerial bombing runs are range-0 weapons carrying Strafing (Bombing Run, Drop Bombs,
+        // Fire Bombs... 21 AoF + 12 GDF refs). No name keyword unites them and their payload words
+        // would misread ("Flame Bombs" is not a flame sword) - the RULE is the signature.
+        private static bool CarriesStrafing(WeaponFileEntry weapon)
+        {
+            static bool IsStrafing(SpecialRuleEntry rule) => rule switch
+            {
+                SpecialRuleEntry_Core core   => core.Name.Equals("Strafing", StringComparison.OrdinalIgnoreCase),
+                SpecialRuleEntry_Alias alias => IsStrafing(alias.AliasedRule),
+                _                            => false,
+            };
+            foreach (SpecialRuleEntry rule in weapon.SpecialRules)
+                if (IsStrafing(rule)) return true;
+            return false;
+        }
 
         // Exact (faction, weapon name) overrides for the handful of names the keywords misread in a
         // specific book's context. Checked before the keyword tables.
@@ -256,9 +313,12 @@ namespace FDG.ArmyBuilding
         /// (the army default covers it at load). <paramref name="faction"/> feeds the rare exact
         /// (faction, name) overrides; pass what the data has — an unknown faction just skips them.
         /// <paramref name="gameSystem"/> selects the keyword vocabulary (#378: null/absent = GDF).
+        /// A range-0 weapon carrying Strafing reads as a bombing run before any name matching (#379).
         /// </summary>
         public static string? Match(string faction, WeaponFileEntry weapon, string? gameSystem = null) =>
-            Match(faction, weapon.Name, isRanged: weapon.RangeInches > 0, gameSystem);
+            weapon.RangeInches <= 0 && CarriesStrafing(weapon)
+                ? Sets.BombingRun
+                : Match(faction, weapon.Name, isRanged: weapon.RangeInches > 0, gameSystem);
 
         /// <inheritdoc cref="Match(string, WeaponFileEntry, string?)"/>
         public static string? Match(string faction, string weaponName, bool isRanged, string? gameSystem = null)
@@ -274,7 +334,7 @@ namespace FDG.ArmyBuilding
             foreach ((string set, string[] keywords) in table)
                 foreach (string keyword in keywords)
                     if (weaponName.Contains(keyword, StringComparison.OrdinalIgnoreCase))
-                        return set;
+                        return isRanged ? set : UpgradeMeleeForm(set, weaponName);
 
             return null;
         }

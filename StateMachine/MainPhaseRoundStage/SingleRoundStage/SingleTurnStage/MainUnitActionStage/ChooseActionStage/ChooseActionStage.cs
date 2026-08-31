@@ -123,6 +123,18 @@ namespace FDG.Stages
                 }
             }
 
+            // #390 — the #206 obligation binds Shoot as well as Pass. A unit inside the standoff band owes a
+            // charge; shooting would set HasAttacked, which closes the charge gate AND satisfies GetCanPass's
+            // engaged short-circuit - the shot would both dodge and dissolve the obligation. Only gated while a
+            // charge is actually available: a unit that cannot charge (Immobile, aircraft-only targets, nothing
+            // to swing) keeps its shot. Cast, Move (reposition out) and ability actions stay - none of them
+            // close the charge window.
+            if (canShoot && ShootWouldForfeitObligatedCharge(GameContext, context, canCharge))
+            {
+                canShoot = false;
+                cantShootReason = "Within 1\" of an enemy - must charge; shooting would forfeit the charge.";
+            }
+
             // #197 Instinctive — "WHEN THIS MODEL IS ACTIVATED, if it is able to shoot/charge an enemy
             // unit, then it must immediately attack the closest valid target". The condition is read ONCE,
             // on this stage's first visit of the activation (which is the moment of activation: the only
@@ -633,6 +645,19 @@ namespace FDG.Stages
 
             reasonIfCant = null;
             return true;
+        }
+
+        // #390 — the shoot half of the #206 proximity obligation (see the menu-assembly call site for the
+        // rationale). Public + static like GetCanPass so the same test fixture drives both gates against the
+        // same geometry: they must agree about when the obligation binds, or a unit could be told "must
+        // charge" by one gate while the other still offers the shot that forfeits it. canCharge is passed in
+        // rather than re-derived because charge availability is the caller's composite answer (weapons,
+        // restrictions, aircraft) - the obligation only binds when the charge it protects is actually offered.
+        public static bool ShootWouldForfeitObligatedCharge(IGameContext gameContext,
+            IUnitActionContext context, bool canCharge)
+        {
+            return canCharge && ForcedChargeUtilities.AnyEnemyWithinStandoff(
+                gameContext, context.ActivatingPlayer(), context.ActivatingUnit.GetValue());
         }
 
         public static bool GetCanPass(IGameContext gameContext, IUnitActionContext context, out string reasonIfCant)

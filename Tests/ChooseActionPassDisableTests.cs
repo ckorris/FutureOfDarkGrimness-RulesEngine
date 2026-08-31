@@ -149,6 +149,70 @@ namespace FDG.Tests
                 "the gate itself still says no - it is simply never consulted for a Shaken activation.");
         }
 
+        // #390 — the shoot half of the same obligation. A unit inside the standoff band that CAN charge must
+        // not be offered a shot: shooting sets HasAttacked, which closes the charge gate and satisfies
+        // GetCanPass's engaged short-circuit, so the shot would both dodge and dissolve the forced charge.
+        [Test]
+        public void ShootForfeit_EnemyWithinStandoff_ChargeAvailable_True()
+        {
+            var (ctx, unitCtx) = Build(enemyAt: new Position(1.5f, 0)); // 0.5" base-to-base
+
+            bool forfeits = ChooseActionStage.ShootWouldForfeitObligatedCharge(ctx, unitCtx, canCharge: true);
+
+            Assert.That(forfeits, Is.True,
+                "inside the standoff band with a charge available, Shoot must be withheld - it would forfeit the charge.");
+        }
+
+        // The 1"-2" band is chargeable but NOT forced (same boundary as the Pass gate): the unit may shoot.
+        [Test]
+        public void ShootForfeit_EnemyChargeableButBeyondStandoff_False()
+        {
+            var (ctx, unitCtx) = Build(enemyAt: new Position(2.5f, 0)); // 1.5" base-to-base
+
+            bool forfeits = ChooseActionStage.ShootWouldForfeitObligatedCharge(ctx, unitCtx, canCharge: true);
+
+            Assert.That(forfeits, Is.False,
+                "an enemy in the 1\"-2\" band is chargeable but not forced - the shot stays available.");
+        }
+
+        // A unit that cannot charge at all (Immobile, only Aircraft in range, nothing to swing) owes nothing:
+        // withholding its shot would punish it for an obligation it cannot discharge.
+        [Test]
+        public void ShootForfeit_EnemyWithinStandoff_ButNoChargeAvailable_False()
+        {
+            var (ctx, unitCtx) = Build(enemyAt: new Position(1.5f, 0));
+
+            bool forfeits = ChooseActionStage.ShootWouldForfeitObligatedCharge(ctx, unitCtx, canCharge: false);
+
+            Assert.That(forfeits, Is.False,
+                "with no charge on offer the obligation cannot bind - the unit keeps its shot.");
+        }
+
+        // Allies never force a charge (same team screening as the Pass gate).
+        [Test]
+        public void ShootForfeit_AlliedUnitWithinStandoff_False()
+        {
+            var (ctx, unitCtx) = Build(enemyAt: new Position(1.5f, 0), otherIsAlly: true);
+
+            bool forfeits = ChooseActionStage.ShootWouldForfeitObligatedCharge(ctx, unitCtx, canCharge: true);
+
+            Assert.That(forfeits, Is.False,
+                "an allied model in the standoff must not withhold the shot.");
+        }
+
+        // Base-to-base measurement, same geometry pin as the Pass gate (#337): centres 3.5" apart but
+        // 3"-diameter bases only 0.5" apart - inside the band, shot withheld.
+        [Test]
+        public void ShootForfeit_LargeCircularBases_MeasuredBaseToBase()
+        {
+            var (ctx, unitCtx) = Build(enemyAt: new Position(3.5f, 0), baseRadius: 1.5f);
+
+            bool forfeits = ChooseActionStage.ShootWouldForfeitObligatedCharge(ctx, unitCtx, canCharge: true);
+
+            Assert.That(forfeits, Is.True,
+                "bases 0.5\" apart are inside the standoff regardless of centre distance - the shot is withheld.");
+        }
+
         private static (TestGameContext ctx, UnitActionContext unitCtx) Build(
             Position? enemyAt = null, bool otherIsAlly = false, float baseRadius = 0.5f,
             bool shaken = false,

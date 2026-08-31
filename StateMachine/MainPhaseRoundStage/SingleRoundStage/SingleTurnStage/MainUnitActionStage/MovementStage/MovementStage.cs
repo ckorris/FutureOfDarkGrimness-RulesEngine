@@ -45,6 +45,7 @@ namespace FDG.Stages
                 .AddChild(new StrafingStage(GameContext, this), out var strafing)
                 .AddChild(new CrossingAttackStage(GameContext, this), out var crossingAttack)
                 .AddChild(new ExecuteMoveStage(GameContext, this), out var executeMove)
+                .AddChild(new RetreatingStrikeMoveStage(GameContext, this), out var retreatingStrike)
                 .AddSibling(nameof(OnFinishedMovement), OnFinishedMovement, out string onFinishedMovement)
                 .AddSibling(nameof(BackToChooseAction), BackToChooseAction, out string backToChooseEvent)
                 .Build();
@@ -59,7 +60,10 @@ namespace FDG.Stages
             strafing.OnStrafeResolved.Bind(crossingAttack);
             // #197 P10 Crossing Attack: same pre-commit move-through window as Strafing, auto-wound flavour.
             crossingAttack.OnCrossingResolved.Bind(executeMove);
-            executeMove.OnMoveExecuted.Bind(onFinishedMovement);
+            // #381: the move-end strike hook (Movement_OnMoveResolved) fires once the positions are
+            // committed - the "ends its move" seam for AoF Retreating Strike's own-move arm.
+            executeMove.OnMoveExecuted.Bind(retreatingStrike);
+            retreatingStrike.OnStrikeResolved.Bind(onFinishedMovement);
 
             return dictionary;
         }

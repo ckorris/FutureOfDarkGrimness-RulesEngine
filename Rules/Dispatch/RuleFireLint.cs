@@ -261,6 +261,9 @@ public static class RuleFireLint
         EHookID.Activation_OnBeforeAttackAction,
         EHookID.Activation_OnNextActivatorRequested,
         EHookID.Movement_OnMoveThroughEnemy,
+        // #381: RetreatingStrikeMoveStage / RetreatingStrikePostCombatStage offer move-end strike
+        // abilities once a chosen move's positions are committed.
+        EHookID.Movement_OnMoveResolved,
         EHookID.Deployment_OnUnitDeployed,
         // #197 P22: ReconcileEndOfActivationStage offers "when this unit ends its activation" abilities
         // (Ambush Re-Deployment) before its token sweep.
@@ -451,7 +454,9 @@ public static class RuleFireLint
         // #197 Strafing: an attack-with-the-carrying-weapon ability run by StrafingStage at move-through.
         RuleOperation.InvokeWeaponAttack => hook is EHookID.Movement_OnMoveThroughEnemy,
         // #197 P10 Crossing Attack: an auto-wound ability rolled by CrossingAttackStage at move-through.
-        RuleOperation.InvokeDealAutoWounds => hook is EHookID.Movement_OnMoveThroughEnemy,
+        // #381 Retreating Strike: the same op at move-resolved, rolled by the RetreatingStrike stages.
+        RuleOperation.InvokeDealAutoWounds => hook is EHookID.Movement_OnMoveThroughEnemy
+            or EHookID.Movement_OnMoveResolved,
         // #197 P10 Storm of X: an action-choice ability enacted by StormStage (routed from ChooseActionStage).
         RuleOperation.InvokeStorm => hook is EHookID.Activation_OnActionChoice,
         // #197 Surprise Attack: the first-activation hit pool, rolled by SurpriseAttackStage.
@@ -625,6 +630,10 @@ public static class RuleFireLint
                 break;
             case EHookID.Movement_OnMoveThroughEnemy:
                 yield return new MoveThroughEnemyContext(bearer);
+                break;
+            case EHookID.Movement_OnMoveResolved:
+                // #381: the move-end strike seam (Retreating Strike).
+                yield return new MoveResolvedContext(bearer);
                 break;
             case EHookID.Movement_OnMoveThroughTerrain:
                 yield return new MoveThroughTerrainContext(bearer);

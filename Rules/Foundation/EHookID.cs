@@ -143,9 +143,12 @@ public enum EHookID
     Movement_OnMoveThroughTerrain = 53,
 
     /// <summary>
-    /// The unit has finished its move and its position is committed. Trigger for
-    /// Harassing-style "after moving" effects and Indirect's "moved this activation" flag.
-    /// Context: unit, final path.
+    /// The unit has finished a CHOSEN move and its position is committed. Lit by #381 at two seams -
+    /// the end of the unit's own move action (RetreatingStrikeMoveStage) and the end of a post-combat
+    /// Harassing-family move (RetreatingStrikePostCombatStage, melee and shoot funnels). Deliberately
+    /// NOT fired for forced movement (the charger's 1" post-melee move-back), wipe-out consolidation,
+    /// teleport/reposition placement, or disembark - see MoveResolvedContext for the owner ruling.
+    /// Context: <see cref="Dispatch.Contexts.MoveResolvedContext"/> (the mover).
     /// </summary>
     Movement_OnMoveResolved = 54,
 

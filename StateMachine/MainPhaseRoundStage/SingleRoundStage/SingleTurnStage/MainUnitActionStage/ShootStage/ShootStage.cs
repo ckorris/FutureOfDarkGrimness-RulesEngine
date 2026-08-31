@@ -55,6 +55,7 @@ namespace FDG.Stages
                 .AddChild(new ResolveRangedMoraleStage(GameContext, this), out var resolveRangedMorale)
                 .AddChild(new DetermineCanKeepShootingStage(GameContext, this), out var determineCanKeepShooting)
                 .AddChild(new PostShootStage(GameContext, this), out var postShoot)
+                .AddChild(new RetreatingStrikePostCombatStage(GameContext, this), out var retreatingStrike)
                 .AddSibling(nameof(OnFinishedShooting), OnFinishedShooting, out string onFinishedShootingEvent)
                 .AddSibling(nameof(BackToChooseAction), BackToChooseAction, out string backToChooseEvent)
                 .Build();
@@ -83,7 +84,11 @@ namespace FDG.Stages
             // measured against its wounds when this attacker first targeted it.
             determineCanKeepShooting.ToFinishShooting.Bind(resolveRangedMorale);
             resolveRangedMorale.ToFinished.Bind(postShoot);
-            postShoot.ToFinished.Bind(onFinishedShootingEvent);
+            // #381: a Harassing move after shooting is still a chosen move-end, so a unit that fought
+            // melee earlier in the round gets its Retreating Strike here too. No post-shoot move (the
+            // usual case) passes straight through.
+            postShoot.ToFinished.Bind(retreatingStrike);
+            retreatingStrike.OnStrikeResolved.Bind(onFinishedShootingEvent);
 
             return dictionary;
         }

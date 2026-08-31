@@ -180,6 +180,11 @@ public static class TokenDefinitionCatalog
             new(TokenType.POST_COMBAT_MOVE_USED_ID, "Post-combat move used", EValence.Neutral,
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd()),
 
+            // #381: "fought in melee this round", either role - the data-readable gate for
+            // "after being in melee" rules (AoF Retreating Strike). Stamped by ApplyFatigueStage.
+            new(TokenType.WAS_IN_MELEE_THIS_ROUND_ID, "Was in melee", EValence.Neutral,
+                ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd()),
+
             new(TokenType.DELAYED_ACTION_USED_ID, "Delayed Action used", EValence.Neutral,
                 ETokenProminence.Invisible, DefaultClearTrigger: new TokenClearTrigger.RoundEnd()),
 

@@ -12,6 +12,7 @@ public readonly record struct TokenType(string Id)
     public const string EMBARKED_IN_ID = "EmbarkedIn";
     public const string MARK_ID = "Mark";
     public const string POST_COMBAT_MOVE_USED_ID = "PostCombatMoveUsed";
+    public const string WAS_IN_MELEE_THIS_ROUND_ID = "WasInMeleeThisRound";
     public const string DELAYED_ACTION_USED_ID = "DelayedActionUsed";
     public const string OFF_TABLE_FROM_FORCED_MOVE_ID = "OffTableFromForcedMove";
     public const string LIMITED_SPENT_ID = "LimitedSpent";
@@ -250,6 +251,17 @@ public readonly record struct TokenType(string Id)
     /// shared budget across shooting and melee — a unit moves at most once after combat per round.
     /// </summary>
     public static readonly TokenType PostCombatMoveUsed = new(POST_COMBAT_MOVE_USED_ID);
+
+    /// <summary>
+    /// #381: round-scoped fact that this unit fought in a melee this round, in EITHER role - stamped on
+    /// both combatants by <c>ApplyFatigueStage</c> (the same seam as <see cref="Fatigued"/>, but Fatigued
+    /// is NOT a complete "was in melee" signal: a defender that neither charged nor struck back is never
+    /// fatigued). Exists so "after being in melee" rules (AoF Retreating Strike) can gate as plain data
+    /// via <c>Condition.TokenPresent</c>. RoundEnd clear, swept by the round-end pass - deliberately never
+    /// ActivationEnd: melee happens during the CHARGER's activation and the end-of-activation sweep only
+    /// visits the activated unit (the RegenerativeStrengthSpent trap above).
+    /// </summary>
+    public static readonly TokenType WasInMeleeThisRound = new(WAS_IN_MELEE_THIS_ROUND_ID);
 
     /// <summary>
     /// #197 Delayed Action: per-round, per-player marker that a player has already used their once-per-round

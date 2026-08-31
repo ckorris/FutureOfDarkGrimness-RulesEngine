@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using FDG.Data;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Dispatch.Contexts;
@@ -33,7 +34,8 @@ namespace FDG.Stages
 
         public override async Task Enter(ICombatActionContext context)
         {
-            IUnit attacked = ResolveAttackedUnit(context);
+            DataBinding<UnitData> attackedBinding = ResolveAttackedBinding(context);
+            IUnit attacked = attackedBinding.GetValue();
 
             if (attacked.GetIsAlive())
             {
@@ -45,7 +47,13 @@ namespace FDG.Stages
 
                 // Gate enacts the move (if the unit has a post-melee rule and hasn't already moved this
                 // round) and enforces the family's once-per-round budget — shared with the shooting seam.
-                await PostCombatMoveGate.OfferIfAvailable(GameContext, attacked, operations);
+                // #381: a REAL reposition is recorded for RetreatingStrikePostCombatStage (next in the
+                // chain), so the move-end strike hook fires on the final positions.
+                bool moved = await PostCombatMoveGate.OfferIfAvailable(GameContext, attacked, operations);
+                if (moved)
+                {
+                    context.PostCombatMover = attackedBinding;
+                }
             }
 
             // #197 P12: the per-melee token sweep. Melee_OnPostMelee was a hook nothing swept, so a
@@ -71,18 +79,19 @@ namespace FDG.Stages
         // The charged unit is the melee participant that is NOT the charger. ChargingUnit is captured at
         // context creation and never reassigned by SwapCombatRoles, so it stays the charger even after a
         // Counter swap flips AttackingUnit/DefendingUnit — keying off it picks the charged unit either way.
-        private static IUnit ResolveAttackedUnit(ICombatActionContext context)
+        // Returns the BINDING (#381: PostCombatMover carries it onward), not the resolved unit.
+        private static DataBinding<UnitData> ResolveAttackedBinding(ICombatActionContext context)
         {
             IUnit attacker = context.AttackingUnit.GetValue();
             IUnit? charger = context.ChargingUnit?.GetValue();
 
             if (charger != null && attacker.ID.Equals(charger.ID))
             {
-                return context.DefendingUnit.GetValue();
+                return context.DefendingUnit;
             }
 
             // Roles swapped (Counter) or no charger recorded: the current attacker is the charged unit.
-            return attacker;
+            return context.AttackingUnit;
         }
     }
 }

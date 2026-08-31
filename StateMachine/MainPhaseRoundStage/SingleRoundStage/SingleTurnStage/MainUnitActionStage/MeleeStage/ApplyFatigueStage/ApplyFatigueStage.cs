@@ -1,4 +1,6 @@
-﻿
+﻿using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
+
 namespace FDG.Stages
 {
     public class ApplyFatigueStage : StageBase<ICombatActionContext>
@@ -38,7 +40,22 @@ namespace FDG.Stages
                 GameContext.Log($"{striker.Name} struck back and is Fatigued.");
             }
 
+            // #381: both combatants also get the round-scoped "was in melee" fact. Distinct from Fatigued
+            // because a defender that neither charged nor struck back is never fatigued, yet it WAS in
+            // melee - and "after being in melee" rules (AoF Retreating Strike) gate on this token as
+            // plain data. Same end-of-melee seam as fatigue, same RoundEnd sweep.
+            StampWasInMelee(context.AttackingUnit.GetValue());
+            StampWasInMelee(context.DefendingUnit.GetValue());
+
             await OnFatigueApplied.Activate(context);
+        }
+
+        private static void StampWasInMelee(IUnit unit)
+        {
+            if (!unit.Tokens.HasToken(TokenType.WasInMeleeThisRound))
+            {
+                unit.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.WasInMeleeThisRound));
+            }
         }
     }
 }

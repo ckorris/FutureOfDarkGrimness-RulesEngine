@@ -26,7 +26,10 @@ namespace FDG.Stages
     {
         private const float MovedEpsilonInches = 0.001f;
 
-        public static async Task OfferIfAvailable(IGameContext gameContext, IUnit unit,
+        // Returns whether the unit ACTUALLY repositioned - the same fact the marker below records. #381:
+        // the callers hand this to RetreatingStrikePostCombatStage (via ICombatActionContext.
+        // PostCombatMover) so the move-end strike hook fires only after a real post-combat move.
+        public static async Task<bool> OfferIfAvailable(IGameContext gameContext, IUnit unit,
             IReadOnlyList<RuleOperation> operations)
         {
             // Coalesce the family's move ops into ONE move at the largest budget. A unit that produces
@@ -40,7 +43,7 @@ namespace FDG.Stages
             if (moves.Count == 0)
             {
                 OperationApplier.ApplyTokenOperations(operations);
-                return;
+                return false;
             }
 
             // Budget already spent this round → don't even offer the move again. Any token ops sharing
@@ -49,7 +52,7 @@ namespace FDG.Stages
             if (unit.Tokens.HasToken(TokenType.PostCombatMoveUsed))
             {
                 OperationApplier.ApplyTokenOperations(operations);
-                return;
+                return false;
             }
 
             RuleOperation.InvokeTriggeredMove bestMove = moves
@@ -66,7 +69,10 @@ namespace FDG.Stages
             {
                 unit.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.PostCombatMoveUsed));
                 gameContext.Log($"{unit.Name} made its post-combat move - spent for this round.");
+                return true;
             }
+
+            return false;
         }
 
         private static List<Position> SnapshotPositions(IUnit unit)

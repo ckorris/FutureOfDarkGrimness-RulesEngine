@@ -59,6 +59,15 @@ namespace FDG.Stages
         public void RegisterDefenderStruckBack();
 
         /// <summary>
+        /// #381: the unit the <c>PostCombatMoveGate</c> just repositioned (Harassing family), or null when
+        /// no post-combat move actually happened this action. Set by <c>PostMeleeStage</c> /
+        /// <c>PostShootStage</c>, consumed (nulled) by <c>RetreatingStrikePostCombatStage</c> immediately
+        /// after - the narrow hand-off that lets the move-end strike fire on the REAL final positions
+        /// without adding a hook inside the gate's move execution.
+        /// </summary>
+        public DataBinding<UnitData>? PostCombatMover { get; set; }
+
+        /// <summary>
         /// #197 P20: this shoot action is only legal because an enemy carries a Quick Shot mark ("friendly
         /// units get Quick Shot AGAINST it once"), so only marked units may be shot. Decided once by
         /// <c>ChooseActionStage</c>'s shoot gate - which is the only place that knows how far the unit
@@ -236,6 +245,10 @@ namespace FDG.Stages
         public bool DefenderStruckBack { get; private set; }
 
         public void RegisterDefenderStruckBack() => DefenderStruckBack = true;
+
+        // #381: see the interface doc. Plain mutable hand-off between the Post*Stages and
+        // RetreatingStrikePostCombatStage; never survives past the action.
+        public DataBinding<UnitData>? PostCombatMover { get; set; }
 
         public bool MarkedTargetsOnly { get; }
 

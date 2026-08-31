@@ -71,6 +71,7 @@ namespace FDG.Stages
                 .AddChild(new ConsolidateStage(GameContext, this), out var consolidate)
                 .AddChild(new ResolveMeleeReflectStage(GameContext, this), out var resolveReflect)
                 .AddChild(new PostMeleeStage(GameContext, this), out var postMelee)
+                .AddChild(new RetreatingStrikePostCombatStage(GameContext, this), out var retreatingStrike)
                 .AddSibling(nameof(OnFinishedMelee), OnFinishedMelee, out string meleeFinishedEvent)
                 .AddSibling(nameof(BackToChooseAction), BackToChooseAction, out string backToChooseEvent)
                 .Build();
@@ -132,7 +133,12 @@ namespace FDG.Stages
             consolidate.OnConsolidated.Bind(resolveReflect);
             resolveReflect.OnBatchDone.Bind(resolveReflect);
             resolveReflect.OnReflectResolved.Bind(postMelee);
-            postMelee.ToFinished.Bind(meleeFinishedEvent);
+            // #381: if the post-melee move actually repositioned the charged unit, the move-end strike
+            // (AoF Retreating Strike) fires on the final positions - "Harassing fires first". A melee
+            // with no post-combat move passes straight through (the charger's forced 1" move-back is
+            // deliberately not a trigger; see MoveResolvedContext).
+            postMelee.ToFinished.Bind(retreatingStrike);
+            retreatingStrike.OnStrikeResolved.Bind(meleeFinishedEvent);
 
             return dictionary;
         }

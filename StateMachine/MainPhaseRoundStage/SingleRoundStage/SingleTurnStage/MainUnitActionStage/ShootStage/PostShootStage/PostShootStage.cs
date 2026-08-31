@@ -39,7 +39,14 @@ namespace FDG.Stages
 
             // The gate enacts the triggered move (if the unit has a post-shoot rule and hasn't already
             // moved this round) and enforces the family's once-per-round budget — see PostCombatMoveGate.
-            await PostCombatMoveGate.OfferIfAvailable(GameContext, unit, operations);
+            // #381: a REAL reposition is recorded for RetreatingStrikePostCombatStage (next in the
+            // chain), so a Harassing move after shooting still triggers a move-end strike for a unit
+            // that fought melee earlier in the round.
+            bool moved = await PostCombatMoveGate.OfferIfAvailable(GameContext, unit, operations);
+            if (moved)
+            {
+                context.PostCombatMover = context.AttackingUnit;
+            }
 
             await ToFinished.Activate(context);
         }

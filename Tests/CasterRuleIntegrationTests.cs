@@ -1213,6 +1213,38 @@ namespace FDG.Tests
             Assert.That(idleB.GetValue().Tokens.GetTokenCount(TokenType.SpellTokens), Is.EqualTo(2));
         }
 
+        // The assist prompt must carry WHAT the spell does, not just its name (Chris, 2026-08-30): the
+        // assister's controller is judging whether the cast is worth tokens, and the name alone says
+        // nothing. Same text as the caster's own picker subtext (SpellText.Describe), threaded engine-side
+        // so CLI and GUI render identical subtext with no spell knowledge of their own.
+        [Test]
+        public async Task CastSpellStage_AssistPrompt_CarriesTheSpellsDescription()
+        {
+            RuntimeSpell bless = SelfBuffSpell("Bless", threshold: 1, grantedRule: "Furious");
+            var captured = new List<CastAssistRequest>();
+            var requester = new CannedAssistRequester(tokensPerAssister: 0, boostTokens: 0,
+                perAssister: assist => { captured.Add(assist); return 0; });
+            var ctx = new TriggeredMoveTestContext(_store, requester, new FixedDiceRoller(5),
+                new RecordingPresentationSink());
+
+            DataBinding<UnitData> caster = MakeCasterBinding(_player, casterRating: 3, tokens: 3, new Position(10f, 10f));
+            DataBinding<UnitData> helper = MakeCasterBinding(_player, casterRating: 3, tokens: 2, new Position(12f, 10f));
+            var army = new ArmyData(_player, new List<DataBinding<UnitData>> { caster, helper });
+            army.SetSpells(new[] { bless });
+            _store.Create(army);
+
+            UnitActionContext unitCtx = NewActivation(ctx, caster);
+            var stage = new CastSpellStage(ctx, new NoOpLayer<IUnitActionContext>());
+            stage.OnFinished.Bind("OnFinished");
+            await stage.Enter(unitCtx);
+
+            Assert.That(captured, Has.Count.EqualTo(1), "the one eligible ally was offered");
+            Assert.That(captured[0].SpellName, Is.EqualTo("Bless"));
+            Assert.That(captured[0].SpellDescription, Is.EqualTo(SpellText.Describe(bless.Definition)),
+                "the assist prompt carries the same effect subtext the caster's spell picker shows");
+            Assert.That(captured[0].SpellDescription, Is.Not.Empty);
+        }
+
         // The assisting unit's model x, for the selective-spend requester above (one model per test caster).
         private static float AssisterX(CastAssistRequest assist) =>
             assist.AssistingUnit.GetValue().ModelBindings[0].GetValue().PositionBinding.GetValue().x;

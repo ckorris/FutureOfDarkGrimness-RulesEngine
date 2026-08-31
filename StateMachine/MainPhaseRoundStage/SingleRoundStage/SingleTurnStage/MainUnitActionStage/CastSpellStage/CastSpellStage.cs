@@ -194,7 +194,8 @@ namespace FDG.Stages
             // 4. #103 — other Caster units within 18" may spend their own tokens to sway the cast: friendly
             //    Casters add +1 each, enemy Casters subtract 1 each. Their tokens are spent regardless of the
             //    cast's outcome (like the cast cost above). Boost + assists shift the success threshold.
-            CastAssistResult assistResult = await CollectCastAssist(context.ActivatingUnit, player, chosen.Name);
+            CastAssistResult assistResult = await CollectCastAssist(context.ActivatingUnit, player, chosen.Name,
+                SpellText.Describe(chosen.Definition));
             int assist = assistResult.Net;
 
             // #197 P6 — granted cast-roll modifiers (Casting Debuff / Casting Buff): a signed delta the
@@ -650,7 +651,7 @@ namespace FDG.Stages
         // whether or not the cast then succeeds, matching the cast cost. Returns a zero net when no one
         // assists, so a game with no nearby Casters sees no prompts and no behaviour change.
         private async Task<CastAssistResult> CollectCastAssist(DataBinding<UnitData> casterBinding,
-            PlayerID casterPlayer, string spellName)
+            PlayerID casterPlayer, string spellName, string spellDescription)
         {
             string casterName = casterBinding.GetValue().Name;
             int net = 0;
@@ -667,7 +668,8 @@ namespace FDG.Stages
                     assister);
                 if (available <= 0) continue;
 
-                int spent = await AskAssistCount(unitBinding, casterBinding, friendly, available, spellName);
+                int spent = await AskAssistCount(unitBinding, casterBinding, friendly, available, spellName,
+                    spellDescription);
                 if (spent <= 0) continue;
 
                 IReadOnlyList<SpellPurse.Loan> loans = SpellPurse.Spend(GameContext.TableState,
@@ -748,10 +750,11 @@ namespace FDG.Stages
         // enemy) and show the token count. The reply is clamped to what the assister actually holds. CLI and
         // AI resolvers default to spending nothing.
         private async Task<int> AskAssistCount(DataBinding<UnitData> assistingUnit, DataBinding<UnitData> castingUnit,
-            bool friendly, int available, string spellName)
+            bool friendly, int available, string spellName, string spellDescription)
         {
             CastAssistRequest request = new CastAssistRequest(
-                assistingUnit.GetValue().PlayerID, assistingUnit, castingUnit, friendly, available, spellName);
+                assistingUnit.GetValue().PlayerID, assistingUnit, castingUnit, friendly, available, spellName,
+                spellDescription);
 
             int spent = await GameContext.PlayerRequester
                 .RequestDecision<CastAssistRequest, int>(request);

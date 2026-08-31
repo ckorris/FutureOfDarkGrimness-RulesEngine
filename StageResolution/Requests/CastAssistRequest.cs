@@ -33,9 +33,15 @@ namespace FDG.StageResolution.Requests
 
         public string SpellName { get; }
 
+        /// <summary>What the spell being swayed actually does (SpellText.Describe), shown as subtext so the
+        /// assister's controller can judge whether it is worth tokens - the same text the caster's own
+        /// spell picker shows. Empty when the caster's spell list has no description for it.</summary>
+        public string SpellDescription { get; }
+
         [JsonConstructor]
         public CastAssistRequest(PlayerID targetPlayerID, TaskID taskID, DataBinding<UnitData> assistingUnit,
-            DataBinding<UnitData> castingUnit, bool isFriendly, int availableTokens, string spellName)
+            DataBinding<UnitData> castingUnit, bool isFriendly, int availableTokens, string spellName,
+            string spellDescription = "")
         {
             TargetPlayerID = targetPlayerID;
             TaskID = taskID;
@@ -44,13 +50,15 @@ namespace FDG.StageResolution.Requests
             IsFriendly = isFriendly;
             AvailableTokens = availableTokens;
             SpellName = spellName;
+            SpellDescription = spellDescription ?? "";
             TaskName = "Assisting a Spell Cast";
         }
 
         public CastAssistRequest(PlayerID targetPlayerID, DataBinding<UnitData> assistingUnit,
-            DataBinding<UnitData> castingUnit, bool isFriendly, int availableTokens, string spellName)
+            DataBinding<UnitData> castingUnit, bool isFriendly, int availableTokens, string spellName,
+            string spellDescription = "")
             : this(targetPlayerID, new TaskID(Guid.NewGuid()), assistingUnit, castingUnit, isFriendly,
-                   availableTokens, spellName)
+                   availableTokens, spellName, spellDescription)
         {
         }
 

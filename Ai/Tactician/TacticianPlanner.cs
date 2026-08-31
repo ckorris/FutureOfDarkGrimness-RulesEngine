@@ -710,14 +710,29 @@ namespace FDG.Ai.Tactician
                 {
                     Position projected = ProjectedEnemyPosition(enemyBinding);
                     float projDistance = Distance(end, projected);
-                    float projReach = Math.Max(1f,
-                        projDistance - TacticalAnalysis.AdvanceDistance(enemy, _evaluator, TerrainSnapshot()));
-                    float projValue = projReach > EnemyMaxRangeAgainstUs(enemyBinding) ? 0f
+                    float enemyAdvance = TacticalAnalysis.AdvanceDistance(enemy, _evaluator, TerrainSnapshot());
+                    float projReach = Math.Max(1f, projDistance - enemyAdvance);
+                    // #389 option 2: the band edge is a RAMP, not a cliff. This is a forecast two
+                    // moves out - an endpoint 2" beyond the projected reach is arrived at half an
+                    // advance later, not never. The hard zero here let a lateral slide whose
+                    // endpoint sat just outside the band bank a ~3x "safety" discount over a
+                    // clipped forward stub just inside it (the WarriorSistersMovedLaterally
+                    // argmax), so the forecast now decays linearly over one more enemy advance.
+                    // Inside the band nothing changes (the estimate runs at projReach as before).
+                    float maxRange = EnemyMaxRangeAgainstUs(enemyBinding);
+                    float shootRamp = ArrivalRamp(projReach - maxRange, enemyAdvance);
+                    float projValue = maxRange <= 0f || shootRamp <= 0f ? 0f
                         // #365: no sight gate - this is a forecast two moves out, where a boolean
                         // about today's geometry is worth even less than it is for retaliation.
-                        : ValueFraction(CombatMath.EstimateShooting(_evaluator, enemyBinding,
-                                _activeUnit, new AttackContext(projReach, AttackerMoved: true))
+                        : shootRamp * ValueFraction(CombatMath.EstimateShooting(_evaluator, enemyBinding,
+                                _activeUnit, new AttackContext(Math.Max(1f, Math.Min(projReach, maxRange)),
+                                    AttackerMoved: true))
                             .ExpectedWounds, self);
+                    // The MELEE forecast keeps its hard edge deliberately: unlike a range band, the
+                    // charge arc is a categorical boundary - outside it the enemy cannot charge
+                    // next activation at all - and Chris's corridor pin (#365,
+                    // TacticianCoverHabitTests) depends on stepping just outside it being worth
+                    // something. Ramping it eroded exactly that.
                     if (enemy.GetMeleeWeapons().Count > 0
                         && MeleeApproachAgainst(enemyBinding).Margin <= 0f
                         && TacticalAnalysis.MeleeThreatReach(enemy, self, _evaluator, TerrainSnapshot()) >= projDistance - 1f)
@@ -780,6 +795,16 @@ namespace FDG.Ai.Tactician
             bool tieBreak = candidate.Feasibility == EFeasibility.Reachable && substantive > 0f;
             return substantive + (tieBreak ? TacticianWeights.MoveReachableBonus : 0f);
         }
+
+        /// <summary>
+        /// #389 option 2: how much of a forecast threat to charge when its band edge is overshot
+        /// by <paramref name="overshoot"/> inches - full inside the band, decaying linearly to
+        /// zero over one closing step (the enemy's advance): a forecast already two moves out
+        /// must not price "one inch outside" as safe and "one inch inside" as certain. Not a
+        /// tunable - the ramp length is the mobility that closes it.
+        /// </summary>
+        internal static float ArrivalRamp(float overshoot, float closingStep) =>
+            overshoot <= 0f ? 1f : Math.Clamp(1f - overshoot / Math.Max(1f, closingStep), 0f, 1f);
 
         /// <summary>Round scaling for the objective terms (#191 A5-4): ~0.66 in round 1 rising to
         /// 1.3 in the final round, when ownership becomes the score.</summary>

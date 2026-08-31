@@ -45,7 +45,7 @@ namespace FDG.Stages
             bool moved = await PostCombatMoveGate.OfferIfAvailable(GameContext, unit, operations);
             if (moved)
             {
-                context.PostCombatMover = context.AttackingUnit;
+                context.PostCombatMovers.Add(context.AttackingUnit);
             }
 
             await ToFinished.Activate(context);

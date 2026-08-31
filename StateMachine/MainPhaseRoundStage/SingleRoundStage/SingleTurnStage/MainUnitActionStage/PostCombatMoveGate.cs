@@ -46,6 +46,18 @@ namespace FDG.Stages
                 return false;
             }
 
+            // #391: Shaken units must remain idle - no Active Special Rules, and the rulebook calls out
+            // repositioning rules like Harassing explicitly. Gated here, the family's one chokepoint, so
+            // the base rules, the Boosts and any supplement variant are all covered without a def-side
+            // condition on each. Bites exactly when a unit becomes Shaken from LOSING the melee it would
+            // move after (morale resolves before this window). Budget kept - the unit did not move.
+            if (unit.Tokens.HasToken(TokenType.Shaken))
+            {
+                OperationApplier.ApplyTokenOperations(operations);
+                gameContext.LogDebug($"{unit.Name} is Shaken - post-combat move not offered.");
+                return false;
+            }
+
             // Budget already spent this round → don't even offer the move again. Any token ops sharing
             // the hook still apply — a non-move rule's markers must not vanish just because the move
             // budget is gone (ApplyTokenOperations ignores the move ops themselves, so nothing double-fires).

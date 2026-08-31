@@ -261,8 +261,10 @@ public enum EHookID
 
     /// <summary>
     /// Melee fully resolved (after morale and consolidation). Trigger for "after
-    /// melee" effects like Harassing's optional 3" move from being attacked.
-    /// Context: both units, outcome.
+    /// melee" effects like Harassing's optional 3" move - evaluated for BOTH
+    /// combatants since #391 (the rule text is role-neutral; pre-#391 only the
+    /// charged unit was offered the move), charger first.
+    /// Context: PostMeleeActionContext, once per combatant.
     /// </summary>
     Melee_OnPostMelee = 103,
 

@@ -138,6 +138,9 @@ namespace FDG.Stages
             // with no post-combat move passes straight through (the charger's forced 1" move-back is
             // deliberately not a trigger; see MoveResolvedContext).
             postMelee.ToFinished.Bind(retreatingStrike);
+            // #391: one strike per pass - both combatants can have Harassed, so the wound pipeline loops
+            // (the resolveReflect pattern above) until the recorded movers drain.
+            retreatingStrike.OnBatchDone.Bind(retreatingStrike);
             retreatingStrike.OnStrikeResolved.Bind(meleeFinishedEvent);
 
             return dictionary;

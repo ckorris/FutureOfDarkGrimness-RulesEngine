@@ -224,18 +224,50 @@ namespace FDG.Tests
             MakeEnemy("Grunts", new Position(2f, 0f), new Position(2f, 1f));
             StampWasInMelee(mover);
 
-            var combatContext = new CombatActionContext(ctx, mover, isMelee: true)
-            {
-                PostCombatMover = mover,
-            };
+            var combatContext = new CombatActionContext(ctx, mover, isMelee: true);
+            combatContext.PostCombatMovers.Add(mover);
 
             var stage = new RetreatingStrikePostCombatStage(ctx, new NoOpLayer<ICombatActionContext>());
+            stage.OnBatchDone.Bind("batch"); // a terminal here; the real graph loops it back to the stage
             stage.OnStrikeResolved.Bind("done");
             await stage.Enter(combatContext);
 
             Assert.That(requester.WoundRequest, Is.Not.Null, "the recorded post-combat mover strikes");
             Assert.That(requester.WoundRequest!.TotalWoundsToAssign, Is.EqualTo(1f));
-            Assert.That(combatContext.PostCombatMover, Is.Null, "the hand-off is consumed on entry");
+            Assert.That(combatContext.PostCombatMovers, Is.Empty, "the hand-off is consumed on entry");
+        }
+
+        // #391: BOTH combatants Harassed (a mirror match) - each recorded mover gets its own strike,
+        // one wound pipeline per pass (the OnBatchDone loop; here bound to a terminal and re-entered
+        // manually, as the real graph's self-binding does).
+        [Test]
+        public async Task PostCombatArm_TwoMovers_EachStrikes()
+        {
+            var requester = new StrafeRequester(accept: true);
+            var ctx = new WoundTestContext(_store, requester, new AllSixesDiceRoller());
+            DataBinding<UnitData> first = MakeStriker("Corsairs", strikeX: 1, new Position(0f, 0f));
+            DataBinding<UnitData> second = MakeStriker("Witches", strikeX: 1, new Position(0f, 1f));
+            DataBinding<UnitData> enemy = MakeEnemy("Grunts", new Position(2f, 0f), new Position(2f, 1f),
+                new Position(2f, 2f));
+            StampWasInMelee(first);
+            StampWasInMelee(second);
+
+            var combatContext = new CombatActionContext(ctx, first, isMelee: true);
+            combatContext.PostCombatMovers.Add(first);
+            combatContext.PostCombatMovers.Add(second);
+
+            var stage = new RetreatingStrikePostCombatStage(ctx, new NoOpLayer<ICombatActionContext>());
+            stage.OnBatchDone.Bind("batch"); // a terminal here; the real graph loops it back to the stage
+            stage.OnStrikeResolved.Bind("done");
+            await stage.Enter(combatContext); // first mover's strike (ends at the batch terminal)
+            await stage.Enter(combatContext); // the loop's re-entry: second mover's strike
+            await stage.Enter(combatContext); // drained - exits through OnStrikeResolved
+
+            Assert.That(enemy.RemainingWounds(), Is.EqualTo(1f),
+                "each of the two movers dealt its own 1 unsaveable wound (3 - 2 = 1)");
+            Assert.That(first.GetValue().Tokens.HasToken(UsedMarker), Is.True);
+            Assert.That(second.GetValue().Tokens.HasToken(UsedMarker), Is.True);
+            Assert.That(combatContext.PostCombatMovers, Is.Empty);
         }
 
         // The owner ruling's central exclusion: a melee where nothing repositioned (in particular the
@@ -253,6 +285,7 @@ namespace FDG.Tests
             var combatContext = new CombatActionContext(ctx, mover, isMelee: true);
 
             var stage = new RetreatingStrikePostCombatStage(ctx, new NoOpLayer<ICombatActionContext>());
+            stage.OnBatchDone.Bind("batch");
             stage.OnStrikeResolved.Bind("done");
             await stage.Enter(combatContext);
 
@@ -310,12 +343,12 @@ namespace FDG.Tests
 
                 if (expectRecorded)
                 {
-                    Assert.That(combatContext.PostCombatMover, Is.SameAs(defender),
+                    Assert.That(combatContext.PostCombatMovers, Is.EqualTo(new[] { defender }),
                         "a real Harassing reposition records the charged unit for the strike stage");
                 }
                 else
                 {
-                    Assert.That(combatContext.PostCombatMover, Is.Null,
+                    Assert.That(combatContext.PostCombatMovers, Is.Empty,
                         "a declined (zero-length) Harassing move records nothing");
                 }
             }

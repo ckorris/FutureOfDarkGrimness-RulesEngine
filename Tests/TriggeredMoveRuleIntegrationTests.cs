@@ -310,6 +310,83 @@ namespace FDG.Tests
                 "declining the optional move (zero distance) keeps the round's budget");
         }
 
+        // #391: a Shaken unit gets no post-combat move at all - Shaken means idle, no Active Special
+        // Rules (the rulebook names re-positioning rules like Harassing explicitly). Gated at the
+        // family's chokepoint so the Boosts and supplement variants are covered too; the round's
+        // budget is kept (the unit did not move).
+        [Test]
+        public async Task PostCombatMove_ShakenUnit_NotOffered()
+        {
+            var requester = new CannedMovePathRequester(dx: 2f, dz: 0f);
+            var ctx = new TriggeredMoveTestContext(_store, requester);
+            DataBinding<UnitData> unit = MakeUnit(new Position(0f, 0f));
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Harassing", CoreRuleCatalog.Harassing));
+            unit.GetValue().Tokens.AddToken(Rules.Tokens.TokenDefinitionCatalog.Create(TokenType.Shaken));
+            IUnit u = unit.GetValue();
+
+            bool moved = await PostCombatMoveGate.OfferIfAvailable(ctx, u, ctx.RuleEvaluator.EvaluateAll(
+                new PostMeleeActionContext(u), RuleParticipant.Actor(u)));
+
+            Assert.That(moved, Is.False, "a Shaken unit reports no reposition");
+            Assert.That(requester.Captured, Is.Null, "no movement request reaches a Shaken unit");
+            AssertModelAt(unit, 0, 0f, 0f);
+            Assert.That(u.Tokens.HasToken(TokenType.PostCombatMoveUsed), Is.False,
+                "the round's budget is kept - being refused is not moving");
+        }
+
+        // #391: the CHARGER gets the post-melee move too ("after being in melee" is role-neutral;
+        // pre-#391 only the charged unit was offered it). Driven through the real PostMeleeStage.
+        [Test]
+        public async Task PostMelee_ChargerWithHarassing_GetsTheMove()
+        {
+            var requester = new CannedMovePathRequester(dx: 2f, dz: 0f);
+            var ctx = new TriggeredMoveTestContext(_store, requester);
+            DataBinding<UnitData> charger = MakeUnit(new Position(0f, 0f));
+            charger.GetValue().AttachRuleDefinition(new ResolvedRule("Harassing", CoreRuleCatalog.Harassing));
+            // Out of the charger's way: the canned +2" translation must not land on the defender's
+            // base, or the movement validator rejects it and the test measures the wrong thing.
+            DataBinding<UnitData> defender = MakeUnit(new Position(10f, 0f));
+
+            var combatContext = new CombatActionContext(ctx, charger, isMelee: true, isCharging: true);
+            combatContext.SetDefender(defender);
+
+            var stage = new PostMeleeStage(ctx, new NoOpLayer<ICombatActionContext>());
+            stage.ToFinished.Bind("done");
+            await stage.Enter(combatContext);
+
+            AssertModelAt(charger, 0, 2f, 0f);
+            AssertModelAt(defender, 0, 10f, 0f);
+            Assert.That(combatContext.PostCombatMovers, Is.EqualTo(new[] { charger }),
+                "the charger's real reposition is recorded for the strike stage");
+        }
+
+        // #391: when BOTH combatants carry the family, both move - each against its own budget -
+        // and the charger (the active player's unit) resolves first.
+        [Test]
+        public async Task PostMelee_BothCombatantsHarass_ChargerFirst()
+        {
+            var requester = new CannedMovePathRequester(dx: 2f, dz: 0f);
+            var ctx = new TriggeredMoveTestContext(_store, requester);
+            DataBinding<UnitData> charger = MakeUnit(new Position(0f, 0f));
+            charger.GetValue().AttachRuleDefinition(new ResolvedRule("Harassing", CoreRuleCatalog.Harassing));
+            DataBinding<UnitData> defender = MakeUnit(new Position(10f, 0f));
+            defender.GetValue().AttachRuleDefinition(new ResolvedRule("Harassing", CoreRuleCatalog.Harassing));
+
+            var combatContext = new CombatActionContext(ctx, charger, isMelee: true, isCharging: true);
+            combatContext.SetDefender(defender);
+
+            var stage = new PostMeleeStage(ctx, new NoOpLayer<ICombatActionContext>());
+            stage.ToFinished.Bind("done");
+            await stage.Enter(combatContext);
+
+            AssertModelAt(charger, 0, 2f, 0f);
+            AssertModelAt(defender, 0, 12f, 0f);
+            Assert.That(combatContext.PostCombatMovers, Is.EqualTo(new[] { charger, defender }),
+                "both moved, charger first (active player resolves simultaneous effects first)");
+            Assert.That(charger.GetValue().Tokens.HasToken(TokenType.PostCombatMoveUsed), Is.True);
+            Assert.That(defender.GetValue().Tokens.HasToken(TokenType.PostCombatMoveUsed), Is.True);
+        }
+
         // Boost: with the base rule present, the post-combat move upgrades from 3" to 6". The gate
         // coalesces the base 3" op and the boost 6" op into a SINGLE 6" move — a 4" submission is legal
         // (would exceed a 3" budget) and the unit moves exactly once.

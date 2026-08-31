@@ -88,6 +88,7 @@ namespace FDG.Stages
             // melee earlier in the round gets its Retreating Strike here too. No post-shoot move (the
             // usual case) passes straight through.
             postShoot.ToFinished.Bind(retreatingStrike);
+            retreatingStrike.OnBatchDone.Bind(retreatingStrike);
             retreatingStrike.OnStrikeResolved.Bind(onFinishedShootingEvent);
 
             return dictionary;

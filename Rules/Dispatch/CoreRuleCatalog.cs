@@ -1552,14 +1552,15 @@ public static class CoreRuleCatalog
         Description: "After deploying, this unit may be placed anywhere fully within 9\" of its position.");
 
     /// <summary>
-    /// Harassing: after this unit shoots — or after it is attacked in melee — it may immediately move up
-    /// to 3" (optional). Two passive <see cref="HookEntry"/>s: one at
+    /// Harassing: after this unit shoots — or after it is in melee, in EITHER role (#391; the text is
+    /// role-neutral, and pre-#391 only the charged unit was offered the move) — it may immediately move
+    /// up to 3" (optional). Two passive <see cref="HookEntry"/>s: one at
     /// <see cref="EHookID.Shooting_OnPostShoot"/> (fired once per shoot action by <c>PostShootStage</c>)
-    /// and one at <see cref="EHookID.Melee_OnPostMelee"/> (fired for the charged unit by
+    /// and one at <see cref="EHookID.Melee_OnPostMelee"/> (fired for each combatant, charger first, by
     /// <c>PostMeleeStage</c> once the melee fully resolves). Each queues an optional
     /// <see cref="Effect.TriggeredMove"/> the engine enacts through the movement subsystem; the bearer is
-    /// the moving unit, so the move is a self-move directed by its own owner (a reactive disengage in the
-    /// melee case).
+    /// the moving unit, so the move is a self-move directed by its own owner. A Shaken unit is refused at
+    /// <c>PostCombatMoveGate</c> (#391: no Active Special Rules while Shaken).
     /// </summary>
     public static SpecialRuleDefinition Harassing { get; } = new SpecialRuleDefinition("Harassing",
         new[]

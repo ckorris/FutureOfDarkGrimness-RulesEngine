@@ -59,13 +59,15 @@ namespace FDG.Stages
         public void RegisterDefenderStruckBack();
 
         /// <summary>
-        /// #381: the unit the <c>PostCombatMoveGate</c> just repositioned (Harassing family), or null when
-        /// no post-combat move actually happened this action. Set by <c>PostMeleeStage</c> /
-        /// <c>PostShootStage</c>, consumed (nulled) by <c>RetreatingStrikePostCombatStage</c> immediately
-        /// after - the narrow hand-off that lets the move-end strike fire on the REAL final positions
-        /// without adding a hook inside the gate's move execution.
+        /// #381/#391: the units the <c>PostCombatMoveGate</c> just repositioned (Harassing family) this
+        /// action, in the order they moved - empty when no post-combat move actually happened. Appended
+        /// by <c>PostMeleeStage</c> (either combatant, #391) / <c>PostShootStage</c>, drained one entry
+        /// per pass by <c>RetreatingStrikePostCombatStage</c> - the narrow hand-off that lets the
+        /// move-end strike fire on the REAL final positions without adding a hook inside the gate's
+        /// move execution. A list, not a single slot: in a mirror match BOTH melee combatants can
+        /// Harass, and each carrier gets its own strike window.
         /// </summary>
-        public DataBinding<UnitData>? PostCombatMover { get; set; }
+        public List<DataBinding<UnitData>> PostCombatMovers { get; }
 
         /// <summary>
         /// #197 P20: this shoot action is only legal because an enemy carries a Quick Shot mark ("friendly
@@ -246,9 +248,9 @@ namespace FDG.Stages
 
         public void RegisterDefenderStruckBack() => DefenderStruckBack = true;
 
-        // #381: see the interface doc. Plain mutable hand-off between the Post*Stages and
+        // #381/#391: see the interface doc. Plain mutable hand-off between the Post*Stages and
         // RetreatingStrikePostCombatStage; never survives past the action.
-        public DataBinding<UnitData>? PostCombatMover { get; set; }
+        public List<DataBinding<UnitData>> PostCombatMovers { get; } = new();
 
         public bool MarkedTargetsOnly { get; }
 

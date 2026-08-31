@@ -144,6 +144,56 @@ namespace FDG.Ai.Tactician
             return Math.Max(shootingThreat, meleeThreat);
         }
 
+        /// <summary>
+        /// #389: how far along the straight line from <paramref name="start"/> toward
+        /// <paramref name="toward"/> a model of radius <paramref name="moverRadius"/> could actually
+        /// END a move, out of <paramref name="budget"/> inches. Friendly bases never block passage -
+        /// a move may path through them (#205) - but a model may not stand overlapping one, so the
+        /// answer is the farthest free stand-point: the full budget when the spot at that depth is
+        /// clear (a thin screen with room behind it costs nothing), else the near edge of the
+        /// occupied span the budget-depth spot falls in. Circle approximation (bounding radii), 2D;
+        /// pass the living allied models of OTHER units as <paramref name="blockers"/>.
+        /// </summary>
+        public static float FreeStraightAdvance(Position start, Position toward, float moverRadius,
+            float budget, IReadOnlyList<IModel> blockers)
+        {
+            if (budget <= 0f) return 0f;
+            float dirX = toward.x - start.x, dirZ = toward.z - start.z;
+            float length = MathF.Sqrt(dirX * dirX + dirZ * dirZ);
+            if (length < 0.001f) return budget;
+            dirX /= length; dirZ /= length;
+
+            // Spans of travel distance at which the mover's center would overlap a blocker's base.
+            var occupied = new List<(float From, float To)>();
+            foreach (IModel blocker in blockers)
+            {
+                float relX = blocker.Position.x - start.x, relZ = blocker.Position.z - start.z;
+                float along = relX * dirX + relZ * dirZ;
+                float combined = moverRadius + blocker.BaseRadiusInches;
+                if (along + combined <= 0f || along - combined >= budget) continue;
+                float lateralSq = relX * relX + relZ * relZ - along * along;
+                float halfSq = combined * combined - lateralSq;
+                if (halfSq <= 0f) continue;
+                float half = MathF.Sqrt(halfSq);
+                occupied.Add((along - half, along + half));
+            }
+            if (occupied.Count == 0) return budget;
+
+            occupied.Sort((a, b) => a.From.CompareTo(b.From));
+            var merged = new List<(float From, float To)>();
+            foreach ((float From, float To) span in occupied)
+            {
+                if (merged.Count > 0 && span.From <= merged[^1].To)
+                    merged[^1] = (merged[^1].From, Math.Max(merged[^1].To, span.To));
+                else
+                    merged.Add(span);
+            }
+            foreach ((float From, float To) span in merged)
+                if (span.From <= budget && budget <= span.To)
+                    return Math.Max(0f, span.From);
+            return budget;
+        }
+
         /// <summary>Expected shooting damage at a hypothetical distance/cover - CombatMath, positioned.</summary>
         public static AttackEstimate ExpectedShootingAt(RuleEvaluator evaluator,
             DataBinding<UnitData> attacker, DataBinding<UnitData> defender,

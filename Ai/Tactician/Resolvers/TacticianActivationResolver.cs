@@ -2,6 +2,7 @@ using FDG.Data;
 using FDG.Rules.Dispatch;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
+using FDG.Stages;
 using FDG.Utilities;
 
 namespace FDG.Ai.Tactician.Resolvers
@@ -21,6 +22,10 @@ namespace FDG.Ai.Tactician.Resolvers
             _terrainSnapshot ??= TacticalAnalysis.TerrainOf(_tableState);
         private readonly RuleEvaluator _evaluator;
         private readonly TacticianPlanner? _planner;
+        // #389: the #384 LoS house rule (GameSettings.SeeThroughFriendlyUnits) - false (official
+        // rules) makes the kill term's sight gate count other friendly units' bases as blockers,
+        // the same way the planner's offense term does.
+        private readonly bool _seeThroughFriendlyUnits;
         // #359 measurement: when set (--log-decisions), each pick is narrated with whether the
         // frontline bias DECIDED it - i.e. urgency alone would have picked someone else. The #296
         // bias is deliberately below every real urgency signal, so this is the direct check on
@@ -28,12 +33,14 @@ namespace FDG.Ai.Tactician.Resolvers
         private readonly Action<string>? _decisionLog;
 
         public TacticianActivationResolver(ITableState tableState, RuleEvaluator evaluator,
-            TacticianPlanner? planner = null, Action<string>? decisionLog = null)
+            TacticianPlanner? planner = null, Action<string>? decisionLog = null,
+            bool seeThroughFriendlyUnits = false)
         {
             _tableState = tableState;
             _evaluator = evaluator;
             _planner = planner;
             _decisionLog = decisionLog;
+            _seeThroughFriendlyUnits = seeThroughFriendlyUnits;
         }
 
         public Task<DataBinding<UnitData>> Resolve(ChooseUnitToActivateRequest request)
@@ -155,16 +162,43 @@ namespace FDG.Ai.Tactician.Resolvers
 
             float kill = 0f;
             float threat = 0f;
+            IReadOnlyList<IModel> laneBlockers = AlliedBlockerModels(unit);
+            // #389 sight gate, the same pair the planner's offense term clears (#363 terrain +
+            // #384 other friendly units' bases under official rules).
+            List<ITerrain> sightBlockers = _seeThroughFriendlyUnits
+                ? Terrain.ToList()
+                : Terrain.Concat(LineOfSightUtilities.BuildFriendlySightBlockers(_tableState, unit))
+                    .ToList();
             foreach (DataBinding<UnitData> enemyBinding in EnemyBindings(unit.PlayerID))
             {
                 UnitData enemy = enemyBinding.GetValue();
                 float distance = UnitCompareUtilities.MinDistanceBetweenUnits(unit, enemy,
-                    out _, out _, includeVertical: true);
+                    out IModel? ourClosest, out IModel? theirClosest, includeVertical: true);
 
                 // What could WE do to them this activation (shoot after advancing, at best range)?
-                float reachAfterAdvance = Math.Max(1f, distance - advance);
+                // #389: the volley must be one the unit could actually take. The assumed closure is
+                // capped by the standing room on the straight lane (a shooter walled in by a deep
+                // friendly mass cannot realize "advance and shoot"), and the shot is sight-tested
+                // from the point that closure reaches - the planner's offense term already refused
+                // to credit the phantom volley through a wall, but this term kept pricing it, so
+                // the DEEPEST unit activated before its own lane-blockers and then had nowhere to
+                // go (the WarriorSistersMovedLaterally save). Urgency is re-read at every pick, so
+                // once a blocker moves away the discount lifts on its own.
+                float closure = advance;
+                bool hasLane = true;
+                if (ourClosest != null && theirClosest != null)
+                {
+                    closure = Math.Min(advance, TacticalAnalysis.FreeStraightAdvance(
+                        ourClosest.Position, theirClosest.Position, ourClosest.BaseRadiusInches,
+                        advance, laneBlockers));
+                    hasLane = LineOfSightUtilities.HasLineOfSight(
+                        AdvancedBy(ourClosest.Position, theirClosest.Position, closure),
+                        theirClosest.Position, sightBlockers);
+                }
+                float reachAfterAdvance = Math.Max(1f, distance - closure);
                 AttackEstimate ours = CombatMath.EstimateShooting(_evaluator, unitBinding, enemyBinding,
-                    new AttackContext(reachAfterAdvance, AttackerMoved: true));
+                    new AttackContext(reachAfterAdvance, AttackerMoved: true,
+                        SightFactor: hasLane ? 1f : 0f));
                 kill = Math.Max(kill, ValueFraction(ours.ExpectedWounds, enemy));
 
                 // What could THEY do to us from where things stand (their advance included)?
@@ -212,6 +246,40 @@ namespace FDG.Ai.Tactician.Resolvers
         {
             float remaining = Math.Max(1f, target.RemainingWounds);
             return Math.Min(1f, expectedWounds / remaining) * TacticalAnalysis.UnitValue(target) / 100f;
+        }
+
+        // #389: the point <paramref name="closure"/> inches along the lane from start toward the
+        // target - where the assumed advance would actually leave the shooter, and therefore where
+        // its sight line starts (a screen the mover can step past must not block the priced shot).
+        private static Position AdvancedBy(Position start, Position toward, float closure)
+        {
+            float dirX = toward.x - start.x, dirZ = toward.z - start.z;
+            float length = MathF.Sqrt(dirX * dirX + dirZ * dirZ);
+            if (length < 0.001f) return start;
+            float t = Math.Min(closure, length);
+            return new Position(start.x + dirX / length * t, start.z + dirZ / length * t);
+        }
+
+        // #389: every living allied model that could deny the acting unit standing room on its
+        // advance lane - other units only (own and teammates'), on-battlefield. Activated or not:
+        // standing room is physical, and a blocker that has NOT activated yet lowering this unit's
+        // urgency is exactly the ordering we want (the blocker's own turn comes first).
+        private IReadOnlyList<IModel> AlliedBlockerModels(UnitData unit)
+        {
+            var result = new List<IModel>();
+            foreach (IArmy army in _tableState.Armies.Objects)
+            {
+                if (!TacticalAnalysis.AreAllied(_tableState, unit.PlayerID, army.PlayerID)
+                    || army is not ArmyData data) continue;
+                foreach (DataBinding<UnitData> other in data.UnitBindings)
+                {
+                    UnitData value = other.GetValue();
+                    if (ReferenceEquals(value, unit) || !value.GetIsOnBattlefield()) continue;
+                    foreach (IModel model in value.Models)
+                        if (model.GetIsAlive()) result.Add(model);
+                }
+            }
+            return result;
         }
 
         // #296: team-aware - the urgency terms must not price a 2v2 teammate as kill or threat.

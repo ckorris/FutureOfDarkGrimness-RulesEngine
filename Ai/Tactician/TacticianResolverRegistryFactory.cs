@@ -33,8 +33,9 @@ namespace FDG.Ai.Tactician
                 options.SeeThroughFriendlyUnits);
 
             // A4-1: activation order by urgency (also announces the active unit to the planner).
+            // #389: the kill term's sight gate follows the same #384 house rule the planner does.
             registry.RegisterResolver(new Resolvers.TacticianActivationResolver(tableState, evaluator,
-                planner, options.DecisionLog));
+                planner, options.DecisionLog, options.SeeThroughFriendlyUnits));
 
             // A4-2: the (action x macro-action) pair is planned once at Choose Action and played out
             // at the movement request; solo-rules instances are the per-request fallbacks (G3).

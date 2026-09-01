@@ -84,10 +84,24 @@ namespace FDG
 
         public event DataValueChangedHandler<float>? OnWoundsDealt;
 
+        // #081: a fresh, pre-sized list per access - down from a Select/Cast/ToList chain (three
+        // enumerators + a growing list). Deliberately NOT cached: bindings resolve through the store
+        // per call, and #190's networked token sync re-Sets whole ModelData instances, so a cached
+        // resolution would serve stale objects on clients (and ModelBindings is externally mutable -
+        // the hero join adds to it).
         [JsonIgnore]
-        public List<IModel> Models => ModelBindings.Select(binding => binding.GetValue())
-            .Cast<IModel>()
-            .ToList();
+        public List<IModel> Models
+        {
+            get
+            {
+                var models = new List<IModel>(ModelBindings.Count);
+                foreach (DataBinding<ModelData> binding in ModelBindings)
+                {
+                    models.Add(binding.GetValue());
+                }
+                return models;
+            }
+        }
 
         [JsonConstructor]
         public UnitData(PlayerID playerID, string name, int quality, int defense,

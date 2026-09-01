@@ -109,24 +109,23 @@ namespace FDG
 
 
         #region Visuals
-        [JsonIgnore] //Only while it's a default.
-        public IMeshProvider MeshProvider => new BuiltInObjMeshProvider(BuiltInAssetHelper.SILLYMANMODEL_PATH); //TEMP default.
+        // #081: the TEMP defaults are identical for every model, so they are built once and shared -
+        // the getters used to construct a fresh provider (and material + texture provider) per access.
+        // If per-model visuals ever become real data, these become instance state and the sharing goes.
+        private static readonly IMeshProvider s_defaultMeshProvider =
+            new BuiltInObjMeshProvider(BuiltInAssetHelper.SILLYMANMODEL_PATH);
 
-        [JsonIgnore] //Only while it's a default.
-        public IMaterialProvider MaterialProvider
+        private static readonly IMaterialProvider s_defaultMaterialProvider = new BasicMaterial
         {
-            get
-            {
-                //TEMP default.
-                var textureProvider = new BuiltInPngTextureProvider(BuiltInAssetHelper.SILLYMANTEXTURE_PATH);
+            BaseColor = new Vector4(1, 1, 1, 1),
+            BaseColorTexture = new BuiltInPngTextureProvider(BuiltInAssetHelper.SILLYMANTEXTURE_PATH),
+        };
 
-                var materialProvider = new BasicMaterial();
-                materialProvider.BaseColor = new Vector4(1, 1, 1, 1);
-                materialProvider.BaseColorTexture = textureProvider;
+        [JsonIgnore] //Only while it's a default.
+        public IMeshProvider MeshProvider => s_defaultMeshProvider; //TEMP default.
 
-                return materialProvider;
-            }
-        }
+        [JsonIgnore] //Only while it's a default.
+        public IMaterialProvider MaterialProvider => s_defaultMaterialProvider; //TEMP default.
 
         float IModel.WoundsDealt => WoundsDealt;
 

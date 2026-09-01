@@ -25,7 +25,8 @@ namespace FDG.Players
             }
         }
 
-        internal PlayerSlot[] _playerSlots;
+        // #179: private - outside readers go through PlayerSlots, never the field.
+        private readonly PlayerSlot[] _playerSlots;
         internal PlayerSlot[] PlayerSlots => _playerSlots;
 
         public PlayerSlotManager(PlayerSlot[] playerSlots)

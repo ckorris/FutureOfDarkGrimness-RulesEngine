@@ -31,9 +31,9 @@ namespace FDG.Presentation
             // fanning per-slot would render — and sound — every beat twice. Remote players each have
             // their own NetworkedPresentationSink, so they're unaffected.
             HashSet<IPresentationSink> delivered = new HashSet<IPresentationSink>();
-            for (int i = 0; i < _playerSlotManager._playerSlots.Length; i++)
+            for (int i = 0; i < _playerSlotManager.PlayerSlots.Length; i++)
             {
-                IPresentationSink? sink = _playerSlotManager._playerSlots[i].Controller?.PresentationSink;
+                IPresentationSink? sink = _playerSlotManager.PlayerSlots[i].Controller?.PresentationSink;
                 if (sink != null && delivered.Add(sink))
                 {
                     sink.OnBeat(beat);

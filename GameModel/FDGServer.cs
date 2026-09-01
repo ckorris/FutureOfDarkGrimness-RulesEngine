@@ -337,7 +337,7 @@ namespace FDG.GameModel
             foreach (DataBinding<UnitData> unit in gameContext.GameDataStore.GetAllDataBindings<UnitData>())
             {
                 PlayerID playerID = unit.PlayerID();
-                int playerSlotIndex = Array.IndexOf(_playerSlotManager._playerSlots, _playerSlotManager.GetSlotByID(playerID));
+                int playerSlotIndex = Array.IndexOf(_playerSlotManager.PlayerSlots, _playerSlotManager.GetSlotByID(playerID));
                 float zPos = zOffset * (playerSlotIndex + 1);
 
                 if(modelDeployCount.ContainsKey(playerID) == false)

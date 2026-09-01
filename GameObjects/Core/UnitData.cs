@@ -152,7 +152,13 @@ namespace FDG
 
             List<Weapon> weapons = new List<Weapon>();
 
-            List<WeaponFileEntry> sortedWeaponEntries = (unitFileEntry.Weapons);
+            // #392: sort a COPY - the entry belongs to the caller's ArmyListFile, and sorting it in
+            // place made army creation mutate its input. Two concurrent games built from one shared
+            // file (the FdgLab bench) raced this sort against each other's enumeration and captured
+            // different weapon orders, which feeds resolution order and dice consumption - outcomes
+            // then depended on which games happened to overlap. Idempotent, so purely sequential
+            // reuse never showed it.
+            List<WeaponFileEntry> sortedWeaponEntries = new List<WeaponFileEntry>(unitFileEntry.Weapons);
             sortedWeaponEntries.Sort((x, y) => x.Quantity.CompareTo(y.Quantity));
 
             //Distribute weapons in order of quantity, should be a decent approximate of how they're

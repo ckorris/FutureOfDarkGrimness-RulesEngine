@@ -85,6 +85,13 @@ namespace FDG.Ai.Tactician
         /// <summary>The unit whose activation is being planned (null between activations).</summary>
         public DataBinding<UnitData>? ActiveUnit => _activeUnit;
 
+        /// <summary>
+        /// The winning macro-action's intent label from the most recent <see cref="ChooseAction"/>
+        /// call, or null before any plan is picked (#191 C1 encoder's chosen_macro, docs/
+        /// tactician-c1-schema.md sec 1). Cleared in <see cref="BeginActivation"/> so a claim never
+        /// leaks from a previous unit's activation into this one's row.</summary>
+        public string? LastMacroLabel { get; private set; }
+
         /// <param name="seeThroughFriendlyUnits">The game's #384 LoS house rule
         /// (<see cref="GameSettings.SeeThroughFriendlyUnits"/>). False (the default game setting)
         /// makes the planner's sight tests count OTHER friendly units' bases as blockers, matching
@@ -103,6 +110,7 @@ namespace FDG.Ai.Tactician
         {
             _activeUnit = unit;
             _plan = null;
+            LastMacroLabel = null;
             _castAttempts = 0;
             _meleeApproach.Clear();
             _screenLane = null;
@@ -201,6 +209,7 @@ namespace FDG.Ai.Tactician
                 _plan = best; // mark the activation as decided so re-entry shoots/passes
             }
 
+            LastMacroLabel = best.Intent.ToString();
             return bestAction;
         }
 

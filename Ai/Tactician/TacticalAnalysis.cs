@@ -321,6 +321,28 @@ namespace FDG.Ai.Tactician
         }
 
         /// <summary>
+        /// Expected wounds of one melee exchange's attack half against a reference Q4/D4 target -
+        /// the melee twin of <see cref="RangedOutputWounds"/> (#191 C1 encoder, docs/tactician-
+        /// c1-schema.md sec 3's melee_share). Zero for units with no melee weapons.
+        /// </summary>
+        public static float MeleeOutputWounds(IUnit unit)
+        {
+            float hitChance = (7 - DiceUtilities.ClampSuccessRollNeeded(unit.Quality)) / 6f;
+            float output = 0f;
+            foreach (IModel model in unit.Models)
+            {
+                if (!model.GetIsAlive()) continue;
+                foreach (Weapon weapon in model.Weapons)
+                {
+                    if (weapon.RangeInches > 0f) continue; // melee only
+                    int referenceSave = DiceUtilities.ClampSuccessRollNeeded(4 + weapon.ArmorPenetration);
+                    output += weapon.Attacks * hitChance * (referenceSave - 1) / 6f;
+                }
+            }
+            return output;
+        }
+
+        /// <summary>
         /// <see cref="UnitValue"/> plus the value of anything riding inside (#191 A5-6): a loaded
         /// transport is worth boat + payload - both when choosing what to protect and when choosing
         /// what to shoot (destroying it spills the cargo out Shaken).

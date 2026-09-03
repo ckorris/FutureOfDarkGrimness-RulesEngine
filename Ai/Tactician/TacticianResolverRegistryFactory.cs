@@ -18,7 +18,15 @@ namespace FDG.Ai.Tactician
     public static class TacticianResolverRegistryFactory
     {
         public static IStageResolverRegistry Build(ITableState tableState, PlayerID playerID,
-            TacticianOptions options)
+            TacticianOptions options) => Build(tableState, playerID, options, out _);
+
+        /// <summary>
+        /// Same as <see cref="Build(ITableState, PlayerID, TacticianOptions)"/>, plus the planner
+        /// instance driving this registry (#191 C1 exporter: chosen_macro reads
+        /// <see cref="TacticianPlanner.LastMacroLabel"/> off it after every Choose Action call).
+        /// </summary>
+        public static IStageResolverRegistry Build(ITableState tableState, PlayerID playerID,
+            TacticianOptions options, out TacticianPlanner planner)
         {
             // Solo-rules answers everything the Tactician has not replaced yet (fallback discipline,
             // plan G3); each A4 slice registers one more replacement below.
@@ -29,7 +37,7 @@ namespace FDG.Ai.Tactician
             // read-back (aura buffs) needs the game's own resolver-backed evaluator, which resolvers
             // do not receive today - recorded gap in the #191 ledger.
             var evaluator = new Rules.Dispatch.RuleEvaluator(new ProbabilisticDiceRoller());
-            var planner = new TacticianPlanner(tableState, evaluator, options.DecisionLog,
+            planner = new TacticianPlanner(tableState, evaluator, options.DecisionLog,
                 options.SeeThroughFriendlyUnits);
 
             // A4-1: activation order by urgency (also announces the active unit to the planner).

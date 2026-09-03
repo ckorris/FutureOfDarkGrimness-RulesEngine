@@ -24,16 +24,35 @@ namespace FDG.Ai
         /// tests match what the shoot stage will rule. Default false = the official rules.</param>
         public static IStageResolverRegistry BuildRegistry(EAiProfile profile, ITableState tableState,
             PlayerID playerID, int? seed = null, int slotID = 0, Action<string>? decisionLog = null,
-            bool seeThroughFriendlyUnits = false) => profile switch
+            bool seeThroughFriendlyUnits = false) =>
+            BuildRegistry(profile, tableState, playerID, out _, seed, slotID, decisionLog, seeThroughFriendlyUnits);
+
+        /// <summary>
+        /// Same as the other overload, plus the driving <see cref="Tactician.TacticianPlanner"/>
+        /// when <paramref name="profile"/> is Tactician (null otherwise) - #191 C1 exporter reads
+        /// chosen_macro off it.
+        /// </summary>
+        public static IStageResolverRegistry BuildRegistry(EAiProfile profile, ITableState tableState,
+            PlayerID playerID, out Tactician.TacticianPlanner? planner, int? seed = null, int slotID = 0,
+            Action<string>? decisionLog = null, bool seeThroughFriendlyUnits = false)
         {
-            EAiProfile.SoloRules => AiResolverRegistryFactory.BuildSoloRules(tableState, playerID, seed, slotID),
-            EAiProfile.Tactician => TacticianResolverRegistryFactory.Build(tableState, playerID,
-                new TacticianOptions { Seed = seed, SlotID = slotID, DecisionLog = decisionLog,
-                    SeeThroughFriendlyUnits = seeThroughFriendlyUnits }),
-            EAiProfile.Gunline => Gunline.GunlineResolverRegistryFactory.Build(tableState, playerID,
-                seed, slotID, decisionLog),
-            _ => throw new ArgumentOutOfRangeException(nameof(profile), profile, "Unknown AI profile."),
-        };
+            planner = null;
+            switch (profile)
+            {
+                case EAiProfile.SoloRules:
+                    return AiResolverRegistryFactory.BuildSoloRules(tableState, playerID, seed, slotID);
+                case EAiProfile.Tactician:
+                    IStageResolverRegistry registry = TacticianResolverRegistryFactory.Build(tableState, playerID,
+                        new TacticianOptions { Seed = seed, SlotID = slotID, DecisionLog = decisionLog,
+                            SeeThroughFriendlyUnits = seeThroughFriendlyUnits }, out Tactician.TacticianPlanner built);
+                    planner = built;
+                    return registry;
+                case EAiProfile.Gunline:
+                    return Gunline.GunlineResolverRegistryFactory.Build(tableState, playerID, seed, slotID, decisionLog);
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(profile), profile, "Unknown AI profile.");
+            }
+        }
 
         public static ComputerPlayerController CreateController(EAiProfile profile, string name, PlayerID id,
             FDGGame_AsLocal localGame, int? seed = null, int slotID = 0,

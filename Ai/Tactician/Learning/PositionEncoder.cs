@@ -185,9 +185,23 @@ namespace FDG.Ai.Tactician.Learning
             block[9] = objDistMin == float.MaxValue ? 1f
                 : Math.Clamp(objDistMin / TableDiagonalInches, 0f, 1f); // min_obj_dist_norm
 
+            // mobility_norm and threat_coverage's per-unit reach share one O(units) pass over
+            // livingUnits - each unit's AdvanceDistance/ChargeBudget rule evaluation runs ONCE here,
+            // not once per (threat x target) pair. threat_coverage then compares precomputed reach
+            // against raw centroid distance (O(1) arithmetic per pair): the schema's 5ms budget
+            // (sec 0 rule 3, sec 7 check 6) rules out a per-pair CombatMath-grade sweep, and a
+            // pair's real threat range is target-conditioned (Melee Shrouding etc) anyway - this
+            // trades that precision for the coarse yes/no coverage fraction the feature actually is.
             float mobilitySum = 0f;
-            foreach (IUnit unit in livingUnits)
+            var reach = new float[livingUnits.Count];
+            var centroids = new Position[livingUnits.Count];
+            for (int u = 0; u < livingUnits.Count; u++)
+            {
+                IUnit unit = livingUnits[u];
                 mobilitySum += TacticalAnalysis.AdvanceDistance(unit, evaluator, terrain);
+                reach[u] = CheapThreatReach(unit, evaluator, terrain);
+                centroids[u] = Centroid(unit);
+            }
             block[10] = livingUnits.Count == 0 ? 0f
                 : Math.Clamp(mobilitySum / n / GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES, 0f, 1f); // mobility_norm
 
@@ -196,10 +210,9 @@ namespace FDG.Ai.Tactician.Learning
             foreach (IUnit target in opposingLiving)
             {
                 bool inRange = false;
-                foreach (IUnit threat in livingUnits)
+                for (int u = 0; u < livingUnits.Count; u++)
                 {
-                    if (TacticalAnalysis.ThreatRangeAgainst(threat, target, evaluator, terrain)
-                        >= TacticalAnalysis.MinBaseEdgeDistanceToPoint(target, Centroid(threat)))
+                    if (reach[u] >= TacticalAnalysis.MinBaseEdgeDistanceToPoint(target, centroids[u]))
                     {
                         inRange = true;
                         break;
@@ -285,9 +298,9 @@ namespace FDG.Ai.Tactician.Learning
                     row[10] = nearestEnemy == float.MaxValue ? 1f
                         : Math.Clamp(nearestEnemy / TableDiagonalInches, 0f, 1f); // dist to nearest enemy
 
+                    float unitReach = CheapThreatReach(unit, evaluator, terrain); // see the block encoder's note
                     int covered = opposingLiving.Count(target =>
-                        TacticalAnalysis.ThreatRangeAgainst(unit, target, evaluator, terrain)
-                        >= TacticalAnalysis.MinBaseEdgeDistanceToPoint(target, at));
+                        unitReach >= TacticalAnalysis.MinBaseEdgeDistanceToPoint(target, at));
                     row[11] = Frac(covered, opposingLiving.Count); // threat_coverage
                     row[12] = unit.RuleDefinitions.Any(r =>
                         r.RequestedName.Contains("Caster", StringComparison.OrdinalIgnoreCase)) ? 1f : 0f; // is-caster
@@ -300,6 +313,26 @@ namespace FDG.Ai.Tactician.Learning
             }
 
             return rows;
+        }
+
+        // A unit's own threatening reach, target-independent (unlike TacticalAnalysis.ThreatRangeAgainst,
+        // which is per-target and does a rule evaluation per weapon per call - too expensive to run
+        // O(units^2) times here). Raw weapon range, no RangeRuleQueries target-conditioning.
+        private static float CheapThreatReach(IUnit unit, RuleEvaluator evaluator, IReadOnlyList<ITerrain> terrain)
+        {
+            float advance = TacticalAnalysis.AdvanceDistance(unit, evaluator, terrain);
+            float maxWeaponRange = 0f;
+            foreach (IModel model in unit.Models)
+            {
+                if (!model.GetIsAlive()) continue;
+                foreach (Weapon weapon in model.Weapons)
+                    if (weapon.RangeInches > maxWeaponRange) maxWeaponRange = weapon.RangeInches;
+            }
+            float shooting = maxWeaponRange > 0f ? advance + maxWeaponRange : 0f;
+            float melee = Rules.Dispatch.ChargeContactRules.CanFightInMelee(unit)
+                ? TacticalAnalysis.ChargeBudget(unit, evaluator, terrain) + GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL
+                : 0f;
+            return Math.Max(shooting, melee);
         }
 
         private static float Distance(Position a, Position b)

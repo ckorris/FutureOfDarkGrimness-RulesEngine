@@ -37,9 +37,13 @@ namespace FDG.Rules.Dispatch;
 ///         against <see cref="IsOpHandledAtAbilityHook"/> — the hand-maintained map of what the five
 ///         offering stages actually execute. If a stage learns a new operation type, update the map;
 ///         the drift direction is a loud false failure, never a silent false pass.</item>
-///   <item>NOT covered: whether a PASSIVE entry's operations are consumed by the stages at its hook
-///         (the sink/query wiring), and whether the rule's numbers match the rulebook. Deferred —
-///         see WorkItems/166.</item>
+///   <item>A PASSIVE entry's operations ARE checked against a sink/query-wiring map too
+///         (<see cref="IsOpConsumedAtPassiveHook"/>, added by #197 after the Changebound/Machine-Fog
+///         no-ops) — an operation type the map does not list for that hook fails the lint. Both maps
+///         are hand-maintained, so their authority is only as good as their upkeep: a stage that stops
+///         reading an operation, with nobody updating the map, is the one drift direction this lint
+///         cannot see (a silent false PASS, not a false failure). NOT covered at all: whether the rule's
+///         numbers match the rulebook. Deferred — see WorkItems/166.</item>
 /// </list>
 /// </summary>
 public static class RuleFireLint

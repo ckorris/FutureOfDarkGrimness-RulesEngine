@@ -222,7 +222,7 @@ namespace FDG.Tests
         // Captures counts + each menu's AllowCancel for assertions.
         internal sealed class ActionMenuRequester : IPlayerRequestByID
         {
-            public StringSelectionRequest? LastActionRequest { get; private set; }
+            public ChooseActionRequest? LastActionRequest { get; private set; }
             public bool ReplyCancel { get; set; }
             public string? ReplyOption { get; set; }
             public Queue<string?> ActionReplies { get; } = new Queue<string?>();
@@ -238,7 +238,7 @@ namespace FDG.Tests
                     UnitPickCount++;
                     return Task.FromResult((TReply)(object)pick.ValidOptions[0].Option);
                 }
-                if (request is StringSelectionRequest menu)
+                if (request is ChooseActionRequest menu)
                 {
                     LastActionRequest = menu;
                     ActionMenuCount++;

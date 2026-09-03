@@ -487,13 +487,13 @@ namespace FDG.Stages
             // turn by backing out forever.
             bool canBackOut = !context.HasMoved && !context.HasAttacked && !context.IrreversibleActionTaken;
 
-            StringSelectionRequest request = new StringSelectionRequest(context.ActivatingPlayer(),
-                "Choose Action", validOptions, invalidOptions,
+            ChooseActionRequest request = new ChooseActionRequest(context.ActivatingPlayer(),
+                context.ActivatingUnit.GetValue().ID, validOptions, invalidOptions,
                 optionDescriptions: optionDescriptions.Count > 0 ? optionDescriptions : null,
                 allowCancel: canBackOut, displayName: "Choosing an Action",
                 optionDescriptionRules: optionDescriptionRules.Count > 0 ? optionDescriptionRules : null);
 
-            string choice = await GameContext.PlayerRequester.RequestDecision<StringSelectionRequest, string>(request);
+            string choice = await GameContext.PlayerRequester.RequestDecision<ChooseActionRequest, string>(request);
 
             if (choice == null)
             {

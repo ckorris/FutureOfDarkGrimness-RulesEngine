@@ -6,9 +6,11 @@ using FDG.Stages;
 namespace FDG.Ai.Resolvers
 {
     /// <summary>
-    /// Handles string-choice requests for the AI. The main responsibility is Choose Action.
+    /// Handles string-choice requests for the AI: Choose Action (its own request type since #191
+    /// B1 step 5a) and every other string menu (hold-or-deploy, weapon picks, ...).
     /// </summary>
-    public class AiStringSelectionResolver : IStageResolver<StringSelectionRequest, string>
+    public class AiStringSelectionResolver : IStageResolver<StringSelectionRequest, string>,
+        IStageResolver<ChooseActionRequest, string>
     {
         private readonly ITableState _tableState;
         private readonly PlayerID _playerID;
@@ -24,11 +26,11 @@ namespace FDG.Ai.Resolvers
             _declineLatch = declineLatch;
         }
 
+        public Task<string> Resolve(ChooseActionRequest request) =>
+            Task.FromResult(ChooseAction(request.ValidOptions));
+
         public Task<string> Resolve(StringSelectionRequest request)
         {
-            if (request.Instructions == "Choose Action")
-                return Task.FromResult(ChooseAction(request.ValidOptions));
-
             // Ambush hold-or-deploy: the AI's reserve placement isn't tactical (it drops the unit at the
             // first legal row from a table edge, ignoring objectives and the enemy), so holding only
             // strands the unit. Always deploy normally instead until reserve placement is smarter.

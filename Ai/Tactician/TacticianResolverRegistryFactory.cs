@@ -50,8 +50,12 @@ namespace FDG.Ai.Tactician
             // #358: the embedded fallback pair shares a decline latch like every solo set - when
             // the planner has no claim, the fallback policy must not loop a wedged unit's menu.
             var fallbackDeclineLatch = new FDG.Ai.Resolvers.SoloMoveDeclineLatch();
-            registry.RegisterResolver(new Resolvers.TacticianActionResolver(planner, tableState,
-                new FDG.Ai.Resolvers.AiStringSelectionResolver(tableState, playerID, fallbackDeclineLatch)));
+            var actionResolver = new Resolvers.TacticianActionResolver(planner, tableState,
+                new FDG.Ai.Resolvers.AiStringSelectionResolver(tableState, playerID, fallbackDeclineLatch));
+            registry.RegisterResolver<StageResolution.Requests.StringSelectionRequest, string>(actionResolver);
+            // #191 B1 step 5a: Choose Action is its own request type; the same planner-backed instance
+            // answers it (chosen_macro reads TacticianPlanner.LastMacroLabel off `planner` after this).
+            registry.RegisterResolver<StageResolution.Requests.ChooseActionRequest, string>(actionResolver);
             registry.RegisterResolver(new Resolvers.TacticianMovementResolver(planner, tableState,
                 new FDG.Ai.Resolvers.AiDefineMovementResolver(tableState, playerID, fallbackDeclineLatch),
                 options.DecisionLog));

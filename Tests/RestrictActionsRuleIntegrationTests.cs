@@ -60,7 +60,7 @@ namespace FDG.Tests
             stage.ToReconcileEndOfActivation.Bind("Done");
             await stage.Enter(unitCtx);
 
-            StringSelectionRequest req = capturer.Captured!;
+            ChooseActionRequest req = capturer.Captured!;
             Assert.That(req.ValidOptions, Does.Not.Contain(ChooseActionStage.MOVEMENT_CHOICE_NAME),
                 "Immobile removes Move from the offered actions");
             Assert.That(req.InvalidOptions.Any(o =>
@@ -96,20 +96,20 @@ namespace FDG.Tests
         }
     }
 
-    // Captures the StringSelectionRequest the stage emits and answers it with a fixed choice.
+    // Captures the ChooseActionRequest the stage emits and answers it with a fixed choice.
     internal sealed class CapturingStringSelectionRequester : IPlayerRequestByID
     {
         private readonly string _choice;
-        public StringSelectionRequest? Captured { get; private set; }
+        public ChooseActionRequest? Captured { get; private set; }
 
         public CapturingStringSelectionRequester(string choice) => _choice = choice;
 
         public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
             where TRequest : IStageTaskRequest<TReply>
         {
-            if (request is StringSelectionRequest ssr)
+            if (request is ChooseActionRequest action)
             {
-                Captured = ssr;
+                Captured = action;
                 return Task.FromResult((TReply)(object)_choice);
             }
             throw new InvalidOperationException("Unexpected request type: " + request.GetType());

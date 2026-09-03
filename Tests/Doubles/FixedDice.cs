@@ -1,7 +1,8 @@
 namespace FDG.Tests
 {
-    // Returns a single fixed die value for every Roll call.
-    internal class FixedDiceRoller : IDiceRoller
+    // Returns a single fixed die value for every Roll call. Public: reused as the app-side
+    // book-spell-probe's dice roller too (FdgRaylib.Tests/BookSpellCastProbeTests.cs).
+    public class FixedDiceRoller : IDiceRoller
     {
         private readonly int _value;
         public FixedDiceRoller(int value) => _value = value;

@@ -594,7 +594,9 @@ namespace FDG.Tests
     }
 
     // Minimal IGameContext with a real RuleEvaluator and an injectable requester (mirrors WoundTestContext).
-    internal sealed class TriggeredMoveTestContext : IGameContext
+    // Public: reused as the app-side book-spell-probe's game context too
+    // (FdgRaylib.Tests/BookSpellCastProbeTests.cs).
+    public sealed class TriggeredMoveTestContext : IGameContext
     {
         public ITextOutput TextOutput { get; } = new EmptyTextOutput();
         public IDiceRoller DiceRoller { get; }

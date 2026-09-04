@@ -268,8 +268,15 @@ namespace FDG.Simulation
                 });
             server.OnGameCompleted += result => ended.TrySetResult(result);
 
+            // The watchdog timer is CANCELLED the moment the line settles (#191 B5 crash chase). A
+            // simulation lasts ~100ms; an uncancelled 60s Task.Delay outlives it 600x, and through the
+            // WhenAny wiring it keeps the captured snapshot string - hundreds of KB, on the large
+            // object heap - rooted for the full minute. A search runs thousands of lines a minute, so
+            // that was gigabytes of dead-but-rooted strings churning through the GC at any moment.
+            using var watchdog = new CancellationTokenSource();
             Task finished = await Task.WhenAny(captured.Task, ended.Task,
-                Task.Delay(TimeSpan.FromSeconds(_options.TimeoutSeconds)));
+                Task.Delay(TimeSpan.FromSeconds(_options.TimeoutSeconds), watchdog.Token));
+            watchdog.Cancel();
 
             if (finished == captured.Task)
             {

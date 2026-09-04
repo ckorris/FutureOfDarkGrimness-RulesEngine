@@ -223,7 +223,7 @@ namespace FDG.Tests
 
         // --- fixture -----------------------------------------------------------------------------
 
-        private static class Fixture
+        internal static class Fixture
         {
             public static string Snapshot(int unitsPerSide, float gapInches = 20f, int objectives = 0)
             {

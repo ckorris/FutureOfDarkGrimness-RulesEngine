@@ -8,8 +8,21 @@ namespace FDG.Ai.Tactician.Search
     /// </summary>
     public sealed record SearchOptions
     {
-        /// <summary>Progressive widening k(N) = ceil(C * N^alpha) (sec 4.1), applied at both levels.</summary>
-        public float WideningC { get; init; } = 2f;
+        /// <summary>
+        /// Progressive widening k(N) = ceil(C * N^alpha) (sec 4.1), applied at both levels.
+        /// <para>
+        /// C was 2.0 at B2 ("tuned at B4 on the benchmark"). B4 lowered it to 0.5 on the measurement
+        /// the design doc asked for (2k, 20 iterations, one worker): C=2.0 opened 17 root edges and
+        /// reached depth 2; C=1.0 opened 9 and reached depth 2; C=0.5 opened 4 and reached depth 5.
+        /// At an actual benchmark budget C=2.0 reached max depth ONE - the search saw no reply at
+        /// all, which is A's horizon with extra steps, and B exists precisely for the multi-ply
+        /// consequences (focus fire, activation economy - the Titan Lords probe). Expansions cost
+        /// ~44ms wall at 4 workers, so a budget buys tens of nodes, not thousands: they have to be
+        /// spent on depth. Which value PLAYS best is a games question and belongs to the B-gate;
+        /// this is the value that makes the search a search.
+        /// </para>
+        /// </summary>
+        public float WideningC { get; init; } = 0.5f;
 
         public float WideningAlpha { get; init; } = 0.5f;
 

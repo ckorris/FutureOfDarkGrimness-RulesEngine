@@ -35,7 +35,17 @@ namespace FDG.Ai.Tactician.Search
         /// state at that boundary so every child is consistent with it.
         /// </summary>
         public static async Task<SearchTree> FromSnapshotAsync(string snapshot, SearchOptions options,
-            IActionSpace space, IPositionEvaluator evaluator)
+            IActionSpace space, IPositionEvaluator evaluator) =>
+            FromRoot(await ProbeRootAsync(snapshot, options, evaluator), options, space, evaluator);
+
+        /// <summary>
+        /// The engine's own answer to "where does this snapshot resume, and who acts there" - one
+        /// resume-and-re-save. Split out from <see cref="FromSnapshotAsync"/> for B4's root
+        /// parallelism: N worker trees over the same root share ONE probe, since the boundary state
+        /// and the root estimate are identical for every worker (only the simulation seeds differ).
+        /// </summary>
+        public static async Task<RootBoundary> ProbeRootAsync(string snapshot, SearchOptions options,
+            IPositionEvaluator evaluator)
         {
             var probeService = new SimulationService(new SimulationService.SimulationOptions
             {
@@ -46,7 +56,7 @@ namespace FDG.Ai.Tactician.Search
             });
             SimulationService.SimulationResult probe = await probeService.Probe(snapshot);
             if (!probe.ReachedEndOfLine || probe.ActingPlayerAtEnd is not { } acting)
-                throw new InvalidOperationException($"SearchTree: the root snapshot has no activation boundary ({probe.Note}).");
+                throw new SearchUnavailableException($"SearchTree: the root snapshot has no activation boundary ({probe.Note}).");
 
             GameDataStore store = GameSaveSerializer.Load(probe.Snapshot!);
             SideMap sides = SideMap.FromStore(store);
@@ -54,9 +64,34 @@ namespace FDG.Ai.Tactician.Search
             // unseeded dice roller behind it is inert - see IPositionEvaluator's contract note.
             var ruleEvaluator = new Rules.Dispatch.RuleEvaluator(new ProbabilisticDiceRoller());
             SideValues rootEstimate = evaluator.Evaluate(new TableState(store), ruleEvaluator, sides);
-            var root = new SearchNode(probe.Snapshot, acting, sides.SideOf(acting), null, rootEstimate,
+            return new RootBoundary(probe.Snapshot!, acting, sides, rootEstimate);
+        }
+
+        /// <summary>One tree over an already-probed root. The estimate is cloned, so trees never alias.</summary>
+        public static SearchTree FromRoot(RootBoundary boundary, SearchOptions options,
+            IActionSpace space, IPositionEvaluator evaluator)
+        {
+            var root = new SearchNode(boundary.Snapshot, boundary.ActingPlayer,
+                boundary.Sides.SideOf(boundary.ActingPlayer), null, boundary.Estimate.Clone(),
                 depth: 0, parent: null, parentEdge: null);
-            return new SearchTree(root, sides, options, space, new SimulationExpander(options, evaluator, sides));
+            return new SearchTree(root, boundary.Sides, options, space,
+                new SimulationExpander(options, evaluator, boundary.Sides));
+        }
+
+        /// <summary>The engine-probed root state every worker's tree is built on.</summary>
+        public sealed record RootBoundary(string Snapshot, PlayerID ActingPlayer, SideMap Sides,
+            SideValues Estimate);
+
+        /// <summary>
+        /// The root could not be established, so there is no tree to search - the resumed game
+        /// faulted or timed out before reaching a boundary. Its own type because it is EXPECTED
+        /// (a simulated resume is a whole game engine and can fault), and the caller's answer is
+        /// plan G3's fallback to the A-greedy policy, not a crash: <see cref="UctSearch"/> turns
+        /// this into a result with no choice.
+        /// </summary>
+        public sealed class SearchUnavailableException : Exception
+        {
+            public SearchUnavailableException(string message) : base(message) { }
         }
 
         // --- widening (sec 4.1) ------------------------------------------------------------------

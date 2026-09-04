@@ -277,7 +277,7 @@ namespace FDG.Tests
         public async Task OneVsOne_OpponentNodeSteersToOurWorstCase()
         {
             AuthoredTree authored = TwoPlyOneVsOne(out SideMap sides);
-            SearchTree tree = Build(authored, sides, "root");
+            SearchTree tree = Build(authored, sides, "root", new SearchOptions { WideningC = 2f, WideningAlpha = 0.5f });
             await ExpansionScaffold.RunAsync(tree, 24);
 
             // Under reply A the opponent (side 1) descends into A2 (0.20 for us = 0.80 for them), not A1.
@@ -307,7 +307,7 @@ namespace FDG.Tests
                     new AuthoredEdge("G2", 0.5f, "G2", new[] { 0.3f, 0.7f }),
                 }),
             };
-            SearchTree tree = Build(t, sides, "root");
+            SearchTree tree = Build(t, sides, "root", new SearchOptions { WideningC = 2f, WideningAlpha = 0.5f });
             await ExpansionScaffold.RunAsync(tree, 12);
 
             SearchNode a = NodeByKey(tree, "A");
@@ -337,7 +337,7 @@ namespace FDG.Tests
                     new AuthoredEdge("G2", 0.5f, "G2", new[] { 0.0f, 0.7f, 0.3f }),
                 }),
             };
-            SearchTree tree = Build(t, sides, "root");
+            SearchTree tree = Build(t, sides, "root", new SearchOptions { WideningC = 2f, WideningAlpha = 0.5f });
             await ExpansionScaffold.RunAsync(tree, 12);
 
             SearchNode a = NodeByKey(tree, "A");

@@ -49,6 +49,15 @@ namespace FDG.Ai.Tactician.Search
 
         public int TimeoutSeconds { get; init; } = 60;
 
+        /// <summary>
+        /// The search's hard deadline (#191 R9), handed to every simulation this tree runs: once it
+        /// fires, an in-flight line stops at its next activation boundary and the tree opens nothing
+        /// further. A line cut short this way does NOT close its edge (the search ended, the edge
+        /// did not fail). <see cref="UctSearch"/> sets it from the time budget; iteration budgets
+        /// (tests, G5 reproducibility) leave it unset.
+        /// </summary>
+        public CancellationToken Cancellation { get; init; }
+
         /// <summary>Children a node (or a unit branch) may have after <paramref name="visits"/> visits; never below 1.</summary>
         public int AllowedChildren(int visits) =>
             Math.Max(1, (int)MathF.Ceiling(WideningC * MathF.Pow(Math.Max(visits, 0), WideningAlpha)));

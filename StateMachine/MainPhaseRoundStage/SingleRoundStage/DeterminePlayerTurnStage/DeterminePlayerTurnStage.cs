@@ -67,7 +67,18 @@ namespace FDG.Stages
             // so a snapshot taken from inside the hook is exactly the engine's own save point.
             if (GameContext.ActivationBoundaryHook != null)
             {
-                await GameContext.ActivationBoundaryHook.AtActivationBoundary(nextPlayerID.Value);
+                bool stop = await GameContext.ActivationBoundaryHook.AtActivationBoundary(nextPlayerID.Value);
+                if (stop)
+                {
+                    // The cooperative stop (#191 R9): the same exit VictoryCalculationStage takes at a
+                    // natural end - notify completion, then return without activating a transition, so
+                    // the whole transition chain unwinds by ordinary returns. No exception, so no
+                    // per-frame re-throw and nothing for an attached debugger to stop on. The message
+                    // is the one FDGServer's legacy SimulationStopSignal catch reports, so every
+                    // consumer of the simulated game's result sees the same outcome either way.
+                    GameContext.NotifyGameCompleted(GameResult.ForFault("Simulation stopped at the end of its line."));
+                    return;
+                }
             }
 
             if (_lastAnnouncedPlayer != nextPlayerID.Value)

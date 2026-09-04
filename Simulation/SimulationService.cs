@@ -29,10 +29,11 @@ namespace FDG.Simulation
     /// multi-ply is the same call as single-ply. If the per-activation cost disappoints, B ships
     /// shallow by passing shorter lines - no rewrite.</para>
     ///
-    /// <para><b>Stopping.</b> The end of a line throws <see cref="SimulationStopSignal"/> from the
-    /// hook, which unwinds the state machine into FDGServer's own catch and completes the game.
-    /// That is B0's throw-stop, measured 30/30 with zero heap growth over 400 simulations at 4k;
-    /// ABANDON is not used.</para>
+    /// <para><b>Stopping.</b> The end of a line is a cooperative stop: the hook returns true and
+    /// <c>DeterminePlayerTurnStage</c> completes the game exactly as the victory stage does at a
+    /// natural end (notify, then return without a transition). B0's throw-stop
+    /// (<see cref="SimulationStopSignal"/>) was retired for #191 R9 - see
+    /// <see cref="IActivationBoundaryHook"/>. ABANDON is still not used.</para>
     ///
     /// <para><b>Dice.</b> A simulation defaults to <see cref="ERandomnessType.Probabilistic"/> -
     /// expected-value combat with real, seeded draws for the decisive rolls (morale, objective
@@ -66,8 +67,21 @@ namespace FDG.Simulation
 
             public ERandomnessType Randomness { get; init; } = ERandomnessType.Probabilistic;
 
-            /// <summary>Wall-clock guard so a wedged simulation can never hang a search.</summary>
+            /// <summary>
+            /// Wall-clock guard so a wedged simulation can never hang a search. When it fires,
+            /// <see cref="Run(string, ILineDriver)"/> returns a timed-out result AND the simulated game
+            /// is told to stop at its next activation boundary (it used to run on forever - #191 R9).
+            /// </summary>
             public int TimeoutSeconds { get; init; } = 60;
+
+            /// <summary>
+            /// The caller's own deadline (#191 R9): a search hands every simulation its budget's
+            /// token, so an in-flight line stops at its next boundary once the budget has expired
+            /// instead of running to the end of its line first. A line cancelled this way reports
+            /// <see cref="SimulationResult.ReachedEndOfLine"/> false with a "cancelled" note. Default
+            /// none - deterministic iteration budgets and tests never cancel.
+            /// </summary>
+            public CancellationToken Cancellation { get; init; }
 
             /// <summary>
             /// 5c's bus bypass: answer decisions straight from the target slot's registry instead of
@@ -256,7 +270,12 @@ namespace FDG.Simulation
 
             var captured = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             var ended = new TaskCompletionSource<GameResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-            var line = new LineHook(driver, plannersByPlayer, store, new TableState(store), captured);
+            // One token for everything that can end this line early: the caller's deadline, the
+            // watchdog below, and - once the line has settled for ANY reason - a signal to the hook to
+            // stop the simulated game at its next boundary, so no simulation outlives its result.
+            using var stopAtNextBoundary = CancellationTokenSource.CreateLinkedTokenSource(_options.Cancellation);
+            var line = new LineHook(driver, plannersByPlayer, store, new TableState(store), captured,
+                stopAtNextBoundary.Token);
 
             var server = new FDGServer(store, bus, slots, presentationClock: null, lobbySettings: null,
                 simulation: new SimulationHostOptions
@@ -273,12 +292,17 @@ namespace FDG.Simulation
             // WhenAny wiring it keeps the captured snapshot string - hundreds of KB, on the large
             // object heap - rooted for the full minute. A search runs thousands of lines a minute, so
             // that was gigabytes of dead-but-rooted strings churning through the GC at any moment.
-            using var watchdog = new CancellationTokenSource();
+            // The same Cancel is what stops a timed-out or deadline-cancelled game at its next
+            // boundary (#191 R9): the hook reads this token before doing anything else.
             Task finished = await Task.WhenAny(captured.Task, ended.Task,
-                Task.Delay(TimeSpan.FromSeconds(_options.TimeoutSeconds), watchdog.Token));
-            watchdog.Cancel();
+                Task.Delay(TimeSpan.FromSeconds(_options.TimeoutSeconds), stopAtNextBoundary.Token));
+            stopAtNextBoundary.Cancel();
 
-            if (finished == captured.Task)
+            // The capture is read from the TCS itself, not from which task WhenAny reported: the hook
+            // captures and then (cooperatively) ends the game microseconds later on the same thread,
+            // and both completions are RunContinuationsAsynchronously, so WhenAny's own answer is a
+            // pool race between the two. A captured snapshot is the line's result whenever it exists.
+            if (captured.Task.IsCompletedSuccessfully)
             {
                 return new SimulationResult(await captured.Task, line.ActivationsRun, null,
                     $"line of {line.ActivationsRun} complete")
@@ -286,6 +310,18 @@ namespace FDG.Simulation
                     Honored = line.Honored,
                     ActingPlayerAtStart = line.ActingPlayerAtStart,
                     ActingPlayerAtEnd = line.ActingPlayerAtEnd,
+                };
+            }
+
+            if (_options.Cancellation.IsCancellationRequested)
+            {
+                // Checked before the game-end branch: a cancelled line's own stop also completes the
+                // game, and which of the two settles first is a race the caller must not see.
+                return new SimulationResult(null, line.ActivationsRun, null,
+                    $"cancelled by the caller after {line.ActivationsRun} activation(s)")
+                {
+                    Honored = line.Honored,
+                    ActingPlayerAtStart = line.ActingPlayerAtStart,
                 };
             }
 
@@ -302,7 +338,7 @@ namespace FDG.Simulation
             }
 
             return new SimulationResult(null, line.ActivationsRun, null,
-                $"timed out after {_options.TimeoutSeconds}s")
+                $"timed out after {_options.TimeoutSeconds}s (the simulated game stops at its next boundary)")
             {
                 Honored = line.Honored,
                 ActingPlayerAtStart = line.ActingPlayerAtStart,
@@ -383,6 +419,7 @@ namespace FDG.Simulation
             private readonly GameDataStore _store;
             private readonly ITableState _tableState;
             private readonly TaskCompletionSource<string> _captured;
+            private readonly CancellationToken _stop;
             private readonly List<bool> _honored = new();
             private int _boundariesSeen;
             private PlayerID? _previousActing;
@@ -396,17 +433,27 @@ namespace FDG.Simulation
             public PlayerID? ActingPlayerAtEnd { get; private set; }
 
             public LineHook(ILineDriver driver, IReadOnlyDictionary<PlayerID, TacticianPlanner?> planners,
-                GameDataStore store, ITableState tableState, TaskCompletionSource<string> captured)
+                GameDataStore store, ITableState tableState, TaskCompletionSource<string> captured,
+                CancellationToken stop)
             {
                 _driver = driver;
                 _planners = planners;
                 _store = store;
                 _tableState = tableState;
                 _captured = captured;
+                _stop = stop;
             }
 
-            public Task AtActivationBoundary(PlayerID actingPlayer)
+            public Task<bool> AtActivationBoundary(PlayerID actingPlayer)
             {
+                if (_stop.IsCancellationRequested)
+                {
+                    // The line has already settled without this boundary (watchdog, or the caller's
+                    // deadline) - Run has returned or is returning its result, so nothing is captured
+                    // here; the game just ends instead of playing on unobserved.
+                    return Task.FromResult(true);
+                }
+
                 int index = _boundariesSeen++;
                 if (index == 0) ActingPlayerAtStart = actingPlayer;
 
@@ -450,7 +497,7 @@ namespace FDG.Simulation
                     // mutates the store.
                     ActingPlayerAtEnd = actingPlayer;
                     _captured.TrySetResult(GameSaveSerializer.Save(_store));
-                    throw new SimulationStopSignal();
+                    return Task.FromResult(true);
                 }
 
                 _previousActing = actingPlayer;
@@ -467,7 +514,7 @@ namespace FDG.Simulation
                         prescription.Macro == null ? null : Rebind(prescription.Macro, _store));
                 }
 
-                return Task.CompletedTask;
+                return Task.FromResult(false);
             }
 
             /// <summary>

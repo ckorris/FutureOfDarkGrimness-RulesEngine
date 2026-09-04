@@ -35,6 +35,7 @@ namespace FDG.Ai.Tactician.Search
                 Seed = seed,
                 Randomness = _options.Randomness,
                 TimeoutSeconds = _options.TimeoutSeconds,
+                Cancellation = _options.Cancellation,
             });
             var driver = new EdgeLine(edge.Prescription, _options.Continuation, _evaluator, _ruleEvaluator, _sides);
             SimulationService.SimulationResult result = await service.Run(parent.Snapshot, driver);

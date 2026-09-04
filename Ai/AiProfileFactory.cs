@@ -73,7 +73,14 @@ namespace FDG.Ai
         /// determinizations, so this is a correctness setting as much as a speed one).
         /// </summary>
         public static Tactician.Search.UctOptions DefaultSearchBudget =>
-            Tactician.Search.UctOptions.Interactive with { Workers = 4 };
+            Tactician.Search.UctOptions.Interactive with { Workers = DefaultSearchWorkers };
+
+        /// <summary>
+        /// The plan's four root workers, bounded by the machine (#191 R9): a search runs inside a
+        /// live game whose front end and engine need a core of their own, so on a small laptop the
+        /// ensemble shrinks rather than pinning every core for the whole budget. Never below one.
+        /// </summary>
+        public static int DefaultSearchWorkers => Math.Clamp(Environment.ProcessorCount - 1, 1, 4);
 
         public static ComputerPlayerController CreateController(EAiProfile profile, string name, PlayerID id,
             FDGGame_AsLocal localGame, int? seed = null, int slotID = 0,

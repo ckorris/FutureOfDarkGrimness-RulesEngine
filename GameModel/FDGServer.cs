@@ -306,11 +306,12 @@ namespace FDG.GameModel
             }
             catch (FDG.Simulation.SimulationStopSignal)
             {
-                // #191 B1 5c: a simulation reaching the end of its prescribed line, which is the
-                // NORMAL way a simulated game ends - the caller already has the snapshot it wanted.
-                // Deliberately silent: search runs thousands of these, and printing a state-machine
-                // stack trace per simulation is both noise and measurable cost. Real faults below
-                // still print in full.
+                // #191 B1 5c: a simulation reaching the end of its prescribed line - the caller
+                // already has the snapshot it wanted. Since #191 R9 the engine's own hook stops
+                // cooperatively (DeterminePlayerTurnStage notifies completion and returns), so this
+                // catch is the quiet fallback for a hook that still throws. Deliberately silent: a
+                // state-machine stack trace per simulation is noise and cost; real faults below still
+                // print in full.
                 RaiseGameCompleted(GameResult.ForFault("Simulation stopped at the end of its line."));
             }
             catch (Exception ex)

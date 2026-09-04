@@ -113,6 +113,10 @@ namespace FDG.Ai.Tactician.Search
             {
                 while (tree.CanOpenEdge(unit))
                 {
+                    // Past the deadline nothing more is opened: every further open would be a
+                    // simulation that stops at its first boundary, paid for at load cost each.
+                    if (tree.Options.Cancellation.IsCancellationRequested) return null;
+
                     SearchEdge? edge = unit.NextUntried();
                     if (edge == null) break;
                     SearchNode? child = await tree.OpenAsync(node, unit, edge);
@@ -145,20 +149,32 @@ namespace FDG.Ai.Tactician.Search
                 // Never a crash: B5 runs this inside real games.
                 return SearchResult.Unavailable(unavailable.Message, options.Iterations.HasValue);
             }
+            // The hard deadline (#191 R9): the time budget used to be checked only between
+            // iterations, so a single slow iteration (a 2k line in a Debug build on a laptop, or any
+            // build under an attached debugger) overran it by its whole length, times the workers.
+            // Armed with the budget once the root is measured, it stops every in-flight simulation at
+            // its next boundary and opens nothing further; the workers then return at their next
+            // clock check. Never armed under an iteration budget (G5).
+            using var deadline = new CancellationTokenSource();
             return await RunAsync(workerSeed =>
             {
-                SearchOptions treeOptions = options.Tree with { WorkerSeed = workerSeed };
+                SearchOptions treeOptions = options.Tree with { WorkerSeed = workerSeed, Cancellation = deadline.Token };
                 return Task.FromResult(SearchTree.FromRoot(boundary, treeOptions,
                     new TacticianActionSpace(treeOptions), evaluator));
-            }, options);
+            }, options, deadline);
         }
 
         /// <summary>
         /// The core: <paramref name="treeForWorker"/> builds one worker's tree from its derived seed
         /// (tests author trees here; the real caller loads the snapshot). Workers share nothing.
         /// </summary>
+        /// <param name="deadline">
+        /// Armed with the time budget once the root is measured, if given; the trees must carry its
+        /// token in <see cref="SearchOptions.Cancellation"/> for it to have any effect. Null (tests,
+        /// authored trees) means the clock is checked only between iterations, as before.
+        /// </param>
         public static async Task<SearchResult> RunAsync(Func<int, Task<SearchTree>> treeForWorker,
-            UctOptions options)
+            UctOptions options, CancellationTokenSource? deadline = null)
         {
             var clock = Stopwatch.StartNew();
             int workerCount = Math.Max(1, options.Workers);
@@ -178,6 +194,7 @@ namespace FDG.Ai.Tactician.Search
 
             int rootUnits = trees[0].UnitsOf(trees[0].Root).Count;
             int budgetMs = options.BudgetMsFor(rootUnits);
+            if (options.Iterations == null) deadline?.CancelAfter(budgetMs);
 
             var iterations = new int[workerCount];
             var searchClock = Stopwatch.StartNew();

@@ -53,6 +53,7 @@ namespace FDG.Ai.Tactician.Search
                 Seed = options.WorkerSeed,
                 Randomness = options.Randomness,
                 TimeoutSeconds = options.TimeoutSeconds,
+                Cancellation = options.Cancellation,
             });
             SimulationService.SimulationResult probe = await probeService.Probe(snapshot);
             if (!probe.ReachedEndOfLine || probe.ActingPlayerAtEnd is not { } acting)
@@ -147,10 +148,17 @@ namespace FDG.Ai.Tactician.Search
             if (edge.Child != null) return edge.Child;
             if (edge.Closed) return null;
 
+            if (Options.Cancellation.IsCancellationRequested) return null;
+
             int seed = SearchSeeds.Derive(Options.WorkerSeed, node.Depth, unit.Index, edge.Index);
             ExpansionOutcome outcome = await _expander.Expand(node, edge, seed);
             if (!outcome.Succeeded)
             {
+                // A line cut short by the search's deadline is not a failed edge: leave it untried so
+                // a later search (or a merged worker) can still credit it. Only a real fall-through or
+                // fault closes.
+                if (Options.Cancellation.IsCancellationRequested) return null;
+
                 edge.Closed = true;
                 edge.ClosedReason = outcome.Note;
                 return null;

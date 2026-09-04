@@ -20,11 +20,15 @@ namespace FDG.Simulation
     /// its tree actually branches.
     /// </para>
     /// <para>
-    /// Stopping is by exception: an implementation that wants the simulated game to end here throws
-    /// (see <see cref="SimulationService.SimulationStopSignal"/>), which unwinds the state machine
-    /// through <see cref="GameModel.FDGServer"/>'s own catch into a completed game. That is the
-    /// throw-stop B0 measured at 30/30 with zero heap growth over 400 simulations at 4k; ABANDON
-    /// (orphaning the tasks) is deliberately not used.
+    /// Stopping is cooperative: an implementation that wants the simulated game to end here returns
+    /// <c>true</c>, and <see cref="Stages.DeterminePlayerTurnStage"/> completes the game the way
+    /// <see cref="Stages.VictoryCalculationStage"/> does at a natural end - it notifies completion and
+    /// returns without activating a transition, so every frame of the state machine's transition
+    /// chain completes normally. This replaced B0's throw-stop (<see cref="SimulationStopSignal"/>)
+    /// for #191 R9: the chain is a nested await per transition, so a thrown stop was re-thrown at
+    /// every one of its ~70-190 frames, and under an attached debugger each re-throw is a
+    /// stop-the-process event - the GUI freeze at the Strategist's first activation. ABANDON
+    /// (orphaning the tasks) is still deliberately not used: the game must actually end.
     /// </para>
     /// </summary>
     public interface IActivationBoundaryHook
@@ -33,6 +37,7 @@ namespace FDG.Simulation
         /// The player whose activation is about to be resolved - already determined (including the
         /// #197 P19 activates-next override), so a prescription can be set on the right policy.
         /// </param>
-        Task AtActivationBoundary(PlayerID actingPlayer);
+        /// <returns><c>true</c> to end the simulated game at this boundary; <c>false</c> to play on.</returns>
+        Task<bool> AtActivationBoundary(PlayerID actingPlayer);
     }
 }

@@ -49,6 +49,26 @@ namespace FDG.Ai.Tactician.Resolvers
                 throw new InvalidOperationException(
                     $"AI received a {nameof(ChooseUnitToActivateRequest)} with no valid options.");
 
+            // #191 B1 5b: a prescribed activation is taken instead of the urgency argmax, but still
+            // THROUGH this resolver - BeginActivation runs on the prescribed unit exactly as it does
+            // on a scored one. Bypassing the resolver to answer at the wire is what B0 measured
+            // diverging (finding 4): the planner is then never told which unit is acting and every
+            // later request in the activation falls back to solo behavior. Scoring is skipped
+            // entirely, which is where a simulated activation's policy cost goes.
+            DataBinding<UnitData>? prescribed = _planner?.TakePrescribedUnit();
+            if (prescribed != null)
+            {
+                // Answer with the ENGINE's own binding for that unit, not the caller's instance -
+                // the stage looks the reply up against the options it handed out.
+                foreach (SelectionRequest<UnitData>.ValidOption option in request.ValidOptions)
+                {
+                    if (!Matches(option.Option, prescribed)) continue;
+                    _planner!.BeginActivation(option.Option);
+                    return Task.FromResult(option.Option);
+                }
+                // Stale prescription (that unit is not activatable now): fall through and score, G3.
+            }
+
             if (request.ValidOptions.Count == 1)
             {
                 _planner?.BeginActivation(request.ValidOptions[0].Option);
@@ -92,6 +112,12 @@ namespace FDG.Ai.Tactician.Resolvers
             _planner?.BeginActivation(best);
             return Task.FromResult(best);
         }
+
+        // A prescription may arrive as a different DataBinding instance for the same unit (it can
+        // have crossed the wire, or been enumerated from another read of the store), so identity is
+        // by Reference - the same rule TacticianPlanner.TakePlannedMove uses.
+        private static bool Matches(DataBinding<UnitData> option, DataBinding<UnitData> prescribed) =>
+            ReferenceEquals(option, prescribed) || option.Reference.Equals(prescribed.Reference);
 
         /// <summary>
         /// #296 front-first ordering (Chris's crowded-game remedy): each option's position along the

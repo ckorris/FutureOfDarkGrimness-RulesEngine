@@ -92,6 +92,64 @@ namespace FDG.Ai.Tactician
         /// leaks from a previous unit's activation into this one's row.</summary>
         public string? LastMacroLabel { get; private set; }
 
+        // --- prescription seam (#191 B1 step 5b) ---------------------------------------------------
+        // B0's finding 4: a decision injected at the registry/wire boundary BYPASSES the resolver,
+        // so BeginActivation never runs and every later request in that activation is answered by a
+        // planner that was never told which unit is acting - silent corruption, not a fault. Search
+        // therefore prescribes THROUGH the planner: these fields carry the tree edge's decision, the
+        // resolvers consume them instead of scoring, and the downstream resolvers (movement, target,
+        // wounds, consolidation) play the activation out unchanged.
+        //
+        // Deliberately NOT cleared by BeginActivation: the unit and the action for one activation are
+        // prescribed together, and BeginActivation runs between the two.
+        private DataBinding<UnitData>? _prescribedUnit;
+        private bool _hasPrescribedAction;
+        private string? _prescribedAction;
+        private MacroAction? _prescribedMacro;
+
+        /// <summary>
+        /// Sets the decision the policy must take instead of scoring its own (#191 B1 5b). A null
+        /// argument leaves that level unprescribed, so search can steer the activation choice, the
+        /// action, or both. <paramref name="macroAction"/> is required for a plan-bearing action
+        /// (anything but Cast/Disembark): it is what <see cref="TakePlannedMove"/> hands the movement
+        /// resolver and what marks the activation decided for post-move re-entry, so prescribing
+        /// such an action without one would leave the planner in a half-state the natural path never
+        /// produces. B2's tree edge carries the MacroAction it enumerated, so this costs search
+        /// nothing.
+        /// </summary>
+        public void Prescribe(DataBinding<UnitData>? unit, string? action = null,
+            MacroAction? macroAction = null)
+        {
+            _prescribedUnit = unit;
+            _hasPrescribedAction = action != null;
+            _prescribedAction = action;
+            _prescribedMacro = macroAction;
+        }
+
+        /// <summary>Drops any pending prescription - the planner scores its own choice again.</summary>
+        public void ClearPrescription()
+        {
+            _prescribedUnit = null;
+            _hasPrescribedAction = false;
+            _prescribedAction = null;
+            _prescribedMacro = null;
+        }
+
+        /// <summary>Whether a prescribed unit or action is still waiting to be consumed.</summary>
+        public bool HasPrescription => _prescribedUnit != null || _hasPrescribedAction;
+
+        /// <summary>
+        /// The prescribed unit for this activation, consumed (one activation, one prescription), or
+        /// null when the activation resolver should score its own pick. The resolver still calls
+        /// <see cref="BeginActivation"/> on whatever it returns - that is the whole point of the seam.
+        /// </summary>
+        public DataBinding<UnitData>? TakePrescribedUnit()
+        {
+            DataBinding<UnitData>? unit = _prescribedUnit;
+            _prescribedUnit = null;
+            return unit;
+        }
+
         /// <param name="seeThroughFriendlyUnits">The game's #384 LoS house rule
         /// (<see cref="GameSettings.SeeThroughFriendlyUnits"/>). False (the default game setting)
         /// makes the planner's sight tests count OTHER friendly units' bases as blockers, matching
@@ -139,6 +197,16 @@ namespace FDG.Ai.Tactician
         public string? ChooseAction(IReadOnlyList<string> validOptions)
         {
             if (_activeUnit == null) return null;
+
+            // #191 B1 5b: a prescribed action is the authority for this activation - taken before
+            // every scoring branch below, which is what removes the policy-thinking cost from a
+            // simulated activation (B0's 165ms). Consumed once: the re-entry calls after a move fall
+            // through to the natural post-move branch, exactly as they do in unprescribed play.
+            if (_hasPrescribedAction)
+            {
+                string? prescribed = TakePrescribedAction(validOptions);
+                if (prescribed != null) return prescribed;
+            }
 
             // A5-5: an embarked unit's only real choice is Disembark-or-ride. The macro generator
             // has no candidates for an off-table unit, so without this the fallback chain ended in
@@ -211,6 +279,56 @@ namespace FDG.Ai.Tactician
 
             LastMacroLabel = best.Intent.ToString();
             return bestAction;
+        }
+
+        /// <summary>
+        /// Consumes the prescribed action (#191 B1 5b), leaving the planner in exactly the state the
+        /// natural <see cref="ChooseAction"/> path would have left it in for that same choice, or
+        /// returns null to fall through to natural scoring.
+        /// <para>
+        /// Two fall-through cases, both G3 discipline (never fault, never half-state): the
+        /// prescription has gone STALE (the action is not among the options the engine is currently
+        /// offering - a branch the search built against a different situation), or a plan-bearing
+        /// action arrived without its MacroAction, which would leave the movement resolver with no
+        /// cached move and the re-entry branch undecided.
+        /// </para>
+        /// </summary>
+        private string? TakePrescribedAction(IReadOnlyList<string> validOptions)
+        {
+            string? action = _prescribedAction;
+            MacroAction? macro = _prescribedMacro;
+            if (action == null || !validOptions.Contains(action)) return null;
+
+            // Cast is layered - it loops straight back to Choose Action with the activation still
+            // undecided - so it carries no plan and leaves LastMacroLabel alone, exactly as the
+            // natural cast branch does. The attempt still counts against the livelock guard.
+            if (action == ChooseActionStage.CAST_CHOICE_NAME)
+            {
+                if (_castAttempts >= MaxCastAttemptsPerActivation) return null;
+                _hasPrescribedAction = false;
+                _prescribedAction = null;
+                _prescribedMacro = null;
+                _castAttempts++;
+                return action;
+            }
+
+            // Disembark likewise decides nothing about the activation's plan.
+            if (action == CoreRuleCatalog.DisembarkRuleName)
+            {
+                _hasPrescribedAction = false;
+                _prescribedAction = null;
+                _prescribedMacro = null;
+                return action;
+            }
+
+            if (macro == null) return null;
+
+            _hasPrescribedAction = false;
+            _prescribedAction = null;
+            _prescribedMacro = null;
+            _plan = macro;
+            LastMacroLabel = macro.Intent.ToString();
+            return action;
         }
 
         // #256's stuck detector, filed for #264: when EVERY movement candidate the generator can

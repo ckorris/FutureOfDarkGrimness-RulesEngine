@@ -50,7 +50,10 @@ namespace FDG.Ai.Tactician.Search
 
             GameDataStore store = GameSaveSerializer.Load(probe.Snapshot!);
             SideMap sides = SideMap.FromStore(store);
-            SideValues rootEstimate = evaluator.Evaluate(new TableState(store), sides);
+            // A plain rule evaluator for the leaf evaluator's own use (#191 B3): never rolls, so an
+            // unseeded dice roller behind it is inert - see IPositionEvaluator's contract note.
+            var ruleEvaluator = new Rules.Dispatch.RuleEvaluator(new ProbabilisticDiceRoller());
+            SideValues rootEstimate = evaluator.Evaluate(new TableState(store), ruleEvaluator, sides);
             var root = new SearchNode(probe.Snapshot, acting, sides.SideOf(acting), null, rootEstimate,
                 depth: 0, parent: null, parentEdge: null);
             return new SearchTree(root, sides, options, space, new SimulationExpander(options, evaluator, sides));

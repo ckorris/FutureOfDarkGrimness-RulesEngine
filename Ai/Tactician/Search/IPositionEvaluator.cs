@@ -1,3 +1,6 @@
+using FDG.Ai.Tactician.Learning;
+using FDG.Rules.Dispatch;
+
 namespace FDG.Ai.Tactician.Search
 {
     /// <summary>
@@ -10,10 +13,16 @@ namespace FDG.Ai.Tactician.Search
     /// (<see cref="SideValues.IsComplementaryTwoSide"/>), which is what reduces max^n to minimax in
     /// 1v1; a test asserts it for every shipped evaluator.
     /// </para>
+    /// <para>
+    /// Takes a <see cref="RuleEvaluator"/> alongside the state (#191 B3, found while wiring the C1
+    /// vector in: the encoder's mobility/threat features run movement-rule modifier evaluation, which
+    /// needs one). Callers hand in the simulation's own evaluator - never rolls, so any dice roller
+    /// wired to it is inert; the contract above is unaffected.
+    /// </para>
     /// </summary>
     public interface IPositionEvaluator
     {
-        SideValues Evaluate(ITableState state, SideMap sides);
+        SideValues Evaluate(ITableState state, RuleEvaluator evaluator, SideMap sides);
     }
 
     /// <summary>
@@ -22,7 +31,8 @@ namespace FDG.Ai.Tactician.Search
     /// </summary>
     public sealed class TerminalOnlyEvaluator : IPositionEvaluator
     {
-        public SideValues Evaluate(ITableState state, SideMap sides) => SideValues.Uniform(sides.Count, 0.5f);
+        public SideValues Evaluate(ITableState state, RuleEvaluator evaluator, SideMap sides) =>
+            SideValues.Uniform(sides.Count, 0.5f);
     }
 
     /// <summary>
@@ -33,7 +43,7 @@ namespace FDG.Ai.Tactician.Search
     /// </summary>
     public sealed class ObjectiveShareEvaluator : IPositionEvaluator
     {
-        public SideValues Evaluate(ITableState state, SideMap sides)
+        public SideValues Evaluate(ITableState state, RuleEvaluator evaluator, SideMap sides)
         {
             List<ObjectiveProjection> projections = TacticalAnalysis.ProjectObjectives(state);
             int total = projections.Count;

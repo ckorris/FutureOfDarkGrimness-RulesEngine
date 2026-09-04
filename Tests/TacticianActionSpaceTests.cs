@@ -206,16 +206,18 @@ namespace FDG.Tests
             SideMap sides = SideMap.FromStore(store);
             var state = new TableState(store);
 
-            foreach (IPositionEvaluator evaluator in new IPositionEvaluator[] { new TerminalOnlyEvaluator(), new ObjectiveShareEvaluator() })
+            var ruleEvaluator = new RuleEvaluator(new ProbabilisticDiceRoller());
+            foreach (IPositionEvaluator evaluator in new IPositionEvaluator[]
+                     { new TerminalOnlyEvaluator(), new ObjectiveShareEvaluator(), new HandWeightedEvaluator() })
             {
-                SideValues values = evaluator.Evaluate(state, sides);
+                SideValues values = evaluator.Evaluate(state, ruleEvaluator, sides);
                 Assert.That(values.Count, Is.EqualTo(2));
                 Assert.That(values.IsComplementaryTwoSide(), Is.True, $"{evaluator.GetType().Name}: {values}");
                 Assert.That(values[0], Is.InRange(0f, 1f));
             }
 
             // Objective share reads the projection: reds sit on two of the three markers here.
-            SideValues share = new ObjectiveShareEvaluator().Evaluate(state, sides);
+            SideValues share = new ObjectiveShareEvaluator().Evaluate(state, ruleEvaluator, sides);
             Assert.That(share[0], Is.GreaterThan(0.5f), $"reds hold more markers: {share}");
         }
 

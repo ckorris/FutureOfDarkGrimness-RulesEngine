@@ -109,6 +109,27 @@ namespace FDG.Ai.Tactician.Learning
             return v;
         }
 
+        /// <summary>
+        /// The 15-float per-side block (schema sec 3) for an arbitrary SIDE - not a player's SELF
+        /// block, the whole side's aggregate (#191 B3, docs/tactician-b2-design.md sec 7.2's leaf
+        /// evaluator: it needs every side's own block, not one activation's four-block perspective).
+        /// Exposes exactly the computation <see cref="Encode"/>'s SELF/ALLY/ENEMY_SUM/ENEMY_MAX blocks
+        /// already run, so a leaf evaluator gets the same numbers a real activation boundary would
+        /// have produced for that side - no separate code path, no approximation from summing shares
+        /// across sub-blocks (obj_held_share and threat_coverage are not simply additive over a side's
+        /// players - a target covered by one ally and not another must count once, not twice).
+        /// </summary>
+        public static float[] EncodeSideBlock(ITableState tableState, RuleEvaluator evaluator,
+            IReadOnlyList<PlayerID> sideMembers, IReadOnlyList<PlayerID> opposingMembers)
+        {
+            var terrain = TacticalAnalysis.TerrainOf(tableState);
+            List<ObjectiveProjection> projections = TacticalAnalysis.ProjectObjectives(tableState);
+            int objectiveCount = Math.Max(1, tableState.Objectives.Objects.Count());
+            var globals = new Globals(tableState);
+            return ComputeBlock(tableState, evaluator, terrain, projections, objectiveCount,
+                sideMembers.ToList(), opposingMembers.ToList(), globals);
+        }
+
         // Global (all-sides) totals shared by every block's *_share denominator (schema sec 3).
         private readonly struct Globals
         {

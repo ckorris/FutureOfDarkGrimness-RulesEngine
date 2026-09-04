@@ -1,3 +1,4 @@
+using FDG.Rules.Dispatch;
 using FDG.Simulation;
 
 namespace FDG.Ai.Tactician.Search
@@ -13,6 +14,8 @@ namespace FDG.Ai.Tactician.Search
         private readonly SearchOptions _options;
         private readonly IPositionEvaluator _evaluator;
         private readonly SideMap _sides;
+        // Never rolls (IPositionEvaluator's contract), so one unseeded instance serves every leaf.
+        private readonly RuleEvaluator _ruleEvaluator = new(new ProbabilisticDiceRoller());
 
         public SimulationExpander(SearchOptions options, IPositionEvaluator evaluator, SideMap sides)
         {
@@ -33,7 +36,7 @@ namespace FDG.Ai.Tactician.Search
                 Randomness = _options.Randomness,
                 TimeoutSeconds = _options.TimeoutSeconds,
             });
-            var driver = new EdgeLine(edge.Prescription, _options.Continuation, _evaluator, _sides);
+            var driver = new EdgeLine(edge.Prescription, _options.Continuation, _evaluator, _ruleEvaluator, _sides);
             SimulationService.SimulationResult result = await service.Run(parent.Snapshot, driver);
 
             bool honored = result.Honored.Count > 0 && result.Honored[0];
@@ -56,16 +59,18 @@ namespace FDG.Ai.Tactician.Search
             private readonly SimulationService.Prescription _edge;
             private readonly int _continuation;
             private readonly IPositionEvaluator _evaluator;
+            private readonly RuleEvaluator _ruleEvaluator;
             private readonly SideMap _sides;
 
             public SideValues? Leaf { get; private set; }
 
             public EdgeLine(SimulationService.Prescription edge, int continuation,
-                IPositionEvaluator evaluator, SideMap sides)
+                IPositionEvaluator evaluator, RuleEvaluator ruleEvaluator, SideMap sides)
             {
                 _edge = edge;
                 _continuation = continuation;
                 _evaluator = evaluator;
+                _ruleEvaluator = ruleEvaluator;
                 _sides = sides;
             }
 
@@ -73,7 +78,7 @@ namespace FDG.Ai.Tactician.Search
             {
                 if (boundary.Index == 0) return SimulationService.LineStep.Prescribe(_edge);
                 if (boundary.Index <= _continuation) return SimulationService.LineStep.Natural;
-                Leaf = _evaluator.Evaluate(boundary.State, _sides);
+                Leaf = _evaluator.Evaluate(boundary.State, _ruleEvaluator, _sides);
                 return SimulationService.LineStep.Stop;
             }
         }

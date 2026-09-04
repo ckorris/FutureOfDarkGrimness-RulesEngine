@@ -92,6 +92,18 @@ namespace FDG.Ai.Tactician
         /// leaks from a previous unit's activation into this one's row.</summary>
         public string? LastMacroLabel { get; private set; }
 
+        /// <summary>
+        /// The FIRST Choose Action decision of the current activation, as a prescription would carry
+        /// it (#191 B2; 5c's recorded note 2): the action string and, for a plan-bearing action, the
+        /// winning <see cref="MacroAction"/>. Set once per activation (a layered Cast is the decision;
+        /// the re-entry after it plays naturally under the same dice), cleared in
+        /// <see cref="BeginActivation"/>. With <see cref="ActiveUnit"/> this is what reproduces the
+        /// activation through the seam - the fully prescribed line's input.
+        /// </summary>
+        public string? LastAction { get; private set; }
+
+        public MacroAction? LastMacro { get; private set; }
+
         // --- prescription seam (#191 B1 step 5b) ---------------------------------------------------
         // B0's finding 4: a decision injected at the registry/wire boundary BYPASSES the resolver,
         // so BeginActivation never runs and every later request in that activation is answered by a
@@ -106,6 +118,15 @@ namespace FDG.Ai.Tactician
         private bool _hasPrescribedAction;
         private string? _prescribedAction;
         private MacroAction? _prescribedMacro;
+        // #191 B2 (docs/tactician-b2-design.md sec 4.3): whether the last prescription was CONSUMED
+        // or fell through to natural scoring. A fell-through edge silently becomes A's own move, so
+        // search must be told - it closes the edge instead of crediting it with an outcome it did
+        // not produce. Tracked per level: the unit half is reported by the activation resolver (it
+        // owns the match against the engine's offer), the action half by TakePrescribedAction.
+        private bool _unitPrescribed;
+        private bool _unitHonored;
+        private bool _actionPrescribed;
+        private bool _actionHonored;
 
         /// <summary>
         /// Sets the decision the policy must take instead of scoring its own (#191 B1 5b). A null
@@ -124,6 +145,10 @@ namespace FDG.Ai.Tactician
             _hasPrescribedAction = action != null;
             _prescribedAction = action;
             _prescribedMacro = macroAction;
+            _unitPrescribed = unit != null;
+            _unitHonored = false;
+            _actionPrescribed = action != null;
+            _actionHonored = false;
         }
 
         /// <summary>Drops any pending prescription - the planner scores its own choice again.</summary>
@@ -133,7 +158,30 @@ namespace FDG.Ai.Tactician
             _hasPrescribedAction = false;
             _prescribedAction = null;
             _prescribedMacro = null;
+            _unitPrescribed = false;
+            _actionPrescribed = false;
         }
+
+        /// <summary>
+        /// Whether the most recent <see cref="Prescribe"/> was honored in full (#191 B2 sec 4.3): every
+        /// prescribed level was consumed by its resolver rather than falling through to natural
+        /// scoring. Null when nothing has been prescribed since the last <see cref="ClearPrescription"/>.
+        /// Read by the simulation's line driver at the NEXT boundary, when the activation is over.
+        /// </summary>
+        public bool? LastPrescriptionHonored
+        {
+            get
+            {
+                if (!_unitPrescribed && !_actionPrescribed) return null;
+                return (!_unitPrescribed || _unitHonored) && (!_actionPrescribed || _actionHonored);
+            }
+        }
+
+        /// <summary>
+        /// The activation resolver's report on the unit half (#191 B2): it owns the match between the
+        /// prescribed unit and the engine's actual offer, so it is the one that knows.
+        /// </summary>
+        public void ReportPrescribedUnitOutcome(bool honored) => _unitHonored = honored;
 
         /// <summary>Whether a prescribed unit or action is still waiting to be consumed.</summary>
         public bool HasPrescription => _prescribedUnit != null || _hasPrescribedAction;
@@ -169,6 +217,8 @@ namespace FDG.Ai.Tactician
             _activeUnit = unit;
             _plan = null;
             LastMacroLabel = null;
+            LastAction = null;
+            LastMacro = null;
             _castAttempts = 0;
             _meleeApproach.Clear();
             _screenLane = null;
@@ -214,7 +264,10 @@ namespace FDG.Ai.Tactician
             // DE-vs-Orks logs - the whole payload never fought). Get out when the transport has
             // arrived somewhere worth fighting for; keep riding otherwise.
             if (validOptions.Contains(CoreRuleCatalog.DisembarkRuleName) && WantsDisembark())
+            {
+                RecordDecision(CoreRuleCatalog.DisembarkRuleName, null);
                 return CoreRuleCatalog.DisembarkRuleName;
+            }
 
             // A5: casting is layered - it loops straight back here without ending the activation -
             // so a positive-value cast is taken FIRST whenever the engine offers Cast; the planned
@@ -225,6 +278,7 @@ namespace FDG.Ai.Tactician
                 && BestAffordableCast() != null)
             {
                 _castAttempts++;
+                RecordDecision(ChooseActionStage.CAST_CHOICE_NAME, null);
                 return ChooseActionStage.CAST_CHOICE_NAME;
             }
 
@@ -278,7 +332,17 @@ namespace FDG.Ai.Tactician
             }
 
             LastMacroLabel = best.Intent.ToString();
+            RecordDecision(bestAction, best);
             return bestAction;
+        }
+
+        // The activation's first decision (see LastAction). Later calls in the same activation -
+        // the post-move re-entry, a second cast - do not overwrite it.
+        private void RecordDecision(string action, MacroAction? macro)
+        {
+            if (LastAction != null) return;
+            LastAction = action;
+            LastMacro = macro;
         }
 
         /// <summary>
@@ -308,7 +372,9 @@ namespace FDG.Ai.Tactician
                 _hasPrescribedAction = false;
                 _prescribedAction = null;
                 _prescribedMacro = null;
+                _actionHonored = true;
                 _castAttempts++;
+                RecordDecision(action, null);
                 return action;
             }
 
@@ -318,6 +384,8 @@ namespace FDG.Ai.Tactician
                 _hasPrescribedAction = false;
                 _prescribedAction = null;
                 _prescribedMacro = null;
+                _actionHonored = true;
+                RecordDecision(action, null);
                 return action;
             }
 
@@ -326,8 +394,10 @@ namespace FDG.Ai.Tactician
             _hasPrescribedAction = false;
             _prescribedAction = null;
             _prescribedMacro = null;
+            _actionHonored = true;
             _plan = macro;
             LastMacroLabel = macro.Intent.ToString();
+            RecordDecision(action, macro);
             return action;
         }
 
@@ -1507,7 +1577,9 @@ namespace FDG.Ai.Tactician
         // Charge maps to Charge; Hold maps to Shoot (stand and fire) or Pass; everything else moves.
         // Dispatch keys on the candidate's ACTION TYPE for charges: an out-of-reach M5 candidate is
         // a rush-budget approach (EActionType.Rush) and plays as a plain move (#191 A4 gate fix).
-        private static string? ActionNameFor(MacroAction candidate, IReadOnlyList<string> validOptions)
+        // #191 B2: internal so the search's action space maps its edges with THIS function - the edge
+        // vocabulary is provably the planner's (docs/tactician-b2-design.md sec 3.2).
+        internal static string? ActionNameFor(MacroAction candidate, IReadOnlyList<string> validOptions)
         {
             if (candidate.ActionType == EActionType.Charge)
                 return candidate.Feasibility == EFeasibility.Reachable

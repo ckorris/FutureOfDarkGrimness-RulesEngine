@@ -126,6 +126,87 @@ namespace FDG.Tests
             Assert.That(result.EndedEarly!.Outcome, Is.Not.EqualTo(EGameOutcome.Fault), result.Note);
         }
 
+        // #191 B2 sec 4.4 / test 7: the callback line is the list line. Same seed, same
+        // prescriptions handed out lazily, same stop - byte-identical snapshot, same honored flags.
+        [Test]
+        [CancelAfter(180_000)]
+        public async Task CallbackLine_IsByteIdenticalToTheListLine()
+        {
+            string start = AuthoredSnapshot();
+            IReadOnlyList<DataReference> units = LivingUnitsOfPlayer(start, slotID: 0);
+            var prescriptions = new SimulationService.Prescription?[]
+            {
+                new SimulationService.Prescription(units[^1]), null, null,
+            };
+
+            SimulationService.SimulationResult list = await Sim(seed: 606).Run(start, prescriptions);
+            SimulationService.SimulationResult callback = await Sim(seed: 606).Run(start,
+                new RecordingDriver(prescriptions));
+
+            Assert.That(list.ReachedEndOfLine, Is.True, list.Note);
+            Assert.That(callback.Snapshot, Is.EqualTo(list.Snapshot));
+            Assert.That(callback.Honored, Is.EqualTo(list.Honored));
+            Assert.That(list.Honored, Is.EqualTo(new[] { true, true, true }), "one flag per activation, natural = honored");
+            Assert.That(list.ActivationsRun, Is.EqualTo(3));
+            Assert.That(callback.ActingPlayerAtEnd, Is.EqualTo(list.ActingPlayerAtEnd));
+            Assert.That(list.ActingPlayerAtStart, Is.Not.Null);
+        }
+
+        [Test]
+        [CancelAfter(120_000)]
+        public async Task Probe_ReportsTheActingPlayerWithoutPlayingAnything()
+        {
+            string start = AuthoredSnapshot();
+            GameDataStore store = GameSaveSerializer.Load(start);
+            PlayerID slot0 = store.GetAllValues<PlayerSlotInfo>().First(i => i.SlotID == 0).PlayerID;
+
+            SimulationService.SimulationResult probe = await Sim(seed: 1).Probe(start);
+
+            Assert.That(probe.ReachedEndOfLine, Is.True, probe.Note);
+            Assert.That(probe.ActivationsRun, Is.EqualTo(0));
+            Assert.That(probe.Honored, Is.Empty);
+            Assert.That(probe.ActingPlayerAtEnd, Is.EqualTo(slot0), "the scenario's ActivePlayer is slot 0");
+            // Probing the probe's own snapshot lands on the same boundary (the serialized text is not
+            // byte-stable across re-saves - a store generation counter ticks - so the pin is the
+            // acting player, which is what a search root reads).
+            SimulationService.SimulationResult again = await Sim(seed: 1).Probe(probe.Snapshot!);
+            Assert.That(again.ActingPlayerAtEnd, Is.EqualTo(probe.ActingPlayerAtEnd));
+            Assert.That(again.ActivationsRun, Is.EqualTo(0));
+        }
+
+        // A prescription to a unit that is not activatable falls through (5b's G3 rule) - and the
+        // line must SAY so, or search credits the edge with A's natural move (B2 sec 4.3).
+        [Test]
+        [CancelAfter(120_000)]
+        public async Task StalePrescription_IsReportedAsNotHonored()
+        {
+            string start = AuthoredSnapshot();
+            IReadOnlyList<DataReference> enemyUnits = LivingUnitsOfPlayer(start, slotID: 1);
+
+            // Slot 0 acts first; prescribing one of slot 1's units to it can never be honored.
+            SimulationService.SimulationResult result = await Sim(seed: 77).Run(start,
+                new SimulationService.Prescription?[] { new SimulationService.Prescription(enemyUnits[0]), null });
+
+            Assert.That(result.ReachedEndOfLine, Is.True, result.Note);
+            Assert.That(result.Honored, Is.EqualTo(new[] { false, true }));
+        }
+
+        private sealed class RecordingDriver : SimulationService.ILineDriver
+        {
+            private readonly IReadOnlyList<SimulationService.Prescription?> _line;
+            public RecordingDriver(IReadOnlyList<SimulationService.Prescription?> line) => _line = line;
+
+            public SimulationService.LineStep AtBoundary(SimulationService.LineBoundary boundary)
+            {
+                Assert.That(boundary.State, Is.Not.Null, "the driver sees the live state at every boundary");
+                if (boundary.Index > 0) Assert.That(boundary.PreviousHonored, Is.Not.Null);
+                if (boundary.Index >= _line.Count) return SimulationService.LineStep.Stop;
+                return _line[boundary.Index] is { } p
+                    ? SimulationService.LineStep.Prescribe(p)
+                    : SimulationService.LineStep.Natural;
+            }
+        }
+
         // --- helpers ---------------------------------------------------------------------------
 
         private static SimulationService Sim(int seed, bool bypassBus = true) =>

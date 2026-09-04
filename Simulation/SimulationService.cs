@@ -5,6 +5,8 @@ using FDG.GameModel;
 using FDG.Players;
 using FDG.SaveLoad;
 using FDG.StageResolution;
+using FDG.StageResolution.Requests;
+using FDG.Utilities;
 
 namespace FDG.Simulation
 {
@@ -86,6 +88,67 @@ namespace FDG.Simulation
             GameResult? EndedEarly, string Note)
         {
             public bool ReachedEndOfLine => Snapshot != null;
+
+            /// <summary>
+            /// #191 B2 (docs/tactician-b2-design.md sec 4.3): per activation of the line, whether its
+            /// prescription was CONSUMED by the policy. A natural (unprescribed) activation is true.
+            /// False means 5b's G3 fall-through happened - the policy scored its own choice - so the
+            /// activation was NOT the one the edge named, and search must close that edge rather than
+            /// credit it. Has one entry per activation actually run.
+            /// </summary>
+            public IReadOnlyList<bool> Honored { get; init; } = Array.Empty<bool>();
+
+            /// <summary>The player about to activate at the line's first boundary (the snapshot's own).</summary>
+            public PlayerID? ActingPlayerAtStart { get; init; }
+
+            /// <summary>
+            /// The player about to activate at the boundary the line stopped at - the child node's
+            /// acting player, read from the engine's own determination (P19 overrides and reactivations
+            /// included) rather than inferred from the parent. Null when the game ended first.
+            /// </summary>
+            public PlayerID? ActingPlayerAtEnd { get; init; }
+        }
+
+        /// <summary>
+        /// What a <see cref="ILineDriver"/> sees at one activation boundary (#191 B2 sec 4.4).
+        /// <see cref="State"/> is the LIVE table state of the simulated game: a driver that is about to
+        /// stop evaluates the position here, before the line's one Save - no serialization is spent
+        /// on evaluation. It must only be READ (the encoder and evaluators are pure), and it must not
+        /// be retained past the call.
+        /// </summary>
+        public sealed record LineBoundary(int Index, PlayerID ActingPlayer, ITableState State,
+            bool? PreviousHonored)
+        {
+            /// <summary>
+            /// The decision the previous boundary's policy took, as a prescription that reproduces it
+            /// (unit, first action, macro) - null at index 0 or for a non-planning policy. What a
+            /// recorded natural line replays as a fully prescribed one (the B2 cost measurement), and
+            /// what a behavior-cloning exporter would read.
+            /// </summary>
+            public Prescription? PreviousDecision { get; init; }
+        }
+
+        /// <summary>A driver's answer at a boundary: prescribe, play naturally, or stop here.</summary>
+        public readonly record struct LineStep(bool IsStop, Prescription? Prescription)
+        {
+            /// <summary>Let the policy score its own activation.</summary>
+            public static LineStep Natural => new(false, null);
+
+            /// <summary>Stop at this boundary: the snapshot captured here is the line's result.</summary>
+            public static LineStep Stop => new(true, null);
+
+            public static LineStep Prescribe(Prescription prescription) => new(false, prescription);
+        }
+
+        /// <summary>
+        /// Supplies a line's decisions lazily, one boundary at a time (#191 B2 sec 4.4; 5c's recorded
+        /// note 1): a tree hands out the next prescription as the line walks rather than as a fixed
+        /// list, and evaluates the leaf in place at the boundary it stops at. The list-based
+        /// <see cref="SimulationService.Run(string, IReadOnlyList{Prescription})"/> is this with a list.
+        /// </summary>
+        public interface ILineDriver
+        {
+            LineStep AtBoundary(LineBoundary boundary);
         }
 
         private readonly SimulationOptions _options;
@@ -106,15 +169,32 @@ namespace FDG.Simulation
 
         /// <summary>
         /// Plays <c>prescriptions.Count</c> consecutive activations in ONE resumed game instance and
-        /// returns the snapshot at the boundary after the last one. This is 5c's line.
+        /// returns the snapshot at the boundary after the last one. This is 5c's line, as a fixed list;
+        /// it is the callback form below with a <see cref="ListLineDriver"/> (pinned byte-identical).
         /// </summary>
-        public async Task<SimulationResult> Run(string snapshot, IReadOnlyList<Prescription?> prescriptions)
+        public Task<SimulationResult> Run(string snapshot, IReadOnlyList<Prescription?> prescriptions)
         {
             if (prescriptions.Count == 0)
             {
-                return new SimulationResult(snapshot, 0, null, "empty line - nothing to simulate");
+                return Task.FromResult(new SimulationResult(snapshot, 0, null, "empty line - nothing to simulate"));
             }
+            return Run(snapshot, new ListLineDriver(prescriptions));
+        }
 
+        /// <summary>
+        /// Resumes the snapshot and stops at its very first boundary without playing anything: the
+        /// engine's own answer to "who is about to activate here", for building a search root
+        /// (#191 B2 sec 2). The returned snapshot is the engine's re-saved state at that boundary.
+        /// </summary>
+        public Task<SimulationResult> Probe(string snapshot) => Run(snapshot, new ProbeDriver());
+
+        /// <summary>
+        /// The callback line (#191 B2 sec 4.4): the driver is asked at every boundary, sees the live
+        /// state, and says stop when the line is done. The snapshot is captured at the stop boundary,
+        /// after the driver has looked.
+        /// </summary>
+        public async Task<SimulationResult> Run(string snapshot, ILineDriver driver)
+        {
             GameDataStore store = GameSaveSerializer.Load(snapshot);
 
             GameProgressData? progress = GameProgressUtilities.TryGetProgress(store)
@@ -168,7 +248,7 @@ namespace FDG.Simulation
 
             var captured = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             var ended = new TaskCompletionSource<GameResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-            var line = new LineDriver(prescriptions, plannersByPlayer, store, captured);
+            var line = new LineHook(driver, plannersByPlayer, store, new TableState(store), captured);
 
             var server = new FDGServer(store, bus, slots, presentationClock: null, lobbySettings: null,
                 simulation: new SimulationHostOptions
@@ -186,74 +266,207 @@ namespace FDG.Simulation
             if (finished == captured.Task)
             {
                 return new SimulationResult(await captured.Task, line.ActivationsRun, null,
-                    $"line of {prescriptions.Count} complete");
+                    $"line of {line.ActivationsRun} complete")
+                {
+                    Honored = line.Honored,
+                    ActingPlayerAtStart = line.ActingPlayerAtStart,
+                    ActingPlayerAtEnd = line.ActingPlayerAtEnd,
+                };
             }
 
             if (finished == ended.Task)
             {
                 GameResult result = await ended.Task;
+                line.SettleAfterGameEnd();
                 return new SimulationResult(null, line.ActivationsRun, result,
-                    $"game ended after {line.ActivationsRun} activation(s): {result.Outcome}");
+                    $"game ended after {line.ActivationsRun} activation(s): {result.Outcome}")
+                {
+                    Honored = line.Honored,
+                    ActingPlayerAtStart = line.ActingPlayerAtStart,
+                };
             }
 
             return new SimulationResult(null, line.ActivationsRun, null,
-                $"timed out after {_options.TimeoutSeconds}s");
+                $"timed out after {_options.TimeoutSeconds}s")
+            {
+                Honored = line.Honored,
+                ActingPlayerAtStart = line.ActingPlayerAtStart,
+            };
         }
 
         /// <summary>
-        /// Walks the line: applies each boundary's prescription to the ACTING player's policy, and
-        /// at the boundary after the last one captures the snapshot and stops the game.
+        /// A prescribed <see cref="MacroAction"/> was enumerated on ANOTHER store of the same game (the
+        /// search's scratch load of the parent snapshot, #191 B2 sec 3.2), and its move entries bind
+        /// models of that store. The movement resolver hands those entries to the engine, which
+        /// applies the move THROUGH the bindings - onto the wrong store, silently, while this game's
+        /// models never move (found by B2's determinism pin: two runs of one edge diverged because
+        /// the first had moved the scratch models). So every prescribed macro is rebound onto this
+        /// simulation's store first: model bindings by <see cref="DataReference"/> (stable across
+        /// every store of the game), positions copied, targets re-resolved by unit ID / marker position
+        /// (they are only read for logging downstream, but a macro must never leak a foreign store).
         /// </summary>
-        private sealed class LineDriver : IActivationBoundaryHook
+        internal static MacroAction Rebind(MacroAction macro, GameDataStore store)
+        {
+            var move = new List<ModelMoveEntry>(macro.Move.Count);
+            foreach (ModelMoveEntry entry in macro.Move)
+            {
+                move.Add(new ModelMoveEntry(store.GetDataBinding<ModelData>(entry.Model.Reference),
+                    new List<Position>(entry.Positions),
+                    entry.Facings == null ? null : new List<Float2>(entry.Facings)));
+            }
+
+            IUnit? enemy = macro.TargetEnemy == null ? null : FindUnit(store, macro.TargetEnemy.ID);
+            IUnit? ally = macro.TargetAlly == null ? null : FindUnit(store, macro.TargetAlly.ID);
+            IObjective? objective = macro.TargetObjective == null ? null
+                : store.GetAllValues<ObjectiveData>().FirstOrDefault(o =>
+                    o.Position.x == macro.TargetObjective.Position.x && o.Position.z == macro.TargetObjective.Position.z);
+
+            return macro with
+            {
+                Move = move,
+                TargetEnemy = enemy,
+                TargetAlly = ally,
+                TargetObjective = objective,
+            };
+        }
+
+        private static IUnit? FindUnit(GameDataStore store, UnitID id)
+        {
+            foreach (UnitData unit in store.GetAllValues<UnitData>())
+                if (unit.ID.Equals(id)) return unit;
+            return null;
+        }
+
+        /// <summary>The fixed-list line: prescription i at boundary i, stop at boundary Count.</summary>
+        private sealed class ListLineDriver : ILineDriver
         {
             private readonly IReadOnlyList<Prescription?> _prescriptions;
+            public ListLineDriver(IReadOnlyList<Prescription?> prescriptions) => _prescriptions = prescriptions;
+
+            public LineStep AtBoundary(LineBoundary boundary)
+            {
+                if (boundary.Index >= _prescriptions.Count) return LineStep.Stop;
+                Prescription? prescription = _prescriptions[boundary.Index];
+                return prescription == null ? LineStep.Natural : LineStep.Prescribe(prescription);
+            }
+        }
+
+        private sealed class ProbeDriver : ILineDriver
+        {
+            public LineStep AtBoundary(LineBoundary boundary) => LineStep.Stop;
+        }
+
+        /// <summary>
+        /// Walks the line: asks the driver at each boundary, applies a prescription to the ACTING
+        /// player's policy, reports at the next boundary whether the previous one was honored, and
+        /// at the stop boundary captures the snapshot and throw-stops the game.
+        /// </summary>
+        private sealed class LineHook : IActivationBoundaryHook
+        {
+            private readonly ILineDriver _driver;
             private readonly IReadOnlyDictionary<PlayerID, TacticianPlanner?> _planners;
             private readonly GameDataStore _store;
+            private readonly ITableState _tableState;
             private readonly TaskCompletionSource<string> _captured;
+            private readonly List<bool> _honored = new();
             private int _boundariesSeen;
+            private PlayerID? _previousActing;
+            private bool _previousPrescribed;
 
-            public int ActivationsRun => Math.Min(_boundariesSeen, _prescriptions.Count);
+            /// <summary>Activations STARTED by the line (the old list semantics): boundaries seen, less the stop.</summary>
+            public int ActivationsRun => _stopped ? _boundariesSeen - 1 : _boundariesSeen;
+            public IReadOnlyList<bool> Honored => _honored;
+            private bool _stopped;
+            public PlayerID? ActingPlayerAtStart { get; private set; }
+            public PlayerID? ActingPlayerAtEnd { get; private set; }
 
-            public LineDriver(IReadOnlyList<Prescription?> prescriptions,
-                IReadOnlyDictionary<PlayerID, TacticianPlanner?> planners, GameDataStore store,
-                TaskCompletionSource<string> captured)
+            public LineHook(ILineDriver driver, IReadOnlyDictionary<PlayerID, TacticianPlanner?> planners,
+                GameDataStore store, ITableState tableState, TaskCompletionSource<string> captured)
             {
-                _prescriptions = prescriptions;
+                _driver = driver;
                 _planners = planners;
                 _store = store;
+                _tableState = tableState;
                 _captured = captured;
             }
 
             public Task AtActivationBoundary(PlayerID actingPlayer)
             {
                 int index = _boundariesSeen++;
+                if (index == 0) ActingPlayerAtStart = actingPlayer;
 
-                // One past the end of the line: this boundary IS the result state. Serialize here,
-                // where the engine's own rolling save point has just written the flow state, then
-                // throw-stop so nothing further mutates the store.
-                if (index >= _prescriptions.Count)
+                // The previous activation is over: settle its honored flag from its policy. A natural
+                // activation is honored by definition; a prescribed one asks the planner (5b's
+                // fall-through leaves LastPrescriptionHonored false). Non-planning profiles have no
+                // planner and can consume no prescription, so a prescription to them is unhonored.
+                bool? previousHonored = null;
+                if (index > 0)
                 {
+                    previousHonored = !_previousPrescribed
+                        || (_previousActing.HasValue
+                            && _planners.TryGetValue(_previousActing.Value, out TacticianPlanner? previous)
+                            && previous?.LastPrescriptionHonored == true);
+                    _honored.Add(previousHonored.Value);
+                    if (_previousActing.HasValue
+                        && _planners.TryGetValue(_previousActing.Value, out TacticianPlanner? clear))
+                    {
+                        clear?.ClearPrescription();
+                    }
+                }
+
+                Prescription? previousDecision = null;
+                if (index > 0 && _previousActing.HasValue
+                    && _planners.TryGetValue(_previousActing.Value, out TacticianPlanner? decided)
+                    && decided?.ActiveUnit != null && decided.LastAction != null)
+                {
+                    previousDecision = new Prescription(decided.ActiveUnit.Reference, decided.LastAction, decided.LastMacro);
+                }
+
+                LineStep step = _driver.AtBoundary(new LineBoundary(index, actingPlayer, _tableState, previousHonored)
+                {
+                    PreviousDecision = previousDecision,
+                });
+
+                if (step.IsStop)
+                {
+                    _stopped = true;
+                    // This boundary IS the result state. Serialize here, where the engine's own rolling
+                    // save point has just written the flow state, then throw-stop so nothing further
+                    // mutates the store.
+                    ActingPlayerAtEnd = actingPlayer;
                     _captured.TrySetResult(GameSaveSerializer.Save(_store));
                     throw new SimulationStopSignal();
                 }
 
-                Prescription? prescription = _prescriptions[index];
-                if (prescription == null)
-                {
-                    return Task.CompletedTask; // Natural activation - the policy scores its own.
-                }
-
-                if (_planners.TryGetValue(actingPlayer, out TacticianPlanner? planner) && planner != null)
+                _previousActing = actingPlayer;
+                _previousPrescribed = step.Prescription != null;
+                if (step.Prescription is { } prescription
+                    && _planners.TryGetValue(actingPlayer, out TacticianPlanner? planner) && planner != null)
                 {
                     // Matched by DataReference: the caller's binding comes from a different store
                     // instance of the same game (5b's seam handles the lookup on the engine side).
                     DataBinding<UnitData>? unit = prescription.Unit.HasValue
                         ? _store.GetDataBinding<UnitData>(prescription.Unit.Value)
                         : null;
-                    planner.Prescribe(unit, prescription.Action, prescription.Macro);
+                    planner.Prescribe(unit, prescription.Action,
+                        prescription.Macro == null ? null : Rebind(prescription.Macro, _store));
                 }
 
                 return Task.CompletedTask;
+            }
+
+            /// <summary>
+            /// The game ended inside the last started activation, so no later boundary settled its
+            /// flag: settle it now from the policy, so Honored always has one entry per activation.
+            /// </summary>
+            public void SettleAfterGameEnd()
+            {
+                if (_stopped || _honored.Count >= _boundariesSeen || _boundariesSeen == 0) return;
+                bool honored = !_previousPrescribed
+                    || (_previousActing.HasValue
+                        && _planners.TryGetValue(_previousActing.Value, out TacticianPlanner? previous)
+                        && previous?.LastPrescriptionHonored == true);
+                _honored.Add(honored);
             }
         }
 

@@ -235,8 +235,16 @@ namespace FDG.Simulation
                 slots[i] = new PlayerSlot(i, savedInfos[i].TeamNumber, playerID, new ArmyListFile(), store);
 
                 var localGame = new FDGGame_AsLocal(store, bus);
+                // B5 (#191 step 9): search NEVER runs inside a simulation. A Strategist in-sim
+                // policy would root a new tree at every boundary of every line of the tree above
+                // it - unbounded recursion, not a deeper search - so it degrades to the A policy
+                // it is built on. That is also the honest model of the opponent: the search
+                // assumes the other side plays A, and says so.
+                EAiProfile inSimProfile = _options.Profile == EAiProfile.Strategist
+                    ? EAiProfile.Tactician
+                    : _options.Profile;
                 IStageResolverRegistry registry = AiProfileFactory.BuildRegistry(
-                    _options.Profile, localGame.TableState, playerID, out TacticianPlanner? planner,
+                    inSimProfile, localGame.TableState, playerID, out TacticianPlanner? planner,
                     _options.Seed, slots[i].SlotID, decisionLog: null,
                     seeThroughFriendlyUnits: settings.SeeThroughFriendlyUnits);
 

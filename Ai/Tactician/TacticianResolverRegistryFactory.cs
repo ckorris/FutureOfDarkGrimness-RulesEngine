@@ -42,8 +42,21 @@ namespace FDG.Ai.Tactician
 
             // A4-1: activation order by urgency (also announces the active unit to the planner).
             // #389: the kill term's sight gate follows the same #384 house rule the planner does.
-            registry.RegisterResolver(new Resolvers.TacticianActivationResolver(tableState, evaluator,
-                planner, options.DecisionLog, options.SeeThroughFriendlyUnits));
+            var activationPolicy = new Resolvers.TacticianActivationResolver(tableState, evaluator,
+                planner, options.DecisionLog, options.SeeThroughFriendlyUnits);
+            if (options.Search is { } searchBudget)
+            {
+                // B5 (#191 step 9): the Strategist rung. The search picks the activation and
+                // prescribes it; the A resolver above still PLAYS it, so everything below the
+                // activation is unchanged and a search failure is just plain A (G3).
+                registry.RegisterResolver(new Search.StrategistActivationResolver(tableState, planner,
+                    activationPolicy, new Search.HandWeightedEvaluator(), searchBudget,
+                    options.DecisionLog));
+            }
+            else
+            {
+                registry.RegisterResolver(activationPolicy);
+            }
 
             // A4-2: the (action x macro-action) pair is planned once at Choose Action and played out
             // at the movement request; solo-rules instances are the per-request fallbacks (G3).

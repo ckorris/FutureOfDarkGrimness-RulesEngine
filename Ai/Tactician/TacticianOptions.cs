@@ -28,5 +28,13 @@ namespace FDG.Ai.Tactician
         /// units' bases as sight blockers when scoring endpoints and aiming clear-lane goals.
         /// </summary>
         public bool SeeThroughFriendlyUnits { get; init; }
+
+        /// <summary>
+        /// B5 (#191 campaign step 9): when set, each activation is chosen by a UCT search under
+        /// this budget instead of the A policy's urgency argmax - the Strategist rung. Null (the
+        /// default) is plain A, and stays plain A: this is the ONE switch between the two, so both
+        /// rungs remain benchmarkable against each other forever (plan G4).
+        /// </summary>
+        public Search.UctOptions? Search { get; init; }
     }
 }

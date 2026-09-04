@@ -24,8 +24,9 @@ namespace FDG.Ai
         /// tests match what the shoot stage will rule. Default false = the official rules.</param>
         public static IStageResolverRegistry BuildRegistry(EAiProfile profile, ITableState tableState,
             PlayerID playerID, int? seed = null, int slotID = 0, Action<string>? decisionLog = null,
-            bool seeThroughFriendlyUnits = false) =>
-            BuildRegistry(profile, tableState, playerID, out _, seed, slotID, decisionLog, seeThroughFriendlyUnits);
+            bool seeThroughFriendlyUnits = false, Tactician.Search.UctOptions? searchBudget = null) =>
+            BuildRegistry(profile, tableState, playerID, out _, seed, slotID, decisionLog,
+                seeThroughFriendlyUnits, searchBudget);
 
         /// <summary>
         /// Same as the other overload, plus the driving <see cref="Tactician.TacticianPlanner"/>
@@ -34,7 +35,8 @@ namespace FDG.Ai
         /// </summary>
         public static IStageResolverRegistry BuildRegistry(EAiProfile profile, ITableState tableState,
             PlayerID playerID, out Tactician.TacticianPlanner? planner, int? seed = null, int slotID = 0,
-            Action<string>? decisionLog = null, bool seeThroughFriendlyUnits = false)
+            Action<string>? decisionLog = null, bool seeThroughFriendlyUnits = false,
+            Tactician.Search.UctOptions? searchBudget = null)
         {
             planner = null;
             switch (profile)
@@ -47,6 +49,17 @@ namespace FDG.Ai
                             SeeThroughFriendlyUnits = seeThroughFriendlyUnits }, out Tactician.TacticianPlanner built);
                     planner = built;
                     return registry;
+                case EAiProfile.Strategist:
+                    // B5 (#191 step 9): the Tactician's own registry, with a search deciding each
+                    // activation. Default budget is the plan's human-facing one (5-10s); FdgLab
+                    // passes UctOptions.Benchmark so a 100-game cell finishes this decade.
+                    IStageResolverRegistry searched = TacticianResolverRegistryFactory.Build(tableState,
+                        playerID, new TacticianOptions { Seed = seed, SlotID = slotID,
+                            DecisionLog = decisionLog, SeeThroughFriendlyUnits = seeThroughFriendlyUnits,
+                            Search = searchBudget ?? DefaultSearchBudget },
+                        out Tactician.TacticianPlanner searchPlanner);
+                    planner = searchPlanner;
+                    return searched;
                 case EAiProfile.Gunline:
                     return Gunline.GunlineResolverRegistryFactory.Build(tableState, playerID, seed, slotID, decisionLog);
                 default:
@@ -54,12 +67,20 @@ namespace FDG.Ai
             }
         }
 
+        /// <summary>
+        /// What a Strategist plays under when no caller names a budget: the plan's "5-10s vs
+        /// humans", with root parallelism on (design sec 6 - the workers are an ensemble over
+        /// determinizations, so this is a correctness setting as much as a speed one).
+        /// </summary>
+        public static Tactician.Search.UctOptions DefaultSearchBudget =>
+            Tactician.Search.UctOptions.Interactive with { Workers = 4 };
+
         public static ComputerPlayerController CreateController(EAiProfile profile, string name, PlayerID id,
             FDGGame_AsLocal localGame, int? seed = null, int slotID = 0,
-            bool seeThroughFriendlyUnits = false)
+            bool seeThroughFriendlyUnits = false, Tactician.Search.UctOptions? searchBudget = null)
         {
             IStageResolverRegistry registry = BuildRegistry(profile, localGame.TableState, id, seed, slotID,
-                seeThroughFriendlyUnits: seeThroughFriendlyUnits);
+                seeThroughFriendlyUnits: seeThroughFriendlyUnits, searchBudget: searchBudget);
             return new ComputerPlayerController(name, id, localGame, registry);
         }
     }

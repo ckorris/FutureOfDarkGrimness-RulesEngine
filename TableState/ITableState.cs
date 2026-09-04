@@ -29,6 +29,14 @@ namespace FDG
         /// </summary>
         public IGameProgress Progress { get; }
 
+        /// <summary>
+        /// The store this read model is a view of (#191 B5): the search needs to SERIALIZE the live
+        /// position to root a tree on it, which no aggregate view can express. Read-only by type -
+        /// nothing on this surface mutates - and callers that need the concrete
+        /// <c>GameDataStore</c> (only <c>GameSaveSerializer.Save</c> does, for the type map) must
+        /// test for it and degrade if it is absent rather than assume.
+        /// </summary>
+        public IReadableGameDataStore DataStore { get; }
     }
 
     public class TableState : ITableState
@@ -50,9 +58,11 @@ namespace FDG
 
         public IGameProgress Progress { get; }
 
+        public IReadableGameDataStore DataStore { get; }
 
         public TableState(IReadableGameDataStore gameDataStore)
         {
+            DataStore = gameDataStore;
             //Players = new DataState<IPlayerInfo, PlayerData>(gameDataStore);
             Players = new DataState<IPlayerSlotInfo, PlayerSlotInfo>(gameDataStore);
             Units = new DataState<IUnit, UnitData>(gameDataStore);

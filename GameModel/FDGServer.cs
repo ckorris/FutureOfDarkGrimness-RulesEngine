@@ -62,6 +62,10 @@ namespace FDG.GameModel
         // before either constructor builds it.
         private IRuleResolver? _ruleResolver;
 
+        // #191 B1 5c: null for every real game; set only on the simulation path (see the resume
+        // constructor's `simulation` parameter).
+        private FDG.Simulation.SimulationHostOptions? _simulation;
+
         private static bool TEST_SINGLE_TURN = false; //Turn on to skip most of the game and just do one run of a model's activation.
 
         public FDGServer(IReadWriteableGameDataStore gameDataStore, IMessageBusHost messageBusHost,
@@ -100,10 +104,17 @@ namespace FDG.GameModel
         /// fields <see cref="GameSettings.WithResumeOverridesFrom"/> names are taken from it - the save
         /// stays authoritative for everything that is already spent or would change the rules mid-game.
         /// Omitted (headless resume, the --scenario launch) means the save's settings verbatim.</param>
+        /// <param name="simulation">
+        /// #191 B1 5c: set ONLY by <see cref="FDG.Simulation.SimulationService"/>. Supplies the
+        /// activation-boundary pause hook and replaces the bus-and-JSON request path with a direct
+        /// one. Null for every real game, which is what keeps this constructor's behavior identical
+        /// for the GUI, headless, networked and benchmark paths.
+        /// </param>
         public FDGServer(IReadWriteableGameDataStore loadedGameDataStore, IMessageBusHost messageBusHost,
             PlayerSlot[] playerSlots, IPresentationClock? presentationClock = null,
-            GameSettings? lobbySettings = null)
+            GameSettings? lobbySettings = null, FDG.Simulation.SimulationHostOptions? simulation = null)
         {
+            _simulation = simulation;
             Debug.WriteLine($"Started {nameof(FDGServer)} (resume).");
 
             _gameDataStore = loadedGameDataStore;
@@ -163,15 +174,28 @@ namespace FDG.GameModel
             IPresentationClock presentationClock_ = _presentationClock ?? new InstantPresentationClock();
             PresentationRelayer presentationRelayer = new PresentationRelayer(_playerSlotManager, presentationClock_);
 
-            RequestMessageSender requestMessageSender = new RequestMessageSender(_messageBusHost, _gameDataStore,
-                _playerSlotManager, textOutput);
+            // #191 B1 5c: a simulation answers decisions straight from the target slot's registry
+            // (DirectPlayerRequester) instead of serializing them onto the bus. RequestMessageSender
+            // is still constructed on that path only if it is the one being used - a simulation has
+            // no connections to listen to, so it is skipped entirely.
+            IPlayerRequestByID playerRequester;
+            if (_simulation?.PlayerRequester != null)
+            {
+                playerRequester = _simulation.PlayerRequester;
+            }
+            else
+            {
+                playerRequester = new RequestMessageSender(_messageBusHost, _gameDataStore,
+                    _playerSlotManager, textOutput);
+            }
 
             // #280: relay remote clients' live decision previews (ghosts / planned paths) to every
             // player. Runs on both the new-game and resume paths, GUI and headless hosts alike.
             _previewRelayer = new PreviewRelayer(_messageBusHost, _playerSlotManager, textOutput);
 
-            _gameContext = new GameContext(textOutput, GetDiceRoller(gameSettings), requestMessageSender,
-                tableState, _gameDataStore, presentationRelayer, gameSettings, resumeProgress, _ruleResolver);
+            _gameContext = new GameContext(textOutput, GetDiceRoller(gameSettings), playerRequester,
+                tableState, _gameDataStore, presentationRelayer, gameSettings, resumeProgress, _ruleResolver,
+                _simulation?.BoundaryHook);
             _gameContext.OnGameCompleted += RaiseGameCompleted;
 
             // #042 creation-time rules (Tough): set each model's max wounds now that the evaluator
@@ -279,6 +303,15 @@ namespace FDG.GameModel
                 string message = DescribePlayerLeft(_playerSlotManager, disconnect.PlayerID);
                 Console.WriteLine($"Game ended: {message}");
                 RaiseGameCompleted(GameResult.ForDisconnect(message));
+            }
+            catch (FDG.Simulation.SimulationStopSignal)
+            {
+                // #191 B1 5c: a simulation reaching the end of its prescribed line, which is the
+                // NORMAL way a simulated game ends - the caller already has the snapshot it wanted.
+                // Deliberately silent: search runs thousands of these, and printing a state-machine
+                // stack trace per simulation is both noise and measurable cost. Real faults below
+                // still print in full.
+                RaiseGameCompleted(GameResult.ForFault("Simulation stopped at the end of its line."));
             }
             catch (Exception ex)
             {

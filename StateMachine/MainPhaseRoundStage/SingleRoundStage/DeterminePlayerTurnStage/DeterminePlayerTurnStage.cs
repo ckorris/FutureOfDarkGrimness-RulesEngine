@@ -58,6 +58,18 @@ namespace FDG.Stages
                 return;
             }
 
+            // #191 B1 5c (D10a, pre-authorized): THE activation boundary, and the one point a
+            // simulation pauses at. Null in all real play - only SimulationService sets a hook - so
+            // this is a null check per activation for every normal game. Placed after the acting
+            // player is determined (a prescription has to reach the right policy) and before any
+            // decision of that activation is requested, including the reactivation offers below.
+            // The rolling save point at the top of this method has already written GameProgressData,
+            // so a snapshot taken from inside the hook is exactly the engine's own save point.
+            if (GameContext.ActivationBoundaryHook != null)
+            {
+                await GameContext.ActivationBoundaryHook.AtActivationBoundary(nextPlayerID.Value);
+            }
+
             if (_lastAnnouncedPlayer != nextPlayerID.Value)
             {
                 _lastAnnouncedPlayer = nextPlayerID.Value;

@@ -34,7 +34,11 @@ namespace FDG.Ai.Tactician.Search
         /// (<see cref="SimulationService.Probe"/>), and the root's snapshot is the engine's re-saved
         /// state at that boundary so every child is consistent with it.
         /// </summary>
-        public static async Task<SearchTree> FromSnapshotAsync(string snapshot, SearchOptions options,
+        public static Task<SearchTree> FromSnapshotAsync(string snapshot, SearchOptions options,
+            IActionSpace space, IPositionEvaluator evaluator) =>
+            FromSnapshotAsync(new JsonSnapshot(snapshot), options, space, evaluator);
+
+        public static async Task<SearchTree> FromSnapshotAsync(IStoreSnapshot snapshot, SearchOptions options,
             IActionSpace space, IPositionEvaluator evaluator) =>
             FromRoot(await ProbeRootAsync(snapshot, options, evaluator), options, space, evaluator);
 
@@ -44,7 +48,11 @@ namespace FDG.Ai.Tactician.Search
         /// parallelism: N worker trees over the same root share ONE probe, since the boundary state
         /// and the root estimate are identical for every worker (only the simulation seeds differ).
         /// </summary>
-        public static async Task<RootBoundary> ProbeRootAsync(string snapshot, SearchOptions options,
+        public static Task<RootBoundary> ProbeRootAsync(string snapshot, SearchOptions options,
+            IPositionEvaluator evaluator) =>
+            ProbeRootAsync(new JsonSnapshot(snapshot), options, evaluator);
+
+        public static async Task<RootBoundary> ProbeRootAsync(IStoreSnapshot snapshot, SearchOptions options,
             IPositionEvaluator evaluator)
         {
             var probeService = new SimulationService(new SimulationService.SimulationOptions
@@ -59,13 +67,13 @@ namespace FDG.Ai.Tactician.Search
             if (!probe.ReachedEndOfLine || probe.ActingPlayerAtEnd is not { } acting)
                 throw new SearchUnavailableException($"SearchTree: the root snapshot has no activation boundary ({probe.Note}).");
 
-            GameDataStore store = GameSaveSerializer.Load(probe.Snapshot!);
+            GameDataStore store = probe.State!.Materialize();
             SideMap sides = SideMap.FromStore(store);
             // A plain rule evaluator for the leaf evaluator's own use (#191 B3): never rolls, so an
             // unseeded dice roller behind it is inert - see IPositionEvaluator's contract note.
             var ruleEvaluator = new Rules.Dispatch.RuleEvaluator(new ProbabilisticDiceRoller());
             SideValues rootEstimate = evaluator.Evaluate(new TableState(store), ruleEvaluator, sides);
-            return new RootBoundary(probe.Snapshot!, acting, sides, rootEstimate);
+            return new RootBoundary(probe.State!, acting, sides, rootEstimate);
         }
 
         /// <summary>One tree over an already-probed root. The estimate is cloned, so trees never alias.</summary>
@@ -80,7 +88,7 @@ namespace FDG.Ai.Tactician.Search
         }
 
         /// <summary>The engine-probed root state every worker's tree is built on.</summary>
-        public sealed record RootBoundary(string Snapshot, PlayerID ActingPlayer, SideMap Sides,
+        public sealed record RootBoundary(IStoreSnapshot Snapshot, PlayerID ActingPlayer, SideMap Sides,
             SideValues Estimate);
 
         /// <summary>

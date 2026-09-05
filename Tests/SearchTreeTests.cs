@@ -2,6 +2,7 @@ using FDG.Ai.Tactician.Search;
 using FDG.Players;
 using FDG.Simulation;
 using NUnit.Framework;
+using static FDG.Tests.SnapshotKeys;
 
 namespace FDG.Tests
 {
@@ -29,22 +30,22 @@ namespace FDG.Tests
 
             public IReadOnlyList<UnitBranch> EnumerateUnits(SearchNode node)
             {
-                if (!Units.TryGetValue(node.Snapshot!, out List<AuthoredUnit>? units)) return Array.Empty<UnitBranch>();
+                if (!Units.TryGetValue(Key(node), out List<AuthoredUnit>? units)) return Array.Empty<UnitBranch>();
                 return units.Select((u, i) => new UnitBranch(i, default, u.Name, u.Prior)).ToList();
             }
 
             public IReadOnlyList<SearchEdge> EnumerateEdges(SearchNode node, UnitBranch unit) =>
-                Units[node.Snapshot!][unit.Index].Edges
+                Units[Key(node)][unit.Index].Edges
                     .Select((e, i) => new SearchEdge(i, new SimulationService.Prescription(null), e.Prior, e.Label))
                     .ToList();
 
             public Task<ExpansionOutcome> Expand(SearchNode parent, SearchEdge edge, int seed)
             {
-                Expansions.Add((parent.Snapshot!, edge.Label, seed));
-                AuthoredEdge authored = Units[parent.Snapshot!].SelectMany(u => u.Edges).First(e => e.Label == edge.Label);
+                Expansions.Add((Key(parent), edge.Label, seed));
+                AuthoredEdge authored = Units[Key(parent)].SelectMany(u => u.Edges).First(e => e.Label == edge.Label);
                 if (!authored.Honored)
                     return Task.FromResult(new ExpansionOutcome(null, null, null, null, false, "authored fall-through"));
-                return Task.FromResult(new ExpansionOutcome(authored.ChildKey, ActingPlayerOf[authored.ChildKey!],
+                return Task.FromResult(new ExpansionOutcome(new KeySnapshot(authored.ChildKey!), ActingPlayerOf[authored.ChildKey!],
                     null, new SideValues(authored.Values), true, "ok"));
             }
         }
@@ -52,7 +53,7 @@ namespace FDG.Tests
         private static SearchTree Build(AuthoredTree authored, SideMap sides, string rootKey, SearchOptions? options = null)
         {
             PlayerID acting = authored.ActingPlayerOf[rootKey];
-            var root = new SearchNode(rootKey, acting, sides.SideOf(acting), null,
+            var root = new SearchNode(new KeySnapshot(rootKey), acting, sides.SideOf(acting), null,
                 SideValues.Uniform(sides.Count, 0.5f), 0, null, null);
             return new SearchTree(root, sides, options ?? new SearchOptions(), authored, authored);
         }
@@ -69,7 +70,7 @@ namespace FDG.Tests
             while (stack.Count > 0)
             {
                 SearchNode node = stack.Pop();
-                if (node.Snapshot == key) return node;
+                if (Key(node) == key) return node;
                 foreach (SearchEdge edge in node.OpenEdges()) stack.Push(edge.Child!);
             }
             throw new KeyNotFoundException(key);
@@ -401,7 +402,7 @@ namespace FDG.Tests
 
             // k(0) = 1: the first iteration may open exactly one unit and one edge - A's own move.
             SearchNode first = await ExpansionScaffold.IterateAsync(tree);
-            Assert.That(first.Snapshot, Is.EqualTo("E1"));
+            Assert.That(Key(first), Is.EqualTo("E1"));
             Assert.That(t.Expansions.Select(e => e.Edge), Is.EqualTo(new[] { "E1" }));
 
             // k(1) = 2: the second may open one more - the next in prior order at whichever level.

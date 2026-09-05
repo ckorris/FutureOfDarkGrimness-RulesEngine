@@ -171,7 +171,7 @@ namespace FDG.Ai.Tactician.Search
             if (node.Snapshot == null)
                 throw new InvalidOperationException("TacticianActionSpace: a terminal node has no action space.");
 
-            GameDataStore store = GameSaveSerializer.Load(node.Snapshot);
+            GameDataStore store = node.Snapshot.Materialize();
             GameProgressData progress = GameProgressUtilities.TryGetProgress(store)
                 ?? throw new InvalidOperationException("TacticianActionSpace: the snapshot carries no GameProgressData.");
             var table = new TableState(store);

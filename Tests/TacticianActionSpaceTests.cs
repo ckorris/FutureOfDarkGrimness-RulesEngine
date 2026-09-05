@@ -48,7 +48,7 @@ namespace FDG.Tests
             for (int i = 1; i < units.Count; i++)
                 Assert.That(units[i].Prior, Is.LessThanOrEqualTo(units[i - 1].Prior), "prior order");
 
-            GameDataStore store = GameSaveSerializer.Load(tree.Root.Snapshot!);
+            GameDataStore store = tree.Root.Snapshot!.Materialize();
             var table = new TableState(store);
             var evaluator = new RuleEvaluator(new ProbabilisticDiceRoller());
             foreach (UnitBranch unit in units)
@@ -160,7 +160,7 @@ namespace FDG.Tests
             }).Advance(tree.Root.Snapshot!, null);
 
             Assert.That(natural.ReachedEndOfLine, Is.True, natural.Note);
-            Assert.That(leaf.Snapshot, Is.EqualTo(natural.Snapshot),
+            Assert.That(leaf.Snapshot!.ToJson(), Is.EqualTo(natural.Snapshot),
                 "a tree allowed one expansion plays exactly A's move - prescribing the top edge must " +
                 "reproduce natural Tactician play byte for byte");
             Assert.That(leaf.ActingPlayer, Is.EqualTo(natural.ActingPlayerAtEnd!.Value));
@@ -184,7 +184,7 @@ namespace FDG.Tests
             ExpansionOutcome first = await expander.Expand(tree.Root, edge, seed);
             ExpansionOutcome second = await expander.Expand(tree.Root, edge, seed);
             Assert.That(first.Succeeded, Is.True, first.Note);
-            Assert.That(second.Snapshot, Is.EqualTo(first.Snapshot), "same derived seed, same child, byte for byte");
+            Assert.That(second.Snapshot!.ToJson(), Is.EqualTo(first.Snapshot!.ToJson()), "same derived seed, same child, byte for byte");
 
             int otherWorker = SearchSeeds.Derive(options.WorkerSeed + 1, 0, unit.Index, edge.Index);
             Assert.That(otherWorker, Is.Not.EqualTo(seed));
@@ -192,7 +192,7 @@ namespace FDG.Tests
             // shoots (rifles at 20"), so the realistic rolls land differently.
             ExpansionOutcome other = await expander.Expand(tree.Root, edge, otherWorker);
             Assert.That(other.Succeeded, Is.True, other.Note);
-            Assert.That(other.Snapshot, Is.Not.EqualTo(first.Snapshot),
+            Assert.That(other.Snapshot!.ToJson(), Is.Not.EqualTo(first.Snapshot!.ToJson()),
                 "another worker's seed must give another determinization of the same edge");
         }
 

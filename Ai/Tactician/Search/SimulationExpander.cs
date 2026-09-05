@@ -43,7 +43,7 @@ namespace FDG.Ai.Tactician.Search
             bool honored = result.Honored.Count > 0 && result.Honored[0];
             if (result.ReachedEndOfLine)
             {
-                return new ExpansionOutcome(result.Snapshot, result.ActingPlayerAtEnd, null, driver.Leaf,
+                return new ExpansionOutcome(result.State, result.ActingPlayerAtEnd, null, driver.Leaf,
                     honored, honored ? result.Note : "prescription fell through at play: " + result.Note);
             }
             if (result.EndedEarly is { } ended)

@@ -1,3 +1,4 @@
+using FDG.Data;
 using FDG.Players;
 using FDG.Simulation;
 
@@ -22,7 +23,7 @@ namespace FDG.Ai.Tactician.Search
     /// unhonored too (the line is discarded). Exactly one of <see cref="Snapshot"/> /
     /// <see cref="Terminal"/> is set on success.
     /// </summary>
-    public sealed record ExpansionOutcome(string? Snapshot, PlayerID? ActingPlayer, GameResult? Terminal,
+    public sealed record ExpansionOutcome(IStoreSnapshot? Snapshot, PlayerID? ActingPlayer, GameResult? Terminal,
         SideValues? Leaf, bool Honored, string Note)
     {
         public bool Succeeded => Honored && (Snapshot != null || Terminal != null);

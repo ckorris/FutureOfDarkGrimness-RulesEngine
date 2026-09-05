@@ -22,8 +22,10 @@ namespace FDG.Simulation
     /// it). What is left is dominated by cloning the game once per activation - which a search does
     /// not need, because the activations along one path of the tree are consecutive. <see
     /// cref="Run"/> plays them in ONE game instance, pausing at each boundary
-    /// (<see cref="IActivationBoundaryHook"/>) for the next prescription, and serializes only at the
-    /// end. The caller snapshots only where its tree actually branches.</para>
+    /// (<see cref="IActivationBoundaryHook"/>) for the next prescription, and snapshots only at the
+    /// end. The caller snapshots only where its tree actually branches. Since #394 a snapshot is a
+    /// typed in-memory copy of the store (<see cref="IStoreSnapshot"/>), not a save string: the
+    /// serializer round trip was 41% of a Strategist game's CPU.</para>
     ///
     /// <para><b>Depth is a parameter, never 1.</b> The line length is <c>prescriptions.Count</c>, so
     /// multi-ply is the same call as single-ply. If the per-activation cost disappoints, B ships
@@ -98,10 +100,16 @@ namespace FDG.Simulation
         /// set when the game reached its natural end before the line did - a legitimate outcome
         /// (the search has found a terminal node), not a fault.
         /// </summary>
-        public sealed record SimulationResult(string? Snapshot, int ActivationsRun,
+        public sealed record SimulationResult(IStoreSnapshot? State, int ActivationsRun,
             GameResult? EndedEarly, string Note)
         {
-            public bool ReachedEndOfLine => Snapshot != null;
+            public bool ReachedEndOfLine => State != null;
+
+            /// <summary>
+            /// The end-of-line state as a save string - serialized on demand (#394): the search holds
+            /// <see cref="State"/> and never asks; equality pins, dumps and the lab's b0 phases do.
+            /// </summary>
+            public string? Snapshot => State?.ToJson();
 
             /// <summary>
             /// #191 B2 (docs/tactician-b2-design.md sec 4.3): per activation of the line, whether its
@@ -170,15 +178,29 @@ namespace FDG.Simulation
         public SimulationService(SimulationOptions? options = null) =>
             _options = options ?? new SimulationOptions();
 
-        /// <summary>Serializes a live game's store - the snapshot every other call here takes.</summary>
+        /// <summary>Serializes a live game's store - the save-string form of a snapshot.</summary>
         public static string Snapshot(GameDataStore store) => GameSaveSerializer.Save(store);
+
+        /// <summary>
+        /// Freezes a typed copy of a live game's store (#394) - the snapshot the search takes at its
+        /// root, and what every line here hands back at its end. The string form above and this are
+        /// interchangeable everywhere below; the string overloads wrap theirs in a
+        /// <see cref="JsonSnapshot"/>, which is the old serializer path exactly.
+        /// </summary>
+        public static StoreSnapshot Capture(GameDataStore store) => StoreSnapshot.Capture(store);
 
         /// <summary>One activation under one prescription: the node-expansion primitive.</summary>
         public Task<SimulationResult> Advance(string snapshot, Prescription? prescription) =>
+            Advance(new JsonSnapshot(snapshot), prescription);
+
+        public Task<SimulationResult> Advance(IStoreSnapshot snapshot, Prescription? prescription) =>
             Run(snapshot, new[] { prescription });
 
         /// <summary>N consecutive activations with no prescriptions - the policy plays itself.</summary>
         public Task<SimulationResult> RunNatural(string snapshot, int activations) =>
+            RunNatural(new JsonSnapshot(snapshot), activations);
+
+        public Task<SimulationResult> RunNatural(IStoreSnapshot snapshot, int activations) =>
             Run(snapshot, new Prescription?[activations]);
 
         /// <summary>
@@ -186,7 +208,10 @@ namespace FDG.Simulation
         /// returns the snapshot at the boundary after the last one. This is 5c's line, as a fixed list;
         /// it is the callback form below with a <see cref="ListLineDriver"/> (pinned byte-identical).
         /// </summary>
-        public Task<SimulationResult> Run(string snapshot, IReadOnlyList<Prescription?> prescriptions)
+        public Task<SimulationResult> Run(string snapshot, IReadOnlyList<Prescription?> prescriptions) =>
+            Run(new JsonSnapshot(snapshot), prescriptions);
+
+        public Task<SimulationResult> Run(IStoreSnapshot snapshot, IReadOnlyList<Prescription?> prescriptions)
         {
             if (prescriptions.Count == 0)
             {
@@ -200,16 +225,21 @@ namespace FDG.Simulation
         /// engine's own answer to "who is about to activate here", for building a search root
         /// (#191 B2 sec 2). The returned snapshot is the engine's re-saved state at that boundary.
         /// </summary>
-        public Task<SimulationResult> Probe(string snapshot) => Run(snapshot, new ProbeDriver());
+        public Task<SimulationResult> Probe(string snapshot) => Probe(new JsonSnapshot(snapshot));
+
+        public Task<SimulationResult> Probe(IStoreSnapshot snapshot) => Run(snapshot, new ProbeDriver());
 
         /// <summary>
         /// The callback line (#191 B2 sec 4.4): the driver is asked at every boundary, sees the live
         /// state, and says stop when the line is done. The snapshot is captured at the stop boundary,
         /// after the driver has looked.
         /// </summary>
-        public async Task<SimulationResult> Run(string snapshot, ILineDriver driver)
+        public Task<SimulationResult> Run(string snapshot, ILineDriver driver) =>
+            Run(new JsonSnapshot(snapshot), driver);
+
+        public async Task<SimulationResult> Run(IStoreSnapshot snapshot, ILineDriver driver)
         {
-            GameDataStore store = GameSaveSerializer.Load(snapshot);
+            GameDataStore store = snapshot.Materialize();
 
             GameProgressData? progress = GameProgressUtilities.TryGetProgress(store)
                 ?? throw new InvalidOperationException(
@@ -268,7 +298,7 @@ namespace FDG.Simulation
                     $"sim slot {i}", playerID, localGame, registry));
             }
 
-            var captured = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var captured = new TaskCompletionSource<IStoreSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
             var ended = new TaskCompletionSource<GameResult>(TaskCreationOptions.RunContinuationsAsynchronously);
             // One token for everything that can end this line early: the caller's deadline, the
             // watchdog below, and - once the line has settled for ANY reason - a signal to the hook to
@@ -418,7 +448,7 @@ namespace FDG.Simulation
             private readonly IReadOnlyDictionary<PlayerID, TacticianPlanner?> _planners;
             private readonly GameDataStore _store;
             private readonly ITableState _tableState;
-            private readonly TaskCompletionSource<string> _captured;
+            private readonly TaskCompletionSource<IStoreSnapshot> _captured;
             private readonly CancellationToken _stop;
             private readonly List<bool> _honored = new();
             private int _boundariesSeen;
@@ -433,7 +463,7 @@ namespace FDG.Simulation
             public PlayerID? ActingPlayerAtEnd { get; private set; }
 
             public LineHook(ILineDriver driver, IReadOnlyDictionary<PlayerID, TacticianPlanner?> planners,
-                GameDataStore store, ITableState tableState, TaskCompletionSource<string> captured,
+                GameDataStore store, ITableState tableState, TaskCompletionSource<IStoreSnapshot> captured,
                 CancellationToken stop)
             {
                 _driver = driver;
@@ -492,11 +522,11 @@ namespace FDG.Simulation
                 if (step.IsStop)
                 {
                     _stopped = true;
-                    // This boundary IS the result state. Serialize here, where the engine's own rolling
-                    // save point has just written the flow state, then throw-stop so nothing further
-                    // mutates the store.
+                    // This boundary IS the result state. Capture here, where the engine's own rolling
+                    // save point has just written the flow state, then stop so nothing further mutates
+                    // the store. A typed copy since #394 (StoreSnapshot), not a save string.
                     ActingPlayerAtEnd = actingPlayer;
-                    _captured.TrySetResult(GameSaveSerializer.Save(_store));
+                    _captured.TrySetResult(StoreSnapshot.Capture(_store));
                     return Task.FromResult(true);
                 }
 

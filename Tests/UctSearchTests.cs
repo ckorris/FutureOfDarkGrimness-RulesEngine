@@ -3,6 +3,7 @@ using FDG.Ai.Tactician.Search;
 using FDG.Players;
 using FDG.Simulation;
 using NUnit.Framework;
+using static FDG.Tests.SnapshotKeys;
 
 namespace FDG.Tests
 {
@@ -47,19 +48,19 @@ namespace FDG.Tests
             public AuthoredGame(SideMap sides) => _sides = sides;
 
             public IReadOnlyList<UnitBranch> EnumerateUnits(SearchNode node) =>
-                !Units.TryGetValue(node.Snapshot!, out List<AuthoredUnit>? units)
+                !Units.TryGetValue(Key(node), out List<AuthoredUnit>? units)
                     ? Array.Empty<UnitBranch>()
                     : units.Select((u, i) => new UnitBranch(i, default, u.Name, u.Prior)).ToList();
 
             public IReadOnlyList<SearchEdge> EnumerateEdges(SearchNode node, UnitBranch unit) =>
-                Units[node.Snapshot!][unit.Index].Edges
+                Units[Key(node)][unit.Index].Edges
                     .Select((e, i) => new SearchEdge(i, new SimulationService.Prescription(null), e.Prior, e.Label))
                     .ToList();
 
             public Task<ExpansionOutcome> Expand(SearchNode parent, SearchEdge edge, int seed)
             {
                 lock (_lock) SeedsUsed.Add(seed);
-                AuthoredEdge authored = Units[parent.Snapshot!]
+                AuthoredEdge authored = Units[Key(parent)]
                     .SelectMany(u => u.Edges).First(e => e.Label == edge.Label);
                 if (!authored.Honored)
                     return Task.FromResult(new ExpansionOutcome(null, null, null, null, false, "authored fall-through"));
@@ -69,7 +70,7 @@ namespace FDG.Tests
                 float v0 = Math.Clamp(BaseValue[authored.ChildKey!] + jitter, 0f, 1f);
                 var values = new SideValues(_sides.Count);
                 for (int side = 0; side < _sides.Count; side++) values[side] = side == 0 ? v0 : (1f - v0) / (_sides.Count - 1);
-                return Task.FromResult(new ExpansionOutcome(authored.ChildKey,
+                return Task.FromResult(new ExpansionOutcome(new KeySnapshot(authored.ChildKey!),
                     ActingPlayerOf[authored.ChildKey!], null, values, true, "ok"));
             }
         }
@@ -120,7 +121,7 @@ namespace FDG.Tests
             {
                 SearchOptions options = (template ?? new SearchOptions()) with { WorkerSeed = workerSeed };
                 PlayerID acting = game.ActingPlayerOf[rootKey];
-                var root = new SearchNode(rootKey, acting, sides.SideOf(acting), null,
+                var root = new SearchNode(new KeySnapshot(rootKey), acting, sides.SideOf(acting), null,
                     SideValues.Uniform(sides.Count, 0.5f), 0, null, null);
                 return Task.FromResult(new SearchTree(root, sides, options, game, game));
             };
@@ -182,10 +183,10 @@ namespace FDG.Tests
         public void Puct_ExploresByPrior_WhenUnvisited_AndExploitsValue_WhenVisited()
         {
             SideMap sides = SideMap.FromSlots(new[] { (P0, 0), (P1, 1) });
-            var root = new SearchNode("root", P0, 0, null, SideValues.Uniform(2, 0.5f), 0, null, null);
+            var root = new SearchNode(new KeySnapshot("root"), P0, 0, null, SideValues.Uniform(2, 0.5f), 0, null, null);
             var low = new SearchEdge(0, new SimulationService.Prescription(null), 0.2f, "low-prior");
             var high = new SearchEdge(1, new SimulationService.Prescription(null), 0.8f, "high-prior");
-            SearchNode Child(float v0) => new("c", P1, 1, null, new SideValues(v0, 1f - v0), 1, root, null);
+            SearchNode Child(float v0) => new(new KeySnapshot("c"), P1, 1, null, new SideValues(v0, 1f - v0), 1, root, null);
             low.Child = Child(0.5f);
             high.Child = Child(0.5f);
             root.Units = new List<UnitBranch> { new(0, default, "u", 1f) { Edges = new() { low, high } } };
@@ -210,11 +211,11 @@ namespace FDG.Tests
         {
             SideMap sides = SideMap.FromSlots(new[] { (P0, 0), (P1, 1), (P2, 2) });
             // A node acting for side 2 in a three-sided game.
-            var node = new SearchNode("n", P2, 2, null, SideValues.Uniform(3, 0.33f), 1, null, null);
+            var node = new SearchNode(new KeySnapshot("n"), P2, 2, null, SideValues.Uniform(3, 0.33f), 1, null, null);
             var goodForSide0 = new SearchEdge(0, new SimulationService.Prescription(null), 0.5f, "good-for-0");
             var goodForSide2 = new SearchEdge(1, new SimulationService.Prescription(null), 0.5f, "good-for-2");
-            goodForSide0.Child = new SearchNode("a", P0, 0, null, new SideValues(0.9f, 0.05f, 0.05f), 2, node, null);
-            goodForSide2.Child = new SearchNode("b", P0, 0, null, new SideValues(0.05f, 0.05f, 0.9f), 2, node, null);
+            goodForSide0.Child = new SearchNode(new KeySnapshot("a"), P0, 0, null, new SideValues(0.9f, 0.05f, 0.05f), 2, node, null);
+            goodForSide2.Child = new SearchNode(new KeySnapshot("b"), P0, 0, null, new SideValues(0.05f, 0.05f, 0.9f), 2, node, null);
             SearchTree.Backup(goodForSide0.Child!, goodForSide0.Child!.LeafValues);
             SearchTree.Backup(goodForSide2.Child!, goodForSide2.Child!.LeafValues);
             node.Units = new List<UnitBranch> { new(0, default, "u", 1f) { Edges = new() { goodForSide0, goodForSide2 } } };

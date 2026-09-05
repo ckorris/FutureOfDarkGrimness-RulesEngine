@@ -81,7 +81,7 @@ namespace FDG.SaveLoad
         /// here. That is harmless - deployment clears the token the moment it places the unit - and it is
         /// what keeps this from needing a save-version bump (see #178).
         /// </summary>
-        private static void StampLegacyReserves(IReadWriteableGameDataStore store)
+        internal static void StampLegacyReserves(IReadWriteableGameDataStore store)
         {
             if (!store.IsTypeAssigned<UnitData>()) return;
 

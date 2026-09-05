@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using FDG.Data;
 using FDG.Simulation;
 
 namespace FDG.Ai.Tactician.Search
@@ -133,7 +134,11 @@ namespace FDG.Ai.Tactician.Search
         /// boundary state and the acting player are the same for every worker), then one tree per
         /// worker runs in parallel and their root statistics are merged.
         /// </summary>
-        public static async Task<SearchResult> RunAsync(string snapshot, UctOptions options,
+        public static Task<SearchResult> RunAsync(string snapshot, UctOptions options,
+            IPositionEvaluator evaluator) =>
+            RunAsync(new JsonSnapshot(snapshot), options, evaluator);
+
+        public static async Task<SearchResult> RunAsync(IStoreSnapshot snapshot, UctOptions options,
             IPositionEvaluator evaluator)
         {
             SearchTree.RootBoundary boundary;

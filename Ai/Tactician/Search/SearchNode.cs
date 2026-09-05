@@ -12,8 +12,11 @@ namespace FDG.Ai.Tactician.Search
     /// </summary>
     public sealed class SearchNode
     {
-        /// <summary>The engine's saved state at this boundary; null only for a terminal node.</summary>
-        public string? Snapshot { get; }
+        /// <summary>
+        /// The engine's state at this boundary (a typed copy since #394 - see
+        /// <see cref="IStoreSnapshot"/>); null only for a terminal node.
+        /// </summary>
+        public IStoreSnapshot? Snapshot { get; }
 
         public PlayerID ActingPlayer { get; }
 
@@ -43,7 +46,7 @@ namespace FDG.Ai.Tactician.Search
         public List<UnitBranch>? Units { get; internal set; }
 
         /// <summary>
-        /// The action space's cached loaded store for this node (a load is ~30-50ms at 2k, and level-1
+        /// The action space's cached materialized store for this node (a load is ~30-50ms at 2k, and level-1
         /// and level-2 enumeration happen at different times). Released by the tree once every unit
         /// branch has its edges; memory is measured at B4's soak (sec 5.3).
         /// </summary>
@@ -51,7 +54,7 @@ namespace FDG.Ai.Tactician.Search
 
         public bool IsTerminal => Terminal != null;
 
-        public SearchNode(string? snapshot, PlayerID actingPlayer, int actingSide, GameResult? terminal,
+        public SearchNode(IStoreSnapshot? snapshot, PlayerID actingPlayer, int actingSide, GameResult? terminal,
             SideValues leafValues, int depth, SearchNode? parent, SearchEdge? parentEdge)
         {
             Snapshot = snapshot;

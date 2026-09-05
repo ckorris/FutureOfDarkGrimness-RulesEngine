@@ -266,6 +266,21 @@ namespace FDG
         }
 
         /// <summary>
+        /// #394: the whole-store clone's copy - the deserialized weapon plus <see cref="RehydrateRules"/>,
+        /// built directly. Its own instance because stages attach rules to a model's weapons during play.
+        /// </summary>
+        internal Weapon(Weapon source)
+        {
+            Name = source.Name;
+            RangeInches = source.RangeInches;
+            Attacks = source.Attacks;
+            ArmorPenetration = source.ArmorPenetration;
+            EffectKey = source.EffectKey;
+            _ruleDefinitions.AddRange(source._ruleDefinitions);
+            _ruleDefinitionsJson = source._ruleDefinitionsJson;
+        }
+
+        /// <summary>
         /// Attaches a resolved special-rule definition to this weapon. Post-construction
         /// (army-load / harness), mirroring <see cref="UnitData.AttachRuleDefinition"/>.
         /// </summary>

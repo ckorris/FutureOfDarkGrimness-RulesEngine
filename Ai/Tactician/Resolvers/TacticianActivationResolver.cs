@@ -12,6 +12,9 @@ namespace FDG.Ai.Tactician.Resolvers
     /// the unit with the most to gain (value-weighted kill opportunity), the most to flip
     /// (objective within this activation's reach), or the most to lose (value-weighted incoming
     /// threat) - act before the opponent's next activation removes the unit or its opportunity.
+    /// In the LAST round the flip term becomes a tempo term (#191 step 10 P3): units that cannot
+    /// change any marker are spent first and the responders are held for last, because the side
+    /// that still has a marker-capable unit when the other has run out moves unopposed.
     /// </summary>
     public class TacticianActivationResolver : IStageResolver<ChooseUnitToActivateRequest, DataBinding<UnitData>>
     {
@@ -264,7 +267,9 @@ namespace FDG.Ai.Tactician.Resolvers
                 threat = Math.Max(threat, ValueFraction(theirs.ExpectedWounds, unit));
             }
 
-            float flip = 0f;
+            // Can this unit reach a marker it would change (seize a neutral one, contest an enemy
+            // one) this activation? Before the last round that is the flip term - act on it now.
+            bool responder = false;
             foreach (ObjectiveProjection projection in TacticalAnalysis.ProjectObjectives(_tableState))
             {
                 // #296: a TEAMMATE-held marker is already the side's (#297) - nothing to flip.
@@ -274,10 +279,27 @@ namespace FDG.Ai.Tactician.Resolvers
                 float distanceTo = TacticalAnalysis.MinBaseEdgeDistanceToPoint(unit, projection.Objective.Position);
                 if (distanceTo <= rush + TacticalAnalysis.ObjectiveSeizureRadiusInches)
                 {
-                    flip = 1f;
+                    responder = true;
                     break;
                 }
             }
+
+            // #191 step 10 P3 (Chris's last-round observation): in the FINAL round the flip term
+            // inverts into tempo. Activations alternate, so whoever still has a marker-capable unit
+            // after the other side has spent theirs moves last and unopposed; a responder that acts
+            // early hands the enemy's remaining activations the reply (shoot it off, re-contest).
+            // Spend the units that cannot change any marker first; hold the responders for last.
+            // Ordinary kill/threat terms still order within each group.
+            int totalRounds = Math.Max(1, _tableState.Progress.TotalRounds);
+            bool lastRound = (_tableState.Progress.RoundCount ?? 1) >= totalRounds;
+            float flip = 0f;
+            float tempo = 0f;
+            if (lastRound)
+                tempo = responder
+                    ? -TacticianWeights.ActivationLastRoundHold
+                    : TacticianWeights.ActivationLastRoundSpend;
+            else if (responder)
+                flip = 1f;
 
             // A5-6 (Chris): boat-then-payload - a loaded transport acts early so it can drive
             // before the cargo's own activation decides whether to get out; embarked cargo acts
@@ -292,7 +314,8 @@ namespace FDG.Ai.Tactician.Resolvers
             return TacticianWeights.ActivationKillOpportunity * kill
                  + TacticianWeights.ActivationObjectiveFlip * flip
                  + TacticianWeights.ActivationUnderThreat * threat
-                 + transportBias;
+                 + transportBias
+                 + tempo;
         }
 
         // Expected wounds as a fraction of the target's remaining wounds, weighted by its value -

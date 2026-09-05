@@ -1,6 +1,8 @@
 using FDG.Ai.Tactician.Search;
 using FDG.Data;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Foundation;
+using FDG.Rules.Tokens;
 using NUnit.Framework;
 
 namespace FDG.Tests
@@ -128,14 +130,14 @@ namespace FDG.Tests
             var theirs = new List<DataBinding<UnitData>>();
             for (int i = 0; i < 10; i++) ours.Add(MakeUnit(_us, 3, atX: 10f + i, atZ: 10f + i * 2f));
             for (int i = 0; i < 10; i++) theirs.Add(MakeUnit(_them, 3, atX: 60f + i, atZ: 10f + i * 2f));
-            for (int i = 0; i < 3; i++) _store.Create(new ObjectiveData(new Position(20f + i * 15f, 44f), _store));
+            for (int i = 0; i < 3; i++) _store.Create(new ObjectiveData(new Position(20f + i * 15f, 46f), _store));
             SideMap sides = SideMap.FromSlots(new[] { (_us, 0), (_them, 1) });
             int us = sides.SideOf(_us);
 
             float baseline = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us];
 
             foreach (DataBinding<ModelData> model in ours[0].GetValue().ModelBindings)
-                model.GetValue().PositionBinding.SetValue(new Position(20f, 44f));
+                model.GetValue().PositionBinding.SetValue(new Position(20f, 46f));
             float markerGain = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us] - baseline;
             foreach (DataBinding<ModelData> model in ours[0].GetValue().ModelBindings)
                 model.GetValue().PositionBinding.SetValue(new Position(10f, 10f));
@@ -181,13 +183,13 @@ namespace FDG.Tests
                 var theirs = new List<DataBinding<UnitData>>();
                 for (int i = 0; i < 10; i++) ours.Add(MakeUnit(_us, 3, atX: 10f + i, atZ: 10f + i * 2f));
                 for (int i = 0; i < 10; i++) theirs.Add(MakeUnit(_them, 3, atX: 60f + i, atZ: 10f + i * 2f));
-                for (int i = 0; i < 3; i++) _store.Create(new ObjectiveData(new Position(20f + i * 15f, 44f), _store));
+                for (int i = 0; i < 3; i++) _store.Create(new ObjectiveData(new Position(20f + i * 15f, 46f), _store));
                 SetRound(round);
                 SideMap sides = SideMap.FromSlots(new[] { (_us, 0), (_them, 1) });
                 int us = sides.SideOf(_us);
                 float baseline = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us];
                 foreach (DataBinding<ModelData> model in ours[0].GetValue().ModelBindings)
-                    model.GetValue().PositionBinding.SetValue(new Position(20f, 44f));
+                    model.GetValue().PositionBinding.SetValue(new Position(20f, 46f));
                 float markerGain = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us] - baseline;
                 foreach (DataBinding<ModelData> model in ours[0].GetValue().ModelBindings)
                     model.GetValue().PositionBinding.SetValue(new Position(10f, 10f));
@@ -241,6 +243,104 @@ namespace FDG.Tests
             Assert.That(nearGain, Is.GreaterThan(farGain * 2f),
                 $"and at least double the distant twin: near={nearGain:F4} far={farGain:F4}");
         }
+
+        // --- step 10 P1 (2026-09-05): the last round counts -----------------------------------------
+        // Each of these fails on the v2 evaluator (per-marker yes/no with a flat half discount) and
+        // passes with RoundEndProjection blended in at confidence 0.75. One marker, round 4 start:
+        // objective weight 0.66, held weight 0.70, two-sided /2 -> a whole marker is ~0.231 of value,
+        // a projected (c=0.75) marker ~0.173; v2's half discount was ~0.116.
+
+        [Test]
+        public void LastRound_AnUnactivatedEnemyThatCanWalkOntoOurMarker_CostsMostOfIt()
+        {
+            MakeUnit(_us, 3, atX: 30f, atZ: 30f); // holds the marker
+            _store.Create(new ObjectiveData(new Position(30f, 30f), _store));
+            DataBinding<UnitData> enemy = MakeUnit(_them, 3, atX: 30f, atZ: 40f); // 10" out, rush 12
+            SetRound(GameWideConstants.NUMBER_OF_ROUNDS);
+            SideMap sides = SideMap.FromSlots(new[] { (_us, 0), (_them, 1) });
+            int us = sides.SideOf(_us);
+
+            float threatened = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us];
+            Activate(enemy);
+            float safe = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us];
+
+            TestContext.WriteLine($"last round: enemy unactivated={threatened:F4} activated={safe:F4} delta={safe - threatened:F4}");
+            Assert.That(safe - threatened, Is.GreaterThan(0.14f),
+                $"an enemy that will walk onto the marker costs ~0.75 of it, not v2's half: delta={safe - threatened:F4}");
+        }
+
+        [Test]
+        public void LastRound_OneEnemyUnit_DeniesOnlyOneOfTwoMarkers()
+        {
+            // Two markers we hold, 12" apart; an enemy unit 8" from both. v2 flags BOTH as threatened
+            // whether one or two enemy units stand there. Counting spends the unit on one marker.
+            float ValueWithDeniers(int deniers)
+            {
+                SetUp();
+                MakeUnit(_us, 3, atX: 24f, atZ: 30f);
+                MakeUnit(_us, 3, atX: 36f, atZ: 30f);
+                _store.Create(new ObjectiveData(new Position(24f, 30f), _store));
+                _store.Create(new ObjectiveData(new Position(36f, 30f), _store));
+                for (int i = 0; i < deniers; i++) MakeUnit(_them, 3, atX: 30f, atZ: 36f + i * 2f);
+                SetRound(GameWideConstants.NUMBER_OF_ROUNDS);
+                SideMap sides = SideMap.FromSlots(new[] { (_us, 0), (_them, 1) });
+                return _handWeighted.Evaluate(_tableState, _evaluator, sides)[sides.SideOf(_us)];
+            }
+
+            float one = ValueWithDeniers(1);
+            float two = ValueWithDeniers(2);
+            TestContext.WriteLine($"last round, two held markers: one denier={one:F4} two deniers={two:F4}");
+            // A second denier costs a second marker (0.75 x 0.66 x 0.70 / 2 markers / 2 sides ~ 0.087)
+            // plus a little material; v2 moves only on material (~0.02).
+            Assert.That(one - two, Is.GreaterThan(0.06f),
+                $"the second denier must cost a second marker: one={one:F4} two={two:F4}");
+        }
+
+        [Test]
+        public void LastRound_ANeutralMarkerOnlyWeCanReach_IsAlreadyMostlyOurs()
+        {
+            DataBinding<UnitData> mover = MakeUnit(_us, 3, atX: 30f, atZ: 20f); // 10" from the marker
+            MakeUnit(_them, 3, atX: 30f, atZ: 70f); // 40" away: cannot answer
+            _store.Create(new ObjectiveData(new Position(30f, 30f), _store));
+            SetRound(GameWideConstants.NUMBER_OF_ROUNDS);
+            SideMap sides = SideMap.FromSlots(new[] { (_us, 0), (_them, 1) });
+            int us = sides.SideOf(_us);
+
+            float canStillMove = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us];
+            Activate(mover);
+            float spent = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us];
+
+            TestContext.WriteLine($"last round, neutral marker in reach: unactivated={canStillMove:F4} activated={spent:F4}");
+            Assert.That(canStillMove - spent, Is.GreaterThan(0.14f),
+                $"an unopposed reachable marker counts ~0.75 held before the unit moves: delta={canStillMove - spent:F4}");
+        }
+
+        [Test]
+        public void BeforeTheLastRound_TheCountIsNotApplied()
+        {
+            // Same board as the first P1 test at round 3: the v2 half discount, nothing more - a
+            // unit that can reach our marker next activation still has a whole round to be answered.
+            MakeUnit(_us, 3, atX: 30f, atZ: 30f);
+            _store.Create(new ObjectiveData(new Position(30f, 30f), _store));
+            DataBinding<UnitData> enemy = MakeUnit(_them, 3, atX: 30f, atZ: 40f);
+            SetRound(3);
+            SideMap sides = SideMap.FromSlots(new[] { (_us, 0), (_them, 1) });
+            int us = sides.SideOf(_us);
+
+            float threatened = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us];
+            Activate(enemy);
+            float safe = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us];
+
+            // Round 3: an activated enemy still threatens (it acts again next round), so the held
+            // term does not move. What does move is the progress read (one more unit activated ->
+            // material weight shifts ~0.01); nothing marker-sized (half a marker here is ~0.086).
+            TestContext.WriteLine($"round 3: enemy unactivated={threatened:F4} activated={safe:F4} delta={safe - threatened:F4}");
+            Assert.That(Math.Abs(safe - threatened), Is.LessThan(0.04f),
+                $"before the last round activation state must not change the read by a marker's worth: delta={safe - threatened:F4}");
+        }
+
+        private static void Activate(DataBinding<UnitData> unit) =>
+            unit.GetValue().Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.ActivatedThisRound));
 
         [Test]
         public void GameProgress_ReadsRoundAndActivationFraction()

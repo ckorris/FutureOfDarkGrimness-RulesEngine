@@ -84,6 +84,48 @@ namespace FDG.Tests
             Assert.That(chosen, Is.EqualTo(transport), "drive the boat before the payload decides");
         }
 
+        // --- step 10 P3 (2026-09-05): last-round tempo ----------------------------------------------
+
+        [Test]
+        public async Task LastRound_SpendsTheUnitThatCannotReachAMarker_AndHoldsTheResponder()
+        {
+            // The round-3 board of PicksTheUnitThatCanFlipAnObjective, moved to the final round: the
+            // responder (10" from a neutral marker, rush 12) is now held for last and the unit that
+            // can change nothing - no marker in reach, no target in range - is spent first. Whoever
+            // still has a marker-capable unit when the other side has run out moves unopposed.
+            _store.Create(new ObjectiveData(new Position(10f, 40f), _store));
+            var responder = MakeUnit(_us, 3, Rifle(), atX: 10f, atZ: 30f);
+            var idler = MakeUnit(_us, 3, Rifle(), atX: 60f, atZ: 5f);
+            MakeUnit(_them, 3, Rifle(), atX: 70f, atZ: 45f); // out of everyone's reach
+            SetRound(GameWideConstants.NUMBER_OF_ROUNDS);
+
+            DataBinding<UnitData> chosen = await _resolver.Resolve(Request(responder, idler));
+
+            Assert.That(chosen, Is.EqualTo(idler), "last round: spend the irrelevant unit, hold the responder");
+        }
+
+        [Test]
+        public async Task BeforeTheLastRound_TheResponderStillActsFirst()
+        {
+            _store.Create(new ObjectiveData(new Position(10f, 40f), _store));
+            var responder = MakeUnit(_us, 3, Rifle(), atX: 10f, atZ: 30f);
+            var idler = MakeUnit(_us, 3, Rifle(), atX: 60f, atZ: 5f);
+            MakeUnit(_them, 3, Rifle(), atX: 70f, atZ: 45f);
+            SetRound(GameWideConstants.NUMBER_OF_ROUNDS - 1);
+
+            DataBinding<UnitData> chosen = await _resolver.Resolve(Request(idler, responder));
+
+            Assert.That(chosen, Is.EqualTo(responder), "before the last round the flip term still leads");
+        }
+
+        private void SetRound(int round)
+        {
+            var progress = new GameProgressData(EResumeStage.MainPhase, round,
+                new List<int>(), new List<int>(), 0, new Dictionary<int, int>(),
+                new List<DataBinding<UnitData>>(), GameSettings.GetDefault());
+            GameProgressUtilities.WriteProgress(_store, progress);
+        }
+
         private ChooseUnitToActivateRequest Request(params DataBinding<UnitData>[] options) =>
             new ChooseUnitToActivateRequest(_us,
                 options.Select(o => new SelectionRequest<UnitData>.ValidOption(o, o.GetValue().Name)).ToList(),

@@ -38,6 +38,16 @@ namespace FDG.Ai.Tactician.Search
     /// rounds, from <see cref="ITableState.Progress"/> and the ActivatedThisRound token.
     /// </para>
     /// <para>
+    /// <b>Last round (2026-09-05, step 10 P1 - "the evaluator cannot count").</b> In the final
+    /// round the held term is a blend of the current projection and
+    /// <see cref="RoundEndProjection"/>'s round-end tally: (1 - c) x held-now + c x projected-held,
+    /// c = <see cref="RoundEndProjection.HandWeightedEvaluatorConfidence"/>. An unactivated enemy
+    /// that can walk onto our marker costs c of it (not the flat half of the v2 threatened
+    /// discount), one enemy unit can deny only ONE marker, a neutral marker only we can reach is
+    /// already mostly ours, and a marker still held but inside an unspent enemy's guns counts half
+    /// of its projected part. Before the last round nothing changes.
+    /// </para>
+    /// <para>
     /// Two-side complementarity (sec 7.2) keeps <see cref="ObjectiveShareEvaluator"/>'s proven shape -
     /// 0.5 + (own raw - best other raw) / 2 - which sums to exactly 1 for two sides with no clamp
     /// ever engaging (raw in [0,1] => the difference is in [-1,1] => the halved, offset result is
@@ -60,6 +70,8 @@ namespace FDG.Ai.Tactician.Search
         // as half held. Material is otherwise fungible here, so without this the unit about to take
         // your marker was worth the same as one on the far flank; now killing it (or moving into
         // reach of THEIR held marker) is worth half a marker, which is the right order of magnitude.
+        // In the last round the same half applies to a projected holding an unspent enemy can shoot
+        // at (RoundEndProjection pass 3); movement-reach denials there are counted outright.
         private const float ThreatenedDiscount = 0.5f;
 
         public SideValues Evaluate(ITableState state, RuleEvaluator evaluator, SideMap sides)
@@ -73,6 +85,13 @@ namespace FDG.Ai.Tactician.Search
             float progress = GameProgress(state);
             float materialWeight = MaterialWeightAtStart * (1f - progress * progress);
             float objectiveWeight = 1f - ThreatWeight - materialWeight;
+
+            // P1: in the last round, count. One tally for the whole board, read per side below.
+            bool lastRound = RoundEndProjection.IsLastRound(state);
+            RoundEndProjection.SideTally[]? tallies = lastRound
+                ? RoundEndProjection.Project(state, evaluator, membersBySide)
+                : null;
+            int objectiveCount = Math.Max(1, state.Objectives.Objects.Count());
 
             var raw = new float[sides.Count];
             for (int side = 0; side < sides.Count; side++)
@@ -89,7 +108,21 @@ namespace FDG.Ai.Tactician.Search
                 float valueShare = block[1];    // value_share (living UnitValue share)
                 float threatCoverage = block[11];
 
-                float objective = HeldWeight * (held - ThreatenedDiscount * heldThreatened)
+                float heldTerm;
+                if (tallies != null)
+                {
+                    // Last round: what the round-end count says, blended with what is realized now.
+                    const float c = RoundEndProjection.HandWeightedEvaluatorConfidence;
+                    float projected = (tallies[side].Held - ThreatenedDiscount * tallies[side].Threatened)
+                        / (float)objectiveCount;
+                    heldTerm = (1f - c) * held + c * projected;
+                }
+                else
+                {
+                    heldTerm = held - ThreatenedDiscount * heldThreatened;
+                }
+
+                float objective = HeldWeight * heldTerm
                     + ContestedWeight * contested + ApproachWeight * approach;
                 raw[side] = Math.Clamp(
                     objectiveWeight * objective + materialWeight * valueShare + ThreatWeight * threatCoverage,

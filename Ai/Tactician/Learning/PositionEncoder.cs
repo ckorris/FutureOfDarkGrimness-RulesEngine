@@ -378,7 +378,7 @@ namespace FDG.Ai.Tactician.Learning
         // A unit's own threatening reach, target-independent (unlike TacticalAnalysis.ThreatRangeAgainst,
         // which is per-target and does a rule evaluation per weapon per call - too expensive to run
         // O(units^2) times here). Raw weapon range, no RangeRuleQueries target-conditioning.
-        private static float CheapThreatReach(IUnit unit, RuleEvaluator evaluator, IReadOnlyList<ITerrain> terrain)
+        internal static float CheapThreatReach(IUnit unit, RuleEvaluator evaluator, IReadOnlyList<ITerrain> terrain)
         {
             float advance = TacticalAnalysis.AdvanceDistance(unit, evaluator, terrain);
             float maxWeaponRange = 0f;

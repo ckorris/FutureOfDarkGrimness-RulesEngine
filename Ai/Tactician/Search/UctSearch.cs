@@ -274,11 +274,42 @@ namespace FDG.Ai.Tactician.Search
         }
 
         /// <summary>Most visits wins; ties go to the higher mean value, then to prior order.</summary>
+        /// <summary>
+        /// Robust child, applied the way the tree is shaped (#191 step 10, from the
+        /// hold-the-responder probe): first the UNIT with the most visits in total, then the most
+        /// visited edge under it. Choosing the single most visited edge across all units undercounted
+        /// a unit whose macros are interchangeable - a last-round "spend the irrelevant unit" branch
+        /// took 376 of 525 visits split five ways (80 each) and lost to the responder's one edge at 96,
+        /// against the search's own values (0.19 vs 0.06). The level-1 decision is the activation;
+        /// its visits are the evidence for it, however many equivalent ways of spending it exist.
+        /// Ties: more visits, then higher value, then earlier (prior) order - unchanged.
+        /// </summary>
         private static RootEdgeStat? ChooseRoot(IReadOnlyList<RootEdgeStat> stats)
         {
+            if (stats.Count == 0) return null;
+            var visitsByUnit = new Dictionary<int, int>();
+            var valueByUnit = new Dictionary<int, float>();
+            foreach (RootEdgeStat stat in stats)
+            {
+                visitsByUnit[stat.UnitIndex] = visitsByUnit.GetValueOrDefault(stat.UnitIndex) + stat.Visits;
+                valueByUnit[stat.UnitIndex] = valueByUnit.GetValueOrDefault(stat.UnitIndex) + stat.ValueSum;
+            }
+            int bestUnit = -1;
+            foreach (RootEdgeStat stat in stats)
+            {
+                int unit = stat.UnitIndex;
+                if (bestUnit < 0) { bestUnit = unit; continue; }
+                if (unit == bestUnit) continue;
+                int v = visitsByUnit[unit], bv = visitsByUnit[bestUnit];
+                float mean = v == 0 ? 0f : valueByUnit[unit] / v;
+                float bestMean = bv == 0 ? 0f : valueByUnit[bestUnit] / bv;
+                if (v > bv || (v == bv && mean > bestMean)) bestUnit = unit;
+            }
+
             RootEdgeStat? best = null;
             foreach (RootEdgeStat stat in stats)
             {
+                if (stat.UnitIndex != bestUnit) continue;
                 if (best == null
                     || stat.Visits > best.Visits
                     || (stat.Visits == best.Visits && stat.Value > best.Value))

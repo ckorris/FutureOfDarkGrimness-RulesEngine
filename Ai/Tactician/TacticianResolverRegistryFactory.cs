@@ -84,8 +84,9 @@ namespace FDG.Ai.Tactician
             registry.RegisterResolver(new Resolvers.TacticianModelSelectionResolver(
                 new FDG.Ai.Resolvers.AiSelectionResolver<ModelData>()));
 
-            // A4-4: wound assignment preserving output (cheapest-output casualties first).
-            registry.RegisterResolver(new Resolvers.TacticianAssignWoundsResolver());
+            // A4-4: wound assignment preserving output (cheapest-output casualties first); step 10 P0:
+            // marker-aware (the last model on a held/contested marker dies last).
+            registry.RegisterResolver(new Resolvers.TacticianAssignWoundsResolver(tableState));
 
             // A4b: objective-aware deployment. The subclass IS the solo resolver for every
             // non-deployment placement (disembark, spillout, ambush, reposition).

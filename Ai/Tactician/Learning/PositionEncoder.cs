@@ -391,7 +391,7 @@ namespace FDG.Ai.Tactician.Learning
 
         // #296: FRIENDS/enemies are whole TEAMS - members is a list of PlayerIDs already resolved
         // to one side. null means "every player" (globals).
-        private static IEnumerable<IUnit> LivingUnits(ITableState tableState, List<PlayerID>? members)
+        internal static IEnumerable<IUnit> LivingUnits(ITableState tableState, List<PlayerID>? members)
         {
             foreach (IArmy army in tableState.Armies.Objects)
             {

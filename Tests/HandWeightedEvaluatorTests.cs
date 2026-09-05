@@ -114,6 +114,115 @@ namespace FDG.Tests
                 "sanity bound only - see the ledger for the real per-leaf budget discussion");
         }
 
+        // --- step 10 (2026-09-05) pins for the revised evaluator ----------------------------------
+        // Each of these FAILS on the 0.55/0.30/0.15 three-feature version and passes on the revision;
+        // together they are the B-gate failure analysis's measured defect, turned into a contract.
+
+        [Test]
+        public void EarlyInTheGame_KillingAThirdOfTheEnemy_IsWorthAMeaningfulFractionOfAMarker()
+        {
+            // 10 units a side, 3 markers well away from everyone. Old evaluator: this kill moves value
+            // by 0.026 and the marker by 0.092 (ratio 0.29). Revised: 0.049 vs 0.041 (1.2). The bar
+            // sits between, so it separates the two cleanly in both directions.
+            var ours = new List<DataBinding<UnitData>>();
+            var theirs = new List<DataBinding<UnitData>>();
+            for (int i = 0; i < 10; i++) ours.Add(MakeUnit(_us, 3, atX: 10f + i, atZ: 10f + i * 2f));
+            for (int i = 0; i < 10; i++) theirs.Add(MakeUnit(_them, 3, atX: 60f + i, atZ: 10f + i * 2f));
+            for (int i = 0; i < 3; i++) _store.Create(new ObjectiveData(new Position(20f + i * 15f, 44f), _store));
+            SideMap sides = SideMap.FromSlots(new[] { (_us, 0), (_them, 1) });
+            int us = sides.SideOf(_us);
+
+            float baseline = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us];
+
+            foreach (DataBinding<ModelData> model in ours[0].GetValue().ModelBindings)
+                model.GetValue().PositionBinding.SetValue(new Position(20f, 44f));
+            float markerGain = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us] - baseline;
+            foreach (DataBinding<ModelData> model in ours[0].GetValue().ModelBindings)
+                model.GetValue().PositionBinding.SetValue(new Position(10f, 10f));
+
+            for (int i = 0; i < 3; i++) Kill(theirs[i]);
+            float killGain = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us] - baseline;
+
+            Assert.That(markerGain, Is.GreaterThan(0f), "seizing a marker must still count");
+            Assert.That(killGain / markerGain, Is.GreaterThan(0.6f),
+                $"early in the game a 30% kill must be worth a real fraction of a marker: kill={killGain:F4} marker={markerGain:F4} ratio={killGain / markerGain:F2}");
+        }
+
+        [Test]
+        public void ApproachingAMarker_RaisesValue_BeforeReachingIt()
+        {
+            // The flat-landscape defect: between markers the old evaluator's objective term did not
+            // move at all, so this delta was exactly zero and the search had nothing to climb.
+            DataBinding<UnitData> ours = MakeUnit(_us, 3, atX: 10f, atZ: 10f);
+            MakeUnit(_them, 3, atX: 60f, atZ: 40f);
+            _store.Create(new ObjectiveData(new Position(40f, 10f), _store));
+            SideMap sides = SideMap.FromSlots(new[] { (_us, 0), (_them, 1) });
+            int us = sides.SideOf(_us);
+
+            float far = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us]; // 30" away
+            foreach (DataBinding<ModelData> model in ours.GetValue().ModelBindings)
+                model.GetValue().PositionBinding.SetValue(new Position(25f, 10f)); // 15" away, still outside 3"
+            float nearer = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us];
+
+            Assert.That(nearer, Is.GreaterThan(far),
+                $"closing on a marker without reaching it must raise value: far={far:F4} nearer={nearer:F4}");
+        }
+
+        [Test]
+        public void LateInTheGame_MarkersOutweighMaterial_MoreThanEarly()
+        {
+            // Same board and same two perturbations at round 1 and at round 4. Material's weight
+            // decays with the clock, so kill/marker at round 4 must be well under kill/marker at round 1,
+            // and by round 4 a marker must simply be worth more than the kill.
+            float RatioAtRound(int round)
+            {
+                SetUp();
+                var ours = new List<DataBinding<UnitData>>();
+                var theirs = new List<DataBinding<UnitData>>();
+                for (int i = 0; i < 10; i++) ours.Add(MakeUnit(_us, 3, atX: 10f + i, atZ: 10f + i * 2f));
+                for (int i = 0; i < 10; i++) theirs.Add(MakeUnit(_them, 3, atX: 60f + i, atZ: 10f + i * 2f));
+                for (int i = 0; i < 3; i++) _store.Create(new ObjectiveData(new Position(20f + i * 15f, 44f), _store));
+                SetRound(round);
+                SideMap sides = SideMap.FromSlots(new[] { (_us, 0), (_them, 1) });
+                int us = sides.SideOf(_us);
+                float baseline = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us];
+                foreach (DataBinding<ModelData> model in ours[0].GetValue().ModelBindings)
+                    model.GetValue().PositionBinding.SetValue(new Position(20f, 44f));
+                float markerGain = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us] - baseline;
+                foreach (DataBinding<ModelData> model in ours[0].GetValue().ModelBindings)
+                    model.GetValue().PositionBinding.SetValue(new Position(10f, 10f));
+                for (int i = 0; i < 3; i++) Kill(theirs[i]);
+                float killGain = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us] - baseline;
+                TestContext.WriteLine($"round {round}: marker={markerGain:F4} kill={killGain:F4} ratio={killGain / markerGain:F2}");
+                return killGain / markerGain;
+            }
+
+            float early = RatioAtRound(1);
+            float late = RatioAtRound(4);
+            Assert.That(late, Is.LessThan(early * 0.5f), "material must matter much less at round 4 than at round 1");
+            Assert.That(late, Is.LessThan(1f), "by round 4 a marker must outweigh a 30% kill");
+        }
+
+        [Test]
+        public void GameProgress_ReadsRoundAndActivationFraction()
+        {
+            MakeUnit(_us, 3, atX: 10f, atZ: 10f);
+            MakeUnit(_them, 3, atX: 40f, atZ: 10f);
+            Assert.That(HandWeightedEvaluator.GameProgress(_tableState), Is.EqualTo(0f).Within(1e-6f),
+                "no progress record reads as the start of round 1");
+            SetRound(3);
+            Assert.That(HandWeightedEvaluator.GameProgress(_tableState), Is.EqualTo(0.5f).Within(1e-6f),
+                "start of round 3 of 4 is halfway");
+        }
+
+        private void SetRound(int round)
+        {
+            var progress = new GameProgressData(EResumeStage.MainPhase, round,
+                new List<int>(), new List<int>(), 0, new Dictionary<int, int>(),
+                new List<DataBinding<UnitData>>(), GameSettings.GetDefault());
+            GameProgressUtilities.WriteProgress(_store, progress);
+        }
+
         // --- helpers -------------------------------------------------------------------------------
 
         private static void Kill(DataBinding<UnitData> unit)

@@ -56,6 +56,12 @@ namespace FDG.Ai.Tactician.Search
         private const float ContestedWeight = 0.20f;
         private const float ApproachWeight = 0.10f;
 
+        // v2 (2026-09-05, Chris's point): a held marker an enemy can still reach this round counts
+        // as half held. Material is otherwise fungible here, so without this the unit about to take
+        // your marker was worth the same as one on the far flank; now killing it (or moving into
+        // reach of THEIR held marker) is worth half a marker, which is the right order of magnitude.
+        private const float ThreatenedDiscount = 0.5f;
+
         public SideValues Evaluate(ITableState state, RuleEvaluator evaluator, SideMap sides)
         {
             var membersBySide = new List<PlayerID>[sides.Count];
@@ -77,12 +83,14 @@ namespace FDG.Ai.Tactician.Search
 
                 float[] block = PositionEncoder.EncodeSideBlock(state, evaluator, membersBySide[side], opposing);
                 float held = block[6];          // obj_held_share (projected owner, seizure radius)
+                float heldThreatened = block[15]; // obj_held_threatened_share (v2: enemy can reach it this round)
                 float contested = block[7];     // obj_contested_share (in range, not owned)
                 float approach = 1f - block[9]; // 1 - min_obj_dist_norm (closest unit to any marker)
                 float valueShare = block[1];    // value_share (living UnitValue share)
                 float threatCoverage = block[11];
 
-                float objective = HeldWeight * held + ContestedWeight * contested + ApproachWeight * approach;
+                float objective = HeldWeight * (held - ThreatenedDiscount * heldThreatened)
+                    + ContestedWeight * contested + ApproachWeight * approach;
                 raw[side] = Math.Clamp(
                     objectiveWeight * objective + materialWeight * valueShare + ThreatWeight * threatCoverage,
                     0f, 1f);

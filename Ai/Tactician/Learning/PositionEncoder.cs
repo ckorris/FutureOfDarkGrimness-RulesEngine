@@ -25,10 +25,15 @@ namespace FDG.Ai.Tactician.Learning
     /// </summary>
     public static class PositionEncoder
     {
-        public const int SchemaVersion = 1;
+        // v2 (2026-09-05, #191 step 10): +obj_held_threatened_share per side block (index 15), so a
+        // held marker an enemy can still reach this round is distinguishable from a safe one - the
+        // B-gate failure analysis's second finding (material was fungible: a unit 6" from your marker
+        // counted the same as one 40" away). Width 67 -> 71. v1 files stay valid v1 data; the
+        // schema doc records the mixed-schema consequence for step 12/13.
+        public const int SchemaVersion = 2;
         public const int GlobalFeatureCount = 7;
-        public const int PerSideFeatureCount = 15;
-        public const int VectorWidth = GlobalFeatureCount + PerSideFeatureCount * 4; // 67
+        public const int PerSideFeatureCount = 16;
+        public const int VectorWidth = GlobalFeatureCount + PerSideFeatureCount * 4; // 71
 
         // DEFAULT_TABLE_WIDTH/HEIGHT_INCHES (72x48): the schema's scale reference for on-table
         // distances. Not read off the actual table's terrain bounds - GameWideConstants is the
@@ -38,7 +43,7 @@ namespace FDG.Ai.Tactician.Learning
             + GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES * GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES);
 
         /// <summary>
-        /// Encodes the 67-float v1 vector for <paramref name="actingPlayer"/>'s activation boundary.
+        /// Encodes the 71-float v2 vector for <paramref name="actingPlayer"/>'s activation boundary.
         /// </summary>
         /// <param name="boundaryIndexInRound">0-based index of this activation within the current round.</param>
         /// <param name="expectedBoundariesThisRound">The round's total living-unit count at round
@@ -110,7 +115,7 @@ namespace FDG.Ai.Tactician.Learning
         }
 
         /// <summary>
-        /// The 15-float per-side block (schema sec 3) for an arbitrary SIDE - not a player's SELF
+        /// The 16-float per-side block (schema sec 3) for an arbitrary SIDE - not a player's SELF
         /// block, the whole side's aggregate (#191 B3, docs/tactician-b2-design.md sec 7.2's leaf
         /// evaluator: it needs every side's own block, not one activation's four-block perspective).
         /// Exposes exactly the computation <see cref="Encode"/>'s SELF/ALLY/ENEMY_SUM/ENEMY_MAX blocks
@@ -245,6 +250,40 @@ namespace FDG.Ai.Tactician.Learning
             block[12] = Frac(reserve, livingUnits.Count); // reserve_frac
             block[13] = Frac(seizers, livingUnits.Count); // seizer_frac
             block[14] = Frac(livingUnits.Count, globals.LivingUnitsTotal); // activation_share
+
+            // v2: obj_held_threatened_share - of this side's projected-held markers, the fraction an
+            // opposing unit can still reach THIS ROUND (its cheap threat reach plus the seizure
+            // radius covers the marker point, so it can contest the marker or hit the holder). In
+            // the last round only an unactivated enemy counts - an activated one never acts again;
+            // before the last round every living enemy in reach counts, it acts again next round.
+            // Same reach as threat_coverage, computed for the OPPOSING units here (their block
+            // computes it for themselves; the two are not shared, cost is one more O(units) pass).
+            int heldThreatened = 0;
+            var heldMarkers = projections.Where(p => p.ProjectedOwner.HasValue && members.Contains(p.ProjectedOwner.Value)).ToList();
+            if (heldMarkers.Count > 0 && opposingLiving.Count > 0)
+            {
+                int totalRounds = Math.Max(1, tableState.Progress.TotalRounds);
+                bool lastRound = (tableState.Progress.RoundCount ?? 1) >= totalRounds;
+                var threats = new List<(float Reach, IUnit Unit)>(opposingLiving.Count);
+                foreach (IUnit enemy in opposingLiving)
+                {
+                    if (lastRound && enemy.Tokens.HasToken(Rules.Foundation.TokenType.ActivatedThisRound)) continue;
+                    threats.Add((CheapThreatReach(enemy, evaluator, terrain), enemy));
+                }
+                foreach (ObjectiveProjection held in heldMarkers)
+                {
+                    foreach ((float reachE, IUnit enemy) in threats)
+                    {
+                        if (reachE + TacticalAnalysis.ObjectiveSeizureRadiusInches
+                            >= TacticalAnalysis.MinBaseEdgeDistanceToPoint(enemy, held.Objective.Position))
+                        {
+                            heldThreatened++;
+                            break;
+                        }
+                    }
+                }
+            }
+            block[15] = Frac(heldThreatened, objectiveCount); // obj_held_threatened_share (v2)
 
             return block;
         }

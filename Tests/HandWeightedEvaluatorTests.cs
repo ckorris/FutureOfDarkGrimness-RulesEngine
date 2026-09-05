@@ -204,6 +204,45 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void KillingTheUnitThreateningOurMarker_IsWorthFarMoreThanKillingADistantOne()
+        {
+            // v2 (Chris's round-4 point): material is otherwise fungible. Two identical enemy units;
+            // one sits 10" from the marker we hold, one 60" away. Killing the near one must be worth
+            // several times killing the far one - on the old evaluator they were worth the same.
+            MakeUnit(_us, 3, atX: 30f, atZ: 30f); // holds the marker
+            MakeUnit(_us, 3, atX: 10f, atZ: 10f);
+            _store.Create(new ObjectiveData(new Position(30f, 30f), _store));
+            DataBinding<UnitData> near = MakeUnit(_them, 3, atX: 30f, atZ: 40f);
+            DataBinding<UnitData> far = MakeUnit(_them, 3, atX: 30f, atZ: 90f);
+            SetRound(4);
+            SideMap sides = SideMap.FromSlots(new[] { (_us, 0), (_them, 1) });
+            int us = sides.SideOf(_us);
+            float baseline = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us];
+
+            Kill(far);
+            float farGain = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us] - baseline;
+            SetUp(); // rebuild the identical board
+            MakeUnit(_us, 3, atX: 30f, atZ: 30f); MakeUnit(_us, 3, atX: 10f, atZ: 10f);
+            _store.Create(new ObjectiveData(new Position(30f, 30f), _store));
+            near = MakeUnit(_them, 3, atX: 30f, atZ: 40f); far = MakeUnit(_them, 3, atX: 30f, atZ: 90f);
+            SetRound(4);
+            sides = SideMap.FromSlots(new[] { (_us, 0), (_them, 1) }); us = sides.SideOf(_us);
+            baseline = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us];
+            Kill(near);
+            float nearGain = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us] - baseline;
+
+            TestContext.WriteLine($"round 4: kill far={farGain:F4} kill near(threatening our marker)={nearGain:F4}");
+            Assert.That(farGain, Is.GreaterThan(0f));
+            // The premium is the threatened-marker discount coming off: half a held marker at round
+            // 4's objective weight (0.66 x 0.70 x 0.5 / 2 ~ 0.116 for a single marker). Old evaluator:
+            // near == far exactly.
+            Assert.That(nearGain - farGain, Is.GreaterThan(0.08f),
+                $"the premium for the unit that can take our marker must be about half a marker: near={nearGain:F4} far={farGain:F4}");
+            Assert.That(nearGain, Is.GreaterThan(farGain * 2f),
+                $"and at least double the distant twin: near={nearGain:F4} far={farGain:F4}");
+        }
+
+        [Test]
         public void GameProgress_ReadsRoundAndActivationFraction()
         {
             MakeUnit(_us, 3, atX: 10f, atZ: 10f);

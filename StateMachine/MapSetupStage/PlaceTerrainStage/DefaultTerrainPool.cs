@@ -26,6 +26,23 @@ namespace FDG.Stages
         private const ETerrainType Blocker = ETerrainType.Impassible;
         private const ETerrainType Woods   = ETerrainType.Cover | ETerrainType.Difficult;
 
+        // #393 - the gap a #393 piece leaves for models to walk through. Two 28mm bases
+        // (BaseShapeDefaults.CircleDiameterInches, 1.1023622") abreast is 2.205", so 2.5" clears them
+        // with room for the float-precision margins the placement/movement validators carry. Anything
+        // tighter reads as a doorway and plays as a wall.
+        private const float DoorwayInches = 2.5f;
+
+        // The Cathedral shell's side walls run between the south and north walls, y 1..7 - six inches for
+        // two 2.5" doors. Putting both in the middle left a straight horizontal firing lane in one side and
+        // out the other, so they sit at OPPOSITE ends of the run: west low (y 1 -> 3.5), east high
+        // (y 4.5 -> 7). Their y ranges are disjoint by WallBetweenDoorsInches, so no horizontal sight line
+        // finds both, and 6 - 2 x 2.5 = 1" is the most separation two doors this wide can have.
+        private const float WallRunLow  = 1f;
+        private const float WallRunHigh = 7f;
+        private const float WallBetweenDoorsInches = 1f;
+        private const float WestDoorTop    = WallRunLow + DoorwayInches;             // 3.5
+        private const float EastDoorBottom = WestDoorTop + WallBetweenDoorsInches;   // 4.5, and + 2.5 = 7
+
         /// <summary>
         /// The default auto layout, placed verbatim by AutoFromLayout. Unchanged by #268 on purpose:
         /// widening the player's choice of pieces should not silently change how generated maps play.
@@ -204,9 +221,11 @@ namespace FDG.Stages
         }
 
         /// <summary>
-        /// #268 — palette-only templates. The bulk are SMALL impassible objects, which the built-in set was
-        /// short of: every impassible piece in the auto layout is a 6-11" compound, so there was nothing to
-        /// break up a firing lane with. Ordered small-to-large within each group.
+        /// #268 — palette-only templates, in two groups. The first is SMALL impassible objects, which the
+        /// built-in set was short of: every impassible piece in the auto layout is a 6-11" compound, so
+        /// there was nothing to break up a firing lane with. The second (#393) is the opposite end — LARGE
+        /// 3-point pieces, because the heavy tier was only seven pieces and games were exhausting it.
+        /// Ordered small-to-large within each group; the picker re-sorts by cost anyway.
         ///
         /// <para><see cref="ETerrainType.Elevated"/> is deliberately unused: the flag is declared but no
         /// engine code reads it today, so a piece carrying it would look meaningful and do nothing.</para>
@@ -258,6 +277,106 @@ namespace FDG.Stages
             yield return Piece("Stream", ETerrainType.Difficult, new RectangularZone(0, 8, 0, 1.5f), 0f, 1);
             yield return Piece("Barbed wire", ETerrainType.Dangerous | ETerrainType.Difficult,
                 new RectangularZone(0, 5, 0, 1), 0f, 1);
+
+            // --- #393: the heavy end. Every piece here is 3 points and sized to the biggest templates
+            // already shipping (Collapsed wall 11", Forest 10" across), because the reported problem was
+            // that the 3-point tier was small enough to exhaust: seven pieces, so every game ended up
+            // placing one of each. Palette only - Get() is deliberately untouched, so AutoFromLayout
+            // still produces the same map. Spread across all four filter types (#394) on purpose.
+
+            // Hollow wall ring with a doorway in each side wall, DoorwayInches wide so two 28mm bases fit
+            // through abreast - the interior is a real place to stand, a courtyard the 10" walls screen
+            // from every direction but the two entrances. The doors are STAGGERED to opposite corners
+            // (see the constants): centred, they would have made the piece a firing lane, since a shooter
+            // could see in one door and out the other.
+            yield return Piece("Cathedral shell", Solid, new CompositeZone(new List<IZone>
+            {
+                new RectangularZone(0, 10, 0, 1),                 // south wall
+                new RectangularZone(0, 10, 7, 8),                 // north wall
+                // The side walls run PAST the end walls rather than abutting them. Two rectangles that
+                // merely touch leave a zero-width seam, and a sight line laid exactly along it grazes both
+                // boundaries and counts as hitting neither - a hole in the wall one ten-thousandth of an
+                // inch tall. Overlapping the corners removes the seam instead of relying on luck.
+                new RectangularZone(0, 1, WestDoorTop, 8),        // west wall - its door is below it
+                new RectangularZone(9, 10, 0, EastDoorBottom),    // east wall - its door is above it
+            }), 6f, 3);
+
+            // Three staggered towers, and the tallest thing in the palette - nothing shoots over it. The
+            // towers stand DoorwayInches apart, so the streets between them take two 28mm bases abreast
+            // and the piece plays as a block to move through rather than one to walk around.
+            yield return Piece("Hab block", Solid, new CompositeZone(new List<IZone>
+            {
+                new RectangularZone(0, 4, 0, 4),            // south-west tower
+                new RectangularZone(6.5f, 10.5f, 0, 3.5f),  // south-east tower, 2.5" street to the west
+                new RectangularZone(1.5f, 6.5f, 6.5f, 10),  // north tower, 2.5" street to the south
+            }), 7f, 3);
+
+            // The auto layout's Forest at full size and irregular: cover a whole unit fits inside.
+            yield return Piece("Ancient wood", Woods, new CompositeZone(new List<IZone>
+            {
+                new CircularZone(3.5f, 3.5f, 3.5f),
+                new CircularZone(7.5f, 4.5f, 3f),
+                new CircularZone(4f, 7.5f, 2.5f),
+            }), 0f, 3);
+
+            // Large hazard: the palette had none - Mine field (6x6) was the biggest Dangerous piece.
+            yield return Piece("Sunken mire", ETerrainType.Difficult | ETerrainType.Dangerous,
+                new CompositeZone(new List<IZone>
+            {
+                new CircularZone(3.5f, 3.5f, 3.5f),
+                new CircularZone(7.5f, 4f, 3f),
+                new CircularZone(5.5f, 7.5f, 2.5f),
+            }), 0f, 3);
+
+            // Dangerous only: costs nothing to shoot across, everything to walk across.
+            yield return Piece("Mine belt", ETerrainType.Dangerous, new RectangularZone(0, 9, 0, 7), 0f, 3);
+
+            // Dog-legged firing position - cover on two facings, long enough for a full firing line.
+            yield return Piece("Trench line", ETerrainType.Cover, new CompositeZone(new List<IZone>
+            {
+                new RectangularZone(0, 4.5f, 0, 1.25f),
+                new RectangularZone(3.25f, 4.5f, 1.25f, 3.5f),
+                new RectangularZone(4.5f, 10, 2.25f, 3.5f),
+            }), 0f, 3);
+
+            // Long and thin: laid across a lane it closes the whole lane.
+            yield return Piece("Crashed hauler", Solid, new CompositeZone(new List<IZone>
+            {
+                new RectangularZone(0, 11, 1.5f, 4.5f),
+                new RectangularZone(1.5f, 4.5f, 0, 1.5f),
+                new RectangularZone(6.5f, 9.5f, 4.5f, 6),
+            }), 4f, 3);
+
+            // Impassible WITHOUT Blocking, at size: walk around it, shoot over it. Tank traps and Water
+            // pool are the only other pieces that do this and both are small.
+            yield return Piece("Rocky ridge", Blocker, new CompositeZone(new List<IZone>
+            {
+                // Centres alternate low/high by ~1.2" so the spine reads as a broken ridge rather than a
+                // ruled line. Consecutive rocks still overlap (centre gap < sum of radii), so the barrier
+                // has no hole a model could slip through.
+                new CircularZone(1.5f, 1.5f, 1.5f),
+                new CircularZone(4.2f, 2.7f, 1.8f),
+                new CircularZone(6.9f, 1.7f, 1.5f),
+                new CircularZone(9.3f, 2.9f, 1.7f),
+            }), 0.5f, 3);
+
+            // Widest footprint in the palette at 11.5" - two 6" cylinders joined by a gantry.
+            yield return Piece("Refinery tanks", Solid, new CompositeZone(new List<IZone>
+            {
+                new CircularZone(3f, 3f, 3f),
+                new CircularZone(8.5f, 3f, 3f),
+                new RectangularZone(3f, 8.5f, 2.25f, 3.75f),
+            }), 6f, 3);
+
+            // Three bands with 2" lanes between them, so a model can stand clear of the wire between two
+            // bands instead of being caught straddling them - crossing it is a decision, not an accident.
+            yield return Piece("Razorwire belt", ETerrainType.Dangerous | ETerrainType.Difficult,
+                new CompositeZone(new List<IZone>
+            {
+                new RectangularZone(0, 10, 0, 1),
+                new RectangularZone(0, 10, 3, 4),
+                new RectangularZone(0, 10, 6, 7),
+            }), 0f, 3);
         }
 
         private static TerrainPieceEntry Piece(string name, ETerrainType type, IZone shape, float heightInches, int points) =>

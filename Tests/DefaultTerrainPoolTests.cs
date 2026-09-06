@@ -56,6 +56,189 @@ namespace FDG.Tests
                 "nothing small to break up a firing lane with.");
         }
 
+        // #393 - the heavy tier. "As large as the largest existing ones": the biggest built-in template
+        // is the Collapsed wall at 11" on its long side, so a piece only counts as large here if its
+        // longest side reaches within a couple of inches of that.
+        private const float LargePieceMinDimensionInches = 9f;
+
+        [Test]
+        public void Palette_OffersSeveralLargeThreePointPieces()
+        {
+            var large = DefaultTerrainPool.GetPalette()
+                .Where(p => p.Points >= 3)
+                .Where(p => LongestSide(p) >= LargePieceMinDimensionInches)
+                .ToList();
+
+            Assert.That(large, Has.Count.GreaterThanOrEqualTo(10),
+                "the reported gap: the 3-point tier was small enough to exhaust, so every game placed " +
+                "one of each. #393 added ten large pieces to widen it.");
+        }
+
+        [Test]
+        public void EveryFilterableType_HasALargePiece()
+        {
+            // #394 puts Impassible / Cover / Difficult / Dangerous filter buttons over the picker. A type
+            // whose only pieces are small leaves its filtered list with no heavy option, which is exactly
+            // the complaint #393 exists to fix.
+            foreach (ETerrainType type in new[]
+                     {
+                         ETerrainType.Impassible, ETerrainType.Cover,
+                         ETerrainType.Difficult, ETerrainType.Dangerous,
+                     })
+            {
+                Assert.That(
+                    DefaultTerrainPool.GetPalette().Any(
+                        p => p.TerrainType.HasFlag(type)
+                          && p.Points >= 3
+                          && LongestSide(p) >= LargePieceMinDimensionInches),
+                    Is.True,
+                    $"no large 3-point piece carries {type} - its filtered list has no heavy option.");
+            }
+        }
+
+        [Test]
+        public void NoPalettePiece_OutgrowsTheSizeBand()
+        {
+            // Guard on the other side: "as large as the largest existing" is a size BAND, not a licence
+            // to grow without limit. A piece far past the old maximum would dominate every table and
+            // leave no room for the other placements.
+            foreach (TerrainPieceEntry piece in DefaultTerrainPool.GetPalette())
+            {
+                Assert.That(LongestSide(piece), Is.LessThanOrEqualTo(12f),
+                    $"'{piece.Name}' is bigger than any piece the palette has ever offered.");
+            }
+        }
+
+        // The Cathedral shell's two doorway centres: west low, east high (see DefaultTerrainPool's
+        // constants). Stated here rather than derived, so a change to the piece has to come past this test.
+        private const float WestDoorCentreY = 2.25f;
+        private const float EastDoorCentreY = 5.75f;
+
+        [Test]
+        public void CathedralShell_AdmitsTwoBasesAbreast_ThroughEachSideDoorway()
+        {
+            // The courtyard is only worth having if models can get into it. Both checks use the swept-disc
+            // overload the MOVEMENT validator uses against terrain, so this is the real geometry, not a
+            // coordinate restatement: two 28mm bases side by side, walked in from off-piece to the doorway
+            // centre and on into the courtyard.
+            TerrainPieceEntry shell = PalettePiece("Cathedral shell");
+            (float lx, float hx, float ly, float hy) = shell.Shape.GetAABB();
+            float radius = BaseShapeDefaults.CircleRadiusInches;
+
+            foreach (float lane in new[] { -radius, radius })   // the two bases, shoulder to shoulder
+            {
+                Assert.That(
+                    shell.Shape.DoesPathIntersectZone(
+                        new Float2(lx - 1f, WestDoorCentreY + lane),
+                        new Float2((lx + hx) * 0.5f, WestDoorCentreY + lane), radius),
+                    Is.False, "the west doorway does not admit two 28mm bases abreast.");
+                Assert.That(
+                    shell.Shape.DoesPathIntersectZone(
+                        new Float2(hx + 1f, EastDoorCentreY + lane),
+                        new Float2((lx + hx) * 0.5f, EastDoorCentreY + lane), radius),
+                    Is.False, "the east doorway does not admit two 28mm bases abreast.");
+            }
+        }
+
+        [Test]
+        public void CathedralShell_HasNoHorizontalSightLineThroughBothDoorways()
+        {
+            // Why the doors are staggered to opposite corners instead of centred: two doors facing each
+            // other turn the piece from a sight blocker into a firing lane. A bare sight line (no base
+            // inflation - this is what LoS traces) swept across the whole piece must be blocked at EVERY
+            // height, which is only true while the two doorways' y ranges stay disjoint.
+            TerrainPieceEntry shell = PalettePiece("Cathedral shell");
+            (float lx, float hx, float ly, float hy) = shell.Shape.GetAABB();
+
+            // Strictly INSIDE the footprint: y == ly and y == hy are tangent to the outer faces of the
+            // south and north walls, and a boundary graze counts as a miss - a line that never enters the
+            // piece is not a line through its doorways.
+            int steps = (int)((hy - ly) * 20f);
+            for (int step = 1; step < steps; step++)
+            {
+                float y = ly + step * 0.05f;
+                Assert.That(
+                    shell.Shape.DoesPathIntersectZone(new Float2(lx - 1f, y), new Float2(hx + 1f, y)),
+                    Is.True,
+                    $"a horizontal sight line at y = {y:0.00}\" passes clean through both doorways.");
+            }
+        }
+
+        [Test]
+        public void HabBlock_HasStreetsWideEnoughForTwoBasesAbreast()
+        {
+            // Same standard as the Cathedral doorways: the gaps between the towers are streets, not seams.
+            TerrainPieceEntry hab = PalettePiece("Hab block");
+            float radius = BaseShapeDefaults.CircleRadiusInches;
+
+            foreach (float lane in new[] { -radius, radius })
+            {
+                // North-south street between the two southern towers.
+                Assert.That(
+                    hab.Shape.DoesPathIntersectZone(
+                        new Float2(5.25f + lane, -1f), new Float2(5.25f + lane, 5f), radius),
+                    Is.False, "the street between the southern towers is too narrow for two bases.");
+
+                // East-west street between the south-west tower and the northern one.
+                Assert.That(
+                    hab.Shape.DoesPathIntersectZone(
+                        new Float2(-1f, 5.25f + lane), new Float2(6f, 5.25f + lane), radius),
+                    Is.False, "the street below the north tower is too narrow for two bases.");
+            }
+        }
+
+        [Test]
+        public void RockyRidge_StaysAContinuousBarrier_DespiteTheStagger()
+        {
+            // The stagger is cosmetic and must stay that way: a barrier with a hole in it is a worse piece
+            // than a straight one, because the hole is invisible until a model walks through it. Sweep a
+            // 28mm base straight across the ridge at every 0.1" of its width - every crossing must be blocked.
+            TerrainPieceEntry ridge = PalettePiece("Rocky ridge");
+            (float lx, float hx, float ly, float hy) = ridge.Shape.GetAABB();
+            float radius = BaseShapeDefaults.CircleRadiusInches;
+
+            for (int step = 0; step <= (int)((hx - lx) * 10f); step++)
+            {
+                float x = lx + step * 0.1f;
+                Assert.That(
+                    ridge.Shape.DoesPathIntersectZone(new Float2(x, ly - 1f), new Float2(x, hy + 1f), radius),
+                    Is.True,
+                    $"a 28mm base crosses the ridge at x = {x:0.0}\" - the stagger opened a hole in it.");
+            }
+        }
+
+        [Test]
+        public void RazorwireBelt_LeavesLanesAModelCanStandClearIn()
+        {
+            // The point of three bands rather than one slab: a model can halt between two bands instead of
+            // being caught straddling wire. A lane only does that if a base fits with room to spare, so the
+            // sweep runs a quarter-base either side of the lane centre rather than straight down it.
+            TerrainPieceEntry wire = PalettePiece("Razorwire belt");
+            (float lx, float hx, float ly, float hy) = wire.Shape.GetAABB();
+            float radius = BaseShapeDefaults.CircleRadiusInches;
+            const float StandingClearMargin = 0.25f;
+
+            foreach (float laneCentre in new[] { 2f, 5f })
+            {
+                foreach (float wobble in new[] { -StandingClearMargin, StandingClearMargin })
+                {
+                    Assert.That(
+                        wire.Shape.DoesPathIntersectZone(
+                            new Float2(lx - 1f, laneCentre + wobble),
+                            new Float2(hx + 1f, laneCentre + wobble), radius),
+                        Is.False,
+                        $"the lane at y = {laneCentre}\" is too tight for a 28mm base to sit clear of the wire.");
+                }
+            }
+        }
+
+        private static TerrainPieceEntry PalettePiece(string name)
+        {
+            TerrainPieceEntry? piece = DefaultTerrainPool.GetPalette().FirstOrDefault(p => p.Name == name);
+            Assert.That(piece, Is.Not.Null, $"'{name}' is no longer in the palette.");
+            return piece!;
+        }
+
         [Test]
         public void Palette_OffersImpassibleTerrainThatDoesNotBlockLineOfSight()
         {

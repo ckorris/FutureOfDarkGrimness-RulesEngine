@@ -50,7 +50,7 @@ namespace FDG.Ai.Tactician
                 // prescribes it; the A resolver above still PLAYS it, so everything below the
                 // activation is unchanged and a search failure is just plain A (G3).
                 registry.RegisterResolver(new Search.StrategistActivationResolver(tableState, planner,
-                    activationPolicy, new Search.HandWeightedEvaluator(), searchBudget,
+                    activationPolicy, options.Evaluator ?? new Search.HandWeightedEvaluator(), searchBudget,
                     options.DecisionLog));
             }
             else

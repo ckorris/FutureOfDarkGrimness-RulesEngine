@@ -24,9 +24,10 @@ namespace FDG.Ai
         /// tests match what the shoot stage will rule. Default false = the official rules.</param>
         public static IStageResolverRegistry BuildRegistry(EAiProfile profile, ITableState tableState,
             PlayerID playerID, int? seed = null, int slotID = 0, Action<string>? decisionLog = null,
-            bool seeThroughFriendlyUnits = false, Tactician.Search.UctOptions? searchBudget = null) =>
+            bool seeThroughFriendlyUnits = false, Tactician.Search.UctOptions? searchBudget = null,
+            Tactician.Search.IPositionEvaluator? evaluator = null) =>
             BuildRegistry(profile, tableState, playerID, out _, seed, slotID, decisionLog,
-                seeThroughFriendlyUnits, searchBudget);
+                seeThroughFriendlyUnits, searchBudget, evaluator);
 
         /// <summary>
         /// Same as the other overload, plus the driving <see cref="Tactician.TacticianPlanner"/>
@@ -36,7 +37,8 @@ namespace FDG.Ai
         public static IStageResolverRegistry BuildRegistry(EAiProfile profile, ITableState tableState,
             PlayerID playerID, out Tactician.TacticianPlanner? planner, int? seed = null, int slotID = 0,
             Action<string>? decisionLog = null, bool seeThroughFriendlyUnits = false,
-            Tactician.Search.UctOptions? searchBudget = null)
+            Tactician.Search.UctOptions? searchBudget = null,
+            Tactician.Search.IPositionEvaluator? evaluator = null)
         {
             planner = null;
             switch (profile)
@@ -56,7 +58,7 @@ namespace FDG.Ai
                     IStageResolverRegistry searched = TacticianResolverRegistryFactory.Build(tableState,
                         playerID, new TacticianOptions { Seed = seed, SlotID = slotID,
                             DecisionLog = decisionLog, SeeThroughFriendlyUnits = seeThroughFriendlyUnits,
-                            Search = searchBudget ?? DefaultSearchBudget },
+                            Search = searchBudget ?? DefaultSearchBudget, Evaluator = evaluator },
                         out Tactician.TacticianPlanner searchPlanner);
                     planner = searchPlanner;
                     return searched;

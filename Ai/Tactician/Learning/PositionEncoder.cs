@@ -122,6 +122,86 @@ namespace FDG.Ai.Tactician.Learning
             return v;
         }
 
+        // The features a LEAF evaluator can compute (#191 step 14). Two of Encode's seven globals
+        // describe the activation boundary - activation_frac and acting_side_is_first - and a leaf
+        // sits mid-simulation with no boundary to describe. Rather than serve them as zeros and
+        // hope (a train/serve mismatch that would be invisible), the serving model is TRAINED
+        // without them: measured 2026-09-06 on 15.8k games, dropping both moved held-out auc
+        // 0.9136 -> 0.9133 and the unseen-pairing auc 0.8865 -> 0.8862, i.e. nothing. The other
+        // five globals and all four blocks are pure functions of the table state.
+        public const int ServingGlobalFeatureCount = 5;
+        public const int ServingVectorWidth = ServingGlobalFeatureCount + PerSideFeatureCount * 4; // 77
+
+        /// <summary>
+        /// The 77-float serving vector for one SIDE, from that side's perspective: the five
+        /// state-derived globals then SELF / ALLY / ENEMY_SUM / ENEMY_MAX, in the same order and
+        /// with the same per-side block <see cref="Encode"/> produces for a training row.
+        /// <para>
+        /// SELF is ONE member of the side and ALLY is the rest, matching how training rows are
+        /// shaped (a row is written from the acting PLAYER's perspective, with teammates in the
+        /// ALLY block) - serving a side's whole membership as SELF with an empty ALLY block would
+        /// be a shape the model never saw in 2v2. The member is picked deterministically so the
+        /// same position always encodes the same way.
+        /// </para>
+        /// </summary>
+        public static float[] EncodeForEvaluation(ITableState tableState, RuleEvaluator evaluator,
+            IReadOnlyList<PlayerID> sideMembers, IReadOnlyList<PlayerID> opposingMembers)
+        {
+            var v = new float[ServingVectorWidth];
+            var terrain = TacticalAnalysis.TerrainOf(tableState);
+            List<ObjectiveProjection> projections = TacticalAnalysis.ProjectObjectives(tableState);
+            int objectiveCount = Math.Max(1, tableState.Objectives.Objects.Count());
+            var globals = new Globals(tableState);
+
+            int round = tableState.Progress.RoundCount ?? 1;
+            int totalRounds = Math.Max(1, tableState.Progress.TotalRounds);
+            v[0] = Math.Clamp((float)round / totalRounds, 0f, 1f);                      // round_frac
+            v[1] = Math.Clamp((float)(totalRounds - round) / totalRounds, 0f, 1f);      // rounds_left_frac
+            v[2] = Math.Clamp(objectiveCount / 5f, 0f, 1f);                             // objective_count_norm
+            v[3] = Math.Clamp(sideMembers.Count / 4f, 0f, 1f);                          // players_per_side_norm
+            v[4] = Math.Clamp(TotalGamePoints(tableState) / 4000f, 0f, 1f);             // points_norm
+
+            var self = new List<PlayerID> { sideMembers[0] };
+            var allies = sideMembers.Skip(1).ToList();
+            var opposing = opposingMembers.ToList();
+
+            float[] selfBlock = ComputeBlock(tableState, evaluator, terrain, projections, objectiveCount,
+                self, opposing, globals);
+            float[] allyBlock = allies.Count == 0
+                ? new float[PerSideFeatureCount]
+                : ComputeBlock(tableState, evaluator, terrain, projections, objectiveCount, allies, opposing, globals);
+            float[] enemySum = opposing.Count == 0
+                ? new float[PerSideFeatureCount]
+                : ComputeBlock(tableState, evaluator, terrain, projections, objectiveCount,
+                    opposing, sideMembers.ToList(), globals);
+            var enemyMax = new float[PerSideFeatureCount];
+            foreach (PlayerID enemy in opposing)
+            {
+                float[] block = ComputeBlock(tableState, evaluator, terrain, projections, objectiveCount,
+                    new List<PlayerID> { enemy }, sideMembers.ToList(), globals);
+                for (int i = 0; i < PerSideFeatureCount; i++) enemyMax[i] = Math.Max(enemyMax[i], block[i]);
+            }
+
+            Array.Copy(selfBlock, 0, v, ServingGlobalFeatureCount, PerSideFeatureCount);
+            Array.Copy(allyBlock, 0, v, ServingGlobalFeatureCount + PerSideFeatureCount, PerSideFeatureCount);
+            Array.Copy(enemySum, 0, v, ServingGlobalFeatureCount + PerSideFeatureCount * 2, PerSideFeatureCount);
+            Array.Copy(enemyMax, 0, v, ServingGlobalFeatureCount + PerSideFeatureCount * 3, PerSideFeatureCount);
+            return v;
+        }
+
+        /// <summary>
+        /// Sum of every army's points limit - the same quantity the FdgLab exporter passes as
+        /// <c>totalGamePoints</c> (it sums each slot's <c>Army.PointsLimit</c>), so points_norm
+        /// means the same thing at serving time as it did in the training row.
+        /// </summary>
+        public static float TotalGamePoints(ITableState tableState)
+        {
+            float total = 0f;
+            foreach (IArmy army in tableState.Armies.Objects)
+                if (army is ArmyData data) total += data.PointsLimit;
+            return total;
+        }
+
         /// <summary>
         /// The 18-float per-side block (schema sec 3) for an arbitrary SIDE - not a player's SELF
         /// block, the whole side's aggregate (#191 B3, docs/tactician-b2-design.md sec 7.2's leaf

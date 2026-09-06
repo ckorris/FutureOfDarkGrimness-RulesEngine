@@ -36,5 +36,14 @@ namespace FDG.Ai.Tactician
         /// rungs remain benchmarkable against each other forever (plan G4).
         /// </summary>
         public Search.UctOptions? Search { get; init; }
+
+        /// <summary>
+        /// C3 (#191 campaign step 14): the leaf evaluator the search uses. Null (the default) is
+        /// <see cref="Search.HandWeightedEvaluator"/>, the hand-weighted evaluator the B gate was
+        /// measured on - so an unpromoted learned evaluator can never become the default by
+        /// accident (G9), and both remain selectable forever once one is promoted (G4). Ignored
+        /// when <see cref="Search"/> is null: plain A has no leaf to evaluate.
+        /// </summary>
+        public Search.IPositionEvaluator? Evaluator { get; init; }
     }
 }

@@ -30,10 +30,18 @@ namespace FDG.Ai.Tactician.Learning
         // B-gate failure analysis's second finding (material was fungible: a unit 6" from your marker
         // counted the same as one 40" away). Width 67 -> 71. v1 files stay valid v1 data; the
         // schema doc records the mixed-schema consequence for step 12/13.
-        public const int SchemaVersion = 2;
+        //
+        // v3 (2026-09-06, #191 step 11 C replan, Chris's sign-off S1): +obj_contest_strength (16) and
+        // +obj_open_approach (17) per side block - the two MarkerTerms the shipping leaf evaluator
+        // already reads (P4). The rule the replan set: THE NET MUST SEE EVERYTHING THE HAND EVALUATOR
+        // SEES, or a net trained on these rows is blind to the term that produced P4's gain (Orks
+        // 26 -> 44). Parity is structural, not a convention: HandWeightedEvaluator now reads indices
+        // 16/17 out of this block instead of calling MarkerTerms itself, so the two cannot drift.
+        // Width 71 -> 79. v1/v2 files stay valid data at their own schema.
+        public const int SchemaVersion = 3;
         public const int GlobalFeatureCount = 7;
-        public const int PerSideFeatureCount = 16;
-        public const int VectorWidth = GlobalFeatureCount + PerSideFeatureCount * 4; // 71
+        public const int PerSideFeatureCount = 18;
+        public const int VectorWidth = GlobalFeatureCount + PerSideFeatureCount * 4; // 79
 
         // DEFAULT_TABLE_WIDTH/HEIGHT_INCHES (72x48): the schema's scale reference for on-table
         // distances. Not read off the actual table's terrain bounds - GameWideConstants is the
@@ -43,7 +51,7 @@ namespace FDG.Ai.Tactician.Learning
             + GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES * GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES);
 
         /// <summary>
-        /// Encodes the 71-float v2 vector for <paramref name="actingPlayer"/>'s activation boundary.
+        /// Encodes the 79-float v3 vector for <paramref name="actingPlayer"/>'s activation boundary.
         /// </summary>
         /// <param name="boundaryIndexInRound">0-based index of this activation within the current round.</param>
         /// <param name="expectedBoundariesThisRound">The round's total living-unit count at round
@@ -86,7 +94,7 @@ namespace FDG.Ai.Tactician.Learning
             v[5] = Math.Clamp((float)boundaryIndexInRound / Math.Max(1, expectedBoundariesThisRound), 0f, 1f); // activation_frac
             v[6] = actingSideIsFirst ? 1f : 0f; // acting_side_is_first
 
-            // --- 4 per-side blocks (15 floats each) ---------------------------------------------
+            // --- 4 per-side blocks (18 floats each) ---------------------------------------------
             float[] self = ComputeBlock(tableState, evaluator, terrain, projections, objectiveCount,
                 new List<PlayerID> { actingPlayer }, enemies, globals);
             float[] ally = allies.Count == 0
@@ -115,7 +123,7 @@ namespace FDG.Ai.Tactician.Learning
         }
 
         /// <summary>
-        /// The 16-float per-side block (schema sec 3) for an arbitrary SIDE - not a player's SELF
+        /// The 18-float per-side block (schema sec 3) for an arbitrary SIDE - not a player's SELF
         /// block, the whole side's aggregate (#191 B3, docs/tactician-b2-design.md sec 7.2's leaf
         /// evaluator: it needs every side's own block, not one activation's four-block perspective).
         /// Exposes exactly the computation <see cref="Encode"/>'s SELF/ALLY/ENEMY_SUM/ENEMY_MAX blocks
@@ -284,6 +292,16 @@ namespace FDG.Ai.Tactician.Learning
                 }
             }
             block[15] = Frac(heldThreatened, objectiveCount); // obj_held_threatened_share (v2)
+
+            // v3: the two marker terms the leaf evaluator reads (P4). Computed HERE, once per block,
+            // so the evaluator and the exported row are the same numbers by construction - see the
+            // schema-version comment at the top of this file for why that is the rule and not a
+            // convention. Cost is O(units x markers) base-edge distances, the order this method
+            // already runs at (measured 2026-09-06: encoder mean 1.5ms -> 1.9ms, budget 5ms).
+            MarkerTerms.Result markers = MarkerTerms.Compute(tableState, members, opposing,
+                projections, objectiveCount);
+            block[16] = Math.Clamp(markers.ContestStrength, 0f, 1f); // obj_contest_strength (v3)
+            block[17] = Math.Clamp(markers.OpenApproach, 0f, 1f);    // obj_open_approach (v3)
 
             return block;
         }

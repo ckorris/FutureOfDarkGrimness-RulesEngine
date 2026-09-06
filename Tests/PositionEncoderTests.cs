@@ -1,3 +1,4 @@
+using FDG.Ai.Tactician;
 using FDG.Ai.Tactician.Learning;
 using FDG.Data;
 using FDG.Rules.Dispatch;
@@ -31,11 +32,38 @@ namespace FDG.Tests
         }
 
         [Test]
-        public void Width_IsV2()
+        public void Width_IsV3()
         {
-            Assert.That(PositionEncoder.SchemaVersion, Is.EqualTo(2));
-            Assert.That(PositionEncoder.PerSideFeatureCount, Is.EqualTo(16));
-            Assert.That(PositionEncoder.VectorWidth, Is.EqualTo(71));
+            Assert.That(PositionEncoder.SchemaVersion, Is.EqualTo(3));
+            Assert.That(PositionEncoder.PerSideFeatureCount, Is.EqualTo(18));
+            Assert.That(PositionEncoder.VectorWidth, Is.EqualTo(79));
+        }
+
+        // v3's reason for existing (#191 step 11, S1): the exported row must carry the very numbers
+        // the shipping leaf evaluator reads, or a net trained on these rows is blind to the term P4
+        // added. HandWeightedEvaluator now reads indices 16/17 out of this block, so this test is
+        // what stops the two drifting apart - if someone recomputes the terms in the evaluator with
+        // different arguments, the block and the evaluator disagree and this fails.
+        [Test]
+        public void MarkerTerms_AreExposedAtIndices16And17()
+        {
+            _store.Create(new ObjectiveData(new Position(30f, 30f), _store));  // contested by both
+            _store.Create(new ObjectiveData(new Position(60f, 30f), _store));  // theirs, we approach
+            MakeUnit(_us, 5, atX: 29f, atZ: 30f);
+            MakeUnit(_them, 3, atX: 31f, atZ: 30f);
+            MakeUnit(_them, 3, atX: 60f, atZ: 30f);
+
+            var ourSide = new List<PlayerID> { _us };
+            var theirSide = new List<PlayerID> { _them };
+            List<ObjectiveProjection> projections = TacticalAnalysis.ProjectObjectives(_tableState);
+            MarkerTerms.Result expected = MarkerTerms.Compute(_tableState, ourSide, theirSide,
+                projections, _tableState.Objectives.Objects.Count());
+
+            float[] ours = Block(_us, _them);
+            Assert.That(ours[16], Is.EqualTo(expected.ContestStrength).Within(1e-6f), "obj_contest_strength");
+            Assert.That(ours[17], Is.EqualTo(expected.OpenApproach).Within(1e-6f), "obj_open_approach");
+            Assert.That(expected.ContestStrength, Is.GreaterThan(0f), "the fixture must actually contest a marker");
+            Assert.That(expected.OpenApproach, Is.GreaterThan(0f), "and have a marker to approach");
         }
 
         [Test]

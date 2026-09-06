@@ -104,7 +104,6 @@ namespace FDG.Ai.Tactician.Search
                 ? RoundEndProjection.Project(state, evaluator, membersBySide)
                 : null;
             int objectiveCount = Math.Max(1, state.Objectives.Objects.Count());
-            List<ObjectiveProjection> projections = TacticalAnalysis.ProjectObjectives(state);
 
             var raw = new float[sides.Count];
             for (int side = 0; side < sides.Count; side++)
@@ -119,11 +118,12 @@ namespace FDG.Ai.Tactician.Search
                 float valueShare = block[1];    // value_share (living UnitValue share)
                 float threatCoverage = block[11];
                 // P4: contest strength and per-marker open approach replace obj_contested_share and
-                // 1 - min_obj_dist_norm (see the type doc).
-                MarkerTerms.Result markers = MarkerTerms.Compute(state, membersBySide[side], opposing,
-                    projections, objectiveCount);
-                float contested = markers.ContestStrength;
-                float approach = markers.OpenApproach;
+                // 1 - min_obj_dist_norm (see the type doc). Read out of the encoder block since v3
+                // (2026-09-06, step 11 S1) rather than computed here: the exported row and this
+                // evaluator are then the same numbers by construction, which is what lets step 13
+                // score the hand evaluator as a predictor on the very rows it is being replaced on.
+                float contested = block[16]; // obj_contest_strength (v3)
+                float approach = block[17];  // obj_open_approach (v3)
 
                 float heldTerm;
                 if (tallies != null)

@@ -44,6 +44,13 @@ namespace FDG.Ai.Tactician.Search
 
         /// <summary>From a live or loaded store: one entry per filled player slot.</summary>
         public static SideMap FromStore(GameDataStore store) =>
+            FromStore((IReadableGameDataStore)store);
+
+        /// <summary>
+        /// Same, from the read-only store surface - what a resolver-level caller has (the FdgLab
+        /// exporter builds a SideMap here to log the hand evaluator's value per row, #191 step 12a).
+        /// </summary>
+        public static SideMap FromStore(IReadableGameDataStore store) =>
             FromSlots(store.GetAllValues<PlayerSlotInfo>()
                 .OrderBy(info => info.SlotID)
                 .Select(info => (info.PlayerID, info.TeamNumber)));

@@ -3,6 +3,7 @@ using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
+using FDG.StageResolution.Requests;
 using FDG.Utilities;
 
 namespace FDG.Ai.Tactician
@@ -250,6 +251,30 @@ namespace FDG.Ai.Tactician
             !unit.Tokens.HasToken(TokenType.Shaken)
             && !unit.Tokens.HasToken(TokenType.ArrivedFromReserve)
             && !AircraftRules.IsAircraft(unit);
+
+        /// <summary>
+        /// <see cref="MinBaseEdgeDistanceToPoint(IUnit, Position)"/> for a PLANNED move: the closest
+        /// base-edge distance from any living model's END position (at its end facing, as the engine's
+        /// own end-state checks measure - #312) to a point. <see cref="float.MaxValue"/> when the move
+        /// carries no living model with a destination. #191 step 10 P4: the seize test the generator and
+        /// the planner grade a candidate by - the CENTROID is not what the reconcile rules look at, and
+        /// a sliver formation puts one model on the marker with its centroid deliberately far away.
+        /// </summary>
+        public static float MinEndBaseEdgeDistanceToPoint(IReadOnlyList<ModelMoveEntry> move, Position point)
+        {
+            float best = float.MaxValue;
+            foreach (ModelMoveEntry entry in move)
+            {
+                ModelData model = entry.Model.GetValue();
+                if (!model.GetIsAlive() || entry.Positions.Count == 0) continue;
+                Position end = entry.Positions[^1];
+                Float2 facing = entry.Facings != null && entry.Facings.Count > 0
+                    ? entry.Facings[^1] : model.Facing;
+                float distance = BaseShapeGeometry.SurfaceDistanceToPoint2D(model.BaseShape, end, facing, point);
+                if (distance < best) best = distance;
+            }
+            return best;
+        }
 
         /// <summary>Closest base-edge distance from any living model of the unit to a point (true footprint, #150).</summary>
         public static float MinBaseEdgeDistanceToPoint(IUnit unit, Position point)

@@ -24,6 +24,7 @@ namespace FDG.Ai.Tactician
         MoveToCast,         // M11
         DeliverCargo,       // M12
         SideStep,           // M13 (#359: clear an unactivated friendly's advance lane)
+        Contest,            // M14 (#191 step 10 P4, 2026-09-06: sliver denial - one model inside the seizure radius, the mass chained back)
     }
 
     /// <summary>M4's range bands. SafeShooting is the kite band: inside our reach, outside theirs.</summary>

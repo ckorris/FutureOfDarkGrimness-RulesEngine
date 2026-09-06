@@ -362,6 +362,69 @@ namespace FDG.Tests
             GameProgressUtilities.WriteProgress(_store, progress);
         }
 
+        // --- step 10 P4 (2026-09-06): contest strength and per-marker open approach ----------------
+
+        [Test]
+        public void ContestedMarker_IsWorthLess_WhenTheEnemyMassesOnIt()
+        {
+            // Both sides have a unit inside 3" of the same marker (contested). Two more enemy units
+            // sit 12" off it - inside everyone's rifle reach already, so threat coverage does not move -
+            // and step into the marker's contest zone: NOTHING changes but the contest strength (same
+            // material, same held share), and it must cost us value. The v2 evaluator priced a
+            // contested marker at a flat 0.20 share regardless of who was winning it.
+            MakeUnit(_us, 3, atX: 30f, atZ: 32f);
+            MakeUnit(_them, 3, atX: 30f, atZ: 27f);
+            DataBinding<UnitData> reserveA = MakeUnit(_them, 3, atX: 18f, atZ: 30f);
+            DataBinding<UnitData> reserveB = MakeUnit(_them, 3, atX: 42f, atZ: 30f);
+            _store.Create(new ObjectiveData(new Position(30f, 30f), _store));
+            SideMap sides = SideMap.FromSlots(new[] { (_us, 0), (_them, 1) });
+            int us = sides.SideOf(_us);
+
+            float evenContest = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us];
+            MoveTo(reserveA, 27f, 26f);
+            MoveTo(reserveB, 33f, 26f);
+            float outmassed = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us];
+
+            Assert.That(outmassed, Is.LessThan(evenContest - 0.01f),
+                $"a contest the enemy out-masses must be worth less: even={evenContest:F4} outmassed={outmassed:F4}");
+        }
+
+        [Test]
+        public void ASpareUnit_WalkingTowardTheEnemysMarker_RaisesValue_WhileAnotherSitsOnOurs()
+        {
+            // The saturation defect: with one unit on our marker the old approach term (closest unit to
+            // ANY marker) was already 1, so a second unit marching on the enemy's marker moved nothing
+            // until it arrived. Per-marker open approach keeps a slope for it.
+            MakeUnit(_us, 3, atX: 10f, atZ: 10f); // on our marker
+            DataBinding<UnitData> spare = MakeUnit(_us, 3, atX: 10f, atZ: 30f);
+            MakeUnit(_them, 3, atX: 50f, atZ: 10f); // on theirs
+            _store.Create(new ObjectiveData(new Position(10f, 10f), _store));
+            _store.Create(new ObjectiveData(new Position(50f, 10f), _store));
+            SideMap sides = SideMap.FromSlots(new[] { (_us, 0), (_them, 1) });
+            int us = sides.SideOf(_us);
+
+            float far = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us];
+            MoveTo(spare, 22f, 24f); // ~30" from their marker
+            float nearer = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us];
+            MoveTo(spare, 34f, 16f); // ~17", still outside the contest zone
+            float nearest = _handWeighted.Evaluate(_tableState, _evaluator, sides)[us];
+
+            Assert.That(nearer, Is.GreaterThan(far + 0.002f),
+                $"the spare unit's first step must raise value: far={far:F4} nearer={nearer:F4}");
+            Assert.That(nearest, Is.GreaterThan(nearer + 0.002f),
+                $"and the second: nearer={nearer:F4} nearest={nearest:F4}");
+        }
+
+        private static void MoveTo(DataBinding<UnitData> unit, float x, float z)
+        {
+            int i = 0;
+            foreach (DataBinding<ModelData> model in unit.GetValue().ModelBindings)
+            {
+                model.GetValue().PositionBinding.SetValue(new Position(x + (i % 2) * 1.1f, z + (i / 2) * 1.1f));
+                i++;
+            }
+        }
+
         // --- helpers -------------------------------------------------------------------------------
 
         private static void Kill(DataBinding<UnitData> unit)

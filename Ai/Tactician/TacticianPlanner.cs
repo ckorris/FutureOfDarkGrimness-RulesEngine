@@ -942,7 +942,7 @@ namespace FDG.Ai.Tactician
                 }
             }
 
-            float objectiveDelta = ObjectiveDelta(self, end);
+            float objectiveDelta = ObjectiveDelta(self, candidate);
             float objectiveApproach = ObjectiveApproach(now, end);
             // A5-4: markers matter most when the round about to score is the last one; early
             // rounds, attrition buys the endgame (a marker held in a horde's path is lost later).
@@ -1283,8 +1283,9 @@ namespace FDG.Ai.Tactician
         // objectives per team (#257), and since #297 the engine's reconcile is team-aware too -
         // allied players guarding one marker HOLD it for their side (no ally-contest penalty or
         // step-off bonus needed any more; joining a teammate's marker is simply worth nothing extra).
-        private float ObjectiveDelta(UnitData self, Position end)
+        private float ObjectiveDelta(UnitData self, MacroAction candidate)
         {
+            Position end = candidate.ProjectedCentroid;
             float delta = 0f;
             foreach (ObjectiveProjection projection in TacticalAnalysis.ProjectObjectives(_tableState))
             {
@@ -1295,8 +1296,7 @@ namespace FDG.Ai.Tactician
                 float endDist = Distance(end, projection.Objective.Position);
                 float nowDist = TacticalAnalysis.MinBaseEdgeDistanceToPoint(self, projection.Objective.Position);
                 bool weAreOnItNow = nowDist <= TacticalAnalysis.ObjectiveSeizureRadiusInches;
-                // The centroid is a coarse stand-in for base-edge reach; half the seize radius of slack.
-                bool endOnIt = endDist <= TacticalAnalysis.ObjectiveSeizureRadiusInches + 1.5f;
+                bool endOnIt = EndsInSeizeRange(candidate, projection.Objective.Position);
 
                 if (!projectedOurs && endOnIt) delta += 1f;
                 // Walking off a marker we hold: only priced when no TEAMMATE stays in range to keep
@@ -1317,6 +1317,20 @@ namespace FDG.Ai.Tactician
                     delta += TacticianWeights.MoveObjectiveSupport;
             }
             return delta;
+        }
+
+        // #191 step 10 P4: the seize test on a candidate's END positions - what the reconcile rules
+        // measure (one base edge within 3"). Until P4 this was "centroid within 4.5"", which both
+        // over-credited compact units and could not see a sliver at all (one model on the marker,
+        // centroid deliberately far back). Endpoint-only candidates (no move: tests, scoring paths
+        // that carry a bare point) keep the centroid stand-in with its half-radius of slack.
+        private static bool EndsInSeizeRange(MacroAction candidate, Position marker)
+        {
+            float lead = TacticalAnalysis.MinEndBaseEdgeDistanceToPoint(candidate.Move, marker);
+            if (lead < float.MaxValue)
+                return lead <= TacticalAnalysis.ObjectiveSeizureRadiusInches + 0.05f;
+            return Distance(candidate.ProjectedCentroid, marker)
+                <= TacticalAnalysis.ObjectiveSeizureRadiusInches + 1.5f;
         }
 
         // Garrison release (#191, Chris's game 3 - "even after the objective was 100% safe, they

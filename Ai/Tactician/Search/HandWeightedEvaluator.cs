@@ -1,3 +1,4 @@
+using FDG.Ai.Tactician;
 using FDG.Ai.Tactician.Learning;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
@@ -48,6 +49,17 @@ namespace FDG.Ai.Tactician.Search
     /// of its projected part. Before the last round nothing changes.
     /// </para>
     /// <para>
+    /// <b>P4, 2026-09-06 (the B-gate's Orks failure analysis).</b> Two of the objective term's inputs
+    /// leave the encoder's v2 vector: the contested share becomes <see cref="MarkerTerms"/>'s
+    /// contest STRENGTH (our share of the unit value inside each contested marker's zone - a
+    /// contest we out-mass is worth most of the marker, a toe-hold under a horde almost nothing),
+    /// and the approach term becomes its per-marker OPEN approach (nearest eligible unit to each
+    /// marker we do not own, over two rush moves, averaged), which keeps a slope for the spare unit
+    /// walking onto the enemy's flank marker while another sits on ours. Both are the v3 feature
+    /// candidates for the step-11 replan; until then C3's "same features" promise is v2 plus these
+    /// two, computed from the same projections.
+    /// </para>
+    /// <para>
     /// Two-side complementarity (sec 7.2) keeps <see cref="ObjectiveShareEvaluator"/>'s proven shape -
     /// 0.5 + (own raw - best other raw) / 2 - which sums to exactly 1 for two sides with no clamp
     /// ever engaging (raw in [0,1] => the difference is in [-1,1] => the halved, offset result is
@@ -92,6 +104,7 @@ namespace FDG.Ai.Tactician.Search
                 ? RoundEndProjection.Project(state, evaluator, membersBySide)
                 : null;
             int objectiveCount = Math.Max(1, state.Objectives.Objects.Count());
+            List<ObjectiveProjection> projections = TacticalAnalysis.ProjectObjectives(state);
 
             var raw = new float[sides.Count];
             for (int side = 0; side < sides.Count; side++)
@@ -103,10 +116,14 @@ namespace FDG.Ai.Tactician.Search
                 float[] block = PositionEncoder.EncodeSideBlock(state, evaluator, membersBySide[side], opposing);
                 float held = block[6];          // obj_held_share (projected owner, seizure radius)
                 float heldThreatened = block[15]; // obj_held_threatened_share (v2: enemy can reach it this round)
-                float contested = block[7];     // obj_contested_share (in range, not owned)
-                float approach = 1f - block[9]; // 1 - min_obj_dist_norm (closest unit to any marker)
                 float valueShare = block[1];    // value_share (living UnitValue share)
                 float threatCoverage = block[11];
+                // P4: contest strength and per-marker open approach replace obj_contested_share and
+                // 1 - min_obj_dist_norm (see the type doc).
+                MarkerTerms.Result markers = MarkerTerms.Compute(state, membersBySide[side], opposing,
+                    projections, objectiveCount);
+                float contested = markers.ContestStrength;
+                float approach = markers.OpenApproach;
 
                 float heldTerm;
                 if (tallies != null)

@@ -58,7 +58,8 @@ namespace FDG.Ai
                     IStageResolverRegistry searched = TacticianResolverRegistryFactory.Build(tableState,
                         playerID, new TacticianOptions { Seed = seed, SlotID = slotID,
                             DecisionLog = decisionLog, SeeThroughFriendlyUnits = seeThroughFriendlyUnits,
-                            Search = searchBudget ?? DefaultSearchBudget, Evaluator = evaluator },
+                            Search = searchBudget ?? DefaultSearchBudget,
+                            Evaluator = evaluator ?? StrategistLeafOverride(decisionLog) },
                         out Tactician.TacticianPlanner searchPlanner);
                     planner = searchPlanner;
                     return searched;
@@ -67,6 +68,36 @@ namespace FDG.Ai
                 default:
                     throw new ArgumentOutOfRangeException(nameof(profile), profile, "Unknown AI profile.");
             }
+        }
+
+        /// <summary>
+        /// Dev-only override (#191 C4): the environment variable naming a
+        /// <see cref="Tactician.Search.MlpPositionEvaluator"/> weights file for a Strategist built
+        /// with no caller-supplied leaf. Unset (always, in normal play and CI) the leaf stays the
+        /// hand-weighted default - plan invariant G9, an unpromoted net never becomes the default.
+        /// </summary>
+        public const string StrategistWeightsEnvVar = "FDG_STRATEGIST_WEIGHTS";
+
+        /// <summary>
+        /// The learned leaf named by <see cref="StrategistWeightsEnvVar"/>, or null (= the default
+        /// leaf) when the variable is unset or empty. A path that names a MISSING file also yields
+        /// null, loudly; a file that fails to parse throws (the caller asked for a net and did not
+        /// get one - never fall back silently). One line says which file loaded, through
+        /// <paramref name="decisionLog"/> when the caller has one, else the console.
+        /// </summary>
+        public static Tactician.Search.IPositionEvaluator? StrategistLeafOverride(Action<string>? decisionLog = null)
+        {
+            string? path = Environment.GetEnvironmentVariable(StrategistWeightsEnvVar);
+            if (string.IsNullOrWhiteSpace(path)) return null;
+            Action<string> log = decisionLog ?? Console.WriteLine;
+            if (!File.Exists(path))
+            {
+                log($"Strategist: {StrategistWeightsEnvVar} names a missing file, hand-weighted leaf kept: {path}");
+                return null;
+            }
+            Tactician.Search.MlpPositionEvaluator net = Tactician.Search.MlpPositionEvaluator.FromFile(path);
+            log($"Strategist: learned leaf loaded from {StrategistWeightsEnvVar}={Path.GetFullPath(path)}");
+            return net;
         }
 
         /// <summary>

@@ -49,9 +49,10 @@ namespace FDG.Ai.Tactician
                 // B5 (#191 step 9): the Strategist rung. The search picks the activation and
                 // prescribes it; the A resolver above still PLAYS it, so everything below the
                 // activation is unchanged and a search failure is just plain A (G3).
+                Search.IPositionEvaluator leaf = options.Evaluator ?? new Search.HandWeightedEvaluator();
+                planner.SearchLeaf = leaf;
                 registry.RegisterResolver(new Search.StrategistActivationResolver(tableState, planner,
-                    activationPolicy, options.Evaluator ?? new Search.HandWeightedEvaluator(), searchBudget,
-                    options.DecisionLog));
+                    activationPolicy, leaf, searchBudget, options.DecisionLog));
             }
             else
             {

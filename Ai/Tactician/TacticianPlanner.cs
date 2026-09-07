@@ -104,6 +104,13 @@ namespace FDG.Ai.Tactician
 
         public MacroAction? LastMacro { get; private set; }
 
+        /// <summary>
+        /// The leaf evaluator the Strategist's search scores positions with, set by the registry
+        /// factory when a search is wired over this planner; null for a plain Tactician (no search).
+        /// Read by tests to pin which leaf a built profile actually got (#191 C4 dev override).
+        /// </summary>
+        public Search.IPositionEvaluator? SearchLeaf { get; internal set; }
+
         // --- prescription seam (#191 B1 step 5b) ---------------------------------------------------
         // B0's finding 4: a decision injected at the registry/wire boundary BYPASSES the resolver,
         // so BeginActivation never runs and every later request in that activation is answered by a

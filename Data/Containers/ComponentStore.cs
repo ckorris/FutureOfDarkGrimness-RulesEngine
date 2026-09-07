@@ -1,4 +1,4 @@
-﻿
+
 using FDG.Data.Containers;
 
 namespace FDG.Data
@@ -365,6 +365,64 @@ namespace FDG.Data
             }
 
             return _bindings[dataReference.Index];
+        }
+
+        /// <summary>
+        /// A binding for a slot that may not be occupied YET (#394). The whole-store clone
+        /// (<see cref="FDG.SaveLoad.StoreClone"/>) rebuilds entries in registration order, and a
+        /// ModelData's facing binding points into the Float2 store registered after it - exactly the
+        /// forward reference <see cref="FDG.SaveLoad.StoreReplay"/> retries around. The binding is the
+        /// same object every later <see cref="GetDataBinding"/> for that slot returns, so holders share
+        /// it as they do after a JSON replay; a read through it before the slot is replayed throws like
+        /// any other invalid reference.
+        /// </summary>
+        internal DataBinding<T> BindForReplay(DataReference reference)
+        {
+            if (reference.TypeID != _typeID)
+            {
+                throw new InvalidDataReferenceAssignmentException(reference, EInvalidReason.IncorrectType);
+            }
+
+            if (_bindings.TryGetValue(reference.Index, out DataBinding<T>? existing))
+            {
+                return existing;
+            }
+
+            DataBinding<T> binding = new DataBinding<T>(reference, this);
+            _bindings.Add(reference.Index, binding);
+            return binding;
+        }
+
+        /// <summary>
+        /// Fills this (fresh) store with <paramref name="source"/>'s occupied slots, each value passed
+        /// through <paramref name="cloneValue"/>, adopting the source generations the way
+        /// <see cref="CreateFromReplay"/> does (#394). Free slots stay at generation 0 - what a JSON
+        /// replay leaves them at, since a save only records occupied slots - so a later Create hands
+        /// out the same reference on either path. No events: nothing can be subscribed to a store that
+        /// is still being built. Reads the source only, so any number of clones may be taken from one
+        /// source concurrently.
+        /// </summary>
+        internal void ReplayFrom(ComponentStore<T> source, Func<T, T> cloneValue)
+        {
+            EnsureCapacity(source._capacity);
+            for (int i = 0; i < source._capacity; i++)
+            {
+                if (source._used[i] == false)
+                {
+                    continue;
+                }
+
+                if (_used[i])
+                {
+                    throw new InvalidDataReferenceAssignmentException(
+                        new DataReference { TypeID = _typeID, Index = i, Generation = source._generations[i] },
+                        EInvalidReason.IndexAlreadyAssigned);
+                }
+
+                _used[i] = true;
+                _generations[i] = source._generations[i];
+                _data[i] = cloneValue(source._data[i]);
+            }
         }
 
         public object? GetValueUntyped(DataReference reference)

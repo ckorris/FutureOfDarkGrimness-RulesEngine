@@ -1,4 +1,4 @@
-﻿using FDG.Data;
+using FDG.Data;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
 using FDG.Rules.Serialization;
@@ -115,6 +115,28 @@ namespace FDG
             Quality = quality;
             Defense = defense;
 
+            ModelBindings = modelBindings;
+        }
+
+        /// <summary>
+        /// #394: the whole-store clone's copy (<see cref="FDG.SaveLoad.StoreClone"/>) - the JSON
+        /// constructor plus <see cref="RehydrateRules"/>, built directly from the live unit. Like the
+        /// JSON path it wires NO wound subscriptions (the clone rewires them once every model exists,
+        /// via <see cref="RewireModelWoundSubscriptions"/>) and carries no <see cref="OnWoundsDealt"/>
+        /// subscribers.
+        /// </summary>
+        internal UnitData(UnitData source, List<DataBinding<ModelData>> modelBindings)
+        {
+            ID = source.ID;
+            _tokens = source._tokens.Clone();
+            PlayerID = source.PlayerID;
+            Name = source.Name;
+            Quality = source.Quality;
+            Defense = source.Defense;
+            PointCost = source.PointCost;
+            _ruleDefinitions.AddRange(source._ruleDefinitions);
+            _ruleDefinitionsJson = source._ruleDefinitionsJson;
+            _heroAttachment = source._heroAttachment?.Clone();
             ModelBindings = modelBindings;
         }
 

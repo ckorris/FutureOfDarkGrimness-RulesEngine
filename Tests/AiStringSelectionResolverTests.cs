@@ -48,7 +48,7 @@ namespace FDG.Tests
             var player = new PlayerID(System.Guid.NewGuid());
             var resolver = new AiStringSelectionResolver(new TableState(store), player);
 
-            var request = new StringSelectionRequest(player, "Choose Action",
+            var request = new ChooseActionRequest(player, new UnitID(System.Guid.NewGuid()),
                 new List<string> { ChooseActionStage.CAST_CHOICE_NAME },
                 new List<StringSelectionRequest.InvalidOption>
                 {
@@ -72,7 +72,7 @@ namespace FDG.Tests
             var player = new PlayerID(System.Guid.NewGuid());
             var resolver = new AiStringSelectionResolver(new TableState(store), player);
 
-            var request = new StringSelectionRequest(player, "Choose Action",
+            var request = new ChooseActionRequest(player, new UnitID(System.Guid.NewGuid()),
                 new List<string>
                 {
                     CoreRuleCatalog.EmbarkRuleName,       // listed first - the trap
@@ -95,7 +95,7 @@ namespace FDG.Tests
             var player = new PlayerID(System.Guid.NewGuid());
             var resolver = new AiStringSelectionResolver(new TableState(store), player);
 
-            var request = new StringSelectionRequest(player, "Choose Action",
+            var request = new ChooseActionRequest(player, new UnitID(System.Guid.NewGuid()),
                 new List<string> { CoreRuleCatalog.EmbarkRuleName },
                 new List<StringSelectionRequest.InvalidOption>());
 
@@ -112,7 +112,7 @@ namespace FDG.Tests
             var player = new PlayerID(System.Guid.NewGuid());
             var resolver = new AiStringSelectionResolver(new TableState(store), player);
 
-            var request = new StringSelectionRequest(player, "Choose Action",
+            var request = new ChooseActionRequest(player, new UnitID(System.Guid.NewGuid()),
                 new List<string> { ChooseActionStage.PASS_CHOICE_NAME },
                 new List<StringSelectionRequest.InvalidOption>());
 
@@ -133,7 +133,7 @@ namespace FDG.Tests
             MakeLoadedTransport(store, player, transportAt: new Position(20f, 20f));
             store.Create(new ObjectiveData(new Position(26f, 24f), store)); // ~7.2" away
 
-            string choice = await resolver.Resolve(ChooseActionRequest(player,
+            string choice = await resolver.Resolve(MakeChooseActionRequest(player,
                 CoreRuleCatalog.DisembarkRuleName, ChooseActionStage.PASS_CHOICE_NAME));
 
             Assert.That(choice, Is.EqualTo(CoreRuleCatalog.DisembarkRuleName),
@@ -149,7 +149,7 @@ namespace FDG.Tests
             MakeLoadedTransport(store, player, transportAt: new Position(20f, 20f));
             store.Create(new ObjectiveData(new Position(60f, 44f), store)); // way out of trigger range
 
-            string choice = await resolver.Resolve(ChooseActionRequest(player,
+            string choice = await resolver.Resolve(MakeChooseActionRequest(player,
                 CoreRuleCatalog.DisembarkRuleName, ChooseActionStage.PASS_CHOICE_NAME));
 
             Assert.That(choice, Is.EqualTo(ChooseActionStage.PASS_CHOICE_NAME),
@@ -166,7 +166,7 @@ namespace FDG.Tests
             MakeLoadedTransport(store, player, transportAt: new Position(20f, 20f));
             MakeUnit(store, enemy, "Raiders", new Position(28f, 20f)); // 8" away
 
-            string choice = await resolver.Resolve(ChooseActionRequest(player,
+            string choice = await resolver.Resolve(MakeChooseActionRequest(player,
                 CoreRuleCatalog.DisembarkRuleName, ChooseActionStage.PASS_CHOICE_NAME));
 
             Assert.That(choice, Is.EqualTo(CoreRuleCatalog.DisembarkRuleName),
@@ -175,8 +175,8 @@ namespace FDG.Tests
 
         // --- A5-10 fixtures ---
 
-        private static StringSelectionRequest ChooseActionRequest(PlayerID player, params string[] options) =>
-            new StringSelectionRequest(player, "Choose Action", options.ToList(),
+        private static ChooseActionRequest MakeChooseActionRequest(PlayerID player, params string[] options) =>
+            new ChooseActionRequest(player, new UnitID(System.Guid.NewGuid()), options.ToList(),
                 new List<StringSelectionRequest.InvalidOption>());
 
         private static DataBinding<UnitData> MakeUnit(GameDataStore store, PlayerID owner,

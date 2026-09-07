@@ -61,7 +61,7 @@ namespace FDG.Tests
                 maxAdvanceDistance: 0.3f, maxRushDistance: 0.3f, maxDistanceInches: 0.3f,
                 allowCancel: true, mainActivationMove: mainActivationMove);
 
-        private StringSelectionRequest Menu() => new StringSelectionRequest(_us, "Choose Action",
+        private ChooseActionRequest Menu() => new ChooseActionRequest(_us, new UnitID(Guid.NewGuid()),
             FullMenu, new List<StringSelectionRequest.InvalidOption>());
 
         [Test]

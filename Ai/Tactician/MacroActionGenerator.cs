@@ -151,6 +151,28 @@ namespace FDG.Ai.Tactician
                     targetObjective: objective, sharedGrid: sharedGrid));
             }
 
+            // M14 Contest (#191 step 10 P4, 2026-09-06): sliver denial. One model ends inside the
+            // seizure radius of a marker our side does not own (enemy-held, neutral, or contested)
+            // while the rest of the unit strings BACK along the route at the widest cohesion gap -
+            // the reconcile rules make one body a full deny/seize, and the mass stays out of the
+            // holder's charge arc (or, next activation, walks on toward another marker). M2/M3 path
+            // the CENTROID onto the marker; a human parks a toe. Both budgets in ONE family (Advance
+            // keeps the unit shooting and ranks first when both reach; Rush reaches farther), so
+            // diversity pruning keeps at least one. Not offered where a model is already in range -
+            // Hold covers "stay" - and never for a marker the side already holds.
+            foreach (ObjectiveProjection projection in TacticalAnalysis.ProjectObjectives(tableState))
+            {
+                if (TacticalAnalysis.IsProjectedOwnerAllied(tableState, projection, self.PlayerID)) continue;
+                if (TacticalAnalysis.MinBaseEdgeDistanceToPoint(self, projection.Objective.Position)
+                        <= TacticalAnalysis.ObjectiveSeizureRadiusInches) continue;
+                candidates.Add(PlanContest(unit, living, tableState, self, projection.Objective, start,
+                    EActionType.Advance, advanceBudget, canMoveThroughEnemies, ignoresDifficult,
+                    ignoresAllTerrain, sharedGrid));
+                candidates.Add(PlanContest(unit, living, tableState, self, projection.Objective, start,
+                    EActionType.Rush, rushBudget, canMoveThroughEnemies, ignoresDifficult,
+                    ignoresAllTerrain, sharedGrid));
+            }
+
             List<IUnit> rankedEnemies = enemies
                 .OrderByDescending(TacticalAnalysis.UnitValue).Take(TopEnemies).ToList();
             // #361: the targeted families aim at the top-value enemies PLUS the nearest few - the
@@ -524,6 +546,43 @@ namespace FDG.Ai.Tactician
 
             return new MacroAction(EMacroIntent.ChargeToContact, rationale, EActionType.Charge,
                 move, feasibility, end, TargetEnemy: enemy);
+        }
+
+        /// <summary>
+        /// M14's aim: the lead model's CENTER at (seizure radius - margin + its circumscribed radius)
+        /// from the marker, so its base edge is inside the radius at any facing; the sliver ladder
+        /// strings the rest back. Graded by the lead's ACHIEVED base-edge distance (the rules' own
+        /// test), never by the centroid - which is far from the marker by design.
+        /// </summary>
+        private const float SliverMarginInches = 0.4f;
+
+        private static MacroAction PlanContest(DataBinding<UnitData> unit, List<DataBinding<ModelData>> living,
+            ITableState tableState, UnitData self, IObjective objective, Position start,
+            EActionType actionType, PlanBudget budget,
+            bool canMoveThroughEnemies, bool ignoresDifficult, bool ignoresAllTerrain,
+            Func<TerrainGrid> sharedGrid)
+        {
+            Position marker = objective.Position;
+            float leadRadius = living.Min(mb => mb.GetValue().BaseShape.CircumscribedRadiusInches);
+            float aimDistance = Math.Max(0.5f,
+                TacticalAnalysis.ObjectiveSeizureRadiusInches - SliverMarginInches + leadRadius);
+            Position goal = PointAtDistanceFrom(marker, start, aimDistance);
+
+            float safeBudget = Math.Max(0f, budget.Inches - 0.001f);
+            (List<ModelMoveEntry> move, _) = MovementPlanner.PlanSliverAlongRoute(
+                unit, living, tableState, goal, safeBudget, safeBudget, budget.PerModel,
+                canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, sharedGrid);
+
+            float leadNow = TacticalAnalysis.MinBaseEdgeDistanceToPoint(self, marker);
+            float lead = TacticalAnalysis.MinEndBaseEdgeDistanceToPoint(move, marker);
+            Position end = MoveCentroid(move, living);
+            EFeasibility feasibility = lead <= TacticalAnalysis.ObjectiveSeizureRadiusInches
+                ? EFeasibility.Reachable
+                : leadNow - lead > 0.25f ? EFeasibility.BudgetClipped : EFeasibility.Blocked;
+
+            return new MacroAction(EMacroIntent.Contest,
+                $"intent=Contest obj=({marker.x:F0},{marker.z:F0}) lead={lead:F1}",
+                actionType, move, feasibility, end, TargetObjective: objective);
         }
 
         // --- planning core ------------------------------------------------------------------------

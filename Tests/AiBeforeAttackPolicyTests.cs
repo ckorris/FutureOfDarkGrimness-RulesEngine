@@ -23,7 +23,7 @@ namespace FDG.Tests
             GameDataStore store = GameDataStore.GameDataStoreBuilder.GetDefault();
             var resolver = new AiStringSelectionResolver(new TableState(store), new PlayerID(Guid.NewGuid()));
 
-            var request = new StringSelectionRequest(new PlayerID(Guid.NewGuid()), "Choose Action",
+            var request = new ChooseActionRequest(new PlayerID(Guid.NewGuid()), new UnitID(Guid.NewGuid()),
                 new List<string> { "Regeneration Buff", "Precision Fighting Mark", ChooseActionStage.PASS_CHOICE_NAME },
                 new List<StringSelectionRequest.InvalidOption>());
 
@@ -39,7 +39,7 @@ namespace FDG.Tests
             GameDataStore store = GameDataStore.GameDataStoreBuilder.GetDefault();
             var resolver = new AiStringSelectionResolver(new TableState(store), new PlayerID(Guid.NewGuid()));
 
-            var request = new StringSelectionRequest(new PlayerID(Guid.NewGuid()), "Choose Action",
+            var request = new ChooseActionRequest(new PlayerID(Guid.NewGuid()), new UnitID(Guid.NewGuid()),
                 new List<string> { "Regeneration Buff", ChooseActionStage.CHARGE_CHOICE_NAME },
                 new List<StringSelectionRequest.InvalidOption>());
 

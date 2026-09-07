@@ -1,4 +1,4 @@
-﻿
+
 using FDG.Data;
 using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
@@ -66,6 +66,22 @@ namespace FDG
         {
             PlayerID = playerId;
             UnitBindings = unitBindings;
+        }
+
+        /// <summary>
+        /// #394: the whole-store clone's copy (<see cref="FDG.SaveLoad.StoreClone"/>): the JSON
+        /// constructor's result, built directly. Spells are [JsonIgnore] and stay empty here exactly as
+        /// after a load - the resume path (<c>GameBootstrap.RestoreArmyRuleData</c>) restores them from
+        /// the persisted blob on both paths.
+        /// </summary>
+        internal ArmyData(ArmyData source, List<DataBinding<UnitData>> unitBindings)
+        {
+            PlayerID = source.PlayerID;
+            ArmyName = source.ArmyName;
+            Faction = source.Faction;
+            PointsLimit = source.PointsLimit;
+            UnitBindings = unitBindings;
+            _armyRuleDataJson = source._armyRuleDataJson;
         }
 
         public ArmyData(IArmyTemplate armyToCopy, List<DataReference> unitReferences,

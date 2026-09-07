@@ -30,31 +30,30 @@ namespace FDG.Ai.Gunline
     }
 
     /// <summary>
-    /// Choose Action via the Gunline script; every other string selection (pre-attack menus,
-    /// deploy-or-hold prompts) delegates to the unmodified solo-rules resolver. The script never
-    /// holds units in Ambush - a defensive line deploys everything and waits.
+    /// Choose Action via the Gunline script (its own request type since #191 B1 step 5a); every
+    /// other string selection (pre-attack menus, deploy-or-hold prompts) delegates to the
+    /// unmodified solo-rules resolver. The script never holds units in Ambush - a defensive line
+    /// deploys everything and waits.
     /// </summary>
-    public class GunlineActionResolver : IStageResolver<StringSelectionRequest, string>
+    public class GunlineActionResolver : IStageResolver<StringSelectionRequest, string>,
+        IStageResolver<ChooseActionRequest, string>
     {
         private readonly GunlinePlanner _planner;
-        private readonly IStageResolver<StringSelectionRequest, string> _soloFallback;
+        private readonly FDG.Ai.Resolvers.AiStringSelectionResolver _soloFallback;
 
         public GunlineActionResolver(GunlinePlanner planner,
-            IStageResolver<StringSelectionRequest, string> soloFallback)
+            FDG.Ai.Resolvers.AiStringSelectionResolver soloFallback)
         {
             _planner = planner;
             _soloFallback = soloFallback;
         }
 
-        public Task<string> Resolve(StringSelectionRequest request)
+        public Task<string> Resolve(ChooseActionRequest request)
         {
-            if (request.Instructions == "Choose Action")
-            {
-                string? scripted = _planner.ChooseAction(request.ValidOptions);
-                if (scripted != null)
-                    return Task.FromResult(scripted);
-            }
-            return _soloFallback.Resolve(request);
+            string? scripted = _planner.ChooseAction(request.ValidOptions);
+            return scripted != null ? Task.FromResult(scripted) : _soloFallback.Resolve(request);
         }
+
+        public Task<string> Resolve(StringSelectionRequest request) => _soloFallback.Resolve(request);
     }
 }

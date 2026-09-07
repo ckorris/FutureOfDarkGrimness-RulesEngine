@@ -18,7 +18,15 @@ namespace FDG.Ai.Tactician
     public static class TacticianResolverRegistryFactory
     {
         public static IStageResolverRegistry Build(ITableState tableState, PlayerID playerID,
-            TacticianOptions options)
+            TacticianOptions options) => Build(tableState, playerID, options, out _);
+
+        /// <summary>
+        /// Same as <see cref="Build(ITableState, PlayerID, TacticianOptions)"/>, plus the planner
+        /// instance driving this registry (#191 C1 exporter: chosen_macro reads
+        /// <see cref="TacticianPlanner.LastMacroLabel"/> off it after every Choose Action call).
+        /// </summary>
+        public static IStageResolverRegistry Build(ITableState tableState, PlayerID playerID,
+            TacticianOptions options, out TacticianPlanner planner)
         {
             // Solo-rules answers everything the Tactician has not replaced yet (fallback discipline,
             // plan G3); each A4 slice registers one more replacement below.
@@ -29,21 +37,38 @@ namespace FDG.Ai.Tactician
             // read-back (aura buffs) needs the game's own resolver-backed evaluator, which resolvers
             // do not receive today - recorded gap in the #191 ledger.
             var evaluator = new Rules.Dispatch.RuleEvaluator(new ProbabilisticDiceRoller());
-            var planner = new TacticianPlanner(tableState, evaluator, options.DecisionLog,
+            planner = new TacticianPlanner(tableState, evaluator, options.DecisionLog,
                 options.SeeThroughFriendlyUnits);
 
             // A4-1: activation order by urgency (also announces the active unit to the planner).
             // #389: the kill term's sight gate follows the same #384 house rule the planner does.
-            registry.RegisterResolver(new Resolvers.TacticianActivationResolver(tableState, evaluator,
-                planner, options.DecisionLog, options.SeeThroughFriendlyUnits));
+            var activationPolicy = new Resolvers.TacticianActivationResolver(tableState, evaluator,
+                planner, options.DecisionLog, options.SeeThroughFriendlyUnits);
+            if (options.Search is { } searchBudget)
+            {
+                // B5 (#191 step 9): the Strategist rung. The search picks the activation and
+                // prescribes it; the A resolver above still PLAYS it, so everything below the
+                // activation is unchanged and a search failure is just plain A (G3).
+                registry.RegisterResolver(new Search.StrategistActivationResolver(tableState, planner,
+                    activationPolicy, options.Evaluator ?? new Search.HandWeightedEvaluator(), searchBudget,
+                    options.DecisionLog));
+            }
+            else
+            {
+                registry.RegisterResolver(activationPolicy);
+            }
 
             // A4-2: the (action x macro-action) pair is planned once at Choose Action and played out
             // at the movement request; solo-rules instances are the per-request fallbacks (G3).
             // #358: the embedded fallback pair shares a decline latch like every solo set - when
             // the planner has no claim, the fallback policy must not loop a wedged unit's menu.
             var fallbackDeclineLatch = new FDG.Ai.Resolvers.SoloMoveDeclineLatch();
-            registry.RegisterResolver(new Resolvers.TacticianActionResolver(planner, tableState,
-                new FDG.Ai.Resolvers.AiStringSelectionResolver(tableState, playerID, fallbackDeclineLatch)));
+            var actionResolver = new Resolvers.TacticianActionResolver(planner, tableState,
+                new FDG.Ai.Resolvers.AiStringSelectionResolver(tableState, playerID, fallbackDeclineLatch));
+            registry.RegisterResolver<StageResolution.Requests.StringSelectionRequest, string>(actionResolver);
+            // #191 B1 step 5a: Choose Action is its own request type; the same planner-backed instance
+            // answers it (chosen_macro reads TacticianPlanner.LastMacroLabel off `planner` after this).
+            registry.RegisterResolver<StageResolution.Requests.ChooseActionRequest, string>(actionResolver);
             registry.RegisterResolver(new Resolvers.TacticianMovementResolver(planner, tableState,
                 new FDG.Ai.Resolvers.AiDefineMovementResolver(tableState, playerID, fallbackDeclineLatch),
                 options.DecisionLog));
@@ -59,8 +84,9 @@ namespace FDG.Ai.Tactician
             registry.RegisterResolver(new Resolvers.TacticianModelSelectionResolver(
                 new FDG.Ai.Resolvers.AiSelectionResolver<ModelData>()));
 
-            // A4-4: wound assignment preserving output (cheapest-output casualties first).
-            registry.RegisterResolver(new Resolvers.TacticianAssignWoundsResolver());
+            // A4-4: wound assignment preserving output (cheapest-output casualties first); step 10 P0:
+            // marker-aware (the last model on a held/contested marker dies last).
+            registry.RegisterResolver(new Resolvers.TacticianAssignWoundsResolver(tableState));
 
             // A4b: objective-aware deployment. The subclass IS the solo resolver for every
             // non-deployment placement (disembark, spillout, ambush, reposition).

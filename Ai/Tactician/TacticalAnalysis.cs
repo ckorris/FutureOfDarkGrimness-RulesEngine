@@ -3,6 +3,7 @@ using FDG.Rules.Definitions;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Foundation;
 using FDG.Rules.Tokens;
+using FDG.StageResolution.Requests;
 using FDG.Utilities;
 
 namespace FDG.Ai.Tactician
@@ -251,6 +252,30 @@ namespace FDG.Ai.Tactician
             && !unit.Tokens.HasToken(TokenType.ArrivedFromReserve)
             && !AircraftRules.IsAircraft(unit);
 
+        /// <summary>
+        /// <see cref="MinBaseEdgeDistanceToPoint(IUnit, Position)"/> for a PLANNED move: the closest
+        /// base-edge distance from any living model's END position (at its end facing, as the engine's
+        /// own end-state checks measure - #312) to a point. <see cref="float.MaxValue"/> when the move
+        /// carries no living model with a destination. #191 step 10 P4: the seize test the generator and
+        /// the planner grade a candidate by - the CENTROID is not what the reconcile rules look at, and
+        /// a sliver formation puts one model on the marker with its centroid deliberately far away.
+        /// </summary>
+        public static float MinEndBaseEdgeDistanceToPoint(IReadOnlyList<ModelMoveEntry> move, Position point)
+        {
+            float best = float.MaxValue;
+            foreach (ModelMoveEntry entry in move)
+            {
+                ModelData model = entry.Model.GetValue();
+                if (!model.GetIsAlive() || entry.Positions.Count == 0) continue;
+                Position end = entry.Positions[^1];
+                Float2 facing = entry.Facings != null && entry.Facings.Count > 0
+                    ? entry.Facings[^1] : model.Facing;
+                float distance = BaseShapeGeometry.SurfaceDistanceToPoint2D(model.BaseShape, end, facing, point);
+                if (distance < best) best = distance;
+            }
+            return best;
+        }
+
         /// <summary>Closest base-edge distance from any living model of the unit to a point (true footprint, #150).</summary>
         public static float MinBaseEdgeDistanceToPoint(IUnit unit, Position point)
         {
@@ -313,6 +338,28 @@ namespace FDG.Ai.Tactician
                 foreach (Weapon weapon in model.Weapons)
                 {
                     if (weapon.RangeInches <= 0f) continue;
+                    int referenceSave = DiceUtilities.ClampSuccessRollNeeded(4 + weapon.ArmorPenetration);
+                    output += weapon.Attacks * hitChance * (referenceSave - 1) / 6f;
+                }
+            }
+            return output;
+        }
+
+        /// <summary>
+        /// Expected wounds of one melee exchange's attack half against a reference Q4/D4 target -
+        /// the melee twin of <see cref="RangedOutputWounds"/> (#191 C1 encoder, docs/tactician-
+        /// c1-schema.md sec 3's melee_share). Zero for units with no melee weapons.
+        /// </summary>
+        public static float MeleeOutputWounds(IUnit unit)
+        {
+            float hitChance = (7 - DiceUtilities.ClampSuccessRollNeeded(unit.Quality)) / 6f;
+            float output = 0f;
+            foreach (IModel model in unit.Models)
+            {
+                if (!model.GetIsAlive()) continue;
+                foreach (Weapon weapon in model.Weapons)
+                {
+                    if (weapon.RangeInches > 0f) continue; // melee only
                     int referenceSave = DiceUtilities.ClampSuccessRollNeeded(4 + weapon.ArmorPenetration);
                     output += weapon.Attacks * hitChance * (referenceSave - 1) / 6f;
                 }

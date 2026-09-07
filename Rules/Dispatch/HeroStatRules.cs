@@ -104,6 +104,16 @@ public static class HeroStatRules
     /// is the sole survivor, or the whole unit shares it). For a non-hero unit no model carries per-model
     /// rules, so unioning them adds nothing and behaviour is unchanged.
     /// </summary>
-    public static IReadOnlyList<IModel> LivingModels(IUnit unit) =>
-        unit.Models.Where(model => model.GetIsAlive()).ToList();
+    public static IReadOnlyList<IModel> LivingModels(IUnit unit)
+    {
+        // Pre-sized loop: called per unit per Tactician evaluation, and the Where().ToList() growth
+        // showed in the profile (#191 step 3, 2026-09-03).
+        IReadOnlyList<IModel> models = unit.Models;
+        var living = new List<IModel>(models.Count);
+        for (int i = 0; i < models.Count; i++)
+        {
+            if (models[i].GetIsAlive()) living.Add(models[i]);
+        }
+        return living;
+    }
 }

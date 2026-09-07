@@ -1,4 +1,4 @@
-﻿using FDG.BuiltInAssets;
+using FDG.BuiltInAssets;
 using FDG.Data;
 using FDG.Rules.Dispatch;
 using FDG.Rules.Serialization;
@@ -171,6 +171,35 @@ namespace FDG
             FacingBinding = facingBinding;
             Weapons = weapons;
             TotalWounds = totalWounds;
+        }
+
+        /// <summary>
+        /// #394: the whole-store clone's copy (<see cref="FDG.SaveLoad.StoreClone"/>) - what the
+        /// JSON constructor above plus <see cref="RehydrateRules"/> would produce from this model's
+        /// saved form, built directly. The bindings are the clone store's; the base shape and the
+        /// resolved rules are immutable and shared; tokens and weapons are copied (stages attach rules
+        /// to weapons and rules write tokens during play). Nothing subscribed to this model carries over.
+        /// </summary>
+        internal ModelData(ModelData source, DataBinding<float> remainingWoundsBinding,
+            DataBinding<Position> positionBinding, DataBinding<Float2> facingBinding)
+        {
+            ID = source.ID;
+            _tokens = source._tokens.Clone();
+            _ruleDefinitions.AddRange(source._ruleDefinitions);
+            _ruleDefinitionsJson = source._ruleDefinitionsJson;
+            TotalWounds = source.TotalWounds;
+            RemainingWoundsBinding = remainingWoundsBinding;
+            PositionBinding = positionBinding;
+            FacingBinding = facingBinding;
+            BaseShape = source.BaseShape;
+            if (source.Weapons != null)
+            {
+                Weapons = new List<Weapon>(source.Weapons.Count);
+                foreach (Weapon weapon in source.Weapons)
+                {
+                    Weapons.Add(new Weapon(weapon));
+                }
+            }
         }
 
         // Convenience overload: a circular base of the given radius (keeps existing callers/tests working).

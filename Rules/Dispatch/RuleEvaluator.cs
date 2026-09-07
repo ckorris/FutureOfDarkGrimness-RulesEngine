@@ -69,8 +69,16 @@ public sealed class RuleEvaluator
         // 3 of its 4 call sites are read-only queries (TryGet*Defer) that MUST NOT consume, and no corpus
         // rule grants a one-shot buff firing only at a round-start/deployment/activation hook. If one ever
         // does, add a `consumeGrants` opt-in and set it on the apply site (GrantRoundStartTokens) only — see #104.
-        CollectTagged(unit, seat, weapon, models, modelScope, context, tagged, new DedupState(),
-            grantsToConsume: null, trace: TraceEnabled);
+        DedupState seen = DedupState.Rent();
+        try
+        {
+            CollectTagged(unit, seat, weapon, models, modelScope, context, tagged, seen,
+                grantsToConsume: null, trace: TraceEnabled);
+        }
+        finally
+        {
+            DedupState.Return(seen);
+        }
 
         // Per-unit Evaluate does NOT run the suppression first-pass — cross-unit suppression
         // (an attacker's Unstoppable cancelling a defender's Regeneration) only exists once the
@@ -158,7 +166,7 @@ public sealed class RuleEvaluator
         // Shared across the whole event so the same rule reached through several carriers
         // (unit + weapon, two identical weapons, or the unit walked once per weapon
         // participant) fires once per bearer.
-        var seen = new DedupState();
+        DedupState seen = DedupState.Rent();
 
         // #101 — only the live apply path (log == true) consumes one-shot grants; the read-only named
         // query (log == false) must not mutate token state. Collects the FirstTrigger grant TOKENS whose
@@ -166,10 +174,17 @@ public sealed class RuleEvaluator
         // the walk, regardless of whether the rule's condition passed or its op survived suppression.
         List<(IUnit Unit, Token Grant)>? grantsToConsume = log ? new List<(IUnit, Token)>() : null;
 
-        foreach (RuleParticipant p in participants)
+        try
         {
-            CollectTagged(p.Unit, p.Seat, p.Weapon, p.Models, p.ModelScope, context, tagged, seen,
-                grantsToConsume, trace);
+            foreach (RuleParticipant p in participants)
+            {
+                CollectTagged(p.Unit, p.Seat, p.Weapon, p.Models, p.ModelScope, context, tagged, seen,
+                    grantsToConsume, trace);
+            }
+        }
+        finally
+        {
+            DedupState.Return(seen);
         }
 
         var suppressedRuleNames = tagged
@@ -233,13 +248,20 @@ public sealed class RuleEvaluator
     {
         var grantsToConsume = new List<(IUnit Unit, Token Grant)>();
         var tagged = new List<TaggedOperation>();
-        var seen = new DedupState();
-        foreach ((IUnit unit, ERuleSeat seat) in participants)
+        DedupState seen = DedupState.Rent();
+        try
         {
-            // trace: false — this walk only exists to find spendable grants; the live evaluation that
-            // preceded it already narrated the hook.
-            CollectTagged(unit, seat, weapon: null, models: null, EModelRuleScope.AnyOwner, context, tagged,
-                seen, grantsToConsume, trace: false);
+            foreach ((IUnit unit, ERuleSeat seat) in participants)
+            {
+                // trace: false — this walk only exists to find spendable grants; the live evaluation that
+                // preceded it already narrated the hook.
+                CollectTagged(unit, seat, weapon: null, models: null, EModelRuleScope.AnyOwner, context,
+                    tagged, seen, grantsToConsume, trace: false);
+            }
+        }
+        finally
+        {
+            DedupState.Return(seen);
         }
 
         SpendGrants(grantsToConsume);
@@ -361,6 +383,10 @@ public sealed class RuleEvaluator
     private void CollectFromRules(IReadOnlyList<ResolvedRule> rules, IUnit unit, IWeapon? carryingWeapon,
         ERuleSeat seat, IHookContext context, List<TaggedOperation> sink, DedupState seen, bool trace)
     {
+        // One scratch list per walk, cleared per firing entry: a fresh List per entry was measurable
+        // (see the DedupState pool below for the profile that found it).
+        List<RuleOperation>? produced = null;
+
         foreach (ResolvedRule rule in rules)
         {
             // #163 — narrate only rules that actually listen at this hook+seat; walking every rule
@@ -398,7 +424,8 @@ public sealed class RuleEvaluator
                     continue;
                 }
 
-                var produced = new List<RuleOperation>();
+                if (produced == null) produced = new List<RuleOperation>();
+                else produced.Clear();
                 entry.Effect.Apply(invocation, produced);
 
                 if (traceThisRule)
@@ -553,6 +580,30 @@ public sealed class RuleEvaluator
     {
         private readonly HashSet<(UnitID, ResolvedRule)> _firedAttachments = new();
         private readonly HashSet<(UnitID, SpecialRuleDefinition)> _firedArglessDefinitions = new();
+
+        // Pooled per thread (#191 step 3 profiling, 2026-09-03): every hook evaluation used to build two
+        // empty HashSets and grow them from scratch, and the Tactician's CombatMath evaluates hooks per
+        // (candidate x target x weapon) - growing those sets was ~19% of a Tactician game's CPU. A rented
+        // state keeps its capacity; Clear() is a cheap wipe. Per-thread because the engine thread and the
+        // render thread's read-only queries evaluate concurrently (#328's shape); a Stack because
+        // evaluation can nest (an effect evaluating another hook) - the inner call rents a second one.
+        // Dedup semantics are unchanged: same sets, same comparer, empty at every rent.
+        [ThreadStatic] private static Stack<DedupState>? t_pool;
+        private const int MaxPooled = 8;
+
+        public static DedupState Rent()
+        {
+            Stack<DedupState>? pool = t_pool;
+            return pool != null && pool.Count > 0 ? pool.Pop() : new DedupState();
+        }
+
+        public static void Return(DedupState state)
+        {
+            state._firedAttachments.Clear();
+            state._firedArglessDefinitions.Clear();
+            Stack<DedupState> pool = t_pool ??= new Stack<DedupState>();
+            if (pool.Count < MaxPooled) pool.Push(state);
+        }
 
         public bool ShouldFire(IUnit bearer, ResolvedRule rule)
         {

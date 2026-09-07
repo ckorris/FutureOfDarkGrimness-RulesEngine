@@ -34,9 +34,13 @@ namespace FDG.Ai
             // options are transports (they go down first, so later cargo can be offered the ride).
             var evaluator = new Rules.Dispatch.RuleEvaluator(new ProbabilisticDiceRoller());
 
+            var stringSelection = new AiStringSelectionResolver(tableState, playerID, declineLatch);
+
             IStageResolverRegistry registry = new StageResolverRegistry()
                 .RegisterResolver(new AiYesNoResolver())
-                .RegisterResolver(new AiStringSelectionResolver(tableState, playerID, declineLatch))
+                .RegisterResolver<StageResolution.Requests.StringSelectionRequest, string>(stringSelection)
+                // #191 B1 step 5a: Choose Action is its own request type; the same instance answers it.
+                .RegisterResolver<StageResolution.Requests.ChooseActionRequest, string>(stringSelection)
                 .RegisterResolver(new AiChooseAbilityEffectResolver())
                 .RegisterResolver(new AiChooseSpellResolver())
                 .RegisterResolver(new AiCastAssistResolver())

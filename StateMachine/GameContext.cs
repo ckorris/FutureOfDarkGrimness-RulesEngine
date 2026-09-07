@@ -63,6 +63,13 @@ namespace FDG
 
         /// <summary>Clears <see cref="ResumeProgress"/> after the resumed round has been rebuilt.</summary>
         public void ConsumeResumeProgress() { }
+
+        /// <summary>
+        /// #191 B1 5c (D10a): the simulation pause/step seam, called at every activation boundary.
+        /// <b>Null in all real play</b> - only <see cref="Simulation.SimulationService"/> sets it,
+        /// so a normal game never makes this call. Defaulted so no other context implements it.
+        /// </summary>
+        public Simulation.IActivationBoundaryHook? ActivationBoundaryHook => null;
     }
 
     public class GameContext : IGameContext
@@ -91,6 +98,9 @@ namespace FDG
 
         public GameProgressData? ResumeProgress { get; private set; }
 
+        /// <inheritdoc />
+        public Simulation.IActivationBoundaryHook? ActivationBoundaryHook { get; }
+
         public event Action<GameResult>? OnGameCompleted;
 
         public GameContext(ITextOutput textOutput, IDiceRoller diceRoller,
@@ -100,8 +110,10 @@ namespace FDG
                 IPresenter presenter,
                 GameSettings settings,
                 GameProgressData? resumeProgress = null,
-                IRuleResolver? ruleResolver = null)
+                IRuleResolver? ruleResolver = null,
+                Simulation.IActivationBoundaryHook? activationBoundaryHook = null)
         {
+            ActivationBoundaryHook = activationBoundaryHook;
             TextOutput = textOutput;
             DiceRoller = diceRoller;
             Rng = GameRandom.Create(settings.DiceSeed, GameRandom.SALT_GAME_CONTEXT);

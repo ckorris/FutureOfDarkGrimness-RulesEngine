@@ -28,6 +28,8 @@ namespace FDG
 
         public bool DoesPathIntersectZone(Float2 startPosition, Float2 endPosition)
         {
+            if (CannotTouch(startPosition, endPosition, 0f)) return false;
+
             // Check for intersection with each edge
             return LinesIntersect(startPosition, endPosition, new Float2(Left, Bottom), new Float2(Left, Top)) ||
                    LinesIntersect(startPosition, endPosition, new Float2(Left, Top), new Float2(Right, Top)) ||
@@ -39,6 +41,8 @@ namespace FDG
         public bool DoesPathIntersectZone(Float2 startPosition, Float2 endPosition, float inflationRadius)
         {
             if (inflationRadius <= 0f) return DoesPathIntersectZone(startPosition, endPosition);
+
+            if (CannotTouch(startPosition, endPosition, inflationRadius)) return false;
 
             //A bare crossing (edge intersection or endpoint inside) hits regardless of radius.
             if (DoesPathIntersectZone(startPosition, endPosition)) return true;
@@ -54,6 +58,31 @@ namespace FDG
                 || SegmentGeometry.SegmentToSegmentDistanceSquared(startPosition, endPosition, topLeft, topRight) <= radiusSquared
                 || SegmentGeometry.SegmentToSegmentDistanceSquared(startPosition, endPosition, topRight, bottomRight) <= radiusSquared
                 || SegmentGeometry.SegmentToSegmentDistanceSquared(startPosition, endPosition, bottomRight, bottomLeft) <= radiusSquared;
+        }
+
+        /// <summary>
+        /// Cheap axis-aligned rejection before any cross-product or segment-distance math (#191
+        /// campaign step 3 profiling). A sight line is evaluated against EVERY terrain piece on the
+        /// table - LineOfSightUtilities.EvaluateSightLine walks the whole list - and the Tactician
+        /// runs one such test per (movement candidate x enemy), so the common case by far is a piece
+        /// nowhere near the line. Four float comparisons replace 16 cross products (and, when
+        /// inflated, four segment-to-segment distance computations) for that common miss.
+        /// <para>
+        /// Conservative by construction, so results are unchanged: it returns true only when the
+        /// segment's bounding box, expanded by <paramref name="inflationRadius"/>, cannot overlap
+        /// this zone's - and a segment whose expanded bounds miss the zone entirely can neither
+        /// cross an edge nor come within the radius of one.
+        /// </para>
+        /// </summary>
+        private bool CannotTouch(Float2 start, Float2 end, float inflationRadius)
+        {
+            float minX = start.X < end.X ? start.X : end.X;
+            float maxX = start.X < end.X ? end.X : start.X;
+            if (maxX < Left - inflationRadius || minX > Right + inflationRadius) return true;
+
+            float minY = start.Y < end.Y ? start.Y : end.Y;
+            float maxY = start.Y < end.Y ? end.Y : start.Y;
+            return maxY < Bottom - inflationRadius || minY > Top + inflationRadius;
         }
 
         public bool IsPointWithinZone(Float2 position)

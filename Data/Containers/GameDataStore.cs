@@ -1,8 +1,9 @@
-﻿using FDG.Data.Containers;
+using FDG.Data.Containers;
 using FDG.Data.Serialization;
 using FDG.SaveLoad;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
+using System.Collections.Concurrent;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
@@ -60,19 +61,13 @@ namespace FDG.Data
             ThrowIfTypeMapIsInvalid(typeMap);
 
 
-            MethodInfo addComponentStoreInfo = typeof(GameDataStore).GetMethod(nameof(RegisterType), BindingFlags.NonPublic | BindingFlags.Instance);
-
             _jsonConverters = new JsonConverter[typeMap.Count - 1];
 
             for (int i = 1; i < typeMap.Count; i++)
             {
-                MethodInfo genericAddComponentStoreInfo = addComponentStoreInfo.MakeGenericMethod(typeMap[i].Type);
-                genericAddComponentStoreInfo.Invoke(this, [typeMap[i].Capacity]);
-
-                //Create a DataBindingConverter for each.
-                Type converterGenericType = typeof(DataBindingJsonConverter<>).MakeGenericType(typeMap[i].Type);
-                object converterInstance = Activator.CreateInstance(converterGenericType, [this as IReadWriteableGameDataStore]);
-                _jsonConverters[i - 1] = (JsonConverter)converterInstance;
+                // Registers the component store and creates its DataBindingConverter, through a
+                // delegate closed over the type (see RegistrarFor).
+                _jsonConverters[i - 1] = RegistrarFor(typeMap[i].Type)(this, typeMap[i].Capacity);
             }
 
              // Enums ride the wire (and store-value blobs) as their member names, not ordinals, so that
@@ -97,6 +92,48 @@ namespace FDG.Data
              };
 
         }
+
+        // #394: registering a type used to go through MakeGenericMethod().Invoke plus
+        // Activator.CreateInstance, per type per store. Both run through reflection invoke stubs -
+        // DynamicMethods the runtime emits and parks in its reflection cache, which is held WEAKLY:
+        // under the search's allocation rate (a store per simulation) the cache died at every gen-0
+        // collection, the stubs were emitted again for the next store and finalized again
+        // (DynamicResolver.DestroyScout), which is where a Strategist game's finalizer-thread CPU went.
+        // A delegate closed over the type, created once per process, emits nothing per store.
+        private static readonly ConcurrentDictionary<Type, Func<GameDataStore, int, JsonConverter>> s_registrars = new();
+
+        private static Func<GameDataStore, int, JsonConverter> RegistrarFor(Type type)
+        {
+            return s_registrars.GetOrAdd(type, static t =>
+            {
+                MethodInfo open = typeof(GameDataStore).GetMethod(nameof(RegisterTypeWithConverter),
+                    BindingFlags.NonPublic | BindingFlags.Static)!;
+                return (Func<GameDataStore, int, JsonConverter>)Delegate.CreateDelegate(
+                    typeof(Func<GameDataStore, int, JsonConverter>), open.MakeGenericMethod(t));
+            });
+        }
+
+        private static JsonConverter RegisterTypeWithConverter<T>(GameDataStore store, int capacity)
+        {
+            store.RegisterType<T>(capacity);
+            return new DataBindingJsonConverter<T>(store);
+        }
+
+        // --- #394: the whole-store clone's view (FDG.SaveLoad.StoreClone) -------------------------
+
+        /// <summary>The registered types in TypeID order (index 0 is the placeholder).</summary>
+        internal IReadOnlyList<Type> RegisteredTypes => _registeredTypes;
+
+        internal ComponentStore<T> ComponentStoreOf<T>() => GetComponentStoreOrThrow<T>();
+
+        internal IComponentStore ComponentStoreOf(TypeID typeID) => _componentStores[typeID];
+
+        /// <summary>See <see cref="ComponentStore{T}.BindForReplay"/>.</summary>
+        internal DataBinding<T> BindForReplay<T>(DataReference reference) =>
+            GetComponentStoreOrThrow<T>().BindForReplay(reference);
+
+        /// <summary>One value as this store's converters write it - the per-entry form a save carries.</summary>
+        internal string SerializeValue(object value) => JsonConvert.SerializeObject(value, _jsonConvertSettings);
 
         /// <summary>
         /// Gets a list of all registered types that can be used to create a different instance of this

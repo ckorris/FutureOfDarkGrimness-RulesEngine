@@ -150,7 +150,7 @@ namespace FDG.Tests
 
             await DriveChooseAction(ctx, unitCtx);
 
-            StringSelectionRequest req = capturer.Captured!;
+            ChooseActionRequest req = capturer.Captured!;
             Assert.That(req.ValidOptions, Is.EquivalentTo(new[] { ChooseActionStage.MOVEMENT_CHOICE_NAME }),
                 "a pristine Aircraft must be offered Move and nothing else - it has to Advance first.");
             Assert.That(req.InvalidOptions.Any(o =>
@@ -170,7 +170,7 @@ namespace FDG.Tests
 
             await DriveChooseAction(ctx, unitCtx);
 
-            StringSelectionRequest req = capturer.Captured!;
+            ChooseActionRequest req = capturer.Captured!;
             Assert.That(req.ValidOptions, Does.Contain(ChooseActionStage.SHOOT_CHOICE_NAME),
                 "once the Aircraft has Advanced it may shoot (enemy is in range).");
             Assert.That(req.ValidOptions, Does.Contain(ChooseActionStage.PASS_CHOICE_NAME),
@@ -283,6 +283,8 @@ namespace FDG.Tests
                 return Task.FromResult((TReply)(object)new AircraftAdvanceResult(a.MinDistanceInches, false));
             if (request is StringSelectionRequest s)
                 return Task.FromResult((TReply)(object)s.ValidOptions[0]);
+            if (request is ChooseActionRequest ca)
+                return Task.FromResult((TReply)(object)ca.ValidOptions[0]);
             throw new InvalidOperationException("Unexpected request type: " + request.GetType());
         }
     }

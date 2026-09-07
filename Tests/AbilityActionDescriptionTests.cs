@@ -144,9 +144,9 @@ namespace FDG.Tests
                 "the name is carried verbatim so a front end can find it inside the description");
             Assert.That(rules[0].Description, Is.EqualTo(CoreRuleCatalog.Courage.Description));
 
-            Assert.That(capture.Request!.OptionRules, Is.Null,
-                "it is NOT the label's rule map - that matcher would underline the 'Courage' inside the "
-                + "label 'Courage Buff' and explain the wrong rule");
+            // #191 B1 step 5a: ChooseActionRequest has no OptionRules field at all (StringSelectionRequest's
+            // OTHER map, for a rule name sitting inside a label - Choose Action never populated it, so the
+            // type no longer carries it) - a stronger, compile-time version of the old null-check.
         }
 
         // A rule the effect references but the description never spells out has nowhere on screen to be

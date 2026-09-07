@@ -170,7 +170,7 @@ namespace FDG.Tests
         public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
             where TRequest : IStageTaskRequest<TReply>
         {
-            if (request is StringSelectionRequest)
+            if (request is StringSelectionRequest || request is ChooseActionRequest)
             {
                 return Task.FromResult((TReply)(object)_choice);
             }

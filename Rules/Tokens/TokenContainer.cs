@@ -25,6 +25,20 @@ public class TokenContainer : ITokenContainer
     public event Action<Token>? OnTokenRemoved;
     public event Action<Token>? OnTokenCountChanged;
 
+    /// <summary>
+    /// #394: a container holding the same tokens (immutable records, shared) and no subscribers -
+    /// what deserializing this container's saved form produces. Read under the lock like every other read.
+    /// </summary>
+    internal TokenContainer Clone()
+    {
+        TokenContainer clone = new TokenContainer();
+        lock (_lock)
+        {
+            clone._tokens = new List<Token>(_tokens);
+        }
+        return clone;
+    }
+
     public void AddToken(Token token)
     {
         if (token.Count <= 0)
@@ -168,7 +182,16 @@ public class TokenContainer : ITokenContainer
 
     public bool HasToken(TokenType tokenType)
     {
-        lock (_lock) return _tokens.Any(token => token.Type == tokenType);
+        // A plain loop, not LINQ: this is the Tactician's hottest token read (CanSeizeObjectives /
+        // IsInReserve per unit per evaluation) and the lambda allocated a closure every call.
+        lock (_lock)
+        {
+            for (int i = 0; i < _tokens.Count; i++)
+            {
+                if (_tokens[i].Type == tokenType) return true;
+            }
+            return false;
+        }
     }
 
     public int GetTokenCount(TokenType tokenType)
@@ -213,9 +236,13 @@ public class TokenContainer : ITokenContainer
         lock (_lock)
         {
             if (_tokens.Count == 0) return Array.Empty<Token>();
-            return tokenType == null
-                ? new List<Token>(_tokens)
-                : _tokens.Where(token => token.Type == tokenType).ToList();
+            if (tokenType == null) return new List<Token>(_tokens);
+            var matching = new List<Token>();
+            for (int i = 0; i < _tokens.Count; i++)
+            {
+                if (_tokens[i].Type == tokenType) matching.Add(_tokens[i]);
+            }
+            return matching;
         }
     }
 

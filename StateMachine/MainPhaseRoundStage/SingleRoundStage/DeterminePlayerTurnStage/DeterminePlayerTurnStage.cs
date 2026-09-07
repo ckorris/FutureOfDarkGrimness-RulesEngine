@@ -58,6 +58,29 @@ namespace FDG.Stages
                 return;
             }
 
+            // #191 B1 5c (D10a, pre-authorized): THE activation boundary, and the one point a
+            // simulation pauses at. Null in all real play - only SimulationService sets a hook - so
+            // this is a null check per activation for every normal game. Placed after the acting
+            // player is determined (a prescription has to reach the right policy) and before any
+            // decision of that activation is requested, including the reactivation offers below.
+            // The rolling save point at the top of this method has already written GameProgressData,
+            // so a snapshot taken from inside the hook is exactly the engine's own save point.
+            if (GameContext.ActivationBoundaryHook != null)
+            {
+                bool stop = await GameContext.ActivationBoundaryHook.AtActivationBoundary(nextPlayerID.Value);
+                if (stop)
+                {
+                    // The cooperative stop (#191 R9): the same exit VictoryCalculationStage takes at a
+                    // natural end - notify completion, then return without activating a transition, so
+                    // the whole transition chain unwinds by ordinary returns. No exception, so no
+                    // per-frame re-throw and nothing for an attached debugger to stop on. The message
+                    // is the one FDGServer's legacy SimulationStopSignal catch reports, so every
+                    // consumer of the simulated game's result sees the same outcome either way.
+                    GameContext.NotifyGameCompleted(GameResult.ForFault("Simulation stopped at the end of its line."));
+                    return;
+                }
+            }
+
             if (_lastAnnouncedPlayer != nextPlayerID.Value)
             {
                 _lastAnnouncedPlayer = nextPlayerID.Value;

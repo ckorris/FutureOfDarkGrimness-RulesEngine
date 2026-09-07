@@ -576,15 +576,26 @@ namespace FDG.Ai.Tactician
         public static List<ModelMoveEntry> BuildSnakeCandidate(DataBinding<UnitData> unit,
             List<DataBinding<ModelData>> living, List<Position> path, float arcLengthInches,
             IReadOnlyList<ITerrain> terrain, float baseRadiusInches, float maxDistanceInches,
-            TerrainGrid? routeGrid = null)
+            TerrainGrid? routeGrid = null, float? rankSpacingInches = null, float? rankBackoffStepInches = null)
         {
             if (arcLengthInches <= 0f || path.Count < 2 || living.Count == 0) return StayInPlace(unit);
 
-            float spacing = 2f * baseRadiusInches + 0.1f; // cohesion-safe 0.1" gap, as PackLine
+            float tightSpacing = 2f * baseRadiusInches + 0.1f; // cohesion-safe 0.1" gap, as PackLine
+            // P4 sliver: a caller may string the ranks out to (nearly) the 1" cohesion gap so the file
+            // reaches as far back from its head as the rules allow. Parallel files always sit at the
+            // tight across-spacing, which keeps the file's diagonal inside the 9" all-models rule up
+            // to three files; wider units fall back to the tight file (the mass is the point there).
+            float spacing = rankSpacingInches ?? tightSpacing;
             // Wrap into parallel files when a single file would stretch past the 9" all-models rule.
             const float maxFileSpanInches = 8.5f;
             int ranksInOneFile = living.Count;
             int files = Math.Max(1, (int)MathF.Ceiling((ranksInOneFile - 1) * spacing / maxFileSpanInches));
+            if (files > 3 && rankSpacingInches.HasValue)
+            {
+                spacing = tightSpacing;
+                files = Math.Max(1, (int)MathF.Ceiling((ranksInOneFile - 1) * spacing / maxFileSpanInches));
+            }
+            float backoffStep = rankBackoffStepInches ?? spacing / 4f;
             int ranks = (int)MathF.Ceiling(living.Count / (float)files);
 
             // The model nearest the first bend leads; stable order keeps the pairing deterministic.
@@ -607,8 +618,8 @@ namespace FDG.Ai.Tactician
             foreach (float side in new[] { 1f, -1f })
             {
                 List<ModelMoveEntry> candidate = BuildSnakeToSide(unit, living, order, path,
-                    arcLengthInches, terrain, baseRadiusInches, maxDistanceInches, spacing, files, side,
-                    routeGrid);
+                    arcLengthInches, terrain, baseRadiusInches, maxDistanceInches, spacing, tightSpacing,
+                    backoffStep, files, side, routeGrid);
                 if (files == 1 || !ClipsImpassible(candidate, terrain, baseRadiusInches)) return candidate;
                 fallback ??= candidate;
             }
@@ -619,15 +630,15 @@ namespace FDG.Ai.Tactician
         private static List<ModelMoveEntry> BuildSnakeToSide(DataBinding<UnitData> unit,
             List<DataBinding<ModelData>> living, List<DataBinding<ModelData>> order,
             List<Position> path, float arcLengthInches, IReadOnlyList<ITerrain> terrain,
-            float baseRadiusInches, float maxDistanceInches, float spacing, int files, float side,
-            TerrainGrid? routeGrid)
+            float baseRadiusInches, float maxDistanceInches, float spacing, float acrossSpacing,
+            float backoffStep, int files, float side, TerrainGrid? routeGrid)
         {
             float arc = arcLengthInches;
             int rankCount = (order.Count + files - 1) / files;
             for (int attempt = 0; attempt < RepackCorrectionAttempts; attempt++)
             {
                 RankAnchor[] anchors =
-                    SnakeRankAnchors(path, arc, rankCount, spacing, terrain, baseRadiusInches);
+                    SnakeRankAnchors(path, arc, rankCount, spacing, backoffStep, terrain, baseRadiusInches);
                 var candidate = new List<ModelMoveEntry>(order.Count);
                 for (int i = 0; i < order.Count; i++)
                 {
@@ -638,7 +649,7 @@ namespace FDG.Ai.Tactician
                     if (files > 1)
                     {
                         // Offset parallel files perpendicular to the local path direction.
-                        float across = file * spacing * side;
+                        float across = file * acrossSpacing * side;
                         endI = new Position(endI.x + across * -anchor.DirZ, endI.z + across * anchor.DirX);
                     }
 
@@ -689,7 +700,7 @@ namespace FDG.Ai.Tactician
         /// honest tail lets that gate see a net retreat for what it is.</para>
         /// </summary>
         private static RankAnchor[] SnakeRankAnchors(List<Position> path, float arc, int rankCount,
-            float spacing, IReadOnlyList<ITerrain> terrain, float baseRadiusInches)
+            float spacing, float backoffStep, IReadOnlyList<ITerrain> terrain, float baseRadiusInches)
         {
             // The first segment's forward direction - the axis the file extends back along once the
             // route runs out.
@@ -725,7 +736,7 @@ namespace FDG.Ai.Tactician
                 for (int guard = 0; guard < SnakeRankBackoffSteps
                     && Dist(a.Position, anchors[rank - 1].Position) < spacing - 0.001f; guard++)
                 {
-                    arcR -= spacing / 4f;
+                    arcR -= backoffStep;
                     a = At(arcR);
                 }
                 anchors[rank] = a;
@@ -906,6 +917,38 @@ namespace FDG.Ai.Tactician
             var terrain = tableState.Terrain.Objects.ToList();
             var enemies = LiveEnemyFootprints(tableState, unit.GetValue().PlayerID);
             var friendlies = LiveFriendlyFootprints(tableState, unit.GetValue().PlayerID, unit.GetValue().ID);
+            (List<Position> path, TerrainGrid? routeGrid, float budget, float baseRadius) = RouteToward(
+                living, tableState, terrain, goal, moveBudgetInches, ignoresDifficultTerrain,
+                ignoresImpassibleTerrain, sharedGrid);
+
+            List<ModelMoveEntry> move = ValidateWithBackoff(
+                arc => BuildPathCandidate(unit, living, path, arc, terrain, baseRadius,
+                    maxDistanceInches, formation, lineAxis, routeGrid: routeGrid),
+                budget, unit, living, budgetFor, enemies,
+                canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, friendlies,
+                // #256 S2: a friendly parked on the arrival spot side-steps the endpoint fan-out
+                // instead of halving the arc toward a stall (the Warriors-toward-(7,30) row).
+                (arc, lat) => BuildPathCandidate(unit, living, path, arc, terrain, baseRadius,
+                    maxDistanceInches, formation, lineAxis, lat, routeGrid),
+                // #256 S4: a formation too wide for the route's corridor falls back to the on-path
+                // snake instead of halving to a crawl (the walled Battle Brothers pocket).
+                arc => BuildSnakeCandidate(unit, living, path, arc, terrain, baseRadius,
+                    maxDistanceInches, routeGrid));
+            return (move, path);
+        }
+
+        /// <summary>
+        /// The route <see cref="PlanMoveAlongRoute"/> walks (start -> goal polyline, detouring around
+        /// impassible terrain and - #281 - difficult ground whose clear alternative prices comparably),
+        /// the grid it was found on (null when the straight lane is clear), the move budget after the
+        /// engine's 6" whole-move cap when the route crosses difficult ground, and the clearance radius
+        /// the route was planned with.
+        /// </summary>
+        private static (List<Position> Path, TerrainGrid? Grid, float Budget, float BaseRadius) RouteToward(
+            List<DataBinding<ModelData>> living, ITableState tableState, List<ITerrain> terrain,
+            Position goal, float moveBudgetInches, bool ignoresDifficultTerrain,
+            bool ignoresImpassibleTerrain, Func<TerrainGrid>? sharedGrid)
+        {
             float cx = living.Average(mb => mb.GetValue().Position.x);
             float cz = living.Average(mb => mb.GetValue().Position.z);
             var start = new Position(cx, cz);
@@ -947,20 +990,52 @@ namespace FDG.Ai.Tactician
                 GridPathfinder.AdvanceAlongPath(path, budget, terrain, baseRadius);
             if (crossesDifficult && !ignoresDifficultTerrain)
                 budget = Math.Min(budget, GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES - 0.001f);
+            return (path, routeGrid, budget, baseRadius);
+        }
+
+        /// <summary>Edge gap between the ranks of a sliver file: the 1" cohesion limit less slack for
+        /// the anchor back-off's overshoot and float noise (#191 step 10 P4).</summary>
+        public const float SliverRankGapInches = 0.9f;
+        /// <summary>The sliver file's anchor back-off resolution: with ranks strung out near the cohesion
+        /// limit, the default quarter-spacing step overshoots the 1" rule at every bend.</summary>
+        public const float SliverRankBackoffStepInches = 0.08f;
+
+        /// <summary>
+        /// #191 step 10 P4 (the M14 Contest macro): the same route as <see cref="PlanMoveAlongRoute"/>,
+        /// walked as a SLIVER - an on-path file whose head goes to <paramref name="goal"/> and whose
+        /// ranks string back along the route at (nearly) the 1" cohesion gap, so one model ends where
+        /// the caller aimed and the unit's mass ends as far behind it as the rules allow (with a short
+        /// route the tail extends BEHIND the start). Ladder: the sliver at halving arcs, then
+        /// reform-in-place, then hold - no grid fallback, because a grid on the marker is exactly what
+        /// M2/M3 already offer.
+        /// </summary>
+        public static (List<ModelMoveEntry> Move, List<Position> Route) PlanSliverAlongRoute(
+            DataBinding<UnitData> unit,
+            List<DataBinding<ModelData>> living, ITableState tableState, Position goal,
+            float moveBudgetInches, float maxDistanceInches,
+            Func<ModelMoveEntry, ModelMoveBudget> budgetFor,
+            bool canMoveThroughEnemies, bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
+            Func<TerrainGrid>? sharedGrid = null)
+        {
+            var terrain = tableState.Terrain.Objects.ToList();
+            var enemies = LiveEnemyFootprints(tableState, unit.GetValue().PlayerID);
+            var friendlies = LiveFriendlyFootprints(tableState, unit.GetValue().PlayerID, unit.GetValue().ID);
+            (List<Position> path, TerrainGrid? routeGrid, float budget, float baseRadius) = RouteToward(
+                living, tableState, terrain, goal, moveBudgetInches, ignoresDifficultTerrain,
+                ignoresImpassibleTerrain, sharedGrid);
+            // Rank spacing is center-to-center along the file: the model's own base plus the gap. The
+            // file's models share one clearance radius here (TerrainClearanceRadius is the unit's max).
+            float rankSpacing = 2f * baseRadius + SliverRankGapInches;
+            // The head stops AT the goal, never past it: the rank anchors are arc positions along the
+            // route, and an arc beyond the route's end clamps every rank onto the head (the file
+            // collapses, fails cohesion, and the ladder halves the head short of the marker).
+            float headArc = Math.Min(budget, RouteMetrics.Length(path));
 
             List<ModelMoveEntry> move = ValidateWithBackoff(
-                arc => BuildPathCandidate(unit, living, path, arc, terrain, baseRadius,
-                    maxDistanceInches, formation, lineAxis, routeGrid: routeGrid),
-                budget, unit, living, budgetFor, enemies,
-                canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, friendlies,
-                // #256 S2: a friendly parked on the arrival spot side-steps the endpoint fan-out
-                // instead of halving the arc toward a stall (the Warriors-toward-(7,30) row).
-                (arc, lat) => BuildPathCandidate(unit, living, path, arc, terrain, baseRadius,
-                    maxDistanceInches, formation, lineAxis, lat, routeGrid),
-                // #256 S4: a formation too wide for the route's corridor falls back to the on-path
-                // snake instead of halving to a crawl (the walled Battle Brothers pocket).
                 arc => BuildSnakeCandidate(unit, living, path, arc, terrain, baseRadius,
-                    maxDistanceInches, routeGrid));
+                    maxDistanceInches, routeGrid, rankSpacing, SliverRankBackoffStepInches),
+                headArc, unit, living, budgetFor, enemies,
+                canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, friendlies);
             return (move, path);
         }
 

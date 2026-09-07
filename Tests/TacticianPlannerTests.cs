@@ -639,6 +639,31 @@ namespace FDG.Tests
             _store.Create(progress);
         }
 
+        [Test]
+        public void Score_CreditsASliver_WhoseCentroidIsFarFromTheMarker()
+        {
+            // #191 step 10 P4: the objective delta is measured on the candidate's END positions (one
+            // base edge inside 3" - the reconcile rule), not on the centroid. A Contest candidate has
+            // its centroid deliberately far back; it must still outscore Hold on a neutral marker.
+            _store.Create(new ObjectiveData(new Position(30f, 20f), _store));
+            var unit = MakeUnit(_us, 5, Rifle(), atX: 20f, atZ: 20f);
+            _planner.BeginActivation(unit);
+            List<MacroAction> candidates = MacroActionGenerator.Enumerate(
+                new RuleEvaluator(new ProbabilisticDiceRoller()), _tableState, unit);
+            MacroAction contest = candidates.First(c => c.Intent == EMacroIntent.Contest
+                && c.Feasibility == EFeasibility.Reachable);
+            MacroAction hold = candidates.First(c => c.Intent == EMacroIntent.Hold);
+
+            float contestScore = _planner.Score(contest);
+            float holdScore = _planner.Score(hold);
+
+            Assert.That(Distance(contest.ProjectedCentroid, new Position(30f, 20f)),
+                Is.GreaterThan(TacticalAnalysis.ObjectiveSeizureRadiusInches + 1.5f),
+                "precondition: the sliver's centroid is outside the old centroid stand-in's slack");
+            Assert.That(contestScore, Is.GreaterThan(holdScore + 0.3f),
+                $"the sliver must collect the marker credit: contest={contestScore:F3} hold={holdScore:F3}");
+        }
+
         // --- fixtures ---------------------------------------------------------------------------
 
         private static Weapon Rifle() => new Weapon("Rifle", rangeInches: 24f, attacks: 1, armorPenetration: 0);

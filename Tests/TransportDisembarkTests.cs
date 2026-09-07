@@ -334,6 +334,12 @@ namespace FDG.Tests
                 OfferedInvalidOptions = selection.InvalidOptions;
                 return Task.FromResult((TReply)(object)_choice);
             }
+            if (request is ChooseActionRequest action)
+            {
+                OfferedOptions = action.ValidOptions;
+                OfferedInvalidOptions = action.InvalidOptions;
+                return Task.FromResult((TReply)(object)_choice);
+            }
             throw new InvalidOperationException("Unexpected request type: " + request.GetType());
         }
     }
@@ -414,6 +420,12 @@ namespace FDG.Tests
             if (request is StringSelectionRequest selection)
             {
                 OfferedOptions = selection.ValidOptions;
+                return Task.FromResult((TReply)(object)_choice);
+            }
+
+            if (request is ChooseActionRequest action)
+            {
+                OfferedOptions = action.ValidOptions;
                 return Task.FromResult((TReply)(object)_choice);
             }
 

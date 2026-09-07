@@ -1,0 +1,560 @@
+using FDG.Data;
+using FDG.Rules.Dispatch;
+
+namespace FDG.Ai.Tactician.Learning
+{
+    /// <summary>
+    /// The C1 self-play feature vector (#191 campaign step 4, docs/tactician-c1-schema.md): a
+    /// scale-free read of the board from one activation boundary, for the ACTING player. Every
+    /// value is a fraction, a share, or normalized by a scale reference (schema sec 0 rule 1) so
+    /// one net reads a 1k skirmish and a 4k battle the same way, and features are aggregated per
+    /// SIDE (SELF/ALLY/ENEMY_SUM/ENEMY_MAX, schema sec 0 rule 2) so 1v1 and 2v2 share one width.
+    /// <para>
+    /// Pure function of the table state handed in - never rolls dice, never mutates anything
+    /// (schema sec 7 check 5: byte-identical output for a fixed seed is a determinism requirement
+    /// on the encoder itself). Budget is under 5ms/call (schema sec 0 rule 3); nothing here runs a
+    /// CombatMath sweep per unit (the firepower-band idea is explicitly deferred to v2, schema
+    /// sec 4) - only cheap TacticalAnalysis primitives and O(units) or O(units x objectives) scans.
+    /// </para>
+    /// <para>
+    /// <c>activation_frac</c> and <c>acting_side_is_first</c> are round-scoped facts the encoder
+    /// has no cheap way to derive from <see cref="ITableState"/> alone (the team activation order
+    /// lives in engine-internal round state, not the table-state read surface) - callers that
+    /// observe the real activation sequence (the FdgLab exporter) pass them in.
+    /// </para>
+    /// </summary>
+    public static class PositionEncoder
+    {
+        // v2 (2026-09-05, #191 step 10): +obj_held_threatened_share per side block (index 15), so a
+        // held marker an enemy can still reach this round is distinguishable from a safe one - the
+        // B-gate failure analysis's second finding (material was fungible: a unit 6" from your marker
+        // counted the same as one 40" away). Width 67 -> 71. v1 files stay valid v1 data; the
+        // schema doc records the mixed-schema consequence for step 12/13.
+        //
+        // v3 (2026-09-06, #191 step 11 C replan, Chris's sign-off S1): +obj_contest_strength (16) and
+        // +obj_open_approach (17) per side block - the two MarkerTerms the shipping leaf evaluator
+        // already reads (P4). The rule the replan set: THE NET MUST SEE EVERYTHING THE HAND EVALUATOR
+        // SEES, or a net trained on these rows is blind to the term that produced P4's gain (Orks
+        // 26 -> 44). Parity is structural, not a convention: HandWeightedEvaluator now reads indices
+        // 16/17 out of this block instead of calling MarkerTerms itself, so the two cannot drift.
+        // Width 71 -> 79. v1/v2 files stay valid data at their own schema.
+        public const int SchemaVersion = 3;
+        public const int GlobalFeatureCount = 7;
+        public const int PerSideFeatureCount = 18;
+        public const int VectorWidth = GlobalFeatureCount + PerSideFeatureCount * 4; // 79
+
+        // DEFAULT_TABLE_WIDTH/HEIGHT_INCHES (72x48): the schema's scale reference for on-table
+        // distances. Not read off the actual table's terrain bounds - GameWideConstants is the
+        // single normalization reference every game uses, deployment zones included.
+        private static readonly float TableDiagonalInches = MathF.Sqrt(
+            GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES * GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES
+            + GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES * GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES);
+
+        /// <summary>
+        /// Encodes the 79-float v3 vector for <paramref name="actingPlayer"/>'s activation boundary.
+        /// </summary>
+        /// <param name="boundaryIndexInRound">0-based index of this activation within the current round.</param>
+        /// <param name="expectedBoundariesThisRound">The round's total living-unit count at round
+        /// start (the caller's estimate of how many activations the round will have); at least 1.</param>
+        /// <param name="actingSideIsFirst">Whether the acting player's SIDE took the first
+        /// activation of this round (observed activation order - see the type doc).</param>
+        /// <param name="totalGamePoints">Sum of every side's army points for this game, used only
+        /// for <c>points_norm</c> (schema sec 2's deliberate absolute-value exception).</param>
+        public static float[] Encode(ITableState tableState, RuleEvaluator evaluator, PlayerID actingPlayer,
+            int boundaryIndexInRound, int expectedBoundariesThisRound, bool actingSideIsFirst,
+            float totalGamePoints)
+        {
+            var v = new float[VectorWidth];
+
+            List<PlayerID> allPlayers = tableState.Armies.Objects.Select(a => a.PlayerID).Distinct().ToList();
+            List<PlayerID> allies = allPlayers.Where(p => !p.Equals(actingPlayer)
+                && TacticalAnalysis.AreAllied(tableState, actingPlayer, p)).ToList();
+            List<PlayerID> enemies = allPlayers.Where(p => !TacticalAnalysis.AreAllied(tableState, actingPlayer, p))
+                .ToList();
+            var friendly = new List<PlayerID> { actingPlayer };
+            friendly.AddRange(allies);
+
+            var terrain = TacticalAnalysis.TerrainOf(tableState);
+            List<ObjectiveProjection> projections = TacticalAnalysis.ProjectObjectives(tableState);
+            int objectiveCount = Math.Max(1, tableState.Objectives.Objects.Count());
+
+            // Global denominators (schema sec 3): every *_share feature divides by the ALL-sides
+            // total, computed once so the four blocks below only need their own numerator.
+            var globals = new Globals(tableState);
+
+            int round = tableState.Progress.RoundCount ?? 1;
+            int totalRounds = Math.Max(1, tableState.Progress.TotalRounds);
+
+            // --- 7 global scalars --------------------------------------------------------------
+            v[0] = Math.Clamp((float)round / totalRounds, 0f, 1f); // round_frac
+            v[1] = Math.Clamp((float)(totalRounds - round) / totalRounds, 0f, 1f); // rounds_left_frac
+            v[2] = Math.Clamp(objectiveCount / 5f, 0f, 1f); // objective_count_norm
+            v[3] = Math.Clamp(friendly.Count / 4f, 0f, 1f); // players_per_side_norm
+            v[4] = Math.Clamp(totalGamePoints / 4000f, 0f, 1f); // points_norm (sec 2's exception)
+            v[5] = Math.Clamp((float)boundaryIndexInRound / Math.Max(1, expectedBoundariesThisRound), 0f, 1f); // activation_frac
+            v[6] = actingSideIsFirst ? 1f : 0f; // acting_side_is_first
+
+            // --- 4 per-side blocks (18 floats each) ---------------------------------------------
+            float[] self = ComputeBlock(tableState, evaluator, terrain, projections, objectiveCount,
+                new List<PlayerID> { actingPlayer }, enemies, globals);
+            float[] ally = allies.Count == 0
+                ? new float[PerSideFeatureCount]
+                : ComputeBlock(tableState, evaluator, terrain, projections, objectiveCount,
+                    allies, enemies, globals);
+            float[] enemySum = enemies.Count == 0
+                ? new float[PerSideFeatureCount]
+                : ComputeBlock(tableState, evaluator, terrain, projections, objectiveCount,
+                    enemies, friendly, globals);
+            float[] enemyMax = new float[PerSideFeatureCount];
+            foreach (PlayerID enemy in enemies)
+            {
+                float[] block = ComputeBlock(tableState, evaluator, terrain, projections, objectiveCount,
+                    new List<PlayerID> { enemy }, friendly, globals);
+                for (int i = 0; i < PerSideFeatureCount; i++)
+                    enemyMax[i] = Math.Max(enemyMax[i], block[i]);
+            }
+
+            Array.Copy(self, 0, v, GlobalFeatureCount, PerSideFeatureCount);
+            Array.Copy(ally, 0, v, GlobalFeatureCount + PerSideFeatureCount, PerSideFeatureCount);
+            Array.Copy(enemySum, 0, v, GlobalFeatureCount + PerSideFeatureCount * 2, PerSideFeatureCount);
+            Array.Copy(enemyMax, 0, v, GlobalFeatureCount + PerSideFeatureCount * 3, PerSideFeatureCount);
+
+            return v;
+        }
+
+        // The features a LEAF evaluator can compute (#191 step 14). Two of Encode's seven globals
+        // describe the activation boundary - activation_frac and acting_side_is_first - and a leaf
+        // sits mid-simulation with no boundary to describe. Rather than serve them as zeros and
+        // hope (a train/serve mismatch that would be invisible), the serving model is TRAINED
+        // without them: measured 2026-09-06 on 15.8k games, dropping both moved held-out auc
+        // 0.9136 -> 0.9133 and the unseen-pairing auc 0.8865 -> 0.8862, i.e. nothing. The other
+        // five globals and all four blocks are pure functions of the table state.
+        public const int ServingGlobalFeatureCount = 5;
+        public const int ServingVectorWidth = ServingGlobalFeatureCount + PerSideFeatureCount * 4; // 77
+
+        /// <summary>
+        /// The 77-float serving vector for one SIDE, from that side's perspective: the five
+        /// state-derived globals then SELF / ALLY / ENEMY_SUM / ENEMY_MAX, in the same order and
+        /// with the same per-side block <see cref="Encode"/> produces for a training row.
+        /// <para>
+        /// SELF is ONE member of the side and ALLY is the rest, matching how training rows are
+        /// shaped (a row is written from the acting PLAYER's perspective, with teammates in the
+        /// ALLY block) - serving a side's whole membership as SELF with an empty ALLY block would
+        /// be a shape the model never saw in 2v2. The member is picked deterministically so the
+        /// same position always encodes the same way.
+        /// </para>
+        /// </summary>
+        public static float[] EncodeForEvaluation(ITableState tableState, RuleEvaluator evaluator,
+            IReadOnlyList<PlayerID> sideMembers, IReadOnlyList<PlayerID> opposingMembers)
+        {
+            var v = new float[ServingVectorWidth];
+            var terrain = TacticalAnalysis.TerrainOf(tableState);
+            List<ObjectiveProjection> projections = TacticalAnalysis.ProjectObjectives(tableState);
+            int objectiveCount = Math.Max(1, tableState.Objectives.Objects.Count());
+            var globals = new Globals(tableState);
+
+            int round = tableState.Progress.RoundCount ?? 1;
+            int totalRounds = Math.Max(1, tableState.Progress.TotalRounds);
+            v[0] = Math.Clamp((float)round / totalRounds, 0f, 1f);                      // round_frac
+            v[1] = Math.Clamp((float)(totalRounds - round) / totalRounds, 0f, 1f);      // rounds_left_frac
+            v[2] = Math.Clamp(objectiveCount / 5f, 0f, 1f);                             // objective_count_norm
+            v[3] = Math.Clamp(sideMembers.Count / 4f, 0f, 1f);                          // players_per_side_norm
+            v[4] = Math.Clamp(TotalGamePoints(tableState) / 4000f, 0f, 1f);             // points_norm
+
+            var self = new List<PlayerID> { sideMembers[0] };
+            var allies = sideMembers.Skip(1).ToList();
+            var opposing = opposingMembers.ToList();
+
+            float[] selfBlock = ComputeBlock(tableState, evaluator, terrain, projections, objectiveCount,
+                self, opposing, globals);
+            float[] allyBlock = allies.Count == 0
+                ? new float[PerSideFeatureCount]
+                : ComputeBlock(tableState, evaluator, terrain, projections, objectiveCount, allies, opposing, globals);
+            float[] enemySum = opposing.Count == 0
+                ? new float[PerSideFeatureCount]
+                : ComputeBlock(tableState, evaluator, terrain, projections, objectiveCount,
+                    opposing, sideMembers.ToList(), globals);
+            var enemyMax = new float[PerSideFeatureCount];
+            foreach (PlayerID enemy in opposing)
+            {
+                float[] block = ComputeBlock(tableState, evaluator, terrain, projections, objectiveCount,
+                    new List<PlayerID> { enemy }, sideMembers.ToList(), globals);
+                for (int i = 0; i < PerSideFeatureCount; i++) enemyMax[i] = Math.Max(enemyMax[i], block[i]);
+            }
+
+            Array.Copy(selfBlock, 0, v, ServingGlobalFeatureCount, PerSideFeatureCount);
+            Array.Copy(allyBlock, 0, v, ServingGlobalFeatureCount + PerSideFeatureCount, PerSideFeatureCount);
+            Array.Copy(enemySum, 0, v, ServingGlobalFeatureCount + PerSideFeatureCount * 2, PerSideFeatureCount);
+            Array.Copy(enemyMax, 0, v, ServingGlobalFeatureCount + PerSideFeatureCount * 3, PerSideFeatureCount);
+            return v;
+        }
+
+        /// <summary>
+        /// Sum of every army's points limit - the same quantity the FdgLab exporter passes as
+        /// <c>totalGamePoints</c> (it sums each slot's <c>Army.PointsLimit</c>), so points_norm
+        /// means the same thing at serving time as it did in the training row.
+        /// </summary>
+        public static float TotalGamePoints(ITableState tableState)
+        {
+            float total = 0f;
+            foreach (IArmy army in tableState.Armies.Objects)
+                if (army is ArmyData data) total += data.PointsLimit;
+            return total;
+        }
+
+        /// <summary>
+        /// The 18-float per-side block (schema sec 3) for an arbitrary SIDE - not a player's SELF
+        /// block, the whole side's aggregate (#191 B3, docs/tactician-b2-design.md sec 7.2's leaf
+        /// evaluator: it needs every side's own block, not one activation's four-block perspective).
+        /// Exposes exactly the computation <see cref="Encode"/>'s SELF/ALLY/ENEMY_SUM/ENEMY_MAX blocks
+        /// already run, so a leaf evaluator gets the same numbers a real activation boundary would
+        /// have produced for that side - no separate code path, no approximation from summing shares
+        /// across sub-blocks (obj_held_share and threat_coverage are not simply additive over a side's
+        /// players - a target covered by one ally and not another must count once, not twice).
+        /// </summary>
+        public static float[] EncodeSideBlock(ITableState tableState, RuleEvaluator evaluator,
+            IReadOnlyList<PlayerID> sideMembers, IReadOnlyList<PlayerID> opposingMembers)
+        {
+            var terrain = TacticalAnalysis.TerrainOf(tableState);
+            List<ObjectiveProjection> projections = TacticalAnalysis.ProjectObjectives(tableState);
+            int objectiveCount = Math.Max(1, tableState.Objectives.Objects.Count());
+            var globals = new Globals(tableState);
+            return ComputeBlock(tableState, evaluator, terrain, projections, objectiveCount,
+                sideMembers.ToList(), opposingMembers.ToList(), globals);
+        }
+
+        // Global (all-sides) totals shared by every block's *_share denominator (schema sec 3).
+        private readonly struct Globals
+        {
+            public readonly float ValueTotal;
+            public readonly float RangedTotal;
+            public readonly float MeleeTotal;
+            public readonly int LivingUnitsTotal;
+
+            public Globals(ITableState tableState)
+            {
+                float value = 0f, ranged = 0f, melee = 0f;
+                int living = 0;
+                foreach (IUnit unit in LivingUnits(tableState, null))
+                {
+                    value += TacticalAnalysis.UnitValue(unit);
+                    ranged += TacticalAnalysis.RangedOutputWounds(unit);
+                    melee += TacticalAnalysis.MeleeOutputWounds(unit);
+                    living++;
+                }
+                ValueTotal = value;
+                RangedTotal = ranged;
+                MeleeTotal = melee;
+                LivingUnitsTotal = living;
+            }
+        }
+
+        private static float[] ComputeBlock(ITableState tableState, RuleEvaluator evaluator,
+            IReadOnlyList<ITerrain> terrain, List<ObjectiveProjection> projections, int objectiveCount,
+            List<PlayerID> members, List<PlayerID> opposing, Globals globals)
+        {
+            var block = new float[PerSideFeatureCount];
+
+            List<IUnit> livingUnits = LivingUnits(tableState, members).ToList();
+            int rosterCount = RosterCount(tableState, members);
+
+            float woundsCurrent = 0f, woundsMax = 0f, value = 0f, ranged = 0f, melee = 0f;
+            int unactivated = 0, reserve = 0, seizers = 0;
+            float objDistSum = 0f, objDistMin = float.MaxValue;
+            foreach (IUnit unit in livingUnits)
+            {
+                woundsCurrent += unit.RemainingWounds;
+                woundsMax += unit.MaxWounds;
+                value += TacticalAnalysis.UnitValue(unit);
+                ranged += TacticalAnalysis.RangedOutputWounds(unit);
+                melee += TacticalAnalysis.MeleeOutputWounds(unit);
+                if (!unit.Tokens.HasToken(Rules.Foundation.TokenType.ActivatedThisRound)) unactivated++;
+                if (Rules.Dispatch.ReserveRules.IsInReserve(unit)) reserve++;
+                if (TacticalAnalysis.CanSeizeObjectives(unit)) seizers++;
+
+                float nearest = float.MaxValue;
+                foreach (IObjective objective in tableState.Objectives.Objects)
+                {
+                    float d = TacticalAnalysis.MinBaseEdgeDistanceToPoint(unit, objective.Position);
+                    if (d < nearest) nearest = d;
+                }
+                if (nearest < float.MaxValue)
+                {
+                    objDistSum += nearest;
+                    objDistMin = Math.Min(objDistMin, nearest);
+                }
+            }
+
+            int n = Math.Max(1, livingUnits.Count);
+            block[0] = Frac(woundsCurrent, woundsMax); // health_frac
+            block[1] = Frac(value, globals.ValueTotal); // value_share
+            block[2] = Frac(livingUnits.Count, rosterCount); // units_alive_frac
+            block[3] = Frac(ranged, globals.RangedTotal); // ranged_share
+            block[4] = Frac(melee, globals.MeleeTotal); // melee_share
+            block[5] = Frac(unactivated, livingUnits.Count); // activations_left_frac
+            block[6] = Frac(CountHeldBy(projections, members), objectiveCount); // obj_held_share
+            block[7] = Frac(CountContestedBy(projections, members), objectiveCount); // obj_contested_share
+            block[8] = livingUnits.Count == 0 ? 0f
+                : Math.Clamp(objDistSum / n / TableDiagonalInches, 0f, 1f); // mean_obj_dist_norm
+            block[9] = objDistMin == float.MaxValue ? 1f
+                : Math.Clamp(objDistMin / TableDiagonalInches, 0f, 1f); // min_obj_dist_norm
+
+            // mobility_norm and threat_coverage's per-unit reach share one O(units) pass over
+            // livingUnits - each unit's AdvanceDistance/ChargeBudget rule evaluation runs ONCE here,
+            // not once per (threat x target) pair. threat_coverage then compares precomputed reach
+            // against raw centroid distance (O(1) arithmetic per pair): the schema's 5ms budget
+            // (sec 0 rule 3, sec 7 check 6) rules out a per-pair CombatMath-grade sweep, and a
+            // pair's real threat range is target-conditioned (Melee Shrouding etc) anyway - this
+            // trades that precision for the coarse yes/no coverage fraction the feature actually is.
+            float mobilitySum = 0f;
+            var reach = new float[livingUnits.Count];
+            var centroids = new Position[livingUnits.Count];
+            for (int u = 0; u < livingUnits.Count; u++)
+            {
+                IUnit unit = livingUnits[u];
+                mobilitySum += TacticalAnalysis.AdvanceDistance(unit, evaluator, terrain);
+                reach[u] = CheapThreatReach(unit, evaluator, terrain);
+                centroids[u] = Centroid(unit);
+            }
+            block[10] = livingUnits.Count == 0 ? 0f
+                : Math.Clamp(mobilitySum / n / GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES, 0f, 1f); // mobility_norm
+
+            List<IUnit> opposingLiving = LivingUnits(tableState, opposing).ToList();
+            int covered = 0;
+            foreach (IUnit target in opposingLiving)
+            {
+                bool inRange = false;
+                for (int u = 0; u < livingUnits.Count; u++)
+                {
+                    if (reach[u] >= TacticalAnalysis.MinBaseEdgeDistanceToPoint(target, centroids[u]))
+                    {
+                        inRange = true;
+                        break;
+                    }
+                }
+                if (inRange) covered++;
+            }
+            block[11] = Frac(covered, opposingLiving.Count); // threat_coverage
+            block[12] = Frac(reserve, livingUnits.Count); // reserve_frac
+            block[13] = Frac(seizers, livingUnits.Count); // seizer_frac
+            block[14] = Frac(livingUnits.Count, globals.LivingUnitsTotal); // activation_share
+
+            // v2: obj_held_threatened_share - of this side's projected-held markers, the fraction an
+            // opposing unit can still reach THIS ROUND (its cheap threat reach plus the seizure
+            // radius covers the marker point, so it can contest the marker or hit the holder). In
+            // the last round only an unactivated enemy counts - an activated one never acts again;
+            // before the last round every living enemy in reach counts, it acts again next round.
+            // Same reach as threat_coverage, computed for the OPPOSING units here (their block
+            // computes it for themselves; the two are not shared, cost is one more O(units) pass).
+            int heldThreatened = 0;
+            var heldMarkers = projections.Where(p => p.ProjectedOwner.HasValue && members.Contains(p.ProjectedOwner.Value)).ToList();
+            if (heldMarkers.Count > 0 && opposingLiving.Count > 0)
+            {
+                int totalRounds = Math.Max(1, tableState.Progress.TotalRounds);
+                bool lastRound = (tableState.Progress.RoundCount ?? 1) >= totalRounds;
+                var threats = new List<(float Reach, IUnit Unit)>(opposingLiving.Count);
+                foreach (IUnit enemy in opposingLiving)
+                {
+                    if (lastRound && enemy.Tokens.HasToken(Rules.Foundation.TokenType.ActivatedThisRound)) continue;
+                    threats.Add((CheapThreatReach(enemy, evaluator, terrain), enemy));
+                }
+                foreach (ObjectiveProjection held in heldMarkers)
+                {
+                    foreach ((float reachE, IUnit enemy) in threats)
+                    {
+                        if (reachE + TacticalAnalysis.ObjectiveSeizureRadiusInches
+                            >= TacticalAnalysis.MinBaseEdgeDistanceToPoint(enemy, held.Objective.Position))
+                        {
+                            heldThreatened++;
+                            break;
+                        }
+                    }
+                }
+            }
+            block[15] = Frac(heldThreatened, objectiveCount); // obj_held_threatened_share (v2)
+
+            // v3: the two marker terms the leaf evaluator reads (P4). Computed HERE, once per block,
+            // so the evaluator and the exported row are the same numbers by construction - see the
+            // schema-version comment at the top of this file for why that is the rule and not a
+            // convention. Cost is O(units x markers) base-edge distances, the order this method
+            // already runs at (measured 2026-09-06: encoder mean 1.5ms -> 1.9ms, budget 5ms).
+            MarkerTerms.Result markers = MarkerTerms.Compute(tableState, members, opposing,
+                projections, objectiveCount);
+            block[16] = Math.Clamp(markers.ContestStrength, 0f, 1f); // obj_contest_strength (v3)
+            block[17] = Math.Clamp(markers.OpenApproach, 0f, 1f);    // obj_open_approach (v3)
+
+            return block;
+        }
+
+        public const int EntityFeatureCount = 16; // 13 scalars + 3-wide SELF/ALLY/ENEMY one-hot
+
+        /// <summary>
+        /// The per-unit entity table (schema sec 5), for the 5%-of-games sample only - the caller
+        /// decides whether to call this, the encoder just answers when asked. One row per LIVING
+        /// on-table unit of every player in the game, each row's 16 floats being: value share of
+        /// its own side, health frac, alive (always 1 here - dead units are skipped), activated,
+        /// in reserve, can seize, mobility norm, ranged share, melee share, normalized distance to
+        /// nearest objective, normalized distance to nearest enemy, threat-coverage frac (this
+        /// UNIT's own coverage of the opposing side, not its side's), is-caster, then a 3-wide
+        /// SELF/ALLY/ENEMY one-hot relative to <paramref name="actingPlayer"/>.
+        /// <para>
+        /// is-caster is a crude proxy (any rule definition named "Caster") pending a real caster
+        /// query surface - acceptable for a sampled, v2-only table that nothing in v1 trains on
+        /// (schema sec 5's explicit rationale: log it now so v2 never needs a regeneration run).
+        /// </para>
+        /// </summary>
+        public static List<float[]> EncodeEntities(ITableState tableState, RuleEvaluator evaluator,
+            PlayerID actingPlayer)
+        {
+            var terrain = TacticalAnalysis.TerrainOf(tableState);
+            List<PlayerID> allPlayers = tableState.Armies.Objects.Select(a => a.PlayerID).Distinct().ToList();
+            List<PlayerID> allies = allPlayers.Where(p => !p.Equals(actingPlayer)
+                && TacticalAnalysis.AreAllied(tableState, actingPlayer, p)).ToList();
+            List<PlayerID> enemies = allPlayers.Where(p => !TacticalAnalysis.AreAllied(tableState, actingPlayer, p))
+                .ToList();
+
+            var globals = new Globals(tableState);
+            var rows = new List<float[]>();
+
+            foreach (PlayerID owner in allPlayers)
+            {
+                bool isSelf = owner.Equals(actingPlayer);
+                bool isAlly = !isSelf && allies.Contains(owner);
+                List<PlayerID> ownSide = isSelf || isAlly
+                    ? new List<PlayerID> { actingPlayer }.Concat(allies).ToList()
+                    : enemies;
+                List<PlayerID> opposingSide = isSelf || isAlly ? enemies
+                    : new List<PlayerID> { actingPlayer }.Concat(allies).ToList();
+                List<IUnit> ownSideLiving = LivingUnits(tableState, ownSide).ToList();
+                List<IUnit> opposingLiving = LivingUnits(tableState, opposingSide).ToList();
+                float ownSideValue = ownSideLiving.Sum(TacticalAnalysis.UnitValue);
+
+                foreach (IUnit unit in LivingUnits(tableState, new List<PlayerID> { owner }))
+                {
+                    var row = new float[EntityFeatureCount];
+                    row[0] = Frac(TacticalAnalysis.UnitValue(unit), ownSideValue); // value share of own side
+                    row[1] = Frac(unit.RemainingWounds, unit.MaxWounds); // health_frac
+                    row[2] = 1f; // alive (dead units never reach this loop)
+                    row[3] = unit.Tokens.HasToken(Rules.Foundation.TokenType.ActivatedThisRound) ? 1f : 0f; // activated
+                    row[4] = Rules.Dispatch.ReserveRules.IsInReserve(unit) ? 1f : 0f; // in reserve
+                    row[5] = TacticalAnalysis.CanSeizeObjectives(unit) ? 1f : 0f; // can seize
+                    row[6] = Math.Clamp(TacticalAnalysis.AdvanceDistance(unit, evaluator, terrain)
+                        / GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES, 0f, 1f); // mobility_norm
+                    row[7] = Frac(TacticalAnalysis.RangedOutputWounds(unit), globals.RangedTotal); // ranged_share
+                    row[8] = Frac(TacticalAnalysis.MeleeOutputWounds(unit), globals.MeleeTotal); // melee_share
+
+                    float nearestObj = float.MaxValue;
+                    foreach (IObjective objective in tableState.Objectives.Objects)
+                        nearestObj = Math.Min(nearestObj, TacticalAnalysis.MinBaseEdgeDistanceToPoint(unit, objective.Position));
+                    row[9] = nearestObj == float.MaxValue ? 1f
+                        : Math.Clamp(nearestObj / TableDiagonalInches, 0f, 1f); // dist to nearest objective
+
+                    Position at = Centroid(unit);
+                    float nearestEnemy = float.MaxValue;
+                    foreach (IUnit enemy in opposingLiving)
+                        nearestEnemy = Math.Min(nearestEnemy, Distance(at, Centroid(enemy)));
+                    row[10] = nearestEnemy == float.MaxValue ? 1f
+                        : Math.Clamp(nearestEnemy / TableDiagonalInches, 0f, 1f); // dist to nearest enemy
+
+                    float unitReach = CheapThreatReach(unit, evaluator, terrain); // see the block encoder's note
+                    int covered = opposingLiving.Count(target =>
+                        unitReach >= TacticalAnalysis.MinBaseEdgeDistanceToPoint(target, at));
+                    row[11] = Frac(covered, opposingLiving.Count); // threat_coverage
+                    row[12] = unit.RuleDefinitions.Any(r =>
+                        r.RequestedName.Contains("Caster", StringComparison.OrdinalIgnoreCase)) ? 1f : 0f; // is-caster
+
+                    row[13] = isSelf ? 1f : 0f;
+                    row[14] = isAlly ? 1f : 0f;
+                    row[15] = !isSelf && !isAlly ? 1f : 0f;
+                    rows.Add(row);
+                }
+            }
+
+            return rows;
+        }
+
+        // A unit's own threatening reach, target-independent (unlike TacticalAnalysis.ThreatRangeAgainst,
+        // which is per-target and does a rule evaluation per weapon per call - too expensive to run
+        // O(units^2) times here). Raw weapon range, no RangeRuleQueries target-conditioning.
+        internal static float CheapThreatReach(IUnit unit, RuleEvaluator evaluator, IReadOnlyList<ITerrain> terrain)
+        {
+            float advance = TacticalAnalysis.AdvanceDistance(unit, evaluator, terrain);
+            float maxWeaponRange = 0f;
+            foreach (IModel model in unit.Models)
+            {
+                if (!model.GetIsAlive()) continue;
+                foreach (Weapon weapon in model.Weapons)
+                    if (weapon.RangeInches > maxWeaponRange) maxWeaponRange = weapon.RangeInches;
+            }
+            float shooting = maxWeaponRange > 0f ? advance + maxWeaponRange : 0f;
+            float melee = Rules.Dispatch.ChargeContactRules.CanFightInMelee(unit)
+                ? TacticalAnalysis.ChargeBudget(unit, evaluator, terrain) + GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL
+                : 0f;
+            return Math.Max(shooting, melee);
+        }
+
+        private static float Distance(Position a, Position b)
+        {
+            float dx = a.x - b.x, dz = a.z - b.z;
+            return MathF.Sqrt(dx * dx + dz * dz);
+        }
+
+        // A "living unit's own centroid" approximation of where it can be threatened FROM - the
+        // schema's threat_coverage is a coarse fraction, not per-model geometry (that budget is
+        // spent in TacticianPlanner's Score, not here).
+        private static Position Centroid(IUnit unit)
+        {
+            float x = 0f, z = 0f;
+            int count = 0;
+            foreach (IModel model in unit.Models)
+            {
+                if (!model.GetIsAlive()) continue;
+                x += model.Position.x;
+                z += model.Position.z;
+                count++;
+            }
+            return count == 0 ? new Position(0, 0) : new Position(x / count, z / count);
+        }
+
+        private static float Frac(float numerator, float denominator) =>
+            denominator <= 0f ? 0f : Math.Clamp(numerator / denominator, 0f, 1f);
+
+        private static int CountHeldBy(List<ObjectiveProjection> projections, List<PlayerID> members) =>
+            projections.Count(p => p.ProjectedOwner.HasValue && members.Contains(p.ProjectedOwner.Value));
+
+        private static int CountContestedBy(List<ObjectiveProjection> projections, List<PlayerID> members) =>
+            projections.Count(p => p.PlayersInRange.Any(members.Contains)
+                && !(p.ProjectedOwner.HasValue && members.Contains(p.ProjectedOwner.Value)));
+
+        // #296: FRIENDS/enemies are whole TEAMS - members is a list of PlayerIDs already resolved
+        // to one side. null means "every player" (globals).
+        internal static IEnumerable<IUnit> LivingUnits(ITableState tableState, List<PlayerID>? members)
+        {
+            foreach (IArmy army in tableState.Armies.Objects)
+            {
+                if (members != null && !members.Contains(army.PlayerID)) continue;
+                if (army is not ArmyData data) continue;
+                foreach (DataBinding<UnitData> binding in data.UnitBindings)
+                {
+                    UnitData unit = binding.GetValue();
+                    if (unit.GetIsAlive() && unit.GetIsOnBattlefield())
+                        yield return unit;
+                }
+            }
+        }
+
+        // The append-only roster size (schema sec 3: "UnitBindings is append-only, so the
+        // denominator is the starting roster for free") - dead units still count.
+        private static int RosterCount(ITableState tableState, List<PlayerID> members)
+        {
+            int count = 0;
+            foreach (IArmy army in tableState.Armies.Objects)
+            {
+                if (!members.Contains(army.PlayerID)) continue;
+                if (army is not ArmyData data) continue;
+                count += data.UnitBindings.Count;
+            }
+            return count;
+        }
+    }
+}

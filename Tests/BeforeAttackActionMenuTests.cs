@@ -159,16 +159,16 @@ namespace FDG.Tests
     internal sealed class CapturingChoiceRequester : IPlayerRequestByID
     {
         private readonly string _choice;
-        public StringSelectionRequest? Request { get; private set; }
+        public ChooseActionRequest? Request { get; private set; }
 
         public CapturingChoiceRequester(string choice) => _choice = choice;
 
         public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
             where TRequest : IStageTaskRequest<TReply>
         {
-            if (request is StringSelectionRequest ssr)
+            if (request is ChooseActionRequest action)
             {
-                Request = ssr;
+                Request = action;
                 return Task.FromResult((TReply)(object)_choice);
             }
             throw new InvalidOperationException("Unexpected request type: " + request.GetType());

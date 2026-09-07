@@ -71,6 +71,86 @@ namespace FDG.Tests
                 "the multi-wound model soaks the partial volley; every gunner stays alive");
         }
 
+        // --- step 10 P0 (2026-09-05): objective-aware allocation ------------------------------------
+        // Chris's GUI game: a unit partially on a marker assigned its wounds to the models ON the
+        // marker and stopped holding it. These pin the marker stake; the output rule above is
+        // unchanged when the resolver has no table state or the unit stands on no marker.
+
+        [Test]
+        public async Task PartiallyOnAMarker_TheOffMarkerModelsDieFirst()
+        {
+            // 5 identical riflemen: 2 within 3" of the marker, 3 well off it. Three wounds: all three
+            // casualties must be the off-marker models. The plain output rule kills in list order
+            // here (equal costs, strict-less picks the first), and the on-marker pair is listed first.
+            var tableState = new TableState(_store);
+            _store.Create(new ObjectiveData(new Position(30f, 30f), _store));
+            var onMarkerA = MakeModel(Rifle(), x: 30f, z: 31f);
+            var onMarkerB = MakeModel(Rifle(), x: 31f, z: 30f);
+            var models = new List<DataBinding<ModelData>>
+            {
+                onMarkerA, onMarkerB,
+                MakeModel(Rifle(), x: 40f, z: 30f), MakeModel(Rifle(), x: 41f, z: 30f), MakeModel(Rifle(), x: 42f, z: 30f),
+            };
+            DataBinding<UnitData> unit = MakeUnit(models);
+
+            var resolver = new TacticianAssignWoundsResolver(tableState);
+            AssignWoundsResults results = await resolver.Resolve(
+                new AssignWoundsRequest(_player, "Assign Wounds", unit, totalWoundsToAssign: 3f));
+
+            Assert.That(results.IsFinishedAssigning, Is.True);
+            Assert.That(Pending(results, onMarkerA), Is.EqualTo(0f).Within(0.001f), "a model on the marker must be spared");
+            Assert.That(Pending(results, onMarkerB), Is.EqualTo(0f).Within(0.001f), "a model on the marker must be spared");
+        }
+
+        [Test]
+        public async Task TheLastModelOnTheMarker_OutlivesAHeavyGunnerOffIt()
+        {
+            // One rifleman holds the marker alone; two heavy gunners stand off it. One wound: the
+            // output rule alone kills the rifleman (1.0 vs 3.45); the marker stake makes the last
+            // body on the marker worth ~10 in round 1, so a gunner dies instead.
+            var tableState = new TableState(_store);
+            _store.Create(new ObjectiveData(new Position(30f, 30f), _store));
+            var holder = MakeModel(Rifle(), x: 30f, z: 31f);
+            var models = new List<DataBinding<ModelData>>
+            {
+                MakeModel(Heavy(), x: 40f, z: 30f), MakeModel(Heavy(), x: 41f, z: 30f), holder,
+            };
+            DataBinding<UnitData> unit = MakeUnit(models);
+
+            var resolver = new TacticianAssignWoundsResolver(tableState);
+            AssignWoundsResults results = await resolver.Resolve(
+                new AssignWoundsRequest(_player, "Assign Wounds", unit, totalWoundsToAssign: 1f));
+
+            Assert.That(Pending(results, holder), Is.EqualTo(0f).Within(0.001f),
+                "the last model on the marker dies after everything else, gun or no gun");
+        }
+
+        [Test]
+        public async Task WithAnAllyAlreadyOnTheMarker_OutputDecidesAgain()
+        {
+            // Same unit, but another allied unit also stands on the marker: this unit's presence is
+            // redundant (a fifth of the stake, ~2 + 1 < the gunner's 3.45), so the cheap rifleman dies.
+            var tableState = new TableState(_store);
+            _store.Create(new ObjectiveData(new Position(30f, 30f), _store));
+            MakeUnit(new List<DataBinding<ModelData>> { MakeModel(Rifle(), x: 29f, z: 30f), MakeModel(Rifle(), x: 29f, z: 31f) });
+            var holder = MakeModel(Rifle(), x: 30f, z: 31f);
+            var models = new List<DataBinding<ModelData>>
+            {
+                MakeModel(Heavy(), x: 40f, z: 30f), MakeModel(Heavy(), x: 41f, z: 30f), holder,
+            };
+            DataBinding<UnitData> unit = MakeUnit(models);
+
+            var resolver = new TacticianAssignWoundsResolver(tableState);
+            AssignWoundsResults results = await resolver.Resolve(
+                new AssignWoundsRequest(_player, "Assign Wounds", unit, totalWoundsToAssign: 1f));
+
+            Assert.That(Pending(results, holder), Is.EqualTo(1f).Within(0.001f),
+                "with an ally holding the marker anyway, the heavy gunners are the ones to keep");
+        }
+
+        private static float Pending(AssignWoundsResults results, DataBinding<ModelData> model) =>
+            results.PendingWounds.First(e => e.Model == model).Wounds;
+
         [Test]
         public async Task LethalPool_StillAssignsEverything()
         {
@@ -96,9 +176,9 @@ namespace FDG.Tests
         private static Weapon Heavy() => new Weapon("Heavy Rifle", 30f, 3, 1);
         private static Weapon Fist() => new Weapon("Fist", 0f, 1, 0);
 
-        private DataBinding<ModelData> MakeModel(Weapon weapon, int wounds = 1)
+        private DataBinding<ModelData> MakeModel(Weapon weapon, int wounds = 1, float x = 10f, float z = 10f)
         {
-            var model = new ModelData(0.5f, new List<Weapon> { weapon }, new Position(10f, 10f), _store);
+            var model = new ModelData(0.5f, new List<Weapon> { weapon }, new Position(x, z), _store);
             if (wounds > 1) model.SetMaxWounds(wounds);
             return _store.GetDataBinding<ModelData>(_store.Create(model));
         }

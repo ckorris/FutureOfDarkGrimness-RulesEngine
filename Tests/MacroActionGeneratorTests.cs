@@ -319,6 +319,52 @@ namespace FDG.Tests
             }
         }
 
+        // --- M14 Contest (#191 step 10 P4, 2026-09-06) --------------------------------------------
+
+        [Test]
+        public void Contest_InReach_PutsOneModelInsideTheSeizeRadius_AndStringsTheMassBack()
+        {
+            // A neutral marker 10" out. Rush (M3) packs the whole unit around it; Contest (M14) ends
+            // ONE base edge inside 3" with the rest chained back along the route at the cohesion gap,
+            // so the centroid stays well behind the lead - and the move is one the engine accepts.
+            var marker = new Position(30f, 20f);
+            MakeObjective(marker);
+            var unit = MakeUnit(_us, 5, Rifle(), atX: 20f, atZ: 20f);
+
+            List<MacroAction> actions = MacroActionGenerator.Enumerate(_evaluator, _tableState, unit);
+            List<MacroAction> contests = actions.Where(a => a.Intent == EMacroIntent.Contest).ToList();
+            Assert.That(contests, Is.Not.Empty, "a marker we do not own gets a Contest candidate");
+            MacroAction contest = contests.First(a => a.Feasibility == EFeasibility.Reachable);
+            Assert.That(contest.TargetObjective, Is.Not.Null);
+
+            float lead = TacticalAnalysis.MinEndBaseEdgeDistanceToPoint(contest.Move, marker);
+            Assert.That(lead, Is.LessThanOrEqualTo(TacticalAnalysis.ObjectiveSeizureRadiusInches),
+                $"the lead model's base edge must end inside the seizure radius (lead={lead:F2})");
+            float centroid = Distance(contest.ProjectedCentroid, marker);
+            Assert.That(centroid, Is.GreaterThan(lead + 2.5f),
+                $"the mass must string back well behind the lead (centroid={centroid:F2} lead={lead:F2})");
+            MacroAction rush = actions.First(a => a.Intent == EMacroIntent.RushObjective);
+            Assert.That(centroid, Is.GreaterThan(Distance(rush.ProjectedCentroid, marker) + 1.5f),
+                "Contest and Rush must be different shapes, not the same pack");
+
+            bool valid = MovementUtilities.ValidatePaths(contest.Move,
+                _ => new ModelMoveBudget(12f, 12f), MovementPlanner.LiveEnemyFootprints(_tableState, _us),
+                false, false, false, _tableState.Terrain.Objects.ToList(), out List<ReasonForInvalidMove> reasons);
+            Assert.That(valid, Is.True, $"the sliver must be engine-valid ({string.Join(", ", reasons)})");
+        }
+
+        [Test]
+        public void Contest_NotOffered_WhenAModelAlreadyTouchesTheMarker()
+        {
+            // Standing on it already: Hold covers "stay"; a Contest would only duplicate it.
+            MakeObjective(new Position(21.5f, 20f));
+            var unit = MakeUnit(_us, 3, Rifle(), atX: 20f, atZ: 20f);
+
+            List<MacroAction> actions = MacroActionGenerator.Enumerate(_evaluator, _tableState, unit);
+
+            Assert.That(actions.Any(a => a.Intent == EMacroIntent.Contest), Is.False);
+        }
+
         [Test]
         public void EveryEmittedMove_PassesTheEngineValidator()
         {

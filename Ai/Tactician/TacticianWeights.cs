@@ -53,6 +53,30 @@ namespace FDG.Ai.Tactician
         // drift sideways (the #256/#264 stuck-mob reports).
         public static float ActivationFrontlineBias = 0.1f;
 
+        // ADDED 2026-09-05 (#191 step 10 P3, Chris: "most of my hard-earned wins against the bot
+        // come down to my micro-managing of objective holding toward the end"). Activations
+        // alternate, so in the LAST round the side that still has a marker-capable unit when the
+        // other side has run out gets the last unopposed move. The flip term (act on the marker
+        // NOW) is exactly backwards there: a responder that contests early gets shot off or
+        // re-contested by the units the enemy still has. In the final round the flip term is
+        // replaced by a tempo term - units that cannot reach any marker they could change are
+        // spent first (+Spend), units that can are held for last (-Hold). The gap between the two
+        // is deliberately above the flip bonus and every ordinary kill/threat fraction, so it
+        // orders the round: irrelevant units first, responders last, kill/threat ordering within
+        // each group. Lives in the ActivationScores the search's root priors come from, so A and B
+        // both benefit (and the tree now opens "activate the irrelevant unit" at all).
+        public static float ActivationLastRoundSpend = 0.5f;
+        public static float ActivationLastRoundHold = 0.5f;
+
+        // ADDED 2026-09-05 (#191 step 10 P0, Chris's GUI game: a unit partially on a marker assigned
+        // its wounds to the models ON it and lost the marker): the stake a unit's presence on a
+        // marker carries in wound assignment, in the resolver's output-value units (a rifleman is
+        // 1.0, a heavy gunner ~3.5, a 10-shot AP2 autocannon 13). Round-scaled by ObjectiveUrgency
+        // (x0.66 in round 1, x1.3 in the last) and split across the unit's models still standing on
+        // the marker, so the LAST model on it is worth ~10 in round 1 and ~20 in the last round -
+        // above any single model's gun. A fifth of this when another allied unit also stands there.
+        public static float WoundObjectiveHold = 15f;
+
         // --- Action + movement choice (A4-2) --------------------------------------------------------
         // score = MoveDamage * (value-weighted damage from the endpoint; melee margin for charges)
         //       - MoveRetaliation * (best value-weighted damage an enemy can put on the endpoint)

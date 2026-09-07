@@ -57,6 +57,9 @@ namespace FDG
         {
         }
 
+        /// <summary>#394: a field-for-field copy for the whole-store clone.</summary>
+        internal HeroAttachment Clone() => new HeroAttachment(HeroModelId, Quality, Defense, HeroWounds, Name, PointCost);
+
         public HeroAttachment(ModelID heroModelId, int quality, int defense, int heroWounds,
             string? name = null, int pointCost = 0)
         {

@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using FDG.Data;
 using FDG.Data.Containers;
 
@@ -31,20 +32,61 @@ namespace FDG.SaveLoad
             RehydrateRuleDefinitions(store);
         }
 
+        // A serialized DataReference, as Newtonsoft writes the struct's three public fields in
+        // declaration order (DataBinding fields serialize as exactly their reference - see
+        // DataBindingJsonConverter.WriteJson). Only a hint: a shape this scan misses falls back to the
+        // exception path below, so a future change to the serialized form costs speed, not correctness.
+        private static readonly Regex ReferencePattern = new Regex(
+            @"""TypeID"":\{""ID"":(-?\d+)\},""Index"":(-?\d+),""Generation"":(-?\d+)",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
         // Replay every entry, deferring any whose DataBinding fields can't yet resolve and retrying
         // them on the next pass. A failed CreateFromReferenceAndJson writes nothing (it throws while
         // deserializing, before the store is touched), so deferred entries are safe to retry.
+        //
+        // Readiness is CHECKED, not discovered by catching (#191 R9): an entry is replayed only once
+        // every reference embedded in its JSON resolves in the store, so the ordinary forward
+        // reference (a model's facing binding into the Float2 store registered after it) costs a
+        // lookup rather than a thrown-and-swallowed exception. The old loader threw ~200 first-chance
+        // exceptions per 2k snapshot load; a search loads a snapshot per simulation, and under an
+        // attached debugger every first-chance exception is a stop-the-process event - which is what
+        // froze the GUI at the Strategist's first activation. The exception path is kept as the
+        // fallback for what the check cannot see: a dangling reference (a plain DataReference to a
+        // destroyed value is legal and deserializes fine) or a genuine cycle, both of which are only
+        // attempted once nothing else can make progress, so they still get the old behaviour.
         public static void ReplayEntriesWithRetry(IReadWriteableGameDataStore store, IReadOnlyList<ReferenceJsonValuePair> entries)
         {
-            List<ReferenceJsonValuePair> pending = new List<ReferenceJsonValuePair>(entries);
+            var pending = new List<(ReferenceJsonValuePair Pair, DataReference[] References)>(entries.Count);
+            foreach (ReferenceJsonValuePair pair in entries)
+            {
+                pending.Add((pair, ScanReferences(pair.JsonValue)));
+            }
 
             while (pending.Count > 0)
             {
-                List<ReferenceJsonValuePair> stillPending = new List<ReferenceJsonValuePair>();
+                bool anyReady = false;
+                foreach ((ReferenceJsonValuePair _, DataReference[] references) in pending)
+                {
+                    if (AllResolve(store, references))
+                    {
+                        anyReady = true;
+                        break;
+                    }
+                }
+
+                var stillPending = new List<(ReferenceJsonValuePair Pair, DataReference[] References)>();
                 Exception? lastError = null;
 
-                foreach (ReferenceJsonValuePair pair in pending)
+                foreach ((ReferenceJsonValuePair pair, DataReference[] references) in pending)
                 {
+                    // While anything is ready, only ready entries are attempted; the blind attempt (the
+                    // exception path) is reserved for the pass where nothing resolves by inspection.
+                    if (anyReady && AllResolve(store, references) == false)
+                    {
+                        stillPending.Add((pair, references));
+                        continue;
+                    }
+
                     try
                     {
                         // #270: the snapshot path, which adopts each entry's generation - a slot recycled
@@ -55,7 +97,7 @@ namespace FDG.SaveLoad
                     catch (Exception ex)
                     {
                         lastError = ex;
-                        stillPending.Add(pair);
+                        stillPending.Add((pair, references));
                     }
                 }
 
@@ -68,6 +110,34 @@ namespace FDG.SaveLoad
 
                 pending = stillPending;
             }
+        }
+
+        /// <summary>Every DataReference embedded in one entry's JSON (bindings and plain references alike).</summary>
+        internal static DataReference[] ScanReferences(string json)
+        {
+            MatchCollection matches = ReferencePattern.Matches(json);
+            if (matches.Count == 0) return Array.Empty<DataReference>();
+
+            var references = new DataReference[matches.Count];
+            for (int i = 0; i < matches.Count; i++)
+            {
+                references[i] = new DataReference
+                {
+                    TypeID = new TypeID(int.Parse(matches[i].Groups[1].Value)),
+                    Index = int.Parse(matches[i].Groups[2].Value),
+                    Generation = int.Parse(matches[i].Groups[3].Value),
+                };
+            }
+            return references;
+        }
+
+        private static bool AllResolve(IReadableGameDataStore store, DataReference[] references)
+        {
+            foreach (DataReference reference in references)
+            {
+                if (store.IsValid(reference, out _) == false) return false;
+            }
+            return true;
         }
 
         public static void RewireSubscriptions(IReadWriteableGameDataStore store)

@@ -1181,9 +1181,17 @@ namespace FDG.Network.Connection.Lobby
 
         public void AddAiPlayer(FDG.Ai.EAiProfile profile)
         {
-            // #191 A6: the profile is the product name in the lobby - "Tactician Bot" is the
-            // challenge AI, "DerpBot" the legacy solo-rules bot (Chris's naming).
-            string botName = profile == FDG.Ai.EAiProfile.Tactician ? "Tactician Bot" : "DerpBot";
+            // #191 A6/B5: the profile is the product name in the lobby - every ladder rung is a
+            // real, player-facing option (Chris, 2026-09-03). "DerpBot" is the legacy solo-rules
+            // bot, "Tactician Bot" the A-greedy challenge AI, "Strategist Bot" the searching one.
+            // Gunline is lab-only benchmark tooling and is never offered here, so it falls to the
+            // solo name rather than getting one of its own.
+            string botName = profile switch
+            {
+                FDG.Ai.EAiProfile.Tactician => "Tactician Bot",
+                FDG.Ai.EAiProfile.Strategist => "Strategist Bot",
+                _ => "DerpBot",
+            };
             // #217: number by rank among same-profile bots (first Tactician Bot is "Tactician Bot 1"
             // regardless of humans or other bot types), not by total player count.
             int botNumber = _playerInfosFull.Values.Count(info =>

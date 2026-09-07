@@ -25,8 +25,11 @@ namespace FDG.Ai.Gunline
             var planner = new GunlinePlanner(tableState, evaluator, decisionLog);
 
             registry.RegisterResolver(new GunlineActivationResolver(planner));
-            registry.RegisterResolver(new GunlineActionResolver(planner,
-                new FDG.Ai.Resolvers.AiStringSelectionResolver(tableState, playerID)));
+            var actionResolver = new GunlineActionResolver(planner,
+                new FDG.Ai.Resolvers.AiStringSelectionResolver(tableState, playerID));
+            registry.RegisterResolver<StringSelectionRequest, string>(actionResolver);
+            // #191 B1 step 5a: Choose Action is its own request type.
+            registry.RegisterResolver<StageResolution.Requests.ChooseActionRequest, string>(actionResolver);
             registry.RegisterResolver(new Tactician.Resolvers.TacticianMovementResolver(planner, tableState,
                 new FDG.Ai.Resolvers.AiDefineMovementResolver(tableState, playerID)));
 

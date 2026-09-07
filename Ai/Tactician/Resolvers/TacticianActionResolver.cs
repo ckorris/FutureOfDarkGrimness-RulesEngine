@@ -13,13 +13,13 @@ namespace FDG.Ai.Tactician.Resolvers
     /// valid, no known active unit). The spell picker moved to its own request type (#244,
     /// <see cref="TacticianChooseSpellResolver"/>), so it no longer rides through here.
     /// <para>
-    /// Dispatch is on the request's Instructions ("Choose Action") - the same key the solo
-    /// resolver has always used for this request type, unlike A4-1's TaskName mistake. Splitting
-    /// ChooseActionRequest into its own type (like ChooseUnitToActivateRequest) is a recorded
-    /// candidate follow-up.
+    /// Choose Action is its own request type since #191 B1 step 5a (<see cref="ChooseActionRequest"/>) -
+    /// the follow-up this doc comment used to record. Hold-or-deploy and everything else still ride
+    /// <see cref="StringSelectionRequest"/>.
     /// </para>
     /// </summary>
-    public class TacticianActionResolver : IStageResolver<StringSelectionRequest, string>
+    public class TacticianActionResolver : IStageResolver<StringSelectionRequest, string>,
+        IStageResolver<ChooseActionRequest, string>
     {
         // ChooseUnitToDeployStage.PromptHoldOrDeploy's instructions:
         // "Deploy {unit} now, or hold it in {rule}?" - the unit's name is only carried there.
@@ -29,25 +29,25 @@ namespace FDG.Ai.Tactician.Resolvers
 
         private readonly TacticianPlanner _planner;
         private readonly ITableState _tableState;
-        private readonly IStageResolver<StringSelectionRequest, string> _soloFallback;
+        private readonly FDG.Ai.Resolvers.AiStringSelectionResolver _soloFallback;
 
         public TacticianActionResolver(TacticianPlanner planner, ITableState tableState,
-            IStageResolver<StringSelectionRequest, string> soloFallback)
+            FDG.Ai.Resolvers.AiStringSelectionResolver soloFallback)
         {
             _planner = planner;
             _tableState = tableState;
             _soloFallback = soloFallback;
         }
 
+        public Task<string> Resolve(ChooseActionRequest request)
+        {
+            string? planned = _planner.ChooseAction(request.ValidOptions);
+            return planned != null ? Task.FromResult(planned) : _soloFallback.Resolve(request);
+        }
+
         public Task<string> Resolve(StringSelectionRequest request)
         {
-            if (request.Instructions == "Choose Action")
-            {
-                string? planned = _planner.ChooseAction(request.ValidOptions);
-                if (planned != null)
-                    return Task.FromResult(planned);
-            }
-            else if (request.ValidOptions.Contains(ChooseUnitToDeployStage.DEPLOY_NORMALLY_CHOICE)
+            if (request.ValidOptions.Contains(ChooseUnitToDeployStage.DEPLOY_NORMALLY_CHOICE)
                 && request.ValidOptions.Any(o => o.StartsWith(HoldOptionPrefix, StringComparison.Ordinal)))
             {
                 // A5-2: hold melee/short-range Ambushers, deploy shooters. Answered explicitly both

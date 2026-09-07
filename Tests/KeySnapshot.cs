@@ -4,7 +4,7 @@ using FDG.Data;
 namespace FDG.Tests
 {
     /// <summary>
-    /// A search-node snapshot that is only a KEY (#394): the authored trees in SearchTreeTests and
+    /// A search-node snapshot that is only a KEY (#396): the authored trees in SearchTreeTests and
     /// UctSearchTests never materialize a store, they look their nodes up by name. Materializing one
     /// is a test bug, and says so.
     /// </summary>

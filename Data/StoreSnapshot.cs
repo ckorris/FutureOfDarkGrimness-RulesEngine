@@ -3,7 +3,7 @@ using FDG.SaveLoad;
 namespace FDG.Data
 {
     /// <summary>
-    /// A game state the search can hold onto and resume copies of (#394): every tree node keeps one,
+    /// A game state the search can hold onto and resume copies of (#396): every tree node keeps one,
     /// every simulation materializes its own store from one. The two implementations are the
     /// serializer round trip the search used to run on (<see cref="JsonSnapshot"/>) and the typed
     /// in-memory copy that replaced it (<see cref="StoreSnapshot"/>); they are interchangeable by
@@ -19,7 +19,7 @@ namespace FDG.Data
     }
 
     /// <summary>
-    /// #394: a frozen typed copy of a store (<see cref="StoreClone"/>), taken once at capture and
+    /// #396: a frozen typed copy of a store (<see cref="StoreClone"/>), taken once at capture and
     /// cloned again per <see cref="Materialize"/>. Nothing ever mutates the frozen copy, so any number
     /// of workers may materialize from it concurrently - the clone only reads its source.
     /// </summary>

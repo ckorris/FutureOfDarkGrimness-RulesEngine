@@ -266,7 +266,7 @@ namespace FDG
         }
 
         /// <summary>
-        /// #394: the whole-store clone's copy - the deserialized weapon plus <see cref="RehydrateRules"/>,
+        /// #396: the whole-store clone's copy - the deserialized weapon plus <see cref="RehydrateRules"/>,
         /// built directly. Its own instance because stages attach rules to a model's weapons during play.
         /// </summary>
         internal Weapon(Weapon source)

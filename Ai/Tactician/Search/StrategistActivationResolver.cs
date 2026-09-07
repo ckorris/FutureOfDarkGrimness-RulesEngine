@@ -98,7 +98,7 @@ namespace FDG.Ai.Tactician.Search
             {
                 // The engine's rolling save point (DeterminePlayerTurnStage.Enter) has just written
                 // the flow state, so capturing here takes exactly this activation boundary. A typed
-                // copy (#394), not a save: the live game's store is read, never touched.
+                // copy (#396), not a save: the live game's store is read, never touched.
                 StoreSnapshot snapshot = SimulationService.Capture(store);
                 var clock = System.Diagnostics.Stopwatch.StartNew();
                 SearchResult result = await UctSearch.RunAsync(snapshot, _options, _evaluator);

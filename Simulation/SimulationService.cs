@@ -23,7 +23,7 @@ namespace FDG.Simulation
     /// not need, because the activations along one path of the tree are consecutive. <see
     /// cref="Run"/> plays them in ONE game instance, pausing at each boundary
     /// (<see cref="IActivationBoundaryHook"/>) for the next prescription, and snapshots only at the
-    /// end. The caller snapshots only where its tree actually branches. Since #394 a snapshot is a
+    /// end. The caller snapshots only where its tree actually branches. Since #396 a snapshot is a
     /// typed in-memory copy of the store (<see cref="IStoreSnapshot"/>), not a save string: the
     /// serializer round trip was 41% of a Strategist game's CPU.</para>
     ///
@@ -106,7 +106,7 @@ namespace FDG.Simulation
             public bool ReachedEndOfLine => State != null;
 
             /// <summary>
-            /// The end-of-line state as a save string - serialized on demand (#394): the search holds
+            /// The end-of-line state as a save string - serialized on demand (#396): the search holds
             /// <see cref="State"/> and never asks; equality pins, dumps and the lab's b0 phases do.
             /// </summary>
             public string? Snapshot => State?.ToJson();
@@ -182,7 +182,7 @@ namespace FDG.Simulation
         public static string Snapshot(GameDataStore store) => GameSaveSerializer.Save(store);
 
         /// <summary>
-        /// Freezes a typed copy of a live game's store (#394) - the snapshot the search takes at its
+        /// Freezes a typed copy of a live game's store (#396) - the snapshot the search takes at its
         /// root, and what every line here hands back at its end. The string form above and this are
         /// interchangeable everywhere below; the string overloads wrap theirs in a
         /// <see cref="JsonSnapshot"/>, which is the old serializer path exactly.
@@ -524,7 +524,7 @@ namespace FDG.Simulation
                     _stopped = true;
                     // This boundary IS the result state. Capture here, where the engine's own rolling
                     // save point has just written the flow state, then stop so nothing further mutates
-                    // the store. A typed copy since #394 (StoreSnapshot), not a save string.
+                    // the store. A typed copy since #396 (StoreSnapshot), not a save string.
                     ActingPlayerAtEnd = actingPlayer;
                     _captured.TrySetResult(StoreSnapshot.Capture(_store));
                     return Task.FromResult(true);

@@ -119,7 +119,7 @@ namespace FDG
         }
 
         /// <summary>
-        /// #394: the whole-store clone's copy (<see cref="FDG.SaveLoad.StoreClone"/>) - the JSON
+        /// #396: the whole-store clone's copy (<see cref="FDG.SaveLoad.StoreClone"/>) - the JSON
         /// constructor plus <see cref="RehydrateRules"/>, built directly from the live unit. Like the
         /// JSON path it wires NO wound subscriptions (the clone rewires them once every model exists,
         /// via <see cref="RewireModelWoundSubscriptions"/>) and carries no <see cref="OnWoundsDealt"/>

@@ -368,7 +368,7 @@ namespace FDG.Data
         }
 
         /// <summary>
-        /// A binding for a slot that may not be occupied YET (#394). The whole-store clone
+        /// A binding for a slot that may not be occupied YET (#396). The whole-store clone
         /// (<see cref="FDG.SaveLoad.StoreClone"/>) rebuilds entries in registration order, and a
         /// ModelData's facing binding points into the Float2 store registered after it - exactly the
         /// forward reference <see cref="FDG.SaveLoad.StoreReplay"/> retries around. The binding is the
@@ -396,7 +396,7 @@ namespace FDG.Data
         /// <summary>
         /// Fills this (fresh) store with <paramref name="source"/>'s occupied slots, each value passed
         /// through <paramref name="cloneValue"/>, adopting the source generations the way
-        /// <see cref="CreateFromReplay"/> does (#394). Free slots stay at generation 0 - what a JSON
+        /// <see cref="CreateFromReplay"/> does (#396). Free slots stay at generation 0 - what a JSON
         /// replay leaves them at, since a save only records occupied slots - so a later Create hands
         /// out the same reference on either path. No events: nothing can be subscribed to a store that
         /// is still being built. Reads the source only, so any number of clones may be taken from one

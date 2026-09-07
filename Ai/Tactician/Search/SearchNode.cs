@@ -13,7 +13,7 @@ namespace FDG.Ai.Tactician.Search
     public sealed class SearchNode
     {
         /// <summary>
-        /// The engine's state at this boundary (a typed copy since #394 - see
+        /// The engine's state at this boundary (a typed copy since #396 - see
         /// <see cref="IStoreSnapshot"/>); null only for a terminal node.
         /// </summary>
         public IStoreSnapshot? Snapshot { get; }

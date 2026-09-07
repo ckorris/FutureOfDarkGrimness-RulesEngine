@@ -26,7 +26,7 @@ public class TokenContainer : ITokenContainer
     public event Action<Token>? OnTokenCountChanged;
 
     /// <summary>
-    /// #394: a container holding the same tokens (immutable records, shared) and no subscribers -
+    /// #396: a container holding the same tokens (immutable records, shared) and no subscribers -
     /// what deserializing this container's saved form produces. Read under the lock like every other read.
     /// </summary>
     internal TokenContainer Clone()

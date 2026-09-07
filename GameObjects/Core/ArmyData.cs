@@ -69,7 +69,7 @@ namespace FDG
         }
 
         /// <summary>
-        /// #394: the whole-store clone's copy (<see cref="FDG.SaveLoad.StoreClone"/>): the JSON
+        /// #396: the whole-store clone's copy (<see cref="FDG.SaveLoad.StoreClone"/>): the JSON
         /// constructor's result, built directly. Spells are [JsonIgnore] and stay empty here exactly as
         /// after a load - the resume path (<c>GameBootstrap.RestoreArmyRuleData</c>) restores them from
         /// the persisted blob on both paths.

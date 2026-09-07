@@ -8,7 +8,7 @@ using NUnit.Framework;
 namespace FDG.Tests
 {
     /// <summary>
-    /// #394: the typed whole-store copy (<see cref="StoreClone"/>) that replaced the search's JSON
+    /// #396: the typed whole-store copy (<see cref="StoreClone"/>) that replaced the search's JSON
     /// round trip. The contract is equivalence with the serializer - a clone IS Load(Save(store)) -
     /// so the pins are: byte-identical saves on played boards, independence from the source, the same
     /// references handed out afterwards, and a simulation / a search that agree byte for byte and

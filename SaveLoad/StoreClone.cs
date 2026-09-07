@@ -5,7 +5,7 @@ using FDG.Players;
 namespace FDG.SaveLoad
 {
     /// <summary>
-    /// #394: a typed, in-memory copy of a whole <see cref="GameDataStore"/> - the store that
+    /// #396: a typed, in-memory copy of a whole <see cref="GameDataStore"/> - the store that
     /// <c>GameSaveSerializer.Load(GameSaveSerializer.Save(source))</c> would produce, built without
     /// the text. The search snapshots the game at every tree node and resumes a copy for every
     /// simulation, and a CPU profile of a Strategist game put 41% of its cycles in that JSON round trip

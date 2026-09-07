@@ -174,7 +174,7 @@ namespace FDG
         }
 
         /// <summary>
-        /// #394: the whole-store clone's copy (<see cref="FDG.SaveLoad.StoreClone"/>) - what the
+        /// #396: the whole-store clone's copy (<see cref="FDG.SaveLoad.StoreClone"/>) - what the
         /// JSON constructor above plus <see cref="RehydrateRules"/> would produce from this model's
         /// saved form, built directly. The bindings are the clone store's; the base shape and the
         /// resolved rules are immutable and shared; tokens and weapons are copied (stages attach rules

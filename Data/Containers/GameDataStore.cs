@@ -93,7 +93,7 @@ namespace FDG.Data
 
         }
 
-        // #394: registering a type used to go through MakeGenericMethod().Invoke plus
+        // #396: registering a type used to go through MakeGenericMethod().Invoke plus
         // Activator.CreateInstance, per type per store. Both run through reflection invoke stubs -
         // DynamicMethods the runtime emits and parks in its reflection cache, which is held WEAKLY:
         // under the search's allocation rate (a store per simulation) the cache died at every gen-0
@@ -119,7 +119,7 @@ namespace FDG.Data
             return new DataBindingJsonConverter<T>(store);
         }
 
-        // --- #394: the whole-store clone's view (FDG.SaveLoad.StoreClone) -------------------------
+        // --- #396: the whole-store clone's view (FDG.SaveLoad.StoreClone) -------------------------
 
         /// <summary>The registered types in TypeID order (index 0 is the placeholder).</summary>
         internal IReadOnlyList<Type> RegisteredTypes => _registeredTypes;

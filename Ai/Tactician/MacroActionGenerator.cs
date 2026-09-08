@@ -132,7 +132,7 @@ namespace FDG.Ai.Tactician
             // Strider: no difficult multiplier in the router, so the shared grid matches the score
             // gradient's view of this unit (TacticianPlanner.UnitRoute).
             Func<TerrainGrid> sharedGrid = () =>
-                cachedGrid ??= TerrainGridCache.Get(tableState, terrain, clearanceRadius, ignoresDifficult);
+                cachedGrid ??= TerrainGridCache.Get(terrain, clearanceRadius, ignoresDifficult);
 
             // M2/M3 - objectives, both budgets (rush reaches farther; ranking keeps the useful one).
             foreach (IObjective objective in tableState.Objectives.Objects)

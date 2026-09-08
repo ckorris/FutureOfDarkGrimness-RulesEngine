@@ -137,9 +137,12 @@ namespace FDG
             return false;
         }
 
+        // Pre-sized to two weapons per model (#191 search perf pass): the combat estimator calls
+        // these per candidate action per target, and growing the list from empty each time was the
+        // single largest List.set_Capacity site in the search profile.
         public static List<IWeapon> AllWeapons(this IUnit unit)
         {
-            List<IWeapon> allWeapons = new List<IWeapon>();
+            List<IWeapon> allWeapons = new List<IWeapon>(unit.Models.Count * 2);
 
             foreach (IModel model in unit.Models)
             {
@@ -152,12 +155,15 @@ namespace FDG
 
         public static List<Weapon> AllWeapons(this IUnit unit, Func<Weapon, bool> predicate)
         {
-            List<Weapon> allWeapons = new List<Weapon>();
+            List<Weapon> allWeapons = new List<Weapon>(unit.Models.Count * 2);
 
             foreach (IModel model in unit.Models)
             {
                 if (!model.GetIsAlive()) continue;
-                allWeapons.AddRange(model.Weapons.Where(predicate));
+                foreach (Weapon weapon in model.Weapons)
+                {
+                    if (predicate(weapon)) allWeapons.Add(weapon);
+                }
             }
 
             return allWeapons;

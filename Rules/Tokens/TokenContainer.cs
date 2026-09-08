@@ -180,8 +180,17 @@ public class TokenContainer : ITokenContainer
         return totalRemoved;
     }
 
+    // #191 search perf pass (2026-09-08): the profile put this container at ~19% of the search's CPU,
+    // almost all of it reads on units that carry NO tokens (the common case, asked millions of times
+    // per search through rule dispatch and the planner). Each read below first checks the count
+    // outside the lock: List<T>.Count is a plain field read, and if an add or remove is in flight on
+    // another thread, "empty" is a legitimate answer from just before it - the same answer the locked
+    // read would give a moment earlier. Everything that returns tokens still snapshots under the lock.
+    private bool IsEmptyUnlocked => _tokens.Count == 0;
+
     public bool HasToken(TokenType tokenType)
     {
+        if (IsEmptyUnlocked) return false;
         // A plain loop, not LINQ: this is the Tactician's hottest token read (CanSeizeObjectives /
         // IsInReserve per unit per evaluation) and the lambda allocated a closure every call.
         lock (_lock)
@@ -196,6 +205,7 @@ public class TokenContainer : ITokenContainer
 
     public int GetTokenCount(TokenType tokenType)
     {
+        if (IsEmptyUnlocked) return 0;
         int total = 0;
         lock (_lock)
         {
@@ -210,6 +220,7 @@ public class TokenContainer : ITokenContainer
 
     public float GetTokenMagnitude(TokenType tokenType)
     {
+        if (IsEmptyUnlocked) return 0f;
         float total = 0f;
         lock (_lock)
         {
@@ -233,6 +244,7 @@ public class TokenContainer : ITokenContainer
     /// </summary>
     public IEnumerable<Token> GetAllTokens(TokenType? tokenType = null)
     {
+        if (IsEmptyUnlocked) return Array.Empty<Token>();
         lock (_lock)
         {
             if (_tokens.Count == 0) return Array.Empty<Token>();
@@ -249,6 +261,7 @@ public class TokenContainer : ITokenContainer
     /// <summary>A snapshot, for the same reason as <see cref="GetAllTokens"/> (#328).</summary>
     public IEnumerable<Token> TokensWithOwner(UnitID owningUnitID)
     {
+        if (IsEmptyUnlocked) return Array.Empty<Token>();
         lock (_lock)
         {
             if (_tokens.Count == 0) return Array.Empty<Token>();

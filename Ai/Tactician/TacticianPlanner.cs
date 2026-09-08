@@ -1257,7 +1257,7 @@ namespace FDG.Ai.Tactician
         {
             if (IgnoresAllTerrain) return new List<Position> { from, to };
             return RouteMetrics.Route(terrain,
-                () => _routeGrid ??= TerrainGridCache.Get(_tableState, terrain, baseRadius, IgnoresDifficultTerrain),
+                () => _routeGrid ??= TerrainGridCache.Get(terrain, baseRadius, IgnoresDifficultTerrain),
                 from, to, baseRadius, IgnoresDifficultTerrain);
         }
 

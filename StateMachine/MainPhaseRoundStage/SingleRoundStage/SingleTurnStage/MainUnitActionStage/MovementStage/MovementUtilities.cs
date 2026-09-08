@@ -45,12 +45,13 @@ namespace FDG.Stages
             IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors)
         {
             errors = new List<ReasonForInvalidMove>();
+            Dictionary<ModelMoveEntry, float> distances = GetTotalMoveDistances(moves);
 
-            ValidateOutOfMoveRange(moves, _ => maxDistanceInches, ref errors);
+            ValidateOutOfMoveRange(moves, distances, _ => maxDistanceInches, ref errors);
             //This overload is only reached with terrain: null (the no-terrain convenience form), so the terrain
             //checks are no-ops regardless — no Strider/Flying flags to thread here.
             ValidateMovingThroughImpassibleTerrain(moves, terrain, ignoresImpassibleTerrain: false, ref errors);
-            ValidateMovingThroughDifficultTerrain(moves, terrain, ignoresDifficultTerrain: false, ref errors);
+            ValidateMovingThroughDifficultTerrain(moves, distances, terrain, ignoresDifficultTerrain: false, ref errors);
             //No enemy footprints supplied (this overload predates enemy-aware validation): the move-through /
             //standoff check is a no-op here, preserving these callers' existing behavior.
             ValidateMovingThroughEnemyUnits(moves, Array.Empty<EnemyModelFootprint>(), canMoveThroughEnemies: false, ref errors);
@@ -79,10 +80,11 @@ namespace FDG.Stages
             IReadOnlyList<EnemyModelFootprint> enemies =
                 enemyFootprints as IReadOnlyList<EnemyModelFootprint> ?? enemyFootprints?.ToList()
                 ?? (IReadOnlyList<EnemyModelFootprint>)Array.Empty<EnemyModelFootprint>();
+            Dictionary<ModelMoveEntry, float> distances = GetTotalMoveDistances(moves);
 
-            ValidateOutOfMoveRange(moves, _ => maxDistanceInches, ref errors);
+            ValidateOutOfMoveRange(moves, distances, _ => maxDistanceInches, ref errors);
             ValidateMovingThroughImpassibleTerrain(moves, terrain, ignoresImpassibleTerrain, ref errors);
-            ValidateMovingThroughDifficultTerrain(moves, terrain, ignoresDifficultTerrain, ref errors);
+            ValidateMovingThroughDifficultTerrain(moves, distances, terrain, ignoresDifficultTerrain, ref errors);
             ValidateMovingThroughEnemyUnits(moves, enemies, canMoveThroughEnemies, ref errors);
             ValidateCoherency(moves, ref errors);
             ValidateEndsOnFriendly(moves, AsReadOnly(friendlyFootprints), ref errors);
@@ -151,10 +153,11 @@ namespace FDG.Stages
             IReadOnlyList<EnemyModelFootprint> enemies =
                 enemyFootprints as IReadOnlyList<EnemyModelFootprint> ?? enemyFootprints?.ToList()
                 ?? (IReadOnlyList<EnemyModelFootprint>)Array.Empty<EnemyModelFootprint>();
+            Dictionary<ModelMoveEntry, float> distances = GetTotalMoveDistances(moves);
 
-            ValidateOutOfMoveRange(moves, move => budgetFor(move).MaxDistanceInches, ref errors);
+            ValidateOutOfMoveRange(moves, distances, move => budgetFor(move).MaxDistanceInches, ref errors);
             ValidateMovingThroughImpassibleTerrain(moves, terrain, ignoresImpassibleTerrain, ref errors);
-            ValidateMovingThroughDifficultTerrain(moves, terrain, ignoresDifficultTerrain, ref errors);
+            ValidateMovingThroughDifficultTerrain(moves, distances, terrain, ignoresDifficultTerrain, ref errors);
             ValidateMovingThroughEnemyUnits(moves, enemies, canMoveThroughEnemies, ref errors);
             if (lenientCoherency)
                 ValidateCoherencyNotWorsened(moves, ref errors);
@@ -187,10 +190,11 @@ namespace FDG.Stages
             IReadOnlyList<EnemyModelFootprint> enemies =
                 enemyFootprints as IReadOnlyList<EnemyModelFootprint> ?? enemyFootprints?.ToList()
                 ?? (IReadOnlyList<EnemyModelFootprint>)Array.Empty<EnemyModelFootprint>();
+            Dictionary<ModelMoveEntry, float> distances = GetTotalMoveDistances(moves);
 
-            ValidateOutOfMoveRange(moves, _ => maxDistanceInches, ref errors);
+            ValidateOutOfMoveRange(moves, distances, _ => maxDistanceInches, ref errors);
             ValidateMovingThroughImpassibleTerrain(moves, terrain, ignoresImpassibleTerrain, ref errors);
-            ValidateMovingThroughDifficultTerrain(moves, terrain, ignoresDifficultTerrain, ref errors);
+            ValidateMovingThroughDifficultTerrain(moves, distances, terrain, ignoresDifficultTerrain, ref errors);
             ValidateMovingThroughEnemyUnits(moves, enemies, canMoveThroughEnemies, ref errors);
             ValidateCoherencyNotWorsened(moves, ref errors);
             ValidateEndsOnFriendly(moves, AsReadOnly(friendlyFootprints), ref errors);
@@ -421,9 +425,12 @@ namespace FDG.Stages
             }
         }
 
+        // Pre-sized, and built ONCE per ValidatePaths call (#191 search perf pass): the search validates
+        // thousands of candidate moves per decision, and three validators each rebuilt this dictionary
+        // from empty per call - 4% of the search's CPU in Dictionary.Resize alone.
         private static Dictionary<ModelMoveEntry, float> GetTotalMoveDistances(List<ModelMoveEntry> moves)
         {
-            Dictionary<ModelMoveEntry, float> distances = new Dictionary<ModelMoveEntry, float>();
+            Dictionary<ModelMoveEntry, float> distances = new Dictionary<ModelMoveEntry, float>(moves.Count);
 
             foreach (ModelMoveEntry modelEntry in moves)
             {
@@ -434,10 +441,9 @@ namespace FDG.Stages
         }
 
         private static void ValidateOutOfMoveRange(List<ModelMoveEntry> moves,
+            Dictionary<ModelMoveEntry, float> totalMoveDistances,
             Func<ModelMoveEntry, float> maxDistanceFor, ref List<ReasonForInvalidMove> reasonsForInvalidMove)
         {
-            Dictionary<ModelMoveEntry, float> totalMoveDistances = GetTotalMoveDistances(moves);
-
             foreach (KeyValuePair<ModelMoveEntry, float> kvp in totalMoveDistances)
             {
                 if (kvp.Value > maxDistanceFor(kvp.Key))
@@ -794,6 +800,7 @@ namespace FDG.Stages
         }
 
         private static void ValidateMovingThroughDifficultTerrain(List<ModelMoveEntry> moves,
+            Dictionary<ModelMoveEntry, float> distances,
             IEnumerable<ITerrain>? terrain, bool ignoresDifficultTerrain, ref List<ReasonForInvalidMove> reasonsForInvalidMove)
         {
             if (terrain == null) return;
@@ -806,7 +813,6 @@ namespace FDG.Stages
                 .ToList();
             if (difficult.Count == 0) return;
 
-            Dictionary<ModelMoveEntry, float> distances = GetTotalMoveDistances(moves);
 
             foreach (ModelMoveEntry move in moves)
             {
@@ -1216,11 +1222,11 @@ namespace FDG.Stages
         private static void ValidateCoherencyNotWorsened(List<ModelMoveEntry> moves,
             ref List<ReasonForInvalidMove> reasonsForInvalidMove)
         {
-            List<DataBinding<ModelData>> models = new List<DataBinding<ModelData>>();
-            List<Position> before = new List<Position>();
-            List<Position> after = new List<Position>();
-            List<Float2> beforeFacings = new List<Float2>();
-            List<Float2> afterFacings = new List<Float2>();
+            List<DataBinding<ModelData>> models = new List<DataBinding<ModelData>>(moves.Count);
+            List<Position> before = new List<Position>(moves.Count);
+            List<Position> after = new List<Position>(moves.Count);
+            List<Float2> beforeFacings = new List<Float2>(moves.Count);
+            List<Float2> afterFacings = new List<Float2>(moves.Count);
 
             foreach (ModelMoveEntry moveEntry in moves)
             {

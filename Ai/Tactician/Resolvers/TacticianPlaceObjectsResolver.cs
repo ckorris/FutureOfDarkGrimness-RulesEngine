@@ -131,7 +131,7 @@ namespace FDG.Ai.Tactician.Resolvers
             TerrainGrid? grid = null;
             float Detour(Position from)
             {
-                grid ??= TerrainGridCache.Get(_tableState, terrain, LaneProbeRadiusInches);
+                grid ??= TerrainGridCache.Get(terrain, LaneProbeRadiusInches);
                 List<Position>? route = GridPathfinder.FindPath(grid, terrain, from, aim,
                     LaneProbeRadiusInches);
                 if (route == null) return float.PositiveInfinity; // no lane at all

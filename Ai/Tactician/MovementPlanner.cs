@@ -976,7 +976,7 @@ namespace FDG.Ai.Tactician
             if (!ignoresImpassibleTerrain && (straightBlocked || straightThroughDifficult))
             {
                 routeGrid = sharedGrid?.Invoke()
-                    ?? TerrainGridCache.Get(tableState, terrain, baseRadius, ignoresDifficultTerrain);
+                    ?? TerrainGridCache.Get(terrain, baseRadius, ignoresDifficultTerrain);
                 path = GridPathfinder.FindPath(routeGrid, terrain, start, goal, baseRadius);
                 // #264 issue 3: no route to the goal is not a reason to walk INTO the wall. Head for
                 // the reachable point closest to it instead - the straight line below remains only

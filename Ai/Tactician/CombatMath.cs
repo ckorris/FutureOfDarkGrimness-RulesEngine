@@ -491,18 +491,31 @@ namespace FDG.Ai.Tactician
             return kills;
         }
 
-        private static IEnumerable<IModel> AllocationOrder(UnitData defender)
+        // Eager and single-pass (#191 search perf pass): the lazy version enumerated the living list
+        // three times through LINQ iterators and grew two lists from empty, per estimate, per candidate.
+        // Same order exactly: wounded non-heroes, then unwounded non-heroes, then the hero.
+        private static List<IModel> AllocationOrder(UnitData defender)
         {
             ModelID? heroId = defender.HeroAttachment?.HeroModelId;
-            List<IModel> living = defender.Models.Where(model => model.GetIsAlive()).ToList();
-            bool IsHero(IModel model) => heroId.HasValue && model.ID.Equals(heroId.Value);
-
-            foreach (IModel model in living.Where(model => model.WoundsDealt > 0f && !IsHero(model)))
-                yield return model;
-            foreach (IModel model in living.Where(model => model.WoundsDealt <= 0f && !IsHero(model)))
-                yield return model;
-            foreach (IModel model in living.Where(IsHero))
-                yield return model;
+            List<IModel> models = defender.Models;
+            var order = new List<IModel>(models.Count);
+            IModel? hero = null;
+            for (int i = 0; i < models.Count; i++)
+            {
+                IModel model = models[i];
+                if (!model.GetIsAlive()) continue;
+                if (heroId.HasValue && model.ID.Equals(heroId.Value)) { hero ??= model; continue; }
+                if (model.WoundsDealt > 0f) order.Add(model);
+            }
+            for (int i = 0; i < models.Count; i++)
+            {
+                IModel model = models[i];
+                if (!model.GetIsAlive()) continue;
+                if (heroId.HasValue && model.ID.Equals(heroId.Value)) continue;
+                if (model.WoundsDealt <= 0f) order.Add(model);
+            }
+            if (hero != null) order.Add(hero);
+            return order;
         }
 
         // --- Weapon batching: living models' weapons grouped by stat-identity (WeaponComparer), the

@@ -34,6 +34,13 @@ namespace FDG.Ai.Tactician.Search
         /// </summary>
         public static async Task<SearchNode> IterateAsync(SearchTree tree, float explorationC)
         {
+            long timing = SearchTiming.Start();
+            try { return await IterateCoreAsync(tree, explorationC); }
+            finally { SearchTiming.Stop(SearchTiming.Stage.Iteration, timing); }
+        }
+
+        private static async Task<SearchNode> IterateCoreAsync(SearchTree tree, float explorationC)
+        {
             SearchNode node = tree.Root;
             while (true)
             {
@@ -58,7 +65,9 @@ namespace FDG.Ai.Tactician.Search
                     return opened;
                 }
 
+                long selectTiming = SearchTiming.Start();
                 SearchEdge? best = SelectPuct(node, explorationC);
+                SearchTiming.Stop(SearchTiming.Stage.Select, selectTiming);
                 if (best?.Child == null)
                 {
                     // Fully widened but nothing opened (every edge closed): this node is as far as
@@ -141,6 +150,12 @@ namespace FDG.Ai.Tactician.Search
         public static async Task<SearchResult> RunAsync(IStoreSnapshot snapshot, UctOptions options,
             IPositionEvaluator evaluator)
         {
+            // #191 search perf pass: a save-string root (the lab's and the tests' entry) would be
+            // deserialized afresh at EVERY root expansion, each time minting new TerrainData instances
+            // and so missing the identity-keyed grid/route memo. Materialize it once into a typed
+            // snapshot - the same state, and from here on every child is a typed clone that shares
+            // the terrain, exactly as a live game's root does.
+            if (snapshot is JsonSnapshot json) snapshot = StoreSnapshot.Capture(json.Materialize());
             SearchTree.RootBoundary boundary;
             try
             {

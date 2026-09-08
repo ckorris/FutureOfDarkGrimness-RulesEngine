@@ -47,6 +47,13 @@ namespace FDG.Ai.Tactician.Search
 
         public IReadOnlyList<UnitBranch> EnumerateUnits(SearchNode node)
         {
+            long timing = SearchTiming.Start();
+            try { return EnumerateUnitsCore(node); }
+            finally { SearchTiming.Stop(SearchTiming.Stage.EnumerateUnits, timing); }
+        }
+
+        private IReadOnlyList<UnitBranch> EnumerateUnitsCore(SearchNode node)
+        {
             Scratch scratch = Load(node);
 
             // The stage's own offer: the acting player's armies in binding order, filtered to the
@@ -85,6 +92,13 @@ namespace FDG.Ai.Tactician.Search
 
         public IReadOnlyList<SearchEdge> EnumerateEdges(SearchNode node, UnitBranch unit)
         {
+            long timing = SearchTiming.Start();
+            try { return EnumerateEdgesCore(node, unit); }
+            finally { SearchTiming.Stop(SearchTiming.Stage.EnumerateEdges, timing); }
+        }
+
+        private IReadOnlyList<SearchEdge> EnumerateEdgesCore(SearchNode node, UnitBranch unit)
+        {
             Scratch scratch = Load(node);
             DataBinding<UnitData> binding = scratch.Store.GetDataBinding<UnitData>(unit.Unit);
             UnitData self = binding.GetValue();
@@ -92,8 +106,10 @@ namespace FDG.Ai.Tactician.Search
             // Score needs the planner's per-activation state - exactly what a natural activation
             // establishes first.
             scratch.Planner.BeginActivation(binding);
+            long candidatesTiming = SearchTiming.Start();
             List<MacroAction> candidates = MacroActionGenerator.Enumerate(scratch.Evaluator, scratch.Table,
                 binding, _options.CandidateBudget, scratch.SeeThroughFriendlyUnits);
+            SearchTiming.Stop(SearchTiming.Stage.Candidates, candidatesTiming);
             List<string> offered = OfferableActions(self, scratch.Evaluator);
 
             // Plan-bearing edges: candidate x its action, scored by the planner. A Hold that maps to
@@ -106,7 +122,9 @@ namespace FDG.Ai.Tactician.Search
                 MacroAction candidate = candidates[i];
                 string? action = TacticianPlanner.ActionNameFor(candidate, offered);
                 if (action == null) continue;
+                long scoreTiming = SearchTiming.Start();
                 float score = scratch.Planner.Score(candidate);
+                SearchTiming.Stop(SearchTiming.Stage.Scoring, scoreTiming);
                 plan.Add((candidate, action, score, plan.Count));
                 if (candidate.Intent == EMacroIntent.Hold && action == ChooseActionStage.SHOOT_CHOICE_NAME)
                     plan.Add((candidate, ChooseActionStage.PASS_CHOICE_NAME, score, plan.Count));
@@ -171,7 +189,10 @@ namespace FDG.Ai.Tactician.Search
             if (node.Snapshot == null)
                 throw new InvalidOperationException("TacticianActionSpace: a terminal node has no action space.");
 
+            long materializeTiming = SearchTiming.Start();
             GameDataStore store = node.Snapshot.Materialize();
+            SearchTiming.Stop(SearchTiming.Stage.ScratchMaterialize, materializeTiming);
+            long plannerTiming = SearchTiming.Start();
             GameProgressData progress = GameProgressUtilities.TryGetProgress(store)
                 ?? throw new InvalidOperationException("TacticianActionSpace: the snapshot carries no GameProgressData.");
             var table = new TableState(store);
@@ -190,6 +211,7 @@ namespace FDG.Ai.Tactician.Search
                 SeeThroughFriendlyUnits = seeThrough,
             };
             node.Scratch = scratch;
+            SearchTiming.Stop(SearchTiming.Stage.ScratchPlanner, plannerTiming);
             return scratch;
         }
     }

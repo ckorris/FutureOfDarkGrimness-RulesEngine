@@ -28,6 +28,51 @@ namespace FDG.Ai.Tactician
             _difficult = difficult;
         }
 
+        // #191 search perf pass (2026-09-08): route memo. A grid is immutable and, through
+        // TerrainGridCache, shared by every snapshot of a game, so a route between two exact points at
+        // one base radius is the same answer for all of them - and the search asks for the same routes
+        // over and over (the same unit from the same spot toward the same objectives in sibling nodes).
+        // Pathfinding was ~35% of the search's CPU. Keyed on the exact endpoints INCLUDING y, because the
+        // route's first and last waypoints are the endpoints themselves. Values are copied in and out:
+        // callers own their lists. Lock-free reads; the memo simply clears when it grows past the cap.
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<RouteKey, List<Position>?> _routes = new();
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<RouteKey, List<Position>?> _nearestRoutes = new();
+        private int _routeEntries;
+        public const int RouteMemoCapacity = 10_000;
+
+        internal readonly record struct RouteKey(float Sx, float Sy, float Sz, float Gx, float Gy, float Gz, float Radius)
+        {
+            public static RouteKey Of(Position start, Position goal, float radius) =>
+                new(start.x, start.y, start.z, goal.x, goal.y, goal.z, radius);
+        }
+
+        internal bool TryGetRoute(bool nearest, RouteKey key, out List<Position>? route)
+        {
+            var memo = nearest ? _nearestRoutes : _routes;
+            if (!memo.TryGetValue(key, out List<Position>? cached))
+            {
+                route = null;
+                return false;
+            }
+            route = cached == null ? null : new List<Position>(cached);
+            return true;
+        }
+
+        internal void StoreRoute(bool nearest, RouteKey key, List<Position>? route)
+        {
+            if (Interlocked.Increment(ref _routeEntries) > RouteMemoCapacity)
+            {
+                _routes.Clear();
+                _nearestRoutes.Clear();
+                Interlocked.Exchange(ref _routeEntries, 0);
+            }
+            var memo = nearest ? _nearestRoutes : _routes;
+            memo[key] = route == null ? null : new List<Position>(route);
+        }
+
+        /// <summary>Memoized routes on this grid (tests).</summary>
+        public int RouteMemoCount => _routes.Count + _nearestRoutes.Count;
+
         /// <param name="ignoreDifficultTerrain">
         /// Strider (<see cref="ETerrainIgnoreScope.DifficultOnly"/>): leave difficult cells unmarked so
         /// the router stops paying <see cref="GridPathfinder"/>'s difficult multiplier for ground this
@@ -80,43 +125,79 @@ namespace FDG.Ai.Tactician
     }
 
     /// <summary>
-    /// Per-game memo for <see cref="TerrainGrid.Build"/> (#191 perf pass): the grid depends only on
-    /// the terrain set, the base radius and the Strider flag, yet every activation rebuilt it at
-    /// least twice (the planner's route grid and the generator's shared grid) - a handful of
-    /// distinct (radius, flag) pairs cover a whole game. Keyed on the table state so concurrent
-    /// FdgLab games never share entries; the terrain COUNT rides in the key, so a piece added or
-    /// removed mid-game gets a fresh grid while a piece MOVED in place would not - nothing moves
-    /// terrain today, revisit the key if something ever does.
+    /// Memo for <see cref="TerrainGrid.Build"/> (#191 perf pass; re-keyed 2026-09-08 by the search perf
+    /// pass). The grid is a pure function of the terrain pieces, the base radius and the Strider flag, so
+    /// the key is the IDENTITY of the terrain pieces themselves - <see cref="TerrainData"/> is immutable
+    /// and <see cref="SaveLoad.StoreClone"/> copies it by reference, which means every snapshot the
+    /// search materializes (thousands per decision, each with its own <see cref="ITableState"/>) shares
+    /// the live game's instances and therefore ONE grid and one route memo. The previous per-table-state
+    /// key missed on every one of them and rebuilt the grid per node. Bounded: the oldest entries go when
+    /// more than <see cref="Capacity"/> distinct terrain sets have been seen (a self-play process rotates
+    /// through games; a grid a finished game still references simply lives on with that game).
     /// </summary>
     public static class TerrainGridCache
     {
-        private sealed class Entry
+        public const int Capacity = 32;
+
+        private sealed class TerrainSetKey : IEquatable<TerrainSetKey>
         {
-            public readonly Dictionary<(float Radius, bool IgnoreDifficult, int Count), TerrainGrid> Grids = new();
+            private readonly ITerrain[] _pieces;
+            private readonly float _radius;
+            private readonly bool _ignoreDifficult;
+            private readonly int _hash;
+
+            public TerrainSetKey(IReadOnlyList<ITerrain> terrain, float radius, bool ignoreDifficult)
+            {
+                _pieces = new ITerrain[terrain.Count];
+                var hash = new HashCode();
+                for (int i = 0; i < _pieces.Length; i++)
+                {
+                    _pieces[i] = terrain[i];
+                    hash.Add(System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(terrain[i]));
+                }
+                hash.Add(radius);
+                hash.Add(ignoreDifficult);
+                _radius = radius;
+                _ignoreDifficult = ignoreDifficult;
+                _hash = hash.ToHashCode();
+            }
+
+            public bool Equals(TerrainSetKey? other)
+            {
+                if (other == null || other._hash != _hash || other._radius != _radius
+                    || other._ignoreDifficult != _ignoreDifficult || other._pieces.Length != _pieces.Length)
+                    return false;
+                for (int i = 0; i < _pieces.Length; i++)
+                    if (!ReferenceEquals(_pieces[i], other._pieces[i])) return false;
+                return true;
+            }
+
+            public override bool Equals(object? obj) => Equals(obj as TerrainSetKey);
+            public override int GetHashCode() => _hash;
         }
 
-        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ITableState, Entry> PerGame = new();
+        private static readonly Dictionary<TerrainSetKey, TerrainGrid> Grids = new();
+        private static readonly Queue<TerrainSetKey> Order = new();
 
-        public static TerrainGrid Get(ITableState tableState, IReadOnlyList<ITerrain> terrain,
-            float baseRadiusInches, bool ignoreDifficultTerrain = false)
+        public static TerrainGrid Get(IReadOnlyList<ITerrain> terrain, float baseRadiusInches,
+            bool ignoreDifficultTerrain = false)
         {
-            Entry entry = PerGame.GetOrCreateValue(tableState);
-            (float, bool, int) key = (baseRadiusInches, ignoreDifficultTerrain, terrain.Count);
-            lock (entry.Grids)
+            var key = new TerrainSetKey(terrain, baseRadiusInches, ignoreDifficultTerrain);
+            lock (Grids)
             {
-                if (entry.Grids.TryGetValue(key, out TerrainGrid? grid)) return grid;
+                if (Grids.TryGetValue(key, out TerrainGrid? grid)) return grid;
                 grid = TerrainGrid.Build(terrain, baseRadiusInches, ignoreDifficultTerrain);
-                entry.Grids[key] = grid;
+                Grids[key] = grid;
+                Order.Enqueue(key);
+                while (Order.Count > Capacity) Grids.Remove(Order.Dequeue());
                 return grid;
             }
         }
+
+        /// <summary>Distinct terrain sets currently memoized (tests).</summary>
+        public static int Count { get { lock (Grids) return Grids.Count; } }
     }
 
-    /// <summary>
-    /// A* over a <see cref="TerrainGrid"/> (#191 A3b, plan D5: goal-directed geometry, never random
-    /// sampling - this is what threads the narrow hallway the old angular skirting could not).
-    /// Deterministic: fixed expansion order, no randomness (G5).
-    /// </summary>
     public static class GridPathfinder
     {
         // Difficult terrain costs extra so clear routes of similar length win. This is a route
@@ -145,7 +226,23 @@ namespace FDG.Ai.Tactician
         /// or, when the goal's own cell is blocked and the goal itself is not legally standable, at
         /// the nearest cell that is.
         /// </summary>
+        /// <summary>
+        /// Memoized on <paramref name="grid"/> (see <see cref="TerrainGrid.RouteMemoCapacity"/>).
+        /// Precondition, as for every caller today: <paramref name="terrain"/> is the set the grid was
+        /// built from (<see cref="TerrainGridCache"/> keys the grid on it), so the grid's identity
+        /// stands for the terrain's.
+        /// </summary>
         public static List<Position>? FindPath(TerrainGrid grid, IReadOnlyList<ITerrain> terrain,
+            Position start, Position goal, float baseRadiusInches)
+        {
+            TerrainGrid.RouteKey key = TerrainGrid.RouteKey.Of(start, goal, baseRadiusInches);
+            if (grid.TryGetRoute(nearest: false, key, out List<Position>? cached)) return cached;
+            List<Position>? route = FindPathUncached(grid, terrain, start, goal, baseRadiusInches);
+            grid.StoreRoute(nearest: false, key, route);
+            return route;
+        }
+
+        private static List<Position>? FindPathUncached(TerrainGrid grid, IReadOnlyList<ITerrain> terrain,
             Position start, Position goal, float baseRadiusInches)
         {
             // A clear straight shot needs no search - the common case, and it keeps clear-lane
@@ -288,7 +385,18 @@ namespace FDG.Ai.Tactician
         /// face, and the #256 S4 snake, which follows the same line, cannot rescue it either.
         /// </para>
         /// </summary>
+        /// <summary>Memoized like <see cref="FindPath"/>, in its own table (a different question).</summary>
         public static List<Position>? FindPathToNearestReachable(TerrainGrid grid,
+            IReadOnlyList<ITerrain> terrain, Position start, Position goal, float baseRadiusInches)
+        {
+            TerrainGrid.RouteKey key = TerrainGrid.RouteKey.Of(start, goal, baseRadiusInches);
+            if (grid.TryGetRoute(nearest: true, key, out List<Position>? cached)) return cached;
+            List<Position>? route = FindPathToNearestReachableUncached(grid, terrain, start, goal, baseRadiusInches);
+            grid.StoreRoute(nearest: true, key, route);
+            return route;
+        }
+
+        private static List<Position>? FindPathToNearestReachableUncached(TerrainGrid grid,
             IReadOnlyList<ITerrain> terrain, Position start, Position goal, float baseRadiusInches)
         {
             (int startCol, int startRow) = grid.ToCell(start);

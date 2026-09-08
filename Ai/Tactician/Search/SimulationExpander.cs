@@ -38,7 +38,9 @@ namespace FDG.Ai.Tactician.Search
                 Cancellation = _options.Cancellation,
             });
             var driver = new EdgeLine(edge.Prescription, _options.Continuation, _evaluator, _ruleEvaluator, _sides);
+            long expandTiming = SearchTiming.Start();
             SimulationService.SimulationResult result = await service.Run(parent.Snapshot, driver);
+            SearchTiming.Stop(SearchTiming.Stage.Expand, expandTiming);
 
             bool honored = result.Honored.Count > 0 && result.Honored[0];
             if (result.ReachedEndOfLine)
@@ -79,7 +81,9 @@ namespace FDG.Ai.Tactician.Search
             {
                 if (boundary.Index == 0) return SimulationService.LineStep.Prescribe(_edge);
                 if (boundary.Index <= _continuation) return SimulationService.LineStep.Natural;
+                long leafTiming = SearchTiming.Start();
                 Leaf = _evaluator.Evaluate(boundary.State, _ruleEvaluator, _sides);
+                SearchTiming.Stop(SearchTiming.Stage.Leaf, leafTiming);
                 return SimulationService.LineStep.Stop;
             }
         }

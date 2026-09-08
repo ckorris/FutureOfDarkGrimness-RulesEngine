@@ -40,14 +40,17 @@ namespace FDG.Tests
         }
 
         [Test]
-        public void Unset_TheLeafIsTheHandWeightedDefault()
+        public void Unset_TheLeafIsTheShippedNet()
         {
+            // Was HandWeightedEvaluator until #191 step 15b (2026-09-07): the shipped net REPLACED
+            // the hand leaf as the Strategist's default after the C4 slice measured it ahead at
+            // both budgets. The variable's job is now to try a candidate over that default.
             Environment.SetEnvironmentVariable(AiProfileFactory.StrategistWeightsEnvVar, null);
 
             TacticianPlanner planner = BuildStrategist();
 
-            Assert.That(planner.SearchLeaf, Is.InstanceOf<HandWeightedEvaluator>(),
-                "G9: with no override the Strategist scores leaves with the hand-weighted evaluator");
+            Assert.That(planner.SearchLeaf, Is.SameAs(AiProfileFactory.DefaultStrategistLeaf),
+                "with no override the Strategist scores leaves with the shipped learned net");
         }
 
         [Test]
@@ -80,7 +83,9 @@ namespace FDG.Tests
                 out TacticianPlanner? planner, seed: 1, evaluator: supplied);
 
             Assert.That(planner!.SearchLeaf, Is.SameAs(supplied),
-                "the variable only fills an EMPTY slot - FdgLab's explicit arms are never overridden");
+                "the variable only fills an EMPTY slot - FdgLab's explicit arms are never overridden. "
+                + "This is also how the lab still gets a HAND-leaf Strategist for the C-gate's control "
+                + "arm now that the shipped default is a net: pass one explicitly.");
         }
 
         [Test]
@@ -92,7 +97,7 @@ namespace FDG.Tests
 
             TacticianPlanner planner = BuildStrategist(log.Add);
 
-            Assert.That(planner.SearchLeaf, Is.InstanceOf<HandWeightedEvaluator>());
+            Assert.That(planner.SearchLeaf, Is.SameAs(AiProfileFactory.DefaultStrategistLeaf));
             Assert.That(log, Has.Some.Contains("missing file"));
         }
 

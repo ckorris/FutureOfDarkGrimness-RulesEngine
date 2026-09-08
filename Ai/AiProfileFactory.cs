@@ -59,7 +59,7 @@ namespace FDG.Ai
                         playerID, new TacticianOptions { Seed = seed, SlotID = slotID,
                             DecisionLog = decisionLog, SeeThroughFriendlyUnits = seeThroughFriendlyUnits,
                             Search = searchBudget ?? DefaultSearchBudget,
-                            Evaluator = evaluator ?? StrategistLeafOverride(decisionLog) },
+                            Evaluator = evaluator ?? StrategistLeafOverride(decisionLog) ?? DefaultStrategistLeaf },
                         out Tactician.TacticianPlanner searchPlanner);
                     planner = searchPlanner;
                     return searched;
@@ -71,10 +71,43 @@ namespace FDG.Ai
         }
 
         /// <summary>
+        /// The leaf a Strategist scores search positions with when no caller and no dev override
+        /// names one (#191 step 15b): the learned net in
+        /// <see cref="BuiltInAssets.BuiltInAssetHelper.STRATEGIST_LEAF_PATH"/>, which REPLACED the
+        /// hand-weighted evaluator here on 2026-09-07 (owner's call) after the C4 slice measured it
+        /// +8.9 pooled at the benchmark budget and +6.0 at the interactive budget over 960 games.
+        /// <para>
+        /// Loaded once and shared: the forward pass allocates its own buffers per call and the
+        /// weights are never mutated, so one instance is safe across the search's root workers and
+        /// across concurrent games - which matters, because a bench builds a registry per slot per
+        /// game and re-parsing 400 KB of JSON each time would cost more than the search it feeds.
+        /// </para>
+        /// <para>
+        /// A schema mismatch throws rather than falling back: the asset and
+        /// <see cref="Tactician.Learning.PositionEncoder"/> are committed together, so a mismatch
+        /// means a feature bump landed without a retrain. `StrategistLeafAssetTests` fails first and
+        /// loudly, long before anyone reaches this path in a game.
+        /// </para>
+        /// <para>
+        /// The plain <see cref="EAiProfile.Tactician"/> is deliberately NOT affected. It scores its
+        /// macro-actions with the hand-weighted evaluator and it is both the benchmark opponent and
+        /// the policy the search simulates with; changing it would silently move every measurement
+        /// the campaign is calibrated against.
+        /// </para>
+        /// </summary>
+        public static Tactician.Search.IPositionEvaluator DefaultStrategistLeaf => ShippedLeaf.Value;
+
+        private static readonly Lazy<Tactician.Search.MlpPositionEvaluator> ShippedLeaf = new(() =>
+            Tactician.Search.MlpPositionEvaluator.FromJson(System.Text.Encoding.UTF8.GetString(
+                BuiltInAssets.BuiltInAssetHelper.GetEmbeddedResource(
+                    BuiltInAssets.BuiltInAssetHelper.STRATEGIST_LEAF_PATH))));
+
+        /// <summary>
         /// Dev-only override (#191 C4): the environment variable naming a
         /// <see cref="Tactician.Search.MlpPositionEvaluator"/> weights file for a Strategist built
-        /// with no caller-supplied leaf. Unset (always, in normal play and CI) the leaf stays the
-        /// hand-weighted default - plan invariant G9, an unpromoted net never becomes the default.
+        /// with no caller-supplied leaf. Unset (always, in normal play and CI) the leaf stays
+        /// <see cref="DefaultStrategistLeaf"/>, the shipped net. Use it to try a CANDIDATE net
+        /// without shipping it - plan invariant G9, an unpromoted net never becomes the default.
         /// </summary>
         public const string StrategistWeightsEnvVar = "FDG_STRATEGIST_WEIGHTS";
 
@@ -92,7 +125,7 @@ namespace FDG.Ai
             Action<string> log = decisionLog ?? Console.WriteLine;
             if (!File.Exists(path))
             {
-                log($"Strategist: {StrategistWeightsEnvVar} names a missing file, hand-weighted leaf kept: {path}");
+                log($"Strategist: {StrategistWeightsEnvVar} names a missing file, shipped leaf kept: {path}");
                 return null;
             }
             Tactician.Search.MlpPositionEvaluator net = Tactician.Search.MlpPositionEvaluator.FromFile(path);

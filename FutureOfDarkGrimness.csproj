@@ -10,11 +10,15 @@
   <ItemGroup>
     <None Remove="BuiltInAssets\SillyManModel.obj" />
     <None Remove="BuiltInAssets\SillyManTexture.png" />
+    <None Remove="BuiltInAssets\StrategistLeafV1.json" />
   </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="BuiltInAssets\SillyManModel.obj" />
     <EmbeddedResource Include="BuiltInAssets\SillyManTexture.png" />
+    <!-- #191 step 15b: the Strategist's shipped leaf evaluator. Embedded rather than copied beside
+         the binary so it cannot go missing from any of the four unsigned platform archives. -->
+    <EmbeddedResource Include="BuiltInAssets\StrategistLeafV1.json" />
   </ItemGroup>
 
   <!-- RETIRED (work item 071, formerly numbered 052): the TempVisual system is superseded by the

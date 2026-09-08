@@ -48,6 +48,7 @@ namespace FDG.Stages
             leavingChild.Exit();
             NotifyChildExited(leavingChild);
 
+            global::FDG.Ai.Tactician.Search.SearchTiming.StageEntered(enteringChild.Name);
             await enteringChild.Enter(childContext);
             NotifyChildEntered(enteringChild);
         }

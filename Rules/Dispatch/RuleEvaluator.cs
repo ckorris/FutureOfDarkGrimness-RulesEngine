@@ -63,6 +63,9 @@ public sealed class RuleEvaluator
         IWeapon? weapon = null, IReadOnlyList<IModel>? models = null,
         EModelRuleScope modelScope = EModelRuleScope.AnyOwner)
     {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
         var tagged = new List<TaggedOperation>();
         // Single-participant Evaluate does NOT run the consume-on-fire pass — grantsToConsume stays null —
         // so a one-shot (NextTrigger) granted rule firing here is projected but never spent. Correct today:
@@ -98,8 +101,10 @@ public sealed class RuleEvaluator
             }
         }
 
-        return tagged.Select(t => t.Op).ToList();
+        return OpsOf(tagged);
     }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.RuleDispatch, __probe); }
+        }
 
     /// <summary>
     /// Collects each participant's matching operations (weapon rules per #027, per-model rules per
@@ -110,7 +115,7 @@ public sealed class RuleEvaluator
     /// </summary>
     public IReadOnlyList<RuleOperation> EvaluateAll(IHookContext context, params RuleParticipant[] participants)
     {
-        return CollectSurviving(context, log: true, participants).Select(t => t.Op).ToList();
+        return OpsOf(CollectSurviving(context, log: true, participants));
     }
 
     /// <summary>
@@ -123,8 +128,7 @@ public sealed class RuleEvaluator
     public IReadOnlyList<(RuleOperation Op, string RuleName)> EvaluateAllNamed(IHookContext context,
         params RuleParticipant[] participants)
     {
-        return CollectSurviving(context, log: false, participants)
-            .Select(t => (t.Op, t.Origin.RequestedName)).ToList();
+        return NamedOpsOf(CollectSurviving(context, log: false, participants));
     }
 
     /// <summary>
@@ -138,8 +142,7 @@ public sealed class RuleEvaluator
     public IReadOnlyList<(RuleOperation Op, string RuleName)> EvaluateAllNamedLive(IHookContext context,
         params RuleParticipant[] participants)
     {
-        return CollectSurviving(context, log: true, participants)
-            .Select(t => (t.Op, t.Origin.RequestedName)).ToList();
+        return NamedOpsOf(CollectSurviving(context, log: true, participants));
     }
 
     /// <summary>
@@ -149,9 +152,31 @@ public sealed class RuleEvaluator
     /// surviving tagged operations in order. Logs each kept op (and each suppressor's "X ignored Y") only
     /// when <paramref name="log"/> is true.
     /// </summary>
+    // #191 search perf pass: the AI's search issues ~6,000 dispatches per iteration and most return
+    // nothing, so the empty answer is a shared empty array and the rest is one exact-size list -
+    // no LINQ enumerators, no HashSet unless a SuppressRule is actually present.
+    private static IReadOnlyList<RuleOperation> OpsOf(List<TaggedOperation> tagged)
+    {
+        if (tagged.Count == 0) return Array.Empty<RuleOperation>();
+        var ops = new List<RuleOperation>(tagged.Count);
+        foreach (TaggedOperation t in tagged) ops.Add(t.Op);
+        return ops;
+    }
+
+    private static IReadOnlyList<(RuleOperation Op, string RuleName)> NamedOpsOf(List<TaggedOperation> tagged)
+    {
+        if (tagged.Count == 0) return Array.Empty<(RuleOperation, string)>();
+        var ops = new List<(RuleOperation, string)>(tagged.Count);
+        foreach (TaggedOperation t in tagged) ops.Add((t.Op, t.Origin.RequestedName));
+        return ops;
+    }
+
     private List<TaggedOperation> CollectSurviving(IHookContext context, bool log,
         params RuleParticipant[] participants)
     {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
         var tagged = new List<TaggedOperation>();
 
         // #163 — only live evaluations narrate; the read-only named queries (log == false) run per-frame
@@ -185,6 +210,31 @@ public sealed class RuleEvaluator
         finally
         {
             DedupState.Return(seen);
+        }
+
+        bool anySuppression = false;
+        foreach (TaggedOperation t in tagged)
+        {
+            if (t.Op is RuleOperation.SuppressRule)
+            {
+                anySuppression = true;
+                break;
+            }
+        }
+
+        if (!anySuppression)
+        {
+            // Nothing to filter: every collected op survives, logged in order, grants spent last -
+            // exactly the general path below, minus the suppression set and the copy.
+            if (log)
+            {
+                foreach (TaggedOperation t in tagged) Log(t);
+            }
+            if (grantsToConsume != null)
+            {
+                SpendGrants(grantsToConsume);
+            }
+            return tagged;
         }
 
         var suppressedRuleNames = tagged
@@ -235,6 +285,8 @@ public sealed class RuleEvaluator
 
         return result;
     }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.RuleDispatch, __probe); }
+        }
 
     /// <summary>
     /// Explicitly spends the one-shot (FirstTrigger) granted rules that key on <paramref name="context"/>'s
@@ -404,8 +456,9 @@ public sealed class RuleEvaluator
                 continue;
             }
 
-            var invocation = new RuleInvocation(context, unit, rule.Arguments, DiceRoller: _diceRoller,
-                Weapon: carryingWeapon, Definition: rule.Definition);
+            // Built lazily: most rules have no entry for the hook being dispatched, and the
+            // invocation record was the one allocation that every non-firing rule still paid.
+            RuleInvocation? invocation = null;
 
             foreach (HookEntry entry in rule.Definition.Passive)
             {
@@ -413,6 +466,9 @@ public sealed class RuleEvaluator
                 {
                     continue;
                 }
+
+                invocation ??= new RuleInvocation(context, unit, rule.Arguments, DiceRoller: _diceRoller,
+                    Weapon: carryingWeapon, Definition: rule.Definition);
 
                 if (!entry.Condition.Evaluate(invocation))
                 {
@@ -632,6 +688,9 @@ public sealed class RuleEvaluator
     /// </summary>
     public IReadOnlyList<AbilityOffer> GatherOffers(IHookContext context)
     {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
         var offers = new List<AbilityOffer>();
 
         if (context is not IHasActingUnit acting)
@@ -678,6 +737,8 @@ public sealed class RuleEvaluator
 
         return offers;
     }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.RuleDispatch, __probe); }
+        }
 
     /// <summary>
     /// The unit's <see cref="TokenType.RuleGrant"/> tokens resolved back to definitions, with the same

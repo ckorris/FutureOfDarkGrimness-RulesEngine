@@ -62,6 +62,16 @@ namespace FDG.Ai.Tactician
         // The same, per ENEMY, for the melee approach gradient (issue 1's melee half). Keyed by the
         // enemy rather than its centroid because that centroid is fixed for the activation anyway.
         private readonly Dictionary<DataReference, List<Position>> _enemyRoutes = new();
+        // #191 search perf pass: facts about an enemy that no candidate changes - its centroid, whether
+        // it has melee weapons, its advance distance and its melee threat reach against us - were
+        // recomputed for every one of the ~16 candidates scored per activation (each a rule dispatch
+        // or a list build), as were the two melee exchange estimates. Per activation, like the caches
+        // above; the search's scratch planner begins an activation per unit it enumerates.
+        private readonly Dictionary<DataReference, EnemyFacts> _enemyFacts = new();
+        private readonly Dictionary<DataReference, MeleeEstimate> _meleeSelfVsEnemy = new();
+        private readonly Dictionary<DataReference, MeleeEstimate> _meleeEnemyVsSelf = new();
+
+        private readonly record struct EnemyFacts(Position Centroid, bool HasMelee, float Advance, float ThreatReach);
         private TerrainGrid? _routeGrid;
         // Strider / Flying, read once per activation (see UnitRoute).
         private bool? _ignoresAllTerrain;
@@ -180,7 +190,12 @@ namespace FDG.Ai.Tactician
             get
             {
                 if (!_unitPrescribed && !_actionPrescribed) return null;
-                return (!_unitPrescribed || _unitHonored) && (!_actionPrescribed || _actionHonored);
+                bool honored = (!_unitPrescribed || _unitHonored) && (!_actionPrescribed || _actionHonored);
+                if (!honored && global::FDG.Ai.Tactician.Search.SearchTiming.Enabled)
+                    global::FDG.Ai.Tactician.Search.SearchTiming.Note(
+                        $"not honored: unit {_unitPrescribed}/{_unitHonored} action {_actionPrescribed}/{_actionHonored}"
+                        + $" shaken={_activeUnit?.GetValue().Tokens.HasToken(TokenType.Shaken)} onTable={_activeUnit?.GetValue().GetIsOnBattlefield()}");
+                return honored;
             }
         }
 
@@ -188,7 +203,11 @@ namespace FDG.Ai.Tactician
         /// The activation resolver's report on the unit half (#191 B2): it owns the match between the
         /// prescribed unit and the engine's actual offer, so it is the one that knows.
         /// </summary>
-        public void ReportPrescribedUnitOutcome(bool honored) => _unitHonored = honored;
+        public void ReportPrescribedUnitOutcome(bool honored)
+        {
+            _unitHonored = honored;
+            if (!honored) global::FDG.Ai.Tactician.Search.SearchTiming.Note("unit prescription not honored");
+        }
 
         /// <summary>Whether a prescribed unit or action is still waiting to be consumed.</summary>
         public bool HasPrescription => _prescribedUnit != null || _hasPrescribedAction;
@@ -237,6 +256,9 @@ namespace FDG.Ai.Tactician
             _posture = null;
             _objectiveRoutes.Clear();
             _enemyRoutes.Clear();
+            _enemyFacts.Clear();
+            _meleeSelfVsEnemy.Clear();
+            _meleeEnemyVsSelf.Clear();
             _routeGrid = null;
             _ignoresAllTerrain = null;
             _ignoresDifficultTerrain = null;
@@ -253,6 +275,9 @@ namespace FDG.Ai.Tactician
         /// </summary>
         public string? ChooseAction(IReadOnlyList<string> validOptions)
         {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
             if (_activeUnit == null) return null;
 
             // #191 B1 5b: a prescribed action is the authority for this activation - taken before
@@ -342,6 +367,8 @@ namespace FDG.Ai.Tactician
             RecordDecision(bestAction, best);
             return bestAction;
         }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.PlannerChoose, __probe); }
+        }
 
         // The activation's first decision (see LastAction). Later calls in the same activation -
         // the post-move re-entry, a second cast - do not overwrite it.
@@ -368,7 +395,13 @@ namespace FDG.Ai.Tactician
         {
             string? action = _prescribedAction;
             MacroAction? macro = _prescribedMacro;
-            if (action == null || !validOptions.Contains(action)) return null;
+            if (action == null || !validOptions.Contains(action))
+            {
+                if (global::FDG.Ai.Tactician.Search.SearchTiming.Enabled)
+                    global::FDG.Ai.Tactician.Search.SearchTiming.Note(
+                        $"fallthrough {action ?? "(none)"}/{macro?.Intent.ToString() ?? "-"}/{macro?.Feasibility.ToString() ?? "-"} vs [{string.Join(",", validOptions)}]");
+                return null;
+            }
 
             // Cast is layered - it loops straight back to Choose Action with the activation still
             // undecided - so it carries no plan and leaves LastMacroLabel alone, exactly as the
@@ -396,7 +429,11 @@ namespace FDG.Ai.Tactician
                 return action;
             }
 
-            if (macro == null) return null;
+            if (macro == null)
+            {
+                global::FDG.Ai.Tactician.Search.SearchTiming.Note($"fallthrough {action}: no macro");
+                return null;
+            }
 
             _hasPrescribedAction = false;
             _prescribedAction = null;
@@ -757,7 +794,8 @@ namespace FDG.Ai.Tactician
             foreach (DataBinding<UnitData> enemyBinding in EnemyBindings(self.PlayerID))
             {
                 UnitData enemy = enemyBinding.GetValue();
-                Position enemyPos = Centroid(enemy);
+                EnemyFacts facts = FactsOf(enemyBinding);
+                Position enemyPos = facts.Centroid;
                 float endDistance = Distance(end, enemyPos);
                 // One centroid-to-centroid sight test per (candidate x enemy), shared by the two
                 // things that need it: the offense term (a fact - can we shoot from here) and the
@@ -769,7 +807,7 @@ namespace FDG.Ai.Tactician
                     && candidate.TargetEnemy != null && ReferenceEquals(candidate.TargetEnemy, enemy)
                     && candidate.Feasibility == EFeasibility.Reachable)
                 {
-                    MeleeEstimate melee = CombatMath.EstimateMelee(_evaluator, _activeUnit, enemyBinding);
+                    MeleeEstimate melee = MeleeSelfVs(enemyBinding);
                     // A5-8 (Chris): a landed charge also degrades the target's next volley (it
                     // still shoots on its own activation - with fewer guns and chargers in the
                     // way), so tying up a shooter earns a tarpit bonus on top of the exchange.
@@ -834,10 +872,9 @@ namespace FDG.Ai.Tactician
                         // which does not walk around walls. Clamping a route gap from below with it
                         // is conservative in the right direction - route distance is never shorter
                         // than straight-line, so the floor can only hold the approach back.
-                        if (enemy.GetMeleeWeapons().Count > 0)
+                        if (facts.HasMelee)
                         {
-                            float stageGap = Math.Max(0f,
-                                TacticalAnalysis.MeleeThreatReach(enemy, self, _evaluator, TerrainSnapshot()) + 1.5f - reach);
+                            float stageGap = Math.Max(0f, facts.ThreatReach + 1.5f - reach);
                             gapEnd = Math.Max(gapEnd, Math.Min(stageGap, gapNow));
                         }
                         approach = Math.Max(approach,
@@ -849,7 +886,7 @@ namespace FDG.Ai.Tactician
                 // #365: priced THROUGH terrain. This shooter moves before it shoots, so a wall
                 // between the endpoint and where it stands right now is not protection - crediting
                 // it here is what made wall shadows read as safe (#363 facet 3, replaced).
-                float theirReach = Math.Max(1f, endDistance - TacticalAnalysis.AdvanceDistance(enemy, _evaluator, TerrainSnapshot()));
+                float theirReach = Math.Max(1f, endDistance - facts.Advance);
                 AttackEstimate incoming = CombatMath.EstimateShooting(_evaluator, enemyBinding, _activeUnit,
                     new AttackContext(theirReach, AttackerMoved: true));
                 float incomingValue = ValueFraction(incoming.ExpectedWounds, self);
@@ -857,10 +894,8 @@ namespace FDG.Ai.Tactician
                 // Melee threat: if they can charge the endpoint (charge + 2" melee cylinder),
                 // count their melee margin too.
                 float meleeThreat =
-                    TacticalAnalysis.MeleeThreatReach(enemy, self, _evaluator, TerrainSnapshot()) >= endDistance - 1f
-                    && enemy.GetMeleeWeapons().Count > 0
-                        ? 0.5f * ValueFraction(CombatMath.EstimateMelee(
-                            _evaluator, enemyBinding, _activeUnit).AttackerAttack.ExpectedWounds, self)
+                    facts.ThreatReach >= endDistance - 1f && facts.HasMelee
+                        ? 0.5f * ValueFraction(MeleeEnemyVs(enemyBinding).AttackerAttack.ExpectedWounds, self)
                         : 0f;
 
                 // #365 Tier 1, the wall-hugging reflex. Two coarse signals in one currency, both
@@ -914,7 +949,7 @@ namespace FDG.Ai.Tactician
                 {
                     Position projected = ProjectedEnemyPosition(enemyBinding);
                     float projDistance = Distance(end, projected);
-                    float enemyAdvance = TacticalAnalysis.AdvanceDistance(enemy, _evaluator, TerrainSnapshot());
+                    float enemyAdvance = facts.Advance;
                     float projReach = Math.Max(1f, projDistance - enemyAdvance);
                     // #389 option 2: the band edge is a RAMP, not a cliff. This is a forecast two
                     // moves out - an endpoint 2" beyond the projected reach is arrived at half an
@@ -937,13 +972,12 @@ namespace FDG.Ai.Tactician
                     // next activation at all - and Chris's corridor pin (#365,
                     // TacticianCoverHabitTests) depends on stepping just outside it being worth
                     // something. Ramping it eroded exactly that.
-                    if (enemy.GetMeleeWeapons().Count > 0
+                    if (facts.HasMelee
                         && MeleeApproachAgainst(enemyBinding).Margin <= 0f
-                        && TacticalAnalysis.MeleeThreatReach(enemy, self, _evaluator, TerrainSnapshot()) >= projDistance - 1f)
+                        && facts.ThreatReach >= projDistance - 1f)
                     {
-                        projValue = Math.Max(projValue, 0.5f * ValueFraction(CombatMath.EstimateMelee(
-                                _evaluator, enemyBinding, _activeUnit).AttackerAttack.ExpectedWounds,
-                            self));
+                        projValue = Math.Max(projValue, 0.5f * ValueFraction(
+                            MeleeEnemyVs(enemyBinding).AttackerAttack.ExpectedWounds, self));
                     }
                     projectedThreat = Math.Max(projectedThreat, projValue);
                 }
@@ -1269,6 +1303,34 @@ namespace FDG.Ai.Tactician
         private bool IgnoresDifficultTerrain => _ignoresDifficultTerrain ??=
             MovementRuleQueries.IgnoresDifficultTerrain(_activeUnit!.GetValue(), _evaluator);
 
+        private EnemyFacts FactsOf(DataBinding<UnitData> enemyBinding)
+        {
+            if (_enemyFacts.TryGetValue(enemyBinding.Reference, out EnemyFacts cached)) return cached;
+            UnitData enemy = enemyBinding.GetValue();
+            UnitData self = _activeUnit!.GetValue();
+            var facts = new EnemyFacts(Centroid(enemy), enemy.GetMeleeWeapons().Count > 0,
+                TacticalAnalysis.AdvanceDistance(enemy, _evaluator, TerrainSnapshot()),
+                TacticalAnalysis.MeleeThreatReach(enemy, self, _evaluator, TerrainSnapshot()));
+            _enemyFacts[enemyBinding.Reference] = facts;
+            return facts;
+        }
+
+        private MeleeEstimate MeleeSelfVs(DataBinding<UnitData> enemyBinding)
+        {
+            if (_meleeSelfVsEnemy.TryGetValue(enemyBinding.Reference, out MeleeEstimate cached)) return cached;
+            MeleeEstimate melee = CombatMath.EstimateMelee(_evaluator, _activeUnit!, enemyBinding);
+            _meleeSelfVsEnemy[enemyBinding.Reference] = melee;
+            return melee;
+        }
+
+        private MeleeEstimate MeleeEnemyVs(DataBinding<UnitData> enemyBinding)
+        {
+            if (_meleeEnemyVsSelf.TryGetValue(enemyBinding.Reference, out MeleeEstimate cached)) return cached;
+            MeleeEstimate melee = CombatMath.EstimateMelee(_evaluator, enemyBinding, _activeUnit!);
+            _meleeEnemyVsSelf[enemyBinding.Reference] = melee;
+            return melee;
+        }
+
         private (float Margin, float Reach) MeleeApproachAgainst(DataBinding<UnitData> enemyBinding)
         {
             if (_meleeApproach.TryGetValue(enemyBinding.Reference, out (float, float) cached))
@@ -1276,7 +1338,7 @@ namespace FDG.Ai.Tactician
 
             UnitData self = _activeUnit!.GetValue();
             UnitData enemy = enemyBinding.GetValue();
-            MeleeEstimate melee = CombatMath.EstimateMelee(_evaluator, _activeUnit, enemyBinding);
+            MeleeEstimate melee = MeleeSelfVs(enemyBinding);
             (float, float) result = (
                 ValueFraction(melee.AttackerAttack.ExpectedWounds, enemy)
                     - ValueFraction(melee.DefenderReturn.ExpectedWounds, self),
@@ -1389,7 +1451,8 @@ namespace FDG.Ai.Tactician
             if (_enemyAltTarget.TryGetValue(enemyBinding.Reference, out float cached)) return cached;
 
             UnitData enemy = enemyBinding.GetValue();
-            Position enemyPos = Centroid(enemy);
+            EnemyFacts facts = FactsOf(enemyBinding);
+            Position enemyPos = facts.Centroid;
             float best = 0f;
             foreach (DataBinding<UnitData> friendlyBinding in FriendlyBindings(_activeUnit!.GetValue().PlayerID))
             {
@@ -1397,14 +1460,14 @@ namespace FDG.Ai.Tactician
                 UnitData friendly = friendlyBinding.GetValue();
                 Position friendlyPos = Centroid(friendly);
                 float d = Distance(enemyPos, friendlyPos);
-                float reach = Math.Max(1f, d - TacticalAnalysis.AdvanceDistance(enemy, _evaluator, TerrainSnapshot()));
+                float reach = Math.Max(1f, d - facts.Advance);
                 // #365: ungated, exactly like the numerator in Score - both sides of the share
                 // must use the same currency or a wall-discounted "us" gets compared against a
                 // see-through-walls "them".
                 float value = ValueFraction(CombatMath.EstimateShooting(_evaluator, enemyBinding,
                         friendlyBinding, new AttackContext(reach, AttackerMoved: true)).ExpectedWounds,
                     friendly);
-                if (enemy.GetMeleeWeapons().Count > 0
+                if (facts.HasMelee
                     && TacticalAnalysis.MeleeThreatReach(enemy, friendly, _evaluator, TerrainSnapshot()) >= d - 1f)
                 {
                     value = Math.Max(value, 0.5f * ValueFraction(CombatMath.EstimateMelee(
@@ -1576,14 +1639,12 @@ namespace FDG.Ai.Tactician
             float total = 0f;
             foreach (DataBinding<UnitData> enemyBinding in EnemyBindings(self.PlayerID))
             {
-                UnitData enemy = enemyBinding.GetValue();
-                if (enemy.GetMeleeWeapons().Count == 0) continue;
+                EnemyFacts facts = FactsOf(enemyBinding);
+                if (!facts.HasMelee) continue;
                 // The same slack the per-endpoint test uses, so an enemy that reaches SOME endpoint
                 // is always in the denominator it is scored against.
-                if (TacticalAnalysis.MeleeThreatReach(enemy, self, _evaluator, TerrainSnapshot())
-                    < Distance(now, Centroid(enemy)) - envelope - 1f) continue;
-                total += 0.5f * ValueFraction(CombatMath.EstimateMelee(
-                    _evaluator, enemyBinding, _activeUnit).AttackerAttack.ExpectedWounds, self);
+                if (facts.ThreatReach < Distance(now, facts.Centroid) - envelope - 1f) continue;
+                total += 0.5f * ValueFraction(MeleeEnemyVs(enemyBinding).AttackerAttack.ExpectedWounds, self);
             }
             _meleeThreatTotal = total;
             return total;

@@ -110,6 +110,9 @@ namespace FDG.Stages
         public static ESightLineEffect EvaluateSightLine(Position attacker, Position target,
             IEnumerable<ITerrain>? terrain)
         {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
             if (terrain == null)
             {
                 return ESightLineEffect.Clear;
@@ -133,6 +136,8 @@ namespace FDG.Stages
 
             return worst;
         }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.Sight, __probe); }
+        }
 
         /// <summary>
         /// #201 variant: same worst-effect fold, but a piece evaluating to Cover is demoted to Clear
@@ -145,6 +150,9 @@ namespace FDG.Stages
         public static ESightLineEffect EvaluateSightLine(Position attacker, Position target,
             IEnumerable<ITerrain>? terrain, in CoverContext coverContext, bool applyProximityExceptions)
         {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
             if (terrain == null)
             {
                 return ESightLineEffect.Clear;
@@ -172,6 +180,8 @@ namespace FDG.Stages
             }
 
             return worst;
+        }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.Sight, __probe); }
         }
 
         /// <summary>

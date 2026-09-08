@@ -97,6 +97,9 @@ namespace FDG.Ai.Tactician
         public static AttackEstimate EstimateShooting(RuleEvaluator evaluator,
             DataBinding<UnitData> attacker, DataBinding<UnitData> defender, AttackContext context)
         {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
             var notes = new List<string>();
             float total = 0f;
 
@@ -126,6 +129,8 @@ namespace FDG.Ai.Tactician
 
             return Finish(total, defender, notes);
         }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.Combat, __probe); }
+        }
 
         /// <summary>
         /// Expected result of a damage spell (<see cref="Effect.DealHits"/>) landing on the defender
@@ -138,6 +143,9 @@ namespace FDG.Ai.Tactician
         public static AttackEstimate EstimateSpellDamage(RuleEvaluator evaluator,
             DataBinding<UnitData> caster, DataBinding<UnitData> defender, RuntimeSpell spell)
         {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
             if (spell.Effect is not Effect.DealHits dealHits) return AttackEstimate.Zero;
 
             Weapon spellWeapon = new Weapon(spell.Name, rangeInches: 0f, attacks: 0,
@@ -153,6 +161,8 @@ namespace FDG.Ai.Tactician
                 coverBonus: 0, isMelee: false, notes);
             return Finish(wounds, defender, notes);
         }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.Combat, __probe); }
+        }
 
         /// <summary>
         /// Expected result of a rolled hit pool (<see cref="Effect.DealPooledHits"/>, #197 Surprise
@@ -166,6 +176,9 @@ namespace FDG.Ai.Tactician
             DataBinding<UnitData> attacker, DataBinding<UnitData> defender, string label,
             int diceCount, int successThreshold, int armorPenetration)
         {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
             if (diceCount <= 0) return AttackEstimate.Zero;
 
             Weapon burstWeapon = new Weapon(label, rangeInches: 0f, attacks: 0,
@@ -180,6 +193,8 @@ namespace FDG.Ai.Tactician
                 coverBonus: 0, isMelee: false, notes);
             return Finish(wounds, defender, notes);
         }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.Combat, __probe); }
+        }
 
         /// <summary>
         /// Expected result of a full melee exchange, attacker charging the defender. Sequencing mirrors
@@ -191,6 +206,9 @@ namespace FDG.Ai.Tactician
         public static MeleeEstimate EstimateMelee(RuleEvaluator evaluator,
             DataBinding<UnitData> attacker, DataBinding<UnitData> defender, float distanceInches = 1f)
         {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
             var notes = new List<string>();
             UnitData atk = attacker.GetValue();
             UnitData def = defender.GetValue();
@@ -259,6 +277,8 @@ namespace FDG.Ai.Tactician
 
             return new MeleeEstimate(attackerEstimate, defenderEstimate, defenderStrikesFirst,
                 attackerFear, defenderFear, notes);
+        }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.Combat, __probe); }
         }
 
         /// <summary>

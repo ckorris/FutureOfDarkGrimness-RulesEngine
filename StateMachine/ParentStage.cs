@@ -88,6 +88,7 @@ namespace FDG.Stages
             CurrentChild = newChild;
 
             Parent?.NotifyChildEntered(newChild);
+            global::FDG.Ai.Tactician.Search.SearchTiming.StageEntered(newChild.Name); // #191 search timing: engine-stage timeline (no-op unless enabled)
             await newChild.Enter(childContext);
         }
 

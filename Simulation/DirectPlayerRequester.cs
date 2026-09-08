@@ -33,6 +33,9 @@ namespace FDG.Simulation
         public Task<TReply> RequestDecision<TRequest, TReply>(TRequest request)
             where TRequest : IStageTaskRequest<TReply>
         {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
             if (_registriesByPlayer.TryGetValue(request.TargetPlayerID,
                     out IStageResolverRegistry? registry) == false)
             {
@@ -42,6 +45,8 @@ namespace FDG.Simulation
             }
 
             return registry.ResolveRequest<TRequest, TReply>(request);
+        }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.Request, __probe); }
         }
     }
 }

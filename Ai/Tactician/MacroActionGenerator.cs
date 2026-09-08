@@ -75,6 +75,9 @@ namespace FDG.Ai.Tactician
             DataBinding<UnitData> unit, int candidateBudget = DefaultCandidateBudget,
             bool seeThroughFriendlyUnits = false)
         {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
             UnitData self = unit.GetValue();
             var living = self.ModelBindings.Where(mb => mb.GetValue().GetIsAlive()).ToList();
             var candidates = new List<MacroAction>();
@@ -387,6 +390,8 @@ namespace FDG.Ai.Tactician
             }
 
             return PruneWithDiversity(candidates, candidateBudget);
+        }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.Enumerate, __probe); }
         }
 
         // M11: for each affordable spell, the intended target is the highest-value legal-affinity

@@ -914,6 +914,9 @@ namespace FDG.Ai.Tactician
             EFormation formation = EFormation.Grid, (float X, float Z)? lineAxis = null,
             Func<TerrainGrid>? sharedGrid = null)
         {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
             var terrain = tableState.Terrain.Objects.ToList();
             var enemies = LiveEnemyFootprints(tableState, unit.GetValue().PlayerID);
             var friendlies = LiveFriendlyFootprints(tableState, unit.GetValue().PlayerID, unit.GetValue().ID);
@@ -935,6 +938,8 @@ namespace FDG.Ai.Tactician
                 arc => BuildSnakeCandidate(unit, living, path, arc, terrain, baseRadius,
                     maxDistanceInches, routeGrid));
             return (move, path);
+        }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.PlanMove, __probe); }
         }
 
         /// <summary>

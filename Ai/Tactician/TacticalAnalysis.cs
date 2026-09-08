@@ -102,6 +102,9 @@ namespace FDG.Ai.Tactician
         public static float ChargeBudget(IUnit unit, RuleEvaluator evaluator,
             IReadOnlyList<ITerrain>? terrain = null)
         {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
             var sink = new MovementModifierSink();
             foreach ((EActionType action, float baseDistance) in new[]
             {
@@ -117,6 +120,8 @@ namespace FDG.Ai.Tactician
                     .Select(tagged => tagged.Op));
             }
             return GameWideConstants.CHARGE_DISTANCE_INCHES + sink.Net(EActionType.Charge);
+        }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.MoveQuery, __probe); }
         }
 
         /// <summary>The longest effective reach among the unit's ranged weapons against this target (0 if none).</summary>
@@ -214,6 +219,9 @@ namespace FDG.Ai.Tactician
         /// </summary>
         public static List<ObjectiveProjection> ProjectObjectives(ITableState tableState)
         {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
             var projections = new List<ObjectiveProjection>();
             foreach (IObjective objective in tableState.Objectives.Objects)
             {
@@ -223,6 +231,8 @@ namespace FDG.Ai.Tactician
                 projections.Add(new ObjectiveProjection(objective, projected, nearby));
             }
             return projections;
+        }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.ObjectiveProj, __probe); }
         }
 
         /// <summary>The score <paramref name="player"/> would have if the round ended now.</summary>

@@ -239,7 +239,7 @@ namespace FDG.Simulation
 
         public async Task<SimulationResult> Run(IStoreSnapshot snapshot, ILineDriver driver)
         {
-            long materializeTiming = Ai.Tactician.Search.SearchTiming.Start();
+            var materializeTiming = Ai.Tactician.Search.SearchTiming.Start();
             GameDataStore store = snapshot.Materialize();
             Ai.Tactician.Search.SearchTiming.Stop(Ai.Tactician.Search.SearchTiming.Stage.SimMaterialize, materializeTiming);
 
@@ -270,7 +270,7 @@ namespace FDG.Simulation
                 store.Destroy(oldInfo);
             }
 
-            long registriesTiming = Ai.Tactician.Search.SearchTiming.Start();
+            var registriesTiming = Ai.Tactician.Search.SearchTiming.Start();
             var bus = new SimulationMessageBus();
             var slots = new PlayerSlot[savedInfos.Count];
             var registriesByPlayer = new Dictionary<PlayerID, IStageResolverRegistry>();
@@ -311,7 +311,7 @@ namespace FDG.Simulation
             var line = new LineHook(driver, plannersByPlayer, store, new TableState(store), captured,
                 stopAtNextBoundary.Token);
 
-            long serverTiming = Ai.Tactician.Search.SearchTiming.Start();
+            var serverTiming = Ai.Tactician.Search.SearchTiming.Start();
             var server = new FDGServer(store, bus, slots, presentationClock: null, lobbySettings: null,
                 simulation: new SimulationHostOptions
                 {
@@ -330,10 +330,11 @@ namespace FDG.Simulation
             // The same Cancel is what stops a timed-out or deadline-cancelled game at its next
             // boundary (#191 R9): the hook reads this token before doing anything else.
             Ai.Tactician.Search.SearchTiming.Stop(Ai.Tactician.Search.SearchTiming.Stage.SimServer, serverTiming);
-            long runTiming = Ai.Tactician.Search.SearchTiming.Start();
+            var runTiming = Ai.Tactician.Search.SearchTiming.Start();
             Task finished = await Task.WhenAny(captured.Task, ended.Task,
                 Task.Delay(TimeSpan.FromSeconds(_options.TimeoutSeconds), stopAtNextBoundary.Token));
             Ai.Tactician.Search.SearchTiming.Stop(Ai.Tactician.Search.SearchTiming.Stage.SimRun, runTiming);
+            Ai.Tactician.Search.SearchTiming.CloseStageSpan();
             stopAtNextBoundary.Cancel();
 
             // The capture is read from the TCS itself, not from which task WhenAny reported: the hook

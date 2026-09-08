@@ -101,6 +101,9 @@ namespace FDG.Rules.Dispatch
         public static float EffectiveChargeDistanceAgainst(IUnit charger, IUnit target, float baseChargeInches,
             RuleEvaluator evaluator)
         {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
             float delta = 0f;
             float floor = 0f;
             foreach ((RuleOperation op, string _) in evaluator.EvaluateAllNamed(
@@ -118,6 +121,8 @@ namespace FDG.Rules.Dispatch
             }
             return System.Math.Max(floor, baseChargeInches + delta);
         }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.MoveQuery, __probe); }
+        }
 
         /// <summary>
         /// The distance <paramref name="unit"/> may move and still shoot (Advance), including its movement
@@ -134,11 +139,16 @@ namespace FDG.Rules.Dispatch
         public static float EffectiveMoveShootDistance(IUnit unit, RuleEvaluator evaluator,
             IReadOnlyList<ITerrain>? terrain = null)
         {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
             MovementModifierSink sink = new MovementModifierSink();
             AccumulateMovementRules(unit, evaluator, EActionType.Advance, GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES, sink, terrain);
             AccumulateMovementRules(unit, evaluator, EActionType.Rush, GameWideConstants.RUSH_DISTANCE_INCHES, sink, terrain);
             AccumulateMovementRules(unit, evaluator, EActionType.Charge, GameWideConstants.CHARGE_DISTANCE_INCHES, sink, terrain);
             return GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES + sink.Net(EActionType.Advance);
+        }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.MoveQuery, __probe); }
         }
 
         /// <summary>
@@ -157,6 +167,9 @@ namespace FDG.Rules.Dispatch
         public static float EffectiveMaxRushDistance(IUnit unit, RuleEvaluator evaluator,
             IReadOnlyList<ITerrain>? terrain = null)
         {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
             MovementModifierSink unitSink = new MovementModifierSink();
             AccumulateMovementRules(unit, evaluator, EActionType.Advance, GameWideConstants.MOVE_SHOOT_DISTANCE_INCHES, unitSink, terrain);
             AccumulateMovementRules(unit, evaluator, EActionType.Rush, GameWideConstants.RUSH_DISTANCE_INCHES, unitSink, terrain);
@@ -183,6 +196,8 @@ namespace FDG.Rules.Dispatch
 
             return maxRush;
         }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.MoveQuery, __probe); }
+        }
 
         /// <summary>
         /// Each living model's own (Advance, Rush, Charge) allowance, folding that model's rules on
@@ -199,6 +214,9 @@ namespace FDG.Rules.Dispatch
         public static Dictionary<ModelID, (float Advance, float Rush, float Charge)> PerModelMoveBudgets(
             IUnit unit, RuleEvaluator evaluator, IReadOnlyList<ITerrain>? terrain = null)
         {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
             var budgets = new Dictionary<ModelID, (float, float, float)>();
             foreach (IModel model in unit.Models)
             {
@@ -217,6 +235,8 @@ namespace FDG.Rules.Dispatch
                     GameWideConstants.CHARGE_DISTANCE_INCHES + sink.Net(EActionType.Charge));
             }
             return budgets;
+        }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.MoveQuery, __probe); }
         }
 
         private static void AccumulateMovementRules(IUnit unit, RuleEvaluator evaluator, EActionType action,

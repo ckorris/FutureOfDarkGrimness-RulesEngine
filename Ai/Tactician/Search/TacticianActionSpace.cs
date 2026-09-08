@@ -47,7 +47,7 @@ namespace FDG.Ai.Tactician.Search
 
         public IReadOnlyList<UnitBranch> EnumerateUnits(SearchNode node)
         {
-            long timing = SearchTiming.Start();
+            var timing = SearchTiming.Start();
             try { return EnumerateUnitsCore(node); }
             finally { SearchTiming.Stop(SearchTiming.Stage.EnumerateUnits, timing); }
         }
@@ -92,7 +92,7 @@ namespace FDG.Ai.Tactician.Search
 
         public IReadOnlyList<SearchEdge> EnumerateEdges(SearchNode node, UnitBranch unit)
         {
-            long timing = SearchTiming.Start();
+            var timing = SearchTiming.Start();
             try { return EnumerateEdgesCore(node, unit); }
             finally { SearchTiming.Stop(SearchTiming.Stage.EnumerateEdges, timing); }
         }
@@ -106,7 +106,7 @@ namespace FDG.Ai.Tactician.Search
             // Score needs the planner's per-activation state - exactly what a natural activation
             // establishes first.
             scratch.Planner.BeginActivation(binding);
-            long candidatesTiming = SearchTiming.Start();
+            var candidatesTiming = SearchTiming.Start();
             List<MacroAction> candidates = MacroActionGenerator.Enumerate(scratch.Evaluator, scratch.Table,
                 binding, _options.CandidateBudget, scratch.SeeThroughFriendlyUnits);
             SearchTiming.Stop(SearchTiming.Stage.Candidates, candidatesTiming);
@@ -122,7 +122,7 @@ namespace FDG.Ai.Tactician.Search
                 MacroAction candidate = candidates[i];
                 string? action = TacticianPlanner.ActionNameFor(candidate, offered);
                 if (action == null) continue;
-                long scoreTiming = SearchTiming.Start();
+                var scoreTiming = SearchTiming.Start();
                 float score = scratch.Planner.Score(candidate);
                 SearchTiming.Stop(SearchTiming.Stage.Scoring, scoreTiming);
                 plan.Add((candidate, action, score, plan.Count));
@@ -189,10 +189,10 @@ namespace FDG.Ai.Tactician.Search
             if (node.Snapshot == null)
                 throw new InvalidOperationException("TacticianActionSpace: a terminal node has no action space.");
 
-            long materializeTiming = SearchTiming.Start();
+            var materializeTiming = SearchTiming.Start();
             GameDataStore store = node.Snapshot.Materialize();
             SearchTiming.Stop(SearchTiming.Stage.ScratchMaterialize, materializeTiming);
-            long plannerTiming = SearchTiming.Start();
+            var plannerTiming = SearchTiming.Start();
             GameProgressData progress = GameProgressUtilities.TryGetProgress(store)
                 ?? throw new InvalidOperationException("TacticianActionSpace: the snapshot carries no GameProgressData.");
             var table = new TableState(store);

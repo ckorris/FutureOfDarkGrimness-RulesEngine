@@ -34,7 +34,7 @@ namespace FDG.Ai.Tactician.Search
         /// </summary>
         public static async Task<SearchNode> IterateAsync(SearchTree tree, float explorationC)
         {
-            long timing = SearchTiming.Start();
+            var timing = SearchTiming.Start();
             try { return await IterateCoreAsync(tree, explorationC); }
             finally { SearchTiming.Stop(SearchTiming.Stage.Iteration, timing); }
         }
@@ -65,7 +65,7 @@ namespace FDG.Ai.Tactician.Search
                     return opened;
                 }
 
-                long selectTiming = SearchTiming.Start();
+                var selectTiming = SearchTiming.Start();
                 SearchEdge? best = SelectPuct(node, explorationC);
                 SearchTiming.Stop(SearchTiming.Stage.Select, selectTiming);
                 if (best?.Child == null)

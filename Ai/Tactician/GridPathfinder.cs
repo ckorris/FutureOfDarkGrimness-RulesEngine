@@ -235,11 +235,16 @@ namespace FDG.Ai.Tactician
         public static List<Position>? FindPath(TerrainGrid grid, IReadOnlyList<ITerrain> terrain,
             Position start, Position goal, float baseRadiusInches)
         {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
             TerrainGrid.RouteKey key = TerrainGrid.RouteKey.Of(start, goal, baseRadiusInches);
             if (grid.TryGetRoute(nearest: false, key, out List<Position>? cached)) return cached;
             List<Position>? route = FindPathUncached(grid, terrain, start, goal, baseRadiusInches);
             grid.StoreRoute(nearest: false, key, route);
             return route;
+        }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.Pathfind, __probe); }
         }
 
         private static List<Position>? FindPathUncached(TerrainGrid grid, IReadOnlyList<ITerrain> terrain,
@@ -389,11 +394,16 @@ namespace FDG.Ai.Tactician
         public static List<Position>? FindPathToNearestReachable(TerrainGrid grid,
             IReadOnlyList<ITerrain> terrain, Position start, Position goal, float baseRadiusInches)
         {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
             TerrainGrid.RouteKey key = TerrainGrid.RouteKey.Of(start, goal, baseRadiusInches);
             if (grid.TryGetRoute(nearest: true, key, out List<Position>? cached)) return cached;
             List<Position>? route = FindPathToNearestReachableUncached(grid, terrain, start, goal, baseRadiusInches);
             grid.StoreRoute(nearest: true, key, route);
             return route;
+        }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.Pathfind, __probe); }
         }
 
         private static List<Position>? FindPathToNearestReachableUncached(TerrainGrid grid,

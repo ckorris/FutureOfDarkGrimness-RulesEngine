@@ -40,6 +40,9 @@ namespace FDG.Stages
         /// corner and let round-1 enemies charge it there.</summary>
         public static bool AreUnitsInMeleeRange(IUnit unit, IUnit enemyUnit)
         {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
             if (!unit.GetIsOnBattlefield() || !enemyUnit.GetIsOnBattlefield()) return false;
 
             foreach (IModel model in unit.Models)
@@ -52,6 +55,8 @@ namespace FDG.Stages
                 }
             }
             return false;
+        }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.MeleeRange, __probe); }
         }
 
         /// <summary>True if <paramref name="model"/> is alive and within melee range of any live model in

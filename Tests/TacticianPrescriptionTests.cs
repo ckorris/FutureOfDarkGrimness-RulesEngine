@@ -95,6 +95,37 @@ namespace FDG.Tests
             Assert.That(_planner.ChooseAction(AllActions), Is.EqualTo(ChooseActionStage.PASS_CHOICE_NAME));
         }
 
+        [Test]
+        public void ChargePlanPrescribedAsItsMove_TakesChargeOnTheReentry_WhileOtherPlansStillShoot()
+        {
+            // #191 search perf pass 2: the engine offers Charge only to a unit already in melee range,
+            // so the search prescribes a reachable charge as "Move" with the charge macro. After the
+            // move the planner must fight when Charge appears - and a non-charge plan must keep the
+            // old post-move behaviour (shoot if offered) so natural play is untouched.
+            DataBinding<UnitData> unit = MakeUnit(_us, 3, Rifle(), atX: 20f, atZ: 24f);
+            MacroAction charge = HoldPlan(unit) with
+            {
+                Intent = EMacroIntent.ChargeToContact,
+                ActionType = Rules.Definitions.EActionType.Charge,
+            };
+            string[] firstEntry = { ChooseActionStage.MOVEMENT_CHOICE_NAME, ChooseActionStage.SHOOT_CHOICE_NAME, ChooseActionStage.PASS_CHOICE_NAME };
+            string[] reentry = { ChooseActionStage.CHARGE_CHOICE_NAME, ChooseActionStage.SHOOT_CHOICE_NAME };
+
+            _planner.Prescribe(unit, ChooseActionStage.MOVEMENT_CHOICE_NAME, charge);
+            _planner.BeginActivation(unit);
+            Assert.That(_planner.ChooseAction(firstEntry), Is.EqualTo(ChooseActionStage.MOVEMENT_CHOICE_NAME),
+                "at range the engine offers no Charge: the charge plays as its move");
+            Assert.That(_planner.ChooseAction(reentry), Is.EqualTo(ChooseActionStage.CHARGE_CHOICE_NAME),
+                "in contact after the move, a charge plan fights");
+
+            TacticianPlanner other = new TacticianPlanner(_tableState, _evaluator);
+            other.Prescribe(unit, ChooseActionStage.MOVEMENT_CHOICE_NAME, HoldPlan(unit));
+            other.BeginActivation(unit);
+            Assert.That(other.ChooseAction(firstEntry), Is.EqualTo(ChooseActionStage.MOVEMENT_CHOICE_NAME));
+            Assert.That(other.ChooseAction(reentry), Is.EqualTo(ChooseActionStage.SHOOT_CHOICE_NAME),
+                "a non-charge plan keeps shooting on the re-entry, as before");
+        }
+
         // --- (b) prescription steers, and skips the scorer ----------------------------------------
 
         [Test]

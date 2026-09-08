@@ -89,9 +89,16 @@ namespace FDG.Tests
             foreach (UnitBranch unit in tree.UnitsOf(tree.Root))
             {
                 IReadOnlyList<SearchEdge> edges = tree.EdgesOf(tree.Root, unit);
-                SearchEdge? charge = edges.FirstOrDefault(e => e.Prescription.Action == ChooseActionStage.CHARGE_CHOICE_NAME);
+                // #191 search perf pass 2: a charge from range is prescribed as the MOVE it is (the
+                // engine's Charge menu entry is only offered to a unit already in the 2" melee
+                // cylinder; the planner takes Charge on the re-entry). The edge is recognised by its
+                // macro, and its action name must be Move for these units 8" apart.
+                SearchEdge? charge = edges.FirstOrDefault(e =>
+                    e.Prescription.Macro?.ActionType == Rules.Definitions.EActionType.Charge);
                 if (charge == null) continue;
                 anyCharge = true;
+                Assert.That(charge.Prescription.Action, Is.EqualTo(ChooseActionStage.MOVEMENT_CHOICE_NAME),
+                    "a charge from range is prescribed as its Move; Charge is what the re-entry takes");
                 Assert.That(charge.Prescription.Macro!.Intent, Is.EqualTo(EMacroIntent.ChargeToContact));
                 Assert.That(charge.Prescription.Macro.Feasibility, Is.EqualTo(EFeasibility.Reachable));
                 // It is an edge whether or not it ranks first: priors ORDER, they never drop.

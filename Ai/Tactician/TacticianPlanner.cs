@@ -318,6 +318,13 @@ namespace FDG.Ai.Tactician
             // otherwise end the activation.
             if (_plan != null)
             {
+                // #191 search perf pass 2: a charge plan that was played as its Move (the search
+                // prescribes reachable charges that way, see TacticianActionSpace) fights now that the
+                // engine offers it. Natural play reaches here with a charge plan only when the unit
+                // began adjacent and already fought, and then Charge is no longer offered.
+                if (_plan.ActionType == EActionType.Charge
+                    && validOptions.Contains(ChooseActionStage.CHARGE_CHOICE_NAME))
+                    return ChooseActionStage.CHARGE_CHOICE_NAME;
                 if (validOptions.Contains(ChooseActionStage.SHOOT_CHOICE_NAME))
                     return ChooseActionStage.SHOOT_CHOICE_NAME;
                 if (validOptions.Contains(ChooseActionStage.PASS_CHOICE_NAME))

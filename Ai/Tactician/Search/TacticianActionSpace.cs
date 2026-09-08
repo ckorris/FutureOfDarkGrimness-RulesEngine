@@ -103,6 +103,20 @@ namespace FDG.Ai.Tactician.Search
             DataBinding<UnitData> binding = scratch.Store.GetDataBinding<UnitData>(unit.Unit);
             UnitData self = binding.GetValue();
 
+            // #191 search perf pass 2: a Shaken unit's activation is decided by the engine before it
+            // asks anyone - it stays idle and recovers (ChooseActionStage on StartedActivationShaken).
+            // Every plan-bearing edge for such a unit closed at play (16 simulations per node on board A,
+            // 44% of all expansions wasted). One unit-only edge is the whole action space: activate it,
+            // it idles.
+            if (self.Tokens.HasToken(global::FDG.Rules.Foundation.TokenType.Shaken))
+            {
+                return new List<SearchEdge>
+                {
+                    new SearchEdge(0, new SimulationService.Prescription(unit.Unit), 1f,
+                        $"{self.Name}: Shaken - idles and recovers"),
+                };
+            }
+
             // Score needs the planner's per-activation state - exactly what a natural activation
             // establishes first.
             scratch.Planner.BeginActivation(binding);
@@ -121,6 +135,20 @@ namespace FDG.Ai.Tactician.Search
             {
                 MacroAction candidate = candidates[i];
                 string? action = TacticianPlanner.ActionNameFor(candidate, offered);
+                // #191 search perf pass 2: the engine's Charge menu entry means "fight the enemy you are
+                // already touching" (ChooseActionStage.GetCanCharge: an enemy within the 2" melee
+                // cylinder). A charge FROM RANGE is a Move that ends in contact, then Charge on the
+                // re-entry. Prescribing "Charge" at the first entry fell through every time, the
+                // simulated unit re-decided naturally (a full Enumerate + scoring inside the
+                // simulation), and the edge survived only when that move happened to end adjacent.
+                // So a reachable charge is prescribed as the Move it is; the planner's re-entry branch
+                // takes Charge once the engine offers it.
+                if (action == ChooseActionStage.CHARGE_CHOICE_NAME
+                    && candidate.TargetEnemy != null
+                    && !MeleeRangeUtilities.AreUnitsInMeleeRange(self, candidate.TargetEnemy))
+                {
+                    action = ChooseActionStage.MOVEMENT_CHOICE_NAME;
+                }
                 if (action == null) continue;
                 var scoreTiming = SearchTiming.Start();
                 float score = scratch.Planner.Score(candidate);

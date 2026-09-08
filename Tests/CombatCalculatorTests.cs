@@ -207,6 +207,97 @@ namespace FDG.Tests
             });
         }
 
+
+        // ---- melee ----------------------------------------------------------------------------------
+
+        [Test]
+        public void MeleeSwingsTheMeleeWeapons_AndLeavesTheGunsAlone()
+        {
+            CombatReport report = CombatCalculator.Run(
+                Army(Unit("Brawlers", 5, 4, 4, Rifle(5), Blade(5))),
+                Army(Unit("Targets", 10, 4, 4)),
+                new CombatSituation(Mode: ECombatMode.Melee));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(report.Volleys.Select(volley => volley.Weapon.Name), Is.EqualTo(new[] { "Blade" }));
+                // 5 blades x 2 attacks on 4+ = 5 hits, half of them saved.
+                Assert.That(report.Volleys[0].ExpectedHits, Is.EqualTo(5f).Within(Tolerance));
+                Assert.That(report.ExpectedWounds, Is.EqualTo(2.5f).Within(Tolerance));
+            });
+        }
+
+        [Test]
+        public void AFatiguedAttackerOnlyHitsOnSixes()
+        {
+            CombatSituation melee = new(Mode: ECombatMode.Melee);
+            ArmyListFile brawlers = Army(Unit("Brawlers", 5, 4, 4, Blade(5)));
+            ArmyListFile targets = Army(Unit("Targets", 10, 4, 4));
+
+            CombatReport fresh = CombatCalculator.Run(brawlers, targets, melee);
+            CombatReport tired = CombatCalculator.Run(brawlers, targets, melee with { AttackerFatigued = true });
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(fresh.Volleys[0].HitRollNeeded, Is.EqualTo(4));
+                Assert.That(tired.Volleys[0].HitRollNeeded, Is.EqualTo(6), "fatigue means 6s only");
+                Assert.That(tired.Volleys[0].ExpectedHits, Is.EqualTo(10f / 6f).Within(Tolerance));
+            });
+        }
+
+        [Test]
+        public void AChargingImpactUnit_LandsItsHitsBeforeAnythingSwings()
+        {
+            CombatReport charging = CombatCalculator.Run(
+                Army(Unit("Ram", 1, 4, 4, new[] { "Impact(6)" }, Blade(1))),
+                Army(Unit("Targets", 10, 4, 4)),
+                new CombatSituation(Mode: ECombatMode.Melee, AttackerCharging: true));
+
+            VolleyReport impact = charging.Volleys[0];
+            Assert.Multiple(() =>
+            {
+                Assert.That(impact.Weapon.Name, Is.EqualTo("Impact"), "impact resolves first");
+                Assert.That(impact.AttackDice, Is.EqualTo(6f).Within(Tolerance));
+                Assert.That(impact.ExpectedHits, Is.EqualTo(5f).Within(Tolerance), "6 dice hitting on 2+");
+                Assert.That(impact.ExpectedWounds, Is.EqualTo(2.5f).Within(Tolerance), "half of them saved");
+            });
+        }
+
+        [Test]
+        public void WithoutACharge_ThereIsNoImpactRow()
+        {
+            ArmyListFile ram = Army(Unit("Ram", 1, 4, 4, new[] { "Impact(6)" }, Blade(1)));
+            ArmyListFile targets = Army(Unit("Targets", 10, 4, 4));
+
+            CombatReport standing = CombatCalculator.Run(ram, targets,
+                new CombatSituation(Mode: ECombatMode.Melee, AttackerCharging: false));
+
+            Assert.That(standing.Volleys.Any(volley => volley.Weapon.Name == "Impact"), Is.False);
+        }
+
+        [Test]
+        public void AChargerWithNoImpactRule_GetsNoImpactRowEither()
+        {
+            CombatReport report = CombatCalculator.Run(
+                Army(Unit("Brawlers", 5, 4, 4, Blade(5))),
+                Army(Unit("Targets", 10, 4, 4)),
+                new CombatSituation(Mode: ECombatMode.Melee, AttackerCharging: true));
+
+            Assert.That(report.Volleys.Select(volley => volley.Weapon.Name), Is.EqualTo(new[] { "Blade" }));
+        }
+
+        [Test]
+        public void MeleeSaysWhatItIsAssuming()
+        {
+            CombatReport report = CombatCalculator.Run(
+                Army(Unit("Brawlers", 5, 4, 4, Blade(5))),
+                Army(Unit("Targets", 10, 4, 4)),
+                new CombatSituation(Mode: ECombatMode.Melee));
+
+            Assert.That(report.Notes, Has.Some.Contains("Strike-back"),
+                "the missing half of a melee must be stated, not silently omitted");
+        }
+
         // ---- fixture helpers ---------------------------------------------------------------------
 
         private const float Tolerance = 0.001f;

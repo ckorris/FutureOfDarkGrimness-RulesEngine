@@ -4,6 +4,8 @@ using System.Linq;
 using FDG.Data;
 using FDG.GameModel;
 using FDG.Rules.Dispatch;
+using FDG.Rules.Dispatch.Contexts;
+using FDG.Rules.Foundation;
 using FDG.SaveLoad;
 using FDG.Stages;
 using FDG.Utilities;
@@ -122,6 +124,14 @@ namespace FDG.Calculator
             // Batches are taken once, before a shot is fired: a volley is declared with the unit as it
             // stands, and pooling matches what CombatActionContext would build for the live action.
             var volleys = new List<VolleyReport>();
+
+            // A charge lands its impact hits before anyone swings.
+            if (melee && situation.AttackerCharging)
+            {
+                VolleyReport? impact = await ResolveImpact(context, attacker, defender);
+                if (impact is not null) volleys.Add(impact);
+            }
+
             foreach ((Weapon weapon, int copies) in Batches(attackingUnit, melee))
             {
                 volleys.Add(await ResolveVolley(context, attacker, defender, weapon, copies, situation, melee));
@@ -224,6 +234,55 @@ namespace FDG.Calculator
                 expectedHits, buckets,
                 saveNeeded.ThresholdTags ?? (IReadOnlyList<string>)Array.Empty<string>(),
                 dealt, volleyNotes);
+        }
+
+        /// <summary>
+        /// The charge's impact hits (#027 Impact / Heavy Impact), run through the engine's own
+        /// <see cref="ResolveImpactHitsStage"/> - auto-hits that land before any weapon swings.
+        /// Returns null when the charger has no Impact rule, so nothing appears for a charge that has none.
+        /// </summary>
+        private static async Task<VolleyReport?> ResolveImpact(SandboxGameContext context,
+            DataBinding<UnitData> attacker, DataBinding<UnitData> defender)
+        {
+            UnitData attackingUnit = attacker.GetValue();
+            UnitData defendingUnit = defender.GetValue();
+
+            // Ask what the charge brings using the READ-ONLY evaluation (no logging, no one-shot grants
+            // spent) - the stage below does the real, live one. Same question, asked twice on purpose.
+            var participants = new List<RuleParticipant> { RuleParticipant.Actor(attackingUnit) };
+            participants.AddRange(DetermineStrikeOrderStage.SubjectWithMeleeWeapons(defendingUnit));
+
+            var sink = new ImpactSink();
+            sink.ApplyFrom(context.RuleEvaluator
+                .EvaluateAllNamed(new ChargeContactContext(attackingUnit, defendingUnit), participants.ToArray())
+                .Select(named => named.Op)
+                .ToList());
+
+            if (sink.TotalDice <= 0)
+            {
+                return null;
+            }
+
+            float woundsBefore = defendingUnit.RemainingWounds;
+
+            var actionContext = new CombatActionContext(context, attacker, isMelee: true, isCharging: true);
+            actionContext.SetDefender(defender);
+
+            var stage = new ResolveImpactHitsStage(context, new PassThroughLayer<ICombatActionContext>());
+            stage.OnImpactResolved.Bind("done");
+            await stage.Enter(actionContext);
+
+            float dealt = woundsBefore - defendingUnit.RemainingWounds;
+
+            // Each die hits on a 2+; the stage rolls them the same way.
+            float expectedHits = sink.TotalDice * (5f / 6f);
+            var weapon = new Weapon("Impact", rangeInches: 0f, attacks: 0, armorPenetration: sink.ArmorPenetration);
+
+            return new VolleyReport(weapon, Copies: 1, InRange: true, EffectiveRangeInches: 0f,
+                AttackDice: sink.TotalDice, HitRollNeeded: 2, HitTags: new[] { "Impact, hits on 2+" },
+                ExpectedHits: expectedHits, Saves: Array.Empty<SaveBucket>(),
+                SaveTags: Array.Empty<string>(), ExpectedWounds: dealt,
+                Notes: new[] { "Auto-hits on the charge, before any weapon swings." });
         }
 
         /// <summary>Binds the stage's exit to a sink and runs exactly that stage.</summary>

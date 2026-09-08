@@ -148,6 +148,9 @@ namespace FDG.Stages
             IEnumerable<EnemyModelFootprint>? friendlyFootprints = null,
             bool lenientCoherency = false)
         {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
             errors = new List<ReasonForInvalidMove>();
 
             IReadOnlyList<EnemyModelFootprint> enemies =
@@ -169,6 +172,8 @@ namespace FDG.Stages
             ValidateEndsOnTable(moves, ref errors);
 
             return errors.Count == 0;
+        }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.PlanValidate, __probe); }
         }
 
         /// <summary>

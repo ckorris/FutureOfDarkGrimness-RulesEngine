@@ -357,7 +357,10 @@ namespace FDG.Ai.Tactician
                         && ForwardProgress(living, candidate, snake)
                             > Math.Max(MinBackoffStepInches, SnakeMinProgressFraction * step)
                         && Validate(snake, out _))
+                    {
+                        global::FDG.Ai.Tactician.Search.SearchTiming.Note("plan: snake accepted");
                         return snake;
+                    }
                 }
 
                 // #256 S2 + #264 issue 5: side-step the pack anchor to clear a friendly parked on the
@@ -374,7 +377,7 @@ namespace FDG.Ai.Tactician
                 {
                     List<ModelMoveEntry>? reaimed = TryLateralReaim(reaimAt, step, living, candidate,
                         c => Validate(c, out _));
-                    if (reaimed != null) return reaimed;
+                    if (reaimed != null) { global::FDG.Ai.Tactician.Search.SearchTiming.Note("plan: lateral reaim accepted"); return reaimed; }
                 }
 
                 step *= 0.5f;
@@ -397,6 +400,7 @@ namespace FDG.Ai.Tactician
                     candidate = HoldExactPositions(living);
             }
 
+            if (global::FDG.Ai.Tactician.Search.SearchTiming.Enabled) global::FDG.Ai.Tactician.Search.SearchTiming.Note($"plan: backoff attempts={attempts} valid={valid}");
             return candidate;
         }
 
@@ -544,6 +548,9 @@ namespace FDG.Ai.Tactician
             EFormation formation = EFormation.Grid, (float X, float Z)? lineAxis = null,
             float lateralOffsetInches = 0f, TerrainGrid? routeGrid = null)
         {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
             if (arcLengthInches <= 0f || path.Count < 2) return StayInPlace(unit);
 
             // #256 measure-and-correct, same scheme as BuildCandidate (the worst-case pre-clamp here
@@ -560,6 +567,8 @@ namespace FDG.Ai.Tactician
                 if (arc <= 0f) break;
             }
             return StayInPlace(unit);
+        }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.PlanCandidate, __probe); }
         }
 
         /// <summary>
@@ -578,6 +587,9 @@ namespace FDG.Ai.Tactician
             IReadOnlyList<ITerrain> terrain, float baseRadiusInches, float maxDistanceInches,
             TerrainGrid? routeGrid = null, float? rankSpacingInches = null, float? rankBackoffStepInches = null)
         {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
             if (arcLengthInches <= 0f || path.Count < 2 || living.Count == 0) return StayInPlace(unit);
 
             float tightSpacing = 2f * baseRadiusInches + 0.1f; // cohesion-safe 0.1" gap, as PackLine
@@ -624,6 +636,8 @@ namespace FDG.Ai.Tactician
                 fallback ??= candidate;
             }
             return fallback ?? StayInPlace(unit);
+        }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.PlanCandidate, __probe); }
         }
 
         // One side-choice of the snake: file 0 rides the route, file k sits k spacings to `side`.
@@ -954,6 +968,9 @@ namespace FDG.Ai.Tactician
             Position goal, float moveBudgetInches, bool ignoresDifficultTerrain,
             bool ignoresImpassibleTerrain, Func<TerrainGrid>? sharedGrid)
         {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
             float cx = living.Average(mb => mb.GetValue().Position.x);
             float cz = living.Average(mb => mb.GetValue().Position.z);
             var start = new Position(cx, cz);
@@ -996,6 +1013,8 @@ namespace FDG.Ai.Tactician
             if (crossesDifficult && !ignoresDifficultTerrain)
                 budget = Math.Min(budget, GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES - 0.001f);
             return (path, routeGrid, budget, baseRadius);
+        }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.PlanRoute, __probe); }
         }
 
         /// <summary>Edge gap between the ranks of a sliver file: the 1" cohesion limit less slack for
@@ -1131,6 +1150,9 @@ namespace FDG.Ai.Tactician
         /// </summary>
         public static List<EnemyModelFootprint> LiveEnemyFootprints(ITableState tableState, PlayerID playerID)
         {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
             ITeam? team = tableState.Teams.Objects.FirstOrDefault(t => t.Players.Contains(playerID));
             IReadOnlyList<PlayerID> allied = team != null ? team.Players : new List<PlayerID> { playerID };
 
@@ -1154,6 +1176,8 @@ namespace FDG.Ai.Tactician
             }
             return footprints;
         }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.PlanFootprints, __probe); }
+        }
 
         /// <summary>
         /// Living friendly model footprints (same team as <paramref name="playerID"/>, EXCLUDING the moving
@@ -1165,6 +1189,9 @@ namespace FDG.Ai.Tactician
         public static List<EnemyModelFootprint> LiveFriendlyFootprints(ITableState tableState, PlayerID playerID,
             UnitID excludeUnitId)
         {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
             ITeam? team = tableState.Teams.Objects.FirstOrDefault(t => t.Players.Contains(playerID));
             IReadOnlyList<PlayerID> allied = team != null ? team.Players : new List<PlayerID> { playerID };
 
@@ -1187,6 +1214,8 @@ namespace FDG.Ai.Tactician
                 if (anyLiving) unitKey++;
             }
             return footprints;
+        }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.PlanFootprints, __probe); }
         }
 
         /// <summary>

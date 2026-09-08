@@ -30,6 +30,8 @@ namespace FDG.Ai.Tactician.Search
             RuleDispatch, Combat, MoveQuery, Sight, Pathfind, PlanMove, ObjectiveProj,
             // Inside a simulated activation's Choose Action stage.
             PlannerChoose, Enumerate, MeleeRange, Request,
+            // Inside move planning (PlanMove).
+            PlanRoute, PlanFootprints, PlanCandidate, PlanValidate,
         }
 
         /// <summary>What <see cref="Start"/> hands back; pass it to <see cref="Stop"/>.</summary>

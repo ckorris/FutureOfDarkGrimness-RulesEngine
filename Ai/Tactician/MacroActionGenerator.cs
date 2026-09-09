@@ -199,6 +199,7 @@ namespace FDG.Ai.Tactician
             // #355: "can fight in melee", not "carries a melee weapon" - an impact-only unit's charge IS
             // its attack, so a charge macro-action must be generated for it too.
             bool hasMelee = ChargeContactRules.CanFightInMelee(self);
+            float selfChargeBudget = hasMelee ? TacticalAnalysis.ChargeBudget(self, evaluator, terrain) : 0f;
 
             foreach (IUnit enemy in targetEnemies)
             {
@@ -226,7 +227,8 @@ namespace FDG.Ai.Tactician
                 {
                     MacroAction charge = BuildCharge(unit, living, tableState, evaluator, self, enemy,
                         start, leadRadius, clearanceRadius, terrain, enemyFootprints,
-                        canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, perModelBudgets, scene);
+                        canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, perModelBudgets, scene,
+                        selfChargeBudget);
                     if (charge.Feasibility == EFeasibility.Reachable)
                     {
                         candidates.Add(charge);
@@ -461,13 +463,16 @@ namespace FDG.Ai.Tactician
             List<ITerrain> terrain, List<EnemyModelFootprint> enemyFootprints,
             bool canMoveThroughEnemies, bool ignoresDifficult, bool ignoresAllTerrain,
             IReadOnlyDictionary<ModelID, (float Advance, float Rush, float Charge)> perModelBudgets,
-            MovementPlanner.PlanningScene scene)
+            MovementPlanner.PlanningScene scene, float selfChargeBudget)
         {
-            float fullChargeReach = TacticalAnalysis.ChargeDistanceAgainst(self, enemy, evaluator, terrain);
+            // #191 search perf pass 6: the unit's own charge budget comes in from the enumeration (one
+            // set of dispatches per activation, not one per charge target).
+            float fullChargeReach = MovementRuleQueries.EffectiveChargeDistanceAgainst(self, enemy,
+                selfChargeBudget, evaluator);
             // #264 issue 7: the same per-model split as the move families. The target-conditioned
             // shrink (Melee Shrouding) is unit-wide, so it comes off every model's own charge - the
             // composition DefinePathStage uses to build the request's per-model budgets.
-            float chargeShrink = TacticalAnalysis.ChargeBudget(self, evaluator, terrain) - fullChargeReach;
+            float chargeShrink = selfChargeBudget - fullChargeReach;
             Func<ModelMoveEntry, ModelMoveBudget> chargeBudgetFor = entry =>
             {
                 float cap = fullChargeReach;

@@ -135,9 +135,11 @@ namespace FDG.Ai.Tactician.Resolvers
         {
             var result = new List<ActivationScore>(options.Count);
             IReadOnlyDictionary<DataReference, float> frontline = FrontlineFractions(options);
+            // #191 search perf pass 6: each enemy's advance is the same for every unit scored here.
+            var enemyAdvance = new Dictionary<DataReference, float>();
             foreach (DataBinding<UnitData> option in options)
             {
-                float urgency = Urgency(option);
+                float urgency = Urgency(option, enemyAdvance);
                 float front = frontline.GetValueOrDefault(option.Reference);
                 result.Add(new ActivationScore(
                     urgency + TacticianWeights.ActivationFrontlineBias * front, urgency, front));
@@ -211,7 +213,18 @@ namespace FDG.Ai.Tactician.Resolvers
         /// worth changes hands"), so kill and threat compare on one scale; the flip term is a flat
         /// bonus because objectives decide games, not casualties.
         /// </summary>
-        public float Urgency(DataBinding<UnitData> unitBinding)
+        public float Urgency(DataBinding<UnitData> unitBinding) => Urgency(unitBinding, new Dictionary<DataReference, float>());
+
+        private float EnemyAdvanceOf(DataBinding<UnitData> enemyBinding, UnitData enemy,
+            Dictionary<DataReference, float> enemyAdvance)
+        {
+            if (enemyAdvance.TryGetValue(enemyBinding.Reference, out float cached)) return cached;
+            float advance = TacticalAnalysis.AdvanceDistance(enemy, _evaluator, Terrain);
+            enemyAdvance[enemyBinding.Reference] = advance;
+            return advance;
+        }
+
+        private float Urgency(DataBinding<UnitData> unitBinding, Dictionary<DataReference, float> enemyAdvance)
         {
             UnitData unit = unitBinding.GetValue();
             Position here = Centroid(unit);
@@ -261,7 +274,7 @@ namespace FDG.Ai.Tactician.Resolvers
 
                 // What could THEY do to us from where things stand (their advance included)?
                 float theirReach = Math.Max(1f,
-                    distance - TacticalAnalysis.AdvanceDistance(enemy, _evaluator, Terrain));
+                    distance - EnemyAdvanceOf(enemyBinding, enemy, enemyAdvance));
                 AttackEstimate theirs = CombatMath.EstimateShooting(_evaluator, enemyBinding, unitBinding,
                     new AttackContext(theirReach, AttackerMoved: true));
                 threat = Math.Max(threat, ValueFraction(theirs.ExpectedWounds, unit));

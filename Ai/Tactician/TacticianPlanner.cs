@@ -72,6 +72,14 @@ namespace FDG.Ai.Tactician
         private readonly Dictionary<DataReference, MeleeEstimate> _meleeEnemyVsSelf = new();
 
         private readonly record struct EnemyFacts(Position Centroid, bool HasMelee, float Advance, float ThreatReach);
+
+        // #191 search perf pass 6: board-fixed answers the scorer asked for again per candidate. The
+        // objective projection (every candidate's ObjectiveDelta and ObjectiveApproach walked it afresh)
+        // and each unit's Advance / Rush / Charge budgets (rule dispatches per query). Both depend only
+        // on the board, which is frozen from BeginActivation until the planner's own move; the two
+        // early returns that change the board first (cast, disembark) drop them.
+        private List<ObjectiveProjection>? _objectiveProjections;
+        private readonly Dictionary<DataReference, (float Advance, float Rush, float Charge)> _moveBudgets = new();
         private TerrainGrid? _routeGrid;
         // Strider / Flying, read once per activation (see UnitRoute).
         private bool? _ignoresAllTerrain;
@@ -259,6 +267,8 @@ namespace FDG.Ai.Tactician
             _enemyFacts.Clear();
             _meleeSelfVsEnemy.Clear();
             _meleeEnemyVsSelf.Clear();
+            _objectiveProjections = null;
+            _moveBudgets.Clear();
             _routeGrid = null;
             _ignoresAllTerrain = null;
             _ignoresDifficultTerrain = null;
@@ -298,6 +308,7 @@ namespace FDG.Ai.Tactician
             if (validOptions.Contains(CoreRuleCatalog.DisembarkRuleName) && WantsDisembark())
             {
                 RecordDecision(CoreRuleCatalog.DisembarkRuleName, null);
+                ForgetBoardMemos();
                 return CoreRuleCatalog.DisembarkRuleName;
             }
 
@@ -311,6 +322,7 @@ namespace FDG.Ai.Tactician
             {
                 _castAttempts++;
                 RecordDecision(ChooseActionStage.CAST_CHOICE_NAME, null);
+                ForgetBoardMemos();
                 return ChooseActionStage.CAST_CHOICE_NAME;
             }
 
@@ -700,7 +712,7 @@ namespace FDG.Ai.Tactician
             {
                 UnitData enemy = enemyBinding.GetValue();
                 float d = Distance(here, Centroid(enemy));
-                float theirReach = Math.Max(1f, d - TacticalAnalysis.AdvanceDistance(enemy, _evaluator, TerrainSnapshot()));
+                float theirReach = Math.Max(1f, d - BudgetsOf(enemyBinding).Advance);
                 // #365: no sight discount on a THREAT (see MoveCoverHabit) - the shooter moves
                 // before it shoots, so a wall between us and where it stands right now is not
                 // protection, and a bail-out decision is exactly where optimism gets a boat killed.
@@ -708,7 +720,7 @@ namespace FDG.Ai.Tactician
                     transport, new AttackContext(theirReach, AttackerMoved: true)).ExpectedWounds);
                 // #355: an impact-only enemy can still charge this transport.
                 if (ChargeContactRules.CanFightInMelee(enemy)
-                    && TacticalAnalysis.MeleeThreatReach(enemy, transport.GetValue(), _evaluator, TerrainSnapshot()) >= d - 1f)
+                    && MeleeReachOf(enemyBinding, transport.GetValue()) >= d - 1f)
                 {
                     incoming = Math.Max(incoming, CombatMath.EstimateMelee(_evaluator, enemyBinding,
                         transport).AttackerAttack.ExpectedWounds);
@@ -719,9 +731,9 @@ namespace FDG.Ai.Tactician
                 return true;
 
             const float placementInches = 6f;
-            float cargoReach = placementInches + TacticalAnalysis.AdvanceDistance(self, _evaluator, TerrainSnapshot());
+            float cargoReach = placementInches + BudgetsOf(_activeUnit!).Advance;
 
-            foreach (ObjectiveProjection projection in TacticalAnalysis.ProjectObjectives(_tableState))
+            foreach (ObjectiveProjection projection in Projections())
             {
                 bool ours = TacticalAnalysis.IsProjectedOwnerAllied(
                     _tableState, projection, self.PlayerID); // #296: team-owned = ours
@@ -1199,14 +1211,14 @@ namespace FDG.Ai.Tactician
         {
             float onIt = TacticalAnalysis.ObjectiveSeizureRadiusInches + 1.5f;
             UnitData self = _activeUnit!.GetValue();
-            float speed = Math.Max(1f, TacticalAnalysis.RushDistance(self, _evaluator, TerrainSnapshot()));
+            float speed = Math.Max(1f, BudgetsOf(_activeUnit!).Rush);
             int round = _tableState.Progress.RoundCount ?? 1;
             int totalRounds = _tableState.Progress.TotalRounds;
             float movesLeft = totalRounds - round + 1;
             float baseline = ObjectiveUrgency(round, totalRounds);
 
             float best = 0f;
-            foreach (ObjectiveProjection projection in TacticalAnalysis.ProjectObjectives(_tableState))
+            foreach (ObjectiveProjection projection in Projections())
             {
                 // #296: an ALLY-held marker is not a gradient target - it is already the side's
                 // marker (#297 team-aware reconcile), exactly like one we hold ourselves.
@@ -1310,14 +1322,43 @@ namespace FDG.Ai.Tactician
         private bool IgnoresDifficultTerrain => _ignoresDifficultTerrain ??=
             MovementRuleQueries.IgnoresDifficultTerrain(_activeUnit!.GetValue(), _evaluator);
 
+        /// <summary>The board is about to change under this activation (a cast or a disembark): drop the memos.</summary>
+        private void ForgetBoardMemos()
+        {
+            _objectiveProjections = null;
+            _moveBudgets.Clear();
+        }
+
+        private List<ObjectiveProjection> Projections() =>
+            _objectiveProjections ??= TacticalAnalysis.ProjectObjectives(_tableState);
+
+        private (float Advance, float Rush, float Charge) BudgetsOf(DataBinding<UnitData> binding)
+        {
+            if (_moveBudgets.TryGetValue(binding.Reference, out (float Advance, float Rush, float Charge) cached))
+                return cached;
+            UnitData unit = binding.GetValue();
+            (float, float, float) budgets = (
+                TacticalAnalysis.AdvanceDistance(unit, _evaluator, TerrainSnapshot()),
+                TacticalAnalysis.RushDistance(unit, _evaluator, TerrainSnapshot()),
+                TacticalAnalysis.ChargeBudget(unit, _evaluator, TerrainSnapshot()));
+            _moveBudgets[binding.Reference] = budgets;
+            return budgets;
+        }
+
+        /// <summary><see cref="TacticalAnalysis.MeleeThreatReach"/> with the charger's budget from the memo.</summary>
+        private float MeleeReachOf(DataBinding<UnitData> chargerBinding, IUnit target) =>
+            MovementRuleQueries.EffectiveChargeDistanceAgainst(chargerBinding.GetValue(), target,
+                BudgetsOf(chargerBinding).Charge, _evaluator)
+            + GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL;
+
         private EnemyFacts FactsOf(DataBinding<UnitData> enemyBinding)
         {
             if (_enemyFacts.TryGetValue(enemyBinding.Reference, out EnemyFacts cached)) return cached;
             UnitData enemy = enemyBinding.GetValue();
             UnitData self = _activeUnit!.GetValue();
             var facts = new EnemyFacts(Centroid(enemy), enemy.GetMeleeWeapons().Count > 0,
-                TacticalAnalysis.AdvanceDistance(enemy, _evaluator, TerrainSnapshot()),
-                TacticalAnalysis.MeleeThreatReach(enemy, self, _evaluator, TerrainSnapshot()));
+                BudgetsOf(enemyBinding).Advance,
+                MeleeReachOf(enemyBinding, self));
             _enemyFacts[enemyBinding.Reference] = facts;
             return facts;
         }
@@ -1349,7 +1390,8 @@ namespace FDG.Ai.Tactician
             (float, float) result = (
                 ValueFraction(melee.AttackerAttack.ExpectedWounds, enemy)
                     - ValueFraction(melee.DefenderReturn.ExpectedWounds, self),
-                TacticalAnalysis.ChargeDistanceAgainst(self, enemy, _evaluator, TerrainSnapshot()));
+                MovementRuleQueries.EffectiveChargeDistanceAgainst(self, enemy,
+                    BudgetsOf(_activeUnit!).Charge, _evaluator));
             _meleeApproach[enemyBinding.Reference] = result;
             return result;
         }
@@ -1363,7 +1405,7 @@ namespace FDG.Ai.Tactician
         {
             Position end = candidate.ProjectedCentroid;
             float delta = 0f;
-            foreach (ObjectiveProjection projection in TacticalAnalysis.ProjectObjectives(_tableState))
+            foreach (ObjectiveProjection projection in Projections())
             {
                 bool projectedOurs = TacticalAnalysis.IsProjectedOwnerAllied(
                     _tableState, projection, self.PlayerID);
@@ -1432,9 +1474,8 @@ namespace FDG.Ai.Tactician
                 {
                     UnitData enemy = enemyBinding.GetValue();
                     if (AircraftRules.IsAircraft(enemy)) continue; // can never seize or contest
-                    float reach = movesLeft * Math.Max(
-                        TacticalAnalysis.RushDistance(enemy, _evaluator, TerrainSnapshot()),
-                        TacticalAnalysis.ChargeBudget(enemy, _evaluator, TerrainSnapshot()));
+                    (_, float enemyRush, float enemyCharge) = BudgetsOf(enemyBinding);
+                    float reach = movesLeft * Math.Max(enemyRush, enemyCharge);
                     if (TacticalAnalysis.MinBaseEdgeDistanceToPoint(enemy, marker)
                         <= reach + TacticalAnalysis.ObjectiveSeizureRadiusInches)
                     {
@@ -1475,7 +1516,7 @@ namespace FDG.Ai.Tactician
                         friendlyBinding, new AttackContext(reach, AttackerMoved: true)).ExpectedWounds,
                     friendly);
                 if (facts.HasMelee
-                    && TacticalAnalysis.MeleeThreatReach(enemy, friendly, _evaluator, TerrainSnapshot()) >= d - 1f)
+                    && MeleeReachOf(enemyBinding, friendly) >= d - 1f)
                 {
                     value = Math.Max(value, 0.5f * ValueFraction(CombatMath.EstimateMelee(
                         _evaluator, enemyBinding, friendlyBinding).AttackerAttack.ExpectedWounds,
@@ -1499,7 +1540,7 @@ namespace FDG.Ai.Tactician
             PlayerID us = _activeUnit!.GetValue().PlayerID;
             int ours = 0;
             var byOpposingPlayer = new Dictionary<PlayerID, int>();
-            foreach (ObjectiveProjection projection in TacticalAnalysis.ProjectObjectives(_tableState))
+            foreach (ObjectiveProjection projection in Projections())
             {
                 if (!projection.ProjectedOwner.HasValue) continue;
                 PlayerID owner = projection.ProjectedOwner.Value;
@@ -1553,8 +1594,7 @@ namespace FDG.Ai.Tactician
             Position result = at;
             if (goal != null && bestDistance > 0.01f)
             {
-                float step = Math.Min(
-                    TacticalAnalysis.RushDistance(enemy, _evaluator, TerrainSnapshot()), bestDistance);
+                float step = Math.Min(BudgetsOf(enemyBinding).Rush, bestDistance);
                 result = new Position(at.x + (goal.Value.x - at.x) / bestDistance * step,
                     at.z + (goal.Value.z - at.z) / bestDistance * step);
             }
@@ -1642,7 +1682,7 @@ namespace FDG.Ai.Tactician
             if (_meleeThreatTotal.HasValue) return _meleeThreatTotal.Value;
             UnitData self = _activeUnit!.GetValue();
             Position now = Centroid(self);
-            float envelope = TacticalAnalysis.RushDistance(self, _evaluator, TerrainSnapshot());
+            float envelope = BudgetsOf(_activeUnit!).Rush;
             float total = 0f;
             foreach (DataBinding<UnitData> enemyBinding in EnemyBindings(self.PlayerID))
             {

@@ -4,7 +4,10 @@ namespace FDG.SaveLoad
     [Serializable]
     public class UnitFileEntry
     {
-        public int StableID { get; } = _nextID++;
+        // #191: Interlocked, not `_nextID++`. Army files are deserialized concurrently by the lab
+        // (games run in parallel) and by the search; a non-atomic increment hands two entries the
+        // same StableID, which is the key other data points at.
+        public int StableID { get; } = System.Threading.Interlocked.Increment(ref _nextID) - 1;
 
         private static int _nextID = 1;
 

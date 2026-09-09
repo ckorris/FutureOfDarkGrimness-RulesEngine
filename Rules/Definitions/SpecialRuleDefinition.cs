@@ -55,20 +55,28 @@ public record SpecialRuleDefinition(string Name, IReadOnlyList<HookEntry> Passiv
 
     public override int GetHashCode() => Name.GetHashCode();
 
-    // #191 search perf pass 4: which (hook, seat) pairs any passive entry listens on, built once per
-    // definition. Definitions are immutable and never copied with `with`, so the cache cannot go stale.
-    private ulong[]? _listeners;
+    // #191 search perf pass 4/10: which (hook, seat) pairs any passive entry listens on, and which
+    // hooks an activated ability triggers on. Definitions are immutable and never copied with `with`,
+    // so these are pure functions of the constructor arguments.
+    //
+    // Built in the constructor, NOT memoized lazily. A definition instance is process-wide shared -
+    // the core catalog's singletons, plus army-embedded definitions which since perf pass 7 come from
+    // one content-keyed cache - and StoreClone shares ResolvedRule by reference, so every clone in
+    // every search worker points at the same definition. A lazy `??=` here is therefore written by all
+    // 4 search workers (and by every parallel lab game) on first use. That cannot corrupt memory - the
+    // array is fully built before the reference is published, and a reference store is atomic - but on
+    // a weak memory model (arm64, i.e. the shipped osx-arm64 build) another thread can observe the
+    // reference before the element writes, read a stale zero bit, and skip a rule that should have
+    // fired. That would break the "same seed, same tree" guarantee on Apple Silicon only. Building
+    // eagerly costs one small array per definition per process and removes the hazard entirely.
+    private readonly ulong[] _listeners = HookListeners.Build(Passive);
+    private readonly ulong[] _activators = HookListeners.BuildActivated(Activated);
 
     /// <summary>True when some passive entry of this rule fires at this hook from this seat.</summary>
-    public bool ListensAt(EHookID hook, ERuleSeat seat) =>
-        HookListeners.Test(_listeners ??= HookListeners.Build(Passive), hook, seat);
-
-    // #191 search perf pass 10: the hooks any activated ability of this rule triggers on, built once.
-    private ulong[]? _activators;
+    public bool ListensAt(EHookID hook, ERuleSeat seat) => HookListeners.Test(_listeners, hook, seat);
 
     /// <summary>True when some activated ability of this rule triggers at this hook.</summary>
-    public bool ActivatesAt(EHookID hook) =>
-        HookListeners.Test(_activators ??= HookListeners.BuildActivated(Activated), hook, ERuleSeat.Actor);
+    public bool ActivatesAt(EHookID hook) => HookListeners.Test(_activators, hook, ERuleSeat.Actor);
 }
 
 /// <summary>

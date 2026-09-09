@@ -535,7 +535,12 @@ namespace FDG.Simulation
                     // save point has just written the flow state, then stop so nothing further mutates
                     // the store. A typed copy since #396 (StoreSnapshot), not a save string.
                     ActingPlayerAtEnd = actingPlayer;
-                    _captured.TrySetResult(StoreSnapshot.Capture(_store));
+                    // #191 perf: the line's SECOND whole-store copy (Run's Materialize is the first),
+                    // so it gets its own accumulator rather than hiding inside the engine timeline.
+                    var captureTiming = Ai.Tactician.Search.SearchTiming.Start();
+                    IStoreSnapshot result = StoreSnapshot.Capture(_store);
+                    Ai.Tactician.Search.SearchTiming.Stop(Ai.Tactician.Search.SearchTiming.Stage.SimCapture, captureTiming);
+                    _captured.TrySetResult(result);
                     return Task.FromResult(true);
                 }
 

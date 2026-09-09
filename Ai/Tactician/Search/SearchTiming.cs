@@ -25,7 +25,7 @@ namespace FDG.Ai.Tactician.Search
         public enum Stage
         {
             Iteration, Select, EnumerateUnits, EnumerateEdges, ScratchMaterialize, ScratchPlanner,
-            Candidates, Scoring, Expand, SimMaterialize, SimRegistries, SimServer, SimRun, Leaf,
+            Candidates, Scoring, Expand, SimMaterialize, SimRegistries, SimServer, SimRun, SimCapture, Leaf,
             // Callee-level drill-down (overlap their callers, and each other where nested).
             RuleDispatch, Combat, MoveQuery, Sight, Pathfind, PlanMove, ObjectiveProj,
             // Inside a simulated activation's Choose Action stage.

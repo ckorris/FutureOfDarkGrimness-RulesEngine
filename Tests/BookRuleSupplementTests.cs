@@ -30,6 +30,31 @@ namespace FDG.Tests
                 },
                 NoAbilities);
 
+        // #191 perf passes 4/10 made the constructor walk Passive and Activated eagerly (a (hook, seat)
+        // bitset each). A hand-authored supplement entry may omit both arrays - the loader's own
+        // documented minimal shape - and System.Text.Json then passes null, which turned a legal
+        // supplement into a NullReferenceException out of RuleSupplementSet.LoadMerged. An absent
+        // array means "no entries"; nothing should listen or activate.
+        [Test]
+        public void DefinitionWithNoPassiveOrActivatedArrays_LoadsAndListensNowhere()
+        {
+            const string json = """
+                { "name": "Alpha", "scope": "Unit", "description": "no hooks at all" }
+                """;
+
+            SpecialRuleDefinition? definition = JsonSerializer.Deserialize<SpecialRuleDefinition>(
+                json, FDG.Rules.Serialization.RuleJson.Options);
+
+            Assert.That(definition, Is.Not.Null);
+            Assert.That(definition!.Name, Is.EqualTo("Alpha"));
+            foreach (EHookID hook in Enum.GetValues<EHookID>())
+            {
+                Assert.That(definition.ListensAt(hook, ERuleSeat.Actor), Is.False);
+                Assert.That(definition.ListensAt(hook, ERuleSeat.Subject), Is.False);
+                Assert.That(definition.ActivatesAt(hook), Is.False);
+            }
+        }
+
         private static SpecialRuleDefinition AuraRule(string name, string grants) =>
             new SpecialRuleDefinition(name,
                 new List<HookEntry>

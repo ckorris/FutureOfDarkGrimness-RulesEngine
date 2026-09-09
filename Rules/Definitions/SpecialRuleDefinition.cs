@@ -89,9 +89,16 @@ public static class HookListeners
     private static readonly int Words =
         ((Enum.GetValues<EHookID>().Select(h => (int)h).Max() + 1) * SeatCount + 63) / 64;
 
-    public static ulong[] Build(IReadOnlyList<HookEntry> passive)
+    public static ulong[] Build(IReadOnlyList<HookEntry>? passive)
     {
         var mask = new ulong[Words];
+        // A definition deserialized from a hand-authored supplement may omit "passive" / "activated"
+        // entirely, in which case System.Text.Json hands the constructor a null list. Before these
+        // bitsets existed (#191 perf passes 4 and 10) nothing walked the lists at construction, so a
+        // supplement like { "name": ..., "scope": ..., "description": ... } loaded fine; walking null
+        // turned that into a NullReferenceException out of RuleSupplementSet.LoadMerged. Null means
+        // "no entries", which is what an absent array says.
+        if (passive == null) return mask;
         foreach (HookEntry entry in passive)
         {
             int bit = (int)entry.HookID * SeatCount + (int)entry.Seat;
@@ -101,9 +108,10 @@ public static class HookListeners
     }
 
     /// <summary>Activated abilities have no seat; they are recorded on the Actor bit of their trigger hook.</summary>
-    public static ulong[] BuildActivated(IReadOnlyList<ActivatedAbility> activated)
+    public static ulong[] BuildActivated(IReadOnlyList<ActivatedAbility>? activated)
     {
         var mask = new ulong[Words];
+        if (activated == null) return mask;
         foreach (ActivatedAbility ability in activated)
         {
             int bit = (int)ability.TriggerHook * SeatCount + (int)ERuleSeat.Actor;

@@ -102,6 +102,10 @@ namespace FDG.Ai.Tactician
             {
             var notes = new List<string>();
             float total = 0f;
+            // #191 search perf pass 5: one volley context per estimate, not one per weapon batch.
+            AttackContext volleyContext = context.IsMelee || context.IsCharging
+                ? context with { IsMelee = false, IsCharging = false }
+                : context;
 
             foreach ((Weapon weapon, int count) in WeaponBatches(attacker.GetValue(), melee: false))
             {
@@ -123,7 +127,7 @@ namespace FDG.Ai.Tactician
                 if (sight <= 0f) continue;
 
                 float volley = EstimateVolley(evaluator, attacker, defender, weapon, count,
-                    context with { IsMelee = false, IsCharging = false }, notes);
+                    volleyContext, notes);
                 total += sight < 1f ? sight * volley : volley;
             }
 
@@ -216,10 +220,13 @@ namespace FDG.Ai.Tactician
             // --- ResolveImpactHitsStage mirror: charger's Impact(X) minus Counter's reduction, each
             // die a hit on 2+, resolved as a synthetic AP-0 attack before any swing.
             float impactWounds = 0f;
-            var contactParticipants = new List<RuleParticipant> { RuleParticipant.Actor(atk) };
-            contactParticipants.AddRange(DetermineStrikeOrderStage.SubjectWithMeleeWeapons(def));
+            // #191 search perf pass 5: the defender's melee participants once (two dispatches read them).
+            RuleParticipant[] defenderMelee = DetermineStrikeOrderStage.SubjectWithMeleeWeapons(def);
+            var contactParticipants = new RuleParticipant[defenderMelee.Length + 1];
+            contactParticipants[0] = RuleParticipant.Actor(atk);
+            Array.Copy(defenderMelee, 0, contactParticipants, 1, defenderMelee.Length);
             IReadOnlyList<RuleOperation> contactOps = Ops(evaluator.EvaluateAllNamed(
-                new ChargeContactContext(atk, def), contactParticipants.ToArray()));
+                new ChargeContactContext(atk, def), contactParticipants));
             var impact = new ImpactSink();
             impact.ApplyFrom(contactOps);
             if (impact.TotalDice > 0)
@@ -237,10 +244,13 @@ namespace FDG.Ai.Tactician
             // --- DetermineStrikeOrderStage mirror: a Counter defender with a usable melee weapon takes
             // the first swing, and the charge is spent - nobody counts as charging from here on.
             IReadOnlyList<RuleOperation> counterOps = Ops(evaluator.EvaluateAllNamed(
-                new CounterTriggerContext(atk, def),
-                DetermineStrikeOrderStage.SubjectWithMeleeWeapons(def)));
-            bool defenderStrikesFirst = counterOps.OfType<RuleOperation.StrikeFirst>().Any()
-                && def.GetMeleeWeapons().Count > 0;
+                new CounterTriggerContext(atk, def), defenderMelee));
+            bool anyStrikeFirst = false;
+            for (int i = 0; i < counterOps.Count && !anyStrikeFirst; i++)
+            {
+                anyStrikeFirst = counterOps[i] is RuleOperation.StrikeFirst;
+            }
+            bool defenderStrikesFirst = anyStrikeFirst && def.GetMeleeWeapons().Count > 0;
 
             var meleeContext = new AttackContext(distanceInches, IsMelee: true,
                 IsCharging: !defenderStrikesFirst);
@@ -298,22 +308,32 @@ namespace FDG.Ai.Tactician
             NoteIf(def.Tokens.GetAllTokens(TokenType.Mark).Any(),
                 "defender carries Mark tokens: unpriced (claiming them mutates state)", notes);
 
+            // #191 search perf pass 5: the defender's living models once per volley (three dispatches
+            // read them), and the sinks only when a rule actually produced an operation - an empty
+            // operation list leaves every sink at its default (no floor, net 0, multiplier 1, ...).
+            IReadOnlyList<IModel> defenderModels = HeroStatRules.LivingModels(def);
             IReadOnlyList<RuleOperation> hitModOps = Ops(evaluator.EvaluateAllNamed(
                 new HitRollModifierContext(atk, def, context.DistanceInches, context.AttackerMoved,
                     context.IsMelee, context.IsCharging),
                 ActorWithBatch(atk, weapon),
-                RuleParticipant.Subject(def, models: HeroStatRules.LivingModels(def))));
+                RuleParticipant.Subject(def, models: defenderModels)));
 
             int baseQuality = HeroStatRules.GetAttackQuality(atk, weapon);
-            var qualityFloor = new QualityFloorSink();
-            qualityFloor.ApplyFrom(hitModOps);
-            if (qualityFloor.HasFloor)
-                baseQuality = Math.Min(baseQuality, qualityFloor.Quality);
+            int hitNet = 0;
+            if (hitModOps.Count > 0)
+            {
+                var qualityFloor = new QualityFloorSink();
+                qualityFloor.ApplyFrom(hitModOps);
+                if (qualityFloor.HasFloor)
+                    baseQuality = Math.Min(baseQuality, qualityFloor.Quality);
+
+                var hitModifiers = new RollModifierSink();
+                hitModifiers.ApplyFrom(hitModOps);
+                hitNet = hitModifiers.Net(ERollKind.Hit);
+            }
 
             float attackCount = weapon.Attacks * weaponCount;
-            var hitModifiers = new RollModifierSink();
-            hitModifiers.ApplyFrom(hitModOps);
-            int hitRollNeeded = baseQuality - hitModifiers.Net(ERollKind.Hit);
+            int hitRollNeeded = baseQuality - hitNet;
 
             if (context.IsMelee && FatigueUtilities.CountsAsFatiguedInMelee(atk))
                 hitRollNeeded = 6; // fatigue overrides every modifier
@@ -326,32 +346,44 @@ namespace FDG.Ai.Tactician
                 new HitRollCompleteContext(atk, def, rolls, context.DistanceInches,
                     context.IsMelee, context.IsCharging),
                 ActorWithBatch(atk, weapon),
-                RuleParticipant.Subject(def, models: HeroStatRules.LivingModels(def))));
+                RuleParticipant.Subject(def, models: defenderModels)));
 
-            List<SuccessfulHitInfo> groups = PerHitApSplitter.Split(successful, completeOps);
+            // With no operations the splitter returns exactly this one-group list.
+            List<SuccessfulHitInfo> groups = completeOps.Count == 0
+                ? new List<SuccessfulHitInfo> { new SuccessfulHitInfo(successful) }
+                : PerHitApSplitter.Split(successful, completeOps);
 
-            var hitInjection = new HitInjectionSink();
-            hitInjection.ApplyFrom(completeOps);
-            if (hitInjection.TotalExtraHits > 0f)
-                groups.Add(SingleGroupInfo(hitInjection.TotalExtraHits));
-
-            var hitMultiplier = new HitMultiplierSink();
-            hitMultiplier.ApplyFrom(completeOps);
-            if (hitMultiplier.NetMultiplier > 1)
+            int saveNet = 0;
+            int apReduction = 0;
+            if (completeOps.Count > 0)
             {
-                // Mirrors RollToHitStage: the model-count cap is PER HIT and the multiplied hits stack,
-                // so it trims the MULTIPLIER, not the volley's total.
-                float currentHits = groups.Sum(group => group.HitCount);
-                int livingDefenders = def.Models.Count(model => model.GetIsAlive());
-                int effectiveMultiplier = Math.Max(1, Math.Min(hitMultiplier.NetMultiplier, livingDefenders));
-                float cappedHits = currentHits * effectiveMultiplier;
-                if (cappedHits - currentHits > 0f)
-                    groups.Add(SingleGroupInfo(cappedHits - currentHits));
-            }
+                var hitInjection = new HitInjectionSink();
+                hitInjection.ApplyFrom(completeOps);
+                if (hitInjection.TotalExtraHits > 0f)
+                    groups.Add(SingleGroupInfo(hitInjection.TotalExtraHits));
 
-            var saveModifiers = new RollModifierSink();
-            saveModifiers.ApplyFrom(completeOps);
-            int apReduction = completeOps.OfType<RuleOperation.ReduceArmorPenetration>().Sum(op => op.Amount);
+                var hitMultiplier = new HitMultiplierSink();
+                hitMultiplier.ApplyFrom(completeOps);
+                if (hitMultiplier.NetMultiplier > 1)
+                {
+                    // Mirrors RollToHitStage: the model-count cap is PER HIT and the multiplied hits stack,
+                    // so it trims the MULTIPLIER, not the volley's total.
+                    float currentHits = groups.Sum(group => group.HitCount);
+                    int livingDefenders = def.Models.Count(model => model.GetIsAlive());
+                    int effectiveMultiplier = Math.Max(1, Math.Min(hitMultiplier.NetMultiplier, livingDefenders));
+                    float cappedHits = currentHits * effectiveMultiplier;
+                    if (cappedHits - currentHits > 0f)
+                        groups.Add(SingleGroupInfo(cappedHits - currentHits));
+                }
+
+                var saveModifiers = new RollModifierSink();
+                saveModifiers.ApplyFrom(completeOps);
+                saveNet = saveModifiers.Net(ERollKind.Save);
+                foreach (RuleOperation op in completeOps)
+                {
+                    if (op is RuleOperation.ReduceArmorPenetration reduce) apReduction += reduce.Amount;
+                }
+            }
 
             // --- CoverCheckStage stand-in: cover is a caller-supplied fact about the hypothetical
             // position; the ignore rules (Blast/Indirect/Takedown) are still the engine's own query.
@@ -360,7 +392,7 @@ namespace FDG.Ai.Tactician
 
             var bonusAttacks = new BonusAttackSink();
             float wounds = ResolveSaves(evaluator, atk, def, weapon, groups, apReduction,
-                saveModifiers.Net(ERollKind.Save), coverBonus, context.IsMelee, notes, bonusAttacks);
+                saveNet, coverBonus, context.IsMelee, notes, bonusAttacks, defenderModels);
 
             // --- ResolveBonusMeleeAttacksStage mirror (#376 Bloodthirsty): the follow-up batch earned
             // by block-roll 1s, priced first-order - the same hit threshold and weapon, plain saves.
@@ -376,7 +408,7 @@ namespace FDG.Ai.Tactician
                     NoteIf(true, $"{weapon.Name}: Bloodthirsty follow-up priced first-order", notes);
                     wounds += ResolveSaves(evaluator, atk, def, weapon,
                         new List<SuccessfulHitInfo> { SingleGroupInfo(bonusHits) }, apReduction,
-                        saveModifiers.Net(ERollKind.Save), coverBonus, context.IsMelee, notes);
+                        saveNet, coverBonus, context.IsMelee, notes, defenderModels: defenderModels);
                 }
             }
             return wounds;
@@ -386,7 +418,8 @@ namespace FDG.Ai.Tactician
         // impact hits). Returns the expected wound total BEFORE capping at the defender's remaining.
         private static float ResolveSaves(RuleEvaluator evaluator, UnitData atk, UnitData def,
             Weapon weapon, List<SuccessfulHitInfo> groups, int apReduction, int wholeAttackSaveModifier,
-            int coverBonus, bool isMelee, List<string> notes, BonusAttackSink? bonusAttackSink = null)
+            int coverBonus, bool isMelee, List<string> notes, BonusAttackSink? bonusAttackSink = null,
+            IReadOnlyList<IModel>? defenderModels = null)
         {
             int baseDefense = HeroStatRules.GetSaveDefense(def);
             int ap = Math.Max(0, weapon.ArmorPenetration - apReduction);
@@ -416,18 +449,37 @@ namespace FDG.Ai.Tactician
             IReadOnlyList<RuleOperation> saveCompleteOps = Ops(evaluator.EvaluateAllNamed(
                 new SaveRollCompleteContext(atk, def, new DiceResults(combinedSaveFaces), isMelee),
                 RuleParticipant.Actor(atk, weapon),
-                RuleParticipant.Subject(def, models: HeroStatRules.LivingModels(def))));
+                RuleParticipant.Subject(def, models: defenderModels ?? HeroStatRules.LivingModels(def))));
 
             // #376 Bloodthirsty: collect the earned follow-up attacks for the caller's second pass.
             // Null on the second pass itself (and on the impact-hit path) - no chaining, and impact
             // hits are not weapon swings, matching the engine's consumption sites.
-            bonusAttackSink?.ApplyFrom(saveCompleteOps);
+            // #191 search perf pass 5: every sink below reads as its default off an empty list.
+            int? rerollSavesAtOrAbove = null;
+            float extraWounds = 0f;
+            bool hasIgnore = false;
+            int ignoreThreshold = 0;
+            if (saveCompleteOps.Count > 0)
+            {
+                bonusAttackSink?.ApplyFrom(saveCompleteOps);
 
-            var reroll = new RerollSink();
-            reroll.ApplyFrom(saveCompleteOps);
+                var reroll = new RerollSink();
+                reroll.ApplyFrom(saveCompleteOps);
+                rerollSavesAtOrAbove = reroll.RerollSavesAtOrAbove;
+
+                var woundInjection = new WoundInjectionSink();
+                woundInjection.ApplyFrom(saveCompleteOps);
+                extraWounds = woundInjection.TotalExtraWounds;
+
+                var woundIgnore = new WoundIgnoreSink();
+                woundIgnore.ApplyFrom(saveCompleteOps);
+                hasIgnore = woundIgnore.HasIgnore;
+                if (hasIgnore) ignoreThreshold = woundIgnore.Threshold;
+            }
+
             // Mirrors AssignWoundsStage: the reroll threshold is the unmodified max (6) unless a Boost
             // variant widened it to 5-6, and the same clamp keeps an out-of-range authoring honest.
-            if (reroll.RerollSavesAtOrAbove is int rerollFrom)
+            if (rerollSavesAtOrAbove is int rerollFrom)
             {
                 foreach ((IDiceResults saved, int saveNeeded) in savedGroups)
                 {
@@ -440,19 +492,18 @@ namespace FDG.Ai.Tactician
 
             IReadOnlyList<RuleOperation> woundOps = Ops(evaluator.EvaluateAllNamed(
                 new PreApplyWoundContext(atk, def), RuleParticipant.Actor(atk, weapon)));
-            var woundMultiplier = new WoundModifierSink();
-            woundMultiplier.ApplyFrom(woundOps);
-            if (woundMultiplier.NetMultiplier > 1)
-                totalWounds = ConfineToClumps(totalWounds, woundMultiplier.NetMultiplier, def);
+            if (woundOps.Count > 0)
+            {
+                var woundMultiplier = new WoundModifierSink();
+                woundMultiplier.ApplyFrom(woundOps);
+                if (woundMultiplier.NetMultiplier > 1)
+                    totalWounds = ConfineToClumps(totalWounds, woundMultiplier.NetMultiplier, def);
+            }
 
-            var woundInjection = new WoundInjectionSink();
-            woundInjection.ApplyFrom(saveCompleteOps);
-            totalWounds += woundInjection.TotalExtraWounds;
+            totalWounds += extraWounds;
 
-            var woundIgnore = new WoundIgnoreSink();
-            woundIgnore.ApplyFrom(saveCompleteOps);
-            if (woundIgnore.HasIgnore && totalWounds > 0f)
-                totalWounds -= Dice.Roll(totalWounds).AtOrAbove(woundIgnore.Threshold);
+            if (hasIgnore && totalWounds > 0f)
+                totalWounds -= Dice.Roll(totalWounds).AtOrAbove(ignoreThreshold);
 
             // Takedown re-scopes the attack to one chosen model (BuildTargetListStage); estimate the
             // best case: confined to the healthiest living model, overkill lost.
@@ -573,13 +624,18 @@ namespace FDG.Ai.Tactician
             return Batch(weapons);
         }
 
+        private static readonly WeaponComparer BatchComparer = new WeaponComparer();
+
         private static List<(Weapon Weapon, int Count)> Batch(List<Weapon> weapons)
         {
-            var comparer = new WeaponComparer();
-            var batches = new List<(Weapon Weapon, int Count)>();
+            var batches = new List<(Weapon Weapon, int Count)>(weapons.Count);
             foreach (Weapon weapon in weapons)
             {
-                int index = batches.FindIndex(batch => comparer.Equals(batch.Weapon, weapon));
+                int index = -1;
+                for (int i = 0; i < batches.Count && index < 0; i++)
+                {
+                    if (BatchComparer.Equals(batches[i].Weapon, weapon)) index = i;
+                }
                 if (index >= 0) batches[index] = (batches[index].Weapon, batches[index].Count + 1);
                 else batches.Add((weapon, 1));
             }
@@ -598,8 +654,13 @@ namespace FDG.Ai.Tactician
 
         private static float SumFear(RuleEvaluator evaluator, MeleeResolutionContext resolution, UnitData actor)
         {
-            return Ops(evaluator.EvaluateAllNamed(resolution, RuleParticipant.Actor(actor)))
-                .OfType<RuleOperation.ExtraMeleeWoundCount>().Sum(op => op.Amount);
+            IReadOnlyList<RuleOperation> ops = Ops(evaluator.EvaluateAllNamed(resolution, RuleParticipant.Actor(actor)));
+            float total = 0f;
+            for (int i = 0; i < ops.Count; i++)
+            {
+                if (ops[i] is RuleOperation.ExtraMeleeWoundCount extra) total += extra.Amount;
+            }
+            return total;
         }
 
         /// <summary>
@@ -638,8 +699,14 @@ namespace FDG.Ai.Tactician
         }
 
         private static IReadOnlyList<RuleOperation> Ops(
-            IReadOnlyList<(RuleOperation Op, string RuleName)> named) =>
-            named.Select(pair => pair.Op).ToList();
+            IReadOnlyList<(RuleOperation Op, string RuleName)> named)
+        {
+            // #191 search perf pass 5: the empty answer is by far the common one - no list for it.
+            if (named.Count == 0) return Array.Empty<RuleOperation>();
+            var ops = new List<RuleOperation>(named.Count);
+            for (int i = 0; i < named.Count; i++) ops.Add(named[i].Op);
+            return ops;
+        }
 
         private static void NoteIf(bool condition, string note, List<string> notes)
         {

@@ -125,6 +125,10 @@ namespace FDG.Ai.Tactician
             List<IUnit> friends = LivingFriends(tableState, self);
 
             var enemyFootprints = MovementPlanner.LiveEnemyFootprints(tableState, self.PlayerID);
+            // #191 search perf pass 3: one scene (terrain, enemy and friendly footprints with their hulls
+            // and zones) for every plan of this enumeration - the board is frozen while it runs.
+            var scene = new MovementPlanner.PlanningScene(terrain, enemyFootprints,
+                MovementPlanner.LiveFriendlyFootprints(tableState, self.PlayerID, self.ID));
             float leadRadius = living.Max(mb => mb.GetValue().BaseRadiusInches);
             // #361: terrain clearance is the CIRCUMSCRIBED radius (see TerrainClearanceRadius);
             // leadRadius (inscribed) stays for base-contact arithmetic, where the refine loop's
@@ -145,13 +149,13 @@ namespace FDG.Ai.Tactician
                     EActionType.Advance, unit, living, tableState, evaluator, objective.Position, advanceBudget,
                     canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain,
                     goalRadius: TacticalAnalysis.ObjectiveSeizureRadiusInches,
-                    targetObjective: objective, sharedGrid: sharedGrid));
+                    targetObjective: objective, sharedGrid: sharedGrid, scene: scene));
                 candidates.Add(Plan(EMacroIntent.RushObjective,
                     $"intent=RushObjective obj=({objective.Position.x:F0},{objective.Position.z:F0})",
                     EActionType.Rush, unit, living, tableState, evaluator, objective.Position, rushBudget,
                     canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain,
                     goalRadius: TacticalAnalysis.ObjectiveSeizureRadiusInches,
-                    targetObjective: objective, sharedGrid: sharedGrid));
+                    targetObjective: objective, sharedGrid: sharedGrid, scene: scene));
             }
 
             // M14 Contest (#191 step 10 P4, 2026-09-06): sliver denial. One model ends inside the
@@ -170,10 +174,10 @@ namespace FDG.Ai.Tactician
                         <= TacticalAnalysis.ObjectiveSeizureRadiusInches) continue;
                 candidates.Add(PlanContest(unit, living, tableState, self, projection.Objective, start,
                     EActionType.Advance, advanceBudget, canMoveThroughEnemies, ignoresDifficult,
-                    ignoresAllTerrain, sharedGrid));
+                    ignoresAllTerrain, sharedGrid, scene));
                 candidates.Add(PlanContest(unit, living, tableState, self, projection.Objective, start,
                     EActionType.Rush, rushBudget, canMoveThroughEnemies, ignoresDifficult,
-                    ignoresAllTerrain, sharedGrid));
+                    ignoresAllTerrain, sharedGrid, scene));
             }
 
             List<IUnit> rankedEnemies = enemies
@@ -213,7 +217,7 @@ namespace FDG.Ai.Tactician
                             $"intent=EngageAtRange band={band} target={enemy.Name} d={d:F1}",
                             EActionType.Advance, unit, living, tableState, evaluator, goal, advanceBudget,
                             canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain,
-                            goalRadius: BandMarginInches, targetEnemy: enemy, band: band, sharedGrid: sharedGrid));
+                            goalRadius: BandMarginInches, targetEnemy: enemy, band: band, sharedGrid: sharedGrid, scene: scene));
                     }
                 }
 
@@ -222,7 +226,7 @@ namespace FDG.Ai.Tactician
                 {
                     MacroAction charge = BuildCharge(unit, living, tableState, evaluator, self, enemy,
                         start, leadRadius, clearanceRadius, terrain, enemyFootprints,
-                        canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, perModelBudgets);
+                        canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, perModelBudgets, scene);
                     if (charge.Feasibility == EFeasibility.Reachable)
                     {
                         candidates.Add(charge);
@@ -247,7 +251,7 @@ namespace FDG.Ai.Tactician
                             EActionType.Rush, unit, living, tableState, evaluator,
                             PointAtDistanceFrom(aim, start, standoff), rushBudget,
                             canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain,
-                            goalRadius: 1f, targetEnemy: enemy, sharedGrid: sharedGrid));
+                            goalRadius: 1f, targetEnemy: enemy, sharedGrid: sharedGrid, scene: scene));
                     }
                 }
             }
@@ -263,7 +267,7 @@ namespace FDG.Ai.Tactician
                     $"intent=FallBack from={threat.Name}", EActionType.Rush,
                     unit, living, tableState, evaluator, ClampToTable(away), rushBudget,
                     canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, goalRadius: 1f,
-                    targetEnemy: threat, sharedGrid: sharedGrid));
+                    targetEnemy: threat, sharedGrid: sharedGrid, scene: scene));
             }
 
             // M7 - seek cover from the biggest threat, behind the nearest cover piece in reach.
@@ -274,7 +278,7 @@ namespace FDG.Ai.Tactician
                     $"intent=SeekCoverFrom from={rankedEnemies[0].Name}", EActionType.Rush,
                     unit, living, tableState, evaluator, coverGoal, rushBudget,
                     canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, goalRadius: 1f,
-                    targetEnemy: rankedEnemies[0], sharedGrid: sharedGrid));
+                    targetEnemy: rankedEnemies[0], sharedGrid: sharedGrid, scene: scene));
             }
 
             // M8 - block the biggest threat's lane to our most valuable assets (a LINE across it).
@@ -296,7 +300,7 @@ namespace FDG.Ai.Tactician
                         unit, living, tableState, evaluator, lane, rushBudget,
                         canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, goalRadius: 1f,
                         targetEnemy: threat, formation: MovementPlanner.EFormation.Line,
-                        lineAxis: (-laneDz, laneDx), sharedGrid: sharedGrid));
+                        lineAxis: (-laneDz, laneDx), sharedGrid: sharedGrid, scene: scene));
                 }
             }
 
@@ -313,7 +317,7 @@ namespace FDG.Ai.Tactician
                         $"intent=Escort ally={ward.Name}", EActionType.Rush,
                         unit, living, tableState, evaluator, ClampToTable(goal), rushBudget,
                         canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, goalRadius: 2f,
-                        targetAlly: ward, sharedGrid: sharedGrid));
+                        targetAlly: ward, sharedGrid: sharedGrid, scene: scene));
                 }
             }
 
@@ -324,7 +328,7 @@ namespace FDG.Ai.Tactician
                 candidates.Add(Plan(EMacroIntent.Concentrate,
                     "intent=Concentrate", EActionType.Rush,
                     unit, living, tableState, evaluator, mass, rushBudget,
-                    canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, goalRadius: 3f, sharedGrid: sharedGrid));
+                    canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, goalRadius: 3f, sharedGrid: sharedGrid, scene: scene));
             }
 
             // M11 - move into cast range of the best spell's intended target. Only for units holding
@@ -383,7 +387,7 @@ namespace FDG.Ai.Tactician
                                 $"intent=SideStep side={(side > 0 ? "left" : "right")}",
                                 EActionType.Advance, unit, living, tableState, evaluator, goal,
                                 advanceBudget, canMoveThroughEnemies, ignoresDifficult,
-                                ignoresAllTerrain, goalRadius: 2f, sharedGrid: sharedGrid));
+                                ignoresAllTerrain, goalRadius: 2f, sharedGrid: sharedGrid, scene: scene));
                         }
                     }
                 }
@@ -456,7 +460,8 @@ namespace FDG.Ai.Tactician
             UnitData self, IUnit enemy, Position start, float leadRadius, float clearanceRadius,
             List<ITerrain> terrain, List<EnemyModelFootprint> enemyFootprints,
             bool canMoveThroughEnemies, bool ignoresDifficult, bool ignoresAllTerrain,
-            IReadOnlyDictionary<ModelID, (float Advance, float Rush, float Charge)> perModelBudgets)
+            IReadOnlyDictionary<ModelID, (float Advance, float Rush, float Charge)> perModelBudgets,
+            MovementPlanner.PlanningScene scene)
         {
             float fullChargeReach = TacticalAnalysis.ChargeDistanceAgainst(self, enemy, evaluator, terrain);
             // #264 issue 7: the same per-model split as the move families. The target-conditioned
@@ -511,7 +516,7 @@ namespace FDG.Ai.Tactician
                     s => MovementPlanner.BuildCandidate(unit, living, start.x, start.z, ndx, ndz, s, chargeReach),
                     step, unit, living, chargeBudgetFor,
                     enemyFootprints, canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, terrain,
-                    MovementPlanner.LiveFriendlyFootprints(tableState, self.PlayerID, self.ID),
+                    scene.Friendlies,
                     // #256 S2: side-step around a friendly in the charge lane instead of halving to a stall.
                     (s, lat) => MovementPlanner.BuildCandidate(unit, living, start.x, start.z, ndx, ndz, s,
                         chargeReach, lateralOffsetInches: lat));
@@ -530,10 +535,10 @@ namespace FDG.Ai.Tactician
                     routedContact + MovementPlanner.ChargeContactTargetGapInches);
                 move = MovementPlanner.PlanMoveToward(unit, living, tableState, contactGoal,
                     chargeReach, chargeReach, chargeBudgetFor,
-                    canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain);
+                    canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, scene: scene);
                 move = MovementPlanner.NudgeToContact(move, unit, living, tableState, enemy,
                     chargeBudgetFor, enemyFootprints, canMoveThroughEnemies,
-                    ignoresDifficult, ignoresAllTerrain, terrain);
+                    ignoresDifficult, ignoresAllTerrain, terrain, scene);
             }
 
             // #361: the grade asks "did we reach the unit we are CHARGING?", so the gap is measured
@@ -565,7 +570,7 @@ namespace FDG.Ai.Tactician
             ITableState tableState, UnitData self, IObjective objective, Position start,
             EActionType actionType, PlanBudget budget,
             bool canMoveThroughEnemies, bool ignoresDifficult, bool ignoresAllTerrain,
-            Func<TerrainGrid> sharedGrid)
+            Func<TerrainGrid> sharedGrid, MovementPlanner.PlanningScene? scene = null)
         {
             Position marker = objective.Position;
             float leadRadius = living.Min(mb => mb.GetValue().BaseShape.CircumscribedRadiusInches);
@@ -576,7 +581,7 @@ namespace FDG.Ai.Tactician
             float safeBudget = Math.Max(0f, budget.Inches - 0.001f);
             (List<ModelMoveEntry> move, _) = MovementPlanner.PlanSliverAlongRoute(
                 unit, living, tableState, goal, safeBudget, safeBudget, budget.PerModel,
-                canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, sharedGrid);
+                canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, sharedGrid, scene);
 
             float leadNow = TacticalAnalysis.MinBaseEdgeDistanceToPoint(self, marker);
             float lead = TacticalAnalysis.MinEndBaseEdgeDistanceToPoint(move, marker);
@@ -599,7 +604,8 @@ namespace FDG.Ai.Tactician
             float goalRadius, IUnit? targetEnemy = null, IObjective? targetObjective = null,
             IUnit? targetAlly = null, ERangeBand? band = null,
             MovementPlanner.EFormation formation = MovementPlanner.EFormation.Grid,
-            (float X, float Z)? lineAxis = null, Func<TerrainGrid>? sharedGrid = null)
+            (float X, float Z)? lineAxis = null, Func<TerrainGrid>? sharedGrid = null,
+            MovementPlanner.PlanningScene? scene = null)
         {
             // The MOVE takes the float-precision margin; the VALIDATOR keeps the full budget
             // (the ResolverGuide gotcha - giving both the same reduced number makes the first
@@ -608,13 +614,13 @@ namespace FDG.Ai.Tactician
             (List<ModelMoveEntry> move, List<Position> route) = MovementPlanner.PlanMoveAlongRoute(
                 unit, living, tableState, goal,
                 safeBudget, safeBudget, budget.PerModel,
-                canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, formation, lineAxis, sharedGrid);
+                canMoveThroughEnemies, ignoresDifficult, ignoresAllTerrain, formation, lineAxis, sharedGrid, scene);
 
             Position end = MoveCentroid(move, living);
             // #264 issue 1: progress along the ROUTE, not the straight line. A detour around a large
             // impassible piece closes ~zero straight-line gap - sometimes a negative one - so a
             // correct move was graded Blocked and lost its family's pruning slot to a worse one.
-            var terrain = tableState.Terrain.Objects.ToList();
+            List<ITerrain> terrain = scene?.Terrain ?? tableState.Terrain.Objects.ToList();
             // #361: the same clearance radius the route was planned with (see TerrainClearanceRadius).
             float baseRadius = MovementPlanner.TerrainClearanceRadius(living);
             float progress = RouteMetrics.Length(route)

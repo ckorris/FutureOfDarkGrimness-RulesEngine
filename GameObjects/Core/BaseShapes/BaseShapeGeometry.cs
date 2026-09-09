@@ -38,6 +38,14 @@ namespace FDG
             SurfaceGap2D(a, posA, new Float2(0f, 1f), b, posB, new Float2(0f, 1f));
 
         /// <summary>
+        /// <see cref="SurfaceGap2D(IBaseShape, Position, Float2, IBaseShape, Position, Float2)"/> on hulls
+        /// the caller already holds - the same expression, so the same float. #191 search perf pass 3: the
+        /// movement validators build each hull once per pass instead of once per partner pair.
+        /// </summary>
+        public static float FootprintGap(BaseFootprint a, BaseFootprint b) =>
+            ConvexHullGap(a.Corners, b.Corners) - a.Rounding - b.Rounding;
+
+        /// <summary>
         /// True when two bases overlap (their surface gap is negative). The one-call "are these colliding?"
         /// test — facing-aware, shape-aware, no per-shape branching at the call site.
         /// </summary>

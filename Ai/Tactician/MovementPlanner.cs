@@ -200,7 +200,8 @@ namespace FDG.Ai.Tactician
             DataBinding<UnitData> unit, List<DataBinding<ModelData>> living, ITableState tableState,
             IUnit target, Func<ModelMoveEntry, ModelMoveBudget> budgetFor,
             List<EnemyModelFootprint> allEnemies, bool canMoveThroughEnemies,
-            bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain, List<ITerrain> terrain)
+            bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain, List<ITerrain> terrain,
+            PlanningScene? scene = null)
         {
             List<EnemyModelFootprint> targetFootprints = UnitFootprints(target);
             if (targetFootprints.Count == 0 || living.Count == 0) return move;
@@ -252,10 +253,10 @@ namespace FDG.Ai.Tactician
             }
             if (delta <= 0f) return move;
 
-            bool valid = MovementUtilities.ValidatePaths(nudged, budgetFor, allEnemies,
+            bool valid = MovementUtilities.ValidatePathsForPlanning(nudged, budgetFor, allEnemies,
                 canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain,
-                out _, LiveFriendlyFootprints(tableState, unit.GetValue().PlayerID, unit.GetValue().ID),
-                lenientCoherency: true);
+                scene?.Friendlies ?? LiveFriendlyFootprints(tableState, unit.GetValue().PlayerID, unit.GetValue().ID),
+                lenientCoherency: true) == MovementUtilities.EMoveFaultKinds.None;
             return valid ? nudged : move;
         }
 
@@ -320,22 +321,24 @@ namespace FDG.Ai.Tactician
             Func<float, float, List<ModelMoveEntry>>? reaimAt = null,
             Func<float, List<ModelMoveEntry>>? snakeAt = null)
         {
-            bool Validate(List<ModelMoveEntry> c, out List<ReasonForInvalidMove> errs) =>
-                MovementUtilities.ValidatePaths(c, budgetFor, enemies, canMoveThroughEnemies,
-                    ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, out errs, friendlies,
+            // #191 search perf pass 3: the ladder reads only WHICH fault kinds a candidate has (the three
+            // tests below), so the planner path reports the set and each validator stops at the first
+            // fault of every kind it can produce - the same answers, a fraction of the geometry.
+            MovementUtilities.EMoveFaultKinds Faults(List<ModelMoveEntry> c) =>
+                MovementUtilities.ValidatePathsForPlanning(c, budgetFor, enemies, canMoveThroughEnemies,
+                    ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, friendlies,
                     lenientCoherency: true);
 
             float step = initialStep;
             List<ModelMoveEntry> candidate = candidateAt(step);
-            bool valid = Validate(candidate, out List<ReasonForInvalidMove> errors);
+            MovementUtilities.EMoveFaultKinds errors = Faults(candidate);
+            bool valid = errors == MovementUtilities.EMoveFaultKinds.None;
 
             int attempts = 0;
             while (!valid && attempts < MaxBackoffAttempts)
             {
-                bool impassiblePresent = errors.Count > 0
-                    && errors.Any(e => e.ErrorReasonType == EErrorReasonType.MovingThroughImpassibleTerrain);
-                bool friendlyPresent = errors.Count > 0
-                    && errors.Any(e => e.ErrorReasonType == EErrorReasonType.EndedOnFriendlyUnit);
+                bool impassiblePresent = (errors & MovementUtilities.EMoveFaultKinds.MovingThroughImpassibleTerrain) != 0;
+                bool friendlyPresent = (errors & MovementUtilities.EMoveFaultKinds.EndedOnFriendlyUnit) != 0;
 
                 // #256 S4 + #264 issue 5: the on-path snake goes FIRST and fires whenever ANY impassible
                 // fault is PRESENT (not only when it is the SOLE fault). The impassible fault is the
@@ -356,7 +359,7 @@ namespace FDG.Ai.Tactician
                     if (MaxModelMove(snake) >= 0.5f * step
                         && ForwardProgress(living, candidate, snake)
                             > Math.Max(MinBackoffStepInches, SnakeMinProgressFraction * step)
-                        && Validate(snake, out _))
+                        && Faults(snake) == MovementUtilities.EMoveFaultKinds.None)
                     {
                         global::FDG.Ai.Tactician.Search.SearchTiming.Note("plan: snake accepted");
                         return snake;
@@ -376,7 +379,7 @@ namespace FDG.Ai.Tactician
                         || (snakeAt != null && friendlyPresent && impassiblePresent)))
                 {
                     List<ModelMoveEntry>? reaimed = TryLateralReaim(reaimAt, step, living, candidate,
-                        c => Validate(c, out _));
+                        c => Faults(c) == MovementUtilities.EMoveFaultKinds.None);
                     if (reaimed != null) { global::FDG.Ai.Tactician.Search.SearchTiming.Note("plan: lateral reaim accepted"); return reaimed; }
                 }
 
@@ -384,7 +387,8 @@ namespace FDG.Ai.Tactician
                 candidate = step < MinBackoffStepInches
                     ? StayInPlace(unit)
                     : candidateAt(step);
-                valid = Validate(candidate, out errors);
+                errors = Faults(candidate);
+                valid = errors == MovementUtilities.EMoveFaultKinds.None;
                 attempts++;
             }
 
@@ -392,7 +396,7 @@ namespace FDG.Ai.Tactician
             {
                 // Reform in place to close any casualty gaps...
                 candidate = StayInPlace(unit);
-                valid = Validate(candidate, out _);
+                valid = Faults(candidate) == MovementUtilities.EMoveFaultKinds.None;
 
                 // ...but if even that is rejected (a unit intermingled with enemies can't re-pack without
                 // a model crossing an enemy base), hold exact positions.
@@ -410,8 +414,8 @@ namespace FDG.Ai.Tactician
         /// terrain, enemy, budget, or coherency fault is left to the halving ladder (a side-step can't fix
         /// those and might worsen them).
         /// </summary>
-        private static bool FriendlyStackingIsSoleObstacle(List<ReasonForInvalidMove> errors)
-            => errors.Count > 0 && errors.All(e => e.ErrorReasonType == EErrorReasonType.EndedOnFriendlyUnit);
+        private static bool FriendlyStackingIsSoleObstacle(MovementUtilities.EMoveFaultKinds faults)
+            => faults == MovementUtilities.EMoveFaultKinds.EndedOnFriendlyUnit;
 
         /// <summary>
         /// Probe a few lateral offsets of the pack anchor, returning the first that validates AND keeps
@@ -502,9 +506,9 @@ namespace FDG.Ai.Tactician
             IReadOnlyList<EnemyModelFootprint>? friendlies)
         {
             List<ModelMoveEntry> stay = StayInPlace(unit);
-            bool valid = MovementUtilities.ValidatePaths(stay, budgetFor, enemies, canMoveThroughEnemies,
-                ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, out _, friendlies,
-                lenientCoherency: true);
+            bool valid = MovementUtilities.ValidatePathsForPlanning(stay, budgetFor, enemies, canMoveThroughEnemies,
+                ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, friendlies,
+                lenientCoherency: true) == MovementUtilities.EMoveFaultKinds.None;
             return valid ? stay : HoldExactPositions(living);
         }
 
@@ -906,10 +910,10 @@ namespace FDG.Ai.Tactician
             Func<ModelMoveEntry, ModelMoveBudget> budgetFor,
             bool canMoveThroughEnemies, bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
             EFormation formation = EFormation.Grid, (float X, float Z)? lineAxis = null,
-            Func<TerrainGrid>? sharedGrid = null)
+            Func<TerrainGrid>? sharedGrid = null, PlanningScene? scene = null)
             => PlanMoveAlongRoute(unit, living, tableState, goal, moveBudgetInches, maxDistanceInches,
                 budgetFor, canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain,
-                formation, lineAxis, sharedGrid).Move;
+                formation, lineAxis, sharedGrid, scene).Move;
 
         /// <summary>
         /// <see cref="PlanMoveToward"/>, additionally handing back the ROUTE it followed (the
@@ -926,14 +930,15 @@ namespace FDG.Ai.Tactician
             Func<ModelMoveEntry, ModelMoveBudget> budgetFor,
             bool canMoveThroughEnemies, bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
             EFormation formation = EFormation.Grid, (float X, float Z)? lineAxis = null,
-            Func<TerrainGrid>? sharedGrid = null)
+            Func<TerrainGrid>? sharedGrid = null, PlanningScene? scene = null)
         {
             var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             try
             {
-            var terrain = tableState.Terrain.Objects.ToList();
-            var enemies = LiveEnemyFootprints(tableState, unit.GetValue().PlayerID);
-            var friendlies = LiveFriendlyFootprints(tableState, unit.GetValue().PlayerID, unit.GetValue().ID);
+            List<ITerrain> terrain = scene?.Terrain ?? tableState.Terrain.Objects.ToList();
+            List<EnemyModelFootprint> enemies = scene?.Enemies ?? LiveEnemyFootprints(tableState, unit.GetValue().PlayerID);
+            List<EnemyModelFootprint> friendlies = scene?.Friendlies
+                ?? LiveFriendlyFootprints(tableState, unit.GetValue().PlayerID, unit.GetValue().ID);
             (List<Position> path, TerrainGrid? routeGrid, float budget, float baseRadius) = RouteToward(
                 living, tableState, terrain, goal, moveBudgetInches, ignoresDifficultTerrain,
                 ignoresImpassibleTerrain, sharedGrid);
@@ -1039,11 +1044,12 @@ namespace FDG.Ai.Tactician
             float moveBudgetInches, float maxDistanceInches,
             Func<ModelMoveEntry, ModelMoveBudget> budgetFor,
             bool canMoveThroughEnemies, bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
-            Func<TerrainGrid>? sharedGrid = null)
+            Func<TerrainGrid>? sharedGrid = null, PlanningScene? scene = null)
         {
-            var terrain = tableState.Terrain.Objects.ToList();
-            var enemies = LiveEnemyFootprints(tableState, unit.GetValue().PlayerID);
-            var friendlies = LiveFriendlyFootprints(tableState, unit.GetValue().PlayerID, unit.GetValue().ID);
+            List<ITerrain> terrain = scene?.Terrain ?? tableState.Terrain.Objects.ToList();
+            List<EnemyModelFootprint> enemies = scene?.Enemies ?? LiveEnemyFootprints(tableState, unit.GetValue().PlayerID);
+            List<EnemyModelFootprint> friendlies = scene?.Friendlies
+                ?? LiveFriendlyFootprints(tableState, unit.GetValue().PlayerID, unit.GetValue().ID);
             (List<Position> path, TerrainGrid? routeGrid, float budget, float baseRadius) = RouteToward(
                 living, tableState, terrain, goal, moveBudgetInches, ignoresDifficultTerrain,
                 ignoresImpassibleTerrain, sharedGrid);
@@ -1148,6 +1154,27 @@ namespace FDG.Ai.Tactician
         /// 2v2 TEAMMATE's models in BOTH lists, so ally bases carried the enemy 1" standoff and
         /// no-move-through on top of their real friendly end-overlap constraint.
         /// </summary>
+        /// <summary>
+        /// #191 search perf pass 3: what every plan of one enumeration reads from the board - the terrain
+        /// list and the enemy and friendly footprints (each with its hull and zone). The board is frozen
+        /// while an enumeration runs, so building these once and handing them to every plan changes no
+        /// answer; without a scene each plan builds its own, as before.
+        /// </summary>
+        public sealed class PlanningScene
+        {
+            public List<ITerrain> Terrain { get; }
+            public List<EnemyModelFootprint> Enemies { get; }
+            public List<EnemyModelFootprint> Friendlies { get; }
+
+            public PlanningScene(List<ITerrain> terrain, List<EnemyModelFootprint> enemies,
+                List<EnemyModelFootprint> friendlies)
+            {
+                Terrain = terrain;
+                Enemies = enemies;
+                Friendlies = friendlies;
+            }
+        }
+
         public static List<EnemyModelFootprint> LiveEnemyFootprints(ITableState tableState, PlayerID playerID)
         {
             var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();

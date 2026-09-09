@@ -44,21 +44,22 @@ namespace FDG.Stages
         public static bool ValidatePaths(List<ModelMoveEntry> moves, float maxDistanceInches,
             IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors)
         {
-            errors = new List<ReasonForInvalidMove>();
-            Dictionary<ModelMoveEntry, float> distances = GetTotalMoveDistances(moves);
+            var sink = new FaultSink { Errors = new List<ReasonForInvalidMove>() };
+            MoveGeometry[] geometry = BuildGeometry(moves);
 
-            ValidateOutOfMoveRange(moves, distances, _ => maxDistanceInches, ref errors);
+            ValidateOutOfMoveRange(geometry, _ => maxDistanceInches, ref sink);
             //This overload is only reached with terrain: null (the no-terrain convenience form), so the terrain
             //checks are no-ops regardless — no Strider/Flying flags to thread here.
-            ValidateMovingThroughImpassibleTerrain(moves, terrain, ignoresImpassibleTerrain: false, ref errors);
-            ValidateMovingThroughDifficultTerrain(moves, distances, terrain, ignoresDifficultTerrain: false, ref errors);
+            ValidateMovingThroughImpassibleTerrain(geometry, terrain, ignoresImpassibleTerrain: false, ref sink);
+            ValidateMovingThroughDifficultTerrain(geometry, terrain, ignoresDifficultTerrain: false, ref sink);
             //No enemy footprints supplied (this overload predates enemy-aware validation): the move-through /
             //standoff check is a no-op here, preserving these callers' existing behavior.
-            ValidateMovingThroughEnemyUnits(moves, Array.Empty<EnemyModelFootprint>(), canMoveThroughEnemies: false, ref errors);
-            ValidateCoherency(moves, ref errors);
-            ValidateNoSelfOverlap(moves, ref errors);
-            ValidateEndsOnTable(moves, ref errors);
+            ValidateMovingThroughEnemyUnits(geometry, Array.Empty<EnemyModelFootprint>(), canMoveThroughEnemies: false, ref sink);
+            ValidateCoherency(moves, ref sink);
+            ValidateNoSelfOverlap(geometry, ref sink);
+            ValidateEndsOnTable(geometry, ref sink);
 
+            errors = sink.Errors!;
             return errors.Count == 0;
         }
 
@@ -75,22 +76,20 @@ namespace FDG.Stages
             IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors,
             IEnumerable<EnemyModelFootprint>? friendlyFootprints = null)
         {
-            errors = new List<ReasonForInvalidMove>();
+            var sink = new FaultSink { Errors = new List<ReasonForInvalidMove>() };
+            IReadOnlyList<EnemyModelFootprint> enemies = AsReadOnly(enemyFootprints);
+            MoveGeometry[] geometry = BuildGeometry(moves);
 
-            IReadOnlyList<EnemyModelFootprint> enemies =
-                enemyFootprints as IReadOnlyList<EnemyModelFootprint> ?? enemyFootprints?.ToList()
-                ?? (IReadOnlyList<EnemyModelFootprint>)Array.Empty<EnemyModelFootprint>();
-            Dictionary<ModelMoveEntry, float> distances = GetTotalMoveDistances(moves);
+            ValidateOutOfMoveRange(geometry, _ => maxDistanceInches, ref sink);
+            ValidateMovingThroughImpassibleTerrain(geometry, terrain, ignoresImpassibleTerrain, ref sink);
+            ValidateMovingThroughDifficultTerrain(geometry, terrain, ignoresDifficultTerrain, ref sink);
+            ValidateMovingThroughEnemyUnits(geometry, enemies, canMoveThroughEnemies, ref sink);
+            ValidateCoherency(moves, ref sink);
+            ValidateEndsOnFriendly(geometry, AsReadOnly(friendlyFootprints), ref sink);
+            ValidateNoSelfOverlap(geometry, ref sink);
+            ValidateEndsOnTable(geometry, ref sink);
 
-            ValidateOutOfMoveRange(moves, distances, _ => maxDistanceInches, ref errors);
-            ValidateMovingThroughImpassibleTerrain(moves, terrain, ignoresImpassibleTerrain, ref errors);
-            ValidateMovingThroughDifficultTerrain(moves, distances, terrain, ignoresDifficultTerrain, ref errors);
-            ValidateMovingThroughEnemyUnits(moves, enemies, canMoveThroughEnemies, ref errors);
-            ValidateCoherency(moves, ref errors);
-            ValidateEndsOnFriendly(moves, AsReadOnly(friendlyFootprints), ref errors);
-            ValidateNoSelfOverlap(moves, ref errors);
-            ValidateEndsOnTable(moves, ref errors);
-
+            errors = sink.Errors!;
             return errors.Count == 0;
         }
 
@@ -151,29 +150,63 @@ namespace FDG.Stages
             var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             try
             {
-            errors = new List<ReasonForInvalidMove>();
-
-            IReadOnlyList<EnemyModelFootprint> enemies =
-                enemyFootprints as IReadOnlyList<EnemyModelFootprint> ?? enemyFootprints?.ToList()
-                ?? (IReadOnlyList<EnemyModelFootprint>)Array.Empty<EnemyModelFootprint>();
-            Dictionary<ModelMoveEntry, float> distances = GetTotalMoveDistances(moves);
-
-            ValidateOutOfMoveRange(moves, distances, move => budgetFor(move).MaxDistanceInches, ref errors);
-            ValidateMovingThroughImpassibleTerrain(moves, terrain, ignoresImpassibleTerrain, ref errors);
-            ValidateMovingThroughDifficultTerrain(moves, distances, terrain, ignoresDifficultTerrain, ref errors);
-            ValidateMovingThroughEnemyUnits(moves, enemies, canMoveThroughEnemies, ref errors);
-            if (lenientCoherency)
-                ValidateCoherencyNotWorsened(moves, ref errors);
-            else
-                ValidateCoherency(moves, ref errors);
-            ValidateChargeReach(moves, move => budgetFor(move).MaxRushDistance, enemies, ref errors);
-            ValidateEndsOnFriendly(moves, AsReadOnly(friendlyFootprints), ref errors);
-            ValidateNoSelfOverlap(moves, ref errors);
-            ValidateEndsOnTable(moves, ref errors);
-
-            return errors.Count == 0;
-        }
+                var sink = new FaultSink { Errors = new List<ReasonForInvalidMove>() };
+                ValidateCore(moves, budgetFor, AsReadOnly(enemyFootprints), canMoveThroughEnemies,
+                    ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain, AsReadOnly(friendlyFootprints),
+                    lenientCoherency, ref sink);
+                errors = sink.Errors!;
+                return errors.Count == 0;
+            }
             finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.PlanValidate, __probe); }
+        }
+
+        /// <summary>
+        /// The planner's form of <see cref="ValidatePaths(List{ModelMoveEntry}, Func{ModelMoveEntry, ModelMoveBudget}, IEnumerable{EnemyModelFootprint}, bool, bool, bool, IEnumerable{ITerrain}, out List{ReasonForInvalidMove}, IEnumerable{EnemyModelFootprint}, bool)"/>
+        /// (#191 search perf pass 3): the same validators in the same order, reporting the SET of fault
+        /// kinds instead of the per-model list. That set is all the backoff ladder ever read from the list
+        /// (impassible present, friendly present, friendly-only), and it lets each validator stop at the
+        /// first fault of every kind it can produce. <see cref="EMoveFaultKinds.None"/> means valid.
+        /// </summary>
+        public static EMoveFaultKinds ValidatePathsForPlanning(List<ModelMoveEntry> moves,
+            Func<ModelMoveEntry, ModelMoveBudget> budgetFor,
+            IReadOnlyList<EnemyModelFootprint> enemyFootprints, bool canMoveThroughEnemies,
+            bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
+            IReadOnlyList<ITerrain>? terrain, IReadOnlyList<EnemyModelFootprint>? friendlyFootprints,
+            bool lenientCoherency)
+        {
+            var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            try
+            {
+                var sink = new FaultSink();
+                ValidateCore(moves, budgetFor, enemyFootprints ?? Array.Empty<EnemyModelFootprint>(),
+                    canMoveThroughEnemies, ignoresDifficultTerrain, ignoresImpassibleTerrain, terrain,
+                    friendlyFootprints ?? Array.Empty<EnemyModelFootprint>(), lenientCoherency, ref sink);
+                return sink.Kinds;
+            }
+            finally { global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.PlanValidate, __probe); }
+        }
+
+        private static void ValidateCore(List<ModelMoveEntry> moves,
+            Func<ModelMoveEntry, ModelMoveBudget> budgetFor,
+            IReadOnlyList<EnemyModelFootprint> enemies, bool canMoveThroughEnemies,
+            bool ignoresDifficultTerrain, bool ignoresImpassibleTerrain,
+            IEnumerable<ITerrain>? terrain, IReadOnlyList<EnemyModelFootprint> friendlies,
+            bool lenientCoherency, ref FaultSink sink)
+        {
+            MoveGeometry[] geometry = BuildGeometry(moves);
+
+            ValidateOutOfMoveRange(geometry, move => budgetFor(move).MaxDistanceInches, ref sink);
+            ValidateMovingThroughImpassibleTerrain(geometry, terrain, ignoresImpassibleTerrain, ref sink);
+            ValidateMovingThroughDifficultTerrain(geometry, terrain, ignoresDifficultTerrain, ref sink);
+            ValidateMovingThroughEnemyUnits(geometry, enemies, canMoveThroughEnemies, ref sink);
+            if (lenientCoherency)
+                ValidateCoherencyNotWorsened(moves, ref sink);
+            else
+                ValidateCoherency(moves, ref sink);
+            ValidateChargeReach(geometry, move => budgetFor(move).MaxRushDistance, enemies, ref sink);
+            ValidateEndsOnFriendly(geometry, friendlies, ref sink);
+            ValidateNoSelfOverlap(geometry, ref sink);
+            ValidateEndsOnTable(geometry, ref sink);
         }
 
         /// <summary>
@@ -190,22 +223,20 @@ namespace FDG.Stages
             IEnumerable<ITerrain>? terrain, out List<ReasonForInvalidMove> errors,
             IEnumerable<EnemyModelFootprint>? friendlyFootprints = null)
         {
-            errors = new List<ReasonForInvalidMove>();
+            var sink = new FaultSink { Errors = new List<ReasonForInvalidMove>() };
+            IReadOnlyList<EnemyModelFootprint> enemies = AsReadOnly(enemyFootprints);
+            MoveGeometry[] geometry = BuildGeometry(moves);
 
-            IReadOnlyList<EnemyModelFootprint> enemies =
-                enemyFootprints as IReadOnlyList<EnemyModelFootprint> ?? enemyFootprints?.ToList()
-                ?? (IReadOnlyList<EnemyModelFootprint>)Array.Empty<EnemyModelFootprint>();
-            Dictionary<ModelMoveEntry, float> distances = GetTotalMoveDistances(moves);
+            ValidateOutOfMoveRange(geometry, _ => maxDistanceInches, ref sink);
+            ValidateMovingThroughImpassibleTerrain(geometry, terrain, ignoresImpassibleTerrain, ref sink);
+            ValidateMovingThroughDifficultTerrain(geometry, terrain, ignoresDifficultTerrain, ref sink);
+            ValidateMovingThroughEnemyUnits(geometry, enemies, canMoveThroughEnemies, ref sink);
+            ValidateCoherencyNotWorsened(moves, ref sink);
+            ValidateEndsOnFriendly(geometry, AsReadOnly(friendlyFootprints), ref sink);
+            ValidateNoSelfOverlap(geometry, ref sink);
+            ValidateEndsOnTable(geometry, ref sink);
 
-            ValidateOutOfMoveRange(moves, distances, _ => maxDistanceInches, ref errors);
-            ValidateMovingThroughImpassibleTerrain(moves, terrain, ignoresImpassibleTerrain, ref errors);
-            ValidateMovingThroughDifficultTerrain(moves, distances, terrain, ignoresDifficultTerrain, ref errors);
-            ValidateMovingThroughEnemyUnits(moves, enemies, canMoveThroughEnemies, ref errors);
-            ValidateCoherencyNotWorsened(moves, ref errors);
-            ValidateEndsOnFriendly(moves, AsReadOnly(friendlyFootprints), ref errors);
-            ValidateNoSelfOverlap(moves, ref errors);
-            ValidateEndsOnTable(moves, ref errors);
-
+            errors = sink.Errors!;
             return errors.Count == 0;
         }
 
@@ -386,53 +417,263 @@ namespace FDG.Stages
 
         public static void ValidateChargeReach(List<ModelMoveEntry> moves, float maxRushDistance,
             IEnumerable<EnemyModelFootprint> enemyFootprints, ref List<ReasonForInvalidMove> errors)
-            => ValidateChargeReach(moves, _ => maxRushDistance, enemyFootprints, ref errors);
-
-        private static void ValidateChargeReach(List<ModelMoveEntry> moves,
-            Func<ModelMoveEntry, float> maxRushDistanceFor,
-            IEnumerable<EnemyModelFootprint> enemyFootprints, ref List<ReasonForInvalidMove> errors)
         {
-            Dictionary<ModelMoveEntry, float> totalDistances = GetTotalMoveDistances(moves);
+            var sink = new FaultSink { Errors = errors };
+            ValidateChargeReach(BuildGeometry(moves), _ => maxRushDistance, AsReadOnly(enemyFootprints), ref sink);
+        }
 
-            //If nobody exceeds their own Rush cap, the rule doesn't apply.
-            bool anyBeyondRush = totalDistances.Any(kvp => kvp.Value > maxRushDistanceFor(kvp.Key) + 0.0001f);
-            if (!anyBeyondRush) return;
-
-            //At least one model in the unit must end within melee range of an enemy model (horizontal).
-            //#029: an Aircraft can't be charged, so reaching it doesn't justify a beyond-Rush charge move.
-            //#312: BASE-to-base, like every other melee-range gate (MeleeRangeUtilities, GetCanCharge, the
-            //GUI charge line). This used to be centre-to-centre, which demanded a base gap of
-            //2" - rMine - rEnemy: merely tight for small round bases, but mathematically impossible for a
-            //large base - a titan in literal base contact still read "no model ends within 2"" and the
-            //charge move was rejected. All pairs are checked (never nearest-by-centre: for a rectangle the
-            //nearest CENTRE is often not the nearest BASE), at the mover's END position and END facing.
-            List<EnemyModelFootprint> enemies = enemyFootprints?.Where(f => !f.Uncontactable).ToList()
-                ?? new List<EnemyModelFootprint>();
-            float meleeRange = GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL;
-
-            bool anyInMelee = moves.Any(move =>
+        private static void ValidateChargeReach(MoveGeometry[] geometry,
+            Func<ModelMoveEntry, float> maxRushDistanceFor,
+            IReadOnlyList<EnemyModelFootprint> enemyFootprints, ref FaultSink sink)
+        {
+            int culprit = -1;
+            for (int i = 0; i < geometry.Length && culprit < 0; i++)
             {
-                ModelData model = move.Model.GetValue();
-                Position end = move.Positions.Count == 0
-                    ? model.PositionBinding.GetValue()
-                    : move.Positions[move.Positions.Count - 1];
-                Float2 endFacing = move.Positions.Count == 0 ? model.Facing : EndFacing(move, model);
-
-                return enemies.Any(e => BaseShapeGeometry.SurfaceGap2D(
-                    model.BaseShape, end, endFacing, e.BaseShape, e.Center, e.Facing) <= meleeRange + 0.0001f);
-            });
-
-            if (!anyInMelee)
-            {
-                //Attach the violation to the first model that went beyond its own Rush.
-                ModelMoveEntry culprit = totalDistances.First(kvp => kvp.Value > maxRushDistanceFor(kvp.Key) + 0.0001f).Key;
-                errors.Add(new ReasonForInvalidMove(EErrorReasonType.ChargeRangeRequiresMeleeReach, culprit.Model));
+                if (geometry[i].TotalDistance > maxRushDistanceFor(geometry[i].Move) + 0.0001f) culprit = i;
             }
+            if (culprit < 0) return;
+
+            float meleeRange = GameWideConstants.MELEE_RANGE_INCHES_HORIZONTAL;
+            float reject = meleeRange + 0.0001f + REJECT_MARGIN_INCHES;
+            for (int i = 0; i < geometry.Length; i++)
+            {
+                MoveGeometry g = geometry[i];
+                // A held model is measured where it stands, at its resting facing (its start hull).
+                bool held = g.Move.Positions.Count == 0;
+                BaseFootprint hull = held ? g.StartHull : g.EndHull;
+                for (int e = 0; e < enemyFootprints.Count; e++)
+                {
+                    EnemyModelFootprint enemy = enemyFootprints[e];
+                    if (enemy.Uncontactable) continue;
+                    if (Distance2D(g.End, enemy.Center) - g.Reach - enemy.CircumscribedRadiusInches > reject) continue;
+                    if (BaseShapeGeometry.FootprintGap(hull, enemy.Hull) <= meleeRange + 0.0001f) return;
+                }
+            }
+
+            sink.Add(EErrorReasonType.ChargeRangeRequiresMeleeReach, geometry[culprit].Move.Model);
         }
 
         // Pre-sized, and built ONCE per ValidatePaths call (#191 search perf pass): the search validates
         // thousands of candidate moves per decision, and three validators each rebuilt this dictionary
         // from empty per call - 4% of the search's CPU in Dictionary.Resize alone.
+        // ---- #191 search perf pass 3: validation geometry built once per pass ---------------------------
+
+        /// <summary>
+        /// Fault kinds as a set. Bit i is <see cref="EErrorReasonType"/> value i. The planner's backoff
+        /// ladder reads only which kinds a candidate faults on, never the per-model list, so
+        /// <see cref="ValidatePathsForPlanning"/> reports this and each validator stops at the first fault
+        /// of every kind it can produce.
+        /// </summary>
+        [Flags]
+        public enum EMoveFaultKinds
+        {
+            None = 0,
+            OutOfMoveRange = 1 << (int)EErrorReasonType.OutOfMoveRange,
+            MovingThroughImpassibleTerrain = 1 << (int)EErrorReasonType.MovingThroughImpassibleTerrain,
+            ExceededDifficultTerrainMoveLimit = 1 << (int)EErrorReasonType.ExceededDifficultTerrainMoveLimit,
+            MovingThroughEnemyUnit = 1 << (int)EErrorReasonType.MovingThroughEnemyUnit,
+            TooFarFromAnyUnitModel = 1 << (int)EErrorReasonType.TooFarFromAnyUnitModel,
+            TooFarFromAllUnitModels = 1 << (int)EErrorReasonType.TooFarFromAllUnitModels,
+            ChargeRangeRequiresMeleeReach = 1 << (int)EErrorReasonType.ChargeRangeRequiresMeleeReach,
+            EndedTooCloseToEnemy = 1 << (int)EErrorReasonType.EndedTooCloseToEnemy,
+            EndedOnFriendlyUnit = 1 << (int)EErrorReasonType.EndedOnFriendlyUnit,
+            EndedOffTable = 1 << (int)EErrorReasonType.EndedOffTable,
+            EndedOnOwnUnitModel = 1 << (int)EErrorReasonType.EndedOnOwnUnitModel,
+        }
+
+        /// <summary>
+        /// Where the validators report: the full per-model list (the engine's resolvers and error
+        /// reporting) or, with no list, only the set of kinds (the planner path).
+        /// </summary>
+        private struct FaultSink
+        {
+            public List<ReasonForInvalidMove>? Errors;
+            public EMoveFaultKinds Kinds;
+
+            public void Add(EErrorReasonType reason, DataBinding<ModelData> model)
+            {
+                Kinds |= (EMoveFaultKinds)(1 << (int)reason);
+                Errors?.Add(new ReasonForInvalidMove(reason, model));
+            }
+
+            /// <summary>Planner path only: this kind is already in the set, so nothing more of it needs finding.</summary>
+            public bool Done(EErrorReasonType reason) =>
+                Errors == null && (Kinds & (EMoveFaultKinds)(1 << (int)reason)) != 0;
+        }
+
+        /// <summary>
+        /// One moving model's geometry for a validation pass: the start and end hulls every pair test
+        /// used to rebuild per partner, built once. End is the start when the model holds.
+        /// </summary>
+        private readonly struct MoveGeometry
+        {
+            public readonly ModelMoveEntry Move;
+            public readonly ModelData Model;
+            public readonly Position Start;
+            public readonly Float2 RestingFacing;
+            public readonly Position End;
+            public readonly Float2 EndFacing;
+            public readonly BaseFootprint StartHull;
+            public readonly BaseFootprint EndHull;
+            /// <summary>The circumscribed radius: the distance rejects' bound on how far the hull reaches.</summary>
+            public readonly float Reach;
+            public readonly float TotalDistance;
+
+            public MoveGeometry(ModelMoveEntry move)
+            {
+                Move = move;
+                Model = move.Model.GetValue();
+                Start = Model.PositionBinding.GetValue();
+                RestingFacing = Model.Facing;
+                End = move.Positions.Count > 0 ? move.Positions[move.Positions.Count - 1] : Start;
+                EndFacing = MovementUtilities.EndFacing(move, Model);
+                StartHull = Model.BaseShape.Footprint(Start, RestingFacing);
+                EndHull = Model.BaseShape.Footprint(End, EndFacing);
+                Reach = Model.BaseShape.CircumscribedRadiusInches;
+                TotalDistance = GetTotalMoveDistance(move);
+            }
+        }
+
+        private static MoveGeometry[] BuildGeometry(List<ModelMoveEntry> moves)
+        {
+            var geometry = new MoveGeometry[moves.Count];
+            for (int i = 0; i < moves.Count; i++) geometry[i] = new MoveGeometry(moves[i]);
+            return geometry;
+        }
+
+        /// <summary>
+        /// Slack on the circumscribed-circle rejects. Two hulls whose circles are further apart than this
+        /// cannot touch, so the exact hull test is skipped without changing any answer.
+        /// </summary>
+        private const float REJECT_MARGIN_INCHES = 0.01f;
+
+        private static float Distance2D(Position a, Position b)
+        {
+            float dx = a.x - b.x, dz = a.z - b.z;
+            return MathF.Sqrt(dx * dx + dz * dz);
+        }
+
+        private static float DistanceToSegment2D(Position p, Position a, Position b)
+        {
+            float abx = b.x - a.x, abz = b.z - a.z;
+            float lengthSq = abx * abx + abz * abz;
+            float t = lengthSq <= 1e-12f
+                ? 0f
+                : Math.Clamp(((p.x - a.x) * abx + (p.z - a.z) * abz) / lengthSq, 0f, 1f);
+            float dx = a.x + t * abx - p.x, dz = a.z + t * abz - p.z;
+            return MathF.Sqrt(dx * dx + dz * dz);
+        }
+
+        /// <summary>The shortest distance from a point to the model's whole path, start through every leg.</summary>
+        private static float DistanceToPath(MoveGeometry g, Position point)
+        {
+            Position from = g.Start;
+            float best = Distance2D(from, point);
+            List<Position> path = g.Move.Positions;
+            for (int i = 0; i < path.Count; i++)
+            {
+                Position to = path[i];
+                best = MathF.Min(best, DistanceToSegment2D(point, from, to));
+                from = to;
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// The impassible and difficult subsets of a terrain list, kept for the list that was filtered
+        /// last on this thread: the backoff ladder validates a handful of candidates against one list
+        /// in a row. A hit requires the same list instance with the same pieces of the same types, so a
+        /// list built or mutated between calls filters afresh.
+        /// </summary>
+        private sealed class TerrainSetsCache
+        {
+            public IEnumerable<ITerrain> Source = Array.Empty<ITerrain>();
+            public ITerrain[] Pieces = Array.Empty<ITerrain>();
+            public ETerrainType[] Types = Array.Empty<ETerrainType>();
+            public List<ITerrain> Impassable = new List<ITerrain>();
+            public List<ITerrain> Difficult = new List<ITerrain>();
+        }
+
+        [ThreadStatic] private static TerrainSetsCache? t_terrainSets;
+
+        private static TerrainSetsCache TerrainSets(IEnumerable<ITerrain> terrain)
+        {
+            TerrainSetsCache? cache = t_terrainSets;
+            if (cache != null && ReferenceEquals(cache.Source, terrain)
+                && terrain is IReadOnlyList<ITerrain> list && list.Count == cache.Pieces.Length)
+            {
+                bool same = true;
+                for (int i = 0; i < cache.Pieces.Length && same; i++)
+                {
+                    same = ReferenceEquals(cache.Pieces[i], list[i]) && cache.Types[i] == list[i].TerrainType;
+                }
+                if (same) return cache;
+            }
+
+            var fresh = new TerrainSetsCache { Source = terrain, Pieces = terrain.ToArray() };
+            fresh.Types = new ETerrainType[fresh.Pieces.Length];
+            for (int i = 0; i < fresh.Pieces.Length; i++) fresh.Types[i] = fresh.Pieces[i].TerrainType;
+            fresh.Impassable = fresh.Pieces.Where(t => t.TerrainType.HasFlag(ETerrainType.Impassible)).ToList();
+            fresh.Difficult = fresh.Pieces.Where(t => t.TerrainType.HasFlag(ETerrainType.Difficult)).ToList();
+            t_terrainSets = fresh;
+            return fresh;
+        }
+
+        /// <summary>
+        /// The "before" cohesion extents of the last unit validated on this thread: the same models at
+        /// the same positions and facings give the same extents, and a planner validates every candidate
+        /// of one unit against the same before-state.
+        /// </summary>
+        private sealed class CohesionBeforeCache
+        {
+            public DataBinding<ModelData>[] Models = Array.Empty<DataBinding<ModelData>>();
+            public IBaseShape[] Shapes = Array.Empty<IBaseShape>();
+            public Position[] Positions = Array.Empty<Position>();
+            public Float2[] Facings = Array.Empty<Float2>();
+            public float[] Nearest = Array.Empty<float>();
+            public float[] Farthest = Array.Empty<float>();
+        }
+
+        [ThreadStatic] private static CohesionBeforeCache? t_cohesionBefore;
+
+        private static void BeforeExtents(List<DataBinding<ModelData>> models, List<Position> before,
+            List<Float2> facings, out float[] nearest, out float[] farthest)
+        {
+            CohesionBeforeCache? cache = t_cohesionBefore;
+            if (cache != null && cache.Models.Length == models.Count)
+            {
+                bool same = true;
+                for (int i = 0; i < models.Count && same; i++)
+                {
+                    Position p = before[i], q = cache.Positions[i];
+                    Float2 f = facings[i], h = cache.Facings[i];
+                    same = ReferenceEquals(cache.Models[i], models[i])
+                        && ReferenceEquals(cache.Shapes[i], models[i].GetValue().BaseShape)
+                        && p.x == q.x && p.y == q.y && p.z == q.z
+                        && f.X == h.X && f.Y == h.Y;
+                }
+                if (same)
+                {
+                    nearest = cache.Nearest;
+                    farthest = cache.Farthest;
+                    return;
+                }
+            }
+
+            ComputeCohesionExtents(models, before, facings, out nearest, out farthest);
+            var shapes = new IBaseShape[models.Count];
+            for (int i = 0; i < models.Count; i++) shapes[i] = models[i].GetValue().BaseShape;
+            t_cohesionBefore = new CohesionBeforeCache
+            {
+                Models = models.ToArray(),
+                Shapes = shapes,
+                Positions = before.ToArray(),
+                Facings = facings.ToArray(),
+                Nearest = nearest,
+                Farthest = farthest,
+            };
+        }
+
         private static Dictionary<ModelMoveEntry, float> GetTotalMoveDistances(List<ModelMoveEntry> moves)
         {
             Dictionary<ModelMoveEntry, float> distances = new Dictionary<ModelMoveEntry, float>(moves.Count);
@@ -445,42 +686,34 @@ namespace FDG.Stages
             return distances;
         }
 
-        private static void ValidateOutOfMoveRange(List<ModelMoveEntry> moves,
-            Dictionary<ModelMoveEntry, float> totalMoveDistances,
-            Func<ModelMoveEntry, float> maxDistanceFor, ref List<ReasonForInvalidMove> reasonsForInvalidMove)
+        private static void ValidateOutOfMoveRange(MoveGeometry[] geometry,
+            Func<ModelMoveEntry, float> maxDistanceFor, ref FaultSink sink)
         {
-            foreach (KeyValuePair<ModelMoveEntry, float> kvp in totalMoveDistances)
+            for (int i = 0; i < geometry.Length; i++)
             {
-                if (kvp.Value > maxDistanceFor(kvp.Key))
+                if (geometry[i].TotalDistance > maxDistanceFor(geometry[i].Move))
                 {
-                    reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.OutOfMoveRange, kvp.Key.Model));
+                    sink.Add(EErrorReasonType.OutOfMoveRange, geometry[i].Move.Model);
+                    if (sink.Done(EErrorReasonType.OutOfMoveRange)) return;
                 }
             }
         }
 
-        private static void ValidateMovingThroughImpassibleTerrain(List<ModelMoveEntry> moves,
-            IEnumerable<ITerrain>? terrain, bool ignoresImpassibleTerrain, ref List<ReasonForInvalidMove> reasonsForInvalidMove)
+        private static void ValidateMovingThroughImpassibleTerrain(MoveGeometry[] geometry,
+            IEnumerable<ITerrain>? terrain, bool ignoresImpassibleTerrain, ref FaultSink sink)
         {
             if (terrain == null) return;
-            // Flying (AllTerrain scope) flies over impassible terrain — its path may cross an impassible piece
-            // (it still can't end stacked on enemies; coherency + the standoff checks remain in force).
             if (ignoresImpassibleTerrain) return;
 
-            //Snapshot impassable pieces so each model walk doesn't re-enumerate.
-            List<ITerrain> impassable = terrain
-                .Where(t => t.TerrainType.HasFlag(ETerrainType.Impassible))
-                .ToList();
+            List<ITerrain> impassable = TerrainSets(terrain).Impassable;
             if (impassable.Count == 0) return;
 
-            // #341: the authoritative gate and the preview's "show me why" finder are now ONE walk. They were
-            // two copies of the same segment loop that docs/ResolverGuide.md requires never to diverge, and the
-            // two-attitude leg rule plus the per-node pose check gave them far more to keep in step.
-            foreach (ModelMoveEntry move in moves)
+            for (int i = 0; i < geometry.Length; i++)
             {
-                if (FindFirstTerrainCrossing(move, impassable, ELegAttitudeRule.EitherAttitudeClears) != null)
+                if (FindFirstTerrainCrossing(geometry[i].Move, impassable, ELegAttitudeRule.EitherAttitudeClears) != null)
                 {
-                    reasonsForInvalidMove.Add(
-                        new ReasonForInvalidMove(EErrorReasonType.MovingThroughImpassibleTerrain, move.Model));
+                    sink.Add(EErrorReasonType.MovingThroughImpassibleTerrain, geometry[i].Move.Model);
+                    if (sink.Done(EErrorReasonType.MovingThroughImpassibleTerrain)) return;
                 }
             }
         }
@@ -804,28 +1037,23 @@ namespace FDG.Stages
                 EDifficultClampKind.StoppedShortOfEdge);
         }
 
-        private static void ValidateMovingThroughDifficultTerrain(List<ModelMoveEntry> moves,
-            Dictionary<ModelMoveEntry, float> distances,
-            IEnumerable<ITerrain>? terrain, bool ignoresDifficultTerrain, ref List<ReasonForInvalidMove> reasonsForInvalidMove)
+        private static void ValidateMovingThroughDifficultTerrain(MoveGeometry[] geometry,
+            IEnumerable<ITerrain>? terrain, bool ignoresDifficultTerrain, ref FaultSink sink)
         {
             if (terrain == null) return;
-            // Strider (and a future Flying rule) waive the difficult-terrain move cap entirely — the unit
-            // may cross Difficult terrain without its move being limited to DIFFICULT_TERRAIN_MOVE_CAP_INCHES.
             if (ignoresDifficultTerrain) return;
 
-            List<ITerrain> difficult = terrain
-                .Where(t => t.TerrainType.HasFlag(ETerrainType.Difficult))
-                .ToList();
+            List<ITerrain> difficult = TerrainSets(terrain).Difficult;
             if (difficult.Count == 0) return;
 
-
-            foreach (ModelMoveEntry move in moves)
+            for (int i = 0; i < geometry.Length; i++)
             {
-                if (DoesPathCrossTerrainPieces(move, difficult)
-                    && distances[move] > GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES)
+                // The cheap half of the conjunction first; both halves are pure, so the answer is the same.
+                if (geometry[i].TotalDistance > GameWideConstants.DIFFICULT_TERRAIN_MOVE_CAP_INCHES
+                    && DoesPathCrossTerrainPieces(geometry[i].Move, difficult))
                 {
-                    reasonsForInvalidMove.Add(
-                        new ReasonForInvalidMove(EErrorReasonType.ExceededDifficultTerrainMoveLimit, move.Model));
+                    sink.Add(EErrorReasonType.ExceededDifficultTerrainMoveLimit, geometry[i].Move.Model);
+                    if (sink.Done(EErrorReasonType.ExceededDifficultTerrainMoveLimit)) return;
                 }
             }
         }
@@ -852,85 +1080,74 @@ namespace FDG.Stages
         /// move. Uncontactable enemies (Aircraft, #029) keep their own standoff below: they can't be charged,
         /// so closing into contact with one has no legal follow-up and stays rejected.
         /// </summary>
-        private static void ValidateMovingThroughEnemyUnits(List<ModelMoveEntry> moves,
-            IReadOnlyList<EnemyModelFootprint> enemyFootprints, bool canMoveThroughEnemies,
-            ref List<ReasonForInvalidMove> reasonsForInvalidMove)
+        private static void ValidateMovingThroughEnemyUnits(MoveGeometry[] geometry,
+            IReadOnlyList<EnemyModelFootprint> enemyFootprints, bool canMoveThroughEnemies, ref FaultSink sink)
         {
             if (enemyFootprints == null || enemyFootprints.Count == 0) return;
 
-            foreach (ModelMoveEntry move in moves)
+            bool anyUncontactable = false;
+            for (int e = 0; e < enemyFootprints.Count && !anyUncontactable; e++)
             {
-                if (move.Positions.Count == 0) continue;
+                anyUncontactable = enemyFootprints[e].Uncontactable;
+            }
+            // A pair whose circumscribed circles stay further apart than this along the whole path can
+            // neither touch, cross, nor end inside the standoff band - every flag below needs one of those.
+            float reject = GameWideConstants.ENEMY_STANDOFF_DISTANCE_INCHES + REJECT_MARGIN_INCHES;
 
-                var movingModel = move.Model.GetValue();
-                IBaseShape movingShape = movingModel.BaseShape;
-                Float2 restingFacing = movingModel.Facing;
-                Float2 endFacing = EndFacing(move, movingModel);
-                Position start = movingModel.PositionBinding.GetValue();
-                Position end = move.Positions[move.Positions.Count - 1];
+            for (int i = 0; i < geometry.Length; i++)
+            {
+                MoveGeometry g = geometry[i];
+                if (g.Move.Positions.Count == 0) continue;
+
+                // Planner path: a contactable footprint can only produce MovingThroughEnemyUnit and an
+                // uncontactable one only EndedTooCloseToEnemy; once a kind is in the set, no further
+                // model can add to it. Both checks are always true on the full path.
+                bool needThrough = !sink.Done(EErrorReasonType.MovingThroughEnemyUnit);
+                bool needStandoff = anyUncontactable && !sink.Done(EErrorReasonType.EndedTooCloseToEnemy);
+                if (!needThrough && !needStandoff) return;
 
                 bool flaggedThrough = false;
                 bool flaggedStandoff = false;
 
-                foreach (EnemyModelFootprint enemy in enemyFootprints)
+                for (int e = 0; e < enemyFootprints.Count; e++)
                 {
-                    // Start/end base-to-base gaps use the true, facing-oriented footprints (#150); for circular
-                    // bases this is exactly the old `distance − (rMoving + rEnemy)`, so circle behaviour is
-                    // unchanged, and a rotated rectangular base measures by its real outline. The start gap
-                    // measures the base as it RESTS pre-move; the end gap measures it at the facing the
-                    // executor will actually leave it at (#312 - these can differ by the full width-vs-length
-                    // spread of a rectangle).
-                    float startGap = BaseShapeGeometry.SurfaceGap2D(movingShape, start, restingFacing, enemy.BaseShape, enemy.Center, enemy.Facing);
-                    float endGap = BaseShapeGeometry.SurfaceGap2D(movingShape, end, endFacing, enemy.BaseShape, enemy.Center, enemy.Facing);
+                    EnemyModelFootprint enemy = enemyFootprints[e];
+                    if (enemy.Uncontactable ? !needStandoff : !needThrough) continue;
+                    if (DistanceToPath(g, enemy.Center) - g.Reach - enemy.CircumscribedRadiusInches > reject) continue;
+
+                    float startGap = BaseShapeGeometry.FootprintGap(g.StartHull, enemy.Hull);
+                    float endGap = BaseShapeGeometry.FootprintGap(g.EndHull, enemy.Hull);
                     bool movedCloser = endGap < startGap - ENEMY_PROXIMITY_EPSILON_INCHES;
 
-                    // #029: an Aircraft can't be moved into base contact with — a move that closes to within the
-                    // standoff distance of it (the base-contact zone OR the standoff band) is rejected, so it can
-                    // never be charged or stacked on. Units may still pass UNDER it (the through-check is skipped),
-                    // and a unit it flew adjacent to isn't trapped (only moves that close the gap are penalised).
                     if (enemy.Uncontactable)
                     {
                         if (!flaggedStandoff && movedCloser
                             && endGap < GameWideConstants.ENEMY_STANDOFF_DISTANCE_INCHES - ENEMY_PROXIMITY_EPSILON_INCHES)
                         {
-                            reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.EndedTooCloseToEnemy, move.Model));
+                            sink.Add(EErrorReasonType.EndedTooCloseToEnemy, g.Move.Model);
                             flaggedStandoff = true;
+                            needStandoff = !sink.Done(EErrorReasonType.EndedTooCloseToEnemy);
                         }
                         continue;
                     }
 
-                    //Pass-through (#150, shape- and facing-aware): the base starts CLEAR of this enemy and ends
-                    //CLEAR of it, yet its swept footprint crosses the enemy's base somewhere along the path — so
-                    //it must have gone in one side and out the other. The same swept-zone test the Strafing
-                    //through-check uses (exact for rectangles at any facing; a circle reduces to the old swept
-                    //disc). A clean charge ends in CONTACT (endGap ≈ 0), so it's not "ends clear" and is handled
-                    //by the ending-stacked / standoff rules below, not here. A model that begins in contact
-                    //(startGap ≤ tol) isn't newly penalised for its pre-existing position. canMoveThroughEnemies
-                    //(Strafing fly-over) is exempt — it may path through an enemy base.
                     if (!canMoveThroughEnemies && !flaggedThrough
                         && startGap > ENEMY_CONTACT_TOLERANCE_INCHES && endGap > ENEMY_CONTACT_TOLERANCE_INCHES)
                     {
-                        IZone enemyZone = enemy.BaseShape.ToZone(enemy.Center, enemy.Facing);
-                        Position segStart = start;
-                        for (int i = 0; i < move.Positions.Count; i++)
+                        IZone enemyZone = enemy.Zone;
+                        Position segStart = g.Start;
+                        for (int k = 0; k < g.Move.Positions.Count; k++)
                         {
-                            Position step = move.Positions[i];
+                            Position step = g.Move.Positions[k];
                             Float2 a = new Float2(segStart.x, segStart.z);
                             Float2 b = new Float2(step.x, step.z);
-                            // #312: sweep each segment at its travel facing (the orientation the ghost drew and
-                            // the executor applies), mirroring the terrain validators' 2026-07-25 fix.
-                            // #341: but a leg runs BETWEEN two attitudes, and its rotation is not validated - so
-                            // the leg is "through" this enemy only when it crosses at both of them. Sweeping the
-                            // arriving attitude alone applied a turn the player dialled in for the node being
-                            // placed to the ground the model set off from. (Scoped per enemy, like every other
-                            // clause of this check - the question here is "did I pass through THIS enemy".)
-                            Float2 arriveFacing = ArriveFacing(move, i, restingFacing);
-                            Float2 departFacing = DepartFacing(move, i, restingFacing);
-                            if (SweptBaseGeometry.DoesSweptBaseIntersectZone(enemyZone, a, b, movingShape, arriveFacing)
+                            Float2 arriveFacing = ArriveFacing(g.Move, k, g.RestingFacing);
+                            Float2 departFacing = DepartFacing(g.Move, k, g.RestingFacing);
+                            if (SweptBaseGeometry.DoesSweptBaseIntersectZone(enemyZone, a, b, g.Model.BaseShape, arriveFacing)
                                 && (FacingsEqual(departFacing, arriveFacing)
-                                    || SweptBaseGeometry.DoesSweptBaseIntersectZone(enemyZone, a, b, movingShape, departFacing)))
+                                    || SweptBaseGeometry.DoesSweptBaseIntersectZone(enemyZone, a, b, g.Model.BaseShape, departFacing)))
                             {
-                                reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.MovingThroughEnemyUnit, move.Model));
+                                sink.Add(EErrorReasonType.MovingThroughEnemyUnit, g.Move.Model);
                                 flaggedThrough = true;
                                 break;
                             }
@@ -938,16 +1155,11 @@ namespace FDG.Stages
                         }
                     }
 
-                    //Ending stacked on an enemy is never allowed, even charging.
                     if (!flaggedThrough && endGap < -ENEMY_CONTACT_TOLERANCE_INCHES && movedCloser)
                     {
-                        reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.MovingThroughEnemyUnit, move.Model));
+                        sink.Add(EErrorReasonType.MovingThroughEnemyUnit, g.Move.Model);
                         flaggedThrough = true;
                     }
-
-                    // #206 — no standoff-band rejection for a contactable enemy: a non-charge move may end right
-                    // up against one. GetCanPass forces the charge afterward. (The aircraft branch above keeps
-                    // its own standoff — an Aircraft can't be charged, so contact with it has no follow-up.)
 
                     if (flaggedThrough) break;
                 }
@@ -964,37 +1176,28 @@ namespace FDG.Stages
         /// The GUI resolver enforces the same rule live (WouldOverlapAnyModel); this is the authoritative
         /// engine guard the AI resolvers were missing.
         /// </summary>
-        private static void ValidateEndsOnFriendly(List<ModelMoveEntry> moves,
-            IReadOnlyList<EnemyModelFootprint> friendlyFootprints, ref List<ReasonForInvalidMove> reasonsForInvalidMove)
+        private static void ValidateEndsOnFriendly(MoveGeometry[] geometry,
+            IReadOnlyList<EnemyModelFootprint> friendlyFootprints, ref FaultSink sink)
         {
             if (friendlyFootprints == null || friendlyFootprints.Count == 0) return;
 
-            foreach (ModelMoveEntry move in moves)
+            for (int i = 0; i < geometry.Length; i++)
             {
-                if (move.Positions.Count == 0) continue;
+                MoveGeometry g = geometry[i];
+                if (g.Move.Positions.Count == 0) continue;
 
-                ModelData movingModel = move.Model.GetValue();
-                IBaseShape movingShape = movingModel.BaseShape;
-                Float2 restingFacing = movingModel.Facing;
-                Float2 endFacing = EndFacing(move, movingModel);
-                Position start = movingModel.PositionBinding.GetValue();
-                Position end = move.Positions[move.Positions.Count - 1];
-
-                foreach (EnemyModelFootprint friendly in friendlyFootprints)
+                for (int f = 0; f < friendlyFootprints.Count; f++)
                 {
-                    // #312: the end state is measured at the END facing (the base the executor leaves behind),
-                    // the start state at the resting facing the base actually stood at.
-                    if (!BaseShapeGeometry.AreColliding(movingShape, end, endFacing,
-                            friendly.BaseShape, friendly.Center, friendly.Facing))
+                    EnemyModelFootprint friendly = friendlyFootprints[f];
+                    if (Distance2D(g.End, friendly.Center) - g.Reach - friendly.CircumscribedRadiusInches > REJECT_MARGIN_INCHES)
+                        continue;
+                    if (!(BaseShapeGeometry.FootprintGap(g.EndHull, friendly.Hull) < 0f))
+                        continue;
+                    if (BaseShapeGeometry.FootprintGap(g.StartHull, friendly.Hull) < 0f)
                         continue;
 
-                    // Already overlapping this friendly at the start (should never happen in legal play) - don't
-                    // trap the unit by rejecting a move it can't avoid; only NEWLY ending stacked is illegal.
-                    if (BaseShapeGeometry.AreColliding(movingShape, start, restingFacing,
-                            friendly.BaseShape, friendly.Center, friendly.Facing))
-                        continue;
-
-                    reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.EndedOnFriendlyUnit, move.Model));
+                    sink.Add(EErrorReasonType.EndedOnFriendlyUnit, g.Move.Model);
+                    if (sink.Done(EErrorReasonType.EndedOnFriendlyUnit)) return;
                     break; // one flag per model is enough
                 }
             }
@@ -1014,40 +1217,27 @@ namespace FDG.Stages
         /// one that motivated this) must not be frozen in place by a validator that rejects every move it
         /// can make — only a pair that is newly stacked is illegal.</para>
         /// </summary>
-        private static void ValidateNoSelfOverlap(List<ModelMoveEntry> moves,
-            ref List<ReasonForInvalidMove> reasonsForInvalidMove)
+        private static void ValidateNoSelfOverlap(MoveGeometry[] geometry, ref FaultSink sink)
         {
-            for (int i = 0; i < moves.Count; i++)
+            for (int i = 0; i < geometry.Length; i++)
             {
-                ModelData a = moves[i].Model.GetValue();
-                if (!a.GetIsAlive()) continue;
-                Position endA = moves[i].Positions.Count > 0
-                    ? moves[i].Positions[^1] : a.PositionBinding.GetValue();
-                Float2 endFacingA = EndFacing(moves[i], a);
+                MoveGeometry a = geometry[i];
+                if (!a.Model.GetIsAlive()) continue;
 
-                for (int j = i + 1; j < moves.Count; j++)
+                for (int j = i + 1; j < geometry.Length; j++)
                 {
-                    ModelData b = moves[j].Model.GetValue();
-                    if (!b.GetIsAlive()) continue;
-                    // A dead model's slot can be reused; the same model appearing twice is a caller bug,
-                    // not a geometry one, and would self-flag here for no useful reason.
-                    if (ReferenceEquals(a, b)) continue;
+                    MoveGeometry b = geometry[j];
+                    if (!b.Model.GetIsAlive()) continue;
+                    if (ReferenceEquals(a.Model, b.Model)) continue;
+                    if (Distance2D(a.End, b.End) - a.Reach - b.Reach > REJECT_MARGIN_INCHES) continue;
 
-                    Position endB = moves[j].Positions.Count > 0
-                        ? moves[j].Positions[^1] : b.PositionBinding.GetValue();
-                    Float2 endFacingB = EndFacing(moves[j], b);
-
-                    if (!BaseShapeGeometry.AreColliding(a.BaseShape, endA, endFacingA,
-                            b.BaseShape, endB, endFacingB))
+                    if (!(BaseShapeGeometry.FootprintGap(a.EndHull, b.EndHull) < 0f))
+                        continue;
+                    if (BaseShapeGeometry.FootprintGap(a.StartHull, b.StartHull) < 0f)
                         continue;
 
-                    // Already stacked before the move - don't trap the pair; only NEWLY stacking is illegal.
-                    if (BaseShapeGeometry.AreColliding(a.BaseShape, a.PositionBinding.GetValue(), a.Facing,
-                            b.BaseShape, b.PositionBinding.GetValue(), b.Facing))
-                        continue;
-
-                    reasonsForInvalidMove.Add(
-                        new ReasonForInvalidMove(EErrorReasonType.EndedOnOwnUnitModel, moves[i].Model));
+                    sink.Add(EErrorReasonType.EndedOnOwnUnitModel, a.Move.Model);
+                    if (sink.Done(EErrorReasonType.EndedOnOwnUnitModel)) return;
                     break; // one flag per model is enough
                 }
             }
@@ -1075,26 +1265,21 @@ namespace FDG.Stages
         /// it, is always legal. In normal play nothing starts off the table and the rule is simply
         /// "stay on the board".</para>
         /// </summary>
-        private static void ValidateEndsOnTable(List<ModelMoveEntry> moves,
-            ref List<ReasonForInvalidMove> reasonsForInvalidMove)
+        private static void ValidateEndsOnTable(MoveGeometry[] geometry, ref FaultSink sink)
         {
-            foreach (ModelMoveEntry move in moves)
+            for (int i = 0; i < geometry.Length; i++)
             {
-                if (move.Positions.Count == 0) continue;
+                MoveGeometry g = geometry[i];
+                if (g.Move.Positions.Count == 0) continue;
 
-                ModelData model = move.Model.GetValue();
-                Position end = move.Positions[move.Positions.Count - 1];
-                // #282: a path carries a facing per waypoint; the end facing is the one the base rests at.
-                Float2 endFacing = EndFacing(move, model);
-
-                float endOverhang = OverhangInches(model.BaseShape, end, endFacing);
+                float endOverhang = OverhangInches(g.EndHull);
                 if (endOverhang <= TABLE_EDGE_EPSILON_INCHES) continue;
 
-                float startOverhang = OverhangInches(model.BaseShape,
-                    model.PositionBinding.GetValue(), model.Facing);
+                float startOverhang = OverhangInches(g.StartHull);
                 if (endOverhang <= startOverhang + TABLE_EDGE_EPSILON_INCHES) continue;
 
-                reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.EndedOffTable, move.Model));
+                sink.Add(EErrorReasonType.EndedOffTable, g.Move.Model);
+                if (sink.Done(EErrorReasonType.EndedOffTable)) return;
             }
         }
 
@@ -1103,18 +1288,17 @@ namespace FDG.Stages
         /// facing <paramref name="facing"/> - sticks out past the table bounds, in inches. 0 when the whole
         /// base is on the table. Internal for tests.
         /// </summary>
-        internal static float OverhangInches(IBaseShape shape, Position centre, Float2 facing)
+        internal static float OverhangInches(IBaseShape shape, Position centre, Float2 facing) =>
+            OverhangInches(shape.Footprint(centre, facing));
+
+        private static float OverhangInches(BaseFootprint footprint)
         {
             float w = GameWideConstants.DEFAULT_TABLE_WIDTH_INCHES;
             float h = GameWideConstants.DEFAULT_TABLE_HEIGHT_INCHES;
 
-            BaseFootprint footprint = shape.Footprint(centre, facing);
             float worst = 0f;
             foreach (Float2 corner in footprint.Corners)
             {
-                // The rounding radius inflates every hull corner, so the extreme point on each axis is the
-                // corner plus (or minus) the rounding. A circle is one corner rounded by its radius.
-                // Footprint corners are world-space (X, Y) = the table's (x, z) plane.
                 worst = MathF.Max(worst, footprint.Rounding - corner.X);          // past the left edge
                 worst = MathF.Max(worst, corner.X + footprint.Rounding - w);      // past the right edge
                 worst = MathF.Max(worst, footprint.Rounding - corner.Y);          // past the near edge
@@ -1162,7 +1346,7 @@ namespace FDG.Stages
         private const float COHESION_EPSILON_INCHES = 0.001f;
 
         private static void ValidateCoherency(List<ModelMoveEntry> moves,
-            ref List<ReasonForInvalidMove> reasonsForInvalidMove)
+            ref FaultSink sink)
         {
             List<DataBinding<ModelData>> models = new List<DataBinding<ModelData>>();
             List<Position> positions = new List<Position>();
@@ -1204,12 +1388,12 @@ namespace FDG.Stages
             {
                 if (nearestDistances[i] > GameWideConstants.MAX_MODEL_DISTANCE_FROM_ANY_OTHER_MODEL_INCHES + COHESION_EPSILON_INCHES)
                 {
-                    reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.TooFarFromAnyUnitModel, models[i]));
+                    sink.Add(EErrorReasonType.TooFarFromAnyUnitModel, models[i]);
                 }
 
                 if (farthestDistances[i] > GameWideConstants.MAX_MODEL_DISTANCE_FROM_ALL_OTHER_MODELS_INCHES + COHESION_EPSILON_INCHES)
                 {
-                    reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.TooFarFromAllUnitModels, models[i]));
+                    sink.Add(EErrorReasonType.TooFarFromAllUnitModels, models[i]);
                 }
             }
         }
@@ -1225,7 +1409,7 @@ namespace FDG.Stages
         /// is still rejected. Mirrors the enemy-standoff rule's "only penalise moves that close the distance".
         /// </summary>
         private static void ValidateCoherencyNotWorsened(List<ModelMoveEntry> moves,
-            ref List<ReasonForInvalidMove> reasonsForInvalidMove)
+            ref FaultSink sink)
         {
             List<DataBinding<ModelData>> models = new List<DataBinding<ModelData>>(moves.Count);
             List<Position> before = new List<Position>(moves.Count);
@@ -1252,7 +1436,7 @@ namespace FDG.Stages
 
             if (models.Count <= 1) return;
 
-            ComputeCohesionExtents(models, before, beforeFacings, out float[] nearestBefore, out float[] farthestBefore);
+            BeforeExtents(models, before, beforeFacings, out float[] nearestBefore, out float[] farthestBefore);
             ComputeCohesionExtents(models, after, afterFacings, out float[] nearestAfter, out float[] farthestAfter);
 
             for (int i = 0; i < models.Count; i++)
@@ -1260,12 +1444,12 @@ namespace FDG.Stages
                 float nearestLimit = Math.Max(GameWideConstants.MAX_MODEL_DISTANCE_FROM_ANY_OTHER_MODEL_INCHES,
                     nearestBefore[i]) + COHESION_EPSILON_INCHES;
                 if (nearestAfter[i] > nearestLimit)
-                    reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.TooFarFromAnyUnitModel, models[i]));
+                    sink.Add(EErrorReasonType.TooFarFromAnyUnitModel, models[i]);
 
                 float farthestLimit = Math.Max(GameWideConstants.MAX_MODEL_DISTANCE_FROM_ALL_OTHER_MODELS_INCHES,
                     farthestBefore[i]) + COHESION_EPSILON_INCHES;
                 if (farthestAfter[i] > farthestLimit)
-                    reasonsForInvalidMove.Add(new ReasonForInvalidMove(EErrorReasonType.TooFarFromAllUnitModels, models[i]));
+                    sink.Add(EErrorReasonType.TooFarFromAllUnitModels, models[i]);
             }
         }
 
@@ -1385,29 +1569,33 @@ namespace FDG.Stages
     {
         public readonly Position Center;
         public readonly float BaseRadiusInches;
-        // The enemy's true base footprint and facing (#150), used shape-aware by both the end-state gap checks
-        // and the mid-path swept pass-through — so a rectangular enemy is measured by its real oriented outline.
         public readonly IBaseShape BaseShape;
         public readonly Float2 Facing;
         public readonly int UnitKey;
 
-        /// <summary>
-        /// #029: this footprint belongs to a unit that can't be moved into base contact with (Aircraft). The
-        /// move validator never treats such a unit as "charged" (engaged), so a move may not end stacked on it
-        /// nor within the standoff band — i.e. it can't be charged or contacted. Default false.
-        /// </summary>
         public readonly bool Uncontactable;
+
+        /// <summary>
+        /// #191 search perf pass 3: the hull every pair test used to rebuild per (moving model x footprint),
+        /// the zone the swept-path test used to rebuild per pair, and the circumscribed radius the
+        /// distance rejects use - all built once here, from the same inputs, so every answer is unchanged.
+        /// </summary>
+        public readonly BaseFootprint Hull;
+        public readonly IZone Zone;
+        public readonly float CircumscribedRadiusInches;
 
         public EnemyModelFootprint(Position center, float baseRadiusInches, int unitKey, bool uncontactable = false,
             IBaseShape? baseShape = null, Float2? facing = null)
         {
             Center = center;
             BaseRadiusInches = baseRadiusInches;
-            // No explicit shape (radius-only callers / tests) → a circle of that radius, i.e. the prior behaviour.
             BaseShape = baseShape ?? new CircleBase(baseRadiusInches);
             Facing = facing ?? new Float2(0f, 1f); // forward (+Z) — the axis-aligned default for radius-only callers
             UnitKey = unitKey;
             Uncontactable = uncontactable;
+            Hull = BaseShape.Footprint(Center, Facing);
+            Zone = BaseShape.ToZone(Center, Facing);
+            CircumscribedRadiusInches = BaseShape.CircumscribedRadiusInches;
         }
     }
 }

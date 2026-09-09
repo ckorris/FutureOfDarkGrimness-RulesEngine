@@ -102,6 +102,40 @@ namespace FDG.Stages
             => NearestVisibleModel(from, fromShape, fromFacing, targets, blockers, maxRangeInches) != null;
 
         /// <summary>
+        /// <see cref="CanHitAny(Position, IBaseShape, Float2, IReadOnlyList{IModel}, IReadOnlyList{ITerrain}, float)"/>
+        /// with a per-attacker sight memo (#191 search perf pass 8): line of sight from one model to one
+        /// target does not depend on the weapon, only the range test does, so a model's weapons share
+        /// <paramref name="sight"/> (indexed like <paramref name="targets"/>, null = not yet asked).
+        /// </summary>
+        public static bool CanHitAny(Position from, IBaseShape fromShape, Float2 fromFacing,
+            IReadOnlyList<IModel> targets, IReadOnlyList<ITerrain>? blockers, float maxRangeInches,
+            bool?[] sight)
+        {
+            float bestDistance = float.PositiveInfinity;
+            bool any = false;
+            for (int i = 0; i < targets.Count; i++)
+            {
+                IModel target = targets[i];
+                if (!target.GetIsAlive()) continue;
+                if (target.Position.x == 0f && target.Position.z == 0f) continue;
+
+                float distance = DistanceUtilities.GetBaseToBaseDistanceInches_3D(from, target.Position,
+                    fromShape, fromFacing, target.BaseShape, target.Facing);
+                if (distance > maxRangeInches) continue;
+                if (distance >= bestDistance) continue;
+                if (blockers != null)
+                {
+                    bool visible = sight[i] ??= LineOfSightUtilities.HasLineOfSight(from, target.Position, blockers);
+                    if (!visible) continue;
+                }
+
+                bestDistance = distance;
+                any = true;
+            }
+            return any;
+        }
+
+        /// <summary>
         /// Whether ANY living, placed model of <paramref name="attackingUnit"/> can see ANY living,
         /// placed model of <paramref name="defendingUnit"/> — the unit-level occlusion gate
         /// (<see cref="OcclusionCheckStage"/>), built on the same per-model sight test the targeting

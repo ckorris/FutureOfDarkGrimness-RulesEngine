@@ -44,7 +44,7 @@ public sealed class RuleValidator
 
     public RuleValidator(HookContextCatalog? catalog = null)
     {
-        _catalog = catalog ?? new HookContextCatalog();
+        _catalog = catalog ?? HookContextCatalog.Default;
     }
 
     public IReadOnlyList<RuleViolation> Validate(SpecialRuleDefinition rule)

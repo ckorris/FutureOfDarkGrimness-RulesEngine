@@ -26,6 +26,70 @@ namespace FDG.Stages
             => BuildModelBlockers(tableState, (IUnit)attackingUnit.GetValue(), (IUnit)defendingUnit.GetValue(),
                 seeThroughFriendlyUnits);
 
+        /// <summary>
+        /// #191 search perf pass 8: what <see cref="BuildModelBlockers(ITableState, IUnit, IUnit, bool)"/> builds
+        /// for one attacker against EVERY defender, built once per shoot request; <see cref="Excluding"/>
+        /// is the per-defender list, same pieces in the same table order.
+        /// </summary>
+        public sealed class ModelBlockerSet
+        {
+            private readonly List<(IModel Model, ITerrain Blocker)> _candidates;
+
+            internal ModelBlockerSet(List<(IModel Model, ITerrain Blocker)> candidates)
+            {
+                _candidates = candidates;
+            }
+
+            public List<ITerrain> Excluding(IUnit defendingUnit)
+            {
+                var excluded = new HashSet<IModel>(ReferenceEqualityComparer.Instance);
+                foreach (IModel m in defendingUnit.Models) excluded.Add(m);
+                var blockers = new List<ITerrain>(_candidates.Count);
+                foreach ((IModel model, ITerrain blocker) in _candidates)
+                {
+                    if (!excluded.Contains(model)) blockers.Add(blocker);
+                }
+                return blockers;
+            }
+        }
+
+        public static ModelBlockerSet BuildModelBlockerSet(ITableState tableState, IUnit attackingUnit,
+            bool seeThroughFriendlyUnits)
+        {
+            PlayerID attackerPlayerID = attackingUnit.PlayerID;
+            ITeam? attackerTeam = tableState.Teams.Objects
+                .FirstOrDefault(t => t.IsPlayerOnTeam(attackerPlayerID));
+
+            var excluded = new HashSet<IModel>(ReferenceEqualityComparer.Instance);
+            foreach (IUnit unit in tableState.Units.Objects)
+            {
+                if (!unit.GetIsOnBattlefield())
+                {
+                    foreach (IModel m in unit.Models) excluded.Add(m);
+                    continue;
+                }
+
+                if (!seeThroughFriendlyUnits) continue;
+                bool isAlly = attackerTeam != null
+                    ? attackerTeam.IsPlayerOnTeam(unit.PlayerID)
+                    : unit.PlayerID.Equals(attackerPlayerID);
+                if (!isAlly) continue;
+                foreach (IModel m in unit.Models) excluded.Add(m);
+            }
+            foreach (IModel m in attackingUnit.Models) excluded.Add(m);
+
+            var candidates = new List<(IModel Model, ITerrain Blocker)>();
+            foreach (IModel model in tableState.Models.Objects)
+            {
+                if (!model.GetIsAlive()) continue;
+                if (model.Position.x == 0f && model.Position.z == 0f) continue;
+                if (excluded.Contains(model)) continue;
+                candidates.Add((model, new TerrainData(ETerrainType.Blocking,
+                    model.BaseShape.ToZone(model.Position, model.Facing))));
+            }
+            return new ModelBlockerSet(candidates);
+        }
+
         public static List<ITerrain> BuildModelBlockers(ITableState tableState,
             IUnit attackingUnit, IUnit defendingUnit, bool seeThroughFriendlyUnits)
         {

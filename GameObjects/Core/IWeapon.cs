@@ -116,7 +116,12 @@ namespace FDG
         private const char RuleSeparator = '\u0002';
         private const char ArgumentSeparator = '\u0003';
 
-        public static string For(IWeapon weapon)
+        public static string For(IWeapon weapon) =>
+            // #191 search perf pass 8: a Weapon's key is cached on the instance (its stats are immutable
+            // and the cache drops whenever its rule list changes); other IWeapon implementations build it.
+            weapon is Weapon concrete ? concrete.ProfileKey : Build(weapon);
+
+        internal static string Build(IWeapon weapon)
         {
             List<string> ruleSignatures = new List<string>(weapon.RuleDefinitions.Count);
             foreach (ResolvedRule rule in weapon.RuleDefinitions)
@@ -255,6 +260,10 @@ namespace FDG
         // save/load resume even though army files are vestigial there. See RuleAttachmentPersistence.
         [JsonProperty] private string? _ruleDefinitionsJson;
 
+        // #191 search perf pass 8: WeaponProfileKey.For(this), built once; reset when the rule list changes.
+        private string? _profileKey;
+        internal string ProfileKey => _profileKey ??= WeaponProfileKey.Build(this);
+
         public Weapon(string name, float rangeInches, int attacks, int armorPenetration,
             string? effectKey = null)
         {
@@ -287,6 +296,7 @@ namespace FDG
         public void AttachRuleDefinition(ResolvedRule rule)
         {
             _ruleDefinitions.Add(rule);
+            _profileKey = null;
             _ruleDefinitionsJson = RuleAttachmentPersistence.Serialize(_ruleDefinitions);
         }
 
@@ -299,6 +309,7 @@ namespace FDG
             if (_ruleDefinitions.Count == 0 && !string.IsNullOrEmpty(_ruleDefinitionsJson))
             {
                 _ruleDefinitions.AddRange(RuleAttachmentPersistence.Deserialize(_ruleDefinitionsJson));
+                _profileKey = null;
             }
         }
 

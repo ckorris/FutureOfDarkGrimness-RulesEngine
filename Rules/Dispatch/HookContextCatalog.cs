@@ -22,6 +22,13 @@ public sealed class HookContextCatalog
     
     public HookContextCatalog() : this(typeof(IHookContext).Assembly) {}
 
+    /// <summary>
+    /// The engine assembly's catalog, built once. #191 search perf pass 8: every simulated game built
+    /// two of these (one per player slot, through RuleValidator) by reflecting over the whole assembly -
+    /// 1.4 ms of the 1.9 ms it cost to construct a simulated server. The catalog is immutable once built.
+    /// </summary>
+    public static HookContextCatalog Default { get; } = new HookContextCatalog();
+
     public HookContextCatalog(Assembly assembly)
     {
         var map = new Dictionary<EHookID, Type>();

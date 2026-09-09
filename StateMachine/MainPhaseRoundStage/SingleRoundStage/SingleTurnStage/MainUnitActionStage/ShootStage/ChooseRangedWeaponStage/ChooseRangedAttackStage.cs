@@ -649,8 +649,9 @@ namespace FDG.Stages
             ConcurrentDictionary<Weapon, int> availableWeapons = WeaponPool.GroupByProfile(rangedWeapons);
 
             List<ITerrain> terrainSnapshot = gameContext.TableState.Terrain.Objects.ToList();
+            // #191 search perf pass 8: the gate reads only "any fireable option"; cover is never consulted.
             List<WeaponOption> options = BuildWeaponOptions(attackingUnit, availableWeapons, gameContext,
-                terrainSnapshot, Array.Empty<DataReference>());
+                terrainSnapshot, Array.Empty<DataReference>(), wantCover: false);
 
             // The stage's own gating pipeline, verbatim (#200): the gate must answer exactly what the
             // stage will conclude, or a deterministic AI ping-pongs between Choose Action and Shoot.
@@ -660,8 +661,14 @@ namespace FDG.Stages
 
         private static List<WeaponOption> BuildWeaponOptions(DataBinding<UnitData> attackingUnit,
             IReadOnlyDictionary<Weapon, int> availableWeapons, IGameContext gameContext,
-            IReadOnlyList<ITerrain> terrain, IReadOnlyCollection<DataReference> attackedDefenderRefs)
+            IReadOnlyList<ITerrain> terrain, IReadOnlyCollection<DataReference> attackedDefenderRefs,
+            bool wantCover = true)
         {
+            // #191 search perf pass 8: the sight blockers every enemy unit shares, built once here rather
+            // than once per enemy unit (each build allocated a zone per model on the table).
+            LineOfSightUtilities.ModelBlockerSet blockerSet = LineOfSightUtilities.BuildModelBlockerSet(
+                gameContext.TableState, attackingUnit.GetValue(), gameContext.Settings.SeeThroughFriendlyUnits);
+
             PlayerID playerID = attackingUnit.PlayerID();
 
             ITeam playerTeam = gameContext.TableState.Teams.Objects
@@ -738,7 +745,7 @@ namespace FDG.Stages
 
                 Dictionary<string, WeaponTargetStats> weaponToStats =
                     BuildAttacksForEnemyUnit(attackingUnit, enemyUnit, optionsByProfile.Keys,
-                        terrain, gameContext, weaponIgnoresLineOfSight, unselectableReason);
+                        terrain, gameContext, weaponIgnoresLineOfSight, blockerSet, wantCover, unselectableReason);
 
                 foreach (KeyValuePair<string, WeaponTargetStats> kvp in weaponToStats)
                 {
@@ -761,20 +768,19 @@ namespace FDG.Stages
         private static Dictionary<string, WeaponTargetStats> BuildAttacksForEnemyUnit(DataBinding<UnitData> attackingUnit,
             DataBinding<UnitData> enemyUnit, IEnumerable<string> weaponProfileKeys, IReadOnlyList<ITerrain> terrain,
             IGameContext gameContext, IReadOnlyDictionary<string, bool> weaponIgnoresLineOfSight,
+            LineOfSightUtilities.ModelBlockerSet blockerSet, bool wantCover,
             string? unselectableReason = null)
         {
             Dictionary<string, WeaponTargetStats> weaponToStats =
                 new Dictionary<string, WeaponTargetStats>(StringComparer.Ordinal);
 
-            var modelBlockers = LineOfSightUtilities.BuildModelBlockers(
-                gameContext.TableState, attackingUnit, enemyUnit,
-                gameContext.Settings.SeeThroughFriendlyUnits);
+            List<ITerrain> modelBlockers = blockerSet.Excluding(enemyUnit.GetValue());
             IReadOnlyList<ITerrain> allTerrain = terrain.Concat(modelBlockers).ToList();
 
             // #055/#045 truthfulness: this feeds the targeting UI's cover flag, so it is the SAME
             // computation CoverCheckStage rolls (#385: CoverMajority) - including the #158 dead-model
             // exclusion and the #201 proximity exceptions.
-            bool hasCover = CoverMajority.Evaluate(attackingUnit, enemyUnit, allTerrain,
+            bool hasCover = wantCover && CoverMajority.Evaluate(attackingUnit, enemyUnit, allTerrain,
                 gameContext.Settings.CoverProximityExceptionsEnabled).HasCover;
 
             foreach (string weaponProfileKey in weaponProfileKeys)
@@ -799,6 +805,8 @@ namespace FDG.Stages
             foreach (DataBinding<ModelData> attackingModel in attackingUnit.ModelBindings()
                 .Where(model => model.GetIsAlive()))
             {
+                // #191 search perf pass 8: this model's line of sight to each enemy model, shared by its weapons.
+                var sight = new bool?[enemyUnit.GetValue().Models.Count];
                 //TODO: Cache model weapons, both outside of this to look up, and
                 //within here. Should make a list before this scope of just models with relevant weapons.
                 //Also that should have list of relevant weapons.
@@ -829,7 +837,7 @@ namespace FDG.Stages
                     }
 
                     if(CanWeaponShootAtUnit(attackingModel, enemyUnit, effectiveRange,
-                        allTerrain, ignoresLoS))
+                        allTerrain, ignoresLoS, sight))
                     {
                         weaponTargetStats.modelsThatCanShoot.Add(attackingModel);
                     }
@@ -850,12 +858,12 @@ namespace FDG.Stages
         // NOT - #314).
         private static bool CanWeaponShootAtUnit(DataBinding<ModelData> attackingModel,
             DataBinding<UnitData> enemyUnit, float effectiveRangeInches,
-            IReadOnlyList<ITerrain> terrain, bool ignoresLineOfSight)
+            IReadOnlyList<ITerrain> terrain, bool ignoresLineOfSight, bool?[] sight)
         {
             ModelData attacker = attackingModel.GetValue();
             return ShotEligibility.CanHitAny(attacker.PositionBinding.GetValue(), attacker.BaseShape,
                 attacker.Facing, enemyUnit.GetValue().Models,
-                ignoresLineOfSight ? null : terrain, effectiveRangeInches);
+                ignoresLineOfSight ? null : terrain, effectiveRangeInches, sight);
         }
     }
 }

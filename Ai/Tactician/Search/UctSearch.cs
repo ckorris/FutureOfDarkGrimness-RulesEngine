@@ -218,10 +218,16 @@ namespace FDG.Ai.Tactician.Search
 
             var iterations = new int[workerCount];
             var searchClock = Stopwatch.StartNew();
-            await Task.WhenAll(Enumerable.Range(0, workerCount).Select(worker => Task.Run(async () =>
+            // One dedicated OS thread per worker, NOT a pool task (#191 perf, 2026-09-09): a worker
+            // is a sequential loop, but every expansion resumes through a
+            // RunContinuationsAsynchronously completion, so on the pool the logical worker migrates
+            // across threads - ten of them in one measured search - and four workers scaled 2.3x on a
+            // 32-CPU box. See SearchWorkerThread for the measurement. Semantics are untouched.
+            await Task.WhenAll(Enumerable.Range(0, workerCount).Select(async worker =>
             {
-                iterations[worker] = await RunWorkerAsync(trees[worker], options, searchClock, budgetMs);
-            })));
+                iterations[worker] = await SearchWorkerThread.RunAsync($"FDG search worker {worker}",
+                    () => RunWorkerAsync(trees[worker], options, searchClock, budgetMs));
+            }));
             searchClock.Stop();
             clock.Stop();
 

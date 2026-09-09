@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using FDG.Ai;
 using FDG.Ai.Tactician.Search;
 using FDG.Players;
@@ -174,6 +175,67 @@ namespace FDG.Tests
                 int workerSeed = SearchSeeds.Derive(11, 0, 0, worker);
                 Assert.That(seeds.Add(SearchSeeds.Derive(workerSeed, 0, 0, 0)), Is.True,
                     "each worker's first root edge draws its own determinization");
+            }
+        }
+
+        /// <summary>
+        /// #191 perf (2026-09-09): a worker is a sequential loop written in async code, and every
+        /// real expansion resumes through a RunContinuationsAsynchronously completion. On the thread
+        /// pool that means the logical worker migrates - one measured 4-worker search was carried by
+        /// ten distinct pool threads, and four workers scaled 2.3x on a 32-CPU box because of it.
+        /// <see cref="SearchWorkerThread"/> gives each worker its own thread and a single-threaded
+        /// SynchronizationContext, so an await comes back where it left. The expander below yields
+        /// for real (an authored one otherwise never leaves the calling thread), which is exactly the
+        /// hop that used to scatter the work.
+        /// </summary>
+        [Test]
+        public async Task EachWorker_KeepsItsWholeDescent_OnOneDedicatedThread()
+        {
+            AuthoredGame game = TwoPly(out SideMap sides);
+            var threadsByWorker = new ConcurrentDictionary<int, ConcurrentDictionary<int, byte>>();
+
+            Task<SearchTree> Build(int workerSeed)
+            {
+                ConcurrentDictionary<int, byte> seen = threadsByWorker.GetOrAdd(workerSeed, _ => new());
+                PlayerID acting = game.ActingPlayerOf["root"];
+                var root = new SearchNode(new KeySnapshot("root"), acting, sides.SideOf(acting), null,
+                    SideValues.Uniform(sides.Count, 0.5f), 0, null, null);
+                return Task.FromResult(new SearchTree(root, sides,
+                    new SearchOptions { WorkerSeed = workerSeed }, game, new YieldingExpander(game, seen)));
+            }
+
+            SearchResult result = await UctSearch.RunAsync(Build,
+                new UctOptions { RootSeed = 7, Workers = 4, Iterations = 25 });
+
+            Assert.That(result.Choice, Is.Not.Null, "the search still runs normally on its own threads");
+            Assert.That(threadsByWorker.Count, Is.EqualTo(4), "every worker expanded something");
+            foreach ((int workerSeed, ConcurrentDictionary<int, byte> threads) in threadsByWorker)
+            {
+                Assert.That(threads.Count, Is.EqualTo(1),
+                    $"worker seed {workerSeed} used {threads.Count} threads: an await left its thread");
+            }
+            Assert.That(threadsByWorker.Values.SelectMany(t => t.Keys).Distinct().Count(), Is.EqualTo(4),
+                "the four workers run on four different threads, not one shared one");
+        }
+
+        /// <summary>Records the thread on both sides of a genuine await.</summary>
+        private sealed class YieldingExpander : INodeExpander
+        {
+            private readonly INodeExpander _inner;
+            private readonly ConcurrentDictionary<int, byte> _threads;
+
+            public YieldingExpander(INodeExpander inner, ConcurrentDictionary<int, byte> threads)
+            {
+                _inner = inner;
+                _threads = threads;
+            }
+
+            public async Task<ExpansionOutcome> Expand(SearchNode parent, SearchEdge edge, int seed)
+            {
+                _threads.TryAdd(Environment.CurrentManagedThreadId, 0);
+                await Task.Yield();
+                _threads.TryAdd(Environment.CurrentManagedThreadId, 0);
+                return await _inner.Expand(parent, edge, seed);
             }
         }
 

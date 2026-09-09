@@ -826,6 +826,12 @@ public sealed class RuleEvaluator
             return Array.Empty<ResolvedRule>();
         }
 
+        // #191 search perf pass 10: no grant tokens, no list.
+        if (!unit.Tokens.HasToken(TokenType.RuleGrant))
+        {
+            return Array.Empty<ResolvedRule>();
+        }
+
         var granted = new List<ResolvedRule>();
         foreach (Token token in unit.Tokens.GetAllTokens(TokenType.RuleGrant))
         {
@@ -886,8 +892,11 @@ public sealed class RuleEvaluator
             // ungated. Versatile Defense is the first rule whose text puts the all-models gate on the
             // CHOICE ("when a unit where all models have this rule is deployed or activated, pick one
             // effect") rather than on the effect, which is why nothing surfaced it before.
-            var invocation = new RuleInvocation(context, unit, rule.Arguments, DiceRoller: _diceRoller,
-                Weapon: carryingWeapon, Definition: rule.Definition);
+            // #191 search perf pass 10: a rule with no ability triggering at this hook offers nothing -
+            // skip it before building its invocation (which every rule used to pay for).
+            if (!rule.Definition.ActivatesAt(context.Hook)) continue;
+
+            RuleInvocation? invocation = null;
 
             foreach (ActivatedAbility ability in rule.Definition.Activated)
             {
@@ -895,6 +904,9 @@ public sealed class RuleEvaluator
                 {
                     continue;
                 }
+
+                invocation ??= new RuleInvocation(context, unit, rule.Arguments, DiceRoller: _diceRoller,
+                    Weapon: carryingWeapon, Definition: rule.Definition);
 
                 if (!ability.AvailableWhen.Evaluate(invocation))
                 {

@@ -62,6 +62,13 @@ public record SpecialRuleDefinition(string Name, IReadOnlyList<HookEntry> Passiv
     /// <summary>True when some passive entry of this rule fires at this hook from this seat.</summary>
     public bool ListensAt(EHookID hook, ERuleSeat seat) =>
         HookListeners.Test(_listeners ??= HookListeners.Build(Passive), hook, seat);
+
+    // #191 search perf pass 10: the hooks any activated ability of this rule triggers on, built once.
+    private ulong[]? _activators;
+
+    /// <summary>True when some activated ability of this rule triggers at this hook.</summary>
+    public bool ActivatesAt(EHookID hook) =>
+        HookListeners.Test(_activators ??= HookListeners.BuildActivated(Activated), hook, ERuleSeat.Actor);
 }
 
 /// <summary>
@@ -80,6 +87,18 @@ public static class HookListeners
         foreach (HookEntry entry in passive)
         {
             int bit = (int)entry.HookID * SeatCount + (int)entry.Seat;
+            mask[bit >> 6] |= 1UL << (bit & 63);
+        }
+        return mask;
+    }
+
+    /// <summary>Activated abilities have no seat; they are recorded on the Actor bit of their trigger hook.</summary>
+    public static ulong[] BuildActivated(IReadOnlyList<ActivatedAbility> activated)
+    {
+        var mask = new ulong[Words];
+        foreach (ActivatedAbility ability in activated)
+        {
+            int bit = (int)ability.TriggerHook * SeatCount + (int)ERuleSeat.Actor;
             mask[bit >> 6] |= 1UL << (bit & 63);
         }
         return mask;

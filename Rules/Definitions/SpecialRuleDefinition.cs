@@ -54,4 +54,41 @@ public record SpecialRuleDefinition(string Name, IReadOnlyList<HookEntry> Passiv
     public virtual bool Equals(SpecialRuleDefinition? other) => other is not null && Name == other.Name;
 
     public override int GetHashCode() => Name.GetHashCode();
+
+    // #191 search perf pass 4: which (hook, seat) pairs any passive entry listens on, built once per
+    // definition. Definitions are immutable and never copied with `with`, so the cache cannot go stale.
+    private ulong[]? _listeners;
+
+    /// <summary>True when some passive entry of this rule fires at this hook from this seat.</summary>
+    public bool ListensAt(EHookID hook, ERuleSeat seat) =>
+        HookListeners.Test(_listeners ??= HookListeners.Build(Passive), hook, seat);
+}
+
+/// <summary>
+/// A bitset over (hook, seat) pairs: bit index = hook value x 2 + seat. The dispatch fast path asks
+/// "does any rule on this participant listen here?" before it allocates anything (#191 pass 4).
+/// </summary>
+public static class HookListeners
+{
+    private const int SeatCount = 2;
+    private static readonly int Words =
+        ((Enum.GetValues<EHookID>().Select(h => (int)h).Max() + 1) * SeatCount + 63) / 64;
+
+    public static ulong[] Build(IReadOnlyList<HookEntry> passive)
+    {
+        var mask = new ulong[Words];
+        foreach (HookEntry entry in passive)
+        {
+            int bit = (int)entry.HookID * SeatCount + (int)entry.Seat;
+            mask[bit >> 6] |= 1UL << (bit & 63);
+        }
+        return mask;
+    }
+
+    public static bool Test(ulong[] mask, EHookID hook, ERuleSeat seat)
+    {
+        int bit = (int)hook * SeatCount + (int)seat;
+        int word = bit >> 6;
+        return word < mask.Length && (mask[word] & (1UL << (bit & 63))) != 0;
+    }
 }

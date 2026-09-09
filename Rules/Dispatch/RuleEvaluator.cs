@@ -66,6 +66,14 @@ public sealed class RuleEvaluator
             var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             try
             {
+        // #191 search perf pass 4: nothing on this participant listens at this hook from this seat, so
+        // the walk below could only produce an empty list - return it without renting or allocating.
+        // Tracing keeps the full walk (it narrates the hook firing even when no rule answers).
+        if (!TraceEnabled && !AnyoneListens(context.Hook, unit, seat, weapon, models))
+        {
+            return Array.Empty<RuleOperation>();
+        }
+
         var tagged = new List<TaggedOperation>();
         // Single-participant Evaluate does NOT run the consume-on-fire pass — grantsToConsume stays null —
         // so a one-shot (NextTrigger) granted rule firing here is projected but never spent. Correct today:
@@ -177,11 +185,25 @@ public sealed class RuleEvaluator
             var __probe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             try
             {
+        bool trace = log && TraceEnabled;
+        if (!trace)
+        {
+            // #191 search perf pass 4: no rule on any participant listens here, so nothing can fire,
+            // be logged, be suppressed or spend a one-shot grant (a grant is spent only when its rule
+            // listens at this hook, which is the same test). Skip the allocations and the walk.
+            bool anyone = false;
+            for (int i = 0; i < participants.Length && !anyone; i++)
+            {
+                RuleParticipant p = participants[i];
+                anyone = AnyoneListens(context.Hook, p.Unit, p.Seat, p.Weapon, p.Models);
+            }
+            if (!anyone) return s_noTagged;
+        }
+
         var tagged = new List<TaggedOperation>();
 
         // #163 — only live evaluations narrate; the read-only named queries (log == false) run per-frame
         // while building UI and must stay silent even with tracing on.
-        bool trace = log && TraceEnabled;
         if (trace)
         {
             TraceLine($"{context.Hook} fires - " + string.Join(", ", participants.Select(p =>
@@ -349,6 +371,53 @@ public sealed class RuleEvaluator
     /// it is a rule with (X) in its name"). Does not log — callers log after deciding which
     /// operations survive.
     /// </summary>
+    /// <summary>The empty result of the fast path; callers only read it (OpsOf/NamedOpsOf return Array.Empty for it).</summary>
+    private static readonly List<TaggedOperation> s_noTagged = new(0);
+
+    /// <summary>
+    /// #191 search perf pass 4: does any rule this participant would be walked with - static unit,
+    /// weapon and model attachments, plus token-granted rules - have a passive entry at this hook from
+    /// this seat? False means the full walk is guaranteed to produce nothing. A grant that would not
+    /// resolve, or that reads arguments, answers true so the full walk still raises its once-only
+    /// warning exactly as before.
+    /// </summary>
+    private bool AnyoneListens(EHookID hook, IUnit unit, ERuleSeat seat, IWeapon? weapon,
+        IReadOnlyList<IModel>? models)
+    {
+        if (ListensAt(unit.RuleDefinitions, hook, seat)) return true;
+        if (weapon != null && ListensAt(weapon.RuleDefinitions, hook, seat)) return true;
+        if (models != null)
+        {
+            // AllOwners fires only rules every model shares, a subset of this union - so "no model
+            // listens" covers both scopes.
+            for (int i = 0; i < models.Count; i++)
+            {
+                if (ListensAt(models[i].RuleDefinitions, hook, seat)) return true;
+            }
+        }
+
+        if (_ruleResolver != null && unit.Tokens.HasToken(TokenType.RuleGrant))
+        {
+            foreach (Token token in unit.Tokens.GetAllTokens(TokenType.RuleGrant))
+            {
+                if (token.Payload is not TokenPayload.RuleGrant grant) continue;
+                if (!_ruleResolver.TryResolve(grant.RuleName, out ResolvedRule resolved)) return true;
+                if (RuleArgumentArity.MaxReferencedArgIndex(resolved.Definition) >= 0) return true;
+                if (resolved.Definition.ListensAt(hook, seat)) return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool ListensAt(IReadOnlyList<ResolvedRule> rules, EHookID hook, ERuleSeat seat)
+    {
+        for (int i = 0; i < rules.Count; i++)
+        {
+            if (rules[i].Definition.ListensAt(hook, seat)) return true;
+        }
+        return false;
+    }
+
     private void CollectTagged(IUnit unit, ERuleSeat seat, IWeapon? weapon, IReadOnlyList<IModel>? models,
         EModelRuleScope modelScope, IHookContext context, List<TaggedOperation> sink, DedupState seen,
         List<(IUnit Unit, Token Grant)>? grantsToConsume, bool trace)
@@ -441,10 +510,14 @@ public sealed class RuleEvaluator
 
         foreach (ResolvedRule rule in rules)
         {
+            // #191 search perf pass 4: a rule with no entry at this hook+seat produces nothing, and
+            // skipping it before the dedup registration changes no later answer (registration only
+            // blocks another instance of the same rule, which listens the same way).
+            if (!rule.Definition.ListensAt(context.Hook, seat)) continue;
+
             // #163 — narrate only rules that actually listen at this hook+seat; walking every rule
             // past every hook would drown the trace in non-events.
-            bool traceThisRule = trace && rule.Definition.Passive
-                .Any(e => e.HookID == context.Hook && e.Seat == seat);
+            bool traceThisRule = trace;
 
             if (!seen.ShouldFire(unit, rule))
             {

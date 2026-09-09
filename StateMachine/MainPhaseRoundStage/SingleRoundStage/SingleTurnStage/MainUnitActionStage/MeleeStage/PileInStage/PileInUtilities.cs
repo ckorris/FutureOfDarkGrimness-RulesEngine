@@ -42,6 +42,19 @@ namespace FDG.Stages
         // charger by definition) must not read as blocked.
         private const float PATH_TOUCH_TOLERANCE_INCHES = 0.02f;
 
+        /// <summary>
+        /// #191 search perf pass 9: two bodies whose circumscribed circles are further apart than this
+        /// cannot overlap or touch, so the exact hull gap is skipped without changing any answer. The
+        /// hull gap is never below the centre distance less both radii; the margin covers float noise.
+        /// </summary>
+        private const float REJECT_MARGIN_INCHES = 0.01f;
+
+        private static float CentreDistance(Position a, Position b)
+        {
+            float dx = a.x - b.x, dz = a.z - b.z;
+            return MathF.Sqrt(dx * dx + dz * dz);
+        }
+
         public readonly struct PileInMove
         {
             public readonly DataBinding<ModelData> Model;
@@ -327,6 +340,8 @@ namespace FDG.Stages
             for (int c = 0; c < liveChargers.Count; c++)
             {
                 ModelData cm = liveChargers[c].GetValue();
+                // #191 search perf pass 9: this charger's hull once (the bisection below asked for it 24 times per direction).
+                BaseFootprint chargerHull = cm.BaseShape.Footprint(cm.Position, cm.Facing);
                 float hi0 = cm.BaseShape.CircumscribedRadiusInches + defenderShape.CircumscribedRadiusInches
                     + SLOT_CONTACT_GAP_INCHES + 0.01f;
 
@@ -343,15 +358,15 @@ namespace FDG.Stages
                     {
                         float mid = (lo + hi) * 0.5f;
                         Position p = new Position(cm.Position.x + dirX * mid, cm.Position.z + dirZ * mid);
-                        float gap = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
-                            p, cm.Position, defenderShape, defenderFacing, cm.BaseShape, cm.Facing);
+                        float gap = BaseShapeGeometry.FootprintGap(
+                            defenderShape.Footprint(p, defenderFacing), chargerHull);
                         if (gap < SLOT_CONTACT_GAP_INCHES) lo = mid;
                         else hi = mid;
                     }
 
                     Position slotPos = new Position(cm.Position.x + dirX * hi, cm.Position.z + dirZ * hi);
-                    float finalGap = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
-                        slotPos, cm.Position, defenderShape, defenderFacing, cm.BaseShape, cm.Facing);
+                    float finalGap = BaseShapeGeometry.FootprintGap(
+                        defenderShape.Footprint(slotPos, defenderFacing), chargerHull);
                     // Keep only well-formed slots: genuine base contact, never overlap. A degenerate search
                     // result is dropped here rather than trusted downstream.
                     if (finalGap < -0.001f || finalGap > BTB_EPSILON_INCHES) continue;
@@ -371,25 +386,32 @@ namespace FDG.Stages
             Dictionary<DataBinding<ModelData>, Position> workingDefenderPositions,
             IReadOnlyList<EnemyModelFootprint> otherEnemies)
         {
+            // #191 search perf pass 9: the defender's hull at the slot once, and only bodies whose
+            // circumscribed circles come within the overlap tolerance are measured.
+            BaseFootprint hull = defenderModel.BaseShape.Footprint(slotPos, defenderModel.Facing);
+            float reach = defenderModel.BaseShape.CircumscribedRadiusInches;
+            float reject = OVERLAP_TOLERANCE_INCHES + REJECT_MARGIN_INCHES;
+
             foreach (DataBinding<ModelData> other in chargers)
             {
                 ModelData om = other.GetValue();
-                float gap = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
-                    slotPos, om.Position, defenderModel.BaseShape, defenderModel.Facing, om.BaseShape, om.Facing);
+                if (CentreDistance(slotPos, om.Position) - reach - om.BaseShape.CircumscribedRadiusInches > reject) continue;
+                float gap = BaseShapeGeometry.FootprintGap(hull, om.BaseShape.Footprint(om.Position, om.Facing));
                 if (gap < -OVERLAP_TOLERANCE_INCHES) return false;
             }
             foreach (DataBinding<ModelData> other in defenders)
             {
                 if (ReferenceEquals(other, selfDefender)) continue;
                 ModelData om = other.GetValue();
-                float gap = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
-                    slotPos, workingDefenderPositions[other], defenderModel.BaseShape, defenderModel.Facing, om.BaseShape, om.Facing);
+                Position otherPos = workingDefenderPositions[other];
+                if (CentreDistance(slotPos, otherPos) - reach - om.BaseShape.CircumscribedRadiusInches > reject) continue;
+                float gap = BaseShapeGeometry.FootprintGap(hull, om.BaseShape.Footprint(otherPos, om.Facing));
                 if (gap < -OVERLAP_TOLERANCE_INCHES) return false;
             }
             foreach (EnemyModelFootprint enemy in otherEnemies)
             {
-                float gap = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
-                    slotPos, enemy.Center, defenderModel.BaseShape, defenderModel.Facing, enemy.BaseShape, enemy.Facing);
+                if (CentreDistance(slotPos, enemy.Center) - reach - enemy.CircumscribedRadiusInches > reject) continue;
+                float gap = BaseShapeGeometry.FootprintGap(hull, enemy.Hull);
                 if (gap < -OVERLAP_TOLERANCE_INCHES) return false;
             }
             return true;
@@ -452,43 +474,44 @@ namespace FDG.Stages
             {
                 DataBinding<ModelData>? worst = null;
                 float worstDepth = OVERLAP_TOLERANCE_INCHES;
-
                 foreach (DataBinding<ModelData> mover in movedDefenders)
                 {
                     ModelData mm = mover.GetValue();
                     Position pos = workingDefenderPositions[mover];
+                    // #191 search perf pass 9: only a negative gap counts, so bodies whose circumscribed
+                    // circles do not reach each other are skipped; the mover's hull is built once.
+                    BaseFootprint hull = mm.BaseShape.Footprint(pos, mm.Facing);
+                    float reach = mm.BaseShape.CircumscribedRadiusInches;
                     float deepest = 0f;
-
                     foreach (DataBinding<ModelData> other in liveChargers)
                     {
                         ModelData om = other.GetValue();
-                        float gap = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
-                            pos, om.Position, mm.BaseShape, mm.Facing, om.BaseShape, om.Facing);
+                        if (CentreDistance(pos, om.Position) - reach - om.BaseShape.CircumscribedRadiusInches > REJECT_MARGIN_INCHES) continue;
+                        float gap = BaseShapeGeometry.FootprintGap(hull, om.BaseShape.Footprint(om.Position, om.Facing));
                         if (-gap > deepest) deepest = -gap;
                     }
                     foreach (DataBinding<ModelData> other in liveDefenders)
                     {
                         if (ReferenceEquals(other, mover)) continue;
                         ModelData om = other.GetValue();
-                        float gap = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
-                            pos, workingDefenderPositions[other], mm.BaseShape, mm.Facing, om.BaseShape, om.Facing);
+                        Position otherPos = workingDefenderPositions[other];
+                        if (CentreDistance(pos, otherPos) - reach - om.BaseShape.CircumscribedRadiusInches > REJECT_MARGIN_INCHES) continue;
+                        float gap = BaseShapeGeometry.FootprintGap(hull, om.BaseShape.Footprint(otherPos, om.Facing));
                         if (-gap > deepest) deepest = -gap;
                     }
                     foreach (EnemyModelFootprint enemy in otherEnemies)
                     {
-                        float gap = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
-                            pos, enemy.Center, mm.BaseShape, mm.Facing, enemy.BaseShape, enemy.Facing);
+                        if (CentreDistance(pos, enemy.Center) - reach - enemy.CircumscribedRadiusInches > REJECT_MARGIN_INCHES) continue;
+                        float gap = BaseShapeGeometry.FootprintGap(hull, enemy.Hull);
                         if (-gap > deepest) deepest = -gap;
                     }
-
                     if (deepest > worstDepth)
                     {
                         worstDepth = deepest;
                         worst = mover;
                     }
                 }
-
-                if (worst == null) return; // no residual overlap — the common case, first pass.
+                if (worst == null) return; // no residual overlap - the common case, first pass.
                 workingDefenderPositions[worst] = worst.GetValue().Position;
                 movedDefenders.Remove(worst);
             }
@@ -499,14 +522,17 @@ namespace FDG.Stages
         {
             nearest = null;
             float bestB2B = float.PositiveInfinity;
+            BaseFootprint hull = shape.Footprint(pos, facing);
+            float reach = shape.CircumscribedRadiusInches;
             foreach (DataBinding<ModelData> c in chargers)
             {
                 ModelData cm = c.GetValue();
-                // True facing-aware base-to-base gap (#150/#159), so the pile-in step caps at real contact —
-                // a facing-less gap over-estimates a rotated rectangle's reach and let the defender overshoot
-                // into it. Circle-vs-circle is exactly the old radius form (facing is irrelevant for circles).
-                float b2b = DistanceUtilities.GetBaseToBaseDistanceInches_2D(
-                    pos, cm.Position, shape, facing, cm.BaseShape, cm.Facing);
+                // A pair whose gap cannot fall below the best so far is not measured (lower bound = centre
+                // distance less both circumscribed radii).
+                if (CentreDistance(pos, cm.Position) - reach - cm.BaseShape.CircumscribedRadiusInches
+                    - REJECT_MARGIN_INCHES >= bestB2B)
+                    continue;
+                float b2b = BaseShapeGeometry.FootprintGap(hull, cm.BaseShape.Footprint(cm.Position, cm.Facing));
                 if (b2b < bestB2B) { bestB2B = b2b; nearest = c; }
             }
             return bestB2B;
@@ -573,6 +599,11 @@ namespace FDG.Stages
             }
 
             if (upperBound <= 0f) return 0f;
+            // #191 search perf pass 9: an obstacle further than the bound plus both circumscribed radii
+            // is never reached within the bound - the swept test below would say so at 24x the cost.
+            if (CentreDistance(from, obstPos) - movingShape.CircumscribedRadiusInches
+                - obstShape.CircumscribedRadiusInches - REJECT_MARGIN_INCHES > upperBound)
+                return upperBound;
             IZone obstZone = obstShape.ToZone(obstPos, obstFacing);
             Float2 origin = new Float2(from.x, from.z);
             // The swept-footprint overlap grows monotonically with travel, so binary-search the transition.

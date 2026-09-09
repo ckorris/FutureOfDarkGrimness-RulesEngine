@@ -302,6 +302,7 @@ namespace FDG.Ai.Tactician
         {
             UnitData atk = attacker.GetValue();
             UnitData def = defender.GetValue();
+            var __hitProbe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
 
             // --- DetermineHitRollStage mirror. (Not mirrored: ClaimTargetMarks - claiming mutates
             // tokens - and granted one-shot hit buffs - the engine's only accessor consumes them.)
@@ -312,11 +313,19 @@ namespace FDG.Ai.Tactician
             // read them), and the sinks only when a rule actually produced an operation - an empty
             // operation list leaves every sink at its default (no floor, net 0, multiplier 1, ...).
             IReadOnlyList<IModel> defenderModels = HeroStatRules.LivingModels(def);
+            // #191 search perf: the attacker's batch participant once per volley as well - both
+            // dispatches below want the same (unit, weapon) batch, and gathering its living owners is
+            // the single largest allocation in the estimate.
+            var __modsProbe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
+            RuleParticipant attackerBatch = ActorWithBatch(atk, weapon);
+            RuleParticipant defenderSeat = RuleParticipant.Subject(def, models: defenderModels);
             IReadOnlyList<RuleOperation> hitModOps = Ops(evaluator.EvaluateAllNamed(
                 new HitRollModifierContext(atk, def, context.DistanceInches, context.AttackerMoved,
                     context.IsMelee, context.IsCharging),
-                ActorWithBatch(atk, weapon),
-                RuleParticipant.Subject(def, models: defenderModels)));
+                attackerBatch,
+                defenderSeat));
+
+            global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.VolleyMods, __modsProbe);
 
             int baseQuality = HeroStatRules.GetAttackQuality(atk, weapon);
             int hitNet = 0;
@@ -342,11 +351,12 @@ namespace FDG.Ai.Tactician
             IDiceResults rolls = Dice.Roll(attackCount);
             IDiceResults successful = rolls.SubsetAtOrAbove(DiceUtilities.ClampSuccessRollNeeded(hitRollNeeded));
 
+            var __completeProbe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             IReadOnlyList<RuleOperation> completeOps = Ops(evaluator.EvaluateAllNamed(
                 new HitRollCompleteContext(atk, def, rolls, context.DistanceInches,
                     context.IsMelee, context.IsCharging),
-                ActorWithBatch(atk, weapon),
-                RuleParticipant.Subject(def, models: defenderModels)));
+                attackerBatch,
+                defenderSeat));
 
             // With no operations the splitter returns exactly this one-group list.
             List<SuccessfulHitInfo> groups = completeOps.Count == 0
@@ -385,14 +395,19 @@ namespace FDG.Ai.Tactician
                 }
             }
 
+            global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.VolleyComplete, __completeProbe);
+
             // --- CoverCheckStage stand-in: cover is a caller-supplied fact about the hypothetical
             // position; the ignore rules (Blast/Indirect/Takedown) are still the engine's own query.
             int coverBonus = !context.IsMelee && context.DefenderInCover
                 && !SightRuleQueries.IgnoresCover(atk, weapon, evaluator) ? 1 : 0;
+            global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.VolleyHit, __hitProbe);
 
             var bonusAttacks = new BonusAttackSink();
+            var __saveProbe = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             float wounds = ResolveSaves(evaluator, atk, def, weapon, groups, apReduction,
                 saveNet, coverBonus, context.IsMelee, notes, bonusAttacks, defenderModels);
+            global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.VolleySave, __saveProbe);
 
             // --- ResolveBonusMeleeAttacksStage mirror (#376 Bloodthirsty): the follow-up batch earned
             // by block-roll 1s, priced first-order - the same hit threshold and weapon, plain saves.

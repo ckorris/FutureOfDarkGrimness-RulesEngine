@@ -88,11 +88,36 @@ public static class HeroStatRules
     /// </summary>
     public static IReadOnlyList<IModel> LivingWeaponBatchOwners(UnitData unit, IWeapon weaponType)
     {
-        WeaponComparer comparer = new WeaponComparer();
-        return unit.Models
-            .Where(model => model.GetIsAlive() && model.Weapons.Any(weapon => comparer.Equals(weapon, weaponType)))
-            .ToList();
+        // #191 search perf: this was Where(...).ToList() with a fresh comparer, an outer closure and a
+        // LINQ Any() over every model's weapons - ~2.5 KB of garbage per call, and the Tactician's
+        // volley estimate calls it twice per volley on units of twenty-plus models (measured: 55% of
+        // the combat estimate's allocation). Same models, same order; the comparer is stateless, and
+        // the empty answer - a batch nobody living carries - needs no list at all.
+        IReadOnlyList<IModel> models = unit.Models;
+        List<IModel>? owners = null;
+        for (int i = 0; i < models.Count; i++)
+        {
+            IModel model = models[i];
+            if (!model.GetIsAlive()) continue;
+
+            IReadOnlyList<Weapon> weapons = model.Weapons;
+            bool carriesBatch = false;
+            for (int w = 0; w < weapons.Count; w++)
+            {
+                if (!s_weaponComparer.Equals(weapons[w], weaponType)) continue;
+                carriesBatch = true;
+                break;
+            }
+            if (!carriesBatch) continue;
+
+            owners ??= new List<IModel>(models.Count - i);
+            owners.Add(model);
+        }
+        return owners ?? (IReadOnlyList<IModel>)Array.Empty<IModel>();
     }
+
+    /// <summary>Stateless (it only reads the two weapons), so one instance serves every comparison.</summary>
+    private static readonly WeaponComparer s_weaponComparer = new WeaponComparer();
 
     /// <summary>
     /// The living models of a defending unit — the Subject-seat counterpart to

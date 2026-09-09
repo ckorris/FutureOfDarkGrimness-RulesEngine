@@ -28,6 +28,8 @@ namespace FDG.Ai.Tactician.Search
             Candidates, Scoring, Expand, SimMaterialize, SimRegistries, SimServer, SimRun, SimCapture, Leaf,
             // Callee-level drill-down (overlap their callers, and each other where nested).
             RuleDispatch, Combat, MoveQuery, Sight, Pathfind, PlanMove, ObjectiveProj,
+            // Inside one volley estimate (Combat's drill-down).
+            VolleyHit, VolleySave, VolleyMods, VolleyComplete,
             // Inside a simulated activation's Choose Action stage.
             PlannerChoose, Enumerate, MeleeRange, Request,
             // Inside move planning (PlanMove).

@@ -140,12 +140,16 @@ namespace FDG.GameModel
             // resolver — and CreateArmies, which builds it for a new game, doesn't run on the resume path.
             // No re-grant is needed: the tokens themselves survive (re-applying creation rules would both
             // double the grants and reset Tough wounds, which is why the resume path skips that pass).
+            var __gSrvResolver = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             RuleResolver ruleResolver = BuildRuleResolver(playerSlots);
+            global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.SrvResolver, __gSrvResolver);
 
             // #095: the slot army files are vestigial here, so that resolver holds core rules only. Top it
             // up from each army's persisted definitions - otherwise a grant naming an embedded rule finds
             // nothing - and re-resolve the spell lists, which are [JsonIgnore] on ArmyData.
+            var __gSrvRestore = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             GameBootstrap.RestoreArmyRuleData(ruleResolver, loadedGameDataStore);
+            global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.SrvRestore, __gSrvRestore);
 
             // #265: fold in the resume lobby's re-pickable settings, and write them straight back onto the
             // progress record. The rolling save point rewrites that record from GameContext.Settings at
@@ -157,7 +161,9 @@ namespace FDG.GameModel
             progress.Settings = settings;
             GameProgressUtilities.WriteProgress(loadedGameDataStore, progress);
 
+            var __gSrvLaunch = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             BuildContextAndLaunch(settings, applyCreationRules: false, resumeProgress: progress);
+            global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.SrvLaunch, __gSrvLaunch);
         }
 
         private void BuildContextAndLaunch(GameSettings gameSettings, bool applyCreationRules, GameProgressData? resumeProgress)

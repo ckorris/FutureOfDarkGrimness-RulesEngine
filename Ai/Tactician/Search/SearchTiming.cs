@@ -32,6 +32,10 @@ namespace FDG.Ai.Tactician.Search
             PlannerChoose, Enumerate, MeleeRange, Request,
             // Inside move planning (PlanMove).
             PlanRoute, PlanFootprints, PlanCandidate, PlanValidate,
+            // A simulated activation's action gates (ChooseActionStage.Enter) and the simulated
+            // server's construction (FDGServer resume ctor).
+            GateMove, GateCharge, GateShoot, GatePass, GateCast, GateAllowed, GateOffers,
+            SrvResolver, SrvRestore, SrvLaunch,
         }
 
         /// <summary>What <see cref="Start"/> hands back; pass it to <see cref="Stop"/>.</summary>

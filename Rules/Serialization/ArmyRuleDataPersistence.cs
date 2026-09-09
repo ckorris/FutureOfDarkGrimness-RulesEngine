@@ -54,6 +54,15 @@ namespace FDG.Rules.Serialization
         /// Reads a blob back. Null/empty yields null rather than throwing: an <see cref="ArmyData"/> built
         /// by anything other than army load (tests, a pre-#095 save) simply carries nothing to restore.
         /// </summary>
+        // #191 search perf pass 7: a search resumes hundreds of simulated games from clones of one store,
+        // and every resume parsed each army's rule data afresh - the dominant cost of building the
+        // simulated server. The parse is a pure function of the JSON and every consumer only READS the
+        // result (the resolver keeps the definition references, spells are re-resolved into new
+        // RuntimeSpell objects, SpawnUnit reads the auxiliary specs), so one parse per distinct JSON is
+        // exact. Keyed by content: clones carry equal strings, not the same instance.
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, PersistedArmyRuleData> s_parsed =
+            new(StringComparer.Ordinal);
+
         public static PersistedArmyRuleData? Deserialize(string? json)
         {
             if (string.IsNullOrEmpty(json))
@@ -61,7 +70,17 @@ namespace FDG.Rules.Serialization
                 return null;
             }
 
-            return JsonSerializer.Deserialize<PersistedArmyRuleData>(json, RuleJson.Options);
+            if (s_parsed.TryGetValue(json, out PersistedArmyRuleData? cached))
+            {
+                return cached;
+            }
+
+            PersistedArmyRuleData? parsed = JsonSerializer.Deserialize<PersistedArmyRuleData>(json, RuleJson.Options);
+            if (parsed != null)
+            {
+                s_parsed[json] = parsed;
+            }
+            return parsed;
         }
     }
 }

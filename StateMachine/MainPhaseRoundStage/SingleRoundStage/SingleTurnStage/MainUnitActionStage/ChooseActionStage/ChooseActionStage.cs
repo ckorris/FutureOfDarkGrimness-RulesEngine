@@ -90,24 +90,36 @@ namespace FDG.Stages
 
             //Note that in the future, this should get optional actions somehow, like spellcasting.
 
+            var __gGateMove = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             bool canMove = GetCanMove(context, out string cantMoveReason);
+            global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.GateMove, __gGateMove);
+            var __gGateCharge = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             bool canCharge = GetCanCharge(context, out string cantChargeReason);
+            global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.GateCharge, __gGateCharge);
+            var __gGateShoot = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             bool canShoot = GetCanShoot(GameContext, context, out string cantShootReason);
+            global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.GateShoot, __gGateShoot);
+            var __gGatePass = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             bool canPass = GetCanPass(GameContext, context, out string cantPassReason);
+            global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.GatePass, __gGatePass);
 
             // #033 — a unit with Caster(X) gets a "Cast" action whenever its army has an affordable spell.
             // Like custom actions, casting is layered (it doesn't end the turn), so moving does not consume
             // it — but #234 gates it on HasAttacked, per Caster(X)'s "at any point before attacking"
             // (GF v3.5.1). Only shown for casters (no point graying it out for every non-caster).
+            var __gGateCast = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             bool isCaster = SpellTargeting.IsCaster(GameContext, context.ActivatingUnit.GetValue());
             string cantCastReason = null;
             bool canCast = isCaster && GetCanCast(context, out cantCastReason);
+            global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.GateCast, __gGateCast);
 
             // #100 — RestrictActions (Immobile, Artillery's Hold-only facet): a passive rule at this hook may
             // limit which action types the unit can declare. The Move menu option covers Advance/Rush, Charge
             // covers Charge; shooting is a sub-step of Hold and isn't gated here. A unit restricted to [Hold]
             // (Immobile) thus loses Move and Charge but may still Hold-and-shoot.
+            var __gGateAllowed = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             IReadOnlySet<EActionType>? allowedActions = CollectAllowedActions(context);
+            global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.GateAllowed, __gGateAllowed);
             if (allowedActions != null)
             {
                 if (canMove && !allowedActions.Contains(EActionType.Advance) && !allowedActions.Contains(EActionType.Rush))
@@ -180,10 +192,12 @@ namespace FDG.Stages
             // available such ability; each surfaces below as its own action. A unit compelled to attack
             // (#197 Instinctive, above) gets none of them - the menu is the attack, so the offers are not
             // gathered at all rather than greyed one by one.
+            var __gGateOffers = global::FDG.Ai.Tactician.Search.SearchTiming.Start();
             IReadOnlyList<AbilityOffer> customActionOffers = compelledToAttackNow
                 ? Array.Empty<AbilityOffer>()
                 : GameContext.RuleEvaluator.GatherOffers(
                     new ActionChoiceContext(context.ActivatingUnit.GetValue()));
+            global::FDG.Ai.Tactician.Search.SearchTiming.Stop(global::FDG.Ai.Tactician.Search.SearchTiming.Stage.GateOffers, __gGateOffers);
 
             List<string> validOptions = new List<string>();
             List<StringSelectionRequest.InvalidOption> invalidOptions = new List<StringSelectionRequest.InvalidOption>();

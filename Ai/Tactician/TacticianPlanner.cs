@@ -71,6 +71,16 @@ namespace FDG.Ai.Tactician
         private readonly Dictionary<DataReference, MeleeEstimate> _meleeSelfVsEnemy = new();
         private readonly Dictionary<DataReference, MeleeEstimate> _meleeEnemyVsSelf = new();
 
+        // #191 search perf: the three shooting estimates Score asks for per (candidate x enemy). Unlike
+        // the melee pair above they are NOT board-fixed - each carries the candidate's endpoint through
+        // AttackContext.DistanceInches - so the distance is part of the key. The estimate is a pure
+        // function of the two units' state and the context, and unit state is frozen for the same window
+        // the pass-6 memos rely on, so identical keys give identical answers. Whether that repeats often
+        // enough to pay is measured, not assumed - see the ledger.
+        private readonly Dictionary<ShotKey, AttackEstimate> _shotEstimates = new();
+
+        private readonly record struct ShotKey(DataReference Enemy, bool Incoming, AttackContext Context);
+
         private readonly record struct EnemyFacts(Position Centroid, bool HasMelee, float Advance, float ThreatReach);
 
         // #191 search perf pass 6: board-fixed answers the scorer asked for again per candidate. The
@@ -267,6 +277,7 @@ namespace FDG.Ai.Tactician
             _enemyFacts.Clear();
             _meleeSelfVsEnemy.Clear();
             _meleeEnemyVsSelf.Clear();
+            _shotEstimates.Clear();
             _objectiveProjections = null;
             _moveBudgets.Clear();
             _routeGrid = null;
@@ -843,7 +854,7 @@ namespace FDG.Ai.Tactician
                     // may be undervalued, while the phantom volley through a wall (the failure that
                     // walked units into wall shadows expecting a shot) can no longer be credited.
                     // Indirect weapons keep their value - the estimate exempts them per weapon.
-                    AttackEstimate shot = CombatMath.EstimateShooting(_evaluator, _activeUnit, enemyBinding,
+                    AttackEstimate shot = ShotEstimate(_activeUnit, enemyBinding, enemyBinding, incoming: false,
                         new AttackContext(Math.Max(1f, endDistance),
                             AttackerMoved: candidate.Intent != EMacroIntent.Hold,
                             SightFactor: hasLane ? 1f : 0f));
@@ -906,7 +917,7 @@ namespace FDG.Ai.Tactician
                 // between the endpoint and where it stands right now is not protection - crediting
                 // it here is what made wall shadows read as safe (#363 facet 3, replaced).
                 float theirReach = Math.Max(1f, endDistance - facts.Advance);
-                AttackEstimate incoming = CombatMath.EstimateShooting(_evaluator, enemyBinding, _activeUnit,
+                AttackEstimate incoming = ShotEstimate(enemyBinding, _activeUnit, enemyBinding, incoming: true,
                     new AttackContext(theirReach, AttackerMoved: true));
                 float incomingValue = ValueFraction(incoming.ExpectedWounds, self);
 
@@ -982,8 +993,8 @@ namespace FDG.Ai.Tactician
                     float projValue = maxRange <= 0f || shootRamp <= 0f ? 0f
                         // #365: no sight gate - this is a forecast two moves out, where a boolean
                         // about today's geometry is worth even less than it is for retaliation.
-                        : shootRamp * ValueFraction(CombatMath.EstimateShooting(_evaluator, enemyBinding,
-                                _activeUnit, new AttackContext(Math.Max(1f, Math.Min(projReach, maxRange)),
+                        : shootRamp * ValueFraction(ShotEstimate(enemyBinding, _activeUnit, enemyBinding,
+                                incoming: true, new AttackContext(Math.Max(1f, Math.Min(projReach, maxRange)),
                                     AttackerMoved: true))
                             .ExpectedWounds, self);
                     // The MELEE forecast keeps its hard edge deliberately: unlike a range band, the
@@ -1361,6 +1372,26 @@ namespace FDG.Ai.Tactician
                 MeleeReachOf(enemyBinding, self));
             _enemyFacts[enemyBinding.Reference] = facts;
             return facts;
+        }
+
+        /// <summary>
+        /// <see cref="CombatMath.EstimateShooting"/> memoized on (enemy, direction, context) for this
+        /// activation. <paramref name="incoming"/> says which way the shot goes; the active unit is the
+        /// other end either way, and it is fixed for the activation.
+        /// </summary>
+        private AttackEstimate ShotEstimate(DataBinding<UnitData> attacker, DataBinding<UnitData> defender,
+            DataBinding<UnitData> enemyBinding, bool incoming, AttackContext context)
+        {
+            var key = new ShotKey(enemyBinding.Reference, incoming, context);
+            if (_shotEstimates.TryGetValue(key, out AttackEstimate? cached))
+            {
+                Search.SearchTiming.Note("shot memo hit");
+                return cached;
+            }
+            Search.SearchTiming.Note("shot memo miss");
+            AttackEstimate estimate = CombatMath.EstimateShooting(_evaluator, attacker, defender, context);
+            _shotEstimates[key] = estimate;
+            return estimate;
         }
 
         private MeleeEstimate MeleeSelfVs(DataBinding<UnitData> enemyBinding)

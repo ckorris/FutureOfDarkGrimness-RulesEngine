@@ -240,16 +240,18 @@ namespace FDG.Tests
         }
 
         [Test]
-        public void Palette_OffersImpassibleTerrainThatDoesNotBlockLineOfSight()
+        public void NoPalettePiece_SeparatesImpassibleFromBlocking()
         {
-            // Impassible without Blocking = go around it, shoot over it. The built-in set had none:
-            // every impassible piece was also Blocking.
-            var goAroundShootOver = DefaultTerrainPool.GetPalette()
-                .Where(p => p.TerrainType.HasFlag(ETerrainType.Impassible)
-                         && !p.TerrainType.HasFlag(ETerrainType.Blocking))
-                .ToList();
-
-            Assert.That(goAroundShootOver, Is.Not.Empty);
+            // #399 reverses #268's "go around it, shoot over it" tier (Tank traps, Water pool, Rocky
+            // ridge). In play the two flags were indistinguishable on the table, so a piece you could
+            // not walk into but could shoot over read as a bug rather than a rule. In the built-in pool
+            // the two now always travel together, in BOTH directions.
+            foreach (TerrainPieceEntry piece in DefaultTerrainPool.GetPalette())
+            {
+                Assert.That(piece.TerrainType.HasFlag(ETerrainType.Impassible),
+                    Is.EqualTo(piece.TerrainType.HasFlag(ETerrainType.Blocking)),
+                    $"'{piece.Name}' is one of Impassible/Blocking without the other.");
+            }
         }
 
         [Test]
@@ -349,11 +351,15 @@ namespace FDG.Tests
         }
 
         [Test]
-        public void EveryPalettePiece_HasNonNegativeHeight()
+        public void NoPalettePiece_CarriesAHeightValue()
         {
+            // #399: no rule reads a terrain piece's height - sight lines are a flat 2D footprint query
+            // (TerrainData.EvaluateSightLine) - so an authored height was a number the tooltip printed
+            // and the game ignored. The field survives for hand-authored layout and scenario files; the
+            // built-in pool no longer sets it. Delete this test if height ever gains a rules meaning.
             foreach (TerrainPieceEntry piece in DefaultTerrainPool.GetPalette())
             {
-                Assert.That(piece.HeightInches, Is.GreaterThanOrEqualTo(0f), $"'{piece.Name}'");
+                Assert.That(piece.HeightInches, Is.EqualTo(0f), $"'{piece.Name}'");
             }
         }
 

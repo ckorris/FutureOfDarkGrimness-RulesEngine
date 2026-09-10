@@ -19,12 +19,15 @@ namespace FDG.Stages
     /// </summary>
     public static class DefaultTerrainPool
     {
-        // Type shorthands. Blocking|Impassible = blocks movement AND line of sight (a building you can
-        // neither enter nor shoot through). Impassible alone = blocks movement only, so a unit must go
-        // around it but can still shoot over it.
-        private const ETerrainType Solid   = ETerrainType.Blocking | ETerrainType.Impassible;
-        private const ETerrainType Blocker = ETerrainType.Impassible;
-        private const ETerrainType Woods   = ETerrainType.Cover | ETerrainType.Difficult;
+        // Type shorthands. #399: Impassible and Blocking always travel together in the built-in pool -
+        // if you cannot walk into it, you cannot see through it either. The old "Impassible alone =
+        // walk around it, shoot over it" tier is gone (Tank traps, Water pool and Rocky ridge were its
+        // only members and are Solid now): in play it read as an invisible wall, since nothing on the
+        // table distinguishes a piece that stops a model from one that also stops a sight line. There is
+        // deliberately no coercion in TerrainData - a hand-authored layout file may still separate them,
+        // and the sight-line and movement rules still read the two flags independently.
+        private const ETerrainType Solid = ETerrainType.Blocking | ETerrainType.Impassible;
+        private const ETerrainType Woods = ETerrainType.Cover | ETerrainType.Difficult;
 
         // #393 - the gap a #393 piece leaves for models to walk through. Two 28mm bases
         // (BaseShapeDefaults.CircleDiameterInches, 1.1023622") abreast is 2.205", so 2.5" clears them
@@ -58,7 +61,6 @@ namespace FDG.Stages
                     Name = "Central building",
                     TerrainType = Solid,
                     Shape = new RectangularZone(33, 39, 22, 26),
-                    HeightInches = 4f,
                     Points = 3,
                 },
                 // Forest, left-center — cover + difficult.
@@ -67,7 +69,6 @@ namespace FDG.Stages
                     Name = "Forest",
                     TerrainType = Woods,
                     Shape = new CircularZone(20, 24, 5),
-                    HeightInches = 0f,
                     Points = 3,
                 },
                 // Forest, right-center — cover + difficult.
@@ -76,7 +77,6 @@ namespace FDG.Stages
                     Name = "Forest",
                     TerrainType = Woods,
                     Shape = new CircularZone(52, 24, 5),
-                    HeightInches = 0f,
                     Points = 3,
                 },
                 // Sandbags, near team-1 line — cover.
@@ -85,7 +85,6 @@ namespace FDG.Stages
                     Name = "Sandbag line",
                     TerrainType = ETerrainType.Cover,
                     Shape = new RectangularZone(28, 36, 12, 13),
-                    HeightInches = 0f,
                     Points = 1,
                 },
                 // Sandbags, near team-2 line — cover.
@@ -94,7 +93,6 @@ namespace FDG.Stages
                     Name = "Sandbag line",
                     TerrainType = ETerrainType.Cover,
                     Shape = new RectangularZone(36, 44, 35, 36),
-                    HeightInches = 0f,
                     Points = 1,
                 },
                 // Mine field — dangerous.
@@ -103,7 +101,6 @@ namespace FDG.Stages
                     Name = "Mine field",
                     TerrainType = ETerrainType.Dangerous,
                     Shape = new RectangularZone(8, 14, 30, 36),
-                    HeightInches = 0f,
                     Points = 2,
                 },
                 // Rubble — difficult.
@@ -112,7 +109,6 @@ namespace FDG.Stages
                     Name = "Rubble",
                     TerrainType = ETerrainType.Difficult,
                     Shape = new RectangularZone(58, 66, 12, 18),
-                    HeightInches = 0f,
                     Points = 2,
                 },
 
@@ -131,7 +127,6 @@ namespace FDG.Stages
                         new RectangularZone(6, 13, 6, 8),    // horizontal arm
                         new RectangularZone(6, 8, 8, 13),    // vertical arm
                     }),
-                    HeightInches = 3f,
                     Points = 3,
                 },
                 // Wreckage, top-center — T-shape.
@@ -144,7 +139,6 @@ namespace FDG.Stages
                         new RectangularZone(42, 50, 6, 8),   // cross bar
                         new RectangularZone(45, 47, 8, 13),  // stem
                     }),
-                    HeightInches = 2.5f,
                     Points = 3,
                 },
                 // Crater rim, top-right — U-shape opening upward.
@@ -158,7 +152,6 @@ namespace FDG.Stages
                         new RectangularZone(58, 67, 5, 7),   // base
                         new RectangularZone(65, 67, 5, 11),  // right arm
                     }),
-                    HeightInches = 0f,
                     Points = 3,
                 },
                 // Tank traps, bottom-left — plus/cross.
@@ -171,7 +164,6 @@ namespace FDG.Stages
                         new RectangularZone(8, 14, 40, 42),  // horizontal
                         new RectangularZone(10, 12, 38, 44), // vertical
                     }),
-                    HeightInches = 2f,
                     Points = 3,
                 },
                 // Collapsed wall, bottom-right — stepped Z.
@@ -185,7 +177,6 @@ namespace FDG.Stages
                         new RectangularZone(59, 64, 40, 42), // mid step
                         new RectangularZone(62, 67, 42, 44), // bottom step
                     }),
-                    HeightInches = 3f,
                     Points = 3,
                 },
             }
@@ -212,12 +203,13 @@ namespace FDG.Stages
 
         /// <summary>
         /// Identity of a template for de-duplication: everything a placed copy inherits except the
-        /// authored position (name, type, footprint AABB, height, cost).
+        /// authored position (name, type, footprint AABB, cost). Height dropped with #399 - every
+        /// built-in piece leaves it at 0, so it can no longer tell two templates apart.
         /// </summary>
-        private static (string, ETerrainType, float, float, float, int) TemplateKey(TerrainPieceEntry p)
+        private static (string, ETerrainType, float, float, int) TemplateKey(TerrainPieceEntry p)
         {
             (float lx, float hx, float ly, float hy) = p.Shape.GetAABB();
-            return (p.Name, p.TerrainType, MathF.Round(hx - lx, 2), MathF.Round(hy - ly, 2), p.HeightInches, p.Points);
+            return (p.Name, p.TerrainType, MathF.Round(hx - lx, 2), MathF.Round(hy - ly, 2), p.Points);
         }
 
         /// <summary>
@@ -234,21 +226,21 @@ namespace FDG.Stages
         {
             // --- Small solid obstacles: block movement AND sight ---
 
-            yield return Piece("Standing stone", Solid, new CircularZone(0, 0, 0.75f), 4f, 1);
-            yield return Piece("Boulder", Solid, new CircularZone(0, 0, 1.25f), 2.5f, 1);
-            yield return Piece("Watchtower", Solid, new RectangularZone(0, 2, 0, 2), 7f, 1);
-            yield return Piece("Wrecked vehicle", Solid, new RectangularZone(0, 3, 0, 1.5f), 2f, 1);
-            yield return Piece("Shipping container", Solid, new RectangularZone(0, 4, 0, 2), 2.5f, 2);
-            yield return Piece("Bunker", Solid, new RectangularZone(0, 3, 0, 3), 3f, 2);
-            yield return Piece("Wall segment", Solid, new RectangularZone(0, 3, 0, 0.75f), 2.5f, 1);
-            yield return Piece("Long wall", Solid, new RectangularZone(0, 6, 0, 0.75f), 2.5f, 2);
+            yield return Piece("Standing stone", Solid, new CircularZone(0, 0, 0.75f), 1);
+            yield return Piece("Boulder", Solid, new CircularZone(0, 0, 1.25f), 1);
+            yield return Piece("Watchtower", Solid, new RectangularZone(0, 2, 0, 2), 1);
+            yield return Piece("Wrecked vehicle", Solid, new RectangularZone(0, 3, 0, 1.5f), 1);
+            yield return Piece("Shipping container", Solid, new RectangularZone(0, 4, 0, 2), 2);
+            yield return Piece("Bunker", Solid, new RectangularZone(0, 3, 0, 3), 2);
+            yield return Piece("Wall segment", Solid, new RectangularZone(0, 3, 0, 0.75f), 1);
+            yield return Piece("Long wall", Solid, new RectangularZone(0, 6, 0, 0.75f), 2);
 
             // Corner wall — two thin arms, for tucking a unit behind.
             yield return Piece("Corner wall", Solid, new CompositeZone(new List<IZone>
             {
                 new RectangularZone(0, 4, 0, 0.75f),
                 new RectangularZone(0, 0.75f, 0, 4),
-            }), 2.5f, 1);
+            }), 1);
 
             // Rock cluster — three boulders, an irregular small blocker.
             yield return Piece("Rock cluster", Solid, new CompositeZone(new List<IZone>
@@ -256,27 +248,27 @@ namespace FDG.Stages
                 new CircularZone(1.2f, 1.2f, 1.2f),
                 new CircularZone(3.2f, 2.0f, 0.9f),
                 new CircularZone(2.0f, 3.4f, 0.8f),
-            }), 2.5f, 2);
+            }), 2);
 
-            // --- Impassible but NOT blocking: go around it, shoot over it ---
+            // --- Low, solid ground obstacles: small, and they close a lane rather than screen one ---
 
-            yield return Piece("Tank traps", Blocker, new RectangularZone(0, 5, 0, 1), 0.5f, 1);
-            yield return Piece("Water pool", Blocker, new CircularZone(0, 0, 2f), 0f, 1);
+            yield return Piece("Tank traps", Solid, new RectangularZone(0, 5, 0, 1), 1);
+            yield return Piece("Water pool", Solid, new CircularZone(0, 0, 2f), 1);
 
             // --- Other cover / movement terrain, for variety ---
 
-            yield return Piece("Copse", Woods, new CircularZone(0, 0, 2.5f), 0f, 2);
-            yield return Piece("Ruined building", Woods, new RectangularZone(0, 5, 0, 4), 0f, 2);
+            yield return Piece("Copse", Woods, new CircularZone(0, 0, 2.5f), 2);
+            yield return Piece("Ruined building", Woods, new RectangularZone(0, 5, 0, 4), 2);
             yield return Piece("Sandbag corner", ETerrainType.Cover, new CompositeZone(new List<IZone>
             {
                 new RectangularZone(0, 5, 0, 0.75f),
                 new RectangularZone(0, 0.75f, 0, 5),
-            }), 0f, 1);
-            yield return Piece("Crater", ETerrainType.Cover | ETerrainType.Difficult, new CircularZone(0, 0, 2f), 0f, 1);
-            yield return Piece("Marsh", ETerrainType.Difficult, new CircularZone(0, 0, 3f), 0f, 2);
-            yield return Piece("Stream", ETerrainType.Difficult, new RectangularZone(0, 8, 0, 1.5f), 0f, 1);
+            }), 1);
+            yield return Piece("Crater", ETerrainType.Cover | ETerrainType.Difficult, new CircularZone(0, 0, 2f), 1);
+            yield return Piece("Marsh", ETerrainType.Difficult, new CircularZone(0, 0, 3f), 2);
+            yield return Piece("Stream", ETerrainType.Difficult, new RectangularZone(0, 8, 0, 1.5f), 1);
             yield return Piece("Barbed wire", ETerrainType.Dangerous | ETerrainType.Difficult,
-                new RectangularZone(0, 5, 0, 1), 0f, 1);
+                new RectangularZone(0, 5, 0, 1), 1);
 
             // --- #393: the heavy end. Every piece here is 3 points and sized to the biggest templates
             // already shipping (Collapsed wall 11", Forest 10" across), because the reported problem was
@@ -299,7 +291,7 @@ namespace FDG.Stages
                 // inch tall. Overlapping the corners removes the seam instead of relying on luck.
                 new RectangularZone(0, 1, WestDoorTop, 8),        // west wall - its door is below it
                 new RectangularZone(9, 10, 0, EastDoorBottom),    // east wall - its door is above it
-            }), 6f, 3);
+            }), 3);
 
             // Three staggered towers, and the tallest thing in the palette - nothing shoots over it. The
             // towers stand DoorwayInches apart, so the streets between them take two 28mm bases abreast
@@ -309,7 +301,7 @@ namespace FDG.Stages
                 new RectangularZone(0, 4, 0, 4),            // south-west tower
                 new RectangularZone(6.5f, 10.5f, 0, 3.5f),  // south-east tower, 2.5" street to the west
                 new RectangularZone(1.5f, 6.5f, 6.5f, 10),  // north tower, 2.5" street to the south
-            }), 7f, 3);
+            }), 3);
 
             // The auto layout's Forest at full size and irregular: cover a whole unit fits inside.
             yield return Piece("Ancient wood", Woods, new CompositeZone(new List<IZone>
@@ -317,7 +309,7 @@ namespace FDG.Stages
                 new CircularZone(3.5f, 3.5f, 3.5f),
                 new CircularZone(7.5f, 4.5f, 3f),
                 new CircularZone(4f, 7.5f, 2.5f),
-            }), 0f, 3);
+            }), 3);
 
             // Large hazard: the palette had none - Mine field (6x6) was the biggest Dangerous piece.
             yield return Piece("Sunken mire", ETerrainType.Difficult | ETerrainType.Dangerous,
@@ -326,10 +318,10 @@ namespace FDG.Stages
                 new CircularZone(3.5f, 3.5f, 3.5f),
                 new CircularZone(7.5f, 4f, 3f),
                 new CircularZone(5.5f, 7.5f, 2.5f),
-            }), 0f, 3);
+            }), 3);
 
             // Dangerous only: costs nothing to shoot across, everything to walk across.
-            yield return Piece("Mine belt", ETerrainType.Dangerous, new RectangularZone(0, 9, 0, 7), 0f, 3);
+            yield return Piece("Mine belt", ETerrainType.Dangerous, new RectangularZone(0, 9, 0, 7), 3);
 
             // Dog-legged firing position - cover on two facings, long enough for a full firing line.
             yield return Piece("Trench line", ETerrainType.Cover, new CompositeZone(new List<IZone>
@@ -337,7 +329,7 @@ namespace FDG.Stages
                 new RectangularZone(0, 4.5f, 0, 1.25f),
                 new RectangularZone(3.25f, 4.5f, 1.25f, 3.5f),
                 new RectangularZone(4.5f, 10, 2.25f, 3.5f),
-            }), 0f, 3);
+            }), 3);
 
             // Long and thin: laid across a lane it closes the whole lane.
             yield return Piece("Crashed hauler", Solid, new CompositeZone(new List<IZone>
@@ -345,11 +337,11 @@ namespace FDG.Stages
                 new RectangularZone(0, 11, 1.5f, 4.5f),
                 new RectangularZone(1.5f, 4.5f, 0, 1.5f),
                 new RectangularZone(6.5f, 9.5f, 4.5f, 6),
-            }), 4f, 3);
+            }), 3);
 
-            // Impassible WITHOUT Blocking, at size: walk around it, shoot over it. Tank traps and Water
-            // pool are the only other pieces that do this and both are small.
-            yield return Piece("Rocky ridge", Blocker, new CompositeZone(new List<IZone>
+            // A long broken spine, the widest low blocker in the palette: laid across the middle it turns
+            // one open flank into two, since nothing walks through it and nothing sees past it (#399).
+            yield return Piece("Rocky ridge", Solid, new CompositeZone(new List<IZone>
             {
                 // Centres alternate low/high by ~1.2" so the spine reads as a broken ridge rather than a
                 // ruled line. Consecutive rocks still overlap (centre gap < sum of radii), so the barrier
@@ -358,7 +350,7 @@ namespace FDG.Stages
                 new CircularZone(4.2f, 2.7f, 1.8f),
                 new CircularZone(6.9f, 1.7f, 1.5f),
                 new CircularZone(9.3f, 2.9f, 1.7f),
-            }), 0.5f, 3);
+            }), 3);
 
             // Widest footprint in the palette at 11.5" - two 6" cylinders joined by a gantry.
             yield return Piece("Refinery tanks", Solid, new CompositeZone(new List<IZone>
@@ -366,7 +358,7 @@ namespace FDG.Stages
                 new CircularZone(3f, 3f, 3f),
                 new CircularZone(8.5f, 3f, 3f),
                 new RectangularZone(3f, 8.5f, 2.25f, 3.75f),
-            }), 6f, 3);
+            }), 3);
 
             // Three bands with 2" lanes between them, so a model can stand clear of the wire between two
             // bands instead of being caught straddling them - crossing it is a decision, not an accident.
@@ -376,16 +368,19 @@ namespace FDG.Stages
                 new RectangularZone(0, 10, 0, 1),
                 new RectangularZone(0, 10, 3, 4),
                 new RectangularZone(0, 10, 6, 7),
-            }), 0f, 3);
+            }), 3);
         }
 
-        private static TerrainPieceEntry Piece(string name, ETerrainType type, IZone shape, float heightInches, int points) =>
+        // #399: no heightInches parameter. TerrainPieceEntry still carries the field for hand-authored
+        // layout and scenario files, but nothing in the rules reads a terrain piece's height (sight lines
+        // are a flat 2D footprint query - see TerrainData.EvaluateSightLine), so an authored value was a
+        // number the tooltip printed and the game ignored. Every built-in piece leaves it at 0.
+        private static TerrainPieceEntry Piece(string name, ETerrainType type, IZone shape, int points) =>
             new TerrainPieceEntry
             {
                 Name = name,
                 TerrainType = type,
                 Shape = shape,
-                HeightInches = heightInches,
                 Points = points,
             };
     }

@@ -665,6 +665,20 @@ public sealed class RuleEvaluator
             return;
         }
 
+        // #399 - the same argument for DeferDeployment. It is documented as "a marker the deployment
+        // subsystem READS (a query, like SuppressRule)" and is never applied by anyone: every one of its
+        // five call sites is a TryGetDefer-style probe. One of those probes is
+        // ChooseUnitToActivateStage.GetUnavailableReason, which runs for every unavailable unit on every
+        // activation prompt - so a single reserved Ambush unit narrated "was held in reserve, able to
+        // arrive from round 2 over 9in from enemies" once per activation, all turn, every turn. The one
+        // line worth having is already emitted where the choice is actually made
+        // (ChooseUnitToDeployStage: "Infiltrators held in Ambush."). Dropped by TYPE for the same reason
+        // capabilities are: a future probe cannot reintroduce the stream.
+        if (t.Op is RuleOperation.DeferDeployment)
+        {
+            return;
+        }
+
         string carrier = t.Weapon == null
             ? $"{t.Bearer.Name}'s {t.Origin.RequestedName}"
             : $"{t.Bearer.Name}'s {t.Weapon.Name}'s {t.Origin.RequestedName}";

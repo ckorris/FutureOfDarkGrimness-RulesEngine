@@ -68,6 +68,37 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void DeferDeployment_NeverReachesTheLog()
+        {
+            // #399 - the same argument as a capability, arrived at from the other direction. A defer is a
+            // marker the deployment subsystem READS; nothing applies it, and its readers are probes that
+            // re-run constantly (ChooseUnitToActivateStage asks once per unavailable unit per activation
+            // prompt), so narrating it filled a player's whole turn with "was held in reserve" for one
+            // reserved Ambush unit. Fired here through an ORDINARY context, so the test pins the
+            // by-type drop rather than a context guard that a future probe could route around.
+            var log = new CapturingLog();
+            TestRuleHarness harness = HarnessLoggingTo(log,
+                new SpecialRuleDefinition("Ambush",
+                    new[]
+                    {
+                        new HookEntry(EHookID.Round_OnRoundStart, new Condition.Always(),
+                            new Effect.DeferDeployment(EDeferTiming.LaterRound, PlacementRangeInches: 9f),
+                            ELifetime.UntilEndOfGame),
+                    },
+                    Array.Empty<ActivatedAbility>()));
+            IUnit unit = harness.BuildUnit("P1", 1, "Ambush");
+
+            IReadOnlyList<RuleOperation> ops = harness.Evaluator.EvaluateAll(
+                new TestHookContext(EHookID.Round_OnRoundStart),
+                RuleParticipant.Actor(unit, weapon: null, models: unit.Models));
+
+            // Still produced - the deployment subsystem reads it off the queue; only the narration is gone.
+            ops.HasOperation<RuleOperation.DeferDeployment>();
+            Assert.That(log.Lines, Is.Empty,
+                "a defer marker is a state a probe reads, not an event that happened this hook.");
+        }
+
+        [Test]
         public void NonCapabilityOperations_StillLog()
         {
             var log = new CapturingLog();

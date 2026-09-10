@@ -69,6 +69,12 @@ namespace FDG.Tests
                 new UnitID(Guid.NewGuid()), "Warriors",
                 new List<RoutedModel> { new RoutedModel(new ModelID(Guid.NewGuid()), new Position(1f, 2f)) }
             )).SetName("UnitRoutedBeat");
+
+            yield return new TestCaseData(new UnitArrivedBeat(
+                new UnitID(Guid.NewGuid()), "Infiltrators",
+                new List<ArrivedModel> { new ArrivedModel(new ModelID(Guid.NewGuid()), new Position(1f, 2f)) },
+                "Ambush"
+            )).SetName("UnitArrivedBeat");
         }
 
         [TestCaseSource(nameof(AllBeats))]

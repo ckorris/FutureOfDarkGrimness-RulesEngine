@@ -1,3 +1,4 @@
+using System.Linq;
 using FDG.Data;
 using FDG.Players;
 using FDG.Rules.Definitions;
@@ -119,6 +120,72 @@ namespace FDG.Tests
                 "every replicated position update must already see the unit on the battlefield");
         }
 
+        // #399: the arrival is presented, so a front-end can play something at the spots the models
+        // came down on (the app draws a dust cloud) and a networked opponent sees the same thing at the
+        // same point in the play-by-play.
+        [Test]
+        public async Task RoundTwo_Accept_PresentsTheArrival_AtEveryModelsLandingSpot()
+        {
+            DataBinding<UnitData> ambush = MakeAmbushUnit();
+            var requester = new AmbushArrivalRequester(accept: true, destX: 20f, destZ: 20f);
+            var sink = new BeatCollectingSink();
+
+            await RunStage(requester, roundCount: 2, sink);
+
+            var arrival = sink.Beats.OfType<Presentation.Beats.UnitArrivedBeat>().SingleOrDefault();
+            Assert.That(arrival, Is.Not.Null, "an ambush that lands must announce itself as a beat");
+            Assert.That(arrival!.Unit, Is.EqualTo(ambush.GetValue().ID));
+            Assert.That(arrival.ReserveRuleName, Is.EqualTo("Ambush"),
+                "the beat names the rule that brought it on, not a hard-coded 'Ambush'");
+            Assert.That(arrival.Models, Has.Count.EqualTo(ambush.GetValue().ModelBindings.Count));
+
+            // The positions must be where the models ACTUALLY are, not where they were when the stage
+            // started - the beat is emitted after the placement is applied, so a cloud drawn from it
+            // sits on the unit rather than back at the origin.
+            foreach (Presentation.Beats.ArrivedModel arrived in arrival.Models)
+            {
+                ModelData model = ambush.GetValue().ModelBindings
+                    .Select(b => b.GetValue()).Single(m => m.ID.Equals(arrived.Model));
+                Assert.That(arrived.Position.x, Is.EqualTo(model.Position.x).Within(0.0001f));
+                Assert.That(arrived.Position.z, Is.EqualTo(model.Position.z).Within(0.0001f));
+                Assert.That(arrived.Position.x == 0f && arrived.Position.z == 0f, Is.False,
+                    "(0,0) is the off-table origin - the beat would puff dust off the board");
+            }
+        }
+
+        [Test]
+        public async Task RoundTwo_Decline_PresentsNoArrival()
+        {
+            MakeAmbushUnit();
+            var requester = new AmbushArrivalRequester(accept: false, destX: 20f, destZ: 20f);
+            var sink = new BeatCollectingSink();
+
+            await RunStage(requester, roundCount: 2, sink);
+
+            Assert.That(sink.Beats.OfType<Presentation.Beats.UnitArrivedBeat>(), Is.Empty,
+                "a unit that stayed in reserve never arrived");
+        }
+
+        [Test]
+        public async Task RoundOne_PresentsNoArrival()
+        {
+            MakeAmbushUnit();
+            var requester = new AmbushArrivalRequester(accept: true, destX: 20f, destZ: 20f);
+            var sink = new BeatCollectingSink();
+
+            await RunStage(requester, roundCount: 1, sink);
+
+            Assert.That(sink.Beats.OfType<Presentation.Beats.UnitArrivedBeat>(), Is.Empty,
+                "core Ambush cannot arrive in round 1, so nothing is presented");
+        }
+
+        private sealed class BeatCollectingSink : Presentation.IPresentationSink
+        {
+            public List<Presentation.PresentationBeat> Beats { get; } = new();
+
+            public void OnBeat(Presentation.PresentationBeat beat) => Beats.Add(beat);
+        }
+
         [Test]
         public async Task RoundTwo_NonReserveUnit_NotOfferedAndUntouched()
         {
@@ -132,9 +199,10 @@ namespace FDG.Tests
             Assert.That(plain.GetValue().Tokens.HasToken(Rules.Foundation.TokenType.ArrivedFromReserve), Is.False);
         }
 
-        private async Task RunStage(IPlayerRequestByID requester, int roundCount)
+        private async Task RunStage(IPlayerRequestByID requester, int roundCount,
+            Presentation.IPresentationSink? sink = null)
         {
-            var ctx = new TriggeredMoveTestContext(_store, requester);
+            var ctx = new TriggeredMoveTestContext(_store, requester, presentationSink: sink);
             var stage = new StartOfRoundExtraActionStage(ctx, new NoOpLayer<IMainPhaseContext>());
             stage.OnFinished.Bind("done");
             await stage.Enter(new TestMainPhaseContext(ctx, roundCount));

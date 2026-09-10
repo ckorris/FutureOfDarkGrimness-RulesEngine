@@ -182,6 +182,37 @@ namespace FDG.Tests
         }
 
         [Test]
+        public void UnitArrivedBeat_SurvivesWireRoundTrip_PreservingEveryLandingSpot()
+        {
+            // #399: an ambush arrival is a fact of the game, not a local flourish - the opponent's
+            // client has to be able to draw the same cloud over the same patch of table, so every
+            // landing spot and the rule's display name have to ride the wire.
+            var m0 = new ModelID(Guid.NewGuid());
+            var m1 = new ModelID(Guid.NewGuid());
+            var unitId = new UnitID(Guid.NewGuid());
+            var original = new UnitArrivedBeat(unitId, "Infiltrators", new List<ArrivedModel>
+            {
+                new ArrivedModel(m0, new Position(1f, 2f)),
+                new ArrivedModel(m1, new Position(3f, 4f)),
+            }, "Rapid Ambush");
+
+            PresentationBeat result = RoundTrip(original);
+
+            Assert.That(result, Is.TypeOf<UnitArrivedBeat>());
+            var arrived = (UnitArrivedBeat)result;
+            Assert.That(arrived.Unit, Is.EqualTo(unitId));
+            Assert.That(arrived.UnitName, Is.EqualTo("Infiltrators"));
+            Assert.That(arrived.ReserveRuleName, Is.EqualTo("Rapid Ambush"));
+            Assert.That(arrived.NominalDuration, Is.EqualTo(PresentationDurations.UnitArrival));
+            Assert.That(arrived.Held, Is.False, "the cloud owns its whole envelope; the banner is what lingers");
+            Assert.That(arrived.Models, Has.Count.EqualTo(2));
+            Assert.That(arrived.Models[0].Model, Is.EqualTo(m0));
+            Assert.That(arrived.Models[1].Model, Is.EqualTo(m1));
+            Assert.That(arrived.Models[1].Position.x, Is.EqualTo(3f).Within(0.0001f));
+            Assert.That(arrived.Models[1].Position.z, Is.EqualTo(4f).Within(0.0001f));
+        }
+
+        [Test]
         public void RollOffBeat_SurvivesWireRoundTrip_PreservingPerCompetitorRollsAndResults()
         {
             var original = new RollOffBeat("Map Side Roll-Off", new List<RollOffEntry>

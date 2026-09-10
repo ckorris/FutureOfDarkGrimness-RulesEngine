@@ -17,6 +17,12 @@ namespace FDG.Presentation
         // paces in full, so N kills read as a rapid-fire "BE-BE-BE-BEEW" instead of N serial deaths.
         public static readonly TimeSpan CasualtyStagger = TimeSpan.FromMilliseconds(150);
         public static readonly TimeSpan Saves        = TimeSpan.FromMilliseconds(350);
+        // #399 arrival from reserve. Longer than a death because the cloud has to bloom AND thin out
+        // before the unit underneath it is meant to be read - and because an ambush landing behind
+        // your lines is a moment the opponent should be given time to notice. The "X arrives from
+        // Ambush!" banner is a held Notice, so it rides over the tail of this rather than queueing
+        // behind it.
+        public static readonly TimeSpan UnitArrival  = TimeSpan.FromMilliseconds(800);
         // #274 spell visuals. The cast outcome is the beat of the whole action, so it gets the most
         // room; the per-target landing follows it immediately and is kept shorter so a multi-target
         // spell doesn't drag. Assists are batched into at most two beats right before the roll.

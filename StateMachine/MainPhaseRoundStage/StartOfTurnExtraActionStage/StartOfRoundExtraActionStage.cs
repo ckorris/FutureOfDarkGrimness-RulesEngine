@@ -107,7 +107,8 @@ namespace FDG.Stages
 
                     if (!unit.GetIsAlive()) continue;
                     if (!ReserveRules.IsInReserve(unit)) continue;
-                    if (!TryGetLaterRoundDefer(unit, out RuleOperation.DeferDeployment defer)) continue;
+                    if (!TryGetLaterRoundDefer(unit, out RuleOperation.DeferDeployment defer,
+                            out string reserveRuleName)) continue;
                     if (roundCount < defer.MinArrivalRound) continue;
 
                     // A mandatory arrival (Ambush Re-Deployment's return leg) is placed, not offered -
@@ -130,6 +131,12 @@ namespace FDG.Stages
                     // arrives. Mark it so ReconcileObjectivesStage excludes its models from this round's
                     // objective check; the RoundEnd clear trigger sweeps the marker after that check.
                     unit.Tokens.AddToken(TokenDefinitionCatalog.Create(TokenType.ArrivedFromReserve));
+
+                    // #399: the arrival itself, before the banner names it. Emitted here rather than
+                    // inside PlaceFromReserve so it stays scoped to units that came out of NOWHERE -
+                    // the Aircraft return leg shares that helper but flies back on from a table edge,
+                    // which is a different kind of entrance and deliberately keeps its banner alone.
+                    await PresentArrival(unit, reserveRuleName);
 
                     await GameContext.Announce($"{unit.Name} arrives from Ambush!", new TextColor(255, 170, 60, 255));
                 }
@@ -215,6 +222,29 @@ namespace FDG.Stages
             }
         }
 
+        /// <summary>
+        /// #399 - emits the unit's arrival as a presentation beat, so every front-end (and every
+        /// networked client) can play something at the spots the models just landed on. Called after
+        /// the positions are applied, so <see cref="ArrivedModel.Position"/> is where the model IS.
+        /// Dead models are skipped: an ambushing unit is placed whole, but a save carrying a
+        /// partially-destroyed reserve would otherwise puff dust over an empty patch of table.
+        /// </summary>
+        private async Task PresentArrival(UnitData unit, string reserveRuleName)
+        {
+            var arrivals = new List<ArrivedModel>();
+            foreach (DataBinding<ModelData> modelBinding in unit.ModelBindings)
+            {
+                ModelData model = modelBinding.GetValue();
+                if (!model.GetIsAlive()) continue;
+                arrivals.Add(new ArrivedModel(model.ID, model.Position));
+            }
+
+            if (arrivals.Count == 0) return;
+
+            await GameContext.Presenter.Present(
+                new UnitArrivedBeat(unit.ID, unit.Name, arrivals, reserveRuleName));
+        }
+
         private async Task PlaceFromReserve(UnitData unit, float minDistanceFromEnemies,
             bool mustTouchTableEdge = false, string taskName = "Ambush Deploy",
             TokenType? alsoClearBeforeApply = null, string? displayName = null)
@@ -266,13 +296,30 @@ namespace FDG.Stages
         }
 
         private bool TryGetLaterRoundDefer(IUnit unit, out RuleOperation.DeferDeployment defer)
-        {
-            IReadOnlyList<RuleOperation> ops = GameContext.RuleEvaluator.Evaluate(
-                unit, ERuleSeat.Actor, new PreDeploymentSelectContext(unit));
+            => TryGetLaterRoundDefer(unit, out defer, out _);
 
-            defer = ops.OfType<RuleOperation.DeferDeployment>()
-                .FirstOrDefault(d => d.Timing == EDeferTiming.LaterRound);
-            return defer != null;
+        // The named overload is what the arrival beat wants: "Rapid Ambush" and "Ambush Re-Deployment"
+        // are different rules that produce the same DeferDeployment, and a beat that always said
+        // "Ambush" would mislabel two of the three ways a unit reaches this stage.
+        private bool TryGetLaterRoundDefer(IUnit unit, out RuleOperation.DeferDeployment defer,
+            out string ruleName)
+        {
+            IReadOnlyList<(RuleOperation Op, string RuleName)> named = GameContext.RuleEvaluator
+                .EvaluateAllNamed(new PreDeploymentSelectContext(unit), RuleParticipant.Actor(unit));
+
+            foreach ((RuleOperation op, string name) in named)
+            {
+                if (op is RuleOperation.DeferDeployment d && d.Timing == EDeferTiming.LaterRound)
+                {
+                    defer = d;
+                    ruleName = name;
+                    return true;
+                }
+            }
+
+            defer = null!;
+            ruleName = "Reserve";
+            return false;
         }
     }
 }

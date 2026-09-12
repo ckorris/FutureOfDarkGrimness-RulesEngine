@@ -43,6 +43,7 @@ namespace FDG.Network.Connection.Lobby
         public IObservable<IReadOnlyList<LobbyPlayerInfoSummary>> PlayerInfosObservable => _playerInfos;
 
         public IObservable<int> ArmyPointsObservable => _settings_ArmyPoints;
+        public IObservable<ArmyBuilding.EAllowedGameSystems> AllowedGameSystemsObservable => _settings_AllowedGameSystems;
         public IObservable<int> TerrainPieceCountObservable => _settings_TerrainPieceCount;
         public IObservable<int> TerrainPointsTotalObservable => _settings_TerrainPointsTotal;
         public IObservable<int> TerrainPointsPerTurnObservable => _settings_TerrainPointsPerTurn;
@@ -64,6 +65,8 @@ namespace FDG.Network.Connection.Lobby
         public IReadOnlyList<LobbyPlayerInfoSummary> PlayerInfos => _playerInfos.Value;
 
         public int ArmyPoints => _settings_ArmyPoints.Value;
+
+        public ArmyBuilding.EAllowedGameSystems AllowedGameSystems => _settings_AllowedGameSystems.Value;
 
         public int TerrainCount => _settings_TerrainPieceCount.Value;
 
@@ -99,6 +102,7 @@ namespace FDG.Network.Connection.Lobby
         private BehaviorSubject<IReadOnlyList<LobbyPlayerInfoSummary>> _playerInfos;
 
         private BehaviorSubject<int> _settings_ArmyPoints;
+        private BehaviorSubject<ArmyBuilding.EAllowedGameSystems> _settings_AllowedGameSystems;
         private BehaviorSubject<int> _settings_TerrainPieceCount;
         private BehaviorSubject<int> _settings_TerrainPointsTotal;
         private BehaviorSubject<int> _settings_TerrainPointsPerTurn;
@@ -171,6 +175,8 @@ namespace FDG.Network.Connection.Lobby
             _chatMessagesSubject = new ReplaySubject<LobbyChatMessage>();
 
             _settings_ArmyPoints = new BehaviorSubject<int>(0);
+            _settings_AllowedGameSystems =
+                new BehaviorSubject<ArmyBuilding.EAllowedGameSystems>(ArmyBuilding.EAllowedGameSystems.All);
             _settings_TerrainPieceCount = new BehaviorSubject<int>(0);
             _settings_TerrainPointsTotal = new BehaviorSubject<int>(0);
             _settings_TerrainPointsPerTurn = new BehaviorSubject<int>(0);
@@ -243,6 +249,8 @@ namespace FDG.Network.Connection.Lobby
         }
 
         // Only the host can launch, so the client never has a launch gate to show.
+        public IReadOnlyList<string> BlockingLaunchProblems() => Array.Empty<string>();
+
         public IReadOnlyList<string> ValidateArmiesForLaunch() => Array.Empty<string>();
 
         // Full network teardown (#279). Before this, Dispose left every handler except chat registered and
@@ -328,6 +336,10 @@ namespace FDG.Network.Connection.Lobby
             {
                 _settings_ArmyPoints.OnNext(gameSettingsUpdate.GameSettings.ArmyPoints);
             }
+            if (_settings_AllowedGameSystems.Value != gameSettingsUpdate.GameSettings.AllowedGameSystems)
+            {
+                _settings_AllowedGameSystems.OnNext(gameSettingsUpdate.GameSettings.AllowedGameSystems);
+            }
             if (_settings_TerrainPieceCount.Value != gameSettingsUpdate.GameSettings.TerrainPieceCount)
             {
                 _settings_TerrainPieceCount.OnNext(gameSettingsUpdate.GameSettings.TerrainPieceCount);
@@ -404,6 +416,11 @@ namespace FDG.Network.Connection.Lobby
         public void SetArmyPoints(int armyPoints)
         {
             throw new InvalidOperationException("Tried to set army points when not the host.");
+        }
+
+        public void SetAllowedGameSystems(ArmyBuilding.EAllowedGameSystems allowedGameSystems)
+        {
+            throw new InvalidOperationException("Tried to set the allowed game systems when not the host.");
         }
 
         public void SetTerrainCount(int terrainCount)

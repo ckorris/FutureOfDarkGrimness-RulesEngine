@@ -94,6 +94,23 @@ namespace FDG.Tests
             Assert.That(GameSettings.GetDefault().TableBackground, Is.EqualTo(ETableBackground.Forest));
         }
 
+        /// <summary>
+        /// #400: a save written before AllowedGameSystems existed has no such field, so the struct's
+        /// default decides what a resumed game accepts. It must be All - those games were played with
+        /// no system restriction at all, and any other default would retroactively make one of their
+        /// armies illegal.
+        /// </summary>
+        [Test]
+        public void PreAllowedGameSystemsSave_ResumesAcceptingEverything()
+        {
+            var settings = new GameSettings { ArmyPoints = 2000 };
+
+            Assert.That(settings.AllowedGameSystems, Is.EqualTo(ArmyBuilding.EAllowedGameSystems.All),
+                "the field's default (absent from old JSON) must be the unrestricted value");
+            Assert.That(GameSettings.GetDefault().AllowedGameSystems,
+                Is.EqualTo(ArmyBuilding.EAllowedGameSystems.All));
+        }
+
         [Test]
         public void RoundTrip_UnactivatedUnitBindings_PreserveReferenceAndValue()
         {

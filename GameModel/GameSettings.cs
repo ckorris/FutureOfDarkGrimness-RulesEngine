@@ -7,6 +7,16 @@ namespace FDG
         public int ArmyPoints;
 
         /// <summary>
+        /// #400 - which game systems' armies this lobby accepts. Host-owned, synced, and changeable
+        /// in the lobby like <see cref="ArmyPoints"/>; an army from a system this doesn't allow is
+        /// flagged on its roster row and BLOCKS the launch (see
+        /// <see cref="ArmyBuilding.LaunchGate.BlockingProblems"/>).
+        /// <see cref="ArmyBuilding.EAllowedGameSystems.All"/> is 0, so a pre-#400 save (field absent
+        /// from the JSON) resumes accepting everything, which is what it was played under.
+        /// </summary>
+        public ArmyBuilding.EAllowedGameSystems AllowedGameSystems;
+
+        /// <summary>
         /// #201 house-rule cover proximity exceptions (lobby toggle, default ON): a cover piece is
         /// voided when the shooter's muzzle hugs it (sight-line exit within 2" of the shooter's base
         /// and not also hugged by the target), or when shooter and target share the same piece at
@@ -111,7 +121,8 @@ namespace FDG
         /// <para>Today that is <see cref="TableBackground"/> and nothing else. Everything else is
         /// either already spent (army points, terrain and objective placement all happened during the
         /// saved game's setup) or would change the rules of a game in progress (randomness, dice seed,
-        /// turn style, shooting mode, the cover house rules) - so the save stays authoritative for them,
+        /// turn style, shooting mode, the cover house rules, #400's allowed game systems) - so the
+        /// save stays authoritative for them,
         /// whatever the lobby panel happens to be showing. Adding a field here is a deliberate decision, not a
         /// default: it must be safe to change mid-game.</para>
         /// </summary>
@@ -127,6 +138,7 @@ namespace FDG
             return new GameSettings()
             {
                 ArmyPoints = 2000,
+                AllowedGameSystems = ArmyBuilding.EAllowedGameSystems.All,
                 CoverProximityExceptions = true,
                 SeeThroughFriendlyUnits = false,
                 UnlimitedSplitFire = false,

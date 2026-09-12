@@ -34,6 +34,7 @@ namespace FDG.Network.Connection.Lobby
         public IObservable<IReadOnlyList<LobbyPlayerInfoSummary>> PlayerInfosObservable => _playerInfos;
 
         public IObservable<int> ArmyPointsObservable => _settings_ArmyPoints;
+        public IObservable<ArmyBuilding.EAllowedGameSystems> AllowedGameSystemsObservable => _settings_AllowedGameSystems;
         public IObservable<int> TerrainPieceCountObservable => _settings_TerrainPieceCount;
         public IObservable<int> TerrainPointsTotalObservable => _settings_TerrainPointsTotal;
         public IObservable<int> TerrainPointsPerTurnObservable => _settings_TerrainPointsPerTurn;
@@ -55,6 +56,8 @@ namespace FDG.Network.Connection.Lobby
         public IReadOnlyList<LobbyPlayerInfoSummary> PlayerInfos => _playerInfos.Value;
 
         public int ArmyPoints => _settings_ArmyPoints.Value;
+
+        public ArmyBuilding.EAllowedGameSystems AllowedGameSystems => _settings_AllowedGameSystems.Value;
 
         public int TerrainCount => _settings_TerrainPieceCount.Value;
 
@@ -91,6 +94,7 @@ namespace FDG.Network.Connection.Lobby
         private Dictionary<PlayerID, LobbyPlayerInfoFull> _playerInfosFull = new Dictionary<PlayerID, LobbyPlayerInfoFull>();
 
         private BehaviorSubject<int> _settings_ArmyPoints;
+        private BehaviorSubject<ArmyBuilding.EAllowedGameSystems> _settings_AllowedGameSystems;
         private BehaviorSubject<int> _settings_TerrainPieceCount;
         private BehaviorSubject<int> _settings_TerrainPointsTotal;
         private BehaviorSubject<int> _settings_TerrainPointsPerTurn;
@@ -191,6 +195,8 @@ namespace FDG.Network.Connection.Lobby
             _chatMessagesSubject = new ReplaySubject<LobbyChatMessage>();
 
             _settings_ArmyPoints = new BehaviorSubject<int>(_gameSettings.ArmyPoints);
+            _settings_AllowedGameSystems =
+                new BehaviorSubject<ArmyBuilding.EAllowedGameSystems>(_gameSettings.AllowedGameSystems);
             _settings_TerrainPieceCount = new BehaviorSubject<int>(_gameSettings.TerrainPieceCount);
             _settings_TerrainPointsTotal = new BehaviorSubject<int>(_gameSettings.TerrainPointsTotal);
             _settings_TerrainPointsPerTurn = new BehaviorSubject<int>(_gameSettings.TerrainPointsPerTurn);
@@ -254,6 +260,8 @@ namespace FDG.Network.Connection.Lobby
             _chatMessagesSubject = new ReplaySubject<LobbyChatMessage>();
 
             _settings_ArmyPoints = new BehaviorSubject<int>(_gameSettings.ArmyPoints);
+            _settings_AllowedGameSystems =
+                new BehaviorSubject<ArmyBuilding.EAllowedGameSystems>(_gameSettings.AllowedGameSystems);
             _settings_TerrainPieceCount = new BehaviorSubject<int>(_gameSettings.TerrainPieceCount);
             _settings_TerrainPointsTotal = new BehaviorSubject<int>(_gameSettings.TerrainPointsTotal);
             _settings_TerrainPointsPerTurn = new BehaviorSubject<int>(_gameSettings.TerrainPointsPerTurn);
@@ -647,11 +655,16 @@ namespace FDG.Network.Connection.Lobby
             return true;
         }
 
-        // #153 launch gate (decision 9): hard legality problems across every loaded army, for the UI's
-        // "launch anyway?" confirm. The logic lives in the fixture-free ArmyBuilding.LaunchGate.
+        // #153/#400 launch gate: the two halves of the army check, for the UI's disabled LAUNCH button
+        // and its "launch anyway?" confirm respectively. Both live in the fixture-free ArmyBuilding.LaunchGate.
+        public IReadOnlyList<string> BlockingLaunchProblems() =>
+            ArmyBuilding.LaunchGate.BlockingProblems(LoadedArmies(), ArmyPoints, AllowedGameSystems);
+
         public IReadOnlyList<string> ValidateArmiesForLaunch() =>
-            ArmyBuilding.LaunchGate.ValidateArmies(
-                _playerInfosFull.Values.Select(info => (info.PlayerName, info.ArmyListFile)), ArmyPoints);
+            ArmyBuilding.LaunchGate.OverridableProblems(LoadedArmies());
+
+        private IEnumerable<(string PlayerName, SaveLoad.ArmyListFile? Army)> LoadedArmies() =>
+            _playerInfosFull.Values.Select(info => (info.PlayerName, info.ArmyListFile));
 
         public bool TryResumeGame(out string? failReason)
         {
@@ -974,6 +987,15 @@ namespace FDG.Network.Connection.Lobby
             {
                 _settings_ArmyPoints.OnNext(_settings_ArmyPoints.Value);
             }
+        }
+
+        // #400. No validation arm: every enum value is a legal setting, unlike army points, where a
+        // non-positive number has to be bounced back to the UI.
+        public void SetAllowedGameSystems(ArmyBuilding.EAllowedGameSystems allowedGameSystems)
+        {
+            _settings_AllowedGameSystems.OnNext(allowedGameSystems);
+            _gameSettings.AllowedGameSystems = allowedGameSystems;
+            _messageBus.SendCommandToAllAsync(new LobbyGameSettingsUpdate(_gameSettings));
         }
 
         public void SetTerrainCount(int terrainCount)

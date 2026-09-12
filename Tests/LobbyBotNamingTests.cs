@@ -36,6 +36,29 @@ namespace FDG.Tests
                 "Tactician is still 'Tactician Bot 1'; the DerpBot between them must not bump it to 3).");
         }
 
+        /// <summary>
+        /// #400: a fresh bot carries NO army. It used to arrive stamped with a hard-coded 100-pt "Test
+        /// Army", which the lobby's roster could not tell apart from a list someone chose - so a slot the
+        /// starter-army roll failed to fill launched into a real game with a fake army. Unassigned is what
+        /// makes the launch gate's "no army assigned" blocker fire on exactly that slot.
+        /// </summary>
+        [Test]
+        public void FreshBot_HasNoArmy()
+        {
+            var hostVm = new LobbyViewModel_Host("Host", "The Table", "", new NullNetworkHost());
+
+            hostVm.AddAiPlayer(EAiProfile.Tactician);
+
+            ArmyListSummary bot = hostVm.PlayerInfos
+                .Single(info => info.PlayerType == EPlayerType.AI).ArmyListSummary;
+
+            Assert.That(bot.IsAssigned, Is.False);
+            // Both slots are empty in a lobby nothing has filled yet - the host's own row too - and each
+            // gets its own line, so the host can see which rows still need an army.
+            Assert.That(hostVm.BlockingLaunchProblems(),
+                Is.EquivalentTo(new[] { "Host: no army assigned.", "Tactician Bot 1: no army assigned." }));
+        }
+
         // Host-only no-op network double: this test never launches or joins anything, it only exercises
         // roster naming, so broadcasts go nowhere. (The loopback doubles in LobbyJoinGateTests need a
         // wired client; here there is none.)

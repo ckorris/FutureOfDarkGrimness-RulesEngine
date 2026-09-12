@@ -1223,7 +1223,13 @@ namespace FDG.Network.Connection.Lobby
 
             PlayerID newPlayerID = new PlayerID(Guid.NewGuid());
 
-            LobbyPlayerInfoFull newLobbyPlayerInfo = new LobbyPlayerInfoFull(name, GetTempTestArmyFile(),
+            // #400: a fresh bot starts with NO army rather than the "Test Army" stub. The lobby rolls it
+            // a real one from the armies folder (#372), and if it cannot - no folder, or nothing of an
+            // allowed game system - the empty slot must SHOW as empty and block the launch. Stamping a
+            // fake 100-pt army here made that indistinguishable from a deliberate pick, which is how a
+            // game could start with an army nobody chose. The launch-time fallback below still stands
+            // for the paths that never reach the lobby's gate.
+            LobbyPlayerInfoFull newLobbyPlayerInfo = new LobbyPlayerInfoFull(name, armyListFile: null,
                 FirstEmptyTeam(), EPlayerType.AI, new ConnectionID(Guid.Empty), newPlayerID,
                 profile);
             _playerInfosFull.Add(newPlayerID, newLobbyPlayerInfo);

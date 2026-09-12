@@ -8,7 +8,7 @@ using NUnit.Framework;
 
 namespace FDG.Tests;
 
-// #153/#400 launch gate: the host-side army check, in two halves. BlockingProblems (no army, over lobby
+// #153/#402 launch gate: the host-side army check, in two halves. BlockingProblems (no army, over lobby
 // points, wrong game system) greys LAUNCH out; OverridableProblems (full catalog Errors for Forge-built
 // armies) raises the "launch anyway?" confirm. Forge armies only reach the second half when their
 // embedded book + selections survive the wire, which the round-trip tests pin — the encode/decode used
@@ -57,7 +57,7 @@ public class LaunchGateTests
         var problems = LaunchGate.OverridableProblems(new[] { ("Bob", (ArmyListFile?)army) });
 
         Assert.That(problems, Has.One.Contains("Bob").And.One.Contains("Unique"));
-        // A catalog Error is overridable, never blocking — the #153 house-rules escape hatch (#400).
+        // A catalog Error is overridable, never blocking — the #153 house-rules escape hatch (#402).
         Assert.That(Blocking(("Bob", army), lobbyPointsLimit: 100000), Is.Empty);
     }
 
@@ -71,7 +71,7 @@ public class LaunchGateTests
         Assert.That(Blocking(("Cid", plain), lobbyPointsLimit: 50), Has.Count.EqualTo(1));
     }
 
-    // ── #400: no army, and the game-system filter ────────────────────────────────────────────
+    // ── #402: no army, and the game-system filter ────────────────────────────────────────────
 
     [Test]
     public void NoArmyAssigned_Blocks()
@@ -114,7 +114,7 @@ public class LaunchGateTests
     [Test]
     public void UnderbuiltArmy_IsLegal_AndNeverBlocks()
     {
-        // Deliberate (#400): 80 pts in a 2000-pt lobby is a yellow advisory in the roster, not a block.
+        // Deliberate (#402): 80 pts in a 2000-pt lobby is a yellow advisory in the roster, not a block.
         Assert.That(Blocking(("Cid", PlainArmy(null)), 2000, EAllowedGameSystems.All), Is.Empty);
     }
 

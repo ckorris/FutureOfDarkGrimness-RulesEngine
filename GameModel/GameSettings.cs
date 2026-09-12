@@ -7,11 +7,11 @@ namespace FDG
         public int ArmyPoints;
 
         /// <summary>
-        /// #400 - which game systems' armies this lobby accepts. Host-owned, synced, and changeable
+        /// #402 - which game systems' armies this lobby accepts. Host-owned, synced, and changeable
         /// in the lobby like <see cref="ArmyPoints"/>; an army from a system this doesn't allow is
         /// flagged on its roster row and BLOCKS the launch (see
         /// <see cref="ArmyBuilding.LaunchGate.BlockingProblems"/>).
-        /// <see cref="ArmyBuilding.EAllowedGameSystems.All"/> is 0, so a pre-#400 save (field absent
+        /// <see cref="ArmyBuilding.EAllowedGameSystems.All"/> is 0, so a pre-#402 save (field absent
         /// from the JSON) resumes accepting everything, which is what it was played under.
         /// </summary>
         public ArmyBuilding.EAllowedGameSystems AllowedGameSystems;
@@ -121,7 +121,7 @@ namespace FDG
         /// <para>Today that is <see cref="TableBackground"/> and nothing else. Everything else is
         /// either already spent (army points, terrain and objective placement all happened during the
         /// saved game's setup) or would change the rules of a game in progress (randomness, dice seed,
-        /// turn style, shooting mode, the cover house rules, #400's allowed game systems) - so the
+        /// turn style, shooting mode, the cover house rules, #402's allowed game systems) - so the
         /// save stays authoritative for them,
         /// whatever the lobby panel happens to be showing. Adding a field here is a deliberate decision, not a
         /// default: it must be safe to change mid-game.</para>

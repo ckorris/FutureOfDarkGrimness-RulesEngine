@@ -37,7 +37,7 @@ namespace FDG.Tests
         }
 
         /// <summary>
-        /// #400: a fresh bot carries NO army. It used to arrive stamped with a hard-coded 100-pt "Test
+        /// #402: a fresh bot carries NO army. It used to arrive stamped with a hard-coded 100-pt "Test
         /// Army", which the lobby's roster could not tell apart from a list someone chose - so a slot the
         /// starter-army roll failed to fill launched into a real game with a fake army. Unassigned is what
         /// makes the launch gate's "no army assigned" blocker fire on exactly that slot.

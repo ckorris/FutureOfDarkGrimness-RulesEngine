@@ -60,7 +60,7 @@ namespace FDG.Network.Connection.Lobby
         IObservable<IReadOnlyList<LobbyPlayerInfoSummary>> PlayerInfosObservable { get; }
 
         IObservable<int> ArmyPointsObservable { get; }
-        /// <summary>#400 - which game systems' armies this lobby accepts.</summary>
+        /// <summary>#402 - which game systems' armies this lobby accepts.</summary>
         IObservable<ArmyBuilding.EAllowedGameSystems> AllowedGameSystemsObservable { get; }
         IObservable<int> TerrainPieceCountObservable { get; }
         /// <summary>#301 Alternating: Points - see <see cref="GameSettings.TerrainPointsTotal"/>.</summary>
@@ -91,7 +91,7 @@ namespace FDG.Network.Connection.Lobby
 
         int ArmyPoints { get; }
 
-        /// <summary>#400 - see <see cref="GameSettings.AllowedGameSystems"/>.</summary>
+        /// <summary>#402 - see <see cref="GameSettings.AllowedGameSystems"/>.</summary>
         ArmyBuilding.EAllowedGameSystems AllowedGameSystems { get; }
 
         int TerrainCount { get; }
@@ -154,7 +154,7 @@ namespace FDG.Network.Connection.Lobby
 
         void SetArmyPoints(int armyPoints);
 
-        /// <summary>#400 - host-only, like every other lobby setting.</summary>
+        /// <summary>#402 - host-only, like every other lobby setting.</summary>
         void SetAllowedGameSystems(ArmyBuilding.EAllowedGameSystems allowedGameSystems);
 
         void SetTerrainCount(int terrainCount);
@@ -188,7 +188,7 @@ namespace FDG.Network.Connection.Lobby
 
         bool TryLaunchGame(out string? failReason);
 
-        /// <summary>#400: problems that BLOCK the launch — a slot with no army, an army over the lobby
+        /// <summary>#402: problems that BLOCK the launch — a slot with no army, an army over the lobby
         /// points limit, an army from a game system <see cref="AllowedGameSystems"/> doesn't accept. The
         /// UI greys LAUNCH out and lists these on hover; empty means nothing is blocking. Cheap enough to
         /// call every frame (see <see cref="ArmyBuilding.LaunchGate.BlockingProblems"/>). Host-side only —

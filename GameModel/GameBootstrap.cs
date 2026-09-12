@@ -128,7 +128,7 @@ namespace FDG.GameModel
         public static void CreateArmy(PlayerID playerID, ArmyListFile? armyListFile,
             IReadWriteableGameDataStore gameDataStore, IRuleResolver ruleResolver)
         {
-            // #400: a slot reaching a fresh launch with no army is a bug upstream (the lobby's launch gate
+            // #402: a slot reaching a fresh launch with no army is a bug upstream (the lobby's launch gate
             // blocks it, and TryLaunchGame refuses it). Say so loudly - this used to quietly substitute a
             // hard-coded "Test Army", so the game started and nobody found out until the board looked wrong.
             if (armyListFile is null)

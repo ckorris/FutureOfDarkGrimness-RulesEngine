@@ -7,7 +7,7 @@ namespace FDG.ArmyBuilding
     // #153 launch gate (decision 9, 2026-07-02): hard legality problems across the lobby's loaded armies.
     // Pure and fixture-free so the lobby view-models can stay thin over it.
     //
-    // #400 split it in two, because the lobby now treats the halves differently and asks for them at very
+    // #402 split it in two, because the lobby now treats the halves differently and asks for them at very
     // different rates:
     //
     //   BlockingProblems    - no army, over points, wrong game system. These BLOCK: the LAUNCH button is
@@ -21,9 +21,9 @@ namespace FDG.ArmyBuilding
     public static class LaunchGate
     {
         /// <summary>
-        /// Problems that must be FIXED before the lobby can launch (#400), one line each:
+        /// Problems that must be FIXED before the lobby can launch (#402), one line each:
         /// <list type="bullet">
-        ///   <item>a slot with no army assigned at all - before #400 the host quietly substituted a
+        ///   <item>a slot with no army assigned at all - before #402 the host quietly substituted a
         ///   100-pt stub, which is how a player ended up in a game with an army they never picked;</item>
         ///   <item>an army over the LOBBY's points limit (the saved list's own limit is builder-time
         ///   advice; the lobby setting is authoritative at launch);</item>

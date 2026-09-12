@@ -655,7 +655,7 @@ namespace FDG.Network.Connection.Lobby
             return true;
         }
 
-        // #153/#400 launch gate: the two halves of the army check, for the UI's disabled LAUNCH button
+        // #153/#402 launch gate: the two halves of the army check, for the UI's disabled LAUNCH button
         // and its "launch anyway?" confirm respectively. Both live in the fixture-free ArmyBuilding.LaunchGate.
         public IReadOnlyList<string> BlockingLaunchProblems() =>
             ArmyBuilding.LaunchGate.BlockingProblems(LoadedArmies(), ArmyPoints, AllowedGameSystems);
@@ -715,7 +715,7 @@ namespace FDG.Network.Connection.Lobby
                 LobbyPlayerInfoFull info = infos[i];
 
                 // ArmyListFile is vestigial on resume - the armies are already in the loaded store - so
-                // the slot takes whatever the roster has, null included (#400; PlayerSlot allows it, and
+                // the slot takes whatever the roster has, null included (#402; PlayerSlot allows it, and
                 // BuildRuleResolver skips a null before RestoreArmyRuleData tops it up from the save).
                 PlayerSlot playerSlot = new PlayerSlot(i, (int)info.TeamNumber, info.PlayerID,
                     info.ArmyListFile, _gameDataStore);
@@ -813,7 +813,7 @@ namespace FDG.Network.Connection.Lobby
                 return "All players are on the same team - at least two teams must be represented.";
             }
 
-            // #400: every slot must bring a list. The lobby already greys LAUNCH out over this, so
+            // #402: every slot must bring a list. The lobby already greys LAUNCH out over this, so
             // reaching here means a caller that skipped the gate - refuse with a reason rather than
             // inventing an army, which is what this class used to do.
             if (_playerInfosFull.Values.FirstOrDefault(info => info.ArmyListFile == null) is { } armyless)
@@ -854,7 +854,7 @@ namespace FDG.Network.Connection.Lobby
             {
                 LobbyPlayerInfoFull lobbyPlayerInfo = lobbyPlayerInfosArray[i];
 
-                // #400: no substitution here any more. A slot with no army is refused by
+                // #402: no substitution here any more. A slot with no army is refused by
                 // ValidateLaunchSettings before Launch() is ever called, and GameBootstrap.CreateArmy
                 // throws if one slips through - both far better than the silent "Test Army" that used
                 // to be invented at this line.
@@ -928,7 +928,7 @@ namespace FDG.Network.Connection.Lobby
             }
         }
 
-        // #400. No validation arm: every enum value is a legal setting, unlike army points, where a
+        // #402. No validation arm: every enum value is a legal setting, unlike army points, where a
         // non-positive number has to be bounced back to the UI.
         public void SetAllowedGameSystems(ArmyBuilding.EAllowedGameSystems allowedGameSystems)
         {
@@ -1162,7 +1162,7 @@ namespace FDG.Network.Connection.Lobby
 
             PlayerID newPlayerID = new PlayerID(Guid.NewGuid());
 
-            // #400: a fresh bot starts with NO army rather than the "Test Army" stub. The lobby rolls it
+            // #402: a fresh bot starts with NO army rather than the "Test Army" stub. The lobby rolls it
             // a real one from the armies folder (#372), and if it cannot - no folder, or nothing of an
             // allowed game system - the empty slot must SHOW as empty and block the launch. Stamping a
             // fake 100-pt army here made that indistinguishable from a deliberate pick, which is how a

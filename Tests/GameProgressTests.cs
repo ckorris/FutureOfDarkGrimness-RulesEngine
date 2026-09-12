@@ -95,7 +95,7 @@ namespace FDG.Tests
         }
 
         /// <summary>
-        /// #400: a save written before AllowedGameSystems existed has no such field, so the struct's
+        /// #402: a save written before AllowedGameSystems existed has no such field, so the struct's
         /// default decides what a resumed game accepts. It must be All - those games were played with
         /// no system restriction at all, and any other default would retroactively make one of their
         /// armies illegal.

@@ -5,12 +5,12 @@ using System.Collections.Generic;
 namespace FDG
 {
     /// <summary>
-    /// The order wounds actually reach a defending unit's models, and the wound-multiplier (Deadly)
-    /// confinement that depends on it. Lives next to <see cref="AssignWoundsResults"/> because that is
-    /// the thing it mirrors: the order is emergent there from three separate rules, and any consumer
-    /// that needs to predict the outcome has to reproduce it. Shared by <c>AssignWoundsStage</c> (the
-    /// real resolution) and the Tactician's <c>CombatMath</c> (its valuation estimate), which each
-    /// carried a private hand-copy before #400.
+    /// The order wounds actually reach a defending unit's models, and the packet arithmetic that
+    /// depends on it (#400, #401). Lives next to <see cref="AssignWoundsResults"/> because that is the
+    /// thing it mirrors: the order is emergent there from three separate rules, and any consumer that
+    /// needs to predict the outcome has to reproduce it. Shared by <c>AssignWoundsStage</c> (the real
+    /// resolution) and the Tactician's <c>CombatMath</c> (its valuation estimate), which each carried a
+    /// private hand-copy before #400.
     /// </summary>
     public static class WoundAllocation
     {
@@ -19,18 +19,21 @@ namespace FDG
         /// them: already-wounded non-heroes first (#023, the mandatory pre-assignment), then whole
         /// non-heroes in unit-list order, then a joined hero (#006, "heroes are assigned wounds last,
         /// even if already wounded"). Within a model, #024 forces it to be finished before the next is
-        /// started, so this list — not the raw model list — is the sequence a wound pool drains along.
+        /// started, so this list - not the raw model list - is the sequence a wound pool drains along.
         ///
-        /// Eager and single-pass (#191 search perf pass): the lazy version enumerated the living list
-        /// three times through LINQ iterators and grew two lists from empty, per estimate, per candidate.
-        ///
-        /// The defender's sub-choice between several already-wounded models is NOT modelled — they fill
+        /// The defender's sub-choice between several already-wounded models is NOT modelled - they fill
         /// in unit-list order, matching <see cref="AssignWoundsResults"/>' own deferred note.
         /// </summary>
-        public static List<IModel> Order(IUnit defender)
+        public static List<IModel> Order(IUnit defender) => Order(defender.Models, defender.JoinedHeroModelId);
+
+        /// <summary>
+        /// <see cref="Order(IUnit)"/> over an explicit model list - the Tactician prices a hypothetical
+        /// survivor set, not the unit as it stands. Eager and single-pass (#191 search perf pass): the
+        /// lazy version enumerated the living list three times through LINQ iterators and grew two lists
+        /// from empty, per estimate, per candidate.
+        /// </summary>
+        public static List<IModel> Order(IReadOnlyList<IModel> models, ModelID? heroId)
         {
-            ModelID? heroId = defender.JoinedHeroModelId;
-            List<IModel> models = defender.Models;
             var order = new List<IModel>(models.Count);
             IModel? hero = null;
 
@@ -53,18 +56,72 @@ namespace FDG
         }
 
         /// <summary>
-        /// Deadly's no-carry-over confinement. The attack landed <paramref name="clumpCount"/> failed
-        /// saves; under Deadly(X) each is a clump of <paramref name="multiplier"/> wounds confined to one
-        /// model, with any overkill on that model lost rather than carrying to the next. Assigns whole
-        /// clumps until each model is dead (ceil(capacity / X) clumps) and sums the wounds that actually
-        /// land (a clump on a model deals min(X, that model's remaining), so a 1-wound model absorbs only
-        /// 1 of the X). Returns the effective wound total, which replaces the naive total*X.
-        ///
-        /// #400: walks <see cref="Order"/>, NOT the raw model list. The two differ whenever the squad is
-        /// already damaged, and the caller then spends the returned total along <see cref="Order"/> — so
-        /// walking the raw list computed the cap against one model and spent it on another, spilling a
-        /// clump's discarded overkill onto a fresh model. Against fresh uniform squads the orders
-        /// coincide, which is why the bug survived #028's tests.
+        /// The one place a packet meets a model (#401). Commits <paramref name="packet"/> - or the rest of
+        /// it, when <paramref name="alreadyPoured"/> of an unconfined one has gone before - against a model
+        /// with <paramref name="capacity"/> wounds left. A confined packet lands <c>weight x min(wounds,
+        /// capacity)</c>, loses the remainder, and is always consumed; an unconfined packet pours what
+        /// fits and is consumed only once nothing of it remains. <see cref="AssignWoundsResults.TryAddWounds"/>
+        /// and <see cref="Simulate"/> both come through here, so the interactive and the predicted
+        /// outcomes cannot disagree on the arithmetic.
+        /// </summary>
+        public static (float Landed, float Lost, bool Consumed) Commit(WoundPacket packet, float alreadyPoured, float capacity)
+        {
+            if (packet.Confined)
+            {
+                float landed = packet.Weight * MathF.Min(packet.Wounds, capacity);
+                float lost = packet.Weight * MathF.Max(0f, packet.Wounds - capacity);
+                return (landed, lost, true);
+            }
+
+            float remaining = packet.Wounds - alreadyPoured;
+            float poured = MathF.Min(capacity, remaining);
+            bool consumed = remaining - poured <= AssignWoundsResults.WoundEpsilon;
+            return (poured, 0f, consumed);
+        }
+
+        /// <summary>
+        /// What <see cref="AssignWoundsResults.AutoFill"/> would land if <paramref name="packets"/> were
+        /// poured along <paramref name="orderedModels"/> (see <see cref="Order(IUnit)"/>): each model is
+        /// filled until it is dead or the packets run out before the next is started, and whatever the
+        /// last model cannot absorb - or a confined packet's excess - is <paramref name="lost"/>. The
+        /// predictive twin of the interactive object, for callers that price a volley without building
+        /// one; pinned equal to it by <c>WoundPacketAssignmentTests</c>.
+        /// </summary>
+        public static float Simulate(IReadOnlyList<WoundPacket> packets, IReadOnlyList<IModel> orderedModels, out float lost)
+        {
+            float landedTotal = 0f;
+            lost = 0f;
+            int next = 0;
+            float headPoured = 0f;
+
+            foreach (IModel model in orderedModels)
+            {
+                float capacity = model.TotalWounds - model.WoundsDealt;
+                while (capacity > AssignWoundsResults.WoundEpsilon && next < packets.Count)
+                {
+                    (float landed, float packetLost, bool consumed) = Commit(packets[next], headPoured, capacity);
+                    landedTotal += landed;
+                    lost += packetLost;
+                    capacity -= landed;
+                    if (consumed) { next++; headPoured = 0f; }
+                    else headPoured += landed;
+                }
+                if (next >= packets.Count) break;
+            }
+
+            for (; next < packets.Count; next++)
+            {
+                lost += packets[next].WeightedWounds - headPoured;
+                headPoured = 0f;
+            }
+            return landedTotal;
+        }
+
+        /// <summary>
+        /// Deadly's no-carry-over confinement as a scalar. The attack landed <paramref name="clumpCount"/>
+        /// failed saves; under Deadly(X) each is a clump of <paramref name="multiplier"/> wounds confined
+        /// to one model. Returns the effective wound total along <see cref="Order(IUnit)"/>. #401 replaces
+        /// this with real packets in the stage; kept during the transition for its remaining caller.
         /// </summary>
         public static float ConfineToClumps(float clumpCount, int multiplier, IUnit defender)
         {

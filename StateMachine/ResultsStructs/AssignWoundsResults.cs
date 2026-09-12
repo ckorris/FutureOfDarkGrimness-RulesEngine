@@ -34,6 +34,10 @@ namespace FDG
         [JsonProperty("HeadPoured")] private float _headPoured;
         [JsonProperty("WoundsLostSoFar")] private float _woundsLost;
 
+        // Every commit so far, in order: which packet went to which model and what it did there. What
+        // a dialog needs to show a placed clump as "1 -> Model 3, 2 lost" rather than a bare tick.
+        [JsonProperty("Commits")] private List<PacketCommit> _commits;
+
         // #006: the joined hero's model (if any). The hero is wounded last — ordered last in PendingWounds
         // (so AutoFill spares it) and rejected by TryAddWounds while any rank-and-file model has room.
         // Serialized so the guard survives a mid-assignment save/network round-trip; null for non-hero units.
@@ -45,7 +49,8 @@ namespace FDG
 
         [JsonConstructor]
         public AssignWoundsResults(List<WoundPacket> packets, int packetsCommitted, float headPoured,
-            float woundsLostSoFar, float totalAssignedWounds, List<PendingWounds> pendingWounds)
+            float woundsLostSoFar, float totalAssignedWounds, List<PendingWounds> pendingWounds,
+            List<PacketCommit>? commits = null)
         {
             _packets = packets;
             _packetsCommitted = packetsCommitted;
@@ -53,6 +58,7 @@ namespace FDG
             _woundsLost = woundsLostSoFar;
             TotalAssignedWounds = totalAssignedWounds;
             PendingWounds = pendingWounds;
+            _commits = commits ?? new List<PacketCommit>();
         }
 
         /// <summary>The ordinary pool: <paramref name="totalWoundsToAssign"/> plain wounds, one
@@ -85,6 +91,7 @@ namespace FDG
             }
 
             _packets = Meaningful(packets);
+            _commits = new List<PacketCommit>();
 
             PreAssignToAlreadyWoundedModels();
         }
@@ -103,6 +110,7 @@ namespace FDG
         {
             PendingWounds = new List<PendingWounds> { new PendingWounds(singleModel) };
             _packets = Meaningful(packets);
+            _commits = new List<PacketCommit>();
         }
 
         private static List<WoundPacket> PacketsFor(float totalWoundsToAssign) =>
@@ -146,6 +154,11 @@ namespace FDG
 
         [JsonIgnore]
         public int PacketsCommitted => _packetsCommitted;
+
+        /// <summary>Every commit so far, in order. An unconfined packet poured across two models is two
+        /// entries with the same <see cref="PacketCommit.PacketIndex"/>.</summary>
+        [JsonIgnore]
+        public IReadOnlyList<PacketCommit> Commits => _commits;
 
         /// <summary>The packet the next <see cref="TryAddWounds"/> commits, or null once the queue is spent.</summary>
         [JsonIgnore]
@@ -302,6 +315,7 @@ namespace FDG
             pendingWoundsEntry.Wounds += landed;
             TotalAssignedWounds += landed;
             _woundsLost += lost;
+            _commits.Add(new PacketCommit(_packetsCommitted, model, landed, lost));
             if (consumed)
             {
                 _packetsCommitted++;
@@ -345,7 +359,8 @@ namespace FDG
         private AssignWoundsResults Clone() =>
             new AssignWoundsResults(new List<WoundPacket>(_packets), _packetsCommitted, _headPoured, _woundsLost,
                 TotalAssignedWounds,
-                PendingWounds.Select(entry => new PendingWounds(entry.Model) { Wounds = entry.Wounds }).ToList())
+                PendingWounds.Select(entry => new PendingWounds(entry.Model) { Wounds = entry.Wounds }).ToList(),
+                new List<PacketCommit>(_commits))
             {
                 _heroModelId = _heroModelId,
             };
@@ -381,6 +396,26 @@ namespace FDG
                 if (other.Wounds > 0f && CanTakeMoreWounds(other)) return true;
             }
             return false;
+        }
+    }
+
+    /// <summary>One <see cref="AssignWoundsResults.TryAddWounds"/> that changed something (#401): packet
+    /// <see cref="PacketIndex"/> met <see cref="Model"/>, <see cref="Landed"/> wounds stayed and
+    /// <see cref="Lost"/> were the confined excess past it.</summary>
+    public sealed class PacketCommit
+    {
+        public int PacketIndex { get; }
+        public DataBinding<ModelData> Model { get; }
+        public float Landed { get; }
+        public float Lost { get; }
+
+        [JsonConstructor]
+        public PacketCommit(int packetIndex, DataBinding<ModelData> model, float landed, float lost)
+        {
+            PacketIndex = packetIndex;
+            Model = model;
+            Landed = landed;
+            Lost = lost;
         }
     }
 

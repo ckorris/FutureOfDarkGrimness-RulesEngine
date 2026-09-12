@@ -176,6 +176,32 @@ namespace FDG.Tests
                 new[] { WoundPacket.Clump(3f), WoundPacket.Clump(3f) });
         }
 
+        // The dialogs show a placed clump as "1 -> Model 3, 2 lost", so each commit is recorded: which
+        // packet, which model, what stayed, what was lost. The clump's pre-Regeneration size rides on the
+        // packet for the same reason ("3 rolled, 2 ignored").
+        [Test]
+        public void Commits_RecordWhereEachPacketWentAndWhatItDid()
+        {
+            DataBinding<UnitData> unit = MakeUnit(modelCount: 2, woundsPerModel: 3);
+            PreWound(unit, modelIndex: 1, wounds: 2);
+            WoundPacket regenerated = WoundPacket.Clump(3f).WithWounds(1f);
+            var results = new AssignWoundsResults(unit, new[] { WoundPacket.Clump(3f), regenerated });
+
+            Assert.That(regenerated.OriginalWounds, Is.EqualTo(3f));
+            Assert.That(regenerated.Ignored, Is.EqualTo(2f));
+            Assert.That(results.Commits, Has.Count.EqualTo(1), "the pre-assignment placed clump 1");
+            Assert.That(results.Commits[0].PacketIndex, Is.EqualTo(0));
+            Assert.That(results.Commits[0].Model, Is.SameAs(results.PendingWounds[1].Model));
+            Assert.That(results.Commits[0].Landed, Is.EqualTo(1f));
+            Assert.That(results.Commits[0].Lost, Is.EqualTo(2f));
+
+            results.TryAddWounds(results.PendingWounds[0].Model);
+            Assert.That(results.Commits, Has.Count.EqualTo(2));
+            Assert.That(results.Commits[1].PacketIndex, Is.EqualTo(1));
+            Assert.That(results.Commits[1].Landed, Is.EqualTo(1f));
+            Assert.That(results.Commits[1].Lost, Is.EqualTo(0f));
+        }
+
         // The reply crosses the wire mid-assignment (and a save can snapshot one): the queue, its cursor
         // and the lost tally must all come back so the assignment resumes where it stopped.
         [Test]
@@ -195,6 +221,9 @@ namespace FDG.Tests
             Assert.That(revived.PendingWounds[0].Wounds, Is.EqualTo(3f));
             Assert.That(revived.NextPacket!.Confined, Is.True);
             Assert.That(revived.NextPacket.Wounds, Is.EqualTo(2f));
+            Assert.That(revived.Commits, Has.Count.EqualTo(1), "the commit log rides along");
+            Assert.That(revived.Commits[0].Landed, Is.EqualTo(3f));
+            Assert.That(revived.Packets[0].OriginalWounds, Is.EqualTo(3f), "so does the pre-Regeneration size");
 
             revived.AutoFill();
             Assert.That(revived.TotalAssignedWounds, Is.EqualTo(6f), "the 2-clump and the pool finish the second model");

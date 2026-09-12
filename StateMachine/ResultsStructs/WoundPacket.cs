@@ -33,12 +33,22 @@ namespace FDG
 
         public float Weight { get; }
 
+        /// <summary>The wounds this packet carried before Regeneration was rolled for it - a Deadly(3)
+        /// clump's 3, whatever is left in <see cref="Wounds"/>. What a dialog needs to say "3 rolled,
+        /// 2 ignored".</summary>
+        public float OriginalWounds { get; }
+
         [JsonConstructor]
-        public WoundPacket(float wounds, bool confined, float weight)
+        public WoundPacket(float wounds, bool confined, float weight, float originalWounds)
         {
             Wounds = wounds;
             Confined = confined;
             Weight = weight;
+            OriginalWounds = originalWounds;
+        }
+
+        private WoundPacket(float wounds, bool confined, float weight) : this(wounds, confined, weight, wounds)
+        {
         }
 
         /// <summary>The ordinary pool: <paramref name="wounds"/> that drain across the unit, nothing lost
@@ -50,7 +60,10 @@ namespace FDG
         public static WoundPacket Clump(float wounds, float weight = 1f) => new WoundPacket(wounds, confined: true, weight);
 
         /// <summary>The same packet carrying <paramref name="wounds"/> instead - what Regeneration leaves of it.</summary>
-        public WoundPacket WithWounds(float wounds) => new WoundPacket(wounds, Confined, Weight);
+        public WoundPacket WithWounds(float wounds) => new WoundPacket(wounds, Confined, Weight, OriginalWounds);
+
+        /// <summary>What Regeneration took off this packet.</summary>
+        public float Ignored => OriginalWounds - Wounds;
 
         /// <summary>The wounds this packet carries, weighted - the most it could ever land.</summary>
         public float WeightedWounds => Wounds * Weight;

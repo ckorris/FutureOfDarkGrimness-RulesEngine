@@ -7,6 +7,7 @@ using FDG.Stages;
 using FDG.StageResolution;
 using FDG.StageResolution.Requests;
 using FDG.Presentation;
+using FDG.Presentation.Beats;
 using FDG.Tests.RulesHarness;
 using NUnit.Framework;
 
@@ -172,6 +173,122 @@ namespace FDG.Tests
                 $"model {modelIndex} should carry {expected} wound(s) from this attack.");
         }
 
+        // ── The OPR Discord thread of 2026-07-22, where the rule's author answered it directly ────────
+        // Justin: "I get hit with 5 Deadly attacks and don't save any" against three troops — are the
+        // extras spread around, or lost? Adam (OPR): "excess wounds are lost"; "if all the models in the
+        // unit are killed then yeah there would be nothing for the last 2 hits to do." Three 1-wound
+        // models, Deadly(3) x5: three clumps kill the unit, two are wasted entirely.
+        [Test]
+        public async Task Deadly_MoreClumpsThanModels_WipesUnitAndWastesTheRest()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            AttachDeadly(attacker, x: 3);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 3);
+
+            CombatMetadata metadata = await RunStage(attacker, defender, failedSaves: 5);
+
+            Assert.That(metadata.QueryForResult(out AssignWoundsResults result), Is.True);
+            Assert.That(result.TotalWoundsToAssign, Is.EqualTo(3f),
+                "three 1-wound models absorb one wound each; the other two clumps have nothing to kill.");
+        }
+
+        // Yorekani, same thread: "If your example unit has 2 models left, then the unit gets wiped if 2 or
+        // more Deadly(3) wounds get through, unless one of those models is an attached hero with Tough(6),
+        // then you'd need 3 or more wounds with Deadly(3) to wipe the floor." The hero is assigned wounds
+        // LAST (#006), so the grunt eats clump 1 and the Tough(6) hero needs ceil(6/3) = 2 more.
+        [Test]
+        public async Task Deadly_ToughSixHero_TwoClumpsLeaveTheHeroStanding()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            AttachDeadly(attacker, x: 3);
+            DataBinding<UnitData> defender = MakeHeroJoinedUnit(gruntCount: 1, heroTough: 6);
+
+            CombatMetadata metadata = await RunStage(attacker, defender, failedSaves: 2);
+
+            Assert.That(metadata.QueryForResult(out AssignWoundsResults result), Is.True);
+            Assert.That(result.TotalWoundsToAssign, Is.EqualTo(4f),
+                "clump 1 kills the 1-wound grunt; clump 2 puts 3 on the Tough(6) hero, which survives.");
+            Assert.That(defender.GetValue().Models.Last().GetIsAlive(), Is.True, "the hero is still up.");
+        }
+
+        [Test]
+        public async Task Deadly_ToughSixHero_ThreeClumpsWipeTheUnit()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            AttachDeadly(attacker, x: 3);
+            DataBinding<UnitData> defender = MakeHeroJoinedUnit(gruntCount: 1, heroTough: 6);
+
+            CombatMetadata metadata = await RunStage(attacker, defender, failedSaves: 3);
+
+            Assert.That(metadata.QueryForResult(out AssignWoundsResults result), Is.True);
+            Assert.That(result.TotalWoundsToAssign, Is.EqualTo(7f),
+                "1 (grunt) + 6 (hero, two clumps) = the unit's whole wound pool.");
+        }
+
+        // ── DEFERRED FACET (#400): Deadly + Regeneration needs per-clump resolution ───────────────────
+        // Both tests below assert the RULE-CORRECT behaviour and are expected to fail today. From the same
+        // thread — Yorekani: "IF a unit of multiple models with Tough(3) fails to block hits with Deadly(X)
+        // and the models have Regeneration or similar, you're out of luck and you'll have to slow-roll the
+        // Regeneration saves. That's because you can't accurately prevent spillover otherwise." Adam's
+        // summary is the same: "just do them one at a time and it'll work out fine."
+        //
+        // The stage instead confines the clumps to a SCALAR wound total, rolls Regeneration once over that
+        // whole pool, and then re-allocates what is left. Fixing it means Deadly emitting a per-model
+        // assignment (N clumps of X, each resolved against one model with its own Regeneration rolls,
+        // excess discarded at the model boundary) rather than a number — a clump-aware request shape across
+        // both resolver sets. Un-ignore these when that lands.
+
+        // Regeneration rolls once per wound the clump DEALS, not once per wound that fits. A Deadly(3)
+        // clump on a 1-wound model is three wounds arriving at that model, so it gets three chances to
+        // shrug — it survives only if it ignores all three. Today the capacity cap is applied first, so a
+        // single die is rolled and the model shrugs off the whole clump a third of the time.
+        [Test]
+        [Ignore("#400 deferred facet: Deadly + Regeneration needs per-clump resolution. Currently rolls " +
+                "1 Regeneration die (the capped total) instead of 3 (the clump's multiplied wounds).")]
+        public async Task Deadly_Regeneration_RollsOncePerMultipliedWound()
+        {
+            var presenter = new RecordingPresenter();
+            _ctx = new WoundTestContext(_store, _requester, new ProbabilisticDiceRoller(), presenter);
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            AttachDeadly(attacker, x: 3);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 5);
+            AttachRegeneration(defender);
+
+            await RunStage(attacker, defender, failedSaves: 1);
+
+            DiceRolledBeat regenBeat = presenter.Beats.OfType<DiceRolledBeat>()
+                .Single(beat => beat.Label == "Regeneration");
+            Assert.That(regenBeat.FaceCounts.Sum(), Is.EqualTo(3f).Within(0.001f),
+                "the clump deals 3 wounds to the model, so Regeneration rolls 3 dice - the capacity cap " +
+                "applies to what survives them, not to what is rolled for.");
+        }
+
+        // Wounds a clump loses to Regeneration are lost to THAT clump, on THAT model - they must not free
+        // up budget that reaches the next model. Two Tough(3) models with Regeneration (ignore 5+, so the
+        // probabilistic roller shrugs exactly 1 of every 3), Deadly(3) x2: clump 1 puts 2 on model A;
+        // clump 2 must finish A (#024) and only 1 of its surviving 2 fits, the other lost. Model B is
+        // never reached. Today the pool is 6, Regeneration takes 2 off it, and the leftover 4th wound
+        // spills onto B - the exact spillover the thread says you must slow-roll to avoid.
+        [Test]
+        [Ignore("#400 deferred facet: Deadly + Regeneration needs per-clump resolution. Regeneration's " +
+                "ignored wounds currently shrink a shared pool that is then re-allocated across models.")]
+        public async Task Deadly_Regeneration_IgnoredWoundsDoNotSpillToTheNextModel()
+        {
+            _ctx = new WoundTestContext(_store, _requester, new ProbabilisticDiceRoller());
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            AttachDeadly(attacker, x: 3);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 2, woundsPerModel: 3);
+            AttachRegeneration(defender);
+
+            CombatMetadata metadata = await RunStage(attacker, defender, failedSaves: 2);
+
+            Assert.That(metadata.QueryForResult(out AssignWoundsResults result), Is.True);
+            Assert.That(PlacedWounds(result, defender)[1], Is.EqualTo(0f).Within(0.001f),
+                "the second model is never assigned a clump, so Regeneration's leftovers cannot reach it.");
+            Assert.That(result.TotalWoundsToAssign, Is.EqualTo(3f).Within(0.001f),
+                "clump 1 lands 2 on the first model; clump 2 lands only the 1 that still fits.");
+        }
+
         // #100 Shred: each unmodified 1 to block adds a wound. The harness rolls every failed save as an
         // unmodified 1, so two failed saves → +2 Shred wounds on top of the 2 they already dealt = 4.
         // The 5-model defender survives, routing to the player branch where the count is captured.
@@ -318,6 +435,27 @@ namespace FDG.Tests
         private static void AttachShred(DataBinding<UnitData> unit)
         {
             unit.GetValue().AttachRuleDefinition(new ResolvedRule("Shred", CoreRuleCatalog.Shred));
+        }
+
+        private static void AttachRegeneration(DataBinding<UnitData> unit)
+        {
+            unit.GetValue().AttachRuleDefinition(new ResolvedRule("Regeneration", CoreRuleCatalog.Regeneration));
+        }
+
+        // A unit of 1-wound grunts with a Tough(heroTough) Hero joined in (#006). AttachHero APPENDS the
+        // hero's binding, so the hero is last in Models - which is also where the wound-allocation order
+        // puts it, deliberately, rather than by relying on that.
+        private DataBinding<UnitData> MakeHeroJoinedUnit(int gruntCount, int heroTough)
+        {
+            DataBinding<UnitData> unit = MakeUnit(modelCount: gruntCount);
+            var heroModel = new ModelData(baseRadiusInches: 0.75f, weapons: new List<Weapon>(),
+                initialPosition: new Position(0, 0), gameDataStore: _store);
+            heroModel.SetMaxWounds(heroTough);
+            DataBinding<ModelData> hero = _store.GetDataBinding<ModelData>(_store.Create(heroModel));
+            unit.GetValue().AttachHero(
+                new HeroAttachment(hero.GetValue().ID, quality: 3, defense: 3, heroWounds: heroTough),
+                new List<DataBinding<ModelData>> { hero });
+            return unit;
         }
 
         private static void AttachResistance(DataBinding<UnitData> unit)

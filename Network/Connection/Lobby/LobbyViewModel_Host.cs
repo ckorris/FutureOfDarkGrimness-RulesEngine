@@ -173,6 +173,12 @@ namespace FDG.Network.Connection.Lobby
 
         public bool IsResumeMode => _isResume;
 
+        // #405: the host's OWN slot. Was a constructor local, so after construction nothing could tell
+        // the host's row apart from a local player it had added - both are EPlayerType.Local with an
+        // empty ConnectionID. Remove needs that distinction (you cannot remove yourself), so it is a
+        // field now. Set by both constructors before any roster query can run.
+        private PlayerID _thisPlayerID;
+
         // Set once the game launches (QF6). After this a fresh greeting is refused - the roster is fixed and
         // the store is mid-game, so a late joiner has nothing valid to become.
         private bool _isLaunched;
@@ -232,6 +238,7 @@ namespace FDG.Network.Connection.Lobby
             LobbyPlayerInfoFull newLobbyPlayerInfo = new LobbyPlayerInfoFull(hostPlayerName, null, ETeamOption.Team1,
                 EPlayerType.Local, new ConnectionID(Guid.Empty), thisPlayerID);
             _playerInfosFull.Add(thisPlayerID, newLobbyPlayerInfo);
+            _thisPlayerID = thisPlayerID; // #405
             UpdateInfoSummariesFromFullList();
         }
 
@@ -306,6 +313,8 @@ namespace FDG.Network.Connection.Lobby
             {
                 EPlayerType type = hostAssigned ? EPlayerType.AI : EPlayerType.Local;
                 string name = hostAssigned ? slot.Name : hostPlayerName;
+                if (hostAssigned == false)
+                    _thisPlayerID = slot.PlayerID; // #405: the slot the host itself adopts.
                 hostAssigned = true;
 
                 LobbyPlayerInfoFull info = new LobbyPlayerInfoFull(name, null, (ETeamOption)slot.TeamNumber,
@@ -1120,6 +1129,56 @@ namespace FDG.Network.Connection.Lobby
             _playerInfosFull[playerId].ArmyListFile = armyListFile;
 
             UpdateInfoSummariesFromFullList();
+        }
+
+        // #405 ---------------------------------------------------------------------------------------
+        // Removing a slot. The roster broadcast is already total - UpdateInfoSummariesFromFullList sends
+        // the whole LobbyPlayerListUpdate - so a removal needs no message type of its own; dropping the
+        // entry and re-broadcasting is what every client sees. Colour and team free themselves with it:
+        // colours resolve per frame from the surviving picks (#221), and FirstEmptyTeam reads the live
+        // list, so the freed team is offered to the next slot added.
+
+        public bool CheckCanRemovePlayer(PlayerID playerID)
+        {
+            // Saved slots are the shape of the saved game; the roster is fixed once play begins.
+            if (_isResume || _isLaunched)
+                return false;
+
+            // You cannot remove yourself from your own lobby.
+            if (playerID == _thisPlayerID)
+                return false;
+
+            LobbyPlayerInfoFull? queryPlayer =
+                _playerInfosFull.TryGetValue(playerID, out LobbyPlayerInfoFull? found) ? found : null;
+            if (queryPlayer == null)
+            {
+                Debug.WriteLine($"Asked to remove a player with an ID not in the list: {playerID.ID}");
+                return false;
+            }
+
+            // A connected client leaves by disconnecting. Removing its slot out from under it would be a
+            // kick, which needs its own wire message and consent story - deliberately not built here.
+            return queryPlayer.PlayerType != EPlayerType.Network;
+        }
+
+        public void RemovePlayer(PlayerID playerID)
+        {
+            // Re-checked here rather than trusting the caller: the front end's button state is a frame
+            // stale, and this is also the seam a future networked caller would arrive through.
+            if (CheckCanRemovePlayer(playerID) == false)
+            {
+                Debug.WriteLine($"Refused to remove player {playerID.ID}.");
+                return;
+            }
+
+            string removedName = _playerInfosFull[playerID].PlayerName;
+            _playerInfosFull.Remove(playerID);
+            Debug.WriteLine($"Removed player: {removedName}");
+
+            UpdateInfoSummariesFromFullList();
+
+            LobbyGameSettingsUpdate gameSettingsUpdate = new LobbyGameSettingsUpdate(_gameSettings);
+            _messageBus.SendCommandToAllAsync(gameSettingsUpdate);
         }
 
         public void AddLocalPlayer()

@@ -227,6 +227,15 @@ namespace FDG.Network.Connection.Lobby
             throw new InvalidOperationException("Tried to add AI player when not the host.");
         }
 
+        /// <summary>#405: the roster belongs to the host, so a client never offers Remove. Returning
+        /// false (rather than throwing) is what keeps the button simply absent on a client's lobby.</summary>
+        public bool CheckCanRemovePlayer(PlayerID playerID) => false;
+
+        public void RemovePlayer(PlayerID playerID)
+        {
+            throw new InvalidOperationException("Tried to remove a player when not the host.");
+        }
+
         public void SendMessage(string message)
         {
             Debug.WriteLine($"Sending message: {message}");

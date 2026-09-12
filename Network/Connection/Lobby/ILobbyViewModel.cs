@@ -131,6 +131,19 @@ namespace FDG.Network.Connection.Lobby
         /// profile decides the resolver registry at launch and the bot's display name.</summary>
         void AddAiPlayer(EAiProfile profile);
 
+        /// <summary>#405: may this machine drop <paramref name="playerID"/> from the roster entirely?
+        /// The counterpart to <see cref="AddLocalPlayer"/> / <see cref="AddAiPlayer"/>, and the single
+        /// place the policy lives so the front end never re-derives it. Host-only, and never true for
+        /// the host's OWN slot (you cannot remove yourself from your own lobby), a connected client
+        /// (that would be a kick - deliberately not built here), a resumed lobby (saved slots are
+        /// fixed), or a launched one.</summary>
+        bool CheckCanRemovePlayer(PlayerID playerID);
+
+        /// <summary>#405: drops <paramref name="playerID"/>'s slot. No-op unless
+        /// <see cref="CheckCanRemovePlayer"/> allows it, so a stale click cannot remove the wrong
+        /// row.</summary>
+        void RemovePlayer(PlayerID playerID);
+
         void SendMessage(string message);
 
         void UpdateArmyListFile(PlayerID playerId, ArmyListFile armyListFile);

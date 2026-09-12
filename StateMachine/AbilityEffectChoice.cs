@@ -71,9 +71,10 @@ namespace FDG.Stages
         private static async Task<int> AskWhichEffect(IGameContext gameContext, PlayerID player,
             string ruleName, IUnit unit, IReadOnlyList<AbilityOffer> options, string occasion)
         {
+            IRuleResolver? resolver = gameContext.RuleEvaluator.RuleResolver;
             List<ChooseAbilityEffectRequest.EffectOption> effectOptions = options
                 .Select(offer => new ChooseAbilityEffectRequest.EffectOption(
-                    LabelFor(offer), DescriptionFor(offer)))
+                    LabelFor(offer), DescriptionFor(offer, resolver)))
                 .ToList();
 
             var request = new ChooseAbilityEffectRequest(player, $"{unit.Name}: pick one effect {occasion}.",
@@ -99,7 +100,28 @@ namespace FDG.Stages
         private static string LabelFor(AbilityOffer offer) =>
             string.IsNullOrWhiteSpace(offer.Ability.Label) ? offer.RuleName : offer.Ability.Label;
 
-        private static string DescriptionFor(AbilityOffer offer) =>
-            offer.Ability.Effect is Effect.AddRule addRule ? addRule.RuleName : string.Empty;
+        // The subtext is the GRANTED rule's player-facing description, not its name (#370's channel, which
+        // the action menu already uses, wired up for this dialog too). A label alone states the effect but
+        // never its terms, and every "pick one effect" rule in the corpus is conditional - four of the six
+        // groups are gated on "... when shooting or charging enemies over 9in away". A player who read
+        // "+1 to hit" over the bare helper name "Vinci Tech (Precision)" was picking an effect whose
+        // condition was nowhere on screen, then watching it not fire.
+        //
+        // Falls back to the granted rule's NAME when it resolves to nothing or carries no description -
+        // no worse than what the dialog showed before, and the same degrade-don't-throw contract
+        // AbilityOffer.Definition documents for a hand-built offer.
+        private static string DescriptionFor(AbilityOffer offer, IRuleResolver? resolver)
+        {
+            if (offer.Ability.Effect is not Effect.AddRule addRule)
+            {
+                return string.Empty;
+            }
+
+            return resolver != null
+                && resolver.TryResolve(addRule.RuleName, out ResolvedRule resolved)
+                && !string.IsNullOrWhiteSpace(resolved.Definition.Description)
+                    ? resolved.Definition.Description
+                    : addRule.RuleName;
+        }
     }
 }

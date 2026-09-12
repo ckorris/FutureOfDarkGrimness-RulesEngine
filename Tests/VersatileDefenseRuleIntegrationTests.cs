@@ -43,6 +43,10 @@ namespace FDG.Tests
         private const string EvasionHelper = "Versatile Defense (Evasion)";
         private const string GuardLabel = "+1 to defense rolls";
         private const string EvasionLabel = "-1 to enemy hit rolls";
+        private const string GuardText =
+            "This unit gets +1 to defense rolls when shot or charged from over 9 inches away.";
+        private const string EvasionText =
+            "Enemies shooting or charging this unit from over 9 inches away get -1 to hit.";
 
         private GameDataStore _store = null!;
         private RuleResolver _resolver = null!;
@@ -100,7 +104,7 @@ namespace FDG.Tests
                         new Condition.AllModelsHaveThisRule()),
                     new Effect.RollModifier(ERollKind.Save, +1), ELifetime.ThisAttack, ERuleSeat.Subject),
             },
-            Array.Empty<ActivatedAbility>());
+            Array.Empty<ActivatedAbility>(), Description: GuardText);
 
         /// <summary>Changebound's body: enemies attacking from over 9in away get -1 to hit.</summary>
         private static SpecialRuleDefinition Evasion() => new(EvasionHelper,
@@ -111,7 +115,7 @@ namespace FDG.Tests
                         new Condition.AllModelsHaveThisRule()),
                     new Effect.RollModifier(ERollKind.Hit, -1), ELifetime.ThisAttack, ERuleSeat.Subject),
             },
-            Array.Empty<ActivatedAbility>());
+            Array.Empty<ActivatedAbility>(), Description: EvasionText);
 
         private TestRuleHarness Harness()
         {
@@ -322,6 +326,51 @@ namespace FDG.Tests
             Assert.That(requester.ChoiceRequest!.Options.Select(o => o.Label),
                 Is.EqualTo(new[] { GuardLabel, EvasionLabel }));
             Assert.That(HeldGrants(unit), Is.EqualTo(new[] { EvasionHelper }));
+        }
+
+        // The dialog subtext used to be the granted rule's NAME ("Versatile Defense (Evasion)"), which
+        // restates the label and says nothing about when the effect applies. Both of these effects only
+        // work from over 9in away; a player picking off the label alone had no way to know that, and the
+        // corpus' offensive twins (Vinci Tech, Versatile Attack, Watchborn) carry the same gate behind the
+        // same bare "+1 to hit". The subtext is the granted rule's own Description now.
+        [Test]
+        public async Task EachOption_CarriesItsGrantedRulesDescription_RatherThanItsName()
+        {
+            DataBinding<UnitData> unit = MakeUnit("Havoc Brothers", RuleName);
+            var requester = new EffectChoiceRequester(chooseIndex: 0);
+
+            await RunActivationStart(requester, unit);
+
+            Assert.That(requester.ChoiceRequest!.Options.Select(o => o.Description),
+                Is.EqualTo(new[] { GuardText, EvasionText }),
+                "each option explains its own effect, including the over-9in condition that decides " +
+                "whether picking it does anything at all.");
+            Assert.That(requester.ChoiceRequest!.Options.Select(o => o.Description),
+                Has.None.EqualTo(GuardHelper).And.None.EqualTo(EvasionHelper),
+                "the helper rule's internal name is not player-facing text.");
+        }
+
+        // Degrade, don't throw or blank: an effect that grants a rule the resolver doesn't carry still
+        // shows something, and what it shows is what the dialog showed before the fix.
+        [Test]
+        public async Task OptionGrantingAnUnknownRule_FallsBackToTheRuleName()
+        {
+            const string Orphan = "Versatile Defense (Undefined)";
+            _resolver.Register(new SpecialRuleDefinition("Versatile Orphan",
+                Array.Empty<HookEntry>(),
+                new[] { SelfGrant(EHookID.Activation_OnActivationStart, new Cost.OncePerActivation(),
+                            GuardLabel, GuardHelper),
+                        SelfGrant(EHookID.Activation_OnActivationStart, new Cost.OncePerActivation(),
+                            EvasionLabel, Orphan) }));
+
+            DataBinding<UnitData> unit = MakeUnit("Havoc Brothers", "Versatile Orphan");
+            var requester = new EffectChoiceRequester(chooseIndex: 0);
+
+            await RunActivationStart(requester, unit);
+
+            Assert.That(requester.ChoiceRequest!.Options.Select(o => o.Description),
+                Is.EqualTo(new[] { GuardText, Orphan }),
+                "the resolvable option gets its description; the orphan degrades to its name.");
         }
 
         [Test]

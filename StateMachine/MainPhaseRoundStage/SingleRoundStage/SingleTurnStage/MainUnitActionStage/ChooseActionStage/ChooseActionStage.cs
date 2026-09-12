@@ -479,7 +479,9 @@ namespace FDG.Stages
             // decided up front from the raw offer count.)
             if (validOptions.Count == 0)
             {
-                GameContext.Log($"No actions available for {context.ActivatingUnit.GetValue().Name} - passing.");
+                // #401: say WHY - a silent pass reads as the AI idling, and the reasons are already in hand.
+                GameContext.Log($"No actions available for {context.ActivatingUnit.GetValue().Name} - passing. " +
+                    string.Join(" ", invalidOptions.Select(option => $"[{option.Option}: {option.Reason}]")));
                 await ToReconcileEndOfActivation.Activate(context);
                 return;
             }

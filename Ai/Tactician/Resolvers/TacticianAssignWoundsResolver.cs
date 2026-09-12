@@ -8,9 +8,10 @@ namespace FDG.Ai.Tactician.Resolvers
     /// Wound assignment that preserves output (#191 A4-4) instead of the solo bot's list-order
     /// AutoFill. The engine's assignment machinery already enforces every ordering rule (mandatory
     /// pre-assign to wounded models, hero last, finish-a-model-before-starting-fresh), and
-    /// TryAddWounds pours a model's full remaining capacity per pick - so the entire decision is
-    /// WHICH model to fill next. Greedy rule, per pick among the legal recipients: minimize output
-    /// lost per wound absorbed. Killing a plain rifleman costs its whole weapon score for 1 wound;
+    /// TryAddWounds commits the next wound packet to the pick (a plain pool pours the model's full
+    /// remaining capacity; a Deadly clump lands what fits, #401) - so the entire decision is WHICH
+    /// model next. Greedy rule, per pick among the legal recipients: minimize output lost per wound
+    /// absorbed. Killing a plain rifleman costs its whole weapon score for 1 wound;
     /// pouring the pool's tail into a Tough model that survives costs only a discounted fraction -
     /// so mixed units lose their cheap bodies first and multi-wound models soak partial volleys.
     /// Weapon score is a static heuristic (attacks x AP factor); weapon special rules (Deadly,
@@ -49,7 +50,7 @@ namespace FDG.Ai.Tactician.Resolvers
 
         public Task<AssignWoundsResults> Resolve(AssignWoundsRequest request)
         {
-            var results = new AssignWoundsResults(request.UnitReceivingWounds, request.TotalWoundsToAssign);
+            var results = new AssignWoundsResults(request.UnitReceivingWounds, request.Packets);
             MarkerStakes? stakes = _tableState == null
                 ? null
                 : MarkerStakes.Of(_tableState, request.UnitReceivingWounds.GetValue(), results);
@@ -85,8 +86,9 @@ namespace FDG.Ai.Tactician.Resolvers
         {
             ModelData model = entry.Model.GetValue();
             float capacity = model.TotalWounds - model.WoundsDealt - entry.Wounds;
-            float poolLeft = results.TotalWoundsToAssign - results.TotalAssignedWounds;
-            float absorbed = Math.Min(capacity, poolLeft);
+            // #401: what the next packet would actually land here - a plain pool pours the model's
+            // capacity, a Deadly clump lands what fits and loses the rest.
+            float absorbed = results.WoundsNextCommitWouldLand(entry);
             if (absorbed <= AssignWoundsResults.WoundEpsilon) return float.MaxValue;
 
             float value = ModelOutputValue(model);

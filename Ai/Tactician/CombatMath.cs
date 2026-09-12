@@ -430,7 +430,8 @@ namespace FDG.Ai.Tactician
         }
 
         // --- DetermineSaveRollsNeeded + RollToSave + AssignWounds mirror (shared by volleys and
-        // impact hits). Returns the expected wound total BEFORE capping at the defender's remaining.
+        // impact hits). Returns the expected wounds that LAND - the packet queue placed along the
+        // allocation order, so a Deadly clump's excess and overkill are already gone (#401).
         private static float ResolveSaves(RuleEvaluator evaluator, UnitData atk, UnitData def,
             Weapon weapon, List<SuccessfulHitInfo> groups, int apReduction, int wholeAttackSaveModifier,
             int coverBonus, bool isMelee, List<string> notes, BonusAttackSink? bonusAttackSink = null,
@@ -507,66 +508,51 @@ namespace FDG.Ai.Tactician
 
             IReadOnlyList<RuleOperation> woundOps = Ops(evaluator.EvaluateAllNamed(
                 new PreApplyWoundContext(atk, def), RuleParticipant.Actor(atk, weapon)));
+            int multiplier = 1;
             if (woundOps.Count > 0)
             {
                 var woundMultiplier = new WoundModifierSink();
                 woundMultiplier.ApplyFrom(woundOps);
-                if (woundMultiplier.NetMultiplier > 1)
-                    totalWounds = ConfineToClumps(totalWounds, woundMultiplier.NetMultiplier, def);
+                multiplier = woundMultiplier.NetMultiplier;
             }
 
-            totalWounds += extraWounds;
-
-            if (hasIgnore && totalWounds > 0f)
-                totalWounds -= Dice.Roll(totalWounds).AtOrAbove(ignoreThreshold);
+            // #401: the very queue the stage builds - Deadly clumps, then Shred's pool - with
+            // Regeneration rolled per packet and the result landed along the same allocation order.
+            // One shared model, so the estimate cannot drift from the resolution.
+            List<WoundPacket> packets = WoundAllocation.Packets(totalWounds, multiplier);
+            if (extraWounds > 0f) packets.Add(WoundPacket.Unconfined(extraWounds));
+            if (hasIgnore)
+            {
+                for (int i = 0; i < packets.Count; i++)
+                {
+                    float ignored = Dice.Roll(packets[i].Wounds).AtOrAbove(ignoreThreshold);
+                    packets[i] = packets[i].WithWounds(packets[i].Wounds - ignored);
+                }
+            }
 
             // Takedown re-scopes the attack to one chosen model (BuildTargetListStage); estimate the
             // best case: confined to the healthiest living model, overkill lost.
             if (HasTargetIndividualModel(weapon))
             {
-                float bestRemaining = def.Models.Where(model => model.GetIsAlive())
-                    .Select(model => model.TotalWounds - model.WoundsDealt).DefaultIfEmpty(0f).Max();
-                float confined = Math.Min(totalWounds, bestRemaining);
+                IModel? healthiest = def.Models.Where(model => model.GetIsAlive())
+                    .OrderByDescending(model => model.TotalWounds - model.WoundsDealt).FirstOrDefault();
                 NoteIf(true, $"{weapon.Name}: Takedown priced against the healthiest single model", notes);
-                return confined;
+                return healthiest == null ? 0f : WoundAllocation.Simulate(packets, new[] { healthiest }, out _);
             }
 
-            return totalWounds;
+            return WoundAllocation.Simulate(packets,
+                WoundAllocation.Order(defenderModels ?? def.Models, def.JoinedHeroModelId), out _);
         }
 
-        // Deadly's no-carry-over confinement - the exact algorithm of AssignWoundsStage.ConfineToClumps
-        // (private there; pinned against it by the Deadly pin tests).
-        private static float ConfineToClumps(float clumpCount, int multiplier, IUnit defender)
-        {
-            float effective = 0f;
-            float remainingClumps = clumpCount;
-
-            foreach (IModel model in defender.Models)
-            {
-                if (remainingClumps <= 0f) break;
-                if (!model.GetIsAlive()) continue;
-
-                float capacity = model.TotalWounds - model.WoundsDealt;
-                if (capacity <= 0f) continue;
-
-                float clumpsToKill = MathF.Ceiling(capacity / multiplier);
-                float used = MathF.Min(remainingClumps, clumpsToKill);
-                effective += MathF.Min(used * multiplier, capacity);
-                remainingClumps -= used;
-            }
-
-            return effective;
-        }
-
-        // --- Allocation mirror: wounds fill already-wounded models first, then whole models in unit
-        // order, joined hero last (AssignWoundsResults' mandatory ordering). Returns expected kills.
+        // --- Allocation mirror: drains the pool along WoundAllocation.Order (already-wounded first,
+        // then whole models in unit order, joined hero last). Returns expected kills.
         private static float ExpectedKills(UnitData defender, float wounds, out bool destroysUnit)
         {
             destroysUnit = wounds >= defender.RemainingWounds && defender.RemainingWounds > 0f;
 
             float kills = 0f;
             float pool = wounds;
-            foreach (IModel model in AllocationOrder(defender))
+            foreach (IModel model in WoundAllocation.Order(defender))
             {
                 if (pool <= 0f) break;
                 float remaining = model.TotalWounds - model.WoundsDealt;
@@ -575,33 +561,6 @@ namespace FDG.Ai.Tactician
                 else break; // a partially wounded model still stands (and still fights)
             }
             return kills;
-        }
-
-        // Eager and single-pass (#191 search perf pass): the lazy version enumerated the living list
-        // three times through LINQ iterators and grew two lists from empty, per estimate, per candidate.
-        // Same order exactly: wounded non-heroes, then unwounded non-heroes, then the hero.
-        private static List<IModel> AllocationOrder(UnitData defender)
-        {
-            ModelID? heroId = defender.HeroAttachment?.HeroModelId;
-            List<IModel> models = defender.Models;
-            var order = new List<IModel>(models.Count);
-            IModel? hero = null;
-            for (int i = 0; i < models.Count; i++)
-            {
-                IModel model = models[i];
-                if (!model.GetIsAlive()) continue;
-                if (heroId.HasValue && model.ID.Equals(heroId.Value)) { hero ??= model; continue; }
-                if (model.WoundsDealt > 0f) order.Add(model);
-            }
-            for (int i = 0; i < models.Count; i++)
-            {
-                IModel model = models[i];
-                if (!model.GetIsAlive()) continue;
-                if (heroId.HasValue && model.ID.Equals(heroId.Value)) continue;
-                if (model.WoundsDealt <= 0f) order.Add(model);
-            }
-            if (hero != null) order.Add(hero);
-            return order;
         }
 
         // --- Weapon batching: living models' weapons grouped by stat-identity (WeaponComparer), the
@@ -619,7 +578,7 @@ namespace FDG.Ai.Tactician
         {
             var dead = new HashSet<IModel>(ReferenceEqualityComparer.Instance);
             float pool = incomingWounds;
-            foreach (IModel model in AllocationOrder(unit))
+            foreach (IModel model in WoundAllocation.Order(unit))
             {
                 float remaining = model.TotalWounds - model.WoundsDealt;
                 if (remaining <= 0f || pool < remaining) break;

@@ -512,7 +512,8 @@ namespace FDG.Ai.Tactician
                 var woundMultiplier = new WoundModifierSink();
                 woundMultiplier.ApplyFrom(woundOps);
                 if (woundMultiplier.NetMultiplier > 1)
-                    totalWounds = ConfineToClumps(totalWounds, woundMultiplier.NetMultiplier, def);
+                    totalWounds = WoundAllocation.ConfineToClumps(
+                        totalWounds, woundMultiplier.NetMultiplier, def);
             }
 
             totalWounds += extraWounds;
@@ -534,39 +535,15 @@ namespace FDG.Ai.Tactician
             return totalWounds;
         }
 
-        // Deadly's no-carry-over confinement - the exact algorithm of AssignWoundsStage.ConfineToClumps
-        // (private there; pinned against it by the Deadly pin tests).
-        private static float ConfineToClumps(float clumpCount, int multiplier, IUnit defender)
-        {
-            float effective = 0f;
-            float remainingClumps = clumpCount;
-
-            foreach (IModel model in defender.Models)
-            {
-                if (remainingClumps <= 0f) break;
-                if (!model.GetIsAlive()) continue;
-
-                float capacity = model.TotalWounds - model.WoundsDealt;
-                if (capacity <= 0f) continue;
-
-                float clumpsToKill = MathF.Ceiling(capacity / multiplier);
-                float used = MathF.Min(remainingClumps, clumpsToKill);
-                effective += MathF.Min(used * multiplier, capacity);
-                remainingClumps -= used;
-            }
-
-            return effective;
-        }
-
-        // --- Allocation mirror: wounds fill already-wounded models first, then whole models in unit
-        // order, joined hero last (AssignWoundsResults' mandatory ordering). Returns expected kills.
+        // --- Allocation mirror: drains the pool along WoundAllocation.Order (already-wounded first,
+        // then whole models in unit order, joined hero last). Returns expected kills.
         private static float ExpectedKills(UnitData defender, float wounds, out bool destroysUnit)
         {
             destroysUnit = wounds >= defender.RemainingWounds && defender.RemainingWounds > 0f;
 
             float kills = 0f;
             float pool = wounds;
-            foreach (IModel model in AllocationOrder(defender))
+            foreach (IModel model in WoundAllocation.Order(defender))
             {
                 if (pool <= 0f) break;
                 float remaining = model.TotalWounds - model.WoundsDealt;
@@ -575,33 +552,6 @@ namespace FDG.Ai.Tactician
                 else break; // a partially wounded model still stands (and still fights)
             }
             return kills;
-        }
-
-        // Eager and single-pass (#191 search perf pass): the lazy version enumerated the living list
-        // three times through LINQ iterators and grew two lists from empty, per estimate, per candidate.
-        // Same order exactly: wounded non-heroes, then unwounded non-heroes, then the hero.
-        private static List<IModel> AllocationOrder(UnitData defender)
-        {
-            ModelID? heroId = defender.HeroAttachment?.HeroModelId;
-            List<IModel> models = defender.Models;
-            var order = new List<IModel>(models.Count);
-            IModel? hero = null;
-            for (int i = 0; i < models.Count; i++)
-            {
-                IModel model = models[i];
-                if (!model.GetIsAlive()) continue;
-                if (heroId.HasValue && model.ID.Equals(heroId.Value)) { hero ??= model; continue; }
-                if (model.WoundsDealt > 0f) order.Add(model);
-            }
-            for (int i = 0; i < models.Count; i++)
-            {
-                IModel model = models[i];
-                if (!model.GetIsAlive()) continue;
-                if (heroId.HasValue && model.ID.Equals(heroId.Value)) continue;
-                if (model.WoundsDealt <= 0f) order.Add(model);
-            }
-            if (hero != null) order.Add(hero);
-            return order;
         }
 
         // --- Weapon batching: living models' weapons grouped by stat-identity (WeaponComparer), the
@@ -619,7 +569,7 @@ namespace FDG.Ai.Tactician
         {
             var dead = new HashSet<IModel>(ReferenceEqualityComparer.Instance);
             float pool = incomingWounds;
-            foreach (IModel model in AllocationOrder(unit))
+            foreach (IModel model in WoundAllocation.Order(unit))
             {
                 float remaining = model.TotalWounds - model.WoundsDealt;
                 if (remaining <= 0f || pool < remaining) break;

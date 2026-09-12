@@ -94,9 +94,12 @@ namespace FDG.Stages
                 // Deadly(X): each failed save becomes a clump of X wounds that lands entirely on ONE model
                 // and does NOT carry over — overkill beyond that model is lost. So the multiplier is wasted
                 // against single-wound models (Deadly's whole point is anti-Tough) and a clump's excess is
-                // discarded against Tough models. ConfineToClumps returns the effective wound total, which
-                // replaces the naive total*X (that wrongly let the multiplied wounds spill across the unit).
-                totalWoundsDealt = ConfineToClumps(totalWoundsDealt, woundModifier.NetMultiplier, defender);
+                // discarded against Tough models. WoundAllocation.ConfineToClumps returns the effective wound
+                // total, which replaces the naive total*X (that wrongly let the multiplied wounds spill across
+                // the unit). #400: it walks WoundAllocation.Order - the SAME order the allocation below pours
+                // along - so the cap it computes per model is the cap that model actually receives.
+                totalWoundsDealt = WoundAllocation.ConfineToClumps(
+                    totalWoundsDealt, woundModifier.NetMultiplier, defender);
             }
 
             // #100 Shred (wound injection): "for each unmodified 1 to block, +1 wound" fires at
@@ -249,39 +252,6 @@ namespace FDG.Stages
             }
 
             await onFinished(assignWoundsResults);
-        }
-
-        // Deadly's no-carry-over confinement. The attack landed <paramref name="clumpCount"/> failed
-        // saves; under Deadly(X) each is a clump of X wounds confined to one model, with any overkill on
-        // that model lost rather than carrying to the next. Walks the defender's living models in order,
-        // assigning whole clumps until each model is dead (ceil(capacity / X) clumps), and sums the wounds
-        // that actually land (a clump on a model deals min(X, that model's remaining), so a 1-wound model
-        // absorbs only 1 of the X). Returns the effective wound total.
-        //
-        // Model ORDER here is the unit's model list (matching AutoFill); the defender's freedom to choose
-        // which models absorb clumps to minimise casualties is the same tough-aware allocation choice the
-        // player branch below still defers. Against single-wound models order is irrelevant (every clump
-        // kills exactly one), which is the common case and the headline fix over the old total*X.
-        private static float ConfineToClumps(float clumpCount, int multiplier, IUnit defender)
-        {
-            float effective = 0f;
-            float remainingClumps = clumpCount;
-
-            foreach (IModel model in defender.Models)
-            {
-                if (remainingClumps <= 0f) break;
-                if (!model.GetIsAlive()) continue;
-
-                float capacity = model.TotalWounds - model.WoundsDealt;
-                if (capacity <= 0f) continue;
-
-                float clumpsToKill = MathF.Ceiling(capacity / multiplier);
-                float used = MathF.Min(remainingClumps, clumpsToKill);
-                effective += MathF.Min(used * multiplier, capacity);
-                remainingClumps -= used;
-            }
-
-            return effective;
         }
 
         // Reconstructs the full unmodified save-roll histogram from the failed + successful subsets,

@@ -92,6 +92,86 @@ namespace FDG.Tests
                 "two clumps kill the first Tough(5) model (5 wounds); the overkill doesn't carry to the second.");
         }
 
+        // #400: the clump confinement must walk the order wounds are ACTUALLY assigned — already-wounded
+        // models first (#023's mandatory pre-assignment) — not the raw model list. Three Tough(3) models
+        // with one already down to 1 remaining wound, hit by Deadly(3) x1: the single clump is forced onto
+        // the wounded model, where only 1 of its 3 wounds fits and the other 2 are LOST. Before the fix the
+        // confinement priced the clump against whichever model came first in the list, so it returned 3 and
+        // the pre-assignment spent 1 on the wounded model and spilled the other 2 onto a fresh one — the
+        // carry-over Deadly explicitly forbids. Parameterized over the wounded model's index because the
+        // old answer depended on it (index 0 was right by accident, index 2 was wrong).
+        [TestCase(0)]
+        [TestCase(2)]
+        public async Task DeadlyAttacker_ClumpOnAlreadyWoundedModel_OverkillDoesNotSpill(int woundedIndex)
+        {
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            AttachDeadly(attacker, x: 3);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 3, woundsPerModel: 3);
+            defender.GetValue().ModelBindings[woundedIndex].GetValue().DealWounds(2); // 1 wound left
+
+            CombatMetadata metadata = await RunStage(attacker, defender, failedSaves: 1);
+
+            Assert.That(metadata.QueryForResult(out AssignWoundsResults result), Is.True);
+            Assert.That(result.TotalWoundsToAssign, Is.EqualTo(1f),
+                "the clump is confined to the already-wounded model, which absorbs 1 of its 3 wounds.");
+            AssertPlacement(result, defender, woundedIndex, expected: 1f);
+        }
+
+        // #400, two clumps: the first is forced onto the already-wounded model (1 of 3 lands), the second
+        // kills a fresh Tough(3) outright — 4 wounds, and the third model is untouched. Before the fix this
+        // returned 6 and left the third model on 1 remaining.
+        [TestCase(0)]
+        [TestCase(2)]
+        public async Task DeadlyAttacker_TwoClumps_SecondDoesNotReachTheThirdModel(int woundedIndex)
+        {
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            AttachDeadly(attacker, x: 3);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 3, woundsPerModel: 3);
+            defender.GetValue().ModelBindings[woundedIndex].GetValue().DealWounds(2);
+
+            CombatMetadata metadata = await RunStage(attacker, defender, failedSaves: 2);
+
+            Assert.That(metadata.QueryForResult(out AssignWoundsResults result), Is.True);
+            Assert.That(result.TotalWoundsToAssign, Is.EqualTo(4f),
+                "clump 1 lands 1 on the wounded model; clump 2 kills one fresh model. 1 + 3 = 4.");
+            AssertPlacement(result, defender, woundedIndex, expected: 1f);
+            // Exactly one fresh model takes the second clump in full; the other takes nothing.
+            List<float> freshWounds = PlacedWounds(result, defender)
+                .Where((_, index) => index != woundedIndex).ToList();
+            Assert.That(freshWounds, Is.EquivalentTo(new[] { 3f, 0f }),
+                "the second clump kills one fresh model outright and does not touch the third.");
+        }
+
+        // Control for the pair above: with the squad UNDAMAGED the two orders coincide, so the pre-#400
+        // behaviour was already correct here — 2 clumps kill 2 of the 3 Tough(3) models.
+        [Test]
+        public async Task DeadlyAttacker_FreshSquad_TwoClumpsKillTwoModels()
+        {
+            DataBinding<UnitData> attacker = MakeUnit(modelCount: 1);
+            AttachDeadly(attacker, x: 3);
+            DataBinding<UnitData> defender = MakeUnit(modelCount: 3, woundsPerModel: 3);
+
+            await RunStage(attacker, defender, failedSaves: 2);
+
+            Assert.That(_requester.Captured!.TotalWoundsToAssign, Is.EqualTo(6f),
+                "fresh Tough(3) models: each clump kills one outright, nothing is wasted.");
+        }
+
+        // The wounds each of the defender's models ended up carrying, in unit-list order.
+        private static List<float> PlacedWounds(AssignWoundsResults result, DataBinding<UnitData> defender) =>
+            defender.GetValue().ModelBindings
+                .Select(binding => result.PendingWounds
+                    .Where(pending => pending.Model == binding)
+                    .Sum(pending => pending.Wounds))
+                .ToList();
+
+        private static void AssertPlacement(AssignWoundsResults result, DataBinding<UnitData> defender,
+            int modelIndex, float expected)
+        {
+            Assert.That(PlacedWounds(result, defender)[modelIndex], Is.EqualTo(expected),
+                $"model {modelIndex} should carry {expected} wound(s) from this attack.");
+        }
+
         // #100 Shred: each unmodified 1 to block adds a wound. The harness rolls every failed save as an
         // unmodified 1, so two failed saves → +2 Shred wounds on top of the 2 they already dealt = 4.
         // The 5-model defender survives, routing to the player branch where the count is captured.

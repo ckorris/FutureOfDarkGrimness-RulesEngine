@@ -238,7 +238,7 @@ namespace FDG.Tests
             {
                 string name = wr.UnitReceivingWounds.GetValue().Name;
                 WoundsByUnit[name] = WoundsByUnit.GetValueOrDefault(name) + wr.TotalWoundsToAssign;
-                var result = new AssignWoundsResults(wr.UnitReceivingWounds, wr.TotalWoundsToAssign);
+                var result = new AssignWoundsResults(wr.UnitReceivingWounds, wr.Packets);
                 result.AutoFill();
                 return Task.FromResult((TReply)(object)result);
             }

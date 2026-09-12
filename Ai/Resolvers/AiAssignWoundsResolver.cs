@@ -7,7 +7,7 @@ namespace FDG.Ai.Resolvers
     {
         public Task<AssignWoundsResults> Resolve(AssignWoundsRequest request)
         {
-            var results = new AssignWoundsResults(request.UnitReceivingWounds, request.TotalWoundsToAssign);
+            var results = new AssignWoundsResults(request.UnitReceivingWounds, request.Packets);
             results.AutoFill();
             return Task.FromResult(results);
         }

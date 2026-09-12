@@ -459,7 +459,7 @@ namespace FDG.Tests
 
             if (request is AssignWoundsRequest woundRequest)
             {
-                var result = new AssignWoundsResults(woundRequest.UnitReceivingWounds, woundRequest.TotalWoundsToAssign);
+                var result = new AssignWoundsResults(woundRequest.UnitReceivingWounds, woundRequest.Packets);
                 result.AutoFill();
                 return Task.FromResult((TReply)(object)result);
             }

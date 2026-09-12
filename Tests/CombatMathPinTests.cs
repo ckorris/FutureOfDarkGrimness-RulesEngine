@@ -470,7 +470,7 @@ namespace FDG.Tests
 
             Assert.That(metadata.QueryForResult(out AssignWoundsResults engineResults), Is.True,
                 "the engine chain must produce an AssignWoundsResults");
-            float engineWounds = engineResults.TotalWoundsToAssign;
+            float engineWounds = engineResults.TotalAssignedWounds; // what landed (#401)
 
             // Estimate side - same evaluator, same units, caller-supplied distance/cover.
             var notes = new List<string>();

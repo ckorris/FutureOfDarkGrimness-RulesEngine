@@ -118,30 +118,28 @@ namespace FDG
         }
 
         /// <summary>
-        /// Deadly's no-carry-over confinement as a scalar. The attack landed <paramref name="clumpCount"/>
-        /// failed saves; under Deadly(X) each is a clump of <paramref name="multiplier"/> wounds confined
-        /// to one model. Returns the effective wound total along <see cref="Order(IUnit)"/>. #401 replaces
-        /// this with real packets in the stage; kept during the transition for its remaining caller.
+        /// The queue a volley's failed saves become (#401). Without a wound multiplier that is the one
+        /// unconfined pool it always was. Under Deadly(<paramref name="multiplier"/>) every whole failed
+        /// save is a confined clump of X; a fractional remainder under the probabilistic roller (the
+        /// 0.34 of 2.34 failed saves) is one more clump carrying that fraction as its
+        /// <see cref="WoundPacket.Weight"/>. Shared by the stage and <c>CombatMath</c>, so the estimate
+        /// prices exactly the queue the resolution will place.
         /// </summary>
-        public static float ConfineToClumps(float clumpCount, int multiplier, IUnit defender)
+        public static List<WoundPacket> Packets(float failedSaves, int multiplier)
         {
-            float effective = 0f;
-            float remainingClumps = clumpCount;
-
-            foreach (IModel model in Order(defender))
+            var packets = new List<WoundPacket>();
+            if (failedSaves <= AssignWoundsResults.WoundEpsilon) return packets;
+            if (multiplier <= 1)
             {
-                if (remainingClumps <= 0f) break;
-
-                float capacity = model.TotalWounds - model.WoundsDealt;
-                if (capacity <= 0f) continue;
-
-                float clumpsToKill = MathF.Ceiling(capacity / multiplier);
-                float used = MathF.Min(remainingClumps, clumpsToKill);
-                effective += MathF.Min(used * multiplier, capacity);
-                remainingClumps -= used;
+                packets.Add(WoundPacket.Unconfined(failedSaves));
+                return packets;
             }
 
-            return effective;
+            int whole = (int)MathF.Floor(failedSaves + AssignWoundsResults.WoundEpsilon);
+            for (int i = 0; i < whole; i++) packets.Add(WoundPacket.Clump(multiplier));
+            float fraction = failedSaves - whole;
+            if (fraction > AssignWoundsResults.WoundEpsilon) packets.Add(WoundPacket.Clump(multiplier, weight: fraction));
+            return packets;
         }
     }
 }

@@ -56,9 +56,9 @@ namespace FDG.Tests
             AttachDeadly(attacker, x: 3);
             DataBinding<UnitData> defender = MakeUnit(modelCount: 5);
 
-            await RunStage(attacker, defender, failedSaves: 1);
+            CombatMetadata metadata = await RunStage(attacker, defender, failedSaves: 1);
 
-            Assert.That(_requester.Captured!.TotalWoundsToAssign, Is.EqualTo(1f),
+            Assert.That(Landed(metadata), Is.EqualTo(1f),
                 "Deadly(3) against 1-wound models is wasted: the clump kills one model, the extra 2 don't carry over.");
         }
 
@@ -71,9 +71,9 @@ namespace FDG.Tests
             AttachDeadly(attacker, x: 3);
             DataBinding<UnitData> defender = MakeUnit(modelCount: 2, woundsPerModel: 5);
 
-            await RunStage(attacker, defender, failedSaves: 1);
+            CombatMetadata metadata = await RunStage(attacker, defender, failedSaves: 1);
 
-            Assert.That(_requester.Captured!.TotalWoundsToAssign, Is.EqualTo(3f),
+            Assert.That(Landed(metadata), Is.EqualTo(3f),
                 "Deadly(3) lands a full 3-wound clump on one Tough(5) model (vs only 1 on a single-wound model).");
         }
 
@@ -87,9 +87,9 @@ namespace FDG.Tests
             AttachDeadly(attacker, x: 3);
             DataBinding<UnitData> defender = MakeUnit(modelCount: 2, woundsPerModel: 5);
 
-            await RunStage(attacker, defender, failedSaves: 2);
+            CombatMetadata metadata = await RunStage(attacker, defender, failedSaves: 2);
 
-            Assert.That(_requester.Captured!.TotalWoundsToAssign, Is.EqualTo(5f),
+            Assert.That(Landed(metadata), Is.EqualTo(5f),
                 "two clumps kill the first Tough(5) model (5 wounds); the overkill doesn't carry to the second.");
         }
 
@@ -113,7 +113,7 @@ namespace FDG.Tests
             CombatMetadata metadata = await RunStage(attacker, defender, failedSaves: 1);
 
             Assert.That(metadata.QueryForResult(out AssignWoundsResults result), Is.True);
-            Assert.That(result.TotalWoundsToAssign, Is.EqualTo(1f),
+            Assert.That(result.TotalAssignedWounds, Is.EqualTo(1f),
                 "the clump is confined to the already-wounded model, which absorbs 1 of its 3 wounds.");
             AssertPlacement(result, defender, woundedIndex, expected: 1f);
         }
@@ -133,7 +133,7 @@ namespace FDG.Tests
             CombatMetadata metadata = await RunStage(attacker, defender, failedSaves: 2);
 
             Assert.That(metadata.QueryForResult(out AssignWoundsResults result), Is.True);
-            Assert.That(result.TotalWoundsToAssign, Is.EqualTo(4f),
+            Assert.That(result.TotalAssignedWounds, Is.EqualTo(4f),
                 "clump 1 lands 1 on the wounded model; clump 2 kills one fresh model. 1 + 3 = 4.");
             AssertPlacement(result, defender, woundedIndex, expected: 1f);
             // Exactly one fresh model takes the second clump in full; the other takes nothing.
@@ -152,10 +152,18 @@ namespace FDG.Tests
             AttachDeadly(attacker, x: 3);
             DataBinding<UnitData> defender = MakeUnit(modelCount: 3, woundsPerModel: 3);
 
-            await RunStage(attacker, defender, failedSaves: 2);
+            CombatMetadata metadata = await RunStage(attacker, defender, failedSaves: 2);
 
-            Assert.That(_requester.Captured!.TotalWoundsToAssign, Is.EqualTo(6f),
+            Assert.That(Landed(metadata), Is.EqualTo(6f),
                 "fresh Tough(3) models: each clump kills one outright, nothing is wasted.");
+        }
+
+        // What actually landed on the unit - the results object's tally, not the request's headline
+        // (under Deadly the queue's carry is an upper bound; a clump's excess is lost at its model).
+        private static float Landed(CombatMetadata metadata)
+        {
+            Assert.That(metadata.QueryForResult(out AssignWoundsResults result), Is.True);
+            return result.TotalAssignedWounds;
         }
 
         // The wounds each of the defender's models ended up carrying, in unit-list order.
@@ -188,7 +196,7 @@ namespace FDG.Tests
             CombatMetadata metadata = await RunStage(attacker, defender, failedSaves: 5);
 
             Assert.That(metadata.QueryForResult(out AssignWoundsResults result), Is.True);
-            Assert.That(result.TotalWoundsToAssign, Is.EqualTo(3f),
+            Assert.That(result.TotalAssignedWounds, Is.EqualTo(3f),
                 "three 1-wound models absorb one wound each; the other two clumps have nothing to kill.");
         }
 
@@ -206,7 +214,7 @@ namespace FDG.Tests
             CombatMetadata metadata = await RunStage(attacker, defender, failedSaves: 2);
 
             Assert.That(metadata.QueryForResult(out AssignWoundsResults result), Is.True);
-            Assert.That(result.TotalWoundsToAssign, Is.EqualTo(4f),
+            Assert.That(result.TotalAssignedWounds, Is.EqualTo(4f),
                 "clump 1 kills the 1-wound grunt; clump 2 puts 3 on the Tough(6) hero, which survives.");
             Assert.That(defender.GetValue().Models.Last().GetIsAlive(), Is.True, "the hero is still up.");
         }
@@ -221,30 +229,26 @@ namespace FDG.Tests
             CombatMetadata metadata = await RunStage(attacker, defender, failedSaves: 3);
 
             Assert.That(metadata.QueryForResult(out AssignWoundsResults result), Is.True);
-            Assert.That(result.TotalWoundsToAssign, Is.EqualTo(7f),
+            Assert.That(result.TotalAssignedWounds, Is.EqualTo(7f),
                 "1 (grunt) + 6 (hero, two clumps) = the unit's whole wound pool.");
         }
 
-        // ── DEFERRED FACET (#400): Deadly + Regeneration needs per-clump resolution ───────────────────
-        // Both tests below assert the RULE-CORRECT behaviour and are expected to fail today. From the same
-        // thread — Yorekani: "IF a unit of multiple models with Tough(3) fails to block hits with Deadly(X)
-        // and the models have Regeneration or similar, you're out of luck and you'll have to slow-roll the
-        // Regeneration saves. That's because you can't accurately prevent spillover otherwise." Adam's
-        // summary is the same: "just do them one at a time and it'll work out fine."
+        // ── #401: Deadly + Regeneration resolve per clump ─────────────────────────────────────────
+        // Filed under #400 as [Ignore]d "desired behaviour" tests and un-ignored by #401. From the OPR
+        // Discord thread of 2026-07-22 — Yorekani: "IF a unit of multiple models with Tough(3) fails to
+        // block hits with Deadly(X) and the models have Regeneration or similar, you're out of luck and
+        // you'll have to slow-roll the Regeneration saves. That's because you can't accurately prevent
+        // spillover otherwise." Adam (OPR): "just do them one at a time and it'll work out fine."
         //
-        // The stage instead confines the clumps to a SCALAR wound total, rolls Regeneration once over that
-        // whole pool, and then re-allocates what is left. Fixing it means Deadly emitting a per-model
-        // assignment (N clumps of X, each resolved against one model with its own Regeneration rolls,
-        // excess discarded at the model boundary) rather than a number — a clump-aware request shape across
-        // both resolver sets. Un-ignore these when that lands.
+        // The stage now carries the wounds as a packet queue (a Deadly clump is a confined packet of X),
+        // rolls Regeneration per packet BEFORE any capacity cap, and AssignWoundsResults commits each
+        // packet to one model with the excess lost - so both hold by construction.
 
         // Regeneration rolls once per wound the clump DEALS, not once per wound that fits. A Deadly(3)
         // clump on a 1-wound model is three wounds arriving at that model, so it gets three chances to
-        // shrug — it survives only if it ignores all three. Today the capacity cap is applied first, so a
-        // single die is rolled and the model shrugs off the whole clump a third of the time.
+        // shrug — it survives only if it ignores all three. Before #401 the capacity cap was applied first,
+        // so a single die was rolled and the model shrugged off the whole clump a third of the time.
         [Test]
-        [Ignore("#400 deferred facet: Deadly + Regeneration needs per-clump resolution. Currently rolls " +
-                "1 Regeneration die (the capped total) instead of 3 (the clump's multiplied wounds).")]
         public async Task Deadly_Regeneration_RollsOncePerMultipliedWound()
         {
             var presenter = new RecordingPresenter();
@@ -267,11 +271,9 @@ namespace FDG.Tests
         // up budget that reaches the next model. Two Tough(3) models with Regeneration (ignore 5+, so the
         // probabilistic roller shrugs exactly 1 of every 3), Deadly(3) x2: clump 1 puts 2 on model A;
         // clump 2 must finish A (#024) and only 1 of its surviving 2 fits, the other lost. Model B is
-        // never reached. Today the pool is 6, Regeneration takes 2 off it, and the leftover 4th wound
-        // spills onto B - the exact spillover the thread says you must slow-roll to avoid.
+        // never reached. Before #401 the pool was 6, Regeneration took 2 off it, and the leftover 4th wound
+        // spilled onto B - the exact spillover the thread says you must slow-roll to avoid.
         [Test]
-        [Ignore("#400 deferred facet: Deadly + Regeneration needs per-clump resolution. Regeneration's " +
-                "ignored wounds currently shrink a shared pool that is then re-allocated across models.")]
         public async Task Deadly_Regeneration_IgnoredWoundsDoNotSpillToTheNextModel()
         {
             _ctx = new WoundTestContext(_store, _requester, new ProbabilisticDiceRoller());
@@ -285,7 +287,7 @@ namespace FDG.Tests
             Assert.That(metadata.QueryForResult(out AssignWoundsResults result), Is.True);
             Assert.That(PlacedWounds(result, defender)[1], Is.EqualTo(0f).Within(0.001f),
                 "the second model is never assigned a clump, so Regeneration's leftovers cannot reach it.");
-            Assert.That(result.TotalWoundsToAssign, Is.EqualTo(3f).Within(0.001f),
+            Assert.That(result.TotalAssignedWounds, Is.EqualTo(3f).Within(0.001f),
                 "clump 1 lands 2 on the first model; clump 2 lands only the 1 that still fits.");
         }
 
@@ -361,7 +363,7 @@ namespace FDG.Tests
             CombatMetadata metadata = await RunStage(attacker, defender, failedSaves: 3);
 
             Assert.That(metadata.QueryForResult(out AssignWoundsResults result), Is.True);
-            Assert.That(result.TotalWoundsToAssign, Is.EqualTo(3f),
+            Assert.That(result.TotalAssignedWounds, Is.EqualTo(3f),
                 "3 failed saves → 3 wounds assigned, not the model's full 12 remaining.");
             Assert.That(result.PendingWounds, Has.Count.EqualTo(1));
             Assert.That(result.PendingWounds[0].Wounds, Is.EqualTo(3f));
@@ -497,7 +499,7 @@ namespace FDG.Tests
             if (request is AssignWoundsRequest woundRequest)
             {
                 Captured = woundRequest;
-                var result = new AssignWoundsResults(woundRequest.UnitReceivingWounds, woundRequest.TotalWoundsToAssign);
+                var result = new AssignWoundsResults(woundRequest.UnitReceivingWounds, woundRequest.Packets);
                 result.AutoFill();
                 return Task.FromResult((TReply)(object)result);
             }

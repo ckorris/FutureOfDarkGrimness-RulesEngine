@@ -149,7 +149,7 @@ namespace FDG.Tests
                 "instead of 5/6");
         }
 
-        // Deadly(X) is wasted on single-wound models by design (ConfineToClumps), so the multiplier is only
+        // Deadly(X) is wasted on single-wound models by design (a clump's excess is lost at its model), so the multiplier is only
         // visible against a Tough defender - which is exactly the target an assassin is bought for.
         [Test]
         public async Task Stage_DeadlyMultipliesTheWounds_AgainstAToughDefender()
@@ -186,9 +186,14 @@ namespace FDG.Tests
             Assert.That(requester.PickAsked, Is.True,
                 "Takedown on the profile must reach BuildTargetListStage IN MELEE - the gate that used to " +
                 "skip this hook for a swing is what made the rider inert");
-            Assert.That(defender.ModelBindings()[3].GetValue().GetIsAlive(), Is.False,
+            // #401: under the probabilistic roller the strike is a 25/36-likely Deadly(3) clump, and a
+            // fractional clump lands its weight of what fits - 25/36 of the 1-wound model, i.e. the honest
+            // "dies with probability 25/36". (The old scalar confinement capped 25/36 x 3 = 2.08 at the
+            // model's 1 wound and reported a certain kill from a 69% shot.)
+            Assert.That(defender.ModelBindings()[3].GetValue().WoundsDealt, Is.EqualTo(25f / 36f).Within(0.0001f),
                 "the picked model takes the strike");
-            Assert.That(defender.ModelBindings().Count(m => m.GetValue().GetIsAlive()), Is.EqualTo(4),
+            Assert.That(defender.ModelBindings().Where((_, i) => i != 3).Sum(m => m.GetValue().WoundsDealt),
+                Is.EqualTo(0f).Within(0.0001f),
                 "and only it - no carry-over to the rest of the unit ('a unit of [1]')");
         }
 

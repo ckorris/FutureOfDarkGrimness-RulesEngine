@@ -176,14 +176,20 @@ namespace FDG
             }
         }
 
-        /// <summary>
-        /// Wounds that will never land: a confined packet's excess beyond its model, plus - once no
-        /// living model can take another wound - everything still queued (the unit is dead; the rest is
-        /// overkill). Read, never mutated, so the same figure is reported before and after the final
-        /// commit.
-        /// </summary>
+        /// <summary>A confined packet's excess beyond the model it landed on - the wounds Deadly says
+        /// "don't carry over". Accrued as packets are committed.</summary>
         [JsonIgnore]
-        public float WoundsLost => _woundsLost + (!AllPacketsCommitted && RemainingAssignableModelCount == 0 ? UncommittedWounds : 0f);
+        public float ClumpExcessLost => _woundsLost;
+
+        /// <summary>Everything still queued once no living model can take another wound: the unit is
+        /// dead and the rest is overkill. Read, never mutated, so the same figure is reported before
+        /// and after the final commit.</summary>
+        [JsonIgnore]
+        public float Overkill => !AllPacketsCommitted && RemainingAssignableModelCount == 0 ? UncommittedWounds : 0f;
+
+        /// <summary>Wounds that will never land: <see cref="ClumpExcessLost"/> plus <see cref="Overkill"/>.</summary>
+        [JsonIgnore]
+        public float WoundsLost => ClumpExcessLost + Overkill;
 
         [JsonIgnore]
         public bool AllPacketsCommitted => _packetsCommitted >= _packets.Count;

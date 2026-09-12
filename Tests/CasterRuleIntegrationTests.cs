@@ -1730,7 +1730,7 @@ namespace FDG.Tests
                 case AssignWoundsRequest woundPick:
                     // A partial kill (fewer wounds than models) lets the defender choose which models fall;
                     // for these tests the choice is immaterial, so auto-fill it the way EOF/CLI input does.
-                    var wounds = new AssignWoundsResults(woundPick.UnitReceivingWounds, woundPick.TotalWoundsToAssign);
+                    var wounds = new AssignWoundsResults(woundPick.UnitReceivingWounds, woundPick.Packets);
                     wounds.AutoFill();
                     return Task.FromResult((TReply)(object)wounds);
                 default:

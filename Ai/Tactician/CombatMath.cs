@@ -430,7 +430,8 @@ namespace FDG.Ai.Tactician
         }
 
         // --- DetermineSaveRollsNeeded + RollToSave + AssignWounds mirror (shared by volleys and
-        // impact hits). Returns the expected wound total BEFORE capping at the defender's remaining.
+        // impact hits). Returns the expected wounds that LAND - the packet queue placed along the
+        // allocation order, so a Deadly clump's excess and overkill are already gone (#401).
         private static float ResolveSaves(RuleEvaluator evaluator, UnitData atk, UnitData def,
             Weapon weapon, List<SuccessfulHitInfo> groups, int apReduction, int wholeAttackSaveModifier,
             int coverBonus, bool isMelee, List<string> notes, BonusAttackSink? bonusAttackSink = null,
@@ -507,32 +508,40 @@ namespace FDG.Ai.Tactician
 
             IReadOnlyList<RuleOperation> woundOps = Ops(evaluator.EvaluateAllNamed(
                 new PreApplyWoundContext(atk, def), RuleParticipant.Actor(atk, weapon)));
+            int multiplier = 1;
             if (woundOps.Count > 0)
             {
                 var woundMultiplier = new WoundModifierSink();
                 woundMultiplier.ApplyFrom(woundOps);
-                if (woundMultiplier.NetMultiplier > 1)
-                    totalWounds = WoundAllocation.ConfineToClumps(
-                        totalWounds, woundMultiplier.NetMultiplier, def);
+                multiplier = woundMultiplier.NetMultiplier;
             }
 
-            totalWounds += extraWounds;
-
-            if (hasIgnore && totalWounds > 0f)
-                totalWounds -= Dice.Roll(totalWounds).AtOrAbove(ignoreThreshold);
+            // #401: the very queue the stage builds - Deadly clumps, then Shred's pool - with
+            // Regeneration rolled per packet and the result landed along the same allocation order.
+            // One shared model, so the estimate cannot drift from the resolution.
+            List<WoundPacket> packets = WoundAllocation.Packets(totalWounds, multiplier);
+            if (extraWounds > 0f) packets.Add(WoundPacket.Unconfined(extraWounds));
+            if (hasIgnore)
+            {
+                for (int i = 0; i < packets.Count; i++)
+                {
+                    float ignored = Dice.Roll(packets[i].Wounds).AtOrAbove(ignoreThreshold);
+                    packets[i] = packets[i].WithWounds(packets[i].Wounds - ignored);
+                }
+            }
 
             // Takedown re-scopes the attack to one chosen model (BuildTargetListStage); estimate the
             // best case: confined to the healthiest living model, overkill lost.
             if (HasTargetIndividualModel(weapon))
             {
-                float bestRemaining = def.Models.Where(model => model.GetIsAlive())
-                    .Select(model => model.TotalWounds - model.WoundsDealt).DefaultIfEmpty(0f).Max();
-                float confined = Math.Min(totalWounds, bestRemaining);
+                IModel? healthiest = def.Models.Where(model => model.GetIsAlive())
+                    .OrderByDescending(model => model.TotalWounds - model.WoundsDealt).FirstOrDefault();
                 NoteIf(true, $"{weapon.Name}: Takedown priced against the healthiest single model", notes);
-                return confined;
+                return healthiest == null ? 0f : WoundAllocation.Simulate(packets, new[] { healthiest }, out _);
             }
 
-            return totalWounds;
+            return WoundAllocation.Simulate(packets,
+                WoundAllocation.Order(defenderModels ?? def.Models, def.JoinedHeroModelId), out _);
         }
 
         // --- Allocation mirror: drains the pool along WoundAllocation.Order (already-wounded first,

@@ -53,6 +53,9 @@ namespace FDG.Tests
                 .Single(info => info.PlayerType == EPlayerType.AI).ArmyListSummary;
 
             Assert.That(bot.IsAssigned, Is.False);
+            Assert.That(hostVm.TryLaunchGame(out string? failReason), Is.False,
+                "an army-less slot must refuse the launch outright, not be handed a substitute");
+            Assert.That(failReason, Does.Contain("no army assigned"));
             // Both slots are empty in a lobby nothing has filled yet - the host's own row too - and each
             // gets its own line, so the host can see which rows still need an army.
             Assert.That(hostVm.BlockingLaunchProblems(),

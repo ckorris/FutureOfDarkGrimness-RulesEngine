@@ -714,10 +714,11 @@ namespace FDG.Network.Connection.Lobby
             {
                 LobbyPlayerInfoFull info = infos[i];
 
-                // ArmyListFile is vestigial on resume (armies are already in the loaded store), but the
-                // PlayerSlot ctor requires one.
+                // ArmyListFile is vestigial on resume - the armies are already in the loaded store - so
+                // the slot takes whatever the roster has, null included (#400; PlayerSlot allows it, and
+                // BuildRuleResolver skips a null before RestoreArmyRuleData tops it up from the save).
                 PlayerSlot playerSlot = new PlayerSlot(i, (int)info.TeamNumber, info.PlayerID,
-                    info.ArmyListFile ?? GetTempTestArmyFile(), _gameDataStore);
+                    info.ArmyListFile, _gameDataStore);
                 playerSlots[i] = playerSlot;
 
                 switch (info.PlayerType)
@@ -812,6 +813,14 @@ namespace FDG.Network.Connection.Lobby
                 return "All players are on the same team - at least two teams must be represented.";
             }
 
+            // #400: every slot must bring a list. The lobby already greys LAUNCH out over this, so
+            // reaching here means a caller that skipped the gate - refuse with a reason rather than
+            // inventing an army, which is what this class used to do.
+            if (_playerInfosFull.Values.FirstOrDefault(info => info.ArmyListFile == null) is { } armyless)
+            {
+                return $"{armyless.PlayerName} has no army assigned.";
+            }
+
             return null;
         }
 
@@ -845,13 +854,10 @@ namespace FDG.Network.Connection.Lobby
             {
                 LobbyPlayerInfoFull lobbyPlayerInfo = lobbyPlayerInfosArray[i];
 
-                //TEMP this should not be okay.
-                if(lobbyPlayerInfo.ArmyListFile == null)
-                {
-                    Console.WriteLine("Player had empty army list. Making a simple one.");
-                    lobbyPlayerInfo.ArmyListFile = GetTempTestArmyFile();
-                }
-
+                // #400: no substitution here any more. A slot with no army is refused by
+                // ValidateLaunchSettings before Launch() is ever called, and GameBootstrap.CreateArmy
+                // throws if one slips through - both far better than the silent "Test Army" that used
+                // to be invented at this line.
                 PlayerSlot playerSlot = new PlayerSlot(i, (int)lobbyPlayerInfo.TeamNumber, lobbyPlayerInfo.PlayerID, 
                     lobbyPlayerInfo.ArmyListFile, _gameDataStore);
                 playerSlots[i] = playerSlot;
@@ -907,73 +913,6 @@ namespace FDG.Network.Connection.Lobby
             await _messageBus.SendCommandToAllAsync(launchGameMessage);
         }
         
-        private ArmyListFile GetTempTestArmyFile()
-        {
-            var armyfile  = new ArmyListFile()
-            {
-                Faction = "Test Faction",
-                PointsLimit = 100,
-                Name = "Test Army"
-            };
-
-            armyfile.Units.Add(GetTempTestUnit());
-
-
-            return armyfile;
-        }
-
-        private UnitFileEntry GetTempTestUnit()
-        {
-            UnitFileEntry unitFileEntry = new UnitFileEntry();
-            unitFileEntry.Name = "Test Unit";
-            unitFileEntry.Quality = 4;
-            unitFileEntry.Defense = 4;
-            unitFileEntry.ModelCount = 5;
-            unitFileEntry.PointCost = 100;
-
-            WeaponFileEntry meleeWeaponFile = new WeaponFileEntry()
-            {
-                Name = "Stabby Knife",
-                Attacks = 1,
-                Quantity = 4,
-                RangeInches = 0
-            };
-
-            WeaponFileEntry rangedWeaponFile = new WeaponFileEntry()
-            {
-                Name = "Shooty Gun",
-                Attacks = 1,
-                Quantity = 4,
-                RangeInches = 18
-            };
-
-            unitFileEntry.Weapons.Add(meleeWeaponFile);
-            unitFileEntry.Weapons.Add(rangedWeaponFile);
-
-            WeaponFileEntry betterMeleeWeaponFile = new WeaponFileEntry()
-            {
-                Name = "Extra Stabby Knife",
-                Attacks = 2,
-                Quantity = 4,
-                RangeInches = 0,
-                ArmorPenetration = 4
-            };
-
-            WeaponFileEntry betterRangedWeaponFile = new WeaponFileEntry()
-            {
-                Name = "Extra Shooty Gun",
-                Attacks = 2,
-                Quantity = 1,
-                RangeInches = 30,
-                ArmorPenetration = 4
-            };
-
-            unitFileEntry.Weapons.Add(betterMeleeWeaponFile);
-            unitFileEntry.Weapons.Add(betterRangedWeaponFile);
-
-            return unitFileEntry;
-        }
-
         public void SetArmyPoints(int armyPoints)
         {
             if (armyPoints > 0)

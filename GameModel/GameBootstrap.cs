@@ -62,7 +62,10 @@ namespace FDG.GameModel
 
             for (int i = 0; i < playerSlots.Length; i++)
             {
-                ArmyListRuleResolution.RegisterEmbeddedDefinitions(ruleResolver, playerSlots[i].ArmyListFile);
+                // Null only on a resume, where the slot's army file is vestigial and the definitions come
+                // back from the saved ArmyData instead (RestoreArmyRuleData, right after this).
+                if (playerSlots[i].ArmyListFile is { } armyListFile)
+                    ArmyListRuleResolution.RegisterEmbeddedDefinitions(ruleResolver, armyListFile);
             }
 
             return ruleResolver;
@@ -122,9 +125,19 @@ namespace FDG.GameModel
         /// unit-level rules attached, #006 hero joins resolved within the army, surviving units + the
         /// <see cref="ArmyData"/> registered in the store, and the army's #033 spell list resolved.
         /// </summary>
-        public static void CreateArmy(PlayerID playerID, ArmyListFile armyListFile,
+        public static void CreateArmy(PlayerID playerID, ArmyListFile? armyListFile,
             IReadWriteableGameDataStore gameDataStore, IRuleResolver ruleResolver)
         {
+            // #400: a slot reaching a fresh launch with no army is a bug upstream (the lobby's launch gate
+            // blocks it, and TryLaunchGame refuses it). Say so loudly - this used to quietly substitute a
+            // hard-coded "Test Army", so the game started and nobody found out until the board looked wrong.
+            if (armyListFile is null)
+            {
+                throw new InvalidOperationException(
+                    $"Player {playerID} reached army creation with no army list. A slot must carry a list "
+                    + "before launch; nothing is substituted for a missing one.");
+            }
+
             // Build every unit (with rules attached) first, paired with its army-list entry, so #006 Hero
             // joins can be resolved within this army before anything is registered. Models are created in
             // the store by the UnitData constructor; only the UnitData registration is deferred.

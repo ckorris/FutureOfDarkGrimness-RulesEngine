@@ -18,13 +18,19 @@ namespace FDG.Players
 
         public PlayerID PlayerID;
 
-        public readonly ArmyListFile ArmyListFile;
+        /// <summary>
+        /// The list this slot launches with, or null on a RESUME - where the armies are already in the
+        /// loaded store and the slot's file is vestigial (see FDGServer's resume ctor). A fresh launch
+        /// always has one: <see cref="GameBootstrap.CreateArmy"/> refuses a slot without it rather than
+        /// inventing a placeholder, which is how a game used to start with an army nobody picked (#400).
+        /// </summary>
+        public readonly ArmyListFile? ArmyListFile;
 
         internal IPlayerController? Controller;
 
         internal DataBinding<PlayerSlotInfo> InfoBinding;
 
-        public PlayerSlot(int slotID, int teamNumber, PlayerID playerID, ArmyListFile armyListFile, 
+        public PlayerSlot(int slotID, int teamNumber, PlayerID playerID, ArmyListFile? armyListFile,
             IReadWriteableGameDataStore gameDataStore)
         {
             SlotID = slotID;

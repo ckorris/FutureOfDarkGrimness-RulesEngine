@@ -356,6 +356,19 @@ namespace FDG
             return trial.PendingWounds.All(entry => !CanTakeMoreWounds(entry));
         }
 
+        /// <summary>
+        /// The wounds this assignment will have landed once every packet is placed along the mandatory
+        /// order: what is already assigned plus what the rest of the queue lands. For a queue of Deadly
+        /// clumps this is the honest headline (four clumps of 3 into 1-wound models land 4, not 12); for a
+        /// plain pool that fits the unit it is the pool. Runs on a copy; this object is untouched.
+        /// </summary>
+        public float AutoFillTotal()
+        {
+            AssignWoundsResults trial = Clone();
+            trial.AutoFill();
+            return trial.TotalAssignedWounds;
+        }
+
         private AssignWoundsResults Clone() =>
             new AssignWoundsResults(new List<WoundPacket>(_packets), _packetsCommitted, _headPoured, _woundsLost,
                 TotalAssignedWounds,

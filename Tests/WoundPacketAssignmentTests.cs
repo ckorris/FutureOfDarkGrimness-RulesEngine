@@ -106,6 +106,22 @@ namespace FDG.Tests
             Assert.That(results.IsFinishedAssigning, Is.True);
         }
 
+        // The plain dialog's "x / y" needs y to be what will land, not the queue's carry: two clumps
+        // of 3 into 1-wound models is 2, and the prediction leaves the live object alone.
+        [Test]
+        public void AutoFillTotal_IsWhatTheQueueWillLand_WithoutTouchingTheObject()
+        {
+            var singles = new AssignWoundsResults(MakeUnit(modelCount: 5), new[] { WoundPacket.Clump(3f), WoundPacket.Clump(3f) });
+            Assert.That(singles.AutoFillTotal(), Is.EqualTo(2f));
+            Assert.That(singles.TotalAssignedWounds, Is.EqualTo(0f));
+            Assert.That(singles.PacketsCommitted, Is.EqualTo(0));
+
+            DataBinding<UnitData> toughs = MakeUnit(modelCount: 3, woundsPerModel: 3);
+            PreWound(toughs, modelIndex: 2, wounds: 2);
+            var results = new AssignWoundsResults(toughs, new[] { WoundPacket.Clump(3f), WoundPacket.Clump(3f) });
+            Assert.That(results.AutoFillTotal(), Is.EqualTo(4f), "1 on the wounded model (2 lost) + 3 on a fresh one");
+        }
+
         [Test]
         public void AutoFillWouldKillEveryModel_IsFalseWhenAModelSurvives()
         {

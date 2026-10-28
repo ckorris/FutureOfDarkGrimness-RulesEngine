@@ -225,5 +225,14 @@ namespace FDG.Network.Connection.Lobby
 
         /// <summary>Resumes the loaded game (host only). Returns false with a reason if this isn't a resume lobby.</summary>
         bool TryResumeGame(out string? failReason);
+
+        /// <summary>#406: the random ID of the launched game - minted by the host, received by a client on
+        /// the launch message. Set before <see cref="OnLaunched"/> fires; null before launch, or on a client
+        /// whose host predates the field. Used only to pair anonymous usage events.</summary>
+        string? LaunchedGameId => null;
+
+        /// <summary>#406: which AI drives a roster slot, for the host's usage stats. Null for a human slot,
+        /// an unknown ID, or on a client (the synced roster carries the player type but not the profile).</summary>
+        EAiProfile? GetAiProfile(PlayerID playerId) => null;
     }
 }

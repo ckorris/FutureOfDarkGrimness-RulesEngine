@@ -173,6 +173,17 @@ namespace FDG.Network.Connection.Lobby
 
         public bool IsResumeMode => _isResume;
 
+        // #406: minted at launch (new game or resume), before OnLaunched fires and before the launch
+        // message goes out carrying it. Written once on the launch path; read by the front end.
+        private volatile string? _launchedGameId;
+
+        public string? LaunchedGameId => _launchedGameId;
+
+        public EAiProfile? GetAiProfile(PlayerID playerId) =>
+            _playerInfosFull.TryGetValue(playerId, out LobbyPlayerInfoFull? info) && info.PlayerType == EPlayerType.AI
+                ? info.AiProfile
+                : null;
+
         // #405: the host's OWN slot. Was a constructor local, so after construction nothing could tell
         // the host's row apart from a local player it had added - both are EPlayerType.Local with an
         // empty ConnectionID. Remove needs that distinction (you cannot remove yourself), so it is a
@@ -762,12 +773,13 @@ namespace FDG.Network.Connection.Lobby
             server.OnGameEnded += HandleServerGameEnded;
             server.OnGameCompleted += HandleServerGameCompleted;
 
+            _launchedGameId = Guid.NewGuid().ToString("D");
             if (gameModel != null)
             {
                 OnLaunched?.Invoke(gameModel);
             }
 
-            await _messageBus.SendCommandToAllAsync(new LaunchGameMessage());
+            await _messageBus.SendCommandToAllAsync(new LaunchGameMessage { GameId = _launchedGameId });
         }
 
         // Fired by FDGServer when the game finishes (engine thread). Forward to this host's own front
@@ -913,12 +925,13 @@ namespace FDG.Network.Connection.Lobby
             server.OnGameEnded += HandleServerGameEnded;
             server.OnGameCompleted += HandleServerGameCompleted;
 
+            _launchedGameId = Guid.NewGuid().ToString("D");
             if (gameModel != null) //Dedicated server really doesn't need to do this.
             {
                 OnLaunched?.Invoke(gameModel);
             }
 
-            LaunchGameMessage launchGameMessage = new LaunchGameMessage();
+            LaunchGameMessage launchGameMessage = new LaunchGameMessage { GameId = _launchedGameId };
             await _messageBus.SendCommandToAllAsync(launchGameMessage);
         }
         

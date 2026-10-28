@@ -337,8 +337,11 @@ namespace FDG.ArmyBuilding
                     foreach (OprLoadoutEntry inner in item.Content ?? new())
                     {
                         if (inner.Type == "ArmyBookRule")
-                            ListCompiler.AddGrantedRule(entry.SpecialRules,
-                                MapRule(new OprListRule { Name = inner.Name, Rating = inner.Rating }, bookName));
+                        {
+                            SpecialRuleEntry rule = MapRule(new OprListRule { Name = inner.Name, Rating = inner.Rating }, bookName);
+                            if (!ListCompiler.TryAddModelGrant(entry, rule, item.Count ?? 0))
+                                ListCompiler.AddGrantedRule(entry.SpecialRules, rule);
+                        }
                         else
                             AddLoadoutEntry(entry, inner, bookName, warn);
                     }
@@ -416,6 +419,7 @@ namespace FDG.ArmyBuilding
                 foreach (SpecialRuleEntry rule in absorbed.SpecialRules)
                     if (!host.SpecialRules.Contains(rule))
                         host.SpecialRules.Add(rule);
+                if (absorbed.ModelGrants != null) (host.ModelGrants ??= new()).AddRange(absorbed.ModelGrants); // #407
 
                 mapped.RemoveAt(i);
 

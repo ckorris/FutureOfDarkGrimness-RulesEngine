@@ -15,8 +15,8 @@ public static class UnitCreationRules
 {
     /// <summary>
     /// Fires <see cref="EHookID.Lifecycle_OnUnitCreated"/> for <paramref name="unit"/>, folds the
-    /// max-wounds sink, and (if any Tough-style rule fired) sets every model's max wounds. A no-op
-    /// for units with no creation rules.
+    /// max-wounds sink, and (if any Tough-style rule fired) sets every model's max wounds - a model with
+    /// its own Tough (#407) gets its own. A no-op for units with no creation rules.
     /// </summary>
     public static void Apply(IUnit unit, RuleEvaluator evaluator)
     {
@@ -63,17 +63,26 @@ public static class UnitCreationRules
             ApplyJoinedHeroAuras(unit, hero);
         }
 
-        if (!maxWounds.HasMax && hero == null)
-        {
-            return;
-        }
-
         foreach (IModel model in unit.Models)
         {
             if (hero != null && model.ID == hero.HeroModelId)
             {
                 model.SetMaxWounds(hero.HeroWounds);
                 continue;
+            }
+
+            // #407: a model carrying its own Tough (a one-model Weapon Team's Tough(3)) takes the higher of
+            // its own and the unit's. Evaluated with just that model so only its rules join the unit's.
+            if (model.RuleDefinitions.Count > 0)
+            {
+                MaxWoundsSink own = new MaxWoundsSink();
+                own.ApplyFrom(evaluator.Evaluate(unit, ERuleSeat.Actor, new UnitCreatedContext(unit),
+                    weapon: null, models: new[] { model }));
+                if (own.HasMax)
+                {
+                    model.SetMaxWounds(own.MaxWounds);
+                    continue;
+                }
             }
 
             if (maxWounds.HasMax)

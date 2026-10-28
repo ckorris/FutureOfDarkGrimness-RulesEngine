@@ -42,6 +42,15 @@ namespace FDG.SaveLoad
 
         public List<WeaponFileEntry> Weapons { get; set; } = new List<WeaponFileEntry>();
 
+        /// <summary>
+        /// #407: rules only some of the unit's models have (a one-model Weapon Team's Tough(3)). Absent
+        /// on almost every unit, so null unless a grant exists and omitted on save - older army files, and
+        /// every unit without one, round-trip unchanged.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        [Newtonsoft.Json.JsonProperty(NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public List<ModelGrantEntry>? ModelGrants { get; set; }
+
         public int PointCost { get; set; }
     }
 }

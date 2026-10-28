@@ -161,6 +161,8 @@ namespace FDG.ArmyBuilding
                 foreach (SpecialRuleEntry rule in absorbed.SpecialRules)
                     if (!host.SpecialRules.Contains(rule))
                         host.SpecialRules.Add(rule);
+                // #407: each half's Weapon Team is still one model of the merged unit.
+                if (absorbed.ModelGrants != null) (host.ModelGrants ??= new()).AddRange(absorbed.ModelGrants);
 
                 army.Units.Remove(absorbed);
 
@@ -209,6 +211,9 @@ namespace FDG.ArmyBuilding
             HashSet<string> weaponScopedNames = WeaponScopedRuleNames(book);
             HashSet<(string Item, SpecialRuleEntry Rule)> placedOnWeapons = new();
             List<(SpecialRuleEntry Rule, int Applications)> championMarks = new();
+            // #407: items bought for SOME models (a One/Any section), and how many times - their
+            // model-personal rules (Tough) become ModelGrants below instead of folding onto the unit.
+            List<(ItemEntry Item, int Applications)> perModelItems = new();
 
             // Apply in the book's section order, not click order — a later section may target weapons an
             // earlier one grants (e.g. "Replace one Shard Carbine" after "Replace all ... with Shard Carbines"),
@@ -261,6 +266,7 @@ namespace FDG.ArmyBuilding
                         foreach (string target in section.Targets)
                             RemoveTarget(unit.Weapons, items, target, applications);
                         AddGains(unit, items, option, applications);
+                        RecordPerModelItems(perModelItems, section, option, applications);
                         break;
 
                     case UpgradeVariant.AddModels:
@@ -273,6 +279,7 @@ namespace FDG.ArmyBuilding
                         AddGains(unit, items, option, applications,
                             skipRules: CollectChampionMarks(section, option, applications, weaponScopedNames,
                                 championMarks));
+                        RecordPerModelItems(perModelItems, section, option, applications);
                         // Only non-Replace variants: a Replace has already removed its targets above, so
                         // there is no weapon left to attach to.
                         PlaceTargetedWeaponRules(unit, section, option, applications, weaponScopedNames, placedOnWeapons);
@@ -280,7 +287,7 @@ namespace FDG.ArmyBuilding
                 }
             }
 
-            ApplyStarvedReplaces(unit, items, starved);
+            ApplyStarvedReplaces(unit, items, starved, perModelItems);
 
             // #197 Sergeant: champion marks attach AFTER every section has applied - a later "Replace all
             // Hand Weapons" must not eat the mark; the champion attacks with whatever the unit ends up
@@ -316,9 +323,10 @@ namespace FDG.ArmyBuilding
             // target weapon is skipped — it lives there, not on the unit. A weapon rule from an UNtargeted
             // item ("Toxic Cysts (Bane in Melee)") does fold in, and army-load (GameBootstrap) spreads it
             // across every weapon the unit carries.
+            HashSet<(string Item, SpecialRuleEntry Rule)> placedOnModels = PlaceModelGrants(unit, items, perModelItems);
             foreach (ItemEntry item in items)
                 foreach (SpecialRuleEntry rule in item.Rules)
-                    if (!placedOnWeapons.Contains((item.Name, rule)))
+                    if (!placedOnWeapons.Contains((item.Name, rule)) && !placedOnModels.Contains((item.Name, rule)))
                         AddGrantedRule(unit.SpecialRules, rule);
 
             // #239: bake effect-set keys. An explicit book key survives the clone; anything still
@@ -430,7 +438,8 @@ namespace FDG.ArmyBuilding
         /// points here, so the shortfall costs what it would have cost in the first pass.
         /// </summary>
         private static void ApplyStarvedReplaces(UnitFileEntry unit, List<ItemEntry> items,
-            List<(UpgradeSection Section, UpgradeOption Option, int Remaining)> starved)
+            List<(UpgradeSection Section, UpgradeOption Option, int Remaining)> starved,
+            List<(ItemEntry Item, int Applications)> perModelItems)
         {
             bool progressed = starved.Count > 0;
             while (progressed)
@@ -455,12 +464,77 @@ namespace FDG.ArmyBuilding
                     foreach (string target in section.Targets)
                         RemoveTarget(unit.Weapons, items, target, applications);
                     AddGains(unit, items, option, applications);
+                    RecordPerModelItems(perModelItems, section, option, applications);
 
                     // An All that has now swapped is spent; a counted one keeps whatever it still owes.
                     starved[i] = (section, option, isAll ? 0 : remaining - applications);
                     progressed = true;
                 }
             }
+        }
+
+        /// <summary>
+        /// #407: rules that describe the model that bought them rather than the unit. Tough is the only one
+        /// routed today (owner's call, 2026-10-28): it is the one the corpus actually gets wrong - 16
+        /// "Weapon Team" sites in HDF and AoF Ratmen. Shielded, Caster, Fear and the like still fold
+        /// unit-wide from a one-model item; deciding each of those is follow-up work.
+        /// </summary>
+        private static readonly HashSet<string> ModelPersonalRuleNames =
+            new(StringComparer.OrdinalIgnoreCase) { "Tough" };
+
+        // #407: a One/Any section's items belong to the models that bought them. An All section, or a
+        // section that adds models, keeps the unit-wide fold.
+        private static void RecordPerModelItems(List<(ItemEntry Item, int Applications)> perModelItems,
+            UpgradeSection section, UpgradeOption option, int applications)
+        {
+            if (section.Affects == UpgradeAffects.All || applications <= 0) return;
+            foreach (ItemEntry item in option.ItemsGained)
+                perModelItems.Add((item, applications));
+        }
+
+        /// <summary>
+        /// #407: turns the model-personal rules of per-model items into <see cref="UnitFileEntry.ModelGrants"/>,
+        /// returning the (item, rule) pairs placed so the unit fold skips them. Only for a multi-model unit
+        /// where fewer models bought the item than the unit has: on a single model (a hero's mount) or when
+        /// every model has it, unit-wide already means the right thing - and a hero's Tough has to stay on
+        /// the unit for the #006 join to read it. Clamped to the copies still in the final item list, so an
+        /// item a later section replaced away grants nothing.
+        /// </summary>
+        private static HashSet<(string, SpecialRuleEntry)> PlaceModelGrants(UnitFileEntry unit, List<ItemEntry> items,
+            List<(ItemEntry Item, int Applications)> perModelItems)
+        {
+            var placed = new HashSet<(string, SpecialRuleEntry)>();
+
+            foreach (IGrouping<string, (ItemEntry Item, int Applications)> bought in perModelItems.GroupBy(p => p.Item.Name))
+            {
+                ItemEntry template = bought.First().Item;
+                int held = items.Where(i => i.Name == template.Name).Sum(i => i.Quantity);
+                int models = Math.Min(held, bought.Sum(p => Math.Max(1, p.Item.Quantity) * p.Applications));
+
+                foreach (SpecialRuleEntry rule in template.Rules)
+                    if (TryAddModelGrant(unit, rule, models))
+                        placed.Add((template.Name, rule));
+            }
+
+            return placed;
+        }
+
+        /// <summary>
+        /// #407: records <paramref name="rule"/> as held by <paramref name="models"/> of the unit's models,
+        /// when it is model-personal and fewer than all the unit's models hold it. False (nothing recorded)
+        /// otherwise, and the caller folds it onto the unit as before. Shared with the OPR list import,
+        /// where a loadout item's count is how many of the unit's models carry it.
+        /// </summary>
+        internal static bool TryAddModelGrant(UnitFileEntry unit, SpecialRuleEntry rule, int models)
+        {
+            if (models <= 0 || models >= unit.ModelCount) return false;
+            if (!ModelPersonalRuleNames.Contains(RuleLookupName(rule))) return false;
+
+            unit.ModelGrants ??= new List<ModelGrantEntry>();
+            ModelGrantEntry? same = unit.ModelGrants.FirstOrDefault(g => g.Rules.Count == 1 && g.Rules[0].Equals(rule));
+            if (same != null) same.Count += models;
+            else unit.ModelGrants.Add(new ModelGrantEntry { Count = models, Rules = new List<SpecialRuleEntry> { rule } });
+            return true;
         }
 
         /// <summary>Rule names this book resolves to a <see cref="ERuleScope.Weapon"/>-scoped definition.

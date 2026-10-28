@@ -228,12 +228,42 @@ namespace FDG.GameModel
                 AttachToEveryWeapon(unitData, ruleEntry, resolved);
             }
 
+            AttachModelGrants(unitData, unitEntry, ruleResolver);
+
             // #035: every unit carries the engine-internal Disembark + Embark abilities (slice C/D), each
             // gated before it surfaces (Disembark by the EmbarkedIn token, Embark by an engine
             // transport-in-range check in ChooseActionStage). Attached here so they ride the normal
             // army-load rule lifecycle and are restored by the #094 resume rehydration.
             unitData.AttachRuleDefinition(new ResolvedRule(CoreRuleCatalog.DisembarkRuleName, CoreRuleCatalog.Disembark));
             unitData.AttachRuleDefinition(new ResolvedRule(CoreRuleCatalog.EmbarkRuleName, CoreRuleCatalog.Embark));
+        }
+
+        //#407: rules only some models have (a one-model Weapon Team's Tough(3)) attach to the unit's LAST
+        //models, so the automatic wound order (WoundAllocation.Order: unit-list order) reaches them last.
+        //Which model it is matters for nothing else - weapons are not distributed per model either.
+        //UnitCreationRules then reads each model's own Tough. A grant naming more models than the unit has
+        //is clamped; only unit-scoped rules are model-carried today, so anything else is warned and dropped.
+        private static void AttachModelGrants(UnitData unitData, UnitFileEntry unitEntry, IRuleResolver ruleResolver)
+        {
+            IReadOnlyList<IModel> models = unitData.Models;
+            int next = models.Count;
+            foreach (ModelGrantEntry grant in unitEntry.ModelGrants ?? new List<ModelGrantEntry>())
+            {
+                List<ResolvedRule> rules = new List<ResolvedRule>();
+                foreach (SpecialRuleEntry ruleEntry in grant.Rules)
+                {
+                    ResolvedRule? resolved = ArmyListRuleResolution.ResolveForScope(
+                        ruleResolver, ruleEntry, ERuleScope.Unit, $"some models of unit '{unitData.Name}'");
+                    if (resolved != null) rules.Add(resolved);
+                }
+
+                for (int i = 0; i < grant.Count && next > 0; i++)
+                {
+                    IModel model = models[--next];
+                    foreach (ResolvedRule rule in rules)
+                        ((ModelData)model).AttachRuleDefinition(rule);
+                }
+            }
         }
 
         //Re-homes a unit-level weapon rule onto each of the unit's weapons. ResolvedRule is immutable, so
